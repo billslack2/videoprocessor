@@ -26,6 +26,7 @@
 
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
 #include <magewell/MagewellBackend.h>
+#include <source_plugin/SourcePluginBackend.h>
 #include <PixelValueRange.h>
 #include <OutputReadinessController.h>
 #include <ShortcutRepeatGuard.h>
@@ -600,6 +601,7 @@ protected:
 
 	CComPtr<BlackMagicDeckLinkCaptureDeviceDiscoverer> m_blackMagicDeviceDiscoverer;
 	CComPtr<ACaptureDeviceDiscoverer> m_magewellDeviceDiscoverer;
+	CComPtr<ACaptureDeviceDiscoverer> m_sourcePluginDeviceDiscoverer;
 
 	std::set<ACaptureDeviceComPtr> m_captureDevices;
 	CComPtr<ACaptureDevice>	m_captureDevice;
@@ -980,6 +982,7 @@ protected:
 	void RefreshCaptureDeviceList();
 
 	afx_msg void OnSelectCaptureDevice(UINT nID); // Handler for ON_COMMAND_RANGE
+	afx_msg void OnCommandCapturePlayer();
 
 	void SelectCaptureDevice(int n); // Function to process capture selection
 	void SelectCaptureDevice(CString& captureDeviceName);
