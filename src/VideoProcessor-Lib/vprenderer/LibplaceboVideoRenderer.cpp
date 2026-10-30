@@ -21549,7 +21549,8 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	}
 
 	const uint64_t counter = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-	UpdateFrameRateAndPPM(videoFrame.GetTimingTimestamp());
+	UpdateFrameRateAndPPM(videoFrame.GetTimingTimestamp(),
+		videoFrame.IsSourceCadenceRestart());
 	if (m_timingClock && counter % 20 == 0)
 	{
 		m_entryLatencyMs.store(
@@ -21689,10 +21690,19 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 
 
 void LibplaceboVideoRenderer::UpdateFrameRateAndPPM(
-	timingclocktime_t frameTimestamp)
+	timingclocktime_t frameTimestamp, bool sourceCadenceRestart)
 {
 	if (!m_timingClock || frameTimestamp <= 0)
 		return;
+
+	const auto restartAtThisFrame = [&]()
+	{
+		ResetFrameRateAndPPM();
+		m_firstPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
+		m_lastPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
+		m_lastPpmPublishTimestamp.store(frameTimestamp, std::memory_order_release);
+		m_ppmFrameCount.store(1, std::memory_order_release);
+	};
 
 	const timingclocktime_t previousTimestamp =
 		m_lastPpmFrameTimestamp.exchange(frameTimestamp, std::memory_order_acq_rel);
@@ -21712,13 +21722,20 @@ void LibplaceboVideoRenderer::UpdateFrameRateAndPPM(
 				"libplacebo: capture timestamp discontinuity (%lld ticks; expected %lld); resetting cadence estimate",
 				static_cast<long long>(observedTicks),
 				static_cast<long long>(expectedFrameTicks));
-			ResetFrameRateAndPPM();
-			m_firstPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
-			m_lastPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
-			m_lastPpmPublishTimestamp.store(frameTimestamp, std::memory_order_release);
-			m_ppmFrameCount.store(1, std::memory_order_release);
+			restartAtThisFrame();
 			return;
 		}
+	}
+
+	// The source says its timing has settled on this frame (its start-up or
+	// post-seek correction is over). Restart the same way as for a gap, so the
+	// settling period is not counted as oscillator drift. A gap restart above
+	// already covers this frame.
+	if (sourceCadenceRestart)
+	{
+		DebugLog::Log("libplacebo: source marked its cadence settled; resetting cadence estimate");
+		restartAtThisFrame();
+		return;
 	}
 
 	timingclocktime_t firstTimestamp =
