@@ -140,6 +140,27 @@ public:
         rows = StatsOverlayWindow::BuildStatsRows(stats);
         Assert::AreEqual(L"238/0", Find(rows,L"Dropped:").value.c_str());
     }
+    TEST_METHOD(DeckLinkCaptureStatsRenderInBothOsdPathsWithoutMagewellPackingLabel)
+    {
+        for (bool alpha : {false, true})
+        {
+            auto stats = Example(alpha);
+            stats.captureDeliverySupported = true;
+            stats.captureDelivery.expectedFps = 59.94;
+            stats.captureDelivery.deliveredFps = 59.94;
+            stats.captureDelivery.windowSeconds = 5.0;
+            stats.capturedDroppedFrames = 23;
+            stats.queueDroppedFrames = 2;
+            const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+            Assert::AreEqual(L"59.94 / 59.94 expected (5s)", Find(rows, L"Capture fps:").value.c_str());
+            Assert::AreEqual(L"23 total; 0 last 5s", Find(rows, L"Capture missed:").value.c_str());
+            Assert::AreEqual(L"2", Find(rows, L"Render dropped:").value.c_str());
+            Assert::IsTrue(std::none_of(rows.begin(), rows.end(), [](const auto& row) {
+                return row.label == L"Capture packing:" || row.label == L"Dropped:";
+            }));
+            VerifyNative(stats);
+        }
+    }
     TEST_METHOD(MissingAndEmptyOutputDetailsDoNotAllocatePhantomRows)
     {
         for (const bool alpha : {false, true})
