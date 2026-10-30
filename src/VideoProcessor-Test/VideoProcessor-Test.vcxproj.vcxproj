@@ -84,7 +84,7 @@
     <VPTestLibplaceboDirectory Condition="'$(VPTestLibplacebo)'=='standard'">$(ProjectDir)..\..\3rdparty\libplacebo</VPTestLibplaceboDirectory>
     <VPTestLibplaceboLibrary Condition="'$(VPTestLibplacebo)'=='standard'">libplacebo-360.lib</VPTestLibplaceboLibrary>
     <VPTestLibplaceboDirectory Condition="'$(VPTestLibplacebo)'=='beta'">$(ProjectDir)..\..\3rdparty\libplacebo-beta</VPTestLibplaceboDirectory>
-    <VPTestLibplaceboLibrary Condition="'$(VPTestLibplacebo)'=='beta'">libplacebo-377.lib</VPTestLibplaceboLibrary>
+    <VPTestLibplaceboLibrary Condition="'$(VPTestLibplacebo)'=='beta'">libplacebo-388.lib</VPTestLibplaceboLibrary>
   </PropertyGroup>
   <PropertyGroup Condition="'$(VPTestLibplacebo)'=='beta'">
     <OutDir>$(ProjectDir)..\..\$(Platform)\$(Configuration)\tests-beta\</OutDir>

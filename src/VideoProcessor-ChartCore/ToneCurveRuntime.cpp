@@ -32,7 +32,7 @@ namespace ToneCurveRuntime
             {
                 // A full path loads the companions from the same folder.
                 const std::wstring file = OptionalRendererLayout::Join(
-                    OptionalRendererLayout::Directory(root, true), L"libplacebo-377.dll");
+                    OptionalRendererLayout::Directory(root, true), L"libplacebo-388.dll");
                 library = LoadLibraryExW(file.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
                 if (!library) failure = file;
             }

@@ -138,7 +138,7 @@ struct pl_dovi_metadata {
     // Reshape data, grouped by component
     struct pl_reshape_data {
         uint8_t num_pivots;
-        float pivots[9]; // normalized to [0.0, 1.0] based on BL bit depth
+        float pivots[9]; // pivot codes divided by 2^BL_bit_depth
         uint8_t method[8]; // 0 = polynomial, 1 = MMR
         // Note: these must be normalized (divide by coefficient_log2_denom)
         float poly_coeffs[8][3]; // x^0, x^1, x^2, unused must be 0
@@ -152,17 +152,16 @@ struct pl_dovi_metadata {
     // profile 7 streams. When `nlq_active` is false the rest of these fields are
     // unused and only BL-only reshape is performed.
     //
-    // LINEAR_DZ dequantization:
-    //   residual = sign(el_centered) *
-    //              (|el_centered| * deadzone_slope + deadzone_threshold)
-    // The (2^eld - 1) factor is pre-folded into `deadzone_slope` and the
-    // -0.5*S half-pixel correction (from the spec's (2|rr|-1) rounding) is
-    // absorbed into `deadzone_threshold`.
+    // LINEAR_DZ dequantization of the EL code e, with rr = e - offset:
+    //   residual = 0                                                  if rr == 0
+    //   residual = sign(rr) * ((|rr| - 0.5) * deadzone_slope + deadzone_threshold)
+    // bounded to [-hdr_in_max, hdr_in_max]
     bool nlq_active;
     struct pl_dovi_nlq_data {
-        float offset;             // normalized to [0.0, 1.0] based on EL bit depth
-        float deadzone_slope;     // (2^el_bit_depth - 1) * S / 2^coef_log2_denom
-        float deadzone_threshold; // (T - S/2) / 2^coef_log2_denom
+        float offset;             // nlq_offset, in EL codes
+        float deadzone_slope;     // linear_deadzone_slope / 2^coef_log2_denom
+        float deadzone_threshold; // linear_deadzone_threshold / 2^coef_log2_denom
+        float hdr_in_max;         // hdr_in_max / 2^coef_log2_denom
     } nlq[3];
 };
 
@@ -205,8 +204,11 @@ PL_API void pl_color_repr_merge(struct pl_color_repr *orig,
 // This function normalizes the color representation such that
 // color_depth=sample_depth and bit_shift=0; and returns the scaling factor
 // that must be multiplied into the color value to accomplish this, assuming
-// it has already been sampled by the GPU. If unknown, the color and sample
-// depth will both be inferred as 8 bits for the purposes of this conversion.
+// it has already been sampled by the GPU. A full range signal is normalized
+// to the range of its color depth, so both depths become the color depth; a
+// limited range signal to the range of the sample depth. If unknown, the
+// color and sample depth will both be inferred as 8 bits for the purposes of
+// this conversion.
 PL_API float pl_color_repr_normalize(struct pl_color_repr *repr);
 
 // Compute the stored value limits for the given color representation,
@@ -746,10 +748,33 @@ PL_API pl_matrix3x3 pl_get_cone_matrix(const struct pl_cone_params *params,
 // Note: For BT.2100 ICtCp, this outputs in the color space L'M'S'. Further
 // non-linear processing must be done by the caller.
 //
-// Note: XYZ system is expected to be in DCDM X'Y'Z' encoding (ST 428-1), in
-// practice this means normalizing by (48.0 / 52.37) factor and applying 2.6 gamma
+// Note: For PL_COLOR_SYSTEM_XYZ, the input is expected to be linear light,
+// i.e. the transfer function (in practice ST 428-1, for DCDM X'Y'Z') must
+// already have been undone. The resulting RGB uses DCI-P3 primaries, the
+// reference space of DCDM. Use `pl_color_repr_decode_ex` to decode into a
+// different RGB color space.
 PL_API pl_transform3x3 pl_color_repr_decode(struct pl_color_repr *repr,
                                             const struct pl_color_adjustment *params);
+
+struct pl_color_repr_decode_params {
+    // Color adjustment parameters. If NULL, defaults to
+    // `&pl_color_adjustment_neutral`.
+    const struct pl_color_adjustment *adjustment;
+
+    // The primaries of the RGB color space to decode into. Currently only
+    // relevant for PL_COLOR_SYSTEM_XYZ: XYZ tristimulus values are
+    // device-independent, so this choice decides which XYZ value decodes to
+    // RGB white (i.e. the adopted white point of the content), as well as the
+    // nominal gamut of the result. Defaults to PL_COLOR_PRIM_DCI_P3.
+    enum pl_color_primaries primaries;
+};
+
+#define pl_color_repr_decode_params(...) \
+    (&(struct pl_color_repr_decode_params) { __VA_ARGS__ })
+
+// Extended version of `pl_color_repr_decode`. `params` may be NULL.
+PL_API pl_transform3x3 pl_color_repr_decode_ex(struct pl_color_repr *repr,
+                                               const struct pl_color_repr_decode_params *params);
 
 // Common struct to describe an ICC profile
 struct pl_icc_profile {

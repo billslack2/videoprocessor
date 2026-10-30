@@ -107,6 +107,7 @@ PL_API void pl_queue_destroy(pl_queue *queue);
 
 // Explicitly clear the queue. This is essentially equivalent to destroying
 // and recreating the queue, but preserves any internal memory allocations.
+// Any GPU textures held by the queue are released.
 //
 // Note: Calling `pl_queue_reset` may block, if another thread is currently
 // blocked on a different `pl_queue_*` call.
@@ -131,6 +132,21 @@ PL_API void pl_queue_push(pl_queue queue, const struct pl_source_frame *frame);
 // in nanoseconds. Returns false if this timeout was reached.
 PL_API bool pl_queue_push_block(pl_queue queue, uint64_t timeout,
                                 const struct pl_source_frame *frame);
+
+// Returns the current internal queue status.
+PL_API enum pl_queue_status pl_queue_get_status(pl_queue queue);
+
+// Explicitly set the status of the queue, overriding any prior status
+// observed on the queue. Concretely:
+//
+// - PL_QUEUE_OK marks the queue as healthy
+// - PL_QUEUE_MORE additionally marks the queue as accepting more frames,
+//   unblocking any threads stuck on pl_queue_push_block().
+// - PL_QUEUE_EOF is equivalent to `pl_queue_push(queue, NULL)`
+// - PL_QUEUE_ERR is equivalent to returning an error from `get_frame()`
+//
+// Note: may also wake up any thread blocked waiting on the queue.
+PL_API void pl_queue_set_status(pl_queue queue, enum pl_queue_status status);
 
 struct pl_queue_params {
     // The PTS of the frame that will be rendered. This should be set to the

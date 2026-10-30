@@ -1,27 +1,20 @@
-VideoProcessor beta libplacebo corresponding source: translated subtitle ROI copy
 Fork: https://github.com/billslack2/libplacebo
-Base commit: 8bccd6578c9e845f77205cec9e85fdb97bf36ed7
-Base branch provenance: codex/vp-master-beta (branch not advanced)
-Source state: detached base plus the explicitly identified uncommitted patch below.
-No new commit is claimed. Existing public headers/API377 and import contract unchanged.
-Patch: translated-roi-copy-with-regression.patch
-Patch SHA256: 8351e94d6dd32a11585d3bbcbe6ff7054d8972bf61bd83595addc06c6f99756f
-Changed existing files: src/d3d11/gpu_tex.c; src/tests/d3d11.c
-Added source file: src/tests/subtitle_roi_copy.h
-DLL: libplacebo-377.dll
-DLL SHA256: 8189e9d8c156c28dd6752a34d9a26946b46a0eeb9dc66ac246a396dd9b13d2df
-Runtime pl_version(): v7.377.0 (v7.360.0-159-g8bccd657-dirty)
-API: 377; fix version: 0; PE architecture: x86-64
-D3D11, shaderc, lcms and libdovi enabled; Vulkan/OpenGL and glslang disabled.
-Build: MSYS2 mingw64 GCC16.1.0, Meson1.11.2, Ninja1.13.2, binutils2.46.1; Release -O3.
-Dependencies: shaderc2026.2.1, SPIRV-Cross0.68.0, lcms2.19, libdovi3.4.0.
-All eight runtime dependency DLLs are byte-identical to the existing VP beta/stable pair.
-All 512 pl_* exports match pristine rebuilt baseline and shipped beta DLL by name.
-No public source header changes; retain existing beta include/lib directories.
-Full native suite: 13 passed, 0 failed. ROI exact-pixel/cache regression passed on RTX3080 and WARP.
-Validation and build commands are in VP-ROI-COPY-VALIDATION.txt.
-No live player/HDMI validation, VP integration, stable API360 build, or deployment performed.
-
+Branch: codex/vp-master-beta
+Commit: a89f8241bfd6c5f5affaa9c3ce39fa2b1767b8c7
+Upstream: a83aaeb4e60fdd7ed01619885f4f42bb0ef34eaa (API 387)
+API: 388; fix version: 0; PE architecture: x86-64
+Source state: clean committed source, including the previously shipped translated-ROI-copy patch.
+Runtime pl_version(): v7.388.0 (v7.387.0-12-ga89f8241)
+DLL: libplacebo-388.dll
+DLL SHA256: 93a9292d31accf606dc9d5289225138e55942a9b03978401320137aaa9ecbb88
+Source archive: libplacebo-7.388.0-vp-source.zip
+Source archive SHA256: 66a63ad2a2dbcc7fc17ce2483f5b03db4b07b55163f70291a48fa74340b3dbc9
+Build: MSYS2 mingw64 GCC 16.1.0; Meson 1.11.2; Ninja 1.13.2; x64 Release -O3.
+D3D11, shaderc, lcms2 and libdovi enabled; Vulkan/OpenGL and glslang disabled.
+Dependencies: shaderc 2026.2.1; SPIRV-Cross 0.68.0; lcms2 2.19; libdovi 3.4.0.
+All 15 native library suites passed, including D3D11 hardware/WARP, ROI copy,
+analysis crop, timers, and original/custom/original gamut restoration.
+All eight transitive runtime DLLs remain byte-identical to stable.
 Pinned submodules:
 74d8a6cb930c68ef617b202c3ff3c59d919e086b 3rdparty/Vulkan-Headers (v1.4.345)
  97b54ca9e75f5303507699d27c6b4f4efe4641a1 3rdparty/fast_float (v6.1.0-275-g97b54ca)
