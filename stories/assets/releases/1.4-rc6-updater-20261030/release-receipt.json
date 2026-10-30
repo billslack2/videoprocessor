@@ -1,0 +1,32 @@
+{
+  "sourceCommit": "a8f62855c246019e3d9262f384e58c96d60f3147",
+  "sourceFingerprint": "d9d0d1e1a49adcf74eb737557a67c92ea9b71ca2d90f56f2a0112a65c3874f82",
+  "configuration": "Release",
+  "architecture": "x64",
+  "sequence": 20261030173927,
+  "channel": "stable",
+  "updaterPolicyChecks": 37,
+  "updaterControlChecks": 19,
+  "nativeSuiteRepeated": false,
+  "priorNativeSuiteCommit": "605ec4af39b934ac4bbd0f3e7dbbe7e31bec7e63",
+  "priorNativeTests": 3538,
+  "scope": "Focused updater-only testing explicitly requested by user",
+  "artifacts": [
+    {
+      "name": "VideoProcessorSetup-1.4.0-rc6-a8f62855c246.exe",
+      "sha256": "3F8BED81DB70B598A8B4484FF8DE493DF69AE0818706D4DA312CD8076B51D591",
+      "length": 35617457
+    },
+    {
+      "name": "VideoProcessor-1.4.0-rc6-a8f62855c246-x64-Portable.zip",
+      "sha256": "2F7D2214735DB7C6763FD42E18FAB3459C6D5456084D9CF36D94F4D8ED1C0090",
+      "length": 51410651
+    },
+    {
+      "name": "vertex2-lg-dv30-hdr10bit.bin",
+      "sha256": "9A271CF7E071BF247A1804EFDA3A62FDC182E161951C1097C40484C210956B01",
+      "length": 256
+    }
+  ],
+  "unsignedWindowsBinaries": true
+}

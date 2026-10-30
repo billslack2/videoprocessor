@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "a8f62855c246019e3d9262f384e58c96d60f3147",
+  "betaCommit": "a8f62855c246019e3d9262f384e58c96d60f3147",
+  "sequence": 20261030173927,
+  "channel": "stable",
+  "coreVersion": "1.4.0-rc6",
+  "validationScope": "User requested focused updater tests only; unchanged native suite not repeated",
+  "priorNativeQualification": "605ec4af: 3538 tests passed"
+}

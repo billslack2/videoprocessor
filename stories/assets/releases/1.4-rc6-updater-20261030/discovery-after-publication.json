@@ -1,0 +1,14 @@
+﻿[
+    {
+        "selectedChannel":  "beta",
+        "offeredChannel":  "stable",
+        "commit":  "a8f62855c246019e3d9262f384e58c96d60f3147",
+        "sequence":  20261030173927
+    },
+    {
+        "selectedChannel":  "stable",
+        "offeredChannel":  "stable",
+        "commit":  "a8f62855c246019e3d9262f384e58c96d60f3147",
+        "sequence":  20261030173927
+    }
+]

@@ -15,3 +15,5 @@ Clean Windows without Visual Studio and installed interactive Config Apply/OK/re
 [Downloads and release notes](release-notes.md), [qualification](release-verification.json), [build receipt](build-release-receipt.json), [checksums](SHA256SUMS.txt), [native test summary](native-test-summary.txt) and [additional test logs/workflows](additional).
 
 Local export: E:\codex\releases\VideoProcessor-1.4.0-rc6-decklink-605ec4af-20261030. Source and complete logs: E:\codex\videoprocessor\rc6-decklink-release-20261030. The existing live VP installation and the tracker's unrelated VP-0207 design edit were preserved.
+
+Superseded later on 2026-10-30 at the user's request by the [RC6 updater refresh](../1.4-rc6-updater-20261030/README.md). The same release tag/page now identifies a8f62855; this folder preserves the original 605ec4af qualification and metadata.
