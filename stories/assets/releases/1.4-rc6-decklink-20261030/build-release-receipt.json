@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "inputs": {
+    "checkout": "E:\\codex\\videoprocessor\\rc6-decklink-release-20261030",
+    "sourceCommit": "605ec4af39b934ac4bbd0f3e7dbbe7e31bec7e63",
+    "betaCommit": "605ec4af39b934ac4bbd0f3e7dbbe7e31bec7e63",
+    "installerToolingCommit": "",
+    "coreVersion": "1.4.0-rc6",
+    "vsInstallPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
+    "qtRoot": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64",
+    "vcRedistPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+    "isccPath": "E:\\codex\\tools\\inno-6.7.3\\app\\ISCC.exe",
+    "releaseSequence": 20261030162702,
+    "updateChannel": "stable",
+    "portableZip": true,
+    "reuseVerifiedBuild": false,
+    "workflowSha256": "C06624C06357FEC5B71E00087AC784C1662C05F7B31C974C07271225BB96DE53",
+    "outputDirectory": "E:\\codex\\releases\\VideoProcessor-1.4.0-rc6-decklink-605ec4af-20261030"
+  },
+  "sourceFingerprint": "1da518cdf9e2d8a9bb666b71ab80001f5344864fbd5f12031d4cb123f7ba7eea",
+  "testsPassed": 3538,
+  "legacyRuntimeCheckExit": 1,
+  "tools": [
+    {
+      "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe",
+      "version": "18.7.8.30822",
+      "sha256": "CFDB6C62EFC59D2EB216ACF753108C63C733A814BEF4E3AEBB2C63AC16B7B1B1"
+    },
+    {
+      "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe",
+      "version": "18.0.11814.123",
+      "sha256": "A0C6D8CAE2646462A609FC64633B9AF2E7A500218E31A5E5DEE365601268360B"
+    },
+    {
+      "path": "E:\\codex\\tools\\inno-6.7.3\\app\\ISCC.exe",
+      "version": "0.0.0.0",
+      "sha256": "0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7"
+    },
+    {
+      "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+      "version": "14.51.36247.0",
+      "sha256": "843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C"
+    },
+    {
+      "path": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64\\bin\\Qt6Core.dll",
+      "version": "6.8.3.0",
+      "sha256": "0CC62E841959FB8F6D366EA116C6F6BBC273E30F0EF90D8AA2E4ADEB81FD63F8"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "VideoProcessorSetup-1.4.0-rc6-605ec4af39b9.exe",
+      "sha256": "0E3F6EC8603C7C2F98BD545645ED739EF28636563D05FF7C5450868D30D166A0",
+      "length": 35621244
+    },
+    {
+      "name": "VideoProcessor-1.4.0-rc6-605ec4af39b9-x64-Portable.zip",
+      "sha256": "64B77ACBCCA58FFBE5586EB86F26571E433C8FB9421EF975BDE9185C220599D8",
+      "length": 51410706
+    }
+  ],
+  "signed": false,
+  "qualification": "Full unit suite and packaging helper tests passed. Real installer lifecycle and clean Windows/interactive qualification must be reported separately.",
+  "reproducibility": "Pinned source and recorded tools/dependencies; byte-identical PE/installer rebuilds are not asserted."
+}

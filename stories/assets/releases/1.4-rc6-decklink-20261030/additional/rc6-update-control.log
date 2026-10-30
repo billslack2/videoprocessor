@@ -1,0 +1,21 @@
+Updater: E:\codex\videoprocessor\rc6-decklink-release-20261030\artifacts\updater\VideoProcessorUpdate.exe
+PASS VP restart preserves its launch arguments
+PASS hidden Config overrides an earlier Updates launch
+PASS visible Config overrides an earlier background launch
+PASS full package works without VP executable
+PASS full preferences round trip through control bridge
+PASS full malformed preferences rejected
+PASS full rejected settings do not modify preferences
+PASS full cannot install without a verified download
+PASS full helper never opens an updater window
+PASS full idle helper exits when Config panel detaches
+PASS full invalid installation gives actionable error instead of timeout
+PASS config package works without VP executable
+PASS config preferences round trip through control bridge
+PASS config malformed preferences rejected
+PASS config rejected settings do not modify preferences
+PASS config cannot install without a verified download
+PASS config helper never opens an updater window
+PASS config idle helper exits when Config panel detaches
+PASS config invalid installation gives actionable error instead of timeout
+19 update control checks passed

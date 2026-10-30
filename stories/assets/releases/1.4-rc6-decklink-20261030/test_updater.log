@@ -1,0 +1,30 @@
+PASS default mode only notifies
+PASS old disabled preference stays disabled
+PASS explicit automatic mode permits idle update
+PASS automatic mode waits for running VP by default
+PASS explicit restart preference permits unattended VP restart
+PASS notification mode cannot install unattended
+PASS manual mode cannot install unattended
+PASS incompatible remote protocol requires manual review
+PASS skipped release cannot install unattended
+PASS valid pinned signature accepted
+PASS tampered metadata rejected before parsing
+PASS untrusted key rejected
+PASS expired metadata rejected
+PASS same version newer build offered
+PASS beta not offered on stable channel
+PASS previously seen newer sequence prevents replay
+PASS same build not offered again
+PASS full setup not offered to Config-only install
+PASS foreign repository rejected
+PASS HTTP rejected
+PASS traversal URL rejected
+PASS negative package size rejected
+PASS duplicate package flavor rejected
+PASS unsupported updater version rejected
+PASS installation path traversal rejected
+PASS matching installed package verified
+PASS mismatched installed binary prevents restart
+PASS flavor and installation identity mismatch rejected
+PASS atomic shared preferences replacement
+29 updater checks passed

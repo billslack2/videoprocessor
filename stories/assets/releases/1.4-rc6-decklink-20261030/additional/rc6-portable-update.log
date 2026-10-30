@@ -1,0 +1,3 @@
+PASS full portable setup: in-place binary update, preserved settings, exact inventory, no registration/shortcuts/uninstaller
+PASS config portable setup: in-place binary update, preserved settings, exact inventory, no registration/shortcuts/uninstaller
+Fixtures and logs: E:\codex\videoprocessor\rc6-decklink-release-20261030\artifacts\portable-update-e2e-2ac2ed12d7b749c194bcd8f8238a8949

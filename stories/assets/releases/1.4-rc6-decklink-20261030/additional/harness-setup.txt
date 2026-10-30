@@ -1,0 +1,1 @@
+The packaged application ships qwindows only. The initial offscreen test invocation could not start. Added the matching Qt 6.8.3 qoffscreen test plugin in this isolated QA copy only; no production artifact changed.

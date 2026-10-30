@@ -1,0 +1,29 @@
+{
+  "commit": "605ec4af39b934ac4bbd0f3e7dbbe7e31bec7e63",
+  "sourceFingerprint": "1da518cdf9e2d8a9bb666b71ab80001f5344864fbd5f12031d4cb123f7ba7eea",
+  "dirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "binaries": [
+    {
+      "path": "VideoProcessor-GUI.exe",
+      "sha256": "8207480BF7B61ADF776B550E158679D6F5926FDFB8F646DC135A51865562E3CE"
+    },
+    {
+      "path": "VideoProcessorConfig.exe",
+      "sha256": "43D5E97C550219E5D52FA8D5FEF831F31C5BD1EBAC7CC0D05413FACF94E031A1"
+    },
+    {
+      "path": "VideoProcessorConfigDiscovery.dll",
+      "sha256": "FC5232B2F34A17D95183C498A02E8E49E25D588EB700C67CFE0C83FCEF8B6E45"
+    },
+    {
+      "path": "vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "1B008CA9F7B15685B878DDFE496B19EC6C2AB25ED2FDCB507C246167FE6B339D"
+    },
+    {
+      "path": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "03429345E6BC86577197ADA71BF2AFCF0DC68007F38B23692DB106A796B7905A"
+    }
+  ]
+}

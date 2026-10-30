@@ -1,0 +1,35 @@
+{
+  "sourceCommit": "605ec4af39b934ac4bbd0f3e7dbbe7e31bec7e63",
+  "betaCommit": "605ec4af39b934ac4bbd0f3e7dbbe7e31bec7e63",
+  "tag": "1.4-rc6-decklink-20261030",
+  "channel": "stable",
+  "sequence": 20261030162702,
+  "nativeTests": 3538,
+  "configChartTests": 6,
+  "installerLifecycleChecks": 326,
+  "updaterControlChecks": 19,
+  "portableUpdateFixtures": 2,
+  "corruptPackageRecovery": "passed",
+  "windowsBinariesSigned": false,
+  "updateDescriptorSignatureVerified": true,
+  "hardware": "EDID investigation: UHD25 DV and UHD59.94 HDR10; this fresh build not newly live-deployed",
+  "limitations": [
+    "No new clean-Windows VM qualification",
+    "No new installed interactive Config Apply/OK/reopen test",
+    "Post-change true UHD50 content fallback unverified; exact60 capability only"
+  ],
+  "supersededRuns": [
+    "First full native run intentionally stopped before export to merge prior release-only test corrections",
+    "Two QA identity setup failures retained; final 326 lifecycle checks pass",
+    "Initial offscreen Config invocation lacked test-only platform plugin; final six tests pass"
+  ],
+  "applicationDeployment": "none",
+  "publication": {
+    "url": "https://github.com/billslack2/videoprocessor/releases/tag/1.4-rc6-decklink-20261030",
+    "publishedAt": "2026-10-30T17:12:30Z",
+    "latest": true,
+    "prerelease": false,
+    "assetDigestsVerified": true,
+    "publicSignedDescriptorDownloadedAndMatched": true
+  }
+}

@@ -1,0 +1,10 @@
+PASS portable sample: VideoProcessor.cfg.example (22 bytes), source/manifest SHA256=58E618185B674E66201B10EB34772582E4397608593FD14F61DB04C34C055E43
+PASS portable config contract: valid
+PASS portable config contract: missing
+PASS portable config contract: empty
+PASS portable config contract: different
+PASS portable config contract: nested
+PASS portable config contract: duplicate
+PASS portable config contract: active
+PASS portable config contract: bad-manifest
+8 portable config contract checks passed. Fixtures: E:\codex\videoprocessor\rc6-decklink-release-20261030\artifacts\portable-config-tests-640e37de4f9944a89b0e3a0b5e81c648

@@ -1,0 +1,9 @@
+  Passed StaleRawIdentityAndWrongRetentionKeyAreRecomputedWithoutAdoption [10 ms]
+  Passed MissingRawAndRetentionFinishCompleteWindowWithoutAnotherRenderPass [10 ms]
+  Passed RawCompletionAfterPrimeCanReachNextSourceAtZeroForegroundAllowance [10 ms]
+Results File: E:\codex\videoprocessor\rc6-decklink-release-20261030\artifacts\release-verification-53c942620c704467b313e71cef98e584\release.trx
+
+Test Run Successful.
+Total tests: 3538
+     Passed: 3538
+ Total time: 40.2105 Minutes

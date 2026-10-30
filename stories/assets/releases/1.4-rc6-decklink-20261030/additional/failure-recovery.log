@@ -1,0 +1,1 @@
+PASS actual installer hash failure: nonzero exit, no registration, previous application restored, config/state unchanged. Evidence: E:\codex\videoprocessor\rc6-decklink-release-20261030\artifacts\full-installer-qa-672152d068704282b49751827d687953\artifacts\installer-failure-043f5eb68ad84456bd18bce3d31cfce3

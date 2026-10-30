@@ -1,0 +1,5 @@
+Too old: E:\codex\videoprocessor\rc6-decklink-release-20261030\artifacts\release\VideoProcessor\mfc140u.dll (14.29.30139.0; required 14.44.35211.0 or newer)
+Too old: E:\codex\videoprocessor\rc6-decklink-release-20261030\artifacts\release\VideoProcessor\config\mfc140u.dll (14.29.30139.0; required 14.44.35211.0 or newer)
+Too old: E:\codex\videoprocessor\rc6-decklink-release-20261030\artifacts\release\VideoProcessor\vprenderer\mfc140u.dll (14.29.30139.0; required 14.44.35211.0 or newer)
+Runtime setup could not complete: Old Microsoft runtime DLLs were found in the VP folder. Extract this release into a clean folder, preserve your configuration, and run setup there.
+Official runtime help: https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
