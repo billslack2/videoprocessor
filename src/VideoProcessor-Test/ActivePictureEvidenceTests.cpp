@@ -5331,6 +5331,28 @@ namespace VideoProcessorTest
             }
 		}
 
+        TEST_METHOD(NativeGenuinePillarboxAcquiresWithoutExtraDelay)
+        {
+            for(int width : {1920,3840})
+            for(bool p210 : {false,true})
+            for(int insetAt4k : {128,136,480})
+            {
+                const int height=width*9/16, inset=insetAt4k*width/3840;
+                P010Frame frame(width,height,64,p210);
+                frame.BlackOutside(inset,0,width-inset,height);
+                const auto evidence=ExtractActivePictureEvidence(p210 ? frame.P210Source() : frame.P010Source());
+                Assert::IsTrue(evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsTrue(evidence.trustedBounds.left<=inset && evidence.trustedBounds.right>=width-inset);
+                Assert::AreEqual(0,evidence.trustedBounds.top);Assert::AreEqual(height,evidence.trustedBounds.bottom);
+                ActivePictureTransitionModel model;
+                for(uint64_t seq=1;seq<=4;++seq)
+                {
+                    const auto d=model.Observe(MakeActivePictureObservation(evidence,seq,59.94));
+                    Assert::AreEqual(seq==4,d.publish);
+                }
+            }
+        }
+
 		TEST_METHOD(FourByThreePillarboxIsTrusted)
 		{
 			P010Frame frame(320, 180);

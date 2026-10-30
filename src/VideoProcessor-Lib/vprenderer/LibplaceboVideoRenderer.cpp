@@ -4930,6 +4930,7 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::MovingPictureTransitionState movingPictureTransition;
 	AlphaSourceCrop::OutwardPictureConfirmationState
 		outwardPictureConfirmation;
+	AlphaSourceCrop::OutwardPictureConfirmationState pillarboxContradictionConfirmation;
 	uint64_t outwardPictureConfirmationEpoch = 0;
 	AlphaSourceCrop::PictureTransitionHandoff pictureTransitionHandoff;
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
@@ -10068,6 +10069,7 @@ struct LibplaceboVideoRenderer::Impl
         deferredQueueNativeResetEpoch = deferredQueueNativeResetGeneration = 0;
 		nlsTransition.Reset();
 		outwardPictureConfirmation = {};
+		pillarboxContradictionConfirmation = {};
 		movingPictureTransition = {};
 		pictureTransitionHandoff = {};
 		nlsGeometryAvailable = false;
@@ -10711,6 +10713,7 @@ struct LibplaceboVideoRenderer::Impl
                 nlsTransition.ResetPresentationState();
             else nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
@@ -11653,6 +11656,7 @@ struct LibplaceboVideoRenderer::Impl
                     retentionEvidence);
 			admissionInput.retention = retentionEvidence;
 			admissionInput.previousOutward = outwardPictureConfirmation;
+			admissionInput.previousPillarboxContradiction = pillarboxContradictionConfirmation;
 			const bool eligiblePictureChange = nlsTransition.WouldAdmitGeometryChange(
 				MakeActivePictureObservation(evidence, frameNumber, framesPerSecond));
 			auto admission = AlphaSourceCrop::EvaluateTransitionAdmission(admissionInput);
@@ -11862,6 +11866,21 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned>(bufferedExpansion->decision.proofFrameCount),
 					bufferedExpansionReady ? 1 : 0, bufferedExpansion->relativeContrast ? 1 : 0,
                     currentQualifiedPair ? 1 : 0, currentRelativeContrast.reason);
+			pillarboxContradictionConfirmation = admission.pillarboxContradiction.state;
+			if (admission.pillarboxContradiction.authoritative)
+			{
+				DebugLog::Log("Alpha pillarbox authority contradicted: generation=%llu sequence=%llu old_rect=%d,%d-%d,%d proof=%u action=withdraw_then_reacquire",
+					analysisSource.generation, frameNumber, nlsGeometry.left, nlsGeometry.top,
+					nlsGeometry.right, nlsGeometry.bottom,
+					admission.pillarboxContradiction.state.confirmations);
+				// Complete the existing synchronized live/queue reset after rendering.
+				// No queued or moving-picture decision may restore this crop meanwhile.
+				nativeBoundaryReacquisitionPending = true;
+				nlsTransitionWithdrawn = true;
+				nlsGeometryAvailable = false;
+				scheduledDecision = nullptr;
+				admission.observation.transitionDeferred = true;
+			}
 			const auto observation = admission.observation;
 			const bool deferPresentationOwnedTransition = admission.deferPresentation;
 			const bool deferOutwardLogicalTransition = admission.deferOutward;
@@ -12748,6 +12767,7 @@ struct LibplaceboVideoRenderer::Impl
                 nlsTransition.ResetPresentationState();
             else nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			latestActivePictureObservationSupportsCrop = false;
@@ -13009,6 +13029,7 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.num_hooks = 0;
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
@@ -13127,6 +13148,7 @@ struct LibplaceboVideoRenderer::Impl
 			// The stable geometry remains the last affirmative logical reference.
 			nlsTransition.ResetCandidateEvidence();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			scopeSubtitleTranslationConfirmation = {};
@@ -16617,7 +16639,7 @@ releaseDriftBaseRetention =
 			const bool nearBlackEpisodeRetainCrop =
 				AlphaSourceCrop::NearBlackEpisodeOwnsCropThisFrame(episodeDecision);
 			const bool nearBlackEpisodeFullRaster =
-				episodeDecision.resetTrustedGeometry ||
+				episodeDecision.resetTrustedGeometry || nativeBoundaryReacquisitionPending ||
 				nearBlackPresentationEpisode.mode ==
 					AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER;
 
@@ -22585,6 +22607,27 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 
 void LibplaceboVideoRenderer::RefreshOsdCacheLocked()
 {
+    // Publish before the output-description throttle and pending-display checks.
+    // Aspect is source geometry, independent of display mode and fitting.
+    DetectedPictureAspect result;
+	result.sourceGeneration = m_impl->activePictureAnalysisSourceGeneration;
+	result.publicationGeneration = m_impl->nlsGeometryGeneration;
+	const ActivePictureBounds& geometry = m_impl->nlsGeometry;
+	if (m_impl->nlsGeometryAvailable &&
+		m_impl->nlsGeometrySourceGeneration == result.sourceGeneration &&
+		(m_impl->nlsGeometryClassification ==
+			ActivePictureClassification::FULL_RASTER_TRUSTED ||
+		 m_impl->nlsGeometryClassification ==
+			ActivePictureClassification::BAR_CROP_TRUSTED) &&
+		geometry.right > geometry.left && geometry.bottom > geometry.top)
+	{
+		result.ratio = static_cast<double>(geometry.right - geometry.left) /
+			(geometry.bottom - geometry.top);
+		result.available = std::isfinite(result.ratio) &&
+			result.ratio > 0.0;
+	}
+    m_impl->osdTelemetry.PublishAspect(result);
+
     // Capture before checking pending flags: a concurrent UI invalidation must
     // not let this old render state adopt the new publication generation.
     const auto generation = m_impl->osdTelemetry.OutputGeneration();
@@ -22909,26 +22952,7 @@ bool LibplaceboVideoRenderer::GetDetectedPictureAspect(
 	result = {};
 	if (!m_impl)
 		return true;
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return false;
-	result.sourceGeneration = m_impl->activePictureAnalysisSourceGeneration;
-	result.publicationGeneration = m_impl->nlsGeometryGeneration;
-	const ActivePictureBounds& geometry = m_impl->nlsGeometry;
-	if (m_impl->nlsGeometryAvailable &&
-		m_impl->nlsGeometrySourceGeneration == result.sourceGeneration &&
-		(m_impl->nlsGeometryClassification ==
-			ActivePictureClassification::FULL_RASTER_TRUSTED ||
-		 m_impl->nlsGeometryClassification ==
-			ActivePictureClassification::BAR_CROP_TRUSTED) &&
-		geometry.right > geometry.left && geometry.bottom > geometry.top)
-	{
-		result.ratio = static_cast<double>(geometry.right - geometry.left) /
-			(geometry.bottom - geometry.top);
-		result.available = std::isfinite(result.ratio) &&
-			result.ratio > 0.0;
-	}
+	result = m_impl->osdTelemetry.ReadAspect();
 	return true;
 }
 
