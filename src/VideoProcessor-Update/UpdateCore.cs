@@ -192,7 +192,10 @@ namespace VideoProcessor.Update
         }
         public static bool IsNewer(Release release, Installed installed, string channel, long highest)
         {
-            return release.channel == channel && release.sequence > installed.updateSequence && release.sequence >= highest &&
+            bool acceptsChannel = channel == "beta"
+                ? release.channel == "beta" || release.channel == "stable"
+                : channel == "stable" && release.channel == "stable";
+            return acceptsChannel && release.sequence > installed.updateSequence && release.sequence >= highest &&
                 release.packages.Any(p => p.flavor == installed.flavor);
         }
         static bool AllowedRedirect(Uri uri)

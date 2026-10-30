@@ -118,3 +118,10 @@
   saved configuration. For a fresh folder only, copy the example to VideoProcessor.cfg.
 - Run tools/test_portable_config_contract.ps1 and validate each finished archive
   with tools/test_portable_config.ps1 before exporting or sharing it.
+
+## Required release downloads
+
+- Include docs/edid/vertex2-lg-dv30-hdr10bit.bin as a separate asset in every
+  GitHub Release, alongside Setup/portable packages and signed vp-update.json.
+  It is an optional manual Vertex2 EDID; installation must not apply it.
+- Keep checksum sidecars, inventories and build receipts as internal evidence.
