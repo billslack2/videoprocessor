@@ -7171,6 +7171,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         // profile, another profile, or an exported profile file.
         const auto requestFrom = [this](const std::function<QString(const char*)>& get) {
             auto request = ToneProfileRequest::From(get, RenderingBuiltInDefault);
+            // Edited, compared and preloaded profiles use the same renderer.
+            request.betaRenderer = rendererChoice_ && effectiveChoiceValue(rendererChoice_).compare(
+                QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
             for (const auto& section : profileSections(QStringLiteral("vprenderer.scaling"))) {
                 const auto preset = value(section, QStringLiteral("quality")).toLower();
                 if (!preset.isEmpty() && preset != "high") request.defaultsKnown = false;

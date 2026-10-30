@@ -5,6 +5,8 @@
 #include "../VideoProcessor-ChartCore/ToneCurveProvider.h"
 #include "ToneProfileFile.h"
 #include "FlowLayout.h"
+#include "ToneChartWork.h"
+#include <QTimer>
 #include <QResizeEvent>
 #include <QStylePainter>
 #include <QStyleOptionToolButton>
@@ -87,14 +89,22 @@ private:
     QBoxLayout* columns_ = nullptr;
 };
 
-// The tone charts column on the Rendering page. Tabs hold the charts (only
-// Brightness for now); the scene buttons under the tab bar, above the charts,
+// The tone charts column on the Rendering page. Tabs hold Brightness and Colour; the scene buttons under the tab bar, above the charts,
 // tell every tab what scene to imagine and are not VP settings. The profile comes from the page.
 class ToneChartPanel : public QWidget
 {
 public:
     ToneChartPanel()
     {
+        completion_ = new QTimer(this);
+        completion_->setInterval(10);
+        connect(completion_, &QTimer::timeout, this, [this] {
+            if (!active_ || !active_->done.load(std::memory_order_acquire)) return;
+            auto done=std::move(active_);completion_->stop();
+            if(done->generation==generation_ && apply_) apply_(std::move(done->result));
+            apply_={};
+            if(pending_) startPending();
+        });
         // Not "config.*": those names mark configuration edits.
         setObjectName(QStringLiteral("toneCharts"));
         auto* layout = new QVBoxLayout(this);
@@ -159,8 +169,7 @@ public:
         pages_->addWidget(brightness);
         tabBar_->addTab(QStringLiteral("Brightness"));
         addColourTab();
-        // The Colour tab is computed only while it shows.
-        connect(tabBar_, &QTabBar::currentChanged, this, [this] { redraw(); });
+        // Both tabs are prepared together, so changing tabs needs no sampling.
         layout->addWidget(tabs_, 1);
 
         // Compare with: libplacebo's default curve, then up to four profiles or
@@ -447,7 +456,7 @@ private:
         charts->addWidget(displayRow);
 
         // The part of the picture the map shows, placed by the scene: Mid-tones
-        // at the curve's knee, Peak at the scene peak (see redrawColour).
+        // at the curve's knee, Peak at the scene peak.
         auto* zoneRow = new QWidget;
         zoneRow->setStyleSheet(displayRow->styleSheet());
         auto* zones = new FlowLayout(zoneRow);
@@ -531,25 +540,6 @@ private:
         tabBar_->addTab(QStringLiteral("Colour"));
     }
 
-    void redrawColour(const ToneCurveProvider::Request& request, const ToneCurveProvider::Result& result,
-        const QString& editedName, const QColor& editedColor,
-        const std::vector<std::tuple<QString, QColor, ToneCurveProvider::Request>>& others)
-    {
-        for (size_t i = 0; i < displayButtons_.size(); ++i)
-            displayButtons_[i]->setChecked(static_cast<int>(i) == display_);
-        for (size_t i = 0; i < zoneButtons_.size(); ++i)
-            zoneButtons_[i]->setChecked(static_cast<int>(i) == zone_);
-        const double zoneNits = ChartData::ZoneNits(request, result, zone_);
-        zoneNote_->setText(QStringLiteral("strongest channel at %1 nits").arg(ToneCurveChart::Nits(zoneNits)));
-        ColourChart::Data map, sweep;
-        if (!ChartData::Colour(request, zoneNits, display_, zone_, patch_, editedName, editedColor,
-            defaultChip_->isChecked(), others, map, sweep))
-        { map_->clear(); sweep_->clear(); hue_->clear(); return; }
-        hue_->setData(map);
-        map_->setData(std::move(map));
-        sweep_->setData(std::move(sweep));
-    }
-
     static QLabel* heading(const QString& text)
     {
         auto* label = new QLabel(text);
@@ -562,6 +552,9 @@ private:
 
     void showUnavailable(const QString& text)
     {
+        ++generation_;
+        requestedWork_.clear();
+        pending_.reset();pendingApply_={};
         unavailable_->setText(text);
         unavailable_->show();
         tabs_->hide();
@@ -595,16 +588,6 @@ private:
         ChartData::PlaceInScene(scene, request);
 
         ToneCurveChart::Data chart;
-        std::wstring error;
-        if (!ChartData::Tone(request, chart, error))
-        {
-            showUnavailable(QStringLiteral("Charts need VP Renderer's files. %1")
-                .arg(error.empty() ? QString() : QStringLiteral("Missing: %1").arg(QString::fromStdWString(error))));
-            return;
-        }
-        unavailable_->hide();
-        tabs_->show();
-
         // Compared profiles, as the page resolves them now. One whose profile
         // is gone is dropped; the edited profile is drawn bold, in its chip's
         // colour, from the page's live values.
@@ -633,15 +616,34 @@ private:
                     sources_.valuesRequest(compared.values) : sources_.profileRequest(compared.section);
                 ChartData::ShareScene(request, other);
                 others.emplace_back(compared.name, compared.color, other);
-                ChartData::AddCompare(compared.name, compared.color, other, chart);
+
             }
         }
-        tone_->setData(chart);
-        tracking_->setData(chart);
-        if (tabBar_->currentIndex() == 1)
-            redrawColour(request, chart.result, chart.profileName.isEmpty() ? QStringLiteral("Profile") :
-                chart.profileName + QStringLiteral(" (editing)"), chart.profileColor, others);
-
+        for (size_t i = 0; i < displayButtons_.size(); ++i)
+            displayButtons_[i]->setChecked(static_cast<int>(i) == display_);
+        for (size_t i = 0; i < zoneButtons_.size(); ++i)
+            zoneButtons_[i]->setChecked(static_cast<int>(i) == zone_);
+        ToneChartWork::Work work{request,others,chart.profileName,chart.profileColor,chart.showDefault,display_,zone_,patch_};
+        const auto key=ToneChartWork::Key(work);
+        if(key==requestedWork_)return;
+        requestedWork_=key;
+        ++generation_;
+        setProperty("toneCharts.requestedGeneration",QVariant::fromValue(generation_));
+        pending_=std::make_unique<ToneChartWork::Work>(work);
+        // Keep the existing charts and every control usable until their
+        // replacement is ready. Loading adds no widget or layout change.
+        unavailable_->hide();tabs_->show();
+        pendingApply_=[this,scene,request,zone=zone_](ToneChartWork::Result ready){
+            if(!ready.error.isEmpty()){showUnavailable(ready.error);return;}
+            auto& chart=ready.tone;
+            unavailable_->hide();tabs_->show();tabs_->setEnabled(true);
+            tone_->setData(chart);tracking_->setData(chart);
+            if(ready.colour){
+                zoneNote_->setText(QStringLiteral("strongest channel at %1 nits").arg(ToneCurveChart::Nits(ChartData::ZoneNits(request,chart.result,zone))));
+                hue_->setData(ready.map);map_->setData(std::move(ready.map));sweep_->setData(std::move(ready.sweep));
+            }else{map_->clear();sweep_->clear();hue_->clear();}
+            setProperty("toneCharts.readyGeneration",QVariant::fromValue(generation_));
+            setProperty("toneCharts.readyTargetNits",request.targetNits);
         // What the scene is, then what libplacebo does to it beyond the curve.
         QStringList note;
         const auto& result = chart.result;
@@ -665,8 +667,38 @@ private:
         note << QStringLiteral("Film strength and gamut overflow correction change colour, not this grey curve. "
             "The scene is not saved and is not a VP setting; VP smooths the measurement over time.");
         sceneNote_->setText(note.join(QLatin1Char(' ')));
+        };
+        if(!active_)startPending();
+        const QString selected=sources_.current?sources_.current():QString();
+        if(!warmed_ || selected!=warmedProfile_){
+            warmed_=true;warmedProfile_=selected;
+            if(sources_.profiles&&sources_.profileRequest){
+                for(const auto& profile:sources_.profiles()){
+                    auto warm=work;warm.others.clear();warm.request=sources_.profileRequest(profile.first);
+                    if(!warm.request.betaRenderer||!warm.request.defaultsKnown)continue;
+                    const int set=warm.request.sceneAverageKnown?0:1;
+                    ChartData::PlaceInScene(ChartData::Scenes(set==0)[sceneIndex_[set]],warm.request);
+                    ToneChartWork::Service::Get().warm(std::move(warm),lifetime_);
+                }
+            }
+        }
     }
 
+    void startPending(){
+        active_=std::make_shared<ToneChartWork::Job>();active_->generation=generation_;
+        apply_=std::move(pendingApply_);
+        ToneChartWork::Service::Get().submit(std::move(*pending_),active_);
+        pending_.reset();completion_->start();
+    }
+    QTimer* completion_=nullptr;
+    quint64 generation_=0;
+    QByteArray requestedWork_;
+    std::shared_ptr<int> lifetime_=std::make_shared<int>(0);
+    std::shared_ptr<ToneChartWork::Job> active_;
+    std::unique_ptr<ToneChartWork::Work> pending_;
+    std::function<void(ToneChartWork::Result)> apply_,pendingApply_;
+    bool warmed_=false;
+    QString warmedProfile_;
     QLabel* unavailable_ = nullptr;
     CompareSources sources_;
     std::vector<Compared> compared_;
