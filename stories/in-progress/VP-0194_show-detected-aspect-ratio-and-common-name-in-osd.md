@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-30). Complete two-field AR reporting and VP-0222 integration deployed from clean x64 Release commit `955a8d54a41fbee2de030a2ef627f987d1ded3e4` ([draft PR #238](https://github.com/billslack2/videoprocessor/pull/238)). All 1,039 selected regressions and both 208-test GPU suites passed. Installed host/standard/beta hashes, loaded host/renderer identities, fullscreen live submission, and unchanged configuration/state were verified. The rendered-output capture confirms AR in use and Detected AR with no Input AR row. Longer viewing/transition acceptance remains ongoing.
+In Progress (2026-10-30). User requested a display-only follow-up: ignore detected-number changes below 1 percent, restore conventional names such as 16:9 (HDTV), and remove the special startup-fallback label. Preserve detector decisions and exact raw/submitted telemetry. Use focused OSD checks and a successful x64 Release build before redeployment; the user explicitly waived full regression suites. Worktree: `E:/codex/videoprocessor/ar-labels-20261030`, based on fresh remote beta `a8f62855` with installed changes through `955a8d54` preserved.
 
 Previous review (2026-09-30): User confirmed the live OSD feature looks good.
 [PR #124](https://github.com/billslack2/videoprocessor/pull/124) merged into
