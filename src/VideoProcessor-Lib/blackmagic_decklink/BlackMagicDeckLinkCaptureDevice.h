@@ -11,6 +11,8 @@
 
 #include <vector>
 #include <atomic>
+#include <mutex>
+#include <blackmagic_decklink/DeckLinkCaptureDelivery.h>
 
 #include <DeckLinkAPI_h.h>
 
@@ -61,6 +63,7 @@ public:
 	double HardwareLatencyMs() const override { return m_hardwareLatencyMs; }
 	uint64_t VideoFrameCapturedCount() const override { return m_capturedVideoFrameCount; }
 	uint64_t VideoFrameMissedCount() const override { return m_missedVideoFrameCount; }
+	bool GetCaptureDeliveryStats(CaptureDeliveryStats& stats) const override;
 
 	// ITimingClock
 	timingclocktime_t TimingClockNow() override;
@@ -125,8 +128,10 @@ private:
 	LONGLONG m_videoColorSpace = BMD_COLOR_SPACE_INVALID;
 	bool m_videoHasHdrData = false;
 	HDRData m_videoHdrData;
-	uint64_t m_capturedVideoFrameCount = 0;
-	uint64_t m_missedVideoFrameCount = 0;
+	std::atomic<uint64_t> m_capturedVideoFrameCount{0};
+	std::atomic<uint64_t> m_missedVideoFrameCount{0};
+	mutable std::mutex m_deliveryMutex;
+	DeckLinkCaptureDelivery m_delivery;
 	timingclocktime_t m_previousTimingClockFrameTime = TIMING_CLOCK_TIME_INVALID;
 
 	// DeckLink hardware timing for basic frame rate calculation 
