@@ -31,7 +31,6 @@ public:
 		m_label = {};
 		m_candidate = {};
 		m_candidateSinceMs = 0;
-		m_candidatePublication = 0;
 		m_unavailableSinceMs = 0;
 	}
 
@@ -85,12 +84,13 @@ public:
 			m_candidateSinceMs = 0;
 			return m_label;
 		}
+		// A new publication of the same label continues its dwell. Returning
+		// to the held label or losing availability breaks that continuity.
 		if (incoming.ratio != m_candidate.ratio ||
 			incoming.name != m_candidate.name ||
-			reading.publicationGeneration != m_candidatePublication)
+			m_candidateSinceMs == 0)
 		{
 			m_candidate = incoming;
-			m_candidatePublication = reading.publicationGeneration;
 			m_candidateSinceMs = nowMs;
 		}
 		if (nowMs - m_candidateSinceMs >= 5000)
@@ -162,7 +162,6 @@ private:
 	bool m_hasSource = false;
 	Label m_label;
 	Label m_candidate;
-	uint64_t m_candidatePublication = 0;
 	uint64_t m_candidateSinceMs = 0;
 	uint64_t m_unavailableSinceMs = 0;
 };

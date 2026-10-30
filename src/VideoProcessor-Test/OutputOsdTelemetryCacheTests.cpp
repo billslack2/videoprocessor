@@ -32,6 +32,43 @@ TEST_CLASS(OutputOsdTelemetryCacheTests)
         }, [&] { return raster.Read(); });
     }
 public:
+    TEST_METHOD(AspectAcquiresAndChangesWhileRenderMutexRemainsBusy)
+    {
+        OutputOsdTelemetryCache cache; std::mutex render; BusyRenderer busy(render);
+        Assert::IsFalse(cache.ReadAspect().available);
+        cache.PublishAspect({7, 1, 2.39, true});
+        auto reading = cache.ReadAspect();
+        Assert::IsTrue(reading.available && reading.sourceGeneration == 7);
+        Assert::AreEqual(2.39, reading.ratio);
+        cache.PublishAspect({7, 2, 16.0 / 9.0, true});
+        reading = cache.ReadAspect();
+        Assert::IsTrue(reading.available && reading.publicationGeneration == 2);
+        Assert::AreEqual(16.0 / 9.0, reading.ratio);
+        cache.PublishAspect({8, 0, 0.0, false});
+        reading = cache.ReadAspect();
+        Assert::IsFalse(reading.available);
+        Assert::IsTrue(reading.sourceGeneration == 8);
+        cache.Retire();
+        cache.PublishAspect({8, 1, 2.40, true});
+        Assert::IsFalse(cache.ReadAspect().available);
+    }
+    TEST_METHOD(ConcurrentAspectReadersNeverMixSourceAndGeometry)
+    {
+        OutputOsdTelemetryCache cache; std::atomic_bool bad{false};
+        cache.PublishAspect({1, 10, 2.39, true});
+        std::thread writer([&] {
+            for (int i = 0; i < 5000; ++i)
+                cache.PublishAspect(i % 2 ? DetectedPictureAspect{1, 10, 2.39, true}
+                    : DetectedPictureAspect{2, 20, 16.0 / 9.0, false});
+        });
+        for (int i = 0; i < 5000; ++i) {
+            const auto r = cache.ReadAspect();
+            if (!((r.sourceGeneration == 1 && r.publicationGeneration == 10 && r.ratio == 2.39 && r.available) ||
+                (r.sourceGeneration == 2 && r.publicationGeneration == 20 && r.ratio == 16.0 / 9.0 && !r.available)))
+                bad = true;
+        }
+        writer.join(); Assert::IsFalse(bad.load());
+    }
     TEST_METHOD(ColdCacheIsAuthoritativeEmptyUnderRenderContention)
     {
         OutputOsdTelemetryCache cache; DisplayRasterInfo::Cache raster; std::mutex render;
