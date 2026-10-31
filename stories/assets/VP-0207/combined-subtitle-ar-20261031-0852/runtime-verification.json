@@ -1,0 +1,19 @@
+{
+  "commit": "27dc733ad6b7f5afa01a13c1a114ff9337cc40a8",
+  "processId": 4616,
+  "responding": true,
+  "identities": [
+    "2026-10-31 08:52:21 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/27dc733ad6b7f5afa01a13c1a114ff9337cc40a8 branch=codex/combined-subtitle-ar-deploy-20261031 dirty=0 build=v1.4.02-beta-27dc733",
+    "2026-10-31 08:52:28 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/27dc733ad6b7f5afa01a13c1a114ff9337cc40a8 branch=codex/combined-subtitle-ar-deploy-20261031 dirty=0 build=v1.4.02-beta-27dc733"
+  ],
+  "lastOutput": [
+    "2026-10-31 08:53:28 | VP output correlation: generation=2 source=1403 selected=1403 selected_pts=41067.969380 output_pts=41067.969380 cue=0 temporal=0 epoch=5 present_id=1400 observed_present_id=1399 sync_qpc=410680885106 qpc_hz=10000000 submit_qpc=410681040042 lookahead_ms=0.054 budget_ms=2.000 phase_known=1 lookahead_complete=1",
+    "2026-10-31 08:53:28 | VP output correlation: generation=2 source=1409 selected=1409 selected_pts=41068.219630 output_pts=41068.219630 cue=0 temporal=0 epoch=5 present_id=1406 observed_present_id=1405 sync_qpc=410683387821 qpc_hz=10000000 submit_qpc=410683536120 lookahead_ms=0.051 budget_ms=2.000 phase_known=1 lookahead_complete=1"
+  ],
+  "installedHashesVerified": true,
+  "configurationAndStateUnchanged": true,
+  "subtitleProfile": "classic",
+  "testsRun": false,
+  "verificationScope": "Build identity, file hashes and startup/output verification only; tests skipped at user request",
+  "verifiedAt": "2026-10-31T08:53:28.8829991-04:00"
+}

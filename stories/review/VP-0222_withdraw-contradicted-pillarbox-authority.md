@@ -115,3 +115,9 @@ Incident logs retained locally at C:/Users/bslac/.codex/visualizations/2026/10/3
 - Process 33244 responds, expected module paths are loaded, source/output sequence advanced 4283 -> 4884. Other portable processes were untouched.
 - [Validation and deployment report](../assets/VP-0222/ar-continuity-20261031/validation-report.txt); adjacent JSON receipts pin hashes, source, test counts and runtime verification. No captured movie pixels are committed.
 - Visual scope/IMAX, Prime paused/profile-toggle and menu/caption acceptance remain pending. Exact Prime source pixels were unavailable. Draft PR remains unmerged for user review.
+
+### Combined rebuild requested with subtitle fixes — 2026-10-31 08:52 EDT
+
+User requested a fresh combined build/deployment and explicitly skipped tests. Rebuilt the host and both renderer variants in x64 Release at the same reviewed combined commit `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8`, starting a clean worktree from the freshly fetched current beta before integrating this candidate. The complete subtitle cadence/three-line repair is included. No new source changes, test runs or beta merge.
+
+Deployed with verified hashes and clean host/renderer startup identities; PID4616 is presenting output. Configuration and saved state are unchanged, including Classic subtitles. Backup: `C:\Videoprocessor\vp\backups\combined-subtitle-ar-20261031-085218`. [Shared deployment receipt](../assets/VP-0207/combined-subtitle-ar-20261031-0852/deployment-receipt.json), [runtime verification](../assets/VP-0207/combined-subtitle-ar-20261031-0852/runtime-verification.json). Story remains Review; physical user acceptance remains separate.
