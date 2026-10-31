@@ -1,0 +1,68 @@
+Cadence stack audit, 2026-10-31. Read-only inspection before stack-reduction edits.
+Inspected matching x64 Release VideoProcessor-Test.dll and vprenderer/VideoProcessorVPRenderer.dll using dbghelp PDB symbols and dumpbin /disasm:nobytes.
+Production types: SubtitleBoxPreview=57416 bytes; SubtitleBoxObservation=6704; SubtitleCadenceProof=63840; SubtitleCadenceGuard=123920.
+Production prologues:
+ RememberAccepted RVA 0xA0530: mov eax,0FB28h; call __chkstk; sub rsp,rax => 64296-byte local allocation.
+ Prepare RVA 0xA3500: mov eax,1B9A8h; call __chkstk; sub rsp,rax => 113064-byte local allocation.
+ Reset RVA 0x9E030: mov eax,1DA40h; call __chkstk; sub rsp,rax => 121408-byte local allocation.
+Test DLL equivalent frames: RememberAccepted=0xFB28, Prepare=0x1B9A8, Reset=0x1DA50.
+RememberAccepted calls Reset; their nested allocation is about 186KB before the renderer/test caller's own frame.
+Causes: aggregate assignment temporaries for 57KB reference and 64KB cache; Prepare local proof and by-value fail-helper result; following={} adds a 7-observation temporary.
+Authorized reduction implemented only in SubtitleCadenceGuard.h: reusable heap reference/cache/work objects; direct in-place lifetime reset; failure helper returns workspace reference before outer API copies directly to its caller result; following observations reset in place individually. Public return API and proof semantics unchanged. No per-frame allocation for these workspaces.
+A post-build prologue/type audit is still required to record the achieved frame reduction. No build was run by this agent.
+Additional authorized API reduction: PrepareReference returns the reusable work/cache by const reference; existing Prepare preserves its by-value test API. Renderer uses a persistent heap result and copies from PrepareReference directly, avoiding a large production return temporary. Reference is valid only until the next guard operation.
+Separate correctness fix: CanRearm now compares fresh detector raw/owned mask to immutable acquisition detector snapshot, not palette-derived native snapshot. Native baseline and per-native-pixel skipped proof remain unchanged.
+
+Post-build production audit, 2026-10-31T00:29:43.946859
+Source 7d9b26df7622a79f2c28e8082b494f0ea819499c
+E:\codex\videoprocessor\subtitle-stability-review-20261030\x64\Release\vprenderer\VideoProcessorVPRenderer.dll
+mtime 2026-10-31T00:26:42.392178
+SHA256 326a709f4358a7d0534e05c3c11b84d9900a21d63aaeac6784a23588a5950226
+symbol base 0x200000000
+SubtitleCadenceGuard::RememberAccepted code_bytes=6570 address=0x18009f760
+  000000018009F76D: lea         rbp,[rsp-0C8h]
+  000000018009F775: sub         rsp,1C8h
+SubtitleCadenceGuard::ClearInPlace<SubtitleBoxPreview> code_bytes=4067 address=0x1801647c0
+  00000001801647CE: sub         rsp,20h
+SubtitleCadenceGuard::ClearInPlace<SubtitleBoxObservation> code_bytes=3385 address=0x180167550
+  000000018016755B: sub         rsp,20h
+SubtitleCadenceGuard::Reset code_bytes=458 address=0x18009f590
+  000000018009F5A0: sub         rsp,80h
+SubtitleCadenceGuard::ClearInPlace<SubtitleCadenceProof> code_bytes=6157 address=0x1801657b0
+  00000001801657BE: sub         rsp,20h
+  00000001801657D1: mov         eax,0FFFFFFFFh
+  00000001801657E8: mov         eax,0FFFFFFFFh
+SubtitleCadenceGuard::PrepareReference code_bytes=6217 address=0x1800a1110
+  00000001800A1122: lea         rbp,[rax-848h]
+  00000001800A1129: sub         rsp,910h
+SubtitleCadenceGuard size=2704
+SubtitleCadenceProof size=63840
+E:\codex\videoprocessor\subtitle-stability-review-20261030\x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll
+mtime 2026-10-31T00:28:34.899592
+SHA256 25de7b2a32adb5b0e52b57e7a4643413b2d63338ec2c2e5e3fcd92e4655612a7
+symbol base 0x210000000
+SubtitleCadenceGuard::RememberAccepted code_bytes=6570 address=0x18009f760
+  000000018009F76D: lea         rbp,[rsp-0C8h]
+  000000018009F775: sub         rsp,1C8h
+SubtitleCadenceGuard::ClearInPlace<SubtitleBoxPreview> code_bytes=4067 address=0x180164790
+  000000018016479E: sub         rsp,20h
+SubtitleCadenceGuard::ClearInPlace<SubtitleBoxObservation> code_bytes=3385 address=0x180167520
+  000000018016752B: sub         rsp,20h
+SubtitleCadenceGuard::Reset code_bytes=458 address=0x18009f590
+  000000018009F5A0: sub         rsp,80h
+SubtitleCadenceGuard::ClearInPlace<SubtitleCadenceProof> code_bytes=6157 address=0x180165780
+  000000018016578E: sub         rsp,20h
+  00000001801657A1: mov         eax,0FFFFFFFFh
+  00000001801657B8: mov         eax,0FFFFFFFFh
+SubtitleCadenceGuard::PrepareReference code_bytes=6217 address=0x1800a1110
+  00000001800A1122: lea         rbp,[rax-848h]
+  00000001800A1129: sub         rsp,910h
+SubtitleCadenceGuard size=2704
+SubtitleCadenceProof size=63840
+
+Read-only seed-cost assessment (source-level inference; no per-stage timing was added):
+For the actual Prime footprint of 610824 native pixels, NativePixel is approximately 32 bytes, so acquisition writes about 19.5MB of proof metadata. The initially empty native vector grows through power-of-two capacities up to about 33.5MB, copying intermediate storage. Reset clears but retains vector capacity, so this growth cost is mainly first acquisition or a larger later cue. Index-map initialization adds a few MB; reusable compact current samples avoid copying the native map on ordinary skipped proofs.
+BuildComponents performs component flood/grouping, an interior-core pass, near-floor candidate scan, and (when any candidate exists) an exterior non-ink flood plus fringe classification. An antialiased caption can trigger the exterior flood across most of the capture background. This likely accounts for meaningful acquisition overhead beyond the full native source read; actual dominance requires isolated per-stage profiling, because quoted 35.8ms P210 / 47ms V210 seeds were observed under concurrent linker load.
+Lowest-risk deferred optimization: reserve min(ROI area, SampleBudget) native records before acquisition, retaining all footprint checks and unchanged sample count. This can remove first-cue capacity growth/copies; it should be measured independently and must not be claimed to eliminate source reads or component work.
+A further possible optimization is to postpone only exterior/fringe-certificate construction until the first actual captured ink-classification change. Baseline components/core and cleanup checks remain necessary. Because the baseline is immutable, delayed certificate construction can use the original baseline safely; however it shifts work into the first changed skipped frame, creating a possible latency spike. Treat as future measured work, not part of the frozen candidate.
+No source edits or builds performed for this assessment.

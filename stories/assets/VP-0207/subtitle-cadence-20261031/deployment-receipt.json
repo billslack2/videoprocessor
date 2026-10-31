@@ -1,0 +1,66 @@
+{
+  "sourceCommit": "7d9b26df7622a79f2c28e8082b494f0ea819499c",
+  "configuration": "Release",
+  "architecture": "x64",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\subtitle-cadence-7d9b26df-20261031-012013",
+  "configurationEdits": [],
+  "configSha256": "2F644385C45D532CB213DFD4C432B95398467FADFC8FBD25BD41C48A946943C5",
+  "stateSha256BeforeStart": "99CF94A66291AC295858C9AFD73DC880EE42F9496FD974D9CC44A9A1BF979222",
+  "files": [
+    {
+      "target": "VideoProcessor.exe",
+      "sha256": "195CABDD6C4F48994A5B8EACB7FD6608225C09DD257FF12FC97940054AEDFC3A",
+      "source": "VideoProcessor-GUI.exe"
+    },
+    {
+      "target": "VideoProcessor.exe.runtime.json",
+      "sha256": "5CE93DF904A7669E9BCA6041EE06E2DB02821A8A74F8E564FFF94BA607101818",
+      "source": "VideoProcessor-GUI.exe.runtime.json"
+    },
+    {
+      "target": "VideoProcessor-GUI.pdb",
+      "sha256": "6B0F4507D4B21BA5B8741210CAB621FB467A2AE425A3718980DEFCB6EDE11A5D",
+      "source": "VideoProcessor-GUI.pdb"
+    },
+    {
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "326A709F4358A7D0534E05C3C11B84D9900A21D63AAEAC6784A23588A5950226",
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "sha256": "546449A4069497C684F14792FC24D38D597D2E924F3180013B40E5D8B390DE3C",
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json"
+    },
+    {
+      "target": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "sha256": "A403108E4513E46A24A05AE7D299D1F6498D7C6B41F5828104FDDD112723BABD",
+      "source": "vprenderer\\VideoProcessorVPRenderer.pdb"
+    },
+    {
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "25DE7B2A32ADB5B0E52B57E7A4643413B2D63338EC2C2E5E3FCD92E4655612A7",
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    },
+    {
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "sha256": "2F397F259BEDBDF97498104B2B90264C6EDF260451FD7DA64339FDA1AECABDFB",
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json"
+    },
+    {
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "sha256": "28D3704490625BFC4EE510643FA0A37D2040E0EFB1F7A1419B50E7FCADE4DAEC",
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb"
+    }
+  ],
+  "deployed": "2026-10-31T01:20:14.2222658-04:00",
+  "started": true,
+  "processId": 37836,
+  "hostRendererCleanRevisionVerified": true,
+  "configurationUnchangedAfterStart": true,
+  "stateRestoredByteIdentical": true,
+  "restoredSubtitleProfile": "reconstruction",
+  "liveOutputVerified": true,
+  "liveSubtitleAcceptance": "pending: Prime showed Resume page after restart",
+  "liveCapture": "C:\\Videoprocessor\\vp\\screenshots\\VP-rendered-20261031-012059-730-frame-1807.json"
+}

@@ -1,0 +1,29 @@
+SUBTITLE CADENCE AND THREE-LINE REPAIR
+Pinned candidate: 7d9b26df7622a79f2c28e8082b494f0ea819499c
+Draft PR: https://github.com/billslack2/videoprocessor/pull/240
+Base: authoritative v1.4.02-beta a591ad3b532771911e85f8ef026958279f2065f0
+
+Confirmed failures
+- Recording interval 23:33:29-44: 211 suspected flashes, 208 with 16.7 ms gaps. Input59.940060Hz, analysis_stride2. Explicit skipped scans cleared presentation between successful scans, interrupting the250ms hold. This path predates the first attempted repair; the first deployment failed live acceptance.
+- Recording interpretation corrected: smaller two-line frames are intended0.7-scale output; larger one-line frames are unprocessed source after cadence dropout, with the second line outside the crop. No separate inverse-scale shader defect established.
+- Restart at23:55:40 changes input to23.976024Hz and PQ/BT.2020 P210. Earlier recorded failure is SDR/Rec.709. Both captured sessions have DV inactive. Same device/HDMI path does not imply identical frame rate or format. No title-specific codec defect established.
+- Exact paused native capture contains all three lines. Raw detector3 / three-observation resolution2 / four-observation resolution3. Finite boundary certificates are absent despite owned glyphs and backing, so the conservative short-window rule rejects the distant row indefinitely.
+
+Repair
+- For one explicit stride-two skipped input, verify every native pixel in the exact extraction and erasure union, then reuse final placement with CURRENT pixels. Work is bounded to1,048,576 samples. Repeats cannot renew the proof; fresh independent scans must rearm it. Changed glyphs, unsafe cleanup, foreign identity/base/context and unavailable data reject continuation.
+- Preserve the immutable native baseline and a separate immutable detector-mask baseline. Detector contrast masks and native palette masks differ at seven samples in the Prime capture; comparing unlike masks caused needless full rebuilding. Fresh detector masks now compare to their own acquisition definition.
+- No current bar authority, AR proof, future vote or detector-scan freshness is manufactured by a cadence proof. A successful composition may seal the immutable source preparation for repeated output only.
+- Retain one raw independent predecessor to complete the existing four-observation crowded-caption horizon. Promote current raw geometry only. Unknown/backlog gaps clear history; verified cadence continuation preserves a prior scan without adding a vote. Existing three-observation finite-card admission remains conservative.
+- Keep large bounded workspaces off the presentation stack. Both production renderer variants reserve456B for RememberAccepted,128B for Reset and2320B for PrepareReference. No stack reserve increases.
+- No shared AR/black-boundary sampling APIs, black/DV thresholds, screen-aspect detection policy or user configuration changes.
+
+Evidence and limits
+- Complete clean x64 Release solution build passes. Corrupt generated incremental linker caches were removed only within the source worktree; final build completed successfully.
+-610 selected final native regressions pass, including the exact paused Prime capture. Preserved decoded-DV native replay also passes. Standard and beta GPU/cue suites each pass209/209, with clean source and exact dependency identity recorded in dual-gpu-7d9b26df/motion-renderer-tests.json.
+- Prime current P210 footprint:610824 exact native pixels. Rearm~0.4ms; next proof~5.6ms in the pinned run. First acquisition~36ms under concurrent build load remains an optimization target. These are controlled measurements, not physical playback timing acceptance.
+- Native fixtures cover600 alternating inputs, immutable rearm, changed masks/glyphs/cleanup, punctuation/core preservation, bounded fringe changes, rounded live corners, work limits, padded/unaligned planar planes and truncated sources. GPU regression verifies both UHD subtitle rows after0.7 reduction, crop and repeated composition.
+- Physical moving59.94Hz playback remains pending. The paused23.976Hz scene can verify three-line rendering after an authorized deployment, but cannot establish moving60Hz acceptance.
+- Movie pixels and recordings remain local. Story stays In Progress; PR stays draft/unmerged for user review.
+
+Deployment completed01:20EDT from matched clean Release artifacts. Host and active beta renderer startup logs both verify7d9b26df dirty=0. All nine runtime/record/symbol hashes match; cfg and state remain byte-identical. Reconstruction restored through one verified shortcut after startup selected Classic. Backup: C:\Videoprocessor\vp\backups\subtitle-cadence-7d9b26df-20261031-012013
+The old build still showed raw3/resolved2 at01:20:00. After shutdown/restart Prime showed its title Resume page at59.94Hz, so no live three-line or moving-flicker acceptance is claimed. The exact native capture remains preserved and passes. No beta merge.

@@ -1,0 +1,59 @@
+{
+  "sourceCommit": "7d9b26df7622a79f2c28e8082b494f0ea819499c",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "nativeTests": 610,
+  "nativeResult": "pinned-native-broad.trx",
+  "primeCaptureReplay": "pinned-focused-prime.trx",
+  "decodedDvCaptureReplay": "pinned-focused-dv.trx",
+  "gpuStatus": "passed",
+  "gpuDirectory": "dual-gpu-7d9b26df",
+  "deploymentStatus": "deployed-and-started",
+  "physical5994PlaybackAcceptance": "pending",
+  "configurationEdits": [],
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-stability-review-20261030\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "195CABDD6C4F48994A5B8EACB7FD6608225C09DD257FF12FC97940054AEDFC3A",
+      "record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "195CABDD6C4F48994A5B8EACB7FD6608225C09DD257FF12FC97940054AEDFC3A"
+      },
+      "peMachine": "0x8664"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-stability-review-20261030\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "326A709F4358A7D0534E05C3C11B84D9900A21D63AAEAC6784A23588A5950226",
+      "record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "326A709F4358A7D0534E05C3C11B84D9900A21D63AAEAC6784A23588A5950226"
+      },
+      "peMachine": "0x8664"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-stability-review-20261030\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "25DE7B2A32ADB5B0E52B57E7A4643413B2D63338EC2C2E5E3FCD92E4655612A7",
+      "record": {
+        "schemaVersion": 1,
+        "configuration": "Release",
+        "architecture": "x64",
+        "toolsetVersion": "14.29.30133",
+        "sha256": "25DE7B2A32ADB5B0E52B57E7A4643413B2D63338EC2C2E5E3FCD92E4655612A7"
+      },
+      "peMachine": "0x8664"
+    }
+  ],
+  "standardGpuCueTests": 209,
+  "betaGpuCueTests": 209,
+  "gpuReceipt": "dual-gpu-7d9b26df/motion-renderer-tests.json",
+  "deploymentReceipt": "deployment-7d9b26df.json",
+  "liveSubtitleAcceptance": "pending: Prime showed Resume page after restart",
+  "evidenceDirectory": "E:\\codex\\diagnostics\\subtitle-failed-live-20261030-2334"
+}
