@@ -214,7 +214,8 @@ private:
             return false;
         for(size_t i=0;i<a.lineBounds.size();++i)
             if(!SameRect(a.lineBounds[i],b.lineBounds[i]) || a.lineSignatures[i]!=b.lineSignatures[i] ||
-                !SameRect(a.linePanels[i],b.linePanels[i]) || !SameRect(a.lineCapturePanels[i],b.lineCapturePanels[i]) ||
+                !SameRect(a.linePanels[i],b.linePanels[i]) || !SameRect(a.provenLinePanels[i],b.provenLinePanels[i]) ||
+                !SameRect(a.lineCapturePanels[i],b.lineCapturePanels[i]) ||
                 a.panelTopEdges[i].y!=b.panelTopEdges[i].y || a.panelTopEdges[i].left!=b.panelTopEdges[i].left ||
                 a.panelTopEdges[i].right!=b.panelTopEdges[i].right ||
                 a.panelTopEdges[i].supportBasisPoints!=b.panelTopEdges[i].supportBasisPoints)return false;
@@ -398,8 +399,12 @@ namespace SubtitleBoxLookahead
                     if(missingBottom != missingTop) {
                         const int plane=missingBottom?scanBounds.bottom:
                             scanBounds.top;
-                        const auto proof=ProveLocalSubtitleGlyphBacking(source,candidate,
+                        auto proof=ProveLocalSubtitleGlyphBacking(source,candidate,
                             candidateInk.get(),plane,missingBottom);
+                        if(!proof.accepted && std::strcmp(proof.reason,"insufficient-unowned-backing")==0)
+                            proof=ProveFiniteCardLocalSubtitleGlyphBacking(source,candidate,
+                                candidateInk.get(),missingBottom?bars.top:plane,
+                                missingBottom?plane:bars.bottom,missingBottom);
                         result.glyphLocalProofReason=proof.reason;
                         if(proof.accepted) {
                             result.glyphLocalVerifiedBounds=proof.verifiedBounds;
@@ -1648,12 +1653,19 @@ namespace SubtitleBoxLookahead
         size_t count, int line, int tolerance)
     {
         if(count<2 || count>=4)return false;
-        auto covered=[](const SubtitleBoxObservation& frame,int row) {
+        auto proofFor=[count](const SubtitleBoxObservation& frame,int row) {
+            // Three independent scans may use a finite row certificate when
+            // dark scenery prevents proving one rectangle around the whole cue.
+            // Two-frame admission still requires the original complete card.
+            return frame.text.provenSourcePanel.Valid() ? frame.text.provenSourcePanel :
+                (count>=3 ? frame.text.provenLinePanels[row] : SubtitleBoxRect{});
+        };
+        auto covered=[&](const SubtitleBoxObservation& frame,int row) {
             if(!frame.analyzed || frame.analysisRefresh || frame.pendingRefresh ||
                 frame.text.workLimit || !frame.text.capturePanelMeasured || !frame.ink ||
                 row<0 || row>=frame.text.lineCount)return false;
             const auto& glyph=frame.text.lineBounds[row];
-            const auto& proof=frame.text.provenSourcePanel;
+            const auto proof=proofFor(frame,row);
             const auto& interior=frame.text.lineCapturePanels[row];
             // This exception is for a row within the picture, where finite
             // backing supplies evidence unavailable on an unbounded black bar.
@@ -1670,7 +1682,7 @@ namespace SubtitleBoxLookahead
             if(!SameContext(frames[0],frames[frame]))return false;
             for(int other=0;other<frames[frame].text.lineCount;++other)
                 if(covered(frames[frame],other) &&
-                    SameLine(frames[0].text.provenSourcePanel,frames[frame].text.provenSourcePanel,tolerance) &&
+                    SameLine(proofFor(frames[0],line),proofFor(frames[frame],other),tolerance) &&
                     SameCrowdedBacking(frames[0],line,frames[frame],other,tolerance) &&
                     SameCrowdedLine(frames[0].text.lineBounds[line],frames[frame].text.lineBounds[other],tolerance) &&
                     SimilarSignature(frames[0].text.lineSignatures[line],frames[frame].text.lineSignatures[other]) &&
@@ -1853,6 +1865,7 @@ namespace SubtitleBoxLookahead
             result.text.lineCount=0;
             result.text.sourcePanel={};
             result.text.linePanels={};
+            result.text.provenLinePanels={};
             result.text.capturePanel={};
             result.text.lineCapturePanels={};
             for(int k=0;k<acceptedCount;++k) {
@@ -1862,6 +1875,7 @@ namespace SubtitleBoxLookahead
                 result.text.panelTopEdges[k]=frames[0].text.panelTopEdges[line];
                 const auto panel=frames[0].text.linePanels[line];
                 result.text.linePanels[k]=panel;
+                result.text.provenLinePanels[k]=frames[0].text.provenLinePanels[line];
                 const auto interior=frames[0].text.lineCapturePanels[line];
                 result.text.lineCapturePanels[k]=interior;
                 if(interior.Valid()) {
@@ -1957,6 +1971,9 @@ namespace SubtitleBoxLookahead
                 result.text.lineSignatures = next.text.lineSignatures;
                 result.text.panelTopEdges = next.text.panelTopEdges;
                 result.text.linePanels = next.text.linePanels;
+                // Future grouping must not relabel finite certificates owned
+                // by the current frame or transfer future backing authority.
+                result.text.provenLinePanels={};
                 if(result.text.capturePanelMeasured) {
                     for(int line=0;line<result.text.lineCount;++line) {
                         const auto& r=next.text.lineCapturePanels[line];const auto& card=result.text.capturePanel;
