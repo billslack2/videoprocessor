@@ -564,6 +564,7 @@ void VerifyNativeCandidate(const AnalysisLumaSource& source, ActivePictureEviden
     certificate={}; certificate.nomination=certificate.bounds=evidence.trustedBounds;
     certificate.sourceGeneration=source.generation;
     auto axes=static_cast<uint8_t>(evidence.trustedBounds.trustedBarAxes);
+    const auto nominatedAxes=axes;
     const auto reject = [](ActivePictureAxisEvidence& axis) {
         axis.state=ActivePictureAxisState::UNKNOWN;
         if (axis.reason!=ActivePictureAxisReason::BAR_PICTURE_CONTINUATION)
@@ -594,9 +595,12 @@ void VerifyNativeCandidate(const AnalysisLumaSource& source, ActivePictureEviden
     // Each axis was inspected over the entire raster along its boundary, so
     // rejecting the other axis cannot invalidate the surviving axis proof.
     certificate.bounds=evidence.trustedBounds;
-    if (!axes) {
+    if (axes!=nominatedAxes || !axes) {
+        // A surviving axis proves only its own boundaries. Expanding an
+        // unknown axis to safe raster coordinates cannot certify the aspect
+        // of the whole picture that originally nominated both cropped axes.
         evidence.classification=ActivePictureClassification::PROVISIONAL;
-        evidence.reason="native candidate excluded bands lack a qualified matte certificate";
+        evidence.reason="native candidate has an unverified nominated crop axis";
     }
 }
 
@@ -1544,6 +1548,32 @@ ActivePictureEvidence ExtractActivePictureEvidence(
         measured.lumaSamples=samples.lumaSamples;
         measured.chromaSamples=samples.chromaSamples;
         measured.classification=ActivePictureClassification::PROVISIONAL;
+        if (result.axisEvidence.horizontal.barCandidate && result.axisEvidence.vertical.barCandidate &&
+            result.left.trusted && result.right.trusted && result.top.trusted && result.bottom.trusted) {
+            const auto& proposed=result.proposedBounds;
+            const auto& paired=result.trustedBounds;
+            if (proposed.left<=0 || proposed.right>=source.width || proposed.top<=0 || proposed.bottom>=source.height ||
+                paired.left!=proposed.left || paired.right!=proposed.right ||
+                paired.top!=proposed.top || paired.bottom!=proposed.bottom) {
+                // Individual edge statistics do not establish a paired axis.
+                // An asymmetric/unassigned pair still contains raster fallback
+                // coordinates, which must never receive a BOTH certificate.
+                measured.reason="incomplete or asymmetric Full-range windowbox pairs cannot establish whole-picture authority";
+                return measured;
+            }
+            // This Full-range shortcut precedes ordinary axis finalization.
+            // Validate its complete windowbox nomination here; a full-width
+            // recovery or absolute nominal cutoff cannot replace its failed
+            // side axis with invented full-picture extent.
+            measured.trustedBounds.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+            measured.trustedBounds.aspectRatio=double(measured.trustedBounds.right-measured.trustedBounds.left)/
+                (measured.trustedBounds.bottom-measured.trustedBounds.top);
+            measured.axisEvidence.horizontal.state=measured.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+            measured.axisEvidence.horizontal.reason=measured.axisEvidence.vertical.reason=ActivePictureAxisReason::BAR_CONFIRMED;
+            measured.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            VerifyNativeCandidate(source,measured,budget);
+            return measured;
+        }
         if (RecoverFlatBarLowContrastPicture(source,measured,budget)) {
             VerifyNativeCandidate(source,measured,budget);
             if (measured.classification==ActivePictureClassification::BAR_CROP_TRUSTED)
@@ -1788,10 +1818,17 @@ ActivePictureEvidence ExtractActivePictureEvidence(
     // proof as recovery. Otherwise symmetric dim picture can already be called
     // trusted and bypass every recovery path.
     VerifyNativeCandidate(source,result,budget);
+    const auto& certificate=result.candidateVerification;
+    const bool rejectedWindowbox=certificate.nomination.trustedBarAxes==ActivePictureBounds::BarAxes::BOTH &&
+        (certificate.vertical!=ActivePictureCandidateVerificationState::VERIFIED ||
+         certificate.horizontal!=ActivePictureCandidateVerificationState::VERIFIED);
     bool recovered=false;
-    if (!unresolvedFullReference)
+    if (!rejectedWindowbox && !unresolvedFullReference)
         recovered=RecoverLowContrastOpposingBoundary(source,result,budget);
-    if (!recovered)
+    // Recovery may repair a vertical-only nomination from measured pixels. It
+    // cannot erase a rejected side of a windowbox and relabel full raster width
+    // as measured picture width. Preserve that failed nomination's diagnostics.
+    if (!recovered && !rejectedWindowbox)
         recovered=RecoverFlatBarLowContrastPicture(source,result,budget);
     if (recovered) VerifyNativeCandidate(source,result,budget);
     CheckAnalysisEvaluationBudget(budget);

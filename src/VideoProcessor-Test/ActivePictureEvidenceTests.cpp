@@ -584,6 +584,108 @@ namespace VideoProcessorTest
             Assert::AreEqual(640,e.trustedBounds.right);
         }
 
+        TEST_METHOD(RejectedWindowboxAxisCannotPublishTheOtherAxisAsWholePictureAspect)
+        {
+            for (bool p210 : {false,true})
+            for (auto range : {AnalysisLumaRange::Limited,AnalysisLumaRange::Full})
+            for (int dimAxes=0; dimAxes<3; ++dimAxes) {
+                P010Frame frame(640,360,32,p210);
+                frame.Fill(80,512,512);
+                frame.BlackOutside(32,32,608,328,64);
+                // dimAxes0 is the exact audit probe: horizontal dim margins
+                // swallowed into72..568; vertical32..328 remains independently
+                // verified.1 mirrors the partial-axis failure.2 checks that
+                // subsequent full-width dim recovery cannot launder BOTH.
+                frame.FillRectangle(dimAxes==1?32:72,dimAxes==0?32:72,
+                    dimAxes==1?608:568,dimAxes==0?328:288,300);
+                auto source=p210?frame.P210Source():frame.P010Source(); source.range=range;
+                const auto e=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(e.available && e.classification==ActivePictureClassification::PROVISIONAL);
+                const auto& c=e.candidateVerification;
+                Assert::IsTrue(c.nomination.trustedBarAxes==ActivePictureBounds::BarAxes::BOTH);
+                if (dimAxes==0) {
+                    Assert::IsTrue(c.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                    Assert::IsTrue(c.horizontal==ActivePictureCandidateVerificationState::CONTRADICTED);
+                    Assert::AreEqual(0,e.trustedBounds.left); Assert::AreEqual(640,e.trustedBounds.right);
+                    Assert::AreEqual(32,e.trustedBounds.top); Assert::AreEqual(328,e.trustedBounds.bottom);
+                }
+                if (dimAxes==1) {
+                    Assert::IsTrue(c.horizontal==ActivePictureCandidateVerificationState::VERIFIED);
+                    Assert::IsTrue(c.vertical==ActivePictureCandidateVerificationState::CONTRADICTED);
+                }
+                Assert::IsFalse(e.lowContrastBoundaryProof);
+                P010Frame full(640,360);
+                const auto fullEvidence=ExtractActivePictureEvidence(full.P010Source());
+                ActivePictureTransitionModel startup,afterFull;
+                for (uint64_t sequence=1; sequence<=4; ++sequence)
+                    afterFull.Observe(MakeActivePictureObservation(fullEvidence,sequence,24));
+                for (uint64_t sequence=5; sequence<=16; ++sequence) {
+                    const auto observed=MakeActivePictureObservation(e,sequence,24);
+                    Assert::IsTrue(observed.classification==ActivePictureClassification::PROVISIONAL);
+                    const auto cold=startup.Observe(observed);
+                    const auto warm=afterFull.Observe(observed);
+                    Assert::IsFalse(cold.publish || cold.stable,
+                        L"An unverified axis cannot acquire a whole-picture ratio through repeated observations.");
+                    Assert::IsFalse(warm.publish);
+                    Assert::AreEqual(0,warm.stableBounds.top); Assert::AreEqual(360,warm.stableBounds.bottom);
+                    Assert::AreEqual(0,warm.stableBounds.left); Assert::AreEqual(640,warm.stableBounds.right);
+                }
+            }
+        }
+
+        TEST_METHOD(CleanWindowboxStillAcquiresBothIndependentlyVerifiedAxes)
+        {
+            for (bool p210 : {false,true}) {
+                P010Frame frame(640,360,32,p210);
+                frame.BlackOutside(32,32,608,328,64);
+                const auto e=ExtractActivePictureEvidence(p210?frame.P210Source():frame.P010Source());
+                Assert::IsTrue(e.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsTrue(e.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::BOTH);
+                Assert::IsTrue(e.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                Assert::IsTrue(e.candidateVerification.horizontal==ActivePictureCandidateVerificationState::VERIFIED);
+                ActivePictureTransitionModel model;
+                bool published=false;
+                for (uint64_t sequence=1; sequence<=4; ++sequence) {
+                    const auto d=model.Observe(MakeActivePictureObservation(e,sequence,24));
+                    if (d.publish) {
+                        published=true;
+                        Assert::AreEqual(32,d.bounds.left); Assert::AreEqual(608,d.bounds.right);
+                        Assert::AreEqual(32,d.bounds.top); Assert::AreEqual(328,d.bounds.bottom);
+                    }
+                }
+                Assert::IsTrue(published);
+            }
+        }
+
+        TEST_METHOD(AsymmetricFullRangeWindowboxCannotCertifyRasterFallbackAsAnAxis)
+        {
+            for (bool p210 : {false,true}) {
+                P010Frame frame(640,360,32,p210);
+                frame.Fill(80,512,512);
+                frame.BlackOutside(32,32,608,312,64);
+                // All four coarse edge summaries pass, but the swallowed
+                // vertical pair72..272 is asymmetric and never assigned to
+                // trustedBounds. Rejected raised references reach the nominal
+                // Full-range shortcut; its raster fallback is not a picture.
+                frame.FillRectangle(72,72,568,272,300);
+                auto source=p210?frame.P210Source():frame.P010Source();
+                source.range=AnalysisLumaRange::Full;
+                const auto e=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(e.available && e.classification==ActivePictureClassification::PROVISIONAL);
+                Assert::AreEqual(72,e.proposedBounds.top); Assert::AreEqual(272,e.proposedBounds.bottom);
+                Assert::IsTrue(e.top.trusted && e.bottom.trusted && e.left.trusted && e.right.trusted);
+                Assert::IsTrue(e.candidateVerification.vertical==ActivePictureCandidateVerificationState::NOT_EVALUATED);
+                Assert::IsTrue(e.candidateVerification.horizontal==ActivePictureCandidateVerificationState::NOT_EVALUATED);
+                Assert::IsFalse(e.lowContrastBoundaryProof);
+                Assert::IsTrue(e.reason.find("asymmetric Full-range windowbox")!=std::string::npos);
+                ActivePictureTransitionModel model;
+                for (uint64_t sequence=1; sequence<=12; ++sequence) {
+                    const auto d=model.Observe(MakeActivePictureObservation(e,sequence,24));
+                    Assert::IsFalse(d.publish || d.stable);
+                }
+            }
+        }
+
         TEST_METHOD(MeasuredMatteRecoveryDoesNotTurnNoiseFadeOrAsymmetryIntoAuthority)
         {
             for (int kind=0; kind<4; ++kind) {
