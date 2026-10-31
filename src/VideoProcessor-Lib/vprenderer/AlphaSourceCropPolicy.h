@@ -1269,6 +1269,30 @@ namespace AlphaSourceCrop
 
     // Successful composition is an exact-frame presentation fact. It may use
     // an independently trusted native base; it never votes for detector geometry.
+    // Source-derived acceptance is independent of both current observations and
+    // the transformed window actually submitted. Only the native publication
+    // adapter creates this record; FIT/caption evidence cannot create one.
+    struct AcceptedNativeCropContract
+    {
+        bool available = false;
+        ActivePictureBounds bounds;
+        uint64_t sourceGeneration = 0, acceptedSourceSequence = 0;
+        uint64_t sourceFormatKey = 0, analysisDomainKey = 0;
+    };
+
+    enum class NativePresentationOrigin : uint8_t
+    {
+        NONE, EXACT_NATIVE, CONFIRMED_FIT, CONFIRMED_TRANSLATION, CONFIGURED_FILL, CONFIRMED_PICTURE
+    };
+    // Exact authorized output, distinct from the source-derived native contract.
+    struct NativePresentationCertificate
+    {
+        bool available = false;
+        NativePresentationOrigin origin = NativePresentationOrigin::NONE;
+        ActivePictureBounds nativeBase, approvedBounds;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+    };
+
     struct PreparedSubtitlePresentation
     {
         bool available=false;
@@ -1277,6 +1301,8 @@ namespace AlphaSourceCrop
     };
 	struct Input
 	{
+        AcceptedNativeCropContract acceptedNativeCrop;
+        uint64_t frameSourceFormatKey = 0, frameAnalysisDomainKey = 0;
         PreparedSubtitlePresentation preparedSubtitle;
         MovingPicturePresentationHold movingPictureHold;
 		PictureTransitionHandoff pictureTransitionHandoff;
@@ -1433,6 +1459,7 @@ namespace AlphaSourceCrop
 		WithdrawalCause withdrawalCause = WithdrawalCause::NONE;
 		std::string reason;
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
+        NativePresentationCertificate nativePresentation;
 	};
 
 
@@ -1440,6 +1467,8 @@ namespace AlphaSourceCrop
 	// temporary full-raster withdrawals and of diagnostic logging.
 	struct CropPresentationAdmissionState
 	{
+        AcceptedNativeCropContract acceptedNativeCrop;
+        NativePresentationCertificate nativePresentation;
         // Copied with the selected packet; submission validates identity and actual bounds again.
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
         // A separate presentation-only certificate for an approved side fill of
@@ -1471,6 +1500,10 @@ namespace AlphaSourceCrop
 	// alone is not evidence that the viewer actually saw the crop.
 	struct SubmittedNativeScopeAnchor
 	{
+        AcceptedNativeCropContract acceptedNativeCrop;
+        bool submittedPresentationAvailable = false;
+        ActivePictureBounds submittedPresentation;
+        NativePresentationOrigin submittedPresentationOrigin = NativePresentationOrigin::NONE;
 		bool available = false;
 		ActivePictureBounds crop;
 		uint64_t sourceGeneration = 0;
@@ -1827,6 +1860,10 @@ namespace AlphaSourceCrop
 
 	struct PresentationRecoveryInput
 	{
+        // An exact current independently confirmed native expansion can own
+        // preservation without acquiring caption/UI presentation authority.
+        OutwardPictureConfirmationState nativeOutwardPictureProof;
+        uint64_t nativeOutwardPictureProofPresentationEpoch = 0;
 		PresentationRecoveryState previous;
 		CropPresentationAdmissionState previousAdmission;
 		SubmittedNativeScopeAnchor submittedScopeAnchor;

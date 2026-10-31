@@ -506,6 +506,198 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+        TEST_METHOD(SymmetricDimPictureCannotAcquireTheBrightInnerCrop)
+        {
+            // Regression: the legacy six-depth bar summary accepted 64/80 as
+            // one matte and granted 72..288 authority before recovery could run.
+            for (int format=0; format<3; ++format)
+                for (auto range : {AnalysisLumaRange::Limited,AnalysisLumaRange::Full}) {
+                    P010Frame frame(640,360,32,format!=0);
+                    frame.Fill(80,512,512);
+                    frame.BlackOutside(0,32,640,328,64);
+                    frame.FillRectangle(0,72,640,288,300);
+                    auto source=format==0?frame.P010Source():format==1?frame.P210Source():AsDecodedDolbyVisionSource(frame);
+                    source.range=range;
+                    const auto e=ExtractActivePictureEvidence(source);
+                    Assert::IsTrue(e.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                    Assert::IsTrue(e.lowContrastBoundaryProof);
+                    Assert::AreEqual(30,e.trustedBounds.top);
+                    Assert::AreEqual(330,e.trustedBounds.bottom);
+                    Assert::IsTrue(e.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                    Assert::AreEqual(e.trustedBounds.top,e.candidateVerification.bounds.top);
+                    Assert::AreEqual(e.trustedBounds.bottom,e.candidateVerification.bounds.bottom);
+                    Assert::AreEqual(source.generation,e.candidateVerification.sourceGeneration);
+                    Assert::AreEqual(64,e.top.measuredMatteReference.y);
+                    Assert::IsTrue(e.lumaSamples<90000);
+                }
+        }
+
+        TEST_METHOD(NonzeroFullRangeMatteRecoversItsMeasuredLowContrastBoundary)
+        {
+            for (int format=0; format<3; ++format) {
+                P010Frame frame(640,360,32,format!=0);
+                frame.BlackOutside(0,46,640,314,12);
+                frame.FillRectangle(0,300,640,314,22);
+                auto source=format==0?frame.P010Source():format==1?frame.P210Source():AsDecodedDolbyVisionSource(frame);
+                source.range=AnalysisLumaRange::Full;
+                const auto e=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(e.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::AreEqual(44,e.trustedBounds.top);
+                Assert::AreEqual(316,e.trustedBounds.bottom);
+                Assert::AreEqual(0,e.blackReference.floor); // Classifier remains unchanged.
+                Assert::AreEqual(24,e.blackReference.threshold);
+                Assert::AreEqual(12,e.top.measuredMatteReference.y);
+                Assert::AreEqual(12,e.bottom.measuredMatteReference.y);
+                Assert::IsTrue(e.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+            }
+        }
+
+        TEST_METHOD(MeasuredMatteRecoverySupportsBrightDimAndDimDimEdgesAcrossOffsets)
+        {
+            for (int floor : {0,8,12,20,24,40,64})
+                for (int edges=1; edges<=3; ++edges) {
+                    P010Frame frame(640,360);
+                    frame.BlackOutside(0,32,640,328,floor);
+                    if (edges&1) frame.FillRectangle(0,32,640,72,floor+10);
+                    if (edges&2) frame.FillRectangle(0,288,640,328,floor+10);
+                    auto source=frame.P010Source(); source.range=AnalysisLumaRange::Full;
+                    const auto e=ExtractActivePictureEvidence(source);
+                    Assert::IsTrue(e.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                    Assert::IsTrue(e.trustedBounds.top<=32 && e.trustedBounds.bottom>=328);
+                    Assert::IsTrue(e.trustedBounds.top>=28 && e.trustedBounds.bottom<=332);
+                    Assert::AreEqual(floor,e.top.measuredMatteReference.y);
+                    Assert::AreEqual(floor,e.bottom.measuredMatteReference.y);
+                }
+        }
+
+        TEST_METHOD(NativeBandCertificateRejectsSwallowedPillarPictureAndPreservesOtherAxis)
+        {
+            P010Frame frame(640,360);
+            frame.Fill(80,512,512);
+            frame.BlackOutside(32,0,608,360,64);
+            frame.FillRectangle(72,0,568,360,300);
+            const auto e=ExtractActivePictureEvidence(frame.P010Source());
+            Assert::IsFalse(e.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::IsTrue(e.candidateVerification.horizontal==ActivePictureCandidateVerificationState::CONTRADICTED);
+            Assert::IsTrue(e.candidateVerification.firstMismatchX>=0);
+            Assert::AreEqual(0,e.trustedBounds.left);
+            Assert::AreEqual(640,e.trustedBounds.right);
+        }
+
+        TEST_METHOD(MeasuredMatteRecoveryDoesNotTurnNoiseFadeOrAsymmetryIntoAuthority)
+        {
+            for (int kind=0; kind<4; ++kind) {
+                P010Frame frame(640,360);
+                frame.Fill(80,512,512);
+                frame.BlackOutside(0,32,640,328,64);
+                if (kind==0) { // No independently measurable coarse picture.
+                    frame.Fill(80,512,512);
+                    frame.BlackOutside(0,32,640,328,64);
+                } else {
+                    frame.FillRectangle(0,72,640,288,300);
+                    if (kind==1) // Raised/block-noisy outer rows are not flat proof.
+                        for (int y=0; y<8; ++y) frame.FillRectangle(0,y,640,y+1,64+((y&1)?6:-6));
+                    if (kind==2) // Colored occupied pixels in an excluded bar.
+                        frame.FillRectangle(0,340,640,344,64,550,512);
+                    if (kind==3) // A smooth low-slope boundary is not abrupt proof.
+                        for (int y=32; y<72; ++y) frame.FillRectangle(0,y,640,y+1,64+(y-32)/2);
+                }
+                const auto e=ExtractActivePictureEvidence(frame.P010Source());
+                Assert::IsFalse(e.lowContrastBoundaryProof);
+                Assert::IsFalse(e.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            }
+        }
+
+        TEST_METHOD(MeasuredDimPictureEdgesNeedNotHaveSymmetricBarDepths)
+        {
+            P010Frame frame(640,360);
+            frame.Fill(80,512,512);
+            frame.BlackOutside(0,32,640,310,64);
+            frame.FillRectangle(0,72,640,288,300);
+            const auto e=ExtractActivePictureEvidence(frame.P010Source());
+            Assert::IsTrue(e.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::IsTrue(e.lowContrastBoundaryProof);
+            Assert::AreEqual(30,e.trustedBounds.top);
+            Assert::AreEqual(312,e.trustedBounds.bottom);
+            Assert::IsTrue(e.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+        }
+
+        TEST_METHOD(NativeVerifierFourKMandatoryCostAndExactCertificate)
+        {
+            for (bool p210 : {false,true}) for (int band : {256,70}) {
+                P010Frame frame(3840,2160,64,p210);
+                frame.BlackOutside(0,band,3840,2160-band,64);
+                const auto source=p210?frame.P210Source():frame.P010Source();
+                // Source allocation/filling and cold instruction/data paths
+                // are outside the timed steady extraction observations.
+                for (int warm=0; warm<3; ++warm) ExtractActivePictureEvidence(source);
+                constexpr int iterations=16;
+                double totalMs=0,peakMs=0;
+                size_t rough=0,verified=0;
+                for (int iteration=0; iteration<iterations; ++iteration) {
+                    const auto start=std::chrono::steady_clock::now();
+                    const auto e=ExtractActivePictureEvidence(source);
+                    const double elapsed=std::chrono::duration<double,std::milli>(
+                        std::chrono::steady_clock::now()-start).count();
+                    totalMs+=elapsed; peakMs=(std::max)(peakMs,elapsed);
+                    Assert::IsTrue(e.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                    const auto& c=e.candidateVerification;
+                    Assert::IsTrue(c.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                    Assert::IsTrue(c.horizontal==ActivePictureCandidateVerificationState::NOT_EVALUATED);
+                    Assert::AreEqual(source.generation,c.sourceGeneration);
+                    Assert::AreEqual(band,c.nomination.top); Assert::AreEqual(2160-band,c.nomination.bottom);
+                    Assert::AreEqual(band,c.bounds.top); Assert::AreEqual(2160-band,c.bounds.bottom);
+                    Assert::AreEqual(-1,c.firstMismatchX); Assert::AreEqual(-1,c.firstMismatchY);
+                    verified=c.samples;
+                    Assert::AreEqual(size_t(band==256?15872:7040),verified);
+                    Assert::IsTrue(e.lumaSamples>=verified && e.chromaSamples>=verified);
+                    rough=e.lumaSamples-verified;
+                    Assert::IsTrue(rough<=30000);
+                }
+                std::ostringstream message;
+                message<<"Native verifier 4K "<<(p210?"P210":"P010")<<" band="<<band
+                    <<" iterations="<<iterations<<" avg_ms="<<totalMs/iterations
+                    <<" peak_ms="<<peakMs<<" coarse_luma="<<rough
+                    <<" verifier_yuv_samples="<<verified;
+                Logger::WriteMessage(message.str().c_str());
+            }
+        }
+
+        TEST_METHOD(CancellationInsideNativeVerifierCannotPublishPartialAuthority)
+        {
+            P010Frame frame(3840,2160);
+            frame.BlackOutside(0,256,3840,1904);
+            const auto source=frame.P010Source();
+            struct Clock { size_t calls=0,stop=0; } clock;
+            const auto expired=[](void* context) {
+                auto& c=*static_cast<Clock*>(context);
+                return ++c.calls==c.stop;
+            };
+            AnalysisEvaluationBudget counting(expired,&clock);
+            const auto complete=ExtractActivePictureEvidence(source,&counting);
+            Assert::IsTrue(complete.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+            const size_t verificationCheckpoints=(complete.candidateVerification.samples+63)/64;
+            Assert::IsTrue(verificationCheckpoints>8 && clock.calls>verificationCheckpoints);
+            // In this ordinary scope path the verifier is the last pixel scan;
+            // two final checkpoints follow it. Stop halfway through that scan,
+            // rather than merely retesting early coarse-scan cancellation.
+            clock.stop=clock.calls-verificationCheckpoints/2-2;
+            clock.calls=0;
+            AnalysisEvaluationBudget cancelled(expired,&clock);
+            ActivePictureEvidence partial;
+            bool unwound=false;
+            try { partial=ExtractActivePictureEvidence(source,&cancelled); }
+            catch (const AnalysisEvaluationCancelled&) { unwound=true; }
+            Assert::IsTrue(unwound && cancelled.Cancelled());
+            Assert::AreEqual(clock.stop,clock.calls);
+            Assert::IsFalse(partial.available);
+            Assert::IsTrue(partial.candidateVerification.vertical==ActivePictureCandidateVerificationState::NOT_EVALUATED);
+            const auto retry=ExtractActivePictureEvidence(source);
+            Assert::IsTrue(retry.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::AreEqual(complete.trustedBounds.top,retry.trustedBounds.top);
+            Assert::AreEqual(complete.candidateVerification.samples,retry.candidateVerification.samples);
+        }
+
         TEST_METHOD(FlatBarLowContrastPictureMeasuresBothEdgesAcrossFormatsAndAspects)
         {
             for (bool p210 : {false,true}) for (int depth : {12,22,48}) for (int floor : {0,64}) {
@@ -672,7 +864,12 @@ namespace VideoProcessorTest
             P010Frame outside(640, 360);
             outside.BlackOutside(0, 46, 640, 320, 0);
             outside.FillRectangle(0, 300, 640, 320, 20);
-            rejects(outside);
+            // Both asymmetric native boundaries now have their own strict
+            // measured proof; symmetry must not discard the lower picture.
+            const auto asymmetricMeasured=ExtractActivePictureEvidence(outside.P010Source());
+            Assert::IsTrue(asymmetricMeasured.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::AreEqual(44,asymmetricMeasured.trustedBounds.top);
+            Assert::AreEqual(322,asymmetricMeasured.trustedBounds.bottom);
         }
 
         TEST_METHOD(LowCodeOpposingBoundaryMirrorsTopAndBottom)
@@ -3649,6 +3846,80 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(NativeMatteVerifierDistinguishesLocalFringeFromBroadPictureRows)
+        {
+            for (bool p210 : {false,true})
+            for (int luma : {80,200})
+            for (bool broad : {false,true}) {
+                P010Frame frame(1920,1080,64,p210);
+                frame.BlackOutside(0,88,1920,992);
+                frame.FillRectangle(0,86,broad?1920:24,88,luma);
+                const auto raw=ExtractActivePictureEvidence(p210?frame.P210Source():frame.P010Source());
+                if (!broad) {
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                    Assert::AreEqual(88,raw.trustedBounds.top);
+                    Assert::IsTrue(raw.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                } else {
+                    Assert::IsFalse(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED && raw.trustedBounds.top>86,
+                        L"A broad two-row picture band must be preserved; local fringe tolerance is not a depth exemption.");
+                    if (luma==80)
+                        Assert::IsTrue(raw.candidateVerification.vertical==ActivePictureCandidateVerificationState::CONTRADICTED,
+                            L"Broad low-code picture remains contradictory despite staying below the coarse threshold.");
+                }
+            }
+        }
+
+        TEST_METHOD(NativeMatteSparseOutliersCannotEraseAnEntireSmallQuartile)
+        {
+            P010Frame frame(160,90);
+            frame.BlackOutside(0,12,160,78);
+            // Broad upper-left picture starts at the raster and remains
+            // connected through the native edge. It is not a one-column mark.
+            frame.FillRectangle(0,0,40,20,200);
+            const auto raw=ExtractActivePictureEvidence(frame.P010Source());
+            Assert::IsFalse(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED && raw.trustedBounds.top>0);
+        }
+
+        TEST_METHOD(MatteRelativeConnectedPictureCannotHideAmongSparseNativeOutliers)
+        {
+            for (bool p210 : {false,true})
+            for (bool upper : {false,true})
+            for (int shape=0; shape<3; ++shape) {
+                P010Frame frame(1920,1080,64,p210);
+                frame.BlackOutside(0,88,1920,992);
+                if (shape==0) // Below absolute cutoff96, connected to picture.
+                    frame.FillRectangle(0,upper?0:980,24,upper?100:1080,80);
+                if (shape==1) // Same dim code, but separated from picture.
+                    frame.FillRectangle(0,upper?20:1028,32,upper?52:1060,80);
+                if (shape==2) // Only one native scan step of local fringe.
+                    frame.FillRectangle(0,upper?86:992,24,upper?88:994,80);
+                auto source=p210?frame.P210Source():frame.P010Source();
+                source.range=AnalysisLumaRange::Limited;
+                const auto raw=ExtractActivePictureEvidence(source);
+                if (shape==0) {
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::PROVISIONAL);
+                    Assert::IsTrue(raw.axisEvidence.vertical.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION);
+                    Assert::IsTrue(raw.candidateVerification.vertical==ActivePictureCandidateVerificationState::CONTRADICTED);
+                } else {
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                    Assert::AreEqual(88,raw.trustedBounds.top);
+                    Assert::AreEqual(992,raw.trustedBounds.bottom);
+                }
+            }
+            // One physical column cannot become two witnesses at small width.
+            P010Frame oneColumn(160,90);
+            oneColumn.BlackOutside(0,12,160,78);
+            oneColumn.FillRectangle(11,0,12,20,80);
+            const auto sparse=ExtractActivePictureEvidence(oneColumn.P010Source());
+            Assert::IsTrue(sparse.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            P010Frame pillar(1920,1080);
+            pillar.BlackOutside(96,0,1824,1080);
+            pillar.FillRectangle(0,0,108,24,80);
+            const auto side=ExtractActivePictureEvidence(pillar.P010Source());
+            Assert::IsTrue(side.classification==ActivePictureClassification::PROVISIONAL);
+            Assert::IsTrue(side.axisEvidence.horizontal.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION);
+        }
+
         TEST_METHOD(DeskVetoAppliesToNativeV210AndRgbWithoutConversion)
         {
             constexpr int width=960,height=540,bar=44;
@@ -3921,8 +4192,21 @@ namespace VideoProcessorTest
                 Assert::IsTrue(raw.trustedBounds.left<=448 && raw.trustedBounds.top<=500 &&
                     raw.trustedBounds.right>=3392 && raw.trustedBounds.bottom>=1660);
                 Assert::IsTrue(EvaluateActivePicturePresentationRetention(source,raw.trustedBounds).CanRetainPresentation());
-                Assert::IsTrue(raw.lumaSamples<=30000,
+                Assert::IsTrue(raw.lumaSamples>=raw.candidateVerification.samples);
+                Assert::IsTrue(raw.lumaSamples-raw.candidateVerification.samples<=30000,
                     L"The independent refinement reserve keeps total rough scanning bounded.");
+                // This fixture has 500-row upper/lower bands (step4) and
+                // 448-column side bands (step7), including eight exact rows
+                // at both ends of each band,384 reference samples per edge,
+                // and256 exterior-first continuation probes per clean edge.
+                Assert::AreEqual(size_t(43648),raw.candidateVerification.samples);
+                Assert::IsTrue(raw.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                Assert::IsTrue(raw.candidateVerification.horizontal==ActivePictureCandidateVerificationState::VERIFIED);
+                Assert::AreEqual(source.generation,raw.candidateVerification.sourceGeneration);
+                Assert::AreEqual(raw.trustedBounds.left,raw.candidateVerification.bounds.left);
+                Assert::AreEqual(raw.trustedBounds.top,raw.candidateVerification.bounds.top);
+                Assert::AreEqual(raw.trustedBounds.right,raw.candidateVerification.bounds.right);
+                Assert::AreEqual(raw.trustedBounds.bottom,raw.candidateVerification.bounds.bottom);
             }
         }
 
@@ -5378,9 +5662,12 @@ namespace VideoProcessorTest
             Assert::AreEqual(8,evidence.axisEvidence.verticalCropGuardBottom);
 			Assert::IsTrue(evidence.axisEvidence.HasVerifiedVerticalCropProfile(evidence.trustedBounds));
             const size_t profiles=evidence.verticalBarProfile.samples+evidence.verticalBarGuardProfile.samples;
-            Assert::IsTrue(evidence.lumaSamples>=profiles);
-            Assert::IsTrue(evidence.lumaSamples-profiles<30000,
+            const size_t verified=evidence.candidateVerification.samples;
+            Assert::IsTrue(evidence.lumaSamples>=profiles+verified);
+            Assert::IsTrue(evidence.lumaSamples-profiles-verified<30000,
                 L"The original bounded rough inspection remains bounded independently of strict profiles.");
+            Assert::IsTrue(evidence.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+            Assert::IsTrue(verified>0 && verified<=size_t(96)*((272+3)/4+(272+3)/4+32)+768);
             for(const auto* profile:{&evidence.verticalBarProfile,&evidence.verticalBarGuardProfile})
             {
                 const int step=2160/540;
