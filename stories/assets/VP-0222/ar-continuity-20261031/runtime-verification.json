@@ -1,0 +1,29 @@
+{
+  "commit": "27dc733ad6b7f5afa01a13c1a114ff9337cc40a8",
+  "processId": 33244,
+  "started": "2026-10-31T03:43:03.2923444-04:00",
+  "responding": true,
+  "runtimeIdentities": [
+    "2026-10-31 03:43:03 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/27dc733ad6b7f5afa01a13c1a114ff9337cc40a8 branch=codex/ar-evidence-continuity-20261031 dirty=0 build=v1.4.02-beta-27dc733",
+    "2026-10-31 03:43:10 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/27dc733ad6b7f5afa01a13c1a114ff9337cc40a8 branch=codex/ar-evidence-continuity-20261031 dirty=0 build=v1.4.02-beta-27dc733"
+  ],
+  "loadedModules": [
+    "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+    "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll",
+    "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+    "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-388.dll"
+  ],
+  "firstOutput": {
+    "generation": 2,
+    "sequence": 4283,
+    "line": "2026-10-31 03:44:23 | VP output correlation: generation=2 source=4283 selected=4283 selected_pts=22522.861670 output_pts=22522.861670 cue=0 temporal=0 epoch=4 present_id=4274 observed_present_id=4270 sync_qpc=225229990562 qpc_hz=10000000 submit_qpc=225230051374 lookahead_ms=0.096 budget_ms=2.000 phase_known=1 lookahead_complete=1"
+  },
+  "lastOutput": {
+    "generation": 2,
+    "sequence": 4884,
+    "line": "2026-10-31 03:44:33 | VP output correlation: generation=2 source=4884 selected=4884 selected_pts=22532.888180 output_pts=22532.888180 cue=0 temporal=0 epoch=4 present_id=4875 observed_present_id=4871 sync_qpc=225330239801 qpc_hz=10000000 submit_qpc=225330305802 lookahead_ms=0.070 budget_ms=2.000 phase_known=1 lookahead_complete=1"
+  },
+  "installedHashesVerified": true,
+  "configurationUnchanged": true,
+  "physicalPlaybackAcceptance": "Pending user visual review"
+}

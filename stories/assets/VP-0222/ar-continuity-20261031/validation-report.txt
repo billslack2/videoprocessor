@@ -1,0 +1,49 @@
+VideoProcessor AR continuity: deployed for visual review, 2026-10-31
+
+Source: 27dc733ad6b7f5afa01a13c1a114ff9337cc40a8
+Branch: codex/ar-evidence-continuity-20261031
+Draft PR: https://github.com/billslack2/videoprocessor/pull/241
+Base: fetched beta v1.4.02-beta at a591ad3b532771911e85f8ef026958279f2065f0.
+The deployed subtitle corrections from 82e3fc0a and 7d9b26df are preserved.
+
+What changed
+Native crop candidates now share excluded-band verification against measured matte levels, including candidates that previously became trusted directly. Dim connected picture, asymmetric boundaries, sparse overlays, full-range matte and incomplete windowbox evidence have explicit guards. Ratios remain measured from source pixels, independent of screen/fill/NLS settings.
+
+Accepted native geometry and successfully submitted presentation are tracked separately. A valid initial FIT/fill can establish continuity. Provisional or missing analysis holds compatible accepted geometry instead of inventing a full-raster transition. Exact current outside-picture evidence can preserve newly visible pixels promptly; the existing three-observation confirmation still governs native AR publication. Source/format/domain changes invalidate incompatible history.
+
+Caption extent and padding retain independent successful-submission provenance through native transitions. Replacement captions, exact prepared output, failed/stale submissions and configured fill have explicit checks. OSD in-use remains tied to submitted geometry; existing familiar names and numeric nonstandard ratios are retained.
+
+Review and tests
+Four Sol medium reviewers covered measurement, retention, renderer integration and test contracts. Parent review and cross-review closed the dim-picture, first-FIT, partial-windowbox and caption/native interaction findings. Final source is clean and pushed.
+
+All 3,621 standard test methods executed exactly once across the final comprehensive, actual-plugin and standard GPU runs, with no omissions: 3,620 passed, 1 failed.
+- Comprehensive native/stack: 3,391/3,392, including all LUT/composition tests.
+- Actual renderer and OSD: 20/20, including both plugins, scope -> 3.2-second dark interval -> IMAX -> scope, and native versus configured-fill geometry.
+- Standard GPU/cue: 209/209.
+- Additional beta GPU/cue: 209/209.
+- Focused detector/policy/diagnostic regressions: 941/941 (overlapping additional run).
+- Saved native capture replay methods: 3/3, covering all 97 Eternals and 97 Netflix frames.
+- Isolated unchanged configuration-cache class: 5/5 using the original comprehensive test binary.
+- Clean x64 Release host, standard renderer and beta renderer builds passed.
+
+Explicit existing failure
+SameSizeEditWithRestoredWriteTimeInvalidatesCache failed in unchanged ConfigFile code/test (expected two, actual one). A scratch-file metadata probe reproduced 313/500 identical revisions despite changed bytes after same-size writes with restored timestamps. The isolated pass does not fix this defect. The original failed full TRX is retained; this local visual-test deployment uses a narrowly verified exception for that exact test. No AR, caption, renderer, GPU or capture failure is exempted. No cache source/test changes were made. See known-cache-defect.txt and cache-failure-review.json for follow-up and hashes.
+
+Deployment
+Installed: 2026-10-31T03:42:57.3764807-04:00
+Destination: C:/Videoprocessor/vp
+Backup and receipt: C:\Videoprocessor\vp\deploy-backups\ar-continuity-20261031-034256/deployment.json
+Host and both renderer DLLs were backed up, replaced together and SHA-256 verified. Runtime records and symbols were also preserved. No configuration file edits or source-example configuration replacements.
+
+VP selected Classic subtitles during startup. One verified Ctrl+Shift+T restored the prior Reconstruction selection; the current configuration AND state are now byte-identical to their pre-deployment backups. This restoration changed no other profile. Three separate portable VP processes were left untouched.
+
+Running process: 33244, responding. Fresh host and renderer logs identify 27dc733ad6b7f5afa01a13c1a114ff9337cc40a8, dirty=0. Correct installed renderer/dependency paths are loaded. Output generation 2 advanced from source 4283 to 4884 during the ten-second check. Runtime verification proves startup and output activity, not physical visual acceptance.
+
+Visual review still required
+1. Eternals scope -> IMAX and back, especially dim scenes: promptly preserve new picture while keeping provisional uncertainty from causing 16:9 fallback.
+2. The Prime paused scene and profile toggle: check measured boundaries and actual framing. Its exact source frame was unavailable; the retention failure is covered by policy regressions rather than an exact Prime replay.
+3. Netflix menus, subtitle appearance/disappearance, and dark intervals: avoid obsolete pillarbox retention, false crops, clipped captions, and AR label jitter.
+
+The Eternals replay measures 0,60-3840,2096 (1.88605:1, displayed near Digital IMAX); no nominal ratio was forced. The physical 2.35:1 screen is presentation context only.
+
+Status: Review. PR remains draft/unmerged pending visual acceptance. Full local evidence: E:\codex\videoprocessor\ar-evidence-continuity-20261031\x64\Release\ar-validation

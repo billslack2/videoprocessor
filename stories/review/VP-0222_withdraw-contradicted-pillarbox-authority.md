@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-10-31). Reviewed implementation is committed as `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8` on [draft PR #241](https://github.com/billslack2/videoprocessor/pull/241), based on current beta `a591ad3b` with both deployed subtitle corrections `82e3fc0a` and `7d9b26df` preserved. All 941 focused regressions and three saved-capture replay checks pass; clean x64 Release host and both renderers build. Comprehensive native/stack, actual-plugin and both dependency GPU runs are required before deployment. User visual acceptance remains pending. Active configuration is unchanged.
+Review (2026-10-31). Implemented, reviewed and deployed from clean x64 Release commit `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8` on [draft PR #241](https://github.com/billslack2/videoprocessor/pull/241). All 3,621 standard methods executed: 3,620 passed, with one investigated pre-existing configuration-cache failure retained as an explicit local-deployment exception. Actual plugins 20/20, standard and beta GPU suites each 209/209, focused regressions 941/941 and native capture replays 3/3 passed. Host/both renderers, live output and final configuration/state hashes verified. User visual acceptance remains pending; keep PR draft and unmerged. [Final report](../assets/VP-0222/ar-continuity-20261031/validation-report.txt).
 
 ## Problem and evidence
 
@@ -104,3 +104,14 @@ Incident logs retained locally at C:/Users/bslac/.codex/visualizations/2026/10/3
 - The first broad candidate run completed 3,354/3,370 tests; its 16 failures exposed obsolete diagnostic nominations/sample bounds and unsafe fixture assumptions. Updated tests explicitly distinguish coarse synthetic nomination from fresh native recovery, retain negative controls, and verify the pixels actually kept. Four additional policy conflicts from caption integration were corrected without relaxing their legacy assertions. The complete focused rerun passed 941/941.
 - Clean candidate native capture replay passed 3/3 methods with all saved Eternals/Netflix frames. Clean candidate host, standard renderer and beta renderer Release builds passed. Runtime receipt: `E:/codex/videoprocessor/ar-evidence-continuity-20261031/x64/Release/ar-validation/release-build-passed.txt`.
 - A final-suite attempt overlapped compilation and was intentionally stopped after converter timing and renderer-DLL availability failures. It is not counted as full validation. Evidence remains in `interrupted-concurrent-full.log` and `interrupted-concurrent-run.txt`. The comprehensive rerun is serialized after other active validation, followed by actual-plugin and both GPU dependency runs. Deployment is still pending.
+
+
+## Final validation and visual-test deployment (2026-10-31)
+
+- Exact source `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8`; all four reviewer disciplines and parent review completed. Prior deployed subtitle corrections remain included.
+- Complete standard inventory: 3,621 executed, 3,620 passed, no omissions. Comprehensive 3,391/3,392; actual-plugin 20/20; standard GPU 209/209. Additional beta GPU 209/209, native replays 3/3, focused regressions 941/941.
+- The original comprehensive failure is unchanged `SameSizeEditWithRestoredWriteTimeInvalidatesCache`. Same-binary isolated class passed 5/5, but a metadata collision reproduction confirms an existing defect, not a fixed flaky test. Original failed evidence remains intact. [Known cache defect](../assets/VP-0222/ar-continuity-20261031/known-cache-defect.txt).
+- Paired host/standard/beta Release deployment at 2026-10-31T03:42:57.3764807-04:00. Backup: `C:\Videoprocessor\vp\deploy-backups\ar-continuity-20261031-034256`. Installed hashes and embedded/full runtime commit identities verified. No config edits. Startup selected Classic; one verified live profile cycle restored Reconstruction, after which both cfg and state match pre-deployment hashes.
+- Process 33244 responds, expected module paths are loaded, source/output sequence advanced 4283 -> 4884. Other portable processes were untouched.
+- [Validation and deployment report](../assets/VP-0222/ar-continuity-20261031/validation-report.txt); adjacent JSON receipts pin hashes, source, test counts and runtime verification. No captured movie pixels are committed.
+- Visual scope/IMAX, Prime paused/profile-toggle and menu/caption acceptance remain pending. Exact Prime source pixels were unavailable. Draft PR remains unmerged for user review.

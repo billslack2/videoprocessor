@@ -1,0 +1,42 @@
+{
+  "commit": "27dc733ad6b7f5afa01a13c1a114ff9337cc40a8",
+  "testSha256": "EAF1CDCDB2594C87DCB60A8A0EF2F327B06DF31AF9D0358711858F4AB5091E3B",
+  "fullTrxSha256": "E263DAD0C771BEE2A3E7CE234058859A39BADAA7B391BC870D8B6FDA104D82C1",
+  "isolatedTrxSha256": "337CC3A6ECA328481F9D943D26A2C8BAB9C3B18F27BB22B890A3A9EA8F60EF3C",
+  "testId": "1882feee-9384-270f-873c-0b2314a96165",
+  "testName": "SameSizeEditWithRestoredWriteTimeInvalidatesCache",
+  "originalPassed": 3391,
+  "originalTotal": 3392,
+  "isolatedPassed": 5,
+  "unchangedFromBeta": {
+    "src/VideoProcessor-Lib/ConfigFile.cpp": "99798104f9db570cc871ca77910c412134be205e",
+    "src/VideoProcessor-Lib/ConfigFile.h": "9118038e79e6f89be3ac3e1c42169320addab6ff",
+    "src/VideoProcessor-Test/ConfigFileTests.cpp": "4748d3cb1292c0221357c6ab07d36848d4f89e5f"
+  },
+  "metadataProbe": {
+    "iterations": 500,
+    "sameRevisionDespiteChangedBytes": 313,
+    "examples": [
+      {
+        "iteration": 0,
+        "lastWriteTime": 134379021713861582,
+        "changeTime": 134379021713861582,
+        "actualContent": "[general]\nvalue: two"
+      },
+      {
+        "iteration": 1,
+        "lastWriteTime": 134379021713911626,
+        "changeTime": 134379021713911626,
+        "actualContent": "[general]\nvalue: two"
+      },
+      {
+        "iteration": 2,
+        "lastWriteTime": 134379021713921635,
+        "changeTime": 134379021713921635,
+        "actualContent": "[general]\nvalue: two"
+      }
+    ],
+    "scope": "Metadata-only reproduction using same-size writes and restored last-write time; no application or configuration files modified."
+  },
+  "disposition": "Known pre-existing configuration cache defect, not fixed. The original comprehensive run remains FAILED. The complete unchanged cache test class passed in isolation. Continue AR renderer validation with this explicit exception; preserve active configuration and disclose the exception in final evidence."
+}

@@ -1,0 +1,33 @@
+{
+  "commit": "27dc733ad6b7f5afa01a13c1a114ff9337cc40a8",
+  "inventoryCount": 3621,
+  "executedCount": 3621,
+  "suites": {
+    "final-full": {
+      "total": 3392,
+      "passed": 3391
+    },
+    "final-renderer": {
+      "total": 20,
+      "passed": 20
+    },
+    "gpu/standard": {
+      "total": 209,
+      "passed": 209
+    }
+  },
+  "missing": [],
+  "extra": [],
+  "failed": [
+    "final-full: SameSizeEditWithRestoredWriteTimeInvalidatesCache"
+  ],
+  "scope": "Complete standard test inventory across comprehensive, actual-plugin, and standard GPU runs; beta GPU and capture replays are additional validation.",
+  "knownFailures": [
+    "final-full: SameSizeEditWithRestoredWriteTimeInvalidatesCache"
+  ],
+  "unexpectedFailures": [],
+  "isolatedPassingRetests": {
+    "ConfigurationReadCacheTests": 5
+  },
+  "exceptionEvidence": "cache-failure-review.json; original comprehensive failure preserved"
+}

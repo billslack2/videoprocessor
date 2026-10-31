@@ -1,0 +1,14 @@
+Existing configuration-cache defect found during AR validation
+
+Candidate: 27dc733ad6b7f5afa01a13c1a114ff9337cc40a8
+Beta base: a591ad3b532771911e85f8ef026958279f2065f0
+
+The complete native/stack run executed 3,392 tests: 3,391 passed and SameSizeEditWithRestoredWriteTimeInvalidatesCache failed (expected two, actual one, ConfigFileTests.cpp:150). The original final-full.trx remains failed and is retained. The entire unchanged ConfigurationReadCacheTests class passed 5/5 in isolation using the same test binary.
+
+ConfigFile.cpp, ConfigFile.h and ConfigFileTests.cpp are byte-identical to beta. A scratch-file Windows metadata probe reproduced 313/500 same-revision results despite changed file bytes when a same-size overwrite restored the last-write timestamp. No application configuration was changed by that probe. Passing the isolated rerun does not establish that the defect is fixed.
+
+This is an explicitly recorded exception for local AR visual-test deployment, not a fully green comprehensive run. It does not exempt any detector, AR policy, caption, renderer, GPU or capture test. No cache implementation/test changes are included in this candidate.
+
+Follow-up: robust cache revision validation must address same-size restored-time edits, repeated writes through an open writer, mapped writes, atomic replacement, unsupported revision queries, and the existing unchanged/Fresh content-load counters. A naive USN-only change is insufficient. Investigate separately rather than slipping an unvalidated cache redesign into the AR candidate.
+
+Exact hashes, original failing test identity, isolated rerun hashes and unchanged source blobs: cache-failure-review.json. Full local evidence: E:/codex/videoprocessor/ar-evidence-continuity-20261031/x64/Release/ar-validation.

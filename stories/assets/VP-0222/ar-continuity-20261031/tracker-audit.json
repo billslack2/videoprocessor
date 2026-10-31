@@ -1,0 +1,21 @@
+{
+  "indexCount": 241,
+  "canonicalCount": 241,
+  "duplicates": {},
+  "missingIndex": [],
+  "missingFiles": [],
+  "existingStateDifferences": [
+    [
+      "VP-0168",
+      "In progress",
+      "In Progress"
+    ],
+    [
+      "VP-0211",
+      "Review",
+      "In Progress"
+    ]
+  ],
+  "VP-0222": "Review folder/status/index agree; visual acceptance pending",
+  "unrelatedEdits": "Preserved VP-0207 team-design asset edit"
+}

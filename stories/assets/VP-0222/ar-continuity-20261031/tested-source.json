@@ -1,0 +1,8 @@
+{
+  "commit": "27dc733ad6b7f5afa01a13c1a114ff9337cc40a8",
+  "sourceDirty": false,
+  "testBinary": "E:\\codex\\videoprocessor\\ar-evidence-continuity-20261031\\x64\\Release\\ar-validation\\final-tested\\VideoProcessor-Test.dll",
+  "testSha256": "EAF1CDCDB2594C87DCB60A8A0EF2F327B06DF31AF9D0358711858F4AB5091E3B",
+  "scope": "All tests except the separately run seven GPU classes and actual-plugin class",
+  "started": "2026-10-31T02:02:43.5190885-04:00"
+}
