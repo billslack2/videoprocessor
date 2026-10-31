@@ -1,0 +1,38 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Imported by Directory.Solution.targets only after gate activation.
+       Every supported entry point has its own target: MSBuild's target-once
+       rule must not skip qualification after a later requested runtime build. -->
+  <Target Name="QualifyVpSolutionRuntimeEntry0" AfterTargets="Build" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry1" AfterTargets="Rebuild" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry2" AfterTargets="VideoProcessor-GUI" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry3" AfterTargets="VideoProcessor-GUI:Build" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry4" AfterTargets="VideoProcessor-GUI:Rebuild" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry5" AfterTargets="VideoProcessor-VPRenderer" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry6" AfterTargets="VideoProcessor-VPRenderer:Build" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry7" AfterTargets="VideoProcessor-VPRenderer:Rebuild" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry8" AfterTargets="VideoProcessor-VPRendererBeta" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry9" AfterTargets="VideoProcessor-VPRendererBeta:Build" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+  <Target Name="QualifyVpSolutionRuntimeEntry10" AfterTargets="VideoProcessor-VPRendererBeta:Rebuild" Condition="'$(SolutionFileName)' == 'VideoProcessor.sln'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(SolutionDir).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot;" />
+  </Target>
+</Project>

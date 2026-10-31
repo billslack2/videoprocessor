@@ -39,7 +39,8 @@ namespace
     void __cdecl ClassicPoseTestLog(const char* message)
     {
         if(!strstr(message,"VP submitted geometry:") && !strstr(message,"Alpha source crop:") &&
-            !strstr(message,"Alpha native presentation commit:"))return;
+            !strstr(message,"Alpha native presentation commit:") && !strstr(message,"SUBTITLE ") &&
+            !strstr(message,"application profile") && !strstr(message,"Renderer configuration snapshot"))return;
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
         classicPoseMessages.emplace_back(message);
     }
@@ -606,6 +607,255 @@ namespace VideoProcessorTest
             Assert::IsTrue(scheduled&&skipped,L"The real renderer must exercise natural scheduled and skipped dense scans; the fixture cannot force a pose.");
             Assert::IsTrue(observedPresentedSources.size()>=24 && submittedPoseEvents>0,
                 L"The stable final pose must survive at least 24 distinct observed selected source identities.");
+        }
+
+        TEST_METHOD(StandardRendererClassicLifecycleWithNormalDriftAndWiderFill)
+        { VerifyClassicLifecycleMatrix(false,false); }
+        TEST_METHOD(StandardRendererClassicLifecycleWithNormalDriftAndNarrowerFill)
+        { VerifyClassicLifecycleMatrix(false,true); }
+        TEST_METHOD(BetaRendererClassicLifecycleWithNormalDriftAndWiderFill)
+        { VerifyClassicLifecycleMatrix(true,false); }
+        TEST_METHOD(BetaRendererClassicLifecycleWithNormalDriftAndNarrowerFill)
+        { VerifyClassicLifecycleMatrix(true,true); }
+
+        void VerifyClassicLifecycleMatrix(bool beta,bool narrower)
+        {
+            struct ProbeClock final : ITimingClock {
+                LARGE_INTEGER frequency{};
+                ProbeClock(){Assert::IsTrue(QueryPerformanceFrequency(&frequency)!=FALSE && frequency.QuadPart>0);}
+                timingclocktime_t TimingClockNow() override {LARGE_INTEGER now{};QueryPerformanceCounter(&now);return now.QuadPart;}
+                timingclocktime_t TimingClockTicksPerSecond() const override {return frequency.QuadPart;}
+                const TCHAR* TimingClockDescription() override {return _T("Classic lifecycle integration QPC");}
+            } clock;
+            HMODULE self=nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,reinterpret_cast<LPCWSTR>(&ClassicPoseTestLog),&self)!=FALSE);
+            wchar_t modulePath[MAX_PATH]={};GetModuleFileNameW(self,modulePath,MAX_PATH);
+            std::wstring pluginPath(modulePath);pluginPath.resize(pluginPath.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            pluginPath+=L"\\..";
+#endif
+            pluginPath+=beta?L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll":L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+            HMODULE plugin=LoadLibraryExW(pluginPath.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct ModuleCleanup {HMODULE value;~ModuleCleanup(){FreeLibrary(value);}} moduleCleanup{plugin};
+            const auto create=reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_DESTROY_EXPORT));
+            Assert::IsTrue(create&&destroy);
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();}
+            char temp[MAX_PATH]={},configPath[MAX_PATH]={};
+            Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0 && GetTempFileNameA(temp,"clm",0,configPath)!=0);
+            std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                "[vprenderer]\nquality: fast\n"
+                "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n"
+                "[vprenderer.zoom.scope]\nautomatic_crop: true\nsubtitle_fit: true\n"
+                "crop_narrower_content_to_fill_screen: true\ncrop_wider_content_to_fill_screen: true\n"
+                "crop_narrower_content_aspect_limit: 2.32:1\ncrop_wider_content_aspect_limit: 2.42:1\n"
+                "[vprenderer.subtitles.classic]\ntype: classic\nshortcut: F5\noffset_pixels: 15\n"
+                "subtitle_engage_drift_ms: 500\nsubtitle_release_drift_ms: 2000\n"
+                "subtitle_target_buffer_pixels: 10\nsubtitle_hold_seconds: 2\n"
+                "[vprenderer.subtitles.reconstruction]\ntype: generated_gray\nshortcut: F6\noffset_pixels: 10\n"
+                "text_reduction_percent: 30\ncleanup_fill: stretch\nsubtitle_hold_ms: 250\n";
+            constexpr int width=960,height=540,captionHeight=16;
+            const int bar=narrower?64:68,pictureBottom=height-bar;
+            const int captionBottom=pictureBottom+20,captionTop=captionBottom-captionHeight;
+            VideoStateComPtr state=new VideoState();state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::P210;
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,narrower?24000:60000,1001);
+            state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
+            std::vector<uint16_t> native(state->BytesPerFrame()/2,uint16_t(512<<6));
+            auto paintPicture=[&](std::vector<uint16_t>& pixels,int top,int bottom) {
+                for(int y=0;y<height;++y)for(int x=0;x<width;++x)
+                    pixels[size_t(y)*width+x]=uint16_t((y>=top&&y<bottom?300:64)<<6);
+            };
+            paintPicture(native,bar,pictureBottom);auto caption=native;auto expanded=native;paintPicture(expanded,8,height-8);
+            for(int glyph=0;glyph<12;++glyph)for(int y=captionTop;y<captionBottom;++y)
+                for(int x=342+glyph*22;x<356+glyph*22;++x)
+                    if(x<345+glyph*22 || x>=353+glyph*22 || (y>=captionTop+6&&y<captionTop+9))
+                        caption[size_t(y)*width+x]=uint16_t(700<<6);
+            const ActivePictureBounds physical{0,bar,width,pictureBottom,width,height,double(width)/(pictureBottom-bar),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            const int target=(std::min)(bar,captionBottom+(std::max)(8,height/90)+15-pictureBottom+10);
+            const int shift=(target+1)&~1;
+            auto fillFor=[&](ActivePictureBounds bounds) {
+                AlphaSourceCrop::AspectLimitFillInput fill;fill.sourceBounds=bounds;fill.contentReferenceAvailable=true;
+                fill.contentReferenceBounds=physical;fill.trustedContentAuthorityAccepted=true;fill.screenAspect=2.35;
+                fill.cropNarrowerContentToFillScreen=fill.narrowerLimitConfigured=true;fill.narrowerAspectLimit=2.32;
+                fill.cropWiderContentToFillScreen=fill.widerLimitConfigured=true;fill.widerAspectLimit=2.42;
+                return AlphaSourceCrop::EvaluateAspectLimitFill(fill);
+            };
+            const auto initialFill=fillFor(physical);auto translated=physical;translated.top+=shift;translated.bottom+=shift;
+            const auto translatedFill=fillFor(translated);const auto initial=initialFill.sourceBounds,settled=translatedFill.sourceBounds;
+            Assert::IsTrue(initialFill.applied&&translatedFill.applied);
+            Assert::IsTrue(narrower?initial.top>physical.top:initial.left>physical.left);
+            SnapshotTestCallback callback;NativeP210Buffer buffer;
+            struct Cleanup {
+                HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;const char* config;
+                ~Cleanup(){if(renderer){renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);DeleteFileA(config);}
+            } cleanup{CreateWindowExW(0,L"STATIC",L"Classic normal-drift lifecycle matrix",WS_POPUP,0,0,640,360,
+                nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
+            Assert::IsNotNull(cleanup.window);
+            cleanup.renderer=create(&callback,44,cleanup.window,&clock,true,12,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
+            Assert::IsNotNull(cleanup.renderer);
+            ConfigFile config;Assert::IsTrue(config.Load(configPath));UnifiedProfileRuntime::Runtime runtime;std::string error;
+            const bool initialized=runtime.Initialize(config,{},error);
+            if(!initialized)Logger::WriteMessage(error.c_str());
+            Assert::IsTrue(initialized,std::wstring(error.begin(),error.end()).c_str());
+            CString active;bool restart=false,reset=false;
+            Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*runtime.GetSnapshot(),active,restart,reset));
+            Assert::IsFalse(restart);
+            cleanup.renderer->SetQueueFramePolicy(4,4,true);
+            cleanup.renderer->SetActivePictureLookaheadFrames(4);
+            Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
+            uint64_t sequence=1;size_t logCursor=0;
+            auto messages=[] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);return classicPoseMessages;};
+            auto dump=[&] {for(const auto& line:messages())Logger::WriteMessage(line.c_str());};
+            auto require=[&](bool valid,const wchar_t* message) {if(!valid){dump();Assert::Fail(message);}};
+            auto integer=[](const std::string& line,const char* key) {
+                const auto at=line.find(key);return at==std::string::npos?uint64_t(0):uint64_t(std::strtoull(line.c_str()+at+strlen(key),nullptr,10));
+            };
+            auto number=[](const std::string& line,const char* key) {
+                const auto at=line.find(key);return at==std::string::npos?0.0:std::strtod(line.c_str()+at+strlen(key),nullptr);
+            };
+            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false;};
+            auto geometries=[&] {
+                std::vector<Geometry> result;const auto log=messages();
+                for(;logCursor<log.size();++logCursor) {
+                    const auto& line=log[logCursor];if(line.find("VP submitted geometry:")==std::string::npos)continue;
+                    Geometry g;g.sequence=integer(line," selected=");g.pts=number(line," source_pts=");g.mode=unsigned(integer(line," mode="));
+                    g.composed=integer(line," composed=")!=0;const auto at=line.find(" actual_source=");
+                    require(at!=std::string::npos&&sscanf_s(line.c_str()+at+15,"%lf,%lf-%lf,%lf",&g.left,&g.top,&g.right,&g.bottom)==4,
+                        L"Actual-plugin matrix could not parse submitted source geometry.");
+                    require(std::isfinite(g.pts)&&g.pts>0,L"Actual-plugin matrix requires valid QPC-derived source timestamps.");
+                    result.push_back(g);
+                }
+                return result;
+            };
+            auto same=[](const Geometry& actual,const ActivePictureBounds& wanted) {
+                return std::abs(actual.left-wanted.left)<0.01&&std::abs(actual.top-wanted.top)<0.01&&
+                    std::abs(actual.right-wanted.right)<0.01&&std::abs(actual.bottom-wanted.bottom)<0.01;
+            };
+            auto sameSize=[&](const Geometry& g) {
+                return std::abs(g.right-g.left-(settled.right-settled.left))<0.01&&
+                    std::abs(g.bottom-g.top-(settled.bottom-settled.top))<0.01;
+            };
+            const auto sourcePeriod=std::chrono::duration<double>(1001.0/(narrower?24000.0:60000.0));
+            auto nextSource=std::chrono::steady_clock::now();
+            auto pump=[&](std::vector<uint16_t>& pixels) {
+                MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+                if(callback.state==RENDERSTATE_RENDERING){VideoFrame frame(pixels.data(),sequence++,clock.TimingClockNow(),&buffer);cleanup.renderer->OnVideoFrame(frame);}
+                nextSource+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(sourcePeriod);
+                std::this_thread::sleep_until(nextSource);
+                DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);return value;
+            };
+            auto scans=[&](uint64_t first) {
+                bool scheduled=false,skipped=false;
+                for(const auto& line:messages())if(line.find("Alpha source crop:")!=std::string::npos&&integer(line," sequence=")>=first) {
+                    scheduled|=line.find(" dense_scan=scheduled")!=std::string::npos;skipped|=line.find(" dense_scan=skipped")!=std::string::npos;
+                }
+                return scheduled&&(narrower||skipped);
+            };
+            auto acquireNative=[&] {
+                const auto first=sequence,deadlineMs=GetTickCount64()+15000;bool gotActual=false,gotNative=false;
+                do {
+                    const auto value=pump(native);
+                    gotNative=value.available&&!value.provisional&&value.detectedSequence>=first&&std::abs(value.ratio-physical.aspectRatio)<0.005;
+                    for(const auto& g:geometries())if(g.sequence>=first&&same(g,initial))gotActual=true;
+                    if(gotNative&&gotActual)return;
+                }while(GetTickCount64()<deadlineMs&&callback.state!=RENDERSTATE_FAILED);
+                require(false,L"Normal-drift fixture failed independent native-plane acquisition or exact configured fill.");
+            };
+            acquireNative();
+            Logger::WriteMessage("Classic lifecycle: caption onset with 500 ms engage drift\n");
+            uint64_t onset=sequence,finalSequence=0;double previousTop=initial.top;std::set<int> intermediate;
+            std::set<uint64_t> settledSources;const auto engageDeadline=GetTickCount64()+5000;
+            do {
+                const auto value=pump(caption);
+                for(const auto& g:geometries())if(g.sequence>=onset) {
+                    require(g.mode==0&&sameSize(g),L"Classic onset resized its picture instead of keeping the configured filled viewport size.");
+                    require(g.top>=previousTop-0.01&&g.top>=initial.top-0.01&&g.top<=settled.top+0.01,
+                        L"Classic engage drift reversed or left its bounded native-to-caption translation interval.");
+                    previousTop=g.top;if(g.top>initial.top+0.01&&g.top<settled.top-0.01)intermediate.insert(int(std::lround(g.top)));
+                    if(same(g,settled)&&!finalSequence)finalSequence=g.sequence;
+                }
+                if(finalSequence&&value.presentedSequence>=finalSequence)settledSources.insert(value.presentedSequence);
+                if(finalSequence&&settledSources.size()>=24&&scans(onset))break;
+            }while(GetTickCount64()<engageDeadline&&callback.state!=RENDERSTATE_FAILED);
+            require(finalSequence>0&&settledSources.size()>=24,L"Classic engage never reached and retained its exact final filled pose for 24 distinct presented sources.");
+            require(intermediate.size()>=2,L"The configured 500 ms Classic engage drift snapped instead of exercising intermediate actual poses.");
+            require(scans(onset),L"Classic normal-drift onset must exercise natural scheduled scans and, above 30 Hz, skipped dense scans.");
+            Logger::WriteMessage("Classic lifecycle: two-second hold then two-second release drift\n");
+            const uint64_t removal=sequence;const double removalPts=double(clock.TimingClockNow())/clock.TimingClockTicksPerSecond();
+            double releaseStarted=0,releaseFinished=0;previousTop=settled.top;std::set<int> releaseIntermediate;std::set<uint64_t> returnedSources;
+            uint64_t returnedSequence=0;const auto releaseDeadline=GetTickCount64()+7000;
+            do {
+                const auto value=pump(native);
+                for(const auto& g:geometries())if(g.sequence>=removal) {
+                    require(g.mode==0&&sameSize(g),L"Classic hold/release resized its filled viewport or failed open between dense scans.");
+                    require(g.top<=previousTop+0.01&&g.top>=initial.top-0.01&&g.top<=settled.top+0.01,
+                        L"Classic release drift reversed direction or jumped outside its bounded interval.");
+                    if(g.top<settled.top-0.01&&!releaseStarted)releaseStarted=g.pts;
+                    previousTop=g.top;if(g.top>initial.top+0.01&&g.top<settled.top-0.01)releaseIntermediate.insert(int(std::lround(g.top)));
+                    if(same(g,initial)&&!returnedSequence){returnedSequence=g.sequence;releaseFinished=g.pts;}
+                }
+                if(returnedSequence&&value.presentedSequence>=returnedSequence)returnedSources.insert(value.presentedSequence);
+                if(returnedSources.size()>=24)break;
+            }while(GetTickCount64()<releaseDeadline&&callback.state!=RENDERSTATE_FAILED);
+            require(returnedSources.size()>=24&&releaseIntermediate.size()>=2,L"Classic did not exercise and complete its normal hold/release lifecycle.");
+            require(releaseStarted-removalPts>=1.7,L"Classic subtitle hold released substantially before the configured two seconds.");
+            require(releaseFinished-releaseStarted>=1.2,L"Classic two-second release drift snapped instead of moving through its timed interval.");
+            // Re-engage before a real picture transition so a previous caption owner
+            // cannot conceal newly exposed broad picture pixels in either bar.
+            Logger::WriteMessage("Classic lifecycle: real picture expansion overrides an established caption pose\n");
+            const auto reacquireDeadline=GetTickCount64()+5000;bool translatedAgain=false;
+            do {pump(caption);for(const auto& g:geometries())translatedAgain|=same(g,settled);}
+            while(!translatedAgain&&GetTickCount64()<reacquireDeadline&&callback.state!=RENDERSTATE_FAILED);
+            require(translatedAgain,L"Classic failed to establish its caption pose before the real-picture expansion challenge.");
+            const uint64_t pictureFirst=sequence;bool pictureAccepted=false;std::set<uint64_t> pictureSources;const auto pictureDeadline=GetTickCount64()+15000;
+            do {
+                const auto value=pump(expanded);
+                // Pixel preservation starts with the first observed submitted source;
+                // AR confirmation and the stability window may complete later.
+                if(value.presentedSequence>=pictureFirst)
+                    require(value.inUseAvailable && value.inUseState!=PictureAspectUse::UNAVAILABLE &&
+                        std::isfinite(value.inUseRatio) && value.inUseRatio>0 &&
+                        value.inUseRatio<=double(width)/(height-16)+0.00001,
+                        L"The first observed expanded-picture output retained the old cropped viewport while AR confirmation was pending.");
+                for(const auto& g:geometries())if(g.sequence>=pictureFirst)
+                    require(g.top<=8.01&&g.bottom>=height-8-0.01&&g.left<=0.01&&g.right>=width-0.01,
+                        L"An old Classic caption pose clipped actual broad picture expansion.");
+                pictureAccepted=value.available&&!value.provisional&&value.detectedSequence>=pictureFirst&&std::abs(value.ratio-double(width)/(height-16))<0.005;
+                if(pictureAccepted&&value.presentedSequence>=pictureFirst)pictureSources.insert(value.presentedSequence);
+                if(pictureAccepted&&pictureSources.size()>=24)break;
+            }while(GetTickCount64()<pictureDeadline&&callback.state!=RENDERSTATE_FAILED);
+            require(pictureAccepted&&pictureSources.size()>=24,L"Actual broad picture expansion did not replace the old scope detection and presentation.");
+            acquireNative();
+            Logger::WriteMessage("Classic lifecycle: live application profile switch to Reconstruction\n");
+            const auto captionDeadline=GetTickCount64()+5000;translatedAgain=false;
+            do {pump(caption);for(const auto& g:geometries())translatedAgain|=same(g,settled);}
+            while(!translatedAgain&&GetTickCount64()<captionDeadline&&callback.state!=RENDERSTATE_FAILED);
+            require(translatedAgain,L"Classic did not establish its pose before the profile transition challenge.");
+            UnifiedProfileRuntime::SelectionResult selection;
+            require(runtime.SelectKey("F6",{},selection,error)&&selection.changed,L"Application runtime failed to select the Reconstruction profile.");
+            require(selection.snapshot && selection.snapshot->effectiveSelections.count("subtitles") &&
+                selection.snapshot->effectiveSelections.at("subtitles").size()==1 &&
+                selection.snapshot->effectiveSelections.at("subtitles").front()=="reconstruction",
+                L"Profile transition fixture did not publish the requested Reconstruction selection.");
+            restart=reset=false;require(cleanup.renderer->ApplyApplicationState(*selection.snapshot,active,restart,reset),L"Actual renderer rejected the Reconstruction profile snapshot.");
+            require(!restart,L"Subtitle profile transition unexpectedly requires a renderer rebuild.");
+            const uint64_t reconstructionFirst=sequence;uint64_t reconstructionReady=0,compositionSequence=0;bool composed=false;
+            std::set<uint64_t> reconstructionSources;const auto reconstructionDeadline=GetTickCount64()+45000;
+            do {
+                const auto value=pump(caption);
+                for(const auto& g:geometries())if(g.sequence>=reconstructionFirst&&g.mode==3) {
+                    require(same(g,initial),L"Classic-to-Reconstruction profile transition retained or reintroduced Classic picture displacement/unsafe visibility fitting.");
+                    composed|=g.composed;if(!reconstructionReady)reconstructionReady=g.sequence;
+                }
+                for(const auto& line:messages())if(line.find("SUBTITLE SHADER GEOMETRY:")!=std::string::npos &&
+                    integer(line," frame=")>=reconstructionFirst)compositionSequence=integer(line," frame=");
+                composed|=compositionSequence>0&&value.presentedSequence>=compositionSequence;
+                if(reconstructionReady&&value.presentedSequence>=reconstructionReady)reconstructionSources.insert(value.presentedSequence);
+                if(composed&&reconstructionSources.size()>=24)break;
+            }while(GetTickCount64()<reconstructionDeadline&&callback.state!=RENDERSTATE_FAILED);
+            require(composed&&reconstructionSources.size()>=24,L"Reconstruction profile did not compose real caption pixels while keeping the native picture presentation stable.");
         }
 
         void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false)

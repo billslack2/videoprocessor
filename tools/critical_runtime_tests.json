@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "nativeSources": [
+    "src/VideoProcessor-Test/AlphaSourceCropPolicyTests.cpp",
+    "src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp"
+  ],
+  "minimumNativeTests": 600,
+  "requiredNativeMethods": [
+    "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
+    "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
+    "IndependentNativeRemeasurementPreservesPictureBeyondTheCollarLimit",
+    "VerticalCollarRepairCannotPromoteAFailedWindowboxAxis",
+    "ClassicTranslatedConfiguredFillCommitsFinalPoseAcrossSkippedScans",
+    "ClassicFinalPoseComposesBothFillAxesAndCurrentControllerDrift",
+    "ClassicCoarseOppositeEdgeRequiresCompleteCurrentBandPixelProof",
+    "RawPerEdgeSafetyKeepsCaptionSideUnsafeThroughOverlayProjection",
+    "CurrentDenseCaptionOwnsPendingEngageAndDriftButNeverPictureExpansion",
+    "CurrentEmptyNativeBandsPermitControllerReleaseWithoutFreshCaption"
+  ],
+  "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+  "actualClass": "LibplaceboPluginProxyTests",
+  "actualMethods": [
+    "StandardRendererClassicLifecycleWithNormalDriftAndWiderFill",
+    "StandardRendererClassicLifecycleWithNormalDriftAndNarrowerFill",
+    "BetaRendererClassicLifecycleWithNormalDriftAndWiderFill",
+    "BetaRendererClassicLifecycleWithNormalDriftAndNarrowerFill",
+    "StandardRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans",
+    "BetaRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans"
+  ],
+  "optionalPrivateFixtures": [
+    "VP_AR_COLLAR_CAPTURE_FRAME",
+    "VP_DARK_AR_ANALYSIS_FRAME"
+  ]
+}

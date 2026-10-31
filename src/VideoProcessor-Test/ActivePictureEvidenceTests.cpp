@@ -5376,6 +5376,40 @@ namespace VideoProcessorTest
 			Assert::AreEqual(uint64_t(0),published);
 		}
 
+		TEST_METHOD(RawPerEdgeSafetyKeepsCaptionSideUnsafeThroughOverlayProjection)
+		{
+			const auto scope = ScopePresentation(640, 360, 48, 312);
+			for (bool upper : {false, true})
+			{
+				P010Frame frame(640, 360);
+				frame.BlackOutside(0, 48, 640, 312);
+				const ActivePictureBounds caption{100, upper ? 12 : 326,
+					540, upper ? 34 : 348, 640, 360};
+				frame.FillRectangle(caption.left, caption.top, caption.right, caption.bottom, 700);
+				const auto raw = EvaluateActivePicturePresentationRetention(frame.P010Source(), scope);
+				Assert::IsTrue(raw.rawBandSafetyEvaluated);
+				Assert::AreEqual(scope.top, raw.rawBandSafetyBase.top);
+				Assert::AreEqual(scope.bottom, raw.rawBandSafetyBase.bottom);
+				Assert::IsTrue(raw.rawBandLeftSafe && raw.rawBandRightSafe);
+				Assert::AreEqual(!upper, raw.rawBandTopSafe);
+				Assert::AreEqual(upper, raw.rawBandBottomSafe);
+				const auto projected = EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(
+					frame.P010Source(), scope, raw, caption, 0);
+				Assert::IsTrue(projected.relocatedOverlayExclusionEvaluated);
+				Assert::IsTrue(projected.excludedBandsPixelSafe);
+				Assert::AreEqual(raw.rawBandTopSafe, projected.rawBandTopSafe);
+				Assert::AreEqual(raw.rawBandBottomSafe, projected.rawBandBottomSafe);
+				// Real picture on the other edge must invalidate its own raw proof.
+				frame.FillRectangle(0, upper ? 312 : 34, 640, upper ? 326 : 48, 500);
+				const auto changed = EvaluateActivePicturePresentationRetention(frame.P010Source(), scope);
+				Assert::IsFalse(changed.rawBandTopSafe);
+				Assert::IsFalse(changed.rawBandBottomSafe);
+			}
+			const auto invalid = EvaluateActivePicturePresentationRetention(AnalysisLumaSource{}, scope);
+			Assert::IsFalse(invalid.rawBandSafetyEvaluated);
+			Assert::IsFalse(invalid.rawBandTopSafe || invalid.rawBandBottomSafe);
+		}
+
 		TEST_METHOD(RetentionHandoffNeverRelabelsOldSafePixelsAsNewCropProof)
 		{
 			P010Frame frame(1920,1080);

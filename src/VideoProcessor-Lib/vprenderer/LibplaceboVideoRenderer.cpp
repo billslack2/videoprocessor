@@ -4927,7 +4927,7 @@ struct LibplaceboVideoRenderer::Impl
     AlphaSourceCrop::VerticalBarContentInput scopeCurrentVerticalContent{};
     AlphaSourceCrop::VerticalBarContentDecision scopeCurrentVerticalDecision{};
     ActivePictureBounds scopeCurrentVerticalBase{}, scopeCurrentVerticalBounds{};
-    uint64_t scopeCurrentVerticalGeneration=0, scopeCurrentVerticalSequence=0;
+    uint64_t scopeCurrentVerticalGeneration=0, scopeCurrentVerticalSequence=0, scopeCurrentVerticalTick=0;
 	AlphaSourceCrop::VerticalBarPresentationState
 		scopeVerticalBarPresentation;
 	AlphaSourceCrop::VerticalTranslationConfirmationState
@@ -6635,7 +6635,7 @@ struct LibplaceboVideoRenderer::Impl
         scopeSubtitleAnalysisBounds={};subtitleSharedPicture={};
         scopeCurrentVerticalContent={}; scopeCurrentVerticalDecision={};
         scopeCurrentVerticalBase={}; scopeCurrentVerticalBounds={};
-        scopeCurrentVerticalGeneration=0; scopeCurrentVerticalSequence=0;
+        scopeCurrentVerticalGeneration=0; scopeCurrentVerticalSequence=0; scopeCurrentVerticalTick=0;
         scopeSubtitleLastAdmittedTranslation = {};
         scopeSubtitleLastAdmittedTranslationBase = {};
         scopeSubtitleLastAdmittedTranslationGeneration = 0;
@@ -6941,6 +6941,9 @@ struct LibplaceboVideoRenderer::Impl
                 scopeCurrentVerticalBounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
                 if (upperContent) scopeCurrentVerticalBounds.top=upperContentTop;
                 if (lowerContent) scopeCurrentVerticalBounds.bottom=lowerContentBottom;
+                if (scopeCurrentVerticalGeneration != source->generation ||
+                    scopeCurrentVerticalSequence != sourceSequence)
+                    scopeCurrentVerticalTick = now;
                 scopeCurrentVerticalGeneration=source->generation;
                 scopeCurrentVerticalSequence=sourceSequence;
 				const bool upperOverlayLike = verticalDecision.upperOverlayLike;
@@ -17072,6 +17075,8 @@ releaseDriftBaseRetention =
                 cropInput.outwardExpansionSourceGeneration = frameGeneration;
             }
 			AlphaSourceCrop::PresentationRecoveryInput recoveryInput;
+            recoveryInput.classicTranslationEnabled = subtitlePreviewMode == SubtitlePreviewMode::None &&
+                !suppressCaptionPresentation;
 			recoveryInput.previous = cropPresentationRecovery;
 			recoveryInput.previousAdmission = cropPresentationAdmission;
 			recoveryInput.submittedScopeAnchor = submittedNativeScopeAnchor;
@@ -17086,6 +17091,38 @@ releaseDriftBaseRetention =
             recoveryInput.captionObservation.presentationEpoch = viewportRequestSerial;
             recoveryInput.captionObservation.sourceFormatKey = cropInput.frameSourceFormatKey;
             recoveryInput.captionObservation.analysisDomainKey = cropInput.frameAnalysisDomainKey;
+            // The dense Classic controller measures source bar occupancy before
+            // its temporal confirmation. Preserve that provenance so pending
+            // movement cannot be mistaken for an unowned aspect expansion.
+            if (subtitlePreviewMode == SubtitlePreviewMode::None && !suppressCaptionPresentation &&
+                subtitleBarAnalysisCompleted && scopeCurrentVerticalGeneration == frameGeneration &&
+                scopeCurrentVerticalSequence == sourceSequence &&
+                SameSubtitlePresentationBounds(scopeCurrentVerticalBase, cropInput.geometry))
+            {
+                auto& caption = recoveryInput.currentCaptionTranslation;
+                caption.available = true;
+                caption.denseOverlayMeasured = true;
+                caption.denseContent = scopeCurrentVerticalContent;
+                caption.nativeBase = scopeCurrentVerticalBase;
+                caption.occupiedBounds = scopeCurrentVerticalBounds;
+                caption.targetTranslationPixels = scopeCurrentVerticalDecision.translationPixels;
+                caption.measuredCaption = currentMeasuredCaptionAvailable && currentCaptionFitWorkerProof &&
+                    SameSubtitlePresentationBounds(currentCaptionFitWorkerBase, cropInput.geometry);
+                if (caption.measuredCaption)
+                    caption.occupiedBounds = currentConfirmedCaptionBounds;
+                const auto& extent = caption.targetTranslationPixels < 0
+                    ? presentationRetention.visibleTop : presentationRetention.visibleBottom;
+                caption.visibleExtentMarginPixels = extent.sampleStep + extent.presentationMargin;
+                caption.sourceGeneration = frameGeneration;
+                caption.sourceSequence = sourceSequence;
+                caption.presentationEpoch = viewportRequestSerial;
+                caption.sourceFormatKey = cropInput.frameSourceFormatKey;
+                caption.analysisDomainKey = cropInput.frameAnalysisDomainKey;
+                caption.acceptedNativeSourceSequence = cropInput.acceptedNativeCrop.acceptedSourceSequence;
+                caption.measurementTick = scopeCurrentVerticalTick;
+                caption.leaseExpiryTick = scopeCurrentVerticalTick + scopeSubtitleHoldMs +
+                    scopeSubtitleEngageDriftMs + scopeSubtitleReleaseDriftMs + 500;
+            }
             recoveryInput.nativeOutwardPictureProof = outwardPictureConfirmation;
             recoveryInput.nativeOutwardPictureProofPresentationEpoch = outwardPictureConfirmationEpoch;
 			recoveryInput.crop = cropInput;
@@ -17100,6 +17137,31 @@ releaseDriftBaseRetention =
 			recoveryInput.retentionBounds = episodeInput.retentionBounds;
 			recoveryInput.retentionSourceGeneration = episodeInput.retentionSourceGeneration;
 			recoveryInput.retentionSourceSequence = episodeInput.retentionSourceSequence;
+            // Raw per-edge evidence survives overlay projection unchanged. Bind
+            // its original base and source before using it to dismiss a coarse
+            // opposite-edge nomination; erased/held captions are not black pixels.
+            if (episodeInput.retentionEvaluated && presentationRetention.rawBandSafetyEvaluated &&
+                episodeInput.retentionSourceGeneration == frameGeneration &&
+                episodeInput.retentionSourceSequence == sourceSequence &&
+                !suppressCaptionPresentation &&
+                SameSubtitlePresentationBounds(presentationRetention.rawBandSafetyBase, cropInput.geometry) &&
+                SameSubtitlePresentationBounds(episodeInput.retentionBounds, cropInput.geometry))
+            {
+                auto& bands = recoveryInput.currentNativeBandSafety;
+                bands.available = true;
+                bands.left = presentationRetention.rawBandLeftSafe;
+                bands.top = presentationRetention.rawBandTopSafe;
+                bands.right = presentationRetention.rawBandRightSafe;
+                bands.bottom = presentationRetention.rawBandBottomSafe;
+                bands.nativeBase = presentationRetention.rawBandSafetyBase;
+                bands.coarseHorizontalStep = std::max(2, width / 960);
+                bands.coarseVerticalStep = std::max(2, height / 540);
+                bands.sourceGeneration = frameGeneration;
+                bands.sourceSequence = sourceSequence;
+                bands.presentationEpoch = viewportRequestSerial;
+                bands.sourceFormatKey = cropInput.frameSourceFormatKey;
+                bands.analysisDomainKey = cropInput.frameAnalysisDomainKey;
+            }
 			recoveryInput.nearBlackEvaluated = episodeInput.nearBlackEvaluated;
 			recoveryInput.globalNearBlack = episodeInput.globalNearBlack;
 			recoveryInput.presentationEpoch = viewportRequestSerial;
@@ -17549,6 +17611,13 @@ releaseDriftBaseRetention =
             admissionDecision.state.confirmedFitOwnership=uncertainPicture.presentation.confirmedFitOwnership;
             if (uncertainPicture.presentation.nativePresentation.available)
                 admissionDecision.state.nativePresentation=uncertainPicture.presentation.nativePresentation;
+            // Resolution runs after admission here. A valid Classic lifetime
+            // annotates the existing exact pose without minting another crop
+            // certificate; carry that evidence into the packet we will submit.
+            else if (admissionDecision.state.nativePresentation.available &&
+                uncertainPicture.presentation.nativePresentation.captionTranslationMeasurement.available)
+                admissionDecision.state.nativePresentation.captionTranslationMeasurement =
+                    uncertainPicture.presentation.nativePresentation.captionTranslationMeasurement;
             if(unknownCaptionHold.retained &&
                 !uncertainPicture.presentation.nativePresentation.captionPreservation.available) {
                 admissionDecision.state=cropPresentationAdmission;
@@ -17927,16 +17996,22 @@ releaseDriftBaseRetention =
             if (cropPresentationAdmission.available &&
                 cropPresentationAdmission.acceptedNativeCrop.available &&
                 cropPresentationAdmission.optionalFillApplied && !aspectLimitFill.retainedSubmittedFill &&
+                cropPresentationAdmission.nativePresentation.origin !=
+                    AlphaSourceCrop::NativePresentationOrigin::CONFIRMED_TRANSLATION &&
+                cropPresentationAdmission.nativePresentation.origin !=
+                    AlphaSourceCrop::NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL &&
                 !cropDecision.nativePresentation.captionPreservation.available &&
                 !captionPresentationHeld && !unknownCaptionHold.retained &&
                 sameBounds(cropPresentationAdmission.acceptedNativeCrop.bounds,cropInput.geometry))
             {
+                const auto captionLease = cropPresentationAdmission.nativePresentation.captionTranslationMeasurement;
                 cropPresentationAdmission.nativePresentation = {true,
                     AlphaSourceCrop::NativePresentationOrigin::CONFIGURED_FILL,
                     cropPresentationAdmission.acceptedNativeCrop.bounds, presentationCropBounds,
                     frameGeneration, sourceSequence, viewportRequestSerial};
+                cropPresentationAdmission.nativePresentation.captionTranslationMeasurement = captionLease;
             }
-            // Certify the final translated pose after configured horizontal fill.
+            // Certify the final translated pose after either configured fill axis.
             cropPresentationAdmission = AlphaSourceCrop::QualifyTranslatedNativePresentation(
                 cropPresentationAdmission, finalFillInput, aspectLimitFill);
             const bool captionAnchorEligible = !unknownCaptionHold.retained &&

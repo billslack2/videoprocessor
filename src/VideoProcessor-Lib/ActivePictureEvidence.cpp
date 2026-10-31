@@ -2949,6 +2949,12 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		leftExtent.available;
 	const bool unsafeRight = !ExcludedBandPixelsAreSafe(result.excludedRight) ||
 		rightExtent.available;
+	result.rawBandSafetyEvaluated = true;
+	result.rawBandSafetyBase = trustedPresentation;
+	result.rawBandLeftSafe = !unsafeLeft;
+	result.rawBandTopSafe = !unsafeTop;
+	result.rawBandRightSafe = !unsafeRight;
+	result.rawBandBottomSafe = !unsafeBottom;
 	result.excludedHorizontalBandsPixelSafe = !unsafeLeft && !unsafeRight;
 	result.excludedVerticalBandsPixelSafe = !unsafeTop && !unsafeBottom;
 	result.excludedBandsPixelSafe =

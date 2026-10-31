@@ -299,6 +299,13 @@ struct ActivePicturePresentationRetentionEvidence
 	int presentationBlackThreshold = 0;
 	bool relocatedOverlayExclusionEvaluated = false;
 	bool relocatedOverlayResidualsExcluded = false;
+	// Completed raw native-band inspection, kept separate from overlay-erased
+	// presentation evidence. These bounded scans can retain an existing base;
+	// they never nominate a boundary or create crop authority.
+	bool rawBandSafetyEvaluated = false;
+	ActivePictureBounds rawBandSafetyBase;
+	bool rawBandLeftSafe = false, rawBandTopSafe = false;
+	bool rawBandRightSafe = false, rawBandBottomSafe = false;
 	bool excludedBandsPixelSafe = false;
 	bool excludedHorizontalBandsPixelSafe = false;
 	bool excludedVerticalBandsPixelSafe = false;

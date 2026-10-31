@@ -1294,6 +1294,18 @@ namespace AlphaSourceCrop
         uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
         uint64_t sourceFormatKey = 0, analysisDomainKey = 0;
     };
+    struct CaptionTranslationMeasurement
+    {
+        bool available=false, measuredCaption=false, denseOverlayMeasured=false;
+        VerticalBarContentInput denseContent;
+        ActivePictureBounds nativeBase,occupiedBounds;
+        double targetTranslationPixels=0.0;
+        int visibleExtentMarginPixels=0;
+        uint64_t sourceGeneration=0,sourceSequence=0,presentationEpoch=0;
+        uint64_t sourceFormatKey=0,analysisDomainKey=0,acceptedNativeSourceSequence=0;
+        // Original measured source lifetime; copying/submission never renews it.
+        uint64_t measurementTick=0,leaseExpiryTick=0;
+    };
     // Exact authorized output, distinct from the source-derived native contract.
     struct NativePresentationCertificate
     {
@@ -1302,9 +1314,12 @@ namespace AlphaSourceCrop
         ActivePictureBounds nativeBase, approvedBounds;
         uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
         CaptionPreservationEvidence captionPreservation;
-        // Composition of an independently qualified translation with final side fill.
+        // Composition of an independently qualified translation with either fill axis.
         ActivePictureBounds unfilledTranslation;
         double translatedFillScreenAspect = 0.0;
+        // Exact final fill policy, replayed at submission against the unfilled pose.
+        AspectLimitFillInput translatedFillPolicy;
+        CaptionTranslationMeasurement captionTranslationMeasurement;
     };
 
     struct PreparedSubtitlePresentation
@@ -1520,6 +1535,7 @@ namespace AlphaSourceCrop
         bool submittedPresentationAvailable = false;
         ActivePictureBounds submittedPresentation;
         NativePresentationOrigin submittedPresentationOrigin = NativePresentationOrigin::NONE;
+        NativePresentationCertificate submittedPresentationProof;
 		bool available = false;
 		ActivePictureBounds crop;
 		uint64_t sourceGeneration = 0;
@@ -1883,6 +1899,20 @@ namespace AlphaSourceCrop
     };
 	struct PresentationRecoveryInput
 	{
+        // Completed current native-pixel inspection of individual excluded bands.
+        // Coarse edge nominations may disagree; only this exact identity may
+        // show that an opposite-edge nomination contains no visible pixels.
+        struct NativeBandSafety
+        {
+            bool available=false, left=false, top=false, right=false, bottom=false;
+            ActivePictureBounds nativeBase;
+            uint64_t sourceGeneration=0,sourceSequence=0,presentationEpoch=0;
+            uint64_t sourceFormatKey=0,analysisDomainKey=0;
+            int coarseHorizontalStep=0,coarseVerticalStep=0;
+        } currentNativeBandSafety;
+        CaptionTranslationMeasurement currentCaptionTranslation;
+        // Current live profile, never inferred from an old controller/lease.
+        bool classicTranslationEnabled=false;
         CurrentCaptionObservation captionObservation;
         // An exact current independently confirmed native expansion can own
         // preservation without acquiring caption/UI presentation authority.
