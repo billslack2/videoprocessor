@@ -1,4 +1,8 @@
 Set-StrictMode -Version Latest
+# MSBuild's Windows PowerShell child can start without module autoloading.
+# Load the cmdlet providers used by all gate entry points explicitly.
+Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
+Import-Module Microsoft.PowerShell.Management -ErrorAction Stop
 
 function Get-VpQualificationRoot([string]$Root) {
     if (-not $Root) { $Root = Join-Path $PSScriptRoot '..' }
