@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "4fa45da9342defc8914c45350b157e5de7b35177",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "ReconstructionMotionTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "037A60A17CFC7E246B1918B6637196C62D9B61A74B0E54A7D4F161808220FE8A",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "passed": 209
+    },
+    {
+      "variant": "beta",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "40DDA86E85DFC3313235B1E51D49451716E6EF47538FCFF8440B67FDAD61915F",
+      "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "passed": 209
+    }
+  ],
+  "finished": "2026-10-31T17:03:45.0363614-04:00",
+  "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+}

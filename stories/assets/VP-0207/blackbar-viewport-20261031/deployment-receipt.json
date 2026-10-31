@@ -1,0 +1,285 @@
+{
+  "commit": "4fa45da9342defc8914c45350b157e5de7b35177",
+  "previousCommit": "b52ae03a424fcd5557ebac6de2ba1c3b28448eee",
+  "configuration": "Release",
+  "architecture": "x64",
+  "status": "Passed",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\reviewed-viewport-20261031-172743-104",
+  "configurationEdits": [],
+  "configurationFiles": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "name": "VideoProcessor.cfg",
+      "sha256": "2F644385C45D532CB213DFD4C432B95398467FADFC8FBD25BD41C48A946943C5",
+      "backup": "C:\\Videoprocessor\\vp\\backups\\reviewed-viewport-20261031-172743-104\\VideoProcessor.cfg"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "name": "VideoProcessor.state",
+      "sha256": "99CF94A66291AC295858C9AFD73DC880EE42F9496FD974D9CC44A9A1BF979222",
+      "backup": "C:\\Videoprocessor\\vp\\backups\\reviewed-viewport-20261031-172743-104\\VideoProcessor.state"
+    }
+  ],
+  "dependencies": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    }
+  ],
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "relative": "VideoProcessor.exe",
+      "before": "4A7AC5CFC30E9F5BB710C517393BF528FE8D0E9985E4613336A45A0711BC4798",
+      "sha256": "7F670175294D52FA2234C2ABD6E76625DD01080B80C5B8CC1CFB5E451EE90018",
+      "after": "7F670175294D52FA2234C2ABD6E76625DD01080B80C5B8CC1CFB5E451EE90018"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "before": "E981BF25B73F5B98A9B0432EFFEA33BF7233634DE0B56FC23565788EC086F0FB",
+      "sha256": "018202D91ADDEF1F4836E540F57F8CEDC6F6AF3611982F6B9FA945D45A5660FB",
+      "after": "018202D91ADDEF1F4836E540F57F8CEDC6F6AF3611982F6B9FA945D45A5660FB"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "before": "342473AEEC12BA20D7BFB5FD7F664100FA0E348965805247A8780EE9CB2C29AD",
+      "sha256": "33A57C3CEF79715585A63073CB12A2AD0FA8C088DBD63143E93E6B88CA785258",
+      "after": "33A57C3CEF79715585A63073CB12A2AD0FA8C088DBD63143E93E6B88CA785258"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "relative": "VideoProcessor.exe.runtime.json",
+      "before": "675B455E32722EF0E55C642ACF995C11B4CD00E290C817EF451B41989E73CB7C",
+      "sha256": "2900DED476E9AFFC7DD85D0E0C1CC7F8F6344EDA99D86993EFF1F197BBC685EB",
+      "after": "2900DED476E9AFFC7DD85D0E0C1CC7F8F6344EDA99D86993EFF1F197BBC685EB"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "before": "681DD80C76CA4B3F2308F01A5F6BC14845B82C7A4AD14ED21183D07F4B96C88D",
+      "sha256": "F5405AA680641343DB7294C605C243F92096632DDCD75FE7C7A303736C46A0AB",
+      "after": "F5405AA680641343DB7294C605C243F92096632DDCD75FE7C7A303736C46A0AB"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "before": "1D524EA6BFE17A3DBA7EF7344C050D793421A40F2FBA9C4066767C11F4BC492E",
+      "sha256": "DA02BF62E3D175FD1DA6A062D45D499BD5EE21F505BCAB86FE71604583A6C791",
+      "after": "DA02BF62E3D175FD1DA6A062D45D499BD5EE21F505BCAB86FE71604583A6C791"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\VideoProcessor-GUI.pdb",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb",
+      "relative": "VideoProcessor-GUI.pdb",
+      "before": "CF8436D0624A22F974B976739A1C5F0D6A6038A16E4E95C5D2DB2302ECF204CE",
+      "sha256": "8AB65766D077AD2716C0D7C8EAEFBEF1214272F8B0E1FFABC984873EC69B74DE",
+      "after": "8AB65766D077AD2716C0D7C8EAEFBEF1214272F8B0E1FFABC984873EC69B74DE"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "relative": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "before": "0D1E13633242DB128045753113CE3DC6BCBF300D870D8D12DD786E107AFFA2BB",
+      "sha256": "F519E3F90DEDF96E91FE9E409D3208318891186ACBDBFA3BDB5FBCA4FBDC6D97",
+      "after": "F519E3F90DEDF96E91FE9E409D3208318891186ACBDBFA3BDB5FBCA4FBDC6D97"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "relative": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "before": "FE25D8B73165F64E14C1BEA962317E3829E641182C5F5E7C6754B381CCC005BF",
+      "sha256": "95EDAC199571A8C140E949696A6D769A4745E5ED1FF3F4243B13D2580EEE8C00",
+      "after": "95EDAC199571A8C140E949696A6D769A4745E5ED1FF3F4243B13D2580EEE8C00"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.exe.runtime.json",
+      "relative": "VideoProcessor-GUI.exe.runtime.json",
+      "before": "675B455E32722EF0E55C642ACF995C11B4CD00E290C817EF451B41989E73CB7C",
+      "sha256": "2900DED476E9AFFC7DD85D0E0C1CC7F8F6344EDA99D86993EFF1F197BBC685EB",
+      "after": "2900DED476E9AFFC7DD85D0E0C1CC7F8F6344EDA99D86993EFF1F197BBC685EB"
+    }
+  ],
+  "motionReceipt": "E:\\codex\\diagnostics\\blackbar-content-regression-20261031-1325\\4fa-motion\\motion-renderer-tests.json",
+  "motionReceiptSHA256": "20224F9BC943CB416BCACC3294E0B488D3C64CB5CEF03F68C7DBFF1B80D39259",
+  "motionTests": {
+    "schemaVersion": 1,
+    "sourceCommit": "4fa45da9342defc8914c45350b157e5de7b35177",
+    "sourceDirty": false,
+    "configuration": "Release",
+    "architecture": "x64",
+    "classes": [
+      "MotionRendererTests",
+      "SourceUploadBatchTests",
+      "TemporalCleanPacketGpuTests",
+      "ReconstructionMotionTests",
+      "SubtitleCutPasteTests",
+      "SubtitleCutPasteShaderTests",
+      "RendererDependencyTests"
+    ],
+    "runs": [
+      {
+        "variant": "standard",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\VideoProcessor-Test.dll",
+        "sha256": "037A60A17CFC7E246B1918B6637196C62D9B61A74B0E54A7D4F161808220FE8A",
+        "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+        "passed": 209
+      },
+      {
+        "variant": "beta",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+        "sha256": "40DDA86E85DFC3313235B1E51D49451716E6EF47538FCFF8440B67FDAD61915F",
+        "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+        "passed": 209
+      }
+    ],
+    "finished": "2026-10-31T17:03:45.0363614-04:00",
+    "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+  },
+  "mandatoryQualification": {
+    "schemaVersion": 1,
+    "status": "Passed",
+    "configuration": "Release",
+    "platform": "x64",
+    "source": {
+      "commit": "4fa45da9342defc8914c45350b157e5de7b35177",
+      "dirty": false,
+      "fingerprint": "eaef4c55a2b6843f764e9eac697b0854f7edf00345c2a42c1b59f11fb21373f9",
+      "label": "4fa45da9342d",
+      "build": "4fa45da9342defc8914c45350b157e5de7b35177"
+    },
+    "manifestHash": "B670642FD7201C60F6A6E6B69C5885DC7205169569AFE2BC830269E383949338",
+    "binaries": [
+      {
+        "path": "x64/Release/VideoProcessor-GUI.exe",
+        "sha256": "7F670175294D52FA2234C2ABD6E76625DD01080B80C5B8CC1CFB5E451EE90018"
+      },
+      {
+        "path": "x64/Release/VideoProcessor-Lib.lib",
+        "sha256": "A4C2DF90DCCB25597995BA4FA40CE39578608E6F80E21A91606ED07DD347F662"
+      },
+      {
+        "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+        "sha256": "018202D91ADDEF1F4836E540F57F8CEDC6F6AF3611982F6B9FA945D45A5660FB"
+      },
+      {
+        "path": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+        "sha256": "33A57C3CEF79715585A63073CB12A2AD0FA8C088DBD63143E93E6B88CA785258"
+      },
+      {
+        "path": "x64/Release/VideoProcessor-Test.dll",
+        "sha256": "037A60A17CFC7E246B1918B6637196C62D9B61A74B0E54A7D4F161808220FE8A"
+      },
+      {
+        "path": "x64/Release/tests-beta/VideoProcessor-TestBeta.dll",
+        "sha256": "40DDA86E85DFC3313235B1E51D49451716E6EF47538FCFF8440B67FDAD61915F"
+      },
+      {
+        "path": "x64/Release/libplacebo-360.dll",
+        "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+      },
+      {
+        "path": "x64/Release/tests-beta/libplacebo-388.dll",
+        "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+      },
+      {
+        "path": "x64/Release/vprenderer/libplacebo-360.dll",
+        "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+      },
+      {
+        "path": "x64/Release/vprenderer-beta/libplacebo-388.dll",
+        "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+      }
+    ],
+    "builds": [
+      {
+        "name": "native-library",
+        "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+        "exit": 0
+      },
+      {
+        "name": "host",
+        "project": "src\\VideoProcessor-GUI\\VideoProcessor-GUI.vcxproj",
+        "exit": 0
+      },
+      {
+        "name": "standard-renderer",
+        "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRenderer.vcxproj",
+        "exit": 0
+      },
+      {
+        "name": "beta-renderer",
+        "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRendererBeta.vcxproj",
+        "exit": 0
+      },
+      {
+        "name": "standard-tests",
+        "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+        "exit": 0
+      },
+      {
+        "name": "beta-tests",
+        "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+        "exit": 0
+      }
+    ],
+    "runs": [
+      {
+        "variant": "standard",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "x64\\Release\\VideoProcessor-Test.dll",
+        "trx": "artifacts/qualification/runs/20261031-170459-f4f4f9ef/standard.trx",
+        "trxSha256": "DD91747D660D2C784F91E9627AC3E1047D2953F2740C80FA74A894B9C14EC9EC",
+        "executed": 749,
+        "native": 729,
+        "actualClassic": 20
+      },
+      {
+        "variant": "beta",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+        "trx": "artifacts/qualification/runs/20261031-170459-f4f4f9ef/beta.trx",
+        "trxSha256": "A98A987B362E1B2E670F285D5ED46459AE6C3EE0957F0230B447E4764D708449",
+        "executed": 749,
+        "native": 729,
+        "actualClassic": 20
+      }
+    ],
+    "optionalPrivateFixtures": [
+      {
+        "environment": "VP_AR_COLLAR_CAPTURE_FRAME",
+        "status": "supplied-not-proven-exercised",
+        "sha256": "4E88F4B1F5FDCE9D295FC1D7483BD3787DA875AEC16D0C348FB382E940363BD5",
+        "path": "E:\\codex\\diagnostics\\combined-live-regression-20261031-0859\\native-capture-090807\\frame-000001.bin"
+      },
+      {
+        "environment": "VP_DARK_AR_ANALYSIS_FRAME",
+        "status": "absent-not-claimed",
+        "sha256": null,
+        "path": null
+      }
+    ],
+    "finished": "2026-10-31T17:26:18.9549569-04:00"
+  },
+  "mainProcessLaunched": false,
+  "startedAt": "2026-10-31T17:27:43.3244083-04:00",
+  "finishedAt": "2026-10-31T17:27:44.9117197-04:00"
+}

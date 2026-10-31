@@ -1,0 +1,63 @@
+VideoProcessor subtitle viewport validation — automated qualification and deployment
+Source: 4fa45da9342defc8914c45350b157e5de7b35177, clean worktree.
+
+Final x64 Release qualification PASSED: standard 749/749 and beta 749/749,
+each comprising 729 native and 20 actual renderer tests. Controlled GPU/cue
+suites separately passed 209/209 per variant. Final TRX counts and hashes,
+ten build artifacts, ten deployed files and both dependencies were verified.
+Configuration/state match their backups; no configuration edits were made.
+The main application was not launched. Earlier staged/interrupted results remain
+historical evidence and do not replace these final receipts.
+
+The investigation separated five coupled failures. Classic's confirmed
+translation shortcut could discard current opposite-bar content, while skipped
+sources selected a visibility fallback. Coverage now checks the actual translated
+viewport against current pixels outside the independently accepted native picture.
+Advanced mode previously undid Classic translation after certification, producing
+a native output paired with a displaced certificate. Mode geometry is now
+canonical before admission and certification.
+
+Even correct certificates permitted prepared/unprepared processing to resize a
+persistent cue's viewport. Successfully submitted prepared-native initialization
+now permits bounded continuity of an actually displayed outward viewport under
+exact current raw occupancy. Clear raw sides retire obsolete margins; new picture
+or larger raw visibility wins immediately. This presentation lineage grants no
+glyph ownership, cleanup permission, caption-lease renewal or native AR votes.
+
+An older unknown-caption hold subtracted its historical erased footprint from
+current raw pixels, then cropped those still-visible pixels without current
+composition. Unknown hold now requires completed current raw-band safety. Finally,
+verified cadence composition intentionally strips bar authority; the prepared
+output qualifier nevertheless required that authority. A narrow current verified
+cadence path now certifies prepared erasure only, preserving strict semantic
+ownership, current cleanup/residual checks and independent picture-change vetoes.
+
+Test-first evidence includes b52-red-03.trx (eight intended failures, five
+controls), 61d-startup-control-red.trx, lineage-extra-red.trx (confirmed-FIT
+processing failure), 373-unknown-hold-red.trx, and
+b5e-cadence-erasure-red-02.trx. The last proved real guard seeding and current
+pixel verification before the qualifier failed. Its runtime transition was
+composed on BOTH sources, not an uncomposed output. Joined successful-submission
+diagnostics now bind final composition, selected source, actual bounds and proof.
+
+The accepted native bounds 250..1906 imply aspect 2.31884, below the configured
+2.32 narrower-fill limit. Detection remains source-derived and is not forced to
+the 2.35 screen. Captured evidence was SDR Rec.709 v210 at 59.94 Hz; it does not
+identify the streaming codec or prove a Dolby Vision cause.
+
+The nonrenewing unknown-evidence lease is capped at 250 ms. It is separate from
+Classic's configured 500 ms engage and 2000 ms release drift. Observing 24 settled
+test sources adds no 24-frame runtime waiting gate.
+
+CURRENT: automated qualification and deployment PASSED. Physical playback
+acceptance is UNCONFIRMED, awaiting user replay. HDMI refresh/EPSON availability
+remains a separate unresolved investigation. The supplied native IMAX capture
+was exercised in both final TRXs; the optional dark capture was absent and is
+not claimed. No physical live pass is claimed.
+
+Final GPU/cue receipts: 4fa-motion/motion-renderer-tests.json (209+209 passed)
+Final runtime receipt: 4fa-final-runtime-qualification.json (749+749 passed)
+Deployment receipt: deployment-reviewed-viewport-20261031-172743-104.json
+Backup: C:\Videoprocessor\vp\backups\reviewed-viewport-20261031-172743-104\deployment.json
+Physical playback acceptance: UNCONFIRMED / awaiting user replay
+

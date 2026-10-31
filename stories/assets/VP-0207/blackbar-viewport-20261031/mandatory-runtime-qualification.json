@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "status": "Passed",
+  "configuration": "Release",
+  "platform": "x64",
+  "source": {
+    "commit": "4fa45da9342defc8914c45350b157e5de7b35177",
+    "dirty": false,
+    "fingerprint": "eaef4c55a2b6843f764e9eac697b0854f7edf00345c2a42c1b59f11fb21373f9",
+    "label": "4fa45da9342d",
+    "build": "4fa45da9342defc8914c45350b157e5de7b35177"
+  },
+  "manifestHash": "B670642FD7201C60F6A6E6B69C5885DC7205169569AFE2BC830269E383949338",
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "7F670175294D52FA2234C2ABD6E76625DD01080B80C5B8CC1CFB5E451EE90018"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Lib.lib",
+      "sha256": "A4C2DF90DCCB25597995BA4FA40CE39578608E6F80E21A91606ED07DD347F662"
+    },
+    {
+      "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "018202D91ADDEF1F4836E540F57F8CEDC6F6AF3611982F6B9FA945D45A5660FB"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "33A57C3CEF79715585A63073CB12A2AD0FA8C088DBD63143E93E6B88CA785258"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Test.dll",
+      "sha256": "037A60A17CFC7E246B1918B6637196C62D9B61A74B0E54A7D4F161808220FE8A"
+    },
+    {
+      "path": "x64/Release/tests-beta/VideoProcessor-TestBeta.dll",
+      "sha256": "40DDA86E85DFC3313235B1E51D49451716E6EF47538FCFF8440B67FDAD61915F"
+    },
+    {
+      "path": "x64/Release/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/tests-beta/libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    },
+    {
+      "path": "x64/Release/vprenderer/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    }
+  ],
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0
+    },
+    {
+      "name": "host",
+      "project": "src\\VideoProcessor-GUI\\VideoProcessor-GUI.vcxproj",
+      "exit": 0
+    },
+    {
+      "name": "standard-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRenderer.vcxproj",
+      "exit": 0
+    },
+    {
+      "name": "beta-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRendererBeta.vcxproj",
+      "exit": 0
+    },
+    {
+      "name": "standard-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "exit": 0
+    },
+    {
+      "name": "beta-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "exit": 0
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\VideoProcessor-Test.dll",
+      "trx": "artifacts/qualification/runs/20261031-170459-f4f4f9ef/standard.trx",
+      "trxSha256": "DD91747D660D2C784F91E9627AC3E1047D2953F2740C80FA74A894B9C14EC9EC",
+      "executed": 749,
+      "native": 729,
+      "actualClassic": 20
+    },
+    {
+      "variant": "beta",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "trx": "artifacts/qualification/runs/20261031-170459-f4f4f9ef/beta.trx",
+      "trxSha256": "A98A987B362E1B2E670F285D5ED46459AE6C3EE0957F0230B447E4764D708449",
+      "executed": 749,
+      "native": 729,
+      "actualClassic": 20
+    }
+  ],
+  "optionalPrivateFixtures": [
+    {
+      "environment": "VP_AR_COLLAR_CAPTURE_FRAME",
+      "status": "supplied-not-proven-exercised",
+      "sha256": "4E88F4B1F5FDCE9D295FC1D7483BD3787DA875AEC16D0C348FB382E940363BD5",
+      "path": "E:\\codex\\diagnostics\\combined-live-regression-20261031-0859\\native-capture-090807\\frame-000001.bin"
+    },
+    {
+      "environment": "VP_DARK_AR_ANALYSIS_FRAME",
+      "status": "absent-not-claimed",
+      "sha256": null,
+      "path": null
+    }
+  ],
+  "finished": "2026-10-31T17:26:18.9549569-04:00"
+}
