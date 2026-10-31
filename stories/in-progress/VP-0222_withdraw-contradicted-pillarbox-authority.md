@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-31). Architecture for stable retention and genuine AR transitions is documented in stories/assets/VP-0222/ar-architecture-20261031.txt; implementation remains pending. Requested four-reviewer Sol medium audit complete at beta a591ad3b; defects remain open for correction. Parent independently reviewed findings: 993 existing native/continuity/OSD tests pass, while three new audit probes fail and reproduce missing submitted continuity after refinement, falsely trusted symmetric dark-picture overcrop, and nonzero Full-range matte recovery failure. No production changes or deployment. Detailed report and reproducible probe patch are saved locally; proposed next work is continuity correction followed by measurement confidence/range corrections with paired true-expansion regressions.
+In Progress (2026-10-31). User authorized implementation, review, comprehensive testing and preparation for visual testing. Fresh current beta a591ad3b plus installed subtitle correction82e3fc0a preserved in E:/codex/videoprocessor/ar-evidence-continuity-20261031. Implementing shared native candidate verification/measured matte levels and accepted-native versus submitted-presentation continuity, with qualified real expansion paths. Full relevant native tests, captured replays, actual renderer transition checks and both libplacebo GPU matrices are required before paired Release deployment. Preserve current user configuration.
 
 ## Problem and evidence
 
