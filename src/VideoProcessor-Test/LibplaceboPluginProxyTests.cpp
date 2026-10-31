@@ -46,7 +46,8 @@ namespace
             !strstr(message,"Alpha native presentation commit:") && !strstr(message,"SUBTITLE ") &&
             !strstr(message,"application profile") && !strstr(message,"Renderer configuration snapshot") &&
             !strstr(message,"VP source measurement interval:") && !strstr(message,"VP aspect telemetry:") && !strstr(message,"VP subtitle background preparation:") &&
-            !strstr(message,"Subtitle shader preparation rejected:"))return;
+            !strstr(message,"Subtitle shader preparation rejected:") && !strstr(message,"Alpha relocated caption evidence:") &&
+            !strstr(message,"Alpha relocated caption geometry:") && !strstr(message,"Alpha caption unknown presentation:"))return;
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
         classicPoseMessages.emplace_back(message);
     }

@@ -4,6 +4,7 @@
 #include <ActivePictureEvidence.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCueContinuation.h>
+#include <SubtitleCadenceGuard.h>
 #include <SubtitleCutPaste.h>
 #include <vprenderer/SubtitleAspectRetention.h>
 #include <ActivePictureDecisionTimeline.h>
@@ -3028,6 +3029,123 @@ namespace VideoProcessorTest
                 Assert::AreEqual(scenario==0,state.available,
                     L"A proposal or failed/mismatched output cannot establish presentation continuity.");
             }
+        }
+        static void VerifyRealCadencePreparedErasure(bool p210,SubtitlePreviewMode mode,bool negatives)
+        {
+            LoggedRelocatedCaptionFixture f(p210);
+            // The older ownership fixture's overall text bounds include tracker
+            // margins below its actual capture lines. A real compositor content
+            // rectangle follows those mapped capture lines, not that envelope.
+            SubtitleBoxRect captured;
+            for(const auto& line:f.composition.glyphLines)if(line.Valid()) {
+                if(!captured.Valid())captured=line;
+                else captured={std::min(captured.left,line.left),std::min(captured.top,line.top),
+                    std::max(captured.right,line.right),std::max(captured.bottom,line.bottom)};
+            }
+            Assert::IsTrue(captured.Valid());f.composition.content=captured;
+            f.observation.analysisStride=2;f.observation.independentBarAnalysis=true;
+            f.observation.policyGeneration=11;f.observation.continuityGeneration=13;
+            f.observation.sharedPicture.required=true;f.observation.sharedPicture.bounds=f.base;
+            f.observation.sharedPicture.identity=f.observation.identity;
+            auto strong=std::make_unique<SubtitleBoxPreview>();strong->available=true;
+            strong->current=f.observation;strong->text=f.accepted;
+            strong->policyGeneration=11;strong->continuityGeneration=13;
+            auto skipped=std::make_unique<SubtitleBoxPreview>();skipped->current=strong->current;
+            skipped->policyGeneration=11;skipped->continuityGeneration=13;
+            auto& c=skipped->current;++c.identity.acceptedSequence;++c.identity.sourceFrameNumber;
+            c.identity.captureTimestamp+=166833;c.sharedPicture.identity=c.identity;
+            c.analyzed=false;c.cadenceSkipped=true;c.text={};c.ink.reset();
+            c.barAuthority=false;c.independentBarAnalysis=false;c.barEvidence={};
+            SubtitleCadenceGuard guard;
+            const bool seeded=guard.RememberAccepted(*strong,f.accepted,f.Source(),f.base,f.composition,
+                1001.0/60.0,250,mode==SubtitlePreviewMode::BlackBackground?3:5);
+            Logger::WriteMessage((std::string("Real cadence seed reason=")+guard.DecisionReason()).c_str());
+            Assert::IsTrue(seeded,L"The real native footprint guard must first accept the established current cue.");
+            const auto& cadence=guard.PrepareReference(*skipped,f.Source(),f.base,1001.0/60.0,250);
+            Logger::WriteMessage((std::string("Real cadence current proof reason=")+cadence.reason).c_str());
+            Assert::IsTrue(cadence.valid && cadence.samples>0);
+            Assert::IsFalse(cadence.preview.current.barAuthority || cadence.preview.current.independentBarAnalysis);
+            Assert::IsTrue(cadence.preview.current.pendingRefresh && cadence.preview.current.cadenceSkipped);
+            Assert::IsTrue(cadence.continuation.MatchesCue(f.accepted));
+            const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            const auto evaluate=[&](const SubtitleCadenceProof& proof,int fault) {
+                auto input=f.Input();input.mode=mode;input.currentIdentity=proof.preview.current.identity;
+                input.observation=&proof.preview.current;input.accepted=&proof.continuation.accepted;
+                input.composition=&proof.geometry;input.currentDisplayPicture=proof.preview.current.sharedPicture;
+                input.policyGeneration=11;input.continuityGeneration=13;
+                input.pendingCurrentPixelsVerified=false;input.continuation=&proof.continuation;
+                auto currentRaw=raw;
+                if(fault==1)++input.currentIdentity.acceptedSequence;
+                if(fault==2)++input.currentIdentity.transportGeneration;
+                if(fault==3)++input.currentIdentity.analysisDomainKey;
+                if(fault==4)++input.policyGeneration;
+                if(fault==5)++input.continuityGeneration;
+                if(fault==6)input.mode=SubtitlePreviewMode::None;
+                if(fault==7)input.physicalBase.bottom-=2;
+                if(fault==8)input.sourcePrepared=false;
+                if(fault==9)++input.currentDisplayPicture.identity.acceptedSequence;
+                if(fault==10) {
+                    currentRaw.activePicture.available=true;
+                    currentRaw.activePicture.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                    currentRaw.activePicture.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                    currentRaw.activePicture.trustedBounds=f.base;currentRaw.activePicture.trustedBounds.bottom+=32;
+                }
+                return EvaluatePreparedSubtitlePresentationEvidence(f.Source(),currentRaw,input);
+            };
+            if(!negatives) {
+                const auto proof=evaluate(cadence,0);
+                Logger::WriteMessage((std::string("Real cadence prepared-erasure reason=")+proof.reason).c_str());
+                Assert::IsTrue(proof.qualified && proof.preparedErasureOnly,
+                    L"An actually composed exact current cadence packet can certify erasure without acquiring independent bar authority.");
+                Assert::IsFalse(proof.renewsHold);
+                Assert::IsFalse(cadence.preview.current.barAuthority || cadence.preview.current.independentBarAnalysis);
+                Assert::AreEqual(uint64_t(2115),cadence.continuation.templateIdentity.acceptedSequence);
+                Assert::AreEqual(uint64_t(2116),proof.identity.acceptedSequence);
+                return;
+            }
+            for(int fault=1;fault<=10;++fault)Assert::IsFalse(evaluate(cadence,fault).qualified);
+            for(int fault=0;fault<6;++fault) {
+                auto bad=std::make_unique<SubtitleCadenceProof>(cadence);
+                if(fault==0)bad->continuation.localGlyphsOnly=true;
+                if(fault==1)bad->continuation.samples=0;
+                if(fault==2)++bad->continuation.previousIdentity.acceptedSequence;
+                if(fault==3)++bad->continuation.templateIdentity.acceptedSequence;
+                if(fault==4)bad->continuation.ink.reset();
+                if(fault==5)bad->geometry.generatedCleanup.right=f.base.right+2;
+                Assert::IsFalse(evaluate(*bad,0).qualified);
+            }
+            // Re-seed before each actual native mutation; same-source proof
+            // replay is immutable and must not be confused with fresh pixels.
+            for(bool cleanup : {false,true}) {
+                SubtitleCadenceGuard changed;
+                Assert::IsTrue(changed.RememberAccepted(*strong,f.accepted,f.Source(),f.base,f.composition,
+                    1001.0/60.0,250,mode==SubtitlePreviewMode::BlackBackground?3:5));
+                const int x=cleanup?f.composition.generatedCleanup.left+2:f.accepted.lineBounds[0].left+6;
+                const int y=cleanup?f.composition.generatedCleanup.top+2:f.accepted.lineBounds[0].top+6;
+                f.frame.FillRectangle(x,y,x+1,y+1,cleanup?300:64);
+                const auto& rejected=changed.PrepareReference(*skipped,f.Source(),f.base,1001.0/60.0,250);
+                Assert::IsFalse(rejected.valid);Assert::IsTrue(rejected.samples>0);
+                f.frame.FillRectangle(x,y,x+1,y+1,cleanup?64:700);
+            }
+            // Composition can erase only its real current footprint; new raw
+            // picture outside it still vetoes a prepared-only presentation.
+            f.frame.FillRectangle(200,1900,700,2000,300);
+            auto input=f.Input();input.mode=mode;input.currentIdentity=cadence.preview.current.identity;
+            input.observation=&cadence.preview.current;input.accepted=&cadence.continuation.accepted;
+            input.composition=&cadence.geometry;input.continuation=&cadence.continuation;
+            input.policyGeneration=11;input.continuityGeneration=13;input.currentDisplayPicture=cadence.preview.current.sharedPicture;
+            const auto residual=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            Assert::IsFalse(EvaluatePreparedSubtitlePresentationEvidence(f.Source(),residual,input).qualified);
+        }
+        TEST_METHOD(RealNativeCadencePreparedErasureDoesNotAcquireBarAuthority)
+        {
+            for(bool p210 : {false,true})for(const auto mode : {SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+                VerifyRealCadencePreparedErasure(p210,mode,false);
+        }
+        TEST_METHOD(RealNativeCadencePreparedErasureRejectsForeignProofAndChangedCurrentPixels)
+        {
+            for(bool p210 : {false,true})for(const auto mode : {SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+                VerifyRealCadencePreparedErasure(p210,mode,true);
         }
         TEST_METHOD(QualifiedUnknownHoldCannotCropUnprocessedCurrentCaptionInsideOldErasure)
         {

@@ -152,7 +152,7 @@ to admit its first current prepared native output.
 
 ## Required qualification and remaining acceptance
 
-Mandatory runtime qualification requires **727 native tests and 20 actual renderer
+Mandatory runtime qualification requires **729 native tests and 20 actual renderer
 tests**, with the declared dependency variants and matching source/build identity.
 The actual matrix contains the six existing Classic translation/lifecycle cases
 and fourteen UHD off-fill/both-bar/Black/Reconstruction/V210/moving-cleanup cases across
@@ -226,3 +226,39 @@ the current-raw safety repair, and `unknown-hold-gate-metadata.log` verifies
 exact required execution and fail-closed qualification. The unknown-hold
 footprint-subtraction helper existed in `c3cff54ce` (19 October); this identifies
 the unsafe permission path, not a completed first-bad playback bisect.
+
+## Cadence composition and current prepared-output qualification
+
+The b5e runtime matrix revealed another distinct contract gap. Static Black
+sources 2745 and 2746 both submitted composed output. The first was native
+250..1906; the second widened to 250..1956 despite successful current-pixel
+cadence verification (18,575 samples against source 2745). The next scheduled
+and skipped frames retained the wider view, rather than proving repeated
+oscillation. The stopped run also passed the standard and beta moving cross-edge
+cases and one V210 Classic both-bar case; these partial results are not a
+qualification receipt. Static native framing assertions remain strict.
+
+Verified cadence deliberately clears independent bar authority. Both owned
+caption qualification and prepared-erasure-only qualification nevertheless
+required that authority and rejected pending cadence observations. The latter
+route describes already composed current output, not a new source AR vote.
+`b5e-cadence-erasure-red-02.trx` proves this with the actual native guard: seeding
+and current-pixel verification pass, then prepared-erasure qualification fails
+with `current-caption-proof-unavailable`. Foreign-proof and changed native
+cleanup/glyph controls pass. The initial invalid tracker-margin fixture is
+recorded separately and is not counted as this intended RED.
+
+The repair recognizes only exact current, nonlocal verified cadence for
+prepared-erasure output, with matching source identity, physical/shared display
+base, cue, policy, continuity and freshly sampled ink. All source-prepared,
+capture, cleanup, destination, remaining-band and independent-picture vetoes
+continue to apply. It leaves owned-caption qualification, bar authority,
+native votes and glyph lease renewal unchanged. Static native output and moving
+cleanup safety remain separate actual-renderer acceptance requirements.
+
+`cadence-erasure-green-native.trx` passes all 729 mandatory native methods.
+The actual guard positive covers P010/P210 in Black and Reconstruction; it
+asserts prepared-erasure output without restored bar authority or renewed hold.
+The companion negatives preserve strict current pixel and proof context checks.
+The matching gate metadata test verifies exact required execution; final clean
+runtime and GPU/cue qualification remain separate receipts.
