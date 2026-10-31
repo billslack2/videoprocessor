@@ -1286,6 +1286,87 @@ public:
             Assert::AreEqual(fault==0,proof.valid);
         }
     }
+    TEST_METHOD(CadenceGuardUhdCrossingCaptionKeepsOnlyProvedRowFootprintAndGlyphFringe) {
+        for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422})
+        for(int mutation=0;mutation<4;++mutation) {
+            constexpr int width=3840,height=2160;
+            std::vector<uint16_t> pixels(size_t(width)*height*(format==AnalysisLumaFormat::P010?3:4)/2,uint16_t(512<<6));
+            std::fill(pixels.begin(),pixels.begin()+size_t(width)*height,uint16_t(64<<6));
+            for(int y=250;y<1906;++y)for(int x=0;x<width;++x)pixels[size_t(y)*width+x]=uint16_t(300<<6);
+            auto ready=Ready(1);auto& c=ready.current;
+            c.width=width;c.height=height;c.pictureTop=250;c.pictureBottom=1906;c.analysisStride=2;
+            c.sharedPicture.bounds={0,250,width,1906,width,height};
+            c.text.lineCount=2;c.text.bounds={1354,1746,2470,1992};
+            c.text.lineBounds[0]={1354,1892,2470,1992};
+            c.text.lineBounds[1]={1640,1746,2194,1828};c.text.lineBounds[2]={};
+            c.text.sourcePanel=c.text.capturePanel={1302,1740,2528,1906};
+            c.text.nearBarEligibilityMeasured=c.text.nearBarEligible=true;
+            for(int line=0;line<2;++line) {
+                const auto& r=c.text.lineBounds[line];
+                for(int y=r.top;y<r.bottom;++y)for(int x=r.left;x<r.right;++x)
+                    if((x-r.left)%28<12)pixels[size_t(y)*width+x]=uint16_t(700<<6);
+            }
+            // One external AA fringe beside a large, surviving owned core.
+            pixels[size_t(1950)*width+1366]=uint16_t(495<<6);
+            auto ink=std::make_shared<SubtitleInkSnapshot>();ink->width=960;ink->height=540;ink->step=4;
+            ink->sourceRows.resize(540);ink->rawEvidenceComplete=ink->paletteValid=true;
+            ink->inkFloor=500;ink->blackLimit=96;
+            ink->rawInk.resize(8100);ink->ownedInk.resize(8100);ink->blackBacking.resize(8100);
+            for(int y=0;y<540;++y) {ink->sourceRows[y]=4*y;for(int x=0;x<960;++x) {
+                const size_t at=size_t(y)*960+x;const uint64_t bit=uint64_t(1)<<(at%64);
+                const int value=pixels[size_t(y*4)*width+x*4]>>6;
+                if(value>=500){ink->rawInk[at/64]|=bit;ink->ownedInk[at/64]|=bit;}
+                if(value<=96)ink->blackBacking[at/64]|=bit;
+            }}
+            c.ink=ink;ready.text=c.text;
+            AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+            source.dataBytes=pixels.size()*sizeof(uint16_t);source.width=width;source.height=height;
+            source.rowBytes=source.chromaRowBytes=width*2;source.generation=1;source.format=format;
+            Assert::IsTrue(source.IsValid());
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=c.text.bounds;g.glyphLines=c.text.lineBounds;
+            g.source=g.destination={1280,1712,2544,2018};g.pictureCapture=c.text.capturePanel;
+            g.pictureTop=250;g.pictureBottom=1906;g.generatedCleanup=c.text.sourcePanel;
+            for(int y=1740;y<1852;++y) {
+                const bool rounded=y<1748 || y>=1844;
+                g.generatedCleanupRows[g.generatedCleanupRowCount++]={rounded?1340:1302,y,rounded?2490:2528,y+1};
+            }
+            for(int y=1892;y<1906;++y)
+                g.generatedCleanupRows[g.generatedCleanupRowCount++]={1354,y,2470,y+1};
+            auto guard=std::make_unique<SubtitleCadenceGuard>();
+            const bool seeded=guard->RememberAccepted(ready,ready.text,source,c.sharedPicture.bounds,g);
+            if(!seeded)Logger::WriteMessage(guard->DecisionReason());
+            Assert::IsTrue(seeded);
+            if(mutation==0) {
+                // Moving native picture includes the corners INSIDE the cleanup
+                // hull but OUTSIDE its actual row spans. Neither is erased.
+                for(int y=250;y<1906;++y)for(int x=0;x<width;++x) {
+                    bool captured=false;for(int line=0;line<2;++line) {
+                        const auto& r=c.text.lineBounds[line];
+                        captured|=x>=r.left && x<r.right && y>=r.top && y<r.bottom;
+                    }
+                    bool erased=false;
+                    if(y>=1740 && y<1852) {
+                        const auto& r=g.generatedCleanupRows[y-1740];erased=x>=r.left && x<r.right;
+                    }
+                    if(y>=1892 && y<1906)erased=x>=1354 && x<2470;
+                    if(!captured && !erased)pixels[size_t(y)*width+x]=uint16_t((340+((x+y)&1)*20)<<6);
+                }
+                Assert::AreEqual(340,int(pixels[size_t(1742)*width+1304]>>6));
+            }
+            if(mutation==1)pixels[size_t(1805)*width+1310]=uint16_t(340<<6); // unowned picture inside actual erasure
+            if(mutation==2)pixels[size_t(1950)*width+1360]=uint16_t(64<<6); // loss of a strong owned core
+            if(mutation==3)pixels[size_t(1950)*width+1366]=uint16_t(505<<6); // bounded external AA only
+            auto pending=Pending(2);pending.current.width=width;pending.current.height=height;
+            pending.current.pictureTop=250;pending.current.pictureBottom=1906;
+            pending.current.sharedPicture.bounds=c.sharedPicture.bounds;
+            pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+            const auto& proof=guard->PrepareReference(pending,source,c.sharedPicture.bounds,1000.0/60,250);
+            Assert::AreEqual(mutation==0 || mutation==3,proof.valid,
+                L"Only outside-footprint native motion and bounded owned external AA may continue; unowned erasure and core changes stay strict.");
+            if(mutation==1)Assert::AreEqual("cadence-current-cleanup-changed",proof.reason);
+            if(mutation==2)Assert::AreEqual("cadence-current-glyph-changed",proof.reason);
+        }
+    }
     TEST_METHOD(CadenceGuardRejectsNativeWorkOverBudgetAndUnsupportedBackground) {
         auto pixels=Pixels();auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);
         ready.current.analysisStride=2;ready.text=ready.current.text;

@@ -78,7 +78,7 @@ try {
         $runs+=,$run
         $settings=Join-Path $runDirectory 'critical.runsettings'
         '<RunSettings><RunConfiguration><TestSessionTimeout>1200000</TestSessionTimeout></RunConfiguration></RunSettings>' | Set-Content -LiteralPath $settings -Encoding UTF8
-        Write-Host "Mandatory qualification: execute all $($plan.nativeCount) native contracts and $($plan.actualCount) real Classic lifecycle tests [$variant]"
+        Write-Host "Mandatory qualification: execute all $($plan.nativeCount) native contracts and $($plan.actualCount) real AR/subtitle presentation tests [$variant]"
         Push-Location -LiteralPath (Split-Path -Parent (Join-Path $Root $binary))
         try {
             $testArguments=@((Join-Path $Root $binary),'/Platform:x64',"/Settings:$settings","/TestCaseFilter:$($plan.filter)","/Logger:trx;LogFileName=$variant.trx","/ResultsDirectory:$runDirectory")

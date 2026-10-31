@@ -2,8 +2,8 @@
 
 Release|x64 is the initially supported runtime configuration. A passing receipt
 requires every test from AlphaSourceCropPolicyTests.cpp and
-ActivePictureEvidenceTests.cpp and SubtitleMeasurementWorkerTests.cpp, plus the six
-actual renderer Classic lifecycle
+ActivePictureEvidenceTests.cpp and SubtitleMeasurementWorkerTests.cpp, plus the required
+actual renderer AR/subtitle presentation
 methods listed in critical_runtime_tests.json, in BOTH native dependency variants.
 A successful compiler/linker result alone does not qualify a runtime build.
 
@@ -61,3 +61,8 @@ Metadata-only gate verification (no compilation or GPU work):
 ```powershell
 powershell.exe -NoProfile -File tools\test_runtime_qualification.ps1
 ```
+
+The required matrix includes live-size UHD sources outside the optional-fill limit,
+content in both bars, residual UI during Reconstruction, and current visibility
+without a coarse nomination. Both analysis cadences must preserve current pixels;
+provisional raw aspect telemetry is distinct from the accepted native contract.

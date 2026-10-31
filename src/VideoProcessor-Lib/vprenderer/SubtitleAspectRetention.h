@@ -5,6 +5,22 @@
 #include <cstring>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 
+// Black/Reconstruction use the unshifted native presentation. Apply this mode
+// choice BEFORE evaluation, recovery and admission so the exact submitted pose
+// and its certificate agree. Raw content/FIT/picture evidence remains intact.
+inline AlphaSourceCrop::Input CanonicalSubtitleModeCropInput(
+    AlphaSourceCrop::Input input,SubtitlePreviewMode mode)
+{
+    if(SubtitlePreviewOverridesClassicHandling(mode)) {
+        input.verticalTranslationActive=false;
+        input.verticalTranslationPixels=0;
+        input.verticalTranslationConfirmationPending=false;
+        input.verticalTranslationBaseRetentionActive=false;
+        input.verticalTranslationEngageBaseRetentionActive=false;
+    }
+    return input;
+}
+
 // Crop evidence, admission and recovery always run through the shared policy.
 // Moved styles always undo Classic's final same-size picture translation.
 // Picture placement is a mode choice, independent of cue detection or shader

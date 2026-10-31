@@ -104,7 +104,7 @@ try {
     . (Join-Path $tempPath 'tools\installer_build_identity.ps1')
     $receipt=[ordered]@{schemaVersion=1;status='Passed';configuration='Release';platform='x64';source=(Get-VpSourceIdentity $tempPath);manifestHash=$fixturePlan.manifestHash;binaries=(Get-VpQualifiedOutputInventory $tempPath);builds=@(@('native-library','host','standard-renderer','beta-renderer','standard-tests','beta-tests')|ForEach-Object {[ordered]@{name=$_;exit=0}});runs=@()}
     function SaveFixtureReceipt {
-        $receipt.runs=@(foreach($variant in @('standard','beta')){[ordered]@{variant=$variant;buildExit=0;testExit=0;trx=('artifacts/qualification/runs/fixture/'+$variant+'.trx');trxSha256=(Get-FileHash -LiteralPath (Join-Path $evidence ($variant+'.trx'))).Hash;executed=$fixturePlan.expected.Count;actualClassic=6}})
+        $receipt.runs=@(foreach($variant in @('standard','beta')){[ordered]@{variant=$variant;buildExit=0;testExit=0;trx=('artifacts/qualification/runs/fixture/'+$variant+'.trx');trxSha256=(Get-FileHash -LiteralPath (Join-Path $evidence ($variant+'.trx'))).Hash;executed=$fixturePlan.expected.Count;actualClassic=$fixturePlan.actualCount}})
         $receipt|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Get-VpQualificationReceiptPath $tempPath)
     }
     SaveFixtureReceipt

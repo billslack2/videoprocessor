@@ -17,7 +17,16 @@
     "RawPerEdgeSafetyKeepsCaptionSideUnsafeThroughOverlayProjection",
     "CurrentDenseCaptionOwnsPendingEngageAndDriftButNeverPictureExpansion",
     "CurrentEmptyNativeBandsPermitControllerReleaseWithoutFreshCaption",
-    "VerifiedCadenceAdvancesPendingAnchorAcrossDeterministicQueueRetirement"
+    "VerifiedCadenceAdvancesPendingAnchorAcrossDeterministicQueueRetirement",
+    "UhdScheduledTranslationCannotPromoteUnownedOppositeBarPixels",
+    "UhdSkippedTranslationPreservesTheSameUnownedOppositeBarPixels",
+    "UhdSingleBarCurrentCoverageKeepsIntentionalControllerTranslationAcrossCadence",
+    "PreparedAdvancedFinalNativePoseCommitsItsExactSubmittedGeometry",
+    "FreshPreparedAdvancedFrameRetiresPriorVisibilityFallback",
+    "UhdExactCurrentVisibilitySurvivesMissingOrUnavailableCoarseNomination",
+    "UhdMissingNominationCannotPromoteForeignOrAbsentCurrentVisibility",
+    "PreparedAdvancedRecoveryRequiresExactCurrentContextAndClearRemainingBands",
+    "PreparedAdvancedPresentationCannotHideFirstCurrentNativePictureProof"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -27,11 +36,24 @@
     "BetaRendererClassicLifecycleWithNormalDriftAndWiderFill",
     "BetaRendererClassicLifecycleWithNormalDriftAndNarrowerFill",
     "StandardRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans",
-    "BetaRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans"
+    "BetaRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans",
+    "StandardRendererClassicUhdBottomCaptionOutsideFillLimit",
+    "BetaRendererClassicUhdBottomCaptionOutsideFillLimit",
+    "StandardRendererClassicUhdBothBarUiOutsideFillLimit",
+    "BetaRendererClassicUhdBothBarUiOutsideFillLimit",
+    "StandardRendererReconstructionUhdResidualUiWithMovingPicture",
+    "BetaRendererReconstructionUhdResidualUiWithMovingPicture",
+    "StandardRendererClassicUhdV210BothBarUiOutsideFillLimit",
+    "BetaRendererClassicUhdV210BothBarUiOutsideFillLimit",
+    "StandardRendererReconstructionUhdV210ResidualUiWithMovingPicture",
+    "BetaRendererReconstructionUhdV210ResidualUiWithMovingPicture",
+    "StandardRendererReconstructionUhdV210CrossEdgeMovingCleanup",
+    "BetaRendererReconstructionUhdV210CrossEdgeMovingCleanup"
   ],
   "optionalPrivateFixtures": [
     "VP_AR_COLLAR_CAPTURE_FRAME",
     "VP_DARK_AR_ANALYSIS_FRAME"
   ],
-  "minimumOriginalNativeTests": 663
+  "minimumOriginalNativeTests": 663,
+  "minimumActualTests": 18
 }

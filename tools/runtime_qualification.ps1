@@ -42,9 +42,11 @@ function Get-VpCriticalTestPlan([string]$Root) {
     $manifestPath = Join-Path $Root 'tools\critical_runtime_tests.json'
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     if ($manifest.schemaVersion -ne 1 -or $manifest.nativeSources.Count -lt 2 -or
-        $manifest.actualMethods.Count -ne 6 -or $manifest.minimumNativeTests -lt 600) {
+        $manifest.actualMethods.Count -lt 12 -or $manifest.minimumActualTests -lt 12 -or $manifest.actualMethods.Count -lt $manifest.minimumActualTests -or $manifest.minimumNativeTests -lt 600) {
         throw 'Invalid or incomplete mandatory runtime test manifest.'
     }
+    $originalActualMethods=@('StandardRendererClassicLifecycleWithNormalDriftAndWiderFill','StandardRendererClassicLifecycleWithNormalDriftAndNarrowerFill','BetaRendererClassicLifecycleWithNormalDriftAndWiderFill','BetaRendererClassicLifecycleWithNormalDriftAndNarrowerFill','StandardRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans','BetaRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans')
+    foreach($method in $originalActualMethods){if($method -notin $manifest.actualMethods){throw "Original mandatory renderer regression removed: $method"}}
     $originalSources=@('src/VideoProcessor-Test/AlphaSourceCropPolicyTests.cpp','src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp')
     foreach($requiredSource in $originalSources) {
         if($requiredSource -notin $manifest.nativeSources){throw "Mandatory original native source removed: $requiredSource"}
@@ -183,7 +185,7 @@ function Assert-VpRuntimeQualification([string]$Root, [string]$RequiredBinaryPat
         if (-not $trx.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase)) { throw 'Qualification TRX is outside its evidence directory.' }
         if ((Get-FileHash -LiteralPath $trx -Algorithm SHA256).Hash -ne $run.trxSha256) { throw "Qualification evidence changed: $trx" }
         $counts = Read-VpCriticalTrx $trx $plan
-        if ($counts.executed -ne $run.executed -or $counts.actualClassic -ne 6) { throw 'Qualification execution receipt differs from its TRX.' }
+        if ($counts.executed -ne $run.executed -or $counts.actualClassic -ne $plan.actualCount -or $counts.actualClassic -ne $run.actualClassic) { throw 'Qualification execution receipt differs from its TRX.' }
     }
     return $receipt
 }

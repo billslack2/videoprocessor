@@ -16974,6 +16974,7 @@ releaseDriftBaseRetention =
             if (relocatedCaptionQualified)
                 cropInput.preparedSubtitle=QualifyPreparedSubtitleCropPresentation(
                     displayCaptionProof,subtitleIdentity,cropInput.geometry);
+            cropInput=CanonicalSubtitleModeCropInput(cropInput,subtitlePreviewMode);
 			bool submittedScopeContinuityRetention = false;
 			temporalPolicySubmittedScopeContinuityRetention = false;
 			if (automaticSourceCrop && !fixedCropAspectConfigured && !nlsRequested &&
