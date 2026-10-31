@@ -5,6 +5,8 @@
 #include <cwchar>
 #include <string>
 
+enum class PhysicalAspectConfidence : uint32_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT };
+
 enum class PictureAspectUse : uint32_t { UNAVAILABLE, STARTUP_FALLBACK, DETECTED, HELD, PRESENTATION };
 
 struct DetectedPictureAspect
@@ -18,6 +20,10 @@ struct DetectedPictureAspect
     bool inUseAvailable = false;
     PictureAspectUse inUseState = PictureAspectUse::UNAVAILABLE;
     uint64_t detectedSequence = 0, presentedSequence = 0;
+    bool physicalEvaluated = false;
+    PhysicalAspectConfidence physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
+    int physicalBounds[4] = {};
+    bool physicalBoundsAvailable = false;
 };
 
 // Presentation-only labels for the VP Renderer Ctrl+I OSD.
@@ -32,27 +38,9 @@ public:
 	};
 
     struct Rows { std::wstring inUse, detected; };
-    // UI-only deadband, anchored to the last displayed measurement so a slow
-    // cumulative drift cannot remain hidden. Raw and submitted telemetry stay exact.
-    Rows Update(const DetectedPictureAspect& reading)
-    {
-        if (m_sourceGeneration != reading.sourceGeneration) {
-            Reset();
-            m_sourceGeneration = reading.sourceGeneration;
-        }
-        auto displayed = reading;
-        if (!reading.available || !std::isfinite(reading.ratio) || reading.ratio <= 0.0) {
-            m_displayedDetection = 0.0;
-            displayed.available = false;
-        } else {
-            if (m_displayedDetection <= 0.0 ||
-                std::abs(reading.ratio - m_displayedDetection) + 1e-12 >= 0.01 * m_displayedDetection)
-                m_displayedDetection = reading.ratio;
-            displayed.ratio = m_displayedDetection;
-        }
-        return Format(displayed);
-    }
-    void Reset() { m_sourceGeneration = 0; m_displayedDetection = 0.0; }
+    // Measurements are current-source facts. UI smoothing must not hide row changes.
+    Rows Update(const DetectedPictureAspect& reading) { return Format(reading); }
+    void Reset() {}
 
     static std::wstring Named(double ratio, const wchar_t* status = nullptr)
     {
@@ -70,8 +58,20 @@ public:
             else if (reading.inUseState == PictureAspectUse::PRESENTATION) status = L"presentation";
             rows.inUse = Named(reading.inUseRatio, status);
         }
-        if (reading.available)
-            rows.detected = Named(reading.ratio, reading.provisional ? L"provisional" : nullptr);
+        if (reading.available && !reading.provisional) {
+            wchar_t numeric[64] = {};
+            swprintf_s(numeric, L"%.5f:1", reading.ratio);
+            rows.detected = numeric;
+            if (reading.physicalBoundsAvailable) {
+                wchar_t geometry[128] = {};
+                swprintf_s(geometry, L" [%d,%d..%d,%d; %ls]",
+                    reading.physicalBounds[0], reading.physicalBounds[1],
+                    reading.physicalBounds[2], reading.physicalBounds[3],
+                    reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT ? L"source extent" : L"strong edge");
+                rows.detected += geometry;
+            }
+        } else if (reading.provisional || reading.physicalEvaluated)
+            rows.detected = L"Unknown (physical boundary pending)";
         return rows;
     }
 
@@ -103,8 +103,6 @@ public:
 	}
 
 private:
-    uint64_t m_sourceGeneration = 0;
-    double m_displayedDetection = 0.0;
 	struct Target
 	{
 		double value;
@@ -147,17 +145,43 @@ public:
             m_seenDetection = false;
         }
     }
+    // Legacy qualified observation. Provisional nominations are not physical measurements.
     void Observe(uint64_t generation, uint64_t sequence, double ratio,
         bool available, bool provisional)
     {
         Source(generation);
         m_value.detectedSequence = sequence;
-        m_value.available = available && std::isfinite(ratio) && ratio > 0.0;
+        m_value.available = available && !provisional && std::isfinite(ratio) && ratio > 0.0;
         m_value.ratio = m_value.available ? ratio : 0.0;
-        m_value.provisional = m_value.available && provisional;
+        m_value.provisional = provisional;
+        m_value.physicalEvaluated = false;
+        m_value.physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
+        m_value.physicalBoundsAvailable = false;
+        for (auto& coordinate : m_value.physicalBounds) coordinate = 0;
+    }
+    void ObservePhysical(uint64_t generation, uint64_t sequence,
+        bool evaluated, bool estimateAvailable, PhysicalAspectConfidence confidence,
+        int left, int top, int right, int bottom)
+    {
+        Source(generation);
+        m_value.detectedSequence = sequence;
+        m_value.physicalEvaluated = evaluated;
+        m_value.physicalConfidence = confidence;
+        m_value.available = evaluated && estimateAvailable &&
+            (confidence == PhysicalAspectConfidence::STRONG_ABRUPT_EDGE ||
+             confidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT) &&
+            left >= 0 && top >= 0 && right > left && bottom > top;
+        m_value.provisional = false;
+        m_value.ratio = m_value.available ? double(right-left) / double(bottom-top) : 0.0;
+        m_value.physicalBoundsAvailable = m_value.available;
+        m_value.physicalBounds[0] = m_value.available ? left : 0;
+        m_value.physicalBounds[1] = m_value.available ? top : 0;
+        m_value.physicalBounds[2] = m_value.available ? right : 0;
+        m_value.physicalBounds[3] = m_value.available ? bottom : 0;
+        if (!m_value.available) m_value.physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
     }
     void ClearDetection()
-    { m_value.available = m_value.provisional = false; m_value.ratio = 0.0; }
+    { Observe(m_value.sourceGeneration, m_value.detectedSequence, 0.0, false, false); }
     void Submitted(uint64_t generation, uint64_t sequence, double ratio,
         double nativeRatio, bool acceptedPicture, bool succeeded)
     {

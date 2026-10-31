@@ -1,3 +1,71 @@
+# Native boundary and input-cadence repair, 31 October 2026
+
+The deployed 4fa45da9 build failed live acceptance despite its earlier automated
+qualification. The 59.94 Hz input log shows persistent captions alternating
+between detected and `input-cadence-not-analyzed` at a 16.7 ms interval. This is
+not expiration of a 250 ms subtitle hold. Display refresh and input cadence are
+separate measurements.
+
+Input parity cannot authorize losing current-source evidence. Queue full input
+analysis by default. A conclusive observation contains either valid current
+caption bounds or qualified complete searches proving caption absence; finishing
+a worker job without searching text is insufficient.
+
+The progressive D3D11 path with inactive temporal processing may bridge
+one inconclusive input by copying the previous successful complete final image.
+Picture, subtitles, crop and HDR provenance remain together. The original source
+identity and PTS remain unchanged, and the consumed input is logged separately.
+Only the immediately following source may use an anchor, once. Failed capture or
+submission, changed context/rate, reset, resize, discontinuity and excessive age
+invalidate permission. Fresh conclusive current evidence wins immediately. Interlaced input and active temporal processing retain full analysis;
+this path does not reinterpret old cleanup as permission to erase new pixels.
+
+Both the normal libplacebo-owned and diagnostic VP-owned presenters are covered.
+For each pinned D3D11 dependency, `submit_frame` only releases its acquired
+backbuffer; `swap_buffers` owns presentation. A failed cache copy can therefore
+consume the acquisition without calling Present, then render the fresh fallback.
+Successful reuse calls native Present exactly once. This backend-specific
+contract is checked by `tools/test_d3d11_submit_contract.ps1` during runtime
+qualification and requires review when replacing the shipped dependency.
+
+Physical source measurement is separate from conservative retained bounds and
+from tentative caption-contaminated nominations. The private native capture
+replays 64 frames with visible picture edges 263..1897 at 3840x2160, giving
+2.350061:1; its larger retention collar must not become the reported physical
+aspect. Source-axis observations retain uncertainty and never independently grant
+pixel-discard authority. Explicit current raster-edge proof supports full-raster
+extent; retaining the whole HDMI input alone does not prove that measurement.
+Screen aspect, zoom, CIH and fitting do not choose the detected source aspect.
+
+Centered optional fill uses equal aligned insets at both edges. If symmetric
+chroma-aligned removal cannot fit within the requested crop, preserve those rows
+or columns rather than shifting the picture or clipping the opposite edge.
+
+`tools/critical_runtime_tests.json` requires the native measurement, capture,
+current-evidence and real renderer regressions. Missing or unexecuted required
+methods fail runtime qualification on both dependencies. The separate motion GPU
+suite remains required after source/preparation/temporal changes. GPU copy tests
+check complete final pixels; actual renderer diagnostic tests check successful
+submission identity, caption/certificate ownership and source/target geometry.
+Neither layer alone establishes physical playback or display acceptance.
+
+The actual DV fixture first proves its decoded native pixels and measured cleanup
+crossing moving picture. Full-range DV matte 0 and limited-range matte 64 have
+different glyph-backing limits; a fixture must satisfy the production rules for
+its own range. The controlled UNKNOWN fixture independently hits the real
+component budget before asserting one complete-output repeat and a fresh clean
+successor. Fixtures that fail preflight do not establish renderer coverage.
+
+Opt-in `ar-boundary-chain` records separate nomination, physical observation,
+retained guard, accepted native crop and submitted output. Physical confidence
+and source identity are explicit; previous-frame proof cannot be stamped current.
+Native diagnostic capture samples across its duration within the byte budget and
+retains both input parities above 30 Hz. Intentional sampling and failed retention
+are counted separately. Private capture replay uses
+`VP_PHYSICAL_EDGE_CAPTURE_FRAME` or `VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY`; pixels
+remain local. `VP_RENDERER_REGRESSION_PLUGIN_ROOT` is only for diagnostic baseline
+runs and is rejected by runtime qualification.
+
 # Current-beta integration, 27 October 2026
 
 This test build ports complete progressive composition (082a4aab), transactional

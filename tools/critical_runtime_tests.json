@@ -3,9 +3,12 @@
   "nativeSources": [
     "src/VideoProcessor-Test/AlphaSourceCropPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp",
-    "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp"
+    "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp",
+    "src/VideoProcessor-Test/AnalysisDiagnosticTraceTests.cpp",
+    "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
+    "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 729,
+  "minimumNativeTests": 790,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -39,7 +42,35 @@
     "QualifiedUnknownHoldCannotCropUnprocessedCurrentCaptionInsideOldErasure",
     "QualifiedUnknownHoldMayRetainNativeWhenCurrentRawBarsAreActuallyClear",
     "RealNativeCadencePreparedErasureDoesNotAcquireBarAuthority",
-    "RealNativeCadencePreparedErasureRejectsForeignProofAndChangedCurrentPixels"
+    "RealNativeCadencePreparedErasureRejectsForeignProofAndChangedCurrentPixels",
+    "NativeCaptureSamplesWholeDurationAndBothInputParitiesWithinBudget",
+    "BoundaryChainSeparatesUnknownPhysicalFromGuardAndCaptionNomination",
+    "CaptionEnvelopeCannotRelabelPhysicalAspect2_24",
+    "AspectDisplayReportsSubPercentNativeMeasurementChangeExactly",
+    "AspectPhysicalUnknownCannotReusePreviousCurrentMeasurement",
+    "PhysicalSourceEdgeDoesNotBecomeItsDecodedHaloRetentionEnvelope",
+    "SeparatedOuterPictureEdgesSurviveAnOccludedCenter",
+    "SeparatedOuterEvidenceRequiresBroadAgreementAtTheSameRow",
+    "AmbiguousDimPhysicalEdgeNeverDiscardsItsConservativePixels",
+    "SkippedInputWithoutCompletePresentationPermissionMustAnalyze",
+    "CenteredFillCannotTradeOneRealPictureEdgeForAlignment",
+    "CenteredFillQuantizationIsSymmetricAndIdempotentOnBothAxes",
+    "CentralBarCaptionCannotContaminateSeparatedOuterMatteReferences",
+    "QueuedPhysicalObservationRebindsOnlyAnExactCurrentSource",
+    "ForeignPhysicalGenerationCannotBecomeCurrentThroughAValidNativeSeed",
+    "SourceCadenceRepeatRequiresSubmittedCompletePixelsAndNeverRenewsAnchor",
+    "CaptionExpandedNominationCannotHideTheIndependentOuterPictureEdge",
+    "DistributedPictureEdgeSupportCanCompensateForADarkOuterSceneRegion",
+    "DetachedBroadBarGraphicCannotBecomeThePhysicalPictureBoundary",
+    "PhysicalRasterExtentRequiresFourCurrentPixelEdges",
+    "PillarboxPhysicalEdgesRemainUnroundedAndIndependentOfRasterExtent",
+    "WindowboxPhysicalObservationMeasuresBothAxesFromSourcePixels",
+    "AspectPhysicalFullRasterRequiresExplicitCurrentExtentProof",
+    "SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence",
+    "DecodedDvCrossEdgeFixtureNativePreflight",
+    "DecodedDvUnknownInputFixtureNativePreflight",
+    "CompletedOutwardRawCanGainPhysicalObservationWithoutRepeatingMandatoryProof",
+    "ColdOutwardPublicationCannotEraseARacingCurrentPhysicalObservation"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -63,12 +94,69 @@
     "StandardRendererReconstructionUhdV210CrossEdgeMovingCleanup",
     "BetaRendererReconstructionUhdV210CrossEdgeMovingCleanup",
     "StandardRendererBlackUhdV210ResidualUiWithMovingPicture",
-    "BetaRendererBlackUhdV210ResidualUiWithMovingPicture"
+    "BetaRendererBlackUhdV210ResidualUiWithMovingPicture",
+    "StandardRendererClassicPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "BetaRendererClassicPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "StandardRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "BetaRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "StandardRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "BetaRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "StandardRendererDecodedDvUnknownInputRepeatsOneCompleteOutput",
+    "BetaRendererDecodedDvUnknownInputRepeatsOneCompleteOutput"
   ],
   "optionalPrivateFixtures": [
     "VP_AR_COLLAR_CAPTURE_FRAME",
-    "VP_DARK_AR_ANALYSIS_FRAME"
+    "VP_DARK_AR_ANALYSIS_FRAME",
+    "VP_PHYSICAL_EDGE_CAPTURE_FRAME",
+    "VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY"
   ],
   "minimumOriginalNativeTests": 663,
-  "minimumActualTests": 20
+  "minimumActualTests": 28,
+  "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "CaptionEnvelopeCannotRelabelPhysicalAspect2_24"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectDisplayReportsSubPercentNativeMeasurementChangeExactly"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectPhysicalUnknownCannotReusePreviousCurrentMeasurement"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SkippedInputWithoutCompletePresentationPermissionMustAnalyze"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceRepeatRequiresSubmittedCompletePixelsAndNeverRenewsAnchor"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectPhysicalFullRasterRequiresExplicitCurrentExtentProof"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DecodedDvCrossEdgeFixtureNativePreflight"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DecodedDvUnknownInputFixtureNativePreflight"
+    }
+  ]
 }

@@ -77,6 +77,22 @@ struct AnalysisDiagnosticRecordV1
 	char reason[192] = {};
 };
 
+// Computed-only causal chain. Every rectangle has a distinct role; unavailable
+// physical estimates remain zero. This helper never reads pixels or grants crop authority.
+struct AnalysisBoundaryChainFacts
+{
+    bool physicalEvaluated = false, physicalAvailable = false;
+    uint32_t physicalConfidence = 0;
+    bool cropEnabled = false, cadenceSkipped = false, submitted = false;
+    bool fillMeasurementAvailable = false;
+    int32_t nomination[4] = {}, physical[4] = {}, guard[4] = {};
+    int32_t accepted[4] = {}, displayed[4] = {}, subtitle[4] = {};
+    uint64_t selectedSource = 0, physicalSource = 0, analyzedSource = 0;
+    uint64_t nativeAuthoritySource = 0, analysisStride = 0;
+    double fillAspect = 0, removedRows = 0, topInset = 0, bottomInset = 0;
+    double currentPts = 0, selectedPts = 0, originalAge = 0, inputFps = 0;
+};
+
 // Native-frame sidecar metadata. The first ten fields retain the legacy
 // sidecar order; identityV1 then describes the exact production frame
 // authority used by the live detector. Pixel ownership is retained only after
@@ -193,6 +209,8 @@ public:
 	static void Emit(const AnalysisDiagnosticRecordV1& record) noexcept;
 	static void EmitFrame(const AnalysisDiagnosticFramePacketV1& frame) noexcept;
 	static bool FramesActive() noexcept;
+	static AnalysisDiagnosticRecordV1 BoundaryChain(const AnalysisDiagnosticRecordV1& current,
+		const AnalysisBoundaryChainFacts& facts) noexcept;
 
 	// Capability is set by the host loader. It intentionally survives renderer
 	// recreation and does not clear the rolling history or an active capture.
@@ -248,6 +266,9 @@ private:
 	std::atomic<uint64_t> m_captureDeadlineMs{ 0 };
 	uint64_t m_captureFrameBytes = 0;
 	uint64_t m_captureFrameIndex = 0;
+	uint64_t m_captureFrameOffered = 0, m_captureFrameSamplingSkipped = 0;
+	uint64_t m_captureFrameMissed = 0, m_captureFrameSamplingStep = 1;
+	uint64_t m_captureSamplingFirstSource = 0, m_captureSamplingGeneration = 0;
 	uint64_t m_captureAcceptedRecords = 0;
 	uint64_t m_recordsWritten = 0;
 	uint64_t m_framesWritten = 0;

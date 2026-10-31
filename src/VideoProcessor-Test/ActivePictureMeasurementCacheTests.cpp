@@ -390,6 +390,67 @@ namespace VideoProcessorTest
             Assert::AreEqual(size_t(2), cache.Snapshot().pictureScans);
         }
 
+        TEST_METHOD(QueuedPhysicalObservationRebindsOnlyAnExactCurrentSource)
+        {
+            const OwnedMeasurementFrame frame;
+            const auto identity=Identity();
+            auto live=frame.Source();live.generation=identity.transportGeneration;
+            auto queued=live;queued.generation=identity.sourceFormatGeneration;
+            auto raw=ExtractActivePictureEvidence(queued);
+            raw.physicalEdges=MeasurePhysicalPictureEdges(queued,Scope());
+            Assert::IsTrue(raw.physicalEdges.estimateAvailable);
+            const auto darkness=EvaluateActivePictureArDarkness(queued,raw);
+            ActivePictureMeasurementCache cache;cache.Begin(live,identity,7,8);
+            Assert::IsTrue(cache.SeedQueued(queued,identity,raw,darkness));
+            const auto physical=cache.PhysicalEdges();
+            Assert::IsTrue(physical.evaluated && physical.estimateAvailable);
+            Assert::AreEqual(identity.transportGeneration,physical.sourceGeneration);
+            SameBounds(physical.estimate,raw.physicalEdges.estimate);
+            SameBounds(physical.conservativeBounds,raw.physicalEdges.conservativeBounds);
+            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
+            // Same adapter generation/storage does not mean the same frame.
+            for(int field=0;field<6;++field) {
+                ActivePictureMeasurementCache changed;changed.Begin(live,identity,7,8);
+                Assert::IsTrue(changed.SeedQueued(queued,identity,raw,darkness));
+                auto nextIdentity=identity;auto nextSource=live;
+                uint64_t policy=7,continuity=8;
+                switch(field) {
+                case 0:++nextIdentity.acceptedSequence;break;
+                case 1:++nextIdentity.sourceFormatGeneration;break;
+                case 2:++nextIdentity.analysisDomainKey;break;
+                case 3:++policy;break;
+                case 4:++continuity;break;
+                case 5:
+                    nextSource.backingOwner=std::make_shared<const std::vector<uint8_t>>(*frame.pixels);
+                    break;
+                }
+                changed.Begin(nextSource,nextIdentity,policy,continuity);
+                Assert::IsFalse(changed.PhysicalEdges().estimateAvailable,
+                    L"A previous frame's physical observation cannot survive identity, policy or ownership changes.");
+                Assert::AreEqual(size_t(0),changed.Snapshot().pictureScans,
+                    L"Reading unavailable physical telemetry must not initiate a detector scan.");
+                changed.Picture();
+                Assert::IsFalse(changed.PhysicalEdges().estimateAvailable,
+                    L"A local native scan does not manufacture a missing independent worker observation.");
+            }
+        }
+        TEST_METHOD(ForeignPhysicalGenerationCannotBecomeCurrentThroughAValidNativeSeed)
+        {
+            const OwnedMeasurementFrame frame;const auto identity=Identity();
+            auto live=frame.Source();live.generation=identity.transportGeneration;
+            auto queued=live;queued.generation=identity.sourceFormatGeneration;
+            auto raw=ExtractActivePictureEvidence(queued);
+            raw.physicalEdges=MeasurePhysicalPictureEdges(queued,Scope());
+            Assert::IsTrue(raw.physicalEdges.estimateAvailable);
+            ++raw.physicalEdges.sourceGeneration;
+            const auto darkness=EvaluateActivePictureArDarkness(queued,raw);
+            ActivePictureMeasurementCache cache;cache.Begin(live,identity,7,8);
+            Assert::IsTrue(cache.SeedQueued(queued,identity,raw,darkness));
+            Assert::IsFalse(cache.Picture().physicalEdges.evaluated,
+                L"Valid native evidence cannot launder a physical observation from a foreign adapter generation.");
+            Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
+            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
+        }
         TEST_METHOD(QueuedSeedRejectsEveryIdentityFieldAndStorageInterpretationMismatch)
         {
             const OwnedMeasurementFrame frame;

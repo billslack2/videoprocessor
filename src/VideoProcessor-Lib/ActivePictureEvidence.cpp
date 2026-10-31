@@ -5,6 +5,7 @@
 #include "SubtitleBoxLookahead.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numeric>
 #include <vector>
@@ -3801,5 +3802,227 @@ RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource&
     result.valid = true;
     result.reason = "relative-bars-and-picture-confirmed";
     CheckAnalysisEvaluationBudget(budget);
+    return result;
+}
+
+PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
+    const AnalysisLumaSource& source,const ActivePictureBounds& bounds,
+    const AnalysisEvaluationBudget* budget,const ActivePictureBlackReference* blackReference)
+{
+    PhysicalPictureEdgeObservation result;
+    result.evaluated=true;result.conservativeBounds=bounds;
+    result.sourceGeneration=source.generation;
+    const auto unknown=[&](const char* reason) {
+        result.reason=reason;result.estimateAvailable=false;
+        result.confidence=PhysicalPictureEdgeConfidence::UNKNOWN;return result;
+    };
+    if(!source.IsValid() || source.width<320 || source.height<180 ||
+        bounds.rasterWidth!=source.width || bounds.rasterHeight!=source.height ||
+        bounds.left<0 || bounds.right>source.width || bounds.top<0 ||
+        bounds.bottom>source.height || bounds.top>=bounds.bottom || bounds.left>=bounds.right)
+        return unknown("physical-edge-domain-unavailable");
+    // An observation of the broad abrupt edge, NOT a matte discard verifier.
+    // The full conservative interval is retained as uncertainty: a genuinely
+    // dim picture collar and a filtering halo can be indistinguishable.
+    constexpr int positions=32;
+    const auto broadSupport=[](const int* support) {
+        // Either two broad separated outer regions, or a strong distributed
+        // majority with real support at both outer sides. The latter tolerates
+        // dark scene detail in part of one outer region without lowering any
+        // individual sample's contrast/halo/sustain requirements.
+        return (support[0]>=4 && support[3]>=4) ||
+            (support[0]>=3 && support[3]>=3 &&
+                support[0]+support[1]+support[2]+support[3]>=24);
+    };
+    // Axis0 is vertical depth; axis1 is horizontal depth. Project coordinates
+    // when sampling rather than transposing or rescaling source storage.
+    int edges[2][2]={{bounds.top,bounds.bottom},{bounds.left,bounds.right}};
+    int matteMask[2]={},matteMin[2]={1023,1023},matteMax[2]={};
+    int matteMinU[2]={1023,1023},matteMaxU[2]={},matteMinV[2]={1023,1023},matteMaxV[2]={};
+    int internalEdges=0;
+    try {
+        for(int axis=0;axis<2;++axis) {
+        const bool vertical=axis==0;
+        const int depth=vertical?source.height:source.width;
+        const int depthStart=vertical?bounds.top:bounds.left,depthEnd=vertical?bounds.bottom:bounds.right;
+        const int alongStart=vertical?bounds.left:bounds.top,alongEnd=vertical?bounds.right:bounds.bottom;
+        const int margin=2*std::max(2,depth/540)+4;
+        if(margin>36)return unknown("physical-edge-work-limit");
+        for(int side=0;side<2;++side) {
+            const bool leading=side==0;const int hint=leading?depthStart:depthEnd;
+            // A raster terminal is proved separately from current edge pixels,
+            // after the other axis has supplied its measured picture interval.
+            if((leading && hint==0) || (!leading && hint==depth))continue;
+            ++internalEdges;
+            const auto sampleRow=[&](int y,std::array<AnalysisLumaSample,positions>& row) {
+                CheckAnalysisEvaluationBudget(budget);
+                for(int i=0;i<positions;++i) {
+                    const int x=alongStart+i*(alongEnd-alongStart-1)/(positions-1);
+                    if(!source.Sample(vertical?x:y,vertical?y:x,row[i]))return false;
+                    ++result.samples;
+                }
+                return true;
+            };
+            // A raw nomination may include a caption far below the picture.
+            // Establish a source matte reference outside its uncertainty guard,
+            // then nominate from current outer pixels rather than assuming the
+            // physical boundary lies within a few rows of the raw nomination.
+            std::array<AnalysisLumaSample,positions> matte;
+            const int reference=leading?std::max(0,hint-margin-3):std::min(depth-1,hint+margin+2);
+            if(!sampleRow(reference,matte))return unknown("physical-edge-source-unavailable");
+            int minY=1023,maxY=0,minU=1023,maxU=0,minV=1023,maxV=0;
+            for(int i=0;i<positions;++i) {
+                // The reference must cover the same separated outer regions
+                // that establish the edge. Centered captions may occupy this
+                // row without contaminating either supporting matte region.
+                if(i>=8 && i<24)continue;
+                const auto& p=matte[i];
+                minY=std::min(minY,int(p.luma));maxY=std::max(maxY,int(p.luma));
+                minU=std::min(minU,int(p.chromaU));maxU=std::max(maxU,int(p.chromaU));
+                minV=std::min(minV,int(p.chromaV));maxV=std::max(maxV,int(p.chromaV));
+            }
+            // A textured/bright outer row is not an established matte reference.
+            // This rejection cannot remove pixels or alter the retained guard.
+            if(maxY-minY>4 || maxU-minU>4 || maxV-minV>4 || maxY>104)
+                return unknown("physical-edge-outer-reference-ambiguous");
+            matteMask[axis]|=1<<side;
+            matteMin[axis]=std::min(matteMin[axis],minY);matteMax[axis]=std::max(matteMax[axis],maxY);
+            matteMinU[axis]=std::min(matteMinU[axis],minU);matteMaxU[axis]=std::max(matteMaxU[axis],maxU);
+            matteMinV[axis]=std::min(matteMinV[axis],minV);matteMaxV[axis]=std::max(matteMaxV[axis],maxV);
+            int nominal=-1;
+            const int direction=leading?1:-1;
+            // Eight source rows per coarse step; the existing bounded fine scan
+            // resolves the exact row. No screen ratio, centering, or temporal
+            // confirmation supplies the nomination. The optional budget covers
+            // this entire search and fails to unknown without changing pixels.
+            for(int y=leading?depthStart:depthEnd-1;
+                y>=depthStart && y<depthEnd;y+=8*direction) {
+                const int nextY=y+direction;
+                if(nextY<depthStart || nextY>=depthEnd)break;
+                std::array<AnalysisLumaSample,positions> row,nextRow;
+                if(!sampleRow(y,row) || !sampleRow(nextY,nextRow))
+                    return unknown("physical-edge-source-unavailable");
+                int support[4]={};
+                for(int i=0;i<positions;++i) {
+                    if(int(row[i].luma)-int(matte[i].luma)>=16 &&
+                        int(nextRow[i].luma)-int(matte[i].luma)>=16)
+                        ++support[i/8];
+                }
+                if(!broadSupport(support))continue;
+                // A short, detached broad graphic can have a sharp edge too.
+                // Require current source support farther inward; a detected
+                // gap leaves this observation ambiguous rather than making the
+                // graphic an apparent picture boundary.
+                for(int step=1;step<=3;++step) {
+                    const int inward=y+8*step*direction;
+                    if(inward<depthStart || inward>=depthEnd)
+                        return unknown("physical-edge-inward-continuity-unresolved");
+                    std::array<AnalysisLumaSample,positions> continuation;
+                    if(!sampleRow(inward,continuation))return unknown("physical-edge-source-unavailable");
+                    int inwardSupport[4]={};
+                    for(int i=0;i<positions;++i)
+                        if(int(continuation[i].luma)-int(matte[i].luma)>=16)++inwardSupport[i/8];
+                    if(!broadSupport(inwardSupport))return unknown("physical-edge-detached-or-ambiguous-source-feature");
+                }
+                nominal=leading?y:y+1;break;
+            }
+            if(nominal<0)return unknown("physical-edge-no-broad-source-nomination");
+            const int low=std::max(3,nominal-margin),high=std::min(depth-3,nominal+margin);
+            const int first=low-3,last=high+2;
+            std::vector<std::array<AnalysisLumaSample,positions>> rows(size_t(last-first+1));
+            for(int y=first;y<=last;++y)
+                if(!sampleRow(y,rows[size_t(y-first)]))
+                    return unknown("physical-edge-source-unavailable");
+            double best=0,second=0;int bestRow=-1;
+            for(int boundary=low;boundary<=high;++boundary) {
+                const int outside=leading?boundary-1:boundary;
+                const int inside=leading?boundary:boundary-1;
+                const int next=leading?boundary+1:boundary-2;
+                const int after=leading?boundary+2:boundary-3;
+                int support[4]={};double score=0;
+                for(int i=0;i<positions;++i) {
+                    const int out=rows[size_t(outside-first)][i].luma;
+                    const int in=rows[size_t(inside-first)][i].luma;
+                    const int jump=in-out;
+                    const int halo=std::abs(out-int(matte[i].luma));
+                    if(jump>=std::max(16,4*halo+4) &&
+                        int(rows[size_t(next-first)][i].luma)-out>=jump/2 &&
+                        int(rows[size_t(after-first)][i].luma)-out>=jump/2) {
+                        ++support[i/8];score+=jump;
+                    }
+                }
+                // Require broad agreement in two separated outer regions.
+                // A dark scene feature or overlay in the center must not veto
+                // independently visible edges on both sides; a central panel,
+                // one-sided feature, or narrow side marks cannot establish them.
+                // Keep the same per-sample contrast/halo/sustain requirements.
+                if(!broadSupport(support))continue;
+                if(score>best){second=best;best=score;bestRow=boundary;}
+                else second=std::max(second,score);
+            }
+            if(bestRow<0)return unknown("physical-edge-no-broad-abrupt-boundary");
+            if(second>0 && second*1.5>=best)return unknown("physical-edge-multiple-boundaries");
+            edges[axis][side]=bestRow;
+        }
+        }
+        // Use independently qualified current paired matte where available.
+        // Entire-raster content has no matte and therefore needs an explicit
+        // evaluated source black reference; a full-raster classification alone
+        // never authorizes a physical extent claim.
+        int extentCutoff=-1;
+        for(int axis=0;axis<2;++axis)
+            if(matteMask[axis]==3 && matteMax[axis]-matteMin[axis]<=4 &&
+                matteMaxU[axis]-matteMinU[axis]<=4 && matteMaxV[axis]-matteMinV[axis]<=4)
+                extentCutoff=std::max(extentCutoff,matteMax[axis]+16);
+        if(extentCutoff<0 && blackReference && blackReference->evaluated &&
+            blackReference->mode!=ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED &&
+            blackReference->mode!=ActivePictureBlackReferenceMode::FULL_REJECTED_RAISED &&
+            blackReference->unresolvedEdgeMask==0 && blackReference->threshold>=0 && blackReference->threshold<=1007)
+            extentCutoff=blackReference->threshold+16;
+        for(int axis=0;axis<2;++axis) {
+            const bool vertical=axis==0;const int depth=vertical?source.height:source.width;
+            const int alongStart=edges[1-axis][0],alongEnd=edges[1-axis][1];
+            for(int side=0;side<2;++side) {
+                if(edges[axis][side]!=(side==0?0:depth))continue;
+                if(extentCutoff<0)return unknown("physical-raster-black-reference-unavailable");
+                int support[4]={};
+                CheckAnalysisEvaluationBudget(budget);
+                for(int i=0;i<positions;++i) {
+                    const int along=alongStart+i*(alongEnd-alongStart-1)/(positions-1);
+                    bool persistent=true;
+                    for(int offset:{0,1,8}) {
+                        const int across=side==0?offset:depth-1-offset;
+                        AnalysisLumaSample pixel;
+                        if(!source.Sample(vertical?along:across,vertical?across:along,pixel))
+                            return unknown("physical-edge-source-unavailable");
+                        ++result.samples;
+                        persistent=persistent && int(pixel.luma)>=extentCutoff;
+                    }
+                    if(persistent)++support[i/8];
+                }
+                int total=0,quarters=0;
+                for(int count:support){total+=count;if(count>=2)++quarters;}
+                // Raster extent asks whether distributed current picture reaches
+                // the terminal, not where a matte transition occurs. Preserve
+                // source detail that darkens one region without trusting a
+                // localized edge caption or an interior panel.
+                if(total<12 || quarters<3)return unknown("physical-raster-current-edge-unresolved");
+            }
+        }
+    } catch(const AnalysisEvaluationCancelled&) {
+        return unknown("physical-edge-optional-budget-exhausted");
+    }
+    if(edges[0][0]<bounds.top || edges[0][1]>bounds.bottom || edges[0][0]>=edges[0][1] ||
+        edges[1][0]<bounds.left || edges[1][1]>bounds.right || edges[1][0]>=edges[1][1])
+        return unknown("physical-edge-outside-conservative-interval");
+    const auto axes=static_cast<ActivePictureBounds::BarAxes>(
+        ((edges[0][0]>0 || edges[0][1]<source.height)?1:0) |
+        ((edges[1][0]>0 || edges[1][1]<source.width)?2:0));
+    result.estimate={edges[1][0],edges[0][0],edges[1][1],edges[0][1],source.width,source.height,
+        double(edges[1][1]-edges[1][0])/(edges[0][1]-edges[0][0]),axes};
+    result.estimateAvailable=true;result.confidence=internalEdges?
+        PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE:PhysicalPictureEdgeConfidence::SOURCE_RASTER_EXTENT;
+    result.reason=internalEdges?"broad-abrupt-source-edge-estimate-retention-unchanged":
+        "four-current-source-raster-edges-retention-unchanged";
     return result;
 }

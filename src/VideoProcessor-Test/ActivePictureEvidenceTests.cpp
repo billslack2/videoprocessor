@@ -17,6 +17,7 @@
 #include <chrono>
 #include <sstream>
 #include <cstdlib>
+#include <memory>
 #include <fstream>
 #include <string>
 
@@ -2258,7 +2259,9 @@ namespace VideoProcessorTest
                 fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;fill.configured.narrowerAspectLimit=2.32;
                 const auto actual=EvaluateFinalAspectLimitFill(fill);
                 Assert::IsTrue(actual.applied);
-                Assert::AreEqual(28,actual.sourceBounds.left);Assert::AreEqual(3810,actual.sourceBounds.right);
+                Assert::AreEqual(28,actual.sourceBounds.left);Assert::AreEqual(3812,actual.sourceBounds.right);
+                Assert::AreEqual(actual.sourceBounds.left,3840-actual.sourceBounds.right,
+                    L"Chroma alignment must retain equal picture margins, not discard two extra right columns.");
                 Assert::AreEqual(274,actual.sourceBounds.top);Assert::AreEqual(1884,actual.sourceBounds.bottom);
                 Assert::AreEqual(2024,history.bounds.bottom,L"Only local presentation evidence is projected.");
             }
@@ -2324,7 +2327,8 @@ namespace VideoProcessorTest
                     fill.configured.narrowerAspectLimit=2.32;
                     const auto actual=EvaluateFinalAspectLimitFill(fill);
                     Assert::IsTrue(actual.applied);
-                    Assert::AreEqual(28,actual.sourceBounds.left);Assert::AreEqual(3810,actual.sourceBounds.right);
+                    Assert::AreEqual(28,actual.sourceBounds.left);Assert::AreEqual(3812,actual.sourceBounds.right);
+                    Assert::AreEqual(actual.sourceBounds.left,3840-actual.sourceBounds.right);
                     Assert::AreEqual(274,actual.sourceBounds.top);Assert::AreEqual(1884,actual.sourceBounds.bottom);
                     const auto hold=CommitQualifiedSubtitlePresentationHold({},prepared,f.observation.identity,f.base,
                         mode,0,0,1000,true,false,10000000);
@@ -2960,7 +2964,8 @@ namespace VideoProcessorTest
             fill.configured.narrowerAspectLimit=2.32;
             const auto finalFill=EvaluateFinalAspectLimitFill(fill);
             Assert::IsTrue(finalFill.applied);
-            Assert::AreEqual(28,finalFill.sourceBounds.left);Assert::AreEqual(3810,finalFill.sourceBounds.right);
+            Assert::AreEqual(28,finalFill.sourceBounds.left);Assert::AreEqual(3812,finalFill.sourceBounds.right);
+            Assert::AreEqual(finalFill.sourceBounds.left,3840-finalFill.sourceBounds.right);
             Assert::AreEqual(274,finalFill.sourceBounds.top);Assert::AreEqual(1884,finalFill.sourceBounds.bottom);
             Assert::IsFalse(raw.excludedBandsPixelSafe,L"Frozen tracker bounds do not rewrite raw analysis.");
             }
@@ -3396,7 +3401,9 @@ namespace VideoProcessorTest
             LoggedRelocatedCaptionFixture f;
             const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
             const auto proof=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
-            auto displayed=f.base;displayed.left=28;displayed.right=3810;
+            // Height1610 at2.35 requests3782 aligned columns. Equal even
+            // insets retain3784 columns (28 each side), preserving the center.
+            auto displayed=f.base;displayed.left=28;displayed.right=3812;
             const auto state=CommitQualifiedSubtitlePresentationHold({},proof,f.observation.identity,displayed,
                 SubtitlePreviewMode::GeneratedGrayBackground,0,0,1000,true,false,10000000);
             Assert::IsTrue(state.available);
@@ -3415,7 +3422,8 @@ namespace VideoProcessorTest
             input.measurementUnknown=input.retentionCurrent=true;
             const auto hold=EvaluateQualifiedSubtitleUnknownHold(f.Source(),currentRaw,input);
             Assert::IsTrue(hold.retained);
-            Assert::AreEqual(28,hold.bounds.left);Assert::AreEqual(3810,hold.bounds.right);
+            Assert::AreEqual(28,hold.bounds.left);Assert::AreEqual(3812,hold.bounds.right);
+            Assert::AreEqual(hold.bounds.left,3840-hold.bounds.right);
             FinalAspectLimitFillInput fill;
             fill.crop.automaticCropEnabled=fill.crop.sharedGeometryAvailable=true;
             fill.crop.geometry=f.base;fill.crop.frameSourceGeneration=fill.crop.geometrySourceGeneration=1;
@@ -8815,4 +8823,260 @@ namespace VideoProcessorTest
         }
 
 	};
+    TEST_CLASS(PhysicalPictureEdgeObservationTests)
+    {
+    public:
+        TEST_METHOD(PhysicalSourceEdgeDoesNotBecomeItsDecodedHaloRetentionEnvelope)
+        {
+            for(int format=0;format<3;++format) {
+                P010Frame frame(3840,2160,0,format!=0);frame.Fill(0,512,512);
+                frame.FillRectangle(0,263,3840,1897,220,530,490);
+                for(int row=254;row<263;++row)frame.FillRectangle(0,row,3840,row+1,4+(row-254),512+(row-254),512-(row-254));
+                for(int row=1897;row<1906;++row)frame.FillRectangle(0,row,3840,row+1,12-(row-1897),520-(row-1897),504+(row-1897));
+                const AnalysisLumaSource source{frame.bytes.data(),frame.bytes.size(),3840,2160,frame.pitch,frame.pitch,
+                    format==0?AnalysisLumaFormat::P010:format==1?AnalysisLumaFormat::P210:AnalysisLumaFormat::DecodedDolbyVision422,
+                    VideoFrameEncoding::UNKNOWN,ColorSpace::REC_709,9};
+                const auto retained=ScopePresentation(3840,2160,254,1906);
+                const auto measured=MeasurePhysicalPictureEdges(source,retained);
+                Assert::IsTrue(measured.estimateAvailable,L"A broad sharp source edge must be reported separately from its faint retained halo.");
+                Assert::AreEqual(263,measured.estimate.top);Assert::AreEqual(1897,measured.estimate.bottom);
+                Assert::AreEqual(3840.0/1634,measured.estimate.aspectRatio,1e-9);
+                Assert::AreEqual(254,measured.conservativeBounds.top);Assert::AreEqual(1906,measured.conservativeBounds.bottom);
+            }
+            char* capturedEnvironment = nullptr; size_t capturedEnvironmentSize = 0;
+            const auto environmentResult = _dupenv_s(&capturedEnvironment, &capturedEnvironmentSize, "VP_PHYSICAL_EDGE_CAPTURE_FRAME");
+            std::unique_ptr<char, decltype(&std::free)> captureOwner(capturedEnvironment, &std::free);
+            Assert::AreEqual(0, environmentResult);
+            const char* capture = captureOwner.get();
+            const auto replay=[&](const char* capture) {
+                std::ifstream pixels(capture,std::ios::binary|std::ios::ate);
+                Assert::IsTrue(pixels.good(),L"Explicit physical-edge input capture must exist.");
+                const size_t size=static_cast<size_t>(pixels.tellg());
+                std::vector<uint8_t> bytes(size);pixels.seekg(0);pixels.read(reinterpret_cast<char*>(bytes.data()),size);
+                std::ifstream sidecar(std::string(capture).substr(0,std::string(capture).size()-4)+".txt");
+                int width=0,height=0,format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;size_t pitch=0,uvPitch=0;
+                sidecar>>width>>height>>pitch>>uvPitch>>format>>encoding>>color>>top>>bottom>>script>>range;
+                Assert::IsTrue(sidecar.good() && width==3840 && height==2160 && format==4,
+                    L"Physical-edge replay requires the explicitly recorded native UHD decoded-DV source.");
+                AnalysisLumaSource source{bytes.data(),bytes.size(),width,height,pitch,uvPitch,
+                    static_cast<AnalysisLumaFormat>(format),static_cast<VideoFrameEncoding>(encoding),static_cast<ColorSpace>(color),1};
+                source.range=static_cast<AnalysisLumaRange>(range);
+                const auto observed=MeasurePhysicalPictureEdges(source,ScopePresentation(width,height,254,1906));
+                Logger::WriteMessage((std::string("Supplied native physical-edge replay: ")+capture+" "+observed.reason).c_str());
+                Assert::IsTrue(observed.estimateAvailable);
+                Assert::AreEqual(263,observed.estimate.top);Assert::AreEqual(1897,observed.estimate.bottom);
+                Assert::AreEqual(254,observed.conservativeBounds.top);Assert::AreEqual(1906,observed.conservativeBounds.bottom);
+            };
+            if(capture && *capture) replay(capture);
+            else Logger::WriteMessage("Optional native physical-edge capture absent; synthetic native controls still exercised.");
+            char* directoryEnvironment=nullptr;size_t directoryEnvironmentSize=0;
+            Assert::AreEqual(0,_dupenv_s(&directoryEnvironment,&directoryEnvironmentSize,"VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY"));
+            std::unique_ptr<char,decltype(&std::free)> directoryOwner(directoryEnvironment,&std::free);
+            if(directoryOwner && *directoryOwner) {
+                std::string directory=directoryOwner.get();
+                if(directory.back()!='\\' && directory.back()!='/')directory+='\\';
+                WIN32_FIND_DATAA entry{};
+                struct DirectorySearch {
+                    HANDLE value;
+                    ~DirectorySearch(){if(value!=INVALID_HANDLE_VALUE)FindClose(value);}
+                } search{FindFirstFileA((directory+"frame-*.bin").c_str(),&entry)};
+                Assert::IsTrue(search.value!=INVALID_HANDLE_VALUE,
+                    L"Explicit physical-edge replay directory must be readable and contain native frames.");
+                size_t replayed=0;
+                do {
+                    if(entry.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)continue;
+                    const auto path=directory+entry.cFileName;replay(path.c_str());++replayed;
+                } while(FindNextFileA(search.value,&entry));
+                Assert::AreEqual(static_cast<DWORD>(ERROR_NO_MORE_FILES),GetLastError(),
+                    L"Physical-edge replay directory enumeration must finish without an I/O error.");
+                Assert::IsTrue(replayed>0,L"Explicit physical-edge replay directory must contain native frames.");
+                Logger::WriteMessage((std::string("Native physical-edge frames replayed: ")+std::to_string(replayed)).c_str());
+            }
+        }
+        TEST_METHOD(SeparatedOuterPictureEdgesSurviveAnOccludedCenter)
+        {
+            const auto retained=ScopePresentation(3840,2160,254,1906);
+            for(int format=0;format<3;++format) {
+                P010Frame frame(3840,2160,0,format!=0);frame.Fill(0,512,512);
+                frame.FillRectangle(0,263,3840,1897,220,530,490);
+                // A dark/occluded central region is not evidence that both
+                // independently visible outer picture edges disappeared.
+                frame.FillRectangle(960,263,2880,1897,0,512,512);
+                const AnalysisLumaSource source{frame.bytes.data(),frame.bytes.size(),3840,2160,frame.pitch,frame.pitch,
+                    format==0?AnalysisLumaFormat::P010:format==1?AnalysisLumaFormat::P210:AnalysisLumaFormat::DecodedDolbyVision422,
+                    VideoFrameEncoding::UNKNOWN,ColorSpace::REC_709,9};
+                const auto measured=MeasurePhysicalPictureEdges(source,retained);
+                Assert::IsTrue(measured.estimateAvailable,
+                    L"Matching broad edges in separated outer regions must survive a dark center.");
+                Assert::AreEqual(263,measured.estimate.top);Assert::AreEqual(1897,measured.estimate.bottom);
+                Assert::AreEqual(254,measured.conservativeBounds.top);Assert::AreEqual(1906,measured.conservativeBounds.bottom);
+            }
+        }
+        TEST_METHOD(PhysicalRasterExtentRequiresFourCurrentPixelEdges)
+        {
+            P010Frame frame(640,360);frame.Fill(220,530,490);
+            const auto source=frame.P010Source();const auto raw=ExtractActivePictureEvidence(source);
+            Assert::IsTrue(raw.blackReference.evaluated);
+            const ActivePictureBounds raster{0,0,640,360,640,360,640.0/360,ActivePictureBounds::BarAxes::NONE};
+            const auto measured=MeasurePhysicalPictureEdges(source,raster,nullptr,&raw.blackReference);
+            Assert::IsTrue(measured.estimateAvailable,
+                L"Distributed current source pixels at all four raster edges must retain full-raster physical detection.");
+            Assert::AreEqual(int(PhysicalPictureEdgeConfidence::SOURCE_RASTER_EXTENT),int(measured.confidence));
+            Assert::AreEqual(0,measured.estimate.left);Assert::AreEqual(0,measured.estimate.top);
+            Assert::AreEqual(640,measured.estimate.right);Assert::AreEqual(360,measured.estimate.bottom);
+            frame.Fill(0,512,512);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(source,raster,nullptr,&raw.blackReference).estimateAvailable,
+                L"Full-raster bounds and prior bright evidence cannot establish extent on current black pixels.");
+            frame.FillRectangle(0,40,640,320,220);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(source,raster,nullptr,&raw.blackReference).estimateAvailable,
+                L"Retaining the input raster does not prove current picture reaches its top and bottom edges.");
+            frame.Fill(220,530,490);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(source,raster).estimateAvailable,
+                L"Raster extent cannot be qualified without a source black reference.");
+            auto unresolved=raw.blackReference;
+            unresolved.mode=ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED;
+            Assert::IsFalse(MeasurePhysicalPictureEdges(source,raster,nullptr,&unresolved).estimateAvailable,
+                L"Unresolved source black level cannot qualify raster extent even on bright pixels.");
+            frame.Fill(0,512,512);frame.FillRectangle(80,60,560,300,220);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(source,raster,nullptr,&raw.blackReference).estimateAvailable,
+                L"A bright interior panel does not establish any source raster terminal.");
+            frame.Fill(0,512,512);frame.FillRectangle(0,0,640,300,220);
+            frame.FillRectangle(260,348,380,360,568);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(source,raster,nullptr,&raw.blackReference).estimateAvailable,
+                L"A localized caption reaching the bottom raster edge cannot supply distributed picture extent.");
+        }
+        TEST_METHOD(PillarboxPhysicalEdgesRemainUnroundedAndIndependentOfRasterExtent)
+        {
+            P010Frame frame(640,360);frame.Fill(0,512,512);
+            frame.FillRectangle(65,0,575,360,220,530,490);
+            const auto source=frame.P010Source();const auto raw=ExtractActivePictureEvidence(source);
+            const ActivePictureBounds guard{64,0,576,360,640,360,512.0/360,ActivePictureBounds::BarAxes::LEFT_RIGHT};
+            const auto measured=MeasurePhysicalPictureEdges(source,guard,nullptr,&raw.blackReference);
+            Assert::IsTrue(measured.estimateAvailable,L"Pillarbox edges require source columns plus current top/bottom extent proof.");
+            Assert::AreEqual(65,measured.estimate.left);Assert::AreEqual(575,measured.estimate.right);
+            Assert::AreEqual(0,measured.estimate.top);Assert::AreEqual(360,measured.estimate.bottom);
+            Assert::AreEqual(510.0/360,measured.estimate.aspectRatio,1e-9);
+            Assert::AreEqual(64,measured.conservativeBounds.left);Assert::AreEqual(576,measured.conservativeBounds.right);
+            frame.FillRectangle(65,0,575,4,0,512,512);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(source,guard,nullptr,&raw.blackReference).estimateAvailable,
+                L"Measured side bars do not prove unresolved dark top pixels are full-raster picture.");
+        }
+        TEST_METHOD(WindowboxPhysicalObservationMeasuresBothAxesFromSourcePixels)
+        {
+            P010Frame frame(640,360);frame.Fill(0,512,512);
+            frame.FillRectangle(65,41,575,319,220,530,490);
+            const auto source=frame.P010Source();const auto raw=ExtractActivePictureEvidence(source);
+            const ActivePictureBounds guard{64,40,576,320,640,360,512.0/280,ActivePictureBounds::BarAxes::BOTH};
+            const auto measured=MeasurePhysicalPictureEdges(source,guard,nullptr,&raw.blackReference);
+            Assert::IsTrue(measured.estimateAvailable,L"Windowbox physical observation must measure both source axes.");
+            Assert::AreEqual(65,measured.estimate.left);Assert::AreEqual(575,measured.estimate.right);
+            Assert::AreEqual(41,measured.estimate.top);Assert::AreEqual(319,measured.estimate.bottom);
+            Assert::AreEqual(510.0/278,measured.estimate.aspectRatio,1e-9);
+            Assert::AreEqual(64,measured.conservativeBounds.left);Assert::AreEqual(40,measured.conservativeBounds.top);
+        }
+        TEST_METHOD(DistributedPictureEdgeSupportCanCompensateForADarkOuterSceneRegion)
+        {
+            P010Frame frame(3840,2160);frame.Fill(0,512,512);
+            frame.FillRectangle(0,263,3840,1897,220);
+            // At the first picture rows only three of the eight left-quarter
+            // probes remain bright. The other three quarters independently
+            // establish the same edge, as in native frames32-34.
+            frame.FillRectangle(0,263,500,266,4);
+            const auto measured=MeasurePhysicalPictureEdges(frame.P010Source(),ScopePresentation(3840,2160,254,1906));
+            Assert::IsTrue(measured.estimateAvailable,
+                L"A distributed strong majority with visible support on both sides must survive a dark outer scene feature.");
+            Assert::AreEqual(263,measured.estimate.top);Assert::AreEqual(1897,measured.estimate.bottom);
+            Assert::AreEqual(254,measured.conservativeBounds.top);Assert::AreEqual(1906,measured.conservativeBounds.bottom);
+        }
+        TEST_METHOD(DetachedBroadBarGraphicCannotBecomeThePhysicalPictureBoundary)
+        {
+            P010Frame frame(3840,2160);frame.Fill(0,512,512);
+            frame.FillRectangle(0,263,3840,1897,220);
+            frame.FillRectangle(0,1940,3840,1944,220);
+            const auto measured=MeasurePhysicalPictureEdges(frame.P010Source(),ScopePresentation(3840,2160,262,1976));
+            Assert::IsFalse(measured.estimateAvailable,
+                L"A detached broad bar graphic followed inward by a gap cannot establish a physical edge.");
+            Assert::AreEqual(262,measured.conservativeBounds.top);Assert::AreEqual(1976,measured.conservativeBounds.bottom);
+        }
+        TEST_METHOD(CaptionExpandedNominationCannotHideTheIndependentOuterPictureEdge)
+        {
+            // The raw detector's bottom nomination includes a bar caption.
+            // Its distance from the picture edge is not an aspect-ratio hint.
+            const auto retained=ScopePresentation(3840,2160,262,1976);
+            for(bool fullChroma:{false,true}) {
+                P010Frame frame(3840,2160,0,fullChroma);frame.Fill(0,512,512);
+                frame.FillRectangle(0,263,3840,1897,220,530,490);
+                frame.FillRectangle(1100,1908,2740,1976,568,512,512);
+                const auto source=fullChroma?frame.P210Source():frame.P010Source();
+                const auto measured=MeasurePhysicalPictureEdges(source,retained);
+                Assert::IsTrue(measured.estimateAvailable,
+                    L"Independent source pixels must nominate the outer edge beyond a caption-expanded raw search hint.");
+                Assert::AreEqual(263,measured.estimate.top);Assert::AreEqual(1897,measured.estimate.bottom);
+                Assert::AreEqual(262,measured.conservativeBounds.top);Assert::AreEqual(1976,measured.conservativeBounds.bottom);
+            }
+        }
+        TEST_METHOD(CentralBarCaptionCannotContaminateSeparatedOuterMatteReferences)
+        {
+            const auto retained=ScopePresentation(3840,2160,254,1906);
+            P010Frame frame(3840,2160,0,true);frame.Fill(0,512,512);
+            frame.FillRectangle(0,263,3840,1897,220,530,490);
+            frame.FillRectangle(960,1908,2880,1930,568,560,490);
+            auto source=frame.P210Source();source.format=AnalysisLumaFormat::DecodedDolbyVision422;
+            const auto measured=MeasurePhysicalPictureEdges(source,retained);
+            Assert::IsTrue(measured.estimateAvailable,
+                L"Central caption pixels in an outer reference row cannot invalidate clear matte on both outer sides.");
+            Assert::AreEqual(263,measured.estimate.top);Assert::AreEqual(1897,measured.estimate.bottom);
+            Assert::AreEqual(254,measured.conservativeBounds.top);Assert::AreEqual(1906,measured.conservativeBounds.bottom);
+            frame.FillRectangle(0,1920,960,1921,568,560,490);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(source,retained).estimateAvailable,
+                L"Contamination of an actual supporting outer matte region must still invalidate its reference.");
+        }
+        TEST_METHOD(SeparatedOuterEvidenceRequiresBroadAgreementAtTheSameRow)
+        {
+            const auto retained=ScopePresentation(3840,2160,254,1906);
+            P010Frame frame(3840,2160);frame.Fill(0,512,512);
+            frame.FillRectangle(0,263,960,1897,220);
+            frame.FillRectangle(2880,263,3840,1895,220);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(frame.P010Source(),retained).estimateAvailable,
+                L"Different bottom edges on opposite sides cannot establish one physical boundary.");
+            frame.Fill(0,512,512);frame.FillRectangle(0,263,2800,1897,220);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(frame.P010Source(),retained).estimateAvailable,
+                L"An off-center panel without opposite-side support cannot establish a picture edge.");
+            frame.Fill(0,512,512);
+            frame.FillRectangle(0,263,250,1897,220);frame.FillRectangle(3590,263,3840,1897,220);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(frame.P010Source(),retained).estimateAvailable,
+                L"Thin side features do not provide broad outer-region picture evidence.");
+        }
+        TEST_METHOD(AmbiguousDimPhysicalEdgeNeverDiscardsItsConservativePixels)
+        {
+            P010Frame frame(3840,2160);frame.Fill(0,512,512);
+            frame.FillRectangle(0,263,3840,1897,8);
+            auto source=frame.P010Source();const auto retained=ScopePresentation(3840,2160,254,1906);
+            const auto measured=MeasurePhysicalPictureEdges(source,retained);
+            Assert::IsFalse(measured.estimateAvailable,L"Dim broad real picture cannot be replaced by a guessed standard-ratio edge.");
+            Assert::AreEqual(254,measured.conservativeBounds.top);Assert::AreEqual(1906,measured.conservativeBounds.bottom);
+            // A bright interior step does not erase a genuinely dim first row.
+            // Even if an abrupt-edge estimate is available, its uncertainty
+            // envelope still includes the real dim collar and grants no crop.
+            frame.FillRectangle(0,264,3840,1896,220);
+            const auto dimCollar=MeasurePhysicalPictureEdges(frame.P010Source(),retained);
+            Assert::AreEqual(254,dimCollar.conservativeBounds.top);
+            Assert::AreEqual(1906,dimCollar.conservativeBounds.bottom);
+            frame.Fill(0,512,512);frame.FillRectangle(1000,263,2800,1897,220);
+            Assert::IsFalse(MeasurePhysicalPictureEdges(frame.P010Source(),retained).estimateAvailable,
+                    L"A localized subtitle or panel cannot supply separated outer-region picture edges.");
+            frame.Fill(0,512,512);frame.FillRectangle(0,259,3840,1903,220);
+            const auto nonstandard=MeasurePhysicalPictureEdges(frame.P010Source(),retained);
+            Assert::IsTrue(nonstandard.estimateAvailable);
+            Assert::AreEqual(259,nonstandard.estimate.top);Assert::AreEqual(1903,nonstandard.estimate.bottom);
+            Assert::AreEqual(3840.0/1644,nonstandard.estimate.aspectRatio,1e-9,
+                L"Measured edges must not be snapped to a standard ratio.");
+            AnalysisEvaluationBudget expired([](void*){return true;},nullptr);
+            const auto cancelled=MeasurePhysicalPictureEdges(frame.P010Source(),retained,&expired);
+            Assert::IsFalse(cancelled.estimateAvailable);
+            Assert::AreEqual(254,cancelled.conservativeBounds.top);Assert::AreEqual(1906,cancelled.conservativeBounds.bottom);
+
+        }
+    };
+
 }

@@ -24,6 +24,8 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
+#include <memory>
+#include "DolbyVisionTunnelTestSender.h"
 
 namespace
 {
@@ -177,21 +179,74 @@ namespace VideoProcessorTest
 			Assert::IsTrue(AspectRatioOsd::Classify(2.345).ratio == L"2.35:1");
 		}
 
-        TEST_METHOD(AspectDisplayDeadbandAnchorsToDisplayedValueWithoutDelayingAppliedGeometry)
+        TEST_METHOD(CaptionEnvelopeCannotRelabelPhysicalAspect2_24)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Observe(3, 34938, 3840.0 / 1634.0, true, false);
+            telemetry.Observe(3, 34939, 3840.0 / 1714.0, true, true);
+            const auto reading = telemetry.Read();
+            Assert::IsTrue(!reading.available ||
+                std::abs(reading.ratio - 3840.0 / 1634.0) < 0.000001,
+                L"A provisional caption envelope cannot become measured physical aspect.");
+        }
+
+        TEST_METHOD(AspectDisplayReportsSubPercentNativeMeasurementChangeExactly)
         {
             AspectRatioOsd osd;
             DetectedPictureAspect r;
-            r.sourceGeneration=1; r.available=true; r.provisional=true; r.ratio=1.50;
-            Assert::IsTrue(osd.Update(r).detected == L"1.50:1 (nonstandard; provisional)");
-            r.ratio=1.509; osd.Update(r); r.ratio=1.514;
-            Assert::IsTrue(osd.Update(r).detected == L"1.50:1 (nonstandard; provisional)");
-            r.ratio=1.515;
-            Assert::IsTrue(osd.Update(r).detected == L"1.51:1 (nonstandard; provisional)");
-            r.ratio=1.514; r.provisional=false;
+            r.sourceGeneration = 1; r.available = true;
+            r.ratio = 3840.0 / 1650.0;
+            const auto first = osd.Update(r).detected;
+            r.ratio = 3840.0 / 1636.0;
+            const auto second = osd.Update(r).detected;
+            Assert::IsTrue(first.find(L"2.32727") != std::wstring::npos);
+            Assert::IsTrue(second.find(L"2.34719") != std::wstring::npos);
+            Assert::IsTrue(first != second);
+        }
+
+        TEST_METHOD(AspectDisplayNeverHidesMeasurementDriftAndKeepsPresentationLabels)
+        {
+            AspectRatioOsd osd;
+            DetectedPictureAspect r;
+            r.sourceGeneration=1; r.available=true; r.ratio=1.50;
+            Assert::IsTrue(osd.Update(r).detected == L"1.50000:1");
+            r.ratio=1.509;
+            Assert::IsTrue(osd.Update(r).detected == L"1.50900:1");
+            r.ratio=1.514;
+            Assert::IsTrue(osd.Update(r).detected == L"1.51400:1");
             r.inUseAvailable=true; r.inUseState=PictureAspectUse::DETECTED; r.inUseRatio=2.39;
-            Assert::IsTrue(osd.Update(r).detected == L"1.51:1 (nonstandard)");
-            r.inUseRatio=2.40;
-            Assert::IsTrue(osd.Update(r).inUse == L"2.40:1 (Scope)");
+            Assert::IsTrue(osd.Update(r).inUse == L"2.39:1 (Scope)");
+        }
+        TEST_METHOD(AspectPhysicalUnknownCannotReusePreviousCurrentMeasurement)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.ObservePhysical(3, 100, true, true,
+                PhysicalAspectConfidence::STRONG_ABRUPT_EDGE, 0, 263, 3840, 1897);
+            Assert::IsTrue(telemetry.Read().available);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"0,263..3840,1897") != std::wstring::npos);
+            telemetry.ObservePhysical(3, 101, true, true,
+                PhysicalAspectConfidence::UNKNOWN, 0, 262, 3840, 1976);
+            Assert::IsFalse(telemetry.Read().available);
+            Assert::AreEqual(0.0, telemetry.Read().ratio);
+            Assert::AreEqual(uint64_t(101), telemetry.Read().detectedSequence);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unknown (physical boundary pending)");
+            telemetry.Source(4);
+            Assert::IsFalse(telemetry.Read().available);
+            Assert::IsFalse(telemetry.Read().physicalBoundsAvailable);
+            Assert::IsFalse(telemetry.Read().physicalEvaluated);
+        }
+        TEST_METHOD(AspectPhysicalFullRasterRequiresExplicitCurrentExtentProof)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.ObservePhysical(1, 10, true, true, PhysicalAspectConfidence::SOURCE_RASTER_EXTENT,
+                0, 0, 3840, 2160);
+            Assert::IsTrue(telemetry.Read().available);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected ==
+                L"1.77778:1 [0,0..3840,2160; source extent]");
+            telemetry.ObservePhysical(1, 11, true, false, PhysicalAspectConfidence::SOURCE_RASTER_EXTENT,
+                0, 0, 3840, 2160);
+            Assert::IsFalse(telemetry.Read().available);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unknown (physical boundary pending)");
         }
         TEST_METHOD(AspectDisplayResetsForUnavailableNewSourceAndRenderer)
         {
@@ -200,11 +255,11 @@ namespace VideoProcessorTest
             osd.Update(r); r.available=false;
             Assert::IsTrue(osd.Update(r).detected == L"Unavailable");
             r.available=true; r.ratio=1.509;
-            Assert::IsTrue(osd.Update(r).detected == L"1.51:1 (nonstandard)");
+            Assert::IsTrue(osd.Update(r).detected == L"1.50900:1");
             r.sourceGeneration=2; r.ratio=1.519;
-            Assert::IsTrue(osd.Update(r).detected == L"1.52:1 (nonstandard)");
+            Assert::IsTrue(osd.Update(r).detected == L"1.51900:1");
             osd.Reset(); r.ratio=1.529;
-            Assert::IsTrue(osd.Update(r).detected == L"1.53:1 (nonstandard)");
+            Assert::IsTrue(osd.Update(r).detected == L"1.52900:1");
         }
 
         TEST_METHOD(AspectTelemetryUsesNativeStartupWithoutClaimingDetection)
@@ -227,7 +282,7 @@ namespace VideoProcessorTest
             telemetry.Submitted(1, 11, 2.39, 16.0/9.0, true, true);
             const auto rows = AspectRatioOsd::Format(telemetry.Read());
             Assert::IsTrue(rows.inUse == L"2.39:1 (Scope; held)");
-            Assert::IsTrue(rows.detected == L"1.66:1 (European widescreen; provisional)");
+            Assert::IsTrue(rows.detected == L"Unknown (physical boundary pending)");
             telemetry.ClearDetection();
             telemetry.Submitted(1, 12, 2.39, 16.0/9.0, true, true);
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unavailable");
@@ -242,7 +297,7 @@ namespace VideoProcessorTest
             telemetry.Submitted(1, 2, 1.66, 16.0/9.0, true, true);
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).inUse == L"1.66:1 (European widescreen)");
             telemetry.Observe(1, 3, 2.17, true, false);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"2.17:1 (nonstandard)");
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"2.17000:1");
         }
         TEST_METHOD(AspectTelemetryPreservesPresentedPacketAndRejectsFailedSubmission)
         {
@@ -1647,6 +1702,450 @@ namespace VideoProcessorTest
             require(fitSources.size()>=24 && scanSeen && skipSeen,
                 L"Both-bar safe visibility did not survive 24 distinct actual presented sources with real dense scans and skips.");
         }
+
+        // Exercise the complete production tunnel/worker/render path. Every successful
+        // output is inspected in sink order, including outputs between OSD publications.
+        void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputRepeat=false,bool nativePreflightOnly=false)
+        {
+            constexpr int width=3840,height=2160,pictureTop=262,pictureBottom=1898,captionBottom=1940;
+            struct ProbeClock final : ITimingClock {
+                LARGE_INTEGER frequency{};
+                ProbeClock(){Assert::IsTrue(QueryPerformanceFrequency(&frequency)!=FALSE);}
+                timingclocktime_t TimingClockNow() override {LARGE_INTEGER n{};QueryPerformanceCounter(&n);return n.QuadPart;}
+                timingclocktime_t TimingClockTicksPerSecond() const override{return frequency.QuadPart;}
+                const TCHAR* TimingClockDescription() override{return _T("Persistent decoded DV cadence QPC");}
+            } clock;
+            std::vector<BYTE> blank[2],caption[2],pressure[2];
+            VideoStateComPtr sourceState;
+            // Forward RGB sender supplies real valid Dolby metadata. Low 12-bit
+            // picture bits and parity-carrying chroma survive the actual formatter.
+            for(int phase=0;phase<2;++phase) {
+                DolbyVisionTestSender::SenderPicture sender(true,width,height,VideoFrameEncoding::R210);
+                sender.state->eotf=EOTF::SDR;sender.state->colorspace=ColorSpace::BT_2020;
+                // FULL matte0 and ink892 give backing limit74. Picture48/64
+                // exceeds native black24, stays below backing74, and changes16
+                // codes across sources: above the cadence cleanup tolerance8.
+                for(int y=0;y<height;++y)for(int x=0;x<width;++x) {
+                    const size_t at=size_t(y)*width+x;
+                    sender.intensity[at]=uint16_t(y>=pictureTop&&y<pictureBottom?
+                        (y>=1720?48+16*((x/64+y/32+phase)&1):300+40*((x/64+y/32+phase)&1))*4:0);
+                    sender.chroma[at]=2048;sender.Pack(at);
+                }
+                sender.Embed(DolbyVisionTestSender::Packetize(DolbyVisionTestSender::DmBody()));
+                blank[phase]=sender.input;
+                for(int row=0;row<3;++row)for(int glyph=0;glyph<12;++glyph)
+                    for(int y=1770+row*60;y<1820+row*60;++y)
+                        for(int x=1552+glyph*64;x<1584+glyph*64;++x)
+                            if(x<1558+glyph*64 || x>=1578+glyph*64 ||
+                                (y>=1793+row*60&&y<1797+row*60)) {
+                                const size_t at=size_t(y)*width+x;
+                                sender.intensity[at]=3568;sender.Pack(at);
+                            }
+                sender.Embed(DolbyVisionTestSender::Packetize(DolbyVisionTestSender::DmBody()));
+                caption[phase]=sender.input;
+                sourceState=sender.state;
+                CRGBDolbyVisionTunnelFormatter formatter;formatter.OnVideoState(sourceState);
+                std::vector<BYTE> converted;
+                const auto metadata=DolbyVisionTestSender::Deliver(formatter,sender,1,&converted);
+                Assert::IsTrue(metadata.valid,L"Independent sender must produce a trusted Dolby picture before renderer testing.");
+                AnalysisLumaSource decoded{converted.data(),converted.size(),width,height,size_t(width)*2,size_t(width)*2,
+                    AnalysisLumaFormat::DecodedDolbyVision422,VideoFrameEncoding::R210,ColorSpace::BT_2020,1};
+                decoded.range=AnalysisLumaRange::Full; // DmBody explicitly declares full range.
+                AnalysisLumaSample sample;
+                Assert::IsTrue(decoded.Sample(1552,1890,sample)&&sample.luma==892,
+                    L"Tunnel fixture must decode the persistent native caption, not silently use SDR RGB fallback.");
+                // Prove exact decoded glyph ownership and moving cleanup before
+                // allocating a GPU renderer. Report actual detected line count.
+                auto baseSampler=std::make_unique<SubtitleMeasurementSampler>();
+                auto observations=std::make_unique<std::vector<SubtitleBoxObservation>>();observations->reserve(4);
+                SubtitleBarTrackingReference prior;
+                for(uint64_t index=0;index<4;++index) {
+                    auto key=std::make_unique<SubtitleBoxObservation>();
+                    key->identity.transportGeneration=key->identity.rendererGeneration=1;
+                    key->identity.acceptedSequence=key->identity.sourceFrameNumber=index+1;
+                    key->identity.captureTimestamp=1000000+index*166833;
+                    key->identity.sourceFormatGeneration=key->identity.analysisDomainKey=key->identity.viewportGeneration=1;
+                    key->width=width;key->height=height;key->policyGeneration=key->continuityGeneration=1;
+                    key->analysisStride=1;key->nearBarDistance=20;key->scriptHint=SubtitleScriptHint::Latin;
+                    key->sharedPicture.required=true;key->sharedPicture.identity=key->identity;
+                    key->sharedPicture.bounds={0,pictureTop,width,pictureBottom,width,height,
+                        double(width)/(pictureBottom-pictureTop),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                    auto measured=baseSampler->Measure(decoded,*key,prior,60.0);
+                    Logger::WriteMessage((std::string("Decoded-DV base preflight: phase=")+std::to_string(phase)+
+                        " sequence="+std::to_string(index+1)+" analyzed="+std::to_string(measured.analyzed)+
+                        " detected="+std::to_string(measured.text.detected)+" lines="+std::to_string(measured.text.lineCount)+
+                        " bounds="+std::to_string(measured.text.bounds.top)+"-"+std::to_string(measured.text.bounds.bottom)+
+                        " components="+std::to_string(measured.text.diagnosticComponentCount)+
+                        " searched="+std::to_string(measured.text.topSearchComplete)+"/"+std::to_string(measured.text.bottomSearchComplete)+
+                        " bar_authority="+std::to_string(measured.barAuthority)+
+                        " picture="+std::to_string(measured.pictureTop)+"-"+std::to_string(measured.pictureBottom)+
+                        " shared_valid="+std::to_string(key->sharedPicture.AvailableFor(key->identity,width,height))+
+                        " probe="+measured.sharedProbeReason+" reason="+measured.text.diagnosticReason).c_str());
+                    Assert::IsTrue(measured.analyzed&&measured.text.detected&&!measured.text.workLimit,
+                        L"Decoded crossing-caption fixture did not acquire real glyphs; no GPU regression coverage claimed.");
+                    prior=SubtitleBoxLookahead::AdvanceBarTrackingReference(measured);observations->push_back(std::move(measured));
+                }
+                auto preview=std::make_unique<SubtitleBoxPreview>();
+                *preview=SubtitleBoxLookahead::Resolve(observations->data(),observations->size(),1,1);
+                auto presentation=std::make_unique<SubtitleBoxPresentation>();presentation->RefreshReferencePixels(*preview,decoded);
+                const auto cue=presentation->Consume(*preview,250,1000.0/60);
+                Logger::WriteMessage((std::string("Decoded-DV three-line ownership: lines=")+std::to_string(cue.lineCount)+
+                    " bounds="+std::to_string(cue.bounds.top)+"-"+std::to_string(cue.bounds.bottom)).c_str());
+                Assert::IsTrue(cue.detected&&!cue.confirmationPending&&cue.lineCount==3&&cue.bounds.top<=1770&&cue.bounds.bottom>=1940,
+                    L"Decoded base fixture must own all three backed source lines from1770 through1940; partial-line coverage cannot qualify.");
+                auto padding=std::make_unique<SubtitlePaddingGuard>();SubtitlePaddingPolicy policy;
+                policy.glyphRelative=true;policy.minimumHeadroomPixels=30;
+                const auto safe=padding->Consume(cue,*preview,{60,40,21},policy);const auto display=padding->DisplayBounds();
+                auto compositor=std::make_unique<SubtitleCutPastePresentation>();
+                auto geometry=compositor->Consume(cue,*preview,safe,10,&display);
+                geometry=FitSubtitleToVisiblePicture(geometry,{0,pictureTop,width,pictureBottom},10);
+                bool movingCleanup=false;
+                auto inspectCleanup=[&](const SubtitleBoxRect& rectangle) {
+                    for(int y=(std::max)(pictureTop,rectangle.top);y<(std::min)(pictureBottom,rectangle.bottom)&&!movingCleanup;++y)
+                        for(int x=(std::max)(0,rectangle.left);x<(std::min)(width,rectangle.right);++x) {
+                            AnalysisLumaSample point;
+                            const int expected=y>=1720?48+16*((x/64+y/32+phase)&1):300+40*((x/64+y/32+phase)&1);
+                            if(decoded.Sample(x,y,point)&&point.luma==expected){movingCleanup=true;break;}
+                        }
+                };
+                if(geometry.generatedCleanupRowCount)for(unsigned row=0;row<geometry.generatedCleanupRowCount;++row)
+                    inspectCleanup(geometry.generatedCleanupRows[row]);
+                else inspectCleanup(geometry.generatedCleanup);
+                Logger::WriteMessage((std::string("Decoded-DV exact cleanup preflight: lines=")+std::to_string(cue.lineCount)+
+                    " cleanup="+std::to_string(geometry.generatedCleanup.top)+"-"+std::to_string(geometry.generatedCleanup.bottom)+
+                    " rows="+std::to_string(geometry.generatedCleanupRowCount)+" moving_picture="+std::to_string(movingCleanup)).c_str());
+                Assert::IsTrue(geometry.valid&&movingCleanup,
+                    L"Decoded-DV fixture lacks measured cleanup over changing picture pixels; benign bar-only coverage cannot qualify.");
+                if(requireUnknownInputRepeat) {
+                    // A genuinely inconclusive source, independent of worker timing:
+                    // the real detector bounds noisy-frame work at 768 components.
+                    for(int row=0;row<3;++row)for(int column=0;column<320;++column)
+                        for(int y=1908+row*12;y<1912+row*12;++y)
+                            for(int x=column*12;x<column*12+4;++x) {
+                                const size_t at=size_t(y)*width+x;
+                                sender.intensity[at]=3568;sender.Pack(at);
+                            }
+                    sender.Embed(DolbyVisionTestSender::Packetize(DolbyVisionTestSender::DmBody()));
+                    pressure[phase]=sender.input;
+                    DolbyVisionTestSender::Deliver(formatter,sender,2,&converted);
+                    AnalysisLumaSource unknown{converted.data(),converted.size(),width,height,size_t(width)*2,size_t(width)*2,
+                        AnalysisLumaFormat::DecodedDolbyVision422,VideoFrameEncoding::R210,ColorSpace::BT_2020,1};
+                    unknown.range=AnalysisLumaRange::Full;
+                    auto key=std::make_unique<SubtitleBoxObservation>();
+                    key->identity.transportGeneration=key->identity.rendererGeneration=1;
+                    key->identity.acceptedSequence=key->identity.sourceFrameNumber=1;
+                    key->identity.captureTimestamp=1;key->identity.sourceFormatGeneration=1;
+                    key->identity.analysisDomainKey=1;key->identity.viewportGeneration=1;
+                    key->width=width;key->height=height;key->policyGeneration=key->continuityGeneration=1;
+                    key->analysisStride=1;key->nearBarDistance=20;key->scriptHint=SubtitleScriptHint::Latin;
+                    key->sharedPicture.required=true;key->sharedPicture.identity=key->identity;
+                    key->sharedPicture.bounds={0,pictureTop,width,pictureBottom,width,height,
+                        double(width)/(pictureBottom-pictureTop),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                    auto sampler=std::make_unique<SubtitleMeasurementSampler>();
+                    const auto measured=std::make_unique<SubtitleBoxObservation>(sampler->Measure(unknown,*key,{},60.0));
+                    Logger::WriteMessage((std::string("Actual-repeat source preflight: analyzed=")+std::to_string(measured->analyzed)+
+                        " work_limit="+std::to_string(measured->text.workLimit)+" reason="+measured->text.diagnosticReason+
+                        " components="+std::to_string(measured->text.diagnosticComponentCount)).c_str());
+                    Assert::IsTrue(measured->analyzed&&measured->text.workLimit&&
+                        !strcmp(measured->text.diagnosticReason,"component-budget"),
+                        L"Real decoded source must independently prove component-budget UNKNOWN; no timing-only repeat coverage is claimed.");
+                }
+            }
+            if(nativePreflightOnly)return;
+            HMODULE self=nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&ClassicPoseTestLog),&self)!=FALSE);
+            wchar_t modulePath[MAX_PATH]={};GetModuleFileNameW(self,modulePath,MAX_PATH);
+            std::wstring root(modulePath);root.resize(root.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            root+=L"\\..";
+#endif
+            // A read-only override permits the SAME harness to prove RED using
+            // a preserved/deployed old matching plugin+dependency directory.
+            char* overrideValue=nullptr;size_t overrideSize=0;
+            Assert::AreEqual(0,_dupenv_s(&overrideValue,&overrideSize,"VP_RENDERER_REGRESSION_PLUGIN_ROOT"));
+            std::unique_ptr<char,decltype(&std::free)> overrideOwner(overrideValue,&std::free);
+            if(overrideValue&&*overrideValue){const std::string path(overrideValue);root.assign(path.begin(),path.end());}
+            const auto pluginPath=root+(beta?L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll":L"\\vprenderer\\VideoProcessorVPRenderer.dll");
+            HMODULE plugin=LoadLibraryExW(pluginPath.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct ModuleCleanup{HMODULE module;~ModuleCleanup(){FreeLibrary(module);}} moduleCleanup{plugin};
+            const auto create=reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_DESTROY_EXPORT));
+            const auto diagnostics=reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticFn>(GetProcAddress(plugin,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT));
+            Assert::IsTrue(create&&destroy&&diagnostics);
+            struct DiagnosticCleanup{VideoProcessorLibplaceboConfigureDiagnosticFn configure;
+                ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);}} diagnosticCleanup{diagnostics};
+            for(const unsigned duration:{1001u,1000u}) {
+                // Source cadence is independent of the current output display.
+                constexpr unsigned scale=60000;
+                const double inputHz=double(scale)/duration;
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseMessages.clear();classicPoseAllRecordStages=true;}
+                diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
+                char temp[MAX_PATH]={},configPath[MAX_PATH]={};
+                Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0&&GetTempFileNameA(temp,"dvc",0,configPath)!=0);
+                const char* initialType=requestedMode==unsigned(SubtitlePreviewMode::GeneratedGrayBackground)?"generated_gray":
+                    requestedMode==unsigned(SubtitlePreviewMode::BlackBackground)?"black":"classic";
+                // A cadence test starts with exactly one intended profile. Live
+                // profile switching has its own independent lifecycle coverage.
+                std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                    "[vprenderer]\nquality: fast\n"
+                    "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n"
+                    "[vprenderer.zoom.scope]\nautomatic_crop: true\nsubtitle_fit: true\n"
+                    "[vprenderer.subtitles.cadence]\ntype: "<<initialType<<"\nshortcut: F5\noffset_pixels: "<<(requestedMode?10:15)<<"\n"
+                    "subtitle_engage_drift_ms: 500\nsubtitle_release_drift_ms: 2000\nsubtitle_hold_seconds: 2\n"
+                    "subtitle_hold_ms: 250\nsubtitle_near_bar_px: 20\ncleanup_fill: stable_surround\nminimum_headroom_pixels: 30\n";
+                SnapshotTestCallback callback;NativeP210Buffer buffer;
+                struct Cleanup{HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;const char* path;
+                    ~Cleanup(){if(renderer){renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);DeleteFileA(path);}}
+                    cleanup{CreateWindowExW(0,L"STATIC",L"Persistent native Dolby cadence",WS_POPUP,0,0,2000,1125,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
+                Assert::IsNotNull(cleanup.window);
+                cleanup.renderer=create(&callback,69,cleanup.window,&clock,true,16,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
+                Assert::IsNotNull(cleanup.renderer);
+                ConfigFile config;Assert::IsTrue(config.Load(configPath));UnifiedProfileRuntime::Runtime runtime;std::string error;
+                Assert::IsTrue(runtime.Initialize(config,{},error));CString active;bool restart=false,reset=false;
+                const auto initialSnapshot=runtime.GetSnapshot();
+                const auto initialSelection=initialSnapshot->effectiveSelections.find("subtitles");
+                Assert::IsTrue(initialSelection!=initialSnapshot->effectiveSelections.end()&&initialSelection->second.size()==1&&
+                    initialSelection->second.front()=="cadence",L"The cadence fixture must initially resolve its sole intended subtitle profile.");
+                Logger::WriteMessage((std::string("Cadence initial snapshot: generation=")+std::to_string(initialSnapshot->generation)+
+                    " profile=cadence type="+initialType+" expected_mode="+std::to_string(requestedMode)).c_str());
+                Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*initialSnapshot,active,restart,reset)&&!restart);
+                cleanup.renderer->SetQueueFramePolicy(4,9,true);cleanup.renderer->SetActivePictureLookaheadFrames(4);
+                VideoStateComPtr state=new VideoState(*sourceState);state->displayMode=std::make_shared<DisplayMode>(width,height,false,scale,duration);
+                Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
+                uint64_t sequence=1;size_t cursor=0;std::map<uint64_t,timingclocktime_t> delivered;
+                std::map<uint64_t,AnalysisDiagnosticRecordV1> nativeInputs;
+                std::vector<AnalysisDiagnosticRecordV1> outputs;
+                std::set<uint64_t> repeatedAnchors;
+                auto require=[&](bool ok,const wchar_t* why){if(ok)return;
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);for(const auto& line:classicPoseMessages)Logger::WriteMessage(line.c_str());}
+                    Assert::Fail(why);};
+                auto drain=[&] {
+                    std::vector<AnalysisDiagnosticRecordV1> records;
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);records=classicPoseRecords;}
+                    for(;cursor<records.size();++cursor){const auto& record=records[cursor];
+                        if(!strcmp(record.stage,"analysis-input")) {
+                            require(record.analysisFormat==uint64_t(AnalysisLumaFormat::DecodedDolbyVision422)&&
+                                record.analysisWidth==width&&record.analysisHeight==height&&record.counters[4]==12&&record.counters[5]==4,
+                                L"Actual production source must be full-resolution 12-bit decoded Dolby 4:2:2.");
+                            const auto source=delivered.find(record.sourceFrameNumber);
+                            require(source!=delivered.end()&&uint64_t(source->second)==record.captureTimestamp,
+                                L"Actual native analysis must retain the original delivered source identity and timestamp.");
+                            nativeInputs[record.acceptedSequence]=record;
+                        }
+                        if(strcmp(record.stage,"submitted-presentation")||!(record.flags&1u))continue;
+                        const auto input=nativeInputs.find(record.counters[1]);
+                        require(input!=nativeInputs.end()&&record.acceptedSequence==record.counters[1]&&
+                            input->second.transportGeneration==record.transportGeneration&&
+                            (!record.analysisDomainKey||input->second.analysisDomainKey==record.analysisDomainKey)&&
+                            (!record.sourceFormatGeneration||input->second.sourceFormatGeneration==record.sourceFormatGeneration),
+                            L"Every actual submission must identify an existing original displayed source, never an invented current source.");
+                        const auto consumed=nativeInputs.find(record.counters[0]);
+                        require(consumed!=nativeInputs.end()&&consumed->second.transportGeneration==record.transportGeneration,
+                            L"Every submitted output must identify its exact consumed input independently of displayed source.");
+                        if(record.counters[0]!=record.counters[1]) {
+                            require((record.flags&16384u)!=0&&record.cadenceRepeat&&
+                                !strcmp(record.reason,"complete-output-input-cadence-repeat")&&
+                                record.counters[0]==record.counters[1]+1&&
+                                consumed->second.sourceFrameNumber==input->second.sourceFrameNumber+1&&
+                                repeatedAnchors.insert(record.counters[1]).second&&!outputs.empty(),
+                                L"Only an explicit successful one-input whole-image repeat may display a previous source.");
+                            const auto& original=outputs.back();
+                            require(!(original.flags&16384u)&&original.acceptedSequence==record.acceptedSequence&&
+                                record.flags==(original.flags|16384u)&&record.metrics[0]==original.metrics[0]&&
+                                record.metrics[5]>record.metrics[0]&&record.metrics[5]-record.metrics[0]<=1.5/inputHz,
+                                L"Repeated output must retain its original complete successful image and bounded source age.");
+                            for(int i=1;i<8;++i)require(record.counters[i]==original.counters[i],
+                                L"Repeating final pixels cannot renew caption, native or certificate source ownership.");
+                            for(int i=0;i<4;++i)require(record.displayed[i]==original.displayed[i]&&
+                                record.published[i]==original.published[i]&&record.candidate[i]==original.candidate[i],
+                                L"Whole-image repeat must preserve original caption/crop/native geometry together.");
+                            for(int i=8;i<16;++i)require(record.metrics[i]==original.metrics[i],
+                                L"Whole-image repeat cannot silently change source or target crop coordinates.");
+                        } else require((record.flags&16384u)==0,
+                            L"A repeat must expose consumed current and original displayed source separately.");
+                        require(std::isfinite(record.metrics[8])&&std::isfinite(record.metrics[9])&&
+                            record.metrics[10]>record.metrics[8]&&record.metrics[11]>record.metrics[9],
+                            L"Every successful output must publish valid actual source coordinates.");
+                        outputs.push_back(record);
+                    }
+                };
+                auto next=std::chrono::steady_clock::now();
+                const auto captureOrigin=clock.TimingClockNow();
+                uint64_t pressureInput=0;
+                auto pump=[&](bool cue,bool forceUnknown=false) {
+                    MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+                    if(callback.state==RENDERSTATE_RENDERING){
+                        // HDMI capture cadence is independent of driver/compiler
+                        // stalls in this producer thread. Arrival pacing stays wall based.
+                        const auto ticks=(sequence-1)*uint64_t(clock.TimingClockTicksPerSecond())*duration/scale;
+                        const auto stamp=captureOrigin+static_cast<timingclocktime_t>(ticks);delivered[sequence]=stamp;
+                        if(forceUnknown)pressureInput=sequence;
+                        const auto& pixels=forceUnknown?pressure[sequence%2]:(cue?caption[sequence%2]:blank[sequence%2]);
+                        VideoFrame frame(pixels.data(),sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);}
+                    next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0/inputHz));
+                    std::this_thread::sleep_until(next);drain();
+                    require(callback.state!=RENDERSTATE_FAILED,L"Persistent Dolby cadence renderer entered failed state.");
+                };
+                int32_t native[4]={0,pictureTop,width,pictureBottom};
+                if(!requestedMode) {
+                    const auto nativeDeadline=GetTickCount64()+20000;bool nativeReady=false;
+                    do {pump(false);for(const auto& record:outputs)if(record.counters[4]&&record.published[1]>0&&record.published[3]<height&&
+                        std::abs(record.metrics[8]-record.published[0])<0.01&&std::abs(record.metrics[9]-record.published[1])<0.01&&
+                        std::abs(record.metrics[10]-record.published[2])<0.01&&std::abs(record.metrics[11]-record.published[3])<0.01){
+                        std::copy_n(record.published,4,native);nativeReady=true;}
+                    }while(!nativeReady&&GetTickCount64()<nativeDeadline);
+                    require(nativeReady,L"Classic fixture failed independent native baseline acquisition.");
+                    require(native[1]>=pictureTop-8&&native[1]<=pictureTop&&native[3]>=pictureBottom&&native[3]<=pictureBottom+8,
+                        L"Classic native guard must preserve the known encoded source edges.");
+                }
+                for(const unsigned mode:{requestedMode}) {
+                    // Advanced cold initialization may need the first prepared cue
+                    // to establish native presentation. Feed captions from input1
+                    // and inspect every safe fallback output, without a blank gate.
+                    const auto first=mode?uint64_t(1):sequence;
+                    size_t inspected=mode?0:outputs.size();uint64_t ready=0;size_t checked=0;
+                    std::set<uint64_t> distinct;bool odd=false,even=false,displayedOdd=false,displayedEven=false;
+                    double pinned[4]={},previousTop=native[1];
+                    bool unknownSent=false,unknownRepeated=false,nextCleanFresh=false;
+                    uint64_t retiredAccepted=0;
+                    auto cleanupMotionCoverage=[&](bool requireLegacyRejection) {
+                        bool intersection=false,rejected=false;
+                        std::lock_guard<std::mutex> guard(classicPoseLogMutex);
+                        for(const auto& line:classicPoseMessages) {
+                            if(line.find("SUBTITLE CADENCE:")!=std::string::npos &&
+                                line.find("reason=cadence-current-cleanup-changed")!=std::string::npos) {
+                                const auto at=line.find(" samples=");
+                                rejected|=at!=std::string::npos&&std::strtoull(line.c_str()+at+9,nullptr,10)>0;
+                            }
+                            if(line.find("SUBTITLE CAPTURE:")==std::string::npos)continue;
+                            const auto at=line.find(" cleanup=");int l=0,t=0,right=0,bottom=0;
+                            if(at==std::string::npos||sscanf_s(line.c_str()+at+9,"%d,%d-%d,%d",&l,&t,&right,&bottom)!=4)continue;
+                            for(int y=(std::max)(pictureTop,t);y<(std::min)(pictureBottom,bottom)&&!intersection;++y)
+                                for(int x=(std::max)(0,l);x<(std::min)(width,right);++x) {
+                                    bool glyph=false;
+                                    for(int row=0;row<3;++row)for(int g=0;g<12;++g)
+                                        glyph|=y>=1770+row*60&&y<1820+row*60&&x>=1552+g*64&&x<1584+g*64&&
+                                            (x<1558+g*64||x>=1578+g*64||(y>=1793+row*60&&y<1797+row*60));
+                                    if(!glyph){intersection=true;break;}
+                                }
+                        }
+                        return intersection&&(!requireLegacyRejection||rejected);
+                    };
+                    const auto deadline=GetTickCount64()+(mode?90000:20000);
+                    auto inspectEverySubmittedOutput=[&] {
+                        for(;inspected<outputs.size();++inspected){const auto& record=outputs[inspected];
+                            const auto displayedSource=nativeInputs.at(record.counters[1]).sourceFrameNumber;
+                            const auto consumedSource=nativeInputs.at(record.counters[0]).sourceFrameNumber;
+                            if(consumedSource<first)continue;
+                            // The very first caption input may legally repeat the last
+                            // complete blank image for one input. Its provenance was
+                            // checked by drain(); current cue assertions begin when a
+                            // caption-bearing original is actually displayed.
+                            if(displayedSource<first){require((record.flags&16384u)!=0&&consumedSource==first,
+                                L"Only the first cue input may repeat an immediately preceding complete blank output.");continue;}
+                            const bool composed=(record.flags&2u)!=0;
+                            require(record.counters[3]==mode||(mode&&!ready&&!composed&&record.counters[3]==0),
+                                L"Actually submitted source used an invalid frozen subtitle profile after preparation.");
+                            if(requireUnknownInputRepeat&&pressureInput) {
+                                if(consumedSource==pressureInput) {
+                                    require((record.flags&16384u)!=0&&displayedSource+1==consumedSource,
+                                        L"The single component-budget UNKNOWN input must repeat the complete immediately preceding successful image.");
+                                    retiredAccepted=record.counters[0];unknownRepeated=true;
+                                }
+                                if(consumedSource==pressureInput+1) {
+                                    require(unknownRepeated&&record.counters[0]==retiredAccepted+1&&
+                                        record.counters[0]==record.counters[1]&&!(record.flags&16384u)&&
+                                        displayedSource==consumedSource,
+                                        L"The clean input after one retired UNKNOWN must be a fresh adjacent source, without repeat renewal or a synthetic gap.");
+                                    nextCleanFresh=true;
+                                }
+                            }
+                            const auto top=record.metrics[9],bottom=record.metrics[11];
+                            if(mode){
+                                if(!composed)require(record.metrics[8]<=0&&record.metrics[10]>=width&&top<=pictureTop&&bottom>=captionBottom,
+                                    L"Unprepared actual output clipped the persistent raw caption or picture.");
+                                if(composed&&!ready){
+                                    require(record.counters[4]>0&&record.published[0]==0&&record.published[2]==width&&
+                                        record.published[1]>=pictureTop-8&&record.published[1]<=pictureTop&&
+                                        record.published[3]>=pictureBottom&&record.published[3]<=pictureBottom+8,
+                                        L"First composed source lacks independently accurate native boundary authority.");
+                                    std::copy_n(record.published,4,native);ready=record.counters[1];
+                                    for(int e=0;e<4;++e)pinned[e]=record.metrics[8+e];
+                                }
+                                if(ready){
+                                    for(int edge=0;edge<4;++edge)require(record.published[edge]==native[edge],
+                                        L"Persistent subtitle changed accepted native AR or black-bar boundaries.");
+                                    if(!composed&&overrideValue&&*overrideValue)
+                                        require(cleanupMotionCoverage(true),
+                                            L"Old-renderer fixture did not prove sampled cleanup/picture-motion rejection; this is not valid cadence RED evidence.");
+                                    require(composed,L"Persistent caption composition flashed OFF on an actually submitted source.");
+                                    require(record.counters[2]==record.counters[1]&&record.counters[5]==record.counters[1]&&
+                                        (record.flags&64u)!=0,L"Composed caption/certificate must belong to the actual displayed source.");
+                                    for(int e=0;e<4;++e)require(std::abs(record.metrics[8+e]-pinned[e])<0.01,
+                                        L"Persistent caption caused frame-by-frame displayed AR/crop bounce.");}
+                            }else{
+                                for(int edge=0;edge<4;++edge)require(record.published[edge]==native[edge],
+                                    L"Persistent Classic subtitle changed native AR or black-bar boundaries.");
+                                require(std::abs((bottom-top)-(native[3]-native[1]))<0.01,
+                                    L"Classic persistent subtitle resized its native crop instead of translating it.");
+                                require(top+0.01>=previousTop,L"Classic persistent subtitle reversed its translation between submitted frames.");
+                                previousTop=top;
+                                if(top>native[1]+1&&displayedSource>=first+90&&!ready){ready=record.counters[1];for(int e=0;e<4;++e)pinned[e]=record.metrics[8+e];}
+                                if(ready)for(int e=0;e<4;++e)require(std::abs(record.metrics[8+e]-pinned[e])<0.01,
+                                    L"Settled Classic crop bounced during a persistent subtitle.");
+                            }
+                            if(ready){++checked;const auto source=nativeInputs.at(record.counters[1]).sourceFrameNumber;
+                                distinct.insert(source);odd|=(consumedSource%2)!=0;even|=(consumedSource%2)==0;
+                                displayedOdd|=(source%2)!=0;displayedEven|=(source%2)==0;}
+                        }
+                    };
+                    do {pump(true);inspectEverySubmittedOutput();
+                        if(checked>=60&&distinct.size()>=60&&odd&&even) {
+                            if(!requireUnknownInputRepeat)break;
+                            if(!unknownSent){pump(true,true);unknownSent=true;inspectEverySubmittedOutput();}
+                            if(unknownRepeated&&nextCleanFresh)break;
+                        }
+                    }while(GetTickCount64()<deadline);
+                    // Stop drains in-flight rendering. Inspect that final tail before
+                    // locals expire; no successful caption output escapes assertions.
+                    cleanup.renderer->Stop();drain();inspectEverySubmittedOutput();
+                    std::ostringstream coverage;coverage<<"Actual persistent decoded-DV cadence: input="<<inputHz<<" mode="<<mode
+                        <<" inspected="<<checked<<" distinct_displayed="<<distinct.size()<<" consumed_odd="<<odd<<" consumed_even="<<even
+                        <<" displayed_odd="<<displayedOdd<<" displayed_even="<<displayedEven
+                        <<" unknown_input="<<pressureInput<<" complete_repeat="<<unknownRepeated<<" next_clean_fresh="<<nextCleanFresh;
+                    Logger::WriteMessage(coverage.str().c_str());
+                    require(ready&&checked>=60&&distinct.size()>=60&&odd&&even,
+                        L"Actual persistent Dolby subtitle test did not inspect 60 distinct displayed sources and BOTH consumed input parities.");
+                    if(mode)require(cleanupMotionCoverage(false),
+                        L"Actual subtitle cleanup never intersected changing picture pixels; benign background motion is not cadence regression coverage.");
+                    if(requireUnknownInputRepeat)require(unknownSent&&unknownRepeated&&nextCleanFresh,
+                        L"Actual whole-output repeat and immediately fresh successor were not exercised; timing-only/unavailable coverage cannot pass.");
+                }
+            }
+        }
+        TEST_METHOD(DecodedDvCrossEdgeFixtureNativePreflight)
+        {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),false,true);}
+        TEST_METHOD(DecodedDvUnknownInputFixtureNativePreflight)
+        {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),true,true);}
+        TEST_METHOD(StandardRendererClassicPersistentDecodedDvCaptionHasNoCadenceFlicker)
+        {VerifyPersistentDecodedDvCadence(false,0);}
+        TEST_METHOD(BetaRendererClassicPersistentDecodedDvCaptionHasNoCadenceFlicker)
+        {VerifyPersistentDecodedDvCadence(true,0);}
+        TEST_METHOD(StandardRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker)
+        {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground));}
+        TEST_METHOD(BetaRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker)
+        {VerifyPersistentDecodedDvCadence(true,unsigned(SubtitlePreviewMode::GeneratedGrayBackground));}
+        TEST_METHOD(StandardRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker)
+        {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::BlackBackground));}
+        TEST_METHOD(BetaRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker)
+        {VerifyPersistentDecodedDvCadence(true,unsigned(SubtitlePreviewMode::BlackBackground));}
+
+        TEST_METHOD(StandardRendererDecodedDvUnknownInputRepeatsOneCompleteOutput)
+        {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),true);}
+        TEST_METHOD(BetaRendererDecodedDvUnknownInputRepeatsOneCompleteOutput)
+        {VerifyPersistentDecodedDvCadence(true,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),true);}
 
         TEST_METHOD(StandardRendererClassicUhdBottomCaptionOutsideFillLimit)
         { VerifyClassicUhdBarOverlay(false,false); }

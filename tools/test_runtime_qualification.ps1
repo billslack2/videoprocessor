@@ -27,6 +27,15 @@ function MustReject([string]$Name,[string]$Pattern,[scriptblock]$Action) {
     if(-not $message -or $message -notlike $Pattern){throw "Gate negative '$Name' did not reject for expected reason '$Pattern': $message"}
     Write-Host "PASS: $Name rejected"
 }
+$savedBaselineOverride=$env:VP_RENDERER_REGRESSION_PLUGIN_ROOT
+try {
+    $env:VP_RENDERER_REGRESSION_PLUGIN_ROOT='C:\diagnostic-old-renderer-only'
+    MustReject 'diagnostic renderer override cannot qualify a runtime' '*Unset VP_RENDERER_REGRESSION_PLUGIN_ROOT*' {
+        & (Join-Path $Root 'tools\qualify_runtime_build.ps1') -Root $Root
+    }
+    $env:VP_RENDERER_REGRESSION_PLUGIN_ROOT=''
+    Assert-VpQualificationTestEnvironment
+} finally { $env:VP_RENDERER_REGRESSION_PLUGIN_ROOT=$savedBaselineOverride }
 MustReject 'Debug cannot inherit Release qualification' '*supports Release|x64*' {Assert-VpQualificationConfiguration 'Debug' 'x64'}
 MustReject 'Win32 cannot inherit x64 qualification' '*supports Release|x64*' {Assert-VpQualificationConfiguration 'Release' 'Win32'}
 Assert-VpSameOutputInventory @([pscustomobject]@{path='runtime.dll';sha256='AAA'}) @([pscustomobject]@{path='runtime.dll';sha256='AAA'})
@@ -70,7 +79,7 @@ try {
     # inventory and all current named tests; it never creates a receipt in the repo.
     Copy-Item -LiteralPath (Join-Path $Root 'tools\installer_build_identity.ps1') -Destination $tools -Force
     Copy-Item -LiteralPath (Join-Path $Root 'tools\critical_runtime_tests.json') -Destination $tools
-    foreach($relative in @($realPlan.manifest.nativeSources)+@($realPlan.manifest.actualSource)) {
+    foreach($relative in (@($realPlan.manifest.nativeSources)+@($realPlan.manifest.actualSource)+@($realPlan.manifest.explicitNativeMethods | ForEach-Object {$_.source}) | Select-Object -Unique)) {
         $dest=Join-Path $tempPath $relative
         $null=New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest)
         Copy-Item -LiteralPath (Join-Path $Root $relative) -Destination $dest
@@ -86,6 +95,28 @@ try {
         'synthetic contract binary'|Set-Content -LiteralPath $dest
     }
     $fixturePlan=Get-VpCriticalTestPlan $tempPath
+    $cpuKey='MotionRendererTests::SkippedInputWithoutCompletePresentationPermissionMustAnalyze'
+    if (-not $fixturePlan.expected.ContainsKey($cpuKey) -or
+        $fixturePlan.filter -notmatch 'FullyQualifiedName~SkippedInputWithoutCompletePresentationPermissionMustAnalyze' -or
+        $fixturePlan.filter -match 'FullyQualifiedName~MotionRendererTests(?:\||$)') {
+        throw 'Explicit CPU cadence selection must not execute the entire mixed GPU class.'
+    }
+    $manifestFile=Join-Path $tools 'critical_runtime_tests.json'
+    $originalManifest=Get-Content -LiteralPath $manifestFile -Raw
+    $mutated=$originalManifest | ConvertFrom-Json
+    $mutated.explicitNativeMethods[0].method='MissingNamedCpuContract'
+    $mutated | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestFile
+    MustReject 'missing explicit CPU method fails closed' '*Missing explicit native regression*' {Get-VpCriticalTestPlan $tempPath}
+    $originalManifest | Set-Content -LiteralPath $manifestFile -NoNewline
+    $mutated=$originalManifest | ConvertFrom-Json
+    $mutated.explicitNativeMethods += $mutated.explicitNativeMethods[0]
+    $mutated | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestFile
+    MustReject 'duplicate explicit CPU cannot replace coverage' '*Duplicate mandatory test*' {Get-VpCriticalTestPlan $tempPath}
+    $originalManifest | Set-Content -LiteralPath $manifestFile -NoNewline
+    $explicitPlan=[pscustomobject]@{expected=@{$cpuKey='native';'NativeClass::NativeContract'='native';'ActualClass::ActualClassic'='actual-classic'};nativeCount=2;actualCount=1}
+    MustReject 'unexecuted explicit CPU contract fails closed' '*did not execute*' {Read-VpCriticalTrx (WriteFixture) $explicitPlan}
+    Write-Host 'PASS: named CPU selection preserves strict coverage without broad GPU class inclusion'
+
     $evidence=Join-Path $tempPath 'artifacts\qualification\runs\fixture'
     $null=New-Item -ItemType Directory -Force -Path $evidence
     function WriteFullTrx([switch]$MissingActual,[switch]$FailedActual) {

@@ -9,8 +9,10 @@ param(
 )
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'runtime_qualification.ps1')
+Assert-VpQualificationTestEnvironment
 $Root=Get-VpQualificationRoot $Root
 Assert-VpQualificationConfiguration $Configuration $Platform
+& (Join-Path $Root 'tools\test_d3d11_submit_contract.ps1') -RepositoryRoot $Root
 . (Join-Path $Root 'tools\installer_build_identity.ps1')
 if (-not $MSBuildPath) {
     $where=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'

@@ -12,6 +12,11 @@ function Get-VpQualificationRoot([string]$Root) {
 function Get-VpQualificationReceiptPath([string]$Root) {
     return Join-Path (Get-VpQualificationRoot $Root) 'artifacts\qualification\runtime-Release-x64.json'
 }
+function Assert-VpQualificationTestEnvironment {
+    if (-not [string]::IsNullOrEmpty($env:VP_RENDERER_REGRESSION_PLUGIN_ROOT)) {
+        throw 'Unset VP_RENDERER_REGRESSION_PLUGIN_ROOT before runtime qualification. The diagnostic baseline override cannot qualify new source against an older installed renderer.'
+    }
+}
 function Assert-VpQualificationConfiguration([string]$Configuration, [string]$Platform) {
     if ($Configuration -ne 'Release' -or $Platform -ne 'x64') {
         throw 'Runtime qualification currently supports Release|x64 with matching native tests and both renderer variants. Use MSBuild.exe VideoProcessor.sln /t:Build /m /p:Configuration=Release /p:Platform=x64 /p:MagewellSdkRoot=<SDK>. Other runtime configurations need matching test support; they cannot inherit a Release receipt.'
@@ -68,6 +73,27 @@ function Get-VpCriticalTestPlan([string]$Root) {
             }
         }
     }
+    # Select named CPU contracts from mixed CPU/GPU files without broadening
+    # execution to an entire renderer/GPU class. Every entry is checked against
+    # parsed class ownership and participates in the same fail-closed TRX gate.
+    $explicitEntries = @()
+    if ($manifest.PSObject.Properties.Name -contains 'explicitNativeMethods') {
+        $explicitEntries = @($manifest.explicitNativeMethods)
+    }
+    foreach ($entry in $explicitEntries) {
+        if ($entry.method -notmatch '^\w+$' -or $entry.class -notmatch '^\w+$') {
+            throw 'Invalid explicit native regression identity.'
+        }
+        $found = $false; $class = ''
+        foreach ($token in @(Get-VpTestMacroTokens (Get-Content -LiteralPath (Join-Path $Root $entry.source) -Raw))) {
+            if ($token.kind -eq 'CLASS') { $class = $token.name }
+            elseif ($class -eq $entry.class -and $token.name -eq $entry.method) { $found = $true }
+        }
+        if (-not $found) { throw "Missing explicit native regression: $($entry.class)::$($entry.method) in $($entry.source)" }
+        $key = '{0}::{1}' -f $entry.class,$entry.method
+        if ($expected.ContainsKey($key)) { throw "Duplicate mandatory test: $key" }
+        $expected[$key] = 'native'; $nativeMethods[[string]$entry.method] = $true; $nativeCount++
+    }
     if($originalCount -lt $manifest.minimumOriginalNativeTests){throw "Only $originalCount original native contracts discovered; original required coverage was removed."}
     if ($nativeCount -lt $manifest.minimumNativeTests) { throw "Only $nativeCount native contracts were discovered; mandatory coverage was removed." }
     foreach ($method in $manifest.requiredNativeMethods) {
@@ -83,6 +109,7 @@ function Get-VpCriticalTestPlan([string]$Root) {
         $expected[$key] = 'actual-classic'
     }
     $filters = @($classes.Keys | Sort-Object | ForEach-Object { "FullyQualifiedName~$_" })
+    $filters += @($explicitEntries | ForEach-Object { "FullyQualifiedName~$($_.method)" })
     $filters += @($manifest.actualMethods | ForEach-Object { "FullyQualifiedName~$_" })
     return [pscustomobject]@{ manifest=$manifest; manifestHash=(Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash;
         expected=$expected; nativeCount=$nativeCount; actualCount=$manifest.actualMethods.Count; filter=($filters -join '|') }

@@ -137,10 +137,29 @@ struct ActivePictureCandidateVerification
     int firstMismatchX = -1, firstMismatchY = -1;
 };
 
+// Source-pixel edge observation only. Does not authorize discarding pixels,
+// acquiring native AR, or changing the conservative retention rectangle.
+enum class PhysicalPictureEdgeConfidence : uint8_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT };
+struct PhysicalPictureEdgeObservation
+{
+    bool evaluated=false, estimateAvailable=false;
+    PhysicalPictureEdgeConfidence confidence=PhysicalPictureEdgeConfidence::UNKNOWN;
+    // Conservative bounds are the uncertainty envelope; estimate never discards it.
+    ActivePictureBounds estimate, conservativeBounds;
+    uint64_t sourceGeneration=0;
+    size_t samples=0;
+    const char* reason="not-evaluated";
+};
+PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
+    const AnalysisLumaSource& source,const ActivePictureBounds& conservativeBounds,
+    const AnalysisEvaluationBudget* budget=nullptr,
+    const ActivePictureBlackReference* blackReference=nullptr);
+
 struct ActivePictureEvidence
 {
     // Exact-current native candidate certificate; not transferable to other bounds.
     ActivePictureCandidateVerification candidateVerification;
+    PhysicalPictureEdgeObservation physicalEdges;
     ActivePictureBlackReference blackReference;
 	bool available = false;
 	ActivePictureClassification classification =

@@ -321,6 +321,42 @@ void AnalysisDiagnosticTrace::Submit(
 	m_changed.notify_one();
 }
 
+AnalysisDiagnosticRecordV1 AnalysisDiagnosticTrace::BoundaryChain(
+    const AnalysisDiagnosticRecordV1& current, const AnalysisBoundaryChainFacts& f) noexcept
+{
+    auto r = current;
+    strcpy_s(r.stage, "ar-boundary-chain");
+    const bool physical = f.physicalEvaluated && f.physicalAvailable && (f.physicalConfidence == 1 || f.physicalConfidence == 2) &&
+        f.physical[0] >= 0 && f.physical[1] >= 0 && f.physical[2] > f.physical[0] && f.physical[3] > f.physical[1] &&
+        f.physicalSource == current.acceptedSequence;
+    strcpy_s(r.detail, physical ? "qualified-physical-estimate" : "physical-estimate-unknown");
+    strcpy_s(r.reason, "computed-only; guard and nomination are not physical measurements");
+    for (int i = 0; i < 4; ++i) {
+        r.previous[i] = f.nomination[i]; r.measured[i] = physical ? f.physical[i] : 0;
+        r.candidate[i] = f.guard[i]; r.published[i] = f.accepted[i];
+        r.displayed[i] = f.displayed[i]; r.subtitle[i] = f.subtitle[i];
+    }
+    r.flags = (f.physicalEvaluated ? 1u : 0u) | (physical ? 2u : 0u) |
+        (f.cropEnabled ? 4u : 0u) | (f.cadenceSkipped ? 8u : 0u) | (f.submitted ? 16u : 0u) |
+        (f.fillMeasurementAvailable ? 32u : 0u);
+    r.counters[0] = current.acceptedSequence; r.counters[1] = f.selectedSource;
+    r.counters[2] = f.physicalSource; r.counters[3] = f.analyzedSource;
+    r.counters[4] = f.nativeAuthoritySource; r.counters[5] = current.viewportGeneration;
+    r.counters[6] = current.policyGeneration; r.counters[7] = f.analysisStride;
+    for (auto& metric : r.metrics) metric = 0;
+    if (physical && f.physical[3] > f.physical[1])
+        r.metrics[0] = double(f.physical[2]-f.physical[0]) / (f.physical[3]-f.physical[1]);
+    if (f.guard[3] > f.guard[1]) r.metrics[1] = double(f.guard[2]-f.guard[0]) / (f.guard[3]-f.guard[1]);
+    if (f.fillMeasurementAvailable) {
+        r.metrics[2] = f.fillAspect; r.metrics[3] = f.removedRows;
+        r.metrics[4] = f.topInset; r.metrics[5] = f.bottomInset;
+    }
+    r.metrics[6] = f.currentPts; r.metrics[7] = f.selectedPts;
+    r.metrics[8] = f.originalAge; r.metrics[9] = f.inputFps;
+    r.metrics[10] = physical ? f.physicalConfidence : 0;
+    return r;
+}
+
 void AnalysisDiagnosticTrace::SubmitFrame(
 	const AnalysisDiagnosticFramePacketV1& input) noexcept
 {
@@ -352,22 +388,67 @@ void AnalysisDiagnosticTrace::SubmitFrame(
 		return;
 	}
 
+    ++m_captureFrameOffered;
+    AnalysisDiagnosticRecordV1 sampling;
+    strcpy_s(sampling.stage, "frame-sampling");
+    sampling.acceptedSequence = input.acceptedSequence;
+    sampling.sourceFrameNumber = input.sourceFrameNumber;
+    sampling.transportGeneration = input.transportGeneration;
+    sampling.analysisDomainKey = input.analysisDomainKey;
+    sampling.frameDuration100ns = input.frameDuration100ns;
+    sampling.sourceWidth = input.width; sampling.sourceHeight = input.height;
+    sampling.captureTimestamp = input.captureTimestamp;
+    auto finishSampling = [&](const char* reason, bool retained) {
+        strcpy_s(sampling.reason, reason);
+        sampling.flags = retained ? 1u : 0u;
+        sampling.counters[0] = m_captureFrameOffered;
+        sampling.counters[1] = m_captureFrameSamplingStep;
+        sampling.counters[2] = m_captureFrameSamplingSkipped;
+        sampling.counters[3] = m_captureFrameMissed;
+        lock.unlock();
+        Submit(sampling);
+    };
+
 	const uint64_t maxPacketBytes = std::min(m_options.maxFrameBytes, MAX_FRAME_BYTES);
 	const uint64_t maxCaptureBytes = std::min(
 		m_options.maxCaptureFrameBytes, MAX_CAPTURE_FRAME_BYTES);
 	const size_t maxOutstanding = std::min(
 		m_options.maxOutstandingFrames, FRAME_QUEUE_CAPACITY);
+    // Spread the byte budget across SOURCE time, rather than spending it on
+    // the first seconds. Odd source steps visit both >30 Hz analysis parities.
+    const uint64_t slots = input.dataBytes ? maxCaptureBytes / input.dataBytes : 0;
+    if (slots && input.frameDuration100ns > 0) {
+        const uint64_t duration = static_cast<uint64_t>(input.frameDuration100ns);
+        const uint64_t expected = (uint64_t(m_captureMs) * 10000 + duration - 1) / duration;
+        m_captureFrameSamplingStep = std::max<uint64_t>(1, (expected + slots - 1) / slots);
+        if (duration < 333333 && (m_captureFrameSamplingStep % 2) == 0)
+            ++m_captureFrameSamplingStep;
+    } else m_captureFrameSamplingStep = 1;
+    const uint64_t source = input.sourceFrameNumber ? input.sourceFrameNumber : input.acceptedSequence;
+    if (!m_captureSamplingFirstSource || input.transportGeneration != m_captureSamplingGeneration ||
+        source < m_captureSamplingFirstSource) {
+        m_captureSamplingFirstSource = source;
+        m_captureSamplingGeneration = input.transportGeneration;
+    }
+    const uint64_t sourceOffset = source ? source - m_captureSamplingFirstSource : m_captureFrameOffered - 1;
+    if (sourceOffset % m_captureFrameSamplingStep != 0) {
+        ++m_captureFrameSamplingSkipped;
+        finishSampling("uniform-source-sampling-skip", false);
+        return;
+    }
 	if (input.dataBytes > maxPacketBytes ||
 		input.dataBytes > maxCaptureBytes ||
 		m_captureFrameBytes > maxCaptureBytes - input.dataBytes ||
 		m_outstandingFrames >= maxOutstanding ||
 		m_frameCount >= FRAME_QUEUE_CAPACITY)
 	{
-		m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
-		return;
-	}
+        ++m_captureFrameMissed;
+        m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+        finishSampling("selected-frame-size-budget-or-queue-unavailable", false);
+        return;
+    }
 
-	void* retainedOwner = nullptr;
+    void* retainedOwner = nullptr;
 	try
 	{
 		retainedOwner = input.retainOwner(input.ownerContext);
@@ -376,11 +457,12 @@ void AnalysisDiagnosticTrace::SubmitFrame(
 	{
 		retainedOwner = nullptr;
 	}
-	if (retainedOwner == nullptr)
-	{
-		m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
-		return;
-	}
+    if (retainedOwner == nullptr) {
+        ++m_captureFrameMissed;
+        m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+        finishSampling("selected-frame-owner-retain-failed", false);
+        return;
+    }
 
 	QueuedFrame queued;
 	queued.metadata = input;
@@ -398,8 +480,8 @@ void AnalysisDiagnosticTrace::SubmitFrame(
 	++m_frameCount;
 	++m_outstandingFrames;
 	m_captureFrameBytes += input.dataBytes;
-	lock.unlock();
-	m_changed.notify_one();
+    finishSampling("selected-native-frame-retained", true);
+    m_changed.notify_one();
 }
 
 bool AnalysisDiagnosticTrace::IsFrameCaptureActive() const noexcept
@@ -469,6 +551,9 @@ AnalysisDiagnosticCaptureResult AnalysisDiagnosticTrace::StartCapture(
 	m_captureAcceptedRecords = m_preRoll.size();
 	m_captureFrameBytes = 0;
 	m_captureFrameIndex = 0;
+	m_captureFrameOffered = m_captureFrameSamplingSkipped = m_captureFrameMissed = 0;
+	m_captureFrameSamplingStep = 1;
+	m_captureSamplingFirstSource = m_captureSamplingGeneration = 0;
 	m_recordsWritten = 0;
 	m_framesWritten = 0;
 	m_frameBytesWritten = 0;
@@ -753,6 +838,7 @@ void AnalysisDiagnosticTrace::WriteCaptureSummary(
 	uint64_t sessionRecordsWritten = 0;
 	uint64_t sessionFramesWritten = 0;
 	uint64_t sessionFrameBytesWritten = 0;
+	uint64_t offered = 0, samplingSkipped = 0, missed = 0, samplingStep = 1;
 	uint64_t lifetimeHistoryOverwrites = 0;
 	uint64_t lifetimeWriteFailures = 0;
 	{
@@ -761,6 +847,8 @@ void AnalysisDiagnosticTrace::WriteCaptureSummary(
 		sessionRecordsWritten = m_recordsWritten;
 		sessionFramesWritten = m_framesWritten;
 		sessionFrameBytesWritten = m_frameBytesWritten;
+		offered = m_captureFrameOffered; samplingSkipped = m_captureFrameSamplingSkipped;
+		missed = m_captureFrameMissed; samplingStep = m_captureFrameSamplingStep;
 		lifetimeHistoryOverwrites = m_historyOverwrites;
 		lifetimeWriteFailures = m_writeFailures;
 	}
@@ -795,6 +883,10 @@ void AnalysisDiagnosticTrace::WriteCaptureSummary(
 			<< ",\"recordsWritten\":" << sessionRecordsWritten
 			<< ",\"framesWritten\":" << sessionFramesWritten
 			<< ",\"frameBytesWritten\":" << sessionFrameBytesWritten
+            << ",\"nativeFramesOffered\":" << offered
+            << ",\"nativeSamplingSkipped\":" << samplingSkipped
+            << ",\"nativeSelectedMissed\":" << missed
+            << ",\"nativeSamplingSourceStep\":" << samplingStep
 			<< "},\"lifetime\":{\"droppedRecords\":"
 			<< lifetimeDroppedRecords
 			<< ",\"droppedFrames\":" << lifetimeDroppedFrames

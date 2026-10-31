@@ -480,6 +480,43 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+        TEST_METHOD(CenteredFillQuantizationIsSymmetricAndIdempotentOnBothAxes)
+        {
+            for(bool vertical:{false,true})for(int excess:{2,4,6}) {
+                AspectLimitFillInput input;
+                input.trustedContentAuthorityAccepted=true;
+                input.cropNarrowerContentToFillScreen=input.cropWiderContentToFillScreen=true;
+                input.screenAspect=2.0;
+                input.sourceBounds=vertical
+                    ?ActivePictureBounds{20,30,220,130+excess,300,200,200.0/(100+excess),ActivePictureBounds::BarAxes::TOP_BOTTOM}
+                    :ActivePictureBounds{20,30,220+excess,130,300,200,(200.0+excess)/100,ActivePictureBounds::BarAxes::LEFT_RIGHT};
+                const auto before=input.sourceBounds;
+                const auto fill=EvaluateAspectLimitFill(input);
+                const int inset=(excess/4)*2;
+                Assert::AreEqual(inset,vertical?fill.sourceBounds.top-before.top:fill.sourceBounds.left-before.left);
+                Assert::AreEqual(inset,vertical?before.bottom-fill.sourceBounds.bottom:before.right-fill.sourceBounds.right);
+                Assert::AreEqual(inset>0,fill.applied);
+                input.sourceBounds=fill.sourceBounds;
+                Assert::IsFalse(EvaluateAspectLimitFill(input).applied,L"Already quantized fill must not creep on later frames.");
+            }
+        }
+        TEST_METHOD(CenteredFillCannotTradeOneRealPictureEdgeForAlignment)
+        {
+            AspectLimitFillInput input;
+            input.trustedContentAuthorityAccepted=true;
+            input.cropNarrowerContentToFillScreen=true;
+            input.screenAspect=2.35;
+            for (const auto bounds : {ActivePictureBounds{0,262,3840,1898,3840,2160,3840.0/1636,ActivePictureBounds::BarAxes::TOP_BOTTOM},
+                                      ActivePictureBounds{0,254,3840,1906,3840,2160,3840.0/1652,ActivePictureBounds::BarAxes::TOP_BOTTOM}})
+            {
+                input.sourceBounds=bounds;
+                const auto filled=EvaluateAspectLimitFill(input);
+                Assert::AreEqual(filled.sourceBounds.top-bounds.top,
+                    bounds.bottom-filled.sourceBounds.bottom,L"Chroma alignment cannot move the picture center.");
+                Assert::IsTrue(filled.sourceBounds.top<=263 && filled.sourceBounds.bottom>=1897,
+                    L"The native source picture must retain its last genuine row.");
+            }
+        }
         static TransitionAdmissionInput ContradictedPillarboxInput()
         {
             TransitionAdmissionInput i;
@@ -4782,7 +4819,9 @@ namespace Tests
 					fill.widerAspectLimit = 2.41; fill.screenAspect = 2.35;
 					const auto final = EvaluateAspectLimitFill(fill);
 					Assert::IsTrue(final.applied);
-					Assert::AreEqual(3402,final.sourceBounds.right-final.sourceBounds.left);
+					Assert::AreEqual(3404,final.sourceBounds.right-final.sourceBounds.left);
+                    Assert::AreEqual(final.sourceBounds.left-fill.sourceBounds.left,
+                        fill.sourceBounds.right-final.sourceBounds.right);
 					Assert::AreEqual(1448,final.sourceBounds.bottom-final.sourceBounds.top);
 					Assert::AreEqual(356+crop.verticalTranslationPixels,final.sourceBounds.top);
 				}
@@ -10025,9 +10064,12 @@ namespace Tests
 			Assert::AreEqual(3840, filled.sourceBounds.right);
 			Assert::IsTrue(filled.sourceBounds.top > input.sourceBounds.top);
 			Assert::IsTrue(filled.sourceBounds.bottom < input.sourceBounds.bottom);
-			Assert::AreEqual(2.35,
-				static_cast<double>(filled.sourceBounds.right - filled.sourceBounds.left) /
-				(filled.sourceBounds.bottom - filled.sourceBounds.top), 0.002);
+            Assert::AreEqual(filled.sourceBounds.top-input.sourceBounds.top,
+                input.sourceBounds.bottom-filled.sourceBounds.bottom);
+            const int retainedHeight=filled.sourceBounds.bottom-filled.sourceBounds.top;
+            const double targetHeight=3840.0/input.screenAspect;
+            Assert::IsTrue(retainedHeight>=targetHeight && retainedHeight-targetHeight<4,
+                L"Centered chroma-aligned fill retains at most one alignment quantum per edge.");
 
 			input.sourceBounds = {
 				0, 42, 3840, 2118, 3840, 2160,
@@ -16710,7 +16752,9 @@ public:
                 Assert::AreEqual(274,f.route.presentation.sourceBounds.top);
                 Assert::AreEqual(1884,f.route.presentation.sourceBounds.bottom);
                 Assert::AreEqual(28,f.fill.sourceBounds.left);
-                Assert::AreEqual(3810,f.fill.sourceBounds.right);
+                Assert::AreEqual(3812,f.fill.sourceBounds.right);
+                Assert::AreEqual(f.fill.sourceBounds.left-f.route.presentation.sourceBounds.left,
+                    f.route.presentation.sourceBounds.right-f.fill.sourceBounds.right);
                 Assert::IsTrue(f.admission.optionalFillApplied,
                     L"Actual horizontal fill of the exact physical native crop needs a selected fill witness.");
                 const auto committed=CommitSubmittedNativeScopeAnchor(f.CommitInput());
@@ -17458,7 +17502,9 @@ public:
                     Assert::AreEqual(400,route.presentation.sourceBounds.top);
                     Assert::AreEqual(2048,route.presentation.sourceBounds.bottom);
                     Assert::AreEqual(406,firstFill.sourceBounds.top);
-                    Assert::AreEqual(2040,firstFill.sourceBounds.bottom);
+                    Assert::AreEqual(2042,firstFill.sourceBounds.bottom);
+                    Assert::AreEqual(firstFill.sourceBounds.top-route.presentation.sourceBounds.top,
+                        route.presentation.sourceBounds.bottom-firstFill.sourceBounds.bottom);
                 }
                 auto u=Submission(route.crop);u.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
                 u.selectedOwner=DecisionOwner::VERTICAL_TRANSLATION;u.submittedBounds=firstFill.sourceBounds;

@@ -44,6 +44,24 @@ inline bool PreparedOutwardRawMeasurementCurrent(const PreparedAnalysisFrame& fr
     return SamePreparedPictureFrame(imported, frame);
 }
 
+// A cold computation can race an independent producer completing the same
+// immutable source. Publication must not erase a newer physical observation.
+template<class RawMeasurement>
+std::shared_ptr<const RawMeasurement> PublishPreparedOutwardRaw(
+    const PreparedAnalysisFrame& frame,const ActivePictureFrameIdentity& identity,
+    const std::shared_ptr<typename OptionalAnalysisWorker<RawMeasurement>::Slot>& slot,
+    const std::shared_ptr<const RawMeasurement>& initiallyReady,
+    std::shared_ptr<const RawMeasurement> computed)
+{
+    if(PreparedOutwardRawMeasurementCurrent(frame,identity,initiallyReady))return initiallyReady;
+    auto expected=initiallyReady;
+    if(std::atomic_compare_exchange_strong(&slot->ready,&expected,computed))return computed;
+    // The winner owns publication. Adopt only its exact current pixels; an
+    // incompatible newer context remains untouched while this old request can
+    // still finish its private, independently bound certificate.
+    return PreparedOutwardRawMeasurementCurrent(frame,identity,expected)?expected:computed;
+}
+
 template<class RawMeasurement>
 PreparedOutwardWindowResult EvaluatePreparedOutwardWindow(
     const PreparedOutwardWindowRequest<RawMeasurement>& request)
@@ -97,8 +115,9 @@ PreparedOutwardWindowResult EvaluatePreparedOutwardWindow(
             measured->domainKey = frame.domainKey;
             measured->evidence = ExtractActivePictureEvidence(frame.source);
             measured->darkness = EvaluateActivePictureArDarkness(frame.source, measured->evidence);
-            raw = std::move(measured);
-            std::atomic_store(&request.rawSlots[i]->ready, raw);
+            std::shared_ptr<const RawMeasurement> computed=std::move(measured);
+            raw=PublishPreparedOutwardRaw<RawMeasurement>(frame,identity,
+                request.rawSlots[i],raw,std::move(computed));
             ++result.rawComputed;
         }
         const auto& key = request.retentionKeys[i];

@@ -2518,8 +2518,16 @@ namespace AlphaSourceCrop
 			}
 			const int removedRows = height - filledHeight;
 			const int topInset = (removedRows / 2) & ~1;
-			decision.sourceBounds.top += topInset;
-			decision.sourceBounds.bottom = decision.sourceBounds.top + filledHeight;
+            if (topInset == 0)
+            {
+                decision.reason = "centered fill is below the symmetric chroma quantum";
+                return decision;
+            }
+            // Round the two insets together. Rounding only the first inset
+            // shifts the picture and can discard a real row at the other edge.
+            filledHeight = height - 2 * topInset;
+            decision.sourceBounds.top += topInset;
+            decision.sourceBounds.bottom -= topInset;
 			decision.sourceBounds.aspectRatio = static_cast<double>(width) / filledHeight;
 			decision.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 			decision.applied = true;
@@ -2551,8 +2559,14 @@ namespace AlphaSourceCrop
 			}
 			const int removedColumns = width - filledWidth;
 			const int leftInset = (removedColumns / 2) & ~1;
-			decision.sourceBounds.left += leftInset;
-			decision.sourceBounds.right = decision.sourceBounds.left + filledWidth;
+            if (leftInset == 0)
+            {
+                decision.reason = "centered fill is below the symmetric chroma quantum";
+                return decision;
+            }
+            filledWidth = width - 2 * leftInset;
+            decision.sourceBounds.left += leftInset;
+            decision.sourceBounds.right -= leftInset;
 			decision.sourceBounds.aspectRatio = static_cast<double>(filledWidth) / height;
 			decision.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 			decision.applied = true;

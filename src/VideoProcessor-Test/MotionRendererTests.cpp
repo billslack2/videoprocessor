@@ -5,6 +5,7 @@
 #include <vprenderer/DisplayFrameCache.h>
 #include <vprenderer/DisplayVsyncClock.h>
 #include <vprenderer/InputAnalysisCadence.h>
+#include <vprenderer/SourceCadencePresentation.h>
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
 #include <vprenderer/AnalysisPerformanceWindow.h>
@@ -626,14 +627,154 @@ TEST_CLASS(MotionRendererTests){public:
         // Presentation repeats final pixels between these field outputs rather
         // than generating 18 expensive temporal outputs and hitting its cap.
     }
-    TEST_METHOD(AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty) {
+    TEST_METHOD(SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence) {
+        ActivePictureFrameIdentity identity;identity.transportGeneration=1;identity.acceptedSequence=7;
+        identity.sourceFrameNumber=7;identity.captureTimestamp=700;identity.sourceFormatGeneration=2;
+        identity.viewportGeneration=3;identity.rendererGeneration=1;identity.analysisDomainKey=4;
+        SubtitleBoxObservation observation;observation.identity=identity;observation.analyzed=true;
+        observation.width=1920;observation.height=1080;
+        Assert::IsFalse(SourceCadenceObservationComplete(observation,identity),
+            L"An analyzed job with unavailable bars and no text search is not ready current evidence.");
+        observation.barAuthority=true;
+        observation.text.topSearchComplete=observation.text.bottomSearchComplete=true;
+        observation.text.diagnosticReason="no-bright-ink";
+        Assert::IsTrue(SourceCadenceObservationComplete(observation,identity));
+        for(int missing=0;missing<3;++missing) {
+            auto partial=observation;
+            if(missing==0)partial.text.topSearchComplete=false;
+            if(missing==1)partial.text.bottomSearchComplete=false;
+            if(missing==2)partial.barAuthority=false;
+            Assert::IsFalse(SourceCadenceObservationComplete(partial,identity),
+                L"A partial or unqualified negative scan cannot make current absence conclusive.");
+        }
+        auto rejected=observation;rejected.text.diagnosticReason="no-complete-line";
+        Assert::IsFalse(SourceCadenceObservationComplete(rejected,identity),
+            L"Rejected bright components are not confirmed subtitle absence.");
+        observation.text.detected=true;observation.text.bounds={200,900,1720,1040};
+        observation.text.diagnosticReason="detected";
+        Assert::IsTrue(SourceCadenceObservationComplete(observation,identity));
+        for(int defect=0;defect<9;++defect) {
+            auto bad=observation;
+            if(defect==0)bad.text.bounds={};if(defect==1)bad.text.workLimit=true;
+            if(defect==2)bad.text.held=true;if(defect==3)bad.pendingRefresh=true;
+            if(defect==4)bad.analysisRefresh=true;if(defect==5)bad.analyzed=false;
+            if(defect==6)++bad.identity.acceptedSequence;if(defect==7)++bad.identity.analysisDomainKey;
+            if(defect==8)bad.inspectionCandidateUsed=true,bad.text.detected=false;
+            Assert::IsFalse(SourceCadenceObservationComplete(bad,identity));
+        }
+    }
+    TEST_METHOD(SourceCadenceRepeatRequiresSubmittedCompletePixelsAndNeverRenewsAnchor) {
+        int gpu;
+        SourceCadencePresentationContext c;c.gpu=&gpu;c.generation=3;c.sourceFormat=4;
+        c.analysisDomain=5;c.outputContract=6;c.outputEpoch=7;c.startupRevision=8;
+        c.frameDuration=100;c.timeScale=5994;
+        SourceCadencePresentation repeat;
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,1.0/59.94));
+        for(bool complete:{false,true})for(bool captured:{false,true})for(bool submitted:{false,true}) {
+            repeat.Candidate(c,1,0,complete,captured);repeat.Submitted(submitted);
+            Assert::AreEqual(complete&&captured&&submitted,
+                repeat.CanRepeat(c,59.94,2,1.0/59.94),
+                L"Only a successful complete submitted presentation can replace current-source analysis.");
+        }
+        auto noOutput=c;noOutput.outputContract=0;
+        repeat.Candidate(noOutput,1,0,true,true);repeat.Submitted(true);
+        Assert::IsFalse(repeat.CanRepeat(noOutput,59.94,2,1.0/59.94),
+            L"An absent output contract cannot authorize reuse on either presenter.");
+        repeat.Candidate(c,1,0,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,2,1.0/59.94));
+        Assert::IsFalse(repeat.CanRepeat(c,23.976,2,1.0/23.976));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,3,2.0/59.94));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,3.0/59.94));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,0));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,1.0/59.94,true));
+        for(int fault=0;fault<23;++fault) {
+            auto bad=c;
+            switch(fault) {
+            case 0:bad.gpu=nullptr;break;case 1:++bad.generation;break;case 2:++bad.sourceFormat;break;
+            case 3:++bad.analysisDomain;break;case 4:++bad.viewport;break;case 5:++bad.renderer;break;
+            case 6:++bad.processing;break;case 7:++bad.policy;break;case 8:++bad.continuity;break;
+            case 9:++bad.reset;break;case 10:++bad.scene;break;case 11:++bad.outputContract;break;
+            case 12:++bad.outputEpoch;break;case 13:++bad.startupRevision;break;case 14:++bad.subtitleMode;break;
+            case 15:++bad.transfer;break;case 16:++bad.colorspace;break;case 17:bad.configuredScreen=true;break;
+            case 18:bad.interlaced=true;break;case 19:bad.temporal=true;break;case 20:bad.deferredReset=true;break;
+            case 21:++bad.frameDuration;break;case 22:++bad.timeScale;break;
+            }
+            Assert::IsFalse(repeat.CanRepeat(bad,59.94,2,1.0/59.94));
+        }
+        for(double invalid:{(std::numeric_limits<double>::quiet_NaN)(),
+            (std::numeric_limits<double>::infinity)(),-1.0}) {
+            Assert::IsFalse(repeat.CanRepeat(c,invalid,2,1.0/59.94));
+            Assert::IsFalse(repeat.CanRepeat(c,59.94,2,invalid));
+        }
+        Assert::IsFalse(repeat.CanRepeat(c,60.0,2,1.0/60.0),L"An input cadence change invalidates a previous-rate anchor.");
+        repeat.RepeatSubmitted(true);
+        Assert::AreEqual(uint64_t(1),repeat.DisplayedSource());
+        Assert::AreEqual(0.0,repeat.DisplayedPts());
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,1.0/59.94),L"A repeated output cannot renew its source lease.");
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,3,2.0/59.94));
+        repeat.Candidate(c,3,2.0/59.94,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,4,3.0/59.94));
+        repeat.RepeatSubmitted(false);
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,4,3.0/59.94));
+        repeat.Candidate(c,2,1.0/59.94,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,3,2.0/59.94),
+            L"An unavailable odd input may repeat an analyzed even source; parity is not evidence.");
+        repeat.RepeatSubmitted(true);
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,4,3.0/59.94));
+    }
+    TEST_METHOD(SourceCadenceRepeatKeepsEntireFinalImageThenShowsNewSceneOnNextAnalyzedSource) {
+        GpuFixture g;DisplayFrameCache pixels;SourceCadencePresentation repeat;
+        SourceCadencePresentationContext c;c.gpu=g.device->gpu;c.generation=1;
+        c.sourceFormat=1;c.analysisDomain=1;c.outputContract=1;c.frameDuration=100;c.timeScale=5994;
+        auto params=pl_render_default_params;params.dither_params=nullptr;
+        // Includes picture, bar and caption pixels; all must be repeated together.
+        std::vector<unsigned char> source(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            const unsigned char v=y<8||y>=48?0:static_cast<unsigned char>(40+x+y);
+            for(int channel=0;channel<3;++channel)source[o+channel]=
+                y>=52&&y<58&&x>=18&&x<46?255:v;
+        }
+        pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=source.data();
+        Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload));
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        const auto complete=g.ReadPixels();
+        repeat.Candidate(c,1,0,true,pixels.Capture(g.device->gpu,g.target));repeat.Submitted(true);
+        // A scene/AR cut arrives on the intentionally skipped input. The user
+        // permits one-source latency, never old caption cleanup on new pixels.
+        g.Upload(220);g.input.crop={0,8,64,56};
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        const auto nextScene=g.ReadPixels();Assert::IsTrue(complete!=nextScene);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,2,1.0/59.94));
+        Assert::IsTrue(pixels.CopyTo(g.target));Assert::IsTrue(complete==g.ReadPixels());
+        repeat.RepeatSubmitted(true);
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,3,2.0/59.94));
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        Assert::IsTrue(nextScene==g.ReadPixels(),L"A new scene must appear on the next analyzed source, with no multi-source hold.");
+        Assert::AreEqual(uint64_t(1),repeat.DisplayedSource());
+        Assert::AreEqual(0.0,repeat.DisplayedPts());
+    }
+    TEST_METHOD(SkippedInputWithoutCompletePresentationPermissionMustAnalyze) {
+        // Input frequency/parity alone cannot authorize losing current captions.
+        // No successful submitted-image repeat has been supplied to this API.
+        for(double inputHz:{30.001,50.0,59.0,59.94,60.0,120.0})
+            for(uint64_t sequence:{2ULL,4ULL,100ULL})
+                Assert::IsTrue(InputFrameAnalysisDue(inputHz,sequence),
+                    L"A skipped source without an exact complete-presentation repeat must receive fresh analysis.");
+        Assert::IsTrue(InputFrameAnalysisDue(23.976,2),
+            L"A 60 Hz display cannot change the 23.976 Hz input analysis decision.");
+    }
+    TEST_METHOD(OnlyExplicitCompletePresentationPermissionAllowsInputCadenceSkip) {
         for(double hz:{23.976,24.0,25.0,29.97,30.0,50.0,59.94,60.0,120.0}) {
             unsigned analyses=0;
             for(uint64_t sequence=1;sequence<=120;++sequence) {
-                const bool due=InputFrameAnalysisDue(hz,sequence);
+                // This permission belongs to an exact committed presentation,
+                // not merely to input frequency or a prior subtitle observation.
+                const bool due=InputFrameAnalysisDue(hz,sequence,true);
                 Assert::IsTrue(due==(hz<=30.0 || (sequence&1)!=0));
+                Assert::IsTrue(InputFrameAnalysisDue(hz,sequence,false));
                 for(int output=0;output<4;++output)
-                    Assert::IsTrue(due==InputFrameAnalysisDue(hz,sequence));
+                    Assert::IsTrue(due==InputFrameAnalysisDue(hz,sequence,true));
                 if(due)++analyses;
             }
             Assert::AreEqual(hz<=30.0?120u:60u,analyses);

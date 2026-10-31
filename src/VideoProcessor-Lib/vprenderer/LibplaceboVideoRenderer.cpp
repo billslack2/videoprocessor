@@ -60,6 +60,7 @@
 #include <vprenderer/NlsPipelinePreparation.h>
 #include <vprenderer/SubtitlePipelinePreparation.h>
 #include <vprenderer/InputAnalysisCadence.h>
+#include <vprenderer/SourceCadencePresentation.h>
 #include <vprenderer/TemporalPresentationLedger.h>
 #include <vprenderer/TemporalPresentationPose.h>
 #include <vprenderer/SubmittedOutputGeometryTrace.h>
@@ -222,6 +223,38 @@ namespace
 	using SteadyClock = std::chrono::steady_clock;
 	constexpr size_t MAX_USER_SHADER_BYTES = 4 * 1024 * 1024;
 	uint64_t AlphaSourceFormatKey(const VideoState& state);
+
+    PhysicalPictureEdgeObservation ObservePhysicalSourceForWorker(const AnalysisLumaSource& source,
+        ActivePictureEvidence& evidence,const ActivePictureFrameIdentity& identity)
+    {
+        const auto started=SteadyClock::now();
+        if(!ActivePictureMeasurementCache::CompletePhysicalObservationIfMissing(source,evidence))
+            return evidence.physicalEdges;
+        const auto physical=evidence.physicalEdges;
+        const double ms=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
+        auto record=AnalysisTraceRecord(identity,nullptr,"physical-source-observation",physical.reason);
+        record.flags=(physical.evaluated?1u:0u)|(physical.estimateAvailable?2u:0u);
+        record.counters[0]=physical.samples;record.metrics[0]=ms;
+        AnalysisTraceRect(record.measured,physical.estimate);
+        AnalysisTraceRect(record.candidate,physical.conservativeBounds);
+        AnalysisDiagnosticTrace::Emit(record);
+        struct Interval { uint64_t tick=GetTickCount64(),count=0,strong=0,exhausted=0,samples=0;
+            double totalMs=0,peakMs=0; };
+        static thread_local Interval stats;
+        ++stats.count;stats.strong+=physical.estimateAvailable?1u:0u;
+        stats.exhausted+=physical.reason &&
+            std::strcmp(physical.reason,"physical-edge-optional-budget-exhausted")==0?1u:0u;
+        stats.samples+=physical.samples;stats.totalMs+=ms;stats.peakMs=std::max(stats.peakMs,ms);
+        const auto now=GetTickCount64();
+        if(now-stats.tick>=2000) {
+            DebugLog::Log("VP physical source observation: generation=%llu source=%llu observations=%llu strong=%llu unknown=%llu budget_exhaustions=%llu samples=%llu total_ms=%.3f peak_ms=%.3f crop_options=independent",
+                identity.transportGeneration,identity.acceptedSequence,stats.count,stats.strong,
+                stats.count-stats.strong,stats.exhausted,stats.samples,stats.totalMs,stats.peakMs);
+            stats={};stats.tick=now;
+        }
+        return physical;
+    }
+
 
 	int64_t SteadyClockNowNs()
 	{
@@ -4437,6 +4470,11 @@ struct LibplaceboVideoRenderer::Impl
     int displayCadenceOwner = -1;
     DisplayCadenceTransition displayCadenceTransition;
     DisplayFrameCache displayFrameCache;
+    SourceCadencePresentation sourceCadencePresentation;
+    AlphaPresentationRecord sourceCadenceRecord{};
+    AnalysisDiagnosticRecordV1 sourceCadenceOutputTrace{};
+    AnalysisBoundaryChainFacts sourceCadenceBoundaryFacts{};
+    uint64_t sourceCadenceRepeats=0;
     AlphaPresentationRecord displayRepeatRecord;
     bool displayRepeatValid = false;
     uint64_t displayRepeatRevision = 0;
@@ -4629,6 +4667,9 @@ struct LibplaceboVideoRenderer::Impl
         bool coldMaskedProposalEntryAvailable=false;
         int coldMaskedRelease=0;
         double coldMaskedSourceRate=60.0;
+        bool preFillMeasurementAvailable=false;
+        ActivePictureBounds preFillSourceBounds{};
+        double preFillTargetAspect=0;
         pl_rect2df sourceCrop{};
         pl_rect2df targetCrop{};
         pl_rect2df linearFallbackCrop{};
@@ -4776,6 +4817,8 @@ struct LibplaceboVideoRenderer::Impl
 	double hdrStatusLoggedL1[3] = { -1.0f, -1.0f, -1.0f };
 	ActivePictureTransitionModel nlsTransition;
     PictureAspectTelemetry aspectTelemetry;
+    PhysicalPictureEdgeObservation latestPhysicalPictureEdges;
+    ActivePictureFrameIdentity latestPhysicalPictureIdentity;
     DetectedPictureAspect lastLoggedAspect;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
@@ -9122,7 +9165,10 @@ struct LibplaceboVideoRenderer::Impl
     {
         const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
-        key.analysisStride=fps>30.0?2u:1u;
+        // A queued observation has no guarantee that the preceding source will
+        // submit a complete, repeatable presentation. Never turn source parity
+        // into UNKNOWN subtitle evidence while presenting fresh source pixels.
+        key.analysisStride=1u;
         key.cadenceSkipped=!InputFrameAnalysisDue(fps,identity.acceptedSequence);
         key.identity.analysisDomainKey=prepared.domainKey;
         key.continuityGeneration=continuity;key.nearBarDistance=nearBar;key.optimizationMode=optimizationMode;
@@ -9172,13 +9218,14 @@ struct LibplaceboVideoRenderer::Impl
                     ready.sharedProbeAnchor.right,ready.sharedProbeAnchor.bottom);
             }
         }
-        const int stride = fps > 30.0 ? 2 : 1;
+        const int stride = static_cast<int>(key.analysisStride);
         if (subtitleAnalysisStride != stride) {
             subtitleAnalysisStride = stride;
-            DebugLog::Log("VP subtitle analysis cadence: input_hz=%.6f input_stride=%d output_repeats=read_only skipped=unknown", fps, stride);
+            DebugLog::Log("VP subtitle analysis cadence: input_hz=%.6f input_stride=%d output_repeats=read_only skipped=requires_complete_presentation", fps, stride);
         }
         if (!allowSubmit || key.cadenceSkipped) {
-            key.text.diagnosticReason = "input-cadence-not-analyzed";
+            key.text.diagnosticReason = key.cadenceSkipped ?
+                "input-cadence-not-analyzed" : "current-analysis-submission-disabled";
             return key;
         }
         subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
@@ -10713,7 +10760,21 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		latestColdStrictWorkerProof = false;
         aspectTelemetry.Source(analysisSource.generation);
-        osdTelemetry.PublishAspect(aspectTelemetry.Read());
+        const auto publishPhysicalObservation=[&]() {
+            latestPhysicalPictureEdges=pixelMeasurements.PhysicalEdges();
+            latestPhysicalPictureIdentity=currentIdentity;
+            const auto& physical=latestPhysicalPictureEdges;
+            const auto& edge=physical.estimate;
+            const bool current=physical.sourceGeneration==analysisSource.generation;
+            aspectTelemetry.ObservePhysical(analysisSource.generation,frameNumber,
+                physical.evaluated,current && physical.estimateAvailable,
+                current && physical.confidence==PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE?
+                    PhysicalAspectConfidence::STRONG_ABRUPT_EDGE:
+                current && physical.confidence==PhysicalPictureEdgeConfidence::SOURCE_RASTER_EXTENT?
+                    PhysicalAspectConfidence::SOURCE_RASTER_EXTENT:PhysicalAspectConfidence::UNKNOWN,
+                edge.left,edge.top,edge.right,edge.bottom);
+            osdTelemetry.PublishAspect(aspectTelemetry.Read());
+        };
 		ConfigureSparseBoundaryExperiment();
         ConfigureRememberedEdgeReturn();
 		sparseBoundaryStartupGate.ObserveSource(analysisSource.generation);
@@ -10866,6 +10927,9 @@ struct LibplaceboVideoRenderer::Impl
 			hdrPeakAnalysisPictureOnly ||
 			hdrPeakAnalysisMotionCompensation ||
 			statsOverlayVisible.load(std::memory_order_acquire);
+        // Independent of crop/fit options. A missing native observation remains
+        // explicitly unknown; no conservative guard is presented as physical AR.
+        publishPhysicalObservation();
 		if (!needsActivePictureAnalysis)
 			return;
 
@@ -11012,6 +11076,7 @@ struct LibplaceboVideoRenderer::Impl
             // bars and distributed picture structure. Caption/sparse inference below
             // keeps the raw global-dark guard; it cannot supply this certificate.
             auto arDarkness = pixelMeasurements.ArDarkness(latestRawPictureEvidence, globalNearBlack);
+            publishPhysicalObservation();
             if (frameNumber % 120 == 0)
                 DebugLog::Log("Alpha AR darkness: sequence=%llu generation=%llu raw_near_black=%d ar_near_black=%d p90=%.1f cutoff=%.3f range=%u distributed_picture=%d textured_tiles=%d quadrants=%d bar_floor=%.1f picture_median=%.1f median_spread=%.1f samples=%zu",
                     static_cast<unsigned long long>(frameNumber),
@@ -11603,16 +11668,9 @@ struct LibplaceboVideoRenderer::Impl
 					? evidence.proposedBounds : evidence.trustedBounds)
 				: ActivePictureBounds{};
 			latestActivePictureEvidenceFrame = frameNumber;
-            const auto& observed = latestActivePictureEvidenceBounds;
-            const bool observedAspectAvailable = latestActivePictureEvidenceAvailable &&
-                (latestActivePictureEvidenceClassification == ActivePictureClassification::FULL_RASTER_TRUSTED ||
-                 latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED ||
-                 latestActivePictureEvidenceClassification == ActivePictureClassification::PROVISIONAL) &&
-                observed.right > observed.left && observed.bottom > observed.top;
-            aspectTelemetry.Observe(analysisSource.generation, frameNumber,
-                observedAspectAvailable ? double(observed.right-observed.left)/(observed.bottom-observed.top) : 0.0,
-                observedAspectAvailable, latestActivePictureEvidenceClassification == ActivePictureClassification::PROVISIONAL);
-            osdTelemetry.PublishAspect(aspectTelemetry.Read());
+            // Physical AR was published from independent exact-source edge
+            // observation above. Retention/guard bounds remain crop authority.
+
 			const bool currentBoundsAreFullRaster =
 				latestActivePictureEvidenceBounds.left == 0 &&
 				latestActivePictureEvidenceBounds.top == 0 &&
@@ -12700,6 +12758,9 @@ struct LibplaceboVideoRenderer::Impl
         SourceUploadBatch& sourceUploadBatch,
         ActivePictureMeasurementCache& pixelMeasurements)
 	{
+        auto previousCompletePresentation=sourceCadencePresentation;
+        sourceCadencePresentation.Reset();
+        bool sourceTransportEvaluated=false;
         presentationAttempt.Begin();
         lastRenderPresentationPaused=false;
         const auto renderWorkStarted=SteadyClock::now();
@@ -12752,8 +12813,6 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			return false;
 		const VideoState& state = *statePtr;
-        const uint64_t hdrPublicationToken=BeginHdrStatus(frameGeneration,viewportRequestSerial,
-            state.eotf,state.colorspace,videoFrame.IsSourceDiscontinuity());
         uint64_t requestedResetEpoch = consumedPresentationResetEpoch;
         QueueNativeResetKind resetKind = QueueNativeResetKind::NONE;
         if (presentationResetEpoch.Consume(requestedResetEpoch, &resetKind))
@@ -13033,6 +13092,56 @@ struct LibplaceboVideoRenderer::Impl
             }
         }
 
+        auto inputRepeatIdentity=activePictureIdentity;
+        inputRepeatIdentity.analysisDomainKey=preparedQueued.domainKey;
+        inputRepeatIdentity.transportGeneration=frameGeneration;
+        inputRepeatIdentity.sourceFormatGeneration=AlphaSourceFormatKey(state);
+        inputRepeatIdentity.viewportGeneration=viewportRequestSerial;
+        inputRepeatIdentity.rendererGeneration=frameGeneration;
+        const auto repeatContext=SourceCadenceContext(state,frameGeneration,preparedQueued.domainKey,
+            viewportRequestSerial,sceneDetectorGeneration,sourceSubtitleMode,configuredScreenActive);
+        if(!cadenceRepeat && subtitleMeasurementEnabled && preparedLive.IsValid() && preparedQueued.IsValid() &&
+            !temporalRenderer.Active() && !state.displayMode->IsInterlaced() &&
+            !displayCadenceRecovery.Pending() && !displayCadenceRecovery.Fallback() &&
+            previousCompletePresentation.CanRepeat(repeatContext,captureRateHz,sourceSequence,
+                temporalRenderer.currentPts,videoFrame.IsSourceDiscontinuity()))
+        {
+            bool exactCurrentReady=subtitlePreview && subtitlePreview->available &&
+                SubtitleBoxLookahead::IsCurrent(*subtitlePreview,inputRepeatIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration) &&
+                SourceCadenceObservationComplete(subtitlePreview->current,inputRepeatIdentity);
+            if(!exactCurrentReady) {
+                auto shared=subtitleSharedPicture;shared.required=true;
+                const auto ready=QueueSubtitleMeasurement(videoFrame,state,inputRepeatIdentity,
+                    videoFrame.IsSourceDiscontinuity(),{},localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
+                    activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
+                    shared,preparedQueued,{},false,false);
+                exactCurrentReady=SourceCadenceObservationComplete(ready,inputRepeatIdentity);
+            }
+            if(!exactCurrentReady) {
+                sourceTransportEvaluated=true;
+                EvaluateSourceCadenceCorrection(frameGeneration,sourceSequence,sceneDetectorGeneration,
+                    captureRateHz,queueDepthAfterDequeue,desiredQueueDepth,oldestQueuedAgeMs,
+                    sceneDetectionEnabled,true,false,0,correctionDecision);
+                if(correctionDecision.action==AlphaCadenceAction::Drop)return true;
+                if(PresentInputCadenceRepeat(previousCompletePresentation,repeatContext,inputRepeatIdentity,
+                    captureRateHz,temporalRenderer.currentPts,presentationTargetTimingKnown,presentationTargetLeadMs)) {
+                    previousCompletePresentation.RepeatSubmitted(true);
+                    sourceCadencePresentation=previousCompletePresentation;
+                    return true;
+                }
+                // No previous permission survives a failed copy or submission.
+                // Fresh analysis remains the fallback, with transport observed once.
+                previousCompletePresentation.Reset();
+                // A failed repeat Present (including occlusion) belongs to its
+                // own attempt; it cannot excuse a later fresh shader failure.
+                presentationAttempt.Begin();
+            }
+        }
+        const uint64_t hdrPublicationToken=BeginHdrStatus(frameGeneration,viewportRequestSerial,
+            state.eotf,state.colorspace,videoFrame.IsSourceDiscontinuity());
+
         // All consumers use native capture evidence (validated decoded storage
         // for DV), regardless of the renderer's P010/P210 upload choice.
         const uint64_t queuedAnalysisDomainKey = preparedQueued.domainKey;
@@ -13286,6 +13395,7 @@ struct LibplaceboVideoRenderer::Impl
             inwardCaptionIdentity = {};
             // A missing current analysis view must not leave the last detection
             // looking live. Submitted geometry remains independently reported.
+            latestPhysicalPictureEdges={};latestPhysicalPictureIdentity={};
             aspectTelemetry.Observe(frameGeneration, sourceSequence, 0.0, false, false);
             osdTelemetry.PublishAspect(aspectTelemetry.Read());
 			latestActivePictureObservationSupportsCrop = false;
@@ -13503,47 +13613,15 @@ struct LibplaceboVideoRenderer::Impl
 					? 1 : 0,
 				sceneDecision.reason.c_str());
 		}
-		if (!cadenceRepeat)
-		{
-			const AlphaPresentationSnapshot presentation =
-				presentationTelemetry.Snapshot();
-			AlphaCadenceCorrectionInput correctionInput;
-			correctionInput.enabled = sceneDetectionEnabled && analysisSource.IsValid() &&
-                !displayVsyncClock.Active();
-			// Queue replacement and detector/source replacement are independent
-			// reset boundaries. Fold both into the policy epoch so neither can
-			// inherit a pending action or retained phase from the other.
-			correctionInput.generation =
-				frameGeneration ^
-				(sceneDetectorGeneration + 0x9e3779b97f4a7c15ULL +
-					(frameGeneration << 6) + (frameGeneration >> 2));
-			correctionInput.detectorGeneration =
-				sceneDetectorGeneration;
-			correctionInput.presentationGeneration =
-				presentation.generation;
-			correctionInput.presentationEvidence = presentation.evidence;
-			correctionInput.captureRateHz = captureRateHz;
-			correctionInput.displayRateHz = presentation.measuredDisplayHz;
-			correctionInput.queueDepth = queueDepthAfterDequeue;
-			correctionInput.desiredQueueDepth = desiredQueueDepth;
-			correctionInput.oldestQueuedAgeMs = oldestQueuedAgeMs;
-			correctionInput.presentationDebt =
-				presentation.sourceToPresentDebt;
-			correctionInput.lastPresentId = presentation.lastPresentId;
-			correctionInput.safeSceneBoundary =
-				sceneDetectionEnabled && sceneResult.safeBoundary;
-			correctionInput.sceneEventId = sceneDetectionEnabled
-				? sceneResult.eventId : 0;
-			correctionInput.sourceSequence = sourceSequence;
-			correctionDecision =
-				cadenceCorrectionPolicy.Evaluate(correctionInput);
-			UpdateCadenceDiagnostics(
-				correctionDecision, frameGeneration);
-			if (correctionDecision.action == AlphaCadenceAction::Drop)
-			{
-				return true;
-			}
-		}
+		if (!cadenceRepeat && !sourceTransportEvaluated)
+        {
+            sourceTransportEvaluated=true;
+            EvaluateSourceCadenceCorrection(frameGeneration,sourceSequence,sceneDetectorGeneration,
+                captureRateHz,queueDepthAfterDequeue,desiredQueueDepth,oldestQueuedAgeMs,
+                sceneDetectionEnabled,analysisSource.IsValid(),sceneResult.safeBoundary,
+                sceneResult.eventId,correctionDecision);
+            if(correctionDecision.action==AlphaCadenceAction::Drop)return true;
+        }
 		const bool ambiguityOverlayHoldActive =
 			activePictureAmbiguityHold.IsActive(
 				GetTickCount64(), frameGeneration);
@@ -15647,6 +15725,9 @@ struct LibplaceboVideoRenderer::Impl
         bool temporalPolicyColdMaskedProposalEntryAvailable=false;
         int temporalPolicyColdMaskedRelease=0;
         double temporalPolicyColdMaskedSourceRate=60.0;
+        bool temporalPolicyPreFillAvailable=false;
+        ActivePictureBounds temporalPolicyPreFillBounds{};
+        double temporalPolicyPreFillTarget=0;
 		const bool coldStrictWorkerProof = latestColdStrictWorkerProof &&
             latestColdStrictGeneration == frameGeneration &&
             latestColdStrictSequence == sourceSequence &&
@@ -15707,7 +15788,8 @@ struct LibplaceboVideoRenderer::Impl
              &temporalPolicyColdMaskedProposalEntry,
              &temporalPolicyColdMaskedProposalEntryAvailable,
              &temporalPolicyColdMaskedRelease,
-             &temporalPolicyColdMaskedSourceRate](
+             &temporalPolicyColdMaskedSourceRate, &temporalPolicyPreFillAvailable,
+             &temporalPolicyPreFillBounds, &temporalPolicyPreFillTarget](
 				struct pl_frame& source,
 				struct pl_frame& target,
 				bool configuredScreenActive,
@@ -15715,6 +15797,8 @@ struct LibplaceboVideoRenderer::Impl
 				bool* trustedActivePicture = nullptr,
 				HdrPeakAnalysisCrop::TrustedPicture* hdrTrustedPicture = nullptr)
 		{
+            temporalPolicyPreFillAvailable=false;
+            temporalPolicyPreFillBounds={};temporalPolicyPreFillTarget=0;
 			source = subtitleComposedImage;
             temporalPolicyNearBlackEnvelopeCandidate = false;
             temporalPolicyNearBlackEnvelopeFailOpen = false;
@@ -17889,6 +17973,12 @@ releaseDriftBaseRetention =
                 verticalFailOpen || outwardExpansionInvalid ||
                 movingPictureTransition.active || movingPictureTransition.awaitingPublication ||
                 pictureTransitionHandoff.active;
+            temporalPolicyPreFillBounds=cropDecision.sourceBounds;
+            temporalPolicyPreFillTarget=finalFillInput.configured.screenAspect;
+            temporalPolicyPreFillAvailable=cropDecision.sourceBounds.rasterWidth==width &&
+                cropDecision.sourceBounds.rasterHeight==height &&
+                cropDecision.sourceBounds.right>cropDecision.sourceBounds.left &&
+                cropDecision.sourceBounds.bottom>cropDecision.sourceBounds.top;
             AlphaSourceCrop::AspectLimitFillDecision aspectLimitFill =
                 AlphaSourceCrop::EvaluateFinalAspectLimitFill(finalFillInput);
             AlphaSourceCrop::CaptionConfirmationPresentationHoldInput captionHoldInput;
@@ -19128,6 +19218,9 @@ releaseDriftBaseRetention =
                         temporalPolicyColdMaskedProposalEntryAvailable;
                     sourceSnapshot.coldMaskedRelease=temporalPolicyColdMaskedRelease;
                     sourceSnapshot.coldMaskedSourceRate=temporalPolicyColdMaskedSourceRate;
+                    sourceSnapshot.preFillMeasurementAvailable=temporalPolicyPreFillAvailable;
+                    sourceSnapshot.preFillSourceBounds=temporalPolicyPreFillBounds;
+                    sourceSnapshot.preFillTargetAspect=temporalPolicyPreFillTarget;
                     sourceSnapshot.sourceCrop=renderImage.crop;
                     sourceSnapshot.targetCrop=target.crop;
                     sourceSnapshot.linearFallbackCrop=linearFallbackCrop;
@@ -19837,10 +19930,20 @@ releaseDriftBaseRetention =
         calibrationStatusAvailable = rendered;
         if (rendered) lastRenderedTargetTransfer = ToSdrTransfer(baseTarget.color.transfer);
         calibrationLutAttached = rendered && targetLutApplied;
-        if (rendered)
-            CacheDisplayFrame(baseTarget.planes[0].texture, frameGeneration,
-                viewportRequestSerial, startupFrameRevision);
-        else displayRepeatValid = false;
+        const bool completeSourceCandidate=rendered && subtitleMeasurementEnabled &&
+            !cadenceRepeat && !repeatedTemporalOutput && captureRateHz>30.0 && swapchain &&
+            !temporalRenderer.Active() && !state.displayMode->IsInterlaced() &&
+            !displayCadenceRecovery.Pending() && !displayCadenceRecovery.Fallback() &&
+            SourceCadenceObservationComplete(currentSubtitlePreview.current,subtitleIdentity) &&
+            sourcePreparationReceipt.ReuseAnalysis(sourcePreparationContext,SourceRepeatKind::CadenceRepeat);
+        if (rendered) {
+            const bool captured=CacheDisplayFrame(baseTarget.planes[0].texture, frameGeneration,
+                viewportRequestSerial,startupFrameRevision,completeSourceCandidate);
+            sourceCadencePresentation.Candidate(SourceCadenceContext(state,frameGeneration,
+                queuedAnalysisDomainKey,viewportRequestSerial,sceneDetectorGeneration,
+                sourceSubtitleMode,configuredScreenActive),sourceSequence,temporalRenderer.currentPts,
+                completeSourceCandidate,captured);
+        } else { displayRepeatValid=false;sourceCadencePresentation.Reset(); }
         displayVsyncClock.SkipMissed(SteadyClockNowNs());
 		const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
@@ -20130,6 +20233,66 @@ releaseDriftBaseRetention =
                 outputTrace.metrics[12]=target.crop.x0;outputTrace.metrics[13]=target.crop.y0;
                 outputTrace.metrics[14]=target.crop.x1;outputTrace.metrics[15]=target.crop.y1;
                 AnalysisDiagnosticTrace::Emit(outputTrace);
+                sourceCadenceOutputTrace=outputTrace;
+                // Current input and selected output are deliberately distinct.
+                // This computed-only record cannot turn a retained guard or a
+                // previous packet into a fresh physical boundary observation.
+                AnalysisBoundaryChainFacts chain;
+                const bool physicalCurrent=SameAnalysisFrameIdentity(
+                    latestPhysicalPictureIdentity,subtitleIdentity) &&
+                    latestPhysicalPictureEdges.sourceGeneration==frameGeneration;
+                const auto& physical=latestPhysicalPictureEdges;
+                chain.physicalEvaluated=physicalCurrent && physical.evaluated;
+                chain.physicalAvailable=physicalCurrent && physical.estimateAvailable;
+                chain.physicalConfidence=physicalCurrent?
+                    static_cast<uint32_t>(physical.confidence):0;
+                const auto rect=[](int32_t* out,const auto& b) {
+                    out[0]=b.left;out[1]=b.top;out[2]=b.right;out[3]=b.bottom;
+                };
+                if(physicalCurrent) {
+                    rect(chain.physical,physical.estimate);
+                    rect(chain.guard,physical.conservativeBounds);
+                }
+                if(latestActivePictureEvidenceFrame==sourceSequence &&
+                    activePictureAnalysisSourceGeneration==frameGeneration)
+                    rect(chain.nomination,latestRawPictureEvidence.proposedBounds);
+                rect(chain.accepted,native.bounds);
+                rect(chain.displayed,scopeAnchorCommit.submittedBounds);
+                if(SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,subtitleIdentity))
+                    rect(chain.subtitle,currentSubtitlePreview.current.text.bounds);
+                chain.selectedSource=scopeAnchorCommit.sourceSequence;
+                chain.physicalSource=physicalCurrent?sourceSequence:0;
+                chain.analyzedSource=currentSubtitlePreview.current.analyzed &&
+                    SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,subtitleIdentity)?sourceSequence:0;
+                chain.nativeAuthoritySource=native.acceptedSourceSequence;
+                chain.analysisStride=currentSubtitlePreview.current.analysisStride;
+                chain.cropEnabled=automaticSourceCrop;
+                chain.cadenceSkipped=currentSubtitlePreview.current.cadenceSkipped;
+                chain.submitted=true;
+                const auto& preFill=selectedPresentationValid?
+                    selectedPresentationForCommit.preFillSourceBounds:temporalPolicyPreFillBounds;
+                chain.fillMeasurementAvailable=(selectedPresentationValid?
+                    selectedPresentationForCommit.preFillMeasurementAvailable:temporalPolicyPreFillAvailable) &&
+                    preFill.rasterWidth==scopeAnchorCommit.submittedBounds.rasterWidth &&
+                    preFill.rasterHeight==scopeAnchorCommit.submittedBounds.rasterHeight;
+                if(chain.fillMeasurementAvailable) {
+                    chain.fillAspect=selectedPresentationValid?
+                        selectedPresentationForCommit.preFillTargetAspect:temporalPolicyPreFillTarget;
+                    chain.topInset=scopeAnchorCommit.submittedBounds.top-preFill.top;
+                    chain.bottomInset=preFill.bottom-scopeAnchorCommit.submittedBounds.bottom;
+                    chain.removedRows=chain.topInset+chain.bottomInset;
+                }
+                chain.currentPts=temporalRenderer.currentPts;
+                chain.selectedPts=selectedPresentationValid?selectedPresentationForCommit.sourcePts:temporalRenderer.currentPts;
+                chain.originalAge=(chain.currentPts-chain.selectedPts)*1000.0;
+                chain.inputFps=captureRateHz;
+                auto currentTrace=AnalysisTraceRecord(subtitleIdentity,this,"ar-boundary-chain","");
+                currentTrace.policyGeneration=localBoundaryPolicyGeneration;
+                currentTrace.continuityGeneration=localBoundaryContinuityGeneration;
+                currentTrace.cadenceRepeat=cadenceRepeat;
+                currentTrace.discontinuity=videoFrame.IsSourceDiscontinuity();
+                AnalysisDiagnosticTrace::Emit(AnalysisDiagnosticTrace::BoundaryChain(currentTrace,chain));
+                sourceCadenceBoundaryFacts=chain;
             }
             StartupPresentation::SubmissionInput startupSubmission;
             startupSubmission.context=startupContext;
@@ -20474,6 +20637,10 @@ releaseDriftBaseRetention =
 
             const AlphaDxgiPresentationSample sample = ObservePresent(record);
             if (displayRepeatValid) displayRepeatRecord = record;
+            sourceCadencePresentation.Submitted(
+                startupFrameRevision==startupReadinessRevision.load(std::memory_order_acquire));
+            if(sourceCadencePresentation.DisplayedSource()==sourceSequence)
+                sourceCadenceRecord=record;
 			const AlphaPresentationSnapshot presentationSnapshot =
 				presentationTelemetry.Snapshot();
             const uint64_t correlationNow=GetTickCount64();
@@ -20712,33 +20879,8 @@ releaseDriftBaseRetention =
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<long long>(baseQpc), history.c_str());
 			}
-			const double osdPresentationHz = OsdTimingPolicy::WarmingEnabled ?
-				presentationSnapshot.measuredDisplayHz : presentationSnapshot.observedDisplayHz;
-			if (sample.available &&
-				(!OsdTimingPolicy::WarmingEnabled ||
-					presentationSnapshot.evidence == AlphaPresentationEvidence::Stable) &&
-				osdPresentationHz >= 10.0 && osdPresentationHz <= 240.0 &&
-				sample.qpcFrequency > 0 && sample.syncQpc > 0 &&
-				swapEndQpc > 0)
-			{
-				const int64_t periodQpc = static_cast<int64_t>(std::llround(
-					static_cast<double>(sample.qpcFrequency) /
-					osdPresentationHz));
-				if (periodQpc > 0)
-				{
-					int64_t targetQpc = sample.syncQpc + periodQpc;
-					if (targetQpc < swapEndQpc)
-					{
-						const int64_t missedPeriods =
-							(swapEndQpc - targetQpc + periodQpc - 1) / periodQpc;
-						targetQpc += missedPeriods * periodQpc;
-					}
-					presentationTargetLeadMs = static_cast<double>(
-						targetQpc - swapEndQpc) * 1000.0 /
-						static_cast<double>(sample.qpcFrequency);
-					presentationTargetTimingKnown = true;
-				}
-			}
+            UpdatePresentationTargetLead(sample,presentationSnapshot,swapEndQpc,
+                presentationTargetTimingKnown,presentationTargetLeadMs);
 
 			const uint64_t nowTick = GetTickCount64();
 			PostStallResetObservation resetObservation;
@@ -21178,30 +21320,224 @@ releaseDriftBaseRetention =
         return PresentNativeChecked(native);
     }
 
-    void CacheDisplayFrame(pl_tex output, uint64_t generation,
-        uint64_t viewport, uint64_t revision)
+    void EvaluateSourceCadenceCorrection(uint64_t frameGeneration,uint64_t sourceSequence,
+        uint64_t sceneDetectorGeneration,double captureRateHz,size_t queueDepthAfterDequeue,
+        size_t desiredQueueDepth,double oldestQueuedAgeMs,bool enabled,bool sourceValid,
+        bool safeBoundary,uint64_t eventId,AlphaCadenceCorrectionDecision& decision)
+    {
+        const auto presentation=presentationTelemetry.Snapshot();
+        AlphaCadenceCorrectionInput input;
+        input.enabled=enabled && sourceValid && !displayVsyncClock.Active();
+        input.generation=frameGeneration ^ (sceneDetectorGeneration+0x9e3779b97f4a7c15ULL+
+            (frameGeneration<<6)+(frameGeneration>>2));
+        input.detectorGeneration=sceneDetectorGeneration;
+        input.presentationGeneration=presentation.generation;
+        input.presentationEvidence=presentation.evidence;
+        input.captureRateHz=captureRateHz;input.displayRateHz=presentation.measuredDisplayHz;
+        input.queueDepth=queueDepthAfterDequeue;input.desiredQueueDepth=desiredQueueDepth;
+        input.oldestQueuedAgeMs=oldestQueuedAgeMs;input.presentationDebt=presentation.sourceToPresentDebt;
+        input.lastPresentId=presentation.lastPresentId;
+        input.safeSceneBoundary=enabled && safeBoundary;input.sceneEventId=enabled?eventId:0;
+        input.sourceSequence=sourceSequence;
+        decision=cadenceCorrectionPolicy.Evaluate(input);
+        UpdateCadenceDiagnostics(decision,frameGeneration);
+    }
+    void UpdatePresentationTargetLead(const AlphaDxgiPresentationSample& sample,
+        const AlphaPresentationSnapshot& presentationSnapshot,int64_t swapEndQpc,
+        bool& presentationTargetTimingKnown,double& presentationTargetLeadMs)
+    {
+			const double osdPresentationHz = OsdTimingPolicy::WarmingEnabled ?
+				presentationSnapshot.measuredDisplayHz : presentationSnapshot.observedDisplayHz;
+			if (sample.available &&
+				(!OsdTimingPolicy::WarmingEnabled ||
+					presentationSnapshot.evidence == AlphaPresentationEvidence::Stable) &&
+				osdPresentationHz >= 10.0 && osdPresentationHz <= 240.0 &&
+				sample.qpcFrequency > 0 && sample.syncQpc > 0 &&
+				swapEndQpc > 0)
+			{
+				const int64_t periodQpc = static_cast<int64_t>(std::llround(
+					static_cast<double>(sample.qpcFrequency) /
+					osdPresentationHz));
+				if (periodQpc > 0)
+				{
+					int64_t targetQpc = sample.syncQpc + periodQpc;
+					if (targetQpc < swapEndQpc)
+					{
+						const int64_t missedPeriods =
+							(swapEndQpc - targetQpc + periodQpc - 1) / periodQpc;
+						targetQpc += missedPeriods * periodQpc;
+					}
+					presentationTargetLeadMs = static_cast<double>(
+						targetQpc - swapEndQpc) * 1000.0 /
+						static_cast<double>(sample.qpcFrequency);
+					presentationTargetTimingKnown = true;
+				}
+			}
+
+    }
+    uint64_t SourceCadenceOutputContract() const
+    {
+        CComPtr<IDXGISwapChain> native;
+        if(vpOwnedSwapchain)native=vpOwnedSwapchain;
+        else if(swapchain)native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+        if(!native)return 0;
+        DXGI_SWAP_CHAIN_DESC description{};
+        if(FAILED(native->GetDesc(&description)))return 0;
+        uint64_t hash=1469598103934665603ULL;
+        const auto fold=[&](uint64_t value){hash^=value;hash*=1099511628211ULL;};
+        fold(reinterpret_cast<uintptr_t>(native.p));
+        fold(description.BufferDesc.Width);fold(description.BufferDesc.Height);
+        fold(static_cast<uint64_t>(description.BufferDesc.Format));
+        fold(description.BufferCount);fold(description.SampleDesc.Count);fold(description.SampleDesc.Quality);
+        fold(static_cast<uint64_t>(description.SwapEffect));fold(description.Flags);
+        fold(reinterpret_cast<uintptr_t>(description.OutputWindow));fold(description.Windowed?1u:0u);
+        fold(static_cast<uint64_t>(actualOutput.encoding));
+        fold(static_cast<uint64_t>(actualOutput.targetTransfer));
+        fold(displayCadenceOutputEpoch);fold(vpOwnedSwapchain?1u:0u);
+        return hash?hash:1;
+    }
+    SourceCadencePresentationContext SourceCadenceContext(const VideoState& state,
+        uint64_t generation,uint64_t domain,uint64_t viewport,uint64_t scene,
+        SubtitlePreviewMode mode,bool configuredScreen) const
+    {
+        SourceCadencePresentationContext c;
+        c.gpu=d3d11?d3d11->gpu:nullptr;c.generation=generation;
+        c.sourceFormat=AlphaSourceFormatKey(state);c.analysisDomain=domain;c.viewport=viewport;
+        c.renderer=nlsRendererGeneration;c.processing=pictureProcessingEpoch;
+        c.policy=localBoundaryPolicyGeneration;c.continuity=localBoundaryContinuityGeneration;
+        c.reset=consumedPresentationResetEpoch;c.scene=scene;
+        c.outputContract=SourceCadenceOutputContract();c.outputEpoch=displayCadenceOutputEpoch;
+        c.startupRevision=startupReadinessRevision.load(std::memory_order_acquire);
+        c.frameDuration=state.displayMode?state.displayMode->FrameDuration():0;
+        c.timeScale=state.displayMode?state.displayMode->TimeScale():0;
+        c.subtitleMode=static_cast<int>(mode);c.transfer=static_cast<int>(state.eotf);
+        c.colorspace=static_cast<int>(state.colorspace);c.configuredScreen=configuredScreen;
+        c.interlaced=state.displayMode && state.displayMode->IsInterlaced();
+        c.temporal=temporalRenderer.Active();c.deferredReset=deferredQueueNativeResetEpoch!=0;
+        return c;
+    }
+
+    bool CacheDisplayFrame(pl_tex output, uint64_t generation,
+        uint64_t viewport, uint64_t revision,bool sourceCandidate=false)
     {
         displayRepeatValid = false;
-        if (displayCadenceRecovery.Fallback() ||
-            !PresentationConfig::UseRepeatCadence(activeSettings.presentEveryVsync,
-                temporalRenderer.Mixing()) || !displayVsyncClock.Active()) return;
+        const bool refreshCandidate=!displayCadenceRecovery.Fallback() &&
+            PresentationConfig::UseRepeatCadence(activeSettings.presentEveryVsync,
+                temporalRenderer.Mixing()) && displayVsyncClock.Active();
+        if(!refreshCandidate && !sourceCandidate)return false;
         if (!output || !output->params.blit_src)
         {
             displayVsyncClock.Reset();
             DebugLog::Log("VP display refresh: output cannot be cached; using source-paced presentation");
-            return;
+            return false;
         }
         if (!displayFrameCache.Capture(d3d11->gpu, output))
         {
             displayVsyncClock.Reset();
             DebugLog::Log("VP display refresh: cached output allocation failed; using source-paced presentation");
-            return;
+            return false;
         }
         displayRepeatRecord = {};
         displayRepeatRecord.generation = generation;
         displayRepeatRecord.presentationEpoch = viewport;
         displayRepeatRevision = revision;
-        displayRepeatValid = true;
+        displayRepeatValid = refreshCandidate;
+        return true;
+    }
+
+    // An unavailable next input may repeat exactly one previously submitted
+    // complete output. Both presenters use the pinned D3D11 backend, whose
+    // submit_frame releases the acquired backbuffer without presenting it.
+    // This backend-specific split is verified against both shipped sources.
+    bool PresentInputCadenceRepeat(const SourceCadencePresentation& previous,
+        const SourceCadencePresentationContext& context,const ActivePictureFrameIdentity& consumed,
+        double inputHz,double outputPts,bool& presentationTargetTimingKnown,double& presentationTargetLeadMs)
+    {
+        if(!previous.CanRepeat(context,inputHz,consumed.acceptedSequence,outputPts) ||
+            !swapchain || !d3d11 || !actualOutput.safeToRender || temporalRenderer.Active() ||
+            context.interlaced || context.startupRevision!=startupReadinessRevision.load(std::memory_order_acquire) ||
+            context.outputEpoch!=displayCadenceOutputEpoch ||
+            resizePending.load(std::memory_order_acquire) || outputRenegotiationPending.load(std::memory_order_acquire) ||
+            displayCadenceRecovery.Pending() || displayCadenceRecovery.Fallback() ||
+            sourceCadenceRecord.generation!=context.generation ||
+            sourceCadenceRecord.sourceSequence!=previous.DisplayedSource() ||
+            sourceCadenceRecord.selectedSourceSequence!=previous.DisplayedSource() || sourceCadenceRecord.temporalActive ||
+            sourceCadenceOutputTrace.acceptedSequence!=previous.DisplayedSource() ||
+            sourceCadenceOutputTrace.counters[1]!=previous.DisplayedSource() || !(sourceCadenceOutputTrace.flags&1u) ||
+            sourceCadenceRecord.presentationEpoch!=context.viewport)
+            return false;
+        LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);
+        const int64_t started=PerformanceCounterNow();
+        // Sequence/PTS is the primary one-input bound; this additional wall-time
+        // guard prevents a stopped/stalled input from reviving a stale picture.
+        if(frequency.QuadPart<=0 || sourceCadenceRecord.submitQpc<=0 ||
+            started<sourceCadenceRecord.submitQpc ||
+            double(started-sourceCadenceRecord.submitQpc)/frequency.QuadPart>2.5/inputHz)
+            return false;
+        CComPtr<ID3D11Texture2D> backbuffer;
+        pl_tex wrapped=nullptr;
+        pl_swapchain_frame acquired{};
+        const bool libraryOwned=!vpOwnedSwapchain;
+        if(!libraryOwned) {
+            if(FAILED(vpOwnedSwapchain->GetBuffer(0,IID_PPV_ARGS(&backbuffer))))return false;
+            pl_d3d11_wrap_params params{};params.tex=backbuffer;
+            acquired.fbo=wrapped=pl_d3d11_wrap(d3d11->gpu,&params);
+            if(!wrapped)return false;
+        } else if(!pl_swapchain_start_frame(swapchain,&acquired))return false;
+        const bool copied=displayFrameCache.CopyTo(acquired.fbo);
+        const bool current=copied && context.startupRevision==startupReadinessRevision.load(std::memory_order_acquire) &&
+            context.outputEpoch==displayCadenceOutputEpoch && context.outputContract==SourceCadenceOutputContract() &&
+            !resizePending.load(std::memory_order_acquire) && !outputRenegotiationPending.load(std::memory_order_acquire);
+        pl_gpu_flush(d3d11->gpu);
+        pl_tex_destroy(d3d11->gpu,&wrapped);backbuffer.Release();
+        // Pinned std7.360.1/beta7.388 D3D11 d3d11_sw_submit_frame only
+        // destroys p->backbuffer and returns !ctx->is_failed. Present lives
+        // separately in d3d11_sw_swap_buffers. Consume every start_frame exactly
+        // once, including failed copies, without presenting failed/stale pixels.
+        const bool frameConsumed=!libraryOwned || pl_swapchain_submit_frame(swapchain);
+        if(!current || !frameConsumed || context.startupRevision!=startupReadinessRevision.load(std::memory_order_acquire) ||
+            context.outputEpoch!=displayCadenceOutputEpoch || context.outputContract!=SourceCadenceOutputContract() ||
+            resizePending.load(std::memory_order_acquire) || outputRenegotiationPending.load(std::memory_order_acquire)) {
+            displayRepeatValid=false;
+            return false; // Fresh analysis/rendering overwrites the unpresented target.
+        }
+        CComPtr<IDXGISwapChain> native;
+        if(vpOwnedSwapchain)native=vpOwnedSwapchain;
+        else native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+        if(!PresentNativeChecked(native))return false;
+        const int64_t ended=PerformanceCounterNow();
+        auto record=sourceCadenceRecord;
+        record.presentId=record.presentedRefresh=0;record.presented=false;record.presentedQpc=0;
+        record.submitQpc=started;record.outputPts=outputPts;record.cadenceRepeat=true;
+        record.renderMs=record.conversionCpuMs=record.sourceUploadCpuMs=0;record.preRender={};
+        record.swapBlockMs=double(ended-started)*1000.0/frequency.QuadPart;
+        const auto sample=ObservePresent(record);
+        ++successfulPresentCount;++renderLoadSubmissionSerial;++sourceCadenceRepeats;
+        if(displayVsyncClock.Active())displayVsyncClock.Submitted();
+        lastFramePacingSubmitQpc=started;lastFramePacingStatsAvailable=false;
+        UpdatePresentationTargetLead(sample,presentationTelemetry.Snapshot(),ended,
+            presentationTargetTimingKnown,presentationTargetLeadMs);
+        auto trace=sourceCadenceOutputTrace;
+        trace.flags|=16384u;trace.cadenceRepeat=true;
+        strcpy_s(trace.reason,"complete-output-input-cadence-repeat");
+        strcpy_s(trace.detail,"exact-final-pixels; original source/cue/crop/HDR retained; input retired");
+        trace.counters[0]=consumed.acceptedSequence;
+        trace.counters[1]=previous.DisplayedSource();
+        trace.metrics[1]=outputPts;trace.metrics[5]=outputPts;
+        AnalysisDiagnosticTrace::Emit(trace);
+        auto facts=sourceCadenceBoundaryFacts;
+        facts.selectedSource=previous.DisplayedSource();facts.analyzedSource=0;
+        facts.currentPts=outputPts;facts.selectedPts=previous.DisplayedPts();
+        facts.originalAge=(outputPts-previous.DisplayedPts())*1000.0;
+        facts.cadenceSkipped=true;facts.analysisStride=1;facts.submitted=true;
+        auto currentTrace=AnalysisTraceRecord(consumed,this,"ar-boundary-chain","");
+        currentTrace.policyGeneration=context.policy;currentTrace.continuityGeneration=context.continuity;
+        currentTrace.cadenceRepeat=true;
+        AnalysisDiagnosticTrace::Emit(AnalysisDiagnosticTrace::BoundaryChain(currentTrace,facts));
+        DebugLog::Log("VP complete input repeat: consumed=%llu selected=%llu original_pts=%.6f output_pts=%.6f age_ms=%.3f repeats=%llu pixels=complete subtitle_analysis=unavailable source_processing=not_applied native_votes=0 cue_renewal=0 hdr_processing=0",
+            consumed.acceptedSequence,previous.DisplayedSource(),previous.DisplayedPts(),outputPts,
+            facts.originalAge,sourceCadenceRepeats);
+        return true;
     }
 
     // Copy final display-referred pixels, including overlays and dithering.
@@ -23766,14 +24102,22 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
         if(!prepared.IsValid()) continue;
         const auto& slot=queued.analysis->lookahead;
         const auto ready=QueuedFrame::LookaheadWorker::Ready(slot);
-        if((ready && ready->domainKey==prepared.domainKey) ||
-            slot->pending.load(std::memory_order_acquire)) continue;
         const auto identity=queued.activePictureIdentity;
+        auto currentExpected=identity;currentExpected.analysisDomainKey=prepared.domainKey;
+        const bool currentRaw=CurrentLookaheadMeasurement(prepared,currentExpected,ready);
+        const bool currentPhysical=currentRaw && ready->evidence.physicalEdges.evaluated &&
+            ready->evidence.physicalEdges.sourceGeneration==prepared.source.generation;
+        if(currentPhysical || slot->pending.load(std::memory_order_acquire))continue;
         m_impl->lookaheadMeasurementWorker.Submit(slot,identity.transportGeneration,
             identity.acceptedSequence,minimumSequence,[prepared,identity,slot] {
                 auto expected=identity;expected.analysisDomainKey=prepared.domainKey;
                 if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
-                    if (CurrentLookaheadMeasurement(prepared,expected,ready)) return *ready;
+                    if (CurrentLookaheadMeasurement(prepared,expected,ready)) {
+                        auto upgraded=*ready;
+                        upgraded.evidence.physicalEdges=ObservePhysicalSourceForWorker(
+                            prepared.source,upgraded.evidence,upgraded.identity);
+                        return upgraded; // No mandatory native/darkness/proof scan.
+                    }
                 static thread_local const bool prioritySet=
                     SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                 (void)prioritySet;
@@ -23783,6 +24127,8 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
                 result.identity=identity;
                 result.identity.analysisDomainKey=prepared.domainKey;
                 result.evidence=ExtractActivePictureEvidence(prepared.source);
+                result.evidence.physicalEdges=ObservePhysicalSourceForWorker(
+                    prepared.source,result.evidence,result.identity);
                 result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
                 return result;
             });
@@ -24236,7 +24582,12 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 analysisIdentity.transportGeneration,analysisIdentity.acceptedSequence,
                 previewFrames.front().activePictureIdentity.acceptedSequence,[prepared,analysisIdentity,slot=queued.analysis->lookahead] {
                     if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
-                        if (CurrentLookaheadMeasurement(prepared,analysisIdentity,ready)) return *ready;
+                        if (CurrentLookaheadMeasurement(prepared,analysisIdentity,ready)) {
+                            auto upgraded=*ready;
+                            upgraded.evidence.physicalEdges=ObservePhysicalSourceForWorker(
+                                prepared.source,upgraded.evidence,upgraded.identity);
+                            return upgraded;
+                        }
                     // Optional CPU work yields to capture/presentation under load.
                     static thread_local const bool prioritySet=
                         SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
@@ -24246,6 +24597,8 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     result.source=prepared.source;
                     result.identity=analysisIdentity;
                     result.evidence=ExtractActivePictureEvidence(prepared.source);
+                    result.evidence.physicalEdges=ObservePhysicalSourceForWorker(
+                        prepared.source,result.evidence,result.identity);
                     result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
                     return result;
                 });
@@ -25449,10 +25802,17 @@ void LibplaceboVideoRenderer::RenderLoop()
             // Prepare both independent owned windows. At configured depth2,
             // the next-source outward proof still needs its third future source.
             // The first selected source stays the admission/retirement minimum.
-            for (size_t index:AlphaQueuePolicy::SelectActivePicturePreparation(m_frameQueue,
-                    m_activePictureLookaheadFrames.load(std::memory_order_acquire),
-                    ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES,
-                    AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED)) {
+            auto pictureIndices=AlphaQueuePolicy::SelectActivePicturePreparation(m_frameQueue,
+                m_activePictureLookaheadFrames.load(std::memory_order_acquire),
+                ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES,
+                AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED);
+            // Native physical observation is independent of crop/lookahead
+            // admission. Include the buffered head even when admission is off;
+            // this adds no queue wait and cannot publish a detector proof vote.
+            if(!m_frameQueue.empty() && !m_frameQueue.front().cadenceRepeat &&
+                (pictureIndices.empty() || pictureIndices.front()!=0))
+                pictureIndices.insert(pictureIndices.begin(),0);
+            for (size_t index:pictureIndices) {
                 pictureMeasurementFrames.push_back(m_frameQueue[index]);
                 pictureMeasurementFrames.back().frame.SourceBufferAddRef();
             }
