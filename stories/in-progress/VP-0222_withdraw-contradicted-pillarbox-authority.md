@@ -2,7 +2,9 @@
 
 ## Status
 
-In Progress (2026-10-31). Reopened after failed live scope-to-IMAX acceptance of combined candidate 27dc733a. Repair and focused regression checks are underway in E:\codex\videoprocessor\combined-transition-regression-20261031. Prior controlled qualification below does not establish live acceptance. Previously implemented, reviewed and deployed from clean x64 Release commit `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8` on [draft PR #241](https://github.com/billslack2/videoprocessor/pull/241). All 3,621 standard methods executed: 3,620 passed, with one investigated pre-existing configuration-cache failure retained as an explicit local-deployment exception. Actual plugins 20/20, standard and beta GPU suites each 209/209, focused regressions 941/941 and native capture replays 3/3 passed. Host/both renderers, live output and final configuration/state hashes verified. User visual acceptance remains pending; keep PR draft and unmerged. [Final report](../assets/VP-0222/ar-continuity-20261031/validation-report.txt).
+In Progress
+
+Previous qualification record (superseded by failed live acceptance below): In Progress (2026-10-31). Reopened after failed live scope-to-IMAX acceptance of combined candidate 27dc733a. Repair and focused regression checks are underway in E:\codex\videoprocessor\combined-transition-regression-20261031. Prior controlled qualification below does not establish live acceptance. Previously implemented, reviewed and deployed from clean x64 Release commit `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8` on [draft PR #241](https://github.com/billslack2/videoprocessor/pull/241). All 3,621 standard methods executed: 3,620 passed, with one investigated pre-existing configuration-cache failure retained as an explicit local-deployment exception. Actual plugins 20/20, standard and beta GPU suites each 209/209, focused regressions 941/941 and native capture replays 3/3 passed. Host/both renderers, live output and final configuration/state hashes verified. User visual acceptance remains pending; keep PR draft and unmerged. [Final report](../assets/VP-0222/ar-continuity-20261031/validation-report.txt).
 
 ## Problem and evidence
 
@@ -116,16 +118,28 @@ Incident logs retained locally at C:/Users/bslac/.codex/visualizations/2026/10/3
 - [Validation and deployment report](../assets/VP-0222/ar-continuity-20261031/validation-report.txt); adjacent JSON receipts pin hashes, source, test counts and runtime verification. No captured movie pixels are committed.
 - Visual scope/IMAX, Prime paused/profile-toggle and menu/caption acceptance remain pending. Exact Prime source pixels were unavailable. Draft PR remains unmerged for user review.
 
-### Combined rebuild requested with subtitle fixes — 2026-10-31 08:52 EDT
+### Combined rebuild requested with subtitle fixes â€” 2026-10-31 08:52 EDT
 
 User requested a fresh combined build/deployment and explicitly skipped tests. Rebuilt the host and both renderer variants in x64 Release at the same reviewed combined commit `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8`, starting a clean worktree from the freshly fetched current beta before integrating this candidate. The complete subtitle cadence/three-line repair is included. No new source changes, test runs or beta merge.
 
 Deployed with verified hashes and clean host/renderer startup identities; PID4616 is presenting output. Configuration and saved state are unchanged, including Classic subtitles. Backup: `C:\Videoprocessor\vp\backups\combined-subtitle-ar-20261031-085218`. [Shared deployment receipt](../assets/VP-0207/combined-subtitle-ar-20261031-0852/deployment-receipt.json), [runtime verification](../assets/VP-0207/combined-subtitle-ar-20261031-0852/runtime-verification.json). Story remains Review; physical user acceptance remains separate.
 
-### Combined live regression reopened — 2026-10-31
+### Combined live regression reopened â€” 2026-10-31
 
 User reports missed scope-to-IMAX expansion and severe vertical bouncing with combined 27dc733a. Focused regression checks are explicitly authorized, superseding the prior skip-tests instruction for that rebuild. Source work starts from the reverified beta a591ad3b and includes the failed combined candidate in E:\codex\videoprocessor\combined-transition-regression-20261031.
 
 The saved native V210 frame reproduces the boundary failure against the unchanged deployed production library: nomination66..2092 is provisional, first mismatch323,65. Native pixel inspection finds3435 out-of-tolerance pixels excluded by those bounds; measured outward64..2094 excludes zero. Repair preserves strict verification and keeps bounded outward visibility separate from native authority. Independent policy review also reproduced Classic translation plus side-fill certificate mismatch, which restored an old vertical position on skipped scans.
 
 User confirms View/fullscreen changes were intentional; those orderly renderer replacements are not an unexplained restart. Actual HDMI cadence also changed23.976/59.94 and the EPSON target was unavailable during fallback; no unsupported refresh-policy change is being made. Evidence is preserved at E:\codex\diagnostics\combined-live-regression-20261031-0859. New repair is not yet deployed or qualified.
+
+## Critical live regression follow-up — 2026-10-31
+
+Live acceptance FAILED for both repair deployments, 6cb6576cc1a0a3e313061da322dd64776fa62e27 (10:15) and 60cbfacee2c531eb138cdeaa12551c10f9569b8a (10:29). The user reports repeated Classic picture/AR bouncing on Mission: Impossible. Further deployment is held until realistic reproduced failures pass. No beta merge or live acceptance is claimed.
+
+The 60cb candidate passed 1,072 focused framework methods (1,066 exercised, six optional historical capture fixtures absent) and 22 actual-plugin methods. Those methods missed normal 500 ms engage / 2,000 ms release timing and narrower/top-bottom fill. Prior 6cb dual-renderer GPU/cue results (209 each) remain historical evidence, not qualification of later edits.
+
+Four new actual-renderer lifecycle tests now fail on the exact installed 60cb standard/beta DLLs: both renderers with wider and narrower fill. They acquire native geometry then resize on the first caption frame before the configured drift begins. Assertions include fixed viewport dimensions, gradual movement, hold/release, 24 distinct displayed source frames after transitions (not a runtime delay), genuine picture expansion, and a Classic-to-Reconstruction switch. Red results and hashes: E:/codex/diagnostics/combined-live-regression-20261031-0859/classic-lifecycle-60cb/. Latest logs and recordings: E:/codex/diagnostics/classic-live-regression-20261031-1035/. Sampled recording frames are black; logs independently document oscillation. No additional native capture was taken because the user had closed the player.
+
+Review identifies post-black-level-fix presentation certification as the regression area: 19c46962 introduced strict final-pose matching; 6181deb9 supported translated side fill only; 60cb still assumed native height and unchanged translation offset. Live native 0,258–3840,1906 translated to 0,400–3840,2048 becomes configured final 0,406–3840,2040 and is rejected. Coarse opposite-edge nominations and first-caption pending ownership also need explicit current evidence. Preserve c48eb134 black-reference correction and strict native boundary verification; do not relax black thresholds or force a standard aspect ratio.
+
+Current work: coherent final translation/fill provenance, current per-edge raw pixel evidence, caption lifecycle ownership, and mandatory build qualification covering both actual renderer variants. Source branch codex/combined-transition-regression-20261031 in E:/codex/videoprocessor/combined-transition-regression-20261031. Status remains In Progress; the installed build is still known failing.
