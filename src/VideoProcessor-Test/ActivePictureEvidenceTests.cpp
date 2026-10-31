@@ -4016,12 +4016,56 @@ namespace VideoProcessorTest
                 frame.FillRectangle(0,992,1920,994,80);
                 if(fault==0)frame.FillRectangle(0,76,1920,78,80); // deep luma stripe
                 if(fault==1)frame.FillRectangle(0,1002,1920,1004,64,520,504); // deep chroma stripe
-                if(fault==2)frame.FillRectangle(0,80,1920,88,80); // exceeds two-step1080 collar
+                if(fault==2)for(int row=72;row<88;++row)
+                    frame.FillRectangle(0,row,1920,row+1,64+(row-72)/2); // weak ramp extends beyond collar, no proved edge
                 if(fault==3)frame.FillRectangle(0,0,32,100,80,640,512); // connected edge picture
                 const auto raw=ExtractActivePictureEvidence(p210?frame.P210Source():frame.P010Source());
-                Assert::IsFalse(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
-                    L"Moving the measured boundary may not hide pixels deeper than its bounded collar.");
+                std::ostringstream detail;detail<<"Native collar control P210="<<p210<<" fault="<<fault
+                    <<" class="<<int(raw.classification)<<" proposed="<<raw.proposedBounds.top<<"-"<<raw.proposedBounds.bottom
+                    <<" nomination="<<raw.candidateVerification.nomination.top<<"-"<<raw.candidateVerification.nomination.bottom
+                    <<" trusted="<<raw.trustedBounds.top<<"-"<<raw.trustedBounds.bottom
+                    <<" low_contrast="<<raw.lowContrastBoundaryProof<<" verification="<<int(raw.candidateVerification.vertical)
+                    <<" reason="<<raw.reason;
+                Logger::WriteMessage(detail.str().c_str());
+                const auto text=detail.str();const std::wstring message(text.begin(),text.end());
+                Assert::IsFalse(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED,message.c_str());
                 Assert::IsTrue(raw.candidateVerification.vertical!=ActivePictureCandidateVerificationState::VERIFIED);
+            }
+        }
+        TEST_METHOD(IndependentNativeRemeasurementPreservesPictureBeyondTheCollarLimit)
+        {
+            for(bool p210:{false,true}) {
+                P010Frame frame(1920,1080,64,p210);
+                frame.BlackOutside(0,88,1920,992);
+                frame.FillRectangle(0,80,1920,88,80);
+                frame.FillRectangle(0,992,1920,994,80);
+                const auto source=p210?frame.P210Source():frame.P010Source();
+                const auto raw=ExtractActivePictureEvidence(source);
+                std::ostringstream detail;detail<<"Independent native picture remeasurement P210="<<p210
+                    <<" proposed="<<raw.proposedBounds.top<<"-"<<raw.proposedBounds.bottom
+                    <<" measured="<<raw.axisEvidence.sidePictureTop<<"-"<<raw.axisEvidence.sidePictureBottom
+                    <<" verified="<<raw.trustedBounds.top<<"-"<<raw.trustedBounds.bottom
+                    <<" low_contrast="<<raw.lowContrastBoundaryProof;
+                Logger::WriteMessage(detail.str().c_str());
+                Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsTrue(raw.lowContrastBoundaryProof,L"Only independent measurement may exceed the collar-repair limit.");
+                Assert::AreEqual(88,raw.proposedBounds.top);Assert::AreEqual(992,raw.proposedBounds.bottom);
+                Assert::AreEqual(80,raw.axisEvidence.sidePictureTop);Assert::AreEqual(994,raw.axisEvidence.sidePictureBottom);
+                Assert::AreEqual(0,raw.trustedBounds.left);Assert::AreEqual(1920,raw.trustedBounds.right);
+                Assert::AreEqual(78,raw.trustedBounds.top);Assert::AreEqual(996,raw.trustedBounds.bottom);
+                Assert::AreEqual(78,raw.candidateVerification.nomination.top);
+                Assert::AreEqual(996,raw.candidateVerification.nomination.bottom);
+                Assert::IsTrue(raw.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                Assert::AreEqual(raw.trustedBounds.top,raw.candidateVerification.bounds.top);
+                Assert::AreEqual(raw.trustedBounds.bottom,raw.candidateVerification.bounds.bottom);
+                Assert::AreEqual(source.generation,raw.candidateVerification.sourceGeneration);
+                Assert::IsTrue(raw.verticalBarGuardProfile.completed && raw.verticalBarGuardProfile.clean);
+                Assert::AreEqual(78,raw.verticalBarGuardProfile.apertureTop);
+                Assert::AreEqual(996,raw.verticalBarGuardProfile.apertureBottom);
+                AnalysisLumaSample picture;Assert::IsTrue(source.Sample(960,80,picture));
+                Assert::AreEqual(80,int(picture.luma));
+                const auto safe=EvaluateActivePicturePresentationRetention(source,raw.trustedBounds);
+                Assert::IsTrue(safe.analysisValid && safe.presentationValid && safe.excludedBandsPixelSafe);
             }
         }
         TEST_METHOD(VerticalCollarRepairCannotPromoteAFailedWindowboxAxis)
