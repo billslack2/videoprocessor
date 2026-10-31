@@ -1,0 +1,222 @@
+VIDEO PROCESSOR — STABLE FRAMING AND REAL ASPECT TRANSITIONS
+Architecture proposal, 2026-10-31
+Based on verified beta a591ad3b532771911e85f8ef026958279f2065f0 and the four-reviewer AR audit.
+Status: designed and reviewed; not implemented, built, deployed, or performance-qualified.
+
+OBJECTIVE
+Retain established framing through uncertain measurements while promptly revealing
+and accepting genuine source-picture changes. Native picture detection depends on
+source pixels, never screen aspect, CIH, zoom, fill, NLS, or familiar ratio names.
+A delay cannot make a wrong boundary correct. Both measurement authority and
+presentation continuity need explicit, compatible rules.
+
+1. SEPARATE FOUR FACTS
+
+Accepted native picture
+An accepted boundary record: immutable contract ID, source identity and format/
+interpretation generation, exact rectangle, per-edge evidence, accepting source
+sequence, and proof provenance. A later unknown measurement does not erase it.
+Positive contrary evidence can mark affected edges contradicted while retaining
+the old record as history; contradicted edges are no longer safe crop authority.
+
+Current observation
+Exact-frame, per-edge evidence with explicit provenance, sampling coverage and
+completion: UNKNOWN, CONSISTENT_MATTE, or VISIBLE_OUTSIDE. Also carry independently
+verified new boundary candidates. Visible content is typed as picture, caption/UI,
+or unclassified. A missing measurement is not an unsafe measurement, and an unsafe
+excluded band is not automatically proof of a new program aspect.
+
+Last successfully submitted presentation
+Actual source window and transforms that reached the display, linked to the
+accepted native contract, selected source sequence, and presentation epoch.
+Only successful rendering/submission commits this record. Fitted/refined output
+must not be misreported as the native picture rectangle.
+
+Temporary preservation envelope
+The bounded source extent needed to preserve independently verified content outside
+accepted geometry. It changes presentation, not detected native AR. It records why
+it exists and the native/overlay evidence that owns it. It is not a permanent union
+of every pixel ever seen: fresh evidence of disappearance or a qualified replacement
+may retire it. Unknown evidence alone may not shrink a submitted envelope.
+
+2. FIX THE CONTINUITY ANCHOR WITHOUT INVENTING NATIVE AUTHORITY
+
+Accepted native geometry must survive even if its exact rectangle has never been
+displayed. A first valid refinement, translation or FIT may submit a different
+rectangle. The selected packet carries two independent records:
+  - the accepted native geometry contract that authorizes the picture;
+  - the exact authorized presentation derived from it.
+On successful submission, atomically commit their association and the actual
+presentation. Do not require an earlier exact-native submission. Do not derive
+native authority from a FIT rectangle or a matching aspect ratio.
+
+This replaces the circular prerequisite in CommitSubmittedNativeScopeAnchor:
+previous anchor -> qualified FIT envelope -> retained anchor. It fixes the Prime
+sequence where valid refinement/FIT reached the display with anchor unavailable.
+Failed, cancelled, superseded or wrong-source submissions cannot advance either
+presentation continuity or its ordering watermark.
+
+On a profile/viewport change, retain compatible accepted native geometry, invalidate
+profile-specific placement, and recompute presentation. Do not blindly carry old
+screen transforms across epochs. An actual incompatible source/format change clears
+old native authority and starts with that input's full native raster.
+
+3. ONE NATIVE CANDIDATE VERIFIER
+
+Coarse scans nominate rectangles; they do not grant crop authority themselves.
+Route every candidate through one verifier before BAR_CROP_TRUSTED, including
+ordinary bright-edge candidates, recovery candidates, remembered returns, and
+horizontal/vertical/windowbox combinations. Cached proof is reusable only for its
+exact source, interpretation, bounds, inspected bands and completion identity.
+
+Keep these quantities separate:
+  - declared-range nominal black;
+  - coarse near-black classification threshold;
+  - actually measured matte Y/U/V reference and noise/dispersion;
+  - picture-versus-matte contrast at each measured boundary.
+Code-12 matte remains measured as12 even if a classifier uses reference0/cutoff24.
+A flat gray region alone is not enough to establish a bar.
+
+For each band the candidate would discard, verify consistency with the qualified
+measured matte reference, inspect independent boundary transitions, and check
+spatial/depth coverage. A broad code80 picture band is not equivalent to code64
+matte merely because both lie below cutoff88. That must disqualify the synthetic
+72..288 crop before it receives trusted authority.
+
+Verifier outcomes:
+  VERIFIED: coherent boundaries and qualified excluded bands for these exact bounds.
+  CONTRADICTED: reliable source evidence establishes visible content being excluded.
+  UNKNOWN: incomplete scan, weak/ambiguous edge, noise, cancellation, or exhausted budget.
+Unknown and contradicted inward candidates both fail acquisition; neither grants
+full-raster authority. Contradiction includes observed coordinates and provenance.
+
+Recover dim/dim as well as bright/dim boundaries from qualified outer references;
+do not require a strong already-trusted opposing edge. Measure edges independently.
+Symmetry can corroborate evidence but cannot invent, center, or reject an otherwise
+verified asymmetric picture. Chroma-only authority and noise-relative thresholds
+require calibration against negative controls before release.
+
+4. A SINGLE TRANSITION DECISION, THEN PRESENTATION DERIVATION
+
+Introduce a small transition coordinator around the existing model and proof
+functions. It emits an explicit decision and reason. Downstream subtitle/FIT/NLS
+code may transform an authorized presentation but cannot independently reset native
+geometry because it lacks its own confidence or owner.
+
+Decision sequence:
+  a. Validate source/format and evidence identities.
+  b. If no accepted native geometry, use native raster until verified acquisition.
+  c. Verify candidates and collect exact-current per-edge contrary evidence.
+  d. UNKNOWN/provisional/unavailable: retain accepted native geometry and compatible
+     submitted presentation, unless separate positive evidence proves it unsafe.
+  e. Strong outside content: form a bounded preservation extent from verified pixels.
+     Do not manufacture a replacement AR from that extent.
+  f. Confirm a coherent new native boundary using the appropriate source-history rule.
+  g. Derive subtitle/FIT/fill/NLS presentation from that decision and current profile.
+  h. Revalidate selected packet/context and commit actual presentation on success.
+
+Make the reason explicit: STARTUP, HOLD_UNCERTAIN, PRESERVE_VISIBLE_CONTENT,
+ACCEPT_NATIVE_CHANGE, or RESET_INCOMPATIBLE_SOURCE. Full input may also be the
+correct result of confirmed full-raster picture or a preservation extent that
+actually reaches the raster. It is never a substitute for UNKNOWN.
+
+Expansion and contraction are deliberately asymmetric:
+- Expansion: qualified current visibility can promptly preserve exposed content
+  before the new aspect is committed. A low-confidence rectangle or isolated noise
+  is insufficient. Broad picture proof can confirm an AR transition without waiting
+  for a caption/FIT owner.
+- Contraction: removing more pixels requires a verified new boundary and qualified
+  evidence over every newly excluded band. Darkness alone is not such proof.
+- Captions/UI: preserve verified occupied pixels through the presentation path;
+  do not count their presence as native picture-boundary votes.
+- One-sided/asymmetric changes: admit each independently proved edge; an opposite
+  unknown edge cannot erase a valid preservation witness. Native replacement still
+  requires a coherent rectangle certificate from a compatible observation.
+- Genuine windowbox: provide an explicit verified acquisition/transition route.
+  A composition-preservation setting may affect presentation but must not suppress
+  accurate source measurement or silently freeze the detector's native aspect.
+
+Keep existing three adjacent-source outward confirmations and four-observation
+acquisition as initial compatibility settings, not universal truths. Do not add a
+blanket larger delay. Matching evidence may satisfy multiple proof predicates;
+avoid restarting a second dwell after the same evidence already qualifies a change.
+Record distinct qualifying source samples and actual sampling cadence. Repeated
+presentation of one source identity adds zero votes. A paused image delivered as
+new capture samples can establish temporal stability, but repetition cannot repair
+missing spatial boundary evidence. Late future/queued proof cannot apply before
+its selected source frame or replace a newer successful decision.
+
+5. BOUNDED WORK AND INCOMPLETE EVIDENCE
+
+Share native measurements among acquisition, retention and transition checks using
+exact-context cache keys. Check cheap contradictions early; apply dense boundary/
+excluded-band inspection only where needed. Cover both axes and all scan phases.
+Enforce a combined work budget; cancellation yields UNKNOWN, never partial authority.
+A sparse grid cannot promise preservation of every isolated pixel. Prototype dense
+row/tile extrema or efficient complete-band readers if sparse coverage fails caption
+or thin-content acceptance. Measure worst-case CPU/work latency before selecting
+production thresholds or budgets; no performance claim is made by this design.
+
+6. IMPLEMENT IN SMALL, REVIEWABLE STEPS
+
+A. Restore and strengthen the three saved regression probes. Add an end-to-end
+   selected-submission harness recording native contract, candidate, final crop,
+   successful submission and OSD. Include first-refinement, first-FIT and failed
+   submission controls. Preserve existing genuine expansion negatives/positives.
+B. Introduce explicit native/submitted records and repair initial continuity.
+   Convert legacy booleans at an adapter boundary, then remove contradictory
+   absence-of-proof-to-full-raster paths once the final-chain tests cover them.
+C. Separate measured matte statistics from classifier references. Route all new
+   crop acceptance through common verification and fix symmetric dark overcrop.
+D. Integrate typed outside-picture/overlay witnesses with bounded preservation.
+   Retire obsolete caption-owner prerequisites only for qualified native witnesses.
+   Add actual native captured fixtures before broadening ambiguous raw-visible cases.
+E. Consolidate transition ownership and eliminate duplicate confirmation delays.
+   Keep generation/sequence/queue/epoch validation at admission AND submission.
+
+These are local boundaries in ActivePictureEvidence, ActivePictureTransitionModel,
+AlphaSourceCropPolicy, and LibplaceboVideoRenderer; avoid a wholesale renderer rewrite.
+Do not ship two active authorities whose disagreement silently selects full raster.
+
+7. ACCEPTANCE MATRIX
+
+- Prime component sequence: accepted256..1904, submitted refinement262..1896,
+  then provisional254..1766. Zero unsupported full-raster submissions. Accepted
+  native geometry remains available; actual presentation continuity stays separate.
+- Symmetric low-contrast source: true32..328, bright core72..288. Never accept the
+  inner crop. Recover measured boundaries with explicit outward guard or remain
+  unknown while preserving existing valid geometry.
+- Full/Limited and black offsets: floors0,8,12,20,24,40,64; equivalent signal
+  offsets, native formats, stride padding, code noise and chroma controls.
+- Scope -> IMAX -> Scope, both bright and dim, cuts and gradual changes: preserve
+  new visible picture promptly; publish measured boundaries after qualifying proof;
+  no indefinite owner wait; do not contract before discarded-band validation.
+- Prolonged dark/provisional/unavailable source and exhausted analysis budget:
+  zero speculative native changes and zero uncertainty-driven raster resets.
+- Genuine 16:9, 21:9, scope, pillarbox, nonstandard, asymmetric and windowbox:
+  independent measured edges; no forced ratio or screen-dependent detection.
+- Subtitles, tickers, menus, logos, fade, gradients, noisy/raised/tinted matte:
+  preserve meaningful occupied pixels without granting false native format votes.
+- Same source across presentation profiles: identical detector evidence/geometry;
+  only intended downstream presentation transforms differ.
+- Repeats, gaps, stale worker completions, real source changes, profile changes,
+  render failure and unselected queued output: no stale proof promotion or renewal.
+- Existing 97 Eternals frames: retain asserted0,60-3840,2096 acquisition and old
+  Scope release. Prime pixel-level accuracy still needs the offending native frame.
+
+Record boundary error (pixels), known clipped picture/caption pixels, false-crop
+and unsupported-full-raster frame counts, native aspect error, qualifying sample
+count, and source-to-submission latency. Check final submitted geometry and OSD,
+not merely intermediate policy helper results. Preserve the existing 993 tests
+unless a test encodes the rejected behavior; replace such expectations explicitly
+with both uncertainty-hold and true-transition controls, not blanket deletion.
+
+VALIDATION STATUS
+The audit's unchanged-beta baseline passed993 existing tests. Its three new probes
+failed and establish the defects being addressed. Those results are NOT validation
+of this unimplemented architecture. Numeric dim-edge/noise thresholds, one-sided
+admission, exhaustive coverage and runtime cost require prototype measurements.
+
+Reviewer contributions: native_measurement_review, retention_policy_review and
+test_contract_review supplied design/red-team follow-ups; the parent reconciled
+these with the four-reviewer audit and selected the contracts above.
