@@ -1,0 +1,642 @@
+{
+  "schemaVersion": 1,
+  "generatedUtc": "2026-10-31T19:31:41.5857548Z",
+  "evidenceRoot": "E:\\codex\\diagnostics\\blackbar-content-regression-20261031-1325",
+  "source": {
+    "worktree": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031",
+    "candidateCommit": "4fa45da9342defc8914c45350b157e5de7b35177",
+    "workingTreeClean": true,
+    "rejectedLiveCommit": "b52ae03a424fcd5557ebac6de2ba1c3b28448eee",
+    "firstRepairCommit": "61d31ede9734288c7914f08df28beb29e8492d30",
+    "contradictionBranchIntroduction": "6181deb928b0ee235f5a755af898912084fb1f22",
+    "historicalConfirmedTranslationHelperPresentAt": "7d9b26df7622a79f2c28e8082b494f0ea819499c",
+    "firstBadPlaybackCommitBisected": false
+  },
+  "testRuns": [
+    {
+      "evidence": "b52-red-03.trx",
+      "sha256": "5ED58DD3679451D06DDF98A2CF09F496B476C9A64B7617CF9BF94B24A90207C4",
+      "total": 13,
+      "executed": 13,
+      "passed": 5,
+      "failed": 8,
+      "resultListScope": "all methods",
+      "results": [
+        {
+          "name": "StandardRendererClassicUhdBottomCaptionOutsideFillLimit",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "StandardRendererClassicUhdBothBarUiOutsideFillLimit",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. Classic first observed both-bar output retained a viewport too short to preserve both overlays."
+        },
+        {
+          "name": "PreparedAdvancedFinalNativePoseCommitsItsExactSubmittedGeometry",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. Expected:<250> Actual:<342> - Advanced composition undo must certify its final native pose, not the superseded Classic displacement."
+        },
+        {
+          "name": "BetaRendererReconstructionUhdResidualUiWithMovingPicture",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. Reconstruction composition hid unowned top-bar UI or left an uncomposed bottom caption outside the viewport."
+        },
+        {
+          "name": "BetaRendererClassicUhdBottomCaptionOutsideFillLimit",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "UhdSingleBarCurrentCoverageKeepsIntentionalControllerTranslationAcrossCadence",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "UhdScheduledTranslationCannotPromoteUnownedOppositeBarPixels",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. Controller confirmation cannot authorize clipping current opposite-bar pixels at y=127."
+        },
+        {
+          "name": "UhdExactCurrentVisibilitySurvivesMissingOrUnavailableCoarseNomination",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. Exact current outside-native visibility must survive either cadence without a coarse AR nomination."
+        },
+        {
+          "name": "UhdSkippedTranslationPreservesTheSameUnownedOppositeBarPixels",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "FreshPreparedAdvancedFrameRetiresPriorVisibilityFallback",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. Expected:<1906> Actual:<2000> - Fresh exact-source prepared erasure and clear remaining bands must retire an older outward fallback."
+        },
+        {
+          "name": "UhdMissingNominationCannotPromoteForeignOrAbsentCurrentVisibility",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "StandardRendererReconstructionUhdResidualUiWithMovingPicture",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. Reconstruction composition hid unowned top-bar UI or left an uncomposed bottom caption outside the viewport."
+        },
+        {
+          "name": "BetaRendererClassicUhdBothBarUiOutsideFillLimit",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. Classic simultaneous top-bar UI and bottom caption were clipped by a scheduled/skipped translated pose."
+        }
+      ]
+    },
+    {
+      "evidence": "lineage-extra-red.trx",
+      "sha256": "5044F96AA34A9B726CC487BEA44B8AC1D23651D7AF8F3132C7224B354851A0F5",
+      "total": 6,
+      "executed": 6,
+      "passed": 5,
+      "failed": 1,
+      "resultListScope": "all methods",
+      "results": [
+        {
+          "name": "UhdP210CrossEdgeFixtureNativePreflight",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "UhdV210CrossEdgeFixtureNativePreflight",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedFullRasterVisibilityUsesActualRendererBridgeAndKeepsNativeLineage",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedColdFallbackAllowsFirstPreparedNativeInitialization",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedConfirmedFitViewportDoesNotBounceWithProcessingSuccess",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. Expected:<2000> Actual:<1906> - A genuine confirmed UI/bar FIT must not shrink merely because the same occupied source was processed successfully."
+        }
+      ]
+    },
+    {
+      "evidence": "native-lineage-green-02.trx",
+      "sha256": "6AF73FD770AAC37CAEE897DA4C51E48655450DAD24129D37A7611575F0E53308",
+      "total": 725,
+      "executed": 725,
+      "passed": 725,
+      "failed": 0,
+      "resultListScope": "selected relevant methods; totals cover full TRX",
+      "results": [
+        {
+          "name": "PreparedViewportLineageDoesNotCrossModeOrNativeContext",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedColdFallbackAllowsFirstPreparedNativeInitialization",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "CadenceGuardUhdCrossingCaptionKeepsOnlyProvedRowFootprintAndGlyphFringe",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "PreparedViewportHoldRequiresExactRawEvidenceAndTrimsOnlyClearSides",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedConfirmedFitViewportDoesNotBounceWithProcessingSuccess",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedFullRasterVisibilityUsesActualRendererBridgeAndKeepsNativeLineage",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "PreparedNativeInitializationAcceptsBothAuthorizedNativeFillAxes",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "PreparedNativeInitializationRequiresExactCurrentSuccessfulSubmission",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "BlackCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing",
+          "outcome": "Passed",
+          "failureMessage": ""
+        }
+      ]
+    },
+    {
+      "evidence": "373-unknown-hold-red.trx",
+      "sha256": "2FB190417965889A6AF27B19A304C9E74C606FDFB048D9A21DD44D3BCFD935D6",
+      "sourceCommit": "37340829bb81824fe68a47758f3a207b2ee20cba with new RED tests",
+      "total": 3,
+      "executed": 3,
+      "passed": 2,
+      "failed": 1,
+      "resultListScope": "all methods",
+      "results": [
+        {
+          "name": "QualifiedUnknownHoldsNativeButSourceAndFormatChangesDoNot",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "QualifiedUnknownHoldMayRetainNativeWhenCurrentRawBarsAreActuallyClear",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "QualifiedUnknownHoldCannotCropUnprocessedCurrentCaptionInsideOldErasure",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. A historical erased footprint cannot authorize cropping still-visible current raw caption pixels when current composition is absent."
+        }
+      ]
+    },
+    {
+      "evidence": "unknown-hold-green-native.trx",
+      "sha256": "823B2C7E9A2FF2474B6177C56CFE871501CBE7999414711A0534A4543E534DD9",
+      "sourceCommit": "b5ec268e231c517010ab920cc7881520bf27aec3 repair content before final source commit",
+      "total": 727,
+      "executed": 727,
+      "passed": 727,
+      "failed": 0,
+      "resultListScope": "selected relevant methods; totals cover full TRX",
+      "results": [
+        {
+          "name": "QualifiedUnknownHoldCannotCropUnprocessedCurrentCaptionInsideOldErasure",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "BlackCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedFullRasterVisibilityUsesActualRendererBridgeAndKeepsNativeLineage",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedConfirmedFitViewportDoesNotBounceWithProcessingSuccess",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "QualifiedSubtitleUnknownHoldCannotHideNewPictureOutsidePriorCaption",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "PreparedViewportHoldRequiresExactRawEvidenceAndTrimsOnlyClearSides",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "AdvancedColdFallbackAllowsFirstPreparedNativeInitialization",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "QualifiedUnknownHoldMayRetainNativeWhenCurrentRawBarsAreActuallyClear",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "QualifiedUnknownHoldsNativeButSourceAndFormatChangesDoNot",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "QualifiedSubtitleUnknownHoldRejectsConflictAbsenceAndContextChanges",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "PreparedViewportLineageDoesNotCrossModeOrNativeContext",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "PreparedNativeInitializationAcceptsBothAuthorizedNativeFillAxes",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "PreparedNativeInitializationRequiresExactCurrentSuccessfulSubmission",
+          "outcome": "Passed",
+          "failureMessage": ""
+        },
+        {
+          "name": "QualifiedSubtitleUnknownHoldExpiresWithoutRenewalOnRepeatedOutput",
+          "outcome": "Passed",
+          "failureMessage": ""
+        }
+      ]
+    },
+    {
+      "evidence": "b5e-cadence-erasure-red-02.trx",
+      "sha256": "DA07C6E04A8FD1955066F3F8A277E53B93324A103AEDF0FE36E8D851D6023613",
+      "sourceCommit": "b5ec268e231c517010ab920cc7881520bf27aec3 with new producer/helper RED tests",
+      "total": 2,
+      "executed": 2,
+      "passed": 1,
+      "failed": 1,
+      "resultListScope": "all methods",
+      "results": [
+        {
+          "name": "RealNativeCadencePreparedErasureRejectsForeignProofAndChangedCurrentPixels",
+          "outcome": "Passed",
+          "failureMessage": "",
+          "producerAndHelperEvidence": "Real cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels"
+        },
+        {
+          "name": "RealNativeCadencePreparedErasureDoesNotAcquireBarAuthority",
+          "outcome": "Failed",
+          "failureMessage": "Assert failed. An actually composed exact current cadence packet can certify erasure without acquiring independent bar authority.",
+          "producerAndHelperEvidence": "Real cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence prepared-erasure reason=current-caption-proof-unavailable"
+        }
+      ]
+    },
+    {
+      "evidence": "cadence-erasure-green-native.trx",
+      "sha256": "F3248B64867780AD13789B20B2D216D9FEB906C3998CC406D51C526FCCA6CB5D",
+      "sourceCommit": "4fa45da9342defc8914c45350b157e5de7b35177 repair content before final source commit",
+      "total": 729,
+      "executed": 729,
+      "passed": 729,
+      "failed": 0,
+      "resultListScope": "selected producer/helper regression methods; totals cover full TRX",
+      "results": [
+        {
+          "name": "RealNativeCadencePreparedErasureDoesNotAcquireBarAuthority",
+          "outcome": "Passed",
+          "failureMessage": "",
+          "producerAndHelperEvidence": "Real cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence prepared-erasure reason=current-prepared-caption-erasure\r\nReal cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence prepared-erasure reason=current-prepared-caption-erasure\r\nReal cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence prepared-erasure reason=current-prepared-caption-erasure\r\nReal cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence prepared-erasure reason=current-prepared-caption-erasure"
+        },
+        {
+          "name": "RealNativeCadencePreparedErasureRejectsForeignProofAndChangedCurrentPixels",
+          "outcome": "Passed",
+          "failureMessage": "",
+          "producerAndHelperEvidence": "Real cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels\r\nReal cadence seed reason=cadence-seeded\r\nReal cadence current proof reason=cadence-current-pixels"
+        }
+      ]
+    }
+  ],
+  "baselineIdentity": {
+    "rejectedInstalledBinaries": [
+      {
+        "Path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+        "Hash": "4A7AC5CFC30E9F5BB710C517393BF528FE8D0E9985E4613336A45A0711BC4798"
+      },
+      {
+        "Path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "Hash": "E981BF25B73F5B98A9B0432EFFEA33BF7233634DE0B56FC23565788EC086F0FB"
+      },
+      {
+        "Path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "Hash": "342473AEEC12BA20D7BFB5FD7F664100FA0E348965805247A8780EE9CB2C29AD"
+      }
+    ],
+    "redRendererBefore": [
+      {
+        "Path": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "Hash": "E981BF25B73F5B98A9B0432EFFEA33BF7233634DE0B56FC23565788EC086F0FB"
+      },
+      {
+        "Path": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "Hash": "342473AEEC12BA20D7BFB5FD7F664100FA0E348965805247A8780EE9CB2C29AD"
+      }
+    ],
+    "redRendererAfter": [
+      {
+        "Path": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+        "Hash": "E981BF25B73F5B98A9B0432EFFEA33BF7233634DE0B56FC23565788EC086F0FB"
+      },
+      {
+        "Path": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+        "Hash": "342473AEEC12BA20D7BFB5FD7F664100FA0E348965805247A8780EE9CB2C29AD"
+      }
+    ],
+    "lineageExtraRed": {
+      "test": "lineage-extra-red.trx",
+      "baseline": "61d31ede plus pre-confirmed-fit prepared-native lineage patch",
+      "status": "5 controls passed; confirmed-fit processing sequence failed expected bottom2000 actual1906",
+      "testBinary": "05F8E4C720FBA45A2323D85703CE49469C238E3774489CE7AB5D7DB4AE8A74D4",
+      "library": "D08E26B83CB25EE07FD57F7C43C389D6B3E97159BAEE58B935C267E7E4A0724F",
+      "recorded": "2026-10-31T15:22:58.0303506-04:00",
+      "runtimeDeployed": false
+    }
+  },
+  "evidenceHashes": [
+    {
+      "file": "vp.log",
+      "sha256": "950FF55EDBD3780494A68666AECCB024ED771619E7DB5A6FD9447C6DD698B4A4"
+    },
+    {
+      "file": "VideoProcessor.cfg",
+      "sha256": "2F644385C45D532CB213DFD4C432B95398467FADFC8FBD25BD41C48A946943C5"
+    },
+    {
+      "file": "VideoProcessor.state",
+      "sha256": "99CF94A66291AC295858C9AFD73DC880EE42F9496FD974D9CC44A9A1BF979222"
+    },
+    {
+      "file": "installed-hashes.json",
+      "sha256": "0A8ACF50C216952B87DDAD089427BCF1A4AEF61F095A7733F84A6CB703B8172F"
+    },
+    {
+      "file": "red-renderer-hashes-before.json",
+      "sha256": "E9FB428DE11A341C105298610A2C2243EAAF8FA417AD60058716D306AB08839E"
+    },
+    {
+      "file": "red-renderer-hashes-after.json",
+      "sha256": "E9FB428DE11A341C105298610A2C2243EAAF8FA417AD60058716D306AB08839E"
+    },
+    {
+      "file": "lineage-red-identity.json",
+      "sha256": "7637AEE02373AC3A00ACF37B8317FC46B2CDE8D3778BA5AF401796DF6AE348ED"
+    },
+    {
+      "file": "61d-startup-control-red.trx",
+      "sha256": "E3F93D7158618628B6E4F9B513B63C5E1CCF702FDB3FE41A7F3158688D4CF1C4"
+    },
+    {
+      "file": "61d-sequence-red.trx",
+      "sha256": "AFBAE98473769B7FB8F3112B386C6115FFF6CA5B02E8C57D07DAF43D3BA2271A"
+    },
+    {
+      "file": "373-unknown-hold-red.trx",
+      "sha256": "2FB190417965889A6AF27B19A304C9E74C606FDFB048D9A21DD44D3BCFD935D6"
+    },
+    {
+      "file": "unknown-hold-green-native.trx",
+      "sha256": "823B2C7E9A2FF2474B6177C56CFE871501CBE7999414711A0534A4543E534DD9"
+    },
+    {
+      "file": "373-gate-interrupted.json",
+      "sha256": "F8B7C491531CAD7F30E303017CD7EE3FC176785A07B26880E4B5966B4A7499D2"
+    },
+    {
+      "file": "b5e-cadence-erasure-red-02.trx",
+      "sha256": "DA07C6E04A8FD1955066F3F8A277E53B93324A103AEDF0FE36E8D851D6023613"
+    },
+    {
+      "file": "cadence-erasure-green-native.trx",
+      "sha256": "F3248B64867780AD13789B20B2D216D9FEB906C3998CC406D51C526FCCA6CB5D"
+    },
+    {
+      "file": "b5e-gate-interrupted.json",
+      "sha256": "81E446B8B87C2527430ED78126998C3B341155763F05527A03D460F8BBE4470E"
+    },
+    {
+      "file": "cadence-erasure-gate-metadata.log",
+      "sha256": "9B196B89D54C980EEB6E3637B393CCC8C6DCE117E63F0165556815B4D77D6243"
+    }
+  ],
+  "staticPrimeCapture": {
+    "directory": "C:\\Videoprocessor\\vp\\logs\\analysis-20261030-235712-31200-1",
+    "frameCount": 97,
+    "sampleHashes": [
+      {
+        "file": "frame-000001.bin",
+        "sha256": "244849E661C06355D017D71A0389DE1559542359B559323D421AFEB0534928ED"
+      },
+      {
+        "file": "frame-000049.bin",
+        "sha256": "244849E661C06355D017D71A0389DE1559542359B559323D421AFEB0534928ED"
+      },
+      {
+        "file": "frame-000097.bin",
+        "sha256": "244849E661C06355D017D71A0389DE1559542359B559323D421AFEB0534928ED"
+      }
+    ],
+    "interpretation": "Paused/static captured Prime subtitle pixels; sampled first/middle/last equality does not establish moving-background or antialias temporal safety. No raw pixels copied."
+  },
+  "movingFixtureControls": {
+    "source": "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp",
+    "method": "CadenceGuardUhdCrossingCaptionKeepsOnlyProvedRowFootprintAndGlyphFringe",
+    "result": [
+      {
+        "name": "CadenceGuardUhdCrossingCaptionKeepsOnlyProvedRowFootprintAndGlyphFringe",
+        "outcome": "Passed",
+        "failureMessage": ""
+      }
+    ],
+    "contracts": [
+      "Moving native picture outside actual row cleanup footprint, including inside its bounding hull, must pass.",
+      "Changed unowned picture inside actual erase footprint must reject cleanup reuse.",
+      "Loss of owned glyph core must reject glyph reuse.",
+      "Only explicitly bounded antialias fringe variation is allowed."
+    ],
+    "actualGpuCoverageStatus": "pending current candidate full runtime qualification; native fixture does not prove physical playback"
+  },
+  "currentInputEvidence": {
+    "source": "preserved vp.log live b52 rejection interval",
+    "raster": "3840x2160",
+    "captureFormat": "v210",
+    "inputFrameRateHz": 59.94006,
+    "stride": 2,
+    "color": "SDR Rec.709",
+    "range": 1,
+    "blackCode": 64,
+    "interpretation": "Input raster/native pixel metadata does not identify streaming codec or establish a Netflix/Amazon encoding difference."
+  },
+  "pending": {
+    "runtimeReleaseBuild": "pending clean4fa45da9 full729native+20actual per-variant matching-source gate receipt",
+    "gpuActualRendererMatrix": "pending current4fa45da9 full20mandatory actual renderer cases per variant; b5e partial passes do not qualify current candidate",
+    "physicalPlaybackAcceptance": "pending user physical playback acceptance",
+    "deployment": "pending root-reviewed final matching-source receipts and deployed hashes; summary records no deployment",
+    "nativeTestScope": "729/729 passed in cadence-erasure-green-native.trx; historical727/727 and725/725 separately retained",
+    "noRuntime24FrameGate": true
+  },
+  "causalQualification": "Code/log and RED/GREEN differential evidence identifies confirmed-translation coverage bypass, contradiction-route asymmetry and coarse-placeholder limitations, late advanced mode geometry/certificate mismatch, then prepared/unprepared viewport instability. No complete first-bad playback bisect. Additional RED proved historical unknown-hold footprint subtraction unsafe for current unprocessed raw caption; helper introduction traced to c3cff54ce on19October2026, not a first-bad playback bisect. The stopped b5e runtime run exposed current output-only cadence erasure proof conflated with deliberately absent native bar authority: static transition2745to2746 was composed on BOTH frames, not uncomposed. Real producer-to-helper RED and729nativeGREEN now separately recorded; full runtime still pending.",
+  "sourceHistory": [
+    {
+      "worktree": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031",
+      "candidateCommit": "37340829bb81824fe68a47758f3a207b2ee20cba",
+      "workingTreeClean": true,
+      "rejectedLiveCommit": "b52ae03a424fcd5557ebac6de2ba1c3b28448eee",
+      "firstRepairCommit": "61d31ede9734288c7914f08df28beb29e8492d30",
+      "contradictionBranchIntroduction": "6181deb928b0ee235f5a755af898912084fb1f22",
+      "historicalConfirmedTranslationHelperPresentAt": "7d9b26df7622a79f2c28e8082b494f0ea819499c",
+      "firstBadPlaybackCommitBisected": false
+    },
+    {
+      "worktree": "E:\\codex\\videoprocessor\\combined-transition-regression-20261031",
+      "candidateCommit": "b5ec268e231c517010ab920cc7881520bf27aec3",
+      "workingTreeClean": true,
+      "rejectedLiveCommit": "b52ae03a424fcd5557ebac6de2ba1c3b28448eee",
+      "firstRepairCommit": "61d31ede9734288c7914f08df28beb29e8492d30",
+      "contradictionBranchIntroduction": "6181deb928b0ee235f5a755af898912084fb1f22",
+      "historicalConfirmedTranslationHelperPresentAt": "7d9b26df7622a79f2c28e8082b494f0ea819499c",
+      "firstBadPlaybackCommitBisected": false
+    }
+  ],
+  "updatedUtc": "2026-10-31T20:15:27.0296245Z",
+  "priorInterruptedRuntimeQualification": {
+    "source": "37340829bb81824fe68a47758f3a207b2ee20cba",
+    "run": "20261031-153018-7a2ae4e9",
+    "status": "Interrupted after invalid requested-translation assertion",
+    "runtimeQualified": false,
+    "deployed": false,
+    "reason": "Advanced actual native/visibility crop is correct; routed_translation describes controller request, while pose_eligible=0 pose_delta_y=0 show no applied Classic translation. Tests must assert actual pose."
+  },
+  "joinedFinalOutputBinding": {
+    "stage": "submitted-presentation",
+    "emission": "Every rendered && submitted success, including unchanged geometry and repeated outputs; no unsuccessful attempt records.",
+    "identity": "Selected generation/source/viewport from scopeAnchorCommit; rendererInstanceKey=this; recordSequence/timestamps may remain0 in direct callback, so callback vector order is authoritative.",
+    "rectangles": {
+      "displayed": "Actual submitted source crop",
+      "published": "Selected independently accepted native base",
+      "candidate": "Selected native presentation certificate approved bounds",
+      "previous": "Selected packet sourceCrop, or actual if no snapshot"
+    },
+    "keyFlags": {
+      "success": 1,
+      "finalComposed": 2,
+      "packetMetadataRequired": 4,
+      "packetMetadataMatches": 8,
+      "cleaned": 16,
+      "certificateAvailable": 32,
+      "certificateMetadataMatchesActual": 64,
+      "temporal": 128,
+      "mixing": 256,
+      "hookRetry": 512,
+      "poseEligible": 1024,
+      "selectedSnapshot": 2048,
+      "fullRasterAuthority": 4096,
+      "selectedConfirmedAbsent": 8192
+    },
+    "keyCounters": {
+      "processingSource": 0,
+      "selectedSource": 1,
+      "finalCueSource": 2,
+      "frozenSelectedMode": 3,
+      "acceptedNativeSource": 4,
+      "certificateSource": 5,
+      "certificateOrigin": 6,
+      "compositionMetadataSource": 7
+    },
+    "interpretation": "Use one joined successful-output record for output invariants. subtitle-output and presentation are pre-submission/preselection records and may describe different attempts. Requested/routed controller translation alone is not applied crop translation; use actual crop, pose eligibility and pose delta. Diagnostic coordinate matching grants no presentation authority."
+  },
+  "unknownHoldCausalEvidence": {
+    "introducedHelperCommit": "c3cff54ce60ac4acb95255b1ac06a8fcec88d604",
+    "commitDate": "2026-10-19T21:13:19-04:00",
+    "sourcePath": "src/VideoProcessor-Lib/vprenderer/SubtitleAspectRetention.h",
+    "helper": "EvaluateQualifiedSubtitleUnknownHold",
+    "provenFailure": "A still-visible current unprocessed caption inside the previously erased footprint passed old-footprint residual exclusion and retained native viewport. Renderer suppressed current raw visibility then selected native SUBMITTED_SCOPE_RETENTION.",
+    "fix": "Require completed exact-current-base immutable raw-band evidence with all four raw sides safe before retaining old native viewport. Old erased-footprint subtraction remains an additional contradiction veto, not current erasure permission. Unsafe current bars reach normal bounded raw visibility and subsequent prepared lineage.",
+    "firstBadPlaybackCommitBisected": false,
+    "note": "Commit inspection identifies helper introduction; no complete playback bisect proves first bad end-to-end source."
+  },
+  "interruptedRuntimeQualifications": [
+    {
+      "source": "37340829bb81824fe68a47758f3a207b2ee20cba",
+      "run": "20261031-153018-7a2ae4e9",
+      "status": "Interrupted after invalid requested-translation assertion",
+      "runtimeQualified": false,
+      "deployed": false,
+      "reason": "Advanced actual native/visibility crop is correct; routed_translation describes controller request, while pose_eligible=0 pose_delta_y=0 show no applied Classic translation. Tests must assert actual pose."
+    },
+    {
+      "source": "b5ec268e231c517010ab920cc7881520bf27aec3",
+      "run": "20261031-155422-94095bef",
+      "status": "Interrupted after static composed cadence/native-output qualification gap",
+      "completedActualConsoleResults": [
+        "Failed BetaRendererBlackUhdV210ResidualUiWithMovingPicture [46 s]",
+        "Failed StandardRendererBlackUhdV210ResidualUiWithMovingPicture [46 s]",
+        "Passed BetaRendererReconstructionUhdV210CrossEdgeMovingCleanup [51 s]",
+        "Failed BetaRendererReconstructionUhdV210ResidualUiWithMovingPicture [1 m 5 s]",
+        "Passed StandardRendererReconstructionUhdV210CrossEdgeMovingCleanup [1 m 17 s]",
+        "Passed BetaRendererClassicUhdV210BothBarUiOutsideFillLimit [4 s]"
+      ],
+      "runtimeQualified": false,
+      "deployed": false,
+      "reason": "Static source2745→2746 both composed, current-pixels cadence verified18575samples, native250..1906→safe250..1956. Owned AR authority intentionally stripped; prepared-erasure route still requires it. Need test-first current output-only proof distinction; preserve native-only static warm assertions. Moving cross-edge console cases passed but partial run is not qualification."
+    }
+  ],
+  "cadencePreparedOutputCausalEvidence": {
+    "rejectedCandidate": "b5ec268e231c517010ab920cc7881520bf27aec3",
+    "run": "20261031-155422-94095bef",
+    "observedTransition": "Static source2745 native250..1906 to2746 safe fallback250..1956, BOTH successfully composed; cadence18575samples verified current-pixels on2746.",
+    "notUncomposed": true,
+    "barrier": "Cadence producer intentionally removes independent bar/AR authority and sets pendingRefresh. Both semantic ownership and prepared-erasure qualification formerly required observation.barAuthority and pendingCurrentPixelsVerified, rejecting the correctly composed current packet.",
+    "red": "Real RememberAccepted cadence-seeded and PrepareReference cadence-current-pixels pass before prepared-only helper rejects current-caption-proof-unavailable. Foreign/context and actual current glyph/cleanup mutation controls pass.",
+    "repair": "Only preparedErasureOnly may recognize exact current nonlocal cadence continuation: same identity/policy/continuity/cue/base, immediate previous/template source and monotonic clocks, same fresh footprint ink, positive bounded proof, current shared/display geometry. Does not restore barAuthority, independent scans or semantic glyph authority; current source preparation, capture/cleanup containment, remaining-band and independent picture-expansion vetoes remain strict. Prepared proof never renews lease or native votes.",
+    "staticAcceptance": "Static prepared native-only warm invariant remains unchanged; no test-only safe-envelope relaxation hides processing-cadence changes.",
+    "partialActualResult": "Stopped b5e run has2 actual moving-cross-edge cases passed and1 ClassicUHD case passed, plus failed static native cases. Partial successes do not qualify runtime.",
+    "currentMetadata": "cadence-erasure-gate-metadata.log passed per root; full current runtime qualification pending"
+  }
+}
