@@ -6429,6 +6429,56 @@ namespace AlphaSourceCrop
 		return finish("native-anchor-committed");
 	}
 
+    static bool SubmittedTranslationCoversCurrentBarVisibility(
+        const PresentationRecoveryInput& input, const Decision& proposed)
+    {
+        const auto& crop=input.crop;const auto& anchor=input.submittedScopeAnchor;
+        if(!crop.verticalTranslationActive || crop.verticalTranslationPixels==0 ||
+            crop.verticalTranslationSourceGeneration!=crop.frameSourceGeneration ||
+            !SameTrustedCropContract(crop.verticalTranslationBase,crop.geometry) ||
+            crop.verticalTranslationConfirmationPending || crop.verticalFitConfirmationPending ||
+            crop.verticalTranslationBaseRetentionActive || crop.verticalTranslationEngageBaseRetentionActive ||
+            crop.outwardPresentationActive || crop.outwardExpansionAvailable ||
+            crop.movingPictureTransition || HasCurrentPictureTransitionHandoff(crop) ||
+            crop.movingPictureHold.competingPresentation ||
+            proposed.owner==DecisionOwner::OUTWARD_FIT || proposed.owner==DecisionOwner::FIT_CONFIRMATION ||
+            proposed.owner==DecisionOwner::MOVING_PICTURE_HOLD ||
+            HasCurrentNativePicturePreservation(input) || CurrentCaptionReplacesHeldExtent(input) ||
+            !IsCurrentSubmittedNativeScopeAnchor(anchor,crop.frameSourceGeneration,crop.frameSourceSequence,
+                input.presentationEpoch,crop.rasterWidth,crop.rasterHeight) ||
+            !SameTrustedCropContract(anchor.crop,crop.geometry) ||
+            !anchor.acceptedNativeCrop.available ||
+            anchor.acceptedNativeCrop.sourceGeneration!=crop.acceptedNativeCrop.sourceGeneration ||
+            anchor.acceptedNativeCrop.acceptedSourceSequence!=crop.acceptedNativeCrop.acceptedSourceSequence ||
+            anchor.acceptedNativeCrop.sourceFormatKey!=crop.frameSourceFormatKey ||
+            anchor.acceptedNativeCrop.analysisDomainKey!=crop.frameAnalysisDomainKey ||
+            !anchor.submittedPresentationAvailable ||
+            (anchor.submittedPresentationOrigin!=NativePresentationOrigin::CONFIRMED_TRANSLATION &&
+             anchor.submittedPresentationOrigin!=NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL))return false;
+        const auto& pose=anchor.submittedPresentation;const auto& native=crop.geometry;
+        if(!ValidBounds(pose,crop.rasterWidth,crop.rasterHeight) ||
+            pose.bottom-pose.top!=native.bottom-native.top ||
+            pose.top-native.top!=crop.verticalTranslationPixels ||
+            pose.left<native.left || pose.right>native.right ||
+            (proposed.verticallyTranslated && proposed.verticalTranslationPixels!=crop.verticalTranslationPixels))return false;
+        const auto covered=[&](const ActivePictureBounds& visible) {
+            // Classic intentionally trades the opposite native edge for the
+            // revealed caption strip. Native picture itself need not fit the
+            // shifted pose; only newly observed OUTSIDE-native pixels do.
+            return visible.left>=native.left && visible.right<=native.right &&
+                (crop.verticalTranslationPixels>0
+                    ? visible.top>=native.top && visible.bottom<=pose.bottom
+                    : visible.top>=pose.top && visible.bottom<=native.bottom);
+        };
+        if(!covered(input.observation))return false;
+        if(crop.currentVisibleBoundsAvailable && crop.currentVisibleSourceGeneration==crop.frameSourceGeneration &&
+            crop.currentVisibleSourceSequence==crop.frameSourceSequence &&
+            SameTrustedCropContract(crop.currentVisibleBase,native) &&
+            ValidBounds(crop.currentVisibleBounds,crop.rasterWidth,crop.rasterHeight) &&
+            !covered(crop.currentVisibleBounds))return false;
+        return true;
+    }
+
     UncertainPicturePresentationDecision ResolveUncertainPicturePresentation(
         const PresentationRecoveryInput& input, const Decision& proposed)
     {
@@ -6460,7 +6510,7 @@ namespace AlphaSourceCrop
               ContainedBounds(proposed.sourceBounds,crop.geometry) && !SameBounds(proposed.sourceBounds,crop.geometry) &&
               (proposed.owner==DecisionOwner::OUTWARD_FIT || SameBounds(proposed.sourceBounds,raster)))) &&
             !HasConfirmedPresentationCandidate(input,proposed);
-        if(currentContradiction) {
+        if(currentContradiction && !SubmittedTranslationCoversCurrentBarVisibility(input,proposed)) {
             auto bounds=crop.geometry;
             const auto include=[&](const ActivePictureBounds& visible) {
                 bounds.left=(std::min(bounds.left,visible.left))&~1;

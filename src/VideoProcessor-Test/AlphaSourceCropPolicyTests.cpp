@@ -17437,6 +17437,82 @@ public:
                 Assert::IsFalse(rejected.nativePresentation.origin==NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL);
             }
         }
+        TEST_METHOD(EstablishedClassicPoseCoversOnlyItsAlreadyRevealedCaptionStrip)
+        {
+            for(bool top:{false,true}) {
+                auto route=TranslatedRoute(LoggedNative(10707));
+                if(top){route.crop.verticalTranslationPixels=-250;route.presentation=Evaluate(route.crop);}
+                const auto admitted=AdmitCropPresentation({},route.crop,route.presentation,9);
+                const auto fill=EvaluateFinalAspectLimitFill(route);
+                const auto qualified=QualifyTranslatedNativePresentation(admitted.state,route,fill);
+                auto u=Submission(route.crop);u.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                u.selectedAdmission=qualified;u.selectedOwner=DecisionOwner::VERTICAL_TRANSLATION;u.submittedBounds=fill.sourceBounds;
+                const auto anchor=CommitSubmittedNativeScopeAnchor(u);
+                Assert::AreEqual(int(NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL),int(anchor.submittedPresentationOrigin));
+                for(uint64_t seq=10708;seq<10714;++seq) {
+                    auto current=route.crop;current.frameSourceSequence=seq;
+                    auto r=Unknown(current,anchor);r.excludedBandsPixelSafe=false;r.candidate=route.presentation;
+                    r.observation=current.geometry;
+                    if(top)r.observation.top=66;else r.observation.bottom=2092;
+                    r.crop.currentVisibleBoundsAvailable=true;r.crop.currentVisibleBounds=r.observation;
+                    if(top)r.crop.currentVisibleBounds.top=52;else r.crop.currentVisibleBounds.bottom=2108;
+                    r.crop.currentVisibleBase=current.geometry;
+                    r.crop.currentVisibleSourceGeneration=current.frameSourceGeneration;r.crop.currentVisibleSourceSequence=seq;
+                    const auto held=ResolveUncertainPicturePresentation(r,route.presentation);
+                    Assert::IsTrue(held.retained);Assert::IsFalse(held.currentPixelExtent);
+                    Assert::AreEqual(anchor.submittedPresentation.top,held.presentation.sourceBounds.top);
+                    Assert::AreEqual(anchor.submittedPresentation.bottom,held.presentation.sourceBounds.bottom);
+                    Assert::AreEqual(anchor.submittedPresentation.left,held.presentation.sourceBounds.left);
+                    Assert::AreEqual(anchor.submittedPresentation.right,held.presentation.sourceBounds.right);
+                    Assert::IsFalse(held.presentation.nativePresentation.available,
+                        L"Continuing caption pixels cannot renew either native AR or the independent pose certificate.");
+                }
+            }
+        }
+        TEST_METHOD(CurrentPictureOrUncoveredPixelsOverrideSubmittedClassicPoseImmediately)
+        {
+            auto route=TranslatedRoute(LoggedNative(10707));
+            const auto admitted=AdmitCropPresentation({},route.crop,route.presentation,9);
+            const auto fill=EvaluateFinalAspectLimitFill(route);
+            auto u=Submission(route.crop);u.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            u.selectedAdmission=QualifyTranslatedNativePresentation(admitted.state,route,fill);
+            u.selectedOwner=DecisionOwner::VERTICAL_TRANSLATION;u.submittedBounds=fill.sourceBounds;
+            const auto anchor=CommitSubmittedNativeScopeAnchor(u);
+            for(int fault=0;fault<11;++fault) {
+                auto current=route.crop;current.frameSourceSequence=10708;
+                auto r=Unknown(current,anchor);r.excludedBandsPixelSafe=false;r.candidate=route.presentation;
+                r.observation=current.geometry;r.observation.bottom=2092;
+                if(fault==0)r.observation.bottom=anchor.submittedPresentation.bottom+2;
+                if(fault==1)r.observation.top=current.geometry.top-2;
+                if(fault==2)r.crop.verticalTranslationPixels+=2;
+                if(fault==3)r.submittedScopeAnchor.submittedPresentationOrigin=NativePresentationOrigin::EXACT_NATIVE;
+                if(fault==4)r.submittedScopeAnchor.acceptedNativeCrop.sourceFormatKey++;
+                if(fault==5)r.submittedScopeAnchor.acceptedNativeCrop.acceptedSourceSequence++;
+                if(fault==6)r.captionObservation={CaptionObservationState::ABSENT,current.frameSourceGeneration,
+                    current.frameSourceSequence,9,current.frameSourceFormatKey,current.frameAnalysisDomainKey};
+                if(fault==7 || fault==8 || fault==9) {
+                    auto& proof=r.nativeOutwardPictureProof;proof.base=current.geometry;
+                    proof.candidate=proof.referenceCandidate=r.observation;
+                    proof.sourceGeneration=current.frameSourceGeneration;proof.lastObservedSourceSequence=current.frameSourceSequence;
+                    proof.firstPictureSourceSequence=current.frameSourceSequence;proof.confirmations=1;
+                    proof.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+                    r.nativeOutwardPictureProofPresentationEpoch=9;
+                    if(fault==8){r.observation.top=60;proof.candidate.top=proof.referenceCandidate.top=60;}
+                    if(fault==9)proof.lastObservedSourceSequence--;
+                }
+                if(fault==10)r.crop.movingPictureHold.competingPresentation=true;
+                const auto resolved=ResolveUncertainPicturePresentation(r,route.presentation);
+                if(fault==9) {
+                    Assert::IsFalse(resolved.currentPixelExtent,L"A stale picture proof cannot override the exact current caption continuation.");
+                    Assert::AreEqual(anchor.submittedPresentation.top,resolved.presentation.sourceBounds.top);
+                } else {
+                    Assert::IsTrue(resolved.currentPixelExtent,
+                        L"New uncovered pixels, changed ownership or the FIRST independently proved picture expansion must veto caption-pose retention.");
+                    Assert::IsTrue(resolved.presentation.sourceBounds.top<=current.geometry.top);
+                    Assert::IsTrue(resolved.presentation.sourceBounds.bottom>=r.observation.bottom);
+                }
+            }
+        }
         TEST_METHOD(CurrentUnsafeBandsPreserveOutwardVisibilityAcrossSkippedScansWithoutNativeVotes)
         {
             auto c=LoggedNative(10707);auto u=Submission(c);u.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;

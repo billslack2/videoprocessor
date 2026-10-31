@@ -6,6 +6,12 @@
 #include "../VideoProcessor-Lib/vprenderer/OptionalRendererLayout.h"
 
 #include <type_traits>
+#include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vector>
+#include <set>
+#include <string>
+#include <algorithm>
+#include <cstdio>
 #include <ConfigFile.h>
 #include <UnifiedProfileRuntime.h>
 #include "../VideoProcessor-Lib/vprenderer/LibplaceboRendererPluginApi.h"
@@ -27,6 +33,15 @@ namespace
         if (strstr(message, "Configuration disk read:")) ++snapshotTestReads;
         std::lock_guard<std::mutex> guard(snapshotTestLogMutex);
         if (snapshotTestLog) snapshotTestLog << message << std::endl;
+    }
+    std::mutex classicPoseLogMutex;
+    std::vector<std::string> classicPoseMessages;
+    void __cdecl ClassicPoseTestLog(const char* message)
+    {
+        if(!strstr(message,"VP submitted geometry:") && !strstr(message,"Alpha source crop:") &&
+            !strstr(message,"Alpha native presentation commit:"))return;
+        std::lock_guard<std::mutex> guard(classicPoseLogMutex);
+        classicPoseMessages.emplace_back(message);
     }
     struct NativeP210Buffer : IUnknown
     {
@@ -441,6 +456,157 @@ namespace VideoProcessorTest
         { VerifyNativeAspectTransitionSequence(false,true); }
         TEST_METHOD(BetaRendererKeepsNativeAndConfiguredFillSeparate)
         { VerifyNativeAspectTransitionSequence(true,true); }
+
+        TEST_METHOD(StandardRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans)
+        { VerifyClassicTranslatedFilledPose(false); }
+        TEST_METHOD(BetaRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans)
+        { VerifyClassicTranslatedFilledPose(true); }
+
+        void VerifyClassicTranslatedFilledPose(bool beta)
+        {
+            HMODULE self=nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&ClassicPoseTestLog),&self)!=FALSE);
+            wchar_t modulePath[MAX_PATH]={};GetModuleFileNameW(self,modulePath,MAX_PATH);
+            std::wstring pluginPath(modulePath);pluginPath.resize(pluginPath.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            pluginPath+=L"\\..";
+#endif
+            pluginPath+=beta?L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll":
+                L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+            HMODULE plugin=LoadLibraryExW(pluginPath.c_str(),nullptr,
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct ModuleCleanup { HMODULE value; ~ModuleCleanup(){FreeLibrary(value);} } moduleCleanup{plugin};
+            const auto create=reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_DESTROY_EXPORT));
+            Assert::IsTrue(create&&destroy);
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();}
+            char temp[MAX_PATH]={},configPath[MAX_PATH]={};
+            Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0 && GetTempFileNameA(temp,"cpt",0,configPath)!=0);
+            std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                "[vprenderer]\nquality: fast\n"
+                "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n"
+                "[vprenderer.zoom.native]\nautomatic_crop: true\nsubtitle_fit: true\n"
+                "crop_narrower_content_to_fill_screen: false\ncrop_wider_content_to_fill_screen: true\n"
+                "crop_wider_content_aspect_limit: 2.42:1\n"
+                "[vprenderer.subtitles.classic]\ntype: classic\noffset_pixels: 0\n"
+                "subtitle_engage_drift_ms: 0\nsubtitle_release_drift_ms: 0\n"
+                "subtitle_target_buffer_pixels: 0\nsubtitle_hold_seconds: 2\n";
+            // Scaled native version of the logged 250-pixel same-size shift.
+            // These exact pixels define both the native plane and caption extent.
+            constexpr int width=960,height=540,bar=68,pictureBottom=height-bar;
+            constexpr int captionTop=498,captionBottom=514;
+            VideoStateComPtr state=new VideoState();state->valid=true;
+            state->videoFrameEncoding=VideoFrameEncoding::P210;
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,60000,1001);
+            state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
+            std::vector<uint16_t> native(state->BytesPerFrame()/2,uint16_t(512<<6));
+            for(int y=0;y<height;++y)for(int x=0;x<width;++x)
+                native[size_t(y)*width+x]=uint16_t((y>=bar&&y<pictureBottom?300:64)<<6);
+            auto caption=native;
+            for(int glyph=0;glyph<12;++glyph)for(int y=captionTop;y<captionBottom;++y)
+                for(int x=342+glyph*22;x<356+glyph*22;++x)
+                    if(x<345+glyph*22 || x>=353+glyph*22 || (y>=captionTop+6&&y<captionTop+9))
+                        caption[size_t(y)*width+x]=uint16_t(700<<6);
+            const ActivePictureBounds physical{0,bar,width,pictureBottom,width,height,double(width)/(pictureBottom-bar),
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            // The dense bar renderer includes max(8,height/90) native pixels and
+            // the explicitly configured zero offset/reserve. Both extents are even.
+            const int shift=captionBottom+(std::max)(8,height/90)-pictureBottom;
+            Assert::AreEqual(50,shift);
+            auto shifted=physical;shifted.top+=shift;shifted.bottom+=shift;
+            AlphaSourceCrop::AspectLimitFillInput fillInput;fillInput.sourceBounds=shifted;
+            fillInput.contentReferenceAvailable=true;fillInput.contentReferenceBounds=physical;
+            fillInput.trustedContentAuthorityAccepted=true;fillInput.screenAspect=2.35;
+            fillInput.cropWiderContentToFillScreen=fillInput.widerLimitConfigured=true;fillInput.widerAspectLimit=2.42;
+            const auto filled=AlphaSourceCrop::EvaluateAspectLimitFill(fillInput);
+            Assert::IsTrue(filled.applied && filled.sourceBounds.left>0 && filled.sourceBounds.right<width);
+            const auto& expected=filled.sourceBounds;
+            SnapshotTestCallback callback;NativeP210Buffer buffer;
+            struct Cleanup {
+                HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;const char* config;
+                ~Cleanup(){if(renderer){renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);DeleteFileA(config);}
+            } cleanup{CreateWindowExW(0,L"STATIC",L"Classic translated filled pose fixture",WS_POPUP,
+                0,0,640,360,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
+            Assert::IsNotNull(cleanup.window);
+            cleanup.renderer=create(&callback,43,cleanup.window,nullptr,false,1,
+                VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
+            Assert::IsNotNull(cleanup.renderer);Assert::IsTrue(cleanup.renderer->OnVideoState(state));
+            cleanup.renderer->Build();cleanup.renderer->Start();uint64_t sequence=1;
+            auto pump=[&](std::vector<uint16_t>& pixels) {
+                MSG message;while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}
+                if(callback.state==RENDERSTATE_RENDERING) {
+                    VideoFrame frame(pixels.data(),sequence++,0,&buffer);cleanup.renderer->OnVideoFrame(frame);
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(17));
+                DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);return value;
+            };
+            auto messages=[] {
+                std::lock_guard<std::mutex> lock(classicPoseLogMutex);return classicPoseMessages;
+            };
+            auto source=[](const std::string& line,const char* name) {
+                const auto at=line.find(name);return at==std::string::npos?uint64_t(0):uint64_t(std::strtoull(line.c_str()+at+strlen(name),nullptr,10));
+            };
+            auto bounds=[](const std::string& line,const char* name,double& left,double& top,double& right,double& bottom) {
+                const auto at=line.find(name);return at!=std::string::npos &&
+                    sscanf_s(line.c_str()+at+strlen(name),"%lf,%lf-%lf,%lf",&left,&top,&right,&bottom)==4;
+            };
+            auto equal=[&](const std::string& line,const char* name,const ActivePictureBounds& wanted) {
+                double l=0,t=0,r=0,b=0;return bounds(line,name,l,t,r,b) &&
+                    std::abs(l-wanted.left)<0.01 && std::abs(t-wanted.top)<0.01 &&
+                    std::abs(r-wanted.right)<0.01 && std::abs(b-wanted.bottom)<0.01;
+            };
+            const auto acquireDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);
+            bool nativeAcquired=false;
+            do {
+                const auto value=pump(native);
+                if(value.available&&!value.provisional&&value.inUseAvailable&&
+                    std::abs(value.ratio-physical.aspectRatio)<0.005) {
+                    for(const auto& line:messages())if(line.find("Alpha native presentation commit:")!=std::string::npos &&
+                        equal(line," native_rect=",physical) && line.find("reason=accepted-native-and-presentation-committed")!=std::string::npos)
+                        nativeAcquired=true;
+                }
+            }while(!nativeAcquired&&std::chrono::steady_clock::now()<acquireDeadline&&callback.state!=RENDERSTATE_FAILED);
+            if(!nativeAcquired)for(const auto& line:messages())Logger::WriteMessage(line.c_str());
+            Assert::IsTrue(nativeAcquired,L"The real plugin must independently acquire the source-defined native bar plane before caption onset.");
+            const uint64_t captionFirst=sequence;uint64_t committedPose=0,lastPresented=0;
+            bool scheduled=false,skipped=false;unsigned submittedPoseEvents=0;
+            std::set<uint64_t> observedPresentedSources;
+            const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);
+            do {
+                lastPresented=pump(caption).presentedSequence;
+                const auto log=messages();
+                for(const auto& line:log) {
+                    if(line.find("Alpha native presentation commit:")!=std::string::npos && source(line," selected=")>=captionFirst &&
+                        equal(line," actual=",expected) && line.find("reason=accepted-native-and-presentation-committed")!=std::string::npos)
+                        if(!committedPose)committedPose=source(line," selected=");
+                }
+                scheduled=skipped=false;submittedPoseEvents=0;
+                for(const auto& line:log) {
+                    if(line.find("Alpha source crop:")!=std::string::npos && source(line," sequence=")>=captionFirst) {
+                        scheduled|=line.find(" dense_scan=scheduled")!=std::string::npos;
+                        skipped|=line.find(" dense_scan=skipped")!=std::string::npos;
+                    }
+                    if(committedPose && line.find("VP submitted geometry:")!=std::string::npos && source(line," selected=")>=committedPose) {
+                        ++submittedPoseEvents;
+                        if(!equal(line," actual_source=",expected)) {
+                            for(const auto& diagnostic:log)Logger::WriteMessage(diagnostic.c_str());
+                            Logger::WriteMessage(line.c_str());
+                            Assert::Fail(L"A naturally skipped or scheduled source changed the successfully submitted Classic translated/filled pose.");
+                        }
+                    }
+                }
+                if(committedPose && lastPresented>=committedPose)observedPresentedSources.insert(lastPresented);
+                if(committedPose && observedPresentedSources.size()>=24 && scheduled && skipped && submittedPoseEvents)break;
+            }while(std::chrono::steady_clock::now()<deadline&&callback.state!=RENDERSTATE_FAILED);
+            for(const auto& line:messages())Logger::WriteMessage(line.c_str());
+            Assert::IsTrue(committedPose>0,L"Real plugin never committed the independently acquired Classic translation plus configured side fill.");
+            Assert::IsTrue(scheduled&&skipped,L"The real renderer must exercise natural scheduled and skipped dense scans; the fixture cannot force a pose.");
+            Assert::IsTrue(observedPresentedSources.size()>=24 && submittedPoseEvents>0,
+                L"The stable final pose must survive at least 24 distinct observed selected source identities.");
+        }
 
         void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false)
         {
