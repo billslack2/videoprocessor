@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-10-31). User authorized implementation, review, comprehensive testing and preparation for visual testing. Fresh current beta a591ad3b plus installed subtitle correction82e3fc0a preserved in E:/codex/videoprocessor/ar-evidence-continuity-20261031. Implementing shared native candidate verification/measured matte levels and accepted-native versus submitted-presentation continuity, with qualified real expansion paths. Full relevant native tests, captured replays, actual renderer transition checks and both libplacebo GPU matrices are required before paired Release deployment. Preserve current user configuration.
+In Progress (2026-10-31). Reviewed implementation is committed as `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8` on [draft PR #241](https://github.com/billslack2/videoprocessor/pull/241), based on current beta `a591ad3b` with both deployed subtitle corrections `82e3fc0a` and `7d9b26df` preserved. All 941 focused regressions and three saved-capture replay checks pass; clean x64 Release host and both renderers build. Comprehensive native/stack, actual-plugin and both dependency GPU runs are required before deployment. User visual acceptance remains pending. Active configuration is unchanged.
 
 ## Problem and evidence
 
@@ -94,3 +94,13 @@ Incident logs retained locally at C:/Users/bslac/.codex/visualizations/2026/10/3
 - Four Sol medium reviewers contributed the audit and implementation review. Cross-review found and fixed first cold-caption FIT ordering and a dim connected-picture hole in sparse-overlay handling. Final review has no remaining blocking findings.
 - Focused development tests passed 559 detector/policy cases and 20 actual-renderer/OSD cases, including both renderer DLLs, scope-to-IMAX and return, dark retention beyond three seconds, and distinct native versus configured-fill AR. Three saved-capture replay methods passed, covering all 97 Eternals and 97 Netflix frames.
 - The complete clean-commit native/stack suite and both GPU dependency matrices are still running or pending. Initial full development run was intentionally stopped after the focused run exposed five failures; those were corrected and their failure receipt retained. Do not count that interrupted run as a full pass. Final deployment and user visual acceptance remain pending; configuration has not changed.
+
+
+## Combined candidate and regression reconciliation (2026-10-31)
+
+- Final implementation candidate: `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8`. The newer deployed subtitle cadence correction `7d9b26df` was detected during validation and preserved by cherry-pick `477fdfb6`; no installed subtitle work will be rolled back.
+- Common verification now keeps a partial windowbox nomination provisional when either nominated cropped axis is unverified. It cannot relabel a safe full-raster fallback on one axis as measured native picture width/height.
+- Caption continuity carries only independently verified caption extent/padding, bound to successful submission and source/format/domain/epoch. Native expansion and later publication retain current native geometry while preserving an unresolved cue. Fresh replacement and exact current prepared output have dedicated interaction regressions; configured fill cannot discard the protected extent.
+- The first broad candidate run completed 3,354/3,370 tests; its 16 failures exposed obsolete diagnostic nominations/sample bounds and unsafe fixture assumptions. Updated tests explicitly distinguish coarse synthetic nomination from fresh native recovery, retain negative controls, and verify the pixels actually kept. Four additional policy conflicts from caption integration were corrected without relaxing their legacy assertions. The complete focused rerun passed 941/941.
+- Clean candidate native capture replay passed 3/3 methods with all saved Eternals/Netflix frames. Clean candidate host, standard renderer and beta renderer Release builds passed. Runtime receipt: `E:/codex/videoprocessor/ar-evidence-continuity-20261031/x64/Release/ar-validation/release-build-passed.txt`.
+- A final-suite attempt overlapped compilation and was intentionally stopped after converter timing and renderer-DLL availability failures. It is not counted as full validation. Evidence remains in `interrupted-concurrent-full.log` and `interrupted-concurrent-run.txt`. The comprehensive rerun is serialized after other active validation, followed by actual-plugin and both GPU dependency runs. Deployment is still pending.
