@@ -17,6 +17,20 @@ function Assert-VpQualificationConfiguration([string]$Configuration, [string]$Pl
         throw 'Runtime qualification currently supports Release|x64 with matching native tests and both renderer variants. Use MSBuild.exe VideoProcessor.sln /t:Build /m /p:Configuration=Release /p:Platform=x64 /p:MagewellSdkRoot=<SDK>. Other runtime configurations need matching test support; they cannot inherit a Release receipt.'
     }
 }
+function Invoke-VpQualificationNativeProcess([string]$FilePath, [string[]]$Arguments, [string]$LogPath) {
+    if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) { throw "Native qualification executable missing: $FilePath" }
+    $previousPreference=$ErrorActionPreference
+    try {
+        # Windows PowerShell converts native stderr to nonterminating errors.
+        # Preserve stderr in the log and inspect the actual process exit code.
+        $ErrorActionPreference='Continue'
+        $global:LASTEXITCODE=$null
+        & $FilePath @Arguments *> $LogPath
+        $processExit=$global:LASTEXITCODE
+    } finally { $ErrorActionPreference=$previousPreference }
+    if ($null -eq $processExit) { throw "Native qualification process did not produce an exit code: $FilePath" }
+    return [int]$processExit
+}
 function Get-VpTestMacroTokens([string]$Source) {
     # Read lexical tokens in source order, including adjacent macros and methods
     # following a closing brace. Line boundaries do not define C++ declarations.
@@ -27,10 +41,16 @@ function Get-VpTestMacroTokens([string]$Source) {
 function Get-VpCriticalTestPlan([string]$Root) {
     $manifestPath = Join-Path $Root 'tools\critical_runtime_tests.json'
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.schemaVersion -ne 1 -or $manifest.nativeSources.Count -ne 2 -or
+    if ($manifest.schemaVersion -ne 1 -or $manifest.nativeSources.Count -lt 2 -or
         $manifest.actualMethods.Count -ne 6 -or $manifest.minimumNativeTests -lt 600) {
         throw 'Invalid or incomplete mandatory runtime test manifest.'
     }
+    $originalSources=@('src/VideoProcessor-Test/AlphaSourceCropPolicyTests.cpp','src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp')
+    foreach($requiredSource in $originalSources) {
+        if($requiredSource -notin $manifest.nativeSources){throw "Mandatory original native source removed: $requiredSource"}
+    }
+    if($manifest.minimumOriginalNativeTests -lt 663){throw 'Original native coverage minimum cannot be replaced by added suites.'}
+    $originalCount=0
     $expected = @{}; $classes = @{}; $nativeMethods = @{}; $nativeCount = 0
     foreach ($relative in $manifest.nativeSources) {
         $class = ''
@@ -40,11 +60,13 @@ function Get-VpCriticalTestPlan([string]$Root) {
             } else {
                 if (-not $class) { throw "Unscoped test in $relative" }
                 $method = $token.name; $key = '{0}::{1}' -f $class,$method
+                if($relative -in $originalSources){$originalCount++}
                 if ($expected.ContainsKey($key)) { throw "Duplicate mandatory test: $key" }
                 $expected[$key] = 'native'; $nativeMethods[$method] = $true; $nativeCount++
             }
         }
     }
+    if($originalCount -lt $manifest.minimumOriginalNativeTests){throw "Only $originalCount original native contracts discovered; original required coverage was removed."}
     if ($nativeCount -lt $manifest.minimumNativeTests) { throw "Only $nativeCount native contracts were discovered; mandatory coverage was removed." }
     foreach ($method in $manifest.requiredNativeMethods) {
         if (-not $nativeMethods.ContainsKey([string]$method)) { throw "Missing critical native regression: $method" }

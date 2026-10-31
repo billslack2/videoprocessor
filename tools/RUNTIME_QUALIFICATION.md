@@ -2,7 +2,8 @@
 
 Release|x64 is the initially supported runtime configuration. A passing receipt
 requires every test from AlphaSourceCropPolicyTests.cpp and
-ActivePictureEvidenceTests.cpp, plus the six actual renderer Classic lifecycle
+ActivePictureEvidenceTests.cpp and SubtitleMeasurementWorkerTests.cpp, plus the six
+actual renderer Classic lifecycle
 methods listed in critical_runtime_tests.json, in BOTH native dependency variants.
 A successful compiler/linker result alone does not qualify a runtime build.
 

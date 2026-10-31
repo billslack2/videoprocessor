@@ -37,6 +37,16 @@ $tempPath=[IO.Path]::GetFullPath((Join-Path $tempRoot ('vp-qualification-contrac
 if(-not $tempPath.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase) -or $tempPath -eq $tempRoot.TrimEnd('\')){throw 'Unsafe fixture directory'}
 $null=New-Item -ItemType Directory -Path $tempPath
 try {
+    $nativeHost=Join-Path $PSHOME $(if($PSVersionTable.PSEdition -eq 'Desktop'){'powershell.exe'}else{'pwsh.exe'})
+    foreach($exit in @(0,7)) {
+        $log=Join-Path $tempPath ('stderr-exit-'+$exit+'.log')
+        $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(('[Console]::Error.WriteLine("qualification-native-stderr");exit '+$exit)))
+        $processArgs=@('-NoProfile','-EncodedCommand',$encoded)
+        $record=[ordered]@{testExit=(Invoke-VpQualificationNativeProcess $nativeHost $processArgs $log);log=$log}
+        if($record.testExit -ne $exit -or (Get-Content -LiteralPath $log -Raw) -notmatch 'qualification-native-stderr') {throw 'Native stderr/exit evidence was lost'}
+        if($ErrorActionPreference -ne 'Stop'){throw 'Native process helper did not restore terminating error policy'}
+        Write-Host "PASS: stderr with exit $exit recorded without losing exit/log evidence"
+    }
     $plan=[pscustomobject]@{expected=@{'NativeClass::NativeContract'='native';'ActualClass::ActualClassic'='actual-classic'};nativeCount=1;actualCount=1}
     function WriteFixture([string]$Outcome='Passed',[switch]$Missing,[switch]$Duplicate,[switch]$BadCounters) {
         $native='<UnitTestResult testId="n" testName="NativeContract" outcome="Passed" />'
@@ -99,6 +109,11 @@ try {
     }
     SaveFixtureReceipt
     $null=Assert-VpRuntimeQualification $tempPath (Join-Path $tempPath 'x64/Release/VideoProcessor-GUI.exe')
+    $receipt.runs[0].testExit=7
+    $receipt|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Get-VpQualificationReceiptPath $tempPath)
+    MustReject 'recorded native nonzero exit fails qualification' '*Failed renderer dependency qualification*' {Assert-VpRuntimeQualification $tempPath}
+    SaveFixtureReceipt
+
     'untracked production input'|Set-Content -LiteralPath (Join-Path $tempPath 'new-input.cpp')
     MustReject 'stale dirty source content' '*source commit/content digest differs*' {Assert-VpRuntimeQualification $tempPath}
     Remove-Item -LiteralPath (Join-Path $tempPath 'new-input.cpp')

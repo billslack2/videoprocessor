@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "nativeSources": [
     "src/VideoProcessor-Test/AlphaSourceCropPolicyTests.cpp",
-    "src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp"
+    "src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp",
+    "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp"
   ],
   "minimumNativeTests": 600,
   "requiredNativeMethods": [
@@ -15,7 +16,8 @@
     "ClassicCoarseOppositeEdgeRequiresCompleteCurrentBandPixelProof",
     "RawPerEdgeSafetyKeepsCaptionSideUnsafeThroughOverlayProjection",
     "CurrentDenseCaptionOwnsPendingEngageAndDriftButNeverPictureExpansion",
-    "CurrentEmptyNativeBandsPermitControllerReleaseWithoutFreshCaption"
+    "CurrentEmptyNativeBandsPermitControllerReleaseWithoutFreshCaption",
+    "VerifiedCadenceAdvancesPendingAnchorAcrossDeterministicQueueRetirement"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -30,5 +32,6 @@
   "optionalPrivateFixtures": [
     "VP_AR_COLLAR_CAPTURE_FRAME",
     "VP_DARK_AR_ANALYSIS_FRAME"
-  ]
+  ],
+  "minimumOriginalNativeTests": 663
 }

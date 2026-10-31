@@ -40,7 +40,8 @@ namespace
     {
         if(!strstr(message,"VP submitted geometry:") && !strstr(message,"Alpha source crop:") &&
             !strstr(message,"Alpha native presentation commit:") && !strstr(message,"SUBTITLE ") &&
-            !strstr(message,"application profile") && !strstr(message,"Renderer configuration snapshot"))return;
+            !strstr(message,"application profile") && !strstr(message,"Renderer configuration snapshot") &&
+            !strstr(message,"VP source measurement interval:"))return;
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
         classicPoseMessages.emplace_back(message);
     }
@@ -585,7 +586,20 @@ namespace VideoProcessorTest
                         if(!committedPose)committedPose=source(line," selected=");
                 }
                 scheduled=skipped=false;submittedPoseEvents=0;
+                uint64_t previousIntervalSource=0;
                 for(const auto& line:log) {
+                    if(line.find("VP source measurement interval:")!=std::string::npos) {
+                        const auto intervalSource=source(line," source=");
+                        const auto batches=source(line," batches="),requests=source(line," subtitle_requests="),hits=source(line," subtitle_hits=");
+                        // This counter interval begins after the prior interval log.
+                        // Stable policy suppresses crop-change logs, but actual scan
+                        // requests still distinguish dense scans from skipped sources.
+                        if(committedPose && previousIntervalSource>=committedPose && batches>0 && requests>=hits) {
+                            const auto scans=requests-hits;
+                            scheduled|=scans>0;skipped|=scans<batches;
+                        }
+                        previousIntervalSource=intervalSource;
+                    }
                     if(line.find("Alpha source crop:")!=std::string::npos && source(line," sequence=")>=captionFirst) {
                         scheduled|=line.find(" dense_scan=scheduled")!=std::string::npos;
                         skipped|=line.find(" dense_scan=skipped")!=std::string::npos;
@@ -603,6 +617,9 @@ namespace VideoProcessorTest
                 if(committedPose && observedPresentedSources.size()>=24 && scheduled && skipped && submittedPoseEvents)break;
             }while(std::chrono::steady_clock::now()<deadline&&callback.state!=RENDERSTATE_FAILED);
             for(const auto& line:messages())Logger::WriteMessage(line.c_str());
+            Logger::WriteMessage((std::string("Classic direct pose observations: committed=")+std::to_string(committedPose)+
+                " distinct_presented="+std::to_string(observedPresentedSources.size())+
+                " scheduled="+std::to_string(scheduled)+" skipped="+std::to_string(skipped)).c_str());
             Assert::IsTrue(committedPose>0,L"Real plugin never committed the independently acquired Classic translation plus configured side fill.");
             Assert::IsTrue(scheduled&&skipped,L"The real renderer must exercise natural scheduled and skipped dense scans; the fixture cannot force a pose.");
             Assert::IsTrue(observedPresentedSources.size()>=24 && submittedPoseEvents>0,

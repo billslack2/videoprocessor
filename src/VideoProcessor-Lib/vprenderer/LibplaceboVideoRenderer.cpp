@@ -14566,6 +14566,13 @@ struct LibplaceboVideoRenderer::Impl
                     }
                 }
             }
+            // Cadence already proved the current native footprint and the
+            // tracker accepted this exact cue. Keep the pending guard's queue
+            // anchor aligned without reseeding its original pixel/time lease.
+            if(currentSubtitleCadence.valid &&
+                currentSubtitleCadence.continuation.MatchesCue(subtitleBoxResult))
+                subtitlePendingGuard.AdvanceVerifiedCadence(currentSubtitleCadence,
+                    subtitleBoxResult,subtitleFrameMs,activeSettings.subtitleHoldMs);
             // Only an accepted cue may seed the late-worker fallback. An
             // unconfirmed detector candidate must never gain authority here.
             if(!subtitleBoxResult.detected || subtitleBoxResult.confirmationPending) subtitlePendingGuard.Reset();

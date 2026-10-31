@@ -855,6 +855,108 @@ public:
         Assert::IsFalse(ResolvePendingQueue(guard,after,Source(pixels),50,250,&token,true,0));
         Assert::AreEqual("no-accepted-seed",guard.DecisionReason());
     }
+    TEST_METHOD(VerifiedCadenceAdvancesPendingAnchorAcrossDeterministicQueueRetirement) {
+        const auto identity=[](uint64_t sequence) {
+            auto value=Identity(sequence);value.analysisDomainKey=7;return value;
+        };
+        const auto pendingKey=[&](uint64_t sequence) {
+            auto value=Pending(sequence);value.current.identity=identity(sequence);
+            value.current.sharedPicture.identity=value.current.identity;return value;
+        };
+        auto pixels=PixelsWithCurrentBars();
+        // One independently measured, entirely bar-owned caption.
+        for(int y=0;y<90;++y)for(int x=0;x<160;++x)
+            pixels[y*160+x]=uint16_t((y>=12 && y<78?300:64)<<6);
+        for(int y=80;y<82;++y)for(int x=50;x<110;++x)
+            if(x%7<3)pixels[y*160+x]=uint16_t(700<<6);
+        ActivePictureDecisionTimeline timeline;timeline.Reset(1);
+        for(uint64_t seq=3159;seq<=3164;++seq)Assert::IsTrue(timeline.TrackAcceptedFrame(identity(seq)));
+        const auto before=timeline.ContinuityGeneration();
+        auto ready=Ready(3159);ready.current=CompleteThreeLineScan(3159,pixels,before);
+        ready.current.identity=identity(3159);ready.current.sharedPicture.identity=ready.current.identity;
+        ready.continuityGeneration=before;ready.current.analysisStride=2;
+        auto& text=ready.current.text;text.lineCount=1;text.bounds={50,80,110,82};
+        text.sourcePanel=text.capturePanel={48,78,112,84};
+        text.lineBounds[0]=text.bounds;text.lineBounds[1]=text.lineBounds[2]={};
+        text.lineCapturePanels[0]=text.capturePanel;text.linePanels[0]=text.sourcePanel;
+        text.lineCapturePanels[1]=text.lineCapturePanels[2]={};text.linePanels[1]=text.linePanels[2]={};
+        ready.text=text;
+        auto stale=std::make_unique<SubtitlePendingMeasurementGuard>();
+        auto advanced=std::make_unique<SubtitlePendingMeasurementGuard>();
+        Assert::IsTrue(stale->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
+        Assert::IsTrue(advanced->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
+        SubtitleCutPasteGeometry g;g.valid=true;g.content=text.bounds;g.glyphLines=text.lineBounds;
+        g.source=g.destination=g.generatedCleanup=g.pictureCapture=text.sourcePanel;
+        g.pictureTop=12;g.pictureBottom=78;
+        SubtitleCadenceGuard cadence;
+        Assert::IsTrue(cadence.RememberAccepted(ready,ready.text,CadenceSource(pixels),ready.current.sharedPicture.bounds,g,50,250));
+        auto skipped=pendingKey(3160);skipped.continuityGeneration=skipped.current.continuityGeneration=before;
+        skipped.current.cadenceSkipped=true;skipped.current.analysisStride=2;
+        const auto& proof=cadence.PrepareReference(skipped,CadenceSource(pixels),ready.current.sharedPicture.bounds,50,250);
+        Assert::IsTrue(proof.valid);
+        for(int fault=0;fault<18;++fault) {
+            auto guarded=std::make_unique<SubtitlePendingMeasurementGuard>();
+            Assert::IsTrue(guarded->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
+            auto bad=std::make_unique<SubtitleCadenceProof>(proof);auto changedAccepted=proof.continuation.accepted;
+            if(fault==0)bad->valid=false;
+            if(fault==1)bad->continuation.valid=false;
+            if(fault==2)++changedAccepted.cue;
+            if(fault==3)++bad->continuation.previousIdentity.acceptedSequence;
+            if(fault==4)++bad->continuation.continuityGeneration;
+            if(fault==5)++bad->preview.current.continuityGeneration;
+            if(fault==6)++bad->preview.current.identity.analysisDomainKey;
+            if(fault==7)++bad->preview.current.identity.viewportGeneration;
+            if(fault==8)++bad->preview.current.identity.sourceFormatGeneration;
+            if(fault==9)bad->preview.current.discontinuity=true;
+            if(fault==10)++bad->preview.current.identity.sourceFrameNumber;
+            if(fault==11)bad->preview.current.identity.captureTimestamp=ready.current.identity.captureTimestamp;
+            if(fault==12)bad->preview.current.pendingRefresh=false;
+            if(fault==13)bad->samples=0;
+            if(fault==14)bad->continuation.localGlyphsOnly=true;
+            if(fault==15)++bad->continuation.policyGeneration;
+            if(fault==16)bad->continuation.physicalBase.bottom-=2;
+            if(fault==17)changedAccepted.workLimit=true;
+            Assert::IsFalse(guarded->AdvanceVerifiedCadence(*bad,changedAccepted,50,250));
+        }
+        auto accepted=proof.continuation.accepted;
+        Assert::IsTrue(advanced->AdvanceVerifiedCadence(proof,accepted,50,250));
+        Assert::IsTrue(advanced->AdvanceVerifiedCadence(proof,accepted,50,250),L"Retry cannot spend or reset the lease twice.");
+        {
+            auto tightened=std::make_unique<SubtitlePendingMeasurementGuard>();
+            Assert::IsTrue(tightened->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
+            Assert::IsTrue(tightened->AdvanceVerifiedCadence(proof,accepted,50,250));
+            Assert::IsFalse(tightened->AdvanceVerifiedCadence(proof,accepted,50,49),
+                L"A same-source retry cannot survive a newly shortened hold budget.");
+            Assert::AreEqual("pending-budget-expired",tightened->DecisionReason());
+        }
+        timeline.MarkConsumed(identity(3159));timeline.MarkConsumed(identity(3160));
+        for(uint64_t seq=3161;seq<=3163;++seq)
+            timeline.MarkDiscarded(identity(seq),seq,ActivePictureDiscardReason::BacklogRecovery);
+        const auto after=timeline.ContinuityGeneration();auto token=identity(3160);
+        Assert::IsTrue(timeline.OnlyBacklogRetirementBetween(token,identity(3164),before,after));
+        for(int fault=0;fault<3;++fault) {
+            auto changed=pixels;auto guarded=std::make_unique<SubtitlePendingMeasurementGuard>();
+            Assert::IsTrue(guarded->RememberAccepted(ready,ready.text,CadenceSource(changed),50,250));
+            Assert::IsTrue(guarded->AdvanceVerifiedCadence(proof,accepted,50,250));
+            if(fault==0)changed[80*160+50]=uint16_t(64<<6);
+            if(fault==1)changed[160*90+(80/2)*160+50]=0;
+            if(fault==2)for(int y=0;y<12;++y)for(int x=0;x<160;++x)changed[y*160+x]=uint16_t(300<<6);
+            auto pending=pendingKey(3164);pending.current.continuityGeneration=pending.continuityGeneration=after;
+            Assert::IsFalse(guarded->Resolve(pending,CadenceSource(changed),50,250,&token,true));
+            Assert::IsTrue(guarded->DecisionDiagnostics().glyphSamplesChecked>0);
+        }
+        auto current=pendingKey(3164);current.current.continuityGeneration=current.continuityGeneration=after;
+        auto red=current;
+        Assert::IsFalse(stale->Resolve(red,CadenceSource(pixels),50,250,&token,true));
+        Assert::AreEqual(static_cast<uint32_t>(SubtitlePendingMeasurementGuard::ContextContinuity),stale->DecisionDiagnostics().contextMismatch);
+        Assert::AreEqual(size_t(0),stale->DecisionDiagnostics().glyphSamplesChecked);
+        Assert::IsTrue(advanced->Resolve(current,CadenceSource(pixels),50,250,&token,true)); // Original 250ms, not a new 200ms lease.
+        Assert::IsTrue(advanced->DecisionDiagnostics().glyphSamplesChecked>0);
+        Assert::IsTrue(advanced->DecisionDiagnostics().barsAvailable && advanced->DecisionDiagnostics().backlogReassociated);
+        auto expired=pendingKey(3165);expired.current.continuityGeneration=expired.continuityGeneration=after;
+        Assert::IsFalse(advanced->Resolve(expired,CadenceSource(pixels),50,250));
+        Assert::AreEqual("pending-budget-expired",advanced->DecisionReason());
+    }
     TEST_METHOD(PendingGuardReportsQueueContinuityWithoutRelaxingIt) {
         auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
         Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));

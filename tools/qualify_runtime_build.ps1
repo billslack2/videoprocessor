@@ -67,8 +67,8 @@ try {
     foreach ($project in $projects) {
         Write-Host "Mandatory qualification: build $($project.name)"
         $arguments=@((Join-Path $Root $project.path))+$common+$project.extra
-        & $MSBuildPath @arguments *> (Join-Path $runDirectory ($project.name+'-build.log'))
-        $code=$LASTEXITCODE;$builds+=,[ordered]@{name=$project.name;project=$project.path;exit=$code}
+        $code=Invoke-VpQualificationNativeProcess $MSBuildPath $arguments (Join-Path $runDirectory ($project.name+'-build.log'))
+        $builds+=,[ordered]@{name=$project.name;project=$project.path;exit=$code}
         if ($code -ne 0) { throw "Critical companion build failed: $($project.name). See $runDirectory" }
     }
     $binaries=Get-VpQualifiedOutputInventory $Root
@@ -81,12 +81,15 @@ try {
         Write-Host "Mandatory qualification: execute all $($plan.nativeCount) native contracts and $($plan.actualCount) real Classic lifecycle tests [$variant]"
         Push-Location -LiteralPath (Split-Path -Parent (Join-Path $Root $binary))
         try {
-            & $vstest (Join-Path $Root $binary) /Platform:x64 "/Settings:$settings" "/TestCaseFilter:$($plan.filter)" "/Logger:trx;LogFileName=$variant.trx" "/ResultsDirectory:$runDirectory" *> (Join-Path $runDirectory ($variant+'-tests.log'))
-            $run.testExit=$LASTEXITCODE
+            $testArguments=@((Join-Path $Root $binary),'/Platform:x64',"/Settings:$settings","/TestCaseFilter:$($plan.filter)","/Logger:trx;LogFileName=$variant.trx","/ResultsDirectory:$runDirectory")
+            $run.testExit=Invoke-VpQualificationNativeProcess $vstest $testArguments (Join-Path $runDirectory ($variant+'-tests.log'))
         } finally { Pop-Location }
+        $trx=Join-Path $runDirectory ($variant+'.trx')
+        if(Test-Path -LiteralPath $trx -PathType Leaf) {
+            $run.trx=$trx.Substring($Root.Length+1).Replace('\','/');$run.trxSha256=(Get-FileHash -LiteralPath $trx -Algorithm SHA256).Hash
+        }
         if ($run.testExit -ne 0) { throw "Mandatory $variant native/actual-renderer contracts failed. See $runDirectory" }
-        $trx=Join-Path $runDirectory ($variant+'.trx');$counts=Read-VpCriticalTrx $trx $plan
-        $run.trx=$trx.Substring($Root.Length+1).Replace('\','/');$run.trxSha256=(Get-FileHash -LiteralPath $trx -Algorithm SHA256).Hash
+        $counts=Read-VpCriticalTrx $trx $plan
         $run.executed=$counts.executed;$run.native=$counts.native;$run.actualClassic=$counts.actualClassic
         $expectedDependency=Join-Path $Root $(if($variant -eq 'standard'){'3rdparty\libplacebo\bin\libplacebo-360.dll'}else{'3rdparty\libplacebo-beta\bin\libplacebo-388.dll'})
         $actualDependency=Join-Path (Split-Path -Parent (Join-Path $Root $binary)) $(if($variant -eq 'standard'){'libplacebo-360.dll'}else{'libplacebo-388.dll'})
