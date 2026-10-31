@@ -1282,7 +1282,16 @@ namespace AlphaSourceCrop
 
     enum class NativePresentationOrigin : uint8_t
     {
-        NONE, EXACT_NATIVE, CONFIRMED_FIT, CONFIRMED_TRANSLATION, CONFIGURED_FILL, CONFIRMED_PICTURE
+        NONE, EXACT_NATIVE, CONFIRMED_FIT, CONFIRMED_TRANSLATION, CONFIGURED_FILL, CONFIRMED_PICTURE, CAPTION_CONTINUITY
+    };
+    // Only independently measured caption pixels (and their authorized outer
+    // padding) survive native format changes. Never retain the old native crop.
+    struct CaptionPreservationEvidence
+    {
+        bool available = false;
+        ActivePictureBounds extent;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        uint64_t sourceFormatKey = 0, analysisDomainKey = 0;
     };
     // Exact authorized output, distinct from the source-derived native contract.
     struct NativePresentationCertificate
@@ -1291,6 +1300,7 @@ namespace AlphaSourceCrop
         NativePresentationOrigin origin = NativePresentationOrigin::NONE;
         ActivePictureBounds nativeBase, approvedBounds;
         uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        CaptionPreservationEvidence captionPreservation;
     };
 
     struct PreparedSubtitlePresentation
@@ -1446,6 +1456,7 @@ namespace AlphaSourceCrop
         ConfirmedFitOwnershipOrigin origin = ConfirmedFitOwnershipOrigin::NONE;
         ActivePictureBounds nativeBase, approvedBounds;
         uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        ActivePictureBounds evidenceBounds;
     };
 	struct Decision
 	{
@@ -1501,6 +1512,7 @@ namespace AlphaSourceCrop
 	struct SubmittedNativeScopeAnchor
 	{
         AcceptedNativeCropContract acceptedNativeCrop;
+        CaptionPreservationEvidence captionPreservation;
         bool submittedPresentationAvailable = false;
         ActivePictureBounds submittedPresentation;
         NativePresentationOrigin submittedPresentationOrigin = NativePresentationOrigin::NONE;
@@ -1858,8 +1870,16 @@ namespace AlphaSourceCrop
     ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
         const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding);
 
+    enum class CaptionObservationState : uint8_t { UNKNOWN, PRESENT, ABSENT };
+    struct CurrentCaptionObservation
+    {
+        CaptionObservationState state = CaptionObservationState::UNKNOWN;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        uint64_t sourceFormatKey = 0, analysisDomainKey = 0;
+    };
 	struct PresentationRecoveryInput
 	{
+        CurrentCaptionObservation captionObservation;
         // An exact current independently confirmed native expansion can own
         // preservation without acquiring caption/UI presentation authority.
         OutwardPictureConfirmationState nativeOutwardPictureProof;

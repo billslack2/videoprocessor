@@ -17075,6 +17075,17 @@ releaseDriftBaseRetention =
 			recoveryInput.previous = cropPresentationRecovery;
 			recoveryInput.previousAdmission = cropPresentationAdmission;
 			recoveryInput.submittedScopeAnchor = submittedNativeScopeAnchor;
+            // These booleans already require exact current worker identity;
+            // held/cadence-reused captions remain UNKNOWN for retirement.
+            recoveryInput.captionObservation.state = currentNoCaptionConfirmed
+                ? AlphaSourceCrop::CaptionObservationState::ABSENT
+                : (currentConfirmedCaptionAvailable ? AlphaSourceCrop::CaptionObservationState::PRESENT
+                    : AlphaSourceCrop::CaptionObservationState::UNKNOWN);
+            recoveryInput.captionObservation.sourceGeneration = frameGeneration;
+            recoveryInput.captionObservation.sourceSequence = sourceSequence;
+            recoveryInput.captionObservation.presentationEpoch = viewportRequestSerial;
+            recoveryInput.captionObservation.sourceFormatKey = cropInput.frameSourceFormatKey;
+            recoveryInput.captionObservation.analysisDomainKey = cropInput.frameAnalysisDomainKey;
             recoveryInput.nativeOutwardPictureProof = outwardPictureConfirmation;
             recoveryInput.nativeOutwardPictureProofPresentationEpoch = outwardPictureConfirmationEpoch;
 			recoveryInput.crop = cropInput;
@@ -17536,7 +17547,10 @@ releaseDriftBaseRetention =
             // commit rechecks the native base and actual submitted bounds.
             admissionDecision.presentation.confirmedFitOwnership=uncertainPicture.presentation.confirmedFitOwnership;
             admissionDecision.state.confirmedFitOwnership=uncertainPicture.presentation.confirmedFitOwnership;
-            if(unknownCaptionHold.retained) {
+            if (uncertainPicture.presentation.nativePresentation.available)
+                admissionDecision.state.nativePresentation=uncertainPicture.presentation.nativePresentation;
+            if(unknownCaptionHold.retained &&
+                !uncertainPicture.presentation.nativePresentation.captionPreservation.available) {
                 admissionDecision.state=cropPresentationAdmission;
                 admissionDecision.state.confirmedFitOwnership={};
                 admissionDecision.blocked=false;
@@ -17738,7 +17752,8 @@ releaseDriftBaseRetention =
             finalFillInput.uncertainPicture = uncertainPicture;
             finalFillInput.fixedCropAspectConfigured = fixedCropAspectConfigured;
             finalFillInput.fixedCropAspect = fixedCropAspect;
-            finalFillInput.protectedCaptionFit = protectedCaptionFit;
+            finalFillInput.protectedCaptionFit = protectedCaptionFit ||
+                cropDecision.nativePresentation.captionPreservation.available;
             finalFillInput.nlsPresentationFailOpen = nlsPresentationFailOpen;
             finalFillInput.recoveryBoundedPresentation = recoveryDecision.boundedPresentation;
             finalFillInput.nearBlackBoundedPresentation = nearBlackBoundedDecision.boundedPresentation;
@@ -17912,6 +17927,7 @@ releaseDriftBaseRetention =
             if (cropPresentationAdmission.available &&
                 cropPresentationAdmission.acceptedNativeCrop.available &&
                 cropPresentationAdmission.optionalFillApplied && !aspectLimitFill.retainedSubmittedFill &&
+                !cropDecision.nativePresentation.captionPreservation.available &&
                 !captionPresentationHeld && !unknownCaptionHold.retained &&
                 sameBounds(cropPresentationAdmission.acceptedNativeCrop.bounds,cropInput.geometry))
             {

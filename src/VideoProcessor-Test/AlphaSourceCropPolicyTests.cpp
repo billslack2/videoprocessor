@@ -17457,5 +17457,250 @@ public:
             Assert::IsFalse(CommitSubmittedNativeScopeAnchor(u).available,
                 L"BAR_REFINEMENT cannot authorize a different actual rectangle by label alone.");
         }
+        TEST_METHOD(NativeExpansionAndPublicationPreserveOnlyVerifiedSubmittedCaptionExtent)
+        {
+            auto c=Native();auto u=Submission(c);
+            Decision fit;fit.applyCrop=fit.outwardExpanded=true;fit.owner=DecisionOwner::OUTWARD_FIT;
+            fit.sourceBounds=c.geometry;fit.sourceBounds.bottom=2140;
+            ConfirmedFitOwnershipInput proof;proof.origin=ConfirmedFitOwnershipOrigin::CURRENT_CAPTION;
+            proof.current=proof.confirmed=true;proof.nativeBase=c.geometry;proof.approvedBounds=fit.sourceBounds;
+            proof.evidenceBounds={1300,2050,2500,2138,3840,2160,0.0,ActivePictureBounds::BarAxes::NONE};
+            proof.sourceGeneration=c.frameSourceGeneration;proof.sourceSequence=c.frameSourceSequence;proof.presentationEpoch=9;
+            fit.confirmedFitOwnership=QualifyConfirmedFitOwnership(proof);
+            Assert::IsTrue(fit.confirmedFitOwnership.available);
+            const auto admittedFit=AdmitCropPresentation({},c,fit,9);
+            Assert::IsFalse(admittedFit.blocked);
+            u.selectedAdmission=admittedFit.state;u.selectedOwner=fit.owner;u.submittedBounds=fit.sourceBounds;
+            auto anchor=CommitSubmittedNativeScopeAnchor(u);
+            Assert::IsTrue(anchor.captionPreservation.available);
+            Assert::AreEqual(1300,anchor.captionPreservation.extent.left);
+            Assert::AreEqual(2140,anchor.captionPreservation.extent.bottom);
+            const auto select=[&](PresentationRecoveryInput& r) {
+                const auto recovery=EvaluatePresentationRecovery(r);
+                auto admission=AdmitCropPresentation(r.previousAdmission,r.crop,recovery.presentation,r.presentationEpoch);
+                const auto final=ResolveUncertainPicturePresentation(r,admission.presentation);
+                if(final.retained) {
+                    admission.state.available=true;admission.state.trustedCrop=final.nativeCrop;
+                    admission.state.sourceGeneration=r.crop.frameSourceGeneration;admission.state.presentationEpoch=r.presentationEpoch;
+                }
+                if(final.presentation.nativePresentation.available)
+                    admission.state.nativePresentation=final.presentation.nativePresentation;
+                admission.state.confirmedFitOwnership=final.presentation.confirmedFitOwnership;
+                u.previous=r.submittedScopeAnchor;u.selectedAdmission=admission.state;u.nativeCrop=r.crop.geometry;
+                u.sourceGeneration=r.crop.frameSourceGeneration;u.sourceSequence=r.crop.frameSourceSequence;
+                u.presentationEpoch=r.presentationEpoch;u.submittedBounds=final.presentation.sourceBounds;
+                u.selectedOwner=final.presentation.owner;
+                return final;
+            };
+            auto r=Unknown(Native(11002),anchor);
+            auto& outward=r.nativeOutwardPictureProof;
+            outward.base=r.crop.geometry;outward.candidate=outward.referenceCandidate=r.crop.geometry;
+            outward.candidate.top=outward.referenceCandidate.top=68;
+            outward.candidate.bottom=outward.referenceCandidate.bottom=2092;
+            outward.sourceGeneration=7;outward.lastObservedSourceSequence=11002;
+            outward.firstPictureSourceSequence=11002;outward.confirmations=1;
+            outward.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;r.nativeOutwardPictureProofPresentationEpoch=9;
+            auto selected=select(r);
+            Assert::AreEqual(68,selected.presentation.sourceBounds.top);
+            Assert::AreEqual(2140,selected.presentation.sourceBounds.bottom);
+            Assert::AreEqual(256,selected.nativeCrop.top);
+            anchor=CommitSubmittedNativeScopeAnchor(u);
+            Assert::IsTrue(anchor.captionPreservation.available);
+            // The model now publishes a genuinely different native AR. The old
+            // native rectangle must not be restored to keep the caption visible.
+            auto published=Native(11003);published.geometry.top=68;published.geometry.bottom=2092;
+            published.acceptedNativeCrop.bounds=published.geometry;published.acceptedNativeCrop.acceptedSourceSequence=11003;
+            r=Unknown(published,anchor);r.crop.latestObservationSupportsCrop=true;
+            selected=select(r);Assert::AreEqual(68,selected.nativeCrop.top);
+            Assert::AreEqual(2092,selected.nativeCrop.bottom);Assert::AreEqual(2140,selected.presentation.sourceBounds.bottom);
+            anchor=CommitSubmittedNativeScopeAnchor(u);
+            Assert::AreEqual(68,anchor.crop.top);Assert::AreEqual(2092,anchor.crop.bottom);
+            Assert::AreEqual(uint64_t(10707),anchor.captionPreservation.sourceSequence,
+                L"Unknown inspection cannot renew the original caption measurement.");
+            published.frameSourceSequence=11004;
+            r=Unknown(published,anchor);selected=select(r);
+            Assert::AreEqual(2140,selected.presentation.sourceBounds.bottom);
+            FinalAspectLimitFillInput configured;configured.crop=r.crop;configured.presentation=selected.presentation;
+            configured.uncertainPicture=selected;configured.configuredScreenActive=true;
+            configured.configured.sourceBounds=selected.presentation.sourceBounds;configured.configured.screenAspect=2.35;
+            configured.configured.trustedContentAuthorityAccepted=true;
+            configured.configured.cropNarrowerContentToFillScreen=configured.configured.narrowerLimitConfigured=true;
+            configured.configured.narrowerAspectLimit=1.0;
+            const auto fill=EvaluateFinalAspectLimitFill(configured);
+            Assert::IsFalse(fill.applied);Assert::AreEqual(2140,fill.sourceBounds.bottom);
+            const auto status=[&](PresentationRecoveryInput& f,CaptionObservationState state) {
+                auto& s=f.captionObservation;s.state=state;s.sourceGeneration=f.crop.frameSourceGeneration;
+                s.sourceSequence=f.crop.frameSourceSequence;s.presentationEpoch=f.presentationEpoch;
+                s.sourceFormatKey=f.crop.frameSourceFormatKey;s.analysisDomainKey=f.crop.frameAnalysisDomainKey;
+            };
+            for(int fault=0;fault<7;++fault) {
+                auto f=r;status(f,CaptionObservationState::ABSENT);
+                if(fault==0)f.captionObservation.sourceSequence--;
+                if(fault==1)f.captionObservation.sourceGeneration++;
+                if(fault==2)f.captionObservation.presentationEpoch++;
+                if(fault==3)f.captionObservation.sourceFormatKey++;
+                if(fault==4)f.captionObservation.analysisDomainKey++;
+                if(fault==5)f.captionObservation.state=CaptionObservationState::PRESENT;
+                const auto final=select(f);
+                Assert::AreEqual(fault==6?2092:2140,final.presentation.sourceBounds.bottom);
+            }
+            for(int mismatch=0;mismatch<4;++mismatch) {
+                auto f=r;
+                if(mismatch==0){++f.presentationEpoch;f.crop.framePresentationEpoch=f.presentationEpoch;}
+                if(mismatch==1){++f.crop.frameSourceFormatKey;f.crop.acceptedNativeCrop.sourceFormatKey=f.crop.frameSourceFormatKey;}
+                if(mismatch==2){++f.crop.frameAnalysisDomainKey;f.crop.acceptedNativeCrop.analysisDomainKey=f.crop.frameAnalysisDomainKey;}
+                if(mismatch==3){++f.crop.frameSourceGeneration;f.crop.geometrySourceGeneration=f.crop.frameSourceGeneration;
+                    f.crop.acceptedNativeCrop.sourceGeneration=f.crop.frameSourceGeneration;}
+                Assert::AreEqual(2092,select(f).presentation.sourceBounds.bottom);
+            }
+            auto replacement=r;status(replacement,CaptionObservationState::PRESENT);
+            proof.nativeBase=replacement.crop.geometry;proof.approvedBounds=replacement.crop.geometry;
+            proof.approvedBounds.bottom=2120;proof.evidenceBounds.bottom=2118;
+            proof.sourceSequence=replacement.crop.frameSourceSequence;
+            replacement.confirmedFitOwnership=QualifyConfirmedFitOwnership(proof);
+            Assert::IsTrue(replacement.confirmedFitOwnership.available);
+            replacement.candidate.sourceBounds=proof.approvedBounds;
+            replacement.candidate.applyCrop=replacement.candidate.outwardExpanded=true;
+            replacement.candidate.owner=DecisionOwner::OUTWARD_FIT;
+            const auto replaced=select(replacement);
+            Assert::AreEqual(2120,replaced.presentation.sourceBounds.bottom,
+                L"Only qualified current caption replacement may retire the old larger extent.");
+            auto absent=r;status(absent,CaptionObservationState::ABSENT);
+            const auto clean=select(absent);Assert::AreEqual(2092,clean.presentation.sourceBounds.bottom);
+            const auto retired=CommitSubmittedNativeScopeAnchor(u);
+            Assert::IsTrue(retired.available);Assert::IsFalse(retired.captionPreservation.available);
+            Assert::AreEqual(68,retired.crop.top);Assert::AreEqual(2092,retired.crop.bottom);
+            // An independently published inward change may remove old picture
+            // rows; only the measured caption extent survives, not the old AR.
+            auto contracted=r;contracted.crop.geometry.top=300;contracted.crop.geometry.bottom=1800;
+            contracted.crop.acceptedNativeCrop.bounds=contracted.crop.geometry;
+            contracted.crop.acceptedNativeCrop.acceptedSourceSequence=11004;
+            contracted.crop.latestObservationSupportsCrop=true;
+            const auto inward=select(contracted);
+            Assert::AreEqual(300,inward.nativeCrop.top);Assert::AreEqual(1800,inward.nativeCrop.bottom);
+            Assert::AreEqual(300,inward.presentation.sourceBounds.top);Assert::AreEqual(2140,inward.presentation.sourceBounds.bottom);
+        }
+        static ConfirmedFitOwnershipEvidence CurrentCaption(const Input& c,int bottom)
+        {
+            ConfirmedFitOwnershipInput q;q.origin=ConfirmedFitOwnershipOrigin::CURRENT_CAPTION;
+            q.current=q.confirmed=true;q.nativeBase=q.approvedBounds=c.geometry;q.approvedBounds.bottom=bottom;
+            q.evidenceBounds={1300,bottom-90,2500,bottom-2,3840,2160,0.0,ActivePictureBounds::BarAxes::NONE};
+            q.sourceGeneration=c.frameSourceGeneration;q.sourceSequence=c.frameSourceSequence;q.presentationEpoch=c.framePresentationEpoch;
+            const auto result=QualifyConfirmedFitOwnership(q);Assert::IsTrue(result.available);return result;
+        }
+        static SubmittedNativeScopeAnchor CaptionAnchor(const Input& c)
+        {
+            auto u=Submission(c);auto fit=Evaluate(c);
+            fit.sourceBounds.bottom=2140;fit.outwardExpanded=true;fit.owner=DecisionOwner::OUTWARD_FIT;
+            fit.confirmedFitOwnership=CurrentCaption(c,2140);
+            const auto admitted=AdmitCropPresentation({},c,fit,c.framePresentationEpoch);
+            Assert::IsFalse(admitted.blocked);u.selectedAdmission=admitted.state;
+            u.selectedOwner=fit.owner;u.submittedBounds=fit.sourceBounds;
+            const auto anchor=CommitSubmittedNativeScopeAnchor(u);
+            Assert::IsTrue(anchor.captionPreservation.available);return anchor;
+        }
+        static Decision StageCaptionSelection(const PresentationRecoveryInput& r,SubmittedNativeScopeAnchorUpdateInput& u)
+        {
+            const auto recovery=EvaluatePresentationRecovery(r);
+            auto admitted=AdmitCropPresentation(r.previousAdmission,r.crop,recovery.presentation,r.presentationEpoch);
+            const auto final=ResolveUncertainPicturePresentation(r,admitted.presentation);
+            Assert::IsTrue(final.retained || !admitted.blocked);
+            if(final.retained) {
+                admitted.state.available=true;admitted.state.trustedCrop=final.nativeCrop;
+                admitted.state.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                admitted.state.sourceGeneration=r.crop.frameSourceGeneration;admitted.state.presentationEpoch=r.presentationEpoch;
+            }
+            if(final.presentation.nativePresentation.available)admitted.state.nativePresentation=final.presentation.nativePresentation;
+            admitted.state.confirmedFitOwnership=final.presentation.confirmedFitOwnership;
+            u={};u.previous=r.submittedScopeAnchor;u.frameSubmitted=u.nativeCropAvailable=true;
+            u.nativeCrop=r.crop.geometry;u.submittedBounds=final.presentation.sourceBounds;u.selectedOwner=final.presentation.owner;
+            u.sourceGeneration=r.crop.frameSourceGeneration;u.sourceSequence=r.crop.frameSourceSequence;
+            u.presentationEpoch=r.presentationEpoch;u.selectedAdmission=admitted.state;
+            return final.presentation;
+        }
+        TEST_METHOD(SimultaneousNativeExpansionAndNewCaptionPreserveTheirIndependentExtents)
+        {
+            auto r=Unknown(Native(11002),CaptionAnchor(Native()));
+            auto& p=r.nativeOutwardPictureProof;p.base=r.crop.geometry;p.candidate=p.referenceCandidate=r.crop.geometry;
+            p.candidate.top=p.referenceCandidate.top=68;p.candidate.bottom=p.referenceCandidate.bottom=2092;
+            p.sourceGeneration=r.crop.frameSourceGeneration;p.firstPictureSourceSequence=p.lastObservedSourceSequence=11002;
+            p.confirmations=1;p.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+            r.nativeOutwardPictureProofPresentationEpoch=9;
+            r.confirmedFitOwnership=CurrentCaption(r.crop,2120);
+            SubmittedNativeScopeAnchorUpdateInput u;
+            const auto selected=StageCaptionSelection(r,u);
+            Assert::AreEqual(68,selected.sourceBounds.top);Assert::AreEqual(2120,selected.sourceBounds.bottom,
+                L"A fresh caption replacement must remain visible beyond the independently expanded native picture.");
+            Assert::AreEqual(256,u.nativeCrop.top);Assert::AreEqual(1904,u.nativeCrop.bottom);
+            auto failed=u;failed.frameSubmitted=false;
+            const auto unchanged=CommitSubmittedNativeScopeAnchor(failed);
+            Assert::AreEqual(2140,unchanged.captionPreservation.extent.bottom);
+            Assert::AreEqual(uint64_t(10707),unchanged.captionPreservation.sourceSequence);
+            const auto committed=CommitSubmittedNativeScopeAnchor(u);
+            Assert::IsTrue(committed.captionPreservation.available);
+            Assert::AreEqual(1300,committed.captionPreservation.extent.left);
+            Assert::AreEqual(2030,committed.captionPreservation.extent.top,
+                L"The native expanded top must not become a caption retention boundary.");
+            Assert::AreEqual(2120,committed.captionPreservation.extent.bottom);
+            Assert::AreEqual(uint64_t(11002),committed.captionPreservation.sourceSequence);
+            // A later independently accepted contraction may discard obsolete
+            // native rows while retaining only the newly submitted cue/padding.
+            auto c=Native(11003);c.geometry.top=300;c.geometry.bottom=1800;
+            c.acceptedNativeCrop.bounds=c.geometry;c.acceptedNativeCrop.acceptedSourceSequence=11003;
+            auto next=Unknown(c,committed);next.crop.latestObservationSupportsCrop=true;
+            const auto held=StageCaptionSelection(next,u);
+            Assert::AreEqual(300,held.sourceBounds.top);Assert::AreEqual(2120,held.sourceBounds.bottom);
+            const auto heldCommit=CommitSubmittedNativeScopeAnchor(u);
+            Assert::AreEqual(uint64_t(11002),heldCommit.captionPreservation.sourceSequence);
+        }
+        TEST_METHOD(ExactPreparedNativePresentationRetiresCaptionOnlyAfterSuccessfulSubmission)
+        {
+            auto r=Unknown(Native(11002),CaptionAnchor(Native()));
+            r.crop.frameLocalPresentationRetentionSafe=true;r.crop.currentVisibleBoundsAvailable=false;
+            r.crop.preparedSubtitle={true,r.crop.geometry,r.crop.frameSourceGeneration,r.crop.frameSourceSequence,9};
+            Assert::IsTrue(HasCurrentPreparedSubtitlePresentation(r.crop));
+            SubmittedNativeScopeAnchorUpdateInput u;
+            const auto selected=StageCaptionSelection(r,u);
+            Assert::IsTrue(selected.owner==DecisionOwner::TRUSTED_CROP);
+            Assert::AreEqual(256,selected.sourceBounds.top);Assert::AreEqual(1904,selected.sourceBounds.bottom);
+            auto failed=u;failed.frameSubmitted=false;
+            const auto stillHeld=CommitSubmittedNativeScopeAnchor(failed);
+            Assert::IsTrue(stillHeld.captionPreservation.available);
+            Assert::AreEqual(2140,stillHeld.captionPreservation.extent.bottom);
+            auto unknown=Unknown(Native(11003),stillHeld);
+            Assert::AreEqual(2140,StageCaptionSelection(unknown,failed).sourceBounds.bottom);
+            const auto retired=CommitSubmittedNativeScopeAnchor(u);
+            Assert::IsTrue(retired.available);Assert::IsFalse(retired.captionPreservation.available);
+            unknown=Unknown(Native(11003),retired);
+            Assert::AreEqual(1904,StageCaptionSelection(unknown,failed).sourceBounds.bottom);
+            for(int fault=0;fault<4;++fault) {
+                auto stale=r;
+                if(fault==0)--stale.crop.preparedSubtitle.sourceSequence;
+                if(fault==1)++stale.crop.preparedSubtitle.sourceGeneration;
+                if(fault==2)++stale.crop.preparedSubtitle.presentationEpoch;
+                if(fault==3)stale.crop.preparedSubtitle.nativeBase.top+=2;
+                Assert::IsFalse(HasCurrentPreparedSubtitlePresentation(stale.crop));
+                Assert::AreEqual(2140,StageCaptionSelection(stale,failed).sourceBounds.bottom,
+                    L"Stale prepared evidence cannot retire a successfully submitted caption extent.");
+            }
+        }
+        TEST_METHOD(CurrentUiFitCannotCreatePersistentCaptionEvidence)
+        {
+            const auto c=Native();auto u=Submission(c);auto fit=Evaluate(c);
+            fit.sourceBounds.bottom=2140;fit.outwardExpanded=true;fit.owner=DecisionOwner::OUTWARD_FIT;
+            ConfirmedFitOwnershipInput q;q.origin=ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY;
+            q.current=q.confirmed=q.lowerContent=q.lowerOverlayLike=true;
+            q.nativeBase=c.geometry;q.approvedBounds=fit.sourceBounds;
+            q.evidenceBounds={1300,2050,2500,2138,3840,2160,0.0,ActivePictureBounds::BarAxes::NONE};
+            q.sourceGeneration=c.frameSourceGeneration;q.sourceSequence=c.frameSourceSequence;q.presentationEpoch=9;
+            fit.confirmedFitOwnership=QualifyConfirmedFitOwnership(q);
+            Assert::IsTrue(fit.confirmedFitOwnership.available);
+            const auto admitted=AdmitCropPresentation({},c,fit,9);Assert::IsFalse(admitted.blocked);
+            u.selectedAdmission=admitted.state;u.selectedOwner=fit.owner;u.submittedBounds=fit.sourceBounds;
+            const auto submitted=CommitSubmittedNativeScopeAnchor(u);
+            Assert::IsTrue(submitted.available && submitted.submittedPresentationAvailable);
+            Assert::IsFalse(submitted.captionPreservation.available,
+                L"Independent UI presentation ownership is not persistent caption evidence.");
+        }
     };
 }

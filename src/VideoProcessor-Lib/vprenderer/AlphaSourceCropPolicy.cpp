@@ -4014,6 +4014,7 @@ namespace AlphaSourceCrop
         result.sourceGeneration = input.sourceGeneration;
         result.sourceSequence = input.sourceSequence;
         result.presentationEpoch = input.presentationEpoch;
+        result.evidenceBounds = input.evidenceBounds;
         return result;
     }
 
@@ -4080,7 +4081,8 @@ namespace AlphaSourceCrop
     {
         const bool authorizedShape = proof.origin == NativePresentationOrigin::EXACT_NATIVE
             ? SameBounds(native,actual)
-            : proof.origin == NativePresentationOrigin::CONFIRMED_FIT || proof.origin == NativePresentationOrigin::CONFIRMED_PICTURE
+            : proof.origin == NativePresentationOrigin::CONFIRMED_FIT || proof.origin == NativePresentationOrigin::CONFIRMED_PICTURE ||
+                proof.origin == NativePresentationOrigin::CAPTION_CONTINUITY
             ? ContainedBounds(actual,native)
             : proof.origin == NativePresentationOrigin::CONFIGURED_FILL
             ? ContainedBounds(native,actual)
@@ -4093,6 +4095,59 @@ namespace AlphaSourceCrop
             SameBounds(proof.approvedBounds,actual) &&
             ValidBounds(actual,native.rasterWidth,native.rasterHeight) &&
             CropEdgesAreChromaAligned(actual,native.rasterWidth,native.rasterHeight);
+    }
+
+    static bool HasCurrentNativePicturePreservation(const PresentationRecoveryInput& input);
+    static bool HasCurrentCaptionFit(const PresentationRecoveryInput& input);
+    static bool CurrentCaptionReplacesHeldExtent(const PresentationRecoveryInput& input)
+    {
+        const auto& c=input.captionObservation;const auto& crop=input.crop;
+        if (HasCurrentCaptionFit(input))
+            return true;
+        return c.state==CaptionObservationState::ABSENT &&
+            c.sourceGeneration==crop.frameSourceGeneration && c.sourceSequence==crop.frameSourceSequence &&
+            c.presentationEpoch==input.presentationEpoch &&
+            c.sourceFormatKey==crop.frameSourceFormatKey && c.analysisDomainKey==crop.frameAnalysisDomainKey;
+    }
+    static bool HasCurrentCaptionFit(const PresentationRecoveryInput& input)
+    {
+        const auto& fit=input.confirmedFitOwnership;const auto& crop=input.crop;
+        return crop.sharedGeometryAvailable && crop.geometrySourceGeneration==crop.frameSourceGeneration &&
+            crop.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+            crop.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+            crop.framePresentationEpoch==input.presentationEpoch &&
+            (SameBounds(input.candidate.sourceBounds,fit.approvedBounds) || HasCurrentNativePicturePreservation(input)) &&
+            fit.origin==ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
+            MatchesConfirmedFitOwnership(fit,crop.geometry,fit.approvedBounds,
+                crop.frameSourceGeneration,crop.frameSourceSequence,input.presentationEpoch);
+    }
+    static bool CompatibleCaptionExtent(const CaptionPreservationEvidence& c,const Input& crop,uint64_t epoch)
+    {
+        return c.available && c.sourceGeneration && c.sourceSequence &&
+            c.sourceGeneration==crop.frameSourceGeneration && c.sourceSequence<=crop.frameSourceSequence &&
+            c.presentationEpoch==epoch && c.sourceFormatKey==crop.frameSourceFormatKey &&
+            c.analysisDomainKey==crop.frameAnalysisDomainKey &&
+            ValidBounds(c.extent,crop.rasterWidth,crop.rasterHeight);
+    }
+    static CaptionPreservationEvidence HeldCaptionExtent(const PresentationRecoveryInput& input)
+    {
+        const auto& anchor=input.submittedScopeAnchor;const auto& crop=input.crop;
+        if (!HasAcceptedNativeCrop(crop) || CurrentCaptionReplacesHeldExtent(input) ||
+            !IsCurrentSubmittedNativeScopeAnchor(anchor,crop.frameSourceGeneration,crop.frameSourceSequence,
+                input.presentationEpoch,crop.rasterWidth,crop.rasterHeight) ||
+            !CompatibleCaptionExtent(anchor.captionPreservation,crop,input.presentationEpoch) ||
+            anchor.captionPreservation.sourceSequence>anchor.lastSubmittedPresentationSourceSequence)
+            return {};
+        return anchor.captionPreservation;
+    }
+    static void IncludeCaptionExtent(ActivePictureBounds& bounds,const CaptionPreservationEvidence& caption)
+    {
+        if (!caption.available) return;
+        bounds.left=std::min(bounds.left,caption.extent.left)&~1;
+        bounds.top=std::min(bounds.top,caption.extent.top)&~1;
+        bounds.right=std::min(bounds.rasterWidth,(std::max(bounds.right,caption.extent.right)+1)&~1);
+        bounds.bottom=std::min(bounds.rasterHeight,(std::max(bounds.bottom,caption.extent.bottom)+1)&~1);
+        bounds.aspectRatio=double(bounds.right-bounds.left)/std::max(1,bounds.bottom-bounds.top);
     }
 
     static bool HasCurrentNativePicturePreservation(const PresentationRecoveryInput& input)
@@ -4116,11 +4171,28 @@ namespace AlphaSourceCrop
             SamePictureWithinDetectorStep(proof.referenceCandidate,proof.candidate);
     }
 
+    static bool MatchesNativePicturePreservationPresentation(const PresentationRecoveryInput& input,const Decision& proposed)
+    {
+        if (!HasCurrentNativePicturePreservation(input)) return false;
+        auto expected=input.nativeOutwardPictureProof.candidate;
+        const auto held=HeldCaptionExtent(input);IncludeCaptionExtent(expected,held);
+        if (HasCurrentCaptionFit(input)) {
+            CaptionPreservationEvidence current;current.available=true;current.extent=input.confirmedFitOwnership.approvedBounds;
+            IncludeCaptionExtent(expected,current);
+        }
+        return SameBounds(proposed.sourceBounds,expected) &&
+            (SameBounds(expected,input.nativeOutwardPictureProof.candidate) ||
+             (proposed.nativePresentation.origin==NativePresentationOrigin::CONFIRMED_PICTURE &&
+              MatchesNativePresentation(proposed.nativePresentation,input.crop.geometry,expected,
+                input.crop.frameSourceGeneration,input.crop.frameSourceSequence,input.presentationEpoch)));
+    }
+
     static bool HasCurrentConfirmedOutwardCandidate(const PresentationRecoveryInput& input,
         const Decision& proposed)
     {
-        if (HasCurrentNativePicturePreservation(input) &&
-            SameBounds(proposed.sourceBounds,input.nativeOutwardPictureProof.candidate))
+        if (HasCurrentCaptionFit(input) && SameBounds(proposed.sourceBounds,input.confirmedFitOwnership.approvedBounds))
+            return true;
+        if (MatchesNativePicturePreservationPresentation(input,proposed))
             return true;
         const auto& accepted=input.candidate;
         const auto& crop=input.crop;
@@ -4140,8 +4212,9 @@ namespace AlphaSourceCrop
     static bool HasConfirmedPresentationCandidate(const PresentationRecoveryInput& input,
         const Decision& proposed)
     {
-        if (HasCurrentNativePicturePreservation(input) &&
-            SameBounds(proposed.sourceBounds,input.nativeOutwardPictureProof.candidate))
+        if (HasCurrentCaptionFit(input) && SameBounds(proposed.sourceBounds,input.confirmedFitOwnership.approvedBounds))
+            return true;
+        if (MatchesNativePicturePreservationPresentation(input,proposed))
             return true;
         // Recovery/inspection resolution is not caption ownership. In
         // particular, a dense FIT label cannot authorize a full-raster flash.
@@ -4576,13 +4649,22 @@ namespace AlphaSourceCrop
 		const auto& crop = input.crop;
         // Native outside-picture proof owns visibility itself. It does not need
         // a caption owner or a second recovery dwell, and does not publish AR.
-        if (crop.automaticCropEnabled && HasCurrentNativePicturePreservation(input) &&
+        const bool nativePicturePreservation=HasCurrentNativePicturePreservation(input);
+        const bool currentCaptionFit=HasCurrentCaptionFit(input);
+        if (crop.automaticCropEnabled && nativePicturePreservation &&
             !crop.fullRasterPresentationAuthoritative)
         {
             result.ended = result.released = result.state.active;
             result.state = {};
             result.presentation = {};
             result.presentation.sourceBounds = input.nativeOutwardPictureProof.candidate;
+            const auto heldCaption=HeldCaptionExtent(input);
+            IncludeCaptionExtent(result.presentation.sourceBounds,heldCaption);
+            if(currentCaptionFit) {
+                CaptionPreservationEvidence current;current.available=true;current.extent=input.confirmedFitOwnership.approvedBounds;
+                IncludeCaptionExtent(result.presentation.sourceBounds,current);
+                result.presentation.confirmedFitOwnership=input.confirmedFitOwnership;
+            }
             result.presentation.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
             result.presentation.applyCrop = !SameBounds(result.presentation.sourceBounds,
                 FullRaster(crop.rasterWidth,crop.rasterHeight));
@@ -4597,6 +4679,7 @@ namespace AlphaSourceCrop
             certificate.sourceGeneration = crop.frameSourceGeneration;
             certificate.sourceSequence = crop.frameSourceSequence;
             certificate.presentationEpoch = input.presentationEpoch;
+            certificate.captionPreservation = heldCaption;
             return result;
         }
 		const bool currentContract = crop.sharedGeometryAvailable &&
@@ -5806,7 +5889,10 @@ namespace AlphaSourceCrop
         if (!candidate.applyCrop)
         {
             if (HasAcceptedNativeCrop(input) &&
-                candidate.nativePresentation.origin == NativePresentationOrigin::CONFIRMED_PICTURE &&
+                (candidate.nativePresentation.origin == NativePresentationOrigin::CONFIRMED_PICTURE ||
+                 (candidate.nativePresentation.origin == NativePresentationOrigin::CONFIRMED_FIT &&
+                  MatchesConfirmedFitOwnership(candidate.confirmedFitOwnership,input.geometry,candidate.sourceBounds,
+                      input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))) &&
                 MatchesNativePresentation(candidate.nativePresentation,input.geometry,candidate.sourceBounds,
                     input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))
             {
@@ -5816,6 +5902,7 @@ namespace AlphaSourceCrop
                 result.state.sourceGeneration = input.frameSourceGeneration;
                 result.state.presentationEpoch = presentationEpoch;
                 result.state.nativePresentation = candidate.nativePresentation;
+                result.state.confirmedFitOwnership = candidate.confirmedFitOwnership;
             }
             return result;
         }
@@ -5891,7 +5978,8 @@ namespace AlphaSourceCrop
                 candidate.sourceBounds.top - input.geometry.top == candidate.verticalTranslationPixels &&
                 candidate.sourceBounds.bottom - input.geometry.bottom == candidate.verticalTranslationPixels)
                 proof.origin = NativePresentationOrigin::CONFIRMED_TRANSLATION;
-            else if (candidate.nativePresentation.origin == NativePresentationOrigin::CONFIRMED_PICTURE &&
+            else if ((candidate.nativePresentation.origin == NativePresentationOrigin::CONFIRMED_PICTURE ||
+                candidate.nativePresentation.origin == NativePresentationOrigin::CAPTION_CONTINUITY) &&
                 MatchesNativePresentation(candidate.nativePresentation,input.geometry,candidate.sourceBounds,
                     input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))
                 proof = candidate.nativePresentation;
@@ -5911,6 +5999,12 @@ namespace AlphaSourceCrop
         if(input.framePresentationEpoch==presentationEpoch &&
             MatchesConfirmedFitOwnership(candidate.confirmedFitOwnership,input.geometry,candidate.sourceBounds,
                 input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))
+            result.state.confirmedFitOwnership=candidate.confirmedFitOwnership;
+        else if (candidate.nativePresentation.origin==NativePresentationOrigin::CONFIRMED_PICTURE &&
+            candidate.confirmedFitOwnership.origin==ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
+            MatchesConfirmedFitOwnership(candidate.confirmedFitOwnership,input.geometry,
+                candidate.confirmedFitOwnership.approvedBounds,input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch) &&
+            ContainedBounds(candidate.sourceBounds,candidate.confirmedFitOwnership.approvedBounds))
             result.state.confirmedFitOwnership=candidate.confirmedFitOwnership;
         result.state.outwardPresentationAvailable = candidate.outwardExpanded &&
             (candidate.owner == DecisionOwner::OUTWARD_FIT || result.state.confirmedFitOwnership.available);
@@ -6110,10 +6204,47 @@ namespace AlphaSourceCrop
                 result.presentationEpoch == input.presentationEpoch &&
                 input.sourceSequence <= result.lastSubmittedPresentationSourceSequence)
                 return finish("nonmonotonic-source");
+            CaptionPreservationEvidence caption;
+            const auto& currentCaption=input.selectedAdmission.confirmedFitOwnership;
+            if (currentCaption.origin==ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
+                MatchesConfirmedFitOwnership(currentCaption,input.nativeCrop,currentCaption.approvedBounds,
+                    input.sourceGeneration,input.sourceSequence,input.presentationEpoch) &&
+                ContainedBounds(input.submittedBounds,currentCaption.approvedBounds) &&
+                ValidBounds(currentCaption.evidenceBounds,input.nativeCrop.rasterWidth,input.nativeCrop.rasterHeight) &&
+                ContainedBounds(input.submittedBounds,currentCaption.evidenceBounds))
+            {
+                caption.available=true;caption.extent=currentCaption.evidenceBounds;
+                // Preserve only caption pixels plus the actual authorized padding
+                // on expanding edges. Old native picture coordinates are not a
+                // caption witness and cannot stall a later native contraction.
+                if(currentCaption.approvedBounds.left<input.nativeCrop.left)caption.extent.left=currentCaption.approvedBounds.left;
+                if(currentCaption.approvedBounds.top<input.nativeCrop.top)caption.extent.top=currentCaption.approvedBounds.top;
+                if(currentCaption.approvedBounds.right>input.nativeCrop.right)caption.extent.right=currentCaption.approvedBounds.right;
+                if(currentCaption.approvedBounds.bottom>input.nativeCrop.bottom)caption.extent.bottom=currentCaption.approvedBounds.bottom;
+                caption.sourceGeneration=input.sourceGeneration;caption.sourceSequence=input.sourceSequence;
+                caption.presentationEpoch=input.presentationEpoch;caption.sourceFormatKey=nativeContract.sourceFormatKey;
+                caption.analysisDomainKey=nativeContract.analysisDomainKey;
+            }
+            else if (presentation.captionPreservation.available && result.available && result.captionPreservation.available &&
+                result.sourceGeneration==input.sourceGeneration && result.presentationEpoch==input.presentationEpoch &&
+                result.captionPreservation.sourceGeneration==input.sourceGeneration &&
+                result.captionPreservation.presentationEpoch==input.presentationEpoch &&
+                result.captionPreservation.sourceFormatKey==nativeContract.sourceFormatKey &&
+                result.captionPreservation.analysisDomainKey==nativeContract.analysisDomainKey &&
+                presentation.captionPreservation.sourceGeneration==input.sourceGeneration &&
+                presentation.captionPreservation.presentationEpoch==input.presentationEpoch &&
+                presentation.captionPreservation.sourceFormatKey==nativeContract.sourceFormatKey &&
+                presentation.captionPreservation.analysisDomainKey==nativeContract.analysisDomainKey &&
+                presentation.captionPreservation.sourceSequence==result.captionPreservation.sourceSequence &&
+                SameBounds(presentation.captionPreservation.extent,result.captionPreservation.extent) &&
+                presentation.captionPreservation.sourceSequence<=result.lastSubmittedPresentationSourceSequence &&
+                ContainedBounds(input.submittedBounds,presentation.captionPreservation.extent))
+                caption=presentation.captionPreservation;
             result = {};
             result.available = true;
             result.crop = input.nativeCrop;
             result.acceptedNativeCrop = nativeContract;
+            result.captionPreservation = caption;
             result.sourceGeneration = input.sourceGeneration;
             result.presentationEpoch = input.presentationEpoch;
             result.lastSubmittedSourceSequence = input.sourceSequence;
@@ -6286,6 +6417,35 @@ namespace AlphaSourceCrop
             crop.frameSourceGeneration != 0 &&
             crop.classification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
             SameBounds(crop.geometry, raster);
+        const auto heldCaption=HeldCaptionExtent(input);
+        if (HasCurrentPreparedSubtitlePresentation(crop) && proposed.applyCrop &&
+            proposed.owner==DecisionOwner::TRUSTED_CROP && !proposed.outwardExpanded && !proposed.verticallyTranslated &&
+            SameBounds(proposed.sourceBounds,crop.geometry))
+            return result;
+        if (crop.automaticCropEnabled && HasAcceptedNativeCrop(crop) &&
+            !crop.fullRasterPresentationAuthoritative && !committedFull &&
+            crop.latestObservationClassification!=ActivePictureClassification::FULL_RASTER_TRUSTED &&
+            heldCaption.available)
+        {
+            // The native reference may already have changed. Only the caption's
+            // measured pixels survive that change, never its old picture base.
+            auto bounds=HasCurrentNativePicturePreservation(input)
+                ? input.nativeOutwardPictureProof.candidate : crop.geometry;
+            IncludeCaptionExtent(bounds,heldCaption);
+            result.retained=true;result.nativeCrop=crop.geometry;
+            result.expanded=!SameBounds(bounds,crop.geometry);
+            result.presentation={};result.presentation.sourceBounds=bounds;
+            result.presentation.applyCrop=!SameBounds(bounds,raster);
+            result.presentation.outwardExpanded=result.expanded;
+            result.presentation.owner=DecisionOwner::OUTWARD_FIT;
+            result.presentation.reason="current native picture preserves successfully submitted caption extent while inspection is unknown";
+            auto& certificate=result.presentation.nativePresentation;
+            certificate.available=true;certificate.origin=NativePresentationOrigin::CAPTION_CONTINUITY;
+            certificate.nativeBase=crop.geometry;certificate.approvedBounds=bounds;
+            certificate.sourceGeneration=crop.frameSourceGeneration;certificate.sourceSequence=crop.frameSourceSequence;
+            certificate.presentationEpoch=input.presentationEpoch;certificate.captionPreservation=heldCaption;
+            return result;
+        }
         if (crop.automaticCropEnabled && HasAcceptedNativeCrop(crop) &&
             !crop.fullRasterPresentationAuthoritative &&
             crop.latestObservationClassification != ActivePictureClassification::FULL_RASTER_TRUSTED &&
@@ -6301,8 +6461,12 @@ namespace AlphaSourceCrop
                 crop.rasterWidth,crop.rasterHeight) &&
                 SameTrustedCropContract(anchor.crop,crop.geometry) &&
                 anchor.acceptedNativeCrop.available &&
+                anchor.acceptedNativeCrop.sourceGeneration==crop.acceptedNativeCrop.sourceGeneration &&
+                anchor.acceptedNativeCrop.sourceFormatKey==crop.frameSourceFormatKey &&
+                anchor.acceptedNativeCrop.analysisDomainKey==crop.frameAnalysisDomainKey &&
                 anchor.acceptedNativeCrop.acceptedSourceSequence == crop.acceptedNativeCrop.acceptedSourceSequence;
             if (compatibleSubmitted && anchor.submittedPresentationAvailable &&
+                !(anchor.captionPreservation.available && CurrentCaptionReplacesHeldExtent(input)) &&
                 ValidBounds(anchor.submittedPresentation,crop.rasterWidth,crop.rasterHeight))
                 bounds = anchor.submittedPresentation;
             result.retained = true;
@@ -6584,6 +6748,11 @@ namespace AlphaSourceCrop
             fixed.fixedAspect = input.fixedCropAspect;
             fixed.sourceBounds = input.presentation.sourceBounds;
             return EvaluateFixedAspectCrop(fixed);
+        }
+        if (input.presentation.nativePresentation.captionPreservation.available)
+        {
+            result.reason="submitted caption extent remains protected while current inspection is unknown";
+            return result;
         }
         const auto& submittedFillAnchor = input.evidence.submittedScopeAnchor;
         if (input.currentConfirmedPresentationConflict && input.presentation.applyCrop &&
