@@ -2,7 +2,7 @@
 
 ## Status
 
-Done (2026-10-30). User accepted the deployed result ("this all looks good") and authorized merge. PR #238 merged into v1.4.02-beta at a591ad3b532771911e85f8ef026958279f2065f0. The merge tree is identical to tested/deployed source 2abdf66e6593f36d55d0337442782d0ab2d86b6d. Current correction passed 716 selected native regressions and clean paired x64 Release builds; earlier OSD and integration validation remains recorded below. No additional playback restart or deployment was required for this merge.
+In Progress (2026-10-30). Reopened for the user-requested four-reviewer Sol medium audit after a new Prime incident: provisional 2.537:1, saved native picture about 2.33:1, and applied full-raster fallback despite safe retained bands. The accepted merge a591ad3b remains historical; current audit starts from its freshly fetched beta tree in E:/codex/videoprocessor/ar-policy-audit-20261030. Review measurement, retention, renderer integration, and test contracts; run existing native regressions and independently validate findings before proposing code changes. No new deployment is authorized by this audit task.
 
 ## Problem and evidence
 
@@ -62,3 +62,9 @@ The subsequent VP-0194 deployment at `955a8d54` includes this detector fix plus 
 Done (2026-10-30). User accepted the deployed result ("this all looks good") and authorized merge. PR #238 merged into v1.4.02-beta at a591ad3b532771911e85f8ef026958279f2065f0. The merge tree is identical to tested/deployed source 2abdf66e6593f36d55d0337442782d0ab2d86b6d. Current correction passed 716 selected native regressions and clean paired x64 Release builds; earlier OSD and integration validation remains recorded below. No additional playback restart or deployment was required for this merge.
 
 [PR #238](https://github.com/billslack2/videoprocessor/pull/238). User acceptance does not assert exhaustive coverage of every dark scene or format. Prior review evidence: Review (2026-10-30). Follow-up 2abdf66e corrects low-contrast native boundaries, carries their proof through expansion confirmation, and releases obsolete retained near-black crops. All 716 selected native regressions pass, including all 97 captured Eternals frames and retained-Scope component replay. Host and both renderers were deployed from verified clean x64 Release builds at 22:28 EDT. Live host/renderer identity and corrected native geometry 0,60-3840,2096 are verified; real moving Scope-to-IMAX transition acceptance remains for playback review.
+
+## Post-merge provisional-retention audit (2026-10-30)
+
+In Progress (2026-10-30). Reopened for the user-requested four-reviewer Sol medium audit after a new Prime incident: provisional 2.537:1, saved native picture about 2.33:1, and applied full-raster fallback despite safe retained bands. The accepted merge a591ad3b remains historical; current audit starts from its freshly fetched beta tree in E:/codex/videoprocessor/ar-policy-audit-20261030. Review measurement, retention, renderer integration, and test contracts; run existing native regressions and independently validate findings before proposing code changes. No new deployment is authorized by this audit task.
+
+Incident logs retained locally at C:/Users/bslac/.codex/visualizations/2026/10/30/01a18e4e-a033-7062-8c14-67fb1a200a5f/prime-254-incident-20261030.log. Current incident runtime is 82e3fc0a (subtitle follow-up), with unchanged ActivePictureEvidence, ActivePictureTransitionModel and AlphaSourceCropPolicy relative to beta. Do not infer nominal aspect from the screen or streaming provider.
