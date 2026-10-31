@@ -13,9 +13,10 @@
       <_VpExpectedRuntimePath Condition="'$(MSBuildProjectName)' == 'VideoProcessor-GUI'">$(_VpGateRoot)x64\Release\VideoProcessor-GUI.exe</_VpExpectedRuntimePath>
       <_VpExpectedRuntimePath Condition="'$(MSBuildProjectName)' == 'VideoProcessor-VPRenderer'">$(_VpGateRoot)x64\Release\vprenderer\VideoProcessorVPRenderer.dll</_VpExpectedRuntimePath>
       <_VpExpectedRuntimePath Condition="'$(MSBuildProjectName)' == 'VideoProcessor-VPRendererBeta'">$(_VpGateRoot)x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll</_VpExpectedRuntimePath>
+      <_VpActualRuntimePath Condition="'$(TargetPath)' != ''">$([System.IO.Path]::GetFullPath('$(TargetPath)'))</_VpActualRuntimePath>
     </PropertyGroup>
     <Error Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and '$(TargetPath)' == ''" Text="Runtime TargetPath is missing; use the canonical Release|x64 output layout." />
-    <Error Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and '$(TargetPath)' != '' and '$([System.IO.Path]::GetFullPath('$(TargetPath)'))' != '$(_VpExpectedRuntimePath)'" Text="Custom runtime output layouts require matching qualification support. Expected $(_VpExpectedRuntimePath), got $(TargetPath). Remove OutDir/TargetName overrides and build canonical Release|x64 outputs." />
+    <Error Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and '$(TargetPath)' != '' and '$(_VpActualRuntimePath)' != '$(_VpExpectedRuntimePath)'" Text="Custom runtime output layouts require matching qualification support. Expected $(_VpExpectedRuntimePath), got $(TargetPath). Remove OutDir/TargetName overrides and build canonical Release|x64 outputs." />
     <Delete Files="$(_VpGateRoot)artifacts\qualification\runtime-Release-x64.json" Condition="('$(_VpRuntimeProject)' == 'true' or '$(MSBuildProjectName)' == 'VideoProcessor-Lib') and '$(_VpGateChild)' != 'true'" />
   </Target>
   <Target Name="QualifyVpDirectRuntimeBuild" AfterTargets="Build" Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and '$(BuildingSolutionFile)' != 'true'">
