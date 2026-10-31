@@ -7,6 +7,7 @@
 #include <SubtitleBackingLip.h>
 #include <SubtitleMeasurementWorker.h>
 #include <SubtitleCueContinuation.h>
+#include <SubtitleCadenceGuard.h>
 #include <vprenderer/SubtitleAspectRetention.h>
 #include <vprenderer/SubtitleBarRecovery.h>
 #include <future>
@@ -757,6 +758,71 @@ public:
         Assert::IsTrue(proof.valid && proof.localGlyphsOnly);
         Assert::AreEqual(384,proof.pictureTop);Assert::AreEqual(1776,proof.pictureBottom);
         Assert::AreEqual(2160,current.current.pictureBottom);
+    }
+    TEST_METHOD(UhdWideAndThreeLineCuesSeedAndContinueWithinBoundedNativeBudget) {
+        for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,
+            AnalysisLumaFormat::DecodedDolbyVision422})for(int lines:{1,3}) {
+            NativeBarCueFixture f(format);
+            std::fill(f.pixels.begin(),f.pixels.begin()+3840*2160,f.Word(64));
+            for(int y=384;y<1776;++y)for(int x=0;x<3840;++x)
+                f.pixels[size_t(y)*3840+x]=f.Word(300);
+            auto& o=f.acquired.current;o.text.lineCount=lines;
+            for(int line=0;line<lines;++line) {
+                const int top=lines==1?1936:1808+112*line;
+                o.text.lineBounds[line]={918,top,2926,top+96};
+                o.text.lineSignatures[line].fill(0x55);
+                for(int y=top;y<top+96;++y)for(int x=918;x<2926;++x)
+                    if((x-918)%28<12)f.pixels[size_t(y)*3840+x]=f.Word(600);
+            }
+            o.text.bounds={908,o.text.lineBounds[0].top-10,2936,
+                o.text.lineBounds[lines-1].bottom+10};
+            auto ink=std::make_shared<SubtitleInkSnapshot>(*o.ink);
+            std::fill(ink->rawInk.begin(),ink->rawInk.end(),0);
+            std::fill(ink->ownedInk.begin(),ink->ownedInk.end(),0);
+            std::fill(ink->blackBacking.begin(),ink->blackBacking.end(),0);
+            for(int y=0;y<540;++y)for(int x=0;x<960;++x) {
+                const size_t i=size_t(y)*960+x;const uint64_t bit=uint64_t(1)<<(i%64);
+                const int value=f.pixels[size_t(y*4)*3840+x*4]>>6;
+                if(value>=500){ink->rawInk[i/64]|=bit;ink->ownedInk[i/64]|=bit;}
+                if(value<=96)ink->blackBacking[i/64]|=bit;
+            }
+            o.ink=ink;f.acquired.text=o.text;
+            SubtitleCueContinuationGuard guard;SubtitleBoxPresentation tracker;
+            const auto initial=tracker.Consume(f.acquired);
+            Assert::IsTrue(initial.detected);
+            Assert::IsTrue(guard.Remember(f.acquired,initial,f.base,f.Native()),
+                L"A healthy wide UHD caption must acquire its continuation template.");
+            auto lowBudgetGuard=guard;
+            const auto low=lowBudgetGuard.Prepare(f.OppositeMissing(2),f.Native(),f.base,250,41.708,65536);
+            Assert::IsFalse(low.valid);Assert::AreEqual("sample-budget",low.reason);
+            const auto started=std::chrono::steady_clock::now();
+            const auto current=f.OppositeMissing(2);
+            const auto proof=guard.Prepare(current,f.Native(),f.base,250,41.708);
+            const double proofMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+            Logger::WriteMessage((std::string("UHD continuation format=")+std::to_string(int(format))+
+                " lines="+std::to_string(lines)+" samples="+std::to_string(proof.samples)+
+                " proof_ms="+std::to_string(proofMs)+"\n").c_str());
+            Assert::IsTrue(proof.valid && proof.localGlyphsOnly);
+            Assert::IsTrue(proof.samples>65536 && proof.samples<=SubtitleCueContinuationGuard::SampleBudget);
+            Assert::AreEqual(lines,proof.accepted.lineCount);
+            const auto held=tracker.Consume(current,250,41.708,nullptr,false,false,&proof);
+            Assert::IsTrue(held.detected && held.held);Assert::AreEqual(initial.cue,held.cue);
+            Assert::AreEqual(0,current.current.pictureTop);
+            Assert::AreEqual(1776,current.current.pictureBottom);
+            // Complete disappearance or even one changed glyph must still veto
+            // continuation immediately, regardless of unused hold time.
+            for(int fault=0;fault<3;++fault) {
+                auto changedGuard=guard;
+                const auto saved=f.pixels;
+                if(fault<2)for(int y=o.text.lineBounds[0].top;y<o.text.lineBounds[0].bottom;++y)
+                    for(int x=918;x<(fault==0?2926:930);++x)
+                        f.pixels[size_t(y)*3840+x]=f.Word(64);
+                else for(int y=2140;y<2156;++y)for(int x=1500;x<1540;++x)
+                    f.pixels[size_t(y)*3840+x]=f.Word(600);
+                Assert::IsFalse(changedGuard.Prepare(f.OppositeMissing(3),f.Native(),f.base,250,41.708).valid);
+                f.pixels=saved;
+            }
+        }
     }
     TEST_METHOD(NativeBarCueContinuityRejectsChangedGlyphsBackingAndNewInk) {
         for(int fault=0;fault<6;++fault) {
@@ -4775,6 +4841,246 @@ public:
         Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
         Assert::IsFalse(SubtitleBoxLookahead::RebindIndependentPicture(a,b.sharedPicture));
     }
+    TEST_METHOD(NativeCapturedCadenceRetainsFinalReducedGeometryWithoutPictureAuthority) {
+        char* value=nullptr;size_t size=0;
+        _dupenv_s(&value,&size,"VP_SUBTITLE_CADENCE_REPLAY_PATH");
+        const std::string path=value?value:"";std::free(value);
+        if(path.empty()) {
+            Logger::WriteMessage(L"Native cadence replay skipped: VP_SUBTITLE_CADENCE_REPLAY_PATH is not set.");
+            return;
+        }
+        Assert::IsTrue(path.size()>4 && path.substr(path.size()-4)==".bin",
+            L"Explicit native cadence replay must name a .bin capture.");
+        std::ifstream input(path,std::ios::binary);
+        Assert::IsTrue(bool(input),L"Explicit native cadence replay capture must exist.");
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)),{});
+        std::ifstream metadata(path.substr(0,path.size()-4)+".txt");
+        int width=0,height=0,format=0,encoding=0,colorspace=0,top=0,bottom=0,script=0,range=0;
+        size_t rowBytes=0,chromaRowBytes=0;
+        metadata>>width>>height>>rowBytes>>chromaRowBytes>>format>>encoding>>colorspace>>top>>bottom>>script>>range;
+        Assert::IsTrue(bool(metadata),L"Explicit native cadence replay requires its complete metadata sidecar.");
+        Assert::IsTrue(width>0 && height>0 && top>0 && bottom>top && bottom<height,
+            L"Native cadence replay requires independently supplied two-bar picture geometry.");
+        AnalysisLumaSource source;source.data=bytes.data();source.dataBytes=bytes.size();
+        source.width=width;source.height=height;source.rowBytes=rowBytes;source.chromaRowBytes=chromaRowBytes;
+        source.format=AnalysisLumaFormat(format);source.encoding=VideoFrameEncoding(encoding);
+        source.colorspace=ColorSpace(colorspace);source.range=AnalysisLumaRange(range);source.generation=2;
+        Assert::IsTrue(source.IsValid(),L"Explicit native cadence replay must contain all native source planes.");
+        const ActivePictureBounds base{0,top,width,bottom,width,height,0.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        // Only source identity and independently recorded picture bounds are supplied.
+        // Every accepted glyph, capture panel and backing measurement comes from the scanner.
+        auto observed=std::make_unique<std::vector<SubtitleBoxObservation>>();
+        for(uint64_t sequence:{1ull,3ull,5ull,7ull}) {
+            auto identity=Identity(sequence);identity.transportGeneration=source.generation;
+            identity.analysisDomainKey=55;identity.captureTimestamp=sequence*166833;
+            SubtitlePictureAuthority shared;shared.required=true;shared.identity=identity;shared.bounds=base;
+            SubtitleBoxDetector scanner;scanner.SetNearBarDistance(20);scanner.SetScriptHint(SubtitleScriptHint(script));
+            auto measured=SubtitleBoxLookahead::Measure(scanner,source,ExtractActivePictureEvidence(source),
+                identity,false,{},7,8,shared);
+            measured.analysisStride=2;
+            const std::string report=std::string("Native cadence measured: reason=")+measured.text.diagnosticReason+
+                " bar="+measured.barEvidence.reason+" lines="+std::to_string(measured.text.lineCount)+"\n";
+            Logger::WriteMessage(report.c_str());
+            Assert::IsTrue(measured.analyzed && measured.text.detected && !measured.text.held && !measured.text.workLimit,
+                L"Explicit native cadence replay must produce a real complete subtitle measurement; see diagnostic log.");
+            observed->push_back(std::move(measured));
+        }
+        auto ready=std::make_unique<SubtitleBoxPreview>();
+        *ready=SubtitleBoxLookahead::Resolve(observed->data(),observed->size(),7,8);
+        auto three=std::make_unique<SubtitleBoxPreview>();
+        *three=SubtitleBoxLookahead::Resolve(observed->data(),3,7,8);
+        Logger::WriteMessage((std::string("Native crowded window: three=")+std::to_string(three->text.lineCount)+
+            " four="+std::to_string(ready->text.lineCount)+"\n").c_str());
+        const auto rect=[](const SubtitleBoxRect& r) {return std::to_string(r.left)+","+std::to_string(r.top)+
+            "-"+std::to_string(r.right)+","+std::to_string(r.bottom);};
+        for(int row=0;row<observed->front().text.lineCount;++row) {
+            const auto& first=observed->front();const auto& last=(*observed)[2];
+            Logger::WriteMessage((std::string("Native crowded row=")+std::to_string(row)+
+                " glyph="+rect(first.text.lineBounds[row])+" whole="+rect(first.text.provenSourcePanel)+
+                " finite="+rect(first.text.provenLinePanels[row])+" capture="+rect(first.text.lineCapturePanels[row])+
+                " coverage="+std::to_string(SubtitleBoxLookahead::OwnedLinePixelCoverage(first,row,last))+
+                " backing="+std::to_string(SubtitleBoxLookahead::SameCrowdedBacking(first,row,last,row,12))+
+                " short="+std::to_string(SubtitleBoxLookahead::ShortWindowCardLine(observed->data(),3,row,12))+"\n").c_str());
+        }
+        if(observed->front().text.lineCount==3) {
+            Assert::AreEqual(2,three->text.lineCount,L"Three scans without finite row proof remain conservative.");
+            auto shortTrackerStorage=std::make_unique<SubtitleBoxPresentation>();auto& shortTracker=*shortTrackerStorage;
+            shortTracker.RefreshReferencePixels(*three,source);
+            const auto first=shortTracker.Consume(*three,250,1000.0/23.976);
+            Assert::IsTrue(first.detected);
+            auto next=std::make_unique<SubtitleBoxPreview>();
+            *next=SubtitleBoxLookahead::Resolve(observed->data()+1,3,7,8);
+            Assert::AreEqual(2,next->text.lineCount);
+            shortTracker.RefreshReferencePixels(*next,source);
+            const auto historyStart=std::chrono::steady_clock::now();
+            const auto full=shortTracker.Consume(*next,250,1000.0/23.976);
+            const double historyMs=std::chrono::duration<double,std::milli>(
+                std::chrono::steady_clock::now()-historyStart).count();
+            Logger::WriteMessage((std::string("Native crowded history consume_ms=")+std::to_string(historyMs)+"\n").c_str());
+            Assert::IsTrue(full.detected && !full.held && !full.confirmationPending);
+            Assert::AreEqual(3,full.lineCount,L"Four independent raw scans across the moving three-scan window must recover the CURRENT complete cue.");
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(full.bounds,next->current.text.bounds));
+        }
+        auto trackerStorage=std::make_unique<SubtitleBoxPresentation>();auto& tracker=*trackerStorage;
+        tracker.RefreshReferencePixels(*ready,source);
+        const auto accepted=tracker.Consume(*ready,250,1000.0/59.94);
+        Logger::WriteMessage((std::string("Native cadence acquisition: ")+tracker.DecisionReason()+"\n").c_str());
+        Assert::IsTrue(accepted.detected && !accepted.held && !accepted.confirmationPending,
+            L"Real captured glyphs must acquire through normal presentation before seeding cadence.");
+        auto paddingStorage=std::make_unique<SubtitlePaddingGuard>();auto& padding=*paddingStorage;
+        SubtitlePaddingPolicy paddingPolicy;paddingPolicy.glyphRelative=true;
+        const auto safe=padding.Consume(accepted,*ready,{72,34,24},paddingPolicy);
+        const auto display=padding.DisplayBounds();
+        auto compositorStorage=std::make_unique<SubtitleCutPastePresentation>();auto& compositor=*compositorStorage;
+        auto geometry=compositor.Consume(accepted,*ready,safe,25,&display);
+        geometry=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(geometry,{0,top,width,bottom},25),
+            30,safe,true,false);
+        Assert::IsTrue(geometry.valid,L"The real capture must produce valid normal fitted subtitle geometry.");
+        Assert::IsTrue(std::abs(geometry.glyphScale-0.7)<0.0001,L"Replay must exercise the 70-percent glyph shader path.");
+        auto guardStorage=std::make_unique<SubtitleCadenceGuard>();auto& guard=*guardStorage;
+        const bool seeded=guard.RememberAccepted(*ready,accepted,source,base,geometry,1000.0/59.94,250,5);
+        Logger::WriteMessage((std::string("Native cadence seed: ")+guard.DecisionReason()+
+            " samples="+std::to_string(guard.SampleCount())+"\n").c_str());
+        Assert::IsTrue(seeded,L"The real accepted fitted/reduced footprint must seed cadence; see diagnostic log.");
+        auto skipped=std::make_unique<SubtitleBoxPreview>();
+        skipped->policyGeneration=7;skipped->continuityGeneration=8;
+        skipped->current=observed->front();auto& current=skipped->current;
+        current.identity=Identity(2);current.identity.transportGeneration=source.generation;
+        current.identity.analysisDomainKey=55;current.identity.captureTimestamp=2*166833;
+        current.sharedPicture.identity=current.identity;current.analyzed=false;current.cadenceSkipped=true;
+        current.text={};current.ink.reset();current.barAuthority=false;current.independentBarAnalysis=false;
+        auto proof=std::make_unique<SubtitleCadenceProof>();
+        *proof=guard.Prepare(*skipped,source,base,1000.0/59.94,250);
+        Logger::WriteMessage((std::string("Native cadence current proof: ")+proof->reason+
+            " samples="+std::to_string(proof->samples)+"\n").c_str());
+        Assert::IsTrue(proof->valid,L"Identical real native antialiased glyphs must survive an explicit skipped input.");
+        const auto held=tracker.Consume(proof->preview,250,1000.0/59.94,nullptr,false,false,&proof->continuation);
+        Assert::IsTrue(held.detected && held.held && proof->continuation.MatchesCue(held));
+        Assert::AreEqual(accepted.cue,held.cue);
+        Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.source,proof->geometry.source));
+        Assert::IsTrue(SubtitleCueContinuation::SameRect(geometry.destination,proof->geometry.destination));
+        Assert::AreEqual(geometry.glyphScale,proof->geometry.glyphScale);
+        Assert::IsFalse(proof->preview.current.barAuthority || proof->preview.current.independentBarAnalysis ||
+            proof->preview.current.subtitleArProof.accepted || proof->preview.current.barTrackingAuthority);
+        Assert::AreEqual(0u,proof->preview.followingCount);
+        Assert::IsFalse(proof->preview.currentLinesConfirmed);
+        if(accepted.lineCount==3) {
+            auto nextStrong=std::make_unique<SubtitleBoxPreview>();
+            *nextStrong=SubtitleBoxLookahead::Resolve(observed->data()+1,3,7,8);
+            Assert::AreEqual(2,nextStrong->text.lineCount);
+            tracker.RefreshReferencePixels(*nextStrong,source);
+            const auto resumed=tracker.Consume(*nextStrong,250,1000.0/59.94);
+            Assert::IsTrue(resumed.detected && !resumed.held && !resumed.confirmationPending);
+            Assert::AreEqual(3,resumed.lineCount,
+                L"A real validated cadence proof must carry raw history to the next independent three-scan window.");
+        }
+        const auto benchmark=[&](const AnalysisLumaSource& pixels,const char* label,uint64_t domain) {
+            // Identical captured pixels isolate guard cost. Fresh source labels
+            // here model source advancement only; this is not playback evidence.
+            auto seed=std::make_unique<SubtitleBoxPreview>(*ready);
+            seed->current.identity.analysisDomainKey=domain;
+            seed->current.sharedPicture.identity=seed->current.identity;
+            auto skip=std::make_unique<SubtitleBoxPreview>(*skipped);
+            skip->current.identity.analysisDomainKey=domain;
+            skip->current.sharedPicture.identity=skip->current.identity;
+            const auto& original=*ready->current.ink;const auto& fresh=*(*observed)[1].ink;
+            size_t detectorDifference=0,paletteDifference=0,ownedPaletteDifference=0;
+            int firstX=-1,firstY=-1,gridX=-1,gridY=-1;
+            for(int y=0;y<original.height;++y)for(int x=0;x<original.width;++x) {
+                const int sx=x*original.step,sy=original.sourceRows[y];
+                const auto inside=[&](const SubtitleBoxRect& r) {
+                    return r.Valid() && sx>=r.left && sx<r.right && sy>=r.top && sy<r.bottom;
+                };
+                bool captured=false;
+                for(const auto& r:geometry.glyphLines)captured|=inside(r);
+                if(!captured || !inside(geometry.content))continue;
+                if(sy>=geometry.pictureTop && sy<geometry.pictureBottom && !inside(geometry.pictureCapture))continue;
+                if(gridX<0) {gridX=x;gridY=y;}
+                AnalysisLumaSample value;Assert::IsTrue(pixels.Sample(sx,sy,value));
+                const bool nativeInk=value.luma>=original.inkFloor &&
+                    std::abs(int(value.chromaU)-original.inkU)<=80 && std::abs(int(value.chromaV)-original.inkV)<=80;
+                detectorDifference+=original.Get(x,y)!=fresh.Get(x,y) || original.Get(x,y,true)!=fresh.Get(x,y,true);
+                if(nativeInk!=original.Get(x,y)) {
+                    ++paletteDifference;if(firstX<0) {firstX=sx;firstY=sy;}
+                }
+                ownedPaletteDifference+=original.Get(x,y,true) && !nativeInk;
+            }
+            Logger::WriteMessage((std::string("Native rearm masks format=")+label+
+                " detector_fresh_difference="+std::to_string(detectorDifference)+
+                " detector_native_palette_difference="+std::to_string(paletteDifference)+
+                " owned_native_palette_difference="+std::to_string(ownedPaletteDifference)+
+                " first_palette_difference="+std::to_string(firstX)+","+std::to_string(firstY)+"\n").c_str());
+            Assert::AreEqual(size_t(0),detectorDifference,L"Identical captured pixels must produce identical fresh detector evidence.");
+            auto measuredStorage=std::make_unique<SubtitleCadenceGuard>();auto& measured=*measuredStorage;
+            const auto elapsed=[](std::chrono::steady_clock::time_point start) {
+                return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+            };
+            auto start=std::chrono::steady_clock::now();
+            const bool seeded=measured.RememberAccepted(*seed,accepted,pixels,base,geometry,1000.0/59.94,250,5);
+            const double seedMs=elapsed(start);Assert::IsTrue(seeded);
+            start=std::chrono::steady_clock::now();
+            auto first=std::make_unique<SubtitleCadenceProof>();
+            *first=measured.Prepare(*skip,pixels,base,1000.0/59.94,250);
+            const double proofMs=elapsed(start);Assert::IsTrue(first->valid);
+            seed->current=(*observed)[1];seed->current.identity.analysisDomainKey=domain;
+            seed->current.sharedPicture.identity=seed->current.identity;
+            seed->text=accepted;
+            start=std::chrono::steady_clock::now();
+            const bool rearmed=measured.RememberAccepted(*seed,accepted,pixels,base,geometry,1000.0/59.94,250,5);
+            const double rearmMs=elapsed(start);Assert::IsTrue(rearmed);
+            const std::string rearmReason=measured.DecisionReason();
+            Assert::AreEqual("cadence-seed-rearmed",measured.DecisionReason(),
+                L"An identical independent native detector scan must rearm rather than rebuild the full native footprint.");
+            skip->current.identity.acceptedSequence=4;skip->current.identity.sourceFrameNumber=4;
+            skip->current.identity.captureTimestamp=4*166833;
+            skip->current.sharedPicture.identity=skip->current.identity;
+            start=std::chrono::steady_clock::now();
+            auto second=std::make_unique<SubtitleCadenceProof>();
+            *second=measured.Prepare(*skip,pixels,base,1000.0/59.94,250);
+            const double nextProofMs=elapsed(start);Assert::IsTrue(second->valid);
+            Logger::WriteMessage((std::string("Native guard timing format=")+label+
+                " samples="+std::to_string(measured.SampleCount())+" seed_ms="+std::to_string(seedMs)+
+                " proof_ms="+std::to_string(proofMs)+" rearm_ms="+std::to_string(rearmMs)+
+                " rearm_reason="+rearmReason+" next_proof_ms="+std::to_string(nextProofMs)+
+                " steady_pair_ms="+std::to_string(rearmMs+nextProofMs)+"\n").c_str());
+            Assert::IsTrue(gridX>=0 && gridY>=0);
+            auto changed=std::make_shared<SubtitleInkSnapshot>(*seed->current.ink);
+            const size_t bit=size_t(gridY)*changed->width+gridX;
+            changed->rawInk[bit/64]^=uint64_t(1)<<(bit%64);
+            seed->current.ink=changed;seed->current.identity.acceptedSequence=5;
+            seed->current.identity.sourceFrameNumber=5;seed->current.identity.captureTimestamp=5*166833;
+            seed->current.sharedPicture.identity=seed->current.identity;
+            Assert::IsTrue(measured.RememberAccepted(*seed,accepted,pixels,base,geometry,1000.0/59.94,250,5));
+            Assert::AreEqual("cadence-seeded",measured.DecisionReason(),
+                L"Changed detector evidence cannot use the immutable detector baseline fast rearm.");
+            Assert::IsTrue(measured.SampleCount()>0);
+        };
+        benchmark(source,"captured-native",55);
+        if(source.format==AnalysisLumaFormat::NativeYuv422 && width%2==0) {
+            std::vector<uint16_t> planar(size_t(width)*height*2);
+            for(int y=0;y<height;++y)for(int x=0;x<width;++x) {
+                AnalysisLumaSample value;if(!source.Sample(x,y,value))Assert::Fail(L"Native conversion sample failed.");
+                planar[size_t(y)*width+x]=uint16_t(value.luma<<6);
+                if(!(x&1)) {
+                    const size_t uv=size_t(width)*height+size_t(y)*width+x;
+                    planar[uv]=uint16_t(value.chromaU<<6);planar[uv+1]=uint16_t(value.chromaV<<6);
+                }
+            }
+            auto p210=source;p210.data=reinterpret_cast<const uint8_t*>(planar.data());
+            p210.dataBytes=planar.size()*sizeof(uint16_t);p210.rowBytes=p210.chromaRowBytes=size_t(width)*2;
+            p210.format=AnalysisLumaFormat::P210;p210.encoding=VideoFrameEncoding::P210;
+            Assert::IsTrue(p210.IsValid());
+            // Validate every native Y/U/V sample before timing either guard.
+            bool exact=true;
+            for(int y=0;y<height;++y)for(int x=0;x<width;++x) {
+                AnalysisLumaSample a,b;
+                exact &= source.Sample(x,y,a) && p210.Sample(x,y,b) &&
+                    a.luma==b.luma && a.chromaU==b.chromaU && a.chromaV==b.chromaV;
+            }
+            Assert::IsTrue(exact,L"Lossless P210 conversion must preserve every native Y/U/V sample.");
+            benchmark(p210,"lossless-P210",56);
+        }
+    }
     TEST_METHOD(NativePausedInspectionCandidateFindsCurrentCaptionWithoutSharedAuthority) {
         char* value=nullptr;size_t size=0;_dupenv_s(&value,&size,"VP_SUBTITLE_PAUSED_REPLAY_PATH");
         const std::string path=value?value:"";std::free(value);
@@ -5466,6 +5772,79 @@ public:
                 capture.right<=proof.verifiedBounds.right && capture.bottom<=proof.verifiedBounds.bottom);
         }
     }
+    TEST_METHOD(DenseCrossingCueCanUseOnlyFreshlyWitnessedFiniteCardWhitespace) {
+        for(int scale:{1,6})for(bool top:{false,true}) {
+            auto pixels=Pixels();LocalBacking(pixels,315);
+            ArabicTextLine(pixels,220,307,180,14);
+            if(top)MirrorLumaRows(pixels);
+            std::vector<uint16_t> native;
+            if(scale>1) {
+                native.assign(size_t(640*scale)*(360*scale)*3/2,uint16_t(512<<6));
+                for(int y=0;y<360*scale;++y)for(int x=0;x<640*scale;++x)
+                    native[size_t(y)*(640*scale)+x]=pixels[size_t(y/scale)*640+x/scale];
+            }
+            auto source=Source(scale==1?pixels:native);
+            source.width*=scale;source.height*=scale;
+            source.rowBytes=source.chromaRowBytes=size_t(source.width)*2;
+            const int plane=(top?45:315)*scale;
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+            detector.SetScriptHint(SubtitleScriptHint::Arabic);
+            const auto candidate=detector.Analyze(source,45*scale,315*scale,1,1);
+            const auto ink=detector.InkSnapshot();
+            Assert::IsTrue(candidate.detected && !candidate.held && ink!=nullptr);
+            const auto tight=ProveLocalSubtitleGlyphBacking(source,candidate,ink.get(),plane,!top);
+            if(scale==1) {
+                Assert::IsFalse(tight.accepted);
+                Assert::AreEqual("insufficient-unowned-backing",tight.reason);
+            }
+            const auto started=std::chrono::steady_clock::now();
+            const auto finite=ProveFiniteCardLocalSubtitleGlyphBacking(source,candidate,
+                ink.get(),45*scale,315*scale,!top);
+            const double proofMs=std::chrono::duration<double,std::milli>(
+                std::chrono::steady_clock::now()-started).count();
+            Logger::WriteMessage((std::string("Finite card local proof scale=")+std::to_string(scale)+
+                " top="+std::to_string(top)+" ms="+std::to_string(proofMs)+
+                " reason="+finite.reason+"\n").c_str());
+            Assert::IsTrue(finite.accepted,
+                L"witnessed current card whitespace must satisfy unchanged local proof limits");
+            Assert::IsTrue(finite.verifiedBounds.left<candidate.bounds.left);
+            Assert::IsTrue(finite.verifiedBounds.right>candidate.bounds.right);
+            if(scale>1) {
+                // The final native proof retains its independent geometry/work
+                // limit even if a caller nominates a much larger card rectangle.
+                auto large=candidate;large.bounds={400,1340,3400,2050};
+                large.anchor={600,1800,3200,2000};
+                const SubtitleBoxRect excessive{384,1336,3456,1890};
+                const auto bounded=ProveLocalSubtitleGlyphBacking(source,large,ink.get(),1890,true,&excessive);
+                Assert::IsFalse(bounded.accepted);
+                Assert::AreEqual("local-work-limit",bounded.reason);
+                continue;
+            }
+            for(int fault=0;fault<5;++fault) {
+                auto changed=pixels;auto text=candidate;
+                if(fault==0) {
+                    // Remove every physical finite side witness while retaining
+                    // the old metadata. Black scenery is never a finite card.
+                    Fill(changed,0,top?0:270,640,top?90:360,64);
+                    if(top) {auto tmp=Pixels();LocalBacking(tmp,315);
+                        ArabicTextLine(tmp,220,307,180,14);MirrorLumaRows(tmp);
+                        for(int y=39;y<53;++y)for(int x=220;x<400;++x)changed[size_t(y)*640+x]=tmp[size_t(y)*640+x];}
+                    else ArabicTextLine(changed,220,307,180,14);
+                }
+                if(fault==1)Fill(changed,220,top?39:307,400,top?53:321,64);
+                if(fault==2)text.held=true;
+                if(fault==3)text.workLimit=true;
+                if(fault==4) {
+                    // A broad textured intrusion cannot become dark backing
+                    // merely because a previous candidate had a valid rectangle.
+                    Fill(changed,140,top?45:283,500,top?77:315,300);
+                }
+                Assert::IsFalse(ProveFiniteCardLocalSubtitleGlyphBacking(Source(changed),text,
+                    ink.get(),45,315,!top).accepted);
+            }
+        }
+    }
+
     TEST_METHOD(LocalGlyphBackingCannotReuseDisappearedOrChangedCurrentInk) {
         auto pixels=Pixels();LocalBacking(pixels,315);Text(pixels,220,307,12);
         const auto source=Source(pixels);SubtitleBoxDetector detector;
@@ -5636,5 +6015,145 @@ public:
         SubtitleBoxPresentation tracker;
         Assert::IsFalse(tracker.Consume(preview).detected);
     }
+
+    TEST_METHOD(ThreeReadySourceFramesAdmitIndividuallyProvenFiniteThirdRow) {
+        for(bool top:{false,true}) {
+            auto a=NearCardThreeRows(1,top),b=NearCardThreeRows(2,top),c=NearCardThreeRows(3,top);
+            // The surrounding picture can join the card at one place, defeating
+            // a whole-cue rectangle without invalidating individual finite rows.
+            for(auto* frame:{&a,&b,&c})for(int row=0;row<3;++row)
+                frame->text.provenLinePanels[row]=frame->text.lineCapturePanels[row];
+            Assert::IsFalse(a.text.provenSourcePanel.Valid());
+            Assert::AreEqual(3,Resolve({a,b,c}).text.lineCount);
+            Assert::AreEqual(2,Resolve({a,b}).text.lineCount,
+                L"two independent samples retain the complete-card requirement");
+            const int farRow=top?2:0;
+            for(int failure=0;failure<7;++failure) {
+                auto missing=c;
+                if(failure==0)missing.text.provenLinePanels[farRow]={};
+                if(failure==1)missing.text.provenLinePanels[farRow].bottom=missing.text.lineBounds[farRow].bottom-1;
+                if(failure==2)missing.text.lineSignatures[farRow].fill(0xaa);
+                if(failure==3)missing.pendingRefresh=true;
+                if(failure==4)missing.identity.analysisDomainKey++;
+                if(failure==5)missing.text.capturePanelMeasured=false;
+                if(failure==6) {
+                    auto ink=std::make_shared<SubtitleInkSnapshot>(*missing.ink);
+                    const auto& row=missing.text.lineBounds[farRow];
+                    for(int y=row.top;y<row.bottom;++y)for(int x=row.left;x<row.right;++x) {
+                        const size_t pixel=size_t(y)*ink->width+x;
+                        ink->rawInk[pixel/64]&=~(uint64_t(1)<<(pixel%64));
+                        ink->ownedInk[pixel/64]&=~(uint64_t(1)<<(pixel%64));
+                    }
+                    missing.ink=ink;
+                }
+                Assert::IsTrue(Resolve({a,b,missing}).text.lineCount<3,
+                    L"missing backing, changed glyphs or foreign/unfinished samples cannot certify a third row");
+            }
+            for(auto* frame:{&a,&b,&c})frame->text.provenLinePanels={};
+            Assert::AreEqual(2,Resolve({a,b,c}).text.lineCount,
+                L"local capture/cleanup rectangles without finite boundary proof remain insufficient");
+        }
+    }
+
+
+    TEST_METHOD(PreviousRawScanCompletesCrowdedHorizonWithoutBorrowingPastGlyphs) {
+        struct Workspace {
+            std::array<SubtitleBoxObservation,4> frames;
+            SubtitleBoxObservation previous;
+            SubtitleBoxPreview shortWindow,current,initial,unknown,strided,unavailable;
+            SubtitleBoxPresentation tracker,interrupted,backlog;
+        };
+        for(bool top:{false,true}) {
+            auto storage=std::make_unique<Workspace>();
+            auto& a=storage->frames[0];auto& b=storage->frames[1];
+            auto& c=storage->frames[2];auto& d=storage->frames[3];
+            a=NearCardThreeRows(1,top);b=NearCardThreeRows(2,top);
+            c=NearCardThreeRows(3,top);d=NearCardThreeRows(4,top);
+            for(auto* frame:{&a,&b,&c,&d}) {frame->policyGeneration=7;frame->continuityGeneration=8;}
+            auto& shortWindow=storage->shortWindow;shortWindow=Resolve({b,c,d});
+            Assert::AreEqual(2,shortWindow.text.lineCount);
+            Assert::IsTrue(SubtitleBoxLookahead::ConfirmCrowdedCurrentWithPrevious(a,shortWindow));
+            for(int failure=0;failure<10;++failure) {
+                auto& previous=storage->previous;previous=a;
+                auto& current=storage->current;current=shortWindow;
+                if(failure==0)previous.pendingRefresh=true;
+                if(failure==1)previous.identity.acceptedSequence--;
+                if(failure==2)previous.identity.analysisDomainKey++;
+                if(failure==3)previous.continuityGeneration++;
+                if(failure==4)current.followingCount=1;
+                if(failure==5)current.following[1].text.lineSignatures[top?2:0].fill(0xaa);
+                if(failure==6)current.following[1].identity.sourceFrameNumber++;
+                if(failure==7)current.following[1].identity.captureTimestamp=0;
+                if(failure==8) {
+                    auto ink=std::make_shared<SubtitleInkSnapshot>(*current.current.ink);
+                    std::fill(ink->ownedInk.begin(),ink->ownedInk.end(),0);current.current.ink=ink;
+                }
+                if(failure==9) {current.current.text.lineCapturePanels={};current.current.text.capturePanel={};}
+                Assert::IsFalse(SubtitleBoxLookahead::ConfirmCrowdedCurrentWithPrevious(previous,current),
+                    L"Missing, foreign, duplicated or changed current/future evidence cannot promote a historical row.");
+            }
+            auto& tracker=storage->tracker;
+            storage->initial=Resolve({a,b,c});
+            const auto first=tracker.Consume(storage->initial);Assert::AreEqual(2,first.lineCount);
+            const auto full=tracker.Consume(shortWindow);
+            Assert::IsTrue(full.detected && !full.held && !full.confirmationPending);
+            Assert::AreEqual(3,full.lineCount);
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(full.bounds,b.text.bounds));
+            auto& interrupted=storage->interrupted;
+            interrupted.Consume(storage->initial);
+            auto& unknown=storage->unknown;unknown=shortWindow;unknown.available=false;
+            Assert::IsFalse(interrupted.Consume(unknown).detected);
+            Assert::AreEqual(2,interrupted.Consume(shortWindow).lineCount,
+                L"An unknown source clears unaccepted history rather than completing a fourth vote.");
+            for(auto* frame:{&a,&b,&c,&d}) {
+                frame->identity.acceptedSequence=2*frame->identity.acceptedSequence-1;
+                frame->identity.sourceFrameNumber=frame->identity.acceptedSequence;
+                frame->identity.captureTimestamp=frame->identity.acceptedSequence*1000;
+                frame->analysisStride=2;
+            }
+            auto& strided=storage->strided;strided=Resolve({b,c,d});
+            Assert::AreEqual(2,strided.text.lineCount);
+            Assert::IsTrue(SubtitleBoxLookahead::ConfirmCrowdedCurrentWithPrevious(a,strided),
+                L"Four real stride-two analyses count as four observations; skipped frames add no votes.");
+            auto& backlog=storage->backlog;storage->initial=Resolve({a,b,c});
+            Assert::AreEqual(2,backlog.Consume(storage->initial).lineCount);
+            auto& unavailable=storage->unavailable;unavailable=strided;unavailable.available=false;
+            unavailable.current.identity.acceptedSequence=2;
+            unavailable.current.identity.sourceFrameNumber=2;
+            Assert::IsFalse(backlog.Consume(unavailable,250,1000.0/59.94,&a.identity,true).detected);
+            Assert::AreEqual(2,backlog.Consume(strided).lineCount,
+                L"Even a matching backlog token cannot carry unaccepted raw history through an unavailable source.");
+        }
+    }
+
+    TEST_METHOD(IndependentFiniteRowCardsAcquireThreeLinesWithoutWholeCueCard) {
+        for(bool top:{false,true}) {
+            auto pixels=Pixels();
+            // Bright picture gaps separate the three actual black caption
+            // strips. There is no one opaque rectangle enclosing the cue.
+            Text(pixels,220,258,15);Text(pixels,200,286,18);Text(pixels,240,314,12);
+            if(top)MirrorLumaRows(pixels);
+            auto a=Measure(pixels,1),b=Measure(pixels,2),c=Measure(pixels,3);
+            Assert::IsTrue(a.text.detected);
+            Assert::AreEqual(3,a.text.lineCount);
+            Assert::IsFalse(a.text.provenSourcePanel.Valid());
+            const int anchor=SubtitleBoxLookahead::BarAnchorLine(a);
+            int farthest=-1,distance=-1;
+            for(int row=0;row<a.text.lineCount;++row) {
+                const auto& glyph=a.text.lineBounds[row];
+                const auto& proof=a.text.provenLinePanels[row];
+                if(row==anchor)continue;
+                Assert::IsTrue(proof.Valid(),L"finite independent row edges must produce a scan-bound certificate");
+                Assert::IsTrue(proof.left<=glyph.left && proof.right>=glyph.right &&
+                    proof.top<=glyph.top && proof.bottom>=glyph.bottom);
+                const int gap=std::abs(glyph.top-a.text.lineBounds[anchor].top);
+                if(gap>distance){distance=gap;farthest=row;}
+            }
+            Assert::IsTrue(farthest>=0);
+            Assert::AreEqual(3,Resolve({a,b,c}).text.lineCount);
+            Assert::AreEqual(2,Resolve({a,b}).text.lineCount);
+        }
+    }
+
 };
 }
