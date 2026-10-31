@@ -72,6 +72,7 @@
 #include <SubtitleBackingLip.h>
 #include <SubtitleBackingPresentation.h>
 #include <SubtitleMeasurementWorker.h>
+#include <SubtitleCadenceGuard.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
 #include <SubtitleCutPasteShader.h>
 #include <SubtitleTemporalFill.h>
@@ -4516,6 +4517,10 @@ struct LibplaceboVideoRenderer::Impl
     ULONGLONG subtitlePerfTick=0;
     SubtitleBoxPresentation subtitleBoxPresentation;
     SubtitleCueContinuationGuard subtitleCueContinuation;
+    SubtitleCadenceGuard subtitleCadenceGuard;
+    std::unique_ptr<SubtitleCadenceProof> subtitleCadenceResult=std::make_unique<SubtitleCadenceProof>();
+    std::string subtitleCadenceLogReason;
+    uint64_t subtitleCadenceLogTick=0;
     std::string subtitleContinuationLogReason;
     uint64_t subtitleContinuationLogTick=0;
     bool subtitleContinuationStateLogged=false;
@@ -9404,7 +9409,7 @@ struct LibplaceboVideoRenderer::Impl
             if (subtitleOnly)
             {
                 ClearScopeSubtitleEvidence();
-                subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset();
+                subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset();
                 subtitlePendingGuard.Reset();
                 subtitlePaddingGuard.Reset();
                 subtitleCutPastePresentation.Reset();
@@ -10114,7 +10119,7 @@ struct LibplaceboVideoRenderer::Impl
         activePictureAnalysisDomainKey = 0;
         activePictureAnalysisSourceGeneration = 0;
         sceneDetector.Reset(sceneDetectorGeneration);
-        subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset();
+        subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset();
         subtitlePendingGuard.Reset();
         subtitleStabilityTelemetry.Reset();
         subtitlePaddingGuard.Reset();
@@ -13054,7 +13059,7 @@ struct LibplaceboVideoRenderer::Impl
             cropPresentationAdmission = {};
             submittedNativeScopeAnchor = {};
             sceneDetector.Reset(sceneDetectorGeneration);
-            subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset();
+            subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset();
             subtitlePendingGuard.Reset();
             subtitleTemporalValid = false;
             subtitleTemporalCleanFrames = 0;
@@ -14253,6 +14258,9 @@ struct LibplaceboVideoRenderer::Impl
         bool currentSubtitlePendingPixelsVerified = false;
         auto& currentSubtitlePreview=subtitlePreviews->current;
         SubtitleCueContinuation currentCueContinuation;
+        // Keep the bounded proof workspace off the presentation thread stack.
+        auto& currentSubtitleCadence=*subtitleCadenceResult;
+        currentSubtitleCadence.valid=false;
         bool currentNoCaptionConfirmed = false;
         SubtitleBarStripClearance currentSubtitleBarStripClearance;
         std::string currentSubtitleScanReason="unavailable";
@@ -14360,6 +14368,36 @@ struct LibplaceboVideoRenderer::Impl
                     break;
                 }
 
+            // An intentionally skipped detector frame is unknown, not a cue end.
+            // Reuse only the accepted geometry whose glyph/cleanup footprint is
+            // freshly verified on these exact native pixels. This contributes
+            // neither an independent scan nor picture/bar authority.
+            if(!currentSubtitlePreview.available && currentSubtitlePreview.current.cadenceSkipped &&
+                subtitleCutPasteTest && configuredScreenActive && nlsGeometryAvailable &&
+                nlsGeometrySourceGeneration==frameGeneration &&
+                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                !(latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
+                  latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
+                  CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry))) {
+                const std::string cadenceSeedReason=subtitleCadenceGuard.DecisionReason();
+                currentSubtitleCadence=subtitleCadenceGuard.PrepareReference(currentSubtitlePreview,
+                    analysisSource,nlsGeometry,subtitleFrameMs,activeSettings.subtitleHoldMs);
+                const auto cadenceNow=GetTickCount64();
+                if(subtitleCadenceLogReason!=currentSubtitleCadence.reason ||
+                    cadenceNow-subtitleCadenceLogTick>=2000) {
+                    subtitleCadenceLogReason=currentSubtitleCadence.reason;
+                    subtitleCadenceLogTick=cadenceNow;
+                    DebugLog::Log("SUBTITLE CADENCE: frame=%llu verified=%d reason=%s seed_reason=%s samples=%u template=%llu",
+                        sourceSequence,currentSubtitleCadence.valid?1:0,currentSubtitleCadence.reason,
+                        cadenceSeedReason.c_str(),currentSubtitleCadence.samples,
+                        currentSubtitleCadence.continuation.templateIdentity.acceptedSequence);
+                }
+                if(currentSubtitleCadence.valid) {
+                    currentSubtitlePreview=currentSubtitleCadence.preview;
+                    currentCueContinuation=currentSubtitleCadence.continuation;
+                }
+            }
             ++subtitlePerf.frames;
             bool& pendingCurrentPixelsVerified=currentSubtitlePendingPixelsVerified;
             pendingCurrentPixelsVerified=false;
@@ -14401,7 +14439,7 @@ struct LibplaceboVideoRenderer::Impl
                   latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
                   CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry));
             if(!continuationBaseAvailable) subtitleCueContinuation.Reset();
-            else if(subtitleCueContinuation.NeedsCurrentProof(currentSubtitlePreview)) {
+            else if(!currentSubtitleCadence.valid && subtitleCueContinuation.NeedsCurrentProof(currentSubtitlePreview)) {
                 currentCueContinuation=subtitleCueContinuation.Prepare(currentSubtitlePreview,
                     analysisSource,nlsGeometry,activeSettings.subtitleHoldMs,subtitleFrameMs);
                 const auto now=GetTickCount64();
@@ -14429,6 +14467,11 @@ struct LibplaceboVideoRenderer::Impl
                 activeSettings.subtitleHoldMs,subtitleFrameMs,
                 subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
                 subtitleBacklogRetirementOnly,pendingCurrentPixelsVerified,cueContinuation);
+            if(currentSubtitleCadence.valid &&
+                !currentSubtitleCadence.continuation.MatchesCue(subtitleBoxResult)) {
+                currentSubtitleCadence.valid=false;subtitleCadenceGuard.Reset();
+                currentCueContinuation={};cueContinuation=nullptr;
+            }
             if(subtitleBoxResult.confirmationPending)subtitleCueContinuation.Reset();
             else if(continuationBaseAvailable && subtitleBoxResult.detected && !cueContinuation) {
                 if(!subtitleCueContinuation.Remember(currentSubtitlePreview,subtitleBoxResult,nlsGeometry,analysisSource))
@@ -14548,6 +14591,13 @@ struct LibplaceboVideoRenderer::Impl
 
 			if (subtitleCutPasteTest)
             {
+                SubtitleCutPasteGeometry move;
+                if(currentSubtitleCadence.valid) {
+                    // This exact final geometry was composed successfully on the
+                    // seed source. Current pixels verified every retained capture
+                    // and cleanup footprint; no refit or new backing is admitted.
+                    move=currentSubtitleCadence.geometry;
+                } else {
                 const auto displayBounds=subtitlePaddingGuard.DisplayBounds();
                 subtitleCutPastePresentation.SetBackgroundGuard(activeSettings.subtitleBackgroundGuard);
                 const auto detectedMove = subtitleCutPastePresentation.Consume(subtitleBoxResult, *subtitlePreview,
@@ -14561,7 +14611,7 @@ struct LibplaceboVideoRenderer::Impl
                     : SubtitleBoxRect{0,detectedMove.pictureTop,width,detectedMove.pictureBottom};
                 // Text scale is display-only. Apply after physical viewport
                 // fitting; source extraction, cleanup and AR authority stay intact.
-                auto move=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(detectedMove,
+                move=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(detectedMove,
                     visiblePicture, activeSettings.subtitleMoveInset),
                     activeSettings.subtitleTextReductionPercent, safeSubtitlePadding,
                     activeSettings.subtitleRoundedCorners, activeSettings.subtitleFloatBackground);
@@ -14644,6 +14694,7 @@ struct LibplaceboVideoRenderer::Impl
                         subtitleLipLogContextMask=lip.contextMismatchMask;subtitleLipLogEdgeMask=lip.edgeEvidenceMask;
                         subtitleLipLogCandidateRetained=lip.candidateRetained;
                     }
+                }
                 }
                 const auto& priorLayout=subtitleLoggedLayout;
                 auto equalRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
@@ -14905,6 +14956,10 @@ struct LibplaceboVideoRenderer::Impl
                         sourceSequence,subtitleBoxResult.cue,subtitleBoxResult.capturePanelMeasured?1:0,
                         card.left,card.top,card.right,card.bottom,cleanup.left,cleanup.top,cleanup.right,cleanup.bottom,
                         display.left,display.top,display.right,display.bottom,geometry.pictureTop,geometry.pictureBottom);
+                    DebugLog::Log("SUBTITLE SHADER GEOMETRY: frame=%llu content=%d,%d-%d,%d source=%d,%d-%d,%d scale=%.4f translation=%.2f,%.2f cadence_verified=%d",
+                        sourceSequence,geometry.content.left,geometry.content.top,geometry.content.right,geometry.content.bottom,
+                        geometry.source.left,geometry.source.top,geometry.source.right,geometry.source.bottom,
+                        geometry.glyphScale,geometry.glyphTranslateX,geometry.glyphTranslateY,currentSubtitleCadence.valid?1:0);
                     const auto& measured=subtitleBoxResult.sourcePanel;
                     DebugLog::Log("SUBTITLE BACKING: frame=%llu cue=%llu reason=%s held_measurements=%llu measured=%d,%d-%d,%d accepted=%d,%d-%d,%d complete_card=%d proved=%d,%d-%d,%d",
                         sourceSequence,subtitleBoxResult.cue,subtitleCutPastePresentation.BackingDecisionReason(),
@@ -14926,7 +14981,7 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleAnalysisLogTick=analysisLogNow;
             }
         }
-        else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
+        else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
 
         if(!reuseSubtitlePreparation) {
             subtitleSourcePreparation.nativePrepare={};
@@ -15049,6 +15104,18 @@ struct LibplaceboVideoRenderer::Impl
                     subtitleCompositionSucceeded?subtitleMotionLayerTexture:nullptr,sourceSequence,layerBounds,&capturedSubtitlePacketNew))
                     return failSubtitleMotion(temporalRenderer.status.c_str());
             }
+            if(subtitleCompositionSucceeded && !currentSubtitleCadence.valid &&
+                currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh &&
+                configuredScreenActive && nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
+                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED)
+                subtitleCadenceGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
+                    analysisSource,nlsGeometry,relocatedSubtitle,
+                    state.displayMode && state.displayMode->TimeScale()>0
+                        ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0,
+                    activeSettings.subtitleHoldMs,subtitleCutPasteBackground);
+            else if(!currentSubtitleCadence.valid)
+                subtitleCadenceGuard.Reset();
             subtitleSourcePreparation.valid=true;
             subtitleSourcePreparation.generation=frameGeneration;
             subtitleSourcePreparation.sequence=sourceSequence;
@@ -15089,7 +15156,14 @@ struct LibplaceboVideoRenderer::Impl
             if(!captured)return failSubtitleMotion(temporalRenderer.status.c_str());
         }
         if(!reuseSubtitlePreparation) {
-            const bool currentSubtitleComplete=!subtitleMeasurementEnabled || currentNoCaptionConfirmed ||
+            // A verified cadence composition is complete for this immutable
+            // source packet, despite not being a detector scan. Repeated output
+            // reuses these pixels; it cannot renew the one-source verification.
+            const bool currentCadenceComplete=currentSubtitleCadence.valid &&
+                subtitleCompositionSucceeded && !currentSubtitleWorkIncomplete &&
+                currentSubtitleCadence.continuation.MatchesCue(subtitleBoxResult) &&
+                SameAnalysisFrameIdentity(currentSubtitleCadence.continuation.identity,subtitleIdentity);
+            const bool currentSubtitleComplete=currentCadenceComplete || !subtitleMeasurementEnabled || currentNoCaptionConfirmed ||
                 ((!subtitleCutPasteTest || subtitleCompositionSucceeded) &&
                  !currentSubtitleWorkIncomplete &&
                  subtitleBoxResult.detected && !subtitleBoxResult.held &&
