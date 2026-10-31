@@ -3029,11 +3029,82 @@ namespace VideoProcessorTest
                     L"A proposal or failed/mismatched output cannot establish presentation continuity.");
             }
         }
+        TEST_METHOD(QualifiedUnknownHoldCannotCropUnprocessedCurrentCaptionInsideOldErasure)
+        {
+            for(bool p210 : {false,true}) {
+                LoggedRelocatedCaptionFixture f(p210);
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                const auto previousProof=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+                Assert::IsTrue(previousProof.qualified);
+                const auto submitted=CommitQualifiedSubtitlePresentationHold({},previousProof,f.observation.identity,f.base,
+                    SubtitlePreviewMode::GeneratedGrayBackground,0,0,1000,true,false,10000000);
+                Assert::IsTrue(submitted.available);
+                QualifiedSubtitleUnknownHoldInput input;input.previous=submitted;input.captureClockFrequency=10000000;
+                input.currentIdentity=f.observation.identity;++input.currentIdentity.acceptedSequence;
+                ++input.currentIdentity.sourceFrameNumber;input.currentIdentity.captureTimestamp+=166833;
+                input.physicalBase=f.base;input.mode=SubtitlePreviewMode::GeneratedGrayBackground;
+                input.nowTick=1017;input.measurementUnknown=input.retentionCurrent=true;
+                const auto currentRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                Assert::IsTrue(currentRaw.rawBandSafetyEvaluated);
+                Assert::IsFalse(currentRaw.rawBandBottomSafe);Assert::IsFalse(currentRaw.excludedBandsPixelSafe);
+                auto unprocessed=f.Input();unprocessed.currentIdentity=input.currentIdentity;unprocessed.sourcePrepared=false;
+                const auto currentProof=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),currentRaw,unprocessed);
+                Assert::IsFalse(currentProof.qualified,L"No current-source cleanup or glyph replacement has been prepared.");
+                const auto& line=f.accepted.lineBounds[0];const int x=line.left+6,y=line.top+6;
+                AnalysisLumaSample pixel;Assert::IsTrue(f.Source().Sample(x,y,pixel));Assert::IsTrue(pixel.luma>=500);
+                Assert::IsTrue(y>=submitted.displayedBounds.bottom,
+                    L"This current raw caption pixel would be cropped by the previously submitted native viewport.");
+                const auto& oldErasure=submitted.proof.erasedSourceBounds;
+                Assert::IsTrue(x>=oldErasure.left && x<oldErasure.right && y>=oldErasure.top && y<oldErasure.bottom,
+                    L"The regression must be inside the old erasure footprint, not an independent outside-footprint conflict.");
+                const auto hold=EvaluateQualifiedSubtitleUnknownHold(f.Source(),currentRaw,input);
+                Assert::IsFalse(hold.retained,
+                    L"A historical erased footprint cannot authorize cropping still-visible current raw caption pixels when current composition is absent.");
+                Assert::AreEqual(uint64_t(2115),submitted.proof.identity.acceptedSequence);
+                Assert::AreEqual(uint64_t(1000),submitted.verifiedTick);
+            }
+        }
+        TEST_METHOD(QualifiedUnknownHoldMayRetainNativeWhenCurrentRawBarsAreActuallyClear)
+        {
+            for(bool p210 : {false,true}) {
+                LoggedRelocatedCaptionFixture f(p210);
+                const auto oldRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                const auto previousProof=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),oldRaw,f.Input());
+                const auto submitted=CommitQualifiedSubtitlePresentationHold({},previousProof,f.observation.identity,f.base,
+                    SubtitlePreviewMode::GeneratedGrayBackground,0,0,1000,true,false,10000000);
+                Assert::IsTrue(submitted.available);
+                f.frame.BlackOutside(0,f.base.top,3840,f.base.bottom);
+                const auto clear=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                Assert::IsTrue(clear.excludedBandsPixelSafe && clear.rawBandTopSafe && clear.rawBandBottomSafe);
+                QualifiedSubtitleUnknownHoldInput input;input.previous=submitted;input.captureClockFrequency=10000000;
+                input.currentIdentity=f.observation.identity;++input.currentIdentity.acceptedSequence;
+                ++input.currentIdentity.sourceFrameNumber;input.currentIdentity.captureTimestamp+=166833;
+                input.physicalBase=f.base;input.mode=SubtitlePreviewMode::GeneratedGrayBackground;
+                input.nowTick=1017;input.measurementUnknown=input.retentionCurrent=true;
+                const auto hold=EvaluateQualifiedSubtitleUnknownHold(f.Source(),clear,input);
+                Assert::IsTrue(hold.retained,L"Current raw pixel safety can preserve native framing while worker evidence is unknown.");
+                Assert::AreEqual(f.base.top,hold.bounds.top);Assert::AreEqual(f.base.bottom,hold.bounds.bottom);
+                auto missingRaw=clear;missingRaw.rawBandSafetyEvaluated=false;
+                Assert::IsFalse(EvaluateQualifiedSubtitleUnknownHold(f.Source(),missingRaw,input).retained,
+                    L"A projected safe flag cannot replace a completed current raw-band scan.");
+                auto foreignBase=clear;foreignBase.rawBandSafetyBase.bottom+=2;
+                Assert::IsFalse(EvaluateQualifiedSubtitleUnknownHold(f.Source(),foreignBase,input).retained,
+                    L"Current raw clearance belongs to one exact physical native base.");
+                Assert::AreEqual(uint64_t(2115),submitted.proof.identity.acceptedSequence);
+                Assert::AreEqual(uint64_t(1000),submitted.verifiedTick);
+            }
+        }
         TEST_METHOD(QualifiedSubtitleUnknownHoldExpiresWithoutRenewalOnRepeatedOutput)
         {
             LoggedRelocatedCaptionFixture f;
             const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
             const auto proof=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+            // Seed from real caption-bearing output, but CURRENT unknown
+            // output has physically clear raw bars. Old erasure is no permission
+            // to hide a still-visible caption; this test isolates lease expiry.
+            f.frame.BlackOutside(0,f.base.top,3840,f.base.bottom);
+            const auto currentRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            Assert::IsTrue(currentRaw.excludedBandsPixelSafe);
             for(uint64_t frequency:{uint64_t(1000000),uint64_t(10000000)}) {
             auto state=CommitQualifiedSubtitlePresentationHold({},proof,f.observation.identity,f.base,
                 SubtitlePreviewMode::GeneratedGrayBackground,0,0,1000,true,false,frequency);
@@ -3050,11 +3121,11 @@ namespace VideoProcessorTest
                 input.physicalBase=f.base;input.mode=SubtitlePreviewMode::GeneratedGrayBackground;
                 input.nowTick=1000+elapsed;input.holdMs=250;
                 input.measurementUnknown=input.retentionCurrent=true;
-                const auto result=EvaluateQualifiedSubtitleUnknownHold(f.Source(),raw,input);
+                const auto result=EvaluateQualifiedSubtitleUnknownHold(f.Source(),currentRaw,input);
                 Assert::AreEqual(elapsed<=250,result.retained);
                 if(result.retained) {
                     Assert::AreEqual(274,result.bounds.top);Assert::AreEqual(1884,result.bounds.bottom);
-                    Assert::IsFalse(raw.excludedBandsPixelSafe,L"Unknown hold is not a fresh clean-pixel certificate.");
+                    Assert::IsFalse(raw.excludedBandsPixelSafe,L"The historical seed really contained bar caption pixels; only the current physical source is clear.");
                 }
             }
             QualifiedSubtitleUnknownHoldInput fractional;fractional.captureClockFrequency=frequency;
@@ -3063,7 +3134,7 @@ namespace VideoProcessorTest
             fractional.currentIdentity.captureTimestamp+=frequency/4+1;
             fractional.physicalBase=f.base;fractional.mode=SubtitlePreviewMode::GeneratedGrayBackground;
             fractional.nowTick=1250;fractional.measurementUnknown=fractional.retentionCurrent=true;
-            Assert::IsFalse(EvaluateQualifiedSubtitleUnknownHold(f.Source(),raw,fractional).retained,
+            Assert::IsFalse(EvaluateQualifiedSubtitleUnknownHold(f.Source(),currentRaw,fractional).retained,
                 L"One capture tick past250ms must expire even when integer milliseconds still round to250.");
             }
         }
@@ -3075,6 +3146,12 @@ namespace VideoProcessorTest
             const auto state=CommitQualifiedSubtitlePresentationHold({},proof,f.observation.identity,f.base,
                 SubtitlePreviewMode::GeneratedGrayBackground,0,0,1000,true,false,10000000);
             Assert::IsTrue(state.available);
+            // Retain the genuine prior caption proof. Clear the physically
+            // newer raw source so context/side-fill checks are not hidden by
+            // the independently rejecting occupied-current-output condition.
+            f.frame.BlackOutside(0,f.base.top,3840,f.base.bottom);
+            const auto currentRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            Assert::IsTrue(currentRaw.excludedBandsPixelSafe);
             for(int scenario=0;scenario<14;++scenario) {
                 QualifiedSubtitleUnknownHoldInput input;input.captureClockFrequency=10000000;
                 input.previous=state;input.currentIdentity=f.observation.identity;
@@ -3098,7 +3175,7 @@ namespace VideoProcessorTest
                 case 12: input.captureClockFrequency=0;break;
                 case 13: input.captureClockFrequency=1000000;break;
                 }
-                Assert::IsFalse(EvaluateQualifiedSubtitleUnknownHold(f.Source(),raw,input).retained);
+                Assert::IsFalse(EvaluateQualifiedSubtitleUnknownHold(f.Source(),currentRaw,input).retained);
             }
         }
         TEST_METHOD(QualifiedSubtitleHoldDoesNotCommitFailureAndRetiresOnAcceptedAbsenceOrConflict)
@@ -3149,6 +3226,9 @@ namespace VideoProcessorTest
             Assert::IsTrue(retained.available);
             Assert::AreEqual(state.proof.identity.captureTimestamp,retained.proof.identity.captureTimestamp);
             Assert::AreEqual(state.verifiedTick,retained.verifiedTick);
+            f.frame.BlackOutside(0,f.base.top,3840,f.base.bottom);
+            const auto currentRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            Assert::IsTrue(currentRaw.excludedBandsPixelSafe);
             QualifiedSubtitleUnknownHoldInput unknown;
             unknown.previous=retained;unknown.currentIdentity=input.currentIdentity;
             ++unknown.currentIdentity.acceptedSequence;++unknown.currentIdentity.sourceFrameNumber;
@@ -3156,7 +3236,7 @@ namespace VideoProcessorTest
             unknown.captureClockFrequency=10000000;unknown.physicalBase=f.base;
             unknown.mode=SubtitlePreviewMode::GeneratedGrayBackground;
             unknown.measurementUnknown=unknown.retentionCurrent=true;
-            Assert::IsFalse(EvaluateQualifiedSubtitleUnknownHold(f.Source(),raw,unknown).retained,
+            Assert::IsFalse(EvaluateQualifiedSubtitleUnknownHold(f.Source(),currentRaw,unknown).retained,
                 L"A proved pending frame cannot extend the original fresh-source lease.");
         }
 
@@ -3202,6 +3282,12 @@ namespace VideoProcessorTest
             const auto state=CommitQualifiedSubtitlePresentationHold({},proof,f.observation.identity,displayed,
                 SubtitlePreviewMode::GeneratedGrayBackground,0,0,1000,true,false,10000000);
             Assert::IsTrue(state.available);
+            // Retain the genuine prior caption proof. Clear the physically
+            // newer raw source so context/side-fill checks are not hidden by
+            // the independently rejecting occupied-current-output condition.
+            f.frame.BlackOutside(0,f.base.top,3840,f.base.bottom);
+            const auto currentRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            Assert::IsTrue(currentRaw.excludedBandsPixelSafe);
             QualifiedSubtitleUnknownHoldInput input;
             input.previous=state;input.currentIdentity=f.observation.identity;
             ++input.currentIdentity.acceptedSequence;++input.currentIdentity.sourceFrameNumber;
@@ -3209,7 +3295,7 @@ namespace VideoProcessorTest
             input.captureClockFrequency=10000000;input.physicalBase=f.base;
             input.mode=SubtitlePreviewMode::GeneratedGrayBackground;
             input.measurementUnknown=input.retentionCurrent=true;
-            const auto hold=EvaluateQualifiedSubtitleUnknownHold(f.Source(),raw,input);
+            const auto hold=EvaluateQualifiedSubtitleUnknownHold(f.Source(),currentRaw,input);
             Assert::IsTrue(hold.retained);
             Assert::AreEqual(28,hold.bounds.left);Assert::AreEqual(3810,hold.bounds.right);
             FinalAspectLimitFillInput fill;

@@ -28,7 +28,7 @@ did not establish permission to discard the upper bar's current content.
 These are presentation changes over a stable independently measured native
 contract, not evidence of genuine repeated aspect-ratio cuts.
 
-## Four causal boundaries
+## Causal boundaries
 
 1. **Confirmed translation bypassed current opposite-bar coverage.**
    `HasConfirmedPresentationCandidate` accepted a resolved, matching translation
@@ -152,7 +152,7 @@ to admit its first current prepared native output.
 
 ## Required qualification and remaining acceptance
 
-Mandatory runtime qualification requires **725 native tests and 20 actual renderer
+Mandatory runtime qualification requires **727 native tests and 20 actual renderer
 tests**, with the declared dependency variants and matching source/build identity.
 The actual matrix contains the six existing Classic translation/lifecycle cases
 and fourteen UHD off-fill/both-bar/Black/Reconstruction/V210/moving-cleanup cases across
@@ -190,3 +190,39 @@ raw-clear top margin while the bottom cue persists, then remove all bar content
 and require current raw absence plus exact native output before a new Classic
 cue onset. Runtime and dual dependency GPU/cue receipts remain separate from
 these native results and from physical playback acceptance.
+
+## Current raw output during an unknown-caption hold
+
+The moving V210 cross-edge renderer replay caught a second unsafe hold path.
+At source 2810 in `373-cross-diagnostics.trx`, the same renderer instance reported
+an uncomposed, cadence-skipped current source and a native 250..1906 viewport
+owned by `retain-submitted-picture-during-caption-unknown`, while the raw cue
+extended to 1940. The unknown hold excluded the previous erased footprint from
+current inspection, suppressed raw visibility, and overrode the safety view.
+Historical erasure bounds can test independent contradictions; they cannot
+establish that current raw caption pixels have been removed.
+
+`373-unknown-hold-red.trx` reproduces that public-helper defect before repair:
+the persistent unprocessed caption inside the old footprint fails the required
+no-hold assertion; the genuinely raw-clear positive and original hold control
+pass. The repair requires completed current immutable raw-band safety on the
+exact native base, with all four sides clear, before unknown hold can retain
+the prior view. Occupied or unavailable raw evidence uses ordinary visibility
+recovery. Lease limits, current picture vetoes and glyph/cleanup thresholds stay
+unchanged. Old positive fixtures must actually clear current raw bars while
+retaining the independently submitted prior proof.
+
+The new opt-in `submitted-presentation` diagnostic joins final composition,
+selected identity, mode, actual crop and certificate after every successful
+render and submission. Preparation records can describe another attempt and
+must not be joined to output only by source number. Renderer tests inspect
+every successful output record, including unchanged geometry, and distinguish
+applied pose from the controller requested translation. Earlier requested-pose
+assertion failures and interrupted runs do not qualify a build. Final runtime
+and dual-dependency GPU receipts remain required.
+
+`unknown-hold-green-native.trx` passes all 727 mandatory native methods after
+the current-raw safety repair, and `unknown-hold-gate-metadata.log` verifies
+exact required execution and fail-closed qualification. The unknown-hold
+footprint-subtraction helper existed in `c3cff54ce` (19 October); this identifies
+the unsafe permission path, not a completed first-bad playback bisect.

@@ -9,6 +9,7 @@
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vector>
 #include <map>
+#include <sstream>
 #include <AnalysisLumaSource.h>
 #include <SubtitleMeasurementWorker.h>
 #include <set>
@@ -50,13 +51,38 @@ namespace
         classicPoseMessages.emplace_back(message);
     }
     std::vector<AnalysisDiagnosticRecordV1> classicPoseRecords;
+    bool classicPoseAllRecordStages=false;
     void __cdecl ClassicPoseTestRecord(void*,const AnalysisDiagnosticRecordV1* record)
     {
-        if(!record || record->structSize!=sizeof(*record) ||
-            (strcmp(record->stage,"presentation") && strcmp(record->stage,"ar-decision") &&
-             strcmp(record->stage,"subtitle-output")))return;
+        if(!record || record->structSize!=sizeof(*record))return;
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
+        if(!classicPoseAllRecordStages && strcmp(record->stage,"submitted-presentation") && strcmp(record->stage,"presentation") && strcmp(record->stage,"ar-decision") &&
+            strcmp(record->stage,"subtitle-output"))return;
         classicPoseRecords.push_back(*record);
+    }
+    // OSD publication can precede the success-only final record. Consume the last
+    // completed selected output in vector order, never an in-flight raw attempt.
+    void UseCompletedSubmittedPresentation(DetectedPictureAspect& observed)
+    {
+        std::lock_guard<std::mutex> guard(classicPoseLogMutex);
+        for(auto it=classicPoseRecords.rbegin();it!=classicPoseRecords.rend();++it) {
+            if(strcmp(it->stage,"submitted-presentation") || !(it->flags&1u) ||
+                it->transportGeneration!=observed.sourceGeneration || it->acceptedSequence>observed.presentedSequence)continue;
+            observed.presentedSequence=it->acceptedSequence;
+            const double w=it->metrics[10]-it->metrics[8],h=it->metrics[11]-it->metrics[9];
+            observed.inUseAvailable=w>0 && h>0;observed.inUseRatio=observed.inUseAvailable?w/h:0;
+            observed.inUseState=observed.inUseAvailable?PictureAspectUse::PRESENTATION:PictureAspectUse::UNAVAILABLE;
+            return;
+        }
+        observed.presentedSequence=0;observed.inUseAvailable=false;
+    }
+    bool IsExactCompletedOutput(const AnalysisDiagnosticRecordV1& record,uint64_t generation,unsigned mode)
+    {
+        return !strcmp(record.stage,"submitted-presentation") && (record.flags&1u)!=0 &&
+            record.transportGeneration==generation && record.rendererGeneration==generation &&
+            record.acceptedSequence>0 && record.counters[1]==record.acceptedSequence && record.counters[3]==mode &&
+            record.counters[4]>0 && (record.flags&1024u)==0 && std::abs(record.metrics[2])<0.01 &&
+            (record.flags&32u)!=0 && (record.flags&64u)!=0 && record.counters[5]==record.acceptedSequence;
     }
     struct NativeP210Buffer : IUnknown
     {
@@ -677,7 +703,7 @@ namespace VideoProcessorTest
             Assert::IsNotNull(reinterpret_cast<void*>(diagnostics));
             struct DiagnosticCleanup {VideoProcessorLibplaceboConfigureDiagnosticFn configure;
                 ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);}} diagnosticCleanup{diagnostics};
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();}
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=false;}
             diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();}
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
@@ -742,26 +768,30 @@ namespace VideoProcessorTest
             cleanup.renderer->SetQueueFramePolicy(4,4,true);
             cleanup.renderer->SetActivePictureLookaheadFrames(4);
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
-            uint64_t sequence=1;size_t logCursor=0;
+            uint64_t sequence=1;size_t finalRecordCursor=0;
             auto messages=[] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);return classicPoseMessages;};
             auto dump=[&] {for(const auto& line:messages())Logger::WriteMessage(line.c_str());};
             auto require=[&](bool valid,const wchar_t* message) {if(!valid){dump();Assert::Fail(message);}};
             auto integer=[](const std::string& line,const char* key) {
                 const auto at=line.find(key);return at==std::string::npos?uint64_t(0):uint64_t(std::strtoull(line.c_str()+at+strlen(key),nullptr,10));
             };
-            auto number=[](const std::string& line,const char* key) {
-                const auto at=line.find(key);return at==std::string::npos?0.0:std::strtod(line.c_str()+at+strlen(key),nullptr);
-            };
-            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false;int routedTranslation=0;};
+
+            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,poseEligible=false;int routedTranslation=0;double poseDelta=0;};
             auto geometries=[&] {
-                std::vector<Geometry> result;const auto log=messages();
-                for(;logCursor<log.size();++logCursor) {
-                    const auto& line=log[logCursor];if(line.find("VP submitted geometry:")==std::string::npos)continue;
-                    Geometry g;g.sequence=integer(line," selected=");g.pts=number(line," source_pts=");g.mode=unsigned(integer(line," mode="));
-                    g.composed=integer(line," composed=")!=0;g.routedTranslation=int(std::lround(number(line," routed_translation=")));const auto at=line.find(" actual_source=");
-                    require(at!=std::string::npos&&sscanf_s(line.c_str()+at+15,"%lf,%lf-%lf,%lf",&g.left,&g.top,&g.right,&g.bottom)==4,
-                        L"Actual-plugin matrix could not parse submitted source geometry.");
-                    require(std::isfinite(g.pts)&&g.pts>0,L"Actual-plugin matrix requires valid QPC-derived source timestamps.");
+                std::vector<Geometry> result;std::vector<AnalysisDiagnosticRecordV1> trace;
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
+                for(;finalRecordCursor<trace.size();++finalRecordCursor) {
+                    const auto& record=trace[finalRecordCursor];
+                    if(strcmp(record.stage,"submitted-presentation") || !(record.flags&1u))continue;
+                    require(record.acceptedSequence>0 && record.counters[1]==record.acceptedSequence,
+                        L"Actual successful output lacks a coherent selected source identity.");
+                    Geometry g;g.sequence=record.counters[1];g.pts=record.metrics[0];g.mode=unsigned(record.counters[3]);
+                    g.left=record.metrics[8];g.top=record.metrics[9];g.right=record.metrics[10];g.bottom=record.metrics[11];
+                    g.composed=(record.flags&2u)!=0;g.poseEligible=(record.flags&1024u)!=0;
+                    g.poseDelta=record.metrics[2];g.routedTranslation=int(std::lround(record.metrics[4]));
+                    require(std::isfinite(g.pts) && g.pts>0 && std::isfinite(g.left) && std::isfinite(g.top) &&
+                        std::isfinite(g.right) && std::isfinite(g.bottom) && g.left<g.right && g.top<g.bottom,
+                        L"Actual successful output has invalid native source coordinates or QPC timestamps.");
                     result.push_back(g);
                 }
                 return result;
@@ -781,7 +811,7 @@ namespace VideoProcessorTest
                 if(callback.state==RENDERSTATE_RENDERING){VideoFrame frame(pixels.data(),sequence++,clock.TimingClockNow(),&buffer);cleanup.renderer->OnVideoFrame(frame);}
                 nextSource+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(sourcePeriod);
                 std::this_thread::sleep_until(nextSource);
-                DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);return value;
+                DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);UseCompletedSubmittedPresentation(value);return value;
             };
             auto scans=[&](uint64_t first) {
                 bool scheduled=false,skipped=false;
@@ -884,7 +914,7 @@ namespace VideoProcessorTest
                 const auto value=pump(caption);
                 for(const auto& g:geometries())if(g.sequence>=reconstructionFirst) {
                     lastMode=g.mode;if(g.mode!=3)continue;
-                    require(g.routedTranslation==0,L"Classic-to-Reconstruction advanced output retained Classic translation routing.");
+                    require(!g.poseEligible && std::abs(g.poseDelta)<0.01,L"Classic-to-Reconstruction advanced output applied a Classic translation pose.");
                     if(g.composed && same(g,initial) && !reconstructionReady) {
                         reconstructionReady=g.sequence;observationDeadline=GetTickCount64()+5000;
                     }
@@ -898,9 +928,10 @@ namespace VideoProcessorTest
                     std::vector<AnalysisDiagnosticRecordV1> trace;
                     {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
                     for(const auto& record:trace)if(record.acceptedSequence==value.presentedSequence) {
-                        if(!strcmp(record.stage,"subtitle-output"))composed=(record.flags&4u)!=0;
-                        if(!strcmp(record.stage,"presentation")) {
+                        if(!strcmp(record.stage,"submitted-presentation"))composed=(record.flags&2u)!=0;
+                        if(!strcmp(record.stage,"submitted-presentation")) {
                             hasPresentation=true;
+                            require(IsExactCompletedOutput(record,value.sourceGeneration,3),L"Reconstruction final output lacks current mode/source/certificate identity.");
                             require(record.displayed[0]==initial.left && record.displayed[1]==initial.top &&
                                 record.displayed[2]==initial.right && record.displayed[3]==initial.bottom,
                                 L"Prepared Reconstruction exact-source output lost native picture presentation.");
@@ -946,7 +977,7 @@ namespace VideoProcessorTest
             Assert::IsNotNull(reinterpret_cast<void*>(diagnostics));
             struct DiagnosticCleanup {VideoProcessorLibplaceboConfigureDiagnosticFn configure;
                 ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);}} diagnosticCleanup{diagnostics};
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();}
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=false;}
             diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();}
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
@@ -1173,26 +1204,30 @@ namespace VideoProcessorTest
             cleanup.renderer->SetQueueFramePolicy(4,9,true);
             cleanup.renderer->SetActivePictureLookaheadFrames(4);
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
-            uint64_t sequence=1;size_t logCursor=0;
+            uint64_t sequence=1;size_t finalRecordCursor=0;
             auto messages=[] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);return classicPoseMessages;};
             auto dump=[&] {for(const auto& line:messages())Logger::WriteMessage(line.c_str());};
             auto require=[&](bool valid,const wchar_t* message) {if(!valid){dump();Assert::Fail(message);}};
             auto integer=[](const std::string& line,const char* key) {
                 const auto at=line.find(key);return at==std::string::npos?uint64_t(0):uint64_t(std::strtoull(line.c_str()+at+strlen(key),nullptr,10));
             };
-            auto number=[](const std::string& line,const char* key) {
-                const auto at=line.find(key);return at==std::string::npos?0.0:std::strtod(line.c_str()+at+strlen(key),nullptr);
-            };
-            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false;int routedTranslation=0;};
+
+            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,poseEligible=false;int routedTranslation=0;double poseDelta=0;};
             auto geometries=[&] {
-                std::vector<Geometry> result;const auto log=messages();
-                for(;logCursor<log.size();++logCursor) {
-                    const auto& line=log[logCursor];if(line.find("VP submitted geometry:")==std::string::npos)continue;
-                    Geometry g;g.sequence=integer(line," selected=");g.pts=number(line," source_pts=");g.mode=unsigned(integer(line," mode="));
-                    g.composed=integer(line," composed=")!=0;g.routedTranslation=int(std::lround(number(line," routed_translation=")));const auto at=line.find(" actual_source=");
-                    require(at!=std::string::npos&&sscanf_s(line.c_str()+at+15,"%lf,%lf-%lf,%lf",&g.left,&g.top,&g.right,&g.bottom)==4,
-                        L"Actual-plugin matrix could not parse submitted source geometry.");
-                    require(std::isfinite(g.pts)&&g.pts>0,L"Actual-plugin matrix requires valid QPC-derived source timestamps.");
+                std::vector<Geometry> result;std::vector<AnalysisDiagnosticRecordV1> trace;
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
+                for(;finalRecordCursor<trace.size();++finalRecordCursor) {
+                    const auto& record=trace[finalRecordCursor];
+                    if(strcmp(record.stage,"submitted-presentation") || !(record.flags&1u))continue;
+                    require(record.acceptedSequence>0 && record.counters[1]==record.acceptedSequence,
+                        L"Actual successful output lacks a coherent selected source identity.");
+                    Geometry g;g.sequence=record.counters[1];g.pts=record.metrics[0];g.mode=unsigned(record.counters[3]);
+                    g.left=record.metrics[8];g.top=record.metrics[9];g.right=record.metrics[10];g.bottom=record.metrics[11];
+                    g.composed=(record.flags&2u)!=0;g.poseEligible=(record.flags&1024u)!=0;
+                    g.poseDelta=record.metrics[2];g.routedTranslation=int(std::lround(record.metrics[4]));
+                    require(std::isfinite(g.pts) && g.pts>0 && std::isfinite(g.left) && std::isfinite(g.top) &&
+                        std::isfinite(g.right) && std::isfinite(g.bottom) && g.left<g.right && g.top<g.bottom,
+                        L"Actual successful output has invalid native source coordinates or QPC timestamps.");
                     result.push_back(g);
                 }
                 return result;
@@ -1212,7 +1247,7 @@ namespace VideoProcessorTest
                 if(callback.state==RENDERSTATE_RENDERING){const void* data=nativeV210?static_cast<const void*>(packedFrames.at(pixels.data()).data()):static_cast<const void*>(pixels.data());VideoFrame frame(data,sequence++,clock.TimingClockNow(),&buffer);cleanup.renderer->OnVideoFrame(frame);}
                 nextSource+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(sourcePeriod);
                 std::this_thread::sleep_until(nextSource);
-                DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);return value;
+                DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);UseCompletedSubmittedPresentation(value);return value;
             };
             auto scans=[&](uint64_t first) {
                 bool scheduled=false,skipped=false;
@@ -1283,7 +1318,7 @@ namespace VideoProcessorTest
                     for(const auto& g:geometries())if(g.sequence>=requested) {
                         lastMode=g.mode;
                         if(g.mode==advancedMode) {
-                            require(g.routedTranslation==0,L"UHD advanced preparation retained Classic translation routing.");
+                            require(!g.poseEligible && std::abs(g.poseDelta)<0.01,L"UHD advanced preparation applied a Classic translation pose.");
                             if(g.composed && same(g,initial) && !ready) {
                                 ready=g.sequence;observationDeadline=GetTickCount64()+5000;warmSettle=GetTickCount64()+500;
                             }
@@ -1298,19 +1333,20 @@ namespace VideoProcessorTest
                     }
                     if(ready && value.presentedSequence>=ready) {
                         const auto trace=records();const AnalysisDiagnosticRecordV1* presentation=nullptr;
-                        const AnalysisDiagnosticRecordV1* subtitle=nullptr;
+
                         for(const auto& record:trace)if(record.acceptedSequence==value.presentedSequence) {
-                            if(!strcmp(record.stage,"presentation"))presentation=&record;
-                            if(!strcmp(record.stage,"subtitle-output"))subtitle=&record;
+                            if(!strcmp(record.stage,"submitted-presentation"))presentation=&record;
+
                         }
-                        require(presentation && subtitle,L"Prepared UHD output lacks exact-source observation records.");
+                        require(presentation && IsExactCompletedOutput(*presentation,value.sourceGeneration,advancedMode),
+                            L"Prepared UHD output lacks exact final source/mode/certificate identity.");
                         if(!crossingEdge) {
                             require(presentation->displayed[0]==initial.left && presentation->displayed[1]==initial.top &&
                                 presentation->displayed[2]==initial.right && presentation->displayed[3]==initial.bottom,
                                 L"Prepared UHD Reconstruction changed its native presentation during the observation window.");
-                            if(lastMode==advancedMode && (subtitle->flags&4u)!=0)warmSources.insert(value.presentedSequence);
+                            if(lastMode==advancedMode && (presentation->flags&2u)!=0)warmSources.insert(value.presentedSequence);
                         } else {
-                            const bool composed=(subtitle->flags&4u)!=0;
+                            const bool composed=(presentation->flags&2u)!=0;
                             require(presentation->published[0]==0 && presentation->published[1]==bar &&
                                 presentation->published[2]==width && presentation->published[3]==pictureBottom,
                                 L"Cross-edge initialization changed accepted native picture geometry.");
@@ -1359,26 +1395,65 @@ namespace VideoProcessorTest
                     }
                 };
                 if(crossingEdge) {
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseAllRecordStages=true;}
                     const uint64_t motionFirst=sequence;const auto motionSettle=GetTickCount64()+500,motionDeadline=GetTickCount64()+12000;
                     std::set<uint64_t> stableMotion,composedMotion,uncomposedMotion;bool pinned=false;int32_t fixed[4]={};unsigned phase=0;
                     do {
                         const auto value=pump(motionOnly[phase++%2]);
                         for(const auto& g:geometries())if(g.sequence>=motionFirst)
-                            require(g.mode==advancedMode && g.routedTranslation==0 && g.left<=0.01 && g.right>=width-0.01 &&
+                            require(g.mode==advancedMode && !g.poseEligible && std::abs(g.poseDelta)<0.01 && g.left<=0.01 && g.right>=width-0.01 &&
                                 g.top<=bar+0.01 && g.bottom>=(g.composed?pictureBottom:captionBottom)-0.01,
                                 L"Moving cross-edge caption output clipped native picture or an uncomposed source cue.");
                         if(value.presentedSequence>=motionFirst) {
-                            const auto trace=records();const AnalysisDiagnosticRecordV1* p=nullptr;const AnalysisDiagnosticRecordV1* t=nullptr;
+                            const auto trace=records();const AnalysisDiagnosticRecordV1* p=nullptr;
                             for(const auto& r:trace)if(r.acceptedSequence==value.presentedSequence) {
-                                if(!strcmp(r.stage,"presentation"))p=&r;if(!strcmp(r.stage,"subtitle-output"))t=&r;
+                                if(!strcmp(r.stage,"submitted-presentation"))p=&r;
                             }
-                            require(p && t,L"Moving cross-edge output lacks exact-source presentation/ownership records.");
-                            const bool composed=(t->flags&4u)!=0;
+                            require(p && IsExactCompletedOutput(*p,value.sourceGeneration,advancedMode),
+                                L"Moving cross-edge output lacks exact final source/mode/certificate identity.");
+                            const bool composed=(p->flags&2u)!=0;
                             require(p->published[0]==0 && p->published[1]==bar && p->published[2]==width && p->published[3]==pictureBottom,
                                 L"Motion in the source erasure footprint changed accepted native picture geometry.");
-                            require(p->displayed[0]<=0 && p->displayed[2]>=width && p->displayed[1]<=bar &&
-                                p->displayed[3]>=(composed?pictureBottom:captionBottom),
-                                L"Moving source erasure footprint lost current picture/caption visibility.");
+                            const bool currentVisible=p->displayed[0]<=0 && p->displayed[2]>=width && p->displayed[1]<=bar &&
+                                p->displayed[3]>=(composed?pictureBottom:captionBottom);
+                            if(!currentVisible) {
+                                std::ostringstream report;
+                                report<<"CROSS EXACT-SOURCE FAILURE: presented="<<value.presentedSequence<<" next_input="<<sequence
+                                    <<" source_generation="<<value.sourceGeneration<<" publication="<<value.publicationGeneration
+                                    <<" detected_sequence="<<value.detectedSequence<<" detected_ratio="<<value.ratio<<" provisional="<<value.provisional
+                                    <<" actual_in_use="<<value.inUseRatio<<" in_use_state="<<static_cast<unsigned>(value.inUseState)
+                                    <<" qpc_now="<<clock.TimingClockNow()<<" qpc_frequency="<<clock.TimingClockTicksPerSecond()
+                                    <<" phase="<<phase<<" composed_from_subtitle_output="<<composed
+                                    <<" selected_p_flags="<<p->flags<<" selected_p_reason="<<p->reason
+                                    <<" selected_final_flags="<<p->flags<<" selected_final_processing="<<p->counters[0]
+                                    <<" selected_final_selected="<<p->counters[1]<<" selected_final_reason="<<p->reason;
+                                Logger::WriteMessage(report.str().c_str());
+                                // Preserve every captured stage for this exact source,
+                                // including duplicate stages and their instance/context.
+                                const auto failureTrace=records();
+                                for(const auto& r:failureTrace)if(r.acceptedSequence==value.presentedSequence) {
+                                    std::ostringstream row;
+                                    row<<"CROSS RECORD: stage="<<r.stage<<" record_sequence="<<r.recordSequence<<" timestamp_ns="<<r.timestampNs
+                                        <<" instance="<<r.rendererInstanceKey<<" frame_identity="<<r.frameIdentity<<" accepted="<<r.acceptedSequence
+                                        <<" transport="<<r.transportGeneration<<" frame="<<r.sourceFrameNumber<<" capture_qpc="<<r.captureTimestamp
+                                        <<" format="<<r.sourceFormatGeneration<<" domain="<<r.analysisDomainKey<<" viewport="<<r.viewportGeneration
+                                        <<" renderer="<<r.rendererGeneration<<" policy="<<r.policyGeneration<<" continuity="<<r.continuityGeneration
+                                        <<" flags="<<r.flags<<" result="<<r.resultCode<<" cadence_repeat="<<r.cadenceRepeat
+                                        <<" reason="<<r.reason<<" detail="<<r.detail;
+                                    const auto rect=[&](const char* label,const int32_t* b){row<<' '<<label<<'='<<b[0]<<','<<b[1]<<'-'<<b[2]<<','<<b[3];};
+                                    rect("published",r.published);rect("displayed",r.displayed);rect("candidate",r.candidate);rect("subtitle",r.subtitle);
+                                    for(int i=0;i<8;++i)row<<" counter"<<i<<'='<<r.counters[i];
+                                    for(int i=0;i<24;++i)row<<" metric"<<i<<'='<<r.metrics[i];
+                                    Logger::WriteMessage(row.str().c_str());
+                                }
+                                std::string latest="no submitted geometry log",selected="no geometry at/before selected source";
+                                for(const auto& line:messages())if(line.find("VP submitted geometry:")!=std::string::npos) {
+                                    latest=line;if(integer(line," selected=")<=value.presentedSequence)selected=line;
+                                }
+                                Logger::WriteMessage((std::string("CROSS LAST GEOMETRY AT/BEFORE PRESENTED: ")+selected).c_str());
+                                Logger::WriteMessage((std::string("CROSS LATEST SUBMITTED GEOMETRY: ")+latest).c_str());
+                            }
+                            require(currentVisible,L"Moving source erasure footprint lost current picture/caption visibility.");
                             if(GetTickCount64()>=motionSettle) {
                                 if(!pinned){for(int e=0;e<4;++e)fixed[e]=p->displayed[e];pinned=true;}
                                 for(int e=0;e<4;++e)require(fixed[e]==p->displayed[e],
@@ -1398,6 +1473,7 @@ namespace VideoProcessorTest
                     require(stableMotion.size()>=24 && !composedMotion.empty() && !uncomposedMotion.empty(),
                         L"Bottom-only moving cleanup did not preserve one stable viewport over 24 distinct sources spanning naturally composed and uncomposed outputs.");
                 }
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseAllRecordStages=false;}
                 const uint64_t residualFirst=sequence;std::set<uint64_t> residualSources,composedSources,uncomposedSources;
                 bool stableEnvelope=false;int32_t stableBounds[4]={};
                 const auto stableAfter=GetTickCount64()+500;
@@ -1411,16 +1487,17 @@ namespace VideoProcessorTest
                     }
                     if(value.presentedSequence>=residualFirst) {
                         const auto trace=records();const AnalysisDiagnosticRecordV1* presentation=nullptr;
-                        const AnalysisDiagnosticRecordV1* subtitle=nullptr;
+
                         for(const auto& record:trace)if(record.acceptedSequence==value.presentedSequence) {
-                            if(!strcmp(record.stage,"presentation"))presentation=&record;
-                            if(!strcmp(record.stage,"subtitle-output"))subtitle=&record;
+                            if(!strcmp(record.stage,"submitted-presentation"))presentation=&record;
+
                         }
-                        require(presentation && subtitle,L"UHD residual UI lacks exact-source native/presentation/composition diagnostics.");
+                        require(presentation && IsExactCompletedOutput(*presentation,value.sourceGeneration,advancedMode),
+                            L"UHD residual UI lacks exact final source/mode/certificate identity.");
                         require(presentation->published[0]==0 && presentation->published[1]==bar &&
                             presentation->published[2]==width && presentation->published[3]==pictureBottom,
                             L"Residual UI changed the source-owned native picture contract.");
-                        const bool composed=(subtitle->flags&4u)!=0;
+                        const bool composed=(presentation->flags&2u)!=0;
                         require(presentation->displayed[0]<=0 && presentation->displayed[2]>=width &&
                             presentation->displayed[1]<=140 && presentation->displayed[3]>=(composed?pictureBottom:captionBottom),
                             L"An exact submitted Reconstruction source used bottom-caption ownership to hide unrelated bar UI.");
@@ -1455,16 +1532,17 @@ namespace VideoProcessorTest
                     do {
                         const auto value=pump(caption);
                         for(const auto& g:geometries())if(g.sequence>=topClearFirst)
-                            require(g.mode==advancedMode && g.routedTranslation==0 && g.left<=0.01 && g.right>=width-0.01 &&
+                            require(g.mode==advancedMode && !g.poseEligible && std::abs(g.poseDelta)<0.01 && g.left<=0.01 && g.right>=width-0.01 &&
                                 g.top<=bar+0.01 && g.bottom>=(g.composed?pictureBottom:captionBottom)-0.01,
                                 L"Top-UI clearance clipped native picture or the still-current uncomposed bottom caption.");
                         if(value.presentedSequence>=topClearFirst) {
-                            const auto trace=records();const AnalysisDiagnosticRecordV1* p=nullptr;const AnalysisDiagnosticRecordV1* t=nullptr;
+                            const auto trace=records();const AnalysisDiagnosticRecordV1* p=nullptr;
                             for(const auto& r:trace)if(r.acceptedSequence==value.presentedSequence) {
-                                if(!strcmp(r.stage,"presentation"))p=&r;if(!strcmp(r.stage,"subtitle-output"))t=&r;
+                                if(!strcmp(r.stage,"submitted-presentation"))p=&r;
                             }
-                            require(p && t,L"Top-UI clearance lacks exact-source presentation and ownership diagnostics.");
-                            const bool composed=(t->flags&4u)!=0;
+                            require(p && IsExactCompletedOutput(*p,value.sourceGeneration,advancedMode),
+                                L"Top-UI clearance lacks exact final source/mode/certificate identity.");
+                            const bool composed=(p->flags&2u)!=0;
                             require(p->published[0]==0 && p->published[1]==bar && p->published[2]==width && p->published[3]==pictureBottom,
                                 L"Clearing only top UI changed source-derived native geometry.");
                             require(p->displayed[0]<=0 && p->displayed[2]>=width && p->displayed[1]<=bar &&
@@ -1489,9 +1567,16 @@ namespace VideoProcessorTest
                     const auto value=pump(native);geometries();
                     const auto trace=records();bool exact=false,rawAbsent=false;
                     for(const auto& record:trace)if(record.acceptedSequence==value.presentedSequence) {
-                        if(!strcmp(record.stage,"presentation"))exact=record.displayed[0]==initial.left && record.displayed[1]==initial.top && record.displayed[2]==initial.right && record.displayed[3]==initial.bottom;
-                        if(!strcmp(record.stage,"subtitle-output"))rawAbsent=(record.flags&1u)==0 &&
-                            (record.flags&16u)!=0 && (record.flags&32u)==0 && !strcmp(record.reason,"no-bright-ink");
+                        if(!strcmp(record.stage,"submitted-presentation")) {
+                            exact=record.displayed[0]==initial.left && record.displayed[1]==initial.top &&
+                                record.displayed[2]==initial.right && record.displayed[3]==initial.bottom &&
+                                record.published[0]==0 && record.published[1]==bar && record.published[2]==width && record.published[3]==pictureBottom;
+                            // Source-bound current absence was frozen with THIS successful
+                            // selected packet; no raw-attempt/retry trace is joined here.
+                            rawAbsent=IsExactCompletedOutput(record,value.sourceGeneration,advancedMode) && (record.flags&8192u)!=0 &&
+                                record.counters[1]==record.acceptedSequence && record.counters[0]==record.acceptedSequence &&
+                                record.counters[3]==advancedMode && record.counters[4]==acceptedNativeSequence;
+                        }
                     }
                     if(value.presentedSequence>=clearFirst && exact && rawAbsent)cleared.insert(value.presentedSequence);
                     if(cleared.size()>=24)break;

@@ -724,6 +724,16 @@ inline QualifiedSubtitleUnknownHoldDecision EvaluateQualifiedSubtitleUnknownHold
         (raw.activePicture.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
          !SameSubtitlePresentationBounds(raw.activePicture.trustedBounds,input.physicalBase))))
         return fail("unknown-hold-independent-picture-change");
+    // This source has no current qualified erasure. An earlier erased footprint
+    // can test independent contradictions, but cannot make its current raw
+    // pixels disappear from the output. Only completed native-band inspection
+    // of this exact current base may retain the old native viewport.
+    if(!raw.rawBandSafetyEvaluated ||
+        !SameSubtitlePresentationBounds(raw.rawBandSafetyBase,input.physicalBase))
+        return fail("unknown-hold-current-raw-output-unavailable");
+    if(!raw.rawBandLeftSafe || !raw.rawBandTopSafe ||
+        !raw.rawBandRightSafe || !raw.rawBandBottomSafe)
+        return fail("unknown-hold-current-raw-output-occupied");
     // The old footprint is used only to test for independent contradictions.
     // Neither this temporary result nor the old footprint is published as
     // current pixel safety, capture coverage, or cleanup authority.

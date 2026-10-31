@@ -20048,6 +20048,89 @@ releaseDriftBaseRetention =
                 static_cast<int>(std::lround(renderImage.crop.x1)),
                 static_cast<int>(std::lround(renderImage.crop.y1)),
                 width, height, 0.0, ActivePictureBounds::BarAxes::NONE};
+            // A single successful output joins final selected-packet composition,
+            // actual geometry and its selected certificate. Preparation traces
+            // can describe another attempt/current source and must not be joined
+            // to this output solely by acceptedSequence. Emit every success,
+            // including unchanged geometry and repeated outputs; Emit is opt-in.
+            {
+                const auto& native=scopeAnchorCommit.selectedAdmission.acceptedNativeCrop;
+                const auto& certificate=scopeAnchorCommit.selectedAdmission.nativePresentation;
+                const auto& packet=subtitlePresentationPackets[
+                    scopeAnchorCommit.sourceSequence%subtitlePresentationPackets.size()];
+                const bool packetMatches=scopeAnchorCommit.sourceSequence &&
+                    packet.generation==scopeAnchorCommit.sourceGeneration &&
+                    packet.sequence==scopeAnchorCommit.sourceSequence;
+                const auto equalRect=[](const ActivePictureBounds& a,const ActivePictureBounds& b) {
+                    return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+                        a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;
+                };
+                // Diagnostic metadata equality only: grants no presentation authority.
+                const bool certificateMatches=certificate.available && native.available &&
+                    certificate.sourceGeneration==scopeAnchorCommit.sourceGeneration &&
+                    certificate.sourceSequence==scopeAnchorCommit.sourceSequence &&
+                    certificate.presentationEpoch==scopeAnchorCommit.presentationEpoch &&
+                    equalRect(certificate.nativeBase,native.bounds) &&
+                    equalRect(certificate.approvedBounds,scopeAnchorCommit.submittedBounds);
+                const auto packetCrop=selectedPresentationValid
+                    ? selectedPresentationForCommit.sourceCrop:renderImage.crop;
+                const bool poseEligible=selectedPresentationValid &&
+                    selectedPresentationForCommit.translationPoseEligible;
+                const uint64_t cueSource=temporalRenderer.Active()
+                    ? temporalRenderer.LastSubtitleSequence()
+                    : (subtitleCompositionSucceeded?scopeAnchorCommit.sourceSequence:0);
+                ActivePictureFrameIdentity outputIdentity{};
+                outputIdentity.acceptedSequence=scopeAnchorCommit.sourceSequence;
+                outputIdentity.transportGeneration=outputIdentity.rendererGeneration=scopeAnchorCommit.sourceGeneration;
+                outputIdentity.viewportGeneration=scopeAnchorCommit.presentationEpoch;
+                outputIdentity.analysisDomainKey=native.analysisDomainKey;
+                outputIdentity.sourceFormatGeneration=native.sourceFormatKey;
+                auto outputTrace=AnalysisTraceRecord(outputIdentity,this,"submitted-presentation","rendered-and-submitted");
+                AnalysisTraceRect(outputTrace.displayed,scopeAnchorCommit.submittedBounds);
+                AnalysisTraceRect(outputTrace.published,native.bounds);
+                AnalysisTraceRect(outputTrace.candidate,certificate.approvedBounds);
+                outputTrace.previous[0]=static_cast<int>(std::lround(packetCrop.x0));
+                outputTrace.previous[1]=static_cast<int>(std::lround(packetCrop.y0));
+                outputTrace.previous[2]=static_cast<int>(std::lround(packetCrop.x1));
+                outputTrace.previous[3]=static_cast<int>(std::lround(packetCrop.y1));
+                outputTrace.resultCode=static_cast<int>(scopeAnchorCommit.selectedOwner);
+                // flags: success, composed, packet-required, packet-match, cleaned,
+                // cert-available, cert-metadata-match, temporal, mixing, hook-retry,
+                // pose-eligible, snapshot-selected, full-raster-authority, no-caption.
+                outputTrace.flags=1u|(subtitleCompositionSucceeded?2u:0u)|
+                    (temporalSubtitleComposition?4u:0u)|(packetMatches?8u:0u)|
+                    (selectedPresentationValid&&selectedPresentationForCommit.presentation.cleaned?16u:0u)|
+                    (certificate.available?32u:0u)|(certificateMatches?64u:0u)|
+                    (temporalRenderer.Active()?128u:0u)|(temporalRenderer.Mixing()?256u:0u)|
+                    (hookRender.retried?512u:0u)|(poseEligible?1024u:0u)|
+                    (selectedPresentationValid?2048u:0u)|(scopeAnchorCommit.fullRasterAuthority?4096u:0u)|
+                    ((selectedPresentationValid?selectedPresentationForCommit.captionConfirmedAbsent:currentNoCaptionConfirmed)?8192u:0u);
+                // counters: processing source, selected source, final cue source,
+                // frozen selected mode, accepted native source, cert source/origin,
+                // composition metadata source. Never borrow another attempt's flags.
+                outputTrace.counters[0]=sourceSequence;outputTrace.counters[1]=scopeAnchorCommit.sourceSequence;
+                outputTrace.counters[2]=cueSource;
+                outputTrace.counters[3]=static_cast<uint64_t>(selectedPresentationValid
+                    ? selectedPresentationForCommit.subtitleMode:subtitlePreviewMode);
+                outputTrace.counters[4]=native.acceptedSourceSequence;
+                outputTrace.counters[5]=certificate.sourceSequence;
+                outputTrace.counters[6]=static_cast<uint64_t>(certificate.origin);
+                outputTrace.counters[7]=packet.sequence;
+                // metrics 0..5: selected source PTS, output PTS, pose delta Y,
+                // requested/routed translation, processing source PTS; 8..11 actual
+                // source crop and 12..15 actual target crop retain fractional pixels.
+                outputTrace.metrics[0]=selectedPresentationValid?selectedPresentationForCommit.sourcePts:temporalRenderer.currentPts;
+                outputTrace.metrics[1]=temporalRenderer.outputPts;
+                outputTrace.metrics[2]=renderImage.crop.y0-packetCrop.y0;
+                outputTrace.metrics[3]=selectedPresentationValid?selectedPresentationForCommit.requestedTranslation:temporalPolicyRequestedTranslation;
+                outputTrace.metrics[4]=selectedPresentationValid?selectedPresentationForCommit.routedTranslation:temporalPolicyRoutedTranslation;
+                outputTrace.metrics[5]=temporalRenderer.currentPts;
+                outputTrace.metrics[8]=renderImage.crop.x0;outputTrace.metrics[9]=renderImage.crop.y0;
+                outputTrace.metrics[10]=renderImage.crop.x1;outputTrace.metrics[11]=renderImage.crop.y1;
+                outputTrace.metrics[12]=target.crop.x0;outputTrace.metrics[13]=target.crop.y0;
+                outputTrace.metrics[14]=target.crop.x1;outputTrace.metrics[15]=target.crop.y1;
+                AnalysisDiagnosticTrace::Emit(outputTrace);
+            }
             StartupPresentation::SubmissionInput startupSubmission;
             startupSubmission.context=startupContext;
             startupSubmission.selectedSequence=scopeAnchorCommit.sourceSequence;

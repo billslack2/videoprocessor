@@ -5,7 +5,7 @@
     "src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp",
     "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp"
   ],
-  "minimumNativeTests": 725,
+  "minimumNativeTests": 727,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -35,7 +35,9 @@
     "PreparedViewportLineageDoesNotCrossModeOrNativeContext",
     "AdvancedConfirmedFitViewportDoesNotBounceWithProcessingSuccess",
     "AdvancedFullRasterVisibilityUsesActualRendererBridgeAndKeepsNativeLineage",
-    "BlackCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing"
+    "BlackCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing",
+    "QualifiedUnknownHoldCannotCropUnprocessedCurrentCaptionInsideOldErasure",
+    "QualifiedUnknownHoldMayRetainNativeWhenCurrentRawBarsAreActuallyClear"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
