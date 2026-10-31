@@ -13103,6 +13103,26 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(NearBlackPresentationMode::INACTIVE),
 				static_cast<int>(decision.state.mode));
 
+            // A last-submitted Scope can restore FULL_RASTER to RETAIN_CROP.
+            // Both owners must release after the same independent native proof.
+            for (auto mode : {NearBlackPresentationMode::RETAIN_CROP,NearBlackPresentationMode::FULL_RASTER}) {
+                auto retained=input;retained.previous.mode=mode;
+                retained.previouslyAdmittedCropAvailable=true;
+                retained.previouslyAdmittedCrop=oldCrop;
+                retained.previouslyAdmittedCropOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                retained.previouslyAdmittedCropSourceGeneration=input.sourceGeneration;
+                retained.previouslyAdmittedCropPresentationEpoch=input.presentationEpoch;
+                NearBlackPresentationEpisodeDecision result;
+                for(uint64_t seq=1339;seq<=1341;++seq) {
+                    retained.sourceSequence=retained.retentionSourceSequence=seq;
+                    retained.currentNativeOutwardProof.lastObservedSourceSequence=seq;
+                    result=EvaluateNearBlackPresentationEpisode(retained);
+                    retained.previous=result.state;
+                }
+                Assert::IsTrue(result.outwardEntryReleased);
+                Assert::IsTrue(result.resetTrustedGeometry);
+            }
+
 			auto latchedAfterProofBegan = input;
 			latchedAfterProofBegan.previous.fullRasterStartedSourceSequence = 1338;
 			Assert::IsTrue(QualifiesObsoleteNearBlackEntryNativeOutwardPictureSample(latchedAfterProofBegan));

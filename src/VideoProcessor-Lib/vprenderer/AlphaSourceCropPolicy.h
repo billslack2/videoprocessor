@@ -32,7 +32,7 @@ namespace AlphaSourceCrop
 
 	enum class OutwardPictureProofRoute : uint8_t
 	{
-		NONE, BROAD_OCCUPANCY, NATIVE_DISTRIBUTED_SUPPORT
+		NONE, BROAD_OCCUPANCY, NATIVE_DISTRIBUTED_SUPPORT, NATIVE_LOW_CONTRAST_BOUNDARIES
 	};
 
 	struct OutwardPictureConfirmationState

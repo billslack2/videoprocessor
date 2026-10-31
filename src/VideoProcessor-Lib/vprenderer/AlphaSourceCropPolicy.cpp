@@ -647,7 +647,18 @@ namespace AlphaSourceCrop
 		decision.nativeDistributedPicture = !decision.broadOpposingPicture &&
 			sourceSequence != 0 && expandsVertical && !expandsHorizontal &&
 			HasStrictNativeDistributedPictureProof(evidence, trustedGeometry, candidate);
-		if (!decision.broadOpposingPicture && !decision.nativeDistributedPicture)
+        const auto& native = evidence.activePicture;
+        const auto& profile = native.verticalBarGuardProfile;
+        const bool lowContrastPicture = sourceSequence != 0 && expandsVertical && !expandsHorizontal &&
+            evidence.analysisValid && evidence.presentationValid && !evidence.EffectiveArNearBlack() && stripsMatch &&
+            native.available && native.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            native.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            native.lowContrastBoundaryProof && profile.completed && profile.clean &&
+            profile.apertureTop == candidate.top && profile.apertureBottom == candidate.bottom &&
+            SameTrustedCropContract(native.trustedBounds,candidate) &&
+            candidate.left == 0 && candidate.right == candidate.rasterWidth &&
+            candidate.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM;
+        if (!decision.broadOpposingPicture && !decision.nativeDistributedPicture && !lowContrastPicture)
         {
             decision.diagnosticReason = !evidence.analysisValid || !evidence.presentationValid
                 ? "measurement-invalid" : (!verticalPicture && !horizontalPicture
@@ -656,7 +667,8 @@ namespace AlphaSourceCrop
         }
 		const auto proofRoute = decision.broadOpposingPicture
 			? OutwardPictureProofRoute::BROAD_OCCUPANCY
-			: OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT;
+			: lowContrastPicture ? OutwardPictureProofRoute::NATIVE_LOW_CONTRAST_BOUNDARIES
+            : OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT;
 
 		const bool sequenceContinuous = sourceSequence == 0 || previous.lastObservedSourceSequence == 0 ||
 			sourceSequence == previous.lastObservedSourceSequence ||
@@ -698,7 +710,9 @@ namespace AlphaSourceCrop
 				previous.confirmations + 1) : 1);
 		decision.authoritative = decision.state.confirmations >=
 			OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
-        decision.diagnosticReason = decision.nativeDistributedPicture
+        decision.diagnosticReason = lowContrastPicture
+            ? (decision.authoritative ? "native-low-contrast-confirmed" : "native-low-contrast-proof-pending")
+            : decision.nativeDistributedPicture
             ? (decision.authoritative ? "native-distributed-confirmed" :
                 (repeatedSourceSample ? "native-distributed-repeated-source" :
                  (previous.confirmations != 0 && !continues ? "native-distributed-proof-restarted" :
@@ -2989,7 +3003,8 @@ namespace AlphaSourceCrop
 		const auto& proof = input.currentNativeOutwardProof;
 		const auto& entry = episode.entryTrustedCrop;
 		const auto& candidate = input.currentObservation;
-		if (episode.mode != NearBlackPresentationMode::FULL_RASTER ||
+		if ((episode.mode != NearBlackPresentationMode::FULL_RASTER &&
+            episode.mode != NearBlackPresentationMode::RETAIN_CROP) ||
 			!episode.entryTrustedCropAvailable ||
 			episode.entryTrustedCropOrigin != ActivePictureAuthorityOrigin::NATIVE ||
 			episode.sourceGeneration != input.sourceGeneration ||

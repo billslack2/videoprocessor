@@ -1045,6 +1045,117 @@ static bool RecoverLowContrastOpposingBoundary(const AnalysisLumaSource& source,
 }
 
 
+// Dark picture can fall below the coarse black threshold while remaining
+// measurably different from the constant encoded bars. Find BOTH boundaries
+// from current pixels; do not infer the opposite edge from symmetry or a ratio.
+static bool RecoverFlatBarLowContrastPicture(const AnalysisLumaSource& source,
+    ActivePictureEvidence& evidence, const AnalysisEvaluationBudget* budget)
+{
+    auto& axes = evidence.axisEvidence;
+    if (evidence.classification != ActivePictureClassification::PROVISIONAL ||
+        !axes.vertical.scanComplete || !axes.horizontal.scanComplete ||
+        source.width < 320 || source.height < 180 ||
+        (!evidence.top.trusted && !evidence.bottom.trusted)) return false;
+    const auto& anchor = evidence.top.trusted ? evidence.top : evidence.bottom;
+    if (anchor.lumaFloor < 0 || anchor.lumaFloor > 80 ||
+        anchor.lumaP90 > anchor.lumaFloor + 4 || anchor.lumaDispersion > 4 ||
+        anchor.texture > 2 || anchor.blackFraction < .99 ||
+        anchor.neutralChromaFraction < .98 || anchor.continuity < .99 ||
+        anchor.innerBoundaryContrast < 24) return false;
+    SampleContext samples{source};
+    samples.budget = budget;
+    struct Counts {
+        ActivePictureEvidence& evidence; SampleContext& samples;
+        ~Counts() { evidence.lumaSamples += samples.lumaSamples;
+            evidence.chromaSamples += samples.chromaSamples; }
+    } counts{evidence, samples};
+    const int floor = static_cast<int>(anchor.lumaFloor);
+    auto read = [&](int x, int y, AnalysisLumaSample& pixel) {
+        samples.Checkpoint();
+        if (!source.Sample(x, y, pixel)) return false;
+        ++samples.lumaSamples; ++samples.chromaSamples; return true;
+    };
+    auto boundary = [&](bool upper) {
+        for (int depth = 0; depth < source.height / 4; ++depth) {
+            const int y = upper ? depth : source.height - 1 - depth;
+            bool flat = true;
+            for (int i = 0; i < 48; ++i) {
+                AnalysisLumaSample pixel;
+                if (!read((2*i+1)*source.width/96, y, pixel)) return -1;
+                if (std::abs(int(pixel.luma)-floor) > 4 ||
+                    std::abs(int(pixel.chromaU)-512) > 4 ||
+                    std::abs(int(pixel.chromaV)-512) > 4) { flat = false; break; }
+            }
+            if (!flat) return upper ? y : y+1;
+        }
+        return -1;
+    };
+    const int top = boundary(true), bottom = boundary(false);
+    const int step = std::max(2, source.height/540);
+    if (top <= 2*step || bottom <= top || bottom >= source.height-2*step ||
+        std::abs(top-(source.height-bottom)) > std::max(2*step,source.height/360)) return false;
+    // This fallback repairs a materially swallowed dark-picture band. Preserve
+    // the existing sampling-jitter contract; a one-step line in a bar cannot
+    // acquire a new crop or turn retention evidence into measurement authority.
+    if (evidence.proposedBounds.top-top <= 2*step &&
+        bottom-evidence.proposedBounds.bottom <= 2*step) return false;
+    // Require an abrupt, distributed picture edge in all four horizontal zones
+    // and at several interior depths. A title, local highlight, or smooth ramp
+    // cannot turn a flat outer region into an accepted pair of bars.
+    for (bool upper : {true, false}) {
+        const int edge = upper ? top : bottom-1;
+        const int direction = upper ? 1 : -1;
+        int totalAbrupt = 0;
+        for (int zone = 0; zone < 4; ++zone) {
+            int support[4] = {}, abrupt = 0;
+            for (int i = zone*12; i < (zone+1)*12; ++i) {
+                const int x = (2*i+1)*source.width/96;
+                for (int d = 0; d < 4; ++d) {
+                    AnalysisLumaSample pixel;
+                    if (!read(x,edge+direction*(2*step+4*d),pixel)) return false;
+                    support[d] += int(pixel.luma)-floor >= 8 ||
+                        std::abs(int(pixel.chromaU)-512) >= 8 ||
+                        std::abs(int(pixel.chromaV)-512) >= 8;
+                }
+                int previous = -1, largestStep = 0;
+                for (int d = -2; d <= 2*step; ++d) {
+                    AnalysisLumaSample pixel;
+                    if (!read(x,edge+direction*d,pixel)) return false;
+                    if (previous >= 0) largestStep = std::max(largestStep,int(pixel.luma)-previous);
+                    previous = pixel.luma;
+                }
+                abrupt += largestStep >= 6;
+            }
+            totalAbrupt += abrupt;
+            if (abrupt < 2 || support[0] < 9 || support[1] < 9 ||
+                support[2] < 9 || support[3] < 9) return false;
+        }
+        if (totalAbrupt < 24) return false;
+    }
+    // Leave two native rows of uncertainty visible, with even chroma alignment.
+    const int guardedTop = (top-2)&~1, guardedBottom = (bottom+3)&~1;
+    const auto profile = InspectVerticalCropBarProfile(samples,guardedTop,guardedBottom);
+    if (!profile.completed || !profile.clean) return false;
+    evidence.verticalBarGuardProfile = profile;
+    evidence.lowContrastBoundaryProof = true;
+    axes.vertical.state = ActivePictureAxisState::TRUSTED_BARS;
+    axes.vertical.reason = ActivePictureAxisReason::BAR_CONFIRMED;
+    axes.sidePictureWidth = source.width; axes.sidePictureHeight = source.height;
+    axes.sidePictureTop = top; axes.sidePictureBottom = bottom;
+    axes.verticalCropProfileEvaluated = axes.verticalCropProfileClean = true;
+    axes.verticalCropGuardTop = top-guardedTop;
+    axes.verticalCropGuardBottom = guardedBottom-bottom;
+    evidence.top = InspectHorizontalEdge(samples,true,guardedTop,guardedTop,floor,std::min(104,floor+24));
+    evidence.bottom = InspectHorizontalEdge(samples,false,source.height-guardedBottom,guardedBottom,floor,std::min(104,floor+24));
+    evidence.top.trusted = evidence.bottom.trusted = true;
+    evidence.trustedBounds = {0,guardedTop,source.width,guardedBottom,source.width,source.height,
+        double(source.width)/(guardedBottom-guardedTop),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+    evidence.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+    evidence.reason = "independently measured flat bars bound distributed low-contrast picture";
+    return true;
+}
+
+
 ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source,
     const AnalysisEvaluationBudget* budget)
@@ -1448,7 +1559,8 @@ ActivePictureEvidence ExtractActivePictureEvidence(
         rejectRaisedBars(result.axisEvidence.vertical);
         result.reason = "raised Full-range matte reference is unresolved; no new crop or full-raster authority";
     }
-    else RecoverLowContrastOpposingBoundary(source,result,budget);
+    else if (!RecoverLowContrastOpposingBoundary(source,result,budget))
+        RecoverFlatBarLowContrastPicture(source,result,budget);
     CheckAnalysisEvaluationBudget(budget);
 	return result;
 }
