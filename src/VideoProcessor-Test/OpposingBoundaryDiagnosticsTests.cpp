@@ -107,7 +107,33 @@ void EqualOpposingBounds(const ActivePictureBounds& a,const ActivePictureBounds&
     Assert::AreEqual(a.aspectRatio,b.aspectRatio);
     Assert::AreEqual(int(a.trustedBarAxes),int(b.trustedBarAxes));
 }
-void AssertOpposingRaw(const ActivePictureEvidence& raw)
+// Deliberately construct the coarse, non-authoritative nomination consumed by
+// this read-only diagnostic. Current native extraction may independently
+// recover these same pixels; its output is tested separately below. A synthetic
+// nomination must never be represented as current extractor output/authority.
+ActivePictureEvidence CoarseDiagnosticNomination(const OpposingPixels& frame,int top=-1,int bottom=-1)
+{
+    if (top<0) top=frame.height==2160?276:68;
+    if (bottom<0) bottom=frame.height==2160?1612:402;
+    ActivePictureEvidence raw;
+    raw.available=true;
+    raw.classification=ActivePictureClassification::PROVISIONAL;
+    raw.proposedBounds={0,top,frame.width,bottom,frame.width,frame.height,
+        double(frame.width)/(bottom-top),ActivePictureBounds::BarAxes::NONE};
+    raw.trustedBounds={0,0,frame.width,frame.height,frame.width,frame.height,
+        double(frame.width)/frame.height,ActivePictureBounds::BarAxes::NONE};
+    raw.top.trusted=raw.bottom.trusted=true;
+    raw.top.barPixels=top; raw.bottom.barPixels=frame.height-bottom;
+    raw.top.lumaFloor=raw.bottom.lumaFloor=64;
+    raw.axisEvidence.vertical.scanComplete=raw.axisEvidence.horizontal.scanComplete=true;
+    raw.axisEvidence.vertical.barCandidate=true;
+    raw.axisEvidence.vertical.reason=ActivePictureAxisReason::BAR_ASYMMETRY;
+    raw.axisEvidence.horizontal.state=ActivePictureAxisState::FULL_EXTENT_SUPPORTED;
+    raw.axisEvidence.horizontal.reason=ActivePictureAxisReason::FULL_EXTENT_SUPPORTED;
+    raw.reason="synthetic coarse nomination for read-only opposing-boundary diagnostics";
+    return raw;
+}
+void AssertOpposingNomination(const ActivePictureEvidence& raw)
 {
     Assert::IsTrue(raw.available && raw.classification==ActivePictureClassification::PROVISIONAL);
     Assert::IsTrue(raw.top.trusted && raw.bottom.trusted);
@@ -146,10 +172,52 @@ void SameOpposingAdjacent(const ActivePictureAdjacentBoundaryProbe& a,const Acti
 TEST_CLASS(OpposingBoundaryDiagnosticsTests)
 {
 public:
+    TEST_METHOD(CurrentNativeRecoveryIsSeparateFromSyntheticMirroredDiagnostics)
+    {
+        for (bool p210 : {false,true})
+        for (bool fullSize : {false,true})
+        for (int pattern : {0,1}) {
+            OpposingPixels frame(fullSize?3840:960,fullSize?2160:540,p210);
+            BuildOpposingFixture(frame,pattern);
+            const auto source=frame.Source();
+            const auto native=ExtractActivePictureEvidence(source);
+            const int trueTop=fullSize?276:68;
+            const int trueBottom=frame.height-trueTop+(pattern?(fullSize?24:6):0);
+            const int guard=2*std::max(2,frame.height/540);
+            Assert::IsTrue(native.available && native.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::AreEqual(0,native.trustedBounds.left); Assert::AreEqual(frame.width,native.trustedBounds.right);
+            Assert::IsTrue(native.trustedBounds.top<=trueTop && native.trustedBounds.top>=trueTop-guard);
+            Assert::IsTrue(native.trustedBounds.bottom>=trueBottom && native.trustedBounds.bottom<=trueBottom+guard,
+                L"Independent native recovery must preserve the actual displaced dim picture, not a mirrored ratio.");
+            Assert::IsTrue(native.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+            Assert::AreEqual(source.generation,native.candidateVerification.sourceGeneration);
+            AssertOpposingUnmeasured(MeasureActivePictureOpposingBoundaryDiagnostics(source,native));
+            const auto nomination=CoarseDiagnosticNomination(frame);
+            AssertOpposingNomination(nomination);
+            AssertOpposingMeasured(MeasureActivePictureOpposingBoundaryDiagnostics(source,nomination),
+                frame.width,frame.height,trueTop);
+        }
+    }
+
+    TEST_METHOD(CurrentNativeRampAndUnexplainedAsymmetryRemainNonAuthoritative)
+    {
+        for (int pattern : {2,3}) {
+            OpposingPixels frame(3840,2160); BuildOpposingFixture(frame,pattern);
+            const auto native=ExtractActivePictureEvidence(frame.Source());
+            Assert::IsTrue(native.available && native.classification==ActivePictureClassification::PROVISIONAL);
+            Assert::IsFalse(native.lowContrastBoundaryProof);
+            ActivePictureTransitionModel model;
+            for (uint64_t sequence=1; sequence<=12; ++sequence) {
+                const auto decision=model.Observe(MakeActivePictureObservation(native,sequence,24));
+                Assert::IsFalse(decision.publish || decision.stable);
+            }
+        }
+    }
+
     TEST_METHOD(TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast)
     {
         OpposingPixels frame(3840,2160); BuildOpposingFixture(frame);
-        const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        const auto raw=CoarseDiagnosticNomination(frame); AssertOpposingNomination(raw);
         Assert::AreEqual(276,raw.proposedBounds.top); Assert::AreEqual(1612,raw.proposedBounds.bottom);
         const auto result=MeasureActivePictureOpposingBoundaryDiagnostics(frame.Source(),raw);
         AssertOpposingMeasured(result);
@@ -172,7 +240,7 @@ public:
     TEST_METHOD(DisplacedDimGroundCanPassNativeBarProofWithoutAnEdgeAtTheNominee)
     {
         OpposingPixels frame(3840,2160); BuildOpposingFixture(frame,1);
-        const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        const auto raw=CoarseDiagnosticNomination(frame); AssertOpposingNomination(raw);
         const auto result=MeasureActivePictureOpposingBoundaryDiagnostics(frame.Source(),raw);
         AssertOpposingMeasured(result);
         // The actual80->64 seam is1908. A crop at1884 would discard24 rows of
@@ -191,7 +259,7 @@ public:
     TEST_METHOD(SmoothGroundRampCanPassNativeBarProofWithZeroAdjacentContrast)
     {
         OpposingPixels frame(3840,2160); BuildOpposingFixture(frame,2);
-        const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        const auto raw=CoarseDiagnosticNomination(frame); AssertOpposingNomination(raw);
         const auto result=MeasureActivePictureOpposingBoundaryDiagnostics(frame.Source(),raw);
         AssertOpposingMeasured(result);
         Assert::IsTrue(result.top.trusted && result.bottom.trusted);
@@ -207,7 +275,7 @@ public:
     TEST_METHOD(OrdinaryAsymmetricBlackBarsDoNotInventOpposingBoundaryContrast)
     {
         OpposingPixels frame(3840,2160); BuildOpposingFixture(frame,3);
-        const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        const auto raw=CoarseDiagnosticNomination(frame); AssertOpposingNomination(raw);
         const auto result=MeasureActivePictureOpposingBoundaryDiagnostics(frame.Source(),raw);
         AssertOpposingMeasured(result);
         Assert::IsTrue(result.top.trusted); Assert::IsFalse(result.bottom.trusted);
@@ -223,7 +291,7 @@ public:
             std::swap_ranges(frame.bytes.begin()+size_t(row)*frame.pitch,
                 frame.bytes.begin()+size_t(row+1)*frame.pitch,
                 frame.bytes.begin()+size_t(frame.height-1-row)*frame.pitch);
-        const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        const auto raw=CoarseDiagnosticNomination(frame,548,1884); AssertOpposingNomination(raw);
         Assert::AreEqual(548,raw.proposedBounds.top); Assert::AreEqual(1884,raw.proposedBounds.bottom);
         const auto result=MeasureActivePictureOpposingBoundaryDiagnostics(frame.Source(),raw);
         AssertOpposingMeasured(result);
@@ -238,7 +306,7 @@ public:
         frame.Rectangle(0,0,960,540,64);
         frame.Rectangle(0,10,960,490,300);
         frame.Rectangle(0,490,960,530,80);
-        const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        const auto raw=CoarseDiagnosticNomination(frame,10,490); AssertOpposingNomination(raw);
         Assert::AreEqual(10,raw.proposedBounds.top); Assert::AreEqual(490,raw.proposedBounds.bottom);
         const auto result=MeasureActivePictureOpposingBoundaryDiagnostics(frame.Source(),raw);
         AssertOpposingMeasured(result,960,540,10);
@@ -251,11 +319,18 @@ public:
     {
         OpposingPixels p010(960,540,false),p210; BuildOpposingFixture(p010); BuildOpposingFixture(p210);
         PackedOpposingPixels packed(p210.Source());
-        const auto reference=MeasureActivePictureOpposingBoundaryDiagnostics(p210.Source(),ExtractActivePictureEvidence(p210.Source()));
+        const auto nativeReference=ExtractActivePictureEvidence(p210.Source());
+        Assert::IsTrue(nativeReference.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+        AssertOpposingUnmeasured(MeasureActivePictureOpposingBoundaryDiagnostics(p210.Source(),nativeReference));
+        const auto reference=MeasureActivePictureOpposingBoundaryDiagnostics(p210.Source(),CoarseDiagnosticNomination(p210));
         AssertOpposingMeasured(reference,960,540,68);
         for (const auto& source:{p010.Source(),packed.Source()})
         {
-            const auto raw=ExtractActivePictureEvidence(source); AssertOpposingRaw(raw);
+            const auto native=ExtractActivePictureEvidence(source);
+            Assert::IsTrue(native.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            EqualOpposingBounds(nativeReference.trustedBounds,native.trustedBounds);
+            AssertOpposingUnmeasured(MeasureActivePictureOpposingBoundaryDiagnostics(source,native));
+            const auto raw=CoarseDiagnosticNomination(p210); AssertOpposingNomination(raw);
             const auto result=MeasureActivePictureOpposingBoundaryDiagnostics(source,raw);
             AssertOpposingMeasured(result,960,540,68);
             EqualOpposingBounds(reference.candidate,result.candidate);
@@ -270,7 +345,7 @@ public:
     TEST_METHOD(ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros)
     {
         OpposingPixels frame; BuildOpposingFixture(frame);
-        const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        const auto raw=CoarseDiagnosticNomination(frame); AssertOpposingNomination(raw);
         std::vector<uint8_t> bytes(size_t(960)*540*4,0);
         AnalysisLumaSource source{bytes.data(),bytes.size(),960,540,size_t(960)*4,0,
             AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::UNKNOWN,ColorSpace::REC_709,7};
@@ -282,7 +357,7 @@ public:
     TEST_METHOD(InvalidSourceOrMismatchedProposedRasterUsesNoSamples)
     {
         OpposingPixels frame; BuildOpposingFixture(frame);
-        const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        const auto raw=CoarseDiagnosticNomination(frame); AssertOpposingNomination(raw);
         AssertOpposingUnmeasured(MeasureActivePictureOpposingBoundaryDiagnostics({},raw));
         for (int fault=0;fault<6;++fault)
         {
@@ -311,7 +386,7 @@ public:
     TEST_METHOD(UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples)
     {
         OpposingPixels frame; BuildOpposingFixture(frame);
-        const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        const auto raw=CoarseDiagnosticNomination(frame); AssertOpposingNomination(raw);
         for (int fault=0;fault<17;++fault)
         {
             auto changed=raw;
@@ -339,7 +414,7 @@ public:
     TEST_METHOD(DiagnosticDoesNotChangePixelsEvidenceObservationOrOrdinaryModelAuthority)
     {
         OpposingPixels frame; BuildOpposingFixture(frame,1);
-        auto raw=ExtractActivePictureEvidence(frame.Source()); AssertOpposingRaw(raw);
+        auto raw=CoarseDiagnosticNomination(frame); AssertOpposingNomination(raw);
         const auto before=MakeActivePictureObservation(raw,5,24);
         const auto pixels=frame.bytes;
         const auto* representation=reinterpret_cast<const uint8_t*>(&raw);
