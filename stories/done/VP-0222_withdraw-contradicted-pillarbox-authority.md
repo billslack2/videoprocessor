@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-30). Follow-up 2abdf66e corrects low-contrast native boundaries, carries their proof through expansion confirmation, and releases obsolete retained near-black crops. All 716 selected native regressions pass, including all 97 captured Eternals frames and retained-Scope component replay. Host and both renderers were deployed from verified clean x64 Release builds at 22:28 EDT. Live host/renderer identity and corrected native geometry 0,60-3840,2096 are verified; real moving Scope-to-IMAX transition acceptance remains for playback review.
+Done (2026-10-30). User accepted the deployed result ("this all looks good") and authorized merge. PR #238 merged into v1.4.02-beta at a591ad3b532771911e85f8ef026958279f2065f0. The merge tree is identical to tested/deployed source 2abdf66e6593f36d55d0337442782d0ab2d86b6d. Current correction passed 716 selected native regressions and clean paired x64 Release builds; earlier OSD and integration validation remains recorded below. No additional playback restart or deployment was required for this merge.
 
 ## Problem and evidence
 
@@ -56,3 +56,9 @@ The subsequent VP-0194 deployment at `955a8d54` includes this detector fix plus 
 - 716 selected native tests passed. Full GPU suites were not repeated per user instruction. Host, standard renderer, and beta renderer x64 Release builds completed from clean source; runtime records and installed SHA256 hashes match.
 - Backup and receipt: C:/Videoprocessor/vp/deploy-backups/eternals-ar-20261030-222807/deployment.json. Configuration and state were backed up and preserved byte-for-byte during deployment.
 - Restarted deployed process 29220 responds. Live host and renderer identify 2abdf66e with dirty=0; correct installed modules are loaded and output sequences advance. Live native/shared picture bounds remain 0,60-3840,2096. The existing 16x9 presentation selection was preserved; no live moving Scope-to-IMAX transition or visual OSD acceptance is claimed by this restart check.
+
+## User acceptance and beta merge (2026-10-30)
+
+Done (2026-10-30). User accepted the deployed result ("this all looks good") and authorized merge. PR #238 merged into v1.4.02-beta at a591ad3b532771911e85f8ef026958279f2065f0. The merge tree is identical to tested/deployed source 2abdf66e6593f36d55d0337442782d0ab2d86b6d. Current correction passed 716 selected native regressions and clean paired x64 Release builds; earlier OSD and integration validation remains recorded below. No additional playback restart or deployment was required for this merge.
+
+[PR #238](https://github.com/billslack2/videoprocessor/pull/238). User acceptance does not assert exhaustive coverage of every dark scene or format. Prior review evidence: Review (2026-10-30). Follow-up 2abdf66e corrects low-contrast native boundaries, carries their proof through expansion confirmation, and releases obsolete retained near-black crops. All 716 selected native regressions pass, including all 97 captured Eternals frames and retained-Scope component replay. Host and both renderers were deployed from verified clean x64 Release builds at 22:28 EDT. Live host/renderer identity and corrected native geometry 0,60-3840,2096 are verified; real moving Scope-to-IMAX transition acceptance remains for playback review.

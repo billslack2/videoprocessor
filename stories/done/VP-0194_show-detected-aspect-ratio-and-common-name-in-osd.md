@@ -2,14 +2,7 @@
 
 ## Status
 
-Review (2026-10-30). Display follow-up deployed from clean commit `dd8e193f95cad03dba4ae9c412e011824482e33b` in draft [PR #238](https://github.com/billslack2/videoprocessor/pull/238). All 14 familiar names and conventional precision are restored, startup uses the ordinary label, and detected-number changes below 1 percent are held against the last displayed measurement. Raw detection and submitted geometry remain exact. All 57 focused OSD checks and final host/standard/beta x64 Release builds passed; full suites were not rerun per user request. Fullscreen live OSD verified. Longer viewing remains available for user feedback.
-
-Previous review (2026-09-30): User confirmed the live OSD feature looks good.
-[PR #124](https://github.com/billslack2/videoprocessor/pull/124) merged into
-`v1.3.005-beta` at `c84863eaa59e03fe218de824c34b7c0220c4fd87` from clean source
-commit `bcc80ea97972249b7a5325ea5bbf351d046e919a`. The x64 Release
-build and deployment were verified. Precise HDTV / Digital IMAX transition
-timing was not measured; automated tests were not rerun after the final viewport edit.
+Done (2026-10-30). User accepted the deployed result ("this all looks good") and authorized merge. PR #238 merged into v1.4.02-beta at a591ad3b532771911e85f8ef026958279f2065f0. The merge tree is identical to tested/deployed source 2abdf66e6593f36d55d0337442782d0ab2d86b6d. Current correction passed 716 selected native regressions and clean paired x64 Release builds; earlier OSD and integration validation remains recorded below. No additional playback restart or deployment was required for this merge.
 
 ## User story
 
@@ -234,3 +227,16 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
 - Deployment backup: `C:/Videoprocessor/vp/deploy-backups/ar-labels-20261030-174402/deployment.json`. Configuration edits: none. The existing configured renderer.ready action dispatched Ctrl+Alt+C at 17:44:12, selecting Classic subtitles from the pre-restart Black selection; this configured behavior was preserved.
 - Native rendered-output capture `C:/Videoprocessor/vp/screenshots/VP-rendered-20261030-174435-274-frame-542.png` confirms fullscreen **AR in use: 2.35:1 (CinemaScope; held)** and **Detected AR: 2.39:1 (Scope)**. No Input AR row or startup marker. This verifies current formatting and separate applied/detected reporting; Digital IMAX and startup labels were covered by focused checks.
 - Evidence directory: `E:/codex/videoprocessor/ar-labels-20261030/x64/Release/ar-label-validation`, containing `checks.log`, `release-build-passed.txt`, `deployment-receipt.json`, and `live-verification.json`.
+
+## User acceptance and beta merge (2026-10-30)
+
+Done (2026-10-30). User accepted the deployed result ("this all looks good") and authorized merge. PR #238 merged into v1.4.02-beta at a591ad3b532771911e85f8ef026958279f2065f0. The merge tree is identical to tested/deployed source 2abdf66e6593f36d55d0337442782d0ab2d86b6d. Current correction passed 716 selected native regressions and clean paired x64 Release builds; earlier OSD and integration validation remains recorded below. No additional playback restart or deployment was required for this merge.
+
+[PR #238](https://github.com/billslack2/videoprocessor/pull/238). User acceptance does not assert exhaustive coverage of every dark scene or format. Prior review evidence: Review (2026-10-30). Display follow-up deployed from clean commit `dd8e193f95cad03dba4ae9c412e011824482e33b` in draft [PR #238](https://github.com/billslack2/videoprocessor/pull/238). All 14 familiar names and conventional precision are restored, startup uses the ordinary label, and detected-number changes below 1 percent are held against the last displayed measurement. Raw detection and submitted geometry remain exact. All 57 focused OSD checks and final host/standard/beta x64 Release builds passed; full suites were not rerun per user request. Fullscreen live OSD verified. Longer viewing remains available for user feedback.
+
+Previous review (2026-09-30): User confirmed the live OSD feature looks good.
+[PR #124](https://github.com/billslack2/videoprocessor/pull/124) merged into
+`v1.3.005-beta` at `c84863eaa59e03fe218de824c34b7c0220c4fd87` from clean source
+commit `bcc80ea97972249b7a5325ea5bbf351d046e919a`. The x64 Release
+build and deployment were verified. Precise HDTV / Digital IMAX transition
+timing was not measured; automated tests were not rerun after the final viewport edit.

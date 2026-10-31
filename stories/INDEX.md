@@ -250,7 +250,7 @@ they must not contain requirements that are absent from this file.
 | VP-0192 | Done | Windows installer with runtime setup and unrestricted build upgrades |
 
 | VP-0193 | Review | Safe, concrete screen positioning improvements |
-| VP-0194 | Review | Show aspect ratio and name in the VP Renderer Ctrl+I OSD |
+| VP-0194 | Done | Show aspect ratio and name in the VP Renderer Ctrl+I OSD |
 
 | VP-0195 | Review | Diagnose available display modes and refresh transitions |
 | VP-0196 | Review | Correct anamorphic lens layout with NLS and diagnostic telemetry |
@@ -282,7 +282,7 @@ they must not contain requirements that are absent from this file.
 | VP-0218 | In Progress | Improve aspect transitions with current relative boundary evidence |
 | VP-0220 | Review | Validate consolidated Off fit and AR evidence changes |
 | VP-0221 | Review | Native Magewell P210 capture and direct VP Renderer upload |
-| VP-0222 | Review | Withdraw contradicted pillarbox authority on full-width menus |
+| VP-0222 | Done | Withdraw contradicted pillarbox authority on full-width menus |
 
 | VP-0223 | In Progress | Magewell USB capture research and implementation foundation |
 
