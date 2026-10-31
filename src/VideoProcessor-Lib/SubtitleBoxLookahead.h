@@ -11,6 +11,7 @@
 #include <cstring>
 #include <limits>
 #include <cmath>
+#include <memory>
 
 // A strongly acquired bar plane may be carried forward only when every new
 // frame freshly revalidates that exact plane from its own pixels. The identity
@@ -1989,6 +1990,50 @@ namespace SubtitleBoxLookahead
         return result;
     }
 
+    // A short queue may expose only current plus two future scans. One retained
+    // RAW predecessor supplies the fourth independent observation, never pixels
+    // or geometry to copy. Keep the ordinary three-scan finite-card rule intact.
+    inline bool ConfirmCrowdedCurrentWithPrevious(const SubtitleBoxObservation& previous,
+        const SubtitleBoxPreview& preview)
+    {
+        const auto& current=preview.current;
+        if(!preview.available || preview.followingCount<2 || current.text.lineCount!=3 ||
+            preview.text.lineCount>=3 || !NextIndependentAnalysis(previous,current) ||
+            !SameContext(previous,current))return false;
+        // Observation snapshots are large. This helper is called beneath the
+        // presentation stack, so keep its bounded four-scan workspace off it.
+        auto storage=std::make_unique<std::array<SubtitleBoxObservation,4>>();
+        auto& frames=*storage;
+        frames[0]=previous;frames[1]=current;
+        frames[2]=preview.following[0];frames[3]=preview.following[1];
+        const int tolerance=(std::max)(4,current.height/180);
+        for(size_t i=0;i<frames.size();++i) {
+            const auto& frame=frames[i];
+            if(!frame.analyzed || frame.pendingRefresh || frame.analysisRefresh || frame.discontinuity ||
+                !frame.text.detected || frame.text.held || frame.text.workLimit || frame.text.lineCount!=3 ||
+                !frame.ink || !frame.ink->rawEvidenceComplete || !HasBarEvidence(frame) || !SameContext(current,frame) ||
+                frame.policyGeneration!=preview.policyGeneration || frame.continuityGeneration!=preview.continuityGeneration ||
+                (i && (!NextIndependentAnalysis(frames[i-1],frame) ||
+                    frame.identity.sourceFrameNumber<=frames[i-1].identity.sourceFrameNumber ||
+                    frame.identity.sourceFrameNumber-frames[i-1].identity.sourceFrameNumber!=frame.analysisStride ||
+                    frame.identity.captureTimestamp<=frames[i-1].identity.captureTimestamp)))return false;
+            for(int row=0;row<3;++row) {
+                bool matched=false;
+                for(int other=0;other<3;++other)
+                    if(SameCrowdedLine(current.text.lineBounds[row],frame.text.lineBounds[other],tolerance) &&
+                        SimilarSignature(current.text.lineSignatures[row],frame.text.lineSignatures[other]) &&
+                        SameCrowdedBacking(current,row,frame,other,tolerance) &&
+                        OwnedLinePixelCoverage(current,row,frame)>=0.975 &&
+                        OwnedLinePixelCoverage(frame,other,current)>=0.975) {matched=true;break;}
+                if(!matched)return false;
+            }
+        }
+        // Reuse the full-horizon anchor and crowded-row admission rules. The
+        // returned historical bounds are deliberately discarded by the caller.
+        return Resolve(frames.data(),frames.size(),preview.policyGeneration,
+            preview.continuityGeneration).text.lineCount==3;
+    }
+
     // Subtitle readiness is independent of native AR readiness. The caller
     // supplies identities rechecked against the owned current queue, including
     // each prepared source domain. Missing/stale future work ends this prefix.
@@ -2047,6 +2092,7 @@ public:
     void Reset() {
         m_acceptedCueSeedCertificate = {};
         m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
+        m_previousRawCrowded = {};
         m_barTrackingReference = {};
         m_pendingPictureGlyphAcquisition = {};
         m_hasPendingPictureGlyphAcquisition = false;
@@ -2156,13 +2202,20 @@ public:
         preview.newScanFrames = 0;
         return true;
     }
-    SubtitleBoxResult Consume(const SubtitleBoxPreview& preview, int holdMilliseconds = 250,
+    SubtitleBoxResult Consume(const SubtitleBoxPreview& suppliedPreview, int holdMilliseconds = 250,
         double sourceFrameMilliseconds = 1000.0/60.0,
         const ActivePictureFrameIdentity* backlogTemplateIdentity = nullptr,
         bool backlogRetirementOnly = false,
         bool backlogPendingPixelsVerified = false,
         const SubtitleCueContinuation* cueContinuation = nullptr)
     {
+        std::unique_ptr<SubtitleBoxPreview> historyConfirmed;
+        if(SubtitleBoxLookahead::ConfirmCrowdedCurrentWithPrevious(m_previousRawCrowded,suppliedPreview)) {
+            historyConfirmed=std::make_unique<SubtitleBoxPreview>(suppliedPreview);
+            historyConfirmed->text=suppliedPreview.current.text;
+            historyConfirmed->currentLinesConfirmed=true;
+        }
+        const auto& preview=historyConfirmed?*historyConfirmed:suppliedPreview;
         // Certificates belong to one completed current-source Consume call.
         // Repeats, pending reuse and all early returns cannot renew a seed.
         m_acceptedCueSeedCertificate = {};
@@ -2173,6 +2226,7 @@ public:
             if (backlogRetirementOnly && backlogTemplateIdentity && m_hasPrevious &&
                 m_result.detected &&
                 SameAnalysisFrameIdentity(m_previous.current.identity,*backlogTemplateIdentity)) {
+                m_previousRawCrowded={};
                 m_decisionReason="backlog-await-current-scan";
                 return {};
             }
@@ -2202,6 +2256,17 @@ public:
             (sharedContinuation || localContinuation) &&
             SameAnalysisFrameIdentity(cueContinuation->previousIdentity,m_previous.current.identity) &&
             preview.current.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1) {
+            // A validated current cadence continuation is not an independent
+            // scan. Preserve the immediately preceding raw scan for the next
+            // stride-two measurement, without adding a confirmation vote.
+            const bool preserveRaw=preview.current.cadenceSkipped && preview.current.pendingRefresh &&
+                !preview.current.independentBarAnalysis &&
+                preview.current.analysisStride==2 && m_previousRawCrowded.analysisStride==2 &&
+                m_previousRawCrowded.analyzed && !m_previousRawCrowded.pendingRefresh &&
+                preview.current.identity.acceptedSequence>m_previousRawCrowded.identity.acceptedSequence &&
+                preview.current.identity.acceptedSequence-m_previousRawCrowded.identity.acceptedSequence==1 &&
+                SameAnalysisFrameIdentity(m_previousRawCrowded.identity,cueContinuation->previousIdentity);
+            if(!preserveRaw)m_previousRawCrowded={};
             // Explicit current proof retains geometry only; do not renew the
             // acquisition template, bar tracking, or ordinary weak-ink lease.
             m_result=cueContinuation->accepted;
@@ -2214,6 +2279,10 @@ public:
             m_refreshedReference={};
             return m_result;
         }
+        // This raw candidate grants no output or accepted-reference authority.
+        // Unknown/pending scans replace it; only the validated cadence return
+        // above may carry one independent scan through an unanalyzed source.
+        m_previousRawCrowded=preview.current;
         auto continuityPreview=preview;
         if(m_refreshedReference.ink &&
             SameAnalysisFrameIdentity(m_refreshedReference.identity,preview.current.identity) &&
@@ -2612,6 +2681,7 @@ public:
     }
 private:
     SubtitleAcceptedCueSeedCertificate m_acceptedCueSeedCertificate;
+    SubtitleBoxObservation m_previousRawCrowded;
     SubtitleBoxObservation m_pendingPictureGlyphAcquisition;
     bool m_hasPendingPictureGlyphAcquisition=false;
     static SubtitleBoxObservation AcquisitionReference(const SubtitleBoxObservation& current,
