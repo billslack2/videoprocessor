@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-10-30). Implemented and deployed at user request from clean x64 Release commit `c8b4943b81c3f9f5df5812609fd891e23ae6401c`; [draft PR #237](https://github.com/billslack2/videoprocessor/pull/237). All 669 affected native detector/transition/queue/OSD tests passed; standard and beta renderer matrices each passed 208 tests. Host and both installed renderer variants were backed up, replaced, hash-verified, and restarted. Live host and renderer logs identify c8b4943 with dirty=0; current menu is provisional rather than retaining the obsolete 1.66 crop. Broader live content/user acceptance and merge remain pending.
+In Progress (2026-10-30). User reports a missed real Eternals Scope-to-Digital-IMAX transition and incorrect detection after changing presentation profiles. Captured 97 paused native frames in `C:/Videoprocessor/vp/logs/analysis-20261030-220141-20624-1`; unchanged production replay fails to acquire on every frame. Independently decoded pixels show flat outer bars around a roughly 1.90 picture, while the rough scan swallows low-contrast picture and proposes false side/bottom edges. Also found confirmed outward evidence blocked by a retained near-black episode. Broader black/brightness classification audit and focused corrections are in progress in `E:/codex/videoprocessor/eternals-ar-transition-20261030`, fresh beta `a8f62855` plus installed `dd8e193f`. No follow-up deployed yet.
 
 ## Problem and evidence
 
@@ -42,3 +42,10 @@ Clean committed x64 Release solution build passed, including both renderer varia
 ## Combined two-field OSD deployment (2026-10-30)
 
 The subsequent VP-0194 deployment at `955a8d54` includes this detector fix plus the submitted/live AR OSD and preserves the previously installed capture statistics/recovery fixes. It supersedes the local `c8b4943` runtime pair. All 1,039 selected regressions and 208 tests for each renderer dependency passed. Backup/receipt: `C:/Videoprocessor/vp/deploy-backups/ar-complete-20261030-164125/deployment.json`. Live rendered output confirms native 1.778 startup geometry while the Netflix menu candidate remains explicitly provisional; configuration/state are unchanged. See VP-0194 for full verification evidence.
+
+
+## Eternals acceptance failure and wider audit (2026-10-30)
+
+- Prior menu-fix validation remains historical evidence: Review (2026-10-30). Implemented and deployed at user request from clean x64 Release commit `c8b4943b81c3f9f5df5812609fd891e23ae6401c`; [draft PR #237](https://github.com/billslack2/videoprocessor/pull/237). All 669 affected native detector/transition/queue/OSD tests passed; standard and beta renderer matrices each passed 208 tests. Host and both installed renderer variants were backed up, replaced, hash-verified, and restarted. Live host and renderer logs identify c8b4943 with dirty=0; current menu is provisional rather than retaining the obsolete 1.66 crop. Broader live content/user acceptance and merge remain pending.
+- OSD smoothing only changes displayed detected numbers. The native replay proves the current paused failure independently of OSD state, screen dimensions, and retained renderer history. The latest 16x9 profile disables automatic cropping, explaining its applied full-raster geometry but not the erroneous detected ratio.
+- Investigate measurement thresholds, outward confirmation, near-black episode release, and profile-reset reacquisition together. Test low-contrast source pixels, local bright overlays, smooth gradients, real nonstandard aspects, and current-source/gap/provenance guards.
