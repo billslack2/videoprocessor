@@ -1,0 +1,81 @@
+{
+  "commit": "b52ae03a424fcd5557ebac6de2ba1c3b28448eee",
+  "baseCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
+  "branch": "codex/combined-transition-regression-20261031",
+  "configuration": "Release",
+  "architecture": "x64",
+  "testsRun": true,
+  "testsScope": "Mandatory two-variant native and actual lifecycle gate, 20 additional actual plugin methods, and 209 GPU/cue methods per dependency on this exact clean commit",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\classic-lifecycle-repair-20261031-131745",
+  "configurationEdits": [],
+  "configurationHashes": {
+    "VideoProcessor.state": "99CF94A66291AC295858C9AFD73DC880EE42F9496FD974D9CC44A9A1BF979222",
+    "VideoProcessor.cfg": "2F644385C45D532CB213DFD4C432B95398467FADFC8FBD25BD41C48A946943C5"
+  },
+  "files": [
+    {
+      "target": "VideoProcessor.exe",
+      "sha256": "4A7AC5CFC30E9F5BB710C517393BF528FE8D0E9985E4613336A45A0711BC4798",
+      "before": "FA4C96AD8F9B9BEEBB2212A6398AEBF62BEA6649C6F6CD25DFC51A42E7EED971",
+      "source": "VideoProcessor-GUI.exe"
+    },
+    {
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "E981BF25B73F5B98A9B0432EFFEA33BF7233634DE0B56FC23565788EC086F0FB",
+      "before": "F87887274B4809F0011A95061E8D7E925FDB0FC938885B7A9D06026477D6CBBD",
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "342473AEEC12BA20D7BFB5FD7F664100FA0E348965805247A8780EE9CB2C29AD",
+      "before": "897B85096D6A3CC1D7B8B49D50EB7090B4C3231FB028FEB0F03B4E233D5046BF",
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    },
+    {
+      "target": "VideoProcessor.exe.runtime.json",
+      "sha256": "675B455E32722EF0E55C642ACF995C11B4CD00E290C817EF451B41989E73CB7C",
+      "before": "C5A6E9B628FAB302E697C1801567042868405D5909B2C35CFF362EECE4B8C0D5",
+      "source": "VideoProcessor-GUI.exe.runtime.json"
+    },
+    {
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "sha256": "681DD80C76CA4B3F2308F01A5F6BC14845B82C7A4AD14ED21183D07F4B96C88D",
+      "before": "E7B758E811E11B4BAEC70DDFA0A6024B97A7EE0A0C5D9370CA36A22E3630917E",
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json"
+    },
+    {
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "sha256": "1D524EA6BFE17A3DBA7EF7344C050D793421A40F2FBA9C4066767C11F4BC492E",
+      "before": "87464A2C470E9B3716F328E8F3C7255442D5C8F42435AA229A9B65BED06F7365",
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json"
+    },
+    {
+      "target": "VideoProcessor-GUI.pdb",
+      "sha256": "CF8436D0624A22F974B976739A1C5F0D6A6038A16E4E95C5D2DB2302ECF204CE",
+      "before": "97656A2DAC8680A8F68B947586169567B698C172E5614B46BB4E900424AD291E",
+      "source": "VideoProcessor-GUI.pdb"
+    },
+    {
+      "target": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "sha256": "0D1E13633242DB128045753113CE3DC6BCBF300D870D8D12DD786E107AFFA2BB",
+      "before": "BF0B55C0CB9A493F3AF3BC8EE8C192574FFD498C483906D498B1497C33AA35F8",
+      "source": "vprenderer\\VideoProcessorVPRenderer.pdb"
+    },
+    {
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "sha256": "FE25D8B73165F64E14C1BEA962317E3829E641182C5F5E7C6754B381CCC005BF",
+      "before": "ACE8B8C9591F9A74492E9361A12CC4813D10D972D9BA226D70805D737C543F9E",
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb"
+    },
+    {
+      "target": "VideoProcessor-GUI.exe.runtime.json",
+      "sha256": "675B455E32722EF0E55C642ACF995C11B4CD00E290C817EF451B41989E73CB7C",
+      "before": "C5A6E9B628FAB302E697C1801567042868405D5909B2C35CFF362EECE4B8C0D5",
+      "source": "VideoProcessor-GUI.exe.runtime.json"
+    }
+  ],
+  "stoppedProcessIds": [],
+  "processId": null,
+  "startedAt": "2026-10-31T13:17:46.5503922-04:00",
+  "logOffsetBeforeStart": 12011107
+}

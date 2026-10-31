@@ -1,0 +1,37 @@
+{
+  "optionalReturns": [
+    {
+      "method": "NativePausedReplayRuntimeNearBar20ReuseDiagnostic",
+      "status": "private-fixture-absent-not-exercised",
+      "frameworkOutcome": "Passed",
+      "message": "Runtime near-bar diagnostic skipped: VP_SUBTITLE_REPLAY_PATH is not set."
+    },
+    {
+      "method": "NativePausedInspectionCandidateFindsCurrentCaptionWithoutSharedAuthority",
+      "status": "private-fixture-absent-not-exercised",
+      "frameworkOutcome": "Passed",
+      "message": "Paused inspection replay skipped: VP_SUBTITLE_PAUSED_REPLAY_PATH is not set."
+    },
+    {
+      "method": "NativePausedReplayReportsSubtitleBarReferenceSensitivity",
+      "status": "private-fixture-absent-not-exercised",
+      "frameworkOutcome": "Passed",
+      "message": "Native replay diagnostic skipped: VP_SUBTITLE_REPLAY_PATH is not set."
+    },
+    {
+      "method": "NativeReplayLocalGlyphProofSupportsSubtitleOnlyPlacement",
+      "status": "private-fixture-absent-not-exercised",
+      "frameworkOutcome": "Passed",
+      "message": "Native local-glyph regression skipped: VP_SUBTITLE_REPLAY_PATH is not set."
+    },
+    {
+      "method": "NativeCapturedCadenceRetainsFinalReducedGeometryWithoutPictureAuthority",
+      "status": "private-fixture-absent-not-exercised",
+      "frameworkOutcome": "Passed",
+      "message": "Native cadence replay skipped: VP_SUBTITLE_CADENCE_REPLAY_PATH is not set."
+    }
+  ],
+  "frameworkPassed": 397,
+  "exercised": 392,
+  "commit": "b52ae03a424fcd5557ebac6de2ba1c3b28448eee"
+}

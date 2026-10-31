@@ -1,0 +1,20 @@
+VideoProcessor subtitle / AR regression repair
+Source: b52ae03a424fcd5557ebac6de2ba1c3b28448eee (clean)
+Review: https://github.com/billslack2/videoprocessor/pull/242 (draft, unmerged)
+Deployed matched x64 Release host and both renderer variants. Backup: C:\Videoprocessor\vp\backups\classic-lifecycle-repair-20261031-131745. Configuration edits: none. The primary player was already closed and was left closed.
+
+The reproduced Classic bounce came from final-pose checks that did not represent normal controller drift and both axes of configured fill. A valid native crop could be translated and filled, then rejected on the next skipped analysis. The repair validates the complete transformation and retains the original bounded caption measurement through actual submission.
+
+The enforced renderer tests also exposed a queue handoff bug after Reconstruction began. Cadence had verified current caption pixels but intentionally stripped independent bar evidence. That made a source-template getter hide the accepted source identity; the pending guard also needed to advance to the same verified source. A separate private queue certificate now permits only timeline reassociation. Recovery still requires current glyph/chroma/black-bar verification within the original timeout. It grants no AR, bar tracking or acquisition authority.
+
+Historical comparison: identical queued lifecycle tests fail on previously installed 60cbface; both standard 7d9b26df cases pass. This brackets the regression without claiming an exact first-bad commit. The black-reference correction c48eb134 is preserved. Strict native boundary verification remains, with the saved IMAX collar measured at 64..2094. Native AR comes from pixels, independently of the 2.35:1 screen/fill settings. There is no 24-frame runtime delay: that is the test's post-transition observation window.
+
+Validation
+- Mandatory solution gate and final direct-project build gate passed on this exact source. Each dependency ran 712 framework methods: 706 native plus 6 actual-renderer lifecycle cases. Of 706 native methods, 705 were exercised; the historical optional dark capture was absent. The saved native IMAX frame was exercised on both dependencies.
+- Additional actual plugin methods: 20/20. Additional native methods: 397 framework passes, 392 exercised and 5 absent optional private replay inputs. Earlier 324 focused native passes overlap these suites and are not additive unique coverage.
+- Complete GPU/cue suite: 209/209 on standard and 209/209 on beta, with selected dependency identities and tested binary hashes recorded.
+- Metadata negatives verify missing/skipped/failing/duplicate tests, nonzero processes, stale source/binaries/TRX and missing variants. Real failed renderer runs blocked the build and produced no qualified receipt.
+
+Required runtime build qualification is active through project and solution hooks. Canonical command-line Release|x64 runtime builds execute the required contracts; unsupported runtime configurations fail clearly until equivalent qualification exists. Deployment and packaging require matching source/binary/test evidence. Test-only library builds are not runtime deployment qualification.
+
+Physical playback acceptance is still outstanding. The repair does not claim a separate HDMI refresh/EPSON fallback fix or resolution of unrelated historical broad-suite failures. Recordings, native movie pixels and full diagnostic logs remain local. Prior failures are preserved alongside the red/green reproductions.

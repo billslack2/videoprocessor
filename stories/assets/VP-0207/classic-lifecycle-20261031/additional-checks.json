@@ -1,0 +1,20 @@
+{
+  "commit": "b52ae03a424fcd5557ebac6de2ba1c3b28448eee",
+  "sourceDirty": false,
+  "runs": [
+    {
+      "trxSha256": "1C7BBB73A3DC98D2554BF92EA26D1EB5D674CEA13D26D5EFD7259134BAFEC382",
+      "name": "remaining-actual-plugins",
+      "testExit": 0,
+      "passed": 20
+    },
+    {
+      "trxSha256": "08E9934FD06968EBAE0BE7D6B0F3CB9C1DBCFFCA79BE60DCC25ED0F8C220BF41",
+      "name": "remaining-native-transitions",
+      "testExit": 0,
+      "passed": 397
+    }
+  ],
+  "scope": "Actual plugin checks plus focused timeline, transition, cadence, handoff and refresh policy methods. Private optional fixture methods must be audited separately.",
+  "testBinaryHash": "1E1AFC785511DECE085D5BDDE27C0DB8F63B209824BC0D37F5BCCB0CCCD2DA13"
+}
