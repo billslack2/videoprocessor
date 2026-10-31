@@ -554,6 +554,80 @@ ActivePictureCandidateVerificationState VerifyNativeAxisBands(SampleContext& sam
     return contradicted ? State::CONTRADICTED : mismatch ? State::UNKNOWN : State::VERIFIED;
 }
 
+// A coarse bright-edge nomination can leave a few resampling/chroma rows in
+// its excluded bars. Measure those CURRENT rows and retain them; never relabel
+// their original crop clean or relax the strict matte checks. This is limited
+// to an already nominated vertical-only crop, with a total two-step collar
+// including any uncertainty rows retained by the original profile guard.
+bool RepairNativeVerticalBoundaryCollar(SampleContext& samples,
+    ActivePictureEvidence& evidence, ActivePictureCandidateVerification& certificate)
+{
+    using State=ActivePictureCandidateVerificationState;
+    const auto& source=samples.source;
+    const auto original=evidence.trustedBounds;
+    auto& vertical=evidence.axisEvidence.vertical;
+    if (source.width<320 || source.height<180 ||
+        original.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+        original.left!=0 || original.right!=source.width ||
+        vertical.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION ||
+        evidence.top.measuredMatteReference.state!=ActivePictureMatteReferenceState::QUALIFIED ||
+        evidence.bottom.measuredMatteReference.state!=ActivePictureMatteReferenceState::QUALIFIED)
+        return false;
+    const int collar=2*std::max(2,source.height/540);
+    const int topAllowance=std::max(0,collar-evidence.axisEvidence.verticalCropGuardTop);
+    const int bottomAllowance=std::max(0,collar-evidence.axisEvidence.verticalCropGuardBottom);
+    const int earliest=(std::max(1,original.top-topAllowance)+1)&~1;
+    const int latest=std::min(source.height-1,original.bottom+bottomAllowance)&~1;
+    if (earliest>original.top || latest<original.bottom) return false;
+    int top=original.top,bottom=original.bottom;
+    const auto differs=[&](int x,int y,const ActivePictureMatteReference& reference,bool& different) {
+        samples.Checkpoint();AnalysisLumaSample pixel;
+        if (!source.Sample(x,y,pixel)) return false;
+        ++samples.lumaSamples;++samples.chromaSamples;
+        different=std::abs(int(pixel.luma)-reference.y)>4 ||
+            std::abs(int(pixel.chromaU)-reference.u)>4 ||
+            std::abs(int(pixel.chromaV)-reference.v)>4;
+        return true;
+    };
+    for (bool leading:{true,false}) {
+        const auto& reference=leading?evidence.top.measuredMatteReference:evidence.bottom.measuredMatteReference;
+        const int first=leading?earliest:original.bottom;
+        const int end=leading?original.top:latest;
+        for (int y=first;y<end;++y) for (int i=0;i<96;++i) {
+            bool different=false;
+            if (!differs(i*(source.width-1)/95,y,reference,different)) return false;
+            if (different) {
+                if (leading) top=std::min(top,y&~1);
+                else bottom=std::max(bottom,(y+2)&~1);
+            }
+        }
+    }
+    if ((top==original.top && bottom==original.bottom) || top<earliest || bottom>latest) return false;
+    auto repaired=original;repaired.top=top;repaired.bottom=bottom;
+    repaired.aspectRatio=double(repaired.right-repaired.left)/(bottom-top);
+    auto topEdge=evidence.top,bottomEdge=evidence.bottom;
+    auto axis=vertical;auto checked=certificate;checked.bounds=repaired;
+    // This is exactly the same complete discarded-band verifier used for the
+    // original nomination, including deep rows and connected-picture vetoes.
+    if (VerifyNativeAxisBands(samples,repaired,true,topEdge,bottomEdge,axis,checked)!=State::VERIFIED)
+        return false;
+    auto profile=evidence.verticalBarGuardProfile;
+    if (evidence.lowContrastBoundaryProof || evidence.axisEvidence.verticalCropProfileClean) {
+        profile=InspectVerticalCropBarProfile(samples,top,bottom);
+        if (!profile.completed || !profile.clean) return false;
+    }
+    topEdge.barPixels=top;bottomEdge.barPixels=source.height-bottom;
+    topEdge.trusted=bottomEdge.trusted=true;
+    axis.state=ActivePictureAxisState::TRUSTED_BARS;axis.reason=ActivePictureAxisReason::BAR_CONFIRMED;
+    evidence.top=topEdge;evidence.bottom=bottomEdge;vertical=axis;
+    evidence.axisEvidence.verticalCropGuardTop+=original.top-top;
+    evidence.axisEvidence.verticalCropGuardBottom+=bottom-original.bottom;
+    evidence.trustedBounds=repaired;evidence.verticalBarGuardProfile=profile;
+    certificate.bounds=repaired;
+    evidence.reason="native boundary collar retained; remaining discarded bars independently verified";
+    return true;
+}
+
 void VerifyNativeCandidate(const AnalysisLumaSource& source, ActivePictureEvidence& evidence,
     const AnalysisEvaluationBudget* budget)
 {
@@ -572,6 +646,8 @@ void VerifyNativeCandidate(const AnalysisLumaSource& source, ActivePictureEviden
     };
     if (axes & 1) {
         certificate.vertical=VerifyNativeAxisBands(samples,certificate.bounds,true,evidence.top,evidence.bottom,evidence.axisEvidence.vertical,certificate);
+        if (certificate.vertical!=State::VERIFIED && RepairNativeVerticalBoundaryCollar(samples,evidence,certificate))
+            certificate.vertical=State::VERIFIED;
         if (certificate.vertical!=State::VERIFIED) {
             axes &= ~1; reject(evidence.axisEvidence.vertical);
             evidence.top.trusted=evidence.bottom.trusted=false;

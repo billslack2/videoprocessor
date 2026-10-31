@@ -17936,6 +17936,9 @@ releaseDriftBaseRetention =
                     cropPresentationAdmission.acceptedNativeCrop.bounds, presentationCropBounds,
                     frameGeneration, sourceSequence, viewportRequestSerial};
             }
+            // Certify the final translated pose after configured horizontal fill.
+            cropPresentationAdmission = AlphaSourceCrop::QualifyTranslatedNativePresentation(
+                cropPresentationAdmission, finalFillInput, aspectLimitFill);
             const bool captionAnchorEligible = !unknownCaptionHold.retained &&
                 (captionPresentationHeld ||
                  (cropDecision.applyCrop && !cropDecision.verticallyTranslated &&

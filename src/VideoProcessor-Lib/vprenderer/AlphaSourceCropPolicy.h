@@ -1282,7 +1282,8 @@ namespace AlphaSourceCrop
 
     enum class NativePresentationOrigin : uint8_t
     {
-        NONE, EXACT_NATIVE, CONFIRMED_FIT, CONFIRMED_TRANSLATION, CONFIGURED_FILL, CONFIRMED_PICTURE, CAPTION_CONTINUITY
+        NONE, EXACT_NATIVE, CONFIRMED_FIT, CONFIRMED_TRANSLATION, CONFIGURED_FILL, CONFIRMED_PICTURE, CAPTION_CONTINUITY,
+        TRANSLATED_CONFIGURED_FILL, VISIBILITY_FALLBACK
     };
     // Only independently measured caption pixels (and their authorized outer
     // padding) survive native format changes. Never retain the old native crop.
@@ -1301,6 +1302,9 @@ namespace AlphaSourceCrop
         ActivePictureBounds nativeBase, approvedBounds;
         uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
         CaptionPreservationEvidence captionPreservation;
+        // Composition of an independently qualified translation with final side fill.
+        ActivePictureBounds unfilledTranslation;
+        double translatedFillScreenAspect = 0.0;
     };
 
     struct PreparedSubtitlePresentation
@@ -2103,6 +2107,11 @@ namespace AlphaSourceCrop
     };
     AspectLimitFillDecision EvaluateFinalAspectLimitFill(
         const FinalAspectLimitFillInput& input);
+    // Certify the exact final filled pose, without acquiring native boundaries.
+    CropPresentationAdmissionState QualifyTranslatedNativePresentation(
+        const CropPresentationAdmissionState& admission,
+        const FinalAspectLimitFillInput& input, const AspectLimitFillDecision& actual);
+
 
     // Exact current composition can resolve presentation-only inspection and
     // recovery of this independently trusted native base, without detector votes.

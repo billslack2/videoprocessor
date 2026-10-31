@@ -3964,13 +3964,116 @@ namespace VideoProcessorTest
                 } else {
                     Assert::IsFalse(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED && raw.trustedBounds.top>86,
                         L"A broad two-row picture band must be preserved; local fringe tolerance is not a depth exemption.");
-                    if (luma==80)
-                        Assert::IsTrue(raw.candidateVerification.vertical==ActivePictureCandidateVerificationState::CONTRADICTED,
-                            L"Broad low-code picture remains contradictory despite staying below the coarse threshold.");
+                    if (luma==80) {
+                        Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                        Assert::AreEqual(86,raw.trustedBounds.top);
+                        Assert::AreEqual(88,raw.candidateVerification.nomination.top);
+                        Assert::IsTrue(raw.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED,
+                            L"The original crop remains rejected; only the outward repaired crop is verified.");
+                    }
                 }
             }
         }
 
+        TEST_METHOD(BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats)
+        {
+            for (int format=0;format<3;++format) for (bool uhd:{false,true})
+            for (int pattern=0;pattern<3;++pattern) {
+                const int width=uhd?3840:1920,height=uhd?2160:1080;
+                const int top=uhd?66:88,bottom=uhd?2092:992;
+                P010Frame frame(width,height,64,format!=0);
+                frame.BlackOutside(0,top,width,bottom);
+                // The luma scan sees the bright full-width picture at top/bottom.
+                // Exact native verification must also retain its low-code or
+                // chroma-only resampling collar, rather than relaxing matte4.
+                const int y=pattern==1?64:80,u=pattern==0?512:520,v=pattern==0?512:504;
+                frame.FillRectangle(0,top-2,width,top,y,u,v);
+                frame.FillRectangle(0,bottom,width,bottom+2,y,u,v);
+                auto source=format==0?frame.P010Source():frame.P210Source();
+                if(format==2)source.format=AnalysisLumaFormat::DecodedDolbyVision422;
+                source.range=AnalysisLumaRange::Limited;
+                const auto raw=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::AreEqual(0,raw.trustedBounds.left);Assert::AreEqual(width,raw.trustedBounds.right);
+                Assert::AreEqual(top-2,raw.trustedBounds.top);Assert::AreEqual(bottom+2,raw.trustedBounds.bottom);
+                Assert::AreEqual(top,raw.candidateVerification.nomination.top);
+                Assert::AreEqual(bottom,raw.candidateVerification.nomination.bottom);
+                Assert::IsTrue(raw.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                Assert::AreEqual(raw.trustedBounds.top,raw.candidateVerification.bounds.top);
+                Assert::AreEqual(raw.trustedBounds.bottom,raw.candidateVerification.bounds.bottom);
+                Assert::AreEqual(source.generation,raw.candidateVerification.sourceGeneration);
+                Assert::AreEqual(double(width)/(bottom-top+4),raw.trustedBounds.aspectRatio,0.000001);
+                const auto safe=EvaluateActivePicturePresentationRetention(source,raw.trustedBounds);
+                Assert::IsTrue(safe.analysisValid && safe.presentationValid && safe.excludedBandsPixelSafe);
+            }
+        }
+        TEST_METHOD(NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation)
+        {
+            for (bool p210:{false,true}) for (int fault=0;fault<4;++fault) {
+                P010Frame frame(1920,1080,64,p210);
+                frame.BlackOutside(0,88,1920,992);
+                frame.FillRectangle(0,86,1920,88,80);
+                frame.FillRectangle(0,992,1920,994,80);
+                if(fault==0)frame.FillRectangle(0,76,1920,78,80); // deep luma stripe
+                if(fault==1)frame.FillRectangle(0,1002,1920,1004,64,520,504); // deep chroma stripe
+                if(fault==2)frame.FillRectangle(0,80,1920,88,80); // exceeds two-step1080 collar
+                if(fault==3)frame.FillRectangle(0,0,32,100,80,640,512); // connected edge picture
+                const auto raw=ExtractActivePictureEvidence(p210?frame.P210Source():frame.P010Source());
+                Assert::IsFalse(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                    L"Moving the measured boundary may not hide pixels deeper than its bounded collar.");
+                Assert::IsTrue(raw.candidateVerification.vertical!=ActivePictureCandidateVerificationState::VERIFIED);
+            }
+        }
+        TEST_METHOD(VerticalCollarRepairCannotPromoteAFailedWindowboxAxis)
+        {
+            for(bool p210:{false,true}) {
+                P010Frame frame(1920,1080,64,p210);
+                frame.BlackOutside(192,88,1728,992);
+                frame.FillRectangle(192,86,1728,88,80);
+                frame.FillRectangle(192,992,1728,994,80);
+                const auto raw=ExtractActivePictureEvidence(p210?frame.P210Source():frame.P010Source());
+                Assert::IsTrue(raw.classification==ActivePictureClassification::PROVISIONAL);
+                Assert::IsTrue(raw.candidateVerification.nomination.trustedBarAxes==ActivePictureBounds::BarAxes::BOTH);
+                Assert::IsTrue(raw.candidateVerification.vertical!=ActivePictureCandidateVerificationState::VERIFIED);
+                Assert::IsFalse(raw.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::BOTH);
+            }
+        }
+        TEST_METHOD(OptionalCapturedNativeImAXChromaCollarKeepsExactMeasuredPicture)
+        {
+            char* value=nullptr;size_t length=0;_dupenv_s(&value,&length,"VP_AR_COLLAR_CAPTURE_FRAME");
+            const std::string fixture=value?value:"";std::free(value);
+            if(fixture.empty()) {Logger::WriteMessage("Set VP_AR_COLLAR_CAPTURE_FRAME for the exact20261031 native IMAX replay.");return;}
+            const auto extension=fixture.find_last_of('.');
+            std::ifstream metadata(fixture.substr(0,extension)+".txt");
+            AnalysisLumaSource source;int format=0,encoding=0,colorspace=0,top=0,bottom=0,script=0,range=0;
+            metadata>>source.width>>source.height>>source.rowBytes>>source.chromaRowBytes>>format>>encoding>>colorspace>>top>>bottom>>script>>range;
+            Assert::IsTrue(bool(metadata));
+            std::ifstream input(fixture,std::ios::binary|std::ios::ate);Assert::IsTrue(bool(input));
+            const auto size=input.tellg();Assert::IsTrue(size>0);std::vector<uint8_t> pixels(static_cast<size_t>(size));
+            input.seekg(0);input.read(reinterpret_cast<char*>(pixels.data()),std::streamsize(pixels.size()));Assert::IsTrue(bool(input));
+            source.data=pixels.data();source.dataBytes=pixels.size();source.format=static_cast<AnalysisLumaFormat>(format);
+            source.encoding=static_cast<VideoFrameEncoding>(encoding);source.colorspace=static_cast<ColorSpace>(colorspace);
+            source.range=static_cast<AnalysisLumaRange>(range);source.generation=1;Assert::IsTrue(source.IsValid());
+            Assert::AreEqual(3840,source.width);Assert::AreEqual(2160,source.height);
+            AnalysisLumaSample collar;Assert::IsTrue(source.Sample(323,65,collar));
+            Assert::AreEqual(64,int(collar.luma));Assert::AreEqual(518,int(collar.chromaU));Assert::AreEqual(512,int(collar.chromaV));
+            const auto raw=ExtractActivePictureEvidence(source);
+            std::ostringstream detail;detail<<"Captured native collar class="<<int(raw.classification)
+                <<" proposed="<<raw.proposedBounds.top<<"-"<<raw.proposedBounds.bottom
+                <<" nomination="<<raw.candidateVerification.nomination.top<<"-"<<raw.candidateVerification.nomination.bottom
+                <<" trusted="<<raw.trustedBounds.top<<"-"<<raw.trustedBounds.bottom
+                <<" verification="<<int(raw.candidateVerification.vertical)<<" first_mismatch="
+                <<raw.candidateVerification.firstMismatchX<<","<<raw.candidateVerification.firstMismatchY;
+            Logger::WriteMessage(detail.str().c_str());
+            Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::AreEqual(0,raw.trustedBounds.left);Assert::AreEqual(3840,raw.trustedBounds.right);
+            Assert::AreEqual(64,raw.trustedBounds.top);Assert::AreEqual(2094,raw.trustedBounds.bottom);
+            Assert::AreEqual(66,raw.candidateVerification.nomination.top);Assert::AreEqual(2092,raw.candidateVerification.nomination.bottom);
+            Assert::IsTrue(raw.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+            Assert::AreEqual(source.generation,raw.candidateVerification.sourceGeneration);
+            const auto safe=EvaluateActivePicturePresentationRetention(source,raw.trustedBounds);
+            Assert::IsTrue(safe.analysisValid && safe.presentationValid && safe.excludedBandsPixelSafe);
+        }
         TEST_METHOD(NativeMatteSparseOutliersCannotEraseAnEntireSmallQuartile)
         {
             P010Frame frame(160,90);
