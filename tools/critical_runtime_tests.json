@@ -5,7 +5,7 @@
     "src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp",
     "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp"
   ],
-  "minimumNativeTests": 600,
+  "minimumNativeTests": 725,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -26,7 +26,16 @@
     "UhdExactCurrentVisibilitySurvivesMissingOrUnavailableCoarseNomination",
     "UhdMissingNominationCannotPromoteForeignOrAbsentCurrentVisibility",
     "PreparedAdvancedRecoveryRequiresExactCurrentContextAndClearRemainingBands",
-    "PreparedAdvancedPresentationCannotHideFirstCurrentNativePictureProof"
+    "PreparedAdvancedPresentationCannotHideFirstCurrentNativePictureProof",
+    "AdvancedCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing",
+    "AdvancedColdFallbackAllowsFirstPreparedNativeInitialization",
+    "PreparedNativeInitializationRequiresExactCurrentSuccessfulSubmission",
+    "PreparedNativeInitializationAcceptsBothAuthorizedNativeFillAxes",
+    "PreparedViewportHoldRequiresExactRawEvidenceAndTrimsOnlyClearSides",
+    "PreparedViewportLineageDoesNotCrossModeOrNativeContext",
+    "AdvancedConfirmedFitViewportDoesNotBounceWithProcessingSuccess",
+    "AdvancedFullRasterVisibilityUsesActualRendererBridgeAndKeepsNativeLineage",
+    "BlackCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -48,12 +57,14 @@
     "StandardRendererReconstructionUhdV210ResidualUiWithMovingPicture",
     "BetaRendererReconstructionUhdV210ResidualUiWithMovingPicture",
     "StandardRendererReconstructionUhdV210CrossEdgeMovingCleanup",
-    "BetaRendererReconstructionUhdV210CrossEdgeMovingCleanup"
+    "BetaRendererReconstructionUhdV210CrossEdgeMovingCleanup",
+    "StandardRendererBlackUhdV210ResidualUiWithMovingPicture",
+    "BetaRendererBlackUhdV210ResidualUiWithMovingPicture"
   ],
   "optionalPrivateFixtures": [
     "VP_AR_COLLAR_CAPTURE_FRAME",
     "VP_DARK_AR_ANALYSIS_FRAME"
   ],
   "minimumOriginalNativeTests": 663,
-  "minimumActualTests": 18
+  "minimumActualTests": 20
 }

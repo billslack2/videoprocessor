@@ -1306,6 +1306,7 @@ namespace AlphaSourceCrop
         // Original measured source lifetime; copying/submission never renews it.
         uint64_t measurementTick=0,leaseExpiryTick=0;
     };
+    enum class PreparedNativeMode : uint8_t { NONE, BLACK, RECONSTRUCTION };
     // Exact authorized output, distinct from the source-derived native contract.
     struct NativePresentationCertificate
     {
@@ -1320,6 +1321,8 @@ namespace AlphaSourceCrop
         // Exact final fill policy, replayed at submission against the unfilled pose.
         AspectLimitFillInput translatedFillPolicy;
         CaptionTranslationMeasurement captionTranslationMeasurement;
+        PreparedNativeMode preparedNativeMode=PreparedNativeMode::NONE;
+        uint64_t preparedNativeSourceSequence=0;
     };
 
     struct PreparedSubtitlePresentation
@@ -1333,6 +1336,7 @@ namespace AlphaSourceCrop
         AcceptedNativeCropContract acceptedNativeCrop;
         uint64_t frameSourceFormatKey = 0, frameAnalysisDomainKey = 0;
         PreparedSubtitlePresentation preparedSubtitle;
+        PreparedNativeMode subtitlePresentationMode=PreparedNativeMode::NONE;
         MovingPicturePresentationHold movingPictureHold;
 		PictureTransitionHandoff pictureTransitionHandoff;
 		uint64_t framePresentationEpoch = 0;
@@ -1499,6 +1503,7 @@ namespace AlphaSourceCrop
 	{
         AcceptedNativeCropContract acceptedNativeCrop;
         NativePresentationCertificate nativePresentation;
+        PreparedNativeMode subtitlePresentationMode=PreparedNativeMode::NONE;
         // Copied with the selected packet; submission validates identity and actual bounds again.
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
         // A separate presentation-only certificate for an approved side fill of
@@ -1536,6 +1541,8 @@ namespace AlphaSourceCrop
         ActivePictureBounds submittedPresentation;
         NativePresentationOrigin submittedPresentationOrigin = NativePresentationOrigin::NONE;
         NativePresentationCertificate submittedPresentationProof;
+        PreparedNativeMode preparedNativeMode=PreparedNativeMode::NONE;
+        uint64_t preparedNativeInitializedSourceSequence=0;
 		bool available = false;
 		ActivePictureBounds crop;
 		uint64_t sourceGeneration = 0;
@@ -1555,6 +1562,11 @@ namespace AlphaSourceCrop
         uint64_t submittedOptionalFillSourceSequence = 0;
         double submittedOptionalFillScreenAspect = 0.0;
 	};
+    inline void ResetPreparedNativeInitialization(SubmittedNativeScopeAnchor& anchor)
+    {
+        anchor.preparedNativeMode=PreparedNativeMode::NONE;
+        anchor.preparedNativeInitializedSourceSequence=0;
+    }
 	struct SubmittedNativeScopeAnchorUpdateInput
 	{
 		SubmittedNativeScopeAnchor previous;

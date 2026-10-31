@@ -6633,6 +6633,9 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ClearScopeSubtitleEvidence()
 	{
+        // Preserve native detector authority; only this mode's presentation
+        // initialization must be established again by successful submission.
+        AlphaSourceCrop::ResetPreparedNativeInitialization(submittedNativeScopeAnchor);
         scopeSubtitleAnalysisBounds={};subtitleSharedPicture={};
         scopeCurrentVerticalContent={}; scopeCurrentVerticalDecision={};
         scopeCurrentVerticalBase={}; scopeCurrentVerticalBounds={};
@@ -17162,7 +17165,6 @@ releaseDriftBaseRetention =
             if (episodeInput.retentionEvaluated && presentationRetention.rawBandSafetyEvaluated &&
                 episodeInput.retentionSourceGeneration == frameGeneration &&
                 episodeInput.retentionSourceSequence == sourceSequence &&
-                !suppressCaptionPresentation &&
                 SameSubtitlePresentationBounds(presentationRetention.rawBandSafetyBase, cropInput.geometry) &&
                 SameSubtitlePresentationBounds(episodeInput.retentionBounds, cropInput.geometry))
             {
@@ -18024,11 +18026,15 @@ releaseDriftBaseRetention =
                 sameBounds(cropPresentationAdmission.acceptedNativeCrop.bounds,cropInput.geometry))
             {
                 const auto captionLease = cropPresentationAdmission.nativePresentation.captionTranslationMeasurement;
+                const auto preparedMode = cropPresentationAdmission.nativePresentation.preparedNativeMode;
+                const auto preparedSource = cropPresentationAdmission.nativePresentation.preparedNativeSourceSequence;
                 cropPresentationAdmission.nativePresentation = {true,
                     AlphaSourceCrop::NativePresentationOrigin::CONFIGURED_FILL,
                     cropPresentationAdmission.acceptedNativeCrop.bounds, presentationCropBounds,
                     frameGeneration, sourceSequence, viewportRequestSerial};
                 cropPresentationAdmission.nativePresentation.captionTranslationMeasurement = captionLease;
+                cropPresentationAdmission.nativePresentation.preparedNativeMode = preparedMode;
+                cropPresentationAdmission.nativePresentation.preparedNativeSourceSequence = preparedSource;
             }
             // Certify the final translated pose after either configured fill axis.
             cropPresentationAdmission = AlphaSourceCrop::QualifyTranslatedNativePresentation(

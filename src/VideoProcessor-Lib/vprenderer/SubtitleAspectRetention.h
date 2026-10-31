@@ -11,6 +11,10 @@
 inline AlphaSourceCrop::Input CanonicalSubtitleModeCropInput(
     AlphaSourceCrop::Input input,SubtitlePreviewMode mode)
 {
+    input.subtitlePresentationMode=mode==SubtitlePreviewMode::BlackBackground
+        ? AlphaSourceCrop::PreparedNativeMode::BLACK
+        : mode==SubtitlePreviewMode::GeneratedGrayBackground
+            ? AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION : AlphaSourceCrop::PreparedNativeMode::NONE;
     if(SubtitlePreviewOverridesClassicHandling(mode)) {
         input.verticalTranslationActive=false;
         input.verticalTranslationPixels=0;
