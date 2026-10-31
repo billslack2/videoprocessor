@@ -1,0 +1,100 @@
+{
+  "sourceCommit": "7d9b26df7622a79f2c28e8082b494f0ea819499c",
+  "comparisons": [
+    {
+      "corpus": "phantom",
+      "baselineCommit": "82e3fc0a4284591facd07846994e3aa7ec323858",
+      "files": [
+        {
+          "file": "maximized.csv",
+          "frames": 792,
+          "semanticColumns": 122,
+          "changedFrames": 0,
+          "firstChangedFrameIndices": []
+        },
+        {
+          "file": "windowed.csv",
+          "frames": 995,
+          "semanticColumns": 122,
+          "changedFrames": 0,
+          "firstChangedFrameIndices": []
+        }
+      ],
+      "currentFailureCount": 17,
+      "baselineFailureCount": 17,
+      "sameFailures": true,
+      "sameMedia": true,
+      "sameManifest": true,
+      "currentProbeSha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+      "baselineProbeSha256": "9eb2eb4786f2bf9af103ac7fb18fa02e21890d813729c10ca5fa2219aa5cc700"
+    },
+    {
+      "corpus": "phantom",
+      "baselineCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
+      "files": [
+        {
+          "file": "maximized.csv",
+          "frames": 792,
+          "semanticColumns": 122,
+          "changedFrames": 0,
+          "firstChangedFrameIndices": []
+        },
+        {
+          "file": "windowed.csv",
+          "frames": 995,
+          "semanticColumns": 122,
+          "changedFrames": 0,
+          "firstChangedFrameIndices": []
+        }
+      ],
+      "currentFailureCount": 17,
+      "baselineFailureCount": 17,
+      "sameFailures": true,
+      "sameMedia": true,
+      "sameManifest": true,
+      "currentProbeSha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+      "baselineProbeSha256": "c476f541e5be543336adf235b4c31377c7d4569e67bf49b45fa2422bb885757f"
+    },
+    {
+      "corpus": "courtyard",
+      "baselineCommit": "82e3fc0a4284591facd07846994e3aa7ec323858",
+      "files": [
+        {
+          "file": "courtyard_clean_source.csv",
+          "frames": 192,
+          "semanticColumns": 122,
+          "changedFrames": 0,
+          "firstChangedFrameIndices": []
+        }
+      ],
+      "currentFailureCount": 1,
+      "baselineFailureCount": 1,
+      "sameFailures": true,
+      "sameMedia": true,
+      "sameManifest": true,
+      "currentProbeSha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+      "baselineProbeSha256": "9eb2eb4786f2bf9af103ac7fb18fa02e21890d813729c10ca5fa2219aa5cc700"
+    },
+    {
+      "corpus": "courtyard",
+      "baselineCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
+      "files": [
+        {
+          "file": "courtyard_clean_source.csv",
+          "frames": 192,
+          "semanticColumns": 122,
+          "changedFrames": 0,
+          "firstChangedFrameIndices": []
+        }
+      ],
+      "currentFailureCount": 1,
+      "baselineFailureCount": 1,
+      "sameFailures": true,
+      "sameMedia": true,
+      "sameManifest": true,
+      "currentProbeSha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+      "baselineProbeSha256": "c476f541e5be543336adf235b4c31377c7d4569e67bf49b45fa2422bb885757f"
+    }
+  ],
+  "scope": "Production clip-probe detection/lookahead/placement replay; excludes renderer cadence guard and live HDMI playback. Existing failures are preserved, not waived."
+}

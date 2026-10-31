@@ -1,0 +1,35 @@
+Result: NOT ALL GREEN. Standard coverage totals 3,590 unique cases; twelve failed initially. Three converter timing tests and one cache test passed isolated reruns; all eight persistent AR failures reproduce on exact beta. Config finished 119/133 passing, with slider timing still failing in isolation. Recording and font results, older detector limitations and pending live acceptance are detailed below.
+
+Extended subtitle qualification review — 2026-10-31
+Pinned candidate: 7d9b26df7622a79f2c28e8082b494f0ea819499c
+Fetched beta: a591ad3b532771911e85f8ef026958279f2065f0
+Previous deployed candidate: 82e3fc0a4284591facd07846994e3aa7ec323858
+
+Recording differential
+The same current harness, verified media, manifest, natural bar extraction and lookahead=3 produced identical semantic results on candidate, previous candidate and fetched beta: 1,787 Phantom frames and 192 courtyard frames, 122 non-timing CSV columns per frame, zero changed frames. The 17 Phantom cue failures and one courtyard incorrect_cut_source failure predate both commits in PR240. These are unresolved corpus results, not waived passes. ClipProbe does not execute the renderer cadence guard or establish live HDMI cadence acceptance.
+
+Phantom includes actual zero-detection captions and two displayed false-positive frames in blank_opening. tc14_service is 0/49 measured, this_way 0/25, what_did_you_say 0/49; knew_it has 1/24 measured but no displayed frames. Some additional cut geometry assertions require the source to equal the padded display rectangle and assume upward bottom-bar placement; those assumptions predate production capture expansion and top-bar placement. Courtyard's only failure is that source-equality assertion. Do not remove real misses/false positives by dismissing all failures as stale geometry checks.
+
+Historical investigation
+The archived passing 5ae388020caf402079f15b627d79f82f8d56c885 replay has the same media, current manifest and byte-identical input maps (including decoded per-frame BGRA hashes). Old tc14_service, this_way and what_did_you_say measured and contained every annotated frame; current beta misses them with unchanged picture boundaries/bar authority. Archive: E:\codex\subtitle-cut-paste-test-5ae38802\replay-runs\20261003-080356-161.
+Windowed input-map SHA256: 708fb080a55c8f49e1575fb5b25f7a2ce7ecc8d15866158605a480fcc1ca86df
+Maximized input-map SHA256: a7c14d0ca976ebd1c27e1ec100bb13d49291926cc48538ed268819bbca6ed335
+
+Source-history candidate: 4690baafba91210b7eecd5fedfe8b8819ffa53a1 introduced a mandatory opaque-card gate absent from the old detection-only trial. Current documentation explicitly restricts relocation to opaque black backing. Read-only pixel statistics on three missed frames show substantial gray picture background; this is consistent with failure of the distributed opaque-black requirement. It is not an exact rejection trace: CSV does not expose detector diagnosticReason/component masks. Follow-up should trace that decision and distinguish detection coverage from safe extraction/erasure support. Do not restore detection-only permissiveness by allowing unsafe picture cleanup.
+
+Config suite review
+The default suite completed 119 passed / 14 failed. Config application, tests, fixture and directly compiled implementation sources are identical to fetched beta. No beta Config execution was performed, so source identity is not a reproduced passing or failing baseline.
+Clearly stale expectations include compact-tab size policy (Maximum versus Expanding), old renderer tab labels, Display card on General rather than its separate page, removed rendererSection.processing, two mojibake ellipsis strings in remote target expectations, and a General fullscreen-monitor selector superseded by the Display profile UI.
+Unresolved failures concern Advanced drawer focus/scroll, slider timing, Off-mode script-hint visibility, inherited HDR luminance live/save validation, moved-only profile migration, and two remote connection completions. Remote fixtures bind an ephemeral loopback port and test mode suppresses normal discovery-cache/live-status behavior, so the failures are not evidence of accidental connection to the deployed player's RPC port. Timing is rerun separately; deterministic failures remain recorded.
+
+Long GPU case
+SubtitleGpuComposesBeforeCropAcrossAspectChangesAndNlsRecovery passed in 7m51s. Source loops are finite (eight cases, one recovery retry); repeated cold subtitle shader compilation on forced WARP is expensive. Historical passes took 2–6 minutes. This was not a hung test, and no run was terminated or assertion weakened. Historical broad suites took 39–49 minutes.
+
+Scope
+No source, test assertion, label or active configuration changed during this extended qualification. Initial failing results and isolated reruns are retained separately. The matched x64 Release candidate remains deployed; physical moving playback at 59.94 Hz and live three-line visual acceptance remain pending. Existing baseline failures remain follow-up work; this qualification is not all green.
+
+Completed reruns and exact beta attribution
+The additional native suite completed 3,381 cases: 3,369 passed / 12 failed. Together with the earlier disjoint 209 standard cases from the identical test DLL, standard coverage is 3,590 unique cases (3,578 initially passed / 12 initially failed). The additional beta renderer suite passed 209/209; the earlier 610 selected native cases are a subset, not another 610 unique tests.
+All three converter timing failures passed after other qualification jobs ended. The configuration read-cache failure also passed in its isolated rerun; the unchanged cache depends on ChangeTime changing when file size and LastWriteTime are held fixed, but the original failure's exact cause is unproved. The slider rerun still failed: 200 updates took 602 ms against a 500 ms limit. Deployed and unrelated portable player processes were left running; this was isolation from qualification jobs, not a completely idle machine.
+All eight AR failures persisted in isolation and then reproduced against exact fetched beta a591ad3b. The comparison compiled the unmodified beta project's pch.cpp and three unchanged test translation units via a temporary MSBuild item selector, linked to the already-built exact-beta library. It was not a full beta suite or a modified production source build. No AR code or expectations were changed here; the separate AR task owns their reconciliation. Exact test names, baseline hashes and outcomes are in extended-validation.json and baseline-ar.trx.
+The compiled suite's optional fixture tests that returned early without input are listed in extended-validation.json. The actual paused Prime cadence fixture was provided, and the separately preserved decoded-DV replay was already exercised. No broad pass claim supersedes the recorded corpus and Config failures.

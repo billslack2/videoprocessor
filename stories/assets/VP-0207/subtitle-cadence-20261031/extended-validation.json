@@ -1,0 +1,602 @@
+{
+  "sourceCommit": "7d9b26df7622a79f2c28e8082b494f0ea819499c",
+  "baseCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
+  "configuration": "x64 Release",
+  "recordedAt": "2026-10-31T06:07:37.044519+00:00",
+  "overallStatus": "NOT_ALL_GREEN",
+  "remainingNativeSuite": {
+    "file": "E:\\codex\\diagnostics\\subtitle-failed-live-20261030-2334\\extended-7d9b26df\\remaining-suite.trx",
+    "counters": {
+      "total": 3381,
+      "executed": 3381,
+      "passed": 3369,
+      "failed": 12,
+      "error": 0,
+      "timeout": 0,
+      "aborted": 0,
+      "inconclusive": 0,
+      "passedButRunAborted": 0,
+      "notRunnable": 0,
+      "notExecuted": 0,
+      "disconnected": 0,
+      "warning": 0,
+      "completed": 0,
+      "inProgress": 0,
+      "pending": 0
+    },
+    "failures": [
+      {
+        "test": "InvalidSourceOrMismatchedProposedRasterUsesNoSamples",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "SameSizeEditWithRestoredWriteTimeInvalidatesCache",
+        "outcome": "Failed",
+        "message": "Assert failed. Expected:<two> Actual:<one>"
+      },
+      {
+        "test": "P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "QualifiedScopeReturnsWithZeroOppositeBoundaryContrast",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "CR12BtoRGB48VideoFrameFormatter4KSmokeTest",
+        "outcome": "Failed",
+        "message": "Assert failed. Average R12B RGB48 conversion exceeds one 60 fps frame period"
+      },
+      {
+        "test": "ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "SmallBarsKeepTheExistingEighteenCodeContrastRequirement",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "DeckLinkConvertersSustained4K60PerformanceComparison",
+        "outcome": "Failed",
+        "message": "Assert failed. A sustained converter p95 exceeds one 60 fps frame period"
+      },
+      {
+        "test": "TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "CDeckLinkRGBToP010VideoFrameFormatter4KSmokeTest",
+        "outcome": "Failed",
+        "message": "Assert failed. Average packed RGB conversion exceeds one 60 fps frame period"
+      }
+    ]
+  },
+  "previousStandardGpuSuite": {
+    "file": "E:\\codex\\diagnostics\\subtitle-failed-live-20261030-2334\\dual-gpu-7d9b26df\\standard.trx",
+    "counters": {
+      "total": 209,
+      "executed": 209,
+      "passed": 209,
+      "failed": 0,
+      "error": 0,
+      "timeout": 0,
+      "aborted": 0,
+      "inconclusive": 0,
+      "passedButRunAborted": 0,
+      "notRunnable": 0,
+      "notExecuted": 0,
+      "disconnected": 0,
+      "warning": 0,
+      "completed": 0,
+      "inProgress": 0,
+      "pending": 0
+    },
+    "failures": []
+  },
+  "previousBetaGpuSuite": {
+    "file": "E:\\codex\\diagnostics\\subtitle-failed-live-20261030-2334\\dual-gpu-7d9b26df\\beta.trx",
+    "counters": {
+      "total": 209,
+      "executed": 209,
+      "passed": 209,
+      "failed": 0,
+      "error": 0,
+      "timeout": 0,
+      "aborted": 0,
+      "inconclusive": 0,
+      "passedButRunAborted": 0,
+      "notRunnable": 0,
+      "notExecuted": 0,
+      "disconnected": 0,
+      "warning": 0,
+      "completed": 0,
+      "inProgress": 0,
+      "pending": 0
+    },
+    "failures": []
+  },
+  "uniqueStandardCases": 3590,
+  "isolatedConverterTimingRerun": {
+    "file": "E:\\codex\\diagnostics\\subtitle-failed-live-20261030-2334\\extended-7d9b26df\\timing-isolated.trx",
+    "counters": {
+      "total": 3,
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "error": 0,
+      "timeout": 0,
+      "aborted": 0,
+      "inconclusive": 0,
+      "passedButRunAborted": 0,
+      "notRunnable": 0,
+      "notExecuted": 0,
+      "disconnected": 0,
+      "warning": 0,
+      "completed": 0,
+      "inProgress": 0,
+      "pending": 0
+    },
+    "failures": []
+  },
+  "configSuite": {
+    "passed": 119,
+    "failed": 14,
+    "failures": [
+      "FAIL left docks restore manual choices and drawer editing: Advanced focus did not bring tone controls into view",
+      "FAIL Tone slider drag performance: Slider drag processing exceeded 2.5 ms per update",
+      "FAIL Off zoom hold round trip: Off must not offer a glyph script hint",
+      "FAIL Inherited HDR target luminance validation: Apply did not save: [vprenderer.Second] sdr_black_nits must be Auto or non-negative and below the HDR target white. The saved value is retained.",
+      "FAIL every page round trips: Grouped settings tabs do not use compact Shader tab sizing",
+      "FAIL renderer section tabs stay synchronized during rapid clicks: Persistent grouped tab labels changed unexpectedly",
+      "FAIL two-column cards share row height: Missing card: Display",
+      "FAIL separated profiles do not leave shortcut shells behind: A moved-only profile remained selectable in Rendering",
+      "FAIL renderer profile sections collapse and persist: Missing control: rendererSection.processing",
+      "FAIL remote target switch keeps window responsive: Successful remote connection did not open the target configuration",
+      "FAIL remote-only client opens its sole discovered VP: Successful remote connection did not open the target configuration",
+      "FAIL remembered target does not fall back to local: The remembered remote did not remain selected while searching",
+      "FAIL remote-only client has no local file target: A remote-only Config copy offered a local file target",
+      "FAIL primary discovery selectors open on field click: Missing control: config.general.fullscreen_monitor_name"
+    ],
+    "sourceIdenticalToBeta": true,
+    "betaConfigExecuted": false
+  },
+  "optionalFixtureTestsWithoutInputs": [
+    "Optional DeckLink replay skipped: VP_DECKLINK_HDYC_FIXTURE is not set",
+    "Native local-glyph regression skipped: VP_SUBTITLE_REPLAY_PATH is not set.",
+    "Runtime near-bar diagnostic skipped: VP_SUBTITLE_REPLAY_PATH is not set.",
+    "Native replay diagnostic skipped: VP_SUBTITLE_REPLAY_PATH is not set.",
+    "Paused inspection replay skipped: VP_SUBTITLE_PAUSED_REPLAY_PATH is not set.",
+    "Paused backing replay not requested",
+    "Native capture diagnostic not requested.",
+    "Recording diagnostic not requested",
+    "Cold native subtitle proof diagnostic was not requested.",
+    "Pillarbox native replay not requested.",
+    "Ordered native replay was not requested.",
+    "Native black-reference regression capture was not requested."
+  ],
+  "recordings": {
+    "phantom": {
+      "accepted": false,
+      "acceptance_failures": [
+        {
+          "cue": "blank_opening",
+          "failures": [
+            "false_positive",
+            "cut_not_shifted_upward",
+            "panel_does_not_cover_picture_bar_boundary"
+          ]
+        },
+        {
+          "cue": "tc14_service",
+          "failures": [
+            "missing_or_incomplete",
+            "cut_placement_drift_or_missing"
+          ]
+        },
+        {
+          "cue": "this_way",
+          "failures": [
+            "missing_or_incomplete",
+            "cut_placement_drift_or_missing"
+          ]
+        },
+        {
+          "cue": "anxieties",
+          "failures": [
+            "missing_or_incomplete",
+            "incorrect_cut_source"
+          ]
+        },
+        {
+          "cue": "living_force_two_lines",
+          "failures": [
+            "missing_or_incomplete",
+            "box_drift",
+            "incorrect_cut_source",
+            "cut_placement_drift_or_missing"
+          ]
+        },
+        {
+          "cue": "viceroy_demands_heldout",
+          "failures": [
+            "missing_or_incomplete",
+            "incorrect_cut_source"
+          ]
+        },
+        {
+          "cue": "federation_cowards",
+          "failures": [
+            "missing_or_incomplete",
+            "incorrect_cut_source"
+          ]
+        },
+        {
+          "cue": "negotiations_windowed",
+          "failures": [
+            "missing_or_incomplete",
+            "incorrect_cut_source"
+          ]
+        },
+        {
+          "cue": "negotiations_maximized",
+          "failures": [
+            "missing_or_incomplete",
+            "incorrect_cut_source"
+          ]
+        },
+        {
+          "cue": "what_did_you_say",
+          "failures": [
+            "missing_or_incomplete",
+            "cut_placement_drift_or_missing"
+          ]
+        },
+        {
+          "cue": "knew_it",
+          "failures": [
+            "missing_or_incomplete",
+            "cut_placement_drift_or_missing"
+          ]
+        },
+        {
+          "cue": "force_settlement",
+          "failures": [
+            "missing_or_incomplete"
+          ]
+        },
+        {
+          "cue": "distract_sidious_heldout",
+          "failures": [
+            "missing_or_incomplete",
+            "incorrect_line_count"
+          ]
+        },
+        {
+          "cue": "brain_dead",
+          "failures": [
+            "missing_or_incomplete"
+          ]
+        },
+        {
+          "cue": "two_jedi",
+          "failures": [
+            "missing_or_incomplete"
+          ]
+        },
+        {
+          "cue": "send_droid",
+          "failures": [
+            "missing_or_incomplete"
+          ]
+        },
+        {
+          "cue": "italic_wait_heldout",
+          "failures": [
+            "missing_or_incomplete"
+          ]
+        }
+      ],
+      "media_sha256": "4c5b3da9c702141dd9ad5223ffa094eb9c6453a28e41dd70863c13e1fe03c9ea",
+      "manifest_sha256": "4136f117f7561578878ad3a749597374e7789f7ce31ee9e0dfad8b208f40efe0",
+      "probe_sha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+      "sample_fps": "24000/1001",
+      "lookahead": 3,
+      "frames": 1787
+    },
+    "courtyard": {
+      "accepted": false,
+      "acceptance_failures": [
+        {
+          "cue": "whoa_reject_debris",
+          "failures": [
+            "incorrect_cut_source"
+          ]
+        }
+      ],
+      "media_sha256": "44d99bf7eacd7ebeba26977543f9a6c0172b3dde2484b6ed6ead04ba03cb15f1",
+      "manifest_sha256": "a702fc2e0698cf27b8516d1656b527a5470599e5f9d04e0336d5667d5fb01558",
+      "probe_sha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+      "sample_fps": "24000/1001",
+      "lookahead": 3,
+      "frames": 192
+    },
+    "whistling": {
+      "accepted": true,
+      "acceptance_failures": [],
+      "media_sha256": "93bf01d72c33e803d2469dff16a586f6474f8fb87266a6f1ae23f03dd19eba48",
+      "manifest_sha256": "9b66fd1defa46399641c6a6aaedff2070316c30e608d103d8dc63b24577d7680",
+      "probe_sha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+      "sample_fps": "24000/1001",
+      "lookahead": 3,
+      "frames": 188
+    }
+  },
+  "recordingComparison": {
+    "sourceCommit": "7d9b26df7622a79f2c28e8082b494f0ea819499c",
+    "comparisons": [
+      {
+        "corpus": "phantom",
+        "baselineCommit": "82e3fc0a4284591facd07846994e3aa7ec323858",
+        "files": [
+          {
+            "file": "maximized.csv",
+            "frames": 792,
+            "semanticColumns": 122,
+            "changedFrames": 0,
+            "firstChangedFrameIndices": []
+          },
+          {
+            "file": "windowed.csv",
+            "frames": 995,
+            "semanticColumns": 122,
+            "changedFrames": 0,
+            "firstChangedFrameIndices": []
+          }
+        ],
+        "currentFailureCount": 17,
+        "baselineFailureCount": 17,
+        "sameFailures": true,
+        "sameMedia": true,
+        "sameManifest": true,
+        "currentProbeSha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+        "baselineProbeSha256": "9eb2eb4786f2bf9af103ac7fb18fa02e21890d813729c10ca5fa2219aa5cc700"
+      },
+      {
+        "corpus": "phantom",
+        "baselineCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
+        "files": [
+          {
+            "file": "maximized.csv",
+            "frames": 792,
+            "semanticColumns": 122,
+            "changedFrames": 0,
+            "firstChangedFrameIndices": []
+          },
+          {
+            "file": "windowed.csv",
+            "frames": 995,
+            "semanticColumns": 122,
+            "changedFrames": 0,
+            "firstChangedFrameIndices": []
+          }
+        ],
+        "currentFailureCount": 17,
+        "baselineFailureCount": 17,
+        "sameFailures": true,
+        "sameMedia": true,
+        "sameManifest": true,
+        "currentProbeSha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+        "baselineProbeSha256": "c476f541e5be543336adf235b4c31377c7d4569e67bf49b45fa2422bb885757f"
+      },
+      {
+        "corpus": "courtyard",
+        "baselineCommit": "82e3fc0a4284591facd07846994e3aa7ec323858",
+        "files": [
+          {
+            "file": "courtyard_clean_source.csv",
+            "frames": 192,
+            "semanticColumns": 122,
+            "changedFrames": 0,
+            "firstChangedFrameIndices": []
+          }
+        ],
+        "currentFailureCount": 1,
+        "baselineFailureCount": 1,
+        "sameFailures": true,
+        "sameMedia": true,
+        "sameManifest": true,
+        "currentProbeSha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+        "baselineProbeSha256": "9eb2eb4786f2bf9af103ac7fb18fa02e21890d813729c10ca5fa2219aa5cc700"
+      },
+      {
+        "corpus": "courtyard",
+        "baselineCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
+        "files": [
+          {
+            "file": "courtyard_clean_source.csv",
+            "frames": 192,
+            "semanticColumns": 122,
+            "changedFrames": 0,
+            "firstChangedFrameIndices": []
+          }
+        ],
+        "currentFailureCount": 1,
+        "baselineFailureCount": 1,
+        "sameFailures": true,
+        "sameMedia": true,
+        "sameManifest": true,
+        "currentProbeSha256": "b472934f7330cb785efff0fc2ec990475333df0738679ce48a4662b22afbbc06",
+        "baselineProbeSha256": "c476f541e5be543336adf235b4c31377c7d4569e67bf49b45fa2422bb885757f"
+      }
+    ],
+    "scope": "Production clip-probe detection/lookahead/placement replay; excludes renderer cadence guard and live HDMI playback. Existing failures are preserved, not waived."
+  },
+  "largeFontCases": 44,
+  "nearBar": {
+    "samples": 12,
+    "totalFrames": 360,
+    "required20pxFrames": 180,
+    "allRequiredDetectedDisplayedAndValid": true
+  },
+  "scopeNotes": [
+    "Counts reported by the native runner include optional test bodies that return early when their fixture is absent; the messages are retained above.",
+    "610 prior selected native tests are a subset of the expanded standard coverage, not additional unique tests.",
+    "Recording comparisons use the same current harness, verified media and manifests against independently built prior/beta probes. They do not exercise the renderer cadence guard or establish HDMI source-frame identity.",
+    "Existing Phantom detection misses and false positives remain. Courtyard failure is incorrect_cut_source under an older source-equals-padded-box assertion. No acceptance assertion was changed.",
+    "Converter rerun is isolated from other qualification jobs; the deployed player remains running.",
+    "Physical 59.94 Hz moving playback and live three-line visual acceptance remain pending."
+  ],
+  "isolatedFunctionalRerun": {
+    "file": "E:\\codex\\diagnostics\\subtitle-failed-live-20261030-2334\\extended-7d9b26df\\functional-isolated.trx",
+    "counters": {
+      "total": 9,
+      "executed": 9,
+      "passed": 1,
+      "failed": 8,
+      "error": 0,
+      "timeout": 0,
+      "aborted": 0,
+      "inconclusive": 0,
+      "passedButRunAborted": 0,
+      "notRunnable": 0,
+      "notExecuted": 0,
+      "disconnected": 0,
+      "warning": 0,
+      "completed": 0,
+      "inProgress": 0,
+      "pending": 0
+    },
+    "failures": [
+      {
+        "test": "TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "QualifiedScopeReturnsWithZeroOppositeBoundaryContrast",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "InvalidSourceOrMismatchedProposedRasterUsesNoSamples",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "SmallBarsKeepTheExistingEighteenCodeContrastRequirement",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      }
+    ]
+  },
+  "exactBetaArComparison": {
+    "file": "E:\\codex\\diagnostics\\subtitle-failed-live-20261030-2334\\extended-7d9b26df\\baseline-ar.trx",
+    "counters": {
+      "total": 8,
+      "executed": 8,
+      "passed": 0,
+      "failed": 8,
+      "error": 0,
+      "timeout": 0,
+      "aborted": 0,
+      "inconclusive": 0,
+      "passedButRunAborted": 0,
+      "notRunnable": 0,
+      "notExecuted": 0,
+      "disconnected": 0,
+      "warning": 0,
+      "completed": 0,
+      "inProgress": 0,
+      "pending": 0
+    },
+    "failures": [
+      {
+        "test": "InvalidSourceOrMismatchedProposedRasterUsesNoSamples",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "SmallBarsKeepTheExistingEighteenCodeContrastRequirement",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "QualifiedScopeReturnsWithZeroOppositeBoundaryContrast",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      },
+      {
+        "test": "TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast",
+        "outcome": "Failed",
+        "message": "Assert failed"
+      }
+    ],
+    "sourceCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
+    "testBinarySha256": "374D81E82E3A04C0682917E38792683EB08C7E5D81320C83DEE3F64984C6507C",
+    "librarySha256": "4AEC46C874777F89C5D7ADF5EFA74B80465291914D4178BDDF71226967A39EA4",
+    "buildScope": "Unmodified beta project with a temporary MSBuild selector compiling pch.cpp and the three unchanged AR test translation units against the existing exact-beta library; not a full beta suite."
+  },
+  "isolatedSliderRerun": {
+    "exitCode": 1,
+    "stdout": "DRAG: 200 updates=602ms; commits during=0; total=1",
+    "stderr": "START Tone slider drag performance\nQFormLayout::setRowVisible: Invalid widget\nFAIL Tone slider drag performance: Slider drag processing exceeded 2.5 ms per update"
+  },
+  "nativeInitialCombinedPassed": 3578,
+  "nativeInitialCombinedFailed": 12
+}

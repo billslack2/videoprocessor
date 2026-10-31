@@ -55,5 +55,19 @@
   "gpuReceipt": "dual-gpu-7d9b26df/motion-renderer-tests.json",
   "deploymentReceipt": "deployment-7d9b26df.json",
   "liveSubtitleAcceptance": "pending: Prime showed Resume page after restart",
-  "evidenceDirectory": "E:\\codex\\diagnostics\\subtitle-failed-live-20261030-2334"
+  "evidenceDirectory": "E:\\codex\\diagnostics\\subtitle-failed-live-20261030-2334",
+  "extendedQualification": {
+    "file": "extended-validation.json",
+    "status": "NOT_ALL_GREEN",
+    "standardUniqueCases": 3590,
+    "initialStandardPassed": 3578,
+    "initialStandardFailed": 12,
+    "converterTimingIsolatedPassed": 3,
+    "cacheIsolatedPassed": true,
+    "persistentArFailuresReproducedOnExactBeta": 8,
+    "configPassed": 119,
+    "configFailed": 14,
+    "configSliderStillFailsInIsolation": true,
+    "recordingComparisonFramesUnchangedFromBeta": 1979
+  }
 }
