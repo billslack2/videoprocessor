@@ -464,12 +464,16 @@ public:
         bool sharedPictureMatches=false, sharedPictureCurrent=false;
         bool barsAvailable=false, topRevalidated=false, bottomRevalidated=false;
         bool backlogReassociated=false;
+        uint64_t lastVerifiedSource=0,tokenSource=0,referenceContinuity=0,currentContinuity=0;
+        bool backlogTokenAvailable=false;
         int expectedTop=0, expectedBottom=0, measuredTop=0, measuredBottom=0;
     };
     void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={};m_diagnostics={};
         m_certifiedSeed={};m_certifiedPolicy=m_certifiedContinuity=0;m_consumedCertificate={}; }
     const char* DecisionReason() const { return m_reason; }
     const Diagnostics& DecisionDiagnostics() const { return m_diagnostics; }
+    ActivePictureFrameIdentity LastVerifiedIdentity() const { return m_last; }
+    uint64_t ReferenceContinuity() const { return m_reference.continuityGeneration; }
     // Only accepted extraction may seed the late-worker fallback. A held cue
     // can be more complete than either current grouping or lookahead pruning;
     // never turn those partial measurements into a smaller replacement cue.
@@ -595,6 +599,11 @@ public:
         bool backlogRetirementOnly=false) {
         m_diagnostics={};
         const auto key=preview.current;
+        m_diagnostics.lastVerifiedSource=m_last.acceptedSequence;
+        m_diagnostics.tokenSource=backlogTemplateIdentity?backlogTemplateIdentity->acceptedSequence:0;
+        m_diagnostics.backlogTokenAvailable=backlogRetirementOnly && backlogTemplateIdentity;
+        m_diagnostics.referenceContinuity=m_reference.continuityGeneration;
+        m_diagnostics.currentContinuity=preview.continuityGeneration;
         if(preview.available) {
             if(key.pendingRefresh)return false; // A repeated presentation cannot renew the budget.
             if(key.analyzed && !key.glyphLocalTop && !key.glyphLocalBottom &&

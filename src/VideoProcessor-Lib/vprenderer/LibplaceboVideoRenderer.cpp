@@ -5103,6 +5103,7 @@ struct LibplaceboVideoRenderer::Impl
 	unsigned localBoundaryTraceRemaining = 0, localBoundaryTraceSnapshot = 0;
 	uint64_t localBoundaryTraceNextTick = 0, localBoundaryLastSequence = 0;
 	uint64_t localBoundaryPolicyGeneration = 0, localBoundaryContinuityGeneration = 0;
+    uint64_t subtitleBacklogDiagnosticContinuity = 0;
 	const char* localBoundaryPendingReset = "none";
 	LocalBoundaryDiagnosticSession localBoundarySession;
 	LocalBoundaryDiagnosticComparison localBoundaryComparison;
@@ -14420,7 +14421,7 @@ struct LibplaceboVideoRenderer::Impl
                 }
                 else if(subtitlePerf.pending-subtitlePerf.recovered<=4) {
                     const auto& pendingDetail=subtitlePendingGuard.DecisionDiagnostics();
-                    DebugLog::Log("SUBTITLE PENDING: frame=%llu reason=%s context_mask=0x%03x glyph_samples=%zu glyph_mismatch=%d,%d shared=%d/%d bars=%d revalidated=%d/%d expected=%d-%d measured=%d-%d",
+                    DebugLog::Log("SUBTITLE PENDING: frame=%llu reason=%s context_mask=0x%03x glyph_samples=%zu glyph_mismatch=%d,%d shared=%d/%d bars=%d revalidated=%d/%d expected=%d-%d measured=%d-%d last_verified=%llu token_source=%llu token_available=%d continuity=%llu->%llu",
                         sourceSequence,subtitlePendingGuard.DecisionReason(),
                         pendingDetail.contextMismatch,pendingDetail.glyphSamplesChecked,
                         pendingDetail.glyphMismatchX,pendingDetail.glyphMismatchY,
@@ -14428,7 +14429,9 @@ struct LibplaceboVideoRenderer::Impl
                         pendingDetail.barsAvailable?1:0,
                         pendingDetail.topRevalidated?1:0,pendingDetail.bottomRevalidated?1:0,
                         pendingDetail.expectedTop,pendingDetail.expectedBottom,
-                        pendingDetail.measuredTop,pendingDetail.measuredBottom);
+                        pendingDetail.measuredTop,pendingDetail.measuredBottom,
+                        pendingDetail.lastVerifiedSource,pendingDetail.tokenSource,pendingDetail.backlogTokenAvailable?1:0,
+                        pendingDetail.referenceContinuity,pendingDetail.currentContinuity);
                 }
             }
             // Recheck established glyphs even when a positive detector loses
@@ -14571,8 +14574,16 @@ struct LibplaceboVideoRenderer::Impl
             // anchor aligned without reseeding its original pixel/time lease.
             if(currentSubtitleCadence.valid &&
                 currentSubtitleCadence.continuation.MatchesCue(subtitleBoxResult))
-                subtitlePendingGuard.AdvanceVerifiedCadence(currentSubtitleCadence,
-                    subtitleBoxResult,subtitleFrameMs,activeSettings.subtitleHoldMs);
+            {
+                const auto previous=subtitlePendingGuard.LastVerifiedIdentity();
+                const auto continuity=subtitlePendingGuard.ReferenceContinuity();
+                if(!subtitlePendingGuard.AdvanceVerifiedCadence(currentSubtitleCadence,
+                    subtitleBoxResult,subtitleFrameMs,activeSettings.subtitleHoldMs))
+                    DebugLog::Log("SUBTITLE CADENCE PENDING: frame=%llu advanced=0 reason=%s previous=%llu template=%llu continuity=%llu->%llu",
+                        sourceSequence,subtitlePendingGuard.DecisionReason(),previous.acceptedSequence,
+                        currentSubtitleCadence.continuation.templateIdentity.acceptedSequence,continuity,
+                        currentSubtitleCadence.preview.continuityGeneration);
+            }
             // Only an accepted cue may seed the late-worker fallback. An
             // unconfirmed detector candidate must never gain authority here.
             if(!subtitleBoxResult.detected || subtitleBoxResult.confirmationPending) subtitlePendingGuard.Reset();
@@ -25876,18 +25887,35 @@ void LibplaceboVideoRenderer::RenderLoop()
 				m_impl->localBoundaryPolicyGeneration = activePictureCurrentPolicyGeneration;
 				m_impl->localBoundaryContinuityGeneration = m_activePictureTimeline.ContinuityGeneration();
                 if (!staleGeneration && cachedQueuedDomain &&
-                    m_impl->subtitleBoxPresentation.HasAcceptedSourceTemplate()) {
+                    m_impl->subtitleBoxPresentation.HasAcceptedQueueTemplate()) {
                     auto currentSubtitleIdentity=activePictureIdentity;
                     currentSubtitleIdentity.analysisDomainKey=cachedQueuedDomain;
                     const auto templateIdentity=
-                        m_impl->subtitleBoxPresentation.AcceptedTemplateIdentity();
+                        m_impl->subtitleBoxPresentation.AcceptedQueueTemplateIdentity();
                     subtitleBacklogRetirementOnly=
                         m_activePictureTimeline.OnlyBacklogRetirementBetween(
                             templateIdentity,currentSubtitleIdentity,
-                            m_impl->subtitleBoxPresentation.AcceptedTemplateContinuity(),
+                            m_impl->subtitleBoxPresentation.AcceptedQueueTemplateContinuity(),
                             m_impl->localBoundaryContinuityGeneration);
                     if(subtitleBacklogRetirementOnly)
                         backlogTemplateIdentity=templateIdentity;
+                }
+                if(!staleGeneration && cachedQueuedDomain &&
+                    m_impl->subtitleBacklogDiagnosticContinuity!=m_impl->localBoundaryContinuityGeneration) {
+                    m_impl->subtitleBacklogDiagnosticContinuity=m_impl->localBoundaryContinuityGeneration;
+                    const auto previous=m_impl->subtitlePendingGuard.LastVerifiedIdentity();
+                    const auto before=m_impl->subtitlePendingGuard.ReferenceContinuity();
+                    if(previous.acceptedSequence && before!=m_impl->localBoundaryContinuityGeneration) {
+                        const auto accepted=m_impl->subtitleBoxPresentation.AcceptedQueueTemplateIdentity();
+                        DebugLog::Log("SUBTITLE BACKLOG: current=%llu previous_verified=%llu accepted_template=%llu has_template=%d queue_template=%d token=%d token_source=%llu continuity=%llu->%llu current_frame=%llu previous_frame=%llu current_timestamp=%llu previous_timestamp=%llu",
+                            activePictureIdentity.acceptedSequence,previous.acceptedSequence,accepted.acceptedSequence,
+                            m_impl->subtitleBoxPresentation.HasAcceptedSourceTemplate()?1:0,
+                            m_impl->subtitleBoxPresentation.HasAcceptedQueueTemplate()?1:0,
+                            subtitleBacklogRetirementOnly?1:0,backlogTemplateIdentity.acceptedSequence,
+                            before,m_impl->localBoundaryContinuityGeneration,
+                            activePictureIdentity.sourceFrameNumber,previous.sourceFrameNumber,
+                            activePictureIdentity.captureTimestamp,previous.captureTimestamp);
+                    }
                 }
                 if(subtitlePreview.available &&
                     subtitlePreview.continuityGeneration!=m_impl->localBoundaryContinuityGeneration) {

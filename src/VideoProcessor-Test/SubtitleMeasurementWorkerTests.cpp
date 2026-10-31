@@ -881,6 +881,10 @@ public:
         text.lineCapturePanels[0]=text.capturePanel;text.linePanels[0]=text.sourcePanel;
         text.lineCapturePanels[1]=text.lineCapturePanels[2]={};text.linePanels[1]=text.linePanels[2]={};
         ready.text=text;
+        SubtitleBoxPresentation tracker;
+        const auto acquired=tracker.Consume(ready,250,50);
+        Assert::IsTrue(acquired.detected && !acquired.held);
+        Assert::IsTrue(tracker.HasAcceptedSourceTemplate());
         auto stale=std::make_unique<SubtitlePendingMeasurementGuard>();
         auto advanced=std::make_unique<SubtitlePendingMeasurementGuard>();
         Assert::IsTrue(stale->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
@@ -894,6 +898,55 @@ public:
         skipped.current.cadenceSkipped=true;skipped.current.analysisStride=2;
         const auto& proof=cadence.PrepareReference(skipped,CadenceSource(pixels),ready.current.sharedPicture.bounds,50,250);
         Assert::IsTrue(proof.valid);
+        const auto tracked=tracker.Consume(proof.preview,250,50,nullptr,false,false,&proof.continuation);
+        Assert::IsTrue(tracked.detected && tracked.held && proof.continuation.MatchesCue(tracked));
+        Assert::AreEqual(0x1000u,tracker.InkDiagnostics().contextMismatch,
+            L"Cadence deliberately strips bar metadata while retaining separately verified current glyphs.");
+        Assert::IsFalse(tracker.HasAcceptedSourceTemplate(),L"Cadence cannot restore measured bar/source-template authority.");
+        Assert::IsTrue(tracker.HasAcceptedQueueTemplate(),
+            L"An explicitly accepted current continuation must expose its source identity for queue-only reassociation without restoring bar authority.");
+        for(int fault=0;fault<20;++fault) {
+            auto rejected=std::make_unique<SubtitleBoxPresentation>();
+            Assert::IsTrue(rejected->Consume(ready,250,50).detected);
+            auto copied=std::make_unique<SubtitleBoxPreview>(proof.preview);
+            auto changed=std::make_unique<SubtitleCueContinuation>(proof.continuation);
+            const SubtitleCueContinuation* supplied=changed.get();
+            if(fault==0)supplied=nullptr;
+            if(fault==1)changed->localGlyphsOnly=true;
+            if(fault==2)++copied->current.identity.analysisDomainKey;
+            if(fault==3)++changed->accepted.cue;
+            if(fault==4)changed->physicalBase.bottom-=2;
+            if(fault==5)++changed->identity.acceptedSequence;
+            if(fault==6){++copied->policyGeneration;++copied->current.policyGeneration;}
+            if(fault==7){++copied->continuityGeneration;++copied->current.continuityGeneration;}
+            if(fault==8)++copied->current.nearBarDistance;
+            if(fault==9)copied->current.text.workLimit=true;
+            if(fault==10)changed->accepted.confirmationPending=true;
+            if(fault==11)changed->accepted.workLimit=true;
+            if(fault==12)copied->current.sharedPicture.bounds.bottom-=2;
+            if(fault==13)copied->current.discontinuity=true;
+            if(fault==14)copied->current.analysisRefresh=true;
+            if(fault==15)copied->current.analysisStride=1;
+            if(fault==16)copied->current.cadenceSkipped=false;
+            if(fault==17)copied->current.independentBarAnalysis=true;
+            if(fault==18)copied->current.scriptHint=SubtitleScriptHint::Arabic;
+            if(fault==19)changed->samples=0;
+            rejected->Consume(*copied,250,50,nullptr,false,false,supplied);
+            Assert::IsFalse(rejected->HasAcceptedQueueTemplate(),
+                L"Only a private exact accepted shared cadence certificate may replace missing bar metadata for queue identity.");
+        }
+        tracker.Consume(proof.preview,250,50,nullptr,false,false,&proof.continuation);
+        Assert::IsTrue(SameAnalysisFrameIdentity(identity(3160),tracker.AcceptedQueueTemplateIdentity()),
+            L"Repeated accepted output cannot advance or replace its original queue certificate.");
+        {
+            auto missingReference=std::make_unique<SubtitleBoxPresentation>();
+            auto stripped=std::make_unique<SubtitleBoxPreview>(ready);
+            stripped->current.barAuthority=false;stripped->current.barEvidence={};
+            missingReference->Consume(*stripped,250,50);
+            missingReference->Consume(proof.preview,250,50,nullptr,false,false,&proof.continuation);
+            Assert::IsFalse(missingReference->HasAcceptedQueueTemplate(),
+                L"A cadence certificate cannot manufacture a measured-bar acquisition reference.");
+        }
         for(int fault=0;fault<18;++fault) {
             auto guarded=std::make_unique<SubtitlePendingMeasurementGuard>();
             Assert::IsTrue(guarded->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
@@ -932,7 +985,8 @@ public:
         timeline.MarkConsumed(identity(3159));timeline.MarkConsumed(identity(3160));
         for(uint64_t seq=3161;seq<=3163;++seq)
             timeline.MarkDiscarded(identity(seq),seq,ActivePictureDiscardReason::BacklogRecovery);
-        const auto after=timeline.ContinuityGeneration();auto token=identity(3160);
+        const auto after=timeline.ContinuityGeneration();auto token=tracker.AcceptedQueueTemplateIdentity();
+        Assert::IsTrue(SameAnalysisFrameIdentity(identity(3160),token));
         Assert::IsTrue(timeline.OnlyBacklogRetirementBetween(token,identity(3164),before,after));
         for(int fault=0;fault<3;++fault) {
             auto changed=pixels;auto guarded=std::make_unique<SubtitlePendingMeasurementGuard>();
@@ -956,6 +1010,12 @@ public:
         auto expired=pendingKey(3165);expired.current.continuityGeneration=expired.continuityGeneration=after;
         Assert::IsFalse(advanced->Resolve(expired,CadenceSource(pixels),50,250));
         Assert::AreEqual("pending-budget-expired",advanced->DecisionReason());
+        auto unknown=pendingKey(3164);unknown.continuityGeneration=unknown.current.continuityGeneration=after;
+        Assert::IsFalse(tracker.Consume(unknown,250,50,&token,true).detected);
+        Assert::IsTrue(tracker.HasAcceptedQueueTemplate());
+        Assert::IsTrue(SameAnalysisFrameIdentity(token,tracker.AcceptedQueueTemplateIdentity()),
+            L"Intentional backlog wait preserves the same old anchor, never unknown source identity.");
+        tracker.Reset();Assert::IsFalse(tracker.HasAcceptedQueueTemplate());
     }
     TEST_METHOD(PendingGuardReportsQueueContinuityWithoutRelaxingIt) {
         auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);

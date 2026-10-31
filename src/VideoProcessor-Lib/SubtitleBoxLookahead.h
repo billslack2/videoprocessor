@@ -2091,6 +2091,7 @@ class SubtitleBoxPresentation
 public:
     void Reset() {
         m_acceptedCueSeedCertificate = {};
+        m_queueContinuation = {};
         m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
         m_previousRawCrowded = {};
         m_barTrackingReference = {};
@@ -2114,6 +2115,41 @@ public:
     }
     uint64_t AcceptedTemplateContinuity() const {
         return HasAcceptedSourceTemplate()?m_previous.continuityGeneration:0;
+    }
+    // Queue identity only. Current cadence deliberately strips measured bar
+    // authority, so it must never satisfy the stronger source-template API.
+    bool HasAcceptedQueueTemplate() const {
+        if(m_result.workLimit)return false;
+        if(HasAcceptedSourceTemplate())return true;
+        const auto& c=m_previous.current;const auto& q=m_queueContinuation;
+        if(!q.valid || !m_hasPrevious || m_handoffActive || !m_result.detected || m_result.confirmationPending ||
+            !m_inkReference.ink || !m_previous.available || !c.analyzed || !c.text.detected || c.text.workLimit ||
+            !c.pendingRefresh || !c.cadenceSkipped || c.analysisStride!=2 || c.independentBarAnalysis ||
+            c.discontinuity || c.analysisRefresh || c.glyphLocalTop || c.glyphLocalBottom ||
+            !SameAnalysisFrameIdentity(q.identity,c.identity) ||
+            q.policy!=m_previous.policyGeneration || q.policy!=c.policyGeneration ||
+            q.continuity!=m_previous.continuityGeneration || q.continuity!=c.continuityGeneration ||
+            !SubtitleBoxLookahead::HasBarEvidence(m_inkReference) || SubtitleBoxLookahead::HasBarEvidence(c) ||
+            SubtitleBoxLookahead::ContextMismatchMask(c,m_inkReference)!=0x1000u ||
+            !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) ||
+            q.base.left!=c.sharedPicture.bounds.left || q.base.top!=c.sharedPicture.bounds.top ||
+            q.base.right!=c.sharedPicture.bounds.right || q.base.bottom!=c.sharedPicture.bounds.bottom ||
+            q.base.rasterWidth!=c.width || q.base.rasterHeight!=c.height ||
+            q.cue!=m_result.cue || q.lineCount<1 || q.lineCount>3 || q.lineCount!=m_result.lineCount ||
+            q.captureMeasured!=m_result.capturePanelMeasured ||
+            !SubtitleCueContinuation::SameRect(q.bounds,m_result.bounds) ||
+            !SubtitleCueContinuation::SameRect(q.sourcePanel,m_result.sourcePanel) ||
+            !SubtitleCueContinuation::SameRect(q.capturePanel,m_result.capturePanel))return false;
+        for(int line=0;line<q.lineCount;++line)
+            if(!SubtitleCueContinuation::SameRect(q.lines[line],m_result.lineBounds[line]) ||
+                !SubtitleCueContinuation::SameRect(q.captures[line],m_result.lineCapturePanels[line]))return false;
+        return q.lineCount>0 && q.lineCount<=3;
+    }
+    ActivePictureFrameIdentity AcceptedQueueTemplateIdentity() const {
+        return HasAcceptedQueueTemplate()?m_previous.current.identity:ActivePictureFrameIdentity{};
+    }
+    uint64_t AcceptedQueueTemplateContinuity() const {
+        return HasAcceptedQueueTemplate()?m_previous.continuityGeneration:0;
     }
     const SubtitleAcceptedCueSeedCertificate& AcceptedCueSeedCertificate() const { return m_acceptedCueSeedCertificate; }
     const char* DecisionReason() const { return m_decisionReason; }
@@ -2240,6 +2276,7 @@ public:
             m_previous.policyGeneration == preview.policyGeneration &&
             m_previous.continuityGeneration == preview.continuityGeneration &&
             m_previous.current.scriptHint==preview.current.scriptHint) return m_handoffActive?m_handoffResult:m_result;
+        m_queueContinuation={};
         const bool currentSharedPicture=preview.current.sharedPicture.AvailableFor(
             preview.current.identity,preview.current.width,preview.current.height);
         const bool sharedContinuation=cueContinuation && currentSharedPicture &&
@@ -2271,6 +2308,17 @@ public:
             // acquisition template, bar tracking, or ordinary weak-ink lease.
             m_result=cueContinuation->accepted;
             m_previous=preview;m_previous.current.text=m_result;
+            if(sharedContinuation && !cueContinuation->localGlyphsOnly && cueContinuation->samples &&
+                preview.current.pendingRefresh && preview.current.cadenceSkipped && preview.current.analysisStride==2 &&
+                !preview.current.independentBarAnalysis && !preview.current.discontinuity && !preview.current.analysisRefresh &&
+                !preview.current.text.workLimit &&
+                !m_result.confirmationPending && !m_result.workLimit && m_result.lineCount>0 && m_result.lineCount<=3) {
+                auto& q=m_queueContinuation;q.valid=true;q.identity=preview.current.identity;
+                q.policy=preview.policyGeneration;q.continuity=preview.continuityGeneration;
+                q.base=cueContinuation->physicalBase;q.cue=m_result.cue;q.lineCount=m_result.lineCount;
+                q.bounds=m_result.bounds;q.sourcePanel=m_result.sourcePanel;q.capturePanel=m_result.capturePanel;
+                q.captureMeasured=m_result.capturePanelMeasured;q.lines=m_result.lineBounds;q.captures=m_result.lineCapturePanels;
+            }
             m_decisionReason=cueContinuation->localGlyphsOnly?"current-local-cue-missing-edge":"current-cue-missing-edge";
             m_inkDiagnostic.contextMismatch=SubtitleBoxLookahead::ContextMismatchMask(m_inkReference,preview.current);
             m_inkDiagnostic.pixelComparisonPerformed=true;
@@ -2680,6 +2728,15 @@ public:
         return result;
     }
 private:
+    struct QueueContinuationCertificate {
+        bool valid=false,captureMeasured=false;
+        ActivePictureFrameIdentity identity;
+        ActivePictureBounds base;
+        uint64_t policy=0,continuity=0,cue=0;
+        int lineCount=0;
+        SubtitleBoxRect bounds,sourcePanel,capturePanel;
+        std::array<SubtitleBoxRect,3> lines{},captures{};
+    } m_queueContinuation;
     SubtitleAcceptedCueSeedCertificate m_acceptedCueSeedCertificate;
     SubtitleBoxObservation m_previousRawCrowded;
     SubtitleBoxObservation m_pendingPictureGlyphAcquisition;
