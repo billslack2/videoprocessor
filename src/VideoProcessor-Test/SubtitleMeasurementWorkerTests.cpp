@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleMeasurementWorker.h>
+#include <SubtitleCadenceGuard.h>
 #include <atomic>
 #include <chrono>
 #include <mutex>
@@ -52,6 +53,9 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         source.dataBytes=pixels.size()*sizeof(uint16_t);source.width=160;source.height=90;
         source.rowBytes=source.chromaRowBytes=320;source.format=AnalysisLumaFormat::P010;
         source.generation=2;return source;
+    }
+    static AnalysisLumaSource CadenceSource(std::vector<uint16_t>& pixels) {
+        auto source=Source(pixels);source.generation=1;return source;
     }
     static SubtitleBoxPreview Pending(uint64_t sequence) {
         auto preview=Ready(sequence);preview.available=false;preview.text={};
@@ -851,6 +855,168 @@ public:
         Assert::IsFalse(ResolvePendingQueue(guard,after,Source(pixels),50,250,&token,true,0));
         Assert::AreEqual("no-accepted-seed",guard.DecisionReason());
     }
+    TEST_METHOD(VerifiedCadenceAdvancesPendingAnchorAcrossDeterministicQueueRetirement) {
+        const auto identity=[](uint64_t sequence) {
+            auto value=Identity(sequence);value.analysisDomainKey=7;return value;
+        };
+        const auto pendingKey=[&](uint64_t sequence) {
+            auto value=Pending(sequence);value.current.identity=identity(sequence);
+            value.current.sharedPicture.identity=value.current.identity;return value;
+        };
+        auto pixels=PixelsWithCurrentBars();
+        // One independently measured, entirely bar-owned caption.
+        for(int y=0;y<90;++y)for(int x=0;x<160;++x)
+            pixels[y*160+x]=uint16_t((y>=12 && y<78?300:64)<<6);
+        for(int y=80;y<82;++y)for(int x=50;x<110;++x)
+            if(x%7<3)pixels[y*160+x]=uint16_t(700<<6);
+        ActivePictureDecisionTimeline timeline;timeline.Reset(1);
+        for(uint64_t seq=3159;seq<=3164;++seq)Assert::IsTrue(timeline.TrackAcceptedFrame(identity(seq)));
+        const auto before=timeline.ContinuityGeneration();
+        auto ready=Ready(3159);ready.current=CompleteThreeLineScan(3159,pixels,before);
+        ready.current.identity=identity(3159);ready.current.sharedPicture.identity=ready.current.identity;
+        ready.continuityGeneration=before;ready.current.analysisStride=2;
+        auto& text=ready.current.text;text.lineCount=1;text.bounds={50,80,110,82};
+        text.sourcePanel=text.capturePanel={48,78,112,84};
+        text.lineBounds[0]=text.bounds;text.lineBounds[1]=text.lineBounds[2]={};
+        text.lineCapturePanels[0]=text.capturePanel;text.linePanels[0]=text.sourcePanel;
+        text.lineCapturePanels[1]=text.lineCapturePanels[2]={};text.linePanels[1]=text.linePanels[2]={};
+        ready.text=text;
+        SubtitleBoxPresentation tracker;
+        const auto acquired=tracker.Consume(ready,250,50);
+        Assert::IsTrue(acquired.detected && !acquired.held);
+        Assert::IsTrue(tracker.HasAcceptedSourceTemplate());
+        auto stale=std::make_unique<SubtitlePendingMeasurementGuard>();
+        auto advanced=std::make_unique<SubtitlePendingMeasurementGuard>();
+        Assert::IsTrue(stale->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
+        Assert::IsTrue(advanced->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
+        SubtitleCutPasteGeometry g;g.valid=true;g.content=text.bounds;g.glyphLines=text.lineBounds;
+        g.source=g.destination=g.generatedCleanup=g.pictureCapture=text.sourcePanel;
+        g.pictureTop=12;g.pictureBottom=78;
+        SubtitleCadenceGuard cadence;
+        Assert::IsTrue(cadence.RememberAccepted(ready,ready.text,CadenceSource(pixels),ready.current.sharedPicture.bounds,g,50,250));
+        auto skipped=pendingKey(3160);skipped.continuityGeneration=skipped.current.continuityGeneration=before;
+        skipped.current.cadenceSkipped=true;skipped.current.analysisStride=2;
+        const auto& proof=cadence.PrepareReference(skipped,CadenceSource(pixels),ready.current.sharedPicture.bounds,50,250);
+        Assert::IsTrue(proof.valid);
+        const auto tracked=tracker.Consume(proof.preview,250,50,nullptr,false,false,&proof.continuation);
+        Assert::IsTrue(tracked.detected && tracked.held && proof.continuation.MatchesCue(tracked));
+        Assert::AreEqual(0x1000u,tracker.InkDiagnostics().contextMismatch,
+            L"Cadence deliberately strips bar metadata while retaining separately verified current glyphs.");
+        Assert::IsFalse(tracker.HasAcceptedSourceTemplate(),L"Cadence cannot restore measured bar/source-template authority.");
+        Assert::IsTrue(tracker.HasAcceptedQueueTemplate(),
+            L"An explicitly accepted current continuation must expose its source identity for queue-only reassociation without restoring bar authority.");
+        for(int fault=0;fault<20;++fault) {
+            auto rejected=std::make_unique<SubtitleBoxPresentation>();
+            Assert::IsTrue(rejected->Consume(ready,250,50).detected);
+            auto copied=std::make_unique<SubtitleBoxPreview>(proof.preview);
+            auto changed=std::make_unique<SubtitleCueContinuation>(proof.continuation);
+            const SubtitleCueContinuation* supplied=changed.get();
+            if(fault==0)supplied=nullptr;
+            if(fault==1)changed->localGlyphsOnly=true;
+            if(fault==2)++copied->current.identity.analysisDomainKey;
+            if(fault==3)++changed->accepted.cue;
+            if(fault==4)changed->physicalBase.bottom-=2;
+            if(fault==5)++changed->identity.acceptedSequence;
+            if(fault==6){++copied->policyGeneration;++copied->current.policyGeneration;}
+            if(fault==7){++copied->continuityGeneration;++copied->current.continuityGeneration;}
+            if(fault==8)++copied->current.nearBarDistance;
+            if(fault==9)copied->current.text.workLimit=true;
+            if(fault==10)changed->accepted.confirmationPending=true;
+            if(fault==11)changed->accepted.workLimit=true;
+            if(fault==12)copied->current.sharedPicture.bounds.bottom-=2;
+            if(fault==13)copied->current.discontinuity=true;
+            if(fault==14)copied->current.analysisRefresh=true;
+            if(fault==15)copied->current.analysisStride=1;
+            if(fault==16)copied->current.cadenceSkipped=false;
+            if(fault==17)copied->current.independentBarAnalysis=true;
+            if(fault==18)copied->current.scriptHint=SubtitleScriptHint::Arabic;
+            if(fault==19)changed->samples=0;
+            rejected->Consume(*copied,250,50,nullptr,false,false,supplied);
+            Assert::IsFalse(rejected->HasAcceptedQueueTemplate(),
+                L"Only a private exact accepted shared cadence certificate may replace missing bar metadata for queue identity.");
+        }
+        tracker.Consume(proof.preview,250,50,nullptr,false,false,&proof.continuation);
+        Assert::IsTrue(SameAnalysisFrameIdentity(identity(3160),tracker.AcceptedQueueTemplateIdentity()),
+            L"Repeated accepted output cannot advance or replace its original queue certificate.");
+        {
+            auto missingReference=std::make_unique<SubtitleBoxPresentation>();
+            auto stripped=std::make_unique<SubtitleBoxPreview>(ready);
+            stripped->current.barAuthority=false;stripped->current.barEvidence={};
+            missingReference->Consume(*stripped,250,50);
+            missingReference->Consume(proof.preview,250,50,nullptr,false,false,&proof.continuation);
+            Assert::IsFalse(missingReference->HasAcceptedQueueTemplate(),
+                L"A cadence certificate cannot manufacture a measured-bar acquisition reference.");
+        }
+        for(int fault=0;fault<18;++fault) {
+            auto guarded=std::make_unique<SubtitlePendingMeasurementGuard>();
+            Assert::IsTrue(guarded->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
+            auto bad=std::make_unique<SubtitleCadenceProof>(proof);auto changedAccepted=proof.continuation.accepted;
+            if(fault==0)bad->valid=false;
+            if(fault==1)bad->continuation.valid=false;
+            if(fault==2)++changedAccepted.cue;
+            if(fault==3)++bad->continuation.previousIdentity.acceptedSequence;
+            if(fault==4)++bad->continuation.continuityGeneration;
+            if(fault==5)++bad->preview.current.continuityGeneration;
+            if(fault==6)++bad->preview.current.identity.analysisDomainKey;
+            if(fault==7)++bad->preview.current.identity.viewportGeneration;
+            if(fault==8)++bad->preview.current.identity.sourceFormatGeneration;
+            if(fault==9)bad->preview.current.discontinuity=true;
+            if(fault==10)++bad->preview.current.identity.sourceFrameNumber;
+            if(fault==11)bad->preview.current.identity.captureTimestamp=ready.current.identity.captureTimestamp;
+            if(fault==12)bad->preview.current.pendingRefresh=false;
+            if(fault==13)bad->samples=0;
+            if(fault==14)bad->continuation.localGlyphsOnly=true;
+            if(fault==15)++bad->continuation.policyGeneration;
+            if(fault==16)bad->continuation.physicalBase.bottom-=2;
+            if(fault==17)changedAccepted.workLimit=true;
+            Assert::IsFalse(guarded->AdvanceVerifiedCadence(*bad,changedAccepted,50,250));
+        }
+        auto accepted=proof.continuation.accepted;
+        Assert::IsTrue(advanced->AdvanceVerifiedCadence(proof,accepted,50,250));
+        Assert::IsTrue(advanced->AdvanceVerifiedCadence(proof,accepted,50,250),L"Retry cannot spend or reset the lease twice.");
+        {
+            auto tightened=std::make_unique<SubtitlePendingMeasurementGuard>();
+            Assert::IsTrue(tightened->RememberAccepted(ready,ready.text,CadenceSource(pixels),50,250));
+            Assert::IsTrue(tightened->AdvanceVerifiedCadence(proof,accepted,50,250));
+            Assert::IsFalse(tightened->AdvanceVerifiedCadence(proof,accepted,50,49),
+                L"A same-source retry cannot survive a newly shortened hold budget.");
+            Assert::AreEqual("pending-budget-expired",tightened->DecisionReason());
+        }
+        timeline.MarkConsumed(identity(3159));timeline.MarkConsumed(identity(3160));
+        for(uint64_t seq=3161;seq<=3163;++seq)
+            timeline.MarkDiscarded(identity(seq),seq,ActivePictureDiscardReason::BacklogRecovery);
+        const auto after=timeline.ContinuityGeneration();auto token=tracker.AcceptedQueueTemplateIdentity();
+        Assert::IsTrue(SameAnalysisFrameIdentity(identity(3160),token));
+        Assert::IsTrue(timeline.OnlyBacklogRetirementBetween(token,identity(3164),before,after));
+        for(int fault=0;fault<3;++fault) {
+            auto changed=pixels;auto guarded=std::make_unique<SubtitlePendingMeasurementGuard>();
+            Assert::IsTrue(guarded->RememberAccepted(ready,ready.text,CadenceSource(changed),50,250));
+            Assert::IsTrue(guarded->AdvanceVerifiedCadence(proof,accepted,50,250));
+            if(fault==0)changed[80*160+50]=uint16_t(64<<6);
+            if(fault==1)changed[160*90+(80/2)*160+50]=0;
+            if(fault==2)for(int y=0;y<12;++y)for(int x=0;x<160;++x)changed[y*160+x]=uint16_t(300<<6);
+            auto pending=pendingKey(3164);pending.current.continuityGeneration=pending.continuityGeneration=after;
+            Assert::IsFalse(guarded->Resolve(pending,CadenceSource(changed),50,250,&token,true));
+            Assert::IsTrue(guarded->DecisionDiagnostics().glyphSamplesChecked>0);
+        }
+        auto current=pendingKey(3164);current.current.continuityGeneration=current.continuityGeneration=after;
+        auto red=current;
+        Assert::IsFalse(stale->Resolve(red,CadenceSource(pixels),50,250,&token,true));
+        Assert::AreEqual(static_cast<uint32_t>(SubtitlePendingMeasurementGuard::ContextContinuity),stale->DecisionDiagnostics().contextMismatch);
+        Assert::AreEqual(size_t(0),stale->DecisionDiagnostics().glyphSamplesChecked);
+        Assert::IsTrue(advanced->Resolve(current,CadenceSource(pixels),50,250,&token,true)); // Original 250ms, not a new 200ms lease.
+        Assert::IsTrue(advanced->DecisionDiagnostics().glyphSamplesChecked>0);
+        Assert::IsTrue(advanced->DecisionDiagnostics().barsAvailable && advanced->DecisionDiagnostics().backlogReassociated);
+        auto expired=pendingKey(3165);expired.current.continuityGeneration=expired.continuityGeneration=after;
+        Assert::IsFalse(advanced->Resolve(expired,CadenceSource(pixels),50,250));
+        Assert::AreEqual("pending-budget-expired",advanced->DecisionReason());
+        auto unknown=pendingKey(3164);unknown.continuityGeneration=unknown.current.continuityGeneration=after;
+        Assert::IsFalse(tracker.Consume(unknown,250,50,&token,true).detected);
+        Assert::IsTrue(tracker.HasAcceptedQueueTemplate());
+        Assert::IsTrue(SameAnalysisFrameIdentity(token,tracker.AcceptedQueueTemplateIdentity()),
+            L"Intentional backlog wait preserves the same old anchor, never unknown source identity.");
+        tracker.Reset();Assert::IsFalse(tracker.HasAcceptedQueueTemplate());
+    }
     TEST_METHOD(PendingGuardReportsQueueContinuityWithoutRelaxingIt) {
         auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);
         Assert::IsTrue(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
@@ -893,6 +1059,456 @@ public:
         Assert::AreEqual(78,detail.expectedBottom);
         Assert::IsTrue(!detail.barsAvailable || detail.measuredTop!=detail.expectedTop);
         Assert::IsFalse(pending.available);
+    }
+    TEST_METHOD(CadenceGuardUhdOppositeEdgeLossUsesActualTwoRowFootprintInNativeFormats) {
+        for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422}) {
+            std::vector<uint16_t> pixels(size_t(3840)*2160*(format==AnalysisLumaFormat::P010?3:4)/2,uint16_t(512<<6));
+            std::fill(pixels.begin(),pixels.begin()+3840*2160,uint16_t(64<<6));
+            for(int y=256;y<1904;++y)for(int x=0;x<3840;++x)pixels[size_t(y)*3840+x]=uint16_t(300<<6);
+            for(int y=1730;y<1904;++y)for(int x=1520;x<2340;++x)pixels[size_t(y)*3840+x]=uint16_t(64<<6);
+            auto ready=Ready(1);auto& c=ready.current;c.width=3840;c.height=2160;
+            c.pictureTop=0;c.pictureBottom=1904;c.analysisStride=2;
+            c.sharedPicture.bounds={0,256,3840,1904,3840,2160};
+            c.text.lineCount=2;c.text.bounds={1580,1750,2260,1992};
+            c.text.lineBounds[0]={1580,1890,2260,1992};
+            c.text.lineBounds[1]={1640,1750,2200,1848};c.text.lineBounds[2]={};
+            c.text.sourcePanel={1520,1730,2340,1904};
+            c.text.nearBarEligibilityMeasured=c.text.nearBarEligible=true;c.nearBarDistance=20;
+            for(int line=0;line<2;++line)for(int y=c.text.lineBounds[line].top;y<c.text.lineBounds[line].bottom;++y)
+                for(int x=c.text.lineBounds[line].left;x<c.text.lineBounds[line].right;++x)
+                    if((x-c.text.lineBounds[line].left)%28<12)pixels[size_t(y)*3840+x]=uint16_t(700<<6);
+            auto ink=std::make_shared<SubtitleInkSnapshot>();ink->width=960;ink->height=540;ink->step=4;
+            ink->sourceRows.resize(540);ink->rawEvidenceComplete=ink->paletteValid=true;
+            ink->inkFloor=500;ink->blackLimit=96;
+            ink->rawInk.resize(8100);ink->ownedInk.resize(8100);ink->blackBacking.resize(8100);
+            for(int y=0;y<540;++y) {ink->sourceRows[y]=4*y;for(int x=0;x<960;++x) {
+                const size_t i=size_t(y)*960+x;const uint64_t bit=uint64_t(1)<<(i%64);
+                const int value=pixels[size_t(y*4)*3840+x*4]>>6;
+                if(value>=500){ink->rawInk[i/64]|=bit;ink->ownedInk[i/64]|=bit;}
+                if(value<=96)ink->blackBacking[i/64]|=bit;
+            }}
+            c.ink=ink;ready.text=c.text;
+            AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+            source.dataBytes=pixels.size()*2;source.width=3840;source.height=2160;
+            source.rowBytes=source.chromaRowBytes=7680;source.format=format;source.generation=1;
+            Assert::IsTrue(source.IsValid());
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=c.text.bounds;g.glyphLines=c.text.lineBounds;
+            g.source={1480,1700,2380,2024};g.destination=g.source;g.generatedCleanup=c.text.sourcePanel;
+            g.pictureCapture=c.text.sourcePanel;g.pictureTop=0;g.pictureBottom=1904;
+            g=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(g,{0,256,3840,1904},20),
+                30,SubtitleBoxPadding(40),true,false);
+            Assert::IsTrue(g.valid);Assert::AreEqual(0.7f,g.glyphScale);
+            SubtitleCadenceGuard guard;const auto started=std::chrono::steady_clock::now();
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,source,c.sharedPicture.bounds,g));
+            const double seedMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+            auto pending=ready;pending.available=false;pending.current.identity=Identity(2);
+            pending.current.sharedPicture.identity=pending.current.identity;
+            pending.current.analyzed=false;pending.current.cadenceSkipped=true;pending.current.text={};pending.text={};
+            // Motion outside the exact card/content footprint cannot veto.
+            for(int y=256;y<1600;++y)for(int x=0;x<3840;++x)pixels[size_t(y)*3840+x]=uint16_t(450<<6);
+            const auto proofStart=std::chrono::steady_clock::now();
+            const auto result=guard.Prepare(pending,source,c.sharedPicture.bounds,1000.0/60,250);
+            const double proofMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-proofStart).count();
+            Logger::WriteMessage((std::string("UHD cadence format=")+std::to_string(int(format))+
+                " seed_ms="+std::to_string(seedMs)+" proof_ms="+std::to_string(proofMs)+
+                " samples="+std::to_string(result.samples)+" reason="+result.reason+"\n").c_str());
+            Assert::IsTrue(result.valid);Assert::IsFalse(result.preview.current.barAuthority);
+            Assert::IsTrue(result.continuation.Matches(pending.current.identity,11,21,c.sharedPicture.bounds));
+            Assert::AreEqual(202520u,result.samples,L"Every native union pixel is counted once, not step-4 samples.");
+            Assert::IsFalse(result.continuation.backingVerifiedBounds.Valid());
+            // A source-padding pixel is not extracted or erased.
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,source,c.sharedPicture.bounds,g));
+            pixels[size_t(1711)*3840+1491]=uint16_t(700<<6);
+            Assert::IsTrue(guard.Prepare(pending,source,c.sharedPicture.bounds,1000.0/60,250).valid);
+            for(int mutation=0;mutation<3;++mutation) {
+                Assert::IsTrue(guard.RememberAccepted(ready,ready.text,source,c.sharedPicture.bounds,g));
+                const int x=mutation==0?1581:mutation==1?1597:1521;
+                const int y=mutation==2?1731:1893;
+                const auto before=pixels[size_t(y)*3840+x];
+                pixels[size_t(y)*3840+x]=uint16_t((mutation==0?64:700)<<6);
+                Assert::IsFalse(guard.Prepare(pending,source,c.sharedPicture.bounds,1000.0/60,250).valid,
+                    L"One native pixel between the detector grid points must revoke the certificate.");
+                pixels[size_t(y)*3840+x]=before;
+            }
+        }
+    }
+    TEST_METHOD(CadenceGuardKeepsCurrentGlyphsAcrossAlternatingInputsAndMovingBackground) {
+        auto pixels=Pixels();SubtitleCadenceGuard guard;SubtitleBoxPresentation tracker;unsigned rearms=0;
+        for(uint64_t sequence=1;sequence<601;sequence+=2) {
+            auto ready=Ready(sequence);
+            ready.current=CompleteThreeLineScan(sequence,pixels);
+            ready.current.analysisStride=2;ready.current.pictureTop=0;
+            ready.current.independentBarAnalysis=false;ready.current.barEvidence.top=0;
+            ready.text=ready.current.text;ready.futureAvailable=true;
+            ready.matchingFrames=4;ready.currentLinesConfirmed=true;
+            const auto accepted=tracker.Consume(ready,250,1000.0/60);
+            Assert::IsTrue(accepted.detected && !accepted.held);
+            Assert::AreEqual(ready.text.cue,accepted.cue);
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=ready.text.bounds;
+            g.glyphLines=ready.text.lineBounds;g.pictureCapture=ready.text.capturePanel;g.generatedCleanup=ready.text.sourcePanel;
+            g.pictureTop=0;g.pictureBottom=78;g.source=g.content;g.destination=g.content;
+            Assert::IsTrue(guard.RememberAccepted(ready,accepted,CadenceSource(pixels),
+                ready.current.sharedPicture.bounds,g,1000.0/60,250));
+            if(sequence>1) {
+                Assert::AreEqual("cadence-seed-rearmed",guard.DecisionReason());
+                Assert::AreEqual(0u,guard.SampleCount());++rearms;
+            }
+            // More than the legacy eight-code raw-pixel tolerance, while the
+            // unchanged neutral backing and caption-color mask remain proved.
+            for(int y=47;y<82;++y)for(int x=40;x<120;++x)
+                if((pixels[y*160+x]>>6)<500)pixels[y*160+x]=uint16_t((sequence%4==1?90:64)<<6);
+            // Unrelated picture can change arbitrarily outside source ownership.
+            for(int y=12;y<40;++y)for(int x=0;x<160;++x)
+                pixels[y*160+x]=uint16_t((200+sequence%500)<<6);
+            auto pending=Pending(sequence+1);pending.current.analysisStride=2;
+            pending.current.cadenceSkipped=true;
+            const auto result=guard.Prepare(pending,CadenceSource(pixels),ready.current.sharedPicture.bounds,1000.0/60,250);
+            Assert::IsTrue(result.valid,L"an explicit skipped input must retain only freshly verified caption pixels");
+            Assert::IsTrue(result.preview.available && result.preview.current.analyzed && result.preview.current.pendingRefresh);
+            Assert::IsTrue(result.preview.text.held);Assert::AreEqual(ready.text.cue,result.preview.text.cue);
+            Assert::IsFalse(result.preview.current.barAuthority || result.preview.current.independentBarAnalysis);
+            Assert::IsFalse(result.preview.current.subtitleArProof.accepted);
+            Assert::AreEqual(0u,result.preview.followingCount);Assert::IsFalse(result.preview.currentLinesConfirmed);
+            const auto held=tracker.Consume(result.preview,250,1000.0/60,nullptr,false,false,&result.continuation);
+            Assert::IsTrue(held.detected && held.held);Assert::AreEqual(accepted.cue,held.cue);
+            Assert::IsTrue(result.samples>0 && result.samples<=SubtitleCadenceGuard::SampleBudget);
+            const auto repeat=guard.Prepare(pending,CadenceSource(pixels),ready.current.sharedPicture.bounds,1000.0/60,250);
+            Assert::IsTrue(repeat.valid);Assert::AreEqual(result.continuation.elapsedMs,repeat.continuation.elapsedMs);
+        }
+        Assert::AreEqual(299u,rearms,L"A repeated stable cue reuses its immutable native baseline after each fresh positive scan.");
+    }
+    TEST_METHOD(CadenceGuardRejectsGlyphChangesCleanupIntrusionAndUnknownContexts) {
+        for(int fault=0;fault<16;++fault) {
+            auto pixels=Pixels();auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);
+            ready.current.analysisStride=2;ready.current.pictureTop=0;ready.current.independentBarAnalysis=false;
+            ready.text=ready.current.text;
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=ready.text.bounds;
+            g.glyphLines=ready.text.lineBounds;g.pictureCapture=ready.text.capturePanel;g.generatedCleanup=ready.text.sourcePanel;
+            g.pictureTop=0;g.pictureBottom=78;g.source=g.content;g.destination=g.content;
+            if(fault==14)pixels[48*160+45]=uint16_t(300<<6); // baseline nonblack cleanup, outside capture
+            if(fault==15){g.pictureBottom=60;g.generatedCleanup={};ready.text.sourcePanel={};ready.current.text.sourcePanel={};}
+            SubtitleCadenceGuard guard;
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,CadenceSource(pixels),ready.current.sharedPicture.bounds,g));
+            auto pending=Pending(2);pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+            auto base=ready.current.sharedPicture.bounds;auto source=CadenceSource(pixels);
+            if(fault==0)for(int y=50;y<56;++y)for(int x=50;x<110;++x)pixels[y*160+x]=uint16_t(64<<6);
+            if(fault==1)pixels[51*160+50]=uint16_t(64<<6);
+            if(fault==2)pixels[51*160+53]=uint16_t(700<<6); // new glyph stroke
+            if(fault==3)pixels[48*160+45]=uint16_t(300<<6); // exposed picture in cleanup
+            if(fault==4)++pending.current.identity.analysisDomainKey;
+            if(fault==5)++pending.current.identity.viewportGeneration;
+            if(fault==6)pending.current.discontinuity=true;
+            if(fault==7){pending.current.identity=Identity(4);pending.current.sharedPicture.identity=pending.current.identity;}
+            if(fault==8)pending.current.cadenceSkipped=false;
+            if(fault==9)pending.current.analysisStride=1;
+            if(fault==10)++base.bottom;
+            if(fault==11)source.range=AnalysisLumaRange::Full;
+            if(fault==12)pending.current.identity.captureTimestamp=ready.current.identity.captureTimestamp;
+            if(fault==13)source.dataBytes=1;
+            if(fault==14)pixels[48*160+45]=uint16_t(700<<6);
+            if(fault==15)pixels[70*160+70]=uint16_t(700<<6); // erased bar gap between rows
+            Assert::IsFalse(guard.Prepare(pending,source,base,1000.0/60,250).valid);
+        }
+    }
+    TEST_METHOD(CadenceGuardAllowsOnlyOwnedOuterFringeJitterAndKeepsSnapshotCurrent) {
+        for(int fault=0;fault<6;++fault) {
+            auto pixels=Pixels();
+            // A weak outer edge of an 18-pixel stroke, plus a weak non-ink
+            // neighbour of another unchanged strong edge of that same stroke.
+            pixels[52*160+56]=uint16_t(505<<6);
+            pixels[53*160+55]=uint16_t(495<<6);
+            if(fault==3)pixels[52*160+61]=uint16_t(700<<6); // isolated punctuation
+            auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);
+            ready.current.analysisStride=2;ready.text=ready.current.text;
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=ready.text.bounds;
+            g.glyphLines=ready.text.lineBounds;g.pictureCapture=ready.text.capturePanel;g.generatedCleanup=ready.text.sourcePanel;
+            g.source=g.destination=g.content;g.pictureTop=0;g.pictureBottom=78;
+            SubtitleCadenceGuard guard;
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,CadenceSource(pixels),ready.current.sharedPicture.bounds,g));
+            pixels[52*160+56]=uint16_t(495<<6);
+            pixels[53*160+55]=uint16_t(505<<6);
+            if(fault==1)pixels[52*160+61]=uint16_t(700<<6); // disconnected new glyph
+            if(fault==2)pixels[52*160+57]=uint16_t(64<<6); // lost strong interior
+            if(fault==3)pixels[52*160+61]=uint16_t(64<<6); // punctuation disappeared
+            if(fault==4)pixels[52*160+56]=uint16_t(450<<6); // beyond encoded fringe
+            if(fault==5)pixels[48*160+45]=uint16_t(110<<6); // noncaption cleanup intrusion
+            auto pending=Pending(2);pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+            const auto proof=guard.Prepare(pending,CadenceSource(pixels),ready.current.sharedPicture.bounds,1000.0/60,250);
+            if(fault)Assert::IsFalse(proof.valid);
+            else {
+                Assert::IsTrue(proof.valid);
+                Assert::IsFalse(proof.preview.current.ink->Get(56,52));
+                Assert::IsTrue(proof.preview.current.ink->Get(55,53));
+                Assert::IsFalse(proof.preview.current.ink->Get(55,53,true),L"New fringe is current ink, not invented old ownership.");
+                Assert::IsFalse(proof.preview.current.ink->rawEvidenceComplete);
+            }
+        }
+    }
+    TEST_METHOD(CadenceGuardDoesNotTolerateFringeChangesInsideGlyphHoles) {
+        for(int mutation=0;mutation<2;++mutation) {
+            auto pixels=Pixels();
+            std::fill(pixels.begin(),pixels.begin()+160*90,uint16_t(64<<6));
+            for(int y=50;y<61;++y)for(int x=50;x<61;++x)
+                if(x<52 || x>=59 || y<52 || y>=59)pixels[y*160+x]=uint16_t(700<<6);
+            const int x=mutation?52:51;
+            pixels[55*160+x]=uint16_t((mutation?495:505)<<6);
+            auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);
+            auto& c=ready.current;c.analysisStride=2;c.text.lineCount=1;
+            c.text.bounds=c.text.lineBounds[0]={50,50,61,61};c.text.lineBounds[1]=c.text.lineBounds[2]={};
+            ready.text=c.text;
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=c.text.bounds;g.glyphLines=c.text.lineBounds;
+            g.source=g.destination=g.content;g.pictureCapture=c.text.capturePanel;
+            g.generatedCleanup=c.text.sourcePanel;g.pictureTop=0;g.pictureBottom=78;
+            SubtitleCadenceGuard guard;
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,CadenceSource(pixels),c.sharedPicture.bounds,g));
+            pixels[55*160+x]=uint16_t((mutation?505:495)<<6);
+            auto pending=Pending(2);pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+            Assert::IsFalse(guard.Prepare(pending,CadenceSource(pixels),c.sharedPicture.bounds,1000.0/60,250).valid,
+                L"Inner hole pixels and the strokes separating holes from outside stay strict.");
+        }
+    }
+    TEST_METHOD(CadenceGuardRoundedCleanupPreservesMovingCornersAndRejectsActualEraseIntrusion) {
+        for(int fault=0;fault<2;++fault) {
+            auto pixels=Pixels();auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);
+            ready.current.analysisStride=2;ready.text=ready.current.text;
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=ready.text.bounds;
+            g.glyphLines=ready.text.lineBounds;g.pictureCapture=ready.text.capturePanel;g.source=g.destination=g.content;
+            g.pictureTop=0;g.pictureBottom=78;g.generatedCleanup={60,47,100,78};
+            for(int y=47;y<78;++y)g.generatedCleanupRows[g.generatedCleanupRowCount++]={
+                y<50?60:40,y,y<50?100:120,y+1};
+            SubtitleCadenceGuard guard;
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,CadenceSource(pixels),ready.current.sharedPicture.bounds,g));
+            // Both points sit inside the sourcePanel/hull, but only the second
+            // belongs to a shader erase span. The first corner stays live.
+            pixels[48*160+(fault?65:45)]=uint16_t(300<<6);
+            auto pending=Pending(2);pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+            const auto proof=guard.Prepare(pending,CadenceSource(pixels),ready.current.sharedPicture.bounds,1000.0/60,250);
+            Assert::AreEqual(fault==0,proof.valid);
+        }
+    }
+    TEST_METHOD(CadenceGuardUhdCrossingCaptionKeepsOnlyProvedRowFootprintAndGlyphFringe) {
+        for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422})
+        for(int mutation=0;mutation<4;++mutation) {
+            constexpr int width=3840,height=2160;
+            std::vector<uint16_t> pixels(size_t(width)*height*(format==AnalysisLumaFormat::P010?3:4)/2,uint16_t(512<<6));
+            std::fill(pixels.begin(),pixels.begin()+size_t(width)*height,uint16_t(64<<6));
+            for(int y=250;y<1906;++y)for(int x=0;x<width;++x)pixels[size_t(y)*width+x]=uint16_t(300<<6);
+            auto ready=Ready(1);auto& c=ready.current;
+            c.width=width;c.height=height;c.pictureTop=250;c.pictureBottom=1906;c.analysisStride=2;
+            c.sharedPicture.bounds={0,250,width,1906,width,height};
+            c.text.lineCount=2;c.text.bounds={1354,1746,2470,1992};
+            c.text.lineBounds[0]={1354,1892,2470,1992};
+            c.text.lineBounds[1]={1640,1746,2194,1828};c.text.lineBounds[2]={};
+            c.text.sourcePanel=c.text.capturePanel={1302,1740,2528,1906};
+            c.text.nearBarEligibilityMeasured=c.text.nearBarEligible=true;
+            for(int line=0;line<2;++line) {
+                const auto& r=c.text.lineBounds[line];
+                for(int y=r.top;y<r.bottom;++y)for(int x=r.left;x<r.right;++x)
+                    if((x-r.left)%28<12)pixels[size_t(y)*width+x]=uint16_t(700<<6);
+            }
+            // One external AA fringe beside a large, surviving owned core.
+            pixels[size_t(1950)*width+1366]=uint16_t(495<<6);
+            auto ink=std::make_shared<SubtitleInkSnapshot>();ink->width=960;ink->height=540;ink->step=4;
+            ink->sourceRows.resize(540);ink->rawEvidenceComplete=ink->paletteValid=true;
+            ink->inkFloor=500;ink->blackLimit=96;
+            ink->rawInk.resize(8100);ink->ownedInk.resize(8100);ink->blackBacking.resize(8100);
+            for(int y=0;y<540;++y) {ink->sourceRows[y]=4*y;for(int x=0;x<960;++x) {
+                const size_t at=size_t(y)*960+x;const uint64_t bit=uint64_t(1)<<(at%64);
+                const int value=pixels[size_t(y*4)*width+x*4]>>6;
+                if(value>=500){ink->rawInk[at/64]|=bit;ink->ownedInk[at/64]|=bit;}
+                if(value<=96)ink->blackBacking[at/64]|=bit;
+            }}
+            c.ink=ink;ready.text=c.text;
+            AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+            source.dataBytes=pixels.size()*sizeof(uint16_t);source.width=width;source.height=height;
+            source.rowBytes=source.chromaRowBytes=width*2;source.generation=1;source.format=format;
+            Assert::IsTrue(source.IsValid());
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=c.text.bounds;g.glyphLines=c.text.lineBounds;
+            g.source=g.destination={1280,1712,2544,2018};g.pictureCapture=c.text.capturePanel;
+            g.pictureTop=250;g.pictureBottom=1906;g.generatedCleanup=c.text.sourcePanel;
+            for(int y=1740;y<1852;++y) {
+                const bool rounded=y<1748 || y>=1844;
+                g.generatedCleanupRows[g.generatedCleanupRowCount++]={rounded?1340:1302,y,rounded?2490:2528,y+1};
+            }
+            for(int y=1892;y<1906;++y)
+                g.generatedCleanupRows[g.generatedCleanupRowCount++]={1354,y,2470,y+1};
+            auto guard=std::make_unique<SubtitleCadenceGuard>();
+            const bool seeded=guard->RememberAccepted(ready,ready.text,source,c.sharedPicture.bounds,g);
+            if(!seeded)Logger::WriteMessage(guard->DecisionReason());
+            Assert::IsTrue(seeded);
+            if(mutation==0) {
+                // Moving native picture includes the corners INSIDE the cleanup
+                // hull but OUTSIDE its actual row spans. Neither is erased.
+                for(int y=250;y<1906;++y)for(int x=0;x<width;++x) {
+                    bool captured=false;for(int line=0;line<2;++line) {
+                        const auto& r=c.text.lineBounds[line];
+                        captured|=x>=r.left && x<r.right && y>=r.top && y<r.bottom;
+                    }
+                    bool erased=false;
+                    if(y>=1740 && y<1852) {
+                        const auto& r=g.generatedCleanupRows[y-1740];erased=x>=r.left && x<r.right;
+                    }
+                    if(y>=1892 && y<1906)erased=x>=1354 && x<2470;
+                    if(!captured && !erased)pixels[size_t(y)*width+x]=uint16_t((340+((x+y)&1)*20)<<6);
+                }
+                Assert::AreEqual(340,int(pixels[size_t(1742)*width+1304]>>6));
+            }
+            if(mutation==1)pixels[size_t(1805)*width+1310]=uint16_t(340<<6); // unowned picture inside actual erasure
+            if(mutation==2)pixels[size_t(1950)*width+1360]=uint16_t(64<<6); // loss of a strong owned core
+            if(mutation==3)pixels[size_t(1950)*width+1366]=uint16_t(505<<6); // bounded external AA only
+            auto pending=Pending(2);pending.current.width=width;pending.current.height=height;
+            pending.current.pictureTop=250;pending.current.pictureBottom=1906;
+            pending.current.sharedPicture.bounds=c.sharedPicture.bounds;
+            pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+            const auto& proof=guard->PrepareReference(pending,source,c.sharedPicture.bounds,1000.0/60,250);
+            Assert::AreEqual(mutation==0 || mutation==3,proof.valid,
+                L"Only outside-footprint native motion and bounded owned external AA may continue; unowned erasure and core changes stay strict.");
+            if(mutation==1)Assert::AreEqual("cadence-current-cleanup-changed",proof.reason);
+            if(mutation==2)Assert::AreEqual("cadence-current-glyph-changed",proof.reason);
+        }
+    }
+    TEST_METHOD(CadenceGuardRejectsNativeWorkOverBudgetAndUnsupportedBackground) {
+        auto pixels=Pixels();auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);
+        ready.current.analysisStride=2;ready.text=ready.current.text;
+        SubtitleCutPasteGeometry g;g.valid=true;g.content=ready.text.bounds;
+        g.glyphLines=ready.text.lineBounds;g.pictureCapture=ready.text.capturePanel;g.source=g.destination=g.content;g.pictureTop=0;g.pictureBottom=78;
+        SubtitleCadenceGuard guard;
+        Assert::IsFalse(guard.RememberAccepted(ready,ready.text,CadenceSource(pixels),ready.current.sharedPicture.bounds,g,1000.0/60,250,2));
+        Assert::AreEqual("cadence-unsupported-background",guard.DecisionReason());
+        // A valid 1920x600 footprint exceeds the one-million native work cap.
+        pixels.assign(size_t(1920)*600*3/2,uint16_t(512<<6));
+        std::fill(pixels.begin(),pixels.begin()+1920*600,uint16_t(64<<6));
+        auto source=CadenceSource(pixels);source.width=1920;source.height=600;source.rowBytes=source.chromaRowBytes=3840;
+        auto& c=ready.current;c.width=1920;c.height=600;c.sharedPicture.bounds={0,12,1920,588,1920,600};
+        auto ink=std::make_shared<SubtitleInkSnapshot>();ink->step=2;ink->width=960;ink->height=300;
+        ink->sourceRows.resize(300);for(int y=0;y<300;++y)ink->sourceRows[y]=2*y;
+        ink->paletteValid=ink->rawEvidenceComplete=true;ink->inkFloor=500;ink->blackLimit=96;
+        ink->rawInk.resize(4500);ink->ownedInk.resize(4500);ink->blackBacking.resize(4500);c.ink=ink;
+        g.generatedCleanup={0,0,1920,600};g.pictureBottom=600;
+        Assert::IsFalse(guard.RememberAccepted(ready,ready.text,source,c.sharedPicture.bounds,g));
+        Assert::AreEqual("cadence-sample-budget-or-source",guard.DecisionReason());
+        Assert::AreEqual(SubtitleCadenceGuard::SampleBudget,guard.SampleCount());
+    }
+    TEST_METHOD(CadenceGuardValidatedPlanarReaderMatchesCanonicalSamplesWithUnalignedPaddedPlanes) {
+        for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422})
+        for(int fault=0;fault<7;++fault) {
+            auto pixels=Pixels();auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);
+            ready.current.analysisStride=2;ready.text=ready.current.text;
+            // Deliberately odd and different pitches, plus an unaligned base.
+            // Dirty padding makes accidental tight/16-bit row access observable.
+            const size_t lumaPitch=327,chromaPitch=333;
+            const int chromaHeight=format==AnalysisLumaFormat::P010?45:90;
+            const size_t lumaBytes=lumaPitch*90;
+            std::vector<uint8_t> bytes(1+lumaBytes+chromaPitch*chromaHeight,uint8_t(0xA5));
+            auto* data=bytes.data()+1;
+            const auto write=[&](size_t offset,unsigned code,unsigned low) {
+                const unsigned word=(code<<6)|(low&63);
+                data[offset]=uint8_t(word);data[offset+1]=uint8_t(word>>8);
+            };
+            for(int y=0;y<90;++y)for(int x=0;x<160;++x)
+                write(size_t(y)*lumaPitch+size_t(x)*2,pixels[y*160+x]>>6,unsigned(x+3*y));
+            for(int y=0;y<chromaHeight;++y)for(int x=0;x<80;++x) {
+                const size_t offset=lumaBytes+size_t(y)*chromaPitch+size_t(x)*4;
+                write(offset,512,unsigned(x+y));write(offset+2,512,unsigned(2*x+y));
+            }
+            auto source=CadenceSource(pixels);source.data=data;source.dataBytes=bytes.size()-1;
+            source.rowBytes=lumaPitch;source.chromaRowBytes=chromaPitch;source.format=format;
+            Assert::IsTrue(source.IsValid());
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=ready.text.bounds;
+            g.glyphLines=ready.text.lineBounds;g.pictureCapture=ready.text.capturePanel;
+            g.generatedCleanup=ready.text.sourcePanel;g.source=g.destination=g.content;
+            g.pictureTop=0;g.pictureBottom=78;
+            SubtitleCadenceGuard guard;
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,source,ready.current.sharedPicture.bounds,g));
+            // All three formats expose upper ten bits. Altering low storage bits
+            // must remain invisible even for decoded 12-bit DV storage.
+            data[size_t(52)*lumaPitch+56*2]^=uint8_t(63);
+            const auto chromaOffset=[&](int x,int y) {
+                return lumaBytes+size_t(format==AnalysisLumaFormat::P010?y/2:y)*chromaPitch+size_t(x/2)*4;
+            };
+            if(fault==1)write(chromaOffset(56,52),700,31); // owned core loses caption chroma
+            if(fault==2)write(chromaOffset(44,48)+2,700,31); // cleanup ceases to be neutral black
+            if(fault==3)--source.dataBytes; // last plane row is truncated
+            if(fault==4)source.rowBytes=319;
+            if(fault==5)source.chromaRowBytes=319;
+            if(fault==6)write(size_t(53)*lumaPitch+57*2,64,31); // odd native pixel/row
+            auto pending=Pending(2);pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+            const auto proof=guard.Prepare(pending,source,ready.current.sharedPicture.bounds,1000.0/60,250);
+            if(fault) {
+                Assert::IsFalse(proof.valid);
+                if(fault>=3 && fault<=5) {
+                    Assert::AreEqual(0u,proof.samples,L"Invalid complete allocation is rejected before the fast reader.");
+                    Assert::IsFalse(guard.RememberAccepted(ready,ready.text,source,ready.current.sharedPicture.bounds,g));
+                }
+            } else {
+                Assert::IsTrue(proof.valid);Assert::AreEqual(2800u,proof.samples);
+                for(int y=47;y<82;++y)for(int x=40;x<120;++x) {
+                    AnalysisLumaSample expected;Assert::IsTrue(source.Sample(x,y,expected));
+                    Assert::AreEqual(int(pixels[y*160+x]>>6),int(expected.luma));
+                    Assert::AreEqual(512,int(expected.chromaU));Assert::AreEqual(512,int(expected.chromaV));
+                    Assert::AreEqual(expected.luma>=500,proof.preview.current.ink->Get(x,y));
+                    Assert::AreEqual(expected.luma<=96,proof.preview.current.ink->Black(x,y));
+                }
+            }
+        }
+    }
+    TEST_METHOD(CadenceGuardRearmRequiresFreshIndependentScanAndExactFinalGeometry) {
+        for(int fault=0;fault<8;++fault) {
+            auto pixels=Pixels();auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);
+            ready.current.analysisStride=2;ready.text=ready.current.text;
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=ready.text.bounds;
+            g.glyphLines=ready.text.lineBounds;g.pictureCapture=ready.text.capturePanel;
+            g.generatedCleanup=ready.text.sourcePanel;g.source=g.destination=g.content;
+            g.pictureTop=0;g.pictureBottom=78;
+            SubtitleCadenceGuard guard;
+            Assert::IsTrue(guard.RememberAccepted(ready,ready.text,CadenceSource(pixels),ready.current.sharedPicture.bounds,g));
+            auto pending=Pending(2);pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+            Assert::IsTrue(guard.Prepare(pending,CadenceSource(pixels),ready.current.sharedPicture.bounds,1000.0/60,250).valid);
+            auto fresh=ready;fresh.current.identity=Identity(fault==7?5:3);
+            if(fault==1)fresh.current.text.held=true;
+            if(fault==2)fresh.current.pendingRefresh=true;
+            if(fault==3)g.glyphScale=0.7f;
+            if(fault==4)++g.pictureCapture.left;
+            if(fault==5)++fresh.current.identity.viewportGeneration;
+            if(fault==6)++fresh.current.text.cue;
+            fresh.current.sharedPicture.identity=fresh.current.identity;fresh.text=fresh.current.text;
+            const bool remembered=guard.RememberAccepted(fresh,fresh.text,CadenceSource(pixels),fresh.current.sharedPicture.bounds,g);
+            if(fault==1 || fault==2)Assert::IsFalse(remembered,L"Held/pending output cannot rearm a native baseline.");
+            else {
+                Assert::IsTrue(remembered);
+                if(!fault) {
+                    Assert::AreEqual("cadence-seed-rearmed",guard.DecisionReason());Assert::AreEqual(0u,guard.SampleCount());
+                    auto next=Pending(4);next.current.analysisStride=2;next.current.cadenceSkipped=true;
+                    const auto proof=guard.Prepare(next,CadenceSource(pixels),fresh.current.sharedPicture.bounds,1000.0/60,250);
+                    Assert::IsTrue(proof.valid);Assert::AreEqual(uint64_t(3),proof.continuation.previousIdentity.acceptedSequence);
+                    Assert::IsTrue(proof.samples>0,L"A rearmed seed still verifies every native pixel on the next skipped source.");
+                } else {
+                    Assert::AreEqual("cadence-seeded",guard.DecisionReason());Assert::IsTrue(guard.SampleCount()>0);
+                }
+            }
+        }
+    }
+    TEST_METHOD(CadenceGuardRequiresNewStrongScanAndRejectsUnownedExtraCapture) {
+        auto pixels=Pixels();auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);
+        ready.current.analysisStride=2;ready.current.pictureTop=0;ready.current.independentBarAnalysis=false;
+        ready.text=ready.current.text;
+        SubtitleCutPasteGeometry g;g.valid=true;g.content=ready.text.bounds;
+        g.glyphLines=ready.text.lineBounds;g.pictureCapture=ready.text.capturePanel;g.generatedCleanup=ready.text.sourcePanel;
+        g.pictureTop=0;g.pictureBottom=78;
+        SubtitleCadenceGuard guard;
+        Assert::IsTrue(guard.RememberAccepted(ready,ready.text,CadenceSource(pixels),ready.current.sharedPicture.bounds,g));
+        auto pending=Pending(2);pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+        Assert::IsTrue(guard.Prepare(pending,CadenceSource(pixels),ready.current.sharedPicture.bounds,1000.0/60,250).valid);
+        pending.current.identity=Identity(3);pending.current.sharedPicture.identity=pending.current.identity;
+        Assert::IsFalse(guard.Prepare(pending,CadenceSource(pixels),ready.current.sharedPicture.bounds,1000.0/60,250).valid);
+        Assert::AreEqual("cadence-needs-new-independent-scan",guard.DecisionReason());
+        auto one=ready;one.text.lineCount=one.current.text.lineCount=1;
+        one.text.bounds=one.current.text.bounds=one.text.lineBounds[0];
+        g.content=one.text.bounds;g.glyphLines[1]={120,10,140,20};g.glyphLines[2]={};
+        Assert::IsFalse(guard.RememberAccepted(one,one.text,CadenceSource(pixels),one.current.sharedPicture.bounds,g));
+        g.glyphLines[1]={};g.glyphLines[0].left+=5;
+        Assert::IsFalse(guard.RememberAccepted(one,one.text,CadenceSource(pixels),one.current.sharedPicture.bounds,g),
+            L"actual owned glyphs cannot fall outside the shader capture");
     }
     TEST_METHOD(AcceptedSeedStillRejectsChangedCurrentPixels) {
         auto pixels=PixelsWithCurrentBars();SubtitlePendingMeasurementGuard guard;auto ready=Ready(1);

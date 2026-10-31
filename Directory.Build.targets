@@ -4,4 +4,5 @@
           Condition="'$(Configuration)' == 'Release' and '$(Platform)' == 'x64' and ('$(ConfigurationType)' == 'Application' or '$(ConfigurationType)' == 'DynamicLibrary')">
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools\record_runtime_requirement.ps1&quot; -BinaryPath &quot;$(TargetPath)&quot; -ToolsetVersion &quot;$(VCToolsVersion)&quot;" />
   </Target>
+  <Import Project="$(MSBuildThisFileDirectory)tools\critical_runtime_build.targets" />
 </Project>

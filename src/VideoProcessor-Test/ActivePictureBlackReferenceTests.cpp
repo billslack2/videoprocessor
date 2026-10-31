@@ -1,5 +1,6 @@
 #include "pch.h"
 #include <ActivePictureEvidence.h>
+#include <SubtitleBarEvidence.h>
 #include "CppUnitTest.h"
 #include <algorithm>
 #include <array>
@@ -90,6 +91,49 @@ void AssertFull(const ActivePictureEvidence& result, int width = 640, int height
 TEST_CLASS(ActivePictureBlackReferenceTests)
 {
 public:
+    TEST_METHOD(NativePlanarYuvAndDecodedDvUseIdenticalSubtitleBlackCodeDomain)
+    {
+        for (int floor : { 0,40,64 }) for (int fraction : { 0,1,2,3 })
+        {
+            BlackReferenceFrame frame; frame.Bars(true, floor);
+            const auto native = ExtractSubtitleBarEvidence(frame.Source(1));
+            // DV's two fractional bits belong below the shared ten-bit code.
+            // They must not raise black, chroma-neutrality or boundary levels.
+            for (size_t i = 0; i < frame.bytes.size(); i += 2)
+                frame.bytes[i] = uint8_t((frame.bytes[i] & 0xc0) | (fraction << 4));
+            const auto decoded = ExtractSubtitleBarEvidence(frame.Source(2));
+            Assert::IsTrue(native.available && decoded.available);
+            Assert::AreEqual(48, native.top); Assert::AreEqual(312, native.bottom);
+            Assert::AreEqual(native.top, decoded.top);
+            Assert::AreEqual(native.bottom, decoded.bottom);
+            Assert::AreEqual(floor, decoded.topFloor);
+            Assert::AreEqual(floor, decoded.bottomFloor);
+            Assert::AreEqual(native.topSupport, decoded.topSupport);
+            Assert::AreEqual(native.bottomSupport, decoded.bottomSupport);
+            Assert::AreEqual(native.topBoundarySupport, decoded.topBoundarySupport);
+            Assert::AreEqual(native.bottomBoundarySupport, decoded.bottomBoundarySupport);
+        }
+    }
+    TEST_METHOD(NativeAndDecodedDvRejectConnectedPictureIntrusionAtRememberedBar)
+    {
+        for (int format : { 1,2 }) for (int floor : { 0,64 })
+        {
+            BlackReferenceFrame frame; frame.Bars(true, floor);
+            // A single connected picture row can occupy little total bar area.
+            // Neither a raised matte nor DV storage may hide that intrusion.
+            frame.Rect(120,47,520,48,300);
+            if (format == 2)
+                for (size_t i = 0; i < frame.bytes.size(); i += 2)
+                    frame.bytes[i] |= 0x30;
+            const auto source = frame.Source(format);
+            SubtitleBarEvidence missing; missing.bottom = frame.height;
+            const auto result = RevalidateSubtitleBarEvidence(source,missing,48,312);
+            Assert::IsFalse(result.topRevalidatedAtReference);
+            Assert::IsTrue(result.bottomRevalidatedAtReference);
+            Assert::IsTrue(result.topReferenceBlackFraction > 0.95);
+            Assert::IsTrue(result.topReferenceMaxIntrusion >= 128 / 5);
+        }
+    }
     TEST_METHOD(VariableDarkSideIsPictureInEveryNativeFormat)
     {
         for (int format = 0; format < 4; ++format)

@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include <SubtitleCadenceGuard.h>
 #include <AnalysisDiagnosticHooks.h>
 #include <DebugLog.h>
 #include <algorithm>
@@ -463,12 +464,16 @@ public:
         bool sharedPictureMatches=false, sharedPictureCurrent=false;
         bool barsAvailable=false, topRevalidated=false, bottomRevalidated=false;
         bool backlogReassociated=false;
+        uint64_t lastVerifiedSource=0,tokenSource=0,referenceContinuity=0,currentContinuity=0;
+        bool backlogTokenAvailable=false;
         int expectedTop=0, expectedBottom=0, measuredTop=0, measuredBottom=0;
     };
     void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={};m_diagnostics={};
         m_certifiedSeed={};m_certifiedPolicy=m_certifiedContinuity=0;m_consumedCertificate={}; }
     const char* DecisionReason() const { return m_reason; }
     const Diagnostics& DecisionDiagnostics() const { return m_diagnostics; }
+    ActivePictureFrameIdentity LastVerifiedIdentity() const { return m_last; }
+    uint64_t ReferenceContinuity() const { return m_reference.continuityGeneration; }
     // Only accepted extraction may seed the late-worker fallback. A held cue
     // can be more complete than either current grouping or lookahead pruning;
     // never turn those partial measurements into a smaller replacement cue.
@@ -542,12 +547,63 @@ public:
         }
         return !m_samples.empty();
     }
+    // Consume already verified cadence pixels only after the tracker accepts
+    // the exact same cue. Advance the last-verified source, never the seed,
+    // native samples, continuity generation or original pending budget.
+    bool AdvanceVerifiedCadence(const SubtitleCadenceProof& cadence,
+        const SubtitleBoxResult& accepted,double frameMs,int holdMs) {
+        const auto& p=cadence.continuation;const auto& v=cadence.preview;
+        const auto& c=v.current;const auto& old=m_reference.current;
+        const auto sameContext=[&]() {
+            const auto& a=old.identity;const auto& b=c.identity;
+            return a.transportGeneration==b.transportGeneration &&
+                a.sourceFormatGeneration==b.sourceFormatGeneration && a.analysisDomainKey==b.analysisDomainKey &&
+                a.viewportGeneration==b.viewportGeneration && a.rendererGeneration==b.rendererGeneration &&
+                old.width==c.width && old.height==c.height && old.nearBarDistance==c.nearBarDistance &&
+                old.scriptHint==c.scriptHint && old.optimizationMode==c.optimizationMode &&
+                old.pictureTop==c.pictureTop && old.pictureBottom==c.pictureBottom &&
+                old.policyGeneration==c.policyGeneration && old.continuityGeneration==c.continuityGeneration &&
+                m_reference.policyGeneration==v.policyGeneration && m_reference.continuityGeneration==v.continuityGeneration;
+        };
+        if(m_samples.empty() || !cadence.valid || !v.available || !c.analyzed ||
+            !c.cadenceSkipped || c.analysisStride!=2 || !c.pendingRefresh ||
+            c.analysisRefresh || c.discontinuity || c.text.workLimit || accepted.workLimit ||
+            !p.valid || p.localGlyphsOnly || !p.samples || !cadence.samples ||
+            !p.MatchesCue(accepted) || !p.MatchesCue(m_reference.text) ||
+            !SameAnalysisFrameIdentity(p.identity,c.identity) || !sameContext() ||
+            p.policyGeneration!=v.policyGeneration || p.continuityGeneration!=v.continuityGeneration ||
+            !p.Matches(c.identity,v.policyGeneration,v.continuityGeneration,old.sharedPicture.bounds) ||
+            !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) ||
+            !c.sharedPicture.Matches(old.sharedPicture) ||
+            !std::isfinite(frameMs) || frameMs<=0 || !std::isfinite(p.elapsedMs) ||
+            std::abs(p.elapsedMs-frameMs)>0.001)
+            return Reject("cadence-advance-context-changed");
+        const double pendingBudget=(std::max)(0,(std::min)(1000,holdMs));
+        if(m_elapsed>pendingBudget)return Reject("pending-budget-expired");
+        if(SameAnalysisFrameIdentity(m_last,c.identity))return true; // Retry spends no time twice.
+        if(!SameAnalysisFrameIdentity(p.previousIdentity,m_last) ||
+            !SameAnalysisFrameIdentity(p.templateIdentity,m_last) ||
+            m_last.acceptedSequence==UINT64_MAX || c.identity.acceptedSequence!=m_last.acceptedSequence+1 ||
+            !m_last.sourceFrameNumber || m_last.sourceFrameNumber==UINT64_MAX ||
+            c.identity.sourceFrameNumber!=m_last.sourceFrameNumber+1 ||
+            c.identity.captureTimestamp<=m_last.captureTimestamp)
+            return Reject("cadence-advance-source-gap");
+        if(m_elapsed+frameMs>pendingBudget)
+            return Reject("pending-budget-expired");
+        m_elapsed+=frameMs;m_last=c.identity;m_reason="cadence-last-source-advanced";
+        return true;
+    }
     bool Resolve(SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
         double frameMs,int holdMs,
         const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,
         bool backlogRetirementOnly=false) {
         m_diagnostics={};
         const auto key=preview.current;
+        m_diagnostics.lastVerifiedSource=m_last.acceptedSequence;
+        m_diagnostics.tokenSource=backlogTemplateIdentity?backlogTemplateIdentity->acceptedSequence:0;
+        m_diagnostics.backlogTokenAvailable=backlogRetirementOnly && backlogTemplateIdentity;
+        m_diagnostics.referenceContinuity=m_reference.continuityGeneration;
+        m_diagnostics.currentContinuity=preview.continuityGeneration;
         if(preview.available) {
             if(key.pendingRefresh)return false; // A repeated presentation cannot renew the budget.
             if(key.analyzed && !key.glyphLocalTop && !key.glyphLocalBottom &&

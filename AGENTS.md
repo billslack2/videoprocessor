@@ -41,6 +41,23 @@
 
 ## Testing and diagnostics
 
+- Every runtime build must pass the mandatory native AR/subtitle contracts and
+  the real Classic lifecycle matrix on both shipped renderer dependencies.
+  `tools/qualify_runtime_build.ps1` builds and tests the matching x64 Release
+  host, renderers and test binaries; there is no skip-tests release path.
+  `tools/assert_runtime_qualification.ps1` must pass immediately before copying
+  runtime binaries for deployment or packaging. Missing, failed or stale source,
+  binary or test evidence blocks that operation. A successful compiler exit alone
+  is not qualification. Keep the user configuration intact when deploying.
+- The critical matrix covers both fill directions with normal 500 ms engage,
+  2,000 ms hold and 2,000 ms release, natural skipped analyses, true measured
+  aspect changes and profile changes. Its 24 distinct displayed source frames
+  are a post-transition observation window, never a runtime confirmation delay.
+  Keep these regressions in `tools/critical_runtime_tests.json`; a missing or
+  unexecuted required method is a failure. Private captured movie fixtures are
+  optional additional evidence and must not be represented as exercised when absent.
+
+
 - After changing temporal packet lifetime, source processing, or subtitle GPU
   preparation, run `tools/test_subtitle_motion_renderers.ps1` against both shipped
   libplacebo dependencies in addition to the relevant native/stack regressions.

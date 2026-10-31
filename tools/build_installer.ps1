@@ -55,6 +55,7 @@ try {
     if ($afterBuild.build -ne $identity.build -or $afterBuild.fingerprint -ne $identity.fingerprint) {
         throw 'Sources changed during the build.'
     }
+    & (Join-Path $PSScriptRoot 'assert_runtime_qualification.ps1') -Root $root -RequiredBinaryPath (Join-Path $root 'x64\Release\VideoProcessor-GUI.exe')
     & (Join-Path $PSScriptRoot 'package_release.ps1') -VcRedistPath $VcRedistPath
     $payload = Join-Path $artifactRoot 'release\VideoProcessor'
     $localRuntime = & (Join-Path $PSScriptRoot 'stage_app_local_runtime.ps1') -PayloadRoot $payload -RuntimeDirectories $RuntimeDirectories

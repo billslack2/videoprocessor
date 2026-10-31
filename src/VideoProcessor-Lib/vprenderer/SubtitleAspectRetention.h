@@ -5,6 +5,26 @@
 #include <cstring>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 
+// Black/Reconstruction use the unshifted native presentation. Apply this mode
+// choice BEFORE evaluation, recovery and admission so the exact submitted pose
+// and its certificate agree. Raw content/FIT/picture evidence remains intact.
+inline AlphaSourceCrop::Input CanonicalSubtitleModeCropInput(
+    AlphaSourceCrop::Input input,SubtitlePreviewMode mode)
+{
+    input.subtitlePresentationMode=mode==SubtitlePreviewMode::BlackBackground
+        ? AlphaSourceCrop::PreparedNativeMode::BLACK
+        : mode==SubtitlePreviewMode::GeneratedGrayBackground
+            ? AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION : AlphaSourceCrop::PreparedNativeMode::NONE;
+    if(SubtitlePreviewOverridesClassicHandling(mode)) {
+        input.verticalTranslationActive=false;
+        input.verticalTranslationPixels=0;
+        input.verticalTranslationConfirmationPending=false;
+        input.verticalTranslationBaseRetentionActive=false;
+        input.verticalTranslationEngageBaseRetentionActive=false;
+    }
+    return input;
+}
+
 // Crop evidence, admission and recovery always run through the shared policy.
 // Moved styles always undo Classic's final same-size picture translation.
 // Picture placement is a mode choice, independent of cue detection or shader
@@ -319,10 +339,40 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     const int pictureBottom=continuation ? continuation->pictureBottom : observation.pictureBottom;
     if(raw.activePicture.available && raw.activePicture.classification==ActivePictureClassification::FULL_RASTER_TRUSTED)
         return reject("independent-full-raster-picture",QualifiedSubtitlePresentationStatus::Conflict);
+    // Cadence verifies this source's glyphs and actual cleanup rows, then
+    // deliberately strips independent bar/AR authority. An actually prepared
+    // packet may certify only its current erasure output through that proof;
+    // it cannot acquire semantic glyph ownership or renew a submitted lease.
+    const bool currentVerifiedNonlocalCadence=[&] {
+        if(!preparedErasureOnly || !continuation || continuation->localGlyphsOnly || glyphLocal ||
+            !observation.cadenceSkipped || observation.analysisStride!=2 || !observation.pendingRefresh ||
+            observation.analysisRefresh || observation.independentBarAnalysis || observation.barAuthority ||
+            observation.text.workLimit || accepted.workLimit || !continuation->samples ||
+            !std::isfinite(continuation->elapsedMs) || continuation->elapsedMs<=0 || continuation->elapsedMs>250 ||
+            !observation.ink || observation.ink!=continuation->ink ||
+            !continuation->ink->paletteValid || continuation->ink->rawEvidenceComplete)
+            return false;
+        auto previous=continuation->templateIdentity;
+        const auto& current=input.currentIdentity;
+        if(!SameAnalysisFrameIdentity(continuation->previousIdentity,previous) ||
+            !previous.acceptedSequence || current.acceptedSequence<=previous.acceptedSequence ||
+            current.acceptedSequence-previous.acceptedSequence!=1 ||
+            current.sourceFrameNumber<=previous.sourceFrameNumber || current.captureTimestamp<=previous.captureTimestamp)
+            return false;
+        previous.acceptedSequence=current.acceptedSequence;
+        previous.sourceFrameNumber=current.sourceFrameNumber;previous.captureTimestamp=current.captureTimestamp;
+        const auto& display=input.currentDisplayPicture;
+        return SameAnalysisFrameIdentity(previous,current) &&
+            display.AvailableFor(current,source.width,source.height) &&
+            SameAnalysisFrameIdentity(display.identity,current) && SameSubtitlePresentationBounds(display.bounds,base) &&
+            observation.sharedPicture.AvailableFor(current,source.width,source.height) &&
+            SameAnalysisFrameIdentity(observation.sharedPicture.identity,current) &&
+            observation.sharedPicture.Matches(display);
+    }();
     if(!SameAnalysisFrameIdentity(observation.identity,input.currentIdentity) ||
         observation.policyGeneration!=input.policyGeneration || observation.continuityGeneration!=input.continuityGeneration ||
-        observation.discontinuity || !observation.analyzed || !observation.barAuthority ||
-        (observation.pendingRefresh && !input.pendingCurrentPixelsVerified) || text.workLimit ||
+        observation.discontinuity || !observation.analyzed || (!observation.barAuthority && !currentVerifiedNonlocalCadence) ||
+        (observation.pendingRefresh && !input.pendingCurrentPixelsVerified && !currentVerifiedNonlocalCadence) || text.workLimit ||
         !text.detected || !text.nearBarEligibilityMeasured || !text.nearBarEligible ||
         !accepted.detected || (accepted.held && !continuation) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
         text.lineCount<1 || text.lineCount>3 || !move.valid)
@@ -704,6 +754,16 @@ inline QualifiedSubtitleUnknownHoldDecision EvaluateQualifiedSubtitleUnknownHold
         (raw.activePicture.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
          !SameSubtitlePresentationBounds(raw.activePicture.trustedBounds,input.physicalBase))))
         return fail("unknown-hold-independent-picture-change");
+    // This source has no current qualified erasure. An earlier erased footprint
+    // can test independent contradictions, but cannot make its current raw
+    // pixels disappear from the output. Only completed native-band inspection
+    // of this exact current base may retain the old native viewport.
+    if(!raw.rawBandSafetyEvaluated ||
+        !SameSubtitlePresentationBounds(raw.rawBandSafetyBase,input.physicalBase))
+        return fail("unknown-hold-current-raw-output-unavailable");
+    if(!raw.rawBandLeftSafe || !raw.rawBandTopSafe ||
+        !raw.rawBandRightSafe || !raw.rawBandBottomSafe)
+        return fail("unknown-hold-current-raw-output-occupied");
     // The old footprint is used only to test for independent contradictions.
     // Neither this temporary result nor the old footprint is published as
     // current pixel safety, capture coverage, or cleanup authority.
