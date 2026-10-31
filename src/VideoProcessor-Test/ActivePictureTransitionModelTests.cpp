@@ -73,6 +73,64 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureTransitionModelTests)
 	{
 	public:
+        TEST_METHOD(IncompletePillarboxCannotAcquireFromStartupOrFullRaster)
+        {
+            for (bool fullFirst : {false, true})
+            {
+                ActivePictureTransitionModel model;
+                if (fullFirst) model.Observe({{0,0,3840,2160,3840,2160,16.0/9.0,ActivePictureBounds::BarAxes::NONE},1,true,ActivePictureClassification::FULL_RASTER_TRUSTED,60});
+                ActivePictureObservation o{{136,0,3704,2160,3840,2160,3568.0/2160,ActivePictureBounds::BarAxes::LEFT_RIGHT},2,true,ActivePictureClassification::BAR_CROP_TRUSTED,60};
+                o.axisEvidence.vertical.scanComplete=true;
+                o.axisEvidence.vertical.barCandidate=true;
+                o.axisEvidence.vertical.reason=ActivePictureAxisReason::BAR_EDGE_REJECTED;
+                for (uint64_t seq=2;seq<602;++seq)
+                {
+                    o.frameNumber=seq;
+                    const auto d=model.Observe(o);
+                    Assert::IsFalse(d.publish);
+                    Assert::AreEqual(fullFirst,d.stable);
+                    if(fullFirst) Assert::AreEqual(0,d.stableBounds.left);
+                }
+                o.axisEvidence={};
+                const uint64_t needed=fullFirst ? ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS : ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;
+                for(uint64_t n=0;n<needed;++n){o.frameNumber=602+n;Assert::AreEqual(n+1==needed,model.Observe(o).publish);}
+            }
+        }
+
+        TEST_METHOD(GenuinePillarboxKeepsAcquisitionSpeedAndDarkSceneHold)
+        {
+            for (int inset : {128,136,480})
+            {
+                ActivePictureTransitionModel model;
+                ActivePictureObservation o{{inset,0,3840-inset,2160,3840,2160,double(3840-2*inset)/2160,ActivePictureBounds::BarAxes::LEFT_RIGHT},0,true,ActivePictureClassification::BAR_CROP_TRUSTED,60};
+                o.axisEvidence.vertical.scanComplete=true;
+                o.axisEvidence.vertical.state=ActivePictureAxisState::FULL_EXTENT_SUPPORTED;
+                for(uint64_t seq=1;seq<=4;++seq) { o.frameNumber=seq; Assert::AreEqual(seq==4,model.Observe(o).publish); }
+                o.axisEvidence.vertical.state=ActivePictureAxisState::UNKNOWN;
+                o.axisEvidence.vertical.barCandidate=true;
+                for(uint64_t seq=5;seq<=120;++seq) { o.frameNumber=seq; const auto d=model.Observe(o); Assert::IsTrue(d.stable); Assert::IsFalse(d.publish); Assert::AreEqual(inset,d.stableBounds.left); }
+                o.bounds={0,0,3840,2160,3840,2160,16.0/9.0,ActivePictureBounds::BarAxes::NONE};
+                o.axisEvidence={}; o.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+                o.frameNumber=121; Assert::IsFalse(model.Observe(o).publish);
+                o.frameNumber=122; Assert::IsTrue(model.Observe(o).publish);
+            }
+        }
+
+        TEST_METHOD(IncompletePillarboxCannotBypassAdmissionThroughQueueOrHistory)
+        {
+            ActivePictureTransitionModel queue,live;
+            ActivePictureObservation o{{136,0,3704,2160,3840,2160,3568.0/2160,ActivePictureBounds::BarAxes::LEFT_RIGHT},0,true,ActivePictureClassification::BAR_CROP_TRUSTED,60};
+            ActivePictureTransitionDecision queued;
+            for(uint64_t seq=1;seq<=4;++seq){o.frameNumber=seq;queued=queue.Observe(o); live.Observe(o);}
+            Assert::IsTrue(queued.publish);
+            ActivePictureObservation full{{0,0,3840,2160,3840,2160,16.0/9.0,ActivePictureBounds::BarAxes::NONE},5,true,ActivePictureClassification::FULL_RASTER_TRUSTED,60};
+            live.Observe(full); full.frameNumber=6; Assert::IsTrue(live.Observe(full).publish);
+            o.axisEvidence.vertical.scanComplete=true; o.axisEvidence.vertical.barCandidate=true;
+            ActivePictureTransitionModel fresh;
+            Assert::IsFalse(fresh.AdoptPublishedDecision(queued,o.classification,false,nullptr,&o.axisEvidence));
+            for(uint64_t seq=7;seq<=30;++seq){o.frameNumber=seq;const auto d=live.Observe(o);Assert::IsFalse(d.publish);Assert::AreEqual(0,d.stableBounds.left);}
+        }
+
 		TEST_METHOD(WomenInBlueFourPixelNoiseDoesNotPublishAnAspectChange)
 		{
 			ActivePictureTransitionModel model;

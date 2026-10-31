@@ -137,6 +137,8 @@ struct ActivePictureEvidence
 	ActivePictureVerticalBarProfile verticalBarProfile;
 	// Separate raw-profile diagnostics from the conservatively expanded recheck.
 	ActivePictureVerticalBarProfile verticalBarGuardProfile;
+    // Both native boundaries independently measured against their flat bars.
+    bool lowContrastBoundaryProof = false;
 	size_t lumaSamples = 0;
 	size_t chromaSamples = 0;
 	std::string reason;

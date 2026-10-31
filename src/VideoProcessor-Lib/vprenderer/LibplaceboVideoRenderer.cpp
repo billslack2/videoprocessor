@@ -4770,6 +4770,8 @@ struct LibplaceboVideoRenderer::Impl
 	// The L1 minimum, maximum and average last seen; a change logs at once.
 	double hdrStatusLoggedL1[3] = { -1.0f, -1.0f, -1.0f };
 	ActivePictureTransitionModel nlsTransition;
+    PictureAspectTelemetry aspectTelemetry;
+    DetectedPictureAspect lastLoggedAspect;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
 	mutable std::mutex shaderStatusMutex;
@@ -4930,6 +4932,7 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::MovingPictureTransitionState movingPictureTransition;
 	AlphaSourceCrop::OutwardPictureConfirmationState
 		outwardPictureConfirmation;
+	AlphaSourceCrop::OutwardPictureConfirmationState pillarboxContradictionConfirmation;
 	uint64_t outwardPictureConfirmationEpoch = 0;
 	AlphaSourceCrop::PictureTransitionHandoff pictureTransitionHandoff;
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
@@ -9979,6 +9982,8 @@ struct LibplaceboVideoRenderer::Impl
                 crop.left,crop.top,crop.right,crop.bottom);
         }
 		latestActivePictureEvidenceAvailable = false;
+        aspectTelemetry.ClearDetection();
+        osdTelemetry.PublishAspect(aspectTelemetry.Read());
 		latestActivePictureEvidenceClassification =
 			ActivePictureClassification::UNAVAILABLE;
 		latestActivePictureEvidenceBounds = {};
@@ -10068,6 +10073,7 @@ struct LibplaceboVideoRenderer::Impl
         deferredQueueNativeResetEpoch = deferredQueueNativeResetGeneration = 0;
 		nlsTransition.Reset();
 		outwardPictureConfirmation = {};
+		pillarboxContradictionConfirmation = {};
 		movingPictureTransition = {};
 		pictureTransitionHandoff = {};
 		nlsGeometryAvailable = false;
@@ -10690,6 +10696,8 @@ struct LibplaceboVideoRenderer::Impl
         const SceneDetectorResult* motionBoundary = nullptr)
 	{
 		latestColdStrictWorkerProof = false;
+        aspectTelemetry.Source(analysisSource.generation);
+        osdTelemetry.PublishAspect(aspectTelemetry.Read());
 		ConfigureSparseBoundaryExperiment();
         ConfigureRememberedEdgeReturn();
 		sparseBoundaryStartupGate.ObserveSource(analysisSource.generation);
@@ -10711,6 +10719,7 @@ struct LibplaceboVideoRenderer::Impl
                 nlsTransition.ResetPresentationState();
             else nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
@@ -11574,6 +11583,16 @@ struct LibplaceboVideoRenderer::Impl
 					? evidence.proposedBounds : evidence.trustedBounds)
 				: ActivePictureBounds{};
 			latestActivePictureEvidenceFrame = frameNumber;
+            const auto& observed = latestActivePictureEvidenceBounds;
+            const bool observedAspectAvailable = latestActivePictureEvidenceAvailable &&
+                (latestActivePictureEvidenceClassification == ActivePictureClassification::FULL_RASTER_TRUSTED ||
+                 latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED ||
+                 latestActivePictureEvidenceClassification == ActivePictureClassification::PROVISIONAL) &&
+                observed.right > observed.left && observed.bottom > observed.top;
+            aspectTelemetry.Observe(analysisSource.generation, frameNumber,
+                observedAspectAvailable ? double(observed.right-observed.left)/(observed.bottom-observed.top) : 0.0,
+                observedAspectAvailable, latestActivePictureEvidenceClassification == ActivePictureClassification::PROVISIONAL);
+            osdTelemetry.PublishAspect(aspectTelemetry.Read());
 			const bool currentBoundsAreFullRaster =
 				latestActivePictureEvidenceBounds.left == 0 &&
 				latestActivePictureEvidenceBounds.top == 0 &&
@@ -11653,6 +11672,7 @@ struct LibplaceboVideoRenderer::Impl
                     retentionEvidence);
 			admissionInput.retention = retentionEvidence;
 			admissionInput.previousOutward = outwardPictureConfirmation;
+			admissionInput.previousPillarboxContradiction = pillarboxContradictionConfirmation;
 			const bool eligiblePictureChange = nlsTransition.WouldAdmitGeometryChange(
 				MakeActivePictureObservation(evidence, frameNumber, framesPerSecond));
 			auto admission = AlphaSourceCrop::EvaluateTransitionAdmission(admissionInput);
@@ -11862,6 +11882,21 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned>(bufferedExpansion->decision.proofFrameCount),
 					bufferedExpansionReady ? 1 : 0, bufferedExpansion->relativeContrast ? 1 : 0,
                     currentQualifiedPair ? 1 : 0, currentRelativeContrast.reason);
+			pillarboxContradictionConfirmation = admission.pillarboxContradiction.state;
+			if (admission.pillarboxContradiction.authoritative)
+			{
+				DebugLog::Log("Alpha pillarbox authority contradicted: generation=%llu sequence=%llu old_rect=%d,%d-%d,%d proof=%u action=withdraw_then_reacquire",
+					analysisSource.generation, frameNumber, nlsGeometry.left, nlsGeometry.top,
+					nlsGeometry.right, nlsGeometry.bottom,
+					admission.pillarboxContradiction.state.confirmations);
+				// Complete the existing synchronized live/queue reset after rendering.
+				// No queued or moving-picture decision may restore this crop meanwhile.
+				nativeBoundaryReacquisitionPending = true;
+				nlsTransitionWithdrawn = true;
+				nlsGeometryAvailable = false;
+				scheduledDecision = nullptr;
+				admission.observation.transitionDeferred = true;
+			}
 			const auto observation = admission.observation;
 			const bool deferPresentationOwnedTransition = admission.deferPresentation;
 			const bool deferOutwardLogicalTransition = admission.deferOutward;
@@ -12748,6 +12783,7 @@ struct LibplaceboVideoRenderer::Impl
                 nlsTransition.ResetPresentationState();
             else nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			latestActivePictureObservationSupportsCrop = false;
@@ -13009,6 +13045,7 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.num_hooks = 0;
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
@@ -13127,6 +13164,7 @@ struct LibplaceboVideoRenderer::Impl
 			// The stable geometry remains the last affirmative logical reference.
 			nlsTransition.ResetCandidateEvidence();
 			outwardPictureConfirmation = {};
+			pillarboxContradictionConfirmation = {};
 			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			scopeSubtitleTranslationConfirmation = {};
@@ -13208,6 +13246,10 @@ struct LibplaceboVideoRenderer::Impl
             inwardCaptionEvidence = {};
             inwardCaptionEstablishedBase = {};
             inwardCaptionIdentity = {};
+            // A missing current analysis view must not leave the last detection
+            // looking live. Submitted geometry remains independently reported.
+            aspectTelemetry.Observe(frameGeneration, sourceSequence, 0.0, false, false);
+            osdTelemetry.PublishAspect(aspectTelemetry.Read());
 			latestActivePictureObservationSupportsCrop = false;
 			latestActivePictureEvidenceAvailable = false;
 			latestActivePictureEvidenceClassification =
@@ -16617,7 +16659,7 @@ releaseDriftBaseRetention =
 			const bool nearBlackEpisodeRetainCrop =
 				AlphaSourceCrop::NearBlackEpisodeOwnsCropThisFrame(episodeDecision);
 			const bool nearBlackEpisodeFullRaster =
-				episodeDecision.resetTrustedGeometry ||
+				episodeDecision.resetTrustedGeometry || nativeBoundaryReacquisitionPending ||
 				nearBlackPresentationEpisode.mode ==
 					AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER;
 
@@ -19624,6 +19666,11 @@ releaseDriftBaseRetention =
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
         PublishHdrStatus(renderedHdrStatus,hdrPublicationToken,rendered,submitted);
+        if (!rendered && submitted) {
+            // The fallback submitted a black clear, not the previous picture.
+            aspectTelemetry.ClearPresentation();
+            osdTelemetry.PublishAspect(aspectTelemetry.Read());
+        }
         const bool restartCadence=displayCadenceTransition.Presented(rendered&&submitted,displayVsyncClock.Active());
         if (rendered && submitted) {
             if (restartCadence) {
@@ -19640,6 +19687,25 @@ releaseDriftBaseRetention =
 		}
 		if (rendered && submitted)
 		{
+            const double usedWidth = std::abs(double(renderImage.crop.x1)-renderImage.crop.x0);
+            const double usedHeight = std::abs(double(renderImage.crop.y1)-renderImage.crop.y0);
+            aspectTelemetry.Submitted(frameGeneration,
+                temporalRenderer.Active() ? temporalRenderer.SelectedPacketSequence() : sourceSequence,
+                usedHeight > 0.0 ? usedWidth/usedHeight : 0.0,
+                height > 0 ? double(width)/height : 0.0, trustedActivePicture, true);
+            osdTelemetry.PublishAspect(aspectTelemetry.Read());
+            const auto& aspect = aspectTelemetry.Read();
+            if (aspect.sourceGeneration != lastLoggedAspect.sourceGeneration ||
+                aspect.inUseState != lastLoggedAspect.inUseState ||
+                aspect.available != lastLoggedAspect.available ||
+                aspect.provisional != lastLoggedAspect.provisional ||
+                std::abs(aspect.inUseRatio-lastLoggedAspect.inUseRatio) >= 0.001 ||
+                std::abs(aspect.ratio-lastLoggedAspect.ratio) >= 0.001) {
+                lastLoggedAspect = aspect;
+                DebugLog::Log("VP aspect telemetry: generation=%llu presented=%llu detected_sequence=%llu in_use=%.6f use_state=%u detected=%.6f available=%d provisional=%d",
+                    frameGeneration, aspect.presentedSequence, aspect.detectedSequence, aspect.inUseRatio,
+                    static_cast<unsigned>(aspect.inUseState), aspect.ratio, aspect.available?1:0, aspect.provisional?1:0);
+            }
             const bool submittedGeometryChanged=submittedOutputGeometryTrace.Observe(true,frameGeneration,viewportRequestSerial,
                 {renderImage.crop.x0,renderImage.crop.y0,renderImage.crop.x1,renderImage.crop.y1},
                 {target.crop.x0,target.crop.y0,target.crop.x1,target.crop.y1});
@@ -22909,26 +22975,7 @@ bool LibplaceboVideoRenderer::GetDetectedPictureAspect(
 	result = {};
 	if (!m_impl)
 		return true;
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return false;
-	result.sourceGeneration = m_impl->activePictureAnalysisSourceGeneration;
-	result.publicationGeneration = m_impl->nlsGeometryGeneration;
-	const ActivePictureBounds& geometry = m_impl->nlsGeometry;
-	if (m_impl->nlsGeometryAvailable &&
-		m_impl->nlsGeometrySourceGeneration == result.sourceGeneration &&
-		(m_impl->nlsGeometryClassification ==
-			ActivePictureClassification::FULL_RASTER_TRUSTED ||
-		 m_impl->nlsGeometryClassification ==
-			ActivePictureClassification::BAR_CROP_TRUSTED) &&
-		geometry.right > geometry.left && geometry.bottom > geometry.top)
-	{
-		result.ratio = static_cast<double>(geometry.right - geometry.left) /
-			(geometry.bottom - geometry.top);
-		result.available = std::isfinite(result.ratio) &&
-			result.ratio > 0.0;
-	}
+	result = m_impl->osdTelemetry.ReadAspect();
 	return true;
 }
 

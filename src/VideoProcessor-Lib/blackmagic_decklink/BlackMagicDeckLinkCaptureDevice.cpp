@@ -14,6 +14,7 @@
 #pragma warning(disable : 26812)  // class enum over class in BM API
 
 #include <set>
+#include <chrono>
 #include <math.h>
 
 #include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
@@ -25,6 +26,19 @@
 
 
 static const timingclocktime_t DECKLINK_CLOCK_MAX_TICKS_SECOND = 1000000LL;  // us
+
+static double DeliveryNowSeconds()
+{
+	return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+bool BlackMagicDeckLinkCaptureDevice::GetCaptureDeliveryStats(CaptureDeliveryStats& stats) const
+{
+	std::lock_guard<std::mutex> lock(m_deliveryMutex);
+	stats = m_outputCaptureData.load(std::memory_order_acquire)
+		? m_delivery.Snapshot(DeliveryNowSeconds()) : CaptureDeliveryStats{};
+	return true;
+}
 
 //
 // Constructor & destructor
@@ -234,6 +248,7 @@ void BlackMagicDeckLinkCaptureDevice::StartCapture(
 
 	m_capturedVideoFrameCount = 0;
 	m_missedVideoFrameCount = 0;
+	{ std::lock_guard<std::mutex> lock(m_deliveryMutex); m_delivery.Reset(); }
 
 
 	//
@@ -275,6 +290,8 @@ void BlackMagicDeckLinkCaptureDevice::StopCapture()
 {
 	if (!m_outputCaptureData.load(std::memory_order_acquire))
 		throw std::runtime_error("StopCapture() called while not started");
+
+	{ std::lock_guard<std::mutex> lock(m_deliveryMutex); m_delivery.Reset(); }
 
 	// Stop egressing data
 	m_outputCaptureData.store(false, std::memory_order_release);
@@ -585,6 +602,7 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 		m_bmdDisplayMode = newMode->GetDisplayMode();
         m_bmdFieldDominance=newMode->GetFieldDominance();
 		m_ticksPerFrame = (timingclocktime_t)round((1.0 / FPS(m_bmdDisplayMode)) * TimingClockTicksPerSecond());
+		{ std::lock_guard<std::mutex> lock(m_deliveryMutex); m_delivery.Reset(FPS(m_bmdDisplayMode)); }
 
 		// Inform callback handlers that stream will be invalid before re-starting
 		if (!SendVideoStateCallback(captureRunToken))
@@ -677,6 +695,29 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 		}
 		const timingclocktime_t captureTimingClockFrameTime = timingClockFrameTime;
 
+        const bool hasInput = (videoFrame->GetFlags() & bmdFrameHasNoInputSource) == 0;
+        DeckLinkCaptureDelivery::Observation delivery;
+        CaptureDeliveryStats deliveryStats;
+        {
+            std::lock_guard<std::mutex> lock(m_deliveryMutex);
+            if (hasInput)
+            {
+                m_delivery.SetExpectedFps(FPS(m_bmdDisplayMode));
+                delivery = m_delivery.Observe(captureTimingClockFrameTime,
+                    m_ticksPerFrame > 0 ? static_cast<uint32_t>(m_ticksPerFrame) : 0,
+                    DeliveryNowSeconds());
+            }
+            else
+                m_delivery.Reset(FPS(m_bmdDisplayMode));
+            deliveryStats = m_delivery.Snapshot(DeliveryNowSeconds());
+        }
+        m_missedVideoFrameCount += delivery.missedFrames;
+        if (delivery.windowComplete)
+            DebugLog::Log("DeckLink delivery cadence: delivered_fps=%.5f expected_fps=%.5f window_s=%.3f skipped_input_frames=%llu total_missed=%llu",
+                deliveryStats.deliveredFps, deliveryStats.expectedFps, deliveryStats.windowSeconds,
+                static_cast<unsigned long long>(deliveryStats.recentMissedFrames),
+                static_cast<unsigned long long>(m_missedVideoFrameCount.load()));
+
 		// Figure out how many frames fit in the interval
 		if (m_previousTimingClockFrameTime != TIMING_CLOCK_TIME_INVALID)
 		{
@@ -687,7 +728,6 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			assert(frames >= 0);
 
 			m_capturedVideoFrameCount += frames;
-			m_missedVideoFrameCount += std::max((frames - 1), 0);
 
 			// Simple frame counting without PLL correction
 			// PLL correction system has been removed for simplicity
@@ -731,7 +771,6 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 		LONGLONG intValue = 0;
 
 		// Input changed
-		const bool hasInput = ((videoFrame->GetFlags() & bmdFrameHasNoInputSource) == 0);
 		if (hasInput)
 		{
 			if (!m_videoHasInputSource)
@@ -1037,6 +1076,7 @@ ULONG BlackMagicDeckLinkCaptureDevice::Release(void)
 
 void BlackMagicDeckLinkCaptureDevice::ResetVideoState()
 {
+	{ std::lock_guard<std::mutex> lock(m_deliveryMutex); m_delivery.Reset(); }
 	m_videoFrameSeen = false;
 	m_bmdPixelFormat = BMD_PIXEL_FORMAT_INVALID;
 	m_bmdDisplayMode = BMD_DISPLAY_MODE_INVALID;
@@ -1198,6 +1238,7 @@ void BlackMagicDeckLinkCaptureDevice::UpdateState(CaptureDeviceState state)
 void BlackMagicDeckLinkCaptureDevice::Error(const CString& error)
 {
 	// WARNING: Can be called from any thread.
+	{ std::lock_guard<std::mutex> lock(m_deliveryMutex); m_delivery.Reset(); }
 
 	if (m_callback)
 		m_callback->OnCaptureDeviceError(error);

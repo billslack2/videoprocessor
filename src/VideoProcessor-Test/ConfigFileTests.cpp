@@ -3617,9 +3617,9 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload)
 		{
-			// API 32 adds native two-plane P210 capture to the shared frame contract.
+			// API 34 separates submitted and detected picture aspect snapshots.
 			// Host and renderer must reject older payload and vtable layouts.
-			Assert::AreEqual(static_cast<uint32_t>(33),
+			Assert::AreEqual(static_cast<uint32_t>(34),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
             using LutApplyMethod=void (IVideoRenderer::*)();
             const LutApplyMethod apply=&IVideoRenderer::RequestCalibrationLutReload;

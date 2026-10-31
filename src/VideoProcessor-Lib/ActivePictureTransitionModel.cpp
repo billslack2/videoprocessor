@@ -9,6 +9,13 @@
 
 namespace
 {
+bool HasIncompletePillarboxEvidence(const ActivePictureBounds& bounds,
+    const ActivePictureAxisEvidenceSet& axes)
+{
+    return bounds.trustedBarAxes == ActivePictureBounds::BarAxes::LEFT_RIGHT &&
+        axes.vertical.scanComplete && axes.vertical.FailedBar();
+}
+
 std::atomic<double> g_runtimeStableGeometryDeadbandPercent(
 	ActivePictureTransitionModel::DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT);
 
@@ -702,6 +709,12 @@ bool ActivePictureTransitionModel::HasCropAuthority(
 	if (observation.classification ==
 		ActivePictureClassification::FULL_RASTER_TRUSTED)
 		return IsFullRaster(bounds);
+	// A side pair alone cannot establish the whole-picture aspect when the
+	// native top/bottom scan explicitly found an unresolved bar candidate.
+	// Keep existing stable geometry through uncertainty, but do not acquire a
+	// menu gutter as a new pillarbox format. Clean pillarboxes keep their dwell.
+	if (HasIncompletePillarboxEvidence(bounds, observation.axisEvidence))
+		return false;
 	return observation.classification ==
 		ActivePictureClassification::BAR_CROP_TRUSTED &&
 		HasAuthorityForCroppedAxes(bounds) && !IsFullRaster(bounds);
@@ -790,6 +803,8 @@ bool ActivePictureTransitionModel::FindRecentTrustedGeometry(
 	{
 		const TrustedGeometry& known = m_recentTrusted[index];
 		if (!SameBounds(known.bounds, observation.bounds))
+			continue;
+		if (HasIncompletePillarboxEvidence(known.bounds, observation.axisEvidence))
 			continue;
 		// Vertical crop permission belongs to its exact current aperture. History
 		// must not replace that aperture with a nearby, more tightly cropped one.
@@ -1018,6 +1033,16 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		return decision;
 	}
 	m_unavailableCandidates = 0;
+
+	if (HasIncompletePillarboxEvidence(observation.bounds, observation.axisEvidence))
+	{
+		// Explicitly rejected evidence cannot bank votes for the first clean
+		// frame, nor use a remembered format to bypass the current failed axis.
+		decision.diagnostic = m_matchingCandidates != 0;
+		ClearCandidate();
+		decision.reason = "incomplete pillarbox axes cannot establish a picture aspect";
+		return decision;
+	}
 
     // Independently native nominal edges verify the same format, but do not
     // discard the retained uncertainty rows or relabel inferred authority.
@@ -1377,6 +1402,7 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 	observation.bounds = decision.bounds;
 	observation.classification = classification;
 	observation.authorityOrigin = decision.authorityOrigin;
+	if (currentAxisEvidence) observation.axisEvidence = *currentAxisEvidence;
 	if (!decision.publish || !decision.stable ||
 		!HasCropAuthority(observation))
 		return reject(ActivePicturePublicationAdmission::NON_AUTHORITATIVE);

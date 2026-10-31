@@ -86,13 +86,13 @@ namespace VideoProcessorTest
 				Assert::IsTrue(label.ratio == item.ratio);
 				Assert::IsTrue(label.name == item.name);
 			}
-			Assert::IsTrue(AspectRatioOsd::Classify(1.50).name == L"Unknown");
-			Assert::IsTrue(AspectRatioOsd::Classify(1.503).ratio == L"1.503:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(1.50).name == L"nonstandard");
+			Assert::IsTrue(AspectRatioOsd::Classify(1.503).ratio == L"1.50:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.50).ratio == L"2.50:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(0.0).ratio == L"---");
 		}
 
-		TEST_METHOD(AspectOsdSnapsAtOnePercentAndHoldsAmbiguousChanges)
+		TEST_METHOD(AspectNamesClassifyWithoutChangingMeasurements)
 		{
 			const double isolatedTargets[] = {
 				4.0 / 3.0, 1.37, 1.43, 1.66, 16.0 / 9.0,
@@ -106,47 +106,113 @@ namespace VideoProcessorTest
 				Assert::IsTrue(AspectRatioOsd::Classify(
 					target * 1.01).ratio == atTarget.ratio);
 				Assert::IsTrue(AspectRatioOsd::Classify(
-					target * 0.9899).name == L"Unknown");
+					target * 0.9899).name == L"nonstandard");
 				Assert::IsTrue(AspectRatioOsd::Classify(
-					target * 1.0101).name == L"Unknown");
+					target * 1.0101).name == L"nonstandard");
 			}
 			const auto atBoundary = AspectRatioOsd::Classify(2.76 * 1.01);
 			Assert::IsTrue(atBoundary.ratio == L"2.76:1");
-			Assert::IsTrue(AspectRatioOsd::Classify(2.76 * 1.01001).name == L"Unknown");
+			Assert::IsTrue(AspectRatioOsd::Classify(2.76 * 1.01001).name == L"nonstandard");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.39).ratio == L"2.39:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.40).ratio == L"2.40:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(
 				2.0 * 2.39 * 2.40 / (2.39 + 2.40)).ratio == L"2.39:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.345).ratio == L"2.35:1");
-			AspectRatioOsd osd;
-			DetectedPictureAspect reading{1, 1, 2.39, true};
-			Assert::IsTrue(osd.Update(reading, 1000).ratio == L"2.39:1");
-			reading.publicationGeneration = 2;
-			reading.ratio = 2.40;
-			Assert::IsTrue(osd.Update(reading, 1100).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading, 6099).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading, 6100).ratio == L"2.40:1");
-			reading.publicationGeneration = 3;
-			reading.ratio = 2.40 * 1.03;
-			Assert::IsTrue(osd.Update(reading, 6200).ratio == L"2.40:1");
-			reading.sourceGeneration = 2;
-			reading.publicationGeneration = 1;
-			reading.ratio = 2.39;
-			Assert::IsTrue(osd.Update(reading, 6300).ratio == L"2.39:1");
-			reading.available = false;
-			reading.sourceGeneration = 0; // display-mode handoff
-			Assert::IsTrue(osd.Update(reading, 6400).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading, 16399).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading, 16400).name == L"Unknown");
-			reading.available = true;
-			reading.sourceGeneration = 3; // actual new source
-			reading.ratio = 16.0 / 9.0;
-			Assert::IsTrue(osd.Update(reading, 16500).ratio == L"16:9");
-			reading.publicationGeneration = 2;
-			reading.ratio = 1.90;
-			Assert::IsTrue(osd.Update(reading, 16600).ratio == L"1.90:1");
-			Assert::IsTrue(osd.Update(reading, 16600).name == L"Digital IMAX");
 		}
+
+        TEST_METHOD(AspectDisplayDeadbandAnchorsToDisplayedValueWithoutDelayingAppliedGeometry)
+        {
+            AspectRatioOsd osd;
+            DetectedPictureAspect r;
+            r.sourceGeneration=1; r.available=true; r.provisional=true; r.ratio=1.50;
+            Assert::IsTrue(osd.Update(r).detected == L"1.50:1 (nonstandard; provisional)");
+            r.ratio=1.509; osd.Update(r); r.ratio=1.514;
+            Assert::IsTrue(osd.Update(r).detected == L"1.50:1 (nonstandard; provisional)");
+            r.ratio=1.515;
+            Assert::IsTrue(osd.Update(r).detected == L"1.51:1 (nonstandard; provisional)");
+            r.ratio=1.514; r.provisional=false;
+            r.inUseAvailable=true; r.inUseState=PictureAspectUse::DETECTED; r.inUseRatio=2.39;
+            Assert::IsTrue(osd.Update(r).detected == L"1.51:1 (nonstandard)");
+            r.inUseRatio=2.40;
+            Assert::IsTrue(osd.Update(r).inUse == L"2.40:1 (Scope)");
+        }
+        TEST_METHOD(AspectDisplayResetsForUnavailableNewSourceAndRenderer)
+        {
+            AspectRatioOsd osd;
+            DetectedPictureAspect r; r.sourceGeneration=1; r.available=true; r.ratio=1.50;
+            osd.Update(r); r.available=false;
+            Assert::IsTrue(osd.Update(r).detected == L"Unavailable");
+            r.available=true; r.ratio=1.509;
+            Assert::IsTrue(osd.Update(r).detected == L"1.51:1 (nonstandard)");
+            r.sourceGeneration=2; r.ratio=1.519;
+            Assert::IsTrue(osd.Update(r).detected == L"1.52:1 (nonstandard)");
+            osd.Reset(); r.ratio=1.529;
+            Assert::IsTrue(osd.Update(r).detected == L"1.53:1 (nonstandard)");
+        }
+
+        TEST_METHOD(AspectTelemetryUsesNativeStartupWithoutClaimingDetection)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Submitted(1, 1, 3840.0/2160.0, 3840.0/2160.0, false, true);
+            const auto rows = AspectRatioOsd::Format(telemetry.Read());
+            Assert::IsTrue(rows.inUse == L"16:9 (HDTV)");
+            Assert::IsTrue(rows.detected == L"Unavailable");
+            telemetry.Observe(1, 2, 16.0/9.0, true, false);
+            telemetry.Submitted(1, 2, 16.0/9.0, 16.0/9.0, false, true);
+            Assert::IsTrue(telemetry.Read().inUseState == PictureAspectUse::DETECTED);
+        }
+        TEST_METHOD(AspectTelemetryKeepsSubmittedScopeWhileMenuCandidateIsLive)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Observe(1, 10, 2.39, true, false);
+            telemetry.Submitted(1, 10, 2.39, 16.0/9.0, true, true);
+            telemetry.Observe(1, 11, 1.66, true, true);
+            telemetry.Submitted(1, 11, 2.39, 16.0/9.0, true, true);
+            const auto rows = AspectRatioOsd::Format(telemetry.Read());
+            Assert::IsTrue(rows.inUse == L"2.39:1 (Scope; held)");
+            Assert::IsTrue(rows.detected == L"1.66:1 (European widescreen; provisional)");
+            telemetry.ClearDetection();
+            telemetry.Submitted(1, 12, 2.39, 16.0/9.0, true, true);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unavailable");
+            Assert::AreEqual(2.39, telemetry.Read().inUseRatio);
+        }
+        TEST_METHOD(AspectTelemetryDoesNotHideARealSubmittedAspectChange)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Observe(1, 1, 2.39, true, false);
+            telemetry.Submitted(1, 1, 2.39, 16.0/9.0, true, true);
+            telemetry.Observe(1, 2, 1.66, true, false);
+            telemetry.Submitted(1, 2, 1.66, 16.0/9.0, true, true);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).inUse == L"1.66:1 (European widescreen)");
+            telemetry.Observe(1, 3, 2.17, true, false);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"2.17:1 (nonstandard)");
+        }
+        TEST_METHOD(AspectTelemetryPreservesPresentedPacketAndRejectsFailedSubmission)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Observe(1, 20, 2.39, true, false);
+            telemetry.Submitted(1, 19, 2.17, 16.0/9.0, true, true);
+            Assert::AreEqual(uint64_t(19), telemetry.Read().presentedSequence);
+            Assert::AreEqual(uint64_t(20), telemetry.Read().detectedSequence);
+            Assert::AreEqual(2.17, telemetry.Read().inUseRatio);
+            telemetry.Submitted(1, 21, 1.66, 16.0/9.0, true, false);
+            Assert::AreEqual(2.17, telemetry.Read().inUseRatio);
+            telemetry.ClearPresentation();
+            Assert::IsFalse(telemetry.Read().inUseAvailable);
+            Assert::IsTrue(telemetry.Read().available);
+        }
+        TEST_METHOD(AspectTelemetryResetsAcrossRealSourceChangeAndUsesNonWideRaster)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Observe(1, 1, 2.39, true, false);
+            telemetry.Submitted(1, 1, 2.39, 16.0/9.0, true, true);
+            telemetry.Source(2);
+            Assert::IsFalse(telemetry.Read().inUseAvailable || telemetry.Read().available);
+            telemetry.Submitted(2, 1, 4.0/3.0, 4.0/3.0, false, true);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).inUse == L"4:3 (TV)");
+            telemetry.Observe(2, 2, 0.0, true, false);
+            Assert::IsFalse(telemetry.Read().available);
+        }
 
 		TEST_METHOD(RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads)
 		{
@@ -262,6 +328,12 @@ namespace VideoProcessorTest
 		}
 
         TEST_METHOD(RealRendererUploadsNativeP210AndP010ForSdrAndHdrWithoutConversion)
+        { VerifyNativeCaptureAspect(false); }
+
+        TEST_METHOD(BetaRendererPublishesSubmittedAspectForNativeCapture)
+        { VerifyNativeCaptureAspect(true); }
+
+        void VerifyNativeCaptureAspect(bool beta)
         {
             HMODULE module = nullptr;
             Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -271,10 +343,10 @@ namespace VideoProcessorTest
             GetModuleFileNameW(module, modulePath, MAX_PATH);
             std::wstring path(modulePath); path.resize(path.find_last_of(L"\\/"));
 #ifdef VP_LIBPLACEBO_BETA
-            path += L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
-#else
-            path += L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+            path += L"\\..";
 #endif
+            path += beta ? L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll" :
+                L"\\vprenderer\\VideoProcessorVPRenderer.dll";
             HMODULE plugin = LoadLibraryExW(path.c_str(), nullptr,
                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
             Assert::IsNotNull(plugin);
@@ -343,6 +415,16 @@ namespace VideoProcessorTest
                         std::this_thread::sleep_for(std::chrono::milliseconds(30));
                     }
                     Assert::IsTrue(presented, L"Native P210 failed to upload and present");
+                    DetectedPictureAspect aspect;
+                    const auto aspectDeadline = std::chrono::steady_clock::now()+std::chrono::seconds(2);
+                    do {
+                        cleanup.renderer->GetDetectedPictureAspect(aspect);
+                        if (aspect.inUseAvailable) break;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    } while (std::chrono::steady_clock::now()<aspectDeadline);
+                    Assert::IsTrue(aspect.inUseAvailable, L"Actual renderer did not publish submitted AR");
+                    Assert::AreEqual(1.0,aspect.inUseRatio,0.0001,L"Source is 130x130; target window aspect must not replace it");
+                    Assert::IsTrue(aspect.presentedSequence>0);
                     Assert::AreEqual(initialized+(nativeEncoding==VideoFrameEncoding::P210?1u:0u), nativeP210Initializations.load());
                 }
                 Assert::AreEqual(0, buffer.references.load(), L"Renderer retained a capture buffer after shutdown");

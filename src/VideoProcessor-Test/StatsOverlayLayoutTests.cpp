@@ -23,7 +23,7 @@ TEST_CLASS(StatsOverlayLayoutTests)
     static StatsData Example(bool alpha)
     {
         StatsData stats; stats.isAlphaRenderer = alpha; stats.rendererName = L"Alpha";
-        stats.resolution = L"4096 x 2160"; stats.aspectRatio = L"2.350"; stats.aspectName = L"Scope";
+        stats.resolution = L"4096 x 2160"; stats.aspectInUse = L"2.350:1 (held)"; stats.aspectDetected = L"Unavailable";
         stats.refreshRate = 23.976; stats.displayRefreshRate = 59.940;
         stats.eotf = L"PQ (wire SDR)"; stats.colorspace = L"BT.2020 (wire Rec.709)";
         stats.dtmProfile = L"Cinema"; stats.hdr10 = L"CLL 10000 / FALL 10000 | M 0.005-10000";
@@ -82,6 +82,22 @@ TEST_CLASS(StatsOverlayLayoutTests)
                 Assert::AreEqual(uint8_t(43), pixels[size_t(scan) * stride + x * 4]);
     }
 public:
+    TEST_METHOD(AspectRowsSeparateAppliedGeometryFromLiveMeasurementWithoutInputAr)
+    {
+        auto stats=Example(true);
+        stats.aspectInUse=L"2.39:1 (Scope; held)";
+        stats.aspectDetected=L"1.66:1 (European widescreen; provisional)";
+        auto rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"2.39:1 (Scope; held)",Find(rows,L"AR in use:").value.c_str());
+        Assert::AreEqual(L"1.66:1 (European widescreen; provisional)",Find(rows,L"Detected AR:").value.c_str());
+        Assert::IsTrue(std::none_of(rows.begin(),rows.end(),[](const auto& row) {
+            return row.label==L"Input AR:" || row.label==L"Aspect Ratio:";
+        }));
+        VerifyNative(stats);
+        stats.aspectInUse=L"16:9 (HDTV)";
+        stats.aspectDetected=L"Unavailable";
+        VerifyNative(stats);
+    }
     TEST_METHOD(BothBackendsDeriveNativeHeightFromExactRowsAndConditionalSections)
     {
         for (const bool alpha : {false, true})
@@ -123,6 +139,27 @@ public:
         stats.captureDeliverySupported = false;
         rows = StatsOverlayWindow::BuildStatsRows(stats);
         Assert::AreEqual(L"238/0", Find(rows,L"Dropped:").value.c_str());
+    }
+    TEST_METHOD(DeckLinkCaptureStatsRenderInBothOsdPathsWithoutMagewellPackingLabel)
+    {
+        for (bool alpha : {false, true})
+        {
+            auto stats = Example(alpha);
+            stats.captureDeliverySupported = true;
+            stats.captureDelivery.expectedFps = 59.94;
+            stats.captureDelivery.deliveredFps = 59.94;
+            stats.captureDelivery.windowSeconds = 5.0;
+            stats.capturedDroppedFrames = 23;
+            stats.queueDroppedFrames = 2;
+            const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+            Assert::AreEqual(L"59.94 / 59.94 expected (5s)", Find(rows, L"Capture fps:").value.c_str());
+            Assert::AreEqual(L"23 total; 0 last 5s", Find(rows, L"Capture missed:").value.c_str());
+            Assert::AreEqual(L"2", Find(rows, L"Render dropped:").value.c_str());
+            Assert::IsTrue(std::none_of(rows.begin(), rows.end(), [](const auto& row) {
+                return row.label == L"Capture packing:" || row.label == L"Dropped:";
+            }));
+            VerifyNative(stats);
+        }
     }
     TEST_METHOD(MissingAndEmptyOutputDetailsDoNotAllocatePhantomRows)
     {

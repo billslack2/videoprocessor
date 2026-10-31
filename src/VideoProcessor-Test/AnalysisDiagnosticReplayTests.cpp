@@ -1246,6 +1246,119 @@ namespace Tests
             Logger::WriteMessage(report.str().c_str());
         }
 
+        TEST_METHOD(OptionalNativeFullWidthMenuWithdrawsObsoletePillarbox)
+        {
+            wchar_t* value=nullptr; size_t length=0;
+            _wdupenv_s(&value,&length,L"VP_PILLARBOX_REPLAY_DIRECTORY");
+            const std::filesystem::path directory(value?value:L"");std::free(value);
+            if(directory.empty()){Logger::WriteMessage("Pillarbox native replay not requested.");return;}
+            std::vector<std::filesystem::path> paths;
+            for(const auto& entry:std::filesystem::directory_iterator(directory))
+                if(entry.path().extension()==L".bin" && entry.path().filename().wstring().rfind(L"frame-",0)==0) paths.push_back(entry.path());
+            std::sort(paths.begin(),paths.end()); Assert::IsFalse(paths.empty());
+            AlphaSourceCrop::TransitionAdmissionInput i;
+            i.trustedGeometry=i.presentationBeforeObservation={136,0,3704,2160,3840,2160,3568.0/2160,ActivePictureBounds::BarAxes::LEFT_RIGHT};
+            i.trustedGeometryAvailable=i.compatiblePresentation=true;
+            uint64_t first=0; unsigned inspected=0;
+            for(const auto& path:paths)
+            {
+                const auto frame=ReadFrame(path);
+                if(frame.cadenceRepeat) continue;
+                if(frame.discontinuity) i.previousPillarboxContradiction={};
+                i.sourceGeneration=i.trustedGeneration=frame.identity.transportGeneration;
+                i.sourceSequence=frame.identity.acceptedSequence;
+                i.evidence=ExtractActivePictureEvidence(frame.source);
+                i.outwardCandidate=i.evidence.proposedBounds;
+                i.retention=EvaluateActivePicturePresentationRetention(frame.source,i.trustedGeometry);
+                const auto d=AlphaSourceCrop::EvaluateTransitionAdmission(i);
+                i.previousPillarboxContradiction=d.pillarboxContradiction.state; ++inspected;
+                if(inspected<=6)
+                {
+                    std::ostringstream detail; const auto& h=i.evidence.axisEvidence.horizontal;
+                    detail<<"Pillarbox native sample seq="<<i.sourceSequence<<" horizontal="<<int(h.state)<<","<<h.scanComplete<<","<<h.barCandidate
+                        <<" class="<<int(i.evidence.classification)<<" valid="<<i.retention.analysisValid<<","<<i.retention.presentationValid
+                        <<" dark="<<i.retention.EffectiveArNearBlack()<<" left="<<i.retention.excludedLeft.barPixels<<","<<i.retention.excludedLeft.blackFraction<<","<<i.retention.excludedLeft.continuity<<","<<i.retention.excludedLeft.lumaP90
+                        <<" right="<<i.retention.excludedRight.barPixels<<","<<i.retention.excludedRight.blackFraction<<","<<i.retention.excludedRight.continuity<<","<<i.retention.excludedRight.lumaP90
+                        <<" reason="<<d.pillarboxContradiction.diagnosticReason<<" proof="<<d.pillarboxContradiction.state.confirmations;
+                    Logger::WriteMessage(detail.str().c_str());
+                }
+                if(d.pillarboxContradiction.authoritative)
+                {
+                    Assert::IsTrue(d.observation.transitionDeferred);
+                    Assert::IsTrue(d.observation.classification==ActivePictureClassification::PROVISIONAL);
+                    if(!first) first=i.sourceSequence;
+                }
+            }
+            std::ostringstream report;report<<"Native pillarbox withdrawal: frames="<<inspected<<" first_confirmed_source_sequence="<<first;
+            Logger::WriteMessage(report.str().c_str());
+            Assert::IsTrue(first!=0,L"Current native picture on both old side bars must withdraw obsolete geometry.");
+        }
+
+        TEST_METHOD(OptionalNativeLowContrastCaptureReleasesRetainedScope)
+        {
+            wchar_t* value=nullptr;size_t length=0;
+            _wdupenv_s(&value,&length,L"VP_LOW_CONTRAST_REPLAY_DIRECTORY");
+            const std::filesystem::path directory(value?value:L"");std::free(value);
+            if(directory.empty()) { Logger::WriteMessage("Optional low-contrast native capture not configured.");return; }
+            std::vector<std::filesystem::path> paths;
+            for(const auto& file:std::filesystem::directory_iterator(directory))
+                if(file.path().extension()==L".bin")paths.push_back(file.path());
+            std::sort(paths.begin(),paths.end());Assert::IsTrue(paths.size()>=3);
+            using namespace AlphaSourceCrop;
+            // The logged prior contract, not a geometry inferred from screen size.
+            const ActivePictureBounds old={0,276,3840,1884,3840,2160,3840.0/1608,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            OutwardPictureConfirmationState proof;
+            NearBlackPresentationEpisodeState episode;
+            bool initialized=false,released=false;
+            for(const auto& path:paths) {
+                const auto frame=ReadFrame(path);
+                const auto raw=ExtractActivePictureEvidence(frame.source);
+                Assert::IsTrue(raw.lowContrastBoundaryProof);
+                auto retention=EvaluateActivePicturePresentationRetention(frame.source,old);
+                Assert::IsTrue(ResampleActivePictureExpansionStrips(frame.source,old,raw.trustedBounds,retention));
+                const auto outward=ConfirmOutwardPictureTransition(proof,old,raw.trustedBounds,retention,
+                    frame.identity.transportGeneration,frame.identity.acceptedSequence);
+                proof=outward.state;
+                if(!initialized) {
+                    episode.mode=NearBlackPresentationMode::RETAIN_CROP;
+                    episode.sourceGeneration=frame.identity.transportGeneration;
+                    episode.presentationEpoch=frame.identity.viewportGeneration;
+                    episode.entryTrustedCropAvailable=true;episode.entryTrustedCrop=old;
+                    episode.entryTrustedCropOrigin=ActivePictureAuthorityOrigin::NATIVE;initialized=true;
+                }
+                NearBlackPresentationEpisodeInput input;
+                input.previous=episode;input.sourceGeneration=frame.identity.transportGeneration;
+                input.sourceSequence=frame.identity.acceptedSequence;input.presentationEpoch=frame.identity.viewportGeneration;
+                input.measurementCurrent=input.nearBlackEvaluated=true;
+                input.globalNearBlack=retention.globalNearBlack;
+                input.trustedCropAvailable=true;input.trustedCrop=old;
+                input.trustedCropOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                input.currentObservationAvailable=input.currentNativeObservationAvailable=true;
+                input.currentObservation=input.currentNativeObservation=raw.trustedBounds;
+                input.currentObservationClassification=raw.classification;
+                input.currentObservationOrigin=raw.authorityOrigin;
+                input.retentionEvaluated=true;input.retentionSafe=retention.CanRetainPresentation();
+                input.retentionBounds=old;input.retentionSourceGeneration=input.sourceGeneration;
+                input.retentionSourceSequence=input.sourceSequence;
+                input.boundedVisibleContentOutsideCrop=retention.outwardVisibleBoundsAvailable;
+                input.currentNativeOutwardProof=proof;
+                input.currentNativeOutwardProofPresentationEpoch=input.presentationEpoch;
+                input.previouslyAdmittedCropAvailable=true;input.previouslyAdmittedCrop=old;
+                input.previouslyAdmittedCropOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                input.previouslyAdmittedCropSourceGeneration=input.sourceGeneration;
+                input.previouslyAdmittedCropPresentationEpoch=input.presentationEpoch;
+                const auto result=EvaluateNearBlackPresentationEpisode(input);episode=result.state;
+                if(result.outwardEntryReleased) {
+                    Assert::IsTrue(outward.authoritative && result.resetTrustedGeometry);
+                    std::ostringstream message;message<<"Captured native pixels retired old Scope at sequence="
+                        <<input.sourceSequence<<" proof="<<proof.confirmations;
+                    Logger::WriteMessage(message.str().c_str());released=true;break;
+                }
+            }
+            Assert::IsTrue(released,L"Captured new picture must retire the old retained Scope crop.");
+        }
+
         TEST_METHOD(OptionalOrderedNativeAnalysisCaptureReportsFreshAcquisition)
         {
             wchar_t* value = nullptr;
@@ -1336,6 +1449,19 @@ namespace Tests
                     {
                         const auto begin = std::chrono::steady_clock::now();
                         const auto evidence = ExtractActivePictureEvidence(frame.source);
+                        if (trial == 0) {
+                            std::ostringstream detail;
+                            detail << "Native edge diagnostics h=" << evidence.axisEvidence.horizontal.scanComplete
+                                << " v=" << evidence.axisEvidence.vertical.scanComplete;
+                            for (const auto* edge : {&evidence.top,&evidence.bottom})
+                                detail << " [trusted=" << edge->trusted << " floor=" << edge->lumaFloor
+                                    << " p90=" << edge->lumaP90 << " dispersion=" << edge->lumaDispersion
+                                    << " texture=" << edge->texture << " black=" << edge->blackFraction
+                                    << " neutral=" << edge->neutralChromaFraction << " continuity=" << edge->continuity
+                                    << " contrast=" << edge->innerBoundaryContrast << "]";
+                            Logger::WriteMessage(detail.str().c_str());
+                        }
+
                         const double elapsedMs = std::chrono::duration<double, std::milli>(
                             std::chrono::steady_clock::now() - begin).count();
                         totalMs += elapsedMs;

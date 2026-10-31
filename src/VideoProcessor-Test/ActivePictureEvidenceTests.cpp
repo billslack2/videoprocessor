@@ -506,6 +506,66 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+        TEST_METHOD(FlatBarLowContrastPictureMeasuresBothEdgesAcrossFormatsAndAspects)
+        {
+            for (bool p210 : {false,true}) for (int depth : {12,22,48}) for (int floor : {0,64}) {
+                P010Frame frame(640,360,0,p210);
+                frame.BlackOutside(0,depth,640,360-depth,floor);
+                frame.FillRectangle(0,260,640,360-depth,floor+16);
+                auto source=p210?frame.P210Source():frame.P010Source();
+                source.range=floor ? AnalysisLumaRange::Limited : AnalysisLumaRange::Full;
+                const auto evidence=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(evidence.lowContrastBoundaryProof);
+                Assert::IsTrue(evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::AreEqual(depth-2,evidence.trustedBounds.top);
+                Assert::AreEqual(362-depth,evidence.trustedBounds.bottom);
+                Assert::AreEqual(0,evidence.trustedBounds.left);
+                Assert::AreEqual(640,evidence.trustedBounds.right);
+                Assert::IsTrue(evidence.verticalBarGuardProfile.clean);
+            }
+        }
+        TEST_METHOD(FlatBarLowContrastPictureRejectsLocalHighlightsAndNonflatOuterBands)
+        {
+            P010Frame frame(640,360);
+            frame.BlackOutside(0,12,640,348);
+            frame.FillRectangle(0,260,640,348,64);
+            frame.FillRectangle(280,340,360,348,80);
+            Assert::IsFalse(ExtractActivePictureEvidence(frame.P010Source()).lowContrastBoundaryProof);
+            frame.FillRectangle(0,260,640,348,80);
+            frame.FillRectangle(0,0,640,6,80);
+            Assert::IsFalse(ExtractActivePictureEvidence(frame.P010Source()).lowContrastBoundaryProof);
+        }
+        TEST_METHOD(FlatBarLowContrastExpansionRequiresCurrentNativeProofAndAdjacentSources)
+        {
+            P010Frame frame(640,360);
+            frame.BlackOutside(0,12,640,348);
+            frame.FillRectangle(0,260,640,348,80);
+            const auto native=ExtractActivePictureEvidence(frame.P010Source());
+            Assert::IsTrue(native.lowContrastBoundaryProof);
+            const ActivePictureBounds base={0,44,640,316,640,360,640.0/272,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            ActivePicturePresentationRetentionEvidence pixels;
+            pixels.analysisValid=pixels.presentationValid=pixels.expansionStripsAvailable=true;
+            pixels.expansionBase=base;pixels.expansionCandidate=native.trustedBounds;pixels.activePicture=native;
+            using namespace AlphaSourceCrop;
+            auto first=ConfirmOutwardPictureTransition({},base,native.trustedBounds,pixels,1,10);
+            Assert::AreEqual(1u,first.state.confirmations);
+            Assert::IsFalse(first.authoritative);
+            auto repeat=ConfirmOutwardPictureTransition(first.state,base,native.trustedBounds,pixels,1,10);
+            Assert::AreEqual(1u,repeat.state.confirmations);
+            auto gap=ConfirmOutwardPictureTransition(first.state,base,native.trustedBounds,pixels,1,12);
+            Assert::AreEqual(1u,gap.state.confirmations);
+            auto second=ConfirmOutwardPictureTransition(first.state,base,native.trustedBounds,pixels,1,11);
+            Assert::IsTrue(ConfirmOutwardPictureTransition(second.state,base,native.trustedBounds,pixels,1,12).authoritative);
+            auto invalid=pixels;invalid.activePicture.lowContrastBoundaryProof=false;
+            Assert::IsFalse(ConfirmOutwardPictureTransition({},base,native.trustedBounds,invalid,1,10).authoritative);
+            Assert::AreEqual(0u,ConfirmOutwardPictureTransition({},base,native.trustedBounds,invalid,1,10).state.confirmations);
+            invalid=pixels;invalid.activePicture.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
+            Assert::AreEqual(0u,ConfirmOutwardPictureTransition({},base,native.trustedBounds,invalid,1,10).state.confirmations);
+            invalid=pixels;invalid.expansionCandidate.bottom-=2;
+            Assert::AreEqual(0u,ConfirmOutwardPictureTransition({},base,native.trustedBounds,invalid,1,10).state.confirmations);
+        }
+
         TEST_METHOD(LowCodeOpposingBoundaryRecoversSymmetricPictureAcrossNativeFormats)
         {
             for (int format = 0; format < 3; ++format)
@@ -5330,6 +5390,28 @@ namespace VideoProcessorTest
                 Assert::IsTrue(profile->samples>0 && profile->samples<=budget);
             }
 		}
+
+        TEST_METHOD(NativeGenuinePillarboxAcquiresWithoutExtraDelay)
+        {
+            for(int width : {1920,3840})
+            for(bool p210 : {false,true})
+            for(int insetAt4k : {128,136,480})
+            {
+                const int height=width*9/16, inset=insetAt4k*width/3840;
+                P010Frame frame(width,height,64,p210);
+                frame.BlackOutside(inset,0,width-inset,height);
+                const auto evidence=ExtractActivePictureEvidence(p210 ? frame.P210Source() : frame.P010Source());
+                Assert::IsTrue(evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsTrue(evidence.trustedBounds.left<=inset && evidence.trustedBounds.right>=width-inset);
+                Assert::AreEqual(0,evidence.trustedBounds.top);Assert::AreEqual(height,evidence.trustedBounds.bottom);
+                ActivePictureTransitionModel model;
+                for(uint64_t seq=1;seq<=4;++seq)
+                {
+                    const auto d=model.Observe(MakeActivePictureObservation(evidence,seq,59.94));
+                    Assert::AreEqual(seq==4,d.publish);
+                }
+            }
+        }
 
 		TEST_METHOD(FourByThreePillarboxIsTrusted)
 		{

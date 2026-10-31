@@ -526,9 +526,10 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
         CString value(resolution[i].c_str()); value.TrimLeft();
         add(i == 0 ? L"Resolution:" : L"", value);
     }
-    if (stats.isAlphaRenderer)
-        add(L"Aspect Ratio:", format(L"%s (%s)", present(stats.aspectRatio).GetString(),
-            present(stats.aspectName, L"Unknown").GetString()));
+    if (stats.isAlphaRenderer) {
+        add(L"AR in use:", present(stats.aspectInUse, L"Unavailable"));
+        add(L"Detected AR:", present(stats.aspectDetected, L"Unavailable"));
+    }
     add(L"Refresh:", format(L"%.6f Hz", stats.refreshRate));
     CString displayRate = stats.displayRefreshRate > 0.0
         ? format(L"%.6f Hz%s", stats.displayRefreshRate,

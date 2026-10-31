@@ -480,6 +480,83 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+        static TransitionAdmissionInput ContradictedPillarboxInput()
+        {
+            TransitionAdmissionInput i;
+            i.trustedGeometry=i.presentationBeforeObservation={136,0,3704,2160,3840,2160,3568.0/2160,ActivePictureBounds::BarAxes::LEFT_RIGHT};
+            i.evidence.available=i.trustedGeometryAvailable=i.compatiblePresentation=true;
+            i.evidence.classification=ActivePictureClassification::PROVISIONAL;
+            i.evidence.proposedBounds={0,0,3840,2142,3840,2160,3840.0/2142,ActivePictureBounds::BarAxes::NONE};
+            i.outwardCandidate=i.evidence.proposedBounds;
+            i.evidence.axisEvidence.horizontal.scanComplete=true;
+            i.evidence.axisEvidence.horizontal.state=ActivePictureAxisState::UNKNOWN;
+            i.trustedGeneration=i.sourceGeneration=2; i.sourceSequence=100;
+            i.retention.analysisValid=i.retention.presentationValid=true;
+            i.retention.excludedLeft.barPixels=136;
+            i.retention.excludedLeft.blackFraction=0.1;
+            i.retention.excludedLeft.continuity=0.15;
+            i.retention.excludedLeft.lumaP90=372;
+            i.retention.excludedRight=i.retention.excludedLeft;
+            return i;
+        }
+
+        TEST_METHOD(FullWidthPictureWithdrawsPillarboxDespiteUncertainVerticalEdges)
+        {
+            auto i=ContradictedPillarboxInput();
+            for(uint64_t seq=100;seq<=102;++seq)
+            {
+                i.sourceSequence=seq;
+                i.evidence.proposedBounds.bottom=seq%2 ? 2144 : 2142;
+                // The vertical candidate's certificate is distinct from the old side bands.
+                i.retention.expansionStripsAvailable=true;
+                i.retention.expansionBase=i.trustedGeometry;
+                i.retention.expansionCandidate=i.evidence.proposedBounds;
+                const auto d=EvaluateTransitionAdmission(i);
+                Assert::AreEqual(seq==102,d.pillarboxContradiction.authoritative);
+                Assert::IsTrue(d.observation.classification==ActivePictureClassification::PROVISIONAL);
+                if(seq==102) Assert::IsTrue(d.observation.transitionDeferred);
+                i.previousPillarboxContradiction=d.pillarboxContradiction.state;
+            }
+        }
+
+        TEST_METHOD(PillarboxWithdrawalRejectsDarknessOverlaysStaleAndIncompleteEvidence)
+        {
+            for(int variant=0;variant<15;++variant)
+            {
+                auto i=ContradictedPillarboxInput();
+                switch(variant)
+                {
+                case 0:i.retention.globalNearBlack=true;break;
+                case 1:i.retention.excludedLeft.blackFraction=0.96;break;
+                case 2:i.retention.excludedRight.continuity=0.99;break;
+                case 3:i.evidence.axisEvidence.horizontal.scanComplete=false;break;
+                case 4:i.evidence.axisEvidence.horizontal.barCandidate=true;break;
+                case 5:i.trustedGeneration=1;break;
+                case 6:i.evidence.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;break;
+                case 7:i.retention.analysisValid=false;break;
+                case 8:i.retention.presentationValid=false;break;
+                case 9:i.presentationBeforeObservation.left+=2;break;
+                case 10:i.retention.excludedLeft.barPixels-=2;break;
+                case 11:i.trustedGeometry.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;break;
+                case 12:i.evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;break;
+                case 13:i.retention.excludedLeft.blackFraction=0.60;break;
+                case 14:i.retention.excludedRight.blackFraction=0.60;break;
+                }
+                for(uint64_t seq=100;seq<120;++seq){i.sourceSequence=seq;const auto d=EvaluateTransitionAdmission(i);Assert::IsFalse(d.pillarboxContradiction.authoritative);i.previousPillarboxContradiction=d.pillarboxContradiction.state;}
+            }
+        }
+
+        TEST_METHOD(PillarboxWithdrawalRequiresAdjacentUniqueSourceObservations)
+        {
+            auto i=ContradictedPillarboxInput();
+            auto d=EvaluateTransitionAdmission(i); i.previousPillarboxContradiction=d.pillarboxContradiction.state;
+            for(int repeat=0;repeat<20;++repeat){d=EvaluateTransitionAdmission(i);Assert::AreEqual(1u,d.pillarboxContradiction.state.confirmations);i.previousPillarboxContradiction=d.pillarboxContradiction.state;}
+            i.sourceSequence=102;d=EvaluateTransitionAdmission(i);Assert::AreEqual(1u,d.pillarboxContradiction.state.confirmations);i.previousPillarboxContradiction=d.pillarboxContradiction.state;
+            i.sourceGeneration=i.trustedGeneration=3;i.sourceSequence=103;d=EvaluateTransitionAdmission(i);Assert::AreEqual(1u,d.pillarboxContradiction.state.confirmations);i.previousPillarboxContradiction=d.pillarboxContradiction.state;
+            i.sourceSequence=104;d=EvaluateTransitionAdmission(i);Assert::IsFalse(d.pillarboxContradiction.authoritative);i.previousPillarboxContradiction=d.pillarboxContradiction.state;
+            i.sourceSequence=105;Assert::IsTrue(EvaluateTransitionAdmission(i).pillarboxContradiction.authoritative);
+        }
+
         struct DarkSubtitleFixture
         {
             NearBlackPresentationEpisodeInput episode;
@@ -13025,6 +13102,26 @@ namespace Tests
 			Assert::IsFalse(decision.releasedToTrustedCrop);
 			Assert::AreEqual(static_cast<int>(NearBlackPresentationMode::INACTIVE),
 				static_cast<int>(decision.state.mode));
+
+            // A last-submitted Scope can restore FULL_RASTER to RETAIN_CROP.
+            // Both owners must release after the same independent native proof.
+            for (auto mode : {NearBlackPresentationMode::RETAIN_CROP,NearBlackPresentationMode::FULL_RASTER}) {
+                auto retained=input;retained.previous.mode=mode;
+                retained.previouslyAdmittedCropAvailable=true;
+                retained.previouslyAdmittedCrop=oldCrop;
+                retained.previouslyAdmittedCropOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                retained.previouslyAdmittedCropSourceGeneration=input.sourceGeneration;
+                retained.previouslyAdmittedCropPresentationEpoch=input.presentationEpoch;
+                NearBlackPresentationEpisodeDecision result;
+                for(uint64_t seq=1339;seq<=1341;++seq) {
+                    retained.sourceSequence=retained.retentionSourceSequence=seq;
+                    retained.currentNativeOutwardProof.lastObservedSourceSequence=seq;
+                    result=EvaluateNearBlackPresentationEpisode(retained);
+                    retained.previous=result.state;
+                }
+                Assert::IsTrue(result.outwardEntryReleased);
+                Assert::IsTrue(result.resetTrustedGeometry);
+            }
 
 			auto latchedAfterProofBegan = input;
 			latchedAfterProofBegan.previous.fullRasterStartedSourceSequence = 1338;
