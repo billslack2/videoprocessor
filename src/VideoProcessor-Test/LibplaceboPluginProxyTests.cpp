@@ -432,6 +432,127 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(StandardRendererRetainsUncertainPictureAndAcceptsRealTransitions)
+        { VerifyNativeAspectTransitionSequence(false); }
+        TEST_METHOD(BetaRendererRetainsUncertainPictureAndAcceptsRealTransitions)
+        { VerifyNativeAspectTransitionSequence(true); }
+
+        TEST_METHOD(StandardRendererKeepsNativeAndConfiguredFillSeparate)
+        { VerifyNativeAspectTransitionSequence(false,true); }
+        TEST_METHOD(BetaRendererKeepsNativeAndConfiguredFillSeparate)
+        { VerifyNativeAspectTransitionSequence(true,true); }
+
+        void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false)
+        {
+            HMODULE self=nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&SnapshotTestLog),&self)!=FALSE);
+            wchar_t modulePath[MAX_PATH]={};
+            GetModuleFileNameW(self,modulePath,MAX_PATH);
+            std::wstring pluginPath(modulePath);pluginPath.resize(pluginPath.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            pluginPath+=L"\\..";
+#endif
+            pluginPath+=beta?L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll":
+                L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+            HMODULE plugin=LoadLibraryExW(pluginPath.c_str(),nullptr,
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct ModuleCleanup { HMODULE value; ~ModuleCleanup(){FreeLibrary(value);} } moduleCleanup{plugin};
+            struct FixtureLogCleanup {
+                ~FixtureLogCleanup(){std::lock_guard<std::mutex> lock(snapshotTestLogMutex);snapshotTestLog.close();}
+            } fixtureLogCleanup;
+            { std::lock_guard<std::mutex> lock(snapshotTestLogMutex);
+              snapshotTestLog.close();snapshotTestLog.clear();
+              snapshotTestLog.open(configuredFill
+                  ? (beta?"ar-fill-beta.log":"ar-fill-standard.log")
+                  : (beta?"ar-transition-beta.log":"ar-transition-standard.log"),std::ios::trunc); }
+            const auto create=reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(
+                GetProcAddress(plugin,VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(
+                GetProcAddress(plugin,VP_LIBPLACEBO_DESTROY_EXPORT));
+            Assert::IsTrue(create&&destroy);
+            char temp[MAX_PATH]={},configPath[MAX_PATH]={};
+            Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0);
+            Assert::IsTrue(GetTempFileNameA(temp,"art",0,configPath)!=0);
+            std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                "[vprenderer]\nquality: fast\n"
+                "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n"
+                "[vprenderer.zoom.native]\nautomatic_crop: true\nsubtitle_fit: false\n"
+                "crop_narrower_content_to_fill_screen: false\ncrop_wider_content_to_fill_screen: "
+                <<(configuredFill?"true":"false")<<"\n";
+            constexpr int width=640,height=360;
+            const int scopeBar=configuredFill?46:44;
+            const double nativeScope=double(width)/(height-2*scopeBar);
+            VideoStateComPtr state=new VideoState();
+            state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::P210;
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,60000,1001);
+            state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
+            std::vector<uint16_t> scope(state->BytesPerFrame()/2,uint16_t(512<<6));
+            std::vector<uint16_t> taller=scope,dark=scope;
+            for(int y=0;y<height;++y) for(int x=0;x<width;++x) {
+                scope[y*width+x]=uint16_t(((y>=scopeBar&&y<height-scopeBar)?300:64)<<6);
+                taller[y*width+x]=uint16_t(((y>=12&&y<348)?300:64)<<6);
+                dark[y*width+x]=uint16_t(64<<6);
+            }
+            SnapshotTestCallback callback;NativeP210Buffer buffer;
+            struct Cleanup {
+                HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;
+                const char* config;
+                ~Cleanup(){if(renderer){renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);DeleteFileA(config);}
+            } cleanup{CreateWindowExW(0,L"STATIC",L"AR transition fixture",WS_POPUP,
+                0,0,640,360,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
+            Assert::IsNotNull(cleanup.window);
+            cleanup.renderer=create(&callback,42,cleanup.window,nullptr,false,1,
+                VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,SnapshotTestLog);
+            Assert::IsNotNull(cleanup.renderer);
+            Assert::IsTrue(cleanup.renderer->OnVideoState(state));
+            cleanup.renderer->Build();cleanup.renderer->Start();
+            uint64_t sequence=1;
+            auto pump=[&](std::vector<uint16_t>& pixels) {
+                MSG message;
+                while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE))
+                    {TranslateMessage(&message);DispatchMessageW(&message);}
+                if(callback.state==RENDERSTATE_RENDERING) {
+                    VideoFrame frame(pixels.data(),sequence++,0,&buffer);
+                    cleanup.renderer->OnVideoFrame(frame);
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);
+                return value;
+            };
+            auto acquire=[&](std::vector<uint16_t>& pixels,double expected,double applied,const wchar_t* message) {
+                const auto first=sequence;
+                const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);
+                DetectedPictureAspect value;
+                do {
+                    value=pump(pixels);
+                    if(value.inUseAvailable&&value.available&&!value.provisional&&
+                        value.presentedSequence>=first&&value.detectedSequence>=first&&
+                        std::abs(value.inUseRatio-applied)<0.015&&std::abs(value.ratio-expected)<0.015) return value;
+                }while(std::chrono::steady_clock::now()<deadline&&callback.state!=RENDERSTATE_FAILED);
+                Logger::WriteMessage((std::string("AR actual in_use=")+std::to_string(value.inUseRatio)+
+                    " detected="+std::to_string(value.ratio)+" provisional="+std::to_string(value.provisional)).c_str());
+                Assert::Fail(message);return value;
+            };
+            const auto established=acquire(scope,nativeScope,configuredFill?2.35:nativeScope,L"Real renderer did not acquire initial native scope and selected presentation");
+            const auto darkFirst=sequence;
+            unsigned checked=0;
+            // Longer than the legacy two-second ambiguity hold, with distinct input identities.
+            const auto darkUntil=std::chrono::steady_clock::now()+std::chrono::milliseconds(3200);
+            while(std::chrono::steady_clock::now()<darkUntil&&callback.state!=RENDERSTATE_FAILED) {
+                const auto value=pump(dark);
+                if(value.inUseAvailable&&value.presentedSequence>=darkFirst) {
+                    ++checked;
+                    Assert::AreEqual(established.inUseRatio,value.inUseRatio,0.0005,
+                        L"Uncertain source replaced successfully submitted scope geometry");
+                }
+            }
+            Assert::IsTrue(checked>20,L"Dark interval did not exercise enough actual submissions");
+            acquire(taller,640.0/336,640.0/336,L"Real renderer retained old scope over verified taller picture");
+            acquire(scope,nativeScope,configuredFill?2.35:nativeScope,L"Real renderer did not return to verified scope and selected presentation");
+        }
 		TEST_METHOD(ActivePictureLookaheadHasExplicitProxyOverride)
 		{
 			using ExpectedMethod = void (

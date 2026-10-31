@@ -48,7 +48,7 @@ struct SidePixels
         Rectangle(0,68,40,472,80,640);
         Rectangle(width-80,68,width,472,80,640);
     }
-    void AliasedBrightEdges()
+    void AliasedBrightEdges(bool contaminateBars=false)
     {
         BothRoughSideInsets();
         Rectangle(0,68,40,472,160);
@@ -59,6 +59,10 @@ struct SidePixels
         for (int i=0;i<48;++i)
         {
             const int y=((i*2+1)*height)/96;
+            // Alias the source picture samples, while leaving the real bars
+            // neutral. The old variant also painted colored marks into bars;
+            // it now belongs to the explicit rejected-source control below.
+            if (!contaminateBars && (y<68 || y>=472)) continue;
             Rectangle(0,y,40,y+1,80,640);
             Rectangle(width-80,y,width,y+1,80,640);
         }
@@ -215,11 +219,33 @@ public:
         AssertSideMeasurement(result,evidence);
         Assert::AreEqual(12,result.leftMinimum);
         Assert::AreEqual(12,result.rightMinimum);
-        Assert::IsFalse(evidence.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(evidence.trustedBounds));
-        Assert::IsTrue(evidence.axisEvidence.HasBlockingFailedBar(evidence.trustedBounds));
+        // Clean bars independently establish the guarded vertical crop. The
+        // diagnostic cannot fill the skipped authoritative side measurements.
+        Assert::IsTrue(evidence.axisEvidence.HasVerifiedVerticalCropProfile(evidence.trustedBounds));
+        Assert::IsFalse(evidence.leftSideProbe.evaluated || evidence.rightSideProbe.evaluated);
         const auto observation=MakeActivePictureObservation(evidence,5,24);
         Assert::AreEqual(-1,observation.axisEvidence.leftPictureMinimum);
         Assert::AreEqual(-1,observation.axisEvidence.rightPictureMinimum);
+    }
+
+    TEST_METHOD(BarContaminatingAliasesRemainProvisionalWithoutDiagnosticAuthority)
+    {
+        SidePixels frame; frame.AliasedBrightEdges(true);
+        const auto evidence=ExtractActivePictureEvidence(frame.Source());
+        const auto before=MakeActivePictureObservation(evidence,5,24);
+        const auto pixels=frame.bytes;
+        Assert::IsTrue(evidence.available && evidence.classification==ActivePictureClassification::PROVISIONAL);
+        AssertNoSideMeasurement(MeasureActivePictureSideDiagnostics(frame.Source(),evidence));
+        Assert::IsTrue(frame.bytes==pixels);
+        SameSideObservation(before,MakeActivePictureObservation(evidence,5,24));
+        Assert::AreEqual(-1,evidence.axisEvidence.leftPictureMinimum);
+        Assert::AreEqual(-1,evidence.axisEvidence.rightPictureMinimum);
+        ActivePictureTransitionModel startup;
+        for (uint64_t sequence=1;sequence<=12;++sequence) {
+            const auto decision=startup.Observe(MakeActivePictureObservation(evidence,sequence,24));
+            Assert::IsFalse(decision.publish || decision.stable,
+                L"Colored bar aliases and diagnostic reads cannot establish a native crop.");
+        }
     }
 
     TEST_METHOD(DiagnosticMatchesExistingProbeAtEitherDistributedPictureEdge)
@@ -443,7 +469,9 @@ public:
             SameSideObservation(original.observation,after.observation);
             const auto a=baseline.Observe(original.observation);
             const auto b=measured.Observe(after.observation);
-            Assert::IsFalse(a.publish || b.publish,L"Diagnostic side values authorized a previously blocked crop.");
+            // Extraction may independently establish the clean bar profile;
+            // diagnostic reads must change neither its admission nor timing.
+            Assert::AreEqual(a.publish,b.publish,L"Diagnostic reads changed native publication.");
             Assert::AreEqual(int(a.state),int(b.state));
             Assert::AreEqual(a.matchingCandidates,b.matchingCandidates);
             Assert::AreEqual(a.clearTransition,b.clearTransition);
@@ -451,7 +479,6 @@ public:
             Assert::AreEqual(int(a.authorityOrigin),int(b.authorityOrigin));
             Assert::IsTrue(a.reason==b.reason);
             SameSideBounds(a.bounds,b.bounds); SameSideBounds(a.stableBounds,b.stableBounds);
-            SameSideBounds(base.trustedBounds,b.stableBounds);
         }
     }
 };

@@ -1966,17 +1966,109 @@ struct SubtitleShaderGpuFixture {
         Assert::IsTrue(format->num_components==4 &&
             (format->host_bits[0]==16 || format->host_bits[0]==32),
             L"Unexpected float target host format");
-        std::vector<uint8_t> bytes(64*64*format->texel_size);
+        std::vector<uint8_t> bytes(size_t(texture->params.w)*texture->params.h*format->texel_size);
         pl_tex_transfer_params transfer{};transfer.tex=texture;transfer.ptr=bytes.data();
         Assert::IsTrue(pl_tex_download(device->gpu,&transfer));
-        std::vector<float> pixels(64*64*4);
+        std::vector<float> pixels(size_t(texture->params.w)*texture->params.h*4);
         const size_t channelBytes=format->host_bits[0]/8;
-        for(size_t pixel=0;pixel<64*64;++pixel)
+        for(size_t pixel=0;pixel<size_t(texture->params.w)*texture->params.h;++pixel)
             for(int channel=0;channel<4;++channel)
                 pixels[pixel*4+channel]=FloatChannel(
                     bytes.data()+pixel*format->texel_size+channel*channelBytes,
                     format->host_bits[channel]);
         return pixels;
+    }
+    void VerifyUhdTwoLinePictureAndBarGlyphsSurviveReduction() {
+        constexpr int width=3840,height=2160;
+        auto storage=inputTexture->params;storage.w=width;storage.h=height;
+        Assert::IsTrue(pl_tex_recreate(device->gpu,&inputTexture,&storage));
+        input.planes[0].texture=inputTexture;input.crop={0,0,float(width),float(height)};
+        std::vector<uint8_t> pixels(size_t(width)*height*4,255);
+        const SubtitleBoxRect rows[2]={{1620,1746,2218,1848},{1571,1892,2270,1992}};
+        for(int y=0;y<height;++y)for(int x=0;x<width;++x) {
+            uint8_t value=0;
+            for(const auto& row:rows)if(x>=row.left && x<row.right && y>=row.top && y<row.bottom)
+                if((x-row.left)%48<12 || y-row.top<12 || row.bottom-y<=12)value=250;
+            const size_t offset=(size_t(y)*width+x)*4;
+            pixels[offset]=pixels[offset+1]=pixels[offset+2]=value;
+        }
+        pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
+        Assert::IsTrue(pl_tex_upload(device->gpu,&upload));
+        SubtitleCutPasteGeometry g;
+        g.valid=true;g.source={1491,1707,2353,2027};g.content={1561,1739,2280,2002};
+        g.glyphLines[0]={1561,1883,2280,2002};g.glyphLines[1]={1610,1739,2228,1858};
+        g.destination={1495,1651,2344,1894};g.pictureTop=256;g.pictureBottom=1904;
+        g.pictureCapture={1561,1739,2280,2002};g.generatedCleanup={1561,1739,2280,1904};
+        g.glyphScale=0.7f;g.glyphTranslateX=575.65f;g.glyphTranslateY=464.20f;
+        g.centeredGlyphMapping=true;
+        for(int pass=0;pass<4;++pass) {
+            // The live failure alternated caption/no-caption on one persistent
+            // renderer. Reuse that graph and uniform state across both paths.
+            pl_frame baseline{};
+            const pl_hook* baselineHook=nullptr;
+            if(pass%2) {
+                auto disabled=g;disabled.valid=false;
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,disabled,3,input.color.transfer));
+                baselineHook=hook;
+            }
+            Assert::IsTrue(RenderSubtitleFullRaster(preparation,device->gpu,input,baselineHook,
+                &cleanTexture,baseline,false,false));
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,3,input.color.transfer,{},0,SubtitleCompositionPhase::All));
+        pl_frame composed{};
+        Assert::IsTrue(PrepareCompleteSubtitleSourcePacket(preparation,device->gpu,input,hook,g,
+            3,{},0,&allTexture,composed));
+        auto targetParams=allOutput->params;targetParams.w=width;targetParams.h=height;
+        Assert::IsTrue(pl_tex_recreate(device->gpu,&allOutput,&targetParams));
+        pl_frame target=composed;target.planes[0].texture=allOutput;
+        target.color=pl_color_space_srgb;target.color.transfer=PL_COLOR_TRC_LINEAR;
+        auto params=pl_render_fast_params;params.dither_params=nullptr;
+        Assert::IsTrue(pl_render_image(renderer,&composed,&target,&params));
+        const auto output=ReadLinear(allOutput);
+        for(const auto& row:rows) {
+            const int left=int(std::ceil(row.left*g.glyphScale+g.glyphTranslateX));
+            const int right=int(std::floor(row.right*g.glyphScale+g.glyphTranslateX));
+            const int top=int(std::ceil(row.top*g.glyphScale+g.glyphTranslateY));
+            const int bottom=int(std::floor(row.bottom*g.glyphScale+g.glyphTranslateY));
+            unsigned visible=0;
+            for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)
+                visible+=output[(size_t(y)*width+x)*4]>0.3f;
+            Assert::IsTrue(visible>unsigned((right-left)*(bottom-top))/5,
+                L"both the picture-side row and the lower letterbox row must survive relocation");
+            int firstX=width,lastX=-1,firstY=height,lastY=-1;
+            for(int y=top-5;y<bottom+5;++y)for(int x=0;x<width;++x)
+                if(output[(size_t(y)*width+x)*4]>0.3f) {
+                    firstX=(std::min)(firstX,x);lastX=(std::max)(lastX,x);
+                    firstY=(std::min)(firstY,y);lastY=(std::max)(lastY,y);
+                }
+            Assert::IsTrue(std::abs(firstX-left)<=2 && std::abs(lastX+1-right)<=2 &&
+                std::abs(firstY-top)<=2 && std::abs(lastY+1-bottom)<=2,
+                L"actual glyph extents must shrink by0.7, never expand by its reciprocal");
+        }
+        // Exercise the next viewport render too: composition owns full-raster
+        // source coordinates, and cropping must not remap the glyphs again.
+        constexpr int finalWidth=1920,finalHeight=824;
+        targetParams.w=finalWidth;targetParams.h=finalHeight;
+        Assert::IsTrue(pl_tex_recreate(device->gpu,&allOutput,&targetParams));
+        auto cropped=composed;cropped.crop={0,256,float(width),1904};
+        target.planes[0].texture=allOutput;target.crop={0,0,float(finalWidth),float(finalHeight)};
+        Assert::IsTrue(pl_render_image(renderer,&cropped,&target,&params));
+        const auto final=ReadLinear(allOutput);
+        for(const auto& row:rows) {
+            const int left=int(std::ceil((row.left*g.glyphScale+g.glyphTranslateX)*0.5f));
+            const int right=int(std::floor((row.right*g.glyphScale+g.glyphTranslateX)*0.5f));
+            const int top=int(std::ceil((row.top*g.glyphScale+g.glyphTranslateY-256)*0.5f));
+            const int bottom=int(std::floor((row.bottom*g.glyphScale+g.glyphTranslateY-256)*0.5f));
+            int firstX=finalWidth,lastX=-1,firstY=finalHeight,lastY=-1;
+            for(int y=top-4;y<bottom+4;++y)for(int x=0;x<finalWidth;++x)
+                if(final[(size_t(y)*finalWidth+x)*4]>0.3f) {
+                    firstX=(std::min)(firstX,x);lastX=(std::max)(lastX,x);
+                    firstY=(std::min)(firstY,y);lastY=(std::max)(lastY,y);
+                }
+            Assert::IsTrue(std::abs(firstX-left)<=2 && std::abs(lastX+1-right)<=2 &&
+                std::abs(firstY-top)<=2 && std::abs(lastY+1-bottom)<=2,
+                L"final viewport cropping must preserve both rows and the requested reduction");
+        }
+        }
     }
     void VerifyPreparationPreservesHdrHistory() {
         auto target=input;target.planes[0].texture=allOutput;
@@ -3050,6 +3142,9 @@ struct SubtitleShaderGpuFixture {
 }
 TEST_CLASS(SubtitleCutPasteShaderTests) {
 public:
+    TEST_METHOD(UhdTwoLinePictureAndLetterboxGlyphsBothSurviveReduction) {
+        SubtitleShaderGpuFixture gpu;gpu.VerifyUhdTwoLinePictureAndBarGlyphsSurviveReduction();
+    }
     TEST_METHOD(HalfFloatReadbackPreservesSignedAndNonFiniteValues) {
         const auto read=[](uint16_t bits) {
             return SubtitleShaderGpuFixture::FloatChannel(reinterpret_cast<const uint8_t*>(&bits),16);
