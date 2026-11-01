@@ -1,0 +1,448 @@
+{
+  "schemaVersion": 2,
+  "status": "ExperimentalManualReviewDeployed",
+  "storyStatus": "InProgress",
+  "source": {
+    "commit": "82a0f8c7486938eb10301eb891ed1131a1a01cb7",
+    "dirty": false,
+    "fingerprint": "cfa7d689ed1219b95dfd1c504009e0a091349c5ef671cdb3798a450d05bd5fdb",
+    "label": "82a0f8c74869",
+    "build": "82a0f8c7486938eb10301eb891ed1131a1a01cb7"
+  },
+  "integrationBase": {
+    "commit": "a591ad3b532771911e85f8ef026958279f2065f0",
+    "repository": "billslack2/videoprocessor",
+    "branch": "v1.4.02-beta"
+  },
+  "repairs": [
+    "Exact native sampler avoids repeated layout validation without changing pixel values or sample coverage",
+    "Broad opposing outer border evidence survives a central caption panel",
+    "Completed current glyph work survives identical inspection-to-canonical geometry handoff without rescanning",
+    "Current owned glyph masks can verify independently measured spatial bounds without circular AR rejection",
+    "Bounded outward retention preserves filtering fringes while physical boundary measurement remains exact",
+    "Explicit current measured and verified spatial crops acquire at startup without legacy displayed-frame confirmation; legacy and established transition policy remain intact",
+    "Current independently verified composed pending pixels can retain one complete output without completing RAW analysis or renewing subtitle holds",
+    "Default zero-lookahead foreground measurement publishes independently measured current physical edges"
+  ],
+  "invariantChecks": [
+    "Subtitle ownership does not nominate AR or create erase authority",
+    "Unknown, stale, foreign, deferred, incomplete and malformed evidence cannot grant immediate acquisition",
+    "No known-ratio snapping or display/CIH inference",
+    "Physical263..1897 remains distinct from outward-aligned retained bounds",
+    "Existing one-adjacent-source repeat limit and original source identity remain unchanged"
+  ],
+  "qualification": {
+    "receipt": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runtime-Release-x64.json",
+    "status": "Passed",
+    "receiptSha256": "6C74B42C07BB095D93A33F242A9295C87E425220D3F4445C759B9216CB4EC0E1",
+    "mode": "default",
+    "source": {
+      "commit": "82a0f8c7486938eb10301eb891ed1131a1a01cb7",
+      "dirty": false,
+      "fingerprint": "cfa7d689ed1219b95dfd1c504009e0a091349c5ef671cdb3798a450d05bd5fdb",
+      "label": "82a0f8c74869",
+      "build": "82a0f8c7486938eb10301eb891ed1131a1a01cb7"
+    },
+    "runs": [
+      {
+        "variant": "standard",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "x64\\Release\\VideoProcessor-Test.dll",
+        "trx": "artifacts/qualification/runs/20261101-143535-5497e6af/standard.trx",
+        "trxSha256": "F4D3824017261777021F323FA900D8A9D44B8441B6C829ACC6611C92DEF14514",
+        "executed": 959,
+        "native": 944,
+        "actualClassic": 15,
+        "seconds": 158.42
+      },
+      {
+        "variant": "beta",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+        "trx": "artifacts/qualification/runs/20261101-143535-5497e6af/beta.trx",
+        "trxSha256": "95F44FA100367AF79EFF7ABF0DDB5D73E5F0DD7CFC4B45FD1BF90EA890FC0C4F",
+        "executed": 959,
+        "native": 944,
+        "actualClassic": 15,
+        "seconds": 157.183
+      }
+    ]
+  },
+  "activeRuntime": {
+    "runs": {
+      "name": "active-runtime-and-mask",
+      "exit": 0,
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150213\\active-runtime-and-mask\\results.trx",
+      "counts": {
+        "executed": 11,
+        "native": 1,
+        "actualClassic": 10,
+        "passed": 11
+      },
+      "trxSha256": "8D2F1F07D3258E22129D797714BAE0862D0F9D7F8761C77B58338BF55564883A"
+    },
+    "receipt": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\receipt.json",
+    "mode": "active-experimental",
+    "receiptSha256": "E920AD6E3A769AE9682F8A6F2BC70591D176DDD6AACE26CE7924E48290750A9F"
+  },
+  "captures": [
+    {
+      "name": "live-caption64",
+      "currentCaptionCropVerification": true,
+      "instances": 64,
+      "trxSha256": "5DDC1309618FDB9F1F721362474CB9C8426F70DCDCED84B48E71C9D25C2A5C53",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\live-caption64\\results.trx",
+      "measurementMismatches": 0
+    },
+    {
+      "name": "new-scope15",
+      "currentCaptionCropVerification": false,
+      "instances": 15,
+      "trxSha256": "64E26C53972FF2EFFC98D71AE4685C4F24A22C5CF3BA956B19D55971FE285D9B",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\new-scope15\\results.trx",
+      "measurementMismatches": 0
+    },
+    {
+      "name": "grid93",
+      "currentCaptionCropVerification": false,
+      "instances": 93,
+      "trxSha256": "7B90F64DA7C4265DD5C2DE3E44D86FFFCD7D9363320C33407235CAF1696489CF",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\grid93\\results.trx",
+      "measurementMismatches": 0
+    },
+    {
+      "name": "menu92",
+      "currentCaptionCropVerification": false,
+      "instances": 92,
+      "trxSha256": "E8AB5B13F54A5A66910DF8E0EBBBCCD5E6AAB6FB917C4AB580A372A7832DFA0C",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\menu92\\results.trx",
+      "measurementMismatches": 0
+    },
+    {
+      "name": "scope64",
+      "currentCaptionCropVerification": false,
+      "instances": 64,
+      "trxSha256": "5F113AFC5B7481BB60EA7D9B3C04A69659BBF712025601D7C9E49FC944566F07",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\scope64\\results.trx",
+      "measurementMismatches": 0
+    },
+    {
+      "name": "original64",
+      "currentCaptionCropVerification": false,
+      "instances": 64,
+      "trxSha256": "6E21D7C1F3361C7564E42DD0BCAADB7CF845E30D3E7276C144342AE695AB1E66",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\original64\\results.trx",
+      "measurementMismatches": 0
+    },
+    {
+      "name": "paused56",
+      "currentCaptionCropVerification": false,
+      "instances": 56,
+      "trxSha256": "EAD029C4808D24E071A1B8D1C02CD169B50D04046AA182E77414292B99C85334",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\paused56\\results.trx",
+      "measurementMismatches": 0
+    },
+    {
+      "name": "sun95",
+      "currentCaptionCropVerification": false,
+      "instances": 95,
+      "trxSha256": "D0ED7D0E728C2CC54772E5A7E1CF254A0E48EF3228889326C3A503E56F0119DB",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\sun95\\results.trx",
+      "measurementMismatches": 0
+    },
+    {
+      "name": "cold-caption",
+      "currentCaptionCropVerification": true,
+      "instances": 1,
+      "trxSha256": "B63B1D567956C2FBF353EB6ACD27C0239C4F5E4E39E0B0B82AD66E086578C2C1",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\active-final-20261101-150448\\cold-caption\\results.trx",
+      "measurementMismatches": 0
+    }
+  ],
+  "captureInstances": 544.0,
+  "broadGpu": {
+    "receipt": "E:\\codex\\diagnostics\\ar-design-review-20261101\\spatial-occlusion-motion-82a0f8c7\\motion-renderer-tests.json",
+    "sha256": "F3FEE1C642734256A40563EB17FA011D4F03F78FFCF8716F10ACF6DF0A0C935D",
+    "result": {
+      "schemaVersion": 1,
+      "sourceCommit": "82a0f8c7486938eb10301eb891ed1131a1a01cb7",
+      "sourceDirty": false,
+      "configuration": "Release",
+      "architecture": "x64",
+      "reusedQualifiedBuild": true,
+      "classes": [
+        "MotionRendererTests",
+        "SourceUploadBatchTests",
+        "TemporalCleanPacketGpuTests",
+        "ReconstructionMotionTests",
+        "SubtitleCutPasteTests",
+        "SubtitleCutPasteShaderTests",
+        "RendererDependencyTests"
+      ],
+      "runs": [
+        {
+          "variant": "standard",
+          "buildMode": "reused-qualified-build",
+          "reusedQualifiedBuild": true,
+          "buildExit": null,
+          "testExit": 0,
+          "binary": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\x64\\Release\\VideoProcessor-Test.dll",
+          "sha256": "E81F27D07A4140F1CB563645CD3B820323E7A7E7E734951D4CE71D0533B6A640",
+          "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+          "passed": 220
+        },
+        {
+          "variant": "beta",
+          "buildMode": "reused-qualified-build",
+          "reusedQualifiedBuild": true,
+          "buildExit": null,
+          "testExit": 0,
+          "binary": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+          "sha256": "D492575E894B12A30305D86542879F052CF7BF852FCDED4DA1AA9E1D4B5CED4A",
+          "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+          "passed": 220
+        }
+      ],
+      "finished": "2026-11-01T15:00:47.9928078-05:00",
+      "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+    }
+  },
+  "deployment": {
+    "receipt": "C:\\Videoprocessor\\vp\\backups\\spatial-occlusion-20261101-150604\\deployment-receipt.json",
+    "configurationEdits": [],
+    "processId": 20600,
+    "backup": "C:\\Videoprocessor\\vp\\backups\\spatial-occlusion-20261101-150604",
+    "launcher": "C:\\Videoprocessor\\vp\\VideoProcessor-Spatial-Test.cmd",
+    "sha256": "DA6AC0C4E5FA9A77D81F4D8A912AC24D6B9A4285204DB4EF11A3A107BA12FE6A"
+  },
+  "liveVerification": {
+    "receipt": "E:\\codex\\diagnostics\\ar-design-review-20261101\\live-82a0f8c7.json",
+    "sha256": "4324718BB5A31AED6AE220964171A45398A05B571D1C07662EB8CFB7EBA61F60",
+    "result": {
+      "timestamp": "2026-11-01T15:10:26.5610252-05:00",
+      "commit": "82a0f8c7486938eb10301eb891ed1131a1a01cb7",
+      "processId": 20600,
+      "responding": true,
+      "processPath": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "modules": [
+        {
+          "ModuleName": "VideoProcessorVPRenderer.dll",
+          "FileName": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+        },
+        {
+          "ModuleName": "libplacebo-360.dll",
+          "FileName": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll"
+        },
+        {
+          "ModuleName": "VideoProcessorVPRendererBeta.dll",
+          "FileName": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+        },
+        {
+          "ModuleName": "libplacebo-388.dll",
+          "FileName": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-388.dll"
+        }
+      ],
+      "hashes": [
+        {
+          "sha256": "18F0BE09E61E0AEE54EE847D0F5079D18CDFDEF0BA246E1BF525222DB72C835E",
+          "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe"
+        },
+        {
+          "sha256": "C4621E9FCC4FDC329CDDAE95EB4229578F185EB517660498D5333F0203D26EB9",
+          "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json"
+        },
+        {
+          "sha256": "C4621E9FCC4FDC329CDDAE95EB4229578F185EB517660498D5333F0203D26EB9",
+          "path": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.exe.runtime.json"
+        },
+        {
+          "sha256": "9E206BA48E7CE82532BB6581F54829EC05744C827B4DA50BF807F833CC4AF566",
+          "path": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb"
+        },
+        {
+          "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\libdovi.dll"
+        },
+        {
+          "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\libgcc_s_seh-1.dll"
+        },
+        {
+          "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\liblcms2-2.dll"
+        },
+        {
+          "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll"
+        },
+        {
+          "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\libshaderc_shared.dll"
+        },
+        {
+          "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\libspirv-cross-c-shared.dll"
+        },
+        {
+          "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\libstdc++-6.dll"
+        },
+        {
+          "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\libwinpthread-1.dll"
+        },
+        {
+          "sha256": "712647FD176663AD19EC787DE4CD97D267286DF09C720E1E447305C6C4A6A87D",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+        },
+        {
+          "sha256": "B4A0757EE58CA577E3F2C0D807E590031A4A3FFF777303BC696D0CE87B998BB0",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json"
+        },
+        {
+          "sha256": "4CFCC8534248DDE9A745B2E3479BE69D1426D24E82820CF88E864BE345D4915C",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb"
+        },
+        {
+          "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer\\vulkan-1.dll"
+        },
+        {
+          "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libdovi.dll"
+        },
+        {
+          "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libgcc_s_seh-1.dll"
+        },
+        {
+          "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\liblcms2-2.dll"
+        },
+        {
+          "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-388.dll"
+        },
+        {
+          "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libshaderc_shared.dll"
+        },
+        {
+          "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libspirv-cross-c-shared.dll"
+        },
+        {
+          "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libstdc++-6.dll"
+        },
+        {
+          "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libwinpthread-1.dll"
+        },
+        {
+          "sha256": "C19F351DEF78FA9BE17FC31B01FF308883CFBDFB1B9D0AE292DF988BBF60EA28",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+        },
+        {
+          "sha256": "2A8D9E625FDF48E7B0EB4BBBC3BEBBF6FAE7C44922E72080818E9AF0A95C912E",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json"
+        },
+        {
+          "sha256": "90EF0B40208A7A0A95A123FE2C5F43B629474EBA13DFEFD5B3AB0DED2C18F8B9",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb"
+        },
+        {
+          "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+          "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\vulkan-1.dll"
+        }
+      ],
+      "identity": [
+        "2026-11-01 15:06:07 | VP build identity: module=host commit=https://github.com/billslack2/videoprocessor/commit/82a0f8c7486938eb10301eb891ed1131a1a01cb7 branch=codex/source-picture-redesign-20261101 dirty=0 build=v1.4.02-beta-82a0f8c",
+        "2026-11-01 15:06:14 | VP build identity: module=renderer commit=https://github.com/billslack2/videoprocessor/commit/82a0f8c7486938eb10301eb891ed1131a1a01cb7 branch=codex/source-picture-redesign-20261101 dirty=0 build=v1.4.02-beta-82a0f8c"
+      ],
+      "activeDetector": [
+        "2026-11-01 15:06:15 | VP source picture detector: mode=active-experimental worker_budget_ms=24 source_pixels=1 legacy_geometry_fallback=0 retention_checks=1"
+      ],
+      "spatialIntervals": [
+        "2026-11-01 15:10:15 | VP spatial detector interval: worker=59844 format=native-yuv422-sparse generation=15805081878477807578 source=14402 jobs=120 measured=34 canvas=0 unknown=86 raw_verified=0 budget_exhausted=0 avg_ms=7.695 peak_ms=8.968 last_physical=0,0-0,0 last_reason=insufficient-distributed-edge-support",
+        "2026-11-01 15:10:17 | VP spatial detector interval: worker=59844 format=native-yuv422-sparse generation=15805081878477807578 source=14522 jobs=120 measured=101 canvas=0 unknown=19 raw_verified=0 budget_exhausted=0 avg_ms=7.322 peak_ms=8.697 last_physical=1,11-3840,2160 last_reason=native candidate has an unverified nominated crop axis",
+        "2026-11-01 15:10:19 | VP spatial detector interval: worker=59844 format=native-yuv422-sparse generation=15805081878477807578 source=14642 jobs=120 measured=104 canvas=0 unknown=16 raw_verified=0 budget_exhausted=0 avg_ms=6.782 peak_ms=8.744 last_physical=1,9-3840,2160 last_reason=native candidate has an unverified nominated crop axis",
+        "2026-11-01 15:10:21 | VP spatial detector interval: worker=59844 format=native-yuv422-sparse generation=15805081878477807578 source=14762 jobs=120 measured=86 canvas=0 unknown=34 raw_verified=0 budget_exhausted=0 avg_ms=5.599 peak_ms=6.386 last_physical=0,0-0,0 last_reason=insufficient-distributed-edge-support",
+        "2026-11-01 15:10:23 | VP spatial detector interval: worker=59844 format=native-yuv422-sparse generation=15805081878477807578 source=14882 jobs=120 measured=68 canvas=0 unknown=52 raw_verified=0 budget_exhausted=0 avg_ms=7.449 peak_ms=11.177 last_physical=0,0-0,0 last_reason=insufficient-distributed-edge-support",
+        "2026-11-01 15:10:25 | VP spatial detector interval: worker=59844 format=native-yuv422-sparse generation=15805081878477807578 source=15002 jobs=120 measured=37 canvas=0 unknown=83 raw_verified=0 budget_exhausted=0 avg_ms=7.707 peak_ms=8.456 last_physical=0,0-0,0 last_reason=insufficient-distributed-edge-support"
+      ],
+      "measurementIntervals": [
+        "2026-11-01 15:10:15 | VP source measurement interval: source=14396 batches=120 outputs=120 global_requests=54 global_hits=54 global_scans=0 picture_requests=468 picture_hits=468 picture_scans=0 darkness_requests=54 darkness_hits=54 darkness_scans=0 retention_requests=0 retention_hits=0 retention_scans=0 worker_imports=120 worker_rejects=0 measurement_total_ms=0.000 measurement_peak_ms=0.000 subtitle_requests=0 subtitle_hits=0 subtitle_scan_total_ms=0.000 subtitle_scan_peak_ms=0.000",
+        "2026-11-01 15:10:17 | VP source measurement interval: source=14516 batches=120 outputs=120 global_requests=104 global_hits=104 global_scans=0 picture_requests=568 picture_hits=568 picture_scans=0 darkness_requests=104 darkness_hits=104 darkness_scans=0 retention_requests=0 retention_hits=0 retention_scans=0 worker_imports=120 worker_rejects=0 measurement_total_ms=0.000 measurement_peak_ms=0.000 subtitle_requests=0 subtitle_hits=0 subtitle_scan_total_ms=0.000 subtitle_scan_peak_ms=0.000",
+        "2026-11-01 15:10:19 | VP source measurement interval: source=14636 batches=120 outputs=120 global_requests=108 global_hits=108 global_scans=0 picture_requests=576 picture_hits=576 picture_scans=0 darkness_requests=108 darkness_hits=108 darkness_scans=0 retention_requests=0 retention_hits=0 retention_scans=0 worker_imports=120 worker_rejects=0 measurement_total_ms=0.000 measurement_peak_ms=0.000 subtitle_requests=0 subtitle_hits=0 subtitle_scan_total_ms=0.000 subtitle_scan_peak_ms=0.000",
+        "2026-11-01 15:10:21 | VP source measurement interval: source=14756 batches=120 outputs=120 global_requests=93 global_hits=93 global_scans=0 picture_requests=546 picture_hits=546 picture_scans=0 darkness_requests=93 darkness_hits=93 darkness_scans=0 retention_requests=0 retention_hits=0 retention_scans=0 worker_imports=120 worker_rejects=0 measurement_total_ms=0.000 measurement_peak_ms=0.000 subtitle_requests=0 subtitle_hits=0 subtitle_scan_total_ms=0.000 subtitle_scan_peak_ms=0.000",
+        "2026-11-01 15:10:23 | VP source measurement interval: source=14876 batches=120 outputs=120 global_requests=81 global_hits=81 global_scans=0 picture_requests=522 picture_hits=522 picture_scans=0 darkness_requests=81 darkness_hits=81 darkness_scans=0 retention_requests=0 retention_hits=0 retention_scans=0 worker_imports=120 worker_rejects=0 measurement_total_ms=0.000 measurement_peak_ms=0.000 subtitle_requests=0 subtitle_hits=0 subtitle_scan_total_ms=0.000 subtitle_scan_peak_ms=0.000",
+        "2026-11-01 15:10:25 | VP source measurement interval: source=14996 batches=120 outputs=120 global_requests=52 global_hits=52 global_scans=0 picture_requests=464 picture_hits=464 picture_scans=0 darkness_requests=52 darkness_hits=52 darkness_scans=0 retention_requests=0 retention_hits=0 retention_scans=0 worker_imports=120 worker_rejects=0 measurement_total_ms=0.000 measurement_peak_ms=0.000 subtitle_requests=0 subtitle_hits=0 subtitle_scan_total_ms=0.000 subtitle_scan_peak_ms=0.000"
+      ],
+      "inputRate": [
+        "2026-11-01 15:10:20 | VP render load budget: source_hz=59.940946 scheduled_output_hz=0.000000 budget_hz=59.940946 budget_ms=16.683 origin=source",
+        "2026-11-01 15:10:25 | VP render load budget: source_hz=59.940945 scheduled_output_hz=0.000000 budget_hz=59.940945 budget_ms=16.683 origin=source"
+      ],
+      "aspectTelemetry": [
+        "2026-11-01 15:10:25 | VP aspect telemetry: generation=1 presented=15020 detected_sequence=15020 in_use=1.777778 use_state=3 detected=0.000000 available=0 provisional=0",
+        "2026-11-01 15:10:25 | VP aspect telemetry: generation=1 presented=15021 detected_sequence=15021 in_use=1.777778 use_state=3 detected=1.786878 available=1 provisional=0",
+        "2026-11-01 15:10:25 | VP aspect telemetry: generation=1 presented=15022 detected_sequence=15022 in_use=1.777778 use_state=3 detected=0.000000 available=0 provisional=0",
+        "2026-11-01 15:10:25 | VP aspect telemetry: generation=1 presented=15023 detected_sequence=15023 in_use=1.777778 use_state=3 detected=1.786412 available=1 provisional=0",
+        "2026-11-01 15:10:25 | VP aspect telemetry: generation=1 presented=15024 detected_sequence=15024 in_use=1.777778 use_state=3 detected=0.000000 available=0 provisional=0",
+        "2026-11-01 15:10:25 | VP aspect telemetry: generation=1 presented=15025 detected_sequence=15025 in_use=1.777778 use_state=3 detected=1.786878 available=1 provisional=0",
+        "2026-11-01 15:10:25 | VP aspect telemetry: generation=1 presented=15026 detected_sequence=15026 in_use=1.777778 use_state=3 detected=0.000000 available=0 provisional=0",
+        "2026-11-01 15:10:25 | VP aspect telemetry: generation=1 presented=15027 detected_sequence=15027 in_use=1.777778 use_state=3 detected=1.786878 available=1 provisional=0"
+      ],
+      "profiles": [
+        "profile.motion: profile_1",
+        "profile.display: standard_scope",
+        "profile.color: bt2020",
+        "profile.viewport: scope",
+        "profile.zoom: scope",
+        "profile.subtitles: classic",
+        "profile.queue: madvr_queue",
+        "profile.lldv: default",
+        "profile.nls: profile_1"
+      ],
+      "visualVerification": "Not established: WGC timed out and automated window input geometry unavailable",
+      "limitations": [
+        "Current live near-full-raster proposals have unverified margins; submitted picture remains full raster",
+        "Live native jobs and worker imports advance at59.94Hz; persistent-caption correctness is established by saved captures and controlled renderer tests, not this unseen live image"
+      ]
+    }
+  },
+  "retainedFailures": [
+    "51e4 default standard952/953: zero-lead physical telemetry missing, reproduced/fixed in95c34302",
+    "95c default standard954/954 andbeta951/954; player was relaunched13:57:58 duringGPUrun, so timing failures are contaminated, not clean causality evidence",
+    "95c expandedactive10/11: first composed source17 safely retained wholeinput before legacy4-vote native admission; startup rule repaired using current spatial+discard proof",
+    "Native pendingfinalpixels RED20261101-141102-e99ffebd; GREEN20261101-141438-5a1746c9",
+    "Native startup RED20261101-142210-ee9bcb3e; odd-edge RED20261101-143340-6350c670; finalselectedGREEN20261101-143427-354e9196",
+    "Early live64replay39measurementmismatches, then52/64cropverification before fringe/alignment repair; finalreplays retained separately"
+  ],
+  "testSpeedAudit": {
+    "implemented": false,
+    "largestCasesSeconds": {
+      "preparationCache": 100.06,
+      "sixUhdPacketCases": 121,
+      "roundedLip": 41.0,
+      "alphaComposition": 134.48
+    },
+    "nextOptions": [
+      "Share bounded adapter/dependency-specific shader cache across reconstruction fixtures while preserving independent GPU/history state and an explicit cold UHD case",
+      "Reuse cache across reuse-focused scenarios; keep distinct cold preparation contracts",
+      "Profile redundant style combinations before reducing any matrix; preserve timed readiness and UHD pixel coverage"
+    ],
+    "standardGpuSeconds": 483.4
+  },
+  "limitations": [
+    "Opt-in experimental active detector; default full qualification and active checks are separate",
+    "Zero-buffer active playback is not qualified; prepared-source lookahead is required",
+    "544 expected replay instances include a deliberately repeated cold-start fixture, not544unique images",
+    "Clean controlled tests and native captures do not establish exhaustive live playback acceptance",
+    "No new scheduling exception was added from contaminated startup timing failures; bounded Prime diagnostics remain for future evidence",
+    "No merge or public release"
+  ],
+  "recorded": "2026-11-01T15:10:59.3439749-05:00"
+}
