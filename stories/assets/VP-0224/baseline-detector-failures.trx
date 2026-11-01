@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="6ca7e6fd-88de-4c23-89c8-b95d1a944003" name="bslac@DESKTOP-3G35SCJ 2026-11-01 00:43:07" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-01T00:43:07.4360639-04:00" queuing="2026-11-01T00:43:07.4360639-04:00" start="2026-11-01T00:43:05.2195253-04:00" finish="2026-11-01T00:43:07.5494495-04:00" />
+  <TestSettings name="default" id="447cb1a7-d625-443c-8d94-d1a853a7c223">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-11-01_00_43_07" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="29c10ed6-6e75-43fb-bf25-f32d607a25dc" testId="0ce94f05-8174-369f-859a-37183e94f623" testName="InvalidSourceOrMismatchedProposedRasterUsesNoSamples" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0051433" startTime="2026-11-01T00:43:07.1123156-04:00" endTime="2026-11-01T00:43:07.1174589-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="29c10ed6-6e75-43fb-bf25-f32d607a25dc">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed</Message>
+          <StackTrace>	at VideoProcessorTest::`anonymous namespace'::AssertOpposingRaw() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 113&#xD;
+	at VideoProcessorTest::OpposingBoundaryDiagnosticsTests::InvalidSourceOrMismatchedProposedRasterUsesNoSamples() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 286</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="8b2ef072-7d54-438a-b175-f3895e6d73f7" testId="851a55b2-eac1-d5e7-1772-c3d74b4379d0" testName="SmallBarsKeepTheExistingEighteenCodeContrastRequirement" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0044898" startTime="2026-11-01T00:43:07.1514086-04:00" endTime="2026-11-01T00:43:07.1558984-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8b2ef072-7d54-438a-b175-f3895e6d73f7">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed</Message>
+          <StackTrace>	at VideoProcessorTest::`anonymous namespace'::AssertOpposingRaw() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 113&#xD;
+	at VideoProcessorTest::OpposingBoundaryDiagnosticsTests::SmallBarsKeepTheExistingEighteenCodeContrastRequirement() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 242</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="5d0edbe4-d884-4a17-9ac0-efa22bc62808" testId="d78a7af8-5b39-9d72-28c6-2ce4f1d014f4" testName="P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0227057" startTime="2026-11-01T00:43:07.1283499-04:00" endTime="2026-11-01T00:43:07.1510556-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5d0edbe4-d884-4a17-9ac0-efa22bc62808">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed</Message>
+          <StackTrace>	at VideoProcessorTest::`anonymous namespace'::AssertOpposingMeasured() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 123&#xD;
+	at VideoProcessorTest::OpposingBoundaryDiagnosticsTests::P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 256</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="f42345f7-2563-498c-a25a-43ec4310e0cb" testId="119f6c12-2701-827e-f066-dd2b0c45a003" testName="UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0041363" startTime="2026-11-01T00:43:07.1243281-04:00" endTime="2026-11-01T00:43:07.1284644-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f42345f7-2563-498c-a25a-43ec4310e0cb">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed</Message>
+          <StackTrace>	at VideoProcessorTest::`anonymous namespace'::AssertOpposingRaw() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 113&#xD;
+	at VideoProcessorTest::OpposingBoundaryDiagnosticsTests::UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 315</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="baac8ac3-4d7f-487e-b217-8408f7027cd0" testId="d3179346-d102-b491-2826-05023e81129d" testName="TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0552856" startTime="2026-11-01T00:43:07.1564133-04:00" endTime="2026-11-01T00:43:07.2116989-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="baac8ac3-4d7f-487e-b217-8408f7027cd0">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed</Message>
+          <StackTrace>	at VideoProcessorTest::`anonymous namespace'::AssertOpposingRaw() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 113&#xD;
+	at VideoProcessorTest::OpposingBoundaryDiagnosticsTests::TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 153</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="3e6eb1b6-052c-449d-94be-852de62ef26b" testId="ff6f8d5b-551f-14b5-59e3-bdbc688455bf" testName="ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0049451" startTime="2026-11-01T00:43:07.1183215-04:00" endTime="2026-11-01T00:43:07.1232666-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3e6eb1b6-052c-449d-94be-852de62ef26b">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed</Message>
+          <StackTrace>	at VideoProcessorTest::`anonymous namespace'::AssertOpposingRaw() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 113&#xD;
+	at VideoProcessorTest::OpposingBoundaryDiagnosticsTests::ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\OpposingBoundaryDiagnosticsTests.cpp:line 273</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="a63698f2-4b5c-49f4-a861-c3b88ac7aa21" testId="d67f3d97-56c7-5411-c06f-1e5a785a977b" testName="QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps" computerName="DESKTOP-3G35SCJ" duration="00:00:00.3948831" startTime="2026-11-01T00:43:06.7112288-04:00" endTime="2026-11-01T00:43:07.1061119-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a63698f2-4b5c-49f4-a861-c3b88ac7aa21">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed</Message>
+          <StackTrace>	at VideoProcessorTest::DimSideCompositionGuardTests::QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\DimSideCompositionGuardTests.cpp:line 661</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="1d217e97-54a2-4516-b17a-445b2502db2d" testId="1cb7be36-466d-c9c2-1f4c-f974d0d24134" testName="QualifiedScopeReturnsWithZeroOppositeBoundaryContrast" computerName="DESKTOP-3G35SCJ" duration="00:00:00.1975993" startTime="2026-11-01T00:43:07.2114655-04:00" endTime="2026-11-01T00:43:07.4090648-04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1d217e97-54a2-4516-b17a-445b2502db2d">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed</Message>
+          <StackTrace>	at VideoProcessorTest::RememberedEdgeProfileTests::QualifiedScopeReturnsWithZeroOppositeBoundaryContrast() in E:\codex\videoprocessor\vp-0224-baseline-validation\src\VideoProcessor-Test\RememberedEdgeReturnTests.cpp:line 2058</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros" storage="e:\codex\videoprocessor\vp-0224-baseline-validation\x64\release\videoprocessor-test.dll" id="ff6f8d5b-551f-14b5-59e3-bdbc688455bf">
+      <Execution id="3e6eb1b6-052c-449d-94be-852de62ef26b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0224-baseline-validation\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.OpposingBoundaryDiagnosticsTests" name="VideoProcessorTest::OpposingBoundaryDiagnosticsTests::ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros" />
+    </UnitTest>
+    <UnitTest name="QualifiedScopeReturnsWithZeroOppositeBoundaryContrast" storage="e:\codex\videoprocessor\vp-0224-baseline-validation\x64\release\videoprocessor-test.dll" id="1cb7be36-466d-c9c2-1f4c-f974d0d24134">
+      <Execution id="1d217e97-54a2-4516-b17a-445b2502db2d" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0224-baseline-validation\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.RememberedEdgeProfileTests" name="VideoProcessorTest::RememberedEdgeProfileTests::QualifiedScopeReturnsWithZeroOppositeBoundaryContrast" />
+    </UnitTest>
+    <UnitTest name="InvalidSourceOrMismatchedProposedRasterUsesNoSamples" storage="e:\codex\videoprocessor\vp-0224-baseline-validation\x64\release\videoprocessor-test.dll" id="0ce94f05-8174-369f-859a-37183e94f623">
+      <Execution id="29c10ed6-6e75-43fb-bf25-f32d607a25dc" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0224-baseline-validation\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.OpposingBoundaryDiagnosticsTests" name="VideoProcessorTest::OpposingBoundaryDiagnosticsTests::InvalidSourceOrMismatchedProposedRasterUsesNoSamples" />
+    </UnitTest>
+    <UnitTest name="QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps" storage="e:\codex\videoprocessor\vp-0224-baseline-validation\x64\release\videoprocessor-test.dll" id="d67f3d97-56c7-5411-c06f-1e5a785a977b">
+      <Execution id="a63698f2-4b5c-49f4-a861-c3b88ac7aa21" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0224-baseline-validation\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.DimSideCompositionGuardTests" name="VideoProcessorTest::DimSideCompositionGuardTests::QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps" />
+    </UnitTest>
+    <UnitTest name="TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast" storage="e:\codex\videoprocessor\vp-0224-baseline-validation\x64\release\videoprocessor-test.dll" id="d3179346-d102-b491-2826-05023e81129d">
+      <Execution id="baac8ac3-4d7f-487e-b217-8408f7027cd0" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0224-baseline-validation\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.OpposingBoundaryDiagnosticsTests" name="VideoProcessorTest::OpposingBoundaryDiagnosticsTests::TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast" />
+    </UnitTest>
+    <UnitTest name="P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement" storage="e:\codex\videoprocessor\vp-0224-baseline-validation\x64\release\videoprocessor-test.dll" id="d78a7af8-5b39-9d72-28c6-2ce4f1d014f4">
+      <Execution id="5d0edbe4-d884-4a17-9ac0-efa22bc62808" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0224-baseline-validation\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.OpposingBoundaryDiagnosticsTests" name="VideoProcessorTest::OpposingBoundaryDiagnosticsTests::P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement" />
+    </UnitTest>
+    <UnitTest name="SmallBarsKeepTheExistingEighteenCodeContrastRequirement" storage="e:\codex\videoprocessor\vp-0224-baseline-validation\x64\release\videoprocessor-test.dll" id="851a55b2-eac1-d5e7-1772-c3d74b4379d0">
+      <Execution id="8b2ef072-7d54-438a-b175-f3895e6d73f7" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0224-baseline-validation\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.OpposingBoundaryDiagnosticsTests" name="VideoProcessorTest::OpposingBoundaryDiagnosticsTests::SmallBarsKeepTheExistingEighteenCodeContrastRequirement" />
+    </UnitTest>
+    <UnitTest name="UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples" storage="e:\codex\videoprocessor\vp-0224-baseline-validation\x64\release\videoprocessor-test.dll" id="119f6c12-2701-827e-f066-dd2b0c45a003">
+      <Execution id="f42345f7-2563-498c-a25a-43ec4310e0cb" />
+      <TestMethod codeBase="E:\codex\videoprocessor\vp-0224-baseline-validation\x64\Release\VideoProcessor-Test.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.OpposingBoundaryDiagnosticsTests" name="VideoProcessorTest::OpposingBoundaryDiagnosticsTests::UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="0ce94f05-8174-369f-859a-37183e94f623" executionId="29c10ed6-6e75-43fb-bf25-f32d607a25dc" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="851a55b2-eac1-d5e7-1772-c3d74b4379d0" executionId="8b2ef072-7d54-438a-b175-f3895e6d73f7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d78a7af8-5b39-9d72-28c6-2ce4f1d014f4" executionId="5d0edbe4-d884-4a17-9ac0-efa22bc62808" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="119f6c12-2701-827e-f066-dd2b0c45a003" executionId="f42345f7-2563-498c-a25a-43ec4310e0cb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d3179346-d102-b491-2826-05023e81129d" executionId="baac8ac3-4d7f-487e-b217-8408f7027cd0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ff6f8d5b-551f-14b5-59e3-bdbc688455bf" executionId="3e6eb1b6-052c-449d-94be-852de62ef26b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d67f3d97-56c7-5411-c06f-1e5a785a977b" executionId="a63698f2-4b5c-49f4-a861-c3b88ac7aa21" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1cb7be36-466d-c9c2-1f4c-f974d0d24134" executionId="1d217e97-54a2-4516-b17a-445b2502db2d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="8" executed="8" passed="0" failed="8" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>

@@ -4,10 +4,10 @@
 
 Review
 
-2026-10-31: Implementation is complete and pushed at
-`d59250fb2ec7eac35c7d32b8172be9e60fc91e36` on
+2026-11-01: Implementation is complete and pushed at
+`a1a9aa3a5adbba00eee99fdbb2662ff1c82d5e86` on
 `codex/vp-0224-auto-screen-alignment`.
-Draft PR: https://github.com/billslack2/videoprocessor/pull/244.
+PR: https://github.com/billslack2/videoprocessor/pull/244.
 Independent review approved after the recorded findings were corrected.
 
 Validation completed:
@@ -21,14 +21,18 @@ Validation completed:
 - Auto/Manual UI persistence, mode switching, Center, signed trim and Reset
   checks passed; Screen sections/units test passed. UI screenshot reviewed.
 - Full x64 Release solution build passed. Final committed host, both renderer
-  variants and Config build passed with source `d59250f`, `VERSION_DIRTY=false`.
+  variants and Config build passed with source `a1a9aa3`, `VERSION_DIRTY=false`.
   Existing compiler/Qt deployment warnings remain; no build errors.
 - Broad all-page UI test fails an unchanged beta assertion: source selects
   Expanding tab sizing while its test requires Maximum. Both lines are
   identical at the base commit; this unrelated issue was deliberately retained.
-- Additional full native suite is still running through expensive unchanged
-  subtitle GPU tests; no completion claim is made here. Final result will be
-  appended after the run finishes.
+- Full native suite completed: 3,584 executed, 3,575 passed, nine failed.
+  The new documentation inventory omission was fixed in `a1a9aa3a`; its
+  consistency test then passed 1/1. No C++ behavior changed in that fix.
+  The other eight failures reproduce 8/8, with the same test names/assertions,
+  on a freshly built, clean worktree at original beta `a591ad3b`. They are
+  existing detector failures, not Auto placement regressions. No detector
+  code or other active aspect-ratio worktree was changed.
 
 Remaining acceptance: live Top/Bottom/signed-trim scope-screen checks and the
 merge decision. The deployed player, active configuration and other source
@@ -56,6 +60,39 @@ configuration round trips, default compatibility, and x64 Release builds.
 
 2026-10-31: Created from the user's Screen geometry configuration screenshot
 and request. Initial story definition preceded the implementation requested later in this chat.
+
+## Final regression comparison (2026-11-01)
+
+The full run took about 63 minutes, including cold software-GPU shader work.
+All new placement tests and existing rendering regressions completed without
+failure. The single new failure concerned the public configuration inventory;
+that omission is corrected and its targeted retest passes.
+
+The following unchanged detector tests fail both on this feature build and
+on the untouched original beta. The exact isolated eight-test sets match:
+
+- `InvalidSourceOrMismatchedProposedRasterUsesNoSamples`
+- `SmallBarsKeepTheExistingEighteenCodeContrastRequirement`
+- `P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement`
+- `UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples`
+- `TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast`
+- `ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros`
+- `QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps`
+- `QualifiedScopeReturnsWithZeroOppositeBoundaryContrast`
+
+Baseline worktree: `E:\codex\videoprocessor\vp-0224-baseline-validation`,
+detached at `a591ad3b532771911e85f8ef026958279f2065f0`, source status clean.
+Its x64 Release native test build passed before the differential run.
+Independent review confirmed these fixtures call unchanged CPU detector/model
+functions directly and have no path through Auto alignment or renderer Apply.
+These failures remain outside VP-0224; they were recorded rather than repaired
+inside this placement story. The existing all-page UI tab-sizing assertion is
+also unchanged from the base.
+
+Evidence: `../assets/VP-0224/validation.json`,
+`../assets/VP-0224/baseline-detector-failures.trx`, and
+`../assets/VP-0224/inventory-fixed.trx`. Full original and focused TRX/logs are
+retained in the feature and baseline worktrees' `TestResults` directories.
 
 ## Implementation progress (2026-10-31)
 
@@ -184,9 +221,8 @@ Reference screenshot: `../assets/VP-0224/screen-picture-alignment.png`.
   silently or assume the observed deployed behavior matches its proposed fix.
 - VP-0207 / VP-0214: coordinate subtitle fit ownership where placement overlaps.
 
-Next action: finish collecting the already-running broad regression result,
-review PR #244, then schedule live scope-screen acceptance and integration when
-it will not disturb the concurrent AR investigation. The current feature is
+Next action: review PR #244, then perform live scope-screen acceptance and
+integration when it will not disturb the concurrent AR investigation. The current feature is
 isolated in its own clean E: worktree and is not deployed.
 
 ## Tracker audit

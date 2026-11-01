@@ -1,28 +1,28 @@
 {
-  "sourceCommit": "d59250fb2ec7eac35c7d32b8172be9e60fc91e36",
+  "sourceCommit": "a1a9aa3a5adbba00eee99fdbb2662ff1c82d5e86",
   "base": "a591ad3b532771911e85f8ef026958279f2065f0",
   "pullRequest": "https://github.com/billslack2/videoprocessor/pull/244",
-  "buildLog": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\vp0224-final-identity-build.log",
+  "buildLog": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\vp0224-final-release.log",
   "artifacts": [
     {
       "path": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\x64\\Release\\VideoProcessor-GUI.exe",
-      "sha256": "32a89fefc59069cc4a622e6f24a51caf47c34515ffd3a509644593cef9d8ddc4",
+      "sha256": "5306e441192da23976380b3f12e7b2bdfa5a122b2c8cff73a83d7753dcdad90c",
       "bytes": 3161600
     },
     {
       "path": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
-      "sha256": "514a78bac6a6fe4438d2db394f58ba5271c7c5d84ee3370a4db90a5ff9650025",
+      "sha256": "f9ed355acc3e7668b6929ac70c83fe98e2d3a576ea89d96d06d2098e4e196ff5",
       "bytes": 2779136
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "55e1dddc24f2b36db39aad99aeabfb096643aba4256a8a8984e11051f0e633e7",
+      "bytes": 2778112
     },
     {
       "path": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\x64\\Release\\VideoProcessorConfig.exe",
       "sha256": "26efb88d3f7861e8f44a52224242c158824dcfb261658d89d127debfcc7df9d9",
       "bytes": 2292224
-    },
-    {
-      "path": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
-      "sha256": "7688edd5a830f035fcd5a60d2807837f7213664eac06359bc8b9c1b5860b4a80",
-      "bytes": 2778112
     }
   ],
   "tests": [
@@ -116,7 +116,135 @@
     "Screen Config sections and inline units: passed"
   ],
   "preExistingFailure": "every page round trips: tab size policy Expanding in beta, test expects Maximum",
-  "review": "Approved with no remaining actionable findings after fixes",
+  "review": "Independent review approved, including final inventory fix; no remaining actionable findings.",
   "deployment": "none",
-  "fullNativeSuite": "running"
+  "fullNativeSuite": {
+    "run": {
+      "file": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\TestResults\\vp0224-native-all.trx",
+      "sha256": "8a4d739746e4e72fd0a55d7a74b93c5daf91686fd57ef6d8f09c8bbafa17f8fb",
+      "counters": {
+        "total": "3584",
+        "executed": "3584",
+        "passed": "3575",
+        "failed": "9",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "failedTests": [
+        "InvalidSourceOrMismatchedProposedRasterUsesNoSamples",
+        "UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples",
+        "ConfigurationReferenceMatchesPublicFieldInventory",
+        "P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement",
+        "SmallBarsKeepTheExistingEighteenCodeContrastRequirement",
+        "QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps",
+        "ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros",
+        "TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast",
+        "QualifiedScopeReturnsWithZeroOppositeBoundaryContrast"
+      ]
+    },
+    "inventoryFixRetest": {
+      "file": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\TestResults\\vp0224-inventory-fixed.trx",
+      "sha256": "4e5cb9c728f5029d36614b7d3530ae8caf70d46ddbd8ea6ecfac233db03ec10f",
+      "counters": {
+        "total": "1",
+        "executed": "1",
+        "passed": "1",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "failedTests": []
+    },
+    "remainingFailures": "Eight detector failures reproduced on the untouched original beta; no detector edits made."
+  },
+  "baselineComparison": {
+    "commit": "a591ad3b532771911e85f8ef026958279f2065f0",
+    "clean": true,
+    "feature": {
+      "file": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\TestResults\\vp0224-detector-isolated.trx",
+      "sha256": "0c159b59d3845fd394cd7dca771fc9847ce826c75571bda94d3f85c074515d26",
+      "counters": {
+        "total": "8",
+        "executed": "8",
+        "passed": "0",
+        "failed": "8",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "failedTests": [
+        "TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast",
+        "InvalidSourceOrMismatchedProposedRasterUsesNoSamples",
+        "P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement",
+        "UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples",
+        "ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros",
+        "QualifiedScopeReturnsWithZeroOppositeBoundaryContrast",
+        "SmallBarsKeepTheExistingEighteenCodeContrastRequirement",
+        "QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps"
+      ]
+    },
+    "baseline": {
+      "file": "E:\\codex\\videoprocessor\\vp-0224-baseline-validation\\TestResults\\vp0224-baseline-detector.trx",
+      "sha256": "49bf96c8caf227e0773b03ae5f20b966e49ae9863f5c1ba3ec224405b9ab6170",
+      "counters": {
+        "total": "8",
+        "executed": "8",
+        "passed": "0",
+        "failed": "8",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "failedTests": [
+        "InvalidSourceOrMismatchedProposedRasterUsesNoSamples",
+        "SmallBarsKeepTheExistingEighteenCodeContrastRequirement",
+        "P010P210AndNativeV210AgreeOnTheExactMirroredMeasurement",
+        "UntrustedAsymmetryHorizontalConflictOrInconsistentFloorUsesNoSamples",
+        "TrueDimPictureBoundaryHasNativeBarProofAndAdjacentContrast",
+        "ValidLayoutWithUnsupportedRgbDecoderCannotReportEvaluatedZeros",
+        "QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps",
+        "QualifiedScopeReturnsWithZeroOppositeBoundaryContrast"
+      ]
+    },
+    "identicalFailedTestSets": true
+  },
+  "remainingAcceptance": "Live scope-screen checks and merge; no deployment or active configuration changes."
 }
