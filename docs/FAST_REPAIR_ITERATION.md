@@ -15,6 +15,9 @@ every edit. These commands never issue a full-qualification receipt or deploy.
 
 # Full qualification before release/packaging. No selected-method shortcut.
 ./tools/qualify_runtime_build.ps1 -MagewellSdkRoot E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3
+
+# Run the broad GPU/cue suite using those exact qualified binaries, without rebuilding.
+./tools/test_subtitle_motion_renderers.ps1 -UseQualifiedBuild -OutputDirectory E:\codex\diagnostics\gpu-cue-qualified -MagewellSdkRoot E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3
 ```
 
 The shared native library finishes first. Independent companion projects then
@@ -69,3 +72,13 @@ units that own those validated CPU methods, plus the PCH and any explicit requir
 production support. Omitting `-Methods` still compiles and runs the complete Native
 manifest. Both forms use the same isolated iteration output and never grant full
 runtime qualification; the TRX validator still requires exactly the selected tests.
+
+For the broad GPU/cue suite, prefer full qualification followed by
+`test_subtitle_motion_renderers.ps1 -UseQualifiedBuild`. The switch verifies the
+matching source, required binaries and qualification evidence before creating a
+results directory or invoking tests, then verifies qualification again at the end.
+Missing or stale qualification fails closed; it never falls back to a rebuild.
+All existing dependency hashes, selected classes and TRX checks remain required.
+Its receipt records `reusedQualifiedBuild=true`, build mode
+`reused-qualified-build` and a null build exit because no build ran. Without the
+switch, the existing rebuild behavior remains and can invalidate qualification.
