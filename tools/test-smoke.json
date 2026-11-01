@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "description": "Explicit native smoke coverage. Class selections include future tests in those classes; review timing growth instead of silently dropping coverage.",
+  "timeoutSeconds": 300,
+  "groups": [
+    {
+      "classes": [
+        "ConfigFileTests",
+        "ConfigEditorCoreTests",
+        "ConfigurationRpcServerTests",
+        "QualityProfileMigrationTests"
+      ],
+      "name": "configuration"
+    },
+    {
+      "classes": [
+        "CaptureClockConversionTests",
+        "CaptureResyncHardeningTests",
+        "InvalidCaptureStateGraceTests",
+        "MagewellCaptureTests",
+        "MagewellRgb24PackingTests",
+        "NativeP010CaptureTests",
+        "NativeRgbAnalysisTests",
+        "DolbyVisionTunnelFormatterTests"
+      ],
+      "name": "capture and formats"
+    },
+    {
+      "classes": [
+        "ActivePictureEvidenceTests",
+        "ActivePictureBlackReferenceTests",
+        "ActivePictureDecisionTimelineTests",
+        "ActivePictureTransitionModelTests",
+        "LocalBoundaryRefinementTests",
+        "NearBlackNativeBoundaryRecoveryTests",
+        "FullRasterColorEvidenceFormatTests"
+      ],
+      "name": "measured active picture"
+    },
+    {
+      "classes": [
+        "SubtitleCutPasteTests",
+        "SubtitleHandoffTests",
+        "SubtitleBoxLookaheadTests",
+        "SubtitleMeasurementWorkerTests",
+        "TemporalPresentationLedgerTests"
+      ],
+      "name": "subtitle ownership"
+    },
+    {
+      "classes": [
+        "RationalLiveOutputSequencerTests",
+        "DisplayVsyncClockTests",
+        "DisplayCadenceRecoveryTests",
+        "DirectShowTimingClockTests",
+        "DirectShowQueueConstructionContractTests",
+        "RendererResetCoordinatorTests",
+        "RendererLivenessTests",
+        "StartupPresentationReadinessTests",
+        "OutputReadinessControllerTests"
+      ],
+      "name": "timing and recovery"
+    },
+    {
+      "classes": [
+        "LibplaceboRenderParametersTests",
+        "LibplaceboOutputPolicyTests",
+        "MadVRShaderRuntimeStateTests",
+        "HdrStatusTests",
+        "RendererDependencyTests",
+        "SourceUploadBatchTests",
+        "TemporalCleanPacketGpuTests"
+      ],
+      "name": "rendering and color"
+    }
+  ],
+  "methods": [
+    {
+      "class": "MotionRendererTests",
+      "method": "AllMixerFiltersRenderOnGpu"
+    },
+    {
+      "class": "MotionRendererTests",
+      "method": "CompositionBlendsTheCompleteProcessedSourceIncludingSubtitle"
+    },
+    {
+      "class": "MotionRendererTests",
+      "method": "DiscontinuityClearsHistoryInsteadOfMixingOldSource"
+    },
+    {
+      "class": "MotionRendererTests",
+      "method": "ProcessedSourceIsReusedAcrossOutputsAndInvalidatesForGeometryAndEpoch"
+    },
+    {
+      "class": "MotionRendererTests",
+      "method": "SmoothSubtitlePacketHoldKeepsPixelsTogetherAndExpiresWithoutOutputRenewal"
+    },
+    {
+      "class": "LibplaceboLutParserTests",
+      "method": "TargetLutGpuReadbackProvesIdentityAndNonIdentityPathsDiffer"
+    },
+    {
+      "class": "LibplaceboLutParserTests",
+      "method": "HdrLuminanceGpuReadbackPreservesToneMappingAbove203Nits"
+    },
+    {
+      "class": "LibplaceboLutParserTests",
+      "method": "NoLutGamma22FullLimitedRampsMatchReferenceAt8And10Bits"
+    },
+    {
+      "class": "LibplaceboLutParserTests",
+      "method": "BundledNlsGlSlHooksMovePixelsOnTheRealGpuPath"
+    }
+  ],
+  "excludedMethods": [
+    {
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "NativeReplayLocalGlyphProofSupportsSubtitleOnlyPlacement"
+    },
+    {
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "NativePausedReplayRuntimeNearBar20ReuseDiagnostic"
+    },
+    {
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "NativePausedReplayReportsSubtitleBarReferenceSensitivity"
+    },
+    {
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "NativePausedInspectionCandidateFindsCurrentCaptionWithoutSharedAuthority"
+    }
+  ]
+}

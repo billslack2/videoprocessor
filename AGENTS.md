@@ -41,6 +41,15 @@
 
 ## Testing and diagnostics
 
+- Use `tools/test_vp.ps1 -Suite Smoke` for fast native feedback during development.
+  See `docs/TESTING.md` for smoke coverage, targeted classes and final gates.
+- Before a final build or deployment, identify the applicable gate and affected
+  areas, then record which required checks passed on the final source/binaries
+  and what interactive coverage remains. Smoke alone never qualifies a final
+  deployment or distributed release. Trial deployments require a successful full
+  x64 Release solution build, smoke and relevant regressions; final candidates
+  require full native and the documented Config/renderer/updater/package checks.
+
 - After changing temporal packet lifetime, source processing, or subtitle GPU
   preparation, run `tools/test_subtitle_motion_renderers.ps1` against both shipped
   libplacebo dependencies in addition to the relevant native/stack regressions.
