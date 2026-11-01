@@ -9014,10 +9014,15 @@ namespace VideoProcessorTest
             char* expectedEnvironment=nullptr;size_t expectedEnvironmentSize=0;
             Assert::AreEqual(0,_dupenv_s(&expectedEnvironment,&expectedEnvironmentSize,"VP_PHYSICAL_EDGE_CAPTURE_EXPECTED_EDGES"));
             std::unique_ptr<char,decltype(&std::free)> expectedOwner(expectedEnvironment,&std::free);
-            int expectedTop=263,expectedBottom=1897;
+            int expectedLeft=0,expectedTop=263,expectedRight=0,expectedBottom=1897;
             const bool suppliedEdges=expectedOwner && *expectedOwner;
-            if(suppliedEdges)Assert::AreEqual(2,sscanf_s(expectedOwner.get(),"%d,%d",&expectedTop,&expectedBottom),
-                L"Explicit native replay expected edges must be independently verified source-row coordinates.");
+            if(suppliedEdges) {
+                int coordinates[4]={};const int count=sscanf_s(expectedOwner.get(),"%d,%d,%d,%d",
+                    &coordinates[0],&coordinates[1],&coordinates[2],&coordinates[3]);
+                Assert::IsTrue(count==2 || count==4,L"Explicit replay expected source edges must be top,bottom or left,top,right,bottom.");
+                if(count==4){expectedLeft=coordinates[0];expectedTop=coordinates[1];expectedRight=coordinates[2];expectedBottom=coordinates[3];}
+                else {expectedTop=coordinates[0];expectedBottom=coordinates[1];}
+            }
             size_t replayCount=0,replaySamples=0,replayMismatches=0;double replayTotalMs=0,replayPeakMs=0;
             const auto replay=[&](const char* capture) {
                 std::ifstream pixels(capture,std::ios::binary|std::ios::ate);
@@ -9027,31 +9032,46 @@ namespace VideoProcessorTest
                 std::ifstream sidecar(std::string(capture).substr(0,std::string(capture).size()-4)+".txt");
                 int width=0,height=0,format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;size_t pitch=0,uvPitch=0;
                 sidecar>>width>>height>>pitch>>uvPitch>>format>>encoding>>color>>top>>bottom>>script>>range;
-                Assert::IsTrue(sidecar.good() && width==3840 && height==2160 && format==4,
-                    L"Physical-edge replay requires the explicitly recorded native UHD decoded-DV source.");
+                Assert::IsTrue(sidecar.good() && width==3840 && height==2160 && (format==3 || format==4),
+                    L"Physical-edge replay requires an explicitly recorded native UHD YUV422 or decoded-DV source.");
+                Assert::IsTrue(format==4 || suppliedEdges,L"Generic native replay requires independently supplied expected source coordinates.");
+                const int targetRight=expectedRight?expectedRight:width;
+                Assert::IsTrue(expectedLeft>=0 && expectedLeft<targetRight && targetRight<=width &&
+                    expectedTop>=0 && expectedTop<expectedBottom && expectedBottom<=height);
+                const bool fullExpected=expectedLeft==0 && targetRight==width && expectedTop==0 && expectedBottom==height;
                 AnalysisLumaSource source{bytes.data(),bytes.size(),width,height,pitch,uvPitch,
                     static_cast<AnalysisLumaFormat>(format),static_cast<VideoFrameEncoding>(encoding),static_cast<ColorSpace>(color),1};
                 source.range=static_cast<AnalysisLumaRange>(range);
-                const int guardTop=suppliedEdges?top:254,guardBottom=suppliedEdges?bottom:1906;
+                const bool sidecarGuardValid=top>=0 && top<bottom && bottom<=height;
+                const int guardTop=fullExpected?0:suppliedEdges?(sidecarGuardValid?top:0):254;
+                const int guardBottom=fullExpected?height:suppliedEdges?(sidecarGuardValid?bottom:height):1906;
+                // Full-source coordinates are explicit fixture expectations, not
+                // inferred from native full-raster classification or a screen.
+                // Invalid sidecar0..0 supplies no measurement authority.
+                const auto raw=fullExpected?ExtractActivePictureEvidence(source):ActivePictureEvidence{};
+                const auto* reference=fullExpected?&raw.blackReference:nullptr;
                 const auto observedStarted=std::chrono::steady_clock::now();
-                const auto observed=MeasurePhysicalPictureEdges(source,ScopePresentation(width,height,guardTop,guardBottom));
+                const auto observed=MeasurePhysicalPictureEdges(source,ScopePresentation(width,height,guardTop,guardBottom),nullptr,reference);
                 const double observedMs=std::chrono::duration<double,std::milli>(
                     std::chrono::steady_clock::now()-observedStarted).count();
                 ++replayCount;replaySamples+=observed.samples;replayTotalMs+=observedMs;
                 replayPeakMs=std::max(replayPeakMs,observedMs);
                 Logger::WriteMessage((std::string("Supplied native physical-edge replay: ")+capture+" "+observed.reason+
                     " guard="+std::to_string(guardTop)+","+std::to_string(guardBottom)+
-                    " guard_provenance="+(suppliedEdges?"native-sidecar":"original-capture-control")+
-                    " samples="+std::to_string(observed.samples)+" observer_ms="+std::to_string(observedMs)).c_str());
-                const bool matches=observed.estimateAvailable && observed.estimate.left==0 &&
-                    observed.estimate.right==width && observed.estimate.top==expectedTop && observed.estimate.bottom==expectedBottom &&
-                    std::abs(double(width)/(expectedBottom-expectedTop)-observed.estimate.aspectRatio)<1e-9 &&
+                    " guard_provenance="+(fullExpected?"full-source-search-hint":suppliedEdges?
+                        (sidecarGuardValid?"native-sidecar":"invalid-sidecar-full-source-search-hint"):"original-capture-control")+
+                    " black_reference="+(reference?ActivePictureBlackReferenceModeName(reference->mode):"paired-edge-only")+
+                    " black_threshold="+std::to_string(reference?reference->threshold:-1)+
+                    " format="+std::to_string(format)+" samples="+std::to_string(observed.samples)+" observer_ms="+std::to_string(observedMs)).c_str());
+                const bool matches=observed.estimateAvailable && observed.estimate.left==expectedLeft &&
+                    observed.estimate.right==targetRight && observed.estimate.top==expectedTop && observed.estimate.bottom==expectedBottom &&
+                    std::abs(double(targetRight-expectedLeft)/(expectedBottom-expectedTop)-observed.estimate.aspectRatio)<1e-9 &&
                     observed.conservativeBounds.top==guardTop && observed.conservativeBounds.bottom==guardBottom;
                 if(!matches) {
                     ++replayMismatches;
                     Logger::WriteMessage((std::string("Native physical replay MISMATCH: ")+capture+" reason="+observed.reason+
                         " available="+std::to_string(observed.estimateAvailable?1:0)+
-                        " expected=0,"+std::to_string(expectedTop)+"-"+std::to_string(width)+","+std::to_string(expectedBottom)+
+                        " expected="+std::to_string(expectedLeft)+","+std::to_string(expectedTop)+"-"+std::to_string(targetRight)+","+std::to_string(expectedBottom)+
                         " actual="+std::to_string(observed.estimate.left)+","+std::to_string(observed.estimate.top)+"-"+
                         std::to_string(observed.estimate.right)+","+std::to_string(observed.estimate.bottom)+
                         " retained_guard="+std::to_string(observed.conservativeBounds.top)+","+
@@ -9320,6 +9340,157 @@ namespace VideoProcessorTest
                 L"An unverified gradual interior scene feature cannot veto independent current terminal picture-extent proof.");
             Assert::AreEqual(0,measured.estimate.left);Assert::AreEqual(960,measured.estimate.right);
             Assert::AreEqual(69,measured.estimate.top);Assert::AreEqual(471,measured.estimate.bottom);
+        }
+        TEST_METHOD(SlowInteriorSceneGradientsCannotVetoProvenRasterTerminalContacts)
+        {
+            for(int scale:{1,4})for(int format=0;format<3;++format)for(bool limited:{false,true})for(int side=0;side<4;++side) {
+                if(scale==4 && format!=1)continue;
+                const int width=960*scale,height=540*scale,floor=limited?64:0;
+                const bool vertical=side>=2,leading=(side%2)==0;
+                const int left=vertical?121*scale:0,right=vertical?839*scale:width;
+                const int top=vertical?0:69*scale,bottom=vertical?height:471*scale;
+                P010Frame frame(width,height,0,format!=0);frame.Fill(floor,512,512);
+                const int depth=vertical?height:width;
+                for(int position=0;position<depth;++position) {
+                    const int inward=leading?position:depth-1-position;
+                    const int value=floor+34+78*inward/(depth-1);
+                    if(vertical)frame.FillRectangle(left,position,right,position+1,value,508,502);
+                    else frame.FillRectangle(position,top,position+1,bottom,value,508,502);
+                }
+                auto source=format==0?frame.P010Source():frame.P210Source();
+                if(format==2)source.format=AnalysisLumaFormat::DecodedDolbyVision422;
+                source.range=limited?AnalysisLumaRange::Limited:AnalysisLumaRange::Full;
+                const auto retained=ScopePresentation(width,height,0,height);
+                const auto measured=MeasurePhysicalPictureEdges(source,retained);
+                Logger::WriteMessage((std::string("Slow terminal scene: side=")+std::to_string(side)+
+                    " scale="+std::to_string(scale)+" format="+std::to_string(format)+" limited="+std::to_string(limited)+
+                    " reason="+measured.reason).c_str());
+                Assert::IsTrue(measured.estimateAvailable,
+                    L"A weak smooth scene gradient without a qualified abrupt interior edge cannot veto positive current terminal contact proof.");
+                Assert::AreEqual(left,measured.estimate.left);Assert::AreEqual(right,measured.estimate.right);
+                Assert::AreEqual(top,measured.estimate.top);Assert::AreEqual(bottom,measured.estimate.bottom);
+                Assert::AreEqual(0,measured.conservativeBounds.top);Assert::AreEqual(height,measured.conservativeBounds.bottom);
+            }
+        }
+        TEST_METHOD(RaisedSideMatteAndFaintPictureCollarCannotBecomeFullRasterExtent)
+        {
+            constexpr int width=960,height=540;
+            for(int matte:{64,80})for(int side=0;side<4;++side)for(bool abruptInterior:{true,false}) {
+                const bool vertical=side>=2,leading=(side%2)==0;
+                const int depth=vertical?height:width,edge=leading?80:depth-80;
+                const int left=vertical?121:0,right=vertical?839:width;
+                const int top=vertical?0:69,bottom=vertical?height:471;
+                P010Frame frame(width,height,0,true);frame.Fill(0,512,512);
+                frame.FillRectangle(left,top,right,bottom,240,530,490);
+                if(vertical)frame.FillRectangle(0,leading?0:edge,width,leading?edge:height,matte,512,512);
+                else frame.FillRectangle(leading?0:edge,0,leading?edge:width,height,matte,512,512);
+                for(int position=0;position<depth;++position) {
+                    const int inward=leading?position-edge:edge-1-position;
+                    if(inward<0)continue;
+                    const int value=abruptInterior?(inward<4?matte+8:240):std::min(240,matte+8+inward/4);
+                    if(vertical)frame.FillRectangle(left,position,right,position+1,value,512,512);
+                    else frame.FillRectangle(position,top,position+1,bottom,value,512,512);
+                }
+                auto source=frame.P210Source();source.range=AnalysisLumaRange::Full;
+                const auto measured=MeasurePhysicalPictureEdges(source,ScopePresentation(width,height,0,height));
+                const int actual=vertical?(leading?measured.estimate.top:measured.estimate.bottom):
+                    (leading?measured.estimate.left:measured.estimate.right);
+                Logger::WriteMessage((std::string("Raised matte faint collar: side=")+std::to_string(side)+
+                    " matte="+std::to_string(matte)+" abrupt="+std::to_string(abruptInterior)+" reason="+measured.reason).c_str());
+                Assert::IsTrue(!measured.estimateAvailable || actual==edge,
+                    L"Bright raised matte cannot be mistaken for raster content, nor may a stronger interior replace a faint first picture collar.");
+            }
+        }
+        TEST_METHOD(DarkStructuredFullRasterCannotBecomeItsBrightNavigationPanel)
+        {
+            for(int scale:{1,4}) {
+                const int width=960*scale,height=540*scale,navbar=57*scale;
+                P010Frame frame(width,height,0,true);frame.Fill(64,512,512);
+                const int footer=height*3/4;
+                for(int y=0;y<height;++y) {
+                    const int value=y<navbar?148+8*y/navbar:y<footer?
+                        148-40*(y-navbar)/(footer-navbar):108-44*(y-footer)/(height-1-footer);
+                    frame.FillRectangle(0,y,width,y+1,value,512,512);
+                }
+                // Side background remains a continuous148..108..64 gradient;
+                // the dark footer contains distributed neutral gray cards.
+                // Their94..104 codes are below the old legacy116 witness,
+                // but above the same floor+16 physical margin used for matte.
+                for(int x=48*scale;x<width-48*scale;x+=24*scale) {
+                    const int index=x/(24*scale);
+                    frame.FillRectangle(x,footer,std::min(width-48*scale,x+18*scale),height,
+                        94+2*(index%6),512,512);
+                }
+                auto source=frame.P210Source();source.range=AnalysisLumaRange::Limited;
+                const auto raw=ExtractActivePictureEvidence(source);
+                const auto measured=MeasurePhysicalPictureEdges(source,ScopePresentation(width,height,0,height),nullptr,&raw.blackReference);
+                Logger::WriteMessage((std::string("Dark structured raster: scale=")+std::to_string(scale)+
+                    " threshold="+std::to_string(raw.blackReference.threshold)+" reason="+measured.reason).c_str());
+                Assert::IsTrue(measured.estimateAvailable,
+                    L"Current dark distributed picture structure must establish source extent without treating a bright navigation panel as the whole picture.");
+                Assert::AreEqual(0,measured.estimate.left);Assert::AreEqual(width,measured.estimate.right);
+                Assert::AreEqual(0,measured.estimate.top);Assert::AreEqual(height,measured.estimate.bottom);
+            }
+        }
+        TEST_METHOD(UniformOrRaisedExteriorWithLocalizedCueCannotImplyFullRasterPicture)
+        {
+            constexpr int width=960,height=540,navbar=57;
+            for(int matte:{64,80})for(bool exteriorCue:{false,true}) {
+                P010Frame frame(width,height,0,true);frame.Fill(matte,512,512);
+                frame.FillRectangle(0,0,width,navbar,152,508,502);
+                if(exteriorCue) {
+                    for(int x=410;x<550;x+=14)
+                        frame.FillRectangle(x,490,x+7,502,800,512,512);
+                }
+                auto source=frame.P210Source();source.range=AnalysisLumaRange::Limited;
+                const auto raw=ExtractActivePictureEvidence(source);
+                const auto measured=MeasurePhysicalPictureEdges(source,ScopePresentation(width,height,0,height),nullptr,&raw.blackReference);
+                Logger::WriteMessage((std::string("Panel with real exterior matte: matte=")+std::to_string(matte)+
+                    " localized_cue="+std::to_string(exteriorCue)+" reason="+measured.reason).c_str());
+                Assert::IsTrue(!measured.estimateAvailable ||
+                    (measured.estimate.left==0 && measured.estimate.right==width &&
+                     measured.estimate.top==0 && measured.estimate.bottom==navbar),
+                    L"Uniform raised exterior and localized text do not prove full-raster picture or a caption-expanded picture rectangle.");
+            }
+        }
+        TEST_METHOD(PatternedTrueMatteCannotHideItsFaintFirstPictureCollar)
+        {
+            constexpr int width=960,height=540;
+            for(bool limited:{false,true})for(int side=0;side<4;++side)for(bool sharpInterior:{false,true})for(bool explicitReference:{false,true}) {
+                const int matte=limited?80:64;
+                const bool vertical=side>=2,leading=(side%2)==0;
+                const int depth=vertical?height:width,along=vertical?width:height;
+                const int edge=leading?80:depth-80;
+                P010Frame frame(width,height,0,true);frame.Fill(matte,512,512);
+                for(int position=0;position<depth;++position) {
+                    const int inward=leading?position-edge:edge-1-position;
+                    if(inward<0)continue;
+                    const int value=sharpInterior?(inward<4?matte+8:240):std::min(240,matte+8+inward/4);
+                    if(vertical)frame.FillRectangle(0,position,width,position+1,value,512,512);
+                    else frame.FillRectangle(position,0,position+1,height,value,512,512);
+                }
+                // Stable dark matte markings span four separated source
+                // regions. They do not turn the remaining genuine matte into
+                // picture or permit replacing the faint first picture rows.
+                for(int index:{1,10,18,26}) {
+                    const int coordinate=index*(along-1)/31;
+                    const int first=std::max(0,coordinate-3),last=std::min(along,coordinate+4);
+                    if(vertical)frame.FillRectangle(first,leading?0:edge,last,leading?edge:height,matte-32,512,512);
+                    else frame.FillRectangle(leading?0:edge,first,leading?edge:width,last,matte-32,512,512);
+                }
+                auto source=frame.P210Source();source.range=limited?AnalysisLumaRange::Limited:AnalysisLumaRange::Full;
+                const auto raw=ExtractActivePictureEvidence(source);
+                const auto measured=MeasurePhysicalPictureEdges(source,ScopePresentation(width,height,0,height),nullptr,
+                    explicitReference?&raw.blackReference:nullptr);
+                const int actual=vertical?(leading?measured.estimate.top:measured.estimate.bottom):
+                    (leading?measured.estimate.left:measured.estimate.right);
+                Logger::WriteMessage((std::string("Patterned real matte: side=")+std::to_string(side)+
+                    " limited="+std::to_string(limited)+" sharp="+std::to_string(sharpInterior)+
+                    " explicit_reference="+std::to_string(explicitReference)+" reason="+measured.reason+
+                    " actual_edge="+std::to_string(actual)+" expected_edge="+std::to_string(edge)).c_str());
+                Assert::IsTrue(!measured.estimateAvailable || actual==edge,
+                    L"Distributed dark markings in genuine matte cannot suppress a faint first-picture collar or promote a stronger interior edge/full-raster extent.");
+            }
         }
         TEST_METHOD(QualifiedRaisedSidebarStillMeasuresItsCurrentSpatialBorder)
         {

@@ -3916,6 +3916,39 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                 center[channel]=centers[channel][referenceCount/2];
                 noise[channel]=std::max(4,std::min(12,2*noiseSamples[channel][referenceCount/2]+2));
             }
+            // Distributed dark gaps can suggest card/scene structure, but a
+            // patterned real matte has them too. Reinterpret its weak interior
+            // edge only when independent current source-floor evidence proves
+            // that picture reaches this terminal, with no known matte conflict.
+            int darkStructure[4]={};
+            for(int i=0;i<positions;++i) {
+                bool stable=int(matte[i].luma)<center[0]-2*noise[0] && spread[i][0]<=noise[0];
+                for(int holdout=3;holdout<5;++holdout)
+                    stable=stable && std::abs(int(strip[holdout][i].luma)-int(matte[i].luma))<=noise[0];
+                if(stable)++darkStructure[i/8];
+            }
+            int darkCount=0,darkQuarters=0;
+            for(int count:darkStructure){darkCount+=count;if(count)++darkQuarters;}
+            bool structuredReference=false;
+            if(terminalHint && darkCount>=4 && darkQuarters>=3 && internalEdges==0 &&
+                bounds.left==0 && bounds.top==0 && bounds.right==source.width && bounds.bottom==source.height &&
+                blackReference && blackReference->evaluated && blackReference->qualifiedEdgeMask==0 &&
+                blackReference->unresolvedEdgeMask==0 &&
+                blackReference->mode!=ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED &&
+                blackReference->mode!=ActivePictureBlackReferenceMode::FULL_REJECTED_RAISED &&
+                blackReference->floor>=0 && blackReference->floor<=1007 &&
+                blackReference->threshold>=0 && blackReference->threshold<=1007) {
+                int contact[4]={};
+                for(int i=0;i<positions;++i) {
+                    bool persistent=true;
+                    for(const auto& row:strip)
+                        persistent=persistent && int(row[i].luma)>=blackReference->floor+16;
+                    if(persistent)++contact[i/8];
+                }
+                int total=0,quarters=0;
+                for(int count:contact){total+=count;if(count>=2)++quarters;}
+                structuredReference=total>=12 && quarters>=3;
+            }
             std::array<bool,positions> matteColumn{};
             int matteSupport[4]={};
             int maxY=0;
@@ -3940,7 +3973,7 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                 if(terminalHint)continue;
                 return unknown("physical-edge-outer-reference-ambiguous");
             }
-            int nominal=-1;
+            int nominal=-1,firstWeakNominal=-1;
             bool earlierLowContrastDeparture=false;
             const int direction=leading?1:-1;
             // Eight source rows per coarse step; the existing bounded fine scan
@@ -3964,7 +3997,10 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                         int(nextRow[i].luma)-int(matte[i].luma)>=16)
                         ++support[i/8];
                 }
-                earlierLowContrastDeparture=earlierLowContrastDeparture || broadSupport(weakSupport);
+                if(broadSupport(weakSupport)) {
+                    earlierLowContrastDeparture=true;
+                    if(firstWeakNominal<0)firstWeakNominal=leading?y:y+1;
+                }
                 if(!broadSupport(support))continue;
                 // A short, detached broad graphic can have a sharp edge too.
                 // Require current source support farther inward; a detected
@@ -3988,8 +4024,39 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                 if(terminalHint)continue;
                 return unknown("physical-edge-no-broad-source-nomination");
             }
-            if(earlierLowContrastDeparture)
+            if(earlierLowContrastDeparture && !terminalHint)
                 return unknown("physical-edge-earlier-low-contrast-picture");
+            // A raster-edge picture strip can resemble a matte over a few
+            // columns. A smooth gradient away from that speculative reference
+            // is not a second boundary. Preserve the faint-collar veto only
+            // when its first weak departure contains an actual local edge.
+            bool verifiedWeakBoundary=false;
+            if(terminalHint && firstWeakNominal>=0) {
+                const int weakLow=std::max(1,firstWeakNominal-8);
+                const int weakHigh=std::min(depth-2,firstWeakNominal+8);
+                const int weakFirst=std::max(0,weakLow-3),weakLast=std::min(depth-1,weakHigh+2);
+                std::vector<std::array<AnalysisLumaSample,positions>> weakRows(size_t(weakLast-weakFirst+1));
+                for(int y=weakFirst;y<=weakLast;++y)
+                    if(!sampleRow(y,weakRows[size_t(y-weakFirst)]))return unknown("physical-edge-source-unavailable");
+                for(int boundary=weakLow;boundary<=weakHigh && !verifiedWeakBoundary;++boundary) {
+                    const int outside=leading?boundary-1:boundary,inside=leading?boundary:boundary-1;
+                    const int next=leading?boundary+1:boundary-2,after=leading?boundary+2:boundary-3;
+                    if(next<weakFirst || after<weakFirst || next>weakLast || after>weakLast)continue;
+                    int support[4]={};
+                    for(int i=0;i<positions;++i) {
+                        if(!matteColumn[i])continue;
+                        const int out=weakRows[size_t(outside-weakFirst)][i].luma;
+                        const int jump=int(weakRows[size_t(inside-weakFirst)][i].luma)-out;
+                        const int nextDeparture=int(weakRows[size_t(next-weakFirst)][i].luma)-int(matte[i].luma);
+                        const int afterDeparture=int(weakRows[size_t(after-weakFirst)][i].luma)-int(matte[i].luma);
+                        if(std::abs(out-int(matte[i].luma))<=noise[0] && jump>noise[0] && jump<16 &&
+                            nextDeparture>noise[0] && nextDeparture<16 && afterDeparture>noise[0] && afterDeparture<16)
+                            ++support[i/8];
+                    }
+                    verifiedWeakBoundary=broadSupport(support);
+                }
+                if(verifiedWeakBoundary && !structuredReference)return unknown("physical-edge-earlier-low-contrast-picture");
+            }
             const int low=std::max(3,nominal-margin),high=std::min(depth-3,nominal+margin);
             // Share these source samples across fine candidates and gap checks.
             // A short bright graphic can lie inside the fine search interval.
@@ -4029,8 +4096,10 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                 // independently visible edges on both sides; a central panel,
                 // one-sided feature, or narrow side marks cannot establish them.
                 // Keep the same per-sample contrast/halo/sustain requirements.
-                if(bestRow<0 && broadSupport(weakSupport))
-                    return unknown("physical-edge-earlier-low-contrast-picture");
+                if(bestRow<0 && broadSupport(weakSupport)) {
+                    if(!terminalHint)return unknown("physical-edge-earlier-low-contrast-picture");
+                    verifiedWeakBoundary=true;
+                }
                 if(!broadSupport(support))continue;
                 bool matteGap=false;
                 for(int offset=3;offset<=24 && !matteGap;++offset) {
@@ -4053,10 +4122,53 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                 // An optional interior nomination is not evidence against
                 // independent current pixels reaching this raster terminal.
                 // Preserve every positive ambiguity/weak-prefix veto above.
-                if(terminalHint)continue;
-                return unknown("physical-edge-no-broad-abrupt-boundary");
+                if(terminalHint && (!verifiedWeakBoundary || structuredReference))continue;
+                return unknown(verifiedWeakBoundary?"physical-edge-earlier-low-contrast-picture":
+                    "physical-edge-no-broad-abrupt-boundary");
             }
+            if((earlierLowContrastDeparture || verifiedWeakBoundary) && !structuredReference)
+                return unknown("physical-edge-earlier-low-contrast-picture");
             if(second>0 && second*1.5>=best)return unknown("physical-edge-multiple-boundaries");
+            // An interior UI/scene edge is not a picture boundary merely
+            // because one outer strip resembles matte. Check independent,
+            // separated exterior bands for broad sustained picture evidence.
+            // Narrow captions and short progress graphics cannot provide this
+            // two-dimensional contradiction to the proposed exterior matte.
+            const int exteriorDepth=leading?bestRow:depth-bestRow;
+            int firstExteriorContact=-1,consecutivePictureBands=0;bool exteriorPicture=false;
+            if(exteriorDepth>32)for(int probe=1;probe<=8 && !exteriorPicture;++probe) {
+                const int distance=1+(exteriorDepth-26)*probe/9;
+                std::array<std::array<AnalysisLumaSample,positions>,3> exterior;
+                for(int row=0;row<3;++row) {
+                    const int offset=row==0?0:row==1?8:24;
+                    const int coordinate=leading?bestRow-1-distance-offset:bestRow+distance+offset;
+                    if(!sampleRow(coordinate,exterior[row]))return unknown("physical-edge-source-unavailable");
+                }
+                int contact[4]={};
+                for(int i=0;i<positions;++i) {
+                    if(!matteColumn[i])continue;
+                    bool present=true;
+                    for(int row=0;row<3;++row)
+                        present=present && int(exterior[row][i].luma)-int(matte[i].luma)>=16;
+                    if(present)++contact[i/8];
+                }
+                if(broadSupport(contact)) {
+                    if(firstExteriorContact<0)firstExteriorContact=distance;
+                    else exteriorPicture=distance-firstExteriorContact>=std::max(24,exteriorDepth/4);
+                }
+                // Contradicting an exterior matte does not require both outer
+                // corners of a picture to be bright. Three consecutive broad,
+                // sustained bands provide independent two-dimensional support
+                // even when one outer region is dark scene content.
+                int total=0,quarters=0;
+                for(int count:contact){total+=count;if(count>=2)++quarters;}
+                consecutivePictureBands=(total>=12 && quarters>=3)?consecutivePictureBands+1:0;
+                exteriorPicture=exteriorPicture || consecutivePictureBands>=3;
+            }
+            if(exteriorPicture) {
+                if(terminalHint)continue; // Independent current terminal proof is still required.
+                return unknown("physical-edge-exterior-picture-contradiction");
+            }
             edges[axis][side]=bestRow;
             // Only an actually measured matte-to-picture border supplies the
             // common matte reference for independent raster-terminal proof.
@@ -4076,8 +4188,13 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
         if(extentCutoff<0 && blackReference && blackReference->evaluated &&
             blackReference->mode!=ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED &&
             blackReference->mode!=ActivePictureBlackReferenceMode::FULL_REJECTED_RAISED &&
-            blackReference->unresolvedEdgeMask==0 && blackReference->threshold>=0 && blackReference->threshold<=1007)
-            extentCutoff=blackReference->threshold+16;
+            blackReference->unresolvedEdgeMask==0 && blackReference->floor>=0 && blackReference->floor<=1007 &&
+            blackReference->threshold>=0 && blackReference->threshold<=1007)
+            // threshold already includes the matte-discard tolerance. Physical
+            // picture contrast is relative to the measured source floor, as it
+            // is for a paired matte above; adding tolerance again suppresses
+            // legitimate dark picture/card detail at the raster terminals.
+            extentCutoff=blackReference->floor+16;
         for(int axis=0;axis<2;++axis) {
             const bool vertical=axis==0;const int depth=vertical?source.height:source.width;
             const int alongStart=edges[1-axis][0],alongEnd=edges[1-axis][1];

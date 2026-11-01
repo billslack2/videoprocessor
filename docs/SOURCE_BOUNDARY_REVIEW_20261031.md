@@ -358,3 +358,61 @@ pending pixels at 25 are reverified, and 27 expires against the original budget.
 Changed backing, missing or foreign proof, partial current rows and changed
 native/source context withdraw the seed. Matched cold actual-renderer validation
 and the required dual-dependency GPU/full qualification remain pending.
+
+
+## Clear native scope and full-raster menu observations (2026-11-01)
+
+The installed 58ecfb58 runtime completed full qualification (878/878 Standard
+and 878/878 Beta) and both broad subtitle GPU suites (220/220 each). The new
+user captures nevertheless exposed physical-boundary observation failures;
+held presentation geometry did not establish correct current detection.
+
+The paused scope capture analysis-20261101-070120-48576-1 contains 64 decoded
+DV frames with physical picture [0,263,3840,1897], exactly 3840/1634 or
+2.3500611995:1. Its independent current terminal contacts already passed. A
+smooth gradient on the right-hand scene was fitted as hypothetical matte, and
+a coarse weak departure vetoed the whole observation before fine validation.
+None of the 64 frames had a qualifying abrupt edge at that false nomination.
+The observer now distinguishes a real faint first-picture collar from a smooth
+interior gradient before vetoing independently proved raster contact. Real
+faint collars retain their original protection, including sharp and smooth
+interiors, all four directions, raised levels and patterned matte.
+
+The moving Netflix menu capture analysis-20261101-071454-48576-2 contains 92
+native V210 frames. The source black floor is 76; the discard threshold is 100.
+Physical terminal presence previously added its 16-code contrast to the discard
+threshold (116), suppressing legitimate dark picture and footer-card pixels.
+It now measures that contrast from the actual source floor (92), consistently
+with independently measured paired matte. The 12-vote/three-region terminal
+support requirement remains unchanged. No platform, title, display size, or
+standard aspect ratio supplies the measurement.
+
+Two menu frames also admitted the bright navigation panel as the whole picture.
+Independent broad sustained picture in the proposed exterior now contradicts
+that false matte. A weak card edge may be reinterpreted only with distributed
+stable structure AND independent persistent source-floor picture evidence,
+full-source search bounds, no previously measured internal edge and no
+qualified/unresolved matte conflict. Structure alone is insufficient: the added
+patterned-matte regression reproduced an incorrect 80-to-84 pixel edge before
+this independent-evidence guard. All 32 combinations now preserve the true
+first edge or remain unknown, without promoting the stronger interior edge.
+
+The five added mandatory regressions raise the native minimum to 869. All
+869 pass in run 20261101-075616-02c51e0b, including 92/92 current native menu
+frames. The remaining frozen-binary replays pass 64/64 current scope, 64/64
+original DV, 56/56 earlier paused DV and 95/95 full-raster sun/star frames:
+371/371 captured frames in total. Expected rectangles are independently
+measured source coordinates; private movie pixels remain outside Git.
+Evidence is in E:/codex/diagnostics/netflix-basic-detection-20261101, including
+RED runs, native measurements and guarded-replays. Observer-only menu timing
+was 30.4184 ms across 92 frames, peak 1.1587 ms; this is not an end-to-end live
+latency guarantee or a claim about every possible scene.
+
+Production changes are confined to the CPU physical-boundary observer. They do
+not change subtitle ink, backing, retention, temporal ownership, shaders,
+source uploads, crop authority or downstream fitting, and add no temporal
+confirmation delay. Full matched x64 Release host/Standard/Beta qualification
+and live presentation verification are pending at this source checkpoint.
+The broad GPU suite above describes the prior installed commit, not this new
+candidate; its unchanged paths are covered again by the mandatory actual
+presentation matrix during new qualification.

@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 864,
+  "minimumNativeTests": 869,
   "requiredNativeMethods": [
     "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines",
     "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
@@ -142,7 +142,12 @@
     "HeldPendingSeedPreservationRejectsUnprovenForeignChangedAndExpiredProof",
     "TypedBacklogWitnessCoalescesOwnedActivePendingAndCompletedSourceWork",
     "TypedBacklogWorkCoalescingRejectsMissingOwnershipAndIncompleteCompletedResults",
-    "ChangedCurrentBackingWithdrawsHeldSeedDespiteAValidCurrentPreparedCertificate"
+    "ChangedCurrentBackingWithdrawsHeldSeedDespiteAValidCurrentPreparedCertificate",
+    "SlowInteriorSceneGradientsCannotVetoProvenRasterTerminalContacts",
+    "RaisedSideMatteAndFaintPictureCollarCannotBecomeFullRasterExtent",
+    "DarkStructuredFullRasterCannotBecomeItsBrightNavigationPanel",
+    "UniformOrRaisedExteriorWithLocalizedCueCannotImplyFullRasterPicture",
+    "PatternedTrueMatteCannotHideItsFaintFirstPictureCollar"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
