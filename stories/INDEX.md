@@ -286,7 +286,7 @@ they must not contain requirements that are absent from this file.
 
 | VP-0223 | In Progress | Magewell USB capture research and implementation foundation |
 
-| VP-0224 | In Progress | Auto-align the active picture to visible screen edges with signed pixel trim |
+| VP-0224 | Review | Auto-align the active picture to visible screen edges with signed pixel trim |
 
 ## Codex story workflow
 

@@ -1,0 +1,122 @@
+{
+  "sourceCommit": "d59250fb2ec7eac35c7d32b8172be9e60fc91e36",
+  "base": "a591ad3b532771911e85f8ef026958279f2065f0",
+  "pullRequest": "https://github.com/billslack2/videoprocessor/pull/244",
+  "buildLog": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\vp0224-final-identity-build.log",
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "32a89fefc59069cc4a622e6f24a51caf47c34515ffd3a509644593cef9d8ddc4",
+      "bytes": 3161600
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "514a78bac6a6fe4438d2db394f58ba5271c7c5d84ee3370a4db90a5ff9650025",
+      "bytes": 2779136
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\x64\\Release\\VideoProcessorConfig.exe",
+      "sha256": "26efb88d3f7861e8f44a52224242c158824dcfb261658d89d127debfcc7df9d9",
+      "bytes": 2292224
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "7688edd5a830f035fcd5a60d2807837f7213664eac06359bc8b9c1b5860b4a80",
+      "bytes": 2778112
+    }
+  ],
+  "tests": [
+    {
+      "file": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\TestResults\\vp0224-native-focused-final.trx",
+      "counters": {
+        "total": "42",
+        "executed": "42",
+        "passed": "42",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      }
+    },
+    {
+      "file": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\TestResults\\vp0224-beta-gpu.trx",
+      "counters": {
+        "total": "93",
+        "executed": "93",
+        "passed": "93",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      }
+    },
+    {
+      "file": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\TestResults\\vp0224-legacy-geometry.trx",
+      "counters": {
+        "total": "3",
+        "executed": "3",
+        "passed": "3",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      }
+    },
+    {
+      "file": "E:\\codex\\videoprocessor\\vp-0224-auto-screen-alignment\\TestResults\\vp0224-standard-gpu-final.trx",
+      "counters": {
+        "total": "3",
+        "executed": "3",
+        "passed": "3",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      }
+    }
+  ],
+  "uiTests": [
+    "Auto picture alignment round trips: passed including Reset",
+    "Screen Config sections and inline units: passed"
+  ],
+  "preExistingFailure": "every page round trips: tab size policy Expanding in beta, test expects Maximum",
+  "review": "Approved with no remaining actionable findings after fixes",
+  "deployment": "none",
+  "fullNativeSuite": "running"
+}

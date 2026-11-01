@@ -2,7 +2,43 @@
 
 ## Status
 
-In Progress
+Review
+
+2026-10-31: Implementation is complete and pushed at
+`d59250fb2ec7eac35c7d32b8172be9e60fc91e36` on
+`codex/vp-0224-auto-screen-alignment`.
+Draft PR: https://github.com/billslack2/videoprocessor/pull/244.
+Independent review approved after the recorded findings were corrected.
+
+Validation completed:
+
+- 42/42 focused native geometry, accepted configuration/inheritance/range and
+  renderer reset-policy tests passed.
+- 93/93 beta-dependency geometry/GPU/temporal renderer tests passed, including
+  actual pixel readback for linear, NLS and NLS+ alignment.
+- 3/3 final standard-dependency Auto GPU and dependency identity tests passed.
+- 3/3 existing configured-screen/anamorphic geometry regressions passed.
+- Auto/Manual UI persistence, mode switching, Center, signed trim and Reset
+  checks passed; Screen sections/units test passed. UI screenshot reviewed.
+- Full x64 Release solution build passed. Final committed host, both renderer
+  variants and Config build passed with source `d59250f`, `VERSION_DIRTY=false`.
+  Existing compiler/Qt deployment warnings remain; no build errors.
+- Broad all-page UI test fails an unchanged beta assertion: source selects
+  Expanding tab sizing while its test requires Maximum. Both lines are
+  identical at the base commit; this unrelated issue was deliberately retained.
+- Additional full native suite is still running through expensive unchanged
+  subtitle GPU tests; no completion claim is made here. Final result will be
+  appended after the run finishes.
+
+Remaining acceptance: live Top/Bottom/signed-trim scope-screen checks and the
+merge decision. The deployed player, active configuration and other source
+worktrees were left untouched to protect concurrent aspect-ratio work. This
+is ready for review, not yet accepted Done or deployed.
+
+Evidence: `../assets/VP-0224/validation.json`,
+`../assets/VP-0224/auto-picture-alignment.png`; full local logs/TRX files are in
+`E:\codex\videoprocessor\vp-0224-auto-screen-alignment\TestResults`.
+
 
 2026-10-31: Implementation started on `codex/vp-0224-auto-screen-alignment`
 in `E:\codex\videoprocessor\vp-0224-auto-screen-alignment`, from freshly
@@ -19,7 +55,7 @@ source accommodations take priority over edge pinning. Validate geometry,
 configuration round trips, default compatibility, and x64 Release builds.
 
 2026-10-31: Created from the user's Screen geometry configuration screenshot
-and request. Story definition only; implementation has not started.
+and request. Initial story definition preceded the implementation requested later in this chat.
 
 ## Implementation progress (2026-10-31)
 
@@ -148,13 +184,10 @@ Reference screenshot: `../assets/VP-0224/screen-picture-alignment.png`.
   silently or assume the observed deployed behavior matches its proposed fix.
 - VP-0207 / VP-0214: coordinate subtitle fit ownership where placement overlaps.
 
-Next action: inspect the latest remote beta's current configuration and final
-layout pipeline, reconcile the legacy/screen-relative reference behavior, and
-record precise rectangle mapping, safe limits, fallback and subtitle ordering
-in a readiness review. Discover and use the current remote beta in a clean
-source worktree under E:\codex\videoprocessor when implementation is requested.
-No source implementation, build, deployment or active configuration edit is
-part of creating this story.
+Next action: finish collecting the already-running broad regression result,
+review PR #244, then schedule live scope-screen acceptance and integration when
+it will not disturb the concurrent AR investigation. The current feature is
+isolated in its own clean E: worktree and is not deployed.
 
 ## Tracker audit
 
