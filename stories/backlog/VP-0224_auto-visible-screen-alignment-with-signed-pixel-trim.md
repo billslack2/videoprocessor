@@ -1,0 +1,132 @@
+# VP-0224: Auto-align the active picture to visible screen edges with signed pixel trim
+
+## Status
+
+Backlog
+
+2026-10-31: Created from the user's Screen geometry configuration screenshot
+and request. Story definition only; implementation has not started.
+
+## User story
+
+As a VideoProcessor operator with a configured physical screen inside a larger
+output raster, I want Auto alignment to calculate the initial vertical offset
+that pins the active picture to the visible screen's top or bottom, then let
+me apply a small positive or negative pixel adjustment. I also want to retain
+the current manual alignment and padding behavior.
+
+## Context
+
+The supplied screenshot shows the Scope - Bottom Screen profile, a 2.35:1
+screen, Bottom vertical picture alignment, and 280 px Screen edge padding.
+Today the operator supplies that pixel value. The requested Auto mode should
+derive the baseline placement from detected active-picture geometry, raster
+geometry, and configured screen geometry rather than require a manually
+calculated compensation for the part of the raster outside the visible screen.
+
+Keep three rectangles distinct: the HDMI/input raster, the detected active
+picture within it, and the physical screen's visible region mapped into output
+coordinates. Input and output dimensions may differ. The 2.35:1 CIH setup is
+display context, never a constraint on the detector's measured aspect ratio.
+Reference screenshot: `../assets/VP-0224/screen-picture-alignment.png`.
+
+## Required behavior
+
+1. Add an explicit Manual / Auto alignment mode to Screen geometry, alongside
+   the existing Top / Center / Bottom choice. Manual preserves current behavior,
+   including existing raster-relative placement and pixel padding. Existing
+   configurations default to Manual and render identically after upgrade.
+2. Auto computes the resting placement of the detected active picture against
+   the selected visible screen edge. Top pins its top edge to the visible top;
+   Bottom pins its bottom edge to the visible bottom. Use measured bounds and
+   existing source-to-output mapping, not only an AR label: asymmetric encoded
+   bars must not be treated as centered. Derive the screen rectangle from the
+   configured geometry; never assume the entire output raster is visible.
+3. Apply a separately retained signed pixel trim after the Auto baseline. Use
+   output-pixel units with an explicit sign convention: positive moves down,
+   negative moves up, for both Top and Bottom. Zero means exact edge alignment.
+   The Auto baseline must not be stored as or added a second time to the old
+   manual padding. Switching modes preserves each mode's saved adjustment.
+4. Center retains existing centered presentation; edge pinning and its Auto
+   trim are inactive, with retained values and clear UI help. Explain the
+   selected alignment reference, pixel units, and sign convention in the UI
+   and configuration reference. Reset behavior must be explicit and tested.
+5. Recalculate the baseline when trusted active bounds, input/output raster,
+   selected Screen profile, or relevant presentation geometry changes. Use
+   authoritative settled detector output and existing transition policy;
+   do not add an independent detector, force a standard ratio, or feed screen
+   placement/trim back into active-picture detection.
+6. Treat Auto as destination placement after existing sizing/mapping choices.
+   Preserve scale, source crop, selected aspect, and fitting policy. Exercise
+   linear, NLS, zoom and anamorphic paths where supported. Specify deterministic
+   whole-pixel rounding and avoid cumulative offsets across Apply or frames.
+7. Define and validate limits before implementation: explicit trim may move
+   content beyond a physical screen edge for calibration, but must not silently
+   introduce source cropping, rescaling, or raster clipping. Clamp to the safe
+   output range and expose effective trim and limiting reason. If picture
+   height exceeds visible screen height, pin the requested edge while retaining
+   existing sizing/crop policy; do not claim both edges fit.
+8. Respect required subtitle accommodations through the existing presentation
+   policy, and restore the Auto resting position plus trim when accommodations
+   expire. Do not pin the encoded raster or subtitle envelope while reporting
+   that the active-picture edge is pinned. Explain temporary displacement in
+   diagnostics. For unknown/untrusted geometry use the existing safe fallback,
+   report fallback explicitly, and resume Auto when trusted bounds return.
+9. Persist/inherit mode and trim per Screen profile and support live Apply.
+   Extend bounded layout diagnostics with mode, input/output/screen/active
+   rectangles, computed baseline, requested/effective trim, final position,
+   and fallback/limit/subtitle reasons.
+
+## Acceptance criteria
+
+- Demonstrate Top and Bottom Auto with zero trim on a configured 2.35:1 visible
+  screen inside a 16:9 output raster. Assert the active-picture edge equals the
+  visible-screen edge, including encoded bars and asymmetric active bounds.
+  Show the resulting rectangles differ from legacy raster-edge alignment in
+  a case where the visible screen and raster have different vertical bounds.
+- For both edges, positive and negative trims move the picture by the stated
+  output-pixel amount after Auto placement. Include safe-range limits, odd
+  dimensions/rounding, no vertical slack, content taller than the screen,
+  equal-aspect and pillarboxed pictures, and different input/output resolutions.
+- Cover arbitrary measured aspects without standard-ratio snapping, screen and
+  output changes, trusted-to-unknown-to-trusted transitions, and repeated Apply
+  with no accumulated drift. Auto does not change detector bounds or authority.
+- Verify subtitle entry/hold/release and supported NLS, zoom and anamorphic
+  layouts. Assert unchanged source selection and picture dimensions for a
+  placement-only mode/trim change; distinguish baseline from temporary offsets.
+- Verify legacy configuration migration/defaults, profile inheritance,
+  save/reload, mode switching with value retention, Center, Reset and live Apply.
+  Existing Manual profiles, including the screenshot's 280 px value, retain
+  their behavior without automatic conversion or configuration replacement.
+- Relevant geometry/configuration regressions and an x64 Release build pass.
+  Record visual checks on the configured scope screen for Top/Bottom, zero and
+  signed trim, subtitles and aspect transitions before marking Done.
+
+## Related work and readiness
+
+- VP-0155: configured-screen vertical alignment, including active NLS.
+- VP-0186: current Screen edge padding setting and UI.
+- VP-0193: safe final-placement/padding work. Review its current implementation
+  and acceptance evidence before designing the new mode; do not supersede it
+  silently or assume the observed deployed behavior matches its proposed fix.
+- VP-0207 / VP-0214: coordinate subtitle fit ownership where placement overlaps.
+
+Next action: inspect the latest remote beta's current configuration and final
+layout pipeline, reconcile the legacy/screen-relative reference behavior, and
+record precise rectangle mapping, safe limits, fallback and subtitle ordering
+in a readiness review. Discover and use the current remote beta in a clean
+source worktree under E:\codex\videoprocessor when implementation is requested.
+No source implementation, build, deployment or active configuration edit is
+part of creating this story.
+
+## Tracker audit
+
+Fetched origin/main at a8c12f5d before creating the story. Found 241 canonical
+records and 241 index rows, maximum root ID VP-0223, with no duplicate/missing
+IDs, registry/count discrepancies or child-sequence gaps. Assigned VP-0224.
+Pre-existing state discrepancies are preserved for a deliberate tracker repair:
+VP-0088 and VP-0168 use `In progress` rather than exact `In Progress`; VP-0168's
+index also uses that capitalization; VP-0070 lacks a `## Status` heading;
+VP-0211 is in `in-progress` with `In Progress` but indexed as `Review`.
+The unrelated canonical-checkout VP-0207 asset edit is preserved. This story
+and registry update are isolated in a clean E: tracker worktree.
