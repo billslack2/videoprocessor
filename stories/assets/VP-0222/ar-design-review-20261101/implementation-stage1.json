@@ -1,0 +1,406 @@
+{
+  "schemaVersion": 1,
+  "recorded": "2026-11-01T11:39:11.130880-05:00",
+  "story": "VP-0222",
+  "status": "First implementation stage validated; overall redesign remains In Progress",
+  "source": {
+    "repository": "billslack2/videoprocessor",
+    "branch": "codex/source-picture-redesign-20261101",
+    "commit": "0f6d9e7e5a74039eb897b8c49b26fb287d255982",
+    "integrationBranch": "v1.4.02-beta",
+    "integrationTipAtStart": "a591ad3b532771911e85f8ef026958279f2065f0",
+    "preservedPriorCandidate": "25a6abfd6cdc848a0380e71f4338d9b0479caa0f",
+    "worktree": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101"
+  },
+  "deployment": {
+    "performed": false,
+    "configurationChanged": false,
+    "liveGeometryAuthorityReplaced": false
+  },
+  "implemented": [
+    "CPU source-picture prototype: competing native edge candidates, bounded sampled topology, glyph separation, exterior contradiction and independently supported canvas inference. Measured geometry remains distinct from discard permission; no standard-ratio snapping.",
+    "Opt-in existing-worker shadow observation: defaults off, admission at most once per 500ms, 12ms cooperative deadline, source-owned results, no new queue or render-thread pixel scan.",
+    "Separate foreground scan, original bounded background dispatch and ready-consumption permissions. Expired tickets and compatible backlog cannot hide exact ready evidence; no added dwell, repeat votes, expiry dispatch or relaxed source/context checks.",
+    "Existing accepted-cue seed certificate now covers strong current three-line acquisition confirmed by four complete raw sources, despite pruned caller grouping. Current pixels, exact ownership, independent bars, age and nonrenewal checks remain required.",
+    "Computed-only bounded pending-seed diagnostics and failure-tail records distinguish missing proof from current-pixel rejection or expiration.",
+    "28 new required contracts plus 13 existing conversion/parity contracts added to the mandatory gate. Broader GPU wrapper can verify and reuse qualified binaries instead of rebuilding and deleting qualification."
+  ],
+  "finalQualification": {
+    "schemaVersion": 2,
+    "status": "Passed",
+    "configuration": "Release",
+    "platform": "x64",
+    "source": {
+      "commit": "0f6d9e7e5a74039eb897b8c49b26fb287d255982",
+      "dirty": false,
+      "fingerprint": "ca84256dd53c4f1bacd11fc293c160dba9db026a6b0bb78274abb701957ab5aa",
+      "label": "0f6d9e7e5a74",
+      "build": "0f6d9e7e5a74039eb897b8c49b26fb287d255982"
+    },
+    "manifestHash": "D0994E3D22021EBF9A67B031F76D08BDBBABFEA044E580573ED044F9745AB84B",
+    "binaries": [
+      {
+        "path": "x64/Release/VideoProcessor-GUI.exe",
+        "sha256": "82D012100447DEFF33BF3D12872228D79689B0A62E812B8408B7A346E56BBA44"
+      },
+      {
+        "path": "x64/Release/VideoProcessor-Lib.lib",
+        "sha256": "F896B7CF28D6D18C73166306E6C9A8EEE8C0094FE7F1966BF96D2C344F260386"
+      },
+      {
+        "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+        "sha256": "A7F8AFF2058E07FB8EEA4F5E26EE3BA7685BF2632190E3F50AF91E9B7D858186"
+      },
+      {
+        "path": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+        "sha256": "4C549ED14F491930926252F4BC98229832E2AB2CF2C2F7B313B2B5ADB811243F"
+      },
+      {
+        "path": "x64/Release/VideoProcessor-Test.dll",
+        "sha256": "EF5758D8F59A9532CAFD2AEC419E8209259B0AC75B0A38D513640903CD0DF9BB"
+      },
+      {
+        "path": "x64/Release/tests-beta/VideoProcessor-TestBeta.dll",
+        "sha256": "678C9CB883F8C78B7488621B34A0DB9293DC3AF23B1537AEDABDDDBA489B64C9"
+      },
+      {
+        "path": "x64/Release/libplacebo-360.dll",
+        "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+      },
+      {
+        "path": "x64/Release/tests-beta/libplacebo-388.dll",
+        "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+      },
+      {
+        "path": "x64/Release/vprenderer/libplacebo-360.dll",
+        "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+      },
+      {
+        "path": "x64/Release/vprenderer-beta/libplacebo-388.dll",
+        "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+      }
+    ],
+    "builds": [
+      {
+        "name": "native-library",
+        "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+        "exit": 0,
+        "seconds": 0.774,
+        "log": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-112436-1d4a8b2a\\native-library-build.log",
+        "PSComputerName": "localhost",
+        "RunspaceId": "ac308499-f4eb-4765-b043-1b6092d3802a",
+        "PSShowComputerName": false
+      },
+      {
+        "name": "standard-renderer",
+        "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRenderer.vcxproj",
+        "exit": 0,
+        "seconds": 38.798,
+        "log": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-112436-1d4a8b2a\\standard-renderer-build.log",
+        "PSComputerName": "localhost",
+        "RunspaceId": "00ac23f2-663b-49e7-aa5e-177adb1bf8b9",
+        "PSShowComputerName": false
+      },
+      {
+        "name": "host",
+        "project": "src\\VideoProcessor-GUI\\VideoProcessor-GUI.vcxproj",
+        "exit": 0,
+        "seconds": 45.226,
+        "log": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-112436-1d4a8b2a\\host-build.log",
+        "PSComputerName": "localhost",
+        "RunspaceId": "09b34f92-b52e-4c79-a452-ba27e4391eaa",
+        "PSShowComputerName": false
+      },
+      {
+        "name": "beta-renderer",
+        "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRendererBeta.vcxproj",
+        "exit": 0,
+        "seconds": 37.887,
+        "log": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-112436-1d4a8b2a\\beta-renderer-build.log",
+        "PSComputerName": "localhost",
+        "RunspaceId": "79891f88-69d8-4da7-9831-7c67a1d826f4",
+        "PSShowComputerName": false
+      },
+      {
+        "name": "standard-tests",
+        "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+        "exit": 0,
+        "seconds": 84.942,
+        "log": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-112436-1d4a8b2a\\standard-tests-build.log",
+        "PSComputerName": "localhost",
+        "RunspaceId": "ecb3fc4d-bf85-4f16-b335-7d1726acdc40",
+        "PSShowComputerName": false
+      },
+      {
+        "name": "beta-tests",
+        "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+        "exit": 0,
+        "seconds": 112.995,
+        "log": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-112436-1d4a8b2a\\beta-tests-build.log",
+        "PSComputerName": "localhost",
+        "RunspaceId": "70e8031d-85fe-4e3a-87a3-ed8f67c30c8c",
+        "PSShowComputerName": false
+      }
+    ],
+    "runs": [
+      {
+        "variant": "standard",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "x64\\Release\\VideoProcessor-Test.dll",
+        "trx": "artifacts/qualification/runs/20261101-112436-1d4a8b2a/standard.trx",
+        "trxSha256": "37A1AB4F108C5863647B1FDE810B7EEE96FBD1AAAE6123896C4AB73BD9559B15",
+        "executed": 924,
+        "native": 910,
+        "actualClassic": 14,
+        "seconds": 166.85
+      },
+      {
+        "variant": "beta",
+        "buildExit": 0,
+        "testExit": 0,
+        "binary": "x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+        "trx": "artifacts/qualification/runs/20261101-112436-1d4a8b2a/beta.trx",
+        "trxSha256": "EFCD6D89AE87BEC153003B326D77336372A519B8A11C7B496FAD600C38A03805",
+        "executed": 924,
+        "native": 910,
+        "actualClassic": 14,
+        "seconds": 158.773
+      }
+    ],
+    "optionalPrivateFixtures": [
+      {
+        "environment": "VP_AR_COLLAR_CAPTURE_FRAME",
+        "status": "absent-not-claimed",
+        "sha256": null,
+        "path": null
+      },
+      {
+        "environment": "VP_DARK_AR_ANALYSIS_FRAME",
+        "status": "absent-not-claimed",
+        "sha256": null,
+        "path": null
+      },
+      {
+        "environment": "VP_PHYSICAL_EDGE_CAPTURE_FRAME",
+        "status": "absent-not-claimed",
+        "sha256": null,
+        "path": null
+      },
+      {
+        "environment": "VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY",
+        "status": "absent-not-claimed",
+        "sha256": null,
+        "path": null
+      }
+    ],
+    "seconds": 521.831,
+    "shaderCacheDirectory": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-112436-1d4a8b2a\\shader-cache",
+    "coldShaderCache": true,
+    "finished": "2026-11-01T11:33:16.7904233-05:00"
+  },
+  "finalColdCacheRepeats": [
+    {
+      "source": "0f6d9e7e5a74039eb897b8c49b26fb287d255982",
+      "trial": 1,
+      "exit": 0,
+      "count": 1,
+      "outcome": "Passed",
+      "duration": "00:01:01.5922592",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\unknown-input-comparison\\final0f6d-1\\run.trx",
+      "testDllSha256": "678C9CB883F8C78B7488621B34A0DB9293DC3AF23B1537AEDABDDDBA489B64C9",
+      "message": ""
+    },
+    {
+      "source": "0f6d9e7e5a74039eb897b8c49b26fb287d255982",
+      "trial": 2,
+      "exit": 0,
+      "count": 1,
+      "outcome": "Passed",
+      "duration": "00:01:05.8295051",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\unknown-input-comparison\\final0f6d-2\\run.trx",
+      "testDllSha256": "678C9CB883F8C78B7488621B34A0DB9293DC3AF23B1537AEDABDDDBA489B64C9",
+      "message": ""
+    },
+    {
+      "source": "0f6d9e7e5a74039eb897b8c49b26fb287d255982",
+      "trial": 3,
+      "exit": 0,
+      "count": 1,
+      "outcome": "Passed",
+      "duration": "00:01:05.7123638",
+      "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\unknown-input-comparison\\final0f6d-3\\run.trx",
+      "testDllSha256": "678C9CB883F8C78B7488621B34A0DB9293DC3AF23B1537AEDABDDDBA489B64C9",
+      "message": ""
+    }
+  ],
+  "coldRepeatScope": "Each fresh VSTest process uses a new empty application shader cache and runs the beta unknown-input method at both 59.94 and 60Hz. Original output/identity/repeat assertions remain unchanged.",
+  "privateNativeCaptureReplay": {
+    "schemaVersion": 1,
+    "sourceCommit": "7ac84c6a8cd0dfbd81f352134b7ade8241e957a9",
+    "scope": "CPU prototype native replay; no live authority or full-rate dynamic transition acceptance",
+    "captureInstances": 479,
+    "mismatches": 0,
+    "knownDuplicate": "The newest scope set contains 15 byte-identical instances of one paused source frame.",
+    "cases": [
+      {
+        "case": "grid",
+        "outcome": "Passed",
+        "frames": 93,
+        "mismatches": 0,
+        "samples": 30233807,
+        "total_ms": 708.8607,
+        "average_ms": 7.622158064516128,
+        "peak_ms": 9.3898,
+        "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\prototype-replays\\grid-v5.trx"
+      },
+      {
+        "case": "menu92",
+        "outcome": "Passed",
+        "frames": 92,
+        "mismatches": 0,
+        "samples": 39452670,
+        "total_ms": 859.8172,
+        "average_ms": 9.345839130434783,
+        "peak_ms": 14.024,
+        "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\prototype-replays\\menu92-v5.trx"
+      },
+      {
+        "case": "new-scope",
+        "outcome": "Passed",
+        "frames": 15,
+        "mismatches": 0,
+        "samples": 5194215,
+        "total_ms": 90.0748,
+        "average_ms": 6.0049866666666665,
+        "peak_ms": 6.7597,
+        "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\prototype-replays\\new-scope-v5.trx"
+      },
+      {
+        "case": "original64",
+        "outcome": "Passed",
+        "frames": 64,
+        "mismatches": 0,
+        "samples": 21001648,
+        "total_ms": 350.5919,
+        "average_ms": 5.4779984375,
+        "peak_ms": 7.3469,
+        "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\prototype-replays\\original64-v5.trx"
+      },
+      {
+        "case": "paused56",
+        "outcome": "Passed",
+        "frames": 56,
+        "mismatches": 0,
+        "samples": 23516217,
+        "total_ms": 391.9857,
+        "average_ms": 6.999744642857143,
+        "peak_ms": 8.5437,
+        "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\prototype-replays\\paused56-v5.trx"
+      },
+      {
+        "case": "scope64",
+        "outcome": "Passed",
+        "frames": 64,
+        "mismatches": 0,
+        "samples": 28067072,
+        "total_ms": 419.5106,
+        "average_ms": 6.554853125,
+        "peak_ms": 12.2492,
+        "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\prototype-replays\\scope64-v5.trx"
+      },
+      {
+        "case": "sun95",
+        "outcome": "Passed",
+        "frames": 95,
+        "mismatches": 0,
+        "samples": 36114871,
+        "total_ms": 548.0662,
+        "average_ms": 5.769117894736842,
+        "peak_ms": 7.7819,
+        "trx": "E:\\codex\\diagnostics\\ar-design-review-20261101\\prototype-replays\\sun95-v5.trx"
+      }
+    ],
+    "artifactNote": "Replay used the optimized native test DLL built before commit; SourcePictureMeasurement.cpp is byte-identical to the pinned commit. Subsequent edits only extend cancellation tests and tune the separate opt-in shadow policy.",
+    "measurementImplementationSha256": "7775158d053e2601cee41c6b7e1e1346e1df3184721ab074f1eecd3f70f6a567",
+    "captureReplayDllSha256": "a33e6eb282ae6e134435c5d0b14ea403c3f9a430b976fba34eed21deb692b9a0"
+  },
+  "replayApplicability": "Measurement implementation is byte-identical between replay source 7ac84c6a and final source (git diff verified). 479 saved instances are not 479 independent scenes; newest 15 are byte-identical paused frames. No private pixels committed.",
+  "earlierBroadGpuSuite": {
+    "receipt": {
+      "schemaVersion": 1,
+      "sourceCommit": "b9282be7725c42ef3eb2906cc6db648162ecc42c",
+      "sourceDirty": false,
+      "configuration": "Release",
+      "architecture": "x64",
+      "classes": [
+        "MotionRendererTests",
+        "SourceUploadBatchTests",
+        "TemporalCleanPacketGpuTests",
+        "ReconstructionMotionTests",
+        "SubtitleCutPasteTests",
+        "SubtitleCutPasteShaderTests",
+        "RendererDependencyTests"
+      ],
+      "runs": [
+        {
+          "variant": "standard",
+          "buildExit": 0,
+          "testExit": 0,
+          "binary": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\x64\\Release\\VideoProcessor-Test.dll",
+          "sha256": "401EFDFA3CBF90DE344A0BE2D1E3749ADC9263FEF3B6CB06828DF5A31AAADA5A",
+          "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+          "passed": 220
+        },
+        {
+          "variant": "beta",
+          "buildExit": 0,
+          "testExit": 0,
+          "binary": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+          "sha256": "2B07D4AE04B420168E816E0E8DE7E69E38CE337D29FC37A5F7A365662E8175BE",
+          "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+          "passed": 220
+        }
+      ],
+      "finished": "2026-11-01T10:58:54.9488355-05:00",
+      "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+    },
+    "applicability": "220/220 each on b9282be7, before final ready-backlog and subtitle seed corrections. Historical coverage, not represented as a rerun of final binaries. Final source instead ran the full mandatory native and actual-renderer gates plus three extra cold beta trials."
+  },
+  "failingFirstEvidence": [
+    {
+      "run": "20261101-092919-018de89f",
+      "scope": "Initial empty spatial prototype fails five expected geometry cases."
+    },
+    {
+      "run": "20261101-093254-aedec9eb",
+      "scope": "Original ready-budget temporal behavior fails expected contracts."
+    },
+    {
+      "run": "20261101-102405-fae3cb4f",
+      "scope": "Suppressing original zero-ticket background dispatch fails real-worker recovery contract."
+    },
+    {
+      "run": "20261101-112027-d98e290c",
+      "scope": "Valid-domain real-worker/timeline test fails because old backlog admission discards exact ready native proof."
+    },
+    {
+      "run": "20261101-111911-f2f68b06",
+      "scope": "History-confirmed three-line cue fails to export the current-source seed certificate; fixture preconditions and negative controls pass."
+    }
+  ],
+  "preservedFailuresAndLimits": [
+    "Initial 7ac full run 20261101-100244-7f06dc1a: standard920/920, beta919/920; strict complete-output repeat assertion caught an unavailable successor. No repeat guard was widened.",
+    "Paired cold comparison: unchanged25a6 baseline3/3, 7ac2/3. Corrected b928 cold repeats2/3; failed third run composed source9325, then queue retirement to9331-9333 lost subtitle readiness before injected UNKNOWN. A follow-up unchanged25a6 cold run passed (baseline total4/4).",
+    "The missing history-acquisition seed contract exists in unchanged baseline code and was independently reproduced. It is consistent with the no-accepted-seed renderer trace, but the exact failed9333 trace did not expose its seed predicate; do not claim that causal link is proven.",
+    "Intermediate backlog fixture incorrectly changed analysis domain and was corrected; only valid-domain RED run112027 is relied on. An early focused worker GREEN used stale RED objects and was invalid; fresh complete builds passed. Six focused cases in112208 passed but the wrapper rejected source identity because the renderer BOM was repaired during the run; final clean qualification supersedes it.",
+    "Static captures and controlled output tests do not prove every-frame real HDMI scope/IMAX transition latency. Shadow measurement is diagnostic-only and defaults off; live geometry/crop authority remains on the existing path.",
+    "Cooperative shadow deadline is not a hard wall-clock cap. Unbudgeted native replay average was about7.03ms, with a14.024ms peak. Full-rate optimization and live dynamic validation remain necessary."
+  ],
+  "remaining": [
+    "Migrate measured geometry/uncertainty, conservative retained aperture and discard permission through one explicit interface; retain subtitle safety proof bases.",
+    "Consolidate source-event and transition ownership before removing superseded legacy inference/holds.",
+    "Collect bounded contiguous source/ready/dequeue/submit evidence around genuine scope/IMAX transitions at23.976 and59.94/60, then validate first eligible displayed-source adoption and stable subtitle behavior.",
+    "Qualified deployment and manual playback acceptance after live-authority migration; no deployment performed in this stage."
+  ]
+}

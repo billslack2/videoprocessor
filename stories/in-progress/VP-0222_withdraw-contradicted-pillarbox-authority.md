@@ -4,6 +4,8 @@
 
 In Progress
 
+Latest implementation (2026-11-01): first reviewed redesign stage is implemented and validated at `0f6d9e7e` on `codex/source-picture-redesign-20261101`. Both x64 Release renderer variants passed 924/924 mandatory tests (910 native + 14 actual-renderer cases each); three additional cold beta repetitions passed at both 59.94 and 60 Hz. The spatial prototype matched 479 saved capture instances across seven sets. New geometry is opt-in shadow-only: live AR/crop authority is not replaced and nothing was deployed. Story remains In Progress for authority migration and real dynamic transition acceptance. [Implementation evidence and retained failures](../assets/VP-0222/ar-design-review-20261101/implementation-stage1.json).
+
 Previous qualification record (superseded by failed live acceptance below): In Progress (2026-10-31). Reopened after failed live scope-to-IMAX acceptance of combined candidate 27dc733a. Repair and focused regression checks are underway in E:\codex\videoprocessor\combined-transition-regression-20261031. Prior controlled qualification below does not establish live acceptance. Previously implemented, reviewed and deployed from clean x64 Release commit `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8` on [draft PR #241](https://github.com/billslack2/videoprocessor/pull/241). All 3,621 standard methods executed: 3,620 passed, with one investigated pre-existing configuration-cache failure retained as an explicit local-deployment exception. Actual plugins 20/20, standard and beta GPU suites each 209/209, focused regressions 941/941 and native capture replays 3/3 passed. Host/both renderers, live output and final configuration/state hashes verified. User visual acceptance remains pending; keep PR draft and unmerged. [Final report](../assets/VP-0222/ar-continuity-20261031/validation-report.txt).
 
 ## Problem and evidence
@@ -426,3 +428,13 @@ deterministic first-source timing replay, not another threshold patch. Genuine
 scope-to-IMAX-and-back full-rate transition capture is needed for final dynamic
 validation because current diagnostics subsample native frames. Existing Black
 startup gap remains separate. Keep story InProgress and PR243 draft.
+
+## First redesign implementation stage (2026-11-01)
+
+The new CPU prototype measures native edges with explicit sampling coverage and uncertainty, separates glyphs from picture support, rejects interior child rectangles using exterior occupancy, and requires independent evidence for canvas inference. It preserves odd/asymmetric/nonstandard boundaries. An existing-worker shadow path is off by default and bounded to one admission per500ms with a12ms cooperative budget; it cannot publish AR or crop permission.
+
+Ready native evidence now survives expired scan budgets and compatible backlog without a new scan, dispatch or vote from a repeated source. Review also reproduced a subtitle proof handoff hole: four-source raw history could accept all three lines while the caller's short grouping still contained two. The tracker now exports its existing exact-current acquisition certificate for that strong case. Pending recovery continues to validate current pixels, ownership and original age; held/partial/weak cues cannot mint or renew the seed. Bounded diagnostics expose the seed disposition.
+
+Final clean source and both renderer dependencies passed924required tests each. Three fresh-process, empty-cache beta repetitions passed the previously intermittent method at both59.94/60. Earlier candidate failures remain in the linked evidence, including a post-Ready queue-gap loss; the deterministic seed defect is established, but exact causality for that historic failure is not overclaimed. All new contracts and the13conversion/parity checks are mandatory. The qualified-build reuse switch removes redundant rebuilding from future broad GPU runs while preserving hashes and execution checks.
+
+The479-instance native replay has zero mismatches; the newest15instances are one repeated paused frame. These results establish this stage, not final live scope/IMAX performance. The next work is the typed geometry/retention/discard interface and one timeline owner, then bounded every-source transition evidence. No runtime/configuration deployment or source integration merge occurred. Existing unrelated tracker changes were preserved.
