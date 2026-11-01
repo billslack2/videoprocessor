@@ -6283,6 +6283,118 @@ public:
     }
 
 
+    static void VerifyCrowdedRawHistoryWindow(size_t futures) {
+        struct Workspace {
+            std::array<SubtitleBoxObservation,4> frames;
+            SubtitleBoxPreview preview;
+            SubtitleBoxPresentation tracker;
+        };
+        for(bool top:{false,true})for(int fault=0;fault<20;++fault) {
+            auto storage=std::make_unique<Workspace>();auto& w=*storage;
+            for(size_t i=0;i<4;++i) {
+                w.frames[i]=NearCardThreeRows(21+i,top);
+                w.frames[i].policyGeneration=7;w.frames[i].continuityGeneration=8;
+            }
+            // Only preceding independent RAW observations are retained. They
+            // have never acquired a cue and cannot donate output geometry.
+            auto& damaged=w.frames[1];
+            if(fault==1)damaged.text.lineSignatures[0].fill(0xaa);
+            if(fault==2) {damaged.text.lineCapturePanels={};damaged.text.capturePanel={};}
+            if(fault==3)damaged.pendingRefresh=true;
+            if(fault==4)damaged.analyzed=false;
+            if(fault==5)++damaged.identity.sourceFrameNumber;
+            if(fault==6)--damaged.identity.acceptedSequence;
+            if(fault==7)++damaged.identity.analysisDomainKey;
+            if(fault==8)++damaged.policyGeneration;
+            if(fault==9)++damaged.continuityGeneration;
+            if(fault==10)damaged.identity.captureTimestamp=0;
+            if(fault==11)damaged.discontinuity=true;
+            if(fault==12)damaged.text.workLimit=true;
+            if(fault==13) {
+                auto ink=std::make_shared<SubtitleInkSnapshot>(*damaged.ink);
+                std::fill(ink->ownedInk.begin(),ink->ownedInk.end(),0);damaged.ink=ink;
+            }
+            if(fault==14)damaged.identity.captureTimestamp=w.frames[3].identity.captureTimestamp+1;
+            if(fault==15)damaged.barTrackingAuthority=true;
+            if(fault==16)damaged.currentAnchorUsesTrackedEdge=true;
+            if(fault==17)damaged.glyphLocalTop=true;
+            if(fault==18)damaged.glyphLocalBottom=true;
+            if(fault==19)damaged.inspectionCandidateUsed=true;
+            const size_t current=3-futures;
+            for(size_t i=0;i<current;++i) {
+                SubtitleBoxLookahead::ResolveInto(w.preview,&w.frames[i],1,7,8);
+                Assert::IsTrue(w.tracker.Consume(w.preview).lineCount<3);
+            }
+            SubtitleBoxLookahead::ResolveInto(w.preview,&w.frames[current],futures+1,7,8);
+            Assert::IsTrue(w.preview.text.lineCount<3,L"Short live horizon alone cannot acquire the distant row.");
+            const auto accepted=w.tracker.Consume(w.preview);
+            if(!fault) {
+                Assert::IsTrue(accepted.detected&&!accepted.held&&!accepted.confirmationPending);
+                Assert::AreEqual(3,accepted.lineCount,
+                    L"Four exact measured sources confirm current glyphs without waiting for additional future inputs.");
+                Assert::IsTrue(SubtitleCueContinuation::SameRect(accepted.bounds,w.frames[current].text.bounds));
+            } else Assert::IsTrue(accepted.lineCount<3,
+                L"Changed, missing, foreign, repeated or out-of-order history cannot manufacture a fourth matching source.");
+        }
+    }
+    TEST_METHOD(CrowdedCurrentAcquiresFromThreeExactRawPredecessorsWithoutReadyFutures) {
+        VerifyCrowdedRawHistoryWindow(0);
+    }
+    TEST_METHOD(CrowdedCurrentAcquiresFromTwoRawPredecessorsAndOneReadyFuture) {
+        VerifyCrowdedRawHistoryWindow(1);
+    }
+
+    TEST_METHOD(CrowdedRawHistoryRejectsChangedDuplicatesWithoutCountingRepeatedInputs) {
+        struct Workspace {
+            std::array<SubtitleBoxObservation,4> frames;
+            SubtitleBoxObservation duplicate;
+            SubtitleBoxPreview preview;
+            SubtitleBoxPresentation tracker;
+        };
+        for(int fault=0;fault<17;++fault) {
+            auto storage=std::make_unique<Workspace>();auto& w=*storage;
+            for(size_t i=0;i<4;++i) {
+                w.frames[i]=NearCardThreeRows(21+i,false);
+                w.frames[i].policyGeneration=7;w.frames[i].continuityGeneration=8;
+                if((fault>=8 && fault<=11) || fault==16) {
+                    w.frames[i].text.capturePanelMeasured=false;
+                    for(size_t row=0;row<3;++row) {
+                        const auto& line=w.frames[i].text.lineBounds[row];
+                        w.frames[i].text.panelTopEdges[row]={line.top-2,line.left-4,line.right+4,9000};
+                    }
+                }
+            }
+            for(size_t i=0;i<3;++i) {
+                SubtitleBoxLookahead::ResolveInto(w.preview,&w.frames[i],1,7,8);
+                Assert::IsTrue(w.tracker.Consume(w.preview).lineCount<3);
+            }
+            w.duplicate=w.frames[2];
+            if(fault==1)++w.duplicate.optimizationMode;
+            if(fault==2)++w.duplicate.pictureTop;
+            if(fault==3)w.duplicate.ink=std::make_shared<SubtitleInkSnapshot>(*w.duplicate.ink);
+            if(fault==4)w.duplicate.text.lineSignatures[0].fill(0xaa);
+            if(fault==5)++w.duplicate.policyGeneration;
+            if(fault==6)++w.duplicate.continuityGeneration;
+            if(fault==7)w.duplicate.pendingRefresh=true;
+            if(fault==8)++w.duplicate.text.panelTopEdges[0].y;
+            if(fault==9)++w.duplicate.text.panelTopEdges[0].left;
+            if(fault==10)++w.duplicate.text.panelTopEdges[0].right;
+            if(fault==11)--w.duplicate.text.panelTopEdges[0].supportBasisPoints;
+            if(fault==12)++w.duplicate.text.sourcePanel.top;
+            if(fault==13)w.duplicate.text.provenSourcePanel=w.duplicate.text.sourcePanel;
+            if(fault==14)++w.duplicate.text.linePanels[0].top;
+            if(fault==15)w.duplicate.text.provenLinePanels[0]=w.duplicate.text.linePanels[0];
+            SubtitleBoxLookahead::ResolveInto(w.preview,&w.duplicate,1,7,8);
+            for(int repeat=0;repeat<4;++repeat)
+                Assert::IsTrue(w.tracker.Consume(w.preview).lineCount<3,
+                    L"Repeating one input never supplies the fourth distinct source.");
+            SubtitleBoxLookahead::ResolveInto(w.preview,&w.frames[3],1,7,8);
+            const auto accepted=w.tracker.Consume(w.preview);
+            Assert::AreEqual(fault==0 || fault==16,accepted.detected&&accepted.lineCount==3,
+                L"Only an exact immutable duplicate preserves the chain; changed same-source interpretation withdraws it.");
+        }
+    }
+
     TEST_METHOD(LateOwnedReadinessHarvestCompletesCrowdedCueWithoutNewWork) {
         struct Workspace {
             std::array<SubtitleBoxObservation,4> frames;

@@ -13,6 +13,7 @@
 #include <limits>
 #include <cmath>
 #include <memory>
+#include <deque>
 
 // A strongly acquired bar plane may be carried forward only when every new
 // frame freshly revalidates that exact plane from its own pixels. The identity
@@ -2035,24 +2036,13 @@ namespace SubtitleBoxLookahead
         SubtitleBoxPreview result;ResolveInto(result,frames,count,policy,continuity);return result;
     }
 
-    // A short queue may expose only current plus two future scans. One retained
-    // RAW predecessor supplies the fourth independent observation, never pixels
-    // or geometry to copy. Keep the ordinary three-scan finite-card rule intact.
-    inline bool ConfirmCrowdedCurrentWithPrevious(const SubtitleBoxObservation& previous,
-        const SubtitleBoxPreview& preview)
+    // Four independently measured sources must agree with CURRENT glyphs.
+    // Historical observations donate evidence only, never output geometry.
+    inline bool ConfirmCrowdedFourRawSources(const SubtitleBoxObservation* frames,
+        const SubtitleBoxObservation& current,const SubtitleBoxPreview& preview)
     {
-        const auto& current=preview.current;
-        if(!preview.available || preview.followingCount<2 || current.text.lineCount!=3 ||
-            preview.text.lineCount>=3 || !NextIndependentAnalysis(previous,current) ||
-            !SameContext(previous,current))return false;
-        // Observation snapshots are large. This helper is called beneath the
-        // presentation stack, so keep its bounded four-scan workspace off it.
-        auto storage=std::make_unique<std::array<SubtitleBoxObservation,4>>();
-        auto& frames=*storage;
-        frames[0]=previous;frames[1]=current;
-        frames[2]=preview.following[0];frames[3]=preview.following[1];
         const int tolerance=(std::max)(4,current.height/180);
-        for(size_t i=0;i<frames.size();++i) {
+        for(size_t i=0;i<4;++i) {
             const auto& frame=frames[i];
             if(!frame.analyzed || frame.pendingRefresh || frame.analysisRefresh || frame.discontinuity ||
                 !frame.text.detected || frame.text.held || frame.text.workLimit || frame.text.lineCount!=3 ||
@@ -2073,10 +2063,94 @@ namespace SubtitleBoxLookahead
                 if(!matched)return false;
             }
         }
-        // Reuse the full-horizon anchor and crowded-row admission rules. The
-        // returned historical bounds are deliberately discarded by the caller.
-        return Resolve(frames.data(),frames.size(),preview.policyGeneration,
-            preview.continuityGeneration).text.lineCount==3;
+        auto resolved=std::make_unique<SubtitleBoxPreview>();
+        ResolveInto(*resolved,frames,4,preview.policyGeneration,preview.continuityGeneration);
+        return resolved->text.lineCount==3;
+    }
+
+    // Preserve the original one-RAW-predecessor/two-ready-futures contract,
+    // including its explicitly measured stride-two legacy callers.
+    inline bool ConfirmCrowdedCurrentWithPrevious(const SubtitleBoxObservation& previous,
+        const SubtitleBoxPreview& preview)
+    {
+        const auto& current=preview.current;
+        if(!preview.available || preview.followingCount<2 || current.text.lineCount!=3 ||
+            preview.text.lineCount>=3 || !NextIndependentAnalysis(previous,current) ||
+            !SameContext(previous,current))return false;
+        auto storage=std::make_unique<std::array<SubtitleBoxObservation,4>>();
+        auto& frames=*storage;
+        frames[0]=previous;frames[1]=current;
+        frames[2]=preview.following[0];frames[3]=preview.following[1];
+        return ConfirmCrowdedFourRawSources(frames.data(),current,preview);
+    }
+
+    inline bool CompleteConsecutiveCrowdedRaw(const SubtitleBoxObservation& frame)
+    {
+        return frame.analysisStride==1 && frame.analyzed && !frame.analysisRefresh &&
+            !frame.pendingRefresh && !frame.discontinuity && !frame.cadenceSkipped &&
+            !frame.barTrackingAuthority && !frame.currentAnchorUsesTrackedEdge &&
+            !frame.glyphLocalTop && !frame.glyphLocalBottom && !frame.inspectionCandidateUsed &&
+            frame.text.detected && !frame.text.held && !frame.text.confirmationPending &&
+            !frame.text.workLimit && frame.text.lineCount==3 && HasBarEvidence(frame) &&
+            frame.identity.acceptedSequence && frame.identity.sourceFrameNumber && frame.identity.captureTimestamp &&
+            frame.ink && frame.ink->rawEvidenceComplete;
+    }
+    inline bool ConsecutiveCrowdedRawContext(const SubtitleBoxObservation& previous,
+        const SubtitleBoxObservation& current)
+    {
+        return CompleteConsecutiveCrowdedRaw(previous) && CompleteConsecutiveCrowdedRaw(current) &&
+            NextIndependentAnalysis(previous,current) && SameContext(previous,current) &&
+            current.identity.sourceFrameNumber>previous.identity.sourceFrameNumber &&
+            current.identity.sourceFrameNumber-previous.identity.sourceFrameNumber==1 &&
+            current.identity.captureTimestamp>previous.identity.captureTimestamp &&
+            previous.policyGeneration==current.policyGeneration && previous.continuityGeneration==current.continuityGeneration &&
+            previous.optimizationMode==current.optimizationMode && previous.pictureTop==current.pictureTop &&
+            previous.pictureBottom==current.pictureBottom && previous.sharedPicture.Matches(current.sharedPicture);
+    }
+    inline bool SameRepeatedCrowdedRaw(const SubtitleBoxObservation& previous,const SubtitleBoxObservation& current)
+    {
+        if(!CompleteConsecutiveCrowdedRaw(previous) || !CompleteConsecutiveCrowdedRaw(current) ||
+            !SameAnalysisFrameIdentity(previous.identity,current.identity) || !SameContext(previous,current) ||
+            previous.ink.get()!=current.ink.get() || previous.optimizationMode!=current.optimizationMode ||
+            previous.policyGeneration!=current.policyGeneration || previous.continuityGeneration!=current.continuityGeneration ||
+            previous.pictureTop!=current.pictureTop || previous.pictureBottom!=current.pictureBottom ||
+            !previous.sharedPicture.Matches(current.sharedPicture) ||
+            previous.text.capturePanelMeasured!=current.text.capturePanelMeasured)return false;
+        const auto sameRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+            return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+        };
+        if(!sameRect(previous.text.bounds,current.text.bounds) ||
+            !sameRect(previous.text.capturePanel,current.text.capturePanel) ||
+            !sameRect(previous.text.sourcePanel,current.text.sourcePanel) ||
+            !sameRect(previous.text.provenSourcePanel,current.text.provenSourcePanel))return false;
+        for(size_t i=0;i<3;++i)
+            if(previous.text.lineSignatures[i]!=current.text.lineSignatures[i] ||
+                !sameRect(previous.text.lineBounds[i],current.text.lineBounds[i]) ||
+                !sameRect(previous.text.lineCapturePanels[i],current.text.lineCapturePanels[i]) ||
+                !sameRect(previous.text.linePanels[i],current.text.linePanels[i]) ||
+                !sameRect(previous.text.provenLinePanels[i],current.text.provenLinePanels[i]) ||
+                previous.text.panelTopEdges[i].y!=current.text.panelTopEdges[i].y ||
+                previous.text.panelTopEdges[i].left!=current.text.panelTopEdges[i].left ||
+                previous.text.panelTopEdges[i].right!=current.text.panelTopEdges[i].right ||
+                previous.text.panelTopEdges[i].supportBasisPoints!=current.text.panelTopEdges[i].supportBasisPoints)return false;
+        return true;
+    }
+    // A short READY horizon can use up to three actual RAW predecessors. The
+    // same four-source admission remains mandatory; aliases/repeats add no vote.
+    inline bool ConfirmCrowdedCurrentWithRawHistory(const std::deque<SubtitleBoxObservation>& history,
+        const SubtitleBoxPreview& preview)
+    {
+        const auto& current=preview.current;
+        if(!preview.available || !CompleteConsecutiveCrowdedRaw(current) || preview.text.lineCount>=3)return false;
+        const size_t future=(std::min)(size_t(preview.followingCount),size_t(2));
+        const size_t previous=3-future;
+        if(history.size()<previous)return false;
+        auto storage=std::make_unique<std::array<SubtitleBoxObservation,4>>();auto& frames=*storage;
+        for(size_t i=0;i<previous;++i)frames[i]=history[history.size()-previous+i];
+        frames[previous]=current;
+        for(size_t i=0;i<future;++i)frames[previous+i+1]=preview.following[i];
+        for(size_t i=1;i<4;++i)if(!ConsecutiveCrowdedRawContext(frames[i-1],frames[i]))return false;
+        return ConfirmCrowdedFourRawSources(frames.data(),current,preview);
     }
 
     // Subtitle readiness is independent of native AR readiness. The caller
@@ -2231,6 +2305,7 @@ public:
         m_queueContinuation = {};
         m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
         m_previousRawCrowded = {};
+        m_crowdedRawHistory.clear();
         m_barTrackingReference = {};
         m_pendingPictureGlyphAcquisition = {};
         m_hasPendingPictureGlyphAcquisition = false;
@@ -2404,8 +2479,20 @@ public:
         // witness. It can never authorize a later second gap or a retry lease.
         const auto completeOutputRetirement=m_completeOutputRetirement;
         m_completeOutputRetirement={};
+        // Only the caller's immutable current RAW scan enters this history.
+        // Pending refreshes, unknown inputs, gaps and changed source contexts
+        // clear it even when another continuation may retain a semantic cue.
+        const auto& raw=suppliedPreview.current;
+        const bool duplicateRaw=!m_crowdedRawHistory.empty() &&
+            SameAnalysisFrameIdentity(m_crowdedRawHistory.back().identity,raw.identity);
+        if(!suppliedPreview.available || !SubtitleBoxLookahead::CompleteConsecutiveCrowdedRaw(raw) ||
+            (duplicateRaw && !SubtitleBoxLookahead::SameRepeatedCrowdedRaw(m_crowdedRawHistory.back(),raw)) ||
+            (!m_crowdedRawHistory.empty() && !duplicateRaw &&
+                !SubtitleBoxLookahead::ConsecutiveCrowdedRawContext(m_crowdedRawHistory.back(),raw)))
+            m_crowdedRawHistory.clear();
         std::unique_ptr<SubtitleBoxPreview> historyConfirmed;
-        if(SubtitleBoxLookahead::ConfirmCrowdedCurrentWithPrevious(m_previousRawCrowded,suppliedPreview)) {
+        if(SubtitleBoxLookahead::ConfirmCrowdedCurrentWithRawHistory(m_crowdedRawHistory,suppliedPreview) ||
+            SubtitleBoxLookahead::ConfirmCrowdedCurrentWithPrevious(m_previousRawCrowded,suppliedPreview)) {
             historyConfirmed=std::make_unique<SubtitleBoxPreview>(suppliedPreview);
             historyConfirmed->text=suppliedPreview.current.text;
             historyConfirmed->currentLinesConfirmed=true;
@@ -2490,7 +2577,13 @@ public:
         // This raw candidate grants no output or accepted-reference authority.
         // Unknown/pending scans replace it; only the validated cadence return
         // above may carry one independent scan through an unanalyzed source.
-        m_previousRawCrowded=preview.current;
+        m_previousRawCrowded=suppliedPreview.current;
+        if(SubtitleBoxLookahead::CompleteConsecutiveCrowdedRaw(suppliedPreview.current) &&
+            (m_crowdedRawHistory.empty() ||
+                !SameAnalysisFrameIdentity(m_crowdedRawHistory.back().identity,suppliedPreview.current.identity))) {
+            m_crowdedRawHistory.push_back(suppliedPreview.current);
+            while(m_crowdedRawHistory.size()>3)m_crowdedRawHistory.pop_front();
+        }
         auto continuityPreview=preview;
         if(m_refreshedReference.ink &&
             SameAnalysisFrameIdentity(m_refreshedReference.identity,preview.current.identity) &&
@@ -2986,6 +3079,7 @@ private:
     SubtitleAcceptedCueSeedCertificate m_acceptedCueSeedCertificate;
     SubtitleCurrentPreparedCueCertificate m_currentPreparedCueCertificate;
     SubtitleBoxObservation m_previousRawCrowded;
+    std::deque<SubtitleBoxObservation> m_crowdedRawHistory;
     SubtitleBoxObservation m_pendingPictureGlyphAcquisition;
     bool m_hasPendingPictureGlyphAcquisition=false;
     static SubtitleBoxObservation AcquisitionReference(const SubtitleBoxObservation& current,

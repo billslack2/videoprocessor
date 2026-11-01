@@ -168,3 +168,27 @@ timeline context, matching fields that the diagnostic producer actually emits.
 Against the unchanged42ce1661 runtime it passes3/6 focused cases and reproduces
 one partial-caption output plus two startup gaps. Actual validation of the late
 harvest remains next; no new deployment or full qualification is claimed.
+
+## Bounded raw subtitle history checkpoint
+
+The completed-result harvest at d4e08b4c passes four of six focused actual
+renderer cases (20261101-011239-342375d3). The two remaining failures expose
+complete current raw scans with an insufficient ready future horizon. Older
+independently scanned sources already existed, but only one predecessor was
+retained for crowded three-line confirmation.
+
+The presentation now retains at most three original raw predecessors and combines
+them with current and already-ready future scans. The existing four-distinct-source
+pixel, glyph and backing checks remain mandatory. Only current geometry is
+promoted; history never supplies output bounds, native AR authority or a renewed
+cue lease. This adds no runtime wait or analysis submission. Unknown inputs,
+pending work, gaps, context changes and changed same-source interpretations clear
+the chain; repeated images and duplicate calls add no votes.
+
+Both short-horizon regressions failed before implementation. All 848 native
+methods then passed in 20261101-012259-b10277a7. Independent review found an
+omitted duplicate-backing comparison; expanded controls reproduced that failure
+in 20261101-012857-8fdf0069 and pass after repair in
+20261101-012938-d81cd4af. The duplicate test covers 17 lifecycle cases, including
+backing-edge coordinates/support and measured/proven panel metadata. Actual
+renderer and full cold-cache validation of this final candidate remain next.
