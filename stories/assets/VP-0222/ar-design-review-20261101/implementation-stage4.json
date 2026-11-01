@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "a1c05cb32b61723e3c9e15477f27d1e801823dd7",
+  "branch": "codex/source-picture-redesign-20261101",
+  "status": "logic repaired; not deployed or fully runtime qualified",
+  "savedLog": "E:\\codex\\diagnostics\\paused-imax-20261101\\live-jitter-20261101-1655.log",
+  "runtimeLog": "C:\\Videoprocessor\\vp\\logs\\vp.log",
+  "jitterSources": [
+    24056,
+    24057
+  ],
+  "jitterLocalTime": "2026-11-01 16:52:23",
+  "priorSource": "9cbcf47bc2c656cd34eb102ac37664dffebcd79f",
+  "redRun": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-174758-45626310",
+  "red": {
+    "executed": 2,
+    "failure": "BroadOutsideOccupancyCannotTrimUnverifiedOuterRows",
+    "passed": 1,
+    "failed": 1
+  },
+  "focusedGreen": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-175346-14713939",
+  "focused": {
+    "executed": 6,
+    "passed": 6
+  },
+  "nativeGreen": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-175410-feba74a4",
+  "native": {
+    "executed": 962,
+    "passed": 962,
+    "failed": 0
+  },
+  "newMandatoryMethods": 5,
+  "testedBeforeCommitWithIdenticalContent": true,
+  "deployed": false,
+  "gpuExecuted": false,
+  "configurationChanged": false,
+  "remaining": [
+    "Live/GPU validation of repaired presentation",
+    "Later unknown physical measurements with stable output; no native capture of this later content",
+    "Full release qualification"
+  ]
+}
