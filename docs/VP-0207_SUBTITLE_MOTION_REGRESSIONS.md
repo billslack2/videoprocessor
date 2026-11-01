@@ -11,6 +11,14 @@ analysis by default. A conclusive observation contains either valid current
 caption bounds or qualified complete searches proving caption absence; finishing
 a worker job without searching text is insufficient.
 
+A high-rate input uses two independent subtitle scanner workers; inputs at 30 Hz
+and below retain one serial worker. Both lanes still analyze complete source
+frames at stride one. Their mutable scanners and tracking hints are separate;
+only an immediately preceding source in the same context may supply a tracking
+hint. Ready observations and active-job deduplication use full source keys, and
+late obsolete completions cannot evict current window evidence. Parallel work
+must not manufacture consecutive confirmation from nonadjacent source frames.
+
 The progressive D3D11 path with inactive temporal processing may bridge
 one inconclusive input by copying the previous successful complete final image.
 Picture, subtitles, crop and HDR provenance remain together. The original source

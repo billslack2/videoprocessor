@@ -141,7 +141,183 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         const ActivePictureFrameIdentity*,bool,long) {
         return guard.Resolve(preview,source,frameMs,holdMs);
     }
+    struct ReleaseBlockedWorkers {
+        std::atomic_bool& release;
+        ~ReleaseBlockedWorkers(){release.store(true,std::memory_order_release);}
+    };
+    static bool WaitForEntered(const std::atomic_uint& entered,unsigned count) {
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        while(entered.load(std::memory_order_acquire)<count && std::chrono::steady_clock::now()<deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return entered.load(std::memory_order_acquire)>=count;
+    }
 public:
+    TEST_METHOD(ParallelSamplersShareOneDiagnosticCaptureClaimForEveryCaptureMode) {
+        struct RestoreClaim {
+            bool original=SubtitleDiagnosticCaptureClaimed().exchange(false);
+            ~RestoreClaim(){SubtitleDiagnosticCaptureClaimed().store(original);}
+        } restore;
+        for(const bool proofFailureMode:{false,true}) {
+            SubtitleDiagnosticCaptureClaimed().store(false);
+            std::atomic_uint entered{0},claimed{0};std::atomic_bool start{false};
+            const auto attempt=[&] {
+                ++entered;
+                while(!start.load())std::this_thread::yield();
+                if(TryClaimSubtitleDiagnosticCapture(proofFailureMode))++claimed;
+            };
+            std::thread first(attempt),second(attempt);
+            while(entered.load()!=2)std::this_thread::yield();
+            start.store(true);first.join();second.join();
+            Assert::AreEqual(1u,claimed.load(),L"Parallel samplers must share a single diagnostic file claim in every capture mode");
+            Assert::IsFalse(TryClaimSubtitleDiagnosticCapture(proofFailureMode),L"A later sampler cannot overwrite the claimed capture");
+        }
+    }
+    TEST_METHOD(HighInputCadenceRunsTwoIndependentSamplersAndDeduplicatesBothActiveKeys) {
+        std::atomic_bool release{false};SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};
+        worker.SetInputRateHz(59.94);
+        std::atomic_uint entered{0},active{0},peak{0},calls{0};std::mutex ownersMutex;
+        std::vector<const SubtitleMeasurementSampler*> owners;
+        const auto work=[&](SubtitleBoxObservation key) {
+            return [&,key](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference&) {
+                ++calls;const unsigned now=++active;auto prior=peak.load();
+                while(prior<now && !peak.compare_exchange_weak(prior,now)){}
+                {std::lock_guard<std::mutex> lock(ownersMutex);owners.push_back(&sampler);}
+                ++entered;
+                while(!release.load(std::memory_order_acquire))std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                --active;auto result=key;result.analyzed=true;result.text.cue=key.identity.acceptedSequence;return result;
+            };
+        };
+        const auto first=WorkerKey(1,0xA11CE),second=WorkerKey(2,0xA11CE),third=WorkerKey(3,0xA11CE);
+        worker.Submit(first,work(first));worker.Submit(second,work(second));worker.Submit(third,work(third));
+        const bool twoActive=WaitForEntered(entered,2);
+        const unsigned beforeRelease=entered.load();
+        worker.Submit(first,work(first));worker.Submit(second,work(second));
+        release.store(true,std::memory_order_release);
+        SubtitleBoxObservation a,b,c;
+        const bool allReady=WaitForTake(worker,first,a)&&WaitForTake(worker,second,b)&&WaitForTake(worker,third,c);
+        worker.Stop();
+        Assert::IsTrue(twoActive,L"59.94 Hz must run two complete independent source scans before either blocked job is released.");
+        Assert::AreEqual(2u,beforeRelease,L"The source worker pool must remain bounded to two active jobs.");
+        Assert::AreEqual(2u,peak.load());Assert::AreEqual(3u,calls.load());Assert::IsTrue(allReady);
+        Assert::IsTrue(owners.size()==3 && owners[0]!=owners[1],L"Concurrent source scans must own different stateful samplers.");
+        Assert::AreEqual(uint64_t(1),a.text.cue);Assert::AreEqual(uint64_t(2),b.text.cue);Assert::AreEqual(uint64_t(3),c.text.cue);
+        Assert::IsTrue(worker.TakeDiagnostics().deduplicated>=2);
+    }
+    TEST_METHOD(LowInputCadenceRetainsOneSerialSampler) {
+        for(double hz:{23.976,24.0,29.97,30.0}) {
+            std::atomic_bool release{false};SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};
+            worker.SetInputRateHz(hz);std::atomic_uint entered{0};
+            const auto work=[&](SubtitleBoxObservation key) {
+                return [&,key](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                    ++entered;while(!release.load(std::memory_order_acquire))std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    auto result=key;result.analyzed=true;return result;
+                };
+            };
+            const auto first=WorkerKey(1,0xA11CE),second=WorkerKey(2,0xA11CE);
+            worker.Submit(first,work(first));worker.Submit(second,work(second));
+            const bool started=WaitForEntered(entered,1);std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            const unsigned beforeRelease=entered.load();release.store(true,std::memory_order_release);
+            SubtitleBoxObservation result;const bool complete=WaitForTake(worker,first,result)&&WaitForTake(worker,second,result);
+            worker.Stop();Assert::IsTrue(started&&complete);Assert::AreEqual(1u,beforeRelease);
+        }
+    }
+    TEST_METHOD(ParallelSourceCompletionOutOfOrderRemainsBoundToItsExactIdentity) {
+        std::atomic_bool release{false};SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};
+        worker.SetInputRateHz(60.0);std::atomic_uint entered{0};
+        const auto first=WorkerKey(9,0xA11CE),second=WorkerKey(10,0xA11CE);
+        worker.Submit(first,[&,first](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            ++entered;while(!release.load(std::memory_order_acquire))std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            auto result=first;result.analyzed=true;result.text.cue=91;return result;
+        });
+        const bool firstActive=WaitForEntered(entered,1);
+        worker.Submit(second,[second](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            auto result=second;result.analyzed=true;result.text.cue=101;return result;
+        });
+        SubtitleBoxObservation early;const bool secondReady=WaitForRead(worker,second,early);
+        SubtitleBoxObservation unavailable;const bool firstReadyTooSoon=worker.TryRead(first,unavailable);
+        auto wrong=second;++wrong.identity.analysisDomainKey;const bool wrongRead=worker.TryRead(wrong,unavailable);
+        release.store(true,std::memory_order_release);SubtitleBoxObservation late;
+        const bool firstReady=WaitForTake(worker,first,late);worker.Stop();
+        Assert::IsTrue(firstActive&&secondReady&&firstReady,L"Later independent source completion must not wait behind an older blocked scan.");
+        Assert::IsFalse(firstReadyTooSoon||wrongRead);Assert::AreEqual(uint64_t(101),early.text.cue);
+        Assert::AreEqual(uint64_t(10),early.identity.acceptedSequence);Assert::AreEqual(uint64_t(91),late.text.cue);
+    }
+    TEST_METHOD(StopJoinsBothActiveSamplersAndCancelsPendingWithoutPublication) {
+        std::atomic_bool release{false};SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};
+        worker.SetInputRateHz(60.0);std::atomic_uint entered{0},calls{0};
+        const auto work=[&](SubtitleBoxObservation key) {
+            return [&,key](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                ++calls;++entered;while(!release.load(std::memory_order_acquire))std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                auto result=key;result.analyzed=true;return result;
+            };
+        };
+        const auto first=WorkerKey(1,0xA11CE),second=WorkerKey(2,0xA11CE),pending=WorkerKey(3,0xA11CE);
+        worker.Submit(first,work(first));worker.Submit(second,work(second));
+        const bool twoActive=WaitForEntered(entered,2);worker.Submit(pending,work(pending));
+        std::thread stopping([&]{worker.Stop();});
+        bool stopObserved=false;
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        while(std::chrono::steady_clock::now()<deadline) {
+            if(worker.TakeDiagnostics().stopping){stopObserved=true;break;}
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        const auto rejected=WorkerKey(4,0xA11CE);worker.Submit(rejected,work(rejected));
+        release.store(true,std::memory_order_release);stopping.join();
+        SubtitleBoxObservation result;
+        Assert::IsTrue(twoActive&&stopObserved);Assert::AreEqual(2u,calls.load());
+        Assert::IsFalse(worker.TryRead(first,result)||worker.TryRead(second,result)||worker.TryRead(pending,result));
+        const auto diagnostics=worker.TakeDiagnostics();
+        Assert::IsTrue(diagnostics.stopping&&!diagnostics.active&&diagnostics.activeWorkers==0&&diagnostics.pending==0);
+        worker.SetInputRateHz(120);worker.Submit(rejected,work(rejected));
+        Assert::AreEqual(2u,calls.load(),L"A stopped worker pool cannot restart through cadence configuration or submission.");
+    }
+    TEST_METHOD(LateOldGenerationCompletionCannotReplaceTheCurrentReadySource) {
+        std::atomic_bool release{false};SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};
+        worker.SetInputRateHz(59.94);std::atomic_uint entered{0};
+        const auto old=WorkerKey(5,0xA11CE);
+        worker.Submit(old,[&,old](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            ++entered;while(!release.load(std::memory_order_acquire))std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            auto result=old;result.analyzed=true;result.text.cue=55;return result;
+        });
+        const bool started=WaitForEntered(entered,1);
+        auto current=WorkerKey(1,0xA11CE);current.identity.transportGeneration=2;
+        worker.BeginSourceWindow(current.identity);
+        worker.Submit(current,[current](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference& prior) {
+            auto result=current;result.analyzed=true;result.text.cue=prior.valid?999:21;return result;
+        });
+        SubtitleBoxObservation result;const bool currentReady=WaitForRead(worker,current,result);
+        release.store(true,std::memory_order_release);
+        uint64_t discarded=0;const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        while(discarded==0 && std::chrono::steady_clock::now()<deadline) {
+            discarded+=worker.TakeDiagnostics().staleCompleted;
+            if(!discarded)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        worker.Stop();
+        Assert::IsTrue(started&&currentReady);Assert::AreEqual(uint64_t(1),discarded);
+        Assert::IsFalse(worker.TryRead(old,result));Assert::IsTrue(worker.TryRead(current,result));
+        Assert::AreEqual(uint64_t(21),result.text.cue);Assert::AreEqual(uint64_t(2),result.identity.transportGeneration);
+    }
+    TEST_METHOD(NonAdjacentOrNewGenerationSourceCannotBorrowWorkerTrackingReference) {
+        SubtitleMeasurementWorker worker;worker.SetInputRateHz(24.0);
+        auto first=Ready(1).current;first.identity.analysisDomainKey=0xA11CE;
+        worker.Submit(first,[first](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {return first;});
+        SubtitleBoxObservation result;Assert::IsTrue(WaitForTake(worker,first,result));
+        Assert::IsTrue(SubtitleBoxLookahead::AdvanceBarTrackingReference(result).valid);
+        auto gap=first;gap.identity=Identity(3);gap.identity.analysisDomainKey=0xA11CE;
+        std::atomic_bool borrowedGap{false},borrowedGeneration{false};
+        worker.Submit(gap,[&,gap](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference& prior) {
+            borrowedGap=prior.valid;return gap;
+        });
+        Assert::IsTrue(WaitForTake(worker,gap,result));
+        auto next=first;next.identity.transportGeneration=2;next.identity.acceptedSequence=4;
+        worker.BeginSourceWindow(next.identity);
+        worker.Submit(next,[&,next](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference& prior) {
+            borrowedGeneration=prior.valid;return next;
+        });
+        Assert::IsTrue(WaitForTake(worker,next,result));worker.Stop();
+        Assert::IsFalse(borrowedGap.load()||borrowedGeneration.load(),
+            L"Worker-local state is a hint only for the exact immediately preceding source in the same context.");
+    }
     TEST_METHOD(FaultCapturePredicateRequiresCurrentSharedFailureAndBoundedSource) {
         auto pixels=Pixels();
         auto source=Source(pixels);

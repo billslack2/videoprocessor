@@ -5,6 +5,8 @@
 #include <DebugLog.h>
 #include <algorithm>
 #include <atomic>
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <condition_variable>
 #include <deque>
@@ -51,12 +53,19 @@ inline std::atomic_bool& SubtitleDiagnosticCaptureClaimed()
     return claimed;
 }
 
+inline bool TryClaimSubtitleDiagnosticCapture(bool proofFailureMode)
+{
+    (void)proofFailureMode; // All capture modes write the same module-owned file.
+    return !SubtitleDiagnosticCaptureClaimed().exchange(true);
+}
+
 // Every source frame gets independent geometry and raw ink. Rechecking only
 // old glyph rectangles cannot discover a new word/companion outside them, and
 // copied ink must never count as fresh lookahead confirmation. Safe same-frame
 // sampled-pixel/buffer reuse remains controlled by the detector's existing mode.
 class SubtitleMeasurementSampler {
 public:
+    void Reset() { m_scanner.Reset();m_analysisDomainKey=0; }
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/,
         const ActivePictureEvidence& nativeEvidence = {}) {
@@ -102,14 +111,14 @@ public:
         }();
         // Dark-scene diagnostics must not be vetoed by the classification being
         // investigated. Fault mode waits for the exact current worker failure.
-        if(captureOnProofFailure && SubtitleDiagnosticCaptureClaimed().load())
+        if(SubtitleDiagnosticCaptureClaimed().load())
             m_capturedDiagnostic=true;
         if(!m_capturedDiagnostic && !capturePath.empty() && source.IsValid() &&
             ShouldCaptureSubtitleDiagnosticFrame(true,true,captureOnProofFailure,captureDark,
                 key.identity.acceptedSequence,
                 captureOnProofFailure ? false : EvaluateActivePictureGlobalNearBlack(source).nearBlack,
                 captureOnProofFailure && IsSubtitleProofFailureCaptureCandidate(source,key,result)) &&
-            (!captureOnProofFailure || !SubtitleDiagnosticCaptureClaimed().exchange(true))) {
+            TryClaimSubtitleDiagnosticCapture(captureOnProofFailure)) {
             m_capturedDiagnostic=true;
             std::ofstream pixels(capturePath,std::ios::binary);
             pixels.write(reinterpret_cast<const char*>(source.data),source.dataBytes);
@@ -198,13 +207,15 @@ class SubtitleMeasurementWorker {
 public:
     struct Diagnostics {
         uint64_t fullScans=0,refreshes=0,failed=0,dropped=0,requestMisses=0;
-        uint64_t submitted=0,exactReads=0,deduplicated=0,expired=0;
+        uint64_t submitted=0,exactReads=0,deduplicated=0,expired=0,staleCompleted=0;
         double fullMs=0,fullPeakMs=0,refreshMs=0,refreshPeakMs=0,queueWaitMs=0,queueWaitPeakMs=0;
-        size_t pending=0,ready=0;bool active=false;
+        size_t pending=0,ready=0,workerLimit=1,activeWorkers=0;bool active=false,stopping=false;
     };
     Diagnostics TakeDiagnostics() {
         std::lock_guard<std::mutex> lock(m_mutex);
-        auto out=m_diagnostics;out.pending=m_pending.size();out.ready=m_ready.size();out.active=m_active;
+        auto out=m_diagnostics;out.pending=m_pending.size();out.ready=m_ready.size();out.workerLimit=m_workerLimit;
+        for(const auto& active:m_activeJobs)if(active.active)++out.activeWorkers;
+        out.active=out.activeWorkers!=0;out.stopping=m_stopping;
         m_diagnostics={};return out;
     }
     void Trace(const SubtitleBoxObservation& key,const char* stage,const char* reason="",uint64_t mismatch=0) const noexcept {
@@ -225,6 +236,16 @@ public:
         AnalysisDiagnosticTrace::Emit(r);
     }
     using Work=std::function<SubtitleBoxObservation(SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&)>;
+    // Input cadence owns analysis capacity. Display refresh/repeated outputs
+    // cannot add workers or change source observations. A lower cadence parks
+    // worker1 after its current independent job, without interrupting pixels.
+    void SetInputRateHz(double inputHz) {
+        {std::lock_guard<std::mutex> lock(m_mutex);
+            if(m_stopping)return;
+            m_workerLimit=std::isfinite(inputHz) && inputHz>30.0?2u:1u;
+        }
+        m_changed.notify_all();
+    }
     ~SubtitleMeasurementWorker() { Stop(); }
     static bool SameKey(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
         if((a.sharedPicture.inspectionCandidate.valid &&
@@ -300,7 +321,10 @@ public:
             Trace(requestKey,"worker-drop","source-window-expired");
             ++m_diagnostics.expired;return;
         }
-        if(m_active && SameKey(m_activeKey,requestKey)){Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return;}
+        for(const auto& active:m_activeJobs)
+            if(active.active && SameKey(active.key,requestKey)) {
+                Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return;
+            }
         for(const auto& job:m_pending)if(SameKey(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return;}
         for(const auto& ready:m_ready)if(SameKey(ready,requestKey)){Trace(requestKey,"worker-dedup","ready");++m_diagnostics.deduplicated;return;}
         if(m_pending.size()>=8) {
@@ -342,13 +366,14 @@ public:
             });
         m_pending.insert(place,{requestKey,std::move(work)});
         ++m_diagnostics.submitted;
-        if(!m_thread.joinable())m_thread=std::thread([this]{ Run(); });
-        m_changed.notify_one();
+        for(size_t index=0;index<m_workerLimit;++index)
+            if(!m_threads[index].joinable())m_threads[index]=std::thread([this,index]{ Run(index); });
+        m_changed.notify_all();
     }
     void Stop() {
         {std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;m_pending.clear();}
         m_changed.notify_all();
-        if(m_thread.joinable())m_thread.join();
+        for(auto& thread:m_threads)if(thread.joinable())thread.join();
     }
 private:
     bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,bool backlogRetirementOnly) {
@@ -401,16 +426,22 @@ private:
         ++m_diagnostics.requestMisses;return false;
     }
     struct Job {SubtitleBoxObservation key;Work work;std::chrono::steady_clock::time_point queued=std::chrono::steady_clock::now();};
-    void Run() {
+    void Run(size_t workerIndex) {
         SubtitleMeasurementSampler scanner;
         SubtitleBarTrackingReference previous;
         for(;;) {
             Job job;
             {std::unique_lock<std::mutex> lock(m_mutex);
-                m_changed.wait(lock,[this]{return m_stopping || !m_pending.empty();});
+                m_changed.wait(lock,[this,workerIndex]{
+                    return m_stopping || (workerIndex<m_workerLimit && !m_pending.empty());
+                });
                 if(m_stopping)return;
                 job=std::move(m_pending.front());m_pending.pop_front();
-                m_active=true;m_activeKey=job.key;
+                m_activeJobs[workerIndex].active=true;m_activeJobs[workerIndex].key=job.key;
+            }
+            if(job.key.discontinuity || !previous.IsImmediatePredecessor(job.key.identity,
+                job.key.width,job.key.height,job.key.policyGeneration,job.key.continuityGeneration,job.key.scriptHint)) {
+                previous={};scanner.Reset();
             }
             Trace(job.key,"worker-start");
             const auto workStart=std::chrono::steady_clock::now();
@@ -424,8 +455,14 @@ private:
                 if(!result.analyzed)++m_diagnostics.failed;
                 else if(result.analysisRefresh){++m_diagnostics.refreshes;m_diagnostics.refreshMs+=ms;m_diagnostics.refreshPeakMs=(std::max)(m_diagnostics.refreshPeakMs,ms);}
                 else {++m_diagnostics.fullScans;m_diagnostics.fullMs+=ms;m_diagnostics.fullPeakMs=(std::max)(m_diagnostics.fullPeakMs,ms);}
-                m_active=false;
-                if(!m_stopping) {
+                m_activeJobs[workerIndex]={};
+                const bool stale=m_windowHead.transportGeneration &&
+                    (result.identity.transportGeneration<m_windowHead.transportGeneration ||
+                     (result.identity.transportGeneration==m_windowHead.transportGeneration &&
+                      result.identity.acceptedSequence<m_windowHead.acceptedSequence));
+                if(!m_stopping && stale) {
+                    ++m_diagnostics.staleCompleted;Trace(result,"worker-drop","completed-source-window-expired");
+                } else if(!m_stopping) {
                     if(m_ready.size()>=16)m_ready.pop_front();
                     m_ready.push_back(std::move(result));
                 }
@@ -435,12 +472,14 @@ private:
     Diagnostics m_diagnostics;
     std::mutex m_mutex;
     std::condition_variable m_changed;
-    std::thread m_thread;
+    std::array<std::thread,2> m_threads;
     std::deque<Job> m_pending;
     std::deque<SubtitleBoxObservation> m_ready;
     ActivePictureFrameIdentity m_windowHead;
-    SubtitleBoxObservation m_activeKey;
-    bool m_active=false,m_stopping=false;
+    struct ActiveJob { bool active=false;SubtitleBoxObservation key; };
+    std::array<ActiveJob,2> m_activeJobs;
+    size_t m_workerLimit=1;
+    bool m_stopping=false;
 };
 
 

@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 790,
+  "minimumNativeTests": 798,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -70,7 +70,15 @@
     "DecodedDvCrossEdgeFixtureNativePreflight",
     "DecodedDvUnknownInputFixtureNativePreflight",
     "CompletedOutwardRawCanGainPhysicalObservationWithoutRepeatingMandatoryProof",
-    "ColdOutwardPublicationCannotEraseARacingCurrentPhysicalObservation"
+    "ColdOutwardPublicationCannotEraseARacingCurrentPhysicalObservation",
+    "HighInputCadenceRunsTwoIndependentSamplersAndDeduplicatesBothActiveKeys",
+    "LowInputCadenceRetainsOneSerialSampler",
+    "ParallelSourceCompletionOutOfOrderRemainsBoundToItsExactIdentity",
+    "NonAdjacentOrNewGenerationSourceCannotBorrowWorkerTrackingReference",
+    "StopJoinsBothActiveSamplersAndCancelsPendingWithoutPublication",
+    "LateOldGenerationCompletionCannotReplaceTheCurrentReadySource",
+    "AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed",
+    "ParallelSamplersShareOneDiagnosticCaptureClaimForEveryCaptureMode"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -157,6 +165,11 @@
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
       "method": "DecodedDvUnknownInputFixtureNativePreflight"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed"
     }
   ]
 }

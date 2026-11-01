@@ -1705,7 +1705,7 @@ namespace VideoProcessorTest
 
         // Exercise the complete production tunnel/worker/render path. Every successful
         // output is inspected in sink order, including outputs between OSD publications.
-        void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputRepeat=false,bool nativePreflightOnly=false)
+        void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputRepeat=false,bool nativePreflightOnly=false,bool alternatingPreflight=false)
         {
             constexpr int width=3840,height=2160,pictureTop=262,pictureBottom=1898,captionBottom=1940;
             struct ProbeClock final : ITimingClock {
@@ -1715,7 +1715,7 @@ namespace VideoProcessorTest
                 timingclocktime_t TimingClockTicksPerSecond() const override{return frequency.QuadPart;}
                 const TCHAR* TimingClockDescription() override{return _T("Persistent decoded DV cadence QPC");}
             } clock;
-            std::vector<BYTE> blank[2],caption[2],pressure[2];
+            std::vector<BYTE> blank[2],caption[2],pressure[2],alternatingDecoded[2];
             VideoStateComPtr sourceState;
             // Forward RGB sender supplies real valid Dolby metadata. Low 12-bit
             // picture bits and parity-carrying chroma survive the actual formatter.
@@ -1751,6 +1751,7 @@ namespace VideoProcessorTest
                 AnalysisLumaSource decoded{converted.data(),converted.size(),width,height,size_t(width)*2,size_t(width)*2,
                     AnalysisLumaFormat::DecodedDolbyVision422,VideoFrameEncoding::R210,ColorSpace::BT_2020,1};
                 decoded.range=AnalysisLumaRange::Full; // DmBody explicitly declares full range.
+                if(alternatingPreflight)alternatingDecoded[phase]=converted; // Immutable base copy before pressure mutation.
                 AnalysisLumaSample sample;
                 Assert::IsTrue(decoded.Sample(1552,1890,sample)&&sample.luma==892,
                     L"Tunnel fixture must decode the persistent native caption, not silently use SDR RGB fallback.");
@@ -1849,6 +1850,72 @@ namespace VideoProcessorTest
                     Assert::IsTrue(measured->analyzed&&measured->text.workLimit&&
                         !strcmp(measured->text.diagnosticReason,"component-budget"),
                         L"Real decoded source must independently prove component-budget UNKNOWN; no timing-only repeat coverage is claimed.");
+                }
+            }
+            if(alternatingPreflight) {
+                auto sampler=std::make_unique<SubtitleMeasurementSampler>();
+                auto observations=std::make_unique<std::vector<SubtitleBoxObservation>>();observations->reserve(12);
+                SubtitleBarTrackingReference prior;
+                const auto sourceFor=[&](unsigned phase) {
+                    auto& pixels=alternatingDecoded[phase];
+                    AnalysisLumaSource source{pixels.data(),pixels.size(),width,height,size_t(width)*2,size_t(width)*2,
+                        AnalysisLumaFormat::DecodedDolbyVision422,VideoFrameEncoding::R210,ColorSpace::BT_2020,1};
+                    source.range=AnalysisLumaRange::Full;return source;
+                };
+                for(uint64_t sequence=1;sequence<=12;++sequence) {
+                    auto key=std::make_unique<SubtitleBoxObservation>();
+                    key->identity.transportGeneration=key->identity.rendererGeneration=1;
+                    key->identity.acceptedSequence=key->identity.sourceFrameNumber=sequence;
+                    key->identity.captureTimestamp=1000000+(sequence-1)*10000000/60;
+                    key->identity.sourceFormatGeneration=key->identity.analysisDomainKey=key->identity.viewportGeneration=1;
+                    key->width=width;key->height=height;key->policyGeneration=key->continuityGeneration=1;
+                    key->analysisStride=1;key->nearBarDistance=20;key->scriptHint=SubtitleScriptHint::Latin;
+                    key->sharedPicture.required=true;key->sharedPicture.identity=key->identity;
+                    key->sharedPicture.bounds={0,pictureTop,width,pictureBottom,width,height,
+                        double(width)/(pictureBottom-pictureTop),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                    const auto source=sourceFor(unsigned(sequence%2));
+                    for(int y:{1770,1830,1890}){AnalysisLumaSample glyph;
+                        Assert::IsTrue(source.Sample(1552,y,glyph)&&glyph.luma==892,L"Owned glyph luminance must remain unchanged in every source.");}
+                    auto measured=sampler->Measure(source,*key,prior,60.0);
+                    Assert::IsTrue(measured.analyzed&&!measured.text.workLimit&&measured.text.detected&&measured.text.lineCount==3,
+                        L"Each alternating source requires its own complete three-line acquisition.");
+                    prior=SubtitleBoxLookahead::AdvanceBarTrackingReference(measured);observations->push_back(std::move(measured));
+                }
+                auto presentation=std::make_unique<SubtitleBoxPresentation>();
+                auto padding=std::make_unique<SubtitlePaddingGuard>();SubtitlePaddingPolicy paddingPolicy;
+                paddingPolicy.glyphRelative=true;paddingPolicy.minimumHeadroomPixels=30;
+                auto compositor=std::make_unique<SubtitleCutPastePresentation>();
+                for(size_t index=0;index+4<=observations->size();++index) {
+                    auto preview=std::make_unique<SubtitleBoxPreview>();
+                    *preview=SubtitleBoxLookahead::Resolve(observations->data()+index,4,1,1);
+                    const auto sequence=uint64_t(index+1);const auto source=sourceFor(unsigned(sequence%2));
+                    Logger::WriteMessage((std::string("Alternating decoded-DV confirmation: sequence=")+std::to_string(sequence)+
+                        " future="+std::to_string(preview->futureAvailable)+" matching="+std::to_string(preview->matchingFrames)+
+                        " lines_confirmed="+std::to_string(preview->currentLinesConfirmed)).c_str());
+                    Assert::IsTrue(preview->available&&preview->futureAvailable&&preview->matchingFrames>=2&&preview->currentLinesConfirmed,
+                        L"Changing nonglyph cleanup pixels cannot prevent matching unchanged current three-line glyphs across source parity.");
+                    presentation->RefreshReferencePixels(*preview,source);
+                    const auto cue=presentation->Consume(*preview,250,1000.0/60);
+                    Assert::IsTrue(cue.detected&&!cue.held&&!cue.confirmationPending&&cue.lineCount==3&&
+                        cue.bounds.top<=1770&&cue.bounds.bottom>=1940,
+                        L"Every alternating current source must confirm all three lines without held history or relaxed confirmation.");
+                    const auto safe=padding->Consume(cue,*preview,{60,40,21},paddingPolicy);const auto display=padding->DisplayBounds();
+                    const auto geometry=FitSubtitleToVisiblePicture(compositor->Consume(cue,*preview,safe,10,&display),
+                        {0,pictureTop,width,pictureBottom},10);
+                    bool changedCleanup=false;const auto other=sourceFor(unsigned(1-sequence%2));
+                    const auto inspect=[&](const SubtitleBoxRect& rectangle) {
+                        for(int y=(std::max)(pictureTop,rectangle.top);y<(std::min)(pictureBottom,rectangle.bottom)&&!changedCleanup;++y)
+                            for(int x=(std::max)(0,rectangle.left);x<(std::min)(width,rectangle.right);++x) {
+                                AnalysisLumaSample a,b;
+                                if(source.Sample(x,y,a)&&other.Sample(x,y,b)&&a.luma!=892&&b.luma!=892&&
+                                    std::abs(int(a.luma)-int(b.luma))==16){changedCleanup=true;break;}
+                            }
+                    };
+                    if(geometry.generatedCleanupRowCount)for(unsigned row=0;row<geometry.generatedCleanupRowCount;++row)
+                        inspect(geometry.generatedCleanupRows[row]);
+                    else inspect(geometry.generatedCleanup);
+                    Assert::IsTrue(geometry.valid&&changedCleanup,
+                        L"Each confirmed alternating source must retain a genuine changing nonglyph cleanup footprint in native picture.");
                 }
             }
             if(nativePreflightOnly)return;
@@ -2125,6 +2192,8 @@ namespace VideoProcessorTest
                 }
             }
         }
+        TEST_METHOD(AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed)
+        {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),false,true,true);}
         TEST_METHOD(DecodedDvCrossEdgeFixtureNativePreflight)
         {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),false,true);}
         TEST_METHOD(DecodedDvUnknownInputFixtureNativePreflight)

@@ -9161,9 +9161,11 @@ struct LibplaceboVideoRenderer::Impl
         const SubtitleBarTrackingReference& prior,uint64_t policy,uint64_t continuity,int nearBar,int optimizationMode,
         SubtitleScriptHint scriptHint,const SubtitlePictureAuthority& sharedPicture,
         const PreparedAnalysisFrame& prepared, const ActivePictureEvidence& nativeEvidence = {},
-        bool backlogRetirementOnly = false, bool allowSubmit = true)
+        bool backlogRetirementOnly = false, bool allowSubmit = true,
+        const std::shared_ptr<QueuedFrame::AnalysisPayload>& analysisCache = {})
     {
         const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
+        subtitleMeasurementWorker.SetInputRateHz(fps);
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
         // A queued observation has no guarantee that the preceding source will
         // submit a complete, repeatable presentation. Never turn source parity
@@ -9228,10 +9230,18 @@ struct LibplaceboVideoRenderer::Impl
                 "input-cadence-not-analyzed" : "current-analysis-submission-disabled";
             return key;
         }
-        subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
+        subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence,analysisCache](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
+            // The native worker may finish after dispatch but before this job
+            // starts. Reuse only its exact immutable source/owner/domain result;
+            // no presentation geometry or another source can satisfy this read.
+            auto currentNative=nativeEvidence;
+            if(!currentNative.available && analysisCache) {
+                const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
+                if(CurrentLookaheadMeasurement(prepared,key.identity,raw))currentNative=raw->evidence;
+            }
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
-            return scanner.Measure(prepared.source,key,reference,fps,nativeEvidence);
+            return scanner.Measure(prepared.source,key,reference,fps,currentNative);
         });
         return key;
     }
@@ -13116,7 +13126,7 @@ struct LibplaceboVideoRenderer::Impl
                     videoFrame.IsSourceDiscontinuity(),{},localBoundaryPolicyGeneration,
                     localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                     activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
-                    shared,preparedQueued,{},false,false);
+                    shared,preparedQueued,{},false,false,analysisCache);
                 exactCurrentReady=SourceCadenceObservationComplete(ready,inputRepeatIdentity);
             }
             if(!exactCurrentReady) {
@@ -13356,7 +13366,7 @@ struct LibplaceboVideoRenderer::Impl
                     videoFrame.IsSourceDiscontinuity(),{},localBoundaryPolicyGeneration,
                     localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                     activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
-                    shared,preparedQueued,{},false,!repeatedTemporalOutput);
+                    shared,preparedQueued,{},false,!repeatedTemporalOutput,analysisCache);
                 earlySubtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
                     localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                 if (earlySubtitlePreview.available) subtitlePreview=&earlySubtitlePreview;
@@ -14432,7 +14442,7 @@ struct LibplaceboVideoRenderer::Impl
                         videoFrame.IsSourceDiscontinuity(),priorBar,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                         activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,subtitleSharedPicture,
-                        preparedQueued,{},subtitleBacklogRetirementOnly,!repeatedTemporalOutput);
+                        preparedQueued,{},subtitleBacklogRetirementOnly,!repeatedTemporalOutput,analysisCache);
                     livePreview = SubtitleBoxLookahead::Resolve(&observed, 1,
                         localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
                     livePreview.newScanMs = 0;
@@ -15451,12 +15461,13 @@ struct LibplaceboVideoRenderer::Impl
             subtitlePrimeReadySeen=subtitlePrimePublishedFuture=subtitlePrimeMissing=0;
             subtitlePrimeCalls=subtitlePrimeRequests=0;subtitlePrimeMs=subtitlePrimePeakMs=0;
 
-            DebugLog::Log("SUBTITLE PERFORMANCE CPU: optimization=%s window_s=%.3f frames=%llu consume_avg_ms=%.3f consume_peak_ms=%.3f pending_frames=%llu verified_pending=%llu full_scans=%llu full_scan_hz=%.2f full_avg_ms=%.3f full_peak_ms=%.3f refreshes=%llu refresh_hz=%.2f refresh_avg_ms=%.3f refresh_peak_ms=%.3f worker_busy_ms=%.3f queue_wait_avg_ms=%.3f queue_wait_peak_ms=%.3f queued=%zu active=%d ready=%zu dropped_jobs=%llu failed_jobs=%llu request_misses=%llu",
+            DebugLog::Log("SUBTITLE PERFORMANCE CPU: optimization=%s window_s=%.3f frames=%llu consume_avg_ms=%.3f consume_peak_ms=%.3f pending_frames=%llu verified_pending=%llu full_scans=%llu full_scan_hz=%.2f full_avg_ms=%.3f full_peak_ms=%.3f refreshes=%llu refresh_hz=%.2f refresh_avg_ms=%.3f refresh_peak_ms=%.3f worker_busy_ms=%.3f queue_wait_avg_ms=%.3f queue_wait_peak_ms=%.3f queued=%zu active=%d workers=%zu active_workers=%zu ready=%zu dropped_jobs=%llu stale_completed=%llu failed_jobs=%llu request_misses=%llu",
                 SubtitleDetectionOptimizationName(activeSettings.subtitleDetectionOptimization),seconds,subtitlePerf.frames,subtitlePerf.frames?subtitlePerf.consumeMs/subtitlePerf.frames:0,subtitlePerf.consumePeak,
                 subtitlePerf.pending,subtitlePerf.recovered,worker.fullScans,worker.fullScans/seconds,
                 worker.fullScans?worker.fullMs/worker.fullScans:0,worker.fullPeakMs,worker.refreshes,worker.refreshes/seconds,
                 worker.refreshes?worker.refreshMs/worker.refreshes:0,worker.refreshPeakMs,worker.fullMs+worker.refreshMs,
-                jobs?worker.queueWaitMs/jobs:0,worker.queueWaitPeakMs,worker.pending,worker.active?1:0,worker.ready,worker.dropped,worker.failed,worker.requestMisses);
+                jobs?worker.queueWaitMs/jobs:0,worker.queueWaitPeakMs,worker.pending,worker.active?1:0,
+                worker.workerLimit,worker.activeWorkers,worker.ready,worker.dropped,worker.staleCompleted,worker.failed,worker.requestMisses);
             for(int mode=0;mode<2;++mode) {
                 DebugLog::Log("SUBTITLE PERFORMANCE GPU: window_s=%.3f mode=%s composition_frames=%llu cpu_submit_avg_ms=%.3f gpu_samples=%llu gpu_avg_ms=%.3f gpu_peak_ms=%.3f timing=async_stage sampled=alternating_frames included_in_gpu_frame_total=1",
                     seconds,mode?"generated_gray":"black",subtitlePerf.compose[mode],subtitlePerf.compose[mode]?subtitlePerf.composeCpu[mode]/subtitlePerf.compose[mode]:0,
@@ -24190,7 +24201,7 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         if(picture.identity.analysisDomainKey!=prepared.domainKey) picture.bounds={};
         observations[i]=m_impl->QueueSubtitleMeasurement(queued.frame,*queued.state,identity,
             queued.frame.IsSourceDiscontinuity(),tracking,policy,continuity,nearBar,optimization,
-            script,picture,prepared);
+            script,picture,prepared,{},false,true,queued.analysis);
         tracking=SubtitleBoxLookahead::AdvanceBarTrackingReference(observations[i]);
         ++requests;
         if(observations[i].analyzed)++m_impl->subtitlePrimeReadySeen;
@@ -24606,7 +24617,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 m_impl->QueueSubtitleMeasurement(queued.frame,state,analysisIdentity,
                     queued.frame.IsSourceDiscontinuity(),subtitleBarTrackingReference,
                     lookaheadPolicyGeneration,subtitleContinuityGeneration,subtitleNearBarDistance,
-                    subtitleDetectionOptimization,subtitleScriptHint,sharedPicture,prepared);
+                    subtitleDetectionOptimization,subtitleScriptHint,sharedPicture,prepared,{},false,true,queued.analysis);
             readyPrefix.Admit(rememberedIndex,false);
             subtitleBarTrackingReference={};
             continue;
@@ -24637,7 +24648,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     queued.frame,state,analysisIdentity,queued.frame.IsSourceDiscontinuity(),
                     subtitleBarTrackingReference,lookaheadPolicyGeneration,subtitleContinuityGeneration,
                     subtitleNearBarDistance,subtitleDetectionOptimization,subtitleScriptHint,
-                    sharedPicture,prepared,evidence);
+                    sharedPicture,prepared,evidence,false,true,queued.analysis);
             }
             subtitleBarTrackingReference=SubtitleBoxLookahead::AdvanceBarTrackingReference(
                 subtitleObservations[rememberedIndex]);
