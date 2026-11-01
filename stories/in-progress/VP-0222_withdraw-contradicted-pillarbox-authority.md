@@ -323,3 +323,57 @@ All21 installed runtime EXE/DLL files match the qualified build; PID48576 is run
 Five Luna xhigh reviews are complete. Generic spatial border detection applies acrossSDR/HDR/DV; source-pixel measurements are separate from preservation margins. Existing lookahead and known/remembered hypotheses add no fixed real-time vote/wait or standard-ratio snapping. Supplied64+56 native boundary replays pass, with respective measured source Y263..1897 and275..1884 at3840x2160. This is replay evidence, not complete live acceptance.
 
 Remaining: manual playback assessment, reported visual AR-transition flash, and dim-edge uncertainty. The95 V210 capture contains top/bottom raster-terminal picture witnesses, not proven letterbox crop edges; it starts about19seconds after the screenshot and cannot reproduce the earlier visible border state. Sampled video timestamps decode black. Partial-axis crop authority and expanded remembered-family policies remain separate tested-design follow-ups, not additions to58ecfb58. Both stories remain InProgress; draftPR243 records current scope and limits.
+
+
+## Native scope/menu detection repair deployed, 2026-11-01 08:22 EST
+
+Commit 25a6abfd6cdc848a0380e71f4338d9b0479caa0f is clean, committed and pushed
+on the existing draft PR243 branch. Current paused scope pixels measure
+[0,263,3840,1897], or 3840/1634 = 2.3500611995:1. All 92 moving Netflix menu
+frames measure full [0,0,3840,2160]. This fixes actual current source-pixel
+observation; a held presentation ratio is not the success criterion.
+
+The scope veto incorrectly treated a smooth interior scene gradient as an
+additional matte boundary before fine verification. Full-raster picture contact
+also added its contrast to a discard threshold that already included a margin,
+instead of the actual black floor. Independent broad exterior picture evidence
+now rejects false navigation-panel borders. Structured footer/card evidence
+must also pass independent source-floor terminal support; a patterned true
+matte cannot bypass faint first-picture protection. No standard-ratio snap,
+platform special case, added temporal wait, or subtitle-path edit is included.
+
+Five mandatory detector regressions raise the native minimum to 869. All 869
+pass, with failing-first scope/menu and patterned-matte evidence preserved.
+All 371 supplied native frames pass: menu92, current scope64, original DV64,
+earlier paused DV56, and full-raster sun/star95. The former dim95 capture is
+now a passing full-picture positive; it remains temporally distinct from the
+screenshot taken earlier. Generic tests include Full/Limited levels, all four
+directions, smooth gradients, weak collars, raised matte and localized UI.
+
+Fresh full qualification 20261101-081446-816fd7db passes 883/883 Standard and
+883/883 Beta (869 native plus14 actual presentation methods each). The exact
+source/binary assertion passed immediately before deployment. All21 installed
+runtime EXE/DLL hashes match. VP was closed at07:33 and remains closed: this
+build is ready for the next user launch, not a claimed live playback result.
+No configuration edits; saved Classic subtitles and other user settings were
+preserved. Previous matched runtime and settings backup:
+C:\Videoprocessor\vp\backups\manual-boundary-cadence-20261101-082235
+
+Important retained limitation: initial full run20261101-075900-b72e2d57 passed
+882/883 Standard and failed Black subtitle startup at60Hz source18 (Beta was
+not started). A fixed five-pair same-harness/private-cache comparison reproduced
+the same clipping assertion on unchanged installed58ecfb58:4/5 passed, while
+candidate25 passed5/5. Native boundaries stayed correct. This establishes an
+existing startup/current-analysis gap after one legitimate repeat, not its
+absence or a precise regression-rate comparison. The later green run does not
+erase this failure. No test was weakened or removed. Proposed ownership-checked
+raw prefetch admission across queue-only retirement is archived for a separate
+failing-first follow-up; no implementation is included here.
+
+Evidence: E:/codex/diagnostics/netflix-basic-detection-20261101, including
+runtime-Release-x64-25a6abfd.json, deployment-25a6abfd.json,
+guarded-capture-replay-summary.json, paired-black-startup/comparison.json and
+existing-black-startup-gap.md. BroadGPU220/220 results remain previous58ecfb58
+coverage, not a new run. Current observer-only repair reran the full actual
+presentation matrix on both dependencies. Manual AR-transition flash and full
+live acceptance remain open; stories stay InProgress. No merge/public release.
