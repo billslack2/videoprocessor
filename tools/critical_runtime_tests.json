@@ -8,8 +8,16 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 824,
+  "minimumNativeTests": 837,
   "requiredNativeMethods": [
+    "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
+    "FullRasterHintCanNominateCurrentEncodedBarsWithoutRememberedAspect",
+    "SpatialMatteCannotReplaceTheFirstDimPictureEdgeWithAStrongerInteriorGradient",
+    "UnqualifiedDarkTerminalNominationFallsBackToCurrentExtentProof",
+    "QualifiedRaisedSidebarStillMeasuresItsCurrentSpatialBorder",
+    "SingleRowWeakFringeDoesNotHideItsSustainedPictureBoundary",
+    "SubThresholdPictureCollarCannotBeReplacedByAnInteriorMovieEdge",
+    "NearbyBrightThreeRowGraphicCannotReplaceTheRealPictureBorder",
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
     "IndependentNativeRemeasurementPreservesPictureBeyondTheCollarLimit",
@@ -103,7 +111,11 @@
     "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey",
     "ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource",
     "SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate",
-    "ComposedCaptionRequiresFreshSourceOrOneIdenticalCompletedImageRepeat"
+    "ComposedCaptionRequiresFreshSourceOrOneIdenticalCompletedImageRepeat",
+    "SourceCadenceWarmupImageRepeatsAcrossFirstReadyWithoutRenewingCaptionCompleteness",
+    "SourceCadenceWarmupImageRejectsForeignContextFailureAndPostComposedReuse",
+    "RepeatedWarmupImageKeepsItsOriginalShaderPreparationProvenance",
+    "SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -146,6 +158,11 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 28,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/SubmittedNativeFillRetentionTests.cpp",
+      "class": "SubmittedNativeFillRetentionTests",
+      "method": "AdvancedRetainedFillCarriesTheCurrentSelectedNativePresentationCertificate"
+    },
     {
       "source": "src/VideoProcessor-Test/SubmittedNativeFillRetentionTests.cpp",
       "class": "SubmittedNativeFillRetentionTests",
@@ -275,6 +292,26 @@
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
       "method": "ComposedCaptionRequiresFreshSourceOrOneIdenticalCompletedImageRepeat"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceWarmupImageRepeatsAcrossFirstReadyWithoutRenewingCaptionCompleteness"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceWarmupImageRejectsForeignContextFailureAndPostComposedReuse"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "RepeatedWarmupImageKeepsItsOriginalShaderPreparationProvenance"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput"
     }
   ]
 }

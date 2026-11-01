@@ -3837,23 +3837,26 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
     // Axis0 is vertical depth; axis1 is horizontal depth. Project coordinates
     // when sampling rather than transposing or rescaling source storage.
     int edges[2][2]={{bounds.top,bounds.bottom},{bounds.left,bounds.right}};
-    int matteMask[2]={},matteMin[2]={1023,1023},matteMax[2]={};
-    int matteMinU[2]={1023,1023},matteMaxU[2]={},matteMinV[2]={1023,1023},matteMaxV[2]={};
+    int matteMask[2]={},matteMax[2]={};
     int internalEdges=0;
     try {
         for(int axis=0;axis<2;++axis) {
         const bool vertical=axis==0;
         const int depth=vertical?source.height:source.width;
         const int depthStart=vertical?bounds.top:bounds.left,depthEnd=vertical?bounds.bottom:bounds.right;
-        const int alongStart=vertical?bounds.left:bounds.top,alongEnd=vertical?bounds.right:bounds.bottom;
+        // The orthogonal search must sample the already measured current
+        // picture interval, not count top/bottom matte as horizontal content.
+        if(!vertical && (edges[0][0]<bounds.top || edges[0][1]>bounds.bottom || edges[0][0]>=edges[0][1]))
+            return unknown("physical-edge-outside-conservative-interval");
+        const int alongStart=vertical?bounds.left:edges[0][0],alongEnd=vertical?bounds.right:edges[0][1];
         const int margin=2*std::max(2,depth/540)+4;
         if(margin>36)return unknown("physical-edge-work-limit");
         for(int side=0;side<2;++side) {
             const bool leading=side==0;const int hint=leading?depthStart:depthEnd;
             // A raster terminal is proved separately from current edge pixels,
             // after the other axis has supplied its measured picture interval.
-            if((leading && hint==0) || (!leading && hint==depth))continue;
-            ++internalEdges;
+            const bool terminalHint=(leading && hint==0) || (!leading && hint==depth);
+
             const auto sampleRow=[&](int y,std::array<AnalysisLumaSample,positions>& row) {
                 CheckAnalysisEvaluationBudget(budget);
                 for(int i=0;i<positions;++i) {
@@ -3869,27 +3872,76 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
             // physical boundary lies within a few rows of the raw nomination.
             std::array<AnalysisLumaSample,positions> matte;
             const int reference=leading?std::max(0,hint-margin-3):std::min(depth-1,hint+margin+2);
-            if(!sampleRow(reference,matte))return unknown("physical-edge-source-unavailable");
-            int minY=1023,maxY=0,minU=1023,maxU=0,minV=1023,maxV=0;
+            const int referenceDirection=terminalHint?(leading?1:-1):(leading?-1:1);
+            std::array<std::array<AnalysisLumaSample,positions>,5> strip;
+            for(int r=0;r<5;++r)
+                if(!sampleRow(std::max(0,std::min(depth-1,reference+referenceDirection*2*r)),strip[r]))
+                    return unknown("physical-edge-source-unavailable");
+            std::array<std::array<int,3>,positions> spread{};
+            std::array<std::array<int,16>,3> centers{},noiseSamples{};
+            int referenceCount=0;
             for(int i=0;i<positions;++i) {
-                // The reference must cover the same separated outer regions
-                // that establish the edge. Centered captions may occupy this
-                // row without contaminating either supporting matte region.
-                if(i>=8 && i<24)continue;
-                const auto& p=matte[i];
-                minY=std::min(minY,int(p.luma));maxY=std::max(maxY,int(p.luma));
-                minU=std::min(minU,int(p.chromaU));maxU=std::max(maxU,int(p.chromaU));
-                minV=std::min(minV,int(p.chromaV));maxV=std::max(maxV,int(p.chromaV));
+                int values[3][3]={{strip[0][i].luma,strip[1][i].luma,strip[2][i].luma},
+                    {strip[0][i].chromaU,strip[1][i].chromaU,strip[2][i].chromaU},
+                    {strip[0][i].chromaV,strip[1][i].chromaV,strip[2][i].chromaV}};
+                for(int channel=0;channel<3;++channel) {
+                    std::sort(values[channel],values[channel]+3);
+                    // Three-row median absolute deviation ignores one corrupted
+                    // fit row; the two independent holdouts must still agree.
+                    spread[i][channel]=std::min(values[channel][1]-values[channel][0],
+                        values[channel][2]-values[channel][1]);
+                }
+                matte[i]=strip[1][i];matte[i].luma=values[0][1];
+                matte[i].chromaU=values[1][1];matte[i].chromaV=values[2][1];
+                // Reference color need not be nominal black or neutral chroma.
+                // Retain the existing normalized dark-matte ceiling, excluding
+                // arbitrary bright movie regions from border nominations.
+                if((i<8 || i>=24) && matte[i].luma<=104) {
+                    centers[0][referenceCount]=matte[i].luma;
+                    centers[1][referenceCount]=matte[i].chromaU;
+                    centers[2][referenceCount]=matte[i].chromaV;
+                    for(int channel=0;channel<3;++channel)
+                        noiseSamples[channel][referenceCount]=spread[i][channel];
+                    ++referenceCount;
+                }
             }
-            // A textured/bright outer row is not an established matte reference.
-            // This rejection cannot remove pixels or alter the retained guard.
-            if(maxY-minY>4 || maxU-minU>4 || maxV-minV>4 || maxY>104)
+            if(referenceCount<8) {
+                if(terminalHint)continue;
                 return unknown("physical-edge-outer-reference-ambiguous");
-            matteMask[axis]|=1<<side;
-            matteMin[axis]=std::min(matteMin[axis],minY);matteMax[axis]=std::max(matteMax[axis],maxY);
-            matteMinU[axis]=std::min(matteMinU[axis],minU);matteMaxU[axis]=std::max(matteMaxU[axis],maxU);
-            matteMinV[axis]=std::min(matteMinV[axis],minV);matteMaxV[axis]=std::max(matteMaxV[axis],maxV);
+            }
+            int center[3]{},noise[3]{};
+            for(int channel=0;channel<3;++channel) {
+                std::sort(centers[channel].begin(),centers[channel].begin()+referenceCount);
+                std::sort(noiseSamples[channel].begin(),noiseSamples[channel].begin()+referenceCount);
+                center[channel]=centers[channel][referenceCount/2];
+                noise[channel]=std::max(4,std::min(12,2*noiseSamples[channel][referenceCount/2]+2));
+            }
+            std::array<bool,positions> matteColumn{};
+            int matteSupport[4]={};
+            int maxY=0;
+            for(int i=0;i<positions;++i) {
+                const int sample[3]={matte[i].luma,matte[i].chromaU,matte[i].chromaV};
+                bool qualified=sample[0]<=104;
+                for(int channel=0;channel<3;++channel) {
+                    qualified=qualified && spread[i][channel]<=noise[channel] &&
+                        std::abs(sample[channel]-center[channel])<=2*noise[channel];
+                    // These rows were not used to fit this column's reference.
+                    for(int holdout=3;holdout<5;++holdout) {
+                        const auto& p=strip[holdout][i];
+                        const int value=channel==0?p.luma:channel==1?p.chromaU:p.chromaV;
+                        qualified=qualified && std::abs(value-sample[channel])<=noise[channel];
+                    }
+                }
+                if(!qualified)continue;
+                matteColumn[i]=true;++matteSupport[i/8];
+                maxY=std::max(maxY,sample[0]);
+            }
+            if(!broadSupport(matteSupport)) {
+                if(terminalHint)continue;
+                return unknown("physical-edge-outer-reference-ambiguous");
+            }
             int nominal=-1;
+            bool earlierLowContrastDeparture=false;
             const int direction=leading?1:-1;
             // Eight source rows per coarse step; the existing bounded fine scan
             // resolves the exact row. No screen ratio, centering, or temporal
@@ -3902,49 +3954,70 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                 std::array<AnalysisLumaSample,positions> row,nextRow;
                 if(!sampleRow(y,row) || !sampleRow(nextY,nextRow))
                     return unknown("physical-edge-source-unavailable");
-                int support[4]={};
+                int support[4]={},weakSupport[4]={};
                 for(int i=0;i<positions;++i) {
-                    if(int(row[i].luma)-int(matte[i].luma)>=16 &&
+                    const int departure=int(row[i].luma)-int(matte[i].luma);
+                    const int nextDeparture=int(nextRow[i].luma)-int(matte[i].luma);
+                    if(matteColumn[i] && departure>noise[0] && departure<16 &&
+                        nextDeparture>noise[0] && nextDeparture<16)++weakSupport[i/8];
+                    if(matteColumn[i] && int(row[i].luma)-int(matte[i].luma)>=16 &&
                         int(nextRow[i].luma)-int(matte[i].luma)>=16)
                         ++support[i/8];
                 }
+                earlierLowContrastDeparture=earlierLowContrastDeparture || broadSupport(weakSupport);
                 if(!broadSupport(support))continue;
                 // A short, detached broad graphic can have a sharp edge too.
                 // Require current source support farther inward; a detected
                 // gap leaves this observation ambiguous rather than making the
                 // graphic an apparent picture boundary.
+                bool continuous=true;
                 for(int step=1;step<=3;++step) {
                     const int inward=y+8*step*direction;
-                    if(inward<depthStart || inward>=depthEnd)
-                        return unknown("physical-edge-inward-continuity-unresolved");
+                    if(inward<depthStart || inward>=depthEnd) {continuous=false;break;}
                     std::array<AnalysisLumaSample,positions> continuation;
                     if(!sampleRow(inward,continuation))return unknown("physical-edge-source-unavailable");
                     int inwardSupport[4]={};
                     for(int i=0;i<positions;++i)
-                        if(int(continuation[i].luma)-int(matte[i].luma)>=16)++inwardSupport[i/8];
-                    if(!broadSupport(inwardSupport))return unknown("physical-edge-detached-or-ambiguous-source-feature");
+                        if(matteColumn[i] && int(continuation[i].luma)-int(matte[i].luma)>=16)++inwardSupport[i/8];
+                    if(!broadSupport(inwardSupport)) {continuous=false;break;}
                 }
+                if(!continuous)continue;
                 nominal=leading?y:y+1;break;
             }
-            if(nominal<0)return unknown("physical-edge-no-broad-source-nomination");
+            if(nominal<0) {
+                if(terminalHint)continue;
+                return unknown("physical-edge-no-broad-source-nomination");
+            }
+            if(earlierLowContrastDeparture)
+                return unknown("physical-edge-earlier-low-contrast-picture");
             const int low=std::max(3,nominal-margin),high=std::min(depth-3,nominal+margin);
-            const int first=low-3,last=high+2;
+            // Share these source samples across fine candidates and gap checks.
+            // A short bright graphic can lie inside the fine search interval.
+            const int first=std::max(0,leading?low-3:low-25);
+            const int last=std::min(depth-1,leading?high+24:high+2);
             std::vector<std::array<AnalysisLumaSample,positions>> rows(size_t(last-first+1));
             for(int y=first;y<=last;++y)
                 if(!sampleRow(y,rows[size_t(y-first)]))
                     return unknown("physical-edge-source-unavailable");
             double best=0,second=0;int bestRow=-1;
-            for(int boundary=low;boundary<=high;++boundary) {
+            for(int index=0;index<=high-low;++index) {
+                const int boundary=leading?low+index:high-index;
                 const int outside=leading?boundary-1:boundary;
                 const int inside=leading?boundary:boundary-1;
                 const int next=leading?boundary+1:boundary-2;
                 const int after=leading?boundary+2:boundary-3;
-                int support[4]={};double score=0;
+                int support[4]={},weakSupport[4]={};double score=0;
                 for(int i=0;i<positions;++i) {
+                    if(!matteColumn[i])continue;
                     const int out=rows[size_t(outside-first)][i].luma;
                     const int in=rows[size_t(inside-first)][i].luma;
                     const int jump=in-out;
                     const int halo=std::abs(out-int(matte[i].luma));
+                    const int nextDeparture=int(rows[size_t(next-first)][i].luma)-int(matte[i].luma);
+                    const int afterDeparture=int(rows[size_t(after-first)][i].luma)-int(matte[i].luma);
+                    if(bestRow<0 && halo<=noise[0] && jump>noise[0] && jump<16 &&
+                        nextDeparture>noise[0] && nextDeparture<16 &&
+                        afterDeparture>noise[0] && afterDeparture<16)++weakSupport[i/8];
                     if(jump>=std::max(16,4*halo+4) &&
                         int(rows[size_t(next-first)][i].luma)-out>=jump/2 &&
                         int(rows[size_t(after-first)][i].luma)-out>=jump/2) {
@@ -3956,13 +4029,40 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                 // independently visible edges on both sides; a central panel,
                 // one-sided feature, or narrow side marks cannot establish them.
                 // Keep the same per-sample contrast/halo/sustain requirements.
+                if(bestRow<0 && broadSupport(weakSupport))
+                    return unknown("physical-edge-earlier-low-contrast-picture");
                 if(!broadSupport(support))continue;
-                if(score>best){second=best;best=score;bestRow=boundary;}
+                bool matteGap=false;
+                for(int offset=3;offset<=24 && !matteGap;++offset) {
+                    const int inward=leading?boundary+offset:boundary-1-offset;
+                    if(inward<first || inward>last){matteGap=true;break;}
+                    int returnedMatte[4]={};
+                    for(int i=0;i<positions;++i)
+                        if(matteColumn[i] && std::abs(int(rows[size_t(inward-first)][i].luma)-
+                            int(matte[i].luma))<=noise[0])++returnedMatte[i/8];
+                    matteGap=broadSupport(returnedMatte);
+                }
+                if(matteGap)continue;
+                // Select the first sustained matte-to-picture departure. A
+                // stronger gradient farther inside an already visible picture
+                // cannot replace its earlier source boundary.
+                if(bestRow<0){best=score;bestRow=boundary;}
                 else second=std::max(second,score);
             }
-            if(bestRow<0)return unknown("physical-edge-no-broad-abrupt-boundary");
+            if(bestRow<0) {
+                // An optional interior nomination is not evidence against
+                // independent current pixels reaching this raster terminal.
+                // Preserve every positive ambiguity/weak-prefix veto above.
+                if(terminalHint)continue;
+                return unknown("physical-edge-no-broad-abrupt-boundary");
+            }
             if(second>0 && second*1.5>=best)return unknown("physical-edge-multiple-boundaries");
             edges[axis][side]=bestRow;
+            // Only an actually measured matte-to-picture border supplies the
+            // common matte reference for independent raster-terminal proof.
+            matteMask[axis]|=1<<side;
+            matteMax[axis]=std::max(matteMax[axis],maxY);
+            ++internalEdges;
         }
         }
         // Use independently qualified current paired matte where available.
@@ -3971,8 +4071,7 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
         // never authorizes a physical extent claim.
         int extentCutoff=-1;
         for(int axis=0;axis<2;++axis)
-            if(matteMask[axis]==3 && matteMax[axis]-matteMin[axis]<=4 &&
-                matteMaxU[axis]-matteMinU[axis]<=4 && matteMaxV[axis]-matteMinV[axis]<=4)
+            if(matteMask[axis]==3)
                 extentCutoff=std::max(extentCutoff,matteMax[axis]+16);
         if(extentCutoff<0 && blackReference && blackReference->evaluated &&
             blackReference->mode!=ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED &&

@@ -32,6 +32,7 @@
 
 namespace
 {
+    constexpr ULONGLONG ColdShaderPreparationBudgetMs=180000;
     std::mutex snapshotTestLogMutex;
     std::ofstream snapshotTestLog;
     std::atomic<unsigned> snapshotTestReads{0};
@@ -56,7 +57,27 @@ namespace
     ClassicShaderPreparationSelection classicCurrentShaderPreparation;
     using ClassicSubmittedPreparationKey=std::array<uint64_t,3>;
     std::map<ClassicSubmittedPreparationKey,ClassicShaderPreparationSelection> classicSubmittedShaderPreparation;
-
+    using ClassicPreparationHistory=std::map<ClassicSubmittedPreparationKey,ClassicShaderPreparationSelection>;
+    bool RecordSubmittedShaderPreparation(ClassicPreparationHistory& history,
+        const AnalysisDiagnosticRecordV1& record,const ClassicShaderPreparationSelection& current)
+    {
+        if(strcmp(record.stage,"submitted-presentation") || !(record.flags&1u))return false;
+        const ClassicSubmittedPreparationKey key{record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence};
+        // This history describes the pixels actually displayed. A repeated image
+        // retains its original pipeline state even when the consumed input has
+        // just made the current shader key Ready. Missing originals fail closed.
+        if((record.flags&16384u) || record.cadenceRepeat || record.counters[0]!=record.counters[1])
+            return (record.flags&16384u) && record.cadenceRepeat &&
+                !strcmp(record.reason,"complete-output-input-cadence-repeat") &&
+                record.acceptedSequence==record.counters[1] &&
+                record.counters[0]==record.counters[1]+1 && history.find(key)!=history.end() &&
+                record.rendererGeneration==record.transportGeneration &&
+                history.at(key).generation==record.transportGeneration &&
+                history.at(key).format==record.sourceFormatGeneration;
+        if(record.acceptedSequence!=record.counters[0] || !record.acceptedSequence)return false;
+        history.emplace(key,current);
+        return true;
+    }
     void __cdecl ClassicPoseTestLog(const char* message)
     {
         if(!strstr(message,"VP submitted geometry:") && !strstr(message,"Alpha source crop:") &&
@@ -113,8 +134,7 @@ namespace
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
         if(!classicPoseAllRecordStages && strcmp(record->stage,"submitted-presentation") && strcmp(record->stage,"presentation") && strcmp(record->stage,"ar-decision") &&
             strcmp(record->stage,"subtitle-output"))return;
-        if(!strcmp(record->stage,"submitted-presentation") && (record->flags&1u))
-            classicSubmittedShaderPreparation[{record->rendererInstanceKey,record->transportGeneration,record->acceptedSequence}]=classicCurrentShaderPreparation;
+        RecordSubmittedShaderPreparation(classicSubmittedShaderPreparation,*record,classicCurrentShaderPreparation);
         classicPoseRecords.push_back(*record);
     }
     bool TrySubmittedSubtitleCleanup(const std::string& line,const AnalysisDiagnosticRecordV1& output,
@@ -179,6 +199,8 @@ namespace
             current.viewportGeneration!=previous->viewportGeneration ||
             current.sourceFormatGeneration!=previous->sourceFormatGeneration ||
             current.analysisDomainKey!=previous->analysisDomainKey ||
+            current.policyGeneration!=previous->policyGeneration || current.continuityGeneration!=previous->continuityGeneration ||
+            current.sourceFrameNumber!=previous->sourceFrameNumber || current.captureTimestamp!=previous->captureTimestamp ||
             current.metrics[0]!=previous->metrics[0] || current.metrics[5]<=current.metrics[0] ||
             current.metrics[5]-current.metrics[0]>1.5*sourcePeriod ||
             !IsSourceBoundComposedCaption(*previous,nullptr,generation,mode,sourcePeriod))return false;
@@ -187,6 +209,38 @@ namespace
             current.candidate[i]!=previous->candidate[i] || current.displayed[i]!=previous->displayed[i])return false;
         for(int i=8;i<16;++i)if(current.metrics[i]!=previous->metrics[i])return false;
         return true;
+    }
+    struct ScopedCadenceDiagnostics {
+        std::string previous;bool existed=false,enabled=false;
+        explicit ScopedCadenceDiagnostics(bool activate):enabled(activate) {
+            if(!enabled)return;
+            char* value=nullptr;size_t length=0;
+            if(_dupenv_s(&value,&length,"VP_CADENCE_CACHE_DIAGNOSTICS")!=0)throw std::runtime_error("Cannot read cadence diagnostic environment");
+            existed=value!=nullptr;if(value){previous=value;free(value);}
+            if(!SetEnvironmentVariableA("VP_CADENCE_CACHE_DIAGNOSTICS","1"))throw std::runtime_error("Cannot enable cadence diagnostic environment");
+        }
+        ~ScopedCadenceDiagnostics(){if(enabled)SetEnvironmentVariableA("VP_CADENCE_CACHE_DIAGNOSTICS",existed?previous.c_str():nullptr);}
+    };
+    void LogSubmittedFailureTail(const std::vector<AnalysisDiagnosticRecordV1>& records) {
+        size_t first=records.size(),remaining=48;
+        for(size_t i=records.size();i>0;--i)if(!strcmp(records[i-1].stage,"submitted-presentation")&&(records[i-1].flags&1u)) {
+            first=i-1;if(--remaining==0)break;
+        }
+        for(size_t i=first;i<records.size();++i) {
+            const auto& output=records[i];
+            if(strcmp(output.stage,"submitted-presentation")||!(output.flags&1u))continue;
+            std::ostringstream line;line<<"UHD FINAL: source="<<output.acceptedSequence<<" generation="<<output.transportGeneration
+                <<" consumed="<<output.counters[0]<<" selected="<<output.counters[1]<<" cue="<<output.counters[2]
+                <<" mode="<<output.counters[3]<<" native="<<output.counters[4]<<" cert="<<output.counters[5]
+                <<" cert_origin="<<output.counters[6]<<" flags="<<output.flags<<" repeat="<<output.cadenceRepeat
+                <<" domain="<<output.analysisDomainKey<<" viewport="<<output.viewportGeneration<<" reason="<<output.reason;
+            for(int e=0;e<4;++e)line<<" native"<<e<<'='<<output.published[e]<<" cert"<<e<<'='<<output.candidate[e]<<" actual"<<e<<'='<<output.metrics[8+e];
+            for(const auto& raw:records)if(raw.rendererInstanceKey==output.rendererInstanceKey&&raw.transportGeneration==output.transportGeneration&&
+                raw.acceptedSequence==output.counters[0]&&!strcmp(raw.stage,"subtitle-output"))
+                line<<" raw_flags="<<raw.flags<<" raw_reason="<<raw.reason<<" accepted_lines="<<raw.resultCode
+                    <<" raw_lines="<<raw.counters[4]<<" decision="<<raw.detail;
+            Microsoft::VisualStudio::CppUnitTestFramework::Logger::WriteMessage(line.str().c_str());
+        }
     }
     struct NativeP210Buffer : IUnknown
     {
@@ -218,11 +272,12 @@ namespace VideoProcessorTest
             original.flags=1u|2u|32u|64u;original.transportGeneration=original.rendererGeneration=7;
             original.acceptedSequence=50;original.counters[0]=original.counters[1]=original.counters[2]=original.counters[5]=50;
             original.counters[3]=3;original.counters[4]=4;original.metrics[0]=original.metrics[5]=1.0;
+            original.policyGeneration=11;original.continuityGeneration=13;original.sourceFrameNumber=50;original.captureTimestamp=1000;
             Assert::IsTrue(IsSourceBoundComposedCaption(original,nullptr,7,3,1.0/60));
             auto repeat=original;repeat.flags|=16384u;repeat.cadenceRepeat=true;
             strcpy_s(repeat.reason,"complete-output-input-cadence-repeat");repeat.counters[0]=51;repeat.metrics[5]=1.0+1.0/60;
             Assert::IsTrue(IsSourceBoundComposedCaption(repeat,&original,7,3,1.0/60));
-            for(int fault=0;fault<10;++fault) {
+            for(int fault=0;fault<14;++fault) {
                 auto invalid=repeat;auto prior=original;
                 if(fault==0)invalid.flags&=~2u;
                 if(fault==1)++invalid.counters[2];
@@ -234,6 +289,10 @@ namespace VideoProcessorTest
                 if(fault==7)invalid.metrics[5]=1.1;
                 if(fault==8)prior.flags|=16384u;
                 if(fault==9)invalid.metrics[5]=std::numeric_limits<double>::quiet_NaN();
+                if(fault==10)++invalid.policyGeneration;
+                if(fault==11)++invalid.continuityGeneration;
+                if(fault==12)++invalid.sourceFrameNumber;
+                if(fault==13)++invalid.captureTimestamp;
                 Assert::IsFalse(IsSourceBoundComposedCaption(invalid,&prior,7,3,1.0/60));
             }
         }
@@ -262,6 +321,59 @@ namespace VideoProcessorTest
             Assert::IsFalse(TrySubmittedSubtitleCleanup("SUBTITLE LAYOUT: frame=56 accepted_cleanup=1548,1718-2292,1898",output,7,cleanup));
             Assert::IsFalse(TrySubmittedSubtitleCleanup("SUBTITLE LAYOUT: frame=55 measured_cleanup=1548,1718-2292,1898",output,7,cleanup));
             Assert::IsFalse(TrySubmittedSubtitleCleanup("SUBTITLE LAYOUT: frame=55 accepted_cleanup=10,20-5,15",output,7,cleanup));
+        }
+        TEST_METHOD(RepeatedWarmupImageKeepsItsOriginalShaderPreparationProvenance) {
+            ClassicPreparationHistory history;
+            ClassicShaderPreparationSelection pending;
+            pending.state="pending";pending.key=99;pending.generation=7;pending.format=13;
+            pending.requested=2;pending.effective=0;
+            AnalysisDiagnosticRecordV1 original{};strcpy_s(original.stage,"submitted-presentation");
+            original.flags=1u|32u|64u;original.rendererInstanceKey=19;
+            original.transportGeneration=original.rendererGeneration=7;
+            original.acceptedSequence=original.counters[0]=original.counters[1]=50;
+            original.sourceFormatGeneration=13;
+            Assert::IsTrue(RecordSubmittedShaderPreparation(history,original,pending));
+            auto ready=pending;ready.state="ready";ready.effective=2;
+            auto repeat=original;repeat.flags|=16384u;repeat.cadenceRepeat=true;
+            strcpy_s(repeat.reason,"complete-output-input-cadence-repeat");repeat.counters[0]=51;
+            Assert::IsTrue(RecordSubmittedShaderPreparation(history,repeat,ready));
+            const ClassicSubmittedPreparationKey key{19,7,50};
+            Assert::IsTrue(history.at(key).AllowsInitialBuildFallback(7,13,2),
+                L"A repeated image must retain the original Pending shader provenance, not the current input's Ready state.");
+            ClassicPreparationHistory absent;
+            Assert::IsFalse(RecordSubmittedShaderPreparation(absent,repeat,ready));
+            Assert::IsTrue(absent.empty(),L"A missing original cannot acquire fabricated warmup provenance.");
+            for(int fault=0;fault<10;++fault) {
+                auto invalid=repeat;auto seeded=history;
+                if(fault==0)invalid.flags&=~16384u;
+                if(fault==1)invalid.cadenceRepeat=false;
+                if(fault==2)strcpy_s(invalid.reason,"not-a-complete-output-repeat");
+                if(fault==3)++invalid.counters[0];
+                if(fault==4)++invalid.acceptedSequence;
+                if(fault==5)++invalid.sourceFormatGeneration;
+                if(fault==6)++invalid.rendererGeneration;
+                if(fault==7)++seeded.at(key).generation;
+                if(fault==8)++seeded.at(key).format;
+                if(fault==9)invalid.flags&=~1u;
+                const auto before=seeded.at(key);
+                Assert::IsFalse(RecordSubmittedShaderPreparation(seeded,invalid,ready));
+                Assert::AreEqual(size_t(1),seeded.size());
+                Assert::IsTrue(seeded.at(key).state==before.state&&seeded.at(key).key==before.key&&
+                    seeded.at(key).generation==before.generation&&seeded.at(key).format==before.format&&
+                    seeded.at(key).requested==before.requested&&seeded.at(key).effective==before.effective,
+                    L"An invalid repeat must not replace even an existing original preparation record.");
+            }
+            for(int fault=0;fault<2;++fault) {
+                auto foreign=repeat;auto seeded=history;
+                if(fault==0)++foreign.rendererInstanceKey;
+                if(fault==1)++foreign.transportGeneration;
+                Assert::IsFalse(RecordSubmittedShaderPreparation(seeded,foreign,ready));
+                Assert::AreEqual(size_t(1),seeded.size());
+                Assert::IsTrue(seeded.at(key).AllowsInitialBuildFallback(7,13,2));
+            }            auto fresh=original;fresh.acceptedSequence=fresh.counters[0]=fresh.counters[1]=52;
+            Assert::IsTrue(RecordSubmittedShaderPreparation(history,fresh,ready));
+            const ClassicSubmittedPreparationKey freshKey{19,7,52};
+            Assert::IsFalse(history.at(freshKey).AllowsInitialBuildFallback(7,13,2));
         }
         TEST_METHOD(ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey) {
             ClassicShaderPreparationSelection prepared;
@@ -417,7 +529,7 @@ namespace VideoProcessorTest
             Assert::IsFalse(telemetry.Read().available);
             Assert::AreEqual(0.0, telemetry.Read().ratio);
             Assert::AreEqual(uint64_t(101), telemetry.Read().detectedSequence);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unknown (physical boundary pending)");
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unknown (boundaries unresolved)");
             telemetry.Source(4);
             Assert::IsFalse(telemetry.Read().available);
             Assert::IsFalse(telemetry.Read().physicalBoundsAvailable);
@@ -434,7 +546,7 @@ namespace VideoProcessorTest
             telemetry.ObservePhysical(1, 11, true, false, PhysicalAspectConfidence::SOURCE_RASTER_EXTENT,
                 0, 0, 3840, 2160);
             Assert::IsFalse(telemetry.Read().available);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unknown (physical boundary pending)");
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unknown (boundaries unresolved)");
         }
         TEST_METHOD(AspectDisplayResetsForUnavailableNewSourceAndRenderer)
         {
@@ -470,7 +582,7 @@ namespace VideoProcessorTest
             telemetry.Submitted(1, 11, 2.39, 16.0/9.0, true, true);
             const auto rows = AspectRatioOsd::Format(telemetry.Read());
             Assert::IsTrue(rows.inUse == L"2.39:1 (Scope; held)");
-            Assert::IsTrue(rows.detected == L"Unknown (physical boundary pending)");
+            Assert::IsTrue(rows.detected == L"Unknown (awaiting physical measurement)");
             telemetry.ClearDetection();
             telemetry.Submitted(1, 12, 2.39, 16.0/9.0, true, true);
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unavailable");
@@ -1184,7 +1296,7 @@ namespace VideoProcessorTest
             restart=reset=false;require(cleanup.renderer->ApplyApplicationState(*selection.snapshot,active,restart,reset),L"Actual renderer rejected the Reconstruction profile snapshot.");
             require(!restart,L"Subtitle profile transition unexpectedly requires a renderer rebuild.");
             const uint64_t reconstructionFirst=sequence;uint64_t reconstructionReady=0,observationDeadline=0;unsigned lastMode=0;
-            std::set<uint64_t> reconstructionSources;const auto preparationDeadline=GetTickCount64()+90000;
+            std::set<uint64_t> reconstructionSources;const auto preparationDeadline=GetTickCount64()+ColdShaderPreparationBudgetMs;
             do {
                 const auto value=pump(caption);
                 for(const auto& g:geometries())if(g.sequence>=reconstructionFirst) {
@@ -1233,6 +1345,7 @@ namespace VideoProcessorTest
 
         void VerifyClassicUhdBarOverlay(bool beta,bool bothBars,bool reconstruction=false,bool nativeV210=false,bool crossingEdge=false,bool nativePreflightOnly=false,bool blackMode=false)
         {
+            ScopedCadenceDiagnostics cadenceDiagnostics(reconstruction&&crossingEdge&&!nativePreflightOnly);
             constexpr bool narrower=false;
             const unsigned advancedMode=static_cast<unsigned>(blackMode?SubtitlePreviewMode::BlackBackground:SubtitlePreviewMode::GeneratedGrayBackground);
             struct ProbeClock final : ITimingClock {
@@ -1491,7 +1604,12 @@ namespace VideoProcessorTest
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
             uint64_t sequence=1;size_t finalRecordCursor=0;
             auto messages=[] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);return classicPoseMessages;};
-            auto dump=[&] {for(const auto& line:messages())Logger::WriteMessage(line.c_str());};
+            auto dump=[&] {
+                std::vector<AnalysisDiagnosticRecordV1> trace;
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
+                LogSubmittedFailureTail(trace);
+                for(const auto& line:messages())Logger::WriteMessage(line.c_str());
+            };
             auto require=[&](bool valid,const wchar_t* message) {if(!valid){dump();Assert::Fail(message);}};
             auto integer=[](const std::string& line,const char* key) {
                 const auto at=line.find(key);return at==std::string::npos?uint64_t(0):uint64_t(std::strtoull(line.c_str()+at+strlen(key),nullptr,10));
@@ -1629,7 +1747,7 @@ namespace VideoProcessorTest
                     L"UHD Reconstruction profile was not accepted as a live renderer update.");
                 const uint64_t requested=sequence;uint64_t ready=0,observationDeadline=0,warmSettle=0;unsigned lastMode=0;
                 bool warmPinned=false;int32_t warmBounds[4]={};
-                std::set<uint64_t> warmSources;const auto preparationDeadline=GetTickCount64()+90000;
+                std::set<uint64_t> warmSources;const auto preparationDeadline=GetTickCount64()+ColdShaderPreparationBudgetMs;
                 auto records=[] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);return classicPoseRecords;};
                 do {
                     const auto value=pump(caption);
@@ -1642,7 +1760,13 @@ namespace VideoProcessorTest
                         }else if(g.mode==advancedMode) {
                             require(g.sourceBoundCaption && same(g,initial) && !g.poseEligible && std::abs(g.poseDelta)<0.01,
                                 L"Shader-ready UHD output lost its current source-bound caption or native picture.");
-                            if(!ready){ready=g.sequence;observationDeadline=GetTickCount64()+5000;warmSettle=GetTickCount64()+500;}
+                            if(!ready){
+                                ready=g.sequence;observationDeadline=GetTickCount64()+5000;warmSettle=GetTickCount64()+500;
+                                std::ostringstream status;status<<"UHD first composed native output: selected="<<ready<<" mode="<<advancedMode
+                                    <<" preparation_elapsed_ms="<<(GetTickCount64()-(preparationDeadline-ColdShaderPreparationBudgetMs))
+                                    <<" current_source_caption="<<g.sourceBoundCaption<<" native="<<bar<<'-'<<pictureBottom;
+                                Logger::WriteMessage(status.str().c_str());
+                            }
                         }
                     }
                     if(ready && value.presentedSequence>=ready) {
@@ -1688,7 +1812,7 @@ namespace VideoProcessorTest
                     Logger::WriteMessage((std::string("UHD first composed native-output readiness expired: last_actual_mode=")+
                         std::to_string(lastMode)+"; "+preparation+"; "+acquisition).c_str());
                 }
-                require(ready>0,L"UHD Reconstruction acquired no actual mode3 composed native output within its bounded 90-second cold-preparation budget.");
+                require(ready>0,L"UHD Reconstruction acquired no actual mode3 composed native output within its bounded 180-second cold-preparation budget.");
                 require(warmSources.size()>=24,crossingEdge?
                     L"Ready cross-edge Reconstruction did not retain one safe viewport for 24 distinct sources after acquisition.":
                     L"Ready UHD Reconstruction did not present 24 distinct actually composed native sources within its separate five-second observation budget.");
@@ -1973,6 +2097,7 @@ namespace VideoProcessorTest
         // output is inspected in sink order, including outputs between OSD publications.
         void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputRepeat=false,bool nativePreflightOnly=false,bool alternatingPreflight=false)
         {
+            ScopedCadenceDiagnostics cadenceDiagnostics(!nativePreflightOnly&&requestedMode==unsigned(SubtitlePreviewMode::BlackBackground));
             constexpr int width=3840,height=2160,pictureTop=262,pictureBottom=1898,captionBottom=1940;
             struct ProbeClock final : ITimingClock {
                 LARGE_INTEGER frequency{};
@@ -2336,6 +2461,12 @@ namespace VideoProcessorTest
                                 L"Only an explicit successful one-input whole-image repeat may display a previous source.");
                             const auto& original=outputs.back();
                             require(!(original.flags&16384u)&&original.acceptedSequence==record.acceptedSequence&&
+                                original.rendererInstanceKey==record.rendererInstanceKey&&original.transportGeneration==record.transportGeneration&&
+                                original.rendererGeneration==record.rendererGeneration&&original.viewportGeneration==record.viewportGeneration&&
+                                original.sourceFormatGeneration==record.sourceFormatGeneration&&original.analysisDomainKey==record.analysisDomainKey&&
+                                original.policyGeneration==record.policyGeneration&&original.continuityGeneration==record.continuityGeneration&&
+                                original.sourceFrameNumber==record.sourceFrameNumber&&original.captureTimestamp==record.captureTimestamp&&
+                                std::isfinite(record.metrics[0])&&std::isfinite(record.metrics[5])&&
                                 record.flags==(original.flags|16384u)&&record.metrics[0]==original.metrics[0]&&
                                 record.metrics[5]>record.metrics[0]&&record.metrics[5]-record.metrics[0]<=1.5/inputHz,
                                 L"Repeated output must retain its original complete successful image and bounded source age.");
@@ -2450,7 +2581,7 @@ namespace VideoProcessorTest
                         return intersection&&(!requireLegacyRejection||rejected);
                     };
                     const auto startupStarted=GetTickCount64();
-                    const auto startupDeadline=startupStarted+(mode?180000:20000);
+                    const auto startupDeadline=startupStarted+(mode?ColdShaderPreparationBudgetMs:20000);
                     uint64_t steadyDeadline=0;
                     auto beginSteadyObservation=[&](uint64_t source) {
                         ready=source;
@@ -2499,6 +2630,15 @@ namespace VideoProcessorTest
                                 const auto& displayedInput=nativeInputs.at(record.counters[1]);
                                 const bool building=!ready && preparation.AllowsInitialBuildFallback(
                                     displayedInput.transportGeneration,displayedInput.sourceFormatGeneration,mode);
+                                if(!composed && (record.flags&16384u)) {
+                                    require(building && record.counters[3]==0,
+                                        L"A startup image repeat requires its original exact Missing/Pending mode0 image, without fabricated caption ownership.");
+                                    std::ostringstream startupRepeat;
+                                    startupRepeat<<"Decoded-DV startup whole-image repeat: consumed="<<record.counters[0]
+                                        <<" original="<<record.counters[1]<<" original_shader_state="<<preparation.state
+                                        <<" pipeline_key="<<preparation.key<<" original_effective="<<preparation.effective;
+                                    Logger::WriteMessage(startupRepeat.str().c_str());
+                                }
                                 require(preparation.state!="failed",L"Shader preparation failed instead of completing bounded startup.");
                                 if(!composed&&!building)require(record.metrics[8]<=0&&record.metrics[10]>=width&&top<=pictureTop&&bottom>=captionBottom,
                                     L"Unprepared output outside explicit shader building clipped the persistent raw caption or picture.");

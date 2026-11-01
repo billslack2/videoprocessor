@@ -80,6 +80,59 @@ inline bool CanRecordSubtitleOptionalAspectFill(const AlphaSourceCrop::Input& cr
         origin==ActivePictureAuthorityOrigin::NATIVE && exactNativeBounds;
 }
 
+// Carry the final optional fill with the exact selected native source. This
+// qualifies presentation only; retained-fill selection is still checked again
+// against the live successful-submission witness before it can be displayed.
+inline AlphaSourceCrop::CropPresentationAdmissionState QualifySubtitleConfiguredNativeFill(
+    AlphaSourceCrop::CropPresentationAdmissionState admission,const AlphaSourceCrop::Input& crop,
+    const AlphaSourceCrop::Decision& presentation,const AlphaSourceCrop::AspectLimitFillDecision& fill,
+    bool captionPresentationHeld,bool unknownCaptionHeld)
+{
+    const bool advanced=crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::BLACK ||
+        crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION;
+    const auto same=[](const ActivePictureBounds& a,const ActivePictureBounds& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+            a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;
+    };
+    // Reusing an already submitted optional fill still selects CURRENT native
+    // pixels. Advanced picture policy has just issued a fresh exact-native
+    // certificate, so qualify the current retained fill as well. No old source
+    // identity, transformed pose or unrecorded rectangle can use this bridge.
+    const bool retainedAdvancedNative=advanced && fill.applied && admission.optionalFillRetained &&
+        admission.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+        admission.sourceGeneration==crop.frameSourceGeneration &&
+        admission.presentationEpoch==crop.framePresentationEpoch &&
+        admission.optionalFillSourceSequence==crop.frameSourceSequence &&
+        same(admission.optionalFillSourceBounds,fill.sourceBounds) &&
+        presentation.owner==AlphaSourceCrop::DecisionOwner::TRUSTED_CROP &&
+        !presentation.verticallyTranslated && !presentation.outwardExpanded &&
+        same(presentation.sourceBounds,crop.geometry) && same(admission.trustedCrop,crop.geometry) &&
+        admission.nativePresentation.available &&
+        admission.nativePresentation.origin==AlphaSourceCrop::NativePresentationOrigin::EXACT_NATIVE &&
+        admission.nativePresentation.sourceGeneration==crop.frameSourceGeneration &&
+        admission.nativePresentation.sourceSequence==crop.frameSourceSequence &&
+        admission.nativePresentation.presentationEpoch==crop.framePresentationEpoch &&
+        same(admission.nativePresentation.nativeBase,crop.geometry) &&
+        same(admission.nativePresentation.approvedBounds,crop.geometry);
+    if(admission.available && admission.acceptedNativeCrop.available &&
+        admission.optionalFillApplied && (!fill.retainedSubmittedFill || retainedAdvancedNative) &&
+        admission.nativePresentation.origin!=AlphaSourceCrop::NativePresentationOrigin::CONFIRMED_TRANSLATION &&
+        admission.nativePresentation.origin!=AlphaSourceCrop::NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL &&
+        !presentation.nativePresentation.captionPreservation.available && !captionPresentationHeld &&
+        (!unknownCaptionHeld || advanced) && same(admission.acceptedNativeCrop.bounds,crop.geometry)) {
+        const auto lease=admission.nativePresentation.captionTranslationMeasurement;
+        const auto mode=admission.nativePresentation.preparedNativeMode;
+        const auto source=admission.nativePresentation.preparedNativeSourceSequence;
+        admission.nativePresentation={true,AlphaSourceCrop::NativePresentationOrigin::CONFIGURED_FILL,
+            admission.acceptedNativeCrop.bounds,fill.applied?fill.sourceBounds:presentation.sourceBounds,
+            crop.frameSourceGeneration,crop.frameSourceSequence,crop.framePresentationEpoch};
+        admission.nativePresentation.captionTranslationMeasurement=lease;
+        admission.nativePresentation.preparedNativeMode=mode;
+        admission.nativePresentation.preparedNativeSourceSequence=source;
+    }
+    return admission;
+}
+
 // Missing analysis does not revoke an already displayed fill. Only a fresh,
 // accepted caption footprint can prove that its horizontal trim hides text.
 // Moved styles use their successfully composed destination, not the erased

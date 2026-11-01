@@ -70,8 +70,10 @@ public:
                     reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT ? L"source extent" : L"strong edge");
                 rows.detected += geometry;
             }
-        } else if (reading.provisional || reading.physicalEvaluated)
-            rows.detected = L"Unknown (physical boundary pending)";
+        } else if (reading.physicalEvaluated)
+            rows.detected = L"Unknown (boundaries unresolved)";
+        else if (reading.provisional)
+            rows.detected = L"Unknown (awaiting physical measurement)";
         return rows;
     }
 

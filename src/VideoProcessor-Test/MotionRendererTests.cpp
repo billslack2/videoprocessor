@@ -687,6 +687,79 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::AreEqual(0.0,SourceCadenceInputRate(60,0,60000));
         Assert::AreEqual(0.0,SourceCadenceInputRate(60,1001,0));
     }
+    TEST_METHOD(SourceCadenceWarmupImageRepeatsAcrossFirstReadyWithoutRenewingCaptionCompleteness) {
+        int gpu;SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+        pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+        pending.frameDuration=1;pending.timeScale=60;pending.preparationKey=17;pending.requestedSubtitleMode=2;
+        pending.preparationState=SourceCadencePreparationState::Pending;pending.subtitleMode=0;
+        auto ready=pending;ready.preparationState=SourceCadencePreparationState::Ready;ready.subtitleMode=2;
+        SourceCadencePresentation repeat;repeat.WarmupCandidate(pending,34,34.0/60,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(ready,60,35,35.0/60),
+            L"First Ready UNKNOWN input must retain the exact successful prior Pending whole image for one input");
+        Assert::AreEqual(uint64_t(34),repeat.DisplayedSource());
+        Assert::IsTrue(repeat.DisplayedIsWarmup());
+        Assert::IsFalse(repeat.CanRepeat(pending,60,35,35.0/60),L"A warmup bridge is reserved for first Ready; still-building outputs remain fresh");
+        repeat.RepeatSubmitted(true);
+        Assert::IsFalse(repeat.CanRepeat(ready,60,35,35.0/60));
+        Assert::IsFalse(repeat.CanRepeat(ready,60,36,36.0/60));
+        ready.preparedCaptionPresented=true;
+        repeat.Candidate(ready,36,36.0/60,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(ready,60,37,37.0/60));
+        Assert::IsFalse(repeat.DisplayedIsWarmup());
+        auto wrongMode=ready;wrongMode.subtitleMode=0;
+        Assert::IsFalse(repeat.CanRepeat(wrongMode,60,37,37.0/60),L"Regular complete anchors retain exact effective-mode matching");
+    }
+    TEST_METHOD(SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput) {
+        int gpu;
+        for(bool fractional:{false,true})for(uint64_t initial:{uint64_t(33),uint64_t(34)}) {
+            SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+            pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+            pending.frameDuration=fractional?1001:1;pending.timeScale=fractional?60000:60;
+            const double rate=double(pending.timeScale)/pending.frameDuration;
+            pending.preparationKey=17;pending.requestedSubtitleMode=2;
+            pending.preparationState=SourceCadencePreparationState::Pending;
+            SourceCadencePresentation repeat;repeat.WarmupCandidate(pending,initial,double(initial)/rate,true,true);
+            repeat.Submitted(true);
+            Assert::IsFalse(repeat.CanRepeat(pending,rate,initial+1,double(initial+1)/rate),
+                L"Pending UNKNOWN must render and cache its allowed fresh raw image instead of spending the only first-Ready bridge");
+            repeat.WarmupCandidate(pending,initial+1,double(initial+1)/rate,true,true);repeat.Submitted(true);
+            auto ready=pending;ready.subtitleMode=2;ready.preparationState=SourceCadencePreparationState::Ready;
+            Assert::IsTrue(repeat.CanRepeat(ready,rate,initial+2,double(initial+2)/rate));
+            Assert::AreEqual(initial+1,repeat.DisplayedSource());repeat.RepeatSubmitted(true);
+            Assert::IsFalse(repeat.CanRepeat(ready,rate,initial+3,double(initial+3)/rate));
+            ready.preparedCaptionPresented=true;
+            repeat.Candidate(ready,initial+3,double(initial+3)/rate,true,true);repeat.Submitted(true);
+            Assert::IsTrue(repeat.CanRepeat(ready,rate,initial+4,double(initial+4)/rate));
+            Assert::IsFalse(repeat.DisplayedIsWarmup());
+        }
+    }
+    TEST_METHOD(SourceCadenceWarmupImageRejectsForeignContextFailureAndPostComposedReuse) {
+        int gpu;SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+        pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+        pending.frameDuration=1;pending.timeScale=60;pending.preparationKey=17;pending.requestedSubtitleMode=3;
+        pending.preparationState=SourceCadencePreparationState::Pending;
+        for(int fault=-1;fault<15;++fault) {
+            auto source=pending;auto current=pending;current.subtitleMode=3;current.preparationState=SourceCadencePreparationState::Ready;
+            bool native=true,captured=true,submitted=true;uint64_t next=35;double pts=35.0/60;
+            if(fault==0)++current.preparationKey;
+            if(fault==1)current.requestedSubtitleMode=2;
+            if(fault==2)native=false;
+            if(fault==3)captured=false;
+            if(fault==4)submitted=false;
+            if(fault==5)next=36;
+            if(fault==6)pts=37.0/60;
+            if(fault==7)source.preparedCaptionPresented=true;
+            if(fault==8)current.preparedCaptionPresented=true;
+            if(fault==9)source.preparationState=SourceCadencePreparationState::Failed;
+            if(fault==10)current.preparationState=SourceCadencePreparationState::Failed;
+            if(fault==11)source.preparationKey=0;
+            if(fault==12)++current.viewport;
+            if(fault==13)++current.policy;
+            if(fault==14)source.subtitleMode=3;
+            SourceCadencePresentation repeat;repeat.WarmupCandidate(source,34,34.0/60,native,captured);repeat.Submitted(submitted);
+            Assert::AreEqual(fault==-1,repeat.CanRepeat(current,60,next,pts));
+        }
+    }
     TEST_METHOD(SourceCadenceRepeatRequiresSubmittedCompletePixelsAndNeverRenewsAnchor) {
         int gpu;
         SourceCadencePresentationContext c;c.gpu=&gpu;c.generation=3;c.sourceFormat=4;
