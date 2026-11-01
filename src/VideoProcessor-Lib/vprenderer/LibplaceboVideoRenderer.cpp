@@ -13192,6 +13192,11 @@ struct LibplaceboVideoRenderer::Impl
                 if(correctionDecision.action==AlphaCadenceAction::Drop)return true;
                 if(PresentInputCadenceRepeat(previousCompletePresentation,repeatContext,inputRepeatIdentity,
                     captureRateHz,temporalRenderer.currentPts,presentationTargetTimingKnown,presentationTargetLeadMs)) {
+                    const bool cueTransportRetired=subtitleBoxPresentation.RetireCompleteOutputInput(
+                        previousCompletePresentation.DisplayedSource(),inputRepeatIdentity,
+                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                    DebugLog::Log("SUBTITLE OUTPUT RETIREMENT: consumed=%llu displayed=%llu cue_transport_retired=%d analysis_votes=0 cue_renewal=0",
+                        inputRepeatIdentity.acceptedSequence,previousCompletePresentation.DisplayedSource(),cueTransportRetired?1:0);
                     previousCompletePresentation.RepeatSubmitted(true);
                     sourceCadencePresentation=previousCompletePresentation;
                     return true;
@@ -17267,6 +17272,8 @@ releaseDriftBaseRetention =
 			AlphaSourceCrop::PresentationRecoveryInput recoveryInput;
             recoveryInput.classicTranslationEnabled = subtitlePreviewMode == SubtitlePreviewMode::None &&
                 !suppressCaptionPresentation;
+            recoveryInput.classicTranslationEngaging=establishedTranslation.engagingTranslation &&
+                scopeSubtitleFit && !fixedCropAspectConfigured && !nlsRequested && !inwardCaptionProtected;
 			recoveryInput.previous = cropPresentationRecovery;
 			recoveryInput.previousAdmission = cropPresentationAdmission;
 			recoveryInput.submittedScopeAnchor = submittedNativeScopeAnchor;

@@ -2093,6 +2093,7 @@ public:
     void Reset() {
         m_acceptedCueSeedCertificate = {};
         m_currentPreparedCueCertificate = {};
+        m_completeOutputRetirement = {};
         m_queueContinuation = {};
         m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
         m_previousRawCrowded = {};
@@ -2155,6 +2156,23 @@ public:
     }
     const SubtitleAcceptedCueSeedCertificate& AcceptedCueSeedCertificate() const { return m_acceptedCueSeedCertificate; }
     const SubtitleCurrentPreparedCueCertificate& CurrentPreparedCueCertificate() const { return m_currentPreparedCueCertificate; }
+    // Transport retirement only: the repeated output still belongs to its
+    // original analyzed source. No cue observation, ink, confirmation, weak
+    // hold clock or certificate is advanced by consuming this input.
+    bool RetireCompleteOutputInput(uint64_t displayedSource,const ActivePictureFrameIdentity& consumed,
+        uint64_t policy,uint64_t continuity)
+    {
+        if(m_completeOutputRetirement.valid || !HasAcceptedSourceTemplate() ||
+            !displayedSource || m_previous.current.identity.acceptedSequence!=displayedSource ||
+            m_previous.policyGeneration!=policy || m_previous.continuityGeneration!=continuity ||
+            m_previous.current.policyGeneration!=policy || m_previous.current.continuityGeneration!=continuity ||
+            !ImmediatelyFollowsTransport(m_previous.current.identity,consumed))return false;
+        m_completeOutputRetirement.valid=true;
+        m_completeOutputRetirement.anchor=m_previous.current.identity;
+        m_completeOutputRetirement.consumed=consumed;
+        m_completeOutputRetirement.policy=policy;m_completeOutputRetirement.continuity=continuity;
+        return true;
+    }
     const char* DecisionReason() const { return m_decisionReason; }
     const SubtitleBoxLookahead::InkMatchDiagnostics& InkDiagnostics() const { return m_inkDiagnostic; }
     double WeakHoldMilliseconds() const { return m_diagnosticWeakMs; }
@@ -2248,6 +2266,10 @@ public:
         bool backlogPendingPixelsVerified = false,
         const SubtitleCueContinuation* cueContinuation = nullptr)
     {
+        // Even an unavailable/failed next Consume spends the single transport
+        // witness. It can never authorize a later second gap or a retry lease.
+        const auto completeOutputRetirement=m_completeOutputRetirement;
+        m_completeOutputRetirement={};
         std::unique_ptr<SubtitleBoxPreview> historyConfirmed;
         if(SubtitleBoxLookahead::ConfirmCrowdedCurrentWithPrevious(m_previousRawCrowded,suppliedPreview)) {
             historyConfirmed=std::make_unique<SubtitleBoxPreview>(suppliedPreview);
@@ -2400,11 +2422,45 @@ public:
             NoNewInkOutsideReference(preview.current) &&
             NoNewOwnedInkOutsideReference(preview.current) && ExpansionStillVisible(preview);
         const bool backlogReassociation=completedBacklogReassociation || pendingBacklogReassociation;
+        const bool currentTemplatePixelsMatch=
+            SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,continuity,&m_inkDiagnostic);
+        const bool retiredInputAdjacency=[&] {
+            const auto& c=preview.current;
+            if(!completeOutputRetirement.valid || !m_hasPrevious || !preview.available ||
+                !SameAnalysisFrameIdentity(completeOutputRetirement.anchor,m_previous.current.identity) ||
+                completeOutputRetirement.policy!=preview.policyGeneration ||
+                completeOutputRetirement.continuity!=preview.continuityGeneration ||
+                !ImmediatelyFollowsTransport(completeOutputRetirement.consumed,c.identity) ||
+                !c.analyzed || c.discontinuity || c.pendingRefresh || c.analysisRefresh || c.inspectionCandidateUsed ||
+                !c.independentBarAnalysis || !c.barAuthority || !c.barEvidence.available ||
+                c.barTrackingAuthority || c.currentAnchorUsesTrackedEdge || c.glyphLocalTop || c.glyphLocalBottom ||
+                c.barEvidence.topRevalidatedAtReference || c.barEvidence.topRevalidatedNearby ||
+                c.barEvidence.bottomRevalidatedAtReference || c.barEvidence.bottomRevalidatedNearby ||
+                c.barEvidence.captionBackedTop || c.barEvidence.captionBackedBottom ||
+                !c.text.detected || c.text.held || c.text.workLimit || c.text.confirmationPending ||
+                !c.text.topSearchComplete || !c.text.bottomSearchComplete ||
+                !c.ink || !c.ink->rawEvidenceComplete || !c.ink->paletteValid ||
+                c.policyGeneration!=preview.policyGeneration || c.continuityGeneration!=preview.continuityGeneration ||
+                c.text.lineCount!=m_result.lineCount || !currentTemplatePixelsMatch ||
+                !SubtitleBoxLookahead::SameContext(m_inkReference,c) ||
+                !SubtitleBoxLookahead::SameCue(m_inkReference,c) ||
+                !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) ||
+                !NoNewInkOutsideReference(c) || !NoNewOwnedInkOutsideReference(c))return false;
+            for(int line=0;line<m_result.lineCount;++line) {
+                bool covered=false;
+                for(int rawLine=0;rawLine<c.text.lineCount;++rawLine) {
+                    const auto& a=c.text.lineBounds[rawLine];const auto& b=m_result.lineBounds[line];
+                    covered|=a.Valid() && b.Valid() && a.left<=b.left && a.top<=b.top && a.right>=b.right && a.bottom>=b.bottom;
+                }
+                if(!covered)return false;
+            }
+            return true;
+        }();
         const bool followsPrevious=m_hasPrevious &&
             (preview.current.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1 ||
              (preview.current.pendingRefresh &&
               preview.current.identity.acceptedSequence>m_previous.current.identity.acceptedSequence) ||
-              backlogReassociation);
+              backlogReassociation || retiredInputAdjacency);
         bool same = m_hasPrevious && !preview.current.discontinuity &&
             m_previous.policyGeneration == preview.policyGeneration &&
             (m_previous.continuityGeneration == preview.continuityGeneration ||
@@ -2418,8 +2474,6 @@ public:
                     SubtitleBoxLookahead::ContainsMatchedInk(m_result.bounds,preview.current.text,m_result,
                 (std::max)(4,preview.current.height/180)))) ||
                 SubtitleBoxLookahead::ContainsCurrentInk(m_result.bounds,preview.current.text));
-        const bool currentTemplatePixelsMatch=
-            SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,continuity,&m_inkDiagnostic);
         // Coarse grouping signatures preserve geometry, but cannot overrule a
         // changed local glyph at the fixed acquisition coordinates.
         if(m_hasPrevious && m_result.detected && m_inkReference.ink && !currentTemplatePixelsMatch)same=false;
@@ -2770,6 +2824,22 @@ public:
         return result;
     }
 private:
+    static bool ImmediatelyFollowsTransport(const ActivePictureFrameIdentity& before,
+        const ActivePictureFrameIdentity& after)
+    {
+        if(!before.transportGeneration || !before.acceptedSequence ||
+            before.acceptedSequence==UINT64_MAX || after.acceptedSequence!=before.acceptedSequence+1 ||
+            !before.sourceFrameNumber || before.sourceFrameNumber==UINT64_MAX ||
+            after.sourceFrameNumber!=before.sourceFrameNumber+1 || after.captureTimestamp<=before.captureTimestamp)return false;
+        auto expected=before;expected.acceptedSequence=after.acceptedSequence;
+        expected.sourceFrameNumber=after.sourceFrameNumber;expected.captureTimestamp=after.captureTimestamp;
+        return SameAnalysisFrameIdentity(expected,after);
+    }
+    struct CompleteOutputRetirement {
+        bool valid=false;
+        ActivePictureFrameIdentity anchor,consumed;
+        uint64_t policy=0,continuity=0;
+    } m_completeOutputRetirement;
     struct QueueContinuationCertificate {
         bool valid=false,captureMeasured=false;
         ActivePictureFrameIdentity identity;

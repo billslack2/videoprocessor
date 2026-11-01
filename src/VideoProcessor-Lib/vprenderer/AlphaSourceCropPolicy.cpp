@@ -6804,6 +6804,52 @@ namespace AlphaSourceCrop
         CaptionTranslationMeasurement captionLease;
         const bool captionLifetime=CurrentCaptionOwnsTranslationLifetime(input,proposed,&captionLease);
         const bool continuingTranslation=SubmittedTranslationCoversCurrentBarVisibility(input,proposed);
+        // A confirmed target owns the controller lifetime, not visibility of a
+        // smaller timed-engage pose. Keep CURRENT caption/occupied pixels until
+        // that actual pose covers them; physical/native admission stays intact.
+        const bool currentEngageCaption=input.classicTranslationEngaging && captionLifetime &&
+            crop.automaticCropEnabled && !crop.fullRasterPresentationAuthoritative && !committedFull &&
+            currentExactVisible && input.measurementCurrent;
+        if(currentEngageCaption) {
+            auto outside=crop.currentVisibleBounds;
+            if(captionLease.targetTranslationPixels<0)outside.bottom=std::min(outside.bottom,crop.geometry.top);
+            else outside.top=std::max(outside.top,crop.geometry.bottom);
+            const bool outsideValid=ValidBounds(outside,crop.rasterWidth,crop.rasterHeight);
+            // An earlier lease identifies the controller only. Its old caption
+            // rectangle cannot nominate pixels for the current envelope.
+            const auto& measured=input.currentCaptionTranslation;
+            const bool currentCaption=measured.available && measured.measuredCaption &&
+                measured.sourceGeneration==crop.frameSourceGeneration && measured.sourceSequence==crop.frameSourceSequence;
+            const bool clipped=(currentCaption && !ContainedBounds(proposed.sourceBounds,measured.occupiedBounds)) ||
+                (outsideValid && !ContainedBounds(proposed.sourceBounds,outside));
+            if(clipped) {
+                auto bounds=crop.geometry;
+                const auto include=[&](const ActivePictureBounds& visible) {
+                    bounds.left=std::max(0,std::min(bounds.left,visible.left)&~1);
+                    bounds.top=std::max(0,std::min(bounds.top,visible.top)&~1);
+                    bounds.right=std::min(crop.rasterWidth,(std::max(bounds.right,visible.right)+1)&~1);
+                    bounds.bottom=std::min(crop.rasterHeight,(std::max(bounds.bottom,visible.bottom)+1)&~1);
+                };
+                if(currentCaption)include(measured.occupiedBounds);
+                include(crop.currentVisibleBounds);
+                bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                bounds.aspectRatio=double(bounds.right-bounds.left)/std::max(1,bounds.bottom-bounds.top);
+                result.retained=result.expanded=result.currentPixelExtent=true;result.nativeCrop=crop.geometry;
+                result.presentation={};result.presentation.sourceBounds=bounds;
+                result.presentation.applyCrop=!SameBounds(bounds,raster);result.presentation.outwardExpanded=true;
+                result.presentation.owner=DecisionOwner::OUTWARD_FIT;
+                result.presentation.reason="current caption remains visible until timed engage pose covers its pixels";
+                auto& proof=result.presentation.nativePresentation;
+                proof.available=true;proof.origin=NativePresentationOrigin::VISIBILITY_FALLBACK;
+                proof.nativeBase=crop.geometry;proof.approvedBounds=bounds;
+                proof.sourceGeneration=crop.frameSourceGeneration;proof.sourceSequence=crop.frameSourceSequence;
+                proof.presentationEpoch=input.presentationEpoch;
+                // Retain the original controller witness verbatim. Only the
+                // separately sampled CURRENT extent authorizes this viewport.
+                proof.captionTranslationMeasurement=captionLease;
+                return result;
+            }
+        }
         if(currentContradiction && !continuingTranslation && !captionLifetime) {
             auto bounds=crop.geometry;
             const auto include=[&](const ActivePictureBounds& visible) {

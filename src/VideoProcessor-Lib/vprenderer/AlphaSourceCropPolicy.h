@@ -1925,6 +1925,8 @@ namespace AlphaSourceCrop
         CaptionTranslationMeasurement currentCaptionTranslation;
         // Current live profile, never inferred from an old controller/lease.
         bool classicTranslationEnabled=false;
+        // Live timed engage state; presentation safety does not change its clock or target.
+        bool classicTranslationEngaging=false;
         CurrentCaptionObservation captionObservation;
         // An exact current independently confirmed native expansion can own
         // preservation without acquiring caption/UI presentation authority.

@@ -17633,6 +17633,137 @@ public:
                     L"Only a complete exact current empty-band witness can dismiss coarse opposite-edge overreach; first picture proof still wins.");
             }
         }
+        static PresentationRecoveryInput CurrentClassicEngageVisibility(int applied) {
+            auto c=LoggedNative(10707);
+            c.geometry={0,262,3840,1898,3840,2160,3840.0/1636,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            c.acceptedNativeCrop.bounds=c.geometry;
+            auto initial=Submission(c);AuthorizeActual(initial,NativePresentationOrigin::EXACT_NATIVE);
+            const auto anchor=CommitSubmittedNativeScopeAnchor(initial);
+            Assert::IsTrue(anchor.available);
+            c.frameSourceSequence=10708;c.verticalTranslationBase=c.geometry;
+            c.verticalTranslationSourceGeneration=c.frameSourceGeneration;
+            c.verticalTranslationActive=applied!=0;c.verticalTranslationPixels=applied;
+            c.verticalTranslationEngageBaseRetentionActive=applied==0;
+            auto r=Unknown(c,anchor);r.excludedBandsPixelSafe=false;r.currentTick=100;
+            r.classicTranslationEngaging=true;r.observation=c.geometry;r.observation.bottom=1954;
+            r.crop.currentVisibleBoundsAvailable=true;r.crop.currentVisibleBounds=r.observation;
+            r.crop.currentVisibleBase=c.geometry;r.crop.currentVisibleSourceGeneration=c.frameSourceGeneration;
+            r.crop.currentVisibleSourceSequence=c.frameSourceSequence;
+            auto& m=r.currentCaptionTranslation;m.available=m.measuredCaption=true;
+            m.nativeBase=c.geometry;m.occupiedBounds={1542,1762,2298,1950,3840,2160,0,ActivePictureBounds::BarAxes::NONE};
+            m.targetTranslationPixels=92;m.visibleExtentMarginPixels=4;
+            m.sourceGeneration=c.frameSourceGeneration;m.sourceSequence=c.frameSourceSequence;
+            m.presentationEpoch=9;m.sourceFormatKey=c.frameSourceFormatKey;m.analysisDomainKey=c.frameAnalysisDomainKey;
+            m.acceptedNativeSourceSequence=c.acceptedNativeCrop.acceptedSourceSequence;
+            m.measurementTick=100;m.leaseExpiryTick=6000;
+            r.candidate=Evaluate(r.crop);return r;
+        }
+        TEST_METHOD(ClassicTimedEngageKeepsCurrentCaptionVisibleUntilActualPanCoversIt) {
+            for(int applied:{0,2,10,30,54,56,72,92}) {
+                auto r=CurrentClassicEngageVisibility(applied);
+                const auto before=r.crop.geometry;const auto target=r.currentCaptionTranslation.targetTranslationPixels;
+                const auto admitted=AdmitCropPresentation({},r.crop,r.candidate,9);
+                const auto resolved=ResolveUncertainPicturePresentation(r,admitted.presentation);
+                if(applied<56) {
+                    Assert::IsTrue(resolved.currentPixelExtent && resolved.expanded);
+                    Assert::AreEqual(262,resolved.presentation.sourceBounds.top);
+                    Assert::AreEqual(1954,resolved.presentation.sourceBounds.bottom);
+                    Assert::IsTrue(resolved.presentation.sourceBounds.bottom>=1940,L"Partial engage must preserve every actual lower glyph row");
+                    Assert::AreEqual(int(NativePresentationOrigin::VISIBILITY_FALLBACK),int(resolved.presentation.nativePresentation.origin));
+                }else {
+                    Assert::IsFalse(resolved.expanded);
+                    Assert::AreEqual(262+applied,resolved.presentation.sourceBounds.top);
+                    Assert::AreEqual(1898+applied,resolved.presentation.sourceBounds.bottom);
+                }
+                Assert::AreEqual(262,before.top);Assert::AreEqual(1898,before.bottom);
+                Assert::AreEqual(target,r.currentCaptionTranslation.targetTranslationPixels);
+                Assert::AreEqual(applied,r.crop.verticalTranslationPixels,L"Visibility cannot alter the live controller pose");
+            }
+        }
+        TEST_METHOD(ClassicEngageUsesCurrentVisiblePixelsAcrossDenseScanGapsAndUiOnlyContent) {
+            for(int mode=0;mode<2;++mode) {
+                auto r=CurrentClassicEngageVisibility(10);
+                if(mode==0) {
+                    auto prior=r.currentCaptionTranslation;--prior.sourceSequence;prior.measurementTick=99;
+                    // The stale rectangle is deliberately larger. It can own
+                    // controller lifetime, but cannot enlarge current pixels.
+                    prior.occupiedBounds.bottom=1970;
+                    r.submittedScopeAnchor.submittedPresentationProof.captionTranslationMeasurement=prior;
+                    r.currentCaptionTranslation={};
+                }else {
+                    auto& m=r.currentCaptionTranslation;m.measuredCaption=false;m.denseOverlayMeasured=true;
+                    m.denseContent.lowerContent=true;m.denseContent.lowerOccupiedDepth=52;
+                    m.denseContent.lowerOccupiedRows=12;m.denseContent.lowerPeakSamples=20;
+                    m.denseContent.lowerBarPixels=262;m.denseContent.upperBarPixels=262;
+                    m.denseContent.sampledColumns=960;m.denseContent.lowerRequiredShift=92;
+                }
+                const auto resolved=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+                Assert::IsTrue(resolved.currentPixelExtent && resolved.expanded);
+                Assert::AreEqual(262,resolved.presentation.sourceBounds.top);
+                Assert::AreEqual(1954,resolved.presentation.sourceBounds.bottom);
+                Assert::IsTrue(resolved.presentation.reason==std::string("current caption remains visible until timed engage pose covers its pixels"));
+            }
+        }
+        TEST_METHOD(ClassicUnscannedEngageSubmissionsPreserveOriginalControllerLeaseWithoutRenewal) {
+            auto r=CurrentClassicEngageVisibility(10);
+            auto original=r.currentCaptionTranslation;--original.sourceSequence;original.measurementTick=99;
+            original.occupiedBounds.bottom=1970;
+            r.submittedScopeAnchor.submittedPresentationProof.captionTranslationMeasurement=original;
+            r.currentCaptionTranslation={};
+            for(int frame=0;frame<3;++frame) {
+                const auto resolved=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+                Assert::IsTrue(resolved.currentPixelExtent && resolved.expanded);
+                Assert::AreEqual(1954,resolved.presentation.sourceBounds.bottom);
+                const auto& copied=resolved.presentation.nativePresentation.captionTranslationMeasurement;
+                Assert::IsTrue(copied.available);
+                Assert::AreEqual(original.sourceSequence,copied.sourceSequence);
+                Assert::AreEqual(original.measurementTick,copied.measurementTick);
+                Assert::AreEqual(original.leaseExpiryTick,copied.leaseExpiryTick);
+                Assert::AreEqual(original.targetTranslationPixels,copied.targetTranslationPixels);
+                Assert::AreEqual(1970,copied.occupiedBounds.bottom,L"Control provenance remains original while current pixels select a smaller viewport");
+                auto submit=Submission(r.crop);submit.previous=r.submittedScopeAnchor;
+                submit.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                submit.selectedAdmission=AdmitCropPresentation({},r.crop,Evaluate(r.crop),9).state;
+                submit.selectedAdmission.available=true;submit.selectedAdmission.trustedCrop=r.crop.geometry;
+                submit.selectedAdmission.sourceGeneration=r.crop.frameSourceGeneration;submit.selectedAdmission.presentationEpoch=9;
+                submit.selectedAdmission.nativePresentation=resolved.presentation.nativePresentation;
+                submit.submittedBounds=resolved.presentation.sourceBounds;submit.selectedOwner=resolved.presentation.owner;
+                const auto committed=CommitSubmittedNativeScopeAnchor(submit);
+                Assert::IsTrue(committed.available);
+                Assert::AreEqual(r.crop.frameSourceSequence,committed.lastSubmittedPresentationSourceSequence);
+                r.submittedScopeAnchor=committed;
+                ++r.crop.frameSourceSequence;++r.retentionSourceSequence;++r.crop.currentVisibleSourceSequence;
+                ++r.currentTick;
+            }
+            r.currentTick=original.leaseExpiryTick+1;
+            const auto expired=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+            Assert::IsTrue(expired.presentation.reason!=std::string("current caption remains visible until timed engage pose covers its pixels"));
+        }
+        TEST_METHOD(ClassicEngageVisibilityCannotBorrowStaleCaptionOrMaskPicturePriority) {
+            for(int fault=0;fault<10;++fault) {
+                auto r=CurrentClassicEngageVisibility(10);
+                if(fault==0)r.classicTranslationEngaging=false;
+                if(fault==1)r.classicTranslationEnabled=false;
+                if(fault==2)r.currentCaptionTranslation.measuredCaption=false; // Neither fresh caption nor dense UI proof.
+                if(fault==3)--r.currentCaptionTranslation.sourceSequence;
+                if(fault==4)++r.currentCaptionTranslation.analysisDomainKey;
+                if(fault==5)--r.crop.currentVisibleSourceSequence;
+                if(fault==6)r.crop.fullRasterPresentationAuthoritative=true;
+                if(fault==7)r.crop.movingPictureTransition=true;
+                if(fault==8)r.crop.verticalFitConfirmationPending=true;
+                if(fault==9) {
+                    auto& p=r.nativeOutwardPictureProof;p.base=r.crop.geometry;
+                    p.candidate=p.referenceCandidate=r.observation;
+                    p.sourceGeneration=r.crop.frameSourceGeneration;p.lastObservedSourceSequence=r.crop.frameSourceSequence;
+                    p.firstPictureSourceSequence=r.crop.frameSourceSequence;p.confirmations=1;
+                    p.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+                    r.nativeOutwardPictureProofPresentationEpoch=9;
+                }
+                const auto resolved=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+                Assert::IsTrue(resolved.presentation.reason!=std::string("current caption remains visible until timed engage pose covers its pixels"),
+                    L"Only the exact current Classic caption and engage context may select its visibility envelope");
+            }
+        }
         TEST_METHOD(CurrentDenseCaptionOwnsPendingEngageAndDriftButNeverPictureExpansion)
         {
             auto c=LoggedNative(10707);auto seed=Submission(c);

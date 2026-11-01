@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 803,
+  "minimumNativeTests": 809,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -83,7 +83,13 @@
     "CurrentHeldErasureCertificateCannotBypassIdentityCompositionOrPictureSafety",
     "CurrentCompleteRawCueCertifiesConsecutiveHeldPosesWithoutRenewingAcceptance",
     "CurrentHeldPreparedCertificateRejectsPartialChangedAndNovelOwnedGlyphs",
-    "CurrentHeldFinalPixelsNeverSealReusableSourceAnalysis"
+    "CurrentHeldFinalPixelsNeverSealReusableSourceAnalysis",
+    "ClassicTimedEngageKeepsCurrentCaptionVisibleUntilActualPanCoversIt",
+    "ClassicEngageVisibilityCannotBorrowStaleCaptionOrMaskPicturePriority",
+    "ClassicEngageUsesCurrentVisiblePixelsAcrossDenseScanGapsAndUiOnlyContent",
+    "ClassicUnscannedEngageSubmissionsPreserveOriginalControllerLeaseWithoutRenewal",
+    "OneCompleteOutputRetirementPreservesFreshThreeLineOwnershipWithoutRenewal",
+    "CompleteOutputRetirementNeverAuthorizesOtherGapsOrUnprovenCurrentPixels"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -185,6 +191,16 @@
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
       "method": "CurrentHeldPreparedCertificateRejectsPartialChangedAndNovelOwnedGlyphs"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "OneCompleteOutputRetirementPreservesFreshThreeLineOwnershipWithoutRenewal"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CompleteOutputRetirementNeverAuthorizesOtherGapsOrUnprovenCurrentPixels"
     }
   ]
 }

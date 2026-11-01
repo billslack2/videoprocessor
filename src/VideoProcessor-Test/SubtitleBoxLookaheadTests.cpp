@@ -375,7 +375,91 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
         current.sharedPicture.bounds={0,45,640,315,640,360,640.0/270,ActivePictureBounds::BarAxes::TOP_BOTTOM};
         return current;
     }
+    static SubtitleBoxObservation RetiredThreeLineCue(uint64_t sequence) {
+        auto current=NearCardThreeRows(sequence,false);
+        current.policyGeneration=7;current.continuityGeneration=9;
+        current.independentBarAnalysis=true;current.barEvidence.available=true;
+        current.barEvidence.top=current.pictureTop;current.barEvidence.bottom=current.pictureBottom;
+        current.text.topSearchComplete=current.text.bottomSearchComplete=true;
+        auto ink=std::make_shared<SubtitleInkSnapshot>(*current.ink);ink->paletteValid=true;current.ink=ink;
+        current.sharedPicture.required=true;current.sharedPicture.identity=current.identity;
+        current.sharedPicture.bounds={0,45,640,315,640,360,640.0/270,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        return current;
+    }
+    static SubtitleBoxPreview RetiredThreeLinePreview(uint64_t sequence,bool prune) {
+        const SubtitleBoxObservation scans[2]={RetiredThreeLineCue(sequence),RetiredThreeLineCue(sequence+1)};
+        auto preview=SubtitleBoxLookahead::Resolve(scans,2,7,9);
+        if(prune){preview.text.lineCount=2;preview.text.lineBounds[2]={};}
+        return preview;
+    }
 public:
+    TEST_METHOD(OneCompleteOutputRetirementPreservesFreshThreeLineOwnershipWithoutRenewal) {
+        for(bool heldAnchor:{false,true}) {
+            SubtitleBoxPresentation tracker;
+            auto initial=RetiredThreeLinePreview(1,false);
+            const auto acquired=tracker.Consume(initial,250,16.683);
+            Assert::IsTrue(acquired.detected && !acquired.held && acquired.lineCount==3);
+            const uint64_t displayed=heldAnchor?2:1;
+            if(heldAnchor) {
+                const auto prior=tracker.Consume(RetiredThreeLinePreview(2,true),250,16.683);
+                Assert::IsTrue(prior.detected && prior.held && prior.lineCount==3,
+                    L"A current-owned held output must support the same single-input retirement as a strong output.");
+            }
+            const auto owner=tracker.AcceptedTemplateIdentity();const auto weak=tracker.WeakHoldMilliseconds();
+            auto retired=Identity(displayed+1);
+            Assert::IsTrue(tracker.RetireCompleteOutputInput(displayed,retired,7,9));
+            Assert::IsFalse(tracker.RetireCompleteOutputInput(displayed,retired,7,9),L"A duplicate retirement cannot renew its permission.");
+            Assert::IsTrue(SameAnalysisFrameIdentity(owner,tracker.AcceptedTemplateIdentity()),
+                L"Retiring an input must leave the displayed source as the analyzed glyph owner.");
+            Assert::AreEqual(weak,tracker.WeakHoldMilliseconds());
+            auto current=RetiredThreeLinePreview(displayed+2,true);
+            const auto accepted=tracker.Consume(current,250,16.683);
+            Assert::IsTrue(accepted.detected && accepted.held && accepted.lineCount==3,
+                L"The fresh successor must retain all acquired current-owned lines across exactly one retired input.");
+            Assert::AreEqual(acquired.cue,accepted.cue);Assert::AreEqual(acquired.observations,accepted.observations);
+            Assert::IsTrue(tracker.CurrentPreparedCueCertificate().Matches(current.current,accepted,current.current.sharedPicture.bounds));
+            Assert::AreEqual(displayed+2,tracker.AcceptedTemplateIdentity().acceptedSequence);
+            Assert::IsFalse(tracker.RetireCompleteOutputInput(displayed,Identity(displayed+3),7,9),
+                L"An old displayed anchor cannot authorize a second retirement after its fresh successor.");
+        }
+    }
+    TEST_METHOD(CompleteOutputRetirementNeverAuthorizesOtherGapsOrUnprovenCurrentPixels) {
+        for(int fault=0;fault<13;++fault) {
+            SubtitleBoxPresentation tracker;
+            const auto acquired=tracker.Consume(RetiredThreeLinePreview(1,false),250,16.683);
+            Assert::IsTrue(acquired.detected && acquired.lineCount==3);
+            auto retired=Identity(2);auto current=RetiredThreeLinePreview(3,true);
+            if(fault==1)++retired.transportGeneration;
+            if(fault==2)++retired.sourceFrameNumber;
+            if(fault==3)retired.captureTimestamp=Identity(1).captureTimestamp;
+            if(fault!=0) {
+                const bool recorded=tracker.RetireCompleteOutputInput(1,retired,7,9);
+                Assert::AreEqual(fault>3,recorded);
+            }
+            if(fault==4){Assert::IsFalse(tracker.RetireCompleteOutputInput(1,Identity(3),7,9));current=RetiredThreeLinePreview(4,true);}
+            if(fault==5){++current.current.continuityGeneration;++current.continuityGeneration;}
+            if(fault==6){++current.current.identity.analysisDomainKey;current.current.sharedPicture.identity=current.current.identity;}
+            if(fault==7)current.current.text.workLimit=true;
+            if(fault==8) {
+                auto ink=std::make_shared<SubtitleInkSnapshot>(*current.current.ink);
+                for(int y=296;y<310;++y)for(int x=200;x<440;++x) {
+                    const size_t p=size_t(y)*640+x;const uint64_t bit=uint64_t(1)<<(p%64);
+                    ink->rawInk[p/64]&=~bit;ink->ownedInk[p/64]&=~bit;
+                }
+                current.current.ink=ink;
+            }
+            if(fault==9)tracker.Reset();
+            if(fault==10) {
+                SubtitleBoxPreview unavailable;unavailable.current.identity=Identity(3);
+                tracker.Consume(unavailable,250,16.683);current=RetiredThreeLinePreview(4,true);
+            }
+            if(fault==11){++current.current.identity.sourceFrameNumber;current.current.sharedPicture.identity=current.current.identity;}
+            if(fault==12){current.current.discontinuity=true;}
+            const auto accepted=tracker.Consume(current,250,16.683);
+            Assert::IsFalse(tracker.CurrentPreparedCueCertificate().Matches(current.current,accepted,current.current.sharedPicture.bounds),
+                L"No token, wrong source/context, another gap, or changed/unknown pixels cannot inherit retired-input adjacency.");
+        }
+    }
     TEST_METHOD(CurrentCompleteRawCueCertifiesConsecutiveHeldPosesWithoutRenewingAcceptance) {
         SubtitleBoxPresentation tracker;
         auto first=CurrentHeldProofCue(1),future=CurrentHeldProofCue(2);

@@ -39,6 +39,19 @@ submission, changed context/rate, reset, resize, discontinuity and excessive age
 invalidate permission. Fresh conclusive current evidence wins immediately. Interlaced input and active temporal processing retain full analysis;
 this path does not reinterpret old cleanup as permission to erase new pixels.
 
+A successful one-input whole-image repeat retires that input separately from
+measurement history. The tracker may bridge only that exact retired input to its
+immediate successor, which must independently pass complete current glyph proof.
+The prior measured source, cue observations and lease clocks keep their original
+identities; generic source gaps receive no such permission.
+
+Classic's confirmed controller target can contain a caption while a partial timed
+engage pose still clips it. Until the actual admitted pan contains the current
+outside-picture visible strip, presentation retains a fresh current safe envelope.
+Dense-scan gaps use current visible pixels, and the original controller measurement
+and expiry stay unchanged. Once the actual pan fits, normal native-height motion
+resumes without changing the target, drift clock or measured picture boundaries.
+
 Both the normal libplacebo-owned and diagnostic VP-owned presenters are covered.
 For each pinned D3D11 dependency, `submit_frame` only releases its acquired
 backbuffer; `swap_buffers` owns presentation. A failed cache copy can therefore
