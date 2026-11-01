@@ -219,7 +219,7 @@ private:
 	std::shared_ptr<QueuedFrame::ConvertedPayload> AcquireConversionPayload();
 	void StopInternal(const std::function<void()>& drainAfterGraphStop);
     void PrimeSubtitleMeasurements(const std::vector<QueuedFrame>& frames,
-        uint64_t policyGeneration, uint64_t continuityGeneration);
+        uint64_t policyGeneration, uint64_t continuityGeneration,bool harvestOnly=false);
     void PrimePictureProofMeasurements(const std::vector<QueuedFrame>& frames,
         uint64_t policyGeneration, uint64_t continuityGeneration);
     void PrimeActivePictureMeasurements(const std::vector<QueuedFrame>& frames,

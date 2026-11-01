@@ -6283,6 +6283,95 @@ public:
     }
 
 
+    TEST_METHOD(LateOwnedReadinessHarvestCompletesCrowdedCueWithoutNewWork) {
+        struct Workspace {
+            std::array<SubtitleBoxObservation,4> frames;
+            std::array<SubtitleBoxObservation,3> ready;
+            std::array<ActivePictureFrameIdentity,3> owned;
+            SubtitleBoxObservation read;
+            SubtitleBoxPreview early,late,initial,invalid,shorter;
+            SubtitleBoxPresentation tracker;
+        };
+        for(bool top:{false,true}) {
+            auto storage=std::make_unique<Workspace>();auto& w=*storage;
+            for(size_t i=0;i<4;++i) {
+                w.frames[i]=NearCardThreeRows(21+i,top);
+                w.frames[i].policyGeneration=7;w.frames[i].continuityGeneration=8;
+                w.frames[i].sharedPicture.required=true;
+                w.frames[i].sharedPicture.bounds={0,45,640,315,640,360};
+                w.frames[i].sharedPicture.identity=w.frames[i].identity;
+                if(i)w.owned[i-1]=w.frames[i].identity;
+            }
+            // Source21 was displayed with its short horizon; raw pixels remain
+            // available to the existing strict crowded-row confirmation path.
+            SubtitleBoxLookahead::ResolveInto(w.initial,w.frames.data(),3,7,8);
+            Assert::AreEqual(2,w.tracker.Consume(w.initial).lineCount);
+            SubtitleMeasurementWorker worker;
+            const auto submit=[&](size_t i) {
+                const auto* frame=&w.frames[i];
+                worker.Submit(*frame,[frame](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return *frame;});
+            };
+            const auto read=[&](size_t i) {
+                const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+                while(std::chrono::steady_clock::now()<until) {
+                    if(worker.TryRead(w.frames[i+1],w.ready[i]))return true;
+                    std::this_thread::yield();
+                }
+                return false;
+            };
+            submit(1);submit(2);Assert::IsTrue(read(0));Assert::IsTrue(read(1));
+            Assert::IsFalse(worker.TryRead(w.frames[3],w.read));
+            SubtitleBoxLookahead::ResolveOwnedWindowInto(w.early,w.ready.data(),w.owned.data(),3,7,8);
+            Assert::AreEqual(1u,w.early.followingCount);Assert::AreEqual(2,w.early.text.lineCount);
+            // The third scan finishes during native lookahead, after the early
+            // subtitle snapshot. Late publication reads it, without more work.
+            submit(3);Assert::IsTrue(read(2));worker.Stop();worker.TakeDiagnostics();
+            for(size_t i=0;i<3;++i)Assert::IsTrue(worker.TryRead(w.frames[i+1],w.ready[i]));
+            SubtitleBoxLookahead::ResolveOwnedWindowInto(w.late,w.ready.data(),w.owned.data(),3,7,8);
+            const auto& picture=w.frames[1].sharedPicture;
+            Assert::IsTrue(SubtitleBoxLookahead::ShouldPublishOwnedSubtitleWindow(w.early,w.late,
+                w.owned.data(),3,7,8,picture));
+            Assert::AreEqual(2u,w.late.followingCount);Assert::AreEqual(2,w.late.text.lineCount);
+            Assert::IsTrue(SubtitleBoxLookahead::ConfirmCrowdedCurrentWithPrevious(w.frames[0],w.late));
+            Assert::AreEqual(3,w.tracker.Consume(w.late).lineCount,
+                L"The same current source uses already-completed future pixels and its actual raw predecessor.");
+            const auto diagnostics=worker.TakeDiagnostics();
+            Assert::AreEqual(uint64_t(0),diagnostics.submitted);
+            Assert::AreEqual(uint64_t(0),diagnostics.fullScans);
+            Assert::AreEqual(uint64_t(0),diagnostics.expired);
+            Assert::IsFalse(SubtitleBoxLookahead::ShouldPublishOwnedSubtitleWindow(w.late,w.early,
+                w.owned.data(),3,7,8,picture),L"A shorter reread cannot discard an owned stronger prefix.");
+            w.invalid=w.late;w.invalid.available=false;
+            Assert::IsFalse(SubtitleBoxLookahead::ShouldPublishOwnedSubtitleWindow(w.late,w.invalid,
+                w.owned.data(),3,7,8,picture));
+            for(int fault=0;fault<8;++fault) {
+                w.invalid=w.late;
+                if(fault==0)++w.invalid.following[1].identity.acceptedSequence;
+                if(fault==1)++w.invalid.following[1].identity.analysisDomainKey;
+                if(fault==2)++w.invalid.following[1].policyGeneration;
+                if(fault==3)++w.invalid.continuityGeneration;
+                if(fault==4)++w.invalid.following[1].sharedPicture.bounds.top;
+                if(fault==5)w.invalid.following[1].ink=std::make_shared<SubtitleInkSnapshot>(*w.invalid.following[1].ink);
+                if(fault==6)w.invalid.followingCount=unsigned(SubtitleBoxLookahead::MaxFrames);
+                if(fault==7)++w.invalid.current.identity.viewportGeneration;
+                Assert::IsFalse(SubtitleBoxLookahead::ShouldPublishOwnedSubtitleWindow(w.early,w.invalid,
+                    w.owned.data(),3,7,8,picture),L"Late publication cannot manufacture ownership of a future scan.");
+            }
+            // Fresh ownership changes the plane: an old richer prefix must not
+            // block a correctly re-resolved shorter current-plane observation.
+            for(auto& frame:w.ready)++frame.sharedPicture.bounds.top;
+            SubtitleBoxLookahead::ResolveOwnedWindowInto(w.shorter,w.ready.data(),w.owned.data(),2,7,8);
+            Assert::IsTrue(SubtitleBoxLookahead::ShouldPublishOwnedSubtitleWindow(w.late,w.shorter,
+                w.owned.data(),3,7,8,w.ready[0].sharedPicture));
+            w.ready[2].pendingRefresh=true;
+            SubtitleBoxLookahead::ResolveOwnedWindowInto(w.shorter,w.ready.data(),w.owned.data(),3,7,8);
+            Assert::AreEqual(1u,w.shorter.followingCount,L"Incomplete future pixels cannot supply a confirmation vote.");
+            w.ready[2].pendingRefresh=false;++w.ready[2].identity.sourceFrameNumber;
+            SubtitleBoxLookahead::ResolveOwnedWindowInto(w.shorter,w.ready.data(),w.owned.data(),3,7,8);
+            Assert::AreEqual(1u,w.shorter.followingCount,L"A foreign future source terminates the owned prefix.");
+        }
+    }
+
     TEST_METHOD(PreviousRawScanCompletesCrowdedHorizonWithoutBorrowingPastGlyphs) {
         struct Workspace {
             std::array<SubtitleBoxObservation,4> frames;

@@ -2119,6 +2119,32 @@ namespace SubtitleBoxLookahead
         SubtitleBoxPreview result;ResolveOwnedWindowInto(result,frames,owned,count,policy,continuity);return result;
     }
 
+    // A completed-only reread may improve the same owned head, but temporary
+    // cache absence must not erase its stronger still-owned source prefix.
+    inline bool ShouldPublishOwnedSubtitleWindow(const SubtitleBoxPreview& previous,
+        const SubtitleBoxPreview& candidate,const ActivePictureFrameIdentity* owned,size_t count,
+        uint64_t policy,uint64_t continuity,const SubtitlePictureAuthority& picture)
+    {
+        if(!candidate.available || !owned || !count || candidate.policyGeneration!=policy ||
+            candidate.continuityGeneration!=continuity ||
+            !SameAnalysisFrameIdentity(candidate.current.identity,owned[0]) ||
+            candidate.followingCount>=MaxFrames || count<size_t(candidate.followingCount)+1)return false;
+        for(size_t i=0;i<=candidate.followingCount;++i) {
+            const auto& frame=i?candidate.following[i-1]:candidate.current;
+            if(!candidate.ownedWindow.Matches(i,frame,policy,continuity) ||
+                !SameAnalysisFrameIdentity(frame.identity,owned[i]) || !frame.sharedPicture.Matches(picture))return false;
+        }
+        bool priorOwned=previous.available && previous.policyGeneration==policy &&
+            previous.continuityGeneration==continuity && count>=size_t(previous.followingCount)+1 &&
+            previous.current.sharedPicture.Matches(picture);
+        for(size_t i=0;priorOwned && i<=previous.followingCount;++i) {
+            const auto& frame=i?previous.following[i-1]:previous.current;
+            priorOwned=previous.ownedWindow.Matches(i,frame,policy,continuity) &&
+                SameAnalysisFrameIdentity(frame.identity,owned[i]) && frame.sharedPicture.Matches(picture);
+        }
+        return !priorOwned || candidate.followingCount>=previous.followingCount;
+    }
+
     inline std::unique_ptr<SubtitleBoxPreview> RebindOwnedIndependentWindowHeap(const SubtitleBoxPreview& preview,
         const ActivePictureFrameIdentity& current,const SubtitlePictureAuthority& picture,
         uint64_t policy,uint64_t continuity,const OwnedScanBacklogWitness* backlog=nullptr,uint64_t timelinePolicy=0)

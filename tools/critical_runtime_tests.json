@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 844,
+  "minimumNativeTests": 845,
   "requiredNativeMethods": [
     "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines",
     "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
@@ -122,7 +122,8 @@
     "OwnedScanBacklogWitnessKeepsExactPendingOrLatestDequeuedSourceWithoutRestoringAr",
     "OwnedScanBacklogWitnessRejectsUnknownRetirementsAndEveryCurrentContextMismatch",
     "OwnedScanBacklogWitnessRejectsEvictedBoundaryHistory",
-    "OwnedStartupScanReusesOnlyItsExactRetiredQueueContextWithoutAnAcquiredCue"
+    "OwnedStartupScanReusesOnlyItsExactRetiredQueueContextWithoutAnAcquiredCue",
+    "LateOwnedReadinessHarvestCompletesCrowdedCueWithoutNewWork"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -349,6 +350,11 @@
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
       "method": "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "LateOwnedReadinessHarvestCompletesCrowdedCueWithoutNewWork"
     }
   ]
 }

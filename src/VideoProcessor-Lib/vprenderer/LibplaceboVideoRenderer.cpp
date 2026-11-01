@@ -24388,7 +24388,7 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
 // neither converts nor scans pixels. Scans stay on the subtitle worker and
 // ready results remain keyed to the exact source frame and interpretation.
 void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
-    const std::vector<QueuedFrame>& frames, uint64_t policy, uint64_t continuity)
+    const std::vector<QueuedFrame>& frames, uint64_t policy, uint64_t continuity,bool harvestOnly)
 {
     if (frames.empty()) return;
     SubtitlePictureAuthority shared;
@@ -24410,7 +24410,7 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         script=m_impl->activeSettings.subtitleScriptHint;
     }
     const auto started=SteadyClock::now();
-    m_impl->subtitleMeasurementWorker.BeginSourceWindow(frames.front().activePictureIdentity);
+    if(!harvestOnly)m_impl->subtitleMeasurementWorker.BeginSourceWindow(frames.front().activePictureIdentity);
     unsigned requests=0;
     const size_t count=(std::min)(frames.size(),SubtitleBoxLookahead::MaxFrames);
     auto observationStorage=std::make_unique<std::array<SubtitleBoxObservation,SubtitleBoxLookahead::MaxFrames>>();
@@ -24461,7 +24461,7 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         const bool witnessed=ownedWitness.Matches(identity,ownerPolicy,oldContinuity,continuity);
         observations[i]=m_impl->QueueSubtitleMeasurement(queued.frame,*queued.state,identity,
             queued.frame.IsSourceDiscontinuity(),tracking,policy,continuity,nearBar,optimization,
-            script,picture,prepared,{},false,true,queued.analysis,witnessed?&ownedWitness:nullptr,ownerPolicy);
+            script,picture,prepared,{},false,!harvestOnly,queued.analysis,witnessed?&ownedWitness:nullptr,ownerPolicy);
         if(SubtitleCadenceCacheDiagnosticsEnabled() && completed && oldContinuity!=continuity)
             DebugLog::Log("VP subtitle cadence cache: stage=worker-owned-scan source=%llu old_continuity=%llu new_continuity=%llu owner_policy=%llu witnessed=%d analyzed=%d result_continuity=%llu ar_proof=%d",
                 identity.acceptedSequence,oldContinuity,continuity,ownerPolicy,witnessed?1:0,
@@ -24501,10 +24501,19 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
                 auto preview=std::make_unique<SubtitleBoxPreview>();
                 SubtitleBoxLookahead::ResolveOwnedWindowInto(*preview,
                     observations.data(),owned.data(),ownedCount,policy,continuity);
-                if(preview->available) {
+                auto& published=m_frameQueue.front().subtitleBoxPreview;
+                const auto beforeFollowing=published.followingCount;
+                const auto candidateFollowing=preview->followingCount;
+                const bool applied=SubtitleBoxLookahead::ShouldPublishOwnedSubtitleWindow(published,*preview,
+                    owned.data(),ownedCount,policy,continuity,observations[0].sharedPicture);
+                if(applied) {
                     m_impl->subtitlePrimePublishedFuture+=preview->followingCount;
-                    m_frameQueue.front().subtitleBoxPreview=std::move(*preview);
+                    published=std::move(*preview);
                 }
+                if(harvestOnly && SubtitleCadenceCacheDiagnosticsEnabled() && owned[0].acceptedSequence<=128)
+                    DebugLog::Log("VP subtitle cadence cache: stage=prime-harvest source=%llu owned=%zu following_before=%u following_candidate=%u following_published=%u current_ready=%d applied=%d continuity=%llu work_submitted=0 window_retired=0",
+                        owned[0].acceptedSequence,ownedCount,beforeFollowing,candidateFollowing,published.followingCount,
+                        observations[0].analyzed?1:0,applied?1:0,continuity);
                 for(size_t i=0;i<ownedCount;++i) {
                     const auto& observation=observations[i];
                     if(!observation.analyzed || !SameAnalysisFrameIdentity(observation.identity,owned[i]) ||
@@ -26230,6 +26239,17 @@ void LibplaceboVideoRenderer::RenderLoop()
             m_impl->outwardRetentionComputed=m_impl->outwardRetentionReused=0;
             m_impl->outwardAsyncReady=m_impl->outwardAsyncLate=m_impl->outwardAsyncStale=0;
             m_impl->outwardAsyncOffered=m_impl->outwardAsyncAdopted=0;
+        }
+        // Native lookahead may finish while subtitle futures complete. Read
+        // that same still-owned snapshot once more before dequeue; never wait,
+        // submit scans, convert pixels or advance the worker source window.
+        try {
+            PrimeSubtitleMeasurements(activePicturePreviewFrames,
+                activePictureLookaheadPolicyGeneration,activePictureContinuityGeneration,true);
+        } catch(const std::exception& error) {
+            DebugLog::Log("SUBTITLE DISPATCH: harvest_failed=%s action=keep-qualified-prefix",error.what());
+        } catch(...) {
+            DebugLog::Log("SUBTITLE DISPATCH: harvest_failed=unknown action=keep-qualified-prefix");
         }
 		// References are acquired while selecting preview work. A live profile
 		// change may disable analysis after selection, so release independently

@@ -147,3 +147,24 @@ proposed local texture continuation supplied zero extra votes, and its broad
 inward-departure veto fired on real picture detail. That heuristic was rejected
 without implementation; the95-frame uncertainty and visual transition flash
 remain open.
+
+## Completed-result harvest checkpoint
+
+All845mandatory native methods pass in20261101-011054-8bc2db41. The new worker/
+resolver control reproduces an early two-observation prefix, then reads a third
+completed source and combines it with the actual raw predecessor to preserve all
+three cue lines. It submits no new work, retires no source and keeps the existing
+short-window false-positive checks. Missing, partial, foreign and changed-context
+futures cannot manufacture confirmation; a shorter late read cannot erase a
+stronger still-owned prefix.
+
+The renderer now performs this completed-results-only harvest after native
+lookahead and before dequeue, while the original source snapshots remain owned.
+It uses the same producer and final ownership checks, without an extra wait,
+conversion, pixel scan, timer or cue-expiry extension.
+
+The corrected actual oracle uses harness callback order and the selected input's
+timeline context, matching fields that the diagnostic producer actually emits.
+Against the unchanged42ce1661 runtime it passes3/6 focused cases and reproduces
+one partial-caption output plus two startup gaps. Actual validation of the late
+harvest remains next; no new deployment or full qualification is claimed.

@@ -132,6 +132,14 @@ namespace
     };
     std::vector<AnalysisDiagnosticRecordV1> classicPoseRecords;
     bool classicPoseAllRecordStages=false;
+    void StoreCallbackOrderedRecord(std::vector<AnalysisDiagnosticRecordV1>& records,const AnalysisDiagnosticRecordV1& record)
+    {
+        // Emit forwards recordSequence==0 before the optional recorder assigns
+        // its own sequence. This owned copy uses ONLY the mutex-ordered test
+        // callback ordinal; it is not a production recorder/source sequence.
+        auto observed=record;observed.recordSequence=records.size()+1;
+        records.push_back(observed);
+    }
     void __cdecl ClassicPoseTestRecord(void*,const AnalysisDiagnosticRecordV1* record)
     {
         if(!record || record->structSize!=sizeof(*record))return;
@@ -139,7 +147,7 @@ namespace
         if(!classicPoseAllRecordStages && strcmp(record->stage,"submitted-presentation") && strcmp(record->stage,"presentation") && strcmp(record->stage,"ar-decision") &&
             strcmp(record->stage,"subtitle-output"))return;
         RecordSubmittedShaderPreparation(classicSubmittedShaderPreparation,*record,classicCurrentShaderPreparation);
-        classicPoseRecords.push_back(*record);
+        StoreCallbackOrderedRecord(classicPoseRecords,*record);
     }
     bool TrySubmittedSubtitleCleanup(const std::string& line,const AnalysisDiagnosticRecordV1& output,
         uint64_t sourceGeneration,SubtitleBoxRect& cleanup)
@@ -229,14 +237,16 @@ namespace
             if(!original)return false;
             before=original->recordSequence;
         }
+        // RenderLocked uses these selected input timeline locals throughout;
+        // submitted-presentation leaves policy/continuity unpopulated.
         const AnalysisDiagnosticRecordV1* proof=nullptr;
         for(const auto& r:records)if(!strcmp(r.stage,"subtitle-output") && r.recordSequence && r.recordSequence<before &&
             r.rendererInstanceKey==output.rendererInstanceKey && r.acceptedSequence==input.acceptedSequence &&
             r.transportGeneration==input.transportGeneration && r.rendererGeneration==input.rendererGeneration &&
             r.viewportGeneration==input.viewportGeneration && r.sourceFormatGeneration==input.sourceFormatGeneration &&
             r.analysisDomainKey==input.analysisDomainKey && r.sourceFrameNumber==input.sourceFrameNumber &&
-            r.captureTimestamp==input.captureTimestamp && r.policyGeneration==output.policyGeneration &&
-            r.continuityGeneration==output.continuityGeneration && r.counters[0]==input.acceptedSequence &&
+            r.captureTimestamp==input.captureTimestamp && r.policyGeneration==input.policyGeneration &&
+            r.continuityGeneration==input.continuityGeneration && r.counters[0]==input.acceptedSequence &&
             r.counters[1]==input.analysisDomainKey && (!proof || r.recordSequence>proof->recordSequence))proof=&r;
         return proof && proof->resultCode==3 && proof->counters[4]==3 &&
             (proof->flags&(1u|4u|16u))==(1u|4u|16u) && !(proof->flags&32u);
@@ -330,11 +340,15 @@ namespace VideoProcessorTest
         TEST_METHOD(PersistentComposedCaptionRequiresAllThreeOriginalSourceLines) {
             AnalysisDiagnosticRecordV1 input{};input.acceptedSequence=50;input.transportGeneration=input.rendererGeneration=7;
             input.sourceFormatGeneration=13;input.analysisDomainKey=17;input.sourceFrameNumber=150;
-            input.captureTimestamp=9000;input.viewportGeneration=2;
+            input.captureTimestamp=9000;input.viewportGeneration=2;input.policyGeneration=11;input.continuityGeneration=12;
             auto output=input;strcpy_s(output.stage,"submitted-presentation");output.rendererInstanceKey=19;
             output.flags=1u|2u|32u|64u;output.recordSequence=100;
             output.counters[0]=output.counters[1]=output.counters[2]=output.counters[5]=50;
-            output.counters[3]=3;output.counters[4]=4;output.policyGeneration=11;output.continuityGeneration=12;
+            output.counters[3]=3;output.counters[4]=4;
+            // Production submitted-presentation does not populate source frame,
+            // capture timestamp or timeline generations. The exact selected
+            // analysis-input supplies that immutable source context.
+            output.sourceFrameNumber=output.captureTimestamp=output.policyGeneration=output.continuityGeneration=0;
             auto raw=input;strcpy_s(raw.stage,"subtitle-output");raw.rendererInstanceKey=19;raw.recordSequence=99;
             raw.policyGeneration=11;raw.continuityGeneration=12;raw.counters[0]=50;raw.counters[1]=17;
             raw.flags=1u|4u|16u;raw.resultCode=3;raw.counters[4]=3;
@@ -371,6 +385,28 @@ namespace VideoProcessorTest
             repeat.counters[0]=51;strcpy_s(repeat.reason,"complete-output-input-cadence-repeat");
             Assert::IsTrue(HasCompletePersistentThreeLineCaption({raw,output,future},repeat,input),
                 L"A repeat uses its original selected image proof before the original submission, never a later consumed-input attempt.");
+            // Production Emit supplies zero recorder sequences to its callback.
+            // Exercise the same ordered storage used by the callback, retaining
+            // original source identity and the repeat's original submission cut.
+            std::vector<AnalysisDiagnosticRecordV1> captured;
+            auto zeroRaw=raw;zeroRaw.recordSequence=0;
+            auto zeroOutput=output;zeroOutput.recordSequence=0;
+            StoreCallbackOrderedRecord(captured,zeroRaw);
+            StoreCallbackOrderedRecord(captured,zeroOutput);
+            const auto capturedOutput=captured.back();
+            Assert::IsTrue(HasCompletePersistentThreeLineCaption(captured,capturedOutput,input));
+            auto zeroFuture=partial;zeroFuture.recordSequence=0;
+            StoreCallbackOrderedRecord(captured,zeroFuture);
+            auto zeroRepeat=repeat;zeroRepeat.recordSequence=0;
+            StoreCallbackOrderedRecord(captured,zeroRepeat);
+            Assert::IsTrue(HasCompletePersistentThreeLineCaption(captured,captured.back(),input));
+            Assert::AreEqual(uint64_t(0),zeroRaw.recordSequence);
+            Assert::AreEqual(input.sourceFrameNumber,captured.front().sourceFrameNumber);
+            Assert::AreEqual(input.captureTimestamp,captured.front().captureTimestamp);
+            Assert::AreEqual(input.sourceFormatGeneration,captured.front().sourceFormatGeneration);
+            Assert::AreEqual(input.analysisDomainKey,captured.front().analysisDomainKey);
+            Assert::AreEqual(uint64_t(1),captured.front().recordSequence);
+            Assert::AreEqual(uint64_t(4),captured.back().recordSequence);
             auto consumed=input;consumed.acceptedSequence=51;
             Assert::IsFalse(HasCompletePersistentThreeLineCaption({raw,output},repeat,consumed));
         }
@@ -2528,6 +2564,46 @@ namespace VideoProcessorTest
                         Logger::WriteMessage(row.str().c_str());
                     }
                     Logger::WriteMessage("DV FAILURE FINAL OUTPUTS END");
+                    // Worker callbacks identify the worker object, not the renderer
+                    // Impl. Join their exact source domain instead of filtering the
+                    // worker's instance pointer against the output's renderer. Callback
+                    // ordinals establish ordering only; Emit timestamps are unstamped.
+                    const AnalysisDiagnosticRecordV1* failedOutput=nullptr;const AnalysisDiagnosticRecordV1* failedInput=nullptr;
+                    for(auto it=failureRecords.rbegin();it!=failureRecords.rend();++it)
+                        if(!strcmp(it->stage,"submitted-presentation")&&(it->flags&1u)){failedOutput=&*it;break;}
+                    if(failedOutput)for(auto it=failureRecords.rbegin();it!=failureRecords.rend();++it)
+                        if(!strcmp(it->stage,"analysis-input")&&it->transportGeneration==failedOutput->transportGeneration&&
+                            it->rendererInstanceKey==failedOutput->rendererInstanceKey&&
+                            it->acceptedSequence==failedOutput->counters[0]){failedInput=&*it;break;}
+                    if(failedInput) {
+                        const uint64_t low=failedInput->sourceFrameNumber>15?failedInput->sourceFrameNumber-15:0;
+                        const uint64_t high=failedInput->sourceFrameNumber+5;
+                        std::vector<const AnalysisDiagnosticRecordV1*> nearby;
+                        for(const auto& r:failureRecords)if(!strncmp(r.stage,"worker-",7)&&
+                            r.transportGeneration==failedInput->transportGeneration&&
+                            r.sourceFormatGeneration==failedInput->sourceFormatGeneration&&
+                            r.analysisDomainKey==failedInput->analysisDomainKey&&
+                            r.sourceFrameNumber>=low&&r.sourceFrameNumber<=high)nearby.push_back(&r);
+                        std::ostringstream header;header<<"DV FAILURE WORKER WINDOW BEGIN: consumed="<<failedOutput->counters[0]
+                            <<" input="<<failedInput->sourceFrameNumber<<" range="<<low<<'-'<<high
+                            <<" matched="<<nearby.size()<<" emitted="<<(std::min)(size_t(160),nearby.size());
+                        Logger::WriteMessage(header.str().c_str());
+                        const size_t begin=nearby.size()>160?nearby.size()-160:0;
+                        for(size_t i=begin;i<nearby.size();++i) {
+                            const auto& r=*nearby[i];std::ostringstream row;
+                            row<<"DV WORKER: stage="<<r.stage<<" callback_ordinal="<<r.recordSequence
+                                <<" worker="<<r.rendererInstanceKey<<" generation="<<r.transportGeneration
+                                <<" renderer_generation="<<r.rendererGeneration<<" accepted="<<r.acceptedSequence
+                                <<" source_frame="<<r.sourceFrameNumber<<" capture="<<r.captureTimestamp
+                                <<" format="<<r.sourceFormatGeneration<<" domain="<<r.analysisDomainKey
+                                <<" viewport="<<r.viewportGeneration<<" policy="<<r.policyGeneration
+                                <<" continuity="<<r.continuityGeneration<<" flags="<<r.flags
+                                <<" mismatch="<<r.counters[0]<<" analysis_ms="<<r.metrics[0]
+                                <<" lines="<<r.resultCode<<" reason="<<r.reason;
+                            Logger::WriteMessage(row.str().c_str());
+                        }
+                        Logger::WriteMessage("DV FAILURE WORKER WINDOW END");
+                    }
                     for(const auto& line:failureMessages)Logger::WriteMessage(line.c_str());
                     Assert::Fail(why);};
                 auto drain=[&] {
@@ -2707,7 +2783,30 @@ namespace VideoProcessorTest
                             if(composed&&mode) {
                                 std::vector<AnalysisDiagnosticRecordV1> lineRecords;
                                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);lineRecords=classicPoseRecords;}
-                                require(HasCompletePersistentThreeLineCaption(lineRecords,record,nativeInputs.at(record.counters[1])),
+                                const auto& selectedInput=nativeInputs.at(record.counters[1]);
+                                const bool completeLines=HasCompletePersistentThreeLineCaption(lineRecords,record,selectedInput);
+                                if(!completeLines) {
+                                    auto describe=[](const char* role,const AnalysisDiagnosticRecordV1& r) {
+                                        std::ostringstream row;row<<"DV LINE JOIN: role="<<role<<" stage="<<r.stage
+                                            <<" ordinal="<<r.recordSequence<<" instance="<<r.rendererInstanceKey
+                                            <<" accepted="<<r.acceptedSequence<<" generation="<<r.transportGeneration
+                                            <<" renderer_generation="<<r.rendererGeneration<<" frame="<<r.sourceFrameNumber
+                                            <<" capture="<<r.captureTimestamp<<" format="<<r.sourceFormatGeneration
+                                            <<" domain="<<r.analysisDomainKey<<" viewport="<<r.viewportGeneration
+                                            <<" policy="<<r.policyGeneration<<" continuity="<<r.continuityGeneration
+                                            <<" flags="<<r.flags<<" lines="<<r.resultCode<<" counter0="<<r.counters[0]
+                                            <<" counter1="<<r.counters[1]<<" raw_lines="<<r.counters[4]<<" reason="<<r.reason;
+                                        Logger::WriteMessage(row.str().c_str());
+                                    };
+                                    describe("output",record);describe("selected-input",selectedInput);
+                                    size_t candidates=0;
+                                    for(auto it=lineRecords.rbegin();it!=lineRecords.rend()&&candidates<6;++it)
+                                        if(!strcmp(it->stage,"subtitle-output")&&it->acceptedSequence==record.counters[1]) {
+                                            describe(it->recordSequence<record.recordSequence?"preceding-candidate":"later-candidate",*it);++candidates;
+                                        }
+                                    if(!candidates)Logger::WriteMessage("DV LINE JOIN: no subtitle-output candidate for selected original source");
+                                }
+                                require(completeLines,
                                     L"Persistent composed caption must preserve all three detected/analyzed/current source-bound lines, without work-limit or later-attempt substitution.");
                             }
                             require(record.counters[3]==mode||(mode&&!ready&&!composed&&record.counters[3]==0),
