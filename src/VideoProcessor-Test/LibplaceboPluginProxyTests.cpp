@@ -53,6 +53,27 @@ namespace
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
         classicPoseMessages.emplace_back(message);
     }
+    // Background callbacks retain all failure evidence. Forward only preparation
+    // progress from the test thread; final flushing runs after renderer teardown,
+    // including when an assertion unwinds while compilation is still finishing.
+    struct ClassicPreparationLogForwarder {
+        size_t cursor=0;
+        void Flush() {
+            std::vector<std::string> progress;
+            {
+                std::lock_guard<std::mutex> guard(classicPoseLogMutex);
+                for(;cursor<classicPoseMessages.size();++cursor) {
+                    const auto& line=classicPoseMessages[cursor];
+                    if(line.find("VP subtitle background preparation:")!=std::string::npos ||
+                        line.find("Subtitle shader preparation rejected:")!=std::string::npos)
+                        progress.push_back(line);
+                }
+            }
+            for(const auto& line:progress)
+                Microsoft::VisualStudio::CppUnitTestFramework::Logger::WriteMessage(line.c_str());
+        }
+        ~ClassicPreparationLogForwarder(){Flush();}
+    };
     std::vector<AnalysisDiagnosticRecordV1> classicPoseRecords;
     bool classicPoseAllRecordStages=false;
     void __cdecl ClassicPoseTestRecord(void*,const AnalysisDiagnosticRecordV1* record)
@@ -1949,6 +1970,7 @@ namespace VideoProcessorTest
                 const double inputHz=double(scale)/duration;
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseMessages.clear();classicPoseAllRecordStages=true;}
                 diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
+                ClassicPreparationLogForwarder preparationLog;
                 char temp[MAX_PATH]={},configPath[MAX_PATH]={};
                 Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0&&GetTempFileNameA(temp,"dvc",0,configPath)!=0);
                 const char* initialType=requestedMode==unsigned(SubtitlePreviewMode::GeneratedGrayBackground)?"generated_gray":
@@ -2052,7 +2074,7 @@ namespace VideoProcessorTest
                         const auto& pixels=forceUnknown?pressure[sequence%2]:(cue?caption[sequence%2]:blank[sequence%2]);
                         VideoFrame frame(pixels.data(),sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);}
                     next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0/inputHz));
-                    std::this_thread::sleep_until(next);drain();
+                    std::this_thread::sleep_until(next);drain();preparationLog.Flush();
                     require(callback.state!=RENDERSTATE_FAILED,L"Persistent Dolby cadence renderer entered failed state.");
                 };
                 int32_t native[4]={0,pictureTop,width,pictureBottom};
@@ -2100,7 +2122,17 @@ namespace VideoProcessorTest
                         }
                         return intersection&&(!requireLegacyRejection||rejected);
                     };
-                    const auto deadline=GetTickCount64()+(mode?90000:20000);
+                    const auto startupStarted=GetTickCount64();
+                    const auto startupDeadline=startupStarted+(mode?180000:20000);
+                    uint64_t steadyDeadline=0;
+                    auto beginSteadyObservation=[&](uint64_t source) {
+                        ready=source;
+                        const auto now=GetTickCount64();steadyDeadline=now+90000;
+                        std::ostringstream status;
+                        status<<"Decoded-DV startup ready: input="<<inputHz<<" mode="<<mode<<" selected="<<source
+                            <<" startup_elapsed_ms="<<(now-startupStarted)<<" steady_budget_ms=90000";
+                        Logger::WriteMessage(status.str().c_str());
+                    };
                     auto inspectEverySubmittedOutput=[&] {
                         for(;inspected<outputs.size();++inspected){const auto& record=outputs[inspected];
                             const auto displayedSource=nativeInputs.at(record.counters[1]).sourceFrameNumber;
@@ -2138,7 +2170,7 @@ namespace VideoProcessorTest
                                         record.published[1]>=pictureTop-8&&record.published[1]<=pictureTop&&
                                         record.published[3]>=pictureBottom&&record.published[3]<=pictureBottom+8,
                                         L"First composed source lacks independently accurate native boundary authority.");
-                                    std::copy_n(record.published,4,native);ready=record.counters[1];
+                                    std::copy_n(record.published,4,native);beginSteadyObservation(record.counters[1]);
                                     for(int e=0;e<4;++e)pinned[e]=record.metrics[8+e];
                                 }
                                 if(ready){
@@ -2159,7 +2191,7 @@ namespace VideoProcessorTest
                                     L"Classic persistent subtitle resized its native crop instead of translating it.");
                                 require(top+0.01>=previousTop,L"Classic persistent subtitle reversed its translation between submitted frames.");
                                 previousTop=top;
-                                if(top>native[1]+1&&displayedSource>=first+90&&!ready){ready=record.counters[1];for(int e=0;e<4;++e)pinned[e]=record.metrics[8+e];}
+                                if(top>native[1]+1&&displayedSource>=first+90&&!ready){beginSteadyObservation(record.counters[1]);for(int e=0;e<4;++e)pinned[e]=record.metrics[8+e];}
                                 if(ready)for(int e=0;e<4;++e)require(std::abs(record.metrics[8+e]-pinned[e])<0.01,
                                     L"Settled Classic crop bounced during a persistent subtitle.");
                             }
@@ -2174,16 +2206,19 @@ namespace VideoProcessorTest
                             if(!unknownSent){pump(true,true);unknownSent=true;inspectEverySubmittedOutput();}
                             if(unknownRepeated&&nextCleanFresh)break;
                         }
-                    }while(GetTickCount64()<deadline);
+                    }while(GetTickCount64()<(ready?steadyDeadline:startupDeadline));
                     // Stop drains in-flight rendering. Inspect that final tail before
                     // locals expire; no successful caption output escapes assertions.
-                    cleanup.renderer->Stop();drain();inspectEverySubmittedOutput();
+                    cleanup.renderer->Stop();drain();preparationLog.Flush();inspectEverySubmittedOutput();
                     std::ostringstream coverage;coverage<<"Actual persistent decoded-DV cadence: input="<<inputHz<<" mode="<<mode
                         <<" inspected="<<checked<<" distinct_displayed="<<distinct.size()<<" consumed_odd="<<odd<<" consumed_even="<<even
                         <<" displayed_odd="<<displayedOdd<<" displayed_even="<<displayedEven
                         <<" unknown_input="<<pressureInput<<" complete_repeat="<<unknownRepeated<<" next_clean_fresh="<<nextCleanFresh;
                     Logger::WriteMessage(coverage.str().c_str());
-                    require(ready&&checked>=60&&distinct.size()>=60&&odd&&even,
+                    require(ready>0,mode?
+                        L"Decoded-DV cold preparation did not produce its first valid composed output within180seconds; steady cadence was not exercised.":
+                        L"Classic decoded-DV startup did not settle within20seconds; steady cadence was not exercised.");
+                    require(checked>=60&&distinct.size()>=60&&odd&&even,
                         L"Actual persistent Dolby subtitle test did not inspect 60 distinct displayed sources and BOTH consumed input parities.");
                     if(mode)require(cleanupMotionCoverage(false),
                         L"Actual subtitle cleanup never intersected changing picture pixels; benign background motion is not cadence regression coverage.");

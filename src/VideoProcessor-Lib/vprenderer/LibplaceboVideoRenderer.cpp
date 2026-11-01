@@ -9756,7 +9756,10 @@ struct LibplaceboVideoRenderer::Impl
                     DebugLog::Log("VP subtitle background preparation: stage=compile-start key=%llu thread=%lu",
                         keyHash,GetCurrentThreadId());
                     try {
-                        const bool ready = request->Compile(sharedCache);
+                        const bool ready = request->Compile(sharedCache,[keyHash](const std::string& stage,double elapsedMs,int result) {
+                            DebugLog::Log("VP subtitle background preparation: stage=compile-pass key=%llu pass=%s result=%s elapsed_ms=%.2f",
+                                keyHash,stage.c_str(),result<0?"begin":result?"ready":"failed",elapsedMs);
+                        });
                         DebugLog::Log("VP subtitle background preparation: stage=compile-end key=%llu ready=%d elapsed_ms=%.2f",
                             keyHash,ready ? 1 : 0,std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
                         return ready;
