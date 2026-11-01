@@ -67,3 +67,32 @@ unbudgeted CPU replay timings, not live latency guarantees. The 12 ms opt-in dea
 may intentionally leave slow packets incomplete; its admission rate stays two per second.
 Further optimization and full-rate temporal evidence remain prerequisites to replacing
 the live detector. No private pixels are included in this repository.
+
+
+### Ready evidence during backlog
+
+Foreground pixel evaluation, bounded background dispatch, and consuming completed
+source facts have separate permissions. A compatible fresh queued source may
+consume its exact ready prefix during backlog without a new scan or submission.
+Repeat, discontinuity, resize and output renegotiation exclusions remain; full
+source/domain/owner, policy/continuity and pending-prefix checks still apply.
+Original zero-ticket background dispatch keeps its earlier non-backlog admission;
+an expired positive-ticket fallback cannot create additional background work.
+This removes avoidable loss of already-ready native evidence. It does not make
+late subtitle scans ready, extend complete-image repeat grants, or renew cue leases.
+
+### Accepted subtitle proof handoff
+
+A three-line cue already accepted from four consecutive complete raw observations
+may export the existing current-source seed certificate even when the caller's
+short lookahead grouping omitted one row. The certificate retains exact current
+identity, immutable ink ownership, independent bar evidence and full accepted
+geometry. Held, revised, partial, weak and unresolved candidates cannot mint it.
+Pending recovery still validates current pixels and the original age limit; queue
+retirement or replaying the certificate cannot renew the lease. This changes no
+native AR vote, repeat allowance or shader-building exception.
+
+The renderer emits a computed-only `subtitle-pending-seed` diagnostic disposition
+through the existing trace, without extra pixel scans or persistent logging. A
+failed actual-renderer test prints at most 32 matching source/context dispositions
+so a missing seed can be distinguished from rejected current pixels or expiration.

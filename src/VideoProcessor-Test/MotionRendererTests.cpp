@@ -1723,7 +1723,9 @@ TEST_CLASS(MotionRendererTests){public:
         const auto skipped=budget.Begin(2,1000000,1000000,true,false);
         Assert::AreEqual(int64_t(0),skipped.deadlineQpc);
         OptionalAnalysisPrefix repeatedPrefix;
-        const auto repeated=RunPreparedPictureWindowPhases(false,skipped.deadlineQpc,
+        PreparedPictureWindowSource repeatedSource;repeatedSource.available=true;repeatedSource.repeat=true;
+        const auto repeated=RunPreparedPictureWindowPhases(
+            MakePreparedPictureWindowAdmission(repeatedSource,skipped.deadlineQpc),skipped.deadlineQpc,
             []{return int64_t(1000000);},[&](int64_t,bool) {
                 repeatedPrefix.Admit(0,headResult!=nullptr);return true;
             });
@@ -1731,7 +1733,9 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::AreEqual(size_t(0),repeatedPrefix.Size(),
             L"A repeated presentation cannot contribute another source observation");
         OptionalAnalysisPrefix freshPrefix;
-        const auto fresh=RunPreparedPictureWindowPhases(true,skipped.deadlineQpc,
+        PreparedPictureWindowSource freshSource;freshSource.available=true;
+        const auto fresh=RunPreparedPictureWindowPhases(
+            MakePreparedPictureWindowAdmission(freshSource,skipped.deadlineQpc),skipped.deadlineQpc,
             []{return int64_t(1000000);},[&](int64_t deadline,bool) {
                 Assert::AreEqual(int64_t(0),deadline);
                 return freshPrefix.Admit(0,headResult->domain==7) &&

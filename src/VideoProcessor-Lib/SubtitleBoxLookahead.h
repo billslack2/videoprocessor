@@ -3061,15 +3061,6 @@ public:
             preview.current.text.lineCount==result.lineCount && preview.current.ink &&
             SubtitleBoxLookahead::SameCue(m_reference,preview.current))
             m_inkReference=preview.current;
-        if(completedBacklogReassociation && currentTemplatePixelsMatch &&
-            !weakTemplateEligible && !bridged && !templateHeld &&
-            m_result.detected && result.detected && result.cue==m_result.cue &&
-            !result.held && !result.revised && !result.workLimit &&
-            preview.current.ink && preview.current.ink->rawEvidenceComplete) {
-            m_acceptedCueSeedCertificate.m_valid=true;
-            m_acceptedCueSeedCertificate.m_current=preview.current;
-            m_acceptedCueSeedCertificate.m_accepted=result;
-        }
         // A held pose can still have complete, independently measured CURRENT
         // glyph ownership. Certify only this source's prepared erasure; do not
         // renew the cue seed, weak grace, native bars, or handoff allowance.
@@ -3088,6 +3079,31 @@ public:
             }
             return true;
         }();
+        const bool existingCueSeed=completedBacklogReassociation && currentTemplatePixelsMatch &&
+            !weakTemplateEligible && !bridged && !templateHeld &&
+            m_result.detected && result.detected && result.cue==m_result.cue &&
+            !result.held && !result.revised && !result.workLimit &&
+            preview.current.ink && preview.current.ink->rawEvidenceComplete;
+        // A short future grouping can omit a row already established by four
+        // exact RAW sources. Consume's private history-confirmed preview must
+        // export that CURRENT acquisition, not require the caller's pruned
+        // grouping to acquire the same rows again. No held/weak pose can seed.
+        const auto& seedCurrent=preview.current;
+        const bool historyCueSeed=historyConfirmed && currentRawCoversAccepted &&
+            SubtitleBoxLookahead::CompleteConsecutiveCrowdedRaw(seedCurrent) &&
+            seedCurrent.independentBarAnalysis && seedCurrent.barEvidence.available &&
+            !seedCurrent.barEvidence.topRevalidatedAtReference && !seedCurrent.barEvidence.topRevalidatedNearby &&
+            !seedCurrent.barEvidence.bottomRevalidatedAtReference && !seedCurrent.barEvidence.bottomRevalidatedNearby &&
+            !seedCurrent.barEvidence.captionBackedTop && !seedCurrent.barEvidence.captionBackedBottom &&
+            seedCurrent.pictureTop==seedCurrent.barEvidence.top && seedCurrent.pictureBottom==seedCurrent.barEvidence.bottom &&
+            seedCurrent.policyGeneration==preview.policyGeneration && seedCurrent.continuityGeneration==preview.continuityGeneration &&
+            result.detected && result.lineCount==3 && !result.held && !result.revised && !result.confirmationPending &&
+            !result.workLimit && !weakTemplateEligible && !bridged && !templateHeld;
+        if(existingCueSeed || historyCueSeed) {
+            m_acceptedCueSeedCertificate.m_valid=true;
+            m_acceptedCueSeedCertificate.m_current=seedCurrent;
+            m_acceptedCueSeedCertificate.m_accepted=result;
+        }
         if(templateHeld && currentTemplateEligible && currentTemplatePixelsMatch &&
             result.detected && result.held && !result.revised && !result.confirmationPending && !result.workLimit &&
             !weakTemplateEligible && !bridged && !hasNovelExtension && !extensionConfirmed &&

@@ -2701,6 +2701,27 @@ namespace VideoProcessorTest
                             Logger::WriteMessage(row.str().c_str());
                         }
                         Logger::WriteMessage("DV FAILURE WORKER WINDOW END");
+                        std::vector<const AnalysisDiagnosticRecordV1*> seedAttempts;
+                        for(const auto& record:failureRecords)if(!strcmp(record.stage,"subtitle-pending-seed") &&
+                            record.rendererInstanceKey==failedInput->rendererInstanceKey &&
+                            record.transportGeneration==failedInput->transportGeneration &&
+                            record.sourceFormatGeneration==failedInput->sourceFormatGeneration &&
+                            record.analysisDomainKey==failedInput->analysisDomainKey &&
+                            record.sourceFrameNumber>=low && record.sourceFrameNumber<=high)seedAttempts.push_back(&record);
+                        const size_t seedBegin=seedAttempts.size()>32?seedAttempts.size()-32:0;
+                        for(size_t i=seedBegin;i<seedAttempts.size();++i) {
+                            const auto& record=*seedAttempts[i];std::ostringstream row;
+                            row<<"DV PENDING SEED: callback_ordinal="<<record.recordSequence<<" source="<<record.acceptedSequence
+                                <<" policy="<<record.policyGeneration<<" continuity="<<record.continuityGeneration
+                                <<" flags="<<record.flags<<" raw_lines="<<record.counters[0]<<" resolved_lines="<<record.counters[1]
+                                <<" accepted_lines="<<record.counters[2]<<" previous_verified="<<record.counters[3]
+                                <<" last_verified="<<record.counters[4]<<" current_observation="<<record.counters[5]
+                                <<" previous_reference_continuity="<<record.counters[6]<<" reference_continuity="<<record.counters[7]
+                                <<" elapsed_ms="<<record.metrics[0]<<" previous_elapsed_ms="<<record.metrics[1]
+                                <<" mode="<<record.metrics[2]<<" reason="<<record.reason;
+                            Logger::WriteMessage(row.str().c_str());
+                        }
+
                     }
                     for(const auto& line:failureMessages)Logger::WriteMessage(line.c_str());
                     Assert::Fail(why);};

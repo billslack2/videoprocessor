@@ -1,4 +1,4 @@
-﻿#include <pch.h>
+#include <pch.h>
 #include "../SubtitleProfileUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
 #include "ShaderCacheStorage.h"
@@ -14957,12 +14957,40 @@ struct LibplaceboVideoRenderer::Impl
             // Only an accepted cue may seed the late-worker fallback. An
             // unconfirmed detector candidate must never gain authority here.
             if(!subtitleBoxResult.detected || subtitleBoxResult.confirmationPending) subtitlePendingGuard.Reset();
-            else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
-                subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
+            else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh) {
+                const auto previousVerified=subtitlePendingGuard.LastVerifiedIdentity();
+                const auto previousContinuity=subtitlePendingGuard.ReferenceContinuity();
+                const auto previousElapsed=subtitlePendingGuard.PendingElapsedMilliseconds();
+                const bool seedCertificateMatches=subtitleBoxPresentation.AcceptedCueSeedCertificate().Matches(
+                    currentSubtitlePreview,subtitleBoxResult);
+                const bool remembered=subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
                     analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
                     &subtitleBoxPresentation.AcceptedCueSeedCertificate(),
                     &subtitleBoxPresentation.CurrentPreparedCueCertificate(),
                     nlsGeometryAvailable?&nlsGeometry:nullptr);
+                // Computed-only disposition, once per real accepted-source seed
+                // attempt. No new pixel reads, history, DebugLog or lease action.
+                const auto& current=currentSubtitlePreview.current;
+                auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-pending-seed",subtitlePendingGuard.DecisionReason());
+                trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+                trace.flags=(remembered?1u:0u)|(current.analyzed?2u:0u)|(current.pendingRefresh?4u:0u)|
+                    (subtitleBoxResult.held?8u:0u)|(subtitleBoxResult.revised?16u:0u)|
+                    (current.glyphLocalTop?32u:0u)|(current.glyphLocalBottom?64u:0u)|(current.barAuthority?128u:0u)|
+                    (seedCertificateMatches?256u:0u)|(current.independentBarAnalysis?512u:0u)|
+                    (current.analysisRefresh?1024u:0u)|(current.text.detected?2048u:0u)|
+                    (subtitleBoxResult.confirmationPending?4096u:0u)|(current.discontinuity?8192u:0u)|
+                    (subtitleBoxResult.workLimit?16384u:0u)|(current.text.workLimit?32768u:0u);
+                trace.counters[0]=current.text.lineCount;trace.counters[1]=currentSubtitlePreview.text.lineCount;
+                trace.counters[2]=subtitleBoxResult.lineCount;trace.counters[3]=previousVerified.acceptedSequence;
+                trace.counters[4]=subtitlePendingGuard.LastVerifiedIdentity().acceptedSequence;
+                trace.counters[5]=current.identity.acceptedSequence;trace.counters[6]=previousContinuity;
+                trace.counters[7]=subtitlePendingGuard.ReferenceContinuity();
+                trace.metrics[0]=subtitlePendingGuard.PendingElapsedMilliseconds();trace.metrics[1]=previousElapsed;
+                trace.metrics[2]=static_cast<int>(sourceSubtitleMode);
+                AnalysisTraceRect(trace.previous,currentSubtitlePreview.text.bounds);
+                AnalysisTraceRect(trace.measured,current.text.bounds);AnalysisTraceRect(trace.published,subtitleBoxResult.bounds);
+                AnalysisDiagnosticTrace::Emit(trace);
+            }
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
             const int previousGlyphHeight=subtitlePaddingGuard.GlyphHeight();
@@ -26291,12 +26319,17 @@ void LibplaceboVideoRenderer::RenderLoop()
                     activePicturePreviewFrames.front().cadenceRepeat?1:0,previewBacklog?1:0);
             }
         }
-        const bool allowCachedLookahead=!activePicturePreviewFrames.empty() &&
-            !activePicturePreviewFrames.front().cadenceRepeat &&
-            !activePicturePreviewFrames.front().frame.IsSourceDiscontinuity() && !previewBacklog &&
-            !m_impl->resizePending.load(std::memory_order_acquire) &&
-            !m_impl->outputRenegotiationPending.load(std::memory_order_acquire);
-		if ((lookaheadTicket.deadlineQpc>0 || allowCachedLookahead) &&
+        PreparedPictureWindowSource lookaheadSource;
+        lookaheadSource.available=!activePicturePreviewFrames.empty();
+        if(lookaheadSource.available) {
+            lookaheadSource.repeat=activePicturePreviewFrames.front().cadenceRepeat;
+            lookaheadSource.discontinuity=activePicturePreviewFrames.front().frame.IsSourceDiscontinuity();
+        }
+        lookaheadSource.backlog=previewBacklog;
+        lookaheadSource.resizePending=m_impl->resizePending.load(std::memory_order_acquire);
+        lookaheadSource.renegotiationPending=m_impl->outputRenegotiationPending.load(std::memory_order_acquire);
+        const auto lookaheadAdmission=MakePreparedPictureWindowAdmission(lookaheadSource,lookaheadTicket.deadlineQpc);
+		if ((lookaheadAdmission.allowForeground || lookaheadAdmission.consumeReady) &&
             !activePicturePreviewFrames.empty() &&
 			m_activePictureLookaheadFrames.load(std::memory_order_acquire) > 0)
 		{
@@ -26307,9 +26340,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                 // Foreground scans, bounded background dispatch, and ready
                 // consumption have separate permissions. Each pass preserves
                 // exact queue/epoch validation and nonblocking locks.
-                const bool freshSourceEligible=!activePicturePreviewFrames.front().cadenceRepeat &&
-                    (allowCachedLookahead || lookaheadTicket.deadlineQpc>0);
-                const auto phases=RunPreparedPictureWindowPhases(freshSourceEligible,
+                const auto phases=RunPreparedPictureWindowPhases(lookaheadAdmission,
                     lookaheadTicket.deadlineQpc,[]{return PerformanceCounterNow();},
                     [&](int64_t deadline,bool allowBackgroundDispatch) {
                         return AnalyzeActivePictureLookahead(activePicturePreviewFrames,

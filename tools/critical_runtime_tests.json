@@ -10,7 +10,7 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 907,
+  "minimumNativeTests": 910,
   "requiredNativeMethods": [
     "V210SparseSamplingDecodesAllSixPixels",
     "P210SamplingPreservesEachChromaRow",
@@ -187,7 +187,10 @@
     "CancelledShadowWorkCannotRefundItsRateSlot",
     "ShadowLongIdleDoesNotCreateCatchupBurst",
     "ShadowOddAndExtremeFrequenciesRoundSafely",
-    "ZeroForegroundBudgetPreservesBoundedDispatchAfterPrimeMiss"
+    "ZeroForegroundBudgetPreservesBoundedDispatchAfterPrimeMiss",
+    "BacklogConsumesExactReadyNativeWindowWithoutDispatchOrRepeatVotes",
+    "HistoryConfirmedThreeLineCueExportsPendingSeedWithoutBorrowedFutureGeometry",
+    "HistoryConfirmedPendingSeedRejectsForeignPartialHeldAndReusedProof"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -564,6 +567,11 @@
       "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
       "class": "ActivePictureDecisionTimelineTests",
       "method": "ZeroForegroundBudgetPreservesBoundedDispatchAfterPrimeMiss"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "BacklogConsumesExactReadyNativeWindowWithoutDispatchOrRepeatVotes"
     }
   ]
 }

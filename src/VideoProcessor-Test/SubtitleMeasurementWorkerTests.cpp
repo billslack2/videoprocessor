@@ -1190,6 +1190,77 @@ public:
         for(int line=0;line<3;++line)
             Assert::AreEqual(ready.text.lineBounds[line].top,pending.current.text.lineBounds[line].top);
     }
+    struct HistoryConfirmedSeedWorkspace {
+        std::vector<uint16_t> pixels=PixelsWithCurrentBars();
+        std::array<SubtitleBoxObservation,6> frames;
+        SubtitleBoxPreview preview;
+        SubtitleBoxResult accepted;
+        SubtitleBoxPresentation tracker;
+        SubtitlePendingMeasurementGuard guard;
+    };
+    static std::unique_ptr<HistoryConfirmedSeedWorkspace> HistoryConfirmedSeed() {
+        auto storage=std::make_unique<HistoryConfirmedSeedWorkspace>();auto& w=*storage;
+        for(size_t i=0;i<w.frames.size();++i)w.frames[i]=CompleteThreeLineScan(9322+i,w.pixels);
+        for(size_t i=0;i<3;++i) {
+            SubtitleBoxLookahead::ResolveInto(w.preview,&w.frames[i],1,11,21);
+            w.tracker.Consume(w.preview,250,1000.0/59.94);
+        }
+        SubtitleBoxLookahead::ResolveInto(w.preview,w.frames.data()+3,3,11,21);
+        Assert::AreEqual(3,w.preview.current.text.lineCount);
+        Assert::IsTrue(w.preview.text.lineCount<3,
+            L"The caller retains the genuine short-horizon pruned grouping; do not fabricate three resolved rows.");
+        w.accepted=w.tracker.Consume(w.preview,250,1000.0/59.94);
+        Assert::IsTrue(w.accepted.detected && !w.accepted.held && !w.accepted.confirmationPending);
+        Assert::AreEqual(3,w.accepted.lineCount,
+            L"Four independently measured raw sources establish all current rows despite short future grouping.");
+        return storage;
+    }
+    TEST_METHOD(HistoryConfirmedThreeLineCueExportsPendingSeedWithoutBorrowedFutureGeometry) {
+        auto storage=HistoryConfirmedSeed();auto& w=*storage;const double frameMs=1000.0/59.94;
+        const auto& certificate=w.tracker.AcceptedCueSeedCertificate();
+        Assert::IsTrue(certificate.Matches(w.preview,w.accepted),
+            L"Strong current acquisition confirmed by exact raw history must export its current-only seed proof, just as strong backlog reassociation does.");
+        Assert::IsTrue(w.guard.RememberAccepted(w.preview,w.accepted,Source(w.pixels),frameMs,250,&certificate));
+        const auto original=w.preview.current.identity;
+        auto pending=Pending(original.acceptedSequence+6);
+        pending.continuityGeneration=pending.current.continuityGeneration=26;
+        Assert::IsTrue(w.guard.Resolve(pending,Source(w.pixels),frameMs,250,&original,true),
+            L"Authorized queue-only retirement must verify unchanged current pixels from the original acquired three-line seed.");
+        Assert::AreEqual(3,pending.current.text.lineCount);
+        for(int line=0;line<3;++line) {
+            Assert::AreEqual(w.accepted.lineBounds[line].top,pending.current.text.lineBounds[line].top);
+            Assert::AreEqual(w.accepted.lineBounds[line].bottom,pending.current.text.lineBounds[line].bottom);
+        }
+        Assert::AreEqual(6*frameMs,w.guard.PendingElapsedMilliseconds(),0.001);
+        const auto last=w.guard.LastVerifiedIdentity();const auto elapsed=w.guard.PendingElapsedMilliseconds();
+        Assert::IsFalse(w.guard.RememberAccepted(w.preview,w.accepted,Source(w.pixels),frameMs,250,&certificate),
+            L"Replaying the same acquisition certificate cannot restart or renew its original pending lease.");
+        Assert::AreEqual(last.acceptedSequence,w.guard.LastVerifiedIdentity().acceptedSequence);
+        Assert::AreEqual(elapsed,w.guard.PendingElapsedMilliseconds(),0.001);
+        auto expired=Pending(original.acceptedSequence+16);
+        expired.continuityGeneration=expired.current.continuityGeneration=26;
+        Assert::IsFalse(w.guard.Resolve(expired,Source(w.pixels),frameMs,250),
+            L"The original source-age limit still applies after queue reassociation.");
+    }
+    TEST_METHOD(HistoryConfirmedPendingSeedRejectsForeignPartialHeldAndReusedProof) {
+        for(int fault=0;fault<10;++fault) {
+            auto storage=HistoryConfirmedSeed();auto& w=*storage;
+            const auto certificate=w.tracker.AcceptedCueSeedCertificate();
+            if(fault==1)++w.preview.current.identity.analysisDomainKey;
+            if(fault==2)++w.preview.policyGeneration;
+            if(fault==3)++w.preview.continuityGeneration;
+            if(fault==4) {w.preview.current.text.lineCount=2;w.preview.current.text.lineBounds[2]={};}
+            if(fault==5)w.accepted.held=true;
+            if(fault==6)w.accepted.revised=true;
+            if(fault==7)w.preview.current.text.workLimit=true;
+            if(fault==8)w.preview.current.pendingRefresh=true;
+            if(fault==9)w.preview.current.ink=std::make_shared<SubtitleInkSnapshot>(*w.preview.current.ink);
+            Assert::IsFalse(w.guard.RememberAccepted(w.preview,w.accepted,Source(w.pixels),1000.0/59.94,250,
+                fault==0?nullptr:&certificate),
+                L"No missing, foreign, partial, held or changed-ownership proof may seed a new fallback lease.");
+            Assert::AreEqual(uint64_t(0),w.guard.LastVerifiedIdentity().acceptedSequence);
+        }
+    }
     TEST_METHOD(CompletedThreeLineBacklogScanSeedsNextPendingOnlyWithTrackerCertificate) {
         auto pixels=PixelsWithCurrentBars();SubtitleBoxPresentation tracker;SubtitleBoxResult accepted;
         const auto preview=ReassociateThreeLineCue(tracker,pixels,accepted);
