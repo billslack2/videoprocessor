@@ -61,7 +61,7 @@ namespace
         if(!strstr(message,"VP submitted geometry:") && !strstr(message,"Alpha source crop:") &&
             !strstr(message,"Alpha native presentation commit:") && !strstr(message,"SUBTITLE ") &&
             !strstr(message,"application profile") && !strstr(message,"Renderer configuration snapshot") &&
-            !strstr(message,"VP source measurement interval:") && !strstr(message,"VP aspect telemetry:") && !strstr(message,"VP subtitle background preparation:") &&
+            !strstr(message,"VP subtitle cadence cache:") && !strstr(message,"VP source measurement interval:") && !strstr(message,"VP aspect telemetry:") && !strstr(message,"VP subtitle background preparation:") &&
             !strstr(message,"Subtitle shader preparation rejected:") && !strstr(message,"shader cache") && !strstr(message,"Alpha relocated caption evidence:") &&
             !strstr(message,"Alpha relocated caption geometry:") && !strstr(message,"Alpha caption unknown presentation:"))return;
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
@@ -92,7 +92,8 @@ namespace
                 std::lock_guard<std::mutex> guard(classicPoseLogMutex);
                 for(;cursor<classicPoseMessages.size();++cursor) {
                     const auto& line=classicPoseMessages[cursor];
-                    if(line.find("VP subtitle background preparation:")!=std::string::npos ||
+                    if(line.find("VP subtitle cadence cache:")!=std::string::npos ||
+                        line.find("VP subtitle background preparation:")!=std::string::npos ||
                         line.find("Subtitle shader preparation rejected:")!=std::string::npos ||
                         line.find("shader cache")!=std::string::npos)
                         progress.push_back(line);
@@ -114,6 +115,27 @@ namespace
         if(!strcmp(record->stage,"submitted-presentation") && (record->flags&1u))
             classicSubmittedShaderPreparation[{record->rendererInstanceKey,record->transportGeneration,record->acceptedSequence}]=classicCurrentShaderPreparation;
         classicPoseRecords.push_back(*record);
+    }
+    bool TrySubmittedSubtitleCleanup(const std::string& line,const AnalysisDiagnosticRecordV1& output,
+        uint64_t sourceGeneration,SubtitleBoxRect& cleanup)
+    {
+        const bool layout=line.find("SUBTITLE LAYOUT:")!=std::string::npos;
+        const bool capture=line.find("SUBTITLE CAPTURE:")!=std::string::npos;
+        if(!layout&&!capture)return false;
+        const auto frameAt=line.find(" frame=");
+        const auto cleanupAt=line.find(layout?" accepted_cleanup=":" cleanup=");
+        if(frameAt==std::string::npos||cleanupAt==std::string::npos)return false;
+        const auto source=uint64_t(std::strtoull(line.c_str()+frameAt+7,nullptr,10));
+        if(!source||strcmp(output.stage,"submitted-presentation") ||
+            (output.flags&3u)!=3u || (output.flags&16384u)!=0 || (output.flags&64u)==0 ||
+            output.transportGeneration!=sourceGeneration || output.rendererGeneration!=sourceGeneration ||
+            output.acceptedSequence!=source || output.counters[0]!=source || output.counters[1]!=source ||
+            output.counters[2]!=source || output.counters[5]!=source)return false;
+        SubtitleBoxRect actual;
+        const auto* coordinates=line.c_str()+cleanupAt+(layout?18:9);
+        if(sscanf_s(coordinates,"%d,%d-%d,%d",&actual.left,&actual.top,&actual.right,&actual.bottom)!=4 ||
+            !actual.Valid() || actual.left<0 || actual.top<0)return false;
+        cleanup=actual;return true;
     }
     // OSD publication can precede the success-only final record. Consume the last
     // completed selected output in vector order, never an in-flight raw attempt.
@@ -164,6 +186,32 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboPluginProxyTests)
 	{
 	public:
+        TEST_METHOD(ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource) {
+            AnalysisDiagnosticRecordV1 output{};strcpy_s(output.stage,"submitted-presentation");
+            output.flags=1u|2u|64u;output.transportGeneration=output.rendererGeneration=7;
+            output.acceptedSequence=55;output.counters[0]=output.counters[1]=output.counters[2]=output.counters[5]=55;
+            const std::string layout="SUBTITLE LAYOUT: frame=55 cue=1 measured_cleanup=1,2-3,4 accepted_cleanup=1548,1718-2292,1898 display_edges=0,262-3840,1898";
+            SubtitleBoxRect cleanup;
+            Assert::IsTrue(TrySubmittedSubtitleCleanup(layout,output,7,cleanup));
+            Assert::AreEqual(1548,cleanup.left);Assert::AreEqual(1718,cleanup.top);
+            Assert::AreEqual(2292,cleanup.right);Assert::AreEqual(1898,cleanup.bottom);
+            Assert::IsTrue(TrySubmittedSubtitleCleanup("SUBTITLE CAPTURE: frame=55 cue=1 cleanup=1548,1718-2292,1898",output,7,cleanup));
+            for(int fault=0;fault<8;++fault) {
+                auto invalid=output;
+                if(fault==0)invalid.flags&=~2u;
+                if(fault==1)invalid.flags&=~1u;
+                if(fault==2)invalid.flags&=~64u;
+                if(fault==3)++invalid.transportGeneration;
+                if(fault==4)++invalid.counters[1];
+                if(fault==5)++invalid.counters[2];
+                if(fault==6)++invalid.counters[5];
+                if(fault==7)invalid.flags|=16384u;
+                Assert::IsFalse(TrySubmittedSubtitleCleanup(layout,invalid,7,cleanup));
+            }
+            Assert::IsFalse(TrySubmittedSubtitleCleanup("SUBTITLE LAYOUT: frame=56 accepted_cleanup=1548,1718-2292,1898",output,7,cleanup));
+            Assert::IsFalse(TrySubmittedSubtitleCleanup("SUBTITLE LAYOUT: frame=55 measured_cleanup=1548,1718-2292,1898",output,7,cleanup));
+            Assert::IsFalse(TrySubmittedSubtitleCleanup("SUBTITLE LAYOUT: frame=55 accepted_cleanup=10,20-5,15",output,7,cleanup));
+        }
         TEST_METHOD(ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey) {
             ClassicShaderPreparationSelection prepared;
             prepared.state="pending";prepared.key=99;prepared.generation=7;prepared.format=13;
@@ -2270,9 +2318,18 @@ namespace VideoProcessorTest
                                 const auto at=line.find(" samples=");
                                 rejected|=at!=std::string::npos&&std::strtoull(line.c_str()+at+9,nullptr,10)>0;
                             }
-                            if(line.find("SUBTITLE CAPTURE:")==std::string::npos)continue;
-                            const auto at=line.find(" cleanup=");int l=0,t=0,right=0,bottom=0;
-                            if(at==std::string::npos||sscanf_s(line.c_str()+at+9,"%d,%d-%d,%d",&l,&t,&right,&bottom)!=4)continue;
+                            // CAPTURE is throttled and can miss a short steady
+                            // interval after a long warmup. LAYOUT's accepted
+                            // cleanup is equally concrete, but only a matching
+                            // successful current composed submission may prove it.
+                            SubtitleBoxRect actualCleanup;bool submitted=false;
+                            for(const auto& output:outputs) {
+                                const auto input=nativeInputs.find(output.counters[1]);
+                                if(input!=nativeInputs.end() && TrySubmittedSubtitleCleanup(line,output,
+                                    input->second.transportGeneration,actualCleanup)){submitted=true;break;}
+                            }
+                            if(!submitted)continue;
+                            const int l=actualCleanup.left,t=actualCleanup.top,right=actualCleanup.right,bottom=actualCleanup.bottom;
                             for(int y=(std::max)(pictureTop,t);y<(std::min)(pictureBottom,bottom)&&!intersection;++y)
                                 for(int x=(std::max)(0,l);x<(std::min)(width,right);++x) {
                                     bool glyph=false;
@@ -2342,7 +2399,16 @@ namespace VideoProcessorTest
                                         record.published[1]>=pictureTop-8&&record.published[1]<=pictureTop&&
                                         record.published[3]>=pictureBottom&&record.published[3]<=pictureBottom+8,
                                         L"Shader preparation or caption presence inflated the accepted native picture bounds.");
-                                    if(!warmupNativeKnown){std::copy_n(record.published,4,warmupNative);warmupNativeKnown=true;}
+                                    if(!warmupNativeKnown){
+                                        std::copy_n(record.published,4,warmupNative);warmupNativeKnown=true;
+                                        std::ostringstream acquisition;
+                                        acquisition<<"Decoded-DV first accepted native: input="<<inputHz<<" selected="<<record.counters[1]
+                                            <<" accepted="<<record.counters[4]<<" elapsed_ms="<<(GetTickCount64()-startupStarted)
+                                            <<" bounds="<<warmupNative[0]<<','<<warmupNative[1]<<'-'<<warmupNative[2]<<','<<warmupNative[3]
+                                            <<" shader_state="<<preparation.state<<" pipeline_key="<<preparation.key
+                                            <<" requested="<<preparation.requested<<" effective="<<preparation.effective;
+                                        Logger::WriteMessage(acquisition.str().c_str());
+                                    }
                                     for(int edge=0;edge<4;++edge)require(record.published[edge]==warmupNative[edge]&&
                                         std::abs(record.metrics[8+edge]-record.published[edge])<0.01,
                                         L"Shader preparation changed the fixed native picture viewport.");

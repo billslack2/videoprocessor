@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 819,
+  "minimumNativeTests": 820,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -99,7 +99,8 @@
     "IndependentOwnerBypassRejectsProvisionalAndForeignCurrentPixelProofs",
     "ExactQueuedInwardProofCannotWaitForOldSubtitlePresentationTimers",
     "InwardOwnerBypassRetainsExactSourceAndMovingPictureVetoes",
-    "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey"
+    "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey",
+    "ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -251,6 +252,11 @@
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
       "method": "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource"
     }
   ]
 }

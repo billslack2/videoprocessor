@@ -699,6 +699,14 @@ namespace
         return path;
     }
 
+    bool SubtitleCadenceCacheDiagnosticsEnabled() {
+        static const bool enabled=[] {
+            char value[8]={};
+            return GetEnvironmentVariableA("VP_CADENCE_CACHE_DIAGNOSTICS",value,sizeof(value))==1 && value[0]=='1';
+        }();
+        return enabled;
+    }
+
     std::string ShaderCachePath() { return ShaderCacheStoragePath(false); }
     std::string ShaderCacheClearRequestPath() { return ShaderCacheStoragePath(true); }
 
@@ -13188,6 +13196,18 @@ struct LibplaceboVideoRenderer::Impl
         inputRepeatIdentity.rendererGeneration=frameGeneration;
         const auto repeatContext=SourceCadenceContext(state,frameGeneration,preparedQueued.domainKey,
             viewportRequestSerial,sceneDetectorGeneration,sourceSubtitleMode,configuredScreenActive);
+        const bool cadenceCacheDiagnostic=SubtitleCadenceCacheDiagnosticsEnabled() && captureRateHz>30.0 && (sourceSequence<=128 ||
+            (subtitlePreview && subtitlePreview->current.text.workLimit));
+        if(cadenceCacheDiagnostic)
+            DebugLog::Log("VP subtitle cadence cache: stage=input source=%llu anchor=%llu can_repeat=%d live=%d queued=%d measurement=%d cadence=%d temporal=%d interlaced=%d recovery=%d fallback=%d discontinuity=%d pts=%.9f anchor_pts=%.9f domain=%llu viewport=%llu scene=%llu policy=%llu continuity=%llu output=%llu epoch=%llu revision=%llu mode=%d",
+                sourceSequence,previousCompletePresentation.DisplayedSource(),
+                previousCompletePresentation.CanRepeat(repeatContext,captureRateHz,sourceSequence,temporalRenderer.currentPts,videoFrame.IsSourceDiscontinuity())?1:0,
+                preparedLive.IsValid()?1:0,preparedQueued.IsValid()?1:0,subtitleMeasurementEnabled?1:0,cadenceRepeat?1:0,
+                temporalRenderer.Active()?1:0,state.displayMode->IsInterlaced()?1:0,
+                displayCadenceRecovery.Pending()?1:0,displayCadenceRecovery.Fallback()?1:0,videoFrame.IsSourceDiscontinuity()?1:0,
+                temporalRenderer.currentPts,previousCompletePresentation.DisplayedPts(),repeatContext.analysisDomain,repeatContext.viewport,
+                repeatContext.scene,repeatContext.policy,repeatContext.continuity,repeatContext.outputContract,repeatContext.outputEpoch,
+                repeatContext.startupRevision,repeatContext.subtitleMode);
         if(!cadenceRepeat && subtitleMeasurementEnabled && preparedLive.IsValid() && preparedQueued.IsValid() &&
             !temporalRenderer.Active() && !state.displayMode->IsInterlaced() &&
             !displayCadenceRecovery.Pending() && !displayCadenceRecovery.Fallback() &&
@@ -13207,6 +13227,9 @@ struct LibplaceboVideoRenderer::Impl
                     shared,preparedQueued,{},false,false,analysisCache);
                 exactCurrentReady=SourceCadenceObservationComplete(ready,inputRepeatIdentity);
             }
+            if(cadenceCacheDiagnostic)
+                DebugLog::Log("VP subtitle cadence cache: stage=current source=%llu anchor=%llu exact_current_ready=%d",
+                    sourceSequence,previousCompletePresentation.DisplayedSource(),exactCurrentReady?1:0);
             if(!exactCurrentReady) {
                 sourceTransportEvaluated=true;
                 EvaluateSourceCadenceCorrection(frameGeneration,sourceSequence,sceneDetectorGeneration,
@@ -15864,7 +15887,7 @@ struct LibplaceboVideoRenderer::Impl
              subtitleIdentity, captureClockFrequency, &temporalPolicyCaptionProof,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
-             currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels,
+             currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels, cadenceCacheDiagnostic,
              currentCaptionFitWorkerBase, captionAnchorContextMatches, &state, &videoFrame,
              &renderedCaptionCandidate, &renderedCaptionHoldCandidate,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
@@ -16028,6 +16051,16 @@ struct LibplaceboVideoRenderer::Impl
                 scopePresentationHistory,scopePresentationCurrentBounds,effectiveGeometry,subtitleIdentity,
                 latestCropRetentionEvidence);
             const bool relocatedCaptionQualified=presentationView.qualified;
+            if(cadenceCacheDiagnostic)
+                DebugLog::Log("VP subtitle cadence cache: stage=held-proof source=%llu held=%d raw_complete=%d token=%d proof=%d erasure=%d renew=%d proof_identity=%d proof_base=%d projected=%d source_prepared=%d composed=%d incomplete=%d mode=%d",
+                    sourceSequence,subtitleSourcePreparation.ownershipAccepted.held?1:0,
+                    SourceCadenceObservationComplete(subtitleSourcePreparation.ownershipObservation,subtitleIdentity)?1:0,
+                    ownershipInput.currentPreparedCue && ownershipInput.currentPreparedCue->Matches(subtitleSourcePreparation.ownershipObservation,subtitleSourcePreparation.ownershipAccepted,effectiveGeometry)?1:0,
+                    displayCaptionProof.qualified?1:0,displayCaptionProof.preparedErasureOnly?1:0,displayCaptionProof.renewsHold?1:0,
+                    SameAnalysisFrameIdentity(displayCaptionProof.identity,subtitleIdentity)?1:0,
+                    SameSubtitlePresentationBounds(displayCaptionProof.physicalBase,effectiveGeometry)?1:0,
+                    presentationView.qualified?1:0,ownershipInput.sourcePrepared?1:0,subtitleCompositionSucceeded?1:0,
+                    currentSubtitleWorkIncomplete?1:0,static_cast<int>(subtitlePreviewMode));
             qualifiedHeldFinalPixels=presentationView.qualified && SourceCadenceHeldFinalPixelsComplete(
                 subtitleSourcePreparation.ownershipObservation,subtitleSourcePreparation.ownershipAccepted,
                 subtitleIdentity,effectiveGeometry,ownershipInput.currentPreparedCue,displayCaptionProof,
@@ -20055,6 +20088,13 @@ releaseDriftBaseRetention =
         if (rendered) {
             const bool captured=CacheDisplayFrame(baseTarget.planes[0].texture, frameGeneration,
                 viewportRequestSerial,startupFrameRevision,completeSourceCandidate);
+            if(cadenceCacheDiagnostic)
+                DebugLog::Log("VP subtitle cadence cache: stage=candidate source=%llu eligible=%d captured=%d rendered=%d raw_complete=%d reusable_analysis=%d held_pixels=%d temporal_repeat=%d recovery=%d fallback=%d mode=%d",
+                    sourceSequence,completeSourceCandidate?1:0,captured?1:0,rendered?1:0,
+                    SourceCadenceObservationComplete(currentSubtitlePreview.current,subtitleIdentity)?1:0,
+                    sourcePreparationReceipt.ReuseAnalysis(sourcePreparationContext,SourceRepeatKind::CadenceRepeat)?1:0,
+                    qualifiedHeldFinalPixels?1:0,repeatedTemporalOutput?1:0,displayCadenceRecovery.Pending()?1:0,
+                    displayCadenceRecovery.Fallback()?1:0,static_cast<int>(sourceSubtitleMode));
             sourceCadencePresentation.Candidate(SourceCadenceContext(state,frameGeneration,
                 queuedAnalysisDomainKey,viewportRequestSerial,sceneDetectorGeneration,
                 sourceSubtitleMode,configuredScreenActive),sourceSequence,temporalRenderer.currentPts,
@@ -20755,6 +20795,10 @@ releaseDriftBaseRetention =
             if (displayRepeatValid) displayRepeatRecord = record;
             sourceCadencePresentation.Submitted(
                 startupFrameRevision==startupReadinessRevision.load(std::memory_order_acquire));
+            if(cadenceCacheDiagnostic)
+                DebugLog::Log("VP subtitle cadence cache: stage=submitted source=%llu anchor=%llu revision_current=%d display_valid=%d",
+                    sourceSequence,sourceCadencePresentation.DisplayedSource(),
+                    startupFrameRevision==startupReadinessRevision.load(std::memory_order_acquire)?1:0,displayRepeatValid?1:0);
             if(sourceCadencePresentation.DisplayedSource()==sourceSequence)
                 sourceCadenceRecord=record;
 			const AlphaPresentationSnapshot presentationSnapshot =
@@ -21569,6 +21613,19 @@ releaseDriftBaseRetention =
         const SourceCadencePresentationContext& context,const ActivePictureFrameIdentity& consumed,
         double inputHz,double outputPts,bool& presentationTargetTimingKnown,double& presentationTargetLeadMs)
     {
+        if(SubtitleCadenceCacheDiagnosticsEnabled())
+        DebugLog::Log("VP subtitle cadence cache: stage=present-check source=%llu anchor=%llu can_repeat=%d swapchain=%d gpu=%d safe=%d temporal=%d revision=%d epoch=%d resize=%d renegotiation=%d recovery=%d fallback=%d record_generation=%d record_source=%d record_selected=%d record_temporal=%d trace_source=%d trace_selected=%d trace_submitted=%d record_viewport=%d",
+            consumed.acceptedSequence,previous.DisplayedSource(),previous.CanRepeat(context,inputHz,consumed.acceptedSequence,outputPts)?1:0,
+            swapchain?1:0,d3d11?1:0,actualOutput.safeToRender?1:0,temporalRenderer.Active()?1:0,
+            context.startupRevision==startupReadinessRevision.load(std::memory_order_acquire)?1:0,
+            context.outputEpoch==displayCadenceOutputEpoch?1:0,resizePending.load(std::memory_order_acquire)?1:0,
+            outputRenegotiationPending.load(std::memory_order_acquire)?1:0,displayCadenceRecovery.Pending()?1:0,
+            displayCadenceRecovery.Fallback()?1:0,sourceCadenceRecord.generation==context.generation?1:0,
+            sourceCadenceRecord.sourceSequence==previous.DisplayedSource()?1:0,
+            sourceCadenceRecord.selectedSourceSequence==previous.DisplayedSource()?1:0,sourceCadenceRecord.temporalActive?1:0,
+            sourceCadenceOutputTrace.acceptedSequence==previous.DisplayedSource()?1:0,
+            sourceCadenceOutputTrace.counters[1]==previous.DisplayedSource()?1:0,(sourceCadenceOutputTrace.flags&1u)?1:0,
+            sourceCadenceRecord.presentationEpoch==context.viewport?1:0);
         if(!previous.CanRepeat(context,inputHz,consumed.acceptedSequence,outputPts) ||
             !swapchain || !d3d11 || !actualOutput.safeToRender || temporalRenderer.Active() ||
             context.interlaced || context.startupRevision!=startupReadinessRevision.load(std::memory_order_acquire) ||
@@ -21586,6 +21643,10 @@ releaseDriftBaseRetention =
         const int64_t started=PerformanceCounterNow();
         // Sequence/PTS is the primary one-input bound; this additional wall-time
         // guard prevents a stopped/stalled input from reviving a stale picture.
+        if(SubtitleCadenceCacheDiagnosticsEnabled())
+        DebugLog::Log("VP subtitle cadence cache: stage=present-age source=%llu anchor=%llu frequency=%lld submit_qpc=%lld now_qpc=%lld age_ms=%.3f limit_ms=%.3f",
+            consumed.acceptedSequence,previous.DisplayedSource(),frequency.QuadPart,sourceCadenceRecord.submitQpc,started,
+            frequency.QuadPart>0?1000.0*double(started-sourceCadenceRecord.submitQpc)/frequency.QuadPart:-1.0,2500.0/inputHz);
         if(frequency.QuadPart<=0 || sourceCadenceRecord.submitQpc<=0 ||
             started<sourceCadenceRecord.submitQpc ||
             double(started-sourceCadenceRecord.submitQpc)/frequency.QuadPart>2.5/inputHz)
