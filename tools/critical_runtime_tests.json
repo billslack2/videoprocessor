@@ -10,8 +10,9 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 938,
+  "minimumNativeTests": 939,
   "requiredNativeMethods": [
+    "LegacyForegroundNativeMeasurementPublishesOnlyItsOwnBoundedPhysicalObservation",
     "InspectedPlaneWorkRejectsChangedSourceSettingsGeometryAndIncompleteInk",
     "SuppliedSpatialDimFlanksWithOpaqueCaptionKeepIndependentEdgeProof",
     "SuppliedSpatialCaptionCollarCannotHideDeepOrUnownedPicture",

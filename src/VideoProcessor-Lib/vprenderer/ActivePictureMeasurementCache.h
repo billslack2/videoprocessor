@@ -280,7 +280,14 @@ private:
         if(SourcePictureDetectorEnabled())return MissingSourcePictureEvidence(m_source,"source-picture-native-worker-not-ready");
         const auto started = std::chrono::steady_clock::now();
         ++m_statistics.pictureScans;
-        const auto value = ExtractActivePictureEvidence(m_source);
+        auto value = ExtractActivePictureEvidence(m_source);
+        // Zero-lead legacy playback cannot import this same frame's worker
+        // result after it has already been displayed. When mandatory native
+        // extraction is already running locally, publish a separately measured
+        // physical observation from those exact pixels with the existing 2 ms
+        // optional budget. Reading PhysicalEdges alone still does no work;
+        // active spatial mode above remains exclusively worker-produced.
+        value.physicalEdges=MeasurePhysicalEdgesOptional(m_source,value);
         RecordTime(started);
         if (m_cacheable) { m_picture = value; m_pictureValid = true; }
         return value;

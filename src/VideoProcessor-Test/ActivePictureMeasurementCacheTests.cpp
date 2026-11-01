@@ -331,6 +331,37 @@ namespace VideoProcessorTest
     TEST_CLASS(ActivePictureMeasurementCacheTests)
     {
     public:
+        TEST_METHOD(LegacyForegroundNativeMeasurementPublishesOnlyItsOwnBoundedPhysicalObservation)
+        {
+            const OwnedMeasurementFrame frame;auto source=frame.Source();const auto identity=Identity();
+            source.generation=identity.transportGeneration;
+            ActivePictureMeasurementCache cache;cache.Begin(source,identity,7,8);
+            Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
+            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
+            const auto native=cache.Picture();
+            if(SourcePictureDetectorEnabled()) {
+                Assert::IsFalse(native.available);
+                Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
+                Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
+                return; // Active mode still requires its exact worker result.
+            }
+            Assert::IsTrue(native.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            const auto physical=cache.PhysicalEdges();
+            Assert::IsTrue(physical.evaluated && physical.estimateAvailable,
+                L"A zero-lead legacy foreground scan must publish independently measured current physical edges, not only its retained native crop.");
+            SameBounds(physical.estimate,Scope());
+            Assert::AreEqual(source.generation,physical.sourceGeneration);
+            Assert::AreEqual(size_t(1),cache.Snapshot().pictureScans);
+            Assert::AreEqual(size_t(0),cache.Snapshot().workerImports);
+            const OwnedMeasurementFrame dark(1);auto next=dark.Source();next.generation=source.generation;
+            auto nextIdentity=identity;++nextIdentity.acceptedSequence;++nextIdentity.sourceFrameNumber;++nextIdentity.captureTimestamp;
+            cache.Begin(next,nextIdentity,7,8);
+            Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
+            cache.Picture();
+            Assert::IsFalse(cache.PhysicalEdges().estimateAvailable,
+                L"An inconclusive next frame must not publish the previous physical measurement or infer full-raster detection.");
+        }
+
         TEST_METHOD(SingleOutputReusesRawGlobalAndArAcrossCurrentRetentionBases)
         {
             const OwnedMeasurementFrame frame;
@@ -430,8 +461,12 @@ namespace VideoProcessorTest
                 Assert::AreEqual(size_t(0),changed.Snapshot().pictureScans,
                     L"Reading unavailable physical telemetry must not initiate a detector scan.");
                 changed.Picture();
-                Assert::IsFalse(changed.PhysicalEdges().estimateAvailable,
-                    L"A local native scan does not manufacture a missing independent worker observation.");
+                const auto remeasured=changed.PhysicalEdges();
+                Assert::IsTrue(remeasured.evaluated && remeasured.estimateAvailable,
+                    L"After invalidation, explicit legacy Picture work may independently remeasure current physical edges; the pre-scan read above must remain unavailable.");
+                Assert::AreEqual(nextSource.generation,remeasured.sourceGeneration);
+                SameBounds(remeasured.estimate,Scope());
+                Assert::AreEqual(size_t(1),changed.Snapshot().pictureScans);
             }
         }
         TEST_METHOD(ForeignPhysicalGenerationCannotBecomeCurrentThroughAValidNativeSeed)
