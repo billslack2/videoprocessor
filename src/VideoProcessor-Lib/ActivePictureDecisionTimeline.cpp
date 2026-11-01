@@ -403,6 +403,67 @@ bool ActivePictureDecisionTimeline::OnlyBacklogRetirementBetween(
     return false;
 }
 
+OwnedScanBacklogWitness ActivePictureDecisionTimeline::QualifyOwnedScanBacklogWitness(
+    const ActivePictureFrameIdentity& current,uint64_t beforeContinuity,
+    uint64_t afterContinuity) const
+{
+    OwnedScanBacklogWitness proof;
+    if(!beforeContinuity || !afterContinuity || beforeContinuity>=afterContinuity ||
+        afterContinuity!=m_continuityGeneration || !m_lookaheadPolicyGeneration ||
+        current.transportGeneration!=m_transportGeneration || !current.acceptedSequence ||
+        !current.sourceFrameNumber || !current.captureTimestamp || !current.sourceFormatGeneration ||
+        !current.rendererGeneration || !current.analysisDomainKey)
+        return proof;
+    const auto compatibleDomain=[&current](const ActivePictureFrameIdentity& recorded) {
+        // Queue identities may precede construction of the decoded CPU view.
+        // The issued token binds the full supplied view; consumers must also
+        // verify exact immutable scan ownership and interpretation.
+        return !recorded.analysisDomainKey || recorded.analysisDomainKey==current.analysisDomainKey;
+    };
+    bool owned=false;
+    if(current.acceptedSequence>m_lastConsumedSequence) {
+        AcceptedIdentity accepted;
+        owned=FindAcceptedIdentity(current,accepted) && compatibleDomain(accepted.identity);
+    } else if(current.acceptedSequence==m_lastConsumedSequence && !m_consumed.empty()) {
+        owned=SameActivePictureFrameIdentity(m_consumed.back().identity,current) &&
+            compatibleDomain(m_consumed.back().identity);
+    }
+    if(!owned)return proof;
+    uint64_t expected=beforeContinuity,previousSequence=0,previousTimestamp=0;
+    for(const auto& boundary:m_continuityBoundaries) {
+        if(boundary.beforeGeneration!=expected)continue;
+        const auto& retired=boundary.discardedIdentity;
+        if((boundary.discardReason!=ActivePictureDiscardReason::BacklogRecovery &&
+            boundary.discardReason!=ActivePictureDiscardReason::QueueCapacityOverflow) ||
+            !boundary.acceptedIdentityVerified ||
+            boundary.lookaheadPolicyGeneration!=m_lookaheadPolicyGeneration ||
+            !boundary.acceptedSequence || boundary.acceptedSequence>=current.acceptedSequence ||
+            boundary.acceptedSequence<=previousSequence ||
+            retired.acceptedSequence!=boundary.acceptedSequence ||
+            !SameTransportDecisionContext(retired,current) || !compatibleDomain(retired) ||
+            !retired.sourceFrameNumber || retired.sourceFrameNumber>=current.sourceFrameNumber ||
+            current.sourceFrameNumber-retired.sourceFrameNumber!=current.acceptedSequence-retired.acceptedSequence ||
+            !retired.captureTimestamp || retired.captureTimestamp<=previousTimestamp ||
+            retired.captureTimestamp>=current.captureTimestamp)
+            return proof;
+        const auto known=std::find_if(m_consumed.begin(),m_consumed.end(),
+            [&boundary](const ConsumedIdentity& item) {
+                return item.identity.acceptedSequence==boundary.acceptedSequence;
+            });
+        if(known==m_consumed.end() || !SameActivePictureFrameIdentity(known->identity,retired) ||
+            !compatibleDomain(known->identity))return proof;
+        previousSequence=retired.acceptedSequence;previousTimestamp=retired.captureTimestamp;
+        expected=boundary.afterGeneration;
+        if(expected==afterContinuity) {
+            proof.m_available=true;proof.m_current=current;
+            proof.m_policy=m_lookaheadPolicyGeneration;
+            proof.m_before=beforeContinuity;proof.m_after=afterContinuity;
+            return proof;
+        }
+    }
+    return proof;
+}
+
 void ActivePictureDecisionTimeline::BreakContinuity(
 	uint64_t /* detectorFrameNumber */)
 {
@@ -431,11 +492,15 @@ void ActivePictureDecisionTimeline::RecordContinuityBoundary(
 	uint64_t acceptedSequence, ActivePictureDiscardReason reason,
 	const ActivePictureFrameIdentity* discarded)
 {
+    AcceptedIdentity accepted;
+    const bool verified=discarded && FindAcceptedIdentity(*discarded,accepted) &&
+        (!accepted.identity.analysisDomainKey || !discarded->analysisDomainKey ||
+         accepted.identity.analysisDomainKey==discarded->analysisDomainKey);
 	const uint64_t beforeGeneration = m_continuityGeneration;
 	AdvanceContinuityGeneration();
 	m_continuityBoundaries.push_back(
 		{ beforeGeneration, m_continuityGeneration, acceptedSequence, reason,
-		  discarded ? *discarded : ActivePictureFrameIdentity{} });
+		  discarded ? *discarded : ActivePictureFrameIdentity{},m_lookaheadPolicyGeneration,verified });
 	while (m_continuityBoundaries.size() > MAX_RETAINED_IDENTITIES)
 		m_continuityBoundaries.pop_front();
 }

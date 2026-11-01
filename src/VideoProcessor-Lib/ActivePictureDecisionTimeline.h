@@ -132,6 +132,23 @@ enum class ActivePictureDiscardReason : uint8_t {
     Unknown, BacklogRecovery, QueueCapacityOverflow
 };
 
+// This capability only permits rechecking still-owned independent CPU scan
+// metadata after proven queue retirements. It carries no AR or caption authority.
+class OwnedScanBacklogWitness
+{
+public:
+    bool Matches(const ActivePictureFrameIdentity& current,uint64_t timelinePolicy,
+        uint64_t beforeContinuity,uint64_t afterContinuity) const {
+        return m_available && SameAnalysisFrameIdentity(m_current,current) &&
+            timelinePolicy==m_policy && beforeContinuity==m_before && afterContinuity==m_after;
+    }
+private:
+    friend class ActivePictureDecisionTimeline;
+    bool m_available=false;
+    ActivePictureFrameIdentity m_current;
+    uint64_t m_policy=0,m_before=0,m_after=0;
+};
+
 // Bounded source-order association layer for active-picture decisions. It
 // owns no video frames and changes neither queue depth nor dequeue timing.
 // Callers submit only observations selected by the existing detector cadence.
@@ -154,6 +171,9 @@ public:
 	bool OnlyBacklogRetirementBetween(const ActivePictureFrameIdentity& previousTemplate,
 		const ActivePictureFrameIdentity& current, uint64_t beforeContinuity,
 		uint64_t afterContinuity) const;
+    OwnedScanBacklogWitness QualifyOwnedScanBacklogWitness(
+        const ActivePictureFrameIdentity& current,uint64_t beforeContinuity,
+        uint64_t afterContinuity) const;
 	void BreakContinuity(uint64_t detectorFrameNumber);
 	void InvalidateLookaheadPolicy(bool resetPartialEvidence = false);
 	// Withdraw obsolete crop authority without discarding queued source frames.
@@ -180,6 +200,16 @@ public:
 		uint8_t availableLookahead,
 		ActivePictureFrameDecision& published,
 		const ActivePicturePresentationIntent& presentation = {});
+
+    // Already measured queued observations spend no detector scan budget.
+    // Keep source/continuity/proof validation identical to scheduled input.
+    bool SubmitPreparedLookaheadObservation(const ActivePictureFrameIdentity& identity,
+        const ActivePictureObservation& observation,uint8_t configuredLookahead,
+        uint8_t availableLookahead,ActivePictureFrameDecision& published,
+        const ActivePicturePresentationIntent& presentation={}) {
+        return SubmitScheduledObservation(identity,observation,configuredLookahead,
+            availableLookahead,published,presentation);
+    }
 
 	// Before stamping a buffered certificate, every contributing identity must
 	// still be pending in the same current source-continuity generation.
@@ -218,6 +248,8 @@ private:
 		uint64_t acceptedSequence = 0;
 		ActivePictureDiscardReason discardReason = ActivePictureDiscardReason::Unknown;
 		ActivePictureFrameIdentity discardedIdentity;
+        uint64_t lookaheadPolicyGeneration = 0;
+        bool acceptedIdentityVerified = false;
 	};
 
 	void RetainIdentity(const ActivePictureFrameIdentity& identity,

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/PreparedOutwardWindow.h>
+#include <vprenderer/ActivePictureMeasurementCache.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
 #include <vector>
 
@@ -95,6 +96,71 @@ namespace VideoProcessorTest
     TEST_CLASS(PreparedOutwardWindowTests)
     {
     public:
+        TEST_METHOD(ColdOutwardPublicationCannotEraseARacingCurrentPhysicalObservation)
+        {
+            OwnedWindow window;
+            const std::shared_ptr<const WindowRawMeasurement> originallyMissing;
+            const auto raw=window.PublishRaw(0);
+            auto upgraded=std::make_shared<WindowRawMeasurement>(*raw);
+            Assert::IsTrue(ActivePictureMeasurementCache::CompletePhysicalObservationIfMissing(
+                upgraded->source,upgraded->evidence));
+            std::shared_ptr<const WindowRawMeasurement> current=upgraded;
+            std::atomic_store(&window.request.rawSlots[0]->ready,current);
+            const auto late=std::make_shared<const WindowRawMeasurement>(*raw);
+            const auto selected=PublishPreparedOutwardRaw<WindowRawMeasurement>(window.request.frames[0],
+                window.request.identities[0],window.request.rawSlots[0],originallyMissing,late);
+            Assert::IsTrue(selected.get()==current.get(),
+                L"A late cold outward scan must use the already completed current source, preserving its physical observation.");
+            Assert::IsTrue(WindowRequest::RawWorker::Ready(window.request.rawSlots[0]).get()==current.get());
+            auto incompatible=std::make_shared<WindowRawMeasurement>(*upgraded);
+            ++incompatible->domainKey;++incompatible->identity.analysisDomainKey;
+            std::shared_ptr<const WindowRawMeasurement> newer=incompatible;
+            std::atomic_store(&window.request.rawSlots[0]->ready,newer);
+            const auto privateResult=PublishPreparedOutwardRaw<WindowRawMeasurement>(window.request.frames[0],
+                window.request.identities[0],window.request.rawSlots[0],originallyMissing,late);
+            Assert::IsTrue(privateResult.get()==late.get());
+            Assert::IsTrue(WindowRequest::RawWorker::Ready(window.request.rawSlots[0]).get()==newer.get(),
+                L"An incompatible newer context must not be overwritten or adopted by an older request.");
+        }
+
+        TEST_METHOD(CompletedOutwardRawCanGainPhysicalObservationWithoutRepeatingMandatoryProof)
+        {
+            OwnedWindow window;
+            const auto proof=EvaluatePreparedOutwardWindow(window.request);
+            Assert::IsTrue(proof.proof.valid);
+            Assert::IsTrue(proof.rawComputed==3 && proof.retentionComputed==3);
+            for(size_t i=0;i<3;++i) {
+                const auto original=WindowRequest::RawWorker::Ready(window.request.rawSlots[i]);
+                Assert::IsTrue(PreparedOutwardRawMeasurementCurrent(window.request.frames[i],
+                    window.request.identities[i],original));
+                auto upgraded=std::make_shared<WindowRawMeasurement>(*original);
+                Assert::IsTrue(ActivePictureMeasurementCache::CompletePhysicalObservationIfMissing(
+                    upgraded->source,upgraded->evidence),
+                    L"A complete raw result from the outward producer must remain eligible for independent physical observation.");
+                Assert::IsTrue(upgraded->evidence.physicalEdges.evaluated);
+                Assert::AreEqual(upgraded->source.generation,upgraded->evidence.physicalEdges.sourceGeneration);
+                Assert::AreEqual(int(original->evidence.classification),int(upgraded->evidence.classification));
+                Assert::AreEqual(original->evidence.trustedBounds.top,upgraded->evidence.trustedBounds.top);
+                Assert::AreEqual(original->evidence.trustedBounds.bottom,upgraded->evidence.trustedBounds.bottom);
+                Assert::IsFalse(ActivePictureMeasurementCache::CompletePhysicalObservationIfMissing(
+                    upgraded->source,upgraded->evidence),L"A completed current physical observation is immutable and must not be rescanned.");
+                std::shared_ptr<const WindowRawMeasurement> complete=upgraded;
+                std::atomic_store(&window.request.rawSlots[i]->ready,complete);
+            }
+            const auto reused=EvaluatePreparedOutwardWindow(window.request);
+            Assert::IsTrue(reused.proof.valid && reused.rawComputed==0 && reused.rawReused==3);
+            Assert::IsTrue(reused.retentionComputed==0 && reused.retentionReused==3,
+                L"Optional physical observation cannot lower or repeat mandatory outward-proof work.");
+            const auto raw=WindowRequest::RawWorker::Ready(window.request.rawSlots[0]);
+            auto cancelled=*raw;cancelled.evidence.physicalEdges={};
+            AnalysisEvaluationBudget expired([](void*){return true;},nullptr);
+            Assert::IsTrue(ActivePictureMeasurementCache::CompletePhysicalObservationIfMissing(
+                cancelled.source,cancelled.evidence,&expired));
+            Assert::IsTrue(cancelled.evidence.physicalEdges.evaluated &&
+                !cancelled.evidence.physicalEdges.estimateAvailable);
+            Assert::IsTrue(reused.proof.valid,L"An exhausted independent physical budget cannot cancel a completed outward certificate.");
+        }
+
         TEST_METHOD(MissingRawAndRetentionFinishCompleteWindowWithoutAnotherRenderPass)
         {
             OwnedWindow window;

@@ -75,7 +75,15 @@ public:
         }
         // A later Begin for another policy/continuity invalidates the import
         // just as it invalidates locally computed measurements.
-        if (!m_pictureValid) { m_picture = picture; m_pictureValid = true; }
+        if (!m_pictureValid) {
+            m_picture = picture;
+            // The full source/owner/domain identity was checked above. Only
+            // now rebind the queued adapter generation to this live adapter.
+            if(m_picture.physicalEdges.sourceGeneration==queuedSource.generation)
+                m_picture.physicalEdges.sourceGeneration=m_source.generation;
+            else m_picture.physicalEdges={};
+            m_pictureValid = true;
+        }
         if (!m_globalValid) { m_global = darkness.global; m_globalValid = true; }
         if (!m_darknessValid) { m_darkness = darkness; m_darknessValid = true; }
         ++m_statistics.workerImports;
@@ -94,6 +102,50 @@ public:
         ++m_statistics.pictureRequests;
         if (m_cacheable && m_pictureValid) ++m_statistics.pictureHits;
         return Native();
+    }
+
+    // Optional observation of already-measured native bounds. This never
+    // starts a mandatory detector scan or changes its conservative authority.
+    static PhysicalPictureEdgeObservation MeasurePhysicalEdgesOptional(
+        const AnalysisLumaSource& source,const ActivePictureEvidence& evidence)
+    {
+        auto deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(2);
+        AnalysisEvaluationBudget budget([](void* value) {
+            return std::chrono::steady_clock::now()>=
+                *static_cast<std::chrono::steady_clock::time_point*>(value);
+        },&deadline);
+        const auto& bounds=evidence.classification==ActivePictureClassification::PROVISIONAL?
+            evidence.proposedBounds:evidence.trustedBounds;
+        return MeasurePhysicalPictureEdges(source,bounds,&budget,&evidence.blackReference);
+    }
+    // Called only after the queued frame's complete source/owner/domain key
+    // has matched. This optional upgrade must never rerun mandatory AR proof.
+    static bool CompletePhysicalObservationIfMissing(const AnalysisLumaSource& source,
+        ActivePictureEvidence& evidence,const AnalysisEvaluationBudget* optionalBudget = nullptr)
+    {
+        if(evidence.physicalEdges.evaluated &&
+            evidence.physicalEdges.sourceGeneration==source.generation)return false;
+        if(optionalBudget) {
+            const auto& bounds=evidence.classification==ActivePictureClassification::PROVISIONAL?
+                evidence.proposedBounds:evidence.trustedBounds;
+            evidence.physicalEdges=MeasurePhysicalPictureEdges(source,bounds,optionalBudget,&evidence.blackReference);
+        } else evidence.physicalEdges=MeasurePhysicalEdgesOptional(source,evidence);
+        return true;
+    }
+    PhysicalPictureEdgeObservation PhysicalEdges()
+    {
+        if(!m_cacheable || !m_pictureValid) {
+            PhysicalPictureEdgeObservation unknown;
+            unknown.reason="physical-native-observation-not-ready";
+            return unknown;
+        }
+        if(!m_picture.physicalEdges.evaluated ||
+            m_picture.physicalEdges.sourceGeneration!=m_source.generation) {
+            PhysicalPictureEdgeObservation unknown;
+            unknown.reason="physical-worker-observation-not-ready";
+            return unknown;
+        }
+        return m_picture.physicalEdges;
     }
 
     ActivePictureArDarknessEvidence ArDarkness()

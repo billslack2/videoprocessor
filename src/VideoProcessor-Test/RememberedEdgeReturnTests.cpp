@@ -2054,7 +2054,13 @@ public:
         const int bottomDepth=frame.height-rig.scopeEvidence.trustedBounds.bottom;
         const size_t exteriorBudget=size_t(96)*((top+step-1)/step+(bottomDepth+step-1)/step+32);
         Assert::IsTrue(result.exteriorSamples>0 && result.exteriorSamples<=exteriorBudget);
-        Assert::IsTrue(result.samples>result.exteriorSamples && result.samples<size_t(150000));
+        // The helper also performs current native/retention verification. Keep
+        // the fixed profile cost separate from that bounded pixel work.
+        const auto retention=EvaluateActivePicturePresentationRetention(frame.Source(),rig.scopeEvidence.trustedBounds);
+        const size_t retainedSamples=retention.lumaSamples+retention.chromaSamples;
+        Assert::AreEqual(result.exteriorSamples+size_t(9*96)+retainedSamples,result.samples);
+        Assert::IsTrue(result.samples<size_t(frame.width)*frame.height/32,
+            L"Complete current verification must inspect less than one thirty-second of the 4K raster.");
         EqualRecallBounds(rig.scopeEvidence.trustedBounds,result.evidence.trustedBounds);
         EqualRecallBounds(raw.proposedBounds,result.evidence.proposedBounds);
         Assert::IsTrue(raw.axisEvidence==result.evidence.axisEvidence);
@@ -2236,18 +2242,33 @@ public:
         for(int pattern=0;pattern<2;++pattern)
         {
             RecallRig rig(3840,2160); rig.QualifiedWide(); RecallPixels frame(3840,2160); RecallDarkLowerPicture(frame);
+            // Preserve the coarse nomination separately: fresh native recovery
+            // now measures the displaced dim ground, while this helper must
+            // still reject history which would discard its occupied pixels.
+            const auto coarse=ExtractActivePictureEvidence(frame.Source()); AssertRecallRaw(coarse);
             if(pattern==0)frame.Rectangle(0,1612,3840,1908,80);
             else
             {
                 frame.Rectangle(0,1612,3840,1848,84);
                 for(int y=1848;y<2048;++y)frame.Rectangle(0,y,3840,y+1,84-(y-1848)*20/200);
             }
-            const auto raw=ExtractActivePictureEvidence(frame.Source()); AssertRecallRaw(raw);
-            Assert::IsTrue(EvaluateActivePicturePresentationRetention(frame.Source(),rig.scopeEvidence.trustedBounds).CanRetainPresentation());
-            const auto result=rig.Inspect(frame);
+            const auto current=ExtractActivePictureEvidence(frame.Source());
+            if(pattern==0)
+            {
+                Assert::IsTrue(current.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsTrue(current.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE);
+                Assert::AreEqual(0,current.trustedBounds.left); Assert::AreEqual(3840,current.trustedBounds.right);
+                Assert::IsTrue(current.trustedBounds.top<=276 && current.trustedBounds.top>=268);
+                Assert::IsTrue(current.trustedBounds.bottom>=1908 && current.trustedBounds.bottom<=1916);
+            }
+            else Assert::IsTrue(current.classification==ActivePictureClassification::PROVISIONAL);
+            rig.Advance();
+            const auto nomination=rig.Nominate(coarse); Assert::IsTrue(nomination.available);
+            const auto result=InspectRememberedEdgeReturn(frame.Source(),coarse,nomination,
+                rig.context.sourceSequence,rig.context.timestampMs);
             Assert::IsFalse(result.candidateAvailable);
             Assert::IsTrue(result.mismatches>0,L"Reject the actual prospective bar profile, not absence of bright bottom picture.");
-            AssertUnchangedRecallEvidence(raw,result.evidence);
+            AssertUnchangedRecallEvidence(coarse,result.evidence);
         }
     }
 
@@ -2779,8 +2800,13 @@ public:
         rejected.Rectangle(0,1612,3840,1908,80);
         rig.Advance();
         const auto raw=ExtractActivePictureEvidence(good.Source());
-        const auto rejectedRaw=ExtractActivePictureEvidence(rejected.Source());
-        AssertRecallRaw(raw); AssertRecallRaw(rejectedRaw);
+        const auto currentRejected=ExtractActivePictureEvidence(rejected.Source());
+        AssertRecallRaw(raw);
+        Assert::IsTrue(currentRejected.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+        Assert::IsTrue(currentRejected.trustedBounds.bottom>=1908 && currentRejected.trustedBounds.bottom<=1916);
+        // Benchmark rejecting the old coarse nomination against changed pixels;
+        // fresh native recovery above independently preserves their true extent.
+        const auto rejectedRaw=raw;
         const auto nomination=rig.Nominate(raw); Assert::IsTrue(nomination.available);
         for(int path=0;path<3;++path)
         {

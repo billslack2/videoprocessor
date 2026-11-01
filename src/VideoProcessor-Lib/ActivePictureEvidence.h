@@ -66,6 +66,8 @@ const char* ActivePictureBlackReferenceModeName(ActivePictureBlackReferenceMode 
 
 struct ActivePictureEdgeEvidence
 {
+    // Actual sampled matte codes, independent of the coarse range threshold.
+    ActivePictureMatteReference measuredMatteReference;
     ActivePictureMatteReference matteReference;
 	int barPixels = 0;
 	// For each of four equal along-edge quartiles, the low six bits identify
@@ -120,8 +122,44 @@ struct ActivePictureVerticalBarProfile
 	const char* reason = "not-required";
 };
 
+enum class ActivePictureCandidateVerificationState : uint8_t
+{
+    NOT_EVALUATED, VERIFIED, UNKNOWN, CONTRADICTED
+};
+struct ActivePictureCandidateVerification
+{
+    ActivePictureBounds nomination;
+    ActivePictureBounds bounds;
+    uint64_t sourceGeneration = 0;
+    ActivePictureCandidateVerificationState vertical = ActivePictureCandidateVerificationState::NOT_EVALUATED;
+    ActivePictureCandidateVerificationState horizontal = ActivePictureCandidateVerificationState::NOT_EVALUATED;
+    size_t samples = 0;
+    int firstMismatchX = -1, firstMismatchY = -1;
+};
+
+// Source-pixel edge observation only. Does not authorize discarding pixels,
+// acquiring native AR, or changing the conservative retention rectangle.
+enum class PhysicalPictureEdgeConfidence : uint8_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT };
+struct PhysicalPictureEdgeObservation
+{
+    bool evaluated=false, estimateAvailable=false;
+    PhysicalPictureEdgeConfidence confidence=PhysicalPictureEdgeConfidence::UNKNOWN;
+    // Conservative bounds are the uncertainty envelope; estimate never discards it.
+    ActivePictureBounds estimate, conservativeBounds;
+    uint64_t sourceGeneration=0;
+    size_t samples=0;
+    const char* reason="not-evaluated";
+};
+PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
+    const AnalysisLumaSource& source,const ActivePictureBounds& conservativeBounds,
+    const AnalysisEvaluationBudget* budget=nullptr,
+    const ActivePictureBlackReference* blackReference=nullptr);
+
 struct ActivePictureEvidence
 {
+    // Exact-current native candidate certificate; not transferable to other bounds.
+    ActivePictureCandidateVerification candidateVerification;
+    PhysicalPictureEdgeObservation physicalEdges;
     ActivePictureBlackReference blackReference;
 	bool available = false;
 	ActivePictureClassification classification =
@@ -280,6 +318,13 @@ struct ActivePicturePresentationRetentionEvidence
 	int presentationBlackThreshold = 0;
 	bool relocatedOverlayExclusionEvaluated = false;
 	bool relocatedOverlayResidualsExcluded = false;
+	// Completed raw native-band inspection, kept separate from overlay-erased
+	// presentation evidence. These bounded scans can retain an existing base;
+	// they never nominate a boundary or create crop authority.
+	bool rawBandSafetyEvaluated = false;
+	ActivePictureBounds rawBandSafetyBase;
+	bool rawBandLeftSafe = false, rawBandTopSafe = false;
+	bool rawBandRightSafe = false, rawBandBottomSafe = false;
 	bool excludedBandsPixelSafe = false;
 	bool excludedHorizontalBandsPixelSafe = false;
 	bool excludedVerticalBandsPixelSafe = false;

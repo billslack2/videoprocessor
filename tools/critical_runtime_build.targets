@@ -1,0 +1,28 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Imported by Directory.Build.targets only after gate activation. -->
+  <PropertyGroup>
+    <_VpGateRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\'))</_VpGateRoot>
+    <_VpRuntimeProject Condition="'$(MSBuildProjectName)' == 'VideoProcessor-GUI' or '$(MSBuildProjectName)' == 'VideoProcessor-VPRenderer' or '$(MSBuildProjectName)' == 'VideoProcessor-VPRendererBeta'">true</_VpRuntimeProject>
+    <_VpGateChild Condition="'$(VPCriticalGateChild)' == 'true' and '$(VPCriticalGateNonce)' != '' and '$(VPCriticalGateNonce)' == '$(VP_CRITICAL_GATE_NONCE)' and '$(_VpGateRoot)' == '$(VP_CRITICAL_GATE_ROOT)\'">true</_VpGateChild>
+  </PropertyGroup>
+  <Target Name="ValidateVpQualificationContext" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(VPCriticalGateChild)' == 'true' and '$(_VpGateChild)' != 'true'" Text="Invalid qualification child context. Invoke tools\qualify_runtime_build.ps1; setting VPCriticalGateChild alone cannot bypass mandatory tests." />
+    <Error Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and ('$(Configuration)' != 'Release' or '$(Platform)' != 'x64' or '$(BuildingInsideVisualStudio)' == 'true')" Text="Runtime builds require matching tests. Initially supported: command-line Release|x64. Run MSBuild.exe VideoProcessor.sln /t:Build /m /p:Configuration=Release /p:Platform=x64 /p:MagewellSdkRoot=&lt;SDK&gt;. IDE/other configurations require matching qualification support; tool/library-only builds remain available." />
+    <Error Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and ('$(SolutionDir)' == '' or '$(SolutionDir)' == '*Undefined*')" Text="Direct runtime project builds must pass /p:SolutionDir=$(_VpGateRoot) so runtime and test output layouts agree." />
+    <PropertyGroup Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true'">
+      <_VpExpectedRuntimePath Condition="'$(MSBuildProjectName)' == 'VideoProcessor-GUI'">$(_VpGateRoot)x64\Release\VideoProcessor-GUI.exe</_VpExpectedRuntimePath>
+      <_VpExpectedRuntimePath Condition="'$(MSBuildProjectName)' == 'VideoProcessor-VPRenderer'">$(_VpGateRoot)x64\Release\vprenderer\VideoProcessorVPRenderer.dll</_VpExpectedRuntimePath>
+      <_VpExpectedRuntimePath Condition="'$(MSBuildProjectName)' == 'VideoProcessor-VPRendererBeta'">$(_VpGateRoot)x64\Release\vprenderer-beta\VideoProcessorVPRendererBeta.dll</_VpExpectedRuntimePath>
+      <_VpActualRuntimePath Condition="'$(TargetPath)' != ''">$([System.IO.Path]::GetFullPath('$(TargetPath)'))</_VpActualRuntimePath>
+    </PropertyGroup>
+    <Error Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and '$(TargetPath)' == ''" Text="Runtime TargetPath is missing; use the canonical Release|x64 output layout." />
+    <Error Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and '$(TargetPath)' != '' and '$(_VpActualRuntimePath)' != '$(_VpExpectedRuntimePath)'" Text="Custom runtime output layouts require matching qualification support. Expected $(_VpExpectedRuntimePath), got $(TargetPath). Remove OutDir/TargetName overrides and build canonical Release|x64 outputs." />
+    <Delete Files="$(_VpGateRoot)artifacts\qualification\runtime-Release-x64.json" Condition="('$(_VpRuntimeProject)' == 'true' or '$(MSBuildProjectName)' == 'VideoProcessor-Lib') and '$(_VpGateChild)' != 'true'" />
+  </Target>
+  <Target Name="QualifyVpDirectRuntimeBuild" AfterTargets="Build" Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and '$(BuildingSolutionFile)' != 'true'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(_VpGateRoot)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(_VpGateRoot).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot; -RequiredBinaryPath &quot;$(TargetPath)&quot;" />
+  </Target>
+  <Target Name="QualifyVpDirectRuntimeRebuild" AfterTargets="Rebuild" Condition="'$(_VpRuntimeProject)' == 'true' and '$(_VpGateChild)' != 'true' and '$(BuildingSolutionFile)' != 'true'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(_VpGateRoot)tools\qualify_runtime_build.ps1&quot; -Root &quot;$(_VpGateRoot).&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;$(Platform)&quot; -MagewellSdkRoot &quot;$(MagewellSdkRoot)&quot; -MSBuildPath &quot;$(MSBuildBinPath)\MSBuild.exe&quot; -RequiredBinaryPath &quot;$(TargetPath)&quot;" />
+  </Target>
+</Project>
