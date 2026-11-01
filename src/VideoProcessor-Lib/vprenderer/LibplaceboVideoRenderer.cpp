@@ -4860,6 +4860,27 @@ struct LibplaceboVideoRenderer::Impl
     std::atomic<bool> subtitlePipelinePreparationFailed{false};
     std::string subtitlePipelinePreparationKey;
     bool subtitlePreparationRequested = false;
+    int subtitlePreparationLoggedState=-1,subtitlePreparationLoggedRequested=-1;
+    uint64_t subtitlePreparationLoggedKey=0,subtitlePreparationStateTick=0;
+    uint64_t subtitlePreparationStateLogTick=0,subtitlePreparationDispatchLogTick=0;
+
+    void LogSubtitlePreparationSelection(SubtitlePreviewMode requested,SubtitlePreviewMode effective,
+        NlsPipelinePreparation::Status status,uint64_t key,uint64_t generation,uint64_t format) {
+        const auto now=GetTickCount64();
+        const bool changed=subtitlePreparationLoggedState!=int(status) ||
+            subtitlePreparationLoggedRequested!=int(requested) || subtitlePreparationLoggedKey!=key;
+        if(changed)subtitlePreparationStateTick=now;
+        if(changed || now-subtitlePreparationStateLogTick>=2000) {
+            DebugLog::Log("VP subtitle background preparation: stage=selection state=%s requested=%d effective=%d key=%llu generation=%llu format=%llu state_age_ms=%llu",
+                status==NlsPipelinePreparation::Status::Missing?"missing":
+                status==NlsPipelinePreparation::Status::Pending?"pending":
+                status==NlsPipelinePreparation::Status::Ready?"ready":"failed",
+                int(requested),int(effective),key,generation,format,now-subtitlePreparationStateTick);
+            subtitlePreparationLoggedState=int(status);subtitlePreparationLoggedRequested=int(requested);
+            subtitlePreparationLoggedKey=key;subtitlePreparationStateLogTick=now;
+        }
+    }
+
     bool subtitlePreparationFallback = false;
 	std::string rejectedNlsHookSignature;
 	std::string runtimeRejectedNlsHookSignature;
@@ -9660,6 +9681,8 @@ struct LibplaceboVideoRenderer::Impl
         if (!subtitlePreparationRequested) {
             subtitlePipelinePreparationPending.store(false, std::memory_order_release);
             subtitlePipelinePreparationFailed.store(false, std::memory_order_release);
+            LogSubtitlePreparationSelection(requested,requested,NlsPipelinePreparation::Status::Missing,
+                0,generation,sourceFormat);
             return requested;
         }
         // Decide once, before Begin, so all outputs from this capture use the
@@ -9690,13 +9713,25 @@ struct LibplaceboVideoRenderer::Impl
             std::memory_order_release);
         subtitlePipelinePreparationPending.store(state == NlsPipelinePreparation::Status::Missing ||
             state == NlsPipelinePreparation::Status::Pending, std::memory_order_release);
-        return subtitlePreparationFallback ? SubtitlePreviewMode::None : requested;
+        const auto effective=subtitlePreparationFallback ? SubtitlePreviewMode::None : requested;
+        LogSubtitlePreparationSelection(requested,effective,state,
+            static_cast<uint64_t>(std::hash<std::string>{}(subtitlePipelinePreparationKey)),generation,sourceFormat);
+        return effective;
     }
 
     void PrepareSubtitlePipeline(const pl_frame& source, const pl_frame& target) {
         if (!subtitlePreparationRequested ||
             subtitlePipelinePreparation.Get(subtitlePipelinePreparationKey) != NlsPipelinePreparation::Status::Missing)
             return;
+        const auto preparationKey=subtitlePipelinePreparationKey;
+        const auto keyHash=static_cast<uint64_t>(std::hash<std::string>{}(preparationKey));
+        const auto dispatchNow=GetTickCount64();
+        const bool logDispatch=!subtitlePreparationDispatchLogTick || dispatchNow-subtitlePreparationDispatchLogTick>=2000;
+        if(logDispatch) {
+            subtitlePreparationDispatchLogTick=dispatchNow;
+            DebugLog::Log("VP subtitle background preparation: stage=dispatch-entry key=%llu source_planes=%d target_planes=%d temporal=%d",
+                keyHash,source.num_planes,target.num_planes,temporalRenderer.Active()?1:0);
+        }
         try {
             auto params = renderParams;
             // Preparation occurs while the batch still uses the raw-source
@@ -9715,17 +9750,33 @@ struct LibplaceboVideoRenderer::Impl
             request->featureLevel = d3d11->device->GetFeatureLevel();
             request->noCompute = nlsPreparationNoCompute;
             const auto sharedCache = cache;
-            subtitlePipelinePreparation.Submit(subtitlePipelinePreparationKey,
-                [request, sharedCache] {
+            const bool submitted=subtitlePipelinePreparation.Submit(preparationKey,
+                [request, sharedCache,keyHash] {
                     const auto started = SteadyClock::now();
-                    const bool ready = request->Compile(sharedCache);
-                    DebugLog::Log("VP subtitle background preparation: ready=%d elapsed_ms=%.2f",
-                        ready ? 1 : 0, std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
-                    return ready;
+                    DebugLog::Log("VP subtitle background preparation: stage=compile-start key=%llu thread=%lu",
+                        keyHash,GetCurrentThreadId());
+                    try {
+                        const bool ready = request->Compile(sharedCache);
+                        DebugLog::Log("VP subtitle background preparation: stage=compile-end key=%llu ready=%d elapsed_ms=%.2f",
+                            keyHash,ready ? 1 : 0,std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
+                        return ready;
+                    } catch(const std::exception& error) {
+                        DebugLog::Log("VP subtitle background preparation: stage=compile-exception key=%llu elapsed_ms=%.2f detail=%s",
+                            keyHash,std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count(),error.what());
+                        throw;
+                    } catch(...) {
+                        DebugLog::Log("VP subtitle background preparation: stage=compile-exception key=%llu elapsed_ms=%.2f detail=unknown",
+                            keyHash,std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
+                        throw;
+                    }
                 });
+            if(submitted || logDispatch)
+                DebugLog::Log("VP subtitle background preparation: stage=dispatch-result key=%llu submitted=%d",keyHash,submitted?1:0);
         } catch (const std::exception& error) {
-            DebugLog::Log("Subtitle shader preparation rejected: %s", error.what());
-            subtitlePipelinePreparation.Submit(subtitlePipelinePreparationKey, [] { return false; });
+            const bool submitted=subtitlePipelinePreparation.Submit(preparationKey, [] { return false; });
+            if(logDispatch || submitted)
+                DebugLog::Log("VP subtitle background preparation: stage=dispatch-exception key=%llu failure_submitted=%d detail=%s",
+                    keyHash,submitted?1:0,error.what());
         }
     }
 
