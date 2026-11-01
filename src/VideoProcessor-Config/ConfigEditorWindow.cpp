@@ -7694,6 +7694,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Top and Bottom support one-sided masking. Center preserves the "
             "current presentation. Enabled subtitle fitting can still move "
             "the picture upward or downward as required.")));
+        auto* alignmentMode = addChoice(QStringLiteral("Picture alignment mode"),
+            QStringLiteral("picture_alignment_mode"), { QStringLiteral("manual"), QStringLiteral("auto") });
+        alignmentMode->setItemText(alignmentMode->findData(QStringLiteral("manual")), QStringLiteral("Manual"));
+        alignmentMode->setItemText(alignmentMode->findData(QStringLiteral("auto")), QStringLiteral("Auto"));
+        alignmentMode->setToolTip(QStringLiteral("Manual preserves raster-relative placement and padding. Auto pins the active picture to the visible screen edge."));
+        auto* pictureOffset = addText(QStringLiteral("Auto pixel adjustment"),
+            QStringLiteral("picture_offset_pixels"), QStringLiteral("px"));
+        pictureOffset->setValidator(new QIntValidator(-100000, 100000, pictureOffset));
+        pictureOffset->setToolTip(QStringLiteral("Adjustment after Auto edge alignment, in output pixels: positive moves down, negative moves up. Zero pins the edge. Limited by the output raster and subtitle visibility."));
+        form->addRow(QString(), helpLabel(QStringLiteral("Auto uses the visible screen edge. Adjustment: + down, - up. Center ignores Auto adjustment. Manual retains your existing padding.")));
 		auto* screenEdgePadding = addText(QStringLiteral("Screen edge padding"),
 			QStringLiteral("screen_edge_padding"), QStringLiteral("px"));
 		screenEdgePadding->setValidator(new QIntValidator(0, 100000,
@@ -7703,13 +7713,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			"It does not add content padding, crop the picture, or change its scale."));
 		form->addRow(QString(), helpLabel(QStringLiteral(
 			"Uses existing vertical slack only; Center disables this setting.")));
-		auto updateScreenEdgePadding = [verticalAlignment, screenEdgePadding]()
+		auto updateScreenEdgePadding = [verticalAlignment, screenEdgePadding, alignmentMode, pictureOffset]()
 		{
-			screenEdgePadding->setEnabled(
-				verticalAlignment->currentData().toString() != QStringLiteral("center"));
+			const bool edge = verticalAlignment->currentData().toString() != QStringLiteral("center");
+            const bool automatic = alignmentMode->currentData().toString() == QStringLiteral("auto");
+            screenEdgePadding->setEnabled(edge && !automatic);
+            pictureOffset->setEnabled(edge && automatic);
 		};
 		connect(verticalAlignment, qOverload<int>(&QComboBox::currentIndexChanged),
 			this, [updateScreenEdgePadding](int) { updateScreenEdgePadding(); });
+		connect(alignmentMode, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [updateScreenEdgePadding](int) { updateScreenEdgePadding(); });
 		updateScreenEdgePadding();
         anamorphicEnabled = new QCheckBox(QStringLiteral("Enable anamorphic lens compensation"));
         anamorphicEnabled->setObjectName(controlName(sectionPrefix,
@@ -8041,7 +8055,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 if (key == QStringLiteral("screen_aspect")) return QString();
                 if (key == QStringLiteral("vertical_alignment")) return QStringLiteral("center");
-				if (key == QStringLiteral("screen_edge_padding")) return QStringLiteral("0");
+				if (key == QStringLiteral("picture_alignment_mode")) return QStringLiteral("manual");
+                if (key == QStringLiteral("picture_offset_pixels")) return QStringLiteral("0");
+                if (key == QStringLiteral("screen_edge_padding")) return QStringLiteral("0");
             }
             if (sectionPrefix == QStringLiteral("vprenderer.subtitles")) {
                 if (key.startsWith(QStringLiteral("hdr_peak_analysis_"))) {
@@ -8506,9 +8522,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				controlName(sectionPrefix, QStringLiteral("vertical_alignment")));
 			auto* padding = profileFields->findChild<QLineEdit*>(
 				controlName(sectionPrefix, QStringLiteral("screen_edge_padding")));
-			if (alignment && padding)
-				padding->setEnabled(alignment->currentData().toString() !=
-					QStringLiteral("center"));
+			auto* mode = profileFields->findChild<QComboBox*>(controlName(sectionPrefix, QStringLiteral("picture_alignment_mode")));
+            auto* offset = profileFields->findChild<QLineEdit*>(controlName(sectionPrefix, QStringLiteral("picture_offset_pixels")));
+            const bool edge = alignment && alignment->currentData().toString() != QStringLiteral("center");
+            const bool automatic = mode && mode->currentData().toString() == QStringLiteral("auto");
+            if (padding) padding->setEnabled(edge && !automatic);
+            if (offset) offset->setEnabled(edge && automatic);
 		}
         refreshLimitedTransportControls();
         refreshCalibrationControls();

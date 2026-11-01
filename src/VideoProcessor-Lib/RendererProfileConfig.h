@@ -223,6 +223,8 @@ namespace RendererProfileConfig
 		bool hasScreenAspect = false;
 		std::string verticalAlignment = "center";
 		int screenEdgePadding = 0;
+		bool autoPictureAlignment = false;
+		int pictureOffsetPixels = 0;
 		AspectRatio anamorphicScale{ 1, 1, 1.0 };
 		// automatic_crop is retained for compatibility with existing profiles.
 		// The two fill settings independently enable trusted automatic crop.
@@ -769,6 +771,10 @@ namespace RendererProfileConfig
 				return IsAspectInRange(value, 1.0, 4.0);
 			if (screenGroup && key == "vertical_alignment")
 				return IsChoice(value, { "top", "center", "bottom" });
+			if (screenGroup && key == "picture_alignment_mode")
+				return IsChoice(value, { "manual", "auto" });
+			if (screenGroup && key == "picture_offset_pixels")
+			{ int parsed = 0; return ParseInteger(value, -100000, 100000, parsed); }
 			if (screenGroup && key == "screen_edge_padding")
 			{
 				int parsed = 0; return ParseInteger(value, 0, 100000, parsed);
@@ -1972,7 +1978,7 @@ namespace RendererProfileConfig
 				"diagnostic_allow_limited_g22",
 				"diagnostic_allow_full_g22",
 				"diagnostic_vp_owned_dxgi_presenter", "screen_aspect",
-				"vertical_alignment", "screen_edge_padding",
+				"vertical_alignment", "screen_edge_padding", "picture_alignment_mode", "picture_offset_pixels",
 				"automatic_crop", "crop_narrower_content_to_fill_screen",
 				"crop_narrower_content_aspect_limit",
 				"crop_wider_content_to_fill_screen",
@@ -2468,6 +2474,17 @@ namespace RendererProfileConfig
 			}
 			viewport.verticalAlignment = alignment;
 		}
+		value = settings.find("picture_alignment_mode");
+        if (value != settings.end())
+        {
+            const auto mode = ConfigFile::NormalizeName(value->second);
+            if (!IsChoice(mode, { "manual", "auto" }))
+            { error = "picture_alignment_mode must be manual or auto"; return false; }
+            viewport.autoPictureAlignment = mode == "auto";
+        }
+        value = settings.find("picture_offset_pixels");
+        if (value != settings.end() && !ParseInteger(value->second, -100000, 100000, viewport.pictureOffsetPixels))
+        { error = "picture_offset_pixels must be a whole number from -100000 to 100000"; return false; }
 		value = settings.find("screen_edge_padding");
 		if (value != settings.end() && !ParseInteger(value->second, 0, 100000,
 			viewport.screenEdgePadding))
