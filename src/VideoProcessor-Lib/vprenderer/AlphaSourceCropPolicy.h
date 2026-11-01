@@ -49,6 +49,10 @@ namespace AlphaSourceCrop
 		OutwardPictureProofRoute proofRoute = OutwardPictureProofRoute::NONE;
 		uint64_t sourceGeneration = 0;
 		uint64_t lastObservedSourceSequence = 0;
+        // Current-source permission for the candidate's remaining discarded
+        // bands, independent of occupancy outside the old accepted picture.
+        // Recomputed by the producer; never inherited across observations.
+        bool candidateCropVerified = false;
 	};
 
 	struct OutwardPictureConfirmationDecision

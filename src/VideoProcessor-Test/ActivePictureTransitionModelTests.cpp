@@ -311,7 +311,7 @@ namespace VideoProcessorTest
                 const int x=1210+glyph*52;
                 frame.Fill(x-2,y-2,x+36,y+58,64);frame.Fill(x,y,x+34,y+56,800);frame.Fill(x+8,y+10,x+26,y+46,64);
             }
-            const auto identity=SpatialStartupIdentity();
+            const auto identity=SpatialStartupIdentity(5);
             const auto detected=DetectSourcePictureForWorker(frame.source);
             Assert::IsTrue(detected.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
                 detected.evidence.physicalEdges.estimateAvailable);
@@ -341,6 +341,66 @@ namespace VideoProcessorTest
                 L"A real exact-current caption mask verifies the spatial crop now; startup cannot request extra displayed-frame votes");
             Assert::AreEqual(verified.candidate.top,decision.bounds.top);
             Assert::AreEqual(verified.candidate.bottom,decision.bounds.bottom);
+            // Real newly exposed picture pixels establish occupancy; a
+            // separate real current glyph-mask proof certifies what remains
+            // outside the independently nominated spatial rectangle.
+            const ActivePictureBounds oldBase{0,400,3840,1760,3840,2160,3840.0/1360,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            AlphaSourceCrop::TransitionAdmissionInput outward;
+            outward.currentIdentity=identity;
+            outward.sourceGeneration=outward.trustedGeneration=identity.transportGeneration;
+            outward.sourceSequence=identity.acceptedSequence;outward.framesPerSecond=23.976;
+            outward.evidence=verified.evidence;
+            outward.trustedGeometryAvailable=outward.compatiblePresentation=true;
+            outward.trustedGeometry=outward.presentationBeforeObservation=oldBase;
+            outward.outwardCandidate=verified.evidence.trustedBounds;
+            ActivePictureMeasurementCache rawCache;rawCache.Begin(proofSource,identity,47,23);
+            Assert::IsTrue(rawCache.SeedQueued(frame.source,identity,detected.evidence,
+                EvaluateActivePictureArDarkness(frame.source,detected.evidence)));
+            outward.retention=EvaluateActivePicturePresentationRetention(proofSource,oldBase,rawCache.Picture(),
+                EvaluateActivePictureGlobalNearBlack(proofSource),EvaluateActivePictureArDarkness(proofSource,rawCache.Picture()));
+            Logger::WriteMessage((std::string("Masked outward real strip candidate raw=")+
+                std::to_string(outward.retention.expansionCandidate.top)+","+std::to_string(outward.retention.expansionCandidate.bottom)+
+                " masked="+std::to_string(outward.outwardCandidate.top)+","+std::to_string(outward.outwardCandidate.bottom)).c_str());
+            // The renderer's actual admission adapter remeasures the exact
+            // promoted nominee's strips after the masked boundary correction.
+            Assert::IsTrue(ResampleActivePictureExpansionStrips(proofSource,oldBase,
+                outward.outwardCandidate,outward.retention));
+            // Deliberately WITHHOLD raw classification authority, leaving every
+            // actual sampled occupancy strip untouched. This isolates the real
+            // masked verifier's current typed permission rather than letting a
+            // second unmasked native permission make the assertion tautological.
+            outward.retention.activePicture.classification=ActivePictureClassification::PROVISIONAL;
+            const auto admitted=AlphaSourceCrop::EvaluateTransitionAdmission(outward);
+            Logger::WriteMessage((std::string("Masked outward real occupancy reason=")+admitted.outward.diagnosticReason+
+                " top="+std::to_string(outward.retention.expandingTop.barPixels)+","+
+                std::to_string(outward.retention.expandingTop.blackFraction)+","+
+                std::to_string(outward.retention.expandingTop.continuity)+","+std::to_string(outward.retention.expandingTop.lumaP90)+
+                " bottom="+std::to_string(outward.retention.expandingBottom.barPixels)+","+
+                std::to_string(outward.retention.expandingBottom.blackFraction)+","+
+                std::to_string(outward.retention.expandingBottom.continuity)+","+std::to_string(outward.retention.expandingBottom.lumaP90)).c_str());
+            Assert::IsTrue(admitted.outward.broadOpposingPicture && admitted.outward.state.confirmations>0,
+                L"The crossing-caption source must supply real outward picture occupancy, without synthetic strip flags.");
+            Assert::IsTrue(admitted.currentSpatialOutward && admitted.outward.state.candidateCropVerified,
+                L"A genuine exact-current masked spatial proof certifies the candidate's remaining discarded bands even when raw authority is withheld.");
+            Assert::IsFalse(admitted.outward.authoritative,
+                L"The new discard marker must not fabricate the separate legacy three-source occupancy confirmation.");
+            Assert::IsFalse(admitted.observation.transitionDeferred);
+            ActivePictureTransitionModel established;Establish(established,oldBase);
+            Assert::IsFalse(established.Observe(admitted.observation).publish,
+                L"Verified outward crop permission preserves the model's existing two-source transition requirement.");
+            for(int fault=0;fault<4;++fault) {
+                auto invalid=outward;
+                if(fault==0)invalid.evidence.currentSourceIdentityAvailable=false;
+                if(fault==1)++invalid.currentIdentity.analysisDomainKey;
+                if(fault==2)++invalid.currentIdentity.acceptedSequence;
+                if(fault==3)invalid.evidence.candidateVerification.vertical=ActivePictureCandidateVerificationState::CONTRADICTED;
+                const auto rejected=AlphaSourceCrop::EvaluateTransitionAdmission(invalid);
+                Assert::IsTrue(rejected.outward.state.confirmations>0,
+                    L"Removing crop permission must not pretend the actual exterior picture occupancy disappeared.");
+                Assert::IsFalse(rejected.currentSpatialOutward || rejected.outward.state.candidateCropVerified,
+                    L"Occupancy alone cannot restore stale, foreign, unbound or contradicted masked crop permission.");
+            }
         }
 
         TEST_METHOD(ImmediateSpatialAcquisitionRejectsUnboundChangedOrStaleProofAndKeepsTransitionConfirmation)

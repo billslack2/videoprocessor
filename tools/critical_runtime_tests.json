@@ -10,8 +10,13 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 957,
+  "minimumNativeTests": 962,
   "requiredNativeMethods": [
+    "BroadOutsideOccupancyCannotTrimUnverifiedOuterRows",
+    "StaleOutsideOccupancyAndVisiblePixelsCannotManufactureCurrentAuthority",
+    "CurrentOutwardCropVerificationNeverSurvivesProvisionalOrForeignEvidence",
+    "VerifiedCurrentOutwardGuardPreservesPictureOnFirstSourceWithoutChangingPhysicalEdge",
+    "FullRasterOutsideOccupancyRequiresNoDiscardedMarginVerification",
     "SourcePictureQualifiedRasterContactsKeepMeasurementWorkBounded",
     "SourcePictureFlatRaisedPrefixBeforeFaintRampCannotProveFullRaster",
     "SourcePictureDarkStructuredTerminalDoesNotEraseFullRasterPicture",

@@ -39,6 +39,17 @@ namespace Tests
 			return input;
 		}
 
+        void DeclareVerifiedCurrentPictureCropFixture(OutwardPictureConfirmationState& proof)
+        {
+            // Only positive fixtures explicitly claiming independently verified
+            // current native boundaries call this. Raw/provisional occupancy
+            // fixtures below never gain this separate discarded-margin proof.
+            const auto& candidate=proof.candidate;
+            if(candidate.left==0 && candidate.top==0 &&
+                candidate.right==candidate.rasterWidth && candidate.bottom==candidate.rasterHeight)return;
+            proof.candidateCropVerified=true;
+        }
+
         void QualifyExplicitCaptionFitFixture(PresentationRecoveryInput& input,
             const ActivePictureBounds& independentlyConfirmedCaptionBounds)
         {
@@ -17626,6 +17637,7 @@ public:
                     p.sourceGeneration=current.frameSourceGeneration;p.lastObservedSourceSequence=current.frameSourceSequence;
                     p.firstPictureSourceSequence=current.frameSourceSequence;p.confirmations=1;
                     p.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+                    DeclareVerifiedCurrentPictureCropFixture(p);
                     r.nativeOutwardPictureProofPresentationEpoch=9;
                 }
                 const auto resolved=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
@@ -17824,6 +17836,7 @@ public:
                     p.sourceGeneration=r.crop.frameSourceGeneration;p.lastObservedSourceSequence=r.crop.frameSourceSequence;
                     p.firstPictureSourceSequence=r.crop.frameSourceSequence;p.confirmations=1;
                     p.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+                    DeclareVerifiedCurrentPictureCropFixture(p);
                     r.nativeOutwardPictureProofPresentationEpoch=9;
                 }
                 const auto resolved=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
@@ -17889,6 +17902,7 @@ public:
                     p.sourceGeneration=c.frameSourceGeneration;p.lastObservedSourceSequence=c.frameSourceSequence;
                     p.firstPictureSourceSequence=c.frameSourceSequence;p.confirmations=1;
                     p.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+                    DeclareVerifiedCurrentPictureCropFixture(p);
                     if(fault==19)p.proofRoute=OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT;
                     if(fault==20)p.proofRoute=OutwardPictureProofRoute::NATIVE_LOW_CONTRAST_BOUNDARIES;
                     r.nativeOutwardPictureProofPresentationEpoch=9;
@@ -18000,6 +18014,7 @@ public:
                     proof.sourceGeneration=current.frameSourceGeneration;proof.lastObservedSourceSequence=current.frameSourceSequence;
                     proof.firstPictureSourceSequence=current.frameSourceSequence;proof.confirmations=1;
                     proof.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+                    DeclareVerifiedCurrentPictureCropFixture(proof);
                     r.nativeOutwardPictureProofPresentationEpoch=9;
                     if(fault==8){r.observation.top=60;proof.candidate.top=proof.referenceCandidate.top=60;}
                     if(fault==9)proof.lastObservedSourceSequence--;
@@ -18076,6 +18091,7 @@ public:
                 proof.candidate=proof.referenceCandidate=picture;proof.sourceGeneration=r.crop.frameSourceGeneration;
                 proof.firstPictureSourceSequence=proof.lastObservedSourceSequence=r.crop.frameSourceSequence;
                 proof.confirmations=1;proof.proofRoute=OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT;
+                DeclareVerifiedCurrentPictureCropFixture(proof);
                 r.nativeOutwardPictureProofPresentationEpoch=r.presentationEpoch;
                 if(fault==1)++proof.sourceGeneration;
                 if(fault==2)--proof.lastObservedSourceSequence;
@@ -18271,6 +18287,7 @@ public:
             p.sourceGeneration=r.crop.frameSourceGeneration;p.lastObservedSourceSequence=11002;
             p.firstPictureSourceSequence=11000;p.confirmations=OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
             p.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+            DeclareVerifiedCurrentPictureCropFixture(p);
             r.nativeOutwardPictureProofPresentationEpoch=9;
             for(int fault=-1;fault<5;++fault) {
                 auto f=r;
@@ -18290,6 +18307,204 @@ public:
             const auto prompt=EvaluatePresentationRecovery(r);
             Assert::AreEqual(68,prompt.presentation.sourceBounds.top,
                 L"A qualified spatial witness preserves picture before three-vote native AR publication.");
+        }
+        static ActivePicturePresentationRetentionEvidence CurrentOutwardOccupancyFixture(
+            const ActivePictureBounds& base,const ActivePictureBounds& candidate,bool verified)
+        {
+            ActivePicturePresentationRetentionEvidence evidence;
+            evidence.analysisValid=evidence.presentationValid=evidence.expansionStripsAvailable=true;
+            evidence.expansionBase=base;evidence.expansionCandidate=candidate;
+            evidence.expandingTop.barPixels=base.top-candidate.top;
+            evidence.expandingTop.blackFraction=0.1;evidence.expandingTop.continuity=0.1;
+            evidence.expandingTop.lumaP90=160;evidence.expandingBottom=evidence.expandingTop;
+            evidence.expandingBottom.barPixels=candidate.bottom-base.bottom;
+            evidence.activePicture.available=true;
+            evidence.activePicture.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            evidence.activePicture.classification=verified?ActivePictureClassification::BAR_CROP_TRUSTED:ActivePictureClassification::PROVISIONAL;
+            evidence.activePicture.proposedBounds=candidate;
+            evidence.activePicture.trustedBounds=verified?candidate:ActivePictureBounds{};
+            return evidence;
+        }
+        TEST_METHOD(CurrentOutwardCropVerificationNeverSurvivesProvisionalOrForeignEvidence)
+        {
+            const auto base=Native().geometry;auto candidate=base;candidate.top=120;candidate.bottom=2040;
+            auto evidence=CurrentOutwardOccupancyFixture(base,candidate,true);
+            const auto verified=ConfirmOutwardPictureTransition({},base,candidate,evidence,7,11002);
+            Assert::IsTrue(verified.state.candidateCropVerified && verified.state.confirmations==1);
+            for(int fault=0;fault<6;++fault) {
+                auto current=evidence;
+                if(fault==0)current.activePicture.classification=ActivePictureClassification::PROVISIONAL;
+                if(fault==1)current.activePicture.available=false;
+                if(fault==2)current.activePicture.trustedBounds.top+=2;
+                if(fault==3)current.activePicture.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
+                if(fault==4)current.activePicture.classification=ActivePictureClassification::UNAVAILABLE;
+                if(fault==5)current.activePicture.trustedBounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                const auto next=ConfirmOutwardPictureTransition(verified.state,base,candidate,current,7,11003);
+                Assert::IsTrue(next.broadOpposingPicture && next.state.confirmations==2);
+                Assert::IsFalse(next.state.candidateCropVerified,
+                    L"A continuing occupancy episode cannot inherit discarded-margin verification from a prior source.");
+            }
+        }
+        TEST_METHOD(VerifiedCurrentOutwardGuardPreservesPictureOnFirstSourceWithoutChangingPhysicalEdge)
+        {
+            auto c=Native(11002);auto guard=c.geometry;guard.top=120;guard.bottom=2040;
+            auto evidence=CurrentOutwardOccupancyFixture(c.geometry,guard,true);
+            // Independent physical pixels are odd; only the actually verified
+            // outward chroma guard supplies permission to discard its margins.
+            evidence.activePicture.proposedBounds.top=121;evidence.activePicture.proposedBounds.bottom=2039;
+            const auto observed=ConfirmOutwardPictureTransition({},c.geometry,guard,evidence,c.frameSourceGeneration,c.frameSourceSequence);
+            Assert::IsTrue(observed.state.candidateCropVerified && observed.state.confirmations==1);
+            for(int fault=-1;fault<5;++fault) {
+                auto r=Unknown(c,{});r.observation=evidence.activePicture.proposedBounds;
+                r.nativeOutwardPictureProof=observed.state;r.nativeOutwardPictureProofPresentationEpoch=r.presentationEpoch;
+                if(fault==0)--r.nativeOutwardPictureProof.lastObservedSourceSequence;
+                if(fault==1)++r.nativeOutwardPictureProof.sourceGeneration;
+                if(fault==2)++r.nativeOutwardPictureProofPresentationEpoch;
+                if(fault==3)r.nativeOutwardPictureProof.base.top+=2;
+                if(fault==4)r.nativeOutwardPictureProof.candidateCropVerified=false;
+                const auto recovery=EvaluatePresentationRecovery(r);
+                const auto final=ResolveUncertainPicturePresentation(r,recovery.presentation);
+                Assert::AreEqual(fault<0?120:256,final.presentation.sourceBounds.top);
+                Assert::AreEqual(fault<0?2040:1904,final.presentation.sourceBounds.bottom);
+                Assert::AreEqual(256,r.crop.acceptedNativeCrop.bounds.top);
+                Assert::AreEqual(121,evidence.activePicture.proposedBounds.top);
+                Assert::AreEqual(2039,evidence.activePicture.proposedBounds.bottom);
+                Assert::AreEqual(1u,r.nativeOutwardPictureProof.confirmations);
+            }
+        }
+        TEST_METHOD(FullRasterOutsideOccupancyRequiresNoDiscardedMarginVerification)
+        {
+            auto c=Native(11002);
+            const ActivePictureBounds full{0,0,3840,2160,3840,2160,3840.0/2160,ActivePictureBounds::BarAxes::NONE};
+            const auto evidence=CurrentOutwardOccupancyFixture(c.geometry,full,false);
+            const auto observed=ConfirmOutwardPictureTransition({},c.geometry,full,evidence,c.frameSourceGeneration,c.frameSourceSequence);
+            Assert::IsTrue(observed.broadOpposingPicture && observed.state.confirmations==1);
+            Assert::IsFalse(observed.state.candidateCropVerified);
+            auto r=Unknown(c,{});r.nativeOutwardPictureProof=observed.state;
+            r.nativeOutwardPictureProofPresentationEpoch=r.presentationEpoch;
+            const auto final=ResolveUncertainPicturePresentation(r,EvaluatePresentationRecovery(r).presentation);
+            Assert::IsFalse(final.presentation.applyCrop);
+            Assert::AreEqual(0,final.presentation.sourceBounds.top);Assert::AreEqual(2160,final.presentation.sourceBounds.bottom);
+            Assert::AreEqual(256,r.crop.acceptedNativeCrop.bounds.top);Assert::AreEqual(1904,r.crop.acceptedNativeCrop.bounds.bottom);
+        }
+        TEST_METHOD(BroadOutsideOccupancyCannotTrimUnverifiedOuterRows)
+        {
+            const ActivePictureBounds full{0,0,3840,2160,3840,2160,3840.0/2160,ActivePictureBounds::BarAxes::NONE};
+            const PresentationRect screen{0,0,2350,1000};
+            const auto expectedFit=FitAspect(full.aspectRatio,screen,VerticalPictureAlignment::CENTER);
+            Assert::IsTrue(expectedFit.valid);
+            const int rawTops[]={5,-1,10,-1,11,-1,5,10,11};
+            uint64_t sequence=24036;
+            for(int rawTop:rawTops) {
+                auto c=Native(sequence++);
+                c.geometry={0,216,3840,1966,3840,2160,3840.0/1750,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                c.acceptedNativeCrop.bounds=c.geometry;
+                // Playback already has a successfully admitted native pose.
+                // Cold first-admission safety is not the live recovery path.
+                const auto previous=AdmitCropPresentation({},c,Evaluate(c),c.framePresentationEpoch);
+                Assert::IsTrue(!previous.blocked && previous.state.available);
+                auto r=Unknown(c,{});r.previousAdmission=previous.state;
+                r.excludedBandsPixelSafe=false;
+                r.crop.currentVisibleBoundsAvailable=true;r.crop.currentVisibleBounds=full;
+                r.crop.currentVisibleBase=c.geometry;
+                r.crop.currentVisibleSourceGeneration=c.frameSourceGeneration;
+                r.crop.currentVisibleSourceSequence=c.frameSourceSequence;
+                r.observationAvailable=rawTop>=0;
+                r.observationClassification=rawTop>=0?ActivePictureClassification::PROVISIONAL:ActivePictureClassification::UNAVAILABLE;
+                r.crop.latestObservationIsProvisional=rawTop>=0;r.crop.latestObservationIsUnavailable=rawTop<0;
+                r.crop.latestObservationClassification=r.observationClassification;
+                if(rawTop>=0) {
+                    // VerifySuppliedActivePictureCandidate derives proposed
+                    // axes from the nomination before verification (see
+                    // ActivePictureEvidence.cpp). Rejected trustedBounds clear
+                    // those axes; proposed TOP_BOTTOM is NOT crop authority.
+                    r.observation={0,rawTop,3840,2160,3840,2160,3840.0/(2160-rawTop),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                    // Broad current occupancy proves picture beyond the accepted
+                    // base, not the purity of the outer rows in this rejected
+                    // bar nomination. Alignment cannot create that authority.
+                    auto nominee=r.observation;nominee.top=rawTop&~1;
+                    nominee.aspectRatio=3840.0/(2160-nominee.top);
+                    ActivePicturePresentationRetentionEvidence occupancy;
+                    occupancy.analysisValid=occupancy.presentationValid=occupancy.expansionStripsAvailable=true;
+                    occupancy.expansionBase=c.geometry;occupancy.expansionCandidate=nominee;
+                    occupancy.expandingTop.barPixels=c.geometry.top-nominee.top;
+                    occupancy.expandingTop.blackFraction=0.1;occupancy.expandingTop.continuity=0.1;
+                    occupancy.expandingTop.lumaP90=160;
+                    occupancy.expandingBottom=occupancy.expandingTop;
+                    occupancy.expandingBottom.barPixels=nominee.bottom-c.geometry.bottom;
+                    occupancy.activePicture.available=true;
+                    occupancy.activePicture.classification=ActivePictureClassification::PROVISIONAL;
+                    occupancy.activePicture.proposedBounds=r.observation;
+                    occupancy.activePicture.trustedBounds=full;
+                    const auto outward=ConfirmOutwardPictureTransition({},c.geometry,nominee,occupancy,
+                        c.frameSourceGeneration,c.frameSourceSequence);
+                    Assert::IsTrue(outward.broadOpposingPicture && !outward.nativeDistributedPicture);
+                    Assert::IsTrue(outward.state.proofRoute==OutwardPictureProofRoute::BROAD_OCCUPANCY);
+                    Assert::IsFalse(outward.state.candidateCropVerified);
+                    r.nativeOutwardPictureProof=outward.state;
+                    r.nativeOutwardPictureProofPresentationEpoch=r.presentationEpoch;
+                } else r.observation={};
+                r.candidate=Evaluate(r.crop);
+                const auto recovery=EvaluatePresentationRecovery(r);
+                const auto admission=AdmitCropPresentation(r.previousAdmission,r.crop,recovery.presentation,r.presentationEpoch);
+                const auto selected=ResolveUncertainPicturePresentation(r,admission.presentation);
+                const auto actual=selected.presentation.applyCrop?selected.presentation.sourceBounds:full;
+                Logger::WriteMessage((std::string("Unverified outward aperture: raw_top=")+std::to_string(rawTop)+
+                    " recovery_top="+std::to_string(recovery.presentation.sourceBounds.top)+
+                    " recovery_apply="+std::to_string(recovery.presentation.applyCrop)+
+                    " recovery_reason="+recovery.presentation.reason+
+                    " previous_available="+std::to_string(r.previousAdmission.available)+
+                    " admission_blocked="+std::to_string(admission.blocked)+
+                    " admitted_top="+std::to_string(admission.presentation.sourceBounds.top)+
+                    " actual_top="+std::to_string(actual.top)+" reason="+selected.presentation.reason).c_str());
+                Assert::IsTrue(actual.top<=full.top && actual.bottom>=full.bottom &&
+                    actual.left<=full.left && actual.right>=full.right,
+                    L"Broad outside-picture occupancy cannot authorize trimming unverified outer rows contradicted by exact current visible pixels.");
+                const auto fitted=FitAspect(double(actual.right-actual.left)/(actual.bottom-actual.top),screen,VerticalPictureAlignment::CENTER);
+                Assert::IsTrue(fitted.valid);
+                Assert::AreEqual(expectedFit.picture.left,fitted.picture.left,0.000001);
+                Assert::AreEqual(expectedFit.picture.top,fitted.picture.top,0.000001);
+                Assert::AreEqual(expectedFit.picture.right,fitted.picture.right,0.000001);
+                Assert::AreEqual(expectedFit.picture.bottom,fitted.picture.bottom,0.000001);
+                Assert::AreEqual(216,r.crop.geometry.top);Assert::AreEqual(1966,r.crop.geometry.bottom);
+                Assert::AreEqual(216,r.crop.acceptedNativeCrop.bounds.top);
+                Assert::AreEqual(1966,r.crop.acceptedNativeCrop.bounds.bottom);
+            }
+        }
+        TEST_METHOD(StaleOutsideOccupancyAndVisiblePixelsCannotManufactureCurrentAuthority)
+        {
+            for(int fault=0;fault<3;++fault) {
+                auto c=Native(24036);
+                c.geometry={0,216,3840,1966,3840,2160,3840.0/1750,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                c.acceptedNativeCrop.bounds=c.geometry;
+                auto r=Unknown(c,{});
+                // Current independent retention says this accepted crop remains
+                // safe. A stale full-picture envelope must not override it.
+                r.excludedBandsPixelSafe=true;
+                r.crop.frameLocalPresentationRetentionEvaluated=r.crop.frameLocalPresentationRetentionSafe=true;
+                r.crop.currentVisibleBoundsAvailable=true;
+                r.crop.currentVisibleBounds={0,0,3840,2160,3840,2160,3840.0/2160,ActivePictureBounds::BarAxes::NONE};
+                r.crop.currentVisibleBase=c.geometry;
+                r.crop.currentVisibleSourceGeneration=c.frameSourceGeneration;
+                r.crop.currentVisibleSourceSequence=c.frameSourceSequence-1;
+                auto& proof=r.nativeOutwardPictureProof;
+                proof.base=c.geometry;proof.candidate=proof.referenceCandidate=r.crop.currentVisibleBounds;
+                proof.sourceGeneration=c.frameSourceGeneration;proof.lastObservedSourceSequence=c.frameSourceSequence;
+                proof.firstPictureSourceSequence=c.frameSourceSequence;proof.confirmations=1;
+                proof.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+                r.nativeOutwardPictureProofPresentationEpoch=r.presentationEpoch;
+                if(fault==0)--proof.lastObservedSourceSequence;
+                if(fault==1)++proof.sourceGeneration;
+                if(fault==2)++r.nativeOutwardPictureProofPresentationEpoch;
+                const auto recovery=EvaluatePresentationRecovery(r);
+                Assert::IsFalse(recovery.presentation.nativePresentation.available &&
+                    recovery.presentation.nativePresentation.origin==NativePresentationOrigin::CONFIRMED_PICTURE);
+                const auto selected=ResolveUncertainPicturePresentation(r,recovery.presentation);
+                Assert::IsTrue(selected.presentation.applyCrop);
+                Assert::AreEqual(216,selected.presentation.sourceBounds.top);
+                Assert::AreEqual(1966,selected.presentation.sourceBounds.bottom);
+                Assert::AreEqual(216,r.crop.acceptedNativeCrop.bounds.top);
+            }
         }
         TEST_METHOD(FirstRefinementRequiresIndependentExactPresentationNotAnOwnerLabel)
         {
@@ -18350,6 +18565,7 @@ public:
             outward.sourceGeneration=7;outward.lastObservedSourceSequence=11002;
             outward.firstPictureSourceSequence=11002;outward.confirmations=1;
             outward.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;r.nativeOutwardPictureProofPresentationEpoch=9;
+            DeclareVerifiedCurrentPictureCropFixture(outward);
             auto selected=select(r);
             Assert::AreEqual(68,selected.presentation.sourceBounds.top);
             Assert::AreEqual(2140,selected.presentation.sourceBounds.bottom);
@@ -18475,6 +18691,7 @@ public:
             p.candidate.top=p.referenceCandidate.top=68;p.candidate.bottom=p.referenceCandidate.bottom=2092;
             p.sourceGeneration=r.crop.frameSourceGeneration;p.firstPictureSourceSequence=p.lastObservedSourceSequence=11002;
             p.confirmations=1;p.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+            DeclareVerifiedCurrentPictureCropFixture(p);
             r.nativeOutwardPictureProofPresentationEpoch=9;
             r.confirmedFitOwnership=CurrentCaption(r.crop,2120);
             SubmittedNativeScopeAnchorUpdateInput u;
@@ -18820,6 +19037,7 @@ public:
                     p.candidate=p.referenceCandidate=r.crop.geometry;p.candidate.bottom=p.referenceCandidate.bottom=2050;
                     p.sourceGeneration=r.crop.frameSourceGeneration;p.firstPictureSourceSequence=3913;
                     p.lastObservedSourceSequence=stale?3912:3913;p.confirmations=1;p.proofRoute=route;
+                    DeclareVerifiedCurrentPictureCropFixture(p);
                     r.nativeOutwardPictureProofPresentationEpoch=5;r.candidate=Evaluate(r.crop);
                     const auto recovered=EvaluatePresentationRecovery(r);
                     auto admission=AdmitCropPresentation(seed.selectedAdmission,r.crop,recovered.presentation,5);
@@ -18901,6 +19119,7 @@ public:
             p.candidate=p.referenceCandidate=picture.crop.geometry;p.candidate.bottom=p.referenceCandidate.bottom=2050;
             p.sourceGeneration=picture.crop.frameSourceGeneration;p.firstPictureSourceSequence=3923;
             p.lastObservedSourceSequence=3923;p.confirmations=1;p.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+            DeclareVerifiedCurrentPictureCropFixture(p);
             picture.nativeOutwardPictureProofPresentationEpoch=5;
             present(picture,true,2050);
             Assert::AreEqual(1u,p.confirmations,L"Presentation preservation cannot add native AR votes.");
@@ -19237,6 +19456,7 @@ public:
                 growth.candidate.bottom=growth.referenceCandidate.bottom=2050;
                 growth.sourceGeneration=picture.crop.frameSourceGeneration;growth.firstPictureSourceSequence=4923;
                 growth.lastObservedSourceSequence=4923;growth.confirmations=1;growth.proofRoute=OutwardPictureProofRoute::BROAD_OCCUPANCY;
+                DeclareVerifiedCurrentPictureCropFixture(growth);
                 picture.nativeOutwardPictureProofPresentationEpoch=5;
                 present(picture,true,2050,false);Assert::AreEqual(1u,growth.confirmations);
                 auto clear=AdvancedLoggedFrame(4924,anchor,false);rawBands(clear,true);
@@ -19325,6 +19545,7 @@ public:
             nativeGrowth.sourceGeneration=growth.crop.frameSourceGeneration;
             nativeGrowth.firstPictureSourceSequence=nativeGrowth.lastObservedSourceSequence=5916;
             nativeGrowth.confirmations=1;nativeGrowth.proofRoute=OutwardPictureProofRoute::NATIVE_DISTRIBUTED_SUPPORT;
+            DeclareVerifiedCurrentPictureCropFixture(nativeGrowth);
             growth.nativeOutwardPictureProofPresentationEpoch=5;
             present(growth,true,true);
             auto clear=AdvancedLoggedFrame(5917,anchor,true);

@@ -697,6 +697,13 @@ namespace AlphaSourceCrop
 		const bool repeatedSourceSample = continues && sourceSequence != 0 &&
 			previous.lastObservedSourceSequence == sourceSequence;
 		decision.state.candidate = candidate;
+        // Broad new picture outside the old crop does not prove that the
+        // candidate's remaining excluded bands are matte. Derive discard
+        // permission afresh from this source's independently verified guard.
+        decision.state.candidateCropVerified = native.available &&
+            native.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            native.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            SameTrustedCropContract(native.trustedBounds,candidate);
 		decision.state.base = trustedGeometry;
 		decision.state.referenceCandidate = continues ? reference : candidate;
 		decision.state.firstPictureSourceSequence = sameEpisode
@@ -1033,6 +1040,16 @@ namespace AlphaSourceCrop
 			? ConfirmOutwardPictureTransition(input.previousOutward, input.presentationBeforeObservation,
 				input.outwardCandidate, input.retention, input.sourceGeneration, input.sourceSequence)
 			: OutwardPictureConfirmationDecision{};
+        // Caption-qualified spatial verification is a separate exact-current
+        // certificate. It may verify this existing occupancy witness even when
+        // the intentionally unmodified raw retention observation is provisional.
+        // Neither a hint nor a previous sample can transfer this permission.
+        if(decision.currentSpatialOutward && decision.outward.state.confirmations &&
+            decision.outward.state.proofRoute != OutwardPictureProofRoute::NONE &&
+            decision.outward.state.sourceGeneration == input.sourceGeneration &&
+            decision.outward.state.lastObservedSourceSequence == input.sourceSequence &&
+            SameTrustedCropContract(decision.outward.state.candidate,target))
+            decision.outward.state.candidateCropVerified=true;
 		const bool continuingEpisode = decision.outward.state.confirmations != 0 &&
 			input.previousOutward.confirmations != 0 &&
 			input.previousOutward.sourceGeneration == input.sourceGeneration &&
@@ -4249,6 +4266,11 @@ namespace AlphaSourceCrop
             // the transition model still requires three votes to publish AR.
             proof.confirmations != 0 &&
             proof.proofRoute != OutwardPictureProofRoute::NONE &&
+            // Retaining the entire source discards nothing. Any cropped target
+            // additionally needs its producer's CURRENT verified-band proof;
+            // positive outward occupancy alone cannot nominate a new crop.
+            (SameBounds(proof.candidate,FullRaster(crop.rasterWidth,crop.rasterHeight)) ||
+                proof.candidateCropVerified) &&
             SameTrustedCropContract(proof.base,crop.geometry) &&
             ValidBounds(proof.candidate,crop.rasterWidth,crop.rasterHeight) &&
             CropEdgesAreChromaAligned(proof.candidate,crop.rasterWidth,crop.rasterHeight) &&
