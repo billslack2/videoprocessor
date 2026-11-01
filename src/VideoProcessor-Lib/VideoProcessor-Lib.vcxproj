@@ -251,6 +251,8 @@
     <ClInclude Include="RendererResetCoordinator.h" />
     <ClInclude Include="RendererResetPolicy.h" />
     <ClInclude Include="SubtitleProfileUpdatePolicy.h" />
+    <ClInclude Include="PicturePlacementUpdatePolicy.h" />
+    <ClInclude Include="vprenderer\AutoPictureAlignment.h" />
     <ClInclude Include="RendererResetRequest.h" />
     <ClInclude Include="RendererResetRequestLatch.h" />
     <ClInclude Include="RendererTransitionModel.h" />

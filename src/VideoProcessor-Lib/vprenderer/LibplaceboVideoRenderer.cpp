@@ -1,5 +1,6 @@
 #include <pch.h>
 #include "../SubtitleProfileUpdatePolicy.h"
+#include "../PicturePlacementUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
 
 #include "LibplaceboVideoRenderer.h"
@@ -49,6 +50,7 @@
 #include <vprenderer/NativeStatsOverlayPlacement.h>
 #include <vprenderer/StatsOsdSettings.h>
 #include <vprenderer/AnamorphicPresentation.h>
+#include <vprenderer/AutoPictureAlignment.h>
 #include <vprenderer/NlsHookRecovery.h>
 #include <MotionConfig.h>
 #include <vprenderer/DisplayVsyncClock.h>
@@ -957,6 +959,7 @@ namespace
         std::string hdrToneMapTargetGamma;
         std::string sdrLutInputGamma = "passthrough";
         uint64_t configurationIdentity = 0;
+        std::string placementConfigurationContract;
         std::string configurationPath;
 		std::string sdrTargetPrimaries = "rec709";
 		bool reportBt2020ToDisplay = false;
@@ -997,6 +1000,8 @@ namespace
 		bool configuredScreenTarget = false;
 		std::string verticalAlignment = "center";
 		int screenEdgePadding = 0;
+        bool autoPictureAlignment = false;
+        int pictureOffsetPixels = 0;
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
 		bool automaticSourceCropRequested = false;
@@ -1141,6 +1146,7 @@ namespace
 			stream
 				<< settings.configuredScreenAspect << '|' << settings.configuredScreenTarget << '|'
 				<< settings.verticalAlignment << '|' << settings.screenEdgePadding << '|'
+                << settings.autoPictureAlignment << '|' << settings.pictureOffsetPixels << '|'
 				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCropRequested << '|'
 				<< settings.automaticSourceCrop << '|'
@@ -2092,6 +2098,10 @@ namespace
 				alignment == "bottom")
 				settings.verticalAlignment = alignment;
 		}
+        if (readViewportString("picture_alignment_mode", raw))
+            settings.autoPictureAlignment = ConfigFile::NormalizeName(raw) == "auto";
+        if (readViewportString("picture_offset_pixels", raw))
+            ParseInteger(raw, -100000, 100000, settings.pictureOffsetPixels);
 		int parsedScreenEdgePadding = 0;
 		if (readViewportString("screen_edge_padding", raw) &&
 			ParseInteger(raw, 0, 100000, parsedScreenEdgePadding))
@@ -2295,6 +2305,7 @@ namespace
         {std::string raw;if(TryGetDisplayString(config,"subtitle_detection_optimization",raw))ParseSubtitleDetectionOptimization(raw,settings.subtitleDetectionOptimization);}
 
         settings.configurationIdentity = config.GetContentIdentity();
+        settings.placementConfigurationContract = PicturePlacementConfigurationContract(config);
         settings.configurationPath = config.GetLoadedPath();
 		DebugLog::Log(
 			"libplacebo configuration snapshot evaluated: path=%s",
@@ -2492,6 +2503,11 @@ namespace
 		}
 		settings.verticalAlignment = ReadChoice(config,
 			"vertical_alignment", "center", { "top", "center", "bottom" });
+        if (TryGetDisplayString(config, "picture_alignment_mode", rawValue))
+            settings.autoPictureAlignment = ConfigFile::NormalizeName(rawValue) == "auto";
+        if (TryGetDisplayString(config, "picture_offset_pixels", rawValue) &&
+            !ParseInteger(rawValue, -100000, 100000, settings.pictureOffsetPixels))
+            settings.pictureOffsetPixels = 0;
 		if (TryGetDisplayString(config, "screen_edge_padding", rawValue) &&
 			!ParseInteger(rawValue, 0, 100000, settings.screenEdgePadding))
 			settings.screenEdgePadding = 0;
@@ -4624,6 +4640,7 @@ struct LibplaceboVideoRenderer::Impl
         bool coldMaskedProposalEntryAvailable=false;
         int coldMaskedRelease=0;
         double coldMaskedSourceRate=60.0;
+        AutoPictureAlignment::ActivePicture alignmentPicture{};
         pl_rect2df sourceCrop{};
         pl_rect2df targetCrop{};
         pl_rect2df linearFallbackCrop{};
@@ -4880,6 +4897,8 @@ struct LibplaceboVideoRenderer::Impl
 	bool configuredScreenTarget = false;
 	std::string verticalAlignment = "center";
 	int screenEdgePadding = 0;
+        bool autoPictureAlignment = false;
+        int pictureOffsetPixels = 0;
 	double anamorphicScale = 1.0;
 	bool automaticSourceCrop = false;
 	bool automaticSourceCropRequested = false;
@@ -5130,6 +5149,8 @@ struct LibplaceboVideoRenderer::Impl
 	std::string lastSourceCropPolicy;
 	std::string lastFinalPresentationPolicy;
 	std::string lastFinalLayoutPolicy;
+    std::string lastAutoPictureAlignmentPolicy;
+    uint64_t lastAutoPictureAlignmentTick=0;
 	uint64_t lastFinalLayoutTick = 0;
 	uint64_t lastFinalLayoutSequence = 0;
 	uint64_t lastFinalLayoutGeneration = 0;
@@ -8559,6 +8580,8 @@ struct LibplaceboVideoRenderer::Impl
 		configuredScreenTarget = settings.configuredScreenTarget;
 		verticalAlignment = settings.verticalAlignment;
 		screenEdgePadding = settings.screenEdgePadding;
+        autoPictureAlignment = settings.autoPictureAlignment;
+        pictureOffsetPixels = settings.pictureOffsetPixels;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCropRequested = settings.automaticSourceCropRequested;
 		automaticSourceCrop = settings.automaticSourceCrop;
@@ -8692,6 +8715,8 @@ struct LibplaceboVideoRenderer::Impl
 			configuredScreenTarget != settings.configuredScreenTarget ||
 			verticalAlignment != settings.verticalAlignment ||
 			screenEdgePadding != settings.screenEdgePadding ||
+            autoPictureAlignment != settings.autoPictureAlignment ||
+            pictureOffsetPixels != settings.pictureOffsetPixels ||
 			anamorphicScale != settings.anamorphicScale ||
 			automaticSourceCropRequested != settings.automaticSourceCropRequested ||
 			automaticSourceCrop != settings.automaticSourceCrop ||
@@ -8727,6 +8752,8 @@ struct LibplaceboVideoRenderer::Impl
 		configuredScreenTarget = settings.configuredScreenTarget;
 		verticalAlignment = settings.verticalAlignment;
 		screenEdgePadding = settings.screenEdgePadding;
+        autoPictureAlignment = settings.autoPictureAlignment;
+        pictureOffsetPixels = settings.pictureOffsetPixels;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCropRequested = settings.automaticSourceCropRequested;
 		automaticSourceCrop = settings.automaticSourceCrop;
@@ -8762,6 +8789,10 @@ struct LibplaceboVideoRenderer::Impl
 		activeSettings.configuredScreenTarget = settings.configuredScreenTarget;
 		activeSettings.verticalAlignment = settings.verticalAlignment;
 		activeSettings.screenEdgePadding = settings.screenEdgePadding;
+        activeSettings.autoPictureAlignment = settings.autoPictureAlignment;
+        activeSettings.pictureOffsetPixels = settings.pictureOffsetPixels;
+        activeSettings.configurationIdentity = settings.configurationIdentity;
+        activeSettings.placementConfigurationContract = settings.placementConfigurationContract;
 		activeSettings.anamorphicScale = settings.anamorphicScale;
 		activeSettings.automaticSourceCropRequested = settings.automaticSourceCropRequested;
 		activeSettings.automaticSourceCrop = settings.automaticSourceCrop;
@@ -8820,6 +8851,8 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		RendererSettings currentTransport = current;
 		RendererSettings nextTransport = next;
+        currentTransport.autoPictureAlignment = next.autoPictureAlignment;
+        currentTransport.pictureOffsetPixels = next.pictureOffsetPixels;
 		currentTransport.switchRefreshRate = next.switchRefreshRate;
 		currentTransport.refreshRateSwitchMode = next.refreshRateSwitchMode;
 		currentTransport.sdrTargetNits = next.sdrTargetNits;
@@ -9213,16 +9246,17 @@ struct LibplaceboVideoRenderer::Impl
 		restartFingerprint = restartSettingsFingerprint;
 	}
 
-    bool CanPreservePictureForSubtitleUpdate(const RendererSettings& settings, uint64_t requestedSerial)
+    bool CanPreservePictureForPresentationUpdate(const RendererSettings& settings, uint64_t requestedSerial)
     {
         // Do not classify against a snapshot superseded by a queued viewport.
         if (HasPendingProfileSettings()) return false;
         std::lock_guard<std::mutex> guard(publishedSettingsMutex);
         return publishedSettingsAvailable &&
             SubtitleUpdateHasCommittedContext(false, publishedViewportRequestSerial, requestedSerial) &&
-            IsSubtitlePresentationOnlyUpdate(
-            publishedActiveSettings, settings,
-            [](const RendererSettings& value) { return EffectiveSettingsFingerprint(value); });
+            (IsSubtitlePresentationOnlyUpdate(publishedActiveSettings, settings,
+                [](const RendererSettings& value) { return EffectiveSettingsFingerprint(value); }) ||
+             IsPicturePlacementOnlyUpdate(publishedActiveSettings, settings,
+                [](const RendererSettings& value) { return EffectiveSettingsFingerprint(value); }));
     }
 
 	bool CanApplyProfileSettingsLive(const RendererSettings& settings) const
@@ -9383,6 +9417,17 @@ struct LibplaceboVideoRenderer::Impl
         const bool subtitleOnly = pending.viewportRequestSerial == renderViewportRequestSerial &&
             IsSubtitlePresentationOnlyUpdate(activeSettings, pending.settings,
                 [](const RendererSettings& value) { return EffectiveSettingsFingerprint(value); });
+        const bool placementOnly = pending.viewportRequestSerial == renderViewportRequestSerial &&
+            IsPicturePlacementOnlyUpdate(activeSettings, pending.settings,
+                [](const RendererSettings& value) { return EffectiveSettingsFingerprint(value); });
+        if (placementOnly)
+        {
+            ApplyViewportSettingsLocked(pending.settings, true);
+            renderConfiguredScreenActive = pending.configuredScreenActive;
+            DebugLog::Log("Alpha picture placement update: detector authority and subtitle evidence preserved; viewport=%llu",
+                static_cast<unsigned long long>(renderViewportRequestSerial));
+            return;
+        }
 		if (!ApplyProfileSettingsLiveLocked(pending.settings))
 		{
 			DebugLog::Log(
@@ -15087,6 +15132,7 @@ struct LibplaceboVideoRenderer::Impl
             foldContract(static_cast<uint64_t>(actualOutput.encoding));
             foldContract(static_cast<uint64_t>(subtitlePreviewMode));
             foldContract(configuredScreenActive ? 1ULL : 0ULL);
+            foldContract(autoPictureAlignment ? 1ULL : 0ULL);
             if(!temporalOutputContract)temporalOutputContract=1;
         }
         StartupPresentation::Context startupContext;
@@ -15123,7 +15169,7 @@ struct LibplaceboVideoRenderer::Impl
                     const AlphaSourceCrop::PresentationRect available{
                         0.0,0.0,static_cast<double>(temporalOutputWidth),
                         static_cast<double>(temporalOutputHeight)};
-                    mapped.screen=AnamorphicPresentation::FitScreen(
+                    mapped.screen=AutoPictureAlignment::FitScreen(autoPictureAlignment,
                         configuredScreenActive,configuredScreenAspect,
                         anamorphicScale,available,
                         ResolveVerticalPictureAlignment(verticalAlignment),
@@ -15498,8 +15544,9 @@ struct LibplaceboVideoRenderer::Impl
             temporalSourceEvidence.Find({frameGeneration,sourceSequence}):nullptr;
         const uint64_t revisedSourcePolicyTick=priorRevisionSnapshot?priorRevisionSnapshot->sourceTick:0;
         QualifiedSubtitlePresentationEvidence temporalPolicyCaptionProof;
+        AutoPictureAlignment::ActivePicture alignmentPicture{};
 		auto configureViewport =
-			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
+			[this, &alignmentPicture, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
 			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
 			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels, queuedAnalysisDomainKey,
@@ -15555,6 +15602,7 @@ struct LibplaceboVideoRenderer::Impl
             temporalPolicyNearBlackEnvelopeMode = AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
             temporalPolicyNearBlackEnvelopeSourceSequence = 0;
             temporalPolicyNearBlackEnvelopeEpisodeStart = 0;
+			alignmentPicture = {};
 			if (SubtitlePreviewRequiresFullRaster(subtitlePreviewMode) || subtitlePreparationFallback)
             {
                 source.crop = {0.0f,0.0f,static_cast<float>(width),static_cast<float>(height)};
@@ -18342,13 +18390,25 @@ releaseDriftBaseRetention =
                 temporalPolicyNearBlackEnvelopeEpisodeStart =
                     nearBlackBoundedDecision.episodeStartSequence;
             }
+            alignmentPicture.available = effectiveGeometryAvailable &&
+                effectiveGeometrySourceGeneration == frameGeneration && !nlsPresentationFailOpen &&
+                (effectiveClassification == ActivePictureClassification::BAR_CROP_TRUSTED ||
+                 effectiveClassification == ActivePictureClassification::FULL_RASTER_TRUSTED) &&
+                effectiveGeometry.left >= 0 && effectiveGeometry.top >= 0 &&
+                effectiveGeometry.right <= width && effectiveGeometry.bottom <= height &&
+                effectiveGeometry.right > effectiveGeometry.left && effectiveGeometry.bottom > effectiveGeometry.top;
+            alignmentPicture.bounds = { double(effectiveGeometry.left), double(effectiveGeometry.top),
+                double(effectiveGeometry.right), double(effectiveGeometry.bottom) };
+            alignmentPicture.protectEnvelope = scopeSubtitleFit &&
+                (cropDecision.outwardExpanded || cropDecision.verticallyTranslated ||
+                 captionPresentationHeld || unknownCaptionHold.retained);
 			const double finalSourceAspect =
 				presentationSourceGeometry.aspect;
 			const bool finalBoundsAuthoritative = !nlsPresentationFailOpen &&
 				finalSourceGeometry.valid && presentationSourceGeometry.valid;
             const AlphaSourceCrop::PresentationRect screenAvailable = {
                 target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
-            frameScreen = AnamorphicPresentation::FitScreen(configuredScreenActive,
+            frameScreen = AutoPictureAlignment::FitScreen(autoPictureAlignment, configuredScreenActive,
                 configuredScreenAspect, anamorphicScale, screenAvailable,
                 ResolveVerticalPictureAlignment(verticalAlignment), screenEdgePadding);
             const auto finalScreen = frameScreen.rect;
@@ -18715,6 +18775,7 @@ releaseDriftBaseRetention =
             target.crop=snapshot.targetCrop;
             linearFallbackCrop=snapshot.linearFallbackCrop;
             frameScreen=snapshot.screen;
+            alignmentPicture=snapshot.alignmentPicture;
             trustedActivePicture=snapshot.trustedActivePicture;
             hdrTrustedPicture=snapshot.hdrTrustedPicture;
             renderedCaptionCandidate=snapshot.captionCandidate;
@@ -18747,6 +18808,7 @@ releaseDriftBaseRetention =
             const auto buildSourcePresentation=[&](TemporalPresentationSnapshot& sourceSnapshot) {
                     configureViewport(renderImage,target,configuredScreenActive,
                         subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
+                    sourceSnapshot.alignmentPicture=alignmentPicture;
                     sourceSnapshot.viewportEpoch=viewportRequestSerial;
                     sourceSnapshot.startupPoseQualified=temporalPolicyStartupPoseQualified;
                     sourceSnapshot.startupFormatKey=startupContext.sourceFormatKey;
@@ -18967,6 +19029,73 @@ releaseDriftBaseRetention =
             configureViewport(renderImage,target,configuredScreenActive,
                 subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
         }
+        const auto unalignedTargetCrop=target.crop;
+        const auto unalignedLinearFallbackCrop=linearFallbackCrop;
+        auto applyAutoPictureAlignment = [&]() {
+            if (!autoPictureAlignment) return;
+            const auto rect=[](const pl_rect2df& r) -> AutoPictureAlignment::Rect
+                { return {r.x0,r.y0,r.x1,r.y1}; };
+            const auto assign=[](const AutoPictureAlignment::Rect& r) -> pl_rect2df
+                { return {float(r.left),float(r.top),float(r.right),float(r.bottom)}; };
+            const auto output=rect(baseTarget.crop);
+            const auto screen=AutoPictureAlignment::FitScreen(true,configuredScreenActive,
+                configuredScreenAspect,anamorphicScale,output,
+                ResolveVerticalPictureAlignment(verticalAlignment),0);
+            AutoPictureAlignment::Warp warp;
+            bool nonlinear=false;
+            for (int i=0;i<renderParams.num_hooks;++i)
+                nonlinear=nonlinear || renderParams.hooks[i]==nlsHook;
+            if (nonlinear) {
+                const auto parameter=[&](const char* key,double fallback) {
+                    const auto found=nlsRule.parameters.find(key);
+                    double value=fallback;
+                    if (found!=nlsRule.parameters.end()) ParseDouble(found->second,value);
+                    return value;
+                };
+                const auto separator=nlsRule.filename.find_last_of("/\\");
+                const auto filename=ConfigFile::NormalizeName(nlsRule.filename.substr(separator==std::string::npos?0:separator+1));
+                const bool plus=filename=="nlsplus.glsl";
+                warp.known=plus || filename=="nls.glsl";
+                const double ratio=AutoPictureAlignment::Bound(nlsDecision.stretchRatio,1,1.5);
+                const double strength=AutoPictureAlignment::Bound(parameter("strength",1),0,1);
+                if (plus) {
+                    double balance=AutoPictureAlignment::Bound(parameter("axis_balance",0.5),0,1)*strength;
+                    if (ratio>1.000001) balance=std::min(balance,
+                        std::log(AutoPictureAlignment::Bound(parameter("max_center_zoom",1.08),1,1.25))/std::log(ratio));
+                    warp.scale=std::pow(nlsDecision.verticalWarp?1/ratio:ratio,
+                        nlsDecision.verticalWarp?balance-1:-balance);
+                } else if (nlsDecision.verticalWarp) warp.scale=1+(ratio-1)*strength;
+                warp.curve=AutoPictureAlignment::Bound(parameter("curve",2),1,2.9);
+                if (parameter("geometry",0)>=1)
+                    warp.protection=AutoPictureAlignment::Bound(parameter(plus?"vertical_center_protection":"center_protection",0),0,0.45);
+            }
+            const auto alignment=ResolveVerticalPictureAlignment(verticalAlignment);
+            const auto placed=AutoPictureAlignment::Place(true,alignment,pictureOffsetPixels,
+                output,screen.rect,rect(renderImage.crop),rect(unalignedTargetCrop),alignmentPicture,warp);
+            target.crop=assign(placed.picture);
+            const auto fallback=AutoPictureAlignment::Place(true,alignment,pictureOffsetPixels,
+                output,screen.rect,rect(renderImage.crop),rect(unalignedLinearFallbackCrop),alignmentPicture);
+            linearFallbackCrop=assign(fallback.picture);
+            std::ostringstream policy;
+            policy << int(alignment) << '|' << pictureOffsetPixels << '|' << placed.reason
+                << '|' << renderImage.crop.y0 << '|' << renderImage.crop.y1
+                << '|' << alignmentPicture.bounds.top << '|' << alignmentPicture.bounds.bottom
+                << '|' << screen.rect.top << '|' << screen.rect.bottom
+                << '|' << placed.baseline << '|' << placed.effectiveShift << '|' << nonlinear;
+            const uint64_t alignmentTick=GetTickCount64();
+            if (policy.str()!=lastAutoPictureAlignmentPolicy &&
+                (lastAutoPictureAlignmentPolicy.empty() || alignmentTick-lastAutoPictureAlignmentTick>=250)) {
+                lastAutoPictureAlignmentPolicy=policy.str();
+                lastAutoPictureAlignmentTick=alignmentTick;
+                DebugLog::Log("Alpha auto alignment: mode=auto alignment=%s input=%dx%d output=%.1f,%.1f-%.1f,%.1f screen=%.1f,%.1f-%.1f,%.1f active=%.1f,%.1f-%.1f,%.1f baseline=%.1f trim_requested=%d trim_effective=%.1f shift=%.1f picture=%.1f,%.1f-%.1f,%.1f reason=%s",
+                    verticalAlignment.c_str(),width,height,output.left,output.top,output.right,output.bottom,
+                    screen.rect.left,screen.rect.top,screen.rect.right,screen.rect.bottom,
+                    alignmentPicture.bounds.left,alignmentPicture.bounds.top,alignmentPicture.bounds.right,alignmentPicture.bounds.bottom,
+                    placed.baseline,pictureOffsetPixels,placed.effectiveTrim,placed.effectiveShift,
+                    placed.picture.left,placed.picture.top,placed.picture.right,placed.picture.bottom,placed.reason);
+            }
+        };
+        applyAutoPictureAlignment();
         if(temporalSubtitleComposition) {
             const auto selected=temporalRenderer.SelectedPacketSequence();
             const auto& packet=subtitlePresentationPackets[selected%subtitlePresentationPackets.size()];
@@ -19148,7 +19277,7 @@ releaseDriftBaseRetention =
                 // Black/fallback presentations can have no movie layout. Refit
                 // from the full output and current screen profile, never from
                 // the movie destination crop or its software zoom.
-                overlayScreen = AnamorphicPresentation::FitScreen(configuredScreenActive,
+                overlayScreen = AutoPictureAlignment::FitScreen(autoPictureAlignment, configuredScreenActive,
                     configuredScreenAspect, anamorphicScale,
                     { 0.0, 0.0, static_cast<double>(baseTarget.planes[0].texture->params.w),
                         static_cast<double>(baseTarget.planes[0].texture->params.h) },
@@ -21877,7 +22006,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	}
 	if (!rendererRestartRequired && m_impl)
 	{
-        if (!m_impl->CanPreservePictureForSubtitleUpdate(candidateSettings,
+        if (!m_impl->CanPreservePictureForPresentationUpdate(candidateSettings,
             m_viewportRequestSerial.load(std::memory_order_acquire)))
             ApplyViewportTarget(candidateSettings.configuredScreenTarget,
                 candidateSettings.configuredScreenAspect, "application snapshot");
