@@ -2,6 +2,7 @@
 
 #include <ActivePictureDecisionTimeline.h>
 #include <vprenderer/BufferedPictureExpansion.h>
+#include <vprenderer/PreparedPictureWindow.h>
 #include <array>
 #include "CppUnitTest.h"
 
@@ -399,6 +400,79 @@ namespace VideoProcessorTest
 			}
 		}
 
+        TEST_METHOD(ReadyNativeProofSurvivesZeroAndExpiredOptionalWorkBudget) {
+            for(double fps:{23.976,59.94,60.0})for(bool inward:{false,true})for(int64_t deadline:{int64_t(0),int64_t(99),int64_t(100)}) {
+                ActivePictureDecisionTimeline timeline;timeline.Reset(3);uint64_t sequence=1;
+                EstablishGeometry(timeline,3,sequence,inward?ShallowScopeBounds():ScopeBounds());
+                const uint64_t first=sequence;
+                std::array<ActivePictureFrameIdentity,2> ids;
+                std::array<ActivePictureObservation,2> observations;
+                for(size_t i=0;i<ids.size();++i) {
+                    ids[i]=Identity(3,sequence,sequence);
+                    observations[i]=Trusted(sequence,inward?ScopeBounds():ShallowScopeBounds());
+                    observations[i].framesPerSecond=fps;
+                    Assert::IsTrue(timeline.TrackAcceptedFrame(ids[i]));
+                    Assert::IsTrue(timeline.TrackLookaheadEvidence(ids[i],observations[i],true,false));
+                    ++sequence;
+                }
+                unsigned freshScans=0,harvests=0;ActivePictureFrameDecision published;
+                const auto result=RunPreparedPictureWindowPhases(true,deadline,[]{return int64_t(100);},[&](int64_t workDeadline) {
+                    if(workDeadline>0){++freshScans;return false;}
+                    ++harvests;bool complete=false;
+                    for(size_t i=0;i<ids.size();++i) {
+                        ActivePictureFrameDecision decision;
+                        if(timeline.SubmitPreparedLookaheadObservation(ids[i],observations[i],3,1,decision)) {
+                            complete=true;published=decision;
+                        }
+                    }
+                    return complete;
+                });
+                Assert::IsTrue(result.completed,L"An expired optional scan ticket must not discard exact ready native proof");
+                Assert::AreEqual(unsigned(0),freshScans);
+                Assert::AreEqual(unsigned(1),harvests);
+                Assert::AreEqual(first,published.effectiveIdentity.acceptedSequence);
+                Assert::AreEqual(first+1,published.observationIdentity.acceptedSequence);
+                Assert::AreEqual(int(ActivePictureScheduledDecisionValidation::ACCEPTED),int(
+                    ValidateActivePictureScheduledDecision(published,ids[0],observations[0].bounds,
+                        observations[0].classification)));
+                Assert::AreEqual(int(ActivePictureScheduledDecisionValidation::EFFECTIVE_IDENTITY_MISMATCH),int(
+                    ValidateActivePictureScheduledDecision(published,Identity(3,first-1,first-1),
+                        observations[0].bounds,observations[0].classification)),
+                    L"Future corroboration cannot change the previous displayed source");
+            }
+        }
+        TEST_METHOD(ReadyNativeHarvestAfterOptionalExpiryDoesNotRestartWorkOrCountRepeats) {
+            int64_t clock=100;unsigned scans=0,harvests=0;bool ready=false;
+            const auto result=RunPreparedPictureWindowPhases(true,101,[&]{return clock;},[&](int64_t deadline) {
+                if(!deadline){++harvests;return ready;}
+                ++scans;ready=true;clock=101;return false; // Complete a fact, then miss the optional publication deadline.
+            });
+            Assert::IsTrue(result.completed,L"Completed facts must be harvested after the optional phase expires");
+            Assert::AreEqual(unsigned(1),scans);
+            Assert::AreEqual(unsigned(1),harvests); // No cache prepass may finalize a provisional source.
+            Assert::IsTrue(result.optionalAttempted);
+            const auto repeated=RunPreparedPictureWindowPhases(false,200,[&]{return clock;},[&](int64_t) {
+                Assert::Fail(L"A repeated presentation must not consume another source observation");return true;
+            });
+            Assert::IsFalse(repeated.completed);
+            Assert::IsFalse(repeated.optionalAttempted);
+            ActivePictureDecisionTimeline timeline;timeline.Reset(3);uint64_t sequence=1;
+            EstablishGeometry(timeline,3,sequence,ScopeBounds());
+            const auto first=Identity(3,sequence,sequence);
+            ActivePictureFrameDecision decision;
+            const auto repeatVote=RunPreparedPictureWindowPhases(false,200,[&]{return clock;},[&](int64_t) {
+                return timeline.SubmitPreparedLookaheadObservation(first,
+                    Trusted(sequence,ShallowScopeBounds()),3,1,decision);
+            });
+            Assert::IsFalse(repeatVote.completed);
+            Assert::IsFalse(timeline.SubmitPreparedLookaheadObservation(first,
+                Trusted(sequence,ShallowScopeBounds()),3,1,decision),
+                L"A skipped analysis cannot supply the first of two genuine transition votes");
+            ++sequence;
+            Assert::IsTrue(timeline.SubmitPreparedLookaheadObservation(Identity(3,sequence,sequence),
+                Trusted(sequence,ShallowScopeBounds()),3,1,decision));
+        }
+
         TEST_METHOD(PreparedReadyNativeWindowChangesAtFirstPendingSourceWithoutScanThrottle) {
             for(double inputHz:{23.976,24.0,59.94,60.0})for(bool inward:{false,true})for(size_t readyCount:{size_t(2),size_t(5)}) {
                 const uint8_t configured=inputHz<=30?3:5; // Active VP_24 and VP_60/50 profiles.
@@ -443,11 +517,15 @@ namespace VideoProcessorTest
                 }
                 if(fault==2)timeline.MarkConsumed(identities[0]);
                 ActivePictureFrameDecision decision;
-                for(size_t i=0;i<identities.size();++i) {
-                    const bool published=timeline.SubmitPreparedLookaheadObservation(identities[i],observations[i],4,4,decision);
-                    Assert::IsFalse(published && decision.effectiveIdentity.acceptedSequence==first,
-                        L"Ready metadata cannot manufacture proof for unstable, untrusted, or already consumed source pixels");
-                }
+                RunPreparedPictureWindowPhases(true,99,[]{return int64_t(100);},[&](int64_t deadline) {
+                    Assert::AreEqual(int64_t(0),deadline);
+                    for(size_t i=0;i<identities.size();++i) {
+                        const bool published=timeline.SubmitPreparedLookaheadObservation(identities[i],observations[i],4,4,decision);
+                        Assert::IsFalse(published && decision.effectiveIdentity.acceptedSequence==first,
+                            L"Expired scan budget cannot manufacture proof for unstable, untrusted, or consumed sources");
+                    }
+                    return false;
+                });
             }
         }
 		TEST_METHOD(BufferedConfirmationBackdatesToPendingCandidate)

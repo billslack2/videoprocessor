@@ -9,6 +9,7 @@
 #include <vprenderer/SourceCadenceNativeHandoff.h>
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
+#include <vprenderer/PreparedPictureWindow.h>
 #include <vprenderer/AnalysisPerformanceWindow.h>
 #include <vprenderer/OptionalAnalysisWorker.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
@@ -1721,10 +1722,24 @@ TEST_CLASS(MotionRendererTests){public:
         PresentationAnalysisBudget budget;
         const auto skipped=budget.Begin(2,1000000,1000000,true,false);
         Assert::AreEqual(int64_t(0),skipped.deadlineQpc);
-        OptionalAnalysisPrefix expiredBudget;
-        if(skipped.deadlineQpc>0) expiredBudget.Admit(0,headResult!=nullptr);
-        Assert::AreEqual(size_t(0),expiredBudget.Size(),
-            L"A skipped optional budget cannot publish a ready lookahead certificate");
+        OptionalAnalysisPrefix repeatedPrefix;
+        const auto repeated=RunPreparedPictureWindowPhases(false,skipped.deadlineQpc,
+            []{return int64_t(1000000);},[&](int64_t) {
+                repeatedPrefix.Admit(0,headResult!=nullptr);return true;
+            });
+        Assert::IsFalse(repeated.completed);
+        Assert::AreEqual(size_t(0),repeatedPrefix.Size(),
+            L"A repeated presentation cannot contribute another source observation");
+        OptionalAnalysisPrefix freshPrefix;
+        const auto fresh=RunPreparedPictureWindowPhases(true,skipped.deadlineQpc,
+            []{return int64_t(1000000);},[&](int64_t deadline) {
+                Assert::AreEqual(int64_t(0),deadline);
+                return freshPrefix.Admit(0,headResult->domain==7) &&
+                    freshPrefix.Admit(1,futureResult->domain==7);
+            });
+        Assert::IsTrue(fresh.completed);
+        Assert::AreEqual(size_t(2),freshPrefix.Size(),
+            L"Zero optional scan budget on a fresh source does not invalidate ready evidence");
         worker.Stop();
         Assert::IsTrue(lifetime.expired());
         Assert::AreEqual(73,headResult->pixel,

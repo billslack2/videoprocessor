@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "PreparedPictureEvidence.h"
 #include "PreparedOutwardWindow.h"
 
@@ -30,6 +30,7 @@
 
 
 class ConfigFile;
+struct SourcePictureObservation;
 
 // In-process D3D11 renderer. HDR input is color-managed and tone-mapped to
 // an SDR Rec.709 swapchain; this backend deliberately does not emit HDR.
@@ -163,6 +164,9 @@ private:
             uint64_t domainKey=0;
             ActivePictureEvidence evidence;
             ActivePictureArDarknessEvidence darkness;
+            // Opt-in diagnostic facts, owned by this exact source packet.
+            // Never imported as crop or transition authority.
+            std::shared_ptr<const SourcePictureObservation> sourcePictureShadow;
         };
         using LookaheadWorker = OptionalAnalysisWorker<LookaheadMeasurement>;
         using OutwardWindowResult = PreparedOutwardWindowResult;

@@ -6,10 +6,25 @@
     "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp",
     "src/VideoProcessor-Test/AnalysisDiagnosticTraceTests.cpp",
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
-    "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
+    "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp",
+    "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
+    "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 869,
+  "minimumNativeTests": 906,
   "requiredNativeMethods": [
+    "V210SparseSamplingDecodesAllSixPixels",
+    "P210SamplingPreservesEachChromaRow",
+    "DecodedDolbyVisionKeepsTwelveBitStorageAndLegacyUpperTenEvidence",
+    "InvalidMetadataFormatStrideAndDepthCannotCreateDvEvidence",
+    "SameSourceSharesCanonicalKeysAcrossProfilesAndOutputPaths",
+    "NativeP210MatchesV210PictureAndCaptionEvidenceForLiveAndQueuedConsumers",
+    "PreparedSourcesCarryAuthoritativeRangeWithoutChangingSamples",
+    "NativeP210RejectsShortPlanesAndRetainsSourceThroughAnalysisCopies",
+    "P010AndP210UploadChoicesKeepOneNativeAnalysisDomain",
+    "CV210toP210VideoFrameFormatterPreservesPaddedEdgeSamples",
+    "CV210toP210AVX2MatchesScalarBitExactly",
+    "AllTwelveBitCodesSurviveScalarAndAvx2WithPaddingAndTails",
+    "ThreadedRowsAndUnevenTailPreserveEverySample",
     "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines",
     "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
     "FullRasterHintCanNominateCurrentEncodedBarsWithoutRememberedAspect",
@@ -147,7 +162,31 @@
     "RaisedSideMatteAndFaintPictureCollarCannotBecomeFullRasterExtent",
     "DarkStructuredFullRasterCannotBecomeItsBrightNavigationPanel",
     "UniformOrRaisedExteriorWithLocalizedCueCannotImplyFullRasterPicture",
-    "PatternedTrueMatteCannotHideItsFaintFirstPictureCollar"
+    "PatternedTrueMatteCannotHideItsFaintFirstPictureCollar",
+    "SourcePictureMeasuresUnevenlyLitScopeFromDistributedNativeEdges",
+    "SourcePictureKeepsSparseHeaderOutsideItsDominantChildRectangle",
+    "SourcePictureIgnoresLocalCaptionsLogoAndProgressWhenMeasuringRealBars",
+    "SourcePicturePreservesAsymmetricOddNonstandardCoordinates",
+    "SourcePictureRetainsFaintCollarUncertaintyWithPatternedMatte",
+    "SourcePictureInvalidInputsCannotBecomeMeasuredBlackFrames",
+    "SourcePictureBudgetCancellationPreservesMissingWorkSemantics",
+    "SourcePictureOptionalNativeCaptureReplay",
+    "ReadyNativeProofSurvivesZeroAndExpiredOptionalWorkBudget",
+    "ReadyNativeHarvestAfterOptionalExpiryDoesNotRestartWorkOrCountRepeats",
+    "SourcePictureSmoothRasterGradientCannotBecomeAnInsetMeasuredBorder",
+    "SourcePictureOverviewPreservesSupportedComponentsAcrossSamplingPhases",
+    "SourcePictureLongCenteredGlyphRowsDoNotExpandRealPicture",
+    "SourcePictureKeepsCompetingEdgesBeyondTheFirstHitOnEveryRay",
+    "SourcePictureSparseOverviewCannotClaimDenseAbsenceCoverage",
+    "SourcePictureCanvasEstimateRequiresIndependentPanelScaffold",
+    "SourcePictureClippedExteriorRetainsHeaderConnectedToBody",
+    "SourcePictureAdversarialTopologyStopsWithoutClaimingCompleteGeometry",
+    "DisabledShadowNeverStartsDiagnosticWork",
+    "ShadowAdmitsFirstValidSourceAndExactHalfSecondBoundary",
+    "ShadowInvalidOrBackwardClockCannotSpendOrRenewAdmission",
+    "CancelledShadowWorkCannotRefundItsRateSlot",
+    "ShadowLongIdleDoesNotCreateCatchupBurst",
+    "ShadowOddAndExtremeFrequenciesRoundSafely"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -190,6 +229,71 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 28,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "V210SparseSamplingDecodesAllSixPixels"
+    },
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "P210SamplingPreservesEachChromaRow"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryDvTests.cpp",
+      "class": "AnalysisRecoveryDvTests",
+      "method": "DecodedDolbyVisionKeepsTwelveBitStorageAndLegacyUpperTenEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryDvTests.cpp",
+      "class": "AnalysisRecoveryDvTests",
+      "method": "InvalidMetadataFormatStrideAndDepthCannotCreateDvEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryDvTests.cpp",
+      "class": "AnalysisRecoveryDvTests",
+      "method": "SameSourceSharesCanonicalKeysAcrossProfilesAndOutputPaths"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryParityTests.cpp",
+      "class": "AnalysisRecoveryParityTests",
+      "method": "NativeP210MatchesV210PictureAndCaptionEvidenceForLiveAndQueuedConsumers"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryParityTests.cpp",
+      "class": "AnalysisRecoveryParityTests",
+      "method": "PreparedSourcesCarryAuthoritativeRangeWithoutChangingSamples"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryParityTests.cpp",
+      "class": "AnalysisRecoveryParityTests",
+      "method": "NativeP210RejectsShortPlanesAndRetainsSourceThroughAnalysisCopies"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryParityTests.cpp",
+      "class": "AnalysisRecoveryParityTests",
+      "method": "P010AndP210UploadChoicesKeepOneNativeAnalysisDomain"
+    },
+    {
+      "source": "src/VideoProcessor-Test/VideoFrameFormatterTests.cpp",
+      "class": "VideoFrameFormatterTests",
+      "method": "CV210toP210VideoFrameFormatterPreservesPaddedEdgeSamples"
+    },
+    {
+      "source": "src/VideoProcessor-Test/VideoFrameFormatterTests.cpp",
+      "class": "VideoFrameFormatterTests",
+      "method": "CV210toP210AVX2MatchesScalarBitExactly"
+    },
+    {
+      "source": "src/VideoProcessor-Test/DolbyVisionTunnelFormatterTests.cpp",
+      "class": "DolbyVisionTunnelFormatterTests",
+      "method": "AllTwelveBitCodesSurviveScalarAndAvx2WithPaddingAndTails"
+    },
+    {
+      "source": "src/VideoProcessor-Test/DolbyVisionTunnelFormatterTests.cpp",
+      "class": "DolbyVisionTunnelFormatterTests",
+      "method": "ThreadedRowsAndUnevenTailPreserveEverySample"
+    },
     {
       "source": "src/VideoProcessor-Test/SubmittedNativeFillRetentionTests.cpp",
       "class": "SubmittedNativeFillRetentionTests",
@@ -444,6 +548,16 @@
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
       "method": "ChangedCurrentBackingWithdrawsHeldSeedDespiteAValidCurrentPreparedCertificate"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "ReadyNativeProofSurvivesZeroAndExpiredOptionalWorkBudget"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "ReadyNativeHarvestAfterOptionalExpiryDoesNotRestartWorkOrCountRepeats"
     }
   ]
 }
