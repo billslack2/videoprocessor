@@ -217,3 +217,28 @@ mismatch controls and a 15-case complete/incomplete-result matrix. The legacy
 stale-plane test still rejects dependent results and verifies that distinct
 available planes execute separately. Actual renderer and cold qualification of
 this final worker change remain pending at this checkpoint.
+
+## Cold first-Ready acquisition and test-iteration checkpoint
+
+The clean d57a5ec9 candidate passed all six actual renderer repair cases and
+217 GPU/cue tests on each dependency. Full fresh-cache qualification then passed
+863/864 Standard methods; the Unknown-input case exposed a distinct first-Ready
+failure: source 29 had a complete raw three-line scan but lacked four-source cue
+acquisition. Raw analysis completion was incorrectly treated as display readiness.
+
+The existing single-input warmup bridge now tests cue acquisition on a heap copy
+of the tracker before mutating live presentation. It retains an independently
+measured consumed input in RAW history only after successful original-image
+repeat; the repeated image grants no vote, cue renewal or native AR authority.
+An exact-current proven native AR change vetoes this new fallback. No warmup
+lease extension, four-source threshold relaxation or new runtime wait is added.
+
+The acquisition and handoff regressions fail before implementation in
+20261101-015559-298f571d. All 854 native contracts pass after implementation in
+20261101-015836-746d5486. Actual renderer/cold qualification remains pending.
+
+The broad GPU baseline took approximately 24 minutes per dependency. Correctness
+fixtures now share bounded compiled-program bytes across otherwise fresh devices,
+renderers and resources. Dedicated cold-cache MotionRendererTests remain isolated.
+A new GPU regression checks program reuse and actual composition pixels. This
+speed change is implemented but not yet built or benchmarked at this checkpoint.

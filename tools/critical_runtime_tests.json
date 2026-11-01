@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 850,
+  "minimumNativeTests": 854,
   "requiredNativeMethods": [
     "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines",
     "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
@@ -128,7 +128,11 @@
     "LateOwnedReadinessHarvestCompletesCrowdedCueWithoutNewWork",
     "CrowdedCurrentAcquiresFromThreeExactRawPredecessorsWithoutReadyFutures",
     "CrowdedCurrentAcquiresFromTwoRawPredecessorsAndOneReadyFuture",
-    "CrowdedRawHistoryRejectsChangedDuplicatesWithoutCountingRepeatedInputs"
+    "CrowdedRawHistoryRejectsChangedDuplicatesWithoutCountingRepeatedInputs",
+    "WarmupReadyInputNeedsCurrentCueAcquisitionBeforeSpendingPreviousImage",
+    "MeasuredWarmupRepeatRetainsOnlyAuthenticRawEvidenceForNextFreshCue",
+    "WarmupCadenceRepeatYieldsToExactCurrentNativeAspectHandoffs",
+    "WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -375,6 +379,26 @@
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
       "method": "CrowdedRawHistoryRejectsChangedDuplicatesWithoutCountingRepeatedInputs"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "WarmupReadyInputNeedsCurrentCueAcquisitionBeforeSpendingPreviousImage"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "MeasuredWarmupRepeatRetainsOnlyAuthenticRawEvidenceForNextFreshCue"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "WarmupCadenceRepeatYieldsToExactCurrentNativeAspectHandoffs"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry"
     }
   ]
 }

@@ -9,6 +9,7 @@
 #include <SubtitleCueContinuation.h>
 #include <SubtitleCadenceGuard.h>
 #include <vprenderer/SubtitleAspectRetention.h>
+#include <vprenderer/SourceCadencePresentation.h>
 #include <vprenderer/SubtitleBarRecovery.h>
 #include <future>
 #include <memory>
@@ -6342,6 +6343,69 @@ public:
     }
     TEST_METHOD(CrowdedCurrentAcquiresFromTwoRawPredecessorsAndOneReadyFuture) {
         VerifyCrowdedRawHistoryWindow(1);
+    }
+
+    TEST_METHOD(WarmupReadyInputNeedsCurrentCueAcquisitionBeforeSpendingPreviousImage) {
+        struct Workspace {std::array<SubtitleBoxObservation,4> frames;SubtitleBoxPreview preview;SubtitleBoxPresentation tracker;};
+        auto storage=std::make_unique<Workspace>();auto& w=*storage;
+        for(size_t i=0;i<4;++i) {w.frames[i]=NearCardThreeRows(27+i,false);w.frames[i].policyGeneration=7;w.frames[i].continuityGeneration=8;}
+        for(size_t i=0;i<2;++i) {
+            SubtitleBoxLookahead::ResolveOwnedWindowInto(w.preview,&w.frames[i],&w.frames[i].identity,1,7,8);
+            Assert::IsFalse(w.tracker.Consume(w.preview).detected);
+        }
+        SubtitleBoxLookahead::ResolveOwnedWindowInto(w.preview,&w.frames[2],&w.frames[2].identity,1,7,8);
+        Assert::IsTrue(SourceCadenceObservationComplete(w.preview.current,w.frames[2].identity));
+        const auto acceptedBefore=w.tracker.AcceptedQueueTemplateIdentity();const auto holdBefore=w.tracker.WeakHoldMilliseconds();
+        Assert::IsFalse(SourceCadenceWarmupCaptionReady(w.tracker,w.preview,w.frames[2].identity,250,1000.0/60),
+            L"Complete current raw3 with only two predecessors cannot yet supply the fourth source needed for current cue acquisition.");
+        Assert::IsTrue(SameAnalysisFrameIdentity(acceptedBefore,w.tracker.AcceptedQueueTemplateIdentity()));
+        Assert::AreEqual(holdBefore,w.tracker.WeakHoldMilliseconds());
+        int gpu;SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+        pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+        pending.frameDuration=1;pending.timeScale=60;pending.preparationKey=17;pending.requestedSubtitleMode=2;
+        pending.preparationState=SourceCadencePreparationState::Pending;
+        auto ready=pending;ready.preparationState=SourceCadencePreparationState::Ready;ready.subtitleMode=2;
+        SourceCadencePresentation repeat;repeat.WarmupCandidate(pending,28,28.0/60,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(ready,60,29,29.0/60));repeat.RepeatSubmitted(true);
+        Assert::IsTrue(w.tracker.RecordMeasuredRawAfterWarmupRepeat(w.preview,w.frames[2].identity,7,8,true));
+        Assert::IsTrue(SameAnalysisFrameIdentity(acceptedBefore,w.tracker.AcceptedQueueTemplateIdentity()));
+        Assert::AreEqual(holdBefore,w.tracker.WeakHoldMilliseconds());
+        Assert::IsFalse(w.tracker.HasAcceptedSourceTemplate());
+        Assert::IsFalse(repeat.CanRepeat(ready,60,30,30.0/60));
+        SubtitleBoxLookahead::ResolveOwnedWindowInto(w.preview,&w.frames[3],&w.frames[3].identity,1,7,8);
+        const auto full=w.tracker.Consume(w.preview);Assert::IsTrue(full.detected&&!full.held);
+        Assert::AreEqual(3,full.lineCount,L"Fresh30 uses independently measured27/28/29, not a fabricated vote from repeated28 pixels.");
+        Assert::IsTrue(SubtitleCueContinuation::SameRect(full.bounds,w.frames[3].text.bounds));
+    }
+    TEST_METHOD(MeasuredWarmupRepeatRetainsOnlyAuthenticRawEvidenceForNextFreshCue) {
+        struct Workspace {std::array<SubtitleBoxObservation,4> frames;SubtitleBoxPreview preview,changed;SubtitleBoxPresentation tracker;};
+        for(int fault=0;fault<11;++fault) {
+            auto storage=std::make_unique<Workspace>();auto& w=*storage;
+            for(size_t i=0;i<4;++i) {w.frames[i]=NearCardThreeRows(27+i,false);w.frames[i].policyGeneration=7;w.frames[i].continuityGeneration=8;}
+            for(size_t i=0;i<2;++i) {
+                SubtitleBoxLookahead::ResolveOwnedWindowInto(w.preview,&w.frames[i],&w.frames[i].identity,1,7,8);w.tracker.Consume(w.preview);
+            }
+            SubtitleBoxLookahead::ResolveOwnedWindowInto(w.preview,&w.frames[2],&w.frames[2].identity,1,7,8);
+            w.changed=w.preview;auto identity=w.frames[2].identity;uint64_t policy=7,continuity=8;bool submitted=true;
+            if(fault==1)submitted=false;
+            if(fault==2)w.changed.available=false;
+            if(fault==3)w.changed.current.pendingRefresh=true;
+            if(fault==4)w.changed.current.text.workLimit=true;
+            if(fault==5)++identity.acceptedSequence;
+            if(fault==6)++policy;
+            if(fault==7)++continuity;
+            if(fault==8)w.changed.current.ink=std::make_shared<SubtitleInkSnapshot>(*w.changed.current.ink);
+            if(fault==9)++w.changed.current.pictureTop;
+            if(fault==10)w.changed.current.glyphLocalTop=true;
+            const auto owner=w.tracker.AcceptedQueueTemplateIdentity();const auto hold=w.tracker.WeakHoldMilliseconds();
+            Assert::AreEqual(fault==0,w.tracker.RecordMeasuredRawAfterWarmupRepeat(w.changed,identity,policy,continuity,submitted));
+            Assert::IsFalse(w.tracker.RecordMeasuredRawAfterWarmupRepeat(w.changed,identity,policy,continuity,false));
+            if(!fault)Assert::IsFalse(w.tracker.RecordMeasuredRawAfterWarmupRepeat(w.changed,identity,policy,continuity,true),L"A repeated record adds no duplicate source vote.");
+            Assert::IsTrue(SameAnalysisFrameIdentity(owner,w.tracker.AcceptedQueueTemplateIdentity()));Assert::AreEqual(hold,w.tracker.WeakHoldMilliseconds());
+            SubtitleBoxLookahead::ResolveOwnedWindowInto(w.preview,&w.frames[3],&w.frames[3].identity,1,7,8);
+            const auto accepted=w.tracker.Consume(w.preview);
+            Assert::AreEqual(fault==0,accepted.detected&&accepted.lineCount==3);
+        }
     }
 
     TEST_METHOD(CrowdedRawHistoryRejectsChangedDuplicatesWithoutCountingRepeatedInputs) {

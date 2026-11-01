@@ -26,6 +26,36 @@ inline bool SourceCadenceObservationComplete(const SubtitleBoxObservation& obser
          ConfirmedSubtitleAbsentForPresentation(observed,observed.text,identity));
 }
 
+// Acquisition readiness is distinct from completion of the worker scan.
+// This preflight is used only by an otherwise eligible first-Ready warmup
+// bridge; regular complete-output anchors retain their existing contract.
+inline bool SourceCadenceWarmupCaptionReady(const SubtitleBoxPresentation& tracker,
+    const SubtitleBoxPreview& preview,const ActivePictureFrameIdentity& identity,
+    int holdMilliseconds,double sourceFrameMilliseconds)
+{
+    if(!preview.available || preview.current.discontinuity ||
+        !SourceCadenceObservationComplete(preview.current,identity))return false;
+    if(!preview.current.text.detected)return true; // Complete current absence needs no cue acquisition.
+    // This bounded first-Ready trial cannot alter the live cue, hold clock,
+    // accepted source or RAW history. Consume remains the authority for all
+    // acquisition guards; no cheaper raw-complete proxy can stand in for it.
+    auto trial=std::make_unique<SubtitleBoxPresentation>(tracker);
+    const auto accepted=trial->Consume(preview,holdMilliseconds,sourceFrameMilliseconds);
+    const auto& raw=preview.current;
+    if(!accepted.detected || accepted.confirmationPending || accepted.workLimit ||
+        accepted.lineCount!=raw.text.lineCount || accepted.lineCount<1 || accepted.lineCount>3)return false;
+    if(accepted.held && !trial->CurrentPreparedCueCertificate().Matches(raw,accepted,raw.sharedPicture.bounds))return false;
+    const int tolerance=(std::max)(4,raw.height/180);
+    for(int row=0;row<raw.text.lineCount;++row) {
+        bool matched=false;
+        for(int candidate=0;candidate<accepted.lineCount;++candidate)
+            matched|=SubtitleBoxLookahead::SameCrowdedLine(raw.text.lineBounds[row],accepted.lineBounds[candidate],tolerance) &&
+                SubtitleBoxLookahead::SimilarSignature(raw.text.lineSignatures[row],accepted.lineSignatures[candidate]);
+        if(!matched)return false;
+    }
+    return true;
+}
+
 // A current held pose may certify final pixels after actual erasure checks.
 // This permission is deliberately separate from reusable source analysis: it
 // cannot seal a SourcePreparationReceipt, acquire a cue, or renew its lease.

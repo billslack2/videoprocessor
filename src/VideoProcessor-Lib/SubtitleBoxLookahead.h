@@ -2357,6 +2357,26 @@ public:
                 !SubtitleCueContinuation::SameRect(q.captures[line],m_result.lineCapturePanels[line]))return false;
         return q.lineCount>0 && q.lineCount<=3;
     }
+    // A successfully repeated final image grants no cue/lease update. An
+    // independently measured consumed input can nevertheless be remembered as
+    // RAW evidence for later four-source confirmation. The image adds no vote.
+    bool CanRecordMeasuredRawAfterWarmupRepeat(const SubtitleBoxPreview& preview,
+        const ActivePictureFrameIdentity& consumed,uint64_t policy,uint64_t continuity) const
+    {
+        return SubtitleBoxLookahead::IsCurrent(preview,consumed,policy,continuity) &&
+            preview.ownedWindow.Matches(0,preview.current,policy,continuity) &&
+            SubtitleBoxLookahead::CompleteConsecutiveCrowdedRaw(preview.current) &&
+            (m_crowdedRawHistory.empty() ||
+                SubtitleBoxLookahead::ConsecutiveCrowdedRawContext(m_crowdedRawHistory.back(),preview.current));
+    }
+    bool RecordMeasuredRawAfterWarmupRepeat(const SubtitleBoxPreview& preview,
+        const ActivePictureFrameIdentity& consumed,uint64_t policy,uint64_t continuity,bool repeatSubmitted)
+    {
+        if(!repeatSubmitted || !CanRecordMeasuredRawAfterWarmupRepeat(preview,consumed,policy,continuity))return false;
+        m_crowdedRawHistory.push_back(preview.current);
+        while(m_crowdedRawHistory.size()>3)m_crowdedRawHistory.pop_front();
+        return true;
+    }
     ActivePictureFrameIdentity AcceptedQueueTemplateIdentity() const {
         return HasAcceptedQueueTemplate()?m_previous.current.identity:ActivePictureFrameIdentity{};
     }

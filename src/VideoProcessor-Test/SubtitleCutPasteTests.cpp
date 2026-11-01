@@ -7,6 +7,9 @@
 #include <SubtitleBackingPresentation.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/gpu.h>
+#include <libplacebo/cache.h>
+#include <atomic>
+#include <mutex>
 #include <cstdint>
 #include <algorithm>
 #include <cmath>
@@ -1817,7 +1820,41 @@ public:
     }
 };
 namespace {
+// Compiled program bytes only: never retain a GPU, renderer, texture, hook or
+// frame between tests. Cold MotionRendererTests own unrelated private caches.
+struct SubtitleFixtureProgramCache {
+    LUID adapter{};D3D_FEATURE_LEVEL featureLevel{};
+    std::atomic<uint64_t> misses{0};pl_cache value=nullptr;
+    SubtitleFixtureProgramCache(LUID id,D3D_FEATURE_LEVEL level):adapter(id),featureLevel(level) {
+        auto params=pl_cache_default_params;
+        params.max_object_size=16u*1024u*1024u;params.max_total_size=128u*1024u*1024u;
+        params.priv=this;
+        params.get=[](void* context,uint64_t)->pl_cache_obj {
+            ++static_cast<SubtitleFixtureProgramCache*>(context)->misses;
+            return {}; // Observe a real internal miss; no disk/external fallback.
+        };
+        value=pl_cache_create(&params);
+    }
+    ~SubtitleFixtureProgramCache(){pl_cache_destroy(&value);}
+    static std::shared_ptr<SubtitleFixtureProgramCache> For(pl_d3d11 device) {
+        CComPtr<IDXGIDevice> dxgi;CComPtr<IDXGIAdapter> adapter;DXGI_ADAPTER_DESC description{};
+        Assert::IsTrue(SUCCEEDED(device->device->QueryInterface(IID_PPV_ARGS(&dxgi))));
+        Assert::IsTrue(SUCCEEDED(dxgi->GetAdapter(&adapter))&&SUCCEEDED(adapter->GetDesc(&description)));
+        const auto level=device->device->GetFeatureLevel();
+        static std::mutex mutex;
+        static std::vector<std::shared_ptr<SubtitleFixtureProgramCache>> caches;
+        std::lock_guard<std::mutex> guard(mutex);
+        for(const auto& cache:caches)if(cache->adapter.LowPart==description.AdapterLuid.LowPart&&
+            cache->adapter.HighPart==description.AdapterLuid.HighPart&&cache->featureLevel==level)return cache;
+        auto cache=std::make_shared<SubtitleFixtureProgramCache>(description.AdapterLuid,level);
+        // At most256MiB retained per module; unusual additional adapters use an
+        // equally bounded fixture-local cache instead of growing the registry.
+        if(caches.size()<2)caches.push_back(cache);
+        return cache;
+    }
+};
 struct SubtitleShaderGpuFixture {
+    std::shared_ptr<SubtitleFixtureProgramCache> programs;
     SubtitlePreparationRenderer preparation;
     pl_d3d11 device=nullptr;
     pl_renderer renderer=nullptr;
@@ -1829,6 +1866,8 @@ struct SubtitleShaderGpuFixture {
         pl_d3d11_params d{};d.allow_software=true;
         device=pl_d3d11_create(nullptr,&d);
         Assert::IsTrue(device!=nullptr,L"Subtitle shader D3D11 fixture unavailable");
+        programs=SubtitleFixtureProgramCache::For(device);
+        pl_gpu_set_cache(device->gpu,programs->value);
         renderer=pl_renderer_create(nullptr,device->gpu);
         Assert::IsTrue(renderer!=nullptr);
         hook=CreateSubtitleCutPasteHook(device->gpu);
@@ -3142,6 +3181,30 @@ struct SubtitleShaderGpuFixture {
 }
 TEST_CLASS(SubtitleCutPasteShaderTests) {
 public:
+    TEST_METHOD(FreshSubtitleGpuFixturesReuseProgramsAndPreserveActualCompositionPixels) {
+        std::shared_ptr<SubtitleFixtureProgramCache> programs;
+        uint64_t signature=0,misses=0;int objects=0;
+        {
+            SubtitleShaderGpuFixture first(PL_COLOR_TRC_SRGB);
+            first.Run(3,false,true);first.Run(5,false,true);
+            pl_gpu_finish(first.device->gpu);
+            programs=first.programs;signature=pl_cache_signature(programs->value);
+            misses=programs->misses.load();objects=pl_cache_objects(programs->value);
+            Assert::IsTrue(objects>0,L"Real subtitle composition must populate compiled program bytes.");
+        } // All first fixture GPU resources have been destroyed.
+        {
+            SubtitleShaderGpuFixture second(PL_COLOR_TRC_SRGB);
+            Assert::IsTrue(second.programs==programs);
+            second.Run(3,false,true);second.Run(5,false,true);
+            pl_gpu_finish(second.device->gpu);
+            // Run reads actual glyph, cleanup, alpha and split/full composition
+            // pixels. A new device must reuse programs without losing any of them.
+            Assert::AreEqual(misses,programs->misses.load(),L"Fresh fixture unexpectedly missed the previously compiled programs.");
+            Assert::AreEqual(objects,pl_cache_objects(programs->value));
+            Assert::AreEqual(signature,pl_cache_signature(programs->value));
+            Assert::IsTrue(pl_cache_size(programs->value)<=128u*1024u*1024u);
+        }
+    }
     TEST_METHOD(UhdTwoLinePictureAndLetterboxGlyphsBothSurviveReduction) {
         SubtitleShaderGpuFixture gpu;gpu.VerifyUhdTwoLinePictureAndBarGlyphsSurviveReduction();
     }

@@ -6,6 +6,7 @@
 #include <vprenderer/DisplayVsyncClock.h>
 #include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/SourceCadencePresentation.h>
+#include <vprenderer/SourceCadenceNativeHandoff.h>
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
 #include <vprenderer/AnalysisPerformanceWindow.h>
@@ -626,6 +627,105 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::AreEqual(size_t(2),temporal.outputs.size());
         // Presentation repeats final pixels between these field outputs rather
         // than generating 18 expensive temporal outputs and hitting its cap.
+    }
+    TEST_METHOD(WarmupCadenceRepeatYieldsToExactCurrentNativeAspectHandoffs) {
+        ActivePictureFrameIdentity current{1,29,29,2900,2,3,1};current.analysisDomainKey=4;
+        const ActivePictureBounds scope{0,262,3840,1898,3840,2160};
+        const ActivePictureBounds imax{0,120,3840,2040,3840,2160};
+        ActivePictureFrameDecision decision;decision.effectiveIdentity=decision.observationIdentity=current;
+        decision.continuityGeneration=7;decision.lookaheadPolicyGeneration=2;decision.proofFrameCount=1;
+        decision.transition.state=ActivePictureTransitionState::STABLE;
+        decision.transition.publish=decision.transition.stable=true;
+        decision.transition.authoritativeClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        decision.transition.bounds=imax;decision.transition.stableBounds=scope;
+        AlphaSourceCrop::BufferedPictureExpansionProof buffered;buffered.valid=true;buffered.decision=decision;
+        buffered.decision.transition.diagnostic=true;
+        GuardedRememberedEdgeReturnCertificate remembered;remembered.available=true;
+        remembered.policyGeneration=2;remembered.continuityGeneration=7;remembered.frameCount=2;
+        remembered.identities[0]=current;remembered.identities[1]=current;
+        ++remembered.identities[1].acceptedSequence;++remembered.identities[1].sourceFrameNumber;
+        ++remembered.identities[1].captureTimestamp;
+        remembered.decision=decision.transition;remembered.decision.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
+        remembered.nomination.available=remembered.nomination.guarded=true;
+        remembered.nomination.establishedBase=scope;remembered.nomination.rememberedBounds=imax;
+        remembered.nomination.sourceGeneration=current.transportGeneration;remembered.nomination.sourceSequence=current.acceptedSequence;
+        remembered.nomination.rendererGeneration=current.rendererGeneration;remembered.nomination.viewportGeneration=current.viewportGeneration;
+        remembered.nomination.sourceFormatGeneration=current.sourceFormatGeneration;remembered.nomination.policyGeneration=2;
+        remembered.configuredFuture=remembered.actualFuture=1;
+        remembered.diagnostic.allPass=true;remembered.diagnostic.expectedFrames=remembered.diagnostic.passedFrames=2;
+        remembered.currentEvidence.available=true;
+        remembered.currentEvidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        remembered.currentEvidence.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
+        remembered.currentEvidence.trustedBounds=imax;remembered.diagnostic.presentation=imax;
+        const unsigned routes=unsigned(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,&decision,nullptr,nullptr))+
+            unsigned(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,&buffered,nullptr))+
+            unsigned(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,nullptr,&remembered));
+        Assert::AreEqual(3u,routes,L"Every exact-current proven changed native geometry must render immediately instead of spending the warmup repeat.");
+        decision.transition.bounds={0,0,3840,2160,3840,2160};
+        decision.transition.authoritativeClassification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+        Assert::IsTrue(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,&decision,nullptr,nullptr));
+        Assert::AreEqual(262,scope.top);Assert::AreEqual(1898,scope.bottom);
+        for(unsigned fault=0;fault<18;++fault) {
+            auto bad=remembered;
+            switch(fault) {
+            case 0:bad.available=false;break;
+            case 1:bad.diagnostic.allPass=false;break;
+            case 2:++bad.policyGeneration;break;
+            case 3:++bad.continuityGeneration;break;
+            case 4:++bad.identities[0].acceptedSequence;break;
+            case 5:++bad.identities[0].analysisDomainKey;break;
+            case 6:bad.frameCount=1;break;
+            case 7:bad.nomination.shadowOnly=true;break;
+            case 8:bad.nomination.guarded=false;break;
+            case 9:++bad.nomination.sourceSequence;break;
+            case 10:bad.nomination.establishedBase=imax;break;
+            case 11:bad.currentEvidence.available=false;break;
+            case 12:bad.currentEvidence.trustedBounds=scope;break;
+            case 13:bad.decision.bounds=scope;bad.currentEvidence.trustedBounds=scope;bad.diagnostic.presentation=scope;break;
+            case 14:bad.decision.publish=false;break;
+            case 15:++bad.identities[1].sourceFrameNumber;break;
+            case 16:bad.identities[1].captureTimestamp=current.captureTimestamp;break;
+            case 17:++bad.identities[1].viewportGeneration;break;
+            }
+            Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,nullptr,&bad));
+        }
+    }
+    TEST_METHOD(WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry) {
+        ActivePictureFrameIdentity current{1,29,29,2900,2,3,1};current.analysisDomainKey=4;
+        const ActivePictureBounds scope{0,262,3840,1898,3840,2160};
+        ActivePictureFrameDecision good;good.effectiveIdentity=good.observationIdentity=current;
+        good.continuityGeneration=7;good.lookaheadPolicyGeneration=2;good.proofFrameCount=1;
+        good.transition.state=ActivePictureTransitionState::STABLE;good.transition.publish=good.transition.stable=true;
+        good.transition.authoritativeClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        good.transition.bounds={0,120,3840,2040,3840,2160};good.transition.stableBounds=scope;
+        Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,nullptr,nullptr));
+        for(unsigned fault=0;fault<18;++fault) {
+            auto bad=good;
+            switch(fault) {
+            case 0:bad.transition.bounds=scope;break;
+            case 1:++bad.effectiveIdentity.acceptedSequence;break;
+            case 2:--bad.effectiveIdentity.acceptedSequence;break;
+            case 3:++bad.effectiveIdentity.analysisDomainKey;break;
+            case 4:++bad.effectiveIdentity.viewportGeneration;break;
+            case 5:++bad.effectiveIdentity.sourceFormatGeneration;break;
+            case 6:++bad.effectiveIdentity.rendererGeneration;break;
+            case 7:++bad.continuityGeneration;break;
+            case 8:++bad.lookaheadPolicyGeneration;break;
+            case 9:bad.proofFrameCount=0;break;
+            case 10:bad.transition.publish=false;break;
+            case 11:bad.transition.stable=false;break;
+            case 12:bad.transition.authoritativeClassification=ActivePictureClassification::PROVISIONAL;break;
+            case 13:bad.transition.bounds={};break;
+            case 14:bad.transition.bounds.bottom=2200;break;
+            case 15:++bad.observationIdentity.transportGeneration;break;
+            case 16:--bad.observationIdentity.acceptedSequence;break;
+            case 17:bad.transition.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;break;
+            }
+            Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,&bad,nullptr,nullptr),
+                L"A pending, unknown, stale or unchanged nominee cannot manufacture a native transition veto.");
+            AlphaSourceCrop::BufferedPictureExpansionProof buffered;buffered.valid=true;buffered.decision=bad;
+            Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,&buffered,nullptr));
+        }
     }
     TEST_METHOD(SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence) {
         ActivePictureFrameIdentity identity;identity.transportGeneration=1;identity.acceptedSequence=7;

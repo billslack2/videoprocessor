@@ -64,6 +64,7 @@
 #include <vprenderer/SubtitlePipelinePreparation.h>
 #include <vprenderer/InputAnalysisCadence.h>
 #include <vprenderer/SourceCadencePresentation.h>
+#include <vprenderer/SourceCadenceNativeHandoff.h>
 #include <vprenderer/TemporalPresentationLedger.h>
 #include <vprenderer/TemporalPresentationPose.h>
 #include <vprenderer/SubmittedOutputGeometryTrace.h>
@@ -13256,6 +13257,9 @@ struct LibplaceboVideoRenderer::Impl
                 SubtitleBoxLookahead::IsCurrent(*subtitlePreview,inputRepeatIdentity,
                     localBoundaryPolicyGeneration,localBoundaryContinuityGeneration) &&
                 SourceCadenceObservationComplete(subtitlePreview->current,inputRepeatIdentity);
+            const SubtitleBoxPreview* warmupMeasuredPreview=exactCurrentReady?subtitlePreview:nullptr;
+            std::unique_ptr<SubtitleBoxPreview> warmupMeasuredStorage;
+            bool warmupAcquisitionFallback=false;
             if(!exactCurrentReady) {
                 auto shared=subtitleSharedPicture;shared.required=true;
                 const auto ready=QueueSubtitleMeasurement(videoFrame,state,inputRepeatIdentity,
@@ -13264,6 +13268,26 @@ struct LibplaceboVideoRenderer::Impl
                     activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
                     shared,preparedQueued,{},false,false,analysisCache,&ownedSubtitleScanWitness,ownedSubtitleTimelinePolicy);
                 exactCurrentReady=SourceCadenceObservationComplete(ready,inputRepeatIdentity);
+                if(exactCurrentReady && previousCompletePresentation.DisplayedIsWarmup()) {
+                    warmupMeasuredStorage=std::make_unique<SubtitleBoxPreview>();
+                    SubtitleBoxLookahead::ResolveOwnedWindowInto(*warmupMeasuredStorage,&ready,&inputRepeatIdentity,1,
+                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                    warmupMeasuredPreview=warmupMeasuredStorage.get();
+                }
+            }
+            if(exactCurrentReady && previousCompletePresentation.DisplayedIsWarmup() && warmupMeasuredPreview) {
+                const bool handoff=SourceCadenceHasCurrentNativeHandoff(inputRepeatIdentity,nlsGeometry,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                    activePicturePreviewDecision,bufferedExpansion,guardedReturn);
+                const bool acquired=SourceCadenceWarmupCaptionReady(subtitleBoxPresentation,*warmupMeasuredPreview,
+                    inputRepeatIdentity,activeSettings.subtitleHoldMs,1000.0/cadenceInputHz);
+                warmupAcquisitionFallback=!handoff && !acquired &&
+                    subtitleBoxPresentation.CanRecordMeasuredRawAfterWarmupRepeat(*warmupMeasuredPreview,inputRepeatIdentity,
+                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                if(warmupAcquisitionFallback)exactCurrentReady=false;
+                if(cadenceCacheDiagnostic)
+                    DebugLog::Log("VP subtitle cadence cache: stage=warmup-acquisition source=%llu acquired=%d native_handoff=%d raw_lines=%d fallback=%d",
+                        sourceSequence,acquired?1:0,handoff?1:0,warmupMeasuredPreview->current.text.lineCount,warmupAcquisitionFallback?1:0);
             }
             if(cadenceCacheDiagnostic)
                 DebugLog::Log("VP subtitle cadence cache: stage=current source=%llu anchor=%llu exact_current_ready=%d",
@@ -13276,6 +13300,12 @@ struct LibplaceboVideoRenderer::Impl
                 if(correctionDecision.action==AlphaCadenceAction::Drop)return true;
                 if(PresentInputCadenceRepeat(previousCompletePresentation,repeatContext,inputRepeatIdentity,
                     cadenceInputHz,temporalRenderer.currentPts,presentationTargetTimingKnown,presentationTargetLeadMs)) {
+                    const bool measuredRawRetained=warmupAcquisitionFallback && warmupMeasuredPreview &&
+                        subtitleBoxPresentation.RecordMeasuredRawAfterWarmupRepeat(*warmupMeasuredPreview,inputRepeatIdentity,
+                            localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,true);
+                    if(warmupAcquisitionFallback)
+                        DebugLog::Log("VP subtitle cadence cache: stage=warmup-raw-retained consumed=%llu displayed=%llu measured_raw=%d cue_renewal=0",
+                            sourceSequence,previousCompletePresentation.DisplayedSource(),measuredRawRetained?1:0);
                     const bool cueTransportRetired=subtitleBoxPresentation.RetireCompleteOutputInput(
                         previousCompletePresentation.DisplayedSource(),inputRepeatIdentity,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
