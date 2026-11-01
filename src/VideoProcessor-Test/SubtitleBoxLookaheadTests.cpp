@@ -489,6 +489,104 @@ public:
             Assert::IsFalse(certificate.Matches(preview.current,stale,preview.current.sharedPicture.bounds));
         }
     }
+    static std::vector<uint16_t> PendingThreeLineSeedPixels(const SubtitleBoxObservation& raw) {
+        auto pixels=Pixels(false);const auto card=raw.text.capturePanel;
+        Fill(pixels,card.left,card.top,card.right,card.bottom,64);
+        for(int y=card.top;y<card.bottom;++y)for(int x=card.left;x<card.right;++x) {
+            const size_t bit=size_t(y)*640+x;
+            if((raw.ink->rawInk[bit/64]>>(bit%64))&1)pixels[bit]=uint16_t(700<<6);
+        }
+        return pixels;
+    }
+    TEST_METHOD(HeldCurrentPreparedCuePreservesOriginalPendingSeedWithoutRenewingItsAge) {
+        struct Workspace {SubtitleBoxPresentation tracker;SubtitlePendingMeasurementGuard guard;
+            SubtitleBoxPreview seed,current,pending;SubtitleBoxObservation raw;};
+        auto storage=std::make_unique<Workspace>();auto& w=*storage;
+        w.seed=RetiredThreeLinePreview(21,false);auto pixels=PendingThreeLineSeedPixels(w.seed.current);
+        const auto acquired=w.tracker.Consume(w.seed,250,50);Assert::AreEqual(3,acquired.lineCount);
+        Assert::IsTrue(w.guard.RememberAccepted(w.seed,acquired,Source(pixels),50,250));
+        const auto original=w.guard.AcceptedSeedIdentity();
+        for(uint64_t source:{uint64_t(22),uint64_t(23)}) {
+            w.raw=RetiredThreeLineCue(source);SubtitleBoxLookahead::ResolveInto(w.current,&w.raw,1,7,9);
+            const auto held=w.tracker.Consume(w.current,250,50);
+            Assert::IsTrue(held.detected&&held.held&&held.lineCount==3);
+            const auto& certificate=w.tracker.CurrentPreparedCueCertificate();
+            Assert::IsTrue(certificate.Matches(w.current.current,held,w.current.current.sharedPicture.bounds));
+            Assert::IsFalse(w.guard.RememberAccepted(w.current,held,Source(pixels),50,250,nullptr,
+                &certificate,&w.current.current.sharedPicture.bounds),L"Held current proof preserves an old seed; it cannot reseed.");
+            Assert::IsTrue(SameAnalysisFrameIdentity(original,w.guard.AcceptedSeedIdentity()),
+                L"The original certified source21 and samples must survive a pruned held22/23 grouping.");
+            Assert::IsTrue(SameAnalysisFrameIdentity(original,w.guard.LastVerifiedIdentity()));
+            Assert::AreEqual(0.0,w.guard.PendingElapsedMilliseconds(),0.00001);
+        }
+        w.raw=RetiredThreeLineCue(25);w.raw.analyzed=false;w.raw.text={};w.raw.ink.reset();
+        SubtitleBoxLookahead::ResolveInto(w.pending,&w.raw,1,7,9);
+        Assert::IsTrue(w.guard.Resolve(w.pending,Source(pixels),50,250),L"Pending25 must reprove CURRENT pixels against the original, unrenewed seed21.");
+        Assert::AreEqual(uint64_t(21),w.guard.AcceptedSeedIdentity().acceptedSequence);
+        Assert::AreEqual(200.0,w.guard.PendingElapsedMilliseconds(),0.00001);
+        w.raw=RetiredThreeLineCue(27);w.raw.analyzed=false;w.raw.text={};w.raw.ink.reset();
+        SubtitleBoxLookahead::ResolveInto(w.pending,&w.raw,1,7,9);
+        Assert::IsFalse(w.guard.Resolve(w.pending,Source(pixels),50,250));
+        Assert::AreEqual("pending-budget-expired",w.guard.DecisionReason(),L"Held22/23 cannot extend the original source21 lease.");
+    }
+    TEST_METHOD(ChangedCurrentBackingWithdrawsHeldSeedDespiteAValidCurrentPreparedCertificate) {
+        struct Workspace {SubtitleBoxPresentation tracker;SubtitlePendingMeasurementGuard guard;
+            SubtitleBoxPreview seed,current,pending;SubtitleBoxObservation raw;};
+        auto storage=std::make_unique<Workspace>();auto& w=*storage;
+        w.seed=RetiredThreeLinePreview(21,false);auto pixels=PendingThreeLineSeedPixels(w.seed.current);
+        const auto acquired=w.tracker.Consume(w.seed,250,50);Assert::AreEqual(3,acquired.lineCount);
+        Assert::IsTrue(w.guard.RememberAccepted(w.seed,acquired,Source(pixels),50,250));
+        w.raw=RetiredThreeLineCue(22);
+        auto expanded=w.raw.text.capturePanel;expanded.left-=4;expanded.right+=4;expanded.top-=2;
+        w.raw.text.sourcePanel=w.raw.text.capturePanel=expanded;
+        for(int line=0;line<3;++line)w.raw.text.linePanels[line]=w.raw.text.lineCapturePanels[line]=expanded;
+        auto changedPixels=PendingThreeLineSeedPixels(w.raw);
+        SubtitleBoxLookahead::ResolveInto(w.current,&w.raw,1,7,9);
+        const auto held=w.tracker.Consume(w.current,250,50);
+        Assert::IsTrue(held.detected&&held.held&&held.lineCount==3);
+        const auto& certificate=w.tracker.CurrentPreparedCueCertificate();
+        Assert::IsTrue(certificate.Matches(w.current.current,held,w.current.current.sharedPicture.bounds),
+            L"This is an authentic CURRENT full-glyph prepared certificate, minted after the backing changed.");
+        Assert::IsFalse(SubtitleBoxLookahead::SameCrowdedBacking(w.seed.current,0,w.current.current,0,0));
+        Assert::IsFalse(w.guard.RememberAccepted(w.current,held,Source(changedPixels),50,250,nullptr,
+            &certificate,&w.current.current.sharedPicture.bounds));
+        w.raw=RetiredThreeLineCue(25);w.raw.analyzed=false;w.raw.text={};w.raw.ink.reset();
+        SubtitleBoxLookahead::ResolveInto(w.pending,&w.raw,1,7,9);
+        Assert::IsFalse(w.guard.Resolve(w.pending,Source(changedPixels),50,250),
+            L"Current prepared erasure cannot preserve an obsolete seed card: old glyph samples do not cover the newly expanded backing.");
+    }
+    TEST_METHOD(HeldPendingSeedPreservationRejectsUnprovenForeignChangedAndExpiredProof) {
+        struct Workspace {SubtitleBoxPresentation tracker,older;SubtitlePendingMeasurementGuard guard;
+            SubtitleBoxPreview seed,current,pending;SubtitleBoxObservation raw;};
+        for(int fault=0;fault<11;++fault) {
+            auto storage=std::make_unique<Workspace>();auto& w=*storage;
+            w.seed=RetiredThreeLinePreview(21,false);auto pixels=PendingThreeLineSeedPixels(w.seed.current);
+            const auto acquired=w.tracker.Consume(w.seed,250,50);Assert::AreEqual(3,acquired.lineCount);
+            auto seedAccepted=acquired;
+            if(fault==9)seedAccepted.cue++;
+            if(fault==10){w.seed=RetiredThreeLinePreview(1,false);seedAccepted=w.older.Consume(w.seed,250,50);}
+            Assert::IsTrue(w.guard.RememberAccepted(w.seed,seedAccepted,Source(pixels),50,250));
+            w.raw=RetiredThreeLineCue(22);SubtitleBoxLookahead::ResolveInto(w.current,&w.raw,1,7,9);
+            auto held=w.tracker.Consume(w.current,250,50);Assert::IsTrue(held.held&&held.lineCount==3);
+            const auto certificate=w.tracker.CurrentPreparedCueCertificate();
+            auto base=w.current.current.sharedPicture.bounds;const auto* proof=&certificate;
+            if(fault==0)proof=nullptr;
+            if(fault==1)held.cue++;
+            if(fault==2)w.current.current.text.lineCount=2;
+            if(fault==3)++base.top;
+            if(fault==4)++w.current.current.continuityGeneration;
+            if(fault==5)w.current.current.text.workLimit=true;
+            if(fault==6)++w.current.current.identity.sourceFrameNumber;
+            if(fault==7)++w.current.current.text.lineCapturePanels[0].top;
+            if(fault==8)w.current.current.ink=std::make_shared<SubtitleInkSnapshot>(*w.current.current.ink);
+            Assert::IsFalse(w.guard.RememberAccepted(w.current,held,Source(pixels),50,250,nullptr,proof,&base));
+            w.raw=RetiredThreeLineCue(25);w.raw.analyzed=false;w.raw.text={};w.raw.ink.reset();
+            SubtitleBoxLookahead::ResolveInto(w.pending,&w.raw,1,7,9);
+            Assert::IsFalse(w.guard.Resolve(w.pending,Source(pixels),50,250),
+                L"No certificate, partial/changed source, wrong cue/base/context, or expired old seed may retain pending authority.");
+        }
+    }
+
     TEST_METHOD(CurrentHeldPreparedCertificateRejectsPartialChangedAndNovelOwnedGlyphs) {
         for(int fault=0;fault<7;++fault) {
             SubtitleBoxPresentation tracker;

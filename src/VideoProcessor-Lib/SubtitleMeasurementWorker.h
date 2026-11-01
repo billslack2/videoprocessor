@@ -401,7 +401,53 @@ public:
         snapshot->Record(currentKey,std::move(frames));
         return snapshot;
     }
-    void Submit(const SubtitleBoxObservation& key,Work work) {
+    // Metadata-only query; the queue owner must independently qualify the
+    // returned old continuity with an exact-source timeline witness.
+    static bool RequiredFullSourceWork(const SubtitleBoxObservation& key) {
+        return key.sharedPicture.required && key.width>0 && key.height>0 && key.analysisStride==1 && !key.analyzed &&
+            !key.discontinuity && !key.pendingRefresh && !key.analysisRefresh && !key.cadenceSkipped &&
+            !key.sharedPicture.inspectionCandidate.valid && !key.inspectionCandidateUsed &&
+            !key.glyphLocalTop && !key.glyphLocalBottom && !key.barTrackingAuthority &&
+            !key.currentAnchorUsesTrackedEdge && !key.trackedBottomHypothesisAttempted;
+    }
+    static bool SameOwnedWorkSource(const SubtitleBoxObservation& existing,const SubtitleBoxObservation& incoming) {
+        return RequiredFullSourceWork(existing) && RequiredFullSourceWork(incoming) && existing.continuityGeneration &&
+            existing.continuityGeneration<incoming.continuityGeneration &&
+            existing.identity.acceptedSequence && existing.identity.analysisDomainKey &&
+            SameAnalysisFrameIdentity(existing.identity,incoming.identity) &&
+            RawSettingsMatch(existing,incoming,false);
+    }
+    bool PeekOwnedWorkContinuity(const SubtitleBoxObservation& incoming,uint64_t& oldContinuity) {
+        oldContinuity=0;std::lock_guard<std::mutex> lock(m_mutex);
+        if(m_stopping)return false;
+        const auto inspect=[&](const SubtitleBoxObservation& key) {
+            if(SameOwnedWorkSource(key,incoming))oldContinuity=(std::max)(oldContinuity,key.continuityGeneration);
+        };
+        for(const auto& active:m_activeJobs)if(active.active)inspect(active.key);
+        for(const auto& job:m_pending)inspect(job.key);
+        return oldContinuity!=0;
+    }
+    static bool CanCoalesceOwnedWork(const SubtitleBoxObservation& existing,const SubtitleBoxObservation& incoming,
+        const OwnedScanBacklogWitness* witness,uint64_t timelinePolicy) {
+        return witness && SameOwnedWorkSource(existing,incoming) &&
+            witness->Matches(incoming.identity,timelinePolicy,existing.continuityGeneration,incoming.continuityGeneration);
+    }
+    static bool CanCoalesceOwnedCompleted(const SubtitleBoxObservation& original,const SubtitleBoxObservation& incoming,
+        const OwnedScanBacklogWitness* witness,uint64_t timelinePolicy) {
+        if(!witness || !RequiredFullSourceWork(incoming) || !original.sharedPicture.required ||
+            original.sharedPicture.inspectionCandidate.valid || original.continuityGeneration>=incoming.continuityGeneration ||
+            !CompleteIndependentScanForKey(original,incoming) || !original.text.bounds.Valid() || original.text.lineCount<=0 ||
+            !witness->Matches(incoming.identity,timelinePolicy,original.continuityGeneration,incoming.continuityGeneration))return false;
+        // A completion may race the queue owner's peek/witness round trip.
+        // Coalesce only when the unchanged READY path can actually return this
+        // original source under the same typed witness. Never alter the cache.
+        auto copy=std::make_unique<SubtitleBoxObservation>(original);
+        return SubtitleBoxLookahead::RebindIndependentPicture(*copy,incoming.sharedPicture) &&
+            SubtitleBoxLookahead::RebindCompletedIndependentScanAfterBacklog(*copy,incoming.continuityGeneration,true) &&
+            SameKey(*copy,incoming);
+    }
+    void Submit(const SubtitleBoxObservation& key,Work work,
+        const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t timelinePolicy=0) {
         auto requestKey=key;
         // QueueSubtitleMeasurement submits only valid prepared sources. Mark
         // the request's scan path here so active and pending jobs can coalesce
@@ -419,11 +465,14 @@ public:
             ++m_diagnostics.expired;return;
         }
         for(const auto& active:m_activeJobs)
-            if(active.active && (SameKey(active.key,requestKey) || SamePendingFullSourceWork(active.key,requestKey))) {
+            if(active.active && (SameKey(active.key,requestKey) || SamePendingFullSourceWork(active.key,requestKey) ||
+                CanCoalesceOwnedWork(active.key,requestKey,ownedWitness,timelinePolicy))) {
                 Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return;
             }
-        for(const auto& job:m_pending)if(SameKey(job.key,requestKey) || SamePendingFullSourceWork(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return;}
-        for(const auto& ready:m_ready)if(SameKey(ready,requestKey)){Trace(requestKey,"worker-dedup","ready");++m_diagnostics.deduplicated;return;}
+        for(const auto& job:m_pending)if(SameKey(job.key,requestKey) || SamePendingFullSourceWork(job.key,requestKey) ||
+            CanCoalesceOwnedWork(job.key,requestKey,ownedWitness,timelinePolicy)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return;}
+        for(const auto& ready:m_ready)if(SameKey(ready,requestKey) ||
+            CanCoalesceOwnedCompleted(ready,requestKey,ownedWitness,timelinePolicy)){Trace(requestKey,"worker-dedup","ready");++m_diagnostics.deduplicated;return;}
         if(m_pending.size()>=8) {
             // Keep the nearest accepted source. A new current-frame request may
             // replace the farthest future; a later future cannot evict the head.
@@ -481,12 +530,12 @@ private:
         const SubtitleInkSnapshot* ink=nullptr;
         std::unique_ptr<SubtitleBoxObservation> original;
     };
-    static bool RawSettingsMatch(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+    static bool RawSettingsMatch(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b,bool sameContinuity=true) {
         const auto& x=a.identity;const auto& y=b.identity;
         return x.transportGeneration==y.transportGeneration && x.sourceFormatGeneration==y.sourceFormatGeneration &&
             x.analysisDomainKey==y.analysisDomainKey && x.viewportGeneration==y.viewportGeneration &&
             x.rendererGeneration==y.rendererGeneration && a.policyGeneration==b.policyGeneration &&
-            a.continuityGeneration==b.continuityGeneration && a.width==b.width && a.height==b.height &&
+            (!sameContinuity || a.continuityGeneration==b.continuityGeneration) && a.width==b.width && a.height==b.height &&
             a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode &&
             a.scriptHint==b.scriptHint && a.analysisStride==b.analysisStride;
     }
@@ -748,13 +797,17 @@ public:
     const char* DecisionReason() const { return m_reason; }
     const Diagnostics& DecisionDiagnostics() const { return m_diagnostics; }
     ActivePictureFrameIdentity LastVerifiedIdentity() const { return m_last; }
+    ActivePictureFrameIdentity AcceptedSeedIdentity() const { return m_reference.current.identity; }
+    double PendingElapsedMilliseconds() const { return m_elapsed; }
     uint64_t ReferenceContinuity() const { return m_reference.continuityGeneration; }
     // Only accepted extraction may seed the late-worker fallback. A held cue
     // can be more complete than either current grouping or lookahead pruning;
     // never turn those partial measurements into a smaller replacement cue.
     bool RememberAccepted(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
         const AnalysisLumaSource& source,double frameMs,int holdMs,
-        const SubtitleAcceptedCueSeedCertificate* existingCueCertificate=nullptr) {
+        const SubtitleAcceptedCueSeedCertificate* existingCueCertificate=nullptr,
+        const SubtitleCurrentPreparedCueCertificate* heldCurrentCue=nullptr,
+        const ActivePictureBounds* physicalBase=nullptr) {
         const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
             return outer.Valid() && inner.Valid() && outer.left<=inner.left &&
                 outer.top<=inner.top && outer.right>=inner.right && outer.bottom>=inner.bottom;
@@ -777,6 +830,62 @@ public:
         // Only the tracker's exact current-cue certificate can replace that
         // future grouping vote; raw current extraction must still cover all rows.
         const auto& current=preview.current;
+        if(accepted.held) {
+            // A held pose cannot become a new seed. Full CURRENT prepared-cue
+            // proof may preserve the ORIGINAL acquired seed and its samples,
+            // without changing either its source or elapsed pending budget.
+            const auto& old=m_reference.current;const auto& a=m_last;const auto& b=current.identity;
+            const auto sameRect=[](const SubtitleBoxRect& x,const SubtitleBoxRect& y) {
+                return x.left==y.left && x.top==y.top && x.right==y.right && x.bottom==y.bottom;
+            };
+            const auto sameBase=[](const ActivePictureBounds& x,const ActivePictureBounds& y) {
+                return x.left==y.left && x.top==y.top && x.right==y.right && x.bottom==y.bottom &&
+                    x.rasterWidth==y.rasterWidth && x.rasterHeight==y.rasterHeight;
+            };
+            bool sameShape=m_reference.text.detected && m_reference.text.cue==accepted.cue &&
+                m_reference.text.lineCount==accepted.lineCount &&
+                m_reference.text.capturePanelMeasured==accepted.capturePanelMeasured &&
+                sameRect(m_reference.text.bounds,accepted.bounds) &&
+                sameRect(m_reference.text.sourcePanel,accepted.sourcePanel) &&
+                sameRect(m_reference.text.provenSourcePanel,accepted.provenSourcePanel) &&
+                sameRect(m_reference.text.capturePanel,accepted.capturePanel);
+            for(int line=0;sameShape && line<accepted.lineCount && line<3;++line)
+                sameShape=sameRect(m_reference.text.lineBounds[line],accepted.lineBounds[line]) &&
+                    sameRect(m_reference.text.linePanels[line],accepted.linePanels[line]) &&
+                    sameRect(m_reference.text.provenLinePanels[line],accepted.provenLinePanels[line]) &&
+                    sameRect(m_reference.text.lineCapturePanels[line],accepted.lineCapturePanels[line]);
+            // The prepared certificate proves CURRENT glyph ownership, not
+            // equality of its raw backing with the old seed's sampled card.
+            // A larger/new card must never be represented by the old geometry.
+            bool sameBacking=sameShape;
+            const int rowTolerance=(std::max)(4,current.height/180);
+            for(int line=0;sameBacking && line<m_reference.text.lineCount && line<3;++line) {
+                bool matched=false;
+                for(int rawLine=0;rawLine<current.text.lineCount && rawLine<3;++rawLine)
+                    matched|=SubtitleBoxLookahead::SameCrowdedLine(old.text.lineBounds[line],current.text.lineBounds[rawLine],rowTolerance) &&
+                        SubtitleBoxLookahead::SameCrowdedBacking(old,line,current,rawLine,0);
+                sameBacking=matched;
+            }
+            const bool context=preview.available && current.analyzed && !current.pendingRefresh &&
+                source.IsValid() && source.width==current.width && source.height==current.height &&
+                !m_samples.empty() && sameShape && sameBacking && covers(current.text) &&
+                heldCurrentCue && physicalBase && heldCurrentCue->Matches(current,accepted,*physicalBase) &&
+                SubtitleBoxLookahead::SameContext(old,current) &&
+                old.policyGeneration==current.policyGeneration && old.continuityGeneration==current.continuityGeneration &&
+                preview.policyGeneration==current.policyGeneration && preview.continuityGeneration==current.continuityGeneration &&
+                old.optimizationMode==current.optimizationMode && old.pictureTop==current.pictureTop && old.pictureBottom==current.pictureBottom &&
+                old.sharedPicture.Matches(current.sharedPicture) &&
+                sameBase(old.sharedPicture.bounds,*physicalBase) &&
+                b.acceptedSequence>a.acceptedSequence && a.sourceFrameNumber && b.sourceFrameNumber>a.sourceFrameNumber &&
+                b.sourceFrameNumber-a.sourceFrameNumber==b.acceptedSequence-a.acceptedSequence &&
+                b.captureTimestamp>a.captureTimestamp;
+            if(!context)return Reject("held-current-seed-unqualified");
+            const double period=std::isfinite(frameMs)&&frameMs>0?frameMs:1000.0/60;
+            if(m_elapsed+period*double(b.acceptedSequence-a.acceptedSequence)>(std::max)(0,(std::min)(1000,holdMs)))
+                return Reject("held-current-seed-expired");
+            m_reason="held-current-proof-preserves-original-seed";
+            return false;
+        }
         const bool independentCurrentCue=current.independentBarAnalysis && !current.analysisRefresh &&
             !current.barTrackingAuthority && !current.currentAnchorUsesTrackedEdge &&
             current.barEvidence.available && !current.barEvidence.topRevalidatedAtReference &&

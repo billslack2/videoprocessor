@@ -483,6 +483,92 @@ public:
         Assert::AreEqual(uint64_t(16),snapshot->Frames()[0].identity.acceptedSequence);
         Assert::AreEqual(uint64_t(17),snapshot->Frames()[1].identity.acceptedSequence);
     }
+    TEST_METHOD(TypedBacklogWitnessCoalescesOwnedActivePendingAndCompletedSourceWork) {
+        for(unsigned phase=0;phase<3;++phase) {
+            ActivePictureDecisionTimeline timeline;
+            for(uint64_t i=1;i<=6;++i)Assert::IsTrue(timeline.TrackAcceptedFrame(HistoricalRawScan(i).identity));
+            const auto before=timeline.ContinuityGeneration(),policy=timeline.LookaheadPolicyGeneration();
+            timeline.MarkDiscarded(HistoricalRawScan(1).identity,1,ActivePictureDiscardReason::BacklogRecovery);
+            timeline.MarkDiscarded(HistoricalRawScan(2).identity,2,ActivePictureDiscardReason::QueueCapacityOverflow);
+            const auto after=timeline.ContinuityGeneration();
+            auto old=HistoricalRawScan(3);old.policyGeneration=policy;old.continuityGeneration=before;
+            old.sharedPicture.bounds={0,10,160,80,160,90}; // old retained collar; RAW bars remain12..78
+            auto original=old;original.analyzed=false;original.text={};original.ink.reset();
+            auto canonical=old;canonical.continuityGeneration=after;canonical.sharedPicture.bounds={0,12,160,78,160,90};
+            auto incoming=canonical;incoming.analyzed=false;incoming.text={};incoming.ink.reset();
+            const auto witness=timeline.QualifyOwnedScanBacklogWitness(incoming.identity,before,after);
+            Assert::IsTrue(witness.Matches(incoming.identity,policy,before,after));
+            std::atomic_bool release{phase==2};std::atomic_uint entered{0},replacements{0};
+            SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};worker.SetInputRateHz(phase==1?24.0:60.0);
+            if(phase==1) {
+                auto blocker=WorkerKey(2,0xA11CE);
+                worker.Submit(blocker,[&,blocker](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                    ++entered;while(!release.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    auto done=blocker;done.analyzed=true;return done;
+                });Assert::IsTrue(WaitForEntered(entered,1));
+            }
+            worker.BeginSourceWindow(original.identity);
+            worker.Submit(original,[&,old](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                ++entered;while(!release.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));return old;
+            });
+            bool observed=false;uint64_t observedContinuity=0;SubtitleBoxObservation result;
+            if(phase==2) {
+                Assert::IsTrue(WaitForRead(worker,original,result));
+                Assert::IsTrue(worker.TryReadOwnedScan(incoming,result,witness,policy),L"Completed original pixels already satisfy the existing typed rebind path.");
+            } else {
+                if(phase==0)Assert::IsTrue(WaitForEntered(entered,1));
+                observed=worker.PeekOwnedWorkContinuity(incoming,observedContinuity);
+            }
+            worker.Submit(incoming,[&,canonical](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                ++replacements;return canonical;
+            },&witness,policy);
+            const auto submitted=worker.TakeDiagnostics().submitted;
+            release.store(true);const bool idle=WaitForWorkerIdle(worker);
+            const bool available=worker.TryReadOwnedScan(incoming,result,witness,policy);worker.Stop();
+            if(phase!=2) {Assert::IsTrue(observed,L"The queue owner must be able to qualify already-owned pending RAW work before dispatching a duplicate.");Assert::AreEqual(before,observedContinuity);}
+            Assert::AreEqual(uint64_t(phase==1?2:1),submitted,L"A pure recorded queue retirement must not run the same immutable source scan twice.");
+            Assert::IsTrue(idle&&available);Assert::AreEqual(0u,replacements.load());
+            Assert::IsTrue(result.ink.get()==old.ink.get());
+            Assert::AreEqual(after,result.continuityGeneration);Assert::AreEqual(before,old.continuityGeneration);
+            Assert::IsFalse(result.subtitleArProof.accepted,L"A copied subtitle measurement cannot restore old native AR history.");
+        }
+    }
+    TEST_METHOD(TypedBacklogWorkCoalescingRejectsMissingOwnershipAndIncompleteCompletedResults) {
+        for(unsigned fault=0;fault<10;++fault) {
+            ActivePictureDecisionTimeline timeline;
+            for(uint64_t i=1;i<=6;++i)Assert::IsTrue(timeline.TrackAcceptedFrame(HistoricalRawScan(i).identity));
+            const auto before=timeline.ContinuityGeneration(),policy=timeline.LookaheadPolicyGeneration();
+            timeline.MarkDiscarded(HistoricalRawScan(1).identity,1,fault==1?ActivePictureDiscardReason::Unknown:ActivePictureDiscardReason::BacklogRecovery);
+            const auto after=timeline.ContinuityGeneration();
+            auto old=HistoricalRawScan(3);old.policyGeneration=policy;old.continuityGeneration=before;
+            old.sharedPicture.bounds={0,10,160,80,160,90};
+            auto original=old;original.analyzed=false;original.text={};original.ink.reset();
+            auto canonical=old;canonical.continuityGeneration=after;canonical.sharedPicture.bounds={0,12,160,78,160,90};
+            auto incoming=canonical;incoming.analyzed=false;incoming.text={};incoming.ink.reset();
+            const auto witness=timeline.QualifyOwnedScanBacklogWitness(incoming.identity,before,after);
+            auto ownerPolicy=policy;
+            switch(fault) {
+            case 0:break; // missing witness below
+            case 1:break; // unknown retirement cannot mint permission
+            case 2:++ownerPolicy;break;
+            case 3:++incoming.policyGeneration;canonical.policyGeneration=incoming.policyGeneration;break;
+            case 4:++incoming.nearBarDistance;canonical.nearBarDistance=incoming.nearBarDistance;break;
+            case 5:++incoming.optimizationMode;canonical.optimizationMode=incoming.optimizationMode;break;
+            case 6:++incoming.identity.analysisDomainKey;incoming.sharedPicture.identity=incoming.identity;canonical.identity=incoming.identity;canonical.sharedPicture.identity=incoming.identity;break;
+            case 7:old.text.workLimit=true;break;
+            case 8:old.text.bottomSearchComplete=false;break;
+            case 9:old.ink.reset();break;
+            }
+            SubtitleMeasurementWorker worker;std::atomic_uint replacements{0};
+            worker.Submit(original,[old](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return old;});
+            SubtitleBoxObservation result;Assert::IsTrue(WaitForRead(worker,original,result));
+            worker.Submit(incoming,[&,canonical](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                ++replacements;return canonical;
+            },fault==0?nullptr:&witness,ownerPolicy);
+            Assert::IsTrue(WaitForRead(worker,incoming,result));worker.Stop();
+            Assert::AreEqual(1u,replacements.load(),L"Unowned, changed settings, or incomplete old work must permit a real canonical scan.");
+        }
+    }
     TEST_METHOD(LowInputCadenceRetainsOneSerialSampler) {
         for(double hz:{23.976,24.0,29.97,30.0}) {
             std::atomic_bool release{false};SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};

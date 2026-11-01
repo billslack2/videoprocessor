@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 859,
+  "minimumNativeTests": 864,
   "requiredNativeMethods": [
     "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines",
     "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
@@ -137,7 +137,12 @@
     "LateMeasuredPredecessorsConfirmCurrentPixelsWithoutAcquiringHistoricalCue",
     "WithdrawnMeasuredPredecessorsCannotReuseEitherTrackerRawCache",
     "LateCompletedRawPredecessorsSurviveReadyExpiryWithoutBecomingCurrentEvidence",
-    "RawPredecessorHistoryCannotResurrectAnOlderCompletionAfterAChangedDuplicate"
+    "RawPredecessorHistoryCannotResurrectAnOlderCompletionAfterAChangedDuplicate",
+    "HeldCurrentPreparedCuePreservesOriginalPendingSeedWithoutRenewingItsAge",
+    "HeldPendingSeedPreservationRejectsUnprovenForeignChangedAndExpiredProof",
+    "TypedBacklogWitnessCoalescesOwnedActivePendingAndCompletedSourceWork",
+    "TypedBacklogWorkCoalescingRejectsMissingOwnershipAndIncompleteCompletedResults",
+    "ChangedCurrentBackingWithdrawsHeldSeedDespiteAValidCurrentPreparedCertificate"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -419,6 +424,21 @@
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
       "method": "WithdrawnMeasuredPredecessorsCannotReuseEitherTrackerRawCache"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "HeldCurrentPreparedCuePreservesOriginalPendingSeedWithoutRenewingItsAge"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "HeldPendingSeedPreservationRejectsUnprovenForeignChangedAndExpiredProof"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "ChangedCurrentBackingWithdrawsHeldSeedDespiteAValidCurrentPreparedCertificate"
     }
   ]
 }

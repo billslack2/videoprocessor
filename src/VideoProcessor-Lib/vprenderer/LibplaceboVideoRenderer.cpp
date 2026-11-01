@@ -9308,7 +9308,7 @@ struct LibplaceboVideoRenderer::Impl
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
             return scanner.Measure(prepared.source,key,reference,fps,currentNative);
-        });
+        },ownedWitness,ownedTimelinePolicy);
         return key;
     }
 
@@ -14906,7 +14906,9 @@ struct LibplaceboVideoRenderer::Impl
             else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
                 subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
                     analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
-                    &subtitleBoxPresentation.AcceptedCueSeedCertificate());
+                    &subtitleBoxPresentation.AcceptedCueSeedCertificate(),
+                    &subtitleBoxPresentation.CurrentPreparedCueCertificate(),
+                    nlsGeometryAvailable?&nlsGeometry:nullptr);
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
             const int previousGlyphHeight=subtitlePaddingGuard.GlyphHeight();
@@ -24495,7 +24497,9 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
             policy,continuity,nearBar,optimization,script,picture,prepared);
         OwnedScanBacklogWitness ownedWitness;uint64_t oldContinuity=0,ownerPolicy=0;
         const bool completed=m_impl->subtitleMeasurementWorker.PeekIndependentContinuity(key,oldContinuity);
-        if(completed && oldContinuity!=continuity) {
+        const bool pendingOwnedWork=!completed &&
+            m_impl->subtitleMeasurementWorker.PeekOwnedWorkContinuity(key,oldContinuity);
+        if((completed || pendingOwnedWork) && oldContinuity!=continuity) {
             std::unique_lock<std::mutex> guard(m_queueMutex,std::try_to_lock);
             if(guard.owns_lock() && policy==m_activePictureTimeline.LookaheadPolicyGeneration() &&
                 continuity==m_activePictureTimeline.ContinuityGeneration()) {
@@ -24514,10 +24518,10 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         observations[i]=m_impl->QueueSubtitleMeasurement(queued.frame,*queued.state,identity,
             queued.frame.IsSourceDiscontinuity(),tracking,policy,continuity,nearBar,optimization,
             script,picture,prepared,{},false,!harvestOnly,queued.analysis,witnessed?&ownedWitness:nullptr,ownerPolicy);
-        if(SubtitleCadenceCacheDiagnosticsEnabled() && completed && oldContinuity!=continuity)
-            DebugLog::Log("VP subtitle cadence cache: stage=worker-owned-scan source=%llu old_continuity=%llu new_continuity=%llu owner_policy=%llu witnessed=%d analyzed=%d result_continuity=%llu ar_proof=%d",
+        if(SubtitleCadenceCacheDiagnosticsEnabled() && (completed || pendingOwnedWork) && oldContinuity!=continuity)
+            DebugLog::Log("VP subtitle cadence cache: stage=worker-owned-scan source=%llu old_continuity=%llu new_continuity=%llu owner_policy=%llu witnessed=%d analyzed=%d result_continuity=%llu ar_proof=%d pending_work=%d",
                 identity.acceptedSequence,oldContinuity,continuity,ownerPolicy,witnessed?1:0,
-                observations[i].analyzed?1:0,observations[i].continuityGeneration,observations[i].subtitleArProof.accepted?1:0);
+                observations[i].analyzed?1:0,observations[i].continuityGeneration,observations[i].subtitleArProof.accepted?1:0,pendingOwnedWork?1:0);
         tracking=SubtitleBoxLookahead::AdvanceBarTrackingReference(observations[i]);
         ++requests;
         if(observations[i].analyzed)++m_impl->subtitlePrimeReadySeen;
@@ -26689,15 +26693,17 @@ void LibplaceboVideoRenderer::RenderLoop()
                 ownedSubtitleTimelinePolicy=m_activePictureTimeline.LookaheadPolicyGeneration();
                 if(!staleGeneration && cachedQueuedDomain && state && state->displayMode) {
                     auto currentOwned=activePictureIdentity;currentOwned.analysisDomainKey=cachedQueuedDomain;
-                    uint64_t observedContinuity=subtitlePreview.available?subtitlePreview.continuityGeneration:0;
-                    if(!observedContinuity || observedContinuity==m_impl->localBoundaryContinuityGeneration) {
-                        auto keyStorage=std::make_unique<SubtitleBoxObservation>();
-                        Impl::MakeSubtitleWorkerKeyInto(*keyStorage,*state,currentOwned,frame.IsSourceDiscontinuity(),
-                            m_impl->localBoundaryPolicyGeneration,m_impl->localBoundaryContinuityGeneration,
-                            m_impl->activeSettings.subtitleNearBarDistance,m_impl->activeSettings.subtitleDetectionOptimization,
-                            m_impl->activeSettings.subtitleScriptHint,m_impl->subtitleSharedPicture,currentQueuedAnalysis);
-                        m_impl->subtitleMeasurementWorker.PeekIndependentContinuity(*keyStorage,observedContinuity);
-                    }
+                    uint64_t observedContinuity=0;
+                    auto keyStorage=std::make_unique<SubtitleBoxObservation>();
+                    auto workerPicture=m_impl->subtitleSharedPicture;workerPicture.required=true;
+                    Impl::MakeSubtitleWorkerKeyInto(*keyStorage,*state,currentOwned,frame.IsSourceDiscontinuity(),
+                        m_impl->localBoundaryPolicyGeneration,m_impl->localBoundaryContinuityGeneration,
+                        m_impl->activeSettings.subtitleNearBarDistance,m_impl->activeSettings.subtitleDetectionOptimization,
+                        m_impl->activeSettings.subtitleScriptHint,workerPicture,currentQueuedAnalysis);
+                    if(!m_impl->subtitleMeasurementWorker.PeekIndependentContinuity(*keyStorage,observedContinuity))
+                        m_impl->subtitleMeasurementWorker.PeekOwnedWorkContinuity(*keyStorage,observedContinuity);
+                    if(!observedContinuity && subtitlePreview.available)
+                        observedContinuity=subtitlePreview.continuityGeneration;
                     if(observedContinuity && observedContinuity!=m_impl->localBoundaryContinuityGeneration)
                         ownedSubtitleScanWitness=m_activePictureTimeline.QualifyOwnedScanBacklogWitness(currentOwned,
                             observedContinuity,m_impl->localBoundaryContinuityGeneration);

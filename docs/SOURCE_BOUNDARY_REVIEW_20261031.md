@@ -318,3 +318,43 @@ trial and immediately before actual consumption, using the existing four-source
 pixel proof. Independent review confirmed serialized Submit/Harvest wiring and
 found no additional blocker. Matched actual renderer and full qualification are
 next; the installed runtime remains unchanged at this checkpoint.
+
+
+## Queue-only duplicate work and held-seed loss
+
+The a1a71892 cold six-case run (20261101-024708-83f08457) passed five cases.
+Standard Black passed its long 59.94 Hz phase, then failed at 60 Hz after
+successful three-line composition. Queue retirement moved continuity 6 to 7.
+Original source 21/22/23 scans were readable through typed ownership, yet new
+continuity jobs scanned those same sources again, consuming about 82 ms of CPU
+work and starving later current measurements. Held sources 22/23 also cleared
+the genuine source 21 pending seed when future grouping was incomplete.
+
+The new worker path suppresses duplicate work only for exact-source jobs whose
+queue owner supplies the existing backlog witness. Original closures, keys and
+READY admission remain unchanged. A completion race coalesces only if the strict
+copied-result read path can return a complete independent scan; incomplete
+results still permit a canonical retry. Held-current proof may preserve the
+original seed and samples, but cannot advance its source or renew its expiry.
+
+Both positive regressions fail before implementation in
+20261101-030420-33678f75; negative ownership/proof controls already pass. All
+863 mandatory native contracts pass after the initial implementation in
+20261101-031111-100e44fa. Independent review additionally requested an expanded
+caption-backing negative case before freezing the candidate for renderer tests.
+The installed runtime remains unchanged; this is not full qualification.
+
+The additional backing case fails as predicted in
+20261101-031424-c352073e: an authentic current glyph certificate can coexist with
+a larger current caption card, whose new outer area was absent from the original
+seed samples. Preserving that seed would retain obsolete capture geometry. The
+repair therefore requires original accepted backing to match current raw backing
+before a held cue can preserve pending authority. This is independent of native
+AR tolerance and does not change border detection thresholds.
+
+All 864 mandatory native contracts pass with the final backing guard in
+20261101-031602-3df6ee2f. Stable held 22/23 retains original seed 21, current
+pending pixels at 25 are reverified, and 27 expires against the original budget.
+Changed backing, missing or foreign proof, partial current rows and changed
+native/source context withdraw the seed. Matched cold actual-renderer validation
+and the required dual-dependency GPU/full qualification remain pending.
