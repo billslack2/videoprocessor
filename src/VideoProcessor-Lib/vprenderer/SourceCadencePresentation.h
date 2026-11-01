@@ -74,6 +74,33 @@ inline bool SourceCadenceHeldFinalPixelsComplete(const SubtitleBoxObservation& o
         SameSubtitlePresentationBounds(prepared.physicalBase,physicalBase);
 }
 
+// Pending source analysis may still yield independently checked current final
+// compositor pixels. This does not make the RAW scan reusable or renew a cue.
+inline bool SourceCadencePendingFinalPixelsComplete(const SubtitleBoxObservation& observation,
+    const SubtitleBoxResult& accepted,const ActivePictureFrameIdentity& identity,
+    const ActivePictureBounds& physicalBase,const QualifiedSubtitlePresentationEvidence& prepared,
+    SubtitlePreviewMode mode,bool pendingCurrentPixelsVerified,bool sourcePrepared,
+    bool compositionSucceeded,bool workIncomplete)
+{
+    return sourcePrepared && compositionSucceeded && !workIncomplete &&
+        SubtitlePreviewOverridesClassicHandling(mode) && pendingCurrentPixelsVerified &&
+        observation.analyzed && observation.pendingRefresh && !observation.analysisRefresh &&
+        !observation.discontinuity && !observation.cadenceSkipped &&
+        !observation.glyphLocalTop && !observation.glyphLocalBottom &&
+        !observation.inspectionCandidateUsed && !observation.text.workLimit &&
+        observation.text.detected && observation.text.bounds.Valid() &&
+        accepted.detected && !accepted.held && !accepted.confirmationPending &&
+        !accepted.workLimit && accepted.bounds.Valid() && accepted.lineCount>=1 && accepted.lineCount<=3 &&
+        SameAnalysisFrameIdentity(observation.identity,identity) &&
+        observation.sharedPicture.AvailableFor(identity,observation.width,observation.height) &&
+        SameAnalysisFrameIdentity(observation.sharedPicture.identity,identity) &&
+        SameSubtitlePresentationBounds(observation.sharedPicture.bounds,physicalBase) &&
+        prepared.qualified && prepared.status==QualifiedSubtitlePresentationStatus::Qualified &&
+        prepared.preparedErasureOnly && !prepared.renewsHold &&
+        SameAnalysisFrameIdentity(prepared.identity,identity) &&
+        SameSubtitlePresentationBounds(prepared.physicalBase,physicalBase);
+}
+
 // Context of final display-referred pixels. Source sequence and PTS are kept
 // separately: retirement of the next input cannot turn it into a new anchor.
 enum class SourceCadencePreparationState { None,Missing,Pending,Ready,Failed };

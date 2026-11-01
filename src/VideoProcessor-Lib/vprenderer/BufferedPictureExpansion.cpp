@@ -784,7 +784,7 @@ namespace AlphaSourceCrop
         BufferedPictureExpansionSample sample;
         sample.identity = identity;
         sample.observation = MakeActivePictureObservation(evidence,
-            identity.acceptedSequence, framesPerSecond);
+            identity.acceptedSequence, framesPerSecond, &identity);
         sample.nearBlackEvaluated = nearBlackEvaluated;
         sample.retention.globalNearBlack = globalNearBlack;
         return sample;

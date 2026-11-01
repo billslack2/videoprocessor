@@ -1011,7 +1011,7 @@ namespace AlphaSourceCrop
 		TransitionAdmissionDecision decision;
 		decision.pillarboxContradiction = ConfirmPillarboxContradiction(input);
 		decision.observation = MakeActivePictureObservation(input.evidence,
-			input.sourceSequence, input.framesPerSecond);
+			input.sourceSequence, input.framesPerSecond, &input.currentIdentity);
 		decision.deferPresentation = input.evidence.available &&
 			input.trustedGeometryAvailable && input.trustedGeneration == input.sourceGeneration &&
 			ShouldDeferVerticalGeometryTransition(input.trustedGeometry,

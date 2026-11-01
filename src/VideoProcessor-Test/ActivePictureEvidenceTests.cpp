@@ -2878,6 +2878,78 @@ namespace VideoProcessorTest
                 Assert::IsFalse(receipt.ReuseSubtitle(context,SourceRepeatKind::CadenceRepeat));
             }
         }
+        TEST_METHOD(CurrentPendingFinalPixelsCanAnchorWithoutCompletingSourceAnalysis)
+        {
+            auto fixture=std::make_unique<LoggedRelocatedCaptionFixture>(false,true);auto& f=*fixture;
+            f.observation.pendingRefresh=true;
+            f.observation.sharedPicture.required=true;f.observation.sharedPicture.identity=f.observation.identity;
+            f.observation.sharedPicture.bounds=f.base;
+            auto input=f.Input();input.pendingCurrentPixelsVerified=true;
+            input.currentDisplayPicture=f.observation.sharedPicture;
+            const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+            Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly && !prepared.renewsHold);
+            AlphaSourceCrop::PresentationEnvelopeExtentState history;
+            Assert::IsTrue(ProjectQualifiedSubtitlePresentationEvidence(prepared,history,f.base,f.base,
+                f.observation.identity,raw).qualified);
+            Assert::IsFalse(SourceCadenceObservationComplete(f.observation,f.observation.identity));
+            const auto originalIdentity=f.observation.identity;const auto originalCue=f.accepted.cue;
+            Assert::IsTrue(SourceCadencePendingFinalPixelsComplete(f.observation,f.accepted,f.observation.identity,
+                f.base,prepared,input.mode,true,true,true,false),
+                L"Actual current prepared erasure can certify a final image while source analysis remains pending.");
+            const auto owned=std::make_shared<const std::vector<uint8_t>>(f.frame.bytes);
+            SourcePreparationContext context;context.identity=f.observation.identity;int gpuToken=0;context.gpu=&gpuToken;
+            context.source=f.Source();context.source.data=owned->data();context.source.dataBytes=owned->size();context.source.backingOwner=owned;
+            context.queuedSource=context.source;context.queuedSource.generation=context.identity.sourceFormatGeneration;
+            context.outputContract=1;
+            SourcePreparationReceipt receipt;receipt.Begin(context,SourceRepeatKind::NewSource);receipt.Commit(context,true,false);
+            Assert::IsFalse(receipt.ReuseAnalysis(context,SourceRepeatKind::CadenceRepeat));
+            Assert::IsFalse(receipt.ReuseSubtitle(context,SourceRepeatKind::CadenceRepeat));
+            Assert::IsFalse(CommitQualifiedSubtitlePresentationHold({},prepared,f.observation.identity,f.base,
+                input.mode,7,9,1000,true,false,10000000).available);
+            Assert::IsTrue(SameAnalysisFrameIdentity(originalIdentity,f.observation.identity));
+            Assert::AreEqual(originalCue,f.accepted.cue);Assert::IsTrue(f.observation.pendingRefresh);
+        }
+        TEST_METHOD(CurrentPendingFinalPixelsRequireExactPreparedProof)
+        {
+            auto fixture=std::make_unique<LoggedRelocatedCaptionFixture>(false,true);auto& f=*fixture;
+            f.observation.pendingRefresh=true;
+            f.observation.sharedPicture.required=true;f.observation.sharedPicture.identity=f.observation.identity;
+            f.observation.sharedPicture.bounds=f.base;
+            auto input=f.Input();input.pendingCurrentPixelsVerified=true;input.currentDisplayPicture=f.observation.sharedPicture;
+            const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+            Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly && !prepared.renewsHold);
+            for(int fault=0;fault<25;++fault) {
+                auto observation=std::make_unique<SubtitleBoxObservation>(f.observation);auto accepted=f.accepted;
+                auto proof=prepared;auto identity=f.observation.identity;auto base=f.base;
+                auto mode=input.mode;bool pixels=true,source=true,composed=true,incomplete=false;
+                if(fault==0)pixels=false;if(fault==1)source=false;if(fault==2)composed=false;
+                if(fault==3)incomplete=true;if(fault==4)proof.qualified=false;
+                if(fault==5)proof.preparedErasureOnly=false;if(fault==6)proof.renewsHold=true;
+                if(fault==7)++proof.identity.acceptedSequence;if(fault==8)--base.bottom;
+                if(fault==9)++identity.acceptedSequence;if(fault==10)mode=SubtitlePreviewMode::None;
+                if(fault==11)observation->pendingRefresh=false;if(fault==12)observation->discontinuity=true;
+                if(fault==13)observation->analysisRefresh=true;if(fault==14)observation->cadenceSkipped=true;
+                if(fault==15)accepted.held=true;if(fault==16)accepted.confirmationPending=true;
+                if(fault==17)observation->text.workLimit=true;
+                if(fault==18)proof.status=QualifiedSubtitlePresentationStatus::Unknown;
+                if(fault==19)--proof.physicalBase.bottom;
+                if(fault==20)++observation->sharedPicture.identity.acceptedSequence;
+                if(fault==21)--observation->sharedPicture.bounds.bottom;
+                if(fault==22)accepted.workLimit=true;
+                if(fault==23)observation->analyzed=false;
+                if(fault==24)accepted.detected=false;
+                Assert::IsFalse(SourceCadencePendingFinalPixelsComplete(*observation,accepted,identity,base,
+                    proof,mode,pixels,source,composed,incomplete));
+            }
+            // Actual source pixels outside the owned cleanup revoke the proof;
+            // successful composition alone is never a final-image certificate.
+            f.frame.FillRectangle(100,1930,400,1980,700);
+            const auto changedRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            const auto changed=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),changedRaw,input);
+            Assert::IsFalse(changed.qualified);
+        }
         TEST_METHOD(CurrentHeldErasureCertificateCannotBypassIdentityCompositionOrPictureSafety)
         {
             LoggedRelocatedCaptionFixture f(false,true);

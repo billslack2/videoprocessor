@@ -247,6 +247,23 @@ struct ActivePictureAxisEvidenceSet
 const char* ActivePictureAxisStateName(ActivePictureAxisState state);
 const char* ActivePictureAxisReasonName(ActivePictureAxisReason reason);
 
+struct ActivePictureObservation;
+struct ActivePictureEvidence;
+struct ActivePictureFrameIdentity;
+// A source-bound summary of already completed spatial measurement AND verified
+// discarded bands. Metadata tags and historical geometry cannot mint it.
+class ActivePictureCurrentSpatialCropProof {
+public:
+    bool Matches(const ActivePictureObservation& observation) const;
+private:
+    friend ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidence&,
+        uint64_t,double,const ActivePictureFrameIdentity*);
+    static bool ValidRectangle(const ActivePictureBounds& bounds);
+    bool available=false;
+    uint64_t sequence=0,transport=0,format=0,domain=0;
+    ActivePictureBounds measured,retained;
+};
+
 struct ActivePictureObservation
 {
 	ActivePictureBounds bounds;
@@ -263,6 +280,7 @@ struct ActivePictureObservation
 	SparseBoundaryTransitionProof sparseTransitionProof;
 	RememberedEdgeReturnProof rememberedEdgeReturnProof;
     ActivePictureDetectorKind detector = ActivePictureDetectorKind::Legacy;
+    ActivePictureCurrentSpatialCropProof currentSpatialCropProof;
 
 };
 

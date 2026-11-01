@@ -386,6 +386,8 @@ namespace AlphaSourceCrop
 	struct TransitionAdmissionInput
 	{
 		ActivePictureEvidence evidence;
+        // Exact source context validated by the caller, never a retained-picture hint.
+        ActivePictureFrameIdentity currentIdentity;
 		ActivePictureBounds outwardCandidate;
 		ActivePictureBounds presentationBeforeObservation;
 		ActivePictureBounds trustedGeometry;

@@ -954,6 +954,37 @@ ActivePictureTransitionModel::CommitCandidate(
 }
 
 
+bool ActivePictureCurrentSpatialCropProof::ValidRectangle(const ActivePictureBounds& b)
+{
+    if(b.rasterWidth<=0 || b.rasterHeight<=0 || b.left<0 || b.top<0 ||
+        b.right>b.rasterWidth || b.bottom>b.rasterHeight || b.left>=b.right || b.top>=b.bottom)
+        return false;
+    const double measuredRatio=double(b.right-b.left)/double(b.bottom-b.top);
+    return std::isfinite(b.aspectRatio) && b.aspectRatio>0 &&
+        std::abs(b.aspectRatio-measuredRatio)<=std::max(1.0,measuredRatio)*1e-12;
+}
+
+bool ActivePictureCurrentSpatialCropProof::Matches(const ActivePictureObservation& observation) const
+{
+    const auto& b=observation.bounds;
+    const auto same=[](const ActivePictureBounds& a,const ActivePictureBounds& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+            a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight && a.trustedBarAxes==b.trustedBarAxes;
+    };
+    const bool vertical=b.top>0 || b.bottom<b.rasterHeight;
+    const bool horizontal=b.left>0 || b.right<b.rasterWidth;
+    return available && ValidRectangle(measured) && ValidRectangle(retained) && ValidRectangle(b) &&
+        sequence && sequence==observation.frameNumber && transport && format && domain &&
+        observation.available && observation.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+        observation.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+        observation.classification==ActivePictureClassification::BAR_CROP_TRUSTED && !observation.transitionDeferred &&
+        same(retained,b) && !observation.axisEvidence.HasBlockingFailedBar(b) &&
+        (!vertical || (observation.axisEvidence.vertical.scanComplete &&
+            observation.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS)) &&
+        (!horizontal || (observation.axisEvidence.horizontal.scanComplete &&
+            observation.axisEvidence.horizontal.state==ActivePictureAxisState::TRUSTED_BARS));
+}
+
 ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	const ActivePictureObservation& observation)
 {
@@ -1209,6 +1240,15 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			return CommitCandidate(observation, "recent trusted geometry reacquired");
 		return decision;
 	}
+
+    // Initial acquisition needs no additional displayed sources when this
+    // exact source already supplies both spatial measurement and crop proof.
+    // Established geometry/transition confirmation and legacy startup are unchanged.
+    if (!m_hasStable && HasCropAuthority(observation) && observation.currentSpatialCropProof.Matches(observation))
+    {
+        StartCandidate(observation);
+        return CommitCandidate(observation,"current verified spatial crop acquired immediately");
+    }
 
 	if (!HasCropAuthority(observation))
 	{

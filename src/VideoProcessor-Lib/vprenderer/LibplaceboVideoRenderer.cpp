@@ -327,6 +327,10 @@ namespace
         if(SourcePictureDetectorEnabled()) {
             auto detected=DetectPreparedSourcePictureBounded(prepared.source,result.identity);
             result.evidence=std::move(detected.evidence);
+            // This result belongs to the exact prepared source job, not a raw
+            // geometry hint. Future consumers still validate the complete job key.
+            result.evidence.currentSourceIdentity=result.identity;
+            result.evidence.currentSourceIdentityAvailable=true;
             result.sourcePictureObservation=std::move(detected.observation);
         } else {
             result.evidence=ExtractActivePictureEvidence(prepared.source);
@@ -12003,6 +12007,7 @@ struct LibplaceboVideoRenderer::Impl
 					sceneVerificationGeometry, evidence.trustedBounds);
 			AlphaSourceCrop::TransitionAdmissionInput admissionInput;
 			admissionInput.evidence = evidence;
+            admissionInput.currentIdentity = currentIdentity;
 			admissionInput.outwardCandidate = latestActivePictureEvidenceBounds;
 			admissionInput.presentationBeforeObservation = presentationBeforeObservation;
 			admissionInput.trustedGeometry = nlsGeometry;
@@ -12027,7 +12032,7 @@ struct LibplaceboVideoRenderer::Impl
 			admissionInput.previousOutward = outwardPictureConfirmation;
 			admissionInput.previousPillarboxContradiction = pillarboxContradictionConfirmation;
 			const bool eligiblePictureChange = nlsTransition.WouldAdmitGeometryChange(
-				MakeActivePictureObservation(evidence, frameNumber, framesPerSecond));
+				MakeActivePictureObservation(evidence, frameNumber, framesPerSecond, &currentIdentity));
 			auto admission = AlphaSourceCrop::EvaluateTransitionAdmission(admissionInput);
             const bool wasMovingPicture = movingPictureTransition.active;
             const bool wasAwaitingPicturePublication = movingPictureTransition.awaitingPublication;
@@ -12233,7 +12238,7 @@ struct LibplaceboVideoRenderer::Impl
 				admission.deferOutward = false;
 				admission.deferPresentation = false;
 				admission.observation = MakeActivePictureObservation(evidence,
-					frameNumber, framesPerSecond);
+					frameNumber, framesPerSecond, &currentIdentity);
 			}
 			if (bufferedExpansion && bufferedExpansion->valid)
 				DebugLog::Log("Alpha buffered picture proof: instance=%s sequence=%llu through=%llu samples=%u current_valid=%d relative_contrast=%d qualified_pair=%d pixel_reason=%s",
@@ -14660,6 +14665,7 @@ struct LibplaceboVideoRenderer::Impl
         const bool reuseSourceSubtitle=repeatedTemporalOutput && sourceReuse.subtitle;
         bool currentSubtitleWorkIncomplete=false;
         bool qualifiedHeldFinalPixels=false;
+        bool qualifiedPendingFinalPixels=false;
         bool revisedSubtitlePacket=false;
         const auto retireSubtitleRevision=[this,frameGeneration,sourceSequence] {
             sourcePreparationReceipt.Reset();subtitleSourcePreparation.valid=false;
@@ -16181,7 +16187,7 @@ struct LibplaceboVideoRenderer::Impl
              subtitleIdentity, captureClockFrequency, &temporalPolicyCaptionProof,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
-             currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels, cadenceCacheDiagnostic,
+             currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels, &qualifiedPendingFinalPixels, cadenceCacheDiagnostic,
              currentCaptionFitWorkerBase, captionAnchorContextMatches, &state, &videoFrame,
              &renderedCaptionCandidate, &renderedCaptionHoldCandidate,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
@@ -16220,6 +16226,7 @@ struct LibplaceboVideoRenderer::Impl
 				HdrPeakAnalysisCrop::TrustedPicture* hdrTrustedPicture = nullptr)
 		{
             qualifiedHeldFinalPixels=false;
+            qualifiedPendingFinalPixels=false;
             temporalPolicyPreFillAvailable=false;
             temporalPolicyPreFillBounds={};temporalPolicyPreFillTarget=0;
 			source = subtitleComposedImage;
@@ -16360,6 +16367,11 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleIdentity,effectiveGeometry,ownershipInput.currentPreparedCue,displayCaptionProof,
                 subtitlePreviewMode,ownershipInput.sourcePrepared,subtitleCompositionSucceeded,
                 currentSubtitleWorkIncomplete);
+            qualifiedPendingFinalPixels=presentationView.qualified && SourceCadencePendingFinalPixelsComplete(
+                subtitleSourcePreparation.ownershipObservation,subtitleSourcePreparation.ownershipAccepted,
+                subtitleIdentity,effectiveGeometry,displayCaptionProof,subtitlePreviewMode,
+                ownershipInput.pendingCurrentPixelsVerified,ownershipInput.sourcePrepared,
+                subtitleCompositionSucceeded,currentSubtitleWorkIncomplete);
             if(SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 subtitleSourcePreparation.ownershipAccepted.detected) {
                 const auto proofLogNow=GetTickCount64();
@@ -20359,9 +20371,9 @@ releaseDriftBaseRetention =
             !cadenceRepeat && !repeatedTemporalOutput && cadenceInputHz>30.0 && swapchain &&
             !temporalRenderer.Active() && !state.displayMode->IsInterlaced() &&
             !displayCadenceRecovery.Pending() && !displayCadenceRecovery.Fallback() &&
-            SourceCadenceObservationComplete(currentSubtitlePreview.current,subtitleIdentity) &&
-            (sourcePreparationReceipt.ReuseAnalysis(sourcePreparationContext,SourceRepeatKind::CadenceRepeat) ||
-                qualifiedHeldFinalPixels);
+            ((SourceCadenceObservationComplete(currentSubtitlePreview.current,subtitleIdentity) &&
+              sourcePreparationReceipt.ReuseAnalysis(sourcePreparationContext,SourceRepeatKind::CadenceRepeat)) ||
+                qualifiedHeldFinalPixels || qualifiedPendingFinalPixels);
         SourceCadencePresentationContext cadenceCandidateContext;
         bool warmupImageCaptureEligible=false,warmupImageCaptured=false;
         if (rendered) {
@@ -20376,11 +20388,11 @@ releaseDriftBaseRetention =
                 viewportRequestSerial,startupFrameRevision,completeSourceCandidate || warmupImageCaptureEligible);
             warmupImageCaptured=warmupImageCaptureEligible && captured;
             if(cadenceCacheDiagnostic)
-                DebugLog::Log("VP subtitle cadence cache: stage=candidate source=%llu eligible=%d captured=%d rendered=%d raw_complete=%d reusable_analysis=%d held_pixels=%d temporal_repeat=%d recovery=%d fallback=%d mode=%d",
+                DebugLog::Log("VP subtitle cadence cache: stage=candidate source=%llu eligible=%d captured=%d rendered=%d raw_complete=%d reusable_analysis=%d held_pixels=%d pending_pixels=%d temporal_repeat=%d recovery=%d fallback=%d mode=%d",
                     sourceSequence,completeSourceCandidate?1:0,captured?1:0,rendered?1:0,
                     SourceCadenceObservationComplete(currentSubtitlePreview.current,subtitleIdentity)?1:0,
                     sourcePreparationReceipt.ReuseAnalysis(sourcePreparationContext,SourceRepeatKind::CadenceRepeat)?1:0,
-                    qualifiedHeldFinalPixels?1:0,repeatedTemporalOutput?1:0,displayCadenceRecovery.Pending()?1:0,
+                    qualifiedHeldFinalPixels?1:0,qualifiedPendingFinalPixels?1:0,repeatedTemporalOutput?1:0,displayCadenceRecovery.Pending()?1:0,
                     displayCadenceRecovery.Fallback()?1:0,static_cast<int>(sourceSubtitleMode));
             sourceCadencePresentation.Candidate(cadenceCandidateContext,sourceSequence,temporalRenderer.currentPts,
                 completeSourceCandidate,captured);
@@ -24642,15 +24654,53 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
     const std::vector<QueuedFrame>& frames, uint64_t policy, uint64_t continuity,bool harvestOnly)
 {
     if (frames.empty()) return;
+    // Diagnostic-only bounded startup samples. Snapshot ownership below is
+    // reported as metadata, never represented as a live queue-owner proof.
+    struct PrimeTraceBudget {const void* instance=nullptr;uint64_t generation=0,lastHead=0;unsigned rejected=0,offered=0;};
+    static thread_local PrimeTraceBudget traceBudget;
+    const auto& headIdentity=frames.front().activePictureIdentity;
+    if(traceBudget.instance!=m_impl.get() || traceBudget.generation!=headIdentity.transportGeneration ||
+        headIdentity.acceptedSequence<traceBudget.lastHead)
+        traceBudget={m_impl.get(),headIdentity.transportGeneration,headIdentity.acceptedSequence,0,0};
+    traceBudget.lastHead=headIdentity.acceptedSequence;
+    const auto tracePrime=[&](const char* stage,const char* reason,const QueuedFrame& queued,
+        uint64_t localPolicy,uint64_t localContinuity,uint64_t domain,bool prepared,bool analyzed) {
+        if(!SubtitleCadenceCacheDiagnosticsEnabled())return;
+        const bool offer=std::strcmp(stage,"prime-offer")==0;
+        auto& emitted=offer?traceBudget.offered:traceBudget.rejected;
+        if(emitted>=(offer?128u:64u))return;
+        ++emitted;
+        LARGE_INTEGER ticks{},frequency{};QueryPerformanceCounter(&ticks);QueryPerformanceFrequency(&frequency);
+        auto identity=queued.activePictureIdentity;if(domain)identity.analysisDomainKey=domain;
+        auto record=AnalysisTraceRecord(identity,m_impl.get(),stage,reason);
+        record.policyGeneration=policy;record.continuityGeneration=continuity;
+        record.timestampNs=frequency.QuadPart>0?uint64_t((long double)ticks.QuadPart*1000000000.0L/frequency.QuadPart):0;
+        record.counters[0]=headIdentity.acceptedSequence;record.counters[1]=frames.size();
+        record.counters[2]=localPolicy;record.counters[3]=localContinuity;
+        record.counters[4]=policy;record.counters[5]=continuity;
+        record.flags=(harvestOnly?1u:0u)|(queued.state?2u:0u)|(queued.frame.GetData()?4u:0u)|
+            (queued.analysis?8u:0u)|(queued.converted?16u:0u)|(queued.conversionFailed?32u:0u)|
+            (queued.cadenceRepeat?64u:0u)|(prepared?128u:0u)|(analyzed?256u:0u);
+        record.metrics[0]=double(ticks.QuadPart);record.metrics[1]=double(frequency.QuadPart);
+        AnalysisDiagnosticTrace::Emit(record);
+        DebugLog::Log("VP subtitle cadence cache: stage=%s reason=%s source=%llu head=%llu owned=%zu captured_policy=%llu local_policy=%llu captured_continuity=%llu local_continuity=%llu domain=%llu snapshot_flags=%u qpc=%lld qpc_hz=%lld",
+            stage,reason,identity.acceptedSequence,headIdentity.acceptedSequence,frames.size(),policy,localPolicy,
+            continuity,localContinuity,identity.analysisDomainKey,record.flags,ticks.QuadPart,frequency.QuadPart);
+    };
     SubtitlePictureAuthority shared;
     int nearBar=20, optimization=0;
     SubtitleScriptHint script=SubtitleScriptHint::Latin;
     {
         std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);
-        if (!guard.owns_lock()) return;
+        if (!guard.owns_lock()) {
+            tracePrime("prime-entry-reject","render-lock",frames.front(),0,0,0,false,false);return;
+        }
         if (policy!=m_impl->localBoundaryPolicyGeneration ||
             continuity!=m_impl->localBoundaryContinuityGeneration ||
-            frames.front().activePictureIdentity.viewportGeneration!=m_impl->renderViewportRequestSerial) return;
+            frames.front().activePictureIdentity.viewportGeneration!=m_impl->renderViewportRequestSerial) {
+            tracePrime("prime-entry-reject","context-mismatch",frames.front(),m_impl->localBoundaryPolicyGeneration,
+                m_impl->localBoundaryContinuityGeneration,0,false,false);return;
+        }
         if (!m_impl->SubtitlePreviewEnabled(m_impl->activeSettings) &&
             !AlphaSourceCrop::ScopeCaptionArAnalysisEligible(m_impl->automaticSourceCrop,
                 m_impl->renderConfiguredScreenActive,m_impl->nlsRequested,
@@ -24672,18 +24722,30 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         const auto& queued=frames[i];
         observations[i].identity=queued.activePictureIdentity;
         if(queued.cadenceRepeat || !queued.state || !queued.state->displayMode ||
-            !queued.frame.GetData() || queued.conversionFailed) {tracking={};continue;}
+            !queued.frame.GetData() || queued.conversionFailed) {
+            tracePrime("prime-prepare-reject","source-snapshot-unavailable",queued,policy,continuity,0,false,false);
+            tracking={};continue;
+        }
         const auto prepared=Impl::PrepareFrameAnalysis(queued.frame,*queued.state,
             queued.converted,queued.analysis,AnalysisSourceProfile::QueuedCapture,
             queued.activePictureIdentity.sourceFormatGeneration,false,queued.state->dolbyVisionTunnel);
-        if(!prepared.IsValid()) {tracking={};continue;} // Pending DV conversion is never raw RGB evidence.
+        if(!prepared.IsValid()) {
+            tracePrime("prime-prepare-reject","prepared-source-unavailable",queued,policy,continuity,0,false,false);
+            tracking={};continue;
+        } // Pending DV conversion is never raw RGB evidence.
         auto identity=queued.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
         preparedDomains[i]=prepared.domainKey;observations[i].identity=identity;
         if(i==0) {
             std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);
-            if(!guard.owns_lock() || policy!=m_impl->localBoundaryPolicyGeneration ||
+            if(!guard.owns_lock()) {
+                tracePrime("prime-loop-reject","render-lock",queued,0,0,prepared.domainKey,true,false);return;
+            }
+            if(policy!=m_impl->localBoundaryPolicyGeneration ||
                 continuity!=m_impl->localBoundaryContinuityGeneration ||
-                identity.viewportGeneration!=m_impl->renderViewportRequestSerial)return;
+                identity.viewportGeneration!=m_impl->renderViewportRequestSerial) {
+                tracePrime("prime-loop-reject","context-mismatch",queued,m_impl->localBoundaryPolicyGeneration,
+                    m_impl->localBoundaryContinuityGeneration,prepared.domainKey,true,false);return;
+            }
             tracking=m_impl->subtitleBoxPresentation.BarTrackingReferenceFor(identity,
                 prepared.source.width,prepared.source.height,policy,continuity,script);
         }
@@ -24719,6 +24781,8 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
             DebugLog::Log("VP subtitle cadence cache: stage=worker-owned-scan source=%llu old_continuity=%llu new_continuity=%llu owner_policy=%llu witnessed=%d analyzed=%d result_continuity=%llu ar_proof=%d pending_work=%d",
                 identity.acceptedSequence,oldContinuity,continuity,ownerPolicy,witnessed?1:0,
                 observations[i].analyzed?1:0,observations[i].continuityGeneration,observations[i].subtitleArProof.accepted?1:0,pendingOwnedWork?1:0);
+        if(!harvestOnly)tracePrime("prime-offer","completed-queue-request",queued,policy,continuity,
+            prepared.domainKey,true,observations[i].analyzed);
         tracking=SubtitleBoxLookahead::AdvanceBarTrackingReference(observations[i]);
         ++requests;
         if(observations[i].analyzed)++m_impl->subtitlePrimeReadySeen;

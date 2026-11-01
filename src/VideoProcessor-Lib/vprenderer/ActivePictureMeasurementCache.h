@@ -66,7 +66,8 @@ public:
     {
         auto rebound = queuedSource;
         rebound.generation = m_source.generation;
-        if (!PreparedSourceDetectorCurrent(picture) || !m_cacheable || !SameAnalysisFrameIdentity(identity, m_identity) ||
+        if ((picture.currentSourceIdentityAvailable && !SameAnalysisFrameIdentity(picture.currentSourceIdentity,identity)) ||
+            !PreparedSourceDetectorCurrent(picture) || !m_cacheable || !SameAnalysisFrameIdentity(identity, m_identity) ||
             queuedSource.generation != identity.sourceFormatGeneration ||
             m_source.generation != identity.transportGeneration ||
             !SameSource(rebound, m_source))
@@ -83,6 +84,12 @@ public:
             if(m_picture.physicalEdges.sourceGeneration==queuedSource.generation)
                 m_picture.physicalEdges.sourceGeneration=m_source.generation;
             else m_picture.physicalEdges={};
+            if(m_picture.candidateVerification.sourceGeneration==queuedSource.generation)
+                m_picture.candidateVerification.sourceGeneration=m_source.generation;
+            else if(m_picture.candidateVerification.sourceGeneration!=m_source.generation)
+                m_picture.candidateVerification={};
+            // All full source/domain/storage/owner checks above precede binding.
+            m_picture.currentSourceIdentity=identity;m_picture.currentSourceIdentityAvailable=true;
             m_pictureValid = true;
         }
         if (!m_globalValid) { m_global = darkness.global; m_globalValid = true; }

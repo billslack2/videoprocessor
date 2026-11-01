@@ -1193,7 +1193,7 @@ const char* ActivePictureAxisReasonName(ActivePictureAxisReason reason)
 	}
 }
 ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidence& evidence,
-	uint64_t frameNumber, double framesPerSecond)
+	uint64_t frameNumber, double framesPerSecond, const ActivePictureFrameIdentity* expectedCurrentIdentity)
 {
 	ActivePictureObservation observation;
 	observation.frameNumber = frameNumber;
@@ -1211,6 +1211,42 @@ ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidenc
     observation.detector=evidence.detector;
 	observation.sparseTransitionProof = evidence.sparseTransitionProof;
 	observation.rememberedEdgeReturnProof = evidence.rememberedEdgeReturnProof;
+    const auto sameRect=[](const ActivePictureBounds& a,const ActivePictureBounds& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+            a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;
+    };
+    if(expectedCurrentIdentity && evidence.currentSourceIdentityAvailable &&
+        SameAnalysisFrameIdentity(evidence.currentSourceIdentity,*expectedCurrentIdentity)) {
+        const auto& id=*expectedCurrentIdentity;
+        const auto& physical=evidence.physicalEdges;const auto& certificate=evidence.candidateVerification;
+        const auto& measured=physical.estimate;const auto& retained=evidence.trustedBounds;
+        const bool vertical=retained.top>0 || retained.bottom<retained.rasterHeight;
+        const bool horizontal=retained.left>0 || retained.right<retained.rasterWidth;
+        const auto knownGeneration=[&](uint64_t value) {
+            return value && (value==id.transportGeneration || value==id.sourceFormatGeneration);
+        };
+        if(id.acceptedSequence==frameNumber && id.acceptedSequence && id.transportGeneration &&
+            id.sourceFormatGeneration && id.analysisDomainKey && evidence.available &&
+            evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+            evidence.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+            evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+            physical.evaluated && physical.estimateAvailable &&
+            physical.confidence==PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE &&
+            knownGeneration(physical.sourceGeneration) && knownGeneration(certificate.sourceGeneration) &&
+            certificate.samples && sameRect(certificate.nomination,measured) && sameRect(certificate.bounds,retained) &&
+            ActivePictureCurrentSpatialCropProof::ValidRectangle(measured) &&
+            ActivePictureCurrentSpatialCropProof::ValidRectangle(retained) &&
+            sameRect(observation.bounds,retained) && measured.rasterWidth==retained.rasterWidth &&
+            measured.rasterHeight==retained.rasterHeight && retained.left<=measured.left && retained.top<=measured.top &&
+            retained.right>=measured.right && retained.bottom>=measured.bottom &&
+            (!vertical || certificate.vertical==ActivePictureCandidateVerificationState::VERIFIED) &&
+            (!horizontal || certificate.horizontal==ActivePictureCandidateVerificationState::VERIFIED)) {
+            auto& proof=observation.currentSpatialCropProof;
+            proof.available=true;proof.sequence=frameNumber;proof.transport=id.transportGeneration;
+            proof.format=id.sourceFormatGeneration;proof.domain=id.analysisDomainKey;
+            proof.measured=measured;proof.retained=retained;
+        }
+    }
 	return observation;
 }
 
@@ -1288,6 +1324,10 @@ ActivePictureEvidence VerifySuppliedActivePictureCandidate(const AnalysisLumaSou
         result.lumaSamples=samples.lumaSamples;result.chromaSamples=samples.chromaSamples;
         result.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
         VerifyNativeCandidate(source,result,budget);
+        // This wrapper was supplied the unrounded source-pixel nominee. The
+        // shared verifier certifies the outward-aligned retained rectangle;
+        // keep those two meanings distinct without changing its result.
+        result.candidateVerification.nomination=result.proposedBounds;
         if(result.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED)
             result.top.trusted=result.bottom.trusted=true;
         if(result.candidateVerification.horizontal==ActivePictureCandidateVerificationState::VERIFIED)
@@ -2494,6 +2534,7 @@ SubtitleAssistedVerticalBarProof VerifySuppliedActivePictureCandidateWithSubtitl
     const auto& physical=measured.physicalEdges;
     if(!source.IsValid() || !source.generation || source.generation!=currentIdentity.transportGeneration ||
         !currentIdentity.acceptedSequence || !measured.available ||
+        (measured.currentSourceIdentityAvailable && !SameAnalysisFrameIdentity(measured.currentSourceIdentity,currentIdentity)) ||
         measured.detector!=ActivePictureDetectorKind::SourceSpatialMeasured ||
         measured.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
         !physical.evaluated || !physical.estimateAvailable ||
@@ -2602,6 +2643,7 @@ SubtitleAssistedVerticalBarProof VerifySuppliedActivePictureCandidateWithSubtitl
     certificate.nomination=bounds;certificate.bounds=guard;certificate.sourceGeneration=source.generation;
     certificate.vertical=ActivePictureCandidateVerificationState::VERIFIED;certificate.samples=proof.lumaSamples;
     evidence.lumaSamples+=proof.lumaSamples;
+    evidence.currentSourceIdentity=currentIdentity;evidence.currentSourceIdentityAvailable=true;
     evidence.reason="supplied spatial nominee verified with exact-current owned caption mask";
     proof.candidate=guard;proof.identity=currentIdentity;proof.policyGeneration=policyGeneration;
     proof.continuityGeneration=continuityGeneration;proof.scriptHint=scriptHint;

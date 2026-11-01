@@ -2788,6 +2788,44 @@ namespace VideoProcessorTest
                             Logger::WriteMessage(row.str().c_str());
                         }
                         Logger::WriteMessage("DV FAILURE WORKER WINDOW END");
+                        // Worker and renderer instances differ. Join exact original
+                        // source context and preserve callback order, never relabel
+                        // a later AR publication as proof for an earlier output.
+                        std::vector<const AnalysisDiagnosticRecordV1*> arNearby;
+                        for(const auto& r:failureRecords)if(
+                            (!strcmp(r.stage,"ar-decision") || !strcmp(r.stage,"accepted-picture-detector") ||
+                             !strcmp(r.stage,"source-picture-active")) &&
+                            r.transportGeneration==failedInput->transportGeneration &&
+                            r.sourceFormatGeneration==failedInput->sourceFormatGeneration &&
+                            r.analysisDomainKey==failedInput->analysisDomainKey &&
+                            r.sourceFrameNumber>=low && r.sourceFrameNumber<=high)arNearby.push_back(&r);
+                        std::ostringstream arHeader;
+                        arHeader<<"DV FAILURE AR WINDOW BEGIN: consumed="<<failedOutput->counters[0]
+                            <<" selected="<<failedOutput->counters[1]<<" original_input="<<failedInput->sourceFrameNumber
+                            <<" range="<<low<<'-'<<high<<" matched="<<arNearby.size()
+                            <<" emitted="<<(std::min)(size_t(80),arNearby.size());
+                        Logger::WriteMessage(arHeader.str().c_str());
+                        const size_t arBegin=arNearby.size()>80?arNearby.size()-80:0;
+                        for(size_t i=arBegin;i<arNearby.size();++i) {
+                            const auto& r=*arNearby[i];std::ostringstream row;
+                            row<<"DV AR: stage="<<r.stage<<" callback_ordinal="<<r.recordSequence
+                                <<" instance="<<r.rendererInstanceKey<<" generation="<<r.transportGeneration
+                                <<" renderer_generation="<<r.rendererGeneration<<" accepted="<<r.acceptedSequence
+                                <<" source_frame="<<r.sourceFrameNumber<<" capture="<<r.captureTimestamp
+                                <<" format="<<r.sourceFormatGeneration<<" domain="<<r.analysisDomainKey
+                                <<" viewport="<<r.viewportGeneration<<" policy="<<r.policyGeneration
+                                <<" continuity="<<r.continuityGeneration<<" flags="<<r.flags
+                                <<" result="<<r.resultCode<<" counter0="<<r.counters[0]
+                                <<" counter1="<<r.counters[1]<<" metric0="<<r.metrics[0]
+                                <<" reason="<<r.reason<<" detail="<<r.detail;
+                            const auto rect=[&](const char* name,const int32_t* values) {
+                                row<<' '<<name<<'='<<values[0]<<','<<values[1]<<','<<values[2]<<','<<values[3];
+                            };
+                            rect("measured",r.measured);rect("candidate",r.candidate);
+                            rect("published",r.published);rect("displayed",r.displayed);
+                            Logger::WriteMessage(row.str().c_str());
+                        }
+                        Logger::WriteMessage("DV FAILURE AR WINDOW END");
                         std::vector<const AnalysisDiagnosticRecordV1*> seedAttempts;
                         for(const auto& record:failureRecords)if(!strcmp(record.stage,"subtitle-pending-seed") &&
                             record.rendererInstanceKey==failedInput->rendererInstanceKey &&

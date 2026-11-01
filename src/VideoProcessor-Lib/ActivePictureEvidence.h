@@ -184,6 +184,10 @@ struct ActivePictureEvidence
 	ActivePictureAuthorityOrigin authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
 	SparseBoundaryTransitionProof sparseTransitionProof;
 	RememberedEdgeReturnProof rememberedEdgeReturnProof;
+    // Bound only by an exact owned-source adapter or successful current masked
+    // verification. Raw source-only measurements intentionally remain unbound.
+    bool currentSourceIdentityAvailable=false;
+    ActivePictureFrameIdentity currentSourceIdentity;
 };
 
 
@@ -222,7 +226,8 @@ ActivePictureOpposingBoundaryDiagnostics MeasureActivePictureOpposingBoundaryDia
 
 // Shared conversion keeps live and queued observations tied to the same measurement.
 ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidence& evidence,
-	uint64_t frameNumber, double framesPerSecond);
+	uint64_t frameNumber, double framesPerSecond,
+    const ActivePictureFrameIdentity* expectedCurrentIdentity=nullptr);
 
 // Frame-global darkness is presentation-independent. In particular, startup
 // title cards must be classifiable before any trusted crop exists; "false" and

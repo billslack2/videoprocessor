@@ -10,8 +10,11 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 939,
+  "minimumNativeTests": 944,
   "requiredNativeMethods": [
+    "ImmediateSpatialAcquisitionRejectsUnboundChangedOrStaleProofAndKeepsTransitionConfirmation",
+    "CurrentVerifiedSpatialCropAcquiresImmediatelyWithoutLegacyStartupVotes",
+    "CurrentCrossingCaptionSpatialVerificationAcquiresWithoutExtraDisplayedFrames",
     "LegacyForegroundNativeMeasurementPublishesOnlyItsOwnBoundedPhysicalObservation",
     "InspectedPlaneWorkRejectsChangedSourceSettingsGeometryAndIncompleteInk",
     "SuppliedSpatialDimFlanksWithOpaqueCaptionKeepIndependentEdgeProof",
@@ -122,6 +125,8 @@
     "CurrentCompleteRawCueCertifiesConsecutiveHeldPosesWithoutRenewingAcceptance",
     "CurrentHeldPreparedCertificateRejectsPartialChangedAndNovelOwnedGlyphs",
     "CurrentHeldFinalPixelsNeverSealReusableSourceAnalysis",
+    "CurrentPendingFinalPixelsCanAnchorWithoutCompletingSourceAnalysis",
+    "CurrentPendingFinalPixelsRequireExactPreparedProof",
     "ClassicTimedEngageKeepsCurrentCaptionVisibleUntilActualPanCoversIt",
     "ClassicEngageVisibilityCannotBorrowStaleCaptionOrMaskPicturePriority",
     "ClassicEngageUsesCurrentVisiblePixelsAcrossDenseScanGapsAndUiOnlyContent",
@@ -264,6 +269,21 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 28,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "ImmediateSpatialAcquisitionRejectsUnboundChangedOrStaleProofAndKeepsTransitionConfirmation"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "CurrentVerifiedSpatialCropAcquiresImmediatelyWithoutLegacyStartupVotes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "CurrentCrossingCaptionSpatialVerificationAcquiresWithoutExtraDisplayedFrames"
+    },
     {
       "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
       "class": "NativeRgbAnalysisTests",
