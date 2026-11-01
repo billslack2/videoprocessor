@@ -242,3 +242,37 @@ fixtures now share bounded compiled-program bytes across otherwise fresh devices
 renderers and resources. Dedicated cold-cache MotionRendererTests remain isolated.
 A new GPU regression checks program reuse and actual composition pixels. This
 speed change is implemented but not yet built or benchmarked at this checkpoint.
+
+## Long cold-run capture-fidelity correction
+
+Candidate47ea8de3 full qualification passed865/868 Standard methods, with three
+advanced first-Ready failures; the same binaries passed those three in a short
+warm diagnostic. Failure-only QPC telemetry then exposed a separate harness
+problem during a long cold Unknown-input run. Its producer delivered4219 inputs
+over110963ms while their nominal timestamps covered70370ms. Whole-history copies
+in drain and caption-proof checks grew to36–49ms per pump, slowing declared59.94Hz
+input to approximately38Hz. The late injected Unknown correctly failed the
+renderer age limit (58.606ms versus41.708ms); extending that limit is unjustified.
+
+The harness now consumes only unread callback records and indexes caption proof
+records by original renderer/generation/source. The strict source, three-line,
+original-repeat-cutoff and latest-proof oracle is unchanged. Full diagnostic
+history remains available on failure. A native regression compares indexed and
+full-history results, including noise, foreign sources and later partial attempts.
+Compact success/failure summaries expose actual arrival rate. This repairs test
+fidelity without changing runtime pacing or granting additional warmup grace.
+A speculative prefetch gate was archived without production implementation.
+
+The shared compiled-program cache's fresh-device composition-pixel test passed
+on both pinned dependencies (approximately45seconds per cold isolated probe).
+Broad-suite speed and final cold runtime qualification remain unmeasured at this
+checkpoint. No deployment beyondced983fd is claimed.
+
+The corrected observer passes all855 native contracts in
+20261101-022240-3d9f9eb5. Its cold actual Unknown-input test passes at measured
+59.9417Hz across5719inputs (95392.8ms actual versus95395.3ms nominal), and the
+60Hz phase also passes. This confirms the prior long-run age failure was caused
+by instrumentation overhead. Black and Generated first-Ready cases still fail
+at measured59.97/60.68Hz; these remain runtime failures requiring investigation.
+The diagnostic is recorded under incremental-harness-cold-three with exact
+unchanged Release renderer and new harness hashes. No full qualification claimed.

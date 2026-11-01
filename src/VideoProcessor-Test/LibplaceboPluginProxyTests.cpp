@@ -6,6 +6,7 @@
 #include "../VideoProcessor-Lib/vprenderer/OptionalRendererLayout.h"
 
 #include <type_traits>
+#include <tuple>
 #include <array>
 #include <limits>
 #include <vprenderer/ShaderCacheStorage.h>
@@ -251,6 +252,26 @@ namespace
         return proof && proof->resultCode==3 && proof->counters[4]==3 &&
             (proof->flags&(1u|4u|16u))==(1u|4u|16u) && !(proof->flags&32u);
     }
+    void CopyUnreadCallbackTail(const std::vector<AnalysisDiagnosticRecordV1>& source,size_t& cursor,
+        std::vector<AnalysisDiagnosticRecordV1>& tail)
+    {
+        if(cursor>source.size())throw std::runtime_error("Callback history reset during an active cadence fixture");
+        tail.assign(source.begin()+cursor,source.end());cursor=source.size();
+    }
+    class PersistentCaptionProofIndex {
+        using Key=std::tuple<uint64_t,uint64_t,uint64_t>;
+        std::map<Key,std::vector<AnalysisDiagnosticRecordV1>> sources;
+    public:
+        void Observe(const AnalysisDiagnosticRecordV1& record) {
+            if(!strcmp(record.stage,"subtitle-output") || !strcmp(record.stage,"submitted-presentation"))
+                sources[{record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence}].push_back(record);
+        }
+        const std::vector<AnalysisDiagnosticRecordV1>& For(const AnalysisDiagnosticRecordV1& output) const {
+            const auto found=sources.find({output.rendererInstanceKey,output.transportGeneration,output.counters[1]});
+            static const std::vector<AnalysisDiagnosticRecordV1> empty;
+            return found==sources.end()?empty:found->second;
+        }
+    };
     struct ScopedCadenceDiagnostics {
         std::string previous;bool existed=false,enabled=false;
         explicit ScopedCadenceDiagnostics(bool activate):enabled(activate) {
@@ -409,6 +430,39 @@ namespace VideoProcessorTest
             Assert::AreEqual(uint64_t(4),captured.back().recordSequence);
             auto consumed=input;consumed.acceptedSequence=51;
             Assert::IsFalse(HasCompletePersistentThreeLineCaption({raw,output},repeat,consumed));
+        }
+        TEST_METHOD(IncrementalCaptionProofIndexPreservesOriginalOrdinalsAndRepeatCutoff) {
+            std::vector<AnalysisDiagnosticRecordV1> all,tail;size_t cursor=0;PersistentCaptionProofIndex index;
+            AnalysisDiagnosticRecordV1 input{};input.acceptedSequence=50;input.transportGeneration=input.rendererGeneration=7;
+            input.sourceFormatGeneration=13;input.analysisDomainKey=17;input.sourceFrameNumber=150;
+            input.captureTimestamp=9000;input.viewportGeneration=2;input.policyGeneration=11;input.continuityGeneration=12;
+            auto noise=input;strcpy_s(noise.stage,"worker-read");
+            for(int i=0;i<1000;++i)StoreCallbackOrderedRecord(all,noise);
+            CopyUnreadCallbackTail(all,cursor,tail);Assert::AreEqual(size_t(1000),tail.size());
+            for(const auto& record:tail)index.Observe(record);
+            auto raw=input;strcpy_s(raw.stage,"subtitle-output");raw.rendererInstanceKey=19;
+            raw.counters[0]=50;raw.counters[1]=17;raw.flags=1u|4u|16u;raw.resultCode=3;raw.counters[4]=3;
+            auto output=input;strcpy_s(output.stage,"submitted-presentation");output.rendererInstanceKey=19;
+            output.flags=3;output.counters[0]=output.counters[1]=50;
+            StoreCallbackOrderedRecord(all,raw);StoreCallbackOrderedRecord(all,output);const auto original=all.back();
+            CopyUnreadCallbackTail(all,cursor,tail);Assert::AreEqual(size_t(2),tail.size());
+            Assert::AreEqual(uint64_t(1001),tail.front().recordSequence);
+            for(const auto& record:tail)index.Observe(record);
+            Assert::IsTrue(HasCompletePersistentThreeLineCaption(index.For(original),original,input));
+            auto partial=raw;partial.resultCode=2;StoreCallbackOrderedRecord(all,partial);
+            auto repeat=output;repeat.flags|=16384u;repeat.counters[0]=51;StoreCallbackOrderedRecord(all,repeat);const auto repeated=all.back();
+            StoreCallbackOrderedRecord(all,output);const auto laterFresh=all.back();
+            auto foreign=raw;foreign.rendererInstanceKey=20;StoreCallbackOrderedRecord(all,foreign);
+            foreign=raw;++foreign.transportGeneration;StoreCallbackOrderedRecord(all,foreign);
+            CopyUnreadCallbackTail(all,cursor,tail);Assert::AreEqual(size_t(5),tail.size());
+            for(const auto& record:tail)index.Observe(record);
+            Assert::AreEqual(size_t(5),index.For(original).size(),L"Only this renderer/generation/source's caption proofs and submissions enter its join.");
+            Assert::IsTrue(HasCompletePersistentThreeLineCaption(index.For(repeated),repeated,input),L"A repeat uses its original successful output cutoff, not a later partial attempt.");
+            Assert::IsFalse(HasCompletePersistentThreeLineCaption(index.For(laterFresh),laterFresh,input),L"A fresh later attempt must see the latest partial proof.");
+            Assert::AreEqual(HasCompletePersistentThreeLineCaption(all,repeated,input),HasCompletePersistentThreeLineCaption(index.For(repeated),repeated,input));
+            Assert::AreEqual(HasCompletePersistentThreeLineCaption(all,laterFresh,input),HasCompletePersistentThreeLineCaption(index.For(laterFresh),laterFresh,input));
+            CopyUnreadCallbackTail(all,cursor,tail);Assert::IsTrue(tail.empty());
+            Assert::AreEqual(uint64_t(1001),index.For(original).front().recordSequence,L"Tail copies retain absolute callback ordinals without rebasing or duplicate delivery.");
         }
         TEST_METHOD(ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource) {
             AnalysisDiagnosticRecordV1 output{};strcpy_s(output.stage,"submitted-presentation");
@@ -2515,7 +2569,51 @@ namespace VideoProcessorTest
                 std::vector<AnalysisDiagnosticRecordV1> outputs;
                 std::vector<ClassicShaderPreparationSelection> outputPreparation;
                 std::set<uint64_t> repeatedAnchors;
+                PersistentCaptionProofIndex captionProofs;
+                // Numeric-only bounded producer telemetry. Formatting happens
+                // only at final success/failure reporting, never per input.
+                struct ArrivalTiming {uint64_t source=0;int64_t capture=0,entered=0,returned=0,pump=0,messages=0,
+                    sleepStarted=0,slept=0,drainStarted=0,drained=0,flushed=0,previous=0;};
+                auto arrivalStorage=std::make_unique<std::array<ArrivalTiming,64>>();
+                uint64_t arrivalCount=0,fastArrivalGaps=0;int64_t firstArrival=0,firstCapture=0,lastArrival=0,lastCapture=0;
+                int64_t longestArrivalGap=0,longestOnFrame=0,longestPump=0;
+                const auto arrivalFrequency=clock.TimingClockTicksPerSecond();
+                const auto arrivalPeriod=static_cast<int64_t>(uint64_t(arrivalFrequency)*duration/scale);
+                auto reportProducerTiming=[&](bool failure) {
+                    const auto failureQpc=clock.TimingClockNow();
+                    const auto milliseconds=[&](int64_t a,int64_t b){return a>0&&b>=a?1000.0*double(b-a)/arrivalFrequency:-1.0;};
+                    std::ostringstream timingSummary;timingSummary<<"DV PRODUCER TIMING: samples="<<arrivalCount
+                        <<" input_hz="<<inputHz<<" qpc_hz="<<arrivalFrequency<<" observed_qpc="<<failureQpc
+                        <<" outcome="<<(failure?"failure":"success")
+                        <<" actual_input_hz="<<(lastArrival>firstArrival?double(arrivalCount-1)*arrivalFrequency/(lastArrival-firstArrival):0)
+                        <<" fast_gaps_below_half_period="<<fastArrivalGaps
+                        <<" max_arrival_gap_ms="<<(1000.0*longestArrivalGap/arrivalFrequency)
+                        <<" max_onframe_ms="<<(1000.0*longestOnFrame/arrivalFrequency)
+                        <<" max_completed_pump_ms="<<(1000.0*longestPump/arrivalFrequency)
+                        <<" actual_elapsed_ms="<<milliseconds(firstArrival,lastArrival)
+                        <<" nominal_elapsed_ms="<<milliseconds(firstCapture,lastCapture);
+                    Logger::WriteMessage(timingSummary.str().c_str());
+                    if(!failure)return;
+                    const auto arrivalBegin=arrivalCount>arrivalStorage->size()?arrivalCount-arrivalStorage->size():0;
+                    for(uint64_t index=arrivalBegin;index<arrivalCount;++index) {
+                        const auto& a=(*arrivalStorage)[size_t(index%arrivalStorage->size())];
+                        std::ostringstream timing;timing<<"DV PRODUCER ARRIVAL: input="<<a.source<<" capture_qpc="<<a.capture
+                            <<" entered_qpc="<<a.entered<<" returned_qpc="<<a.returned
+                            <<" arrival_gap_ms="<<milliseconds(a.previous,a.entered)
+                            <<" initial_render_offset_ms="<<(1000.0*double(firstArrival-firstCapture)/arrivalFrequency)
+                            <<" schedule_lag_ms="<<(1000.0*double(a.entered-a.capture)/arrivalFrequency)
+                            <<" adjusted_lag_ms="<<(1000.0*double((a.entered-firstArrival)-(a.capture-firstCapture))/arrivalFrequency)
+                            <<" onframe_ms="<<milliseconds(a.entered,a.returned)
+                            <<" message_ms="<<milliseconds(a.pump,a.messages)
+                            <<" sleep_ms="<<milliseconds(a.sleepStarted,a.slept)
+                            <<" drain_ms="<<milliseconds(a.drainStarted,a.drained)
+                            <<" flush_ms="<<milliseconds(a.drained,a.flushed)
+                            <<" in_progress_drain_ms="<<(!a.drained&&a.drainStarted?milliseconds(a.drainStarted,failureQpc):-1.0);
+                        Logger::WriteMessage(timing.str().c_str());
+                    }
+                };
                 auto require=[&](bool ok,const wchar_t* why){if(ok)return;
+                    reportProducerTiming(true);
                     std::vector<AnalysisDiagnosticRecordV1> failureRecords;std::vector<std::string> failureMessages;
                     {std::lock_guard<std::mutex> lock(classicPoseLogMutex);failureRecords=classicPoseRecords;failureMessages=classicPoseMessages;}
                     size_t firstRecord=failureRecords.size(),remaining=80;
@@ -2608,8 +2706,11 @@ namespace VideoProcessorTest
                     Assert::Fail(why);};
                 auto drain=[&] {
                     std::vector<AnalysisDiagnosticRecordV1> records;
-                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);records=classicPoseRecords;}
-                    for(;cursor<records.size();++cursor){const auto& record=records[cursor];
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);CopyUnreadCallbackTail(classicPoseRecords,cursor,records);}
+                    // Index every source-bound proof in this tail before checking
+                    // submissions; the unchanged oracle enforces original ordinals.
+                    for(const auto& record:records)captionProofs.Observe(record);
+                    for(const auto& record:records){
                         if(!strcmp(record.stage,"analysis-input")) {
                             require(record.analysisFormat==uint64_t(AnalysisLumaFormat::DecodedDolbyVision422)&&
                                 record.analysisWidth==width&&record.analysisHeight==height&&record.counters[4]==12&&record.counters[5]==4,
@@ -2673,7 +2774,9 @@ namespace VideoProcessorTest
                 const auto captureOrigin=clock.TimingClockNow();
                 uint64_t pressureInput=0;
                 auto pump=[&](bool cue,bool forceUnknown=false) {
+                    const auto pumpStarted=clock.TimingClockNow();
                     MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+                    const auto messagesFinished=clock.TimingClockNow();ArrivalTiming* arrival=nullptr;
                     if(callback.state==RENDERSTATE_RENDERING){
                         // HDMI capture cadence is independent of driver/compiler
                         // stalls in this producer thread. Arrival pacing stays wall based.
@@ -2688,9 +2791,26 @@ namespace VideoProcessorTest
                             Logger::WriteMessage(injection.str().c_str());
                         }
                         const auto& pixels=forceUnknown?pressure[sequence%2]:(cue?caption[sequence%2]:blank[sequence%2]);
-                        VideoFrame frame(pixels.data(),sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);}
+                        arrival=&(*arrivalStorage)[size_t(arrivalCount%arrivalStorage->size())];*arrival={};
+                        arrival->source=sequence;arrival->capture=stamp;arrival->pump=pumpStarted;arrival->messages=messagesFinished;
+                        arrival->previous=lastArrival;
+                        VideoFrame frame(pixels.data(),sequence++,stamp,&buffer);
+                        arrival->entered=clock.TimingClockNow();
+                        if(!arrivalCount){firstArrival=arrival->entered;firstCapture=stamp;}
+                        if(lastArrival){const auto gap=arrival->entered-lastArrival;
+                            if(gap>0&&gap<arrivalPeriod/2)++fastArrivalGaps;
+                            longestArrivalGap=(std::max)(longestArrivalGap,gap);}
+                        ++arrivalCount;lastArrival=arrival->entered;lastCapture=stamp;
+                        cleanup.renderer->OnVideoFrame(frame);arrival->returned=clock.TimingClockNow();
+                        longestOnFrame=(std::max)(longestOnFrame,arrival->returned-arrival->entered);
+                    }
                     next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0/inputHz));
-                    std::this_thread::sleep_until(next);drain();preparationLog.Flush();
+                    if(arrival)arrival->sleepStarted=clock.TimingClockNow();
+                    std::this_thread::sleep_until(next);
+                    if(arrival){arrival->slept=clock.TimingClockNow();arrival->drainStarted=arrival->slept;}
+                    drain();if(arrival)arrival->drained=clock.TimingClockNow();
+                    preparationLog.Flush();if(arrival)arrival->flushed=clock.TimingClockNow();
+                    longestPump=(std::max)(longestPump,clock.TimingClockNow()-pumpStarted);
                     require(callback.state!=RENDERSTATE_FAILED,L"Persistent Dolby cadence renderer entered failed state.");
                 };
                 int32_t native[4]={0,pictureTop,width,pictureBottom};
@@ -2781,8 +2901,7 @@ namespace VideoProcessorTest
                                 L"Only the first cue input may repeat an immediately preceding complete blank output.");continue;}
                             const bool composed=(record.flags&2u)!=0;
                             if(composed&&mode) {
-                                std::vector<AnalysisDiagnosticRecordV1> lineRecords;
-                                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);lineRecords=classicPoseRecords;}
+                                const auto& lineRecords=captionProofs.For(record);
                                 const auto& selectedInput=nativeInputs.at(record.counters[1]);
                                 const bool completeLines=HasCompletePersistentThreeLineCaption(lineRecords,record,selectedInput);
                                 if(!completeLines) {
@@ -2950,6 +3069,7 @@ namespace VideoProcessorTest
                         L"Actual subtitle cleanup never intersected changing picture pixels; benign background motion is not cadence regression coverage.");
                     if(requireUnknownInputRepeat)require(unknownSent&&unknownRepeated&&nextCleanFresh,
                         L"Actual whole-output repeat and immediately fresh successor were not exercised; timing-only/unavailable coverage cannot pass.");
+                    reportProducerTiming(false);
                 }
             }
         }

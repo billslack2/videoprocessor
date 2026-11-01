@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 854,
+  "minimumNativeTests": 855,
   "requiredNativeMethods": [
     "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines",
     "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
@@ -132,7 +132,8 @@
     "WarmupReadyInputNeedsCurrentCueAcquisitionBeforeSpendingPreviousImage",
     "MeasuredWarmupRepeatRetainsOnlyAuthenticRawEvidenceForNextFreshCue",
     "WarmupCadenceRepeatYieldsToExactCurrentNativeAspectHandoffs",
-    "WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry"
+    "WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry",
+    "IncrementalCaptionProofIndexPreservesOriginalOrdinalsAndRepeatCutoff"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -399,6 +400,11 @@
       "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
       "class": "MotionRendererTests",
       "method": "WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "IncrementalCaptionProofIndexPreservesOriginalOrdinalsAndRepeatCutoff"
     }
   ]
 }
