@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 820,
+  "minimumNativeTests": 821,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -100,7 +100,8 @@
     "ExactQueuedInwardProofCannotWaitForOldSubtitlePresentationTimers",
     "InwardOwnerBypassRetainsExactSourceAndMovingPictureVetoes",
     "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey",
-    "ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource"
+    "ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource",
+    "SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -257,6 +258,11 @@
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
       "method": "ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate"
     }
   ]
 }

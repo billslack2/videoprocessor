@@ -63,3 +63,9 @@ is not reset or claimed cold. Warm-only evidence cannot qualify a release.
 Caption clipping while subtitle shaders are building is intentionally allowed
 by the operator. Picture AR must remain independent of captions throughout;
 after shader readiness, strict caption/cadence correctness still applies.
+
+With `-Lane Native -Methods ...`, the whitelist contains only the translation
+units that own those validated CPU methods, plus the PCH and any explicit required
+production support. Omitting `-Methods` still compiles and runs the complete Native
+manifest. Both forms use the same isolated iteration output and never grant full
+runtime qualification; the TRX validator still requires exactly the selected tests.

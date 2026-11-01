@@ -22,12 +22,37 @@ function Get-VpIterationTestPlan([object]$Plan,
         actualCount=@($expected.Values | Where-Object {$_ -ne 'native'}).Count;filter=$filter;manifestHash=$Plan.manifestHash}
 }
 
-function New-VpCriticalNativeSourceList([string]$Root,[string]$Destination) {
+function New-VpCriticalNativeSourceList([string]$Root,[string]$Destination,[string[]]$Methods=@()) {
     $manifest=Get-Content -LiteralPath (Join-Path $Root 'tools/critical_runtime_tests.json') -Raw | ConvertFrom-Json
     $sources=@($manifest.nativeSources)+@($manifest.explicitNativeMethods | ForEach-Object {$_.source})
-    # Mixed MotionRendererTests methods reference this production function even
-    # when only its CPU contracts execute. Keep this small support list explicit.
-    $support=@('..\VideoProcessor-Lib\vprenderer\LibplaceboRenderParameters.cpp')
+    if($Methods.Count) {
+        # Validate CPU identities against the complete fail-closed manifest before
+        # resolving their translation units. Never match text/substrings here.
+        $selected=Get-VpIterationTestPlan (Get-VpCriticalTestPlan $Root) Native $Methods
+        $selectedSources=@();$resolved=@{}
+        foreach($source in $manifest.nativeSources) {
+            $class=''
+            foreach($token in @(Get-VpTestMacroTokens (Get-Content -LiteralPath (Join-Path $Root $source) -Raw))) {
+                if($token.kind -eq 'CLASS'){$class=$token.name;continue}
+                $key=$class+'::'+$token.name
+                if($selected.expected.ContainsKey($key)){$selectedSources+=$source;$resolved[$key]=$true}
+            }
+        }
+        foreach($entry in $manifest.explicitNativeMethods) {
+            $key=$entry.class+'::'+$entry.method
+            if($selected.expected.ContainsKey($key)){$selectedSources+=$entry.source;$resolved[$key]=$true}
+        }
+        foreach($key in $selected.expected.Keys) {
+            if(-not $resolved.ContainsKey($key)){throw "Selected native regression has no compile source: $key"}
+        }
+        $sources=@($selectedSources | Sort-Object -Unique)
+    }
+    # Mixed MotionRendererTests references this production function, even when
+    # only its CPU contracts execute. Other selected TUs do not require it.
+    $support=@()
+    if('src/VideoProcessor-Test/MotionRendererTests.cpp' -in $sources) {
+        $support+= '..\VideoProcessor-Lib\vprenderer\LibplaceboRenderParameters.cpp'
+    }
     foreach($source in $support) {
         if(-not (Test-Path -LiteralPath (Join-Path (Join-Path $Root 'src/VideoProcessor-Test') $source) -PathType Leaf)) {
             throw "Critical Native support source is missing: $source"

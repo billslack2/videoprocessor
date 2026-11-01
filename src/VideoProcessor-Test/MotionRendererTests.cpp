@@ -663,6 +663,30 @@ TEST_CLASS(MotionRendererTests){public:
             Assert::IsFalse(SourceCadenceObservationComplete(bad,identity));
         }
     }
+    TEST_METHOD(SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate) {
+        int gpu;
+        for(const auto rate:{60.0,60000.0/1001.0}) {
+            SourceCadencePresentationContext c;c.gpu=&gpu;c.generation=1;c.sourceFormat=2;
+            c.analysisDomain=3;c.outputContract=4;c.frameDuration=rate==60.0?1:1001;c.timeScale=rate==60.0?60:60000;
+            SourceCadencePresentation repeat;repeat.Candidate(c,82,82.0/rate,true,true);repeat.Submitted(true);
+            for(const double measured:{0.0,23.976,rate*1.0002}) {
+                const auto inputRate=SourceCadenceInputRate(measured,c.frameDuration,c.timeScale);
+                Assert::AreEqual(rate,inputRate,0.0000001,
+                    L"A complete input before the five-second estimator publication still has an exact declared source period.");
+                Assert::IsTrue(repeat.CanRepeat(c,inputRate,83,83.0/rate));
+            }
+            auto changed=c;changed.frameDuration=1001;changed.timeScale=24000;
+            Assert::IsFalse(repeat.CanRepeat(changed,SourceCadenceInputRate(60,1001,24000),83,83.0/rate));
+        }
+        SourceCadencePresentationContext low;low.gpu=&gpu;low.generation=1;low.sourceFormat=2;
+        low.analysisDomain=3;low.outputContract=4;low.frameDuration=1001;low.timeScale=24000;
+        SourceCadencePresentation lowRepeat;lowRepeat.Candidate(low,82,82.0*1001/24000,true,true);lowRepeat.Submitted(true);
+        Assert::IsFalse(lowRepeat.CanRepeat(low,SourceCadenceInputRate(60,1001,24000),83,83.0*1001/24000),
+            L"A stale measured60 estimate cannot enable high-input-cadence reuse on a declared23.976 source.");
+        Assert::AreEqual(24000.0/1001.0,SourceCadenceInputRate(60,1001,24000),0.0000001);
+        Assert::AreEqual(0.0,SourceCadenceInputRate(60,0,60000));
+        Assert::AreEqual(0.0,SourceCadenceInputRate(60,1001,0));
+    }
     TEST_METHOD(SourceCadenceRepeatRequiresSubmittedCompletePixelsAndNeverRenewsAnchor) {
         int gpu;
         SourceCadencePresentationContext c;c.gpu=&gpu;c.generation=3;c.sourceFormat=4;

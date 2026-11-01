@@ -36,6 +36,16 @@ try {
     $manifest=Get-Content -LiteralPath (Join-Path $Root 'tools/critical_runtime_tests.json') -Raw | ConvertFrom-Json
     $requiredFiles=@('pch.cpp','..\VideoProcessor-Lib\vprenderer\LibplaceboRenderParameters.cpp')+@(@($manifest.nativeSources)+@($manifest.explicitNativeMethods | ForEach-Object {$_.source}) | ForEach-Object {Split-Path -Leaf $_})
     Require (($sourceList.files -join '|') -eq (@($requiredFiles | Sort-Object -Unique) -join '|')) 'Critical Native whitelist dropped or added translation units.'
+    $proxyNames=@('ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey','ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource')
+    $proxyList=New-VpCriticalNativeSourceList $Root (Join-Path $temp 'native-selected-proxy.props') $proxyNames
+    Require (($proxyList.files -join '|') -eq 'LibplaceboPluginProxyTests.cpp|pch.cpp') 'Two Proxy CPU methods must compile only their owning TU plus PCH.'
+    $motionList=New-VpCriticalNativeSourceList $Root (Join-Path $temp 'native-selected-motion.props') @('SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence')
+    $motionRequired=@('pch.cpp','MotionRendererTests.cpp','..\VideoProcessor-Lib\vprenderer\LibplaceboRenderParameters.cpp') | Sort-Object
+    Require (($motionList.files -join '|') -eq ($motionRequired -join '|')) 'Motion CPU subset lost its required production support or added unrelated TUs.'
+    Reject '*Unknown required regression*' {New-VpCriticalNativeSourceList $Root (Join-Path $temp 'unknown.props') @('not-a-regression')}
+    Reject '*cannot run GPU method*' {New-VpCriticalNativeSourceList $Root (Join-Path $temp 'gpu.props') @($actual)}
+    Require (-not(Test-Path -LiteralPath (Join-Path $temp 'unknown.props')) -and -not(Test-Path -LiteralPath (Join-Path $temp 'gpu.props'))) 'Rejected selections wrote usable compile whitelists.'
+    Write-Host 'PASS: selected CPU methods compile exact owning TUs/support; unknown and GPU names fail before whitelist generation.'
     [xml]$sourceXml=Get-Content -LiteralPath $sourceList.path -Raw
     Require ([int]$sourceXml.Project.PropertyGroup.VPCriticalNativeCompileCount -eq $sourceList.count) 'Generated compile-source count is inconsistent.'
     Require (([string]$sourceXml.Project.PropertyGroup.VPCriticalNativeCompileFiles) -eq ($sourceList.files -join ';')) 'Generated MSBuild whitelist changed source membership.'

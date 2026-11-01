@@ -84,7 +84,7 @@ try {
         @{name='beta-tests';path='src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj';extra=@('/p:BuildProjectReferences=false','/p:VPTestLibplacebo=beta')}
     )
     if ($Lane -eq 'Native') {
-        $nativeSources=New-VpCriticalNativeSourceList $Root (Join-Path $runDirectory 'critical-native-sources.props')
+        $nativeSources=New-VpCriticalNativeSourceList $Root (Join-Path $runDirectory 'critical-native-sources.props') $Methods
         $projects=@($projects | Where-Object {$_.name -eq 'native-library'})+@(
             @{name='critical-native-tests';path='src\VideoProcessor-Test\VideoProcessor-CriticalNativeTests.vcxproj';
               extra=@('/p:BuildProjectReferences=false','/p:VPTestLibplacebo=standard',"/p:VPCriticalNativeSourcesFile=$($nativeSources.path)")})

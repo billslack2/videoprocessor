@@ -5,6 +5,15 @@
 #include <algorithm>
 #include <vprenderer/SubtitleAspectRetention.h>
 
+// Dedicated source-cadence rate; cumulative transport timing remains separate.
+inline double SourceCadenceInputRate(double measuredRate,uint64_t frameDuration,uint64_t timeScale)
+{
+    // Capture-rate estimation starts at zero and publishes only every five
+    // seconds. It must not govern the source's already-declared frame period.
+    (void)measuredRate;
+    return frameDuration && timeScale ? double(timeScale)/double(frameDuration) : 0.0;
+}
+
 // A worker job may finish without searching text at all. Completion of that
 // job is distinct from conclusive current caption or absence evidence.
 inline bool SourceCadenceObservationComplete(const SubtitleBoxObservation& observed,

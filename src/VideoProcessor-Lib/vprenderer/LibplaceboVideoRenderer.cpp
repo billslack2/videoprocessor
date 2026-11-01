@@ -13196,12 +13196,14 @@ struct LibplaceboVideoRenderer::Impl
         inputRepeatIdentity.rendererGeneration=frameGeneration;
         const auto repeatContext=SourceCadenceContext(state,frameGeneration,preparedQueued.domainKey,
             viewportRequestSerial,sceneDetectorGeneration,sourceSubtitleMode,configuredScreenActive);
-        const bool cadenceCacheDiagnostic=SubtitleCadenceCacheDiagnosticsEnabled() && captureRateHz>30.0 && (sourceSequence<=128 ||
+        const double cadenceInputHz=SourceCadenceInputRate(captureRateHz,
+            repeatContext.frameDuration,repeatContext.timeScale);
+        const bool cadenceCacheDiagnostic=SubtitleCadenceCacheDiagnosticsEnabled() && cadenceInputHz>30.0 && (sourceSequence<=128 ||
             (subtitlePreview && subtitlePreview->current.text.workLimit));
         if(cadenceCacheDiagnostic)
             DebugLog::Log("VP subtitle cadence cache: stage=input source=%llu anchor=%llu can_repeat=%d live=%d queued=%d measurement=%d cadence=%d temporal=%d interlaced=%d recovery=%d fallback=%d discontinuity=%d pts=%.9f anchor_pts=%.9f domain=%llu viewport=%llu scene=%llu policy=%llu continuity=%llu output=%llu epoch=%llu revision=%llu mode=%d",
                 sourceSequence,previousCompletePresentation.DisplayedSource(),
-                previousCompletePresentation.CanRepeat(repeatContext,captureRateHz,sourceSequence,temporalRenderer.currentPts,videoFrame.IsSourceDiscontinuity())?1:0,
+                previousCompletePresentation.CanRepeat(repeatContext,cadenceInputHz,sourceSequence,temporalRenderer.currentPts,videoFrame.IsSourceDiscontinuity())?1:0,
                 preparedLive.IsValid()?1:0,preparedQueued.IsValid()?1:0,subtitleMeasurementEnabled?1:0,cadenceRepeat?1:0,
                 temporalRenderer.Active()?1:0,state.displayMode->IsInterlaced()?1:0,
                 displayCadenceRecovery.Pending()?1:0,displayCadenceRecovery.Fallback()?1:0,videoFrame.IsSourceDiscontinuity()?1:0,
@@ -13211,7 +13213,7 @@ struct LibplaceboVideoRenderer::Impl
         if(!cadenceRepeat && subtitleMeasurementEnabled && preparedLive.IsValid() && preparedQueued.IsValid() &&
             !temporalRenderer.Active() && !state.displayMode->IsInterlaced() &&
             !displayCadenceRecovery.Pending() && !displayCadenceRecovery.Fallback() &&
-            previousCompletePresentation.CanRepeat(repeatContext,captureRateHz,sourceSequence,
+            previousCompletePresentation.CanRepeat(repeatContext,cadenceInputHz,sourceSequence,
                 temporalRenderer.currentPts,videoFrame.IsSourceDiscontinuity()))
         {
             bool exactCurrentReady=subtitlePreview && subtitlePreview->available &&
@@ -13237,7 +13239,7 @@ struct LibplaceboVideoRenderer::Impl
                     sceneDetectionEnabled,true,false,0,correctionDecision);
                 if(correctionDecision.action==AlphaCadenceAction::Drop)return true;
                 if(PresentInputCadenceRepeat(previousCompletePresentation,repeatContext,inputRepeatIdentity,
-                    captureRateHz,temporalRenderer.currentPts,presentationTargetTimingKnown,presentationTargetLeadMs)) {
+                    cadenceInputHz,temporalRenderer.currentPts,presentationTargetTimingKnown,presentationTargetLeadMs)) {
                     const bool cueTransportRetired=subtitleBoxPresentation.RetireCompleteOutputInput(
                         previousCompletePresentation.DisplayedSource(),inputRepeatIdentity,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
@@ -20079,7 +20081,7 @@ releaseDriftBaseRetention =
         if (rendered) lastRenderedTargetTransfer = ToSdrTransfer(baseTarget.color.transfer);
         calibrationLutAttached = rendered && targetLutApplied;
         const bool completeSourceCandidate=rendered && subtitleMeasurementEnabled &&
-            !cadenceRepeat && !repeatedTemporalOutput && captureRateHz>30.0 && swapchain &&
+            !cadenceRepeat && !repeatedTemporalOutput && cadenceInputHz>30.0 && swapchain &&
             !temporalRenderer.Active() && !state.displayMode->IsInterlaced() &&
             !displayCadenceRecovery.Pending() && !displayCadenceRecovery.Fallback() &&
             SourceCadenceObservationComplete(currentSubtitlePreview.current,subtitleIdentity) &&
