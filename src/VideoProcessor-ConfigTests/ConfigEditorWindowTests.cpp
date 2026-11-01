@@ -3860,6 +3860,11 @@ void testAutoPictureAlignmentRoundTrips()
         require(trim->text()=="-12" && padding->text()=="280","Center lost retained values");
         selectData(alignment,"bottom"); selectData(mode,"manual");
         require(padding->text()=="280" && !trim->isEnabled(),"Manual value not retained");
+        selectData(mode,"auto");
+        requireControl<QPushButton>(window,"config.vprenderer.viewport.picture_alignment_mode.reset_override")->click();
+        QCoreApplication::processEvents();
+        require(mode->currentData().toString()=="manual" && trim->text()=="-12" && padding->text()=="280",
+            "Mode Reset did not restore Manual while retaining independent pixel values");
         selectData(mode,"auto"); save(window);
         const auto bytes=readBytes(path);
         require(bytes.contains("picture_alignment_mode: auto") && bytes.contains("picture_offset_pixels: -12") &&
