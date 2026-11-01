@@ -1,0 +1,64 @@
+{
+  "sourceCommit": "9cbcf47bc2c656cd34eb102ac37664dffebcd79f",
+  "branch": "codex/source-picture-redesign-20261101",
+  "status": "InProgress-ExperimentalManualReview",
+  "deployment": "C:\\Videoprocessor\\vp\\backups\\boundary-9cbcf47b-20261101-162648\\deployment-receipt.json",
+  "configurationEdits": [],
+  "repairs": [
+    "Bounded adjacent-native-row evidence and unique-ray clustering preserve physical coordinate uncertainty instead of rejecting one quantization phase.",
+    "Exact-current verified spatial expansion has one temporal owner; no added wait or forced standard ratio.",
+    "Dark full-raster contact uses current spatial continuity with three measured contacts and competing-inset/matte controls.",
+    "Ordinary fresh caption acceptance outranks redundant local fallback without broadening held erasure authority.",
+    "Qualified outer contacts stop redundant interior searches; exact per-ray sample reuse preserves the same 24ms deadline."
+  ],
+  "nativeEvidence": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-162145-4de93d5e\\iteration.json",
+  "nativePassed": 957,
+  "focusedEvidence": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-162316-5e46fd7a\\iteration.json",
+  "actualRendererMethodsPassed": 6,
+  "focusedScope": "Standard and beta: real aspect transitions, persistent Classic and Black captions at59.94/60Hz; warm-cache focused evidence.",
+  "boundedCaptureEvidence": "E:\\codex\\diagnostics\\paused-imax-20261101\\bounded-replay-9cbcf47b-idle\\receipt.json",
+  "sunFrames": 97,
+  "pausedFrames": 94,
+  "captureMismatches": 0,
+  "deadlineMs": 24,
+  "liveEvidence": "E:\\codex\\diagnostics\\paused-imax-20261101\\live-9cbcf47b.json",
+  "liveIntervals": [
+    "2026-11-01 16:27:58 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1444 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.670 peak_ms=4.763 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:00 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1492 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.574 peak_ms=4.539 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:02 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1540 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.600 peak_ms=4.168 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:04 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1588 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.608 peak_ms=3.850 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:06 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1636 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.628 peak_ms=4.011 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:08 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1684 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.563 peak_ms=4.671 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:10 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1732 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.552 peak_ms=4.833 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:12 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1780 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.543 peak_ms=4.708 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:14 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1828 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.561 peak_ms=4.013 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:16 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1876 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.528 peak_ms=4.179 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:18 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1924 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.574 peak_ms=4.639 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster",
+    "2026-11-01 16:28:20 | VP spatial detector interval: worker=50636 format=native-yuv422-sparse generation=15805081878477807578 source=1972 jobs=48 measured=48 canvas=0 unknown=0 raw_verified=0 budget_exhausted=0 avg_ms=3.541 peak_ms=3.918 last_physical=0,0-3840,2160 last_reason=supplied source extent retains the entire raster"
+  ],
+  "fullQualification": "Pending; explicit user-authorized focused manual-review deployment. No normal release/packaging qualification claimed.",
+  "previousFailure": {
+    "source": "b21ef205972b75d2e17eee8a5ce29ce0a7b2762e",
+    "reason": "Unrestricted native replay passed but live sun worker exceeded24ms, causing unknown oscillation. Superseded after actual bounded replay and live verification.",
+    "log": "E:\\codex\\diagnostics\\paused-imax-20261101\\vp-b21-live-deadline-failure.log"
+  },
+  "retainedChecks": [
+    "20261101-154711-af6939be: initial adjacent-edge RED",
+    "20261101-155357-96b1ba5f: valid fresh-caption priority RED; queued fixture total-edge tolerance corrected without widening production allowance",
+    "20261101-155730-c2c9e7ac: exact477boundary regression fixed without weakening assertion",
+    "20261101-161604-24e6ab53: first read-reuse attempt still26/97bounded timeouts; diagnostic writer dropped a test record, isolated rerun passed",
+    "bounded-replay-9cbcf47b/sun.trx:4/97deadline misses during parallel compiler load; retained separately from subsequent no-compiler97/97pass"
+  ],
+  "testSpeed": {
+    "sharedCpu": "Runs once in standard host; both dependencies retain their actual renderer coverage and strict TRX/hash checks.",
+    "shaderCorrectness": "Shared bounded program-only cache for reconstruction fixtures; private empty cache retained for preparation tests. Broader GPU speed comparison remains pending.",
+    "coldStartup": "Full cold qualification remains required for release; not claimed for this focused build."
+  },
+  "followup": [
+    "User visual acceptance and genuine scope/IMAX transitions with current captions.",
+    "Full isolated GPU/cold qualification when playback is stopped; do not run conflicting GPU checks while user watches.",
+    "Profile exact SIMD/batched native reads, bounded edge parallelism, and test-only link-time optimization alternatives. Existing96checks are distributed sample columns; analysis is native422 and conversion already usesAVX2.",
+    "Diagnostic writer fixture assumes two try-lock submissions cannot drop under contention; preserve failure and make deterministic separately."
+  ],
+  "unrelatedTrackerEditPreserved": "stories/assets/VP-0207/team-design-20261023/design.txt"
+}
