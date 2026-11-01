@@ -75,8 +75,12 @@ namespace
                 history.at(key).generation==record.transportGeneration &&
                 history.at(key).format==record.sourceFormatGeneration;
         if(record.acceptedSequence!=record.counters[0] || !record.acceptedSequence)return false;
-        history.emplace(key,current);
+        history[key]=current;
         return true;
+    }
+    void ResetShaderPreparationHistory(ClassicPreparationHistory& history,ClassicShaderPreparationSelection& current)
+    {
+        history.clear();current={};
     }
     void __cdecl ClassicPoseTestLog(const char* message)
     {
@@ -210,6 +214,33 @@ namespace
         for(int i=8;i<16;++i)if(current.metrics[i]!=previous->metrics[i])return false;
         return true;
     }
+    bool HasCompletePersistentThreeLineCaption(const std::vector<AnalysisDiagnosticRecordV1>& records,
+        const AnalysisDiagnosticRecordV1& output,const AnalysisDiagnosticRecordV1& input)
+    {
+        if((output.flags&3u)!=3u || input.acceptedSequence!=output.counters[1] ||
+            input.transportGeneration!=output.transportGeneration || !output.recordSequence)return false;
+        uint64_t before=output.recordSequence;
+        if(output.flags&16384u) {
+            const AnalysisDiagnosticRecordV1* original=nullptr;
+            for(const auto& r:records)if(!strcmp(r.stage,"submitted-presentation") &&
+                r.rendererInstanceKey==output.rendererInstanceKey && r.transportGeneration==output.transportGeneration &&
+                r.acceptedSequence==output.counters[1] && (r.flags&3u)==3u && !(r.flags&16384u) &&
+                r.recordSequence<output.recordSequence && (!original || r.recordSequence>original->recordSequence))original=&r;
+            if(!original)return false;
+            before=original->recordSequence;
+        }
+        const AnalysisDiagnosticRecordV1* proof=nullptr;
+        for(const auto& r:records)if(!strcmp(r.stage,"subtitle-output") && r.recordSequence && r.recordSequence<before &&
+            r.rendererInstanceKey==output.rendererInstanceKey && r.acceptedSequence==input.acceptedSequence &&
+            r.transportGeneration==input.transportGeneration && r.rendererGeneration==input.rendererGeneration &&
+            r.viewportGeneration==input.viewportGeneration && r.sourceFormatGeneration==input.sourceFormatGeneration &&
+            r.analysisDomainKey==input.analysisDomainKey && r.sourceFrameNumber==input.sourceFrameNumber &&
+            r.captureTimestamp==input.captureTimestamp && r.policyGeneration==output.policyGeneration &&
+            r.continuityGeneration==output.continuityGeneration && r.counters[0]==input.acceptedSequence &&
+            r.counters[1]==input.analysisDomainKey && (!proof || r.recordSequence>proof->recordSequence))proof=&r;
+        return proof && proof->resultCode==3 && proof->counters[4]==3 &&
+            (proof->flags&(1u|4u|16u))==(1u|4u|16u) && !(proof->flags&32u);
+    }
     struct ScopedCadenceDiagnostics {
         std::string previous;bool existed=false,enabled=false;
         explicit ScopedCadenceDiagnostics(bool activate):enabled(activate) {
@@ -296,6 +327,53 @@ namespace VideoProcessorTest
                 Assert::IsFalse(IsSourceBoundComposedCaption(invalid,&prior,7,3,1.0/60));
             }
         }
+        TEST_METHOD(PersistentComposedCaptionRequiresAllThreeOriginalSourceLines) {
+            AnalysisDiagnosticRecordV1 input{};input.acceptedSequence=50;input.transportGeneration=input.rendererGeneration=7;
+            input.sourceFormatGeneration=13;input.analysisDomainKey=17;input.sourceFrameNumber=150;
+            input.captureTimestamp=9000;input.viewportGeneration=2;
+            auto output=input;strcpy_s(output.stage,"submitted-presentation");output.rendererInstanceKey=19;
+            output.flags=1u|2u|32u|64u;output.recordSequence=100;
+            output.counters[0]=output.counters[1]=output.counters[2]=output.counters[5]=50;
+            output.counters[3]=3;output.counters[4]=4;output.policyGeneration=11;output.continuityGeneration=12;
+            auto raw=input;strcpy_s(raw.stage,"subtitle-output");raw.rendererInstanceKey=19;raw.recordSequence=99;
+            raw.policyGeneration=11;raw.continuityGeneration=12;raw.counters[0]=50;raw.counters[1]=17;
+            raw.flags=1u|4u|16u;raw.resultCode=3;raw.counters[4]=3;
+            Assert::IsTrue(HasCompletePersistentThreeLineCaption({raw},output,input));
+            for(int fault=0;fault<16;++fault) {
+                auto invalid=raw;
+                if(fault==0)invalid.resultCode=2;
+                if(fault==1)invalid.counters[4]=2;
+                if(fault==2)++invalid.acceptedSequence;
+                if(fault==3)invalid.recordSequence=101;
+                if(fault==4)++invalid.sourceFormatGeneration;
+                if(fault==5)++invalid.analysisDomainKey;
+                if(fault==6)++invalid.sourceFrameNumber;
+                if(fault==7)++invalid.captureTimestamp;
+                if(fault==8)++invalid.viewportGeneration;
+                if(fault==9)++invalid.policyGeneration;
+                if(fault==10)++invalid.continuityGeneration;
+                if(fault==11)++invalid.rendererInstanceKey;
+                if(fault==12)++invalid.transportGeneration;
+                if(fault==13)invalid.flags&=~16u;
+                if(fault==14)invalid.flags&=~4u;
+                if(fault==15)invalid.flags|=32u;
+                Assert::IsTrue(IsSourceBoundComposedCaption(output,nullptr,7,3,1.0/60),
+                    L"The previous composed-only check admits a partial or unrelated line proof.");
+                Assert::IsFalse(HasCompletePersistentThreeLineCaption({invalid},output,input));
+            }
+            auto partial=raw;partial.recordSequence=99;partial.resultCode=2;
+            auto earlier=raw;earlier.recordSequence=98;
+            Assert::IsFalse(HasCompletePersistentThreeLineCaption({earlier,partial},output,input),
+                L"An earlier good attempt cannot hide the latest partial attempt.");
+            auto future=partial;future.recordSequence=102;
+            Assert::IsTrue(HasCompletePersistentThreeLineCaption({raw,future},output,input));
+            auto repeat=output;repeat.recordSequence=110;repeat.flags|=16384u;repeat.cadenceRepeat=true;
+            repeat.counters[0]=51;strcpy_s(repeat.reason,"complete-output-input-cadence-repeat");
+            Assert::IsTrue(HasCompletePersistentThreeLineCaption({raw,output,future},repeat,input),
+                L"A repeat uses its original selected image proof before the original submission, never a later consumed-input attempt.");
+            auto consumed=input;consumed.acceptedSequence=51;
+            Assert::IsFalse(HasCompletePersistentThreeLineCaption({raw,output},repeat,consumed));
+        }
         TEST_METHOD(ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource) {
             AnalysisDiagnosticRecordV1 output{};strcpy_s(output.stage,"submitted-presentation");
             output.flags=1u|2u|64u;output.transportGeneration=output.rendererGeneration=7;
@@ -321,6 +399,29 @@ namespace VideoProcessorTest
             Assert::IsFalse(TrySubmittedSubtitleCleanup("SUBTITLE LAYOUT: frame=56 accepted_cleanup=1548,1718-2292,1898",output,7,cleanup));
             Assert::IsFalse(TrySubmittedSubtitleCleanup("SUBTITLE LAYOUT: frame=55 measured_cleanup=1548,1718-2292,1898",output,7,cleanup));
             Assert::IsFalse(TrySubmittedSubtitleCleanup("SUBTITLE LAYOUT: frame=55 accepted_cleanup=10,20-5,15",output,7,cleanup));
+        }
+        TEST_METHOD(ReusedRendererAddressCannotReuseAnotherFixtureShaderPreparation) {
+            ClassicPreparationHistory history;ClassicShaderPreparationSelection selected;
+            selected.state="ready";selected.key=99;selected.generation=7;selected.format=13;
+            selected.requested=3;selected.effective=3;
+            AnalysisDiagnosticRecordV1 output{};strcpy_s(output.stage,"submitted-presentation");
+            output.flags=1u;output.rendererInstanceKey=19;
+            output.transportGeneration=output.rendererGeneration=7;
+            output.acceptedSequence=output.counters[0]=output.counters[1]=6;
+            output.sourceFormatGeneration=13;
+            Assert::IsTrue(RecordSubmittedShaderPreparation(history,output,selected));
+            // Allocators may reuse the renderer address; source generations and
+            // sequence numbers also restart in a new fixture or cadence phase.
+            auto pending=selected;pending.state="pending";pending.key=101;
+            pending.format=17;pending.effective=0;output.sourceFormatGeneration=17;
+            Assert::IsTrue(RecordSubmittedShaderPreparation(history,output,pending));
+            const ClassicSubmittedPreparationKey key{19,7,6};
+            Assert::IsTrue(history.at(key).AllowsInitialBuildFallback(7,17,3),
+                L"A fresh output at a reused renderer address must not inherit an old fixture's Ready state or source format.");
+            ResetShaderPreparationHistory(history,selected);
+            Assert::IsTrue(history.empty());Assert::IsTrue(selected.state.empty());
+            Assert::AreEqual(uint64_t(0),selected.key);Assert::AreEqual(uint64_t(0),selected.format);
+            Assert::IsFalse(selected.AllowsInitialBuildFallback(7,17,3));
         }
         TEST_METHOD(RepeatedWarmupImageKeepsItsOriginalShaderPreparationProvenance) {
             ClassicPreparationHistory history;
@@ -879,7 +980,7 @@ namespace VideoProcessorTest
             const auto create=reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_CREATE_EXPORT));
             const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_DESTROY_EXPORT));
             Assert::IsTrue(create&&destroy);
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();}
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);}
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
             Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0 && GetTempFileNameA(temp,"cpt",0,configPath)!=0);
             std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
@@ -1070,9 +1171,9 @@ namespace VideoProcessorTest
             Assert::IsNotNull(reinterpret_cast<void*>(diagnostics));
             struct DiagnosticCleanup {VideoProcessorLibplaceboConfigureDiagnosticFn configure;
                 ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);}} diagnosticCleanup{diagnostics};
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=false;}
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=false;}
             diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();}
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);}
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
             Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0 && GetTempFileNameA(temp,"clm",0,configPath)!=0);
             std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
@@ -1375,9 +1476,9 @@ namespace VideoProcessorTest
             Assert::IsNotNull(reinterpret_cast<void*>(diagnostics));
             struct DiagnosticCleanup {VideoProcessorLibplaceboConfigureDiagnosticFn configure;
                 ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);}} diagnosticCleanup{diagnostics};
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=false;}
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=false;}
             diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();}
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);}
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
             Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0 && GetTempFileNameA(temp,"clm",0,configPath)!=0);
             std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
@@ -2097,7 +2198,7 @@ namespace VideoProcessorTest
         // output is inspected in sink order, including outputs between OSD publications.
         void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputRepeat=false,bool nativePreflightOnly=false,bool alternatingPreflight=false)
         {
-            ScopedCadenceDiagnostics cadenceDiagnostics(!nativePreflightOnly&&requestedMode==unsigned(SubtitlePreviewMode::BlackBackground));
+            ScopedCadenceDiagnostics cadenceDiagnostics(!nativePreflightOnly&&SubtitlePreviewOverridesClassicHandling(static_cast<SubtitlePreviewMode>(requestedMode)));
             constexpr int width=3840,height=2160,pictureTop=262,pictureBottom=1898,captionBottom=1940;
             struct ProbeClock final : ITimingClock {
                 LARGE_INTEGER frequency{};
@@ -2338,7 +2439,7 @@ namespace VideoProcessorTest
                 // Source cadence is independent of the current output display.
                 constexpr unsigned scale=60000;
                 const double inputHz=double(scale)/duration;
-                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseMessages.clear();classicPoseAllRecordStages=true;}
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseMessages.clear();classicPoseAllRecordStages=true;}
                 diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
                 ClassicPreparationLogForwarder preparationLog;
                 char temp[MAX_PATH]={},configPath[MAX_PATH]={};
@@ -2603,6 +2704,12 @@ namespace VideoProcessorTest
                             if(displayedSource<first){require((record.flags&16384u)!=0&&consumedSource==first,
                                 L"Only the first cue input may repeat an immediately preceding complete blank output.");continue;}
                             const bool composed=(record.flags&2u)!=0;
+                            if(composed&&mode) {
+                                std::vector<AnalysisDiagnosticRecordV1> lineRecords;
+                                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);lineRecords=classicPoseRecords;}
+                                require(HasCompletePersistentThreeLineCaption(lineRecords,record,nativeInputs.at(record.counters[1])),
+                                    L"Persistent composed caption must preserve all three detected/analyzed/current source-bound lines, without work-limit or later-attempt substitution.");
+                            }
                             require(record.counters[3]==mode||(mode&&!ready&&!composed&&record.counters[3]==0),
                                 L"Actually submitted source used an invalid frozen subtitle profile after preparation.");
                             if(requireUnknownInputRepeat&&pressureInput) {

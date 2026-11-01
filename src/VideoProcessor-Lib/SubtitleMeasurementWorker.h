@@ -301,6 +301,34 @@ public:
         bool backlogRetirementOnly=false) {
         return ReadReady(key,out,false,backlogRetirementOnly);
     }
+    // Observation-only query used by the queue owner to request an exact
+    // timeline witness. It grants no reuse and never changes cached evidence.
+    static bool CompleteIndependentScanForKey(const SubtitleBoxObservation& scan,const SubtitleBoxObservation& key) {
+        const auto& b=scan.barEvidence;
+        return SameAnalysisFrameIdentity(scan.identity,key.identity) && scan.policyGeneration==key.policyGeneration &&
+            scan.width==key.width && scan.height==key.height && scan.nearBarDistance==key.nearBarDistance &&
+            scan.optimizationMode==key.optimizationMode && scan.scriptHint==key.scriptHint &&
+            scan.analysisStride==1 && key.analysisStride==1 && !scan.discontinuity && !key.discontinuity &&
+            scan.analyzed && scan.independentBarAnalysis && scan.barAuthority && b.available &&
+            !scan.pendingRefresh && !scan.analysisRefresh && !scan.barTrackingAuthority &&
+            !scan.currentAnchorUsesTrackedEdge && !scan.glyphLocalTop && !scan.glyphLocalBottom &&
+            !scan.inspectionCandidateUsed && !b.topRevalidatedAtReference && !b.topRevalidatedNearby &&
+            !b.bottomRevalidatedAtReference && !b.bottomRevalidatedNearby && !b.captionBackedTop && !b.captionBackedBottom &&
+            scan.pictureTop==b.top && scan.pictureBottom==b.bottom &&
+            scan.text.detected && !scan.text.held && !scan.text.workLimit && !scan.text.confirmationPending &&
+            scan.text.topSearchComplete && scan.text.bottomSearchComplete && scan.ink &&
+            scan.ink->rawEvidenceComplete && scan.ink->paletteValid;
+    }
+    bool PeekIndependentContinuity(const SubtitleBoxObservation& key,uint64_t& continuity) {
+        continuity=0;std::lock_guard<std::mutex> lock(m_mutex);
+        for(auto i=m_ready.rbegin();i!=m_ready.rend();++i)
+            if(CompleteIndependentScanForKey(*i,key)) {continuity=i->continuityGeneration;return true;}
+        return false;
+    }
+    bool TryReadOwnedScan(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,
+        const OwnedScanBacklogWitness& witness,uint64_t timelinePolicy) {
+        return ReadReady(key,out,false,false,&witness,timelinePolicy);
+    }
     bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
         return ReadReady(key,out,true,false);
     }
@@ -376,7 +404,8 @@ public:
         for(auto& thread:m_threads)if(thread.joinable())thread.join();
     }
 private:
-    bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,bool backlogRetirementOnly) {
+    bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,bool backlogRetirementOnly,
+        const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t timelinePolicy=0) {
         std::lock_guard<std::mutex> lock(m_mutex);
         uint64_t mismatches=0;
         for(auto i=m_ready.begin();i!=m_ready.end();++i) {
@@ -384,9 +413,11 @@ private:
             if (!SubtitleBoxLookahead::RebindIndependentPicture(candidate,key.sharedPicture)) {
                 mismatches|=16ull;continue;
             }
+            const bool ownedBacklog=ownedWitness && CompleteIndependentScanForKey(candidate,key) &&
+                ownedWitness->Matches(key.identity,timelinePolicy,candidate.continuityGeneration,key.continuityGeneration);
             bool reboundFromBacklog=false;
             if(candidate.continuityGeneration!=key.continuityGeneration &&
-                backlogRetirementOnly) {
+                (backlogRetirementOnly || ownedBacklog)) {
                 // Preserve all immutable key fields. Only exact-source, fully
                 // independent glyph/bar scans can carry across this drop.
                 const bool sameSource=SameAnalysisFrameIdentity(candidate.identity,key.identity) &&
@@ -416,7 +447,7 @@ private:
             if(!reboundFromBacklog &&
                 !SubtitleBoxLookahead::RebindIndependentMeasurement(candidate,key.continuityGeneration)){mismatches|=512ull;continue;}
             Trace(candidate,consume?"worker-consumed":"worker-read",
-                reboundFromBacklog?"backlog-current-scan-rebound":"exact-key-accepted");
+                reboundFromBacklog?(ownedBacklog?"owned-source-backlog-scan-rebound":"backlog-current-scan-rebound"):"exact-key-accepted");
             out=std::move(candidate);
             if(consume)m_ready.erase(i);
             else ++m_diagnostics.exactReads;

@@ -673,6 +673,59 @@ public:
         } else release.store(true,std::memory_order_release);
         Assert::IsTrue(started);
     }
+    TEST_METHOD(OwnedStartupScanReusesOnlyItsExactRetiredQueueContextWithoutAnAcquiredCue) {
+        ActivePictureDecisionTimeline timeline;timeline.Reset(1);
+        auto identity=[](uint64_t seq){auto id=Identity(seq);id.analysisDomainKey=17;return id;};
+        for(uint64_t seq=1;seq<=4;++seq)Assert::IsTrue(timeline.TrackAcceptedFrame(identity(seq)));
+        const auto policy=timeline.LookaheadPolicyGeneration(),before=timeline.ContinuityGeneration();
+        auto pixels=PixelsWithCurrentBars();auto scan=CompleteThreeLineScan(3,pixels,before);
+        scan.identity=identity(3);scan.sharedPicture.identity=scan.identity;scan.policyGeneration=policy;
+        scan.text.topSearchComplete=scan.text.bottomSearchComplete=true;
+        scan.subtitleArProof.accepted=true;
+        auto key=scan;key.analyzed=false;key.independentBarAnalysis=false;
+        SubtitleMeasurementWorker worker;worker.Submit(key,[scan](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return scan;});
+        SubtitleBoxObservation original;Assert::IsTrue(WaitForRead(worker,key,original));
+        timeline.MarkDiscarded(identity(1),1,ActivePictureDiscardReason::BacklogRecovery);
+        timeline.MarkDiscarded(identity(2),2,ActivePictureDiscardReason::QueueCapacityOverflow);
+        auto current=key;current.continuityGeneration=timeline.ContinuityGeneration();
+        uint64_t old=0;Assert::IsTrue(worker.PeekIndependentContinuity(current,old));
+        Assert::AreEqual(before,old);
+        const auto witness=timeline.QualifyOwnedScanBacklogWitness(current.identity,old,current.continuityGeneration);
+        SubtitleBoxObservation ready;
+        Assert::IsFalse(worker.TryRead(current,ready),L"No acquired cue or implicit history token exists at startup");
+        Assert::IsTrue(worker.TryReadOwnedScan(current,ready,witness,policy));
+        Assert::IsTrue(SameAnalysisFrameIdentity(ready.identity,current.identity));
+        Assert::AreEqual(current.continuityGeneration,ready.continuityGeneration);
+        Assert::IsFalse(ready.subtitleArProof.accepted,L"Reused current glyph pixels cannot restore old AR proof");
+        for(int fault=0;fault<6;++fault) {
+            auto wrong=current;
+            if(fault==0)++wrong.identity.analysisDomainKey;
+            if(fault==1)++wrong.identity.sourceFrameNumber;
+            if(fault==2)++wrong.policyGeneration;
+            if(fault==3)wrong.discontinuity=true;
+            if(fault==4)++wrong.optimizationMode;
+            if(fault==5)++wrong.identity.captureTimestamp;
+            Assert::IsFalse(worker.PeekIndependentContinuity(wrong,old));
+            Assert::IsFalse(worker.TryReadOwnedScan(wrong,ready,witness,policy));
+        }
+        for(int fault=0;fault<10;++fault) {
+            auto partial=original;
+            if(fault==0)partial.barTrackingAuthority=true;
+            if(fault==1)partial.currentAnchorUsesTrackedEdge=true;
+            if(fault==2)partial.pendingRefresh=true;
+            if(fault==3)partial.analysisRefresh=true;
+            if(fault==4)partial.text.workLimit=true;
+            if(fault==5)partial.text.topSearchComplete=false;
+            if(fault==6)partial.barEvidence.bottomRevalidatedAtReference=true;
+            if(fault==7)partial.barEvidence.captionBackedBottom=true;
+            if(fault==8){auto ink=std::make_shared<SubtitleInkSnapshot>(*partial.ink);ink->rawEvidenceComplete=false;partial.ink=ink;}
+            if(fault==9){auto ink=std::make_shared<SubtitleInkSnapshot>(*partial.ink);ink->paletteValid=false;partial.ink=ink;}
+            Assert::IsFalse(SubtitleMeasurementWorker::CompleteIndependentScanForKey(partial,current),
+                L"Only a fully searched independent source can request a startup continuity witness");
+        }
+        Assert::IsFalse(worker.TryReadOwnedScan(current,ready,OwnedScanBacklogWitness{},policy));
+        Assert::IsFalse(worker.TryReadOwnedScan(current,ready,witness,policy+1));
+    }
     TEST_METHOD(BacklogTokenReusesOnlyCompletedExactCurrentGlyphAndNativeBars) {
         SubtitleMeasurementWorker worker;
         auto oldKey=WorkerKey(51,0xA11CE);

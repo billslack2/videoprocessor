@@ -113,3 +113,37 @@ must not be used as pixel proof of that earlier instant.
 Actual renderer qualification, cold shader preparation and dual-dependency GPU
 checks remain separate from this native checkpoint. No new live playback or
 full qualification is claimed by these results.
+
+## Owned lookahead and runtime validation follow-up
+
+The full a2326513 run built all six matched Release projects, then passed
+848/851 Standard tests; Beta was not reached. One failure was fixture provenance
+leaking across reused renderer addresses. Two exposed startup gaps where queue
+retirement or picture-snapshot rebinding discarded useful exact-source subtitle
+scans and future confirmation before the first cue existed.
+
+The repair retains only producer-owned prepared scans and recomputes confirmation
+from current and following pixels. A typed timeline witness allows complete exact
+scans across verified retirement of older queue entries; it clears obsolete AR
+proof and never renews caption expiry or restores native crop authority. All843
+native methods passed before the storage refactor, including64/64 captured frames.
+
+The first six-case renderer run aborted with stack-overflow exit0xC00000FD and
+noTRX. New nested buffers have been moved to heap-owned workspaces and an explicit
+output-reference resolver. Measured object sizes are6992bytes per observation,
+60512bytes per preview and55936bytes per eight-observation array. No matching
+crash dump exists, so the exact faulting call remains unconfirmed. Five focused
+native controls pass after this refactor, including the production heap path.
+
+A new mandatory test also proves that a composed-output flag alone can admit a
+partial two-line caption. Persistent three-line renderer fixtures now require a
+matching preceding subtitle-output record with all three raw and accepted lines.
+Repeated images must use their original selected source's proof. The manifest now
+requires844native methods. Actual renderer, full cold-cache and dual GPU/cue
+validation are still pending for this candidate; no deployment is claimed here.
+
+The separate dim-full-raster experiment measured three of95V210 frames. The
+proposed local texture continuation supplied zero extra votes, and its broad
+inward-departure veto fired on real picture detail. That heuristic was rejected
+without implementation; the95-frame uncertainty and visual transition flash
+remain open.

@@ -6083,6 +6083,79 @@ public:
         Assert::IsTrue(rejected.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
             rejected.trustedBounds.bottom>=330,L"connected picture must not become an inferred subtitle bar");
     }
+    TEST_METHOD(OwnedIndependentWindowRebindPreservesEveryQualifiedFutureSource) {
+        Logger::WriteMessage((std::string("Owned-window object sizes: observation=")+std::to_string(sizeof(SubtitleBoxObservation))+
+            " preview="+std::to_string(sizeof(SubtitleBoxPreview))+" eight_observations="+
+            std::to_string(sizeof(std::array<SubtitleBoxObservation,8>))).c_str());
+        for(double rate:{24.0,60000.0/1001.0,60.0})for(size_t depth:{size_t(3),size_t(5)})for(bool retired:{false,true}) {
+            ActivePictureDecisionTimeline timeline;timeline.Reset(1);
+            std::array<SubtitleBoxObservation,8> frames;std::array<ActivePictureFrameIdentity,8> owned;
+            const auto policy=timeline.LookaheadPolicyGeneration();const auto before=timeline.ContinuityGeneration();
+            for(uint64_t seq=1;seq<depth+3;++seq) {
+                auto identity=Identity(seq);identity.analysisDomainKey=17;
+                identity.captureTimestamp=uint64_t(double(seq)*10000000.0/rate);
+                Assert::IsTrue(timeline.TrackAcceptedFrame(identity));
+                if(seq>=3) {
+                    const auto i=size_t(seq-3);frames[i]=CompleteBackedCue(seq);frames[i].identity=identity;
+                    frames[i].policyGeneration=policy;frames[i].continuityGeneration=before;
+                    frames[i].independentBarAnalysis=true;frames[i].barEvidence.available=true;
+                    frames[i].barEvidence.top=45;frames[i].barEvidence.bottom=315;
+                    frames[i].text.topSearchComplete=frames[i].text.bottomSearchComplete=true;
+                    frames[i].sharedPicture.required=true;frames[i].sharedPicture.identity=identity;owned[i]=identity;
+                }
+            }
+            const auto original=SubtitleBoxLookahead::ResolveOwnedWindow(frames.data(),owned.data(),depth,policy,before);
+            Assert::AreEqual(unsigned(depth-1),original.followingCount);
+            if(retired)for(uint64_t seq:{uint64_t(1),uint64_t(2)}) {
+                auto id=Identity(seq);id.analysisDomainKey=17;id.captureTimestamp=uint64_t(double(seq)*10000000.0/rate);
+                timeline.MarkDiscarded(id,seq,ActivePictureDiscardReason::BacklogRecovery);
+            }
+            const auto after=timeline.ContinuityGeneration();
+            auto picture=frames[0].sharedPicture;picture.bounds={0,45,640,315,640,360};
+            const auto witness=timeline.QualifyOwnedScanBacklogWitness(owned[0],before,after);
+            const auto reboundStorage=SubtitleBoxLookahead::RebindOwnedIndependentWindowHeap(original,owned[0],picture,
+                policy,after,retired?&witness:nullptr,timeline.LookaheadPolicyGeneration());
+            const auto& rebound=*reboundStorage;
+            Assert::IsTrue(rebound.available&&rebound.futureAvailable);
+            Assert::AreEqual(unsigned(depth-1),rebound.followingCount,
+                L"Every independently scanned owned future must survive a presentation-only snapshot or proven backlog-only continuity change");
+            Assert::AreEqual(unsigned(depth),rebound.matchingFrames);
+            Assert::IsTrue(rebound.current.sharedPicture.Matches(picture));
+            for(int fault=0;fault<18;++fault) {
+                auto invalid=original;
+                auto& future=invalid.following[0];
+                if(fault==0)future.text.workLimit=true;
+                if(fault==1)future.pendingRefresh=true;
+                if(fault==2)future.analysisRefresh=true;
+                if(fault==3)future.discontinuity=true;
+                if(fault==4)future.barTrackingAuthority=true;
+                if(fault==5)future.currentAnchorUsesTrackedEdge=true;
+                if(fault==6)future.independentBarAnalysis=false;
+                if(fault==7){auto ink=std::make_shared<SubtitleInkSnapshot>(*future.ink);ink->rawEvidenceComplete=false;future.ink=ink;}
+                if(fault==8)++future.identity.analysisDomainKey;
+                if(fault==9)++future.optimizationMode;
+                if(fault==10)++future.policyGeneration;
+                if(fault==11)++future.continuityGeneration;
+                if(fault==12)++future.identity.acceptedSequence;
+                if(fault==13)invalid.ownedWindow={};
+                if(fault==14)future.glyphLocalBottom=true;
+                if(fault==15)future.barEvidence.bottomRevalidatedAtReference=true;
+                if(fault==16)future.text.confirmationPending=true;
+                if(fault==17){auto ink=std::make_shared<SubtitleInkSnapshot>(*invalid.current.ink);invalid.current.ink=ink;}
+                const auto rejectedStorage=SubtitleBoxLookahead::RebindOwnedIndependentWindowHeap(invalid,owned[0],picture,
+                    policy,after,retired?&witness:nullptr,timeline.LookaheadPolicyGeneration());
+                const auto& rejected=*rejectedStorage;
+                Assert::IsTrue(rejected.followingCount==0 && !rejected.futureAvailable && rejected.matchingFrames<=1,
+                    L"Missing, partial, borrowed or foreign future evidence must end the owned prefix without invented confirmation");
+            }
+            for(unsigned i=0;i<rebound.followingCount;++i) {
+                Assert::IsTrue(SameAnalysisFrameIdentity(owned[i+1],rebound.following[i].identity));
+                Assert::IsTrue(rebound.following[i].sharedPicture.Matches(picture));
+                Assert::AreEqual(after,rebound.following[i].continuityGeneration);
+                if(retired)Assert::IsFalse(rebound.following[i].subtitleArProof.accepted);
+            }
+        }
+    }
     TEST_METHOD(OwnedSubtitleWindowAcquiresAllThreeRowsFromItsOwnReadyEvidence) {
         for(bool top:{false,true}) {
             std::array<SubtitleBoxObservation,4> frames;

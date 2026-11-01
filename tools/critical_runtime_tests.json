@@ -8,8 +8,9 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 837,
+  "minimumNativeTests": 844,
   "requiredNativeMethods": [
+    "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines",
     "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
     "FullRasterHintCanNominateCurrentEncodedBarsWithoutRememberedAspect",
     "SpatialMatteCannotReplaceTheFirstDimPictureEdgeWithAStrongerInteriorGradient",
@@ -115,7 +116,13 @@
     "SourceCadenceWarmupImageRepeatsAcrossFirstReadyWithoutRenewingCaptionCompleteness",
     "SourceCadenceWarmupImageRejectsForeignContextFailureAndPostComposedReuse",
     "RepeatedWarmupImageKeepsItsOriginalShaderPreparationProvenance",
-    "SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput"
+    "SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput",
+    "OwnedIndependentWindowRebindPreservesEveryQualifiedFutureSource",
+    "ReusedRendererAddressCannotReuseAnotherFixtureShaderPreparation",
+    "OwnedScanBacklogWitnessKeepsExactPendingOrLatestDequeuedSourceWithoutRestoringAr",
+    "OwnedScanBacklogWitnessRejectsUnknownRetirementsAndEveryCurrentContextMismatch",
+    "OwnedScanBacklogWitnessRejectsEvictedBoundaryHistory",
+    "OwnedStartupScanReusesOnlyItsExactRetiredQueueContextWithoutAnAcquiredCue"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -312,6 +319,36 @@
       "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
       "class": "MotionRendererTests",
       "method": "SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "OwnedIndependentWindowRebindPreservesEveryQualifiedFutureSource"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ReusedRendererAddressCannotReuseAnotherFixtureShaderPreparation"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "OwnedScanBacklogWitnessKeepsExactPendingOrLatestDequeuedSourceWithoutRestoringAr"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "OwnedScanBacklogWitnessRejectsUnknownRetirementsAndEveryCurrentContextMismatch"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "OwnedScanBacklogWitnessRejectsEvictedBoundaryHistory"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines"
     }
   ]
 }

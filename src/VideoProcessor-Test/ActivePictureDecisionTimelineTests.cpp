@@ -1419,6 +1419,90 @@ namespace VideoProcessorTest
 			Assert::IsFalse(timeline.CanProveBufferedFrames(identities, 3));
 		}
 
+        TEST_METHOD(OwnedScanBacklogWitnessKeepsExactPendingOrLatestDequeuedSourceWithoutRestoringAr)
+        {
+            for(bool dequeued:{false,true})for(bool transportOnlyDomain:{false,true}) {
+                ActivePictureDecisionTimeline timeline;
+                auto identity=[](uint64_t sequence) {
+                    return ActivePictureFrameIdentity{3,sequence,100+sequence,100000+1000*sequence,7,8,9,10};
+                };
+                for(uint64_t sequence=1;sequence<=8;++sequence) {
+                    auto queued=identity(sequence);if(transportOnlyDomain)queued.analysisDomainKey=0;
+                    Assert::IsTrue(timeline.TrackAcceptedFrame(queued));
+                }
+                const auto before=timeline.ContinuityGeneration();
+                timeline.MarkDiscarded(identity(1),1,ActivePictureDiscardReason::BacklogRecovery);
+                timeline.MarkDiscarded(identity(2),2,ActivePictureDiscardReason::QueueCapacityOverflow);
+                timeline.MarkConsumed(identity(3));
+                const auto current=identity(4);if(dequeued)timeline.MarkConsumed(current);
+                const auto after=timeline.ContinuityGeneration(),policy=timeline.LookaheadPolicyGeneration();
+                Assert::IsFalse(timeline.CanProveBufferedFrames(&current,1));
+                const auto proof=timeline.QualifyOwnedScanBacklogWitness(current,before,after);
+                Assert::IsTrue(proof.Matches(current,policy,before,after),
+                    L"Exact owned current-source pixels survive only explicitly recorded prior queue retirements, even before any subtitle cue exists.");
+                Assert::AreEqual(after,timeline.ContinuityGeneration());
+                Assert::IsFalse(timeline.CanProveBufferedFrames(&current,1),
+                    L"CPU-scan metadata requalification must never restore broken AR lookahead continuity.");
+                auto future=current;++future.acceptedSequence;++future.sourceFrameNumber;future.captureTimestamp+=1000;
+                Assert::IsFalse(proof.Matches(future,policy,before,after));
+                Assert::IsFalse(proof.Matches(current,policy+1,before,after));
+                Assert::IsFalse(proof.Matches(current,policy,before+1,after));
+            }
+        }
+        TEST_METHOD(OwnedScanBacklogWitnessRejectsUnknownRetirementsAndEveryCurrentContextMismatch)
+        {
+            for(int fault=0;fault<23;++fault) {
+                ActivePictureDecisionTimeline timeline;
+                auto identity=[](uint64_t sequence) {
+                    return ActivePictureFrameIdentity{3,sequence,100+sequence,100000+1000*sequence,7,8,9,10};
+                };
+                for(uint64_t sequence=1;sequence<=8;++sequence)Assert::IsTrue(timeline.TrackAcceptedFrame(identity(sequence)));
+                auto before=timeline.ContinuityGeneration();auto retired=identity(1);
+                if(fault==19)++retired.captureTimestamp;
+                if(fault==20)++retired.sourceFrameNumber;
+                timeline.MarkDiscarded(retired,1,fault==0?ActivePictureDiscardReason::Unknown:ActivePictureDiscardReason::BacklogRecovery);
+                timeline.MarkDiscarded(identity(2),2,ActivePictureDiscardReason::QueueCapacityOverflow);
+                timeline.MarkConsumed(identity(3));auto current=identity(4);timeline.MarkConsumed(current);
+                if(fault==1)timeline.BreakContinuity(0);
+                if(fault==2)++current.acceptedSequence;
+                if(fault==3)++current.transportGeneration;
+                if(fault==4)++current.sourceFormatGeneration;
+                if(fault==5)++current.viewportGeneration;
+                if(fault==6)++current.rendererGeneration;
+                if(fault==7)++current.sourceFrameNumber;
+                if(fault==8)++current.captureTimestamp;
+                if(fault==9)++current.analysisDomainKey;
+                if(fault==10)current.analysisDomainKey=0;
+                if(fault==11)before=0;
+                if(fault==12)timeline.InvalidateLookaheadPolicy();
+                if(fault==13)timeline.Reset(3);
+                if(fault==14)timeline.MarkConsumed(identity(5));
+                if(fault==15)timeline.MarkDiscarded(current,4,ActivePictureDiscardReason::BacklogRecovery);
+                if(fault==16)current=identity(9);
+                if(fault==17)current.captureTimestamp=0;
+                if(fault==18)current.sourceFrameNumber=0;
+                auto after=timeline.ContinuityGeneration();
+                if(fault==21)after=0;
+                if(fault==22)after=before;
+                const auto witness=timeline.QualifyOwnedScanBacklogWitness(current,before,after);
+                Assert::IsFalse(witness.Matches(current,timeline.LookaheadPolicyGeneration(),before,after),
+                    (L"Unproven owned-scan continuity fault="+std::to_wstring(fault)).c_str());
+            }
+        }
+        TEST_METHOD(OwnedScanBacklogWitnessRejectsEvictedBoundaryHistory)
+        {
+            ActivePictureDecisionTimeline timeline;
+            const auto identity=[](uint64_t sequence) {
+                return ActivePictureFrameIdentity{3,sequence,100+sequence,100000+1000*sequence,7,8,9,10};
+            };
+            for(uint64_t sequence=1;sequence<=40;++sequence)Assert::IsTrue(timeline.TrackAcceptedFrame(identity(sequence)));
+            const auto before=timeline.ContinuityGeneration();
+            for(uint64_t sequence=1;sequence<40;++sequence)
+                timeline.MarkDiscarded(identity(sequence),sequence,ActivePictureDiscardReason::BacklogRecovery);
+            const auto current=identity(40);const auto after=timeline.ContinuityGeneration();
+            const auto proof=timeline.QualifyOwnedScanBacklogWitness(current,before,after);
+            Assert::IsFalse(proof.Matches(current,timeline.LookaheadPolicyGeneration(),before,after));
+        }
         TEST_METHOD(BacklogRetirementProvesOnlyTheExactMissingSourceRange)
         {
             ActivePictureDecisionTimeline timeline;

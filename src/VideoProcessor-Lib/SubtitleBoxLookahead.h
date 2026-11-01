@@ -157,6 +157,41 @@ struct SubtitleBoxObservation
     std::shared_ptr<const SubtitleInkSnapshot> ink;
 };
 
+struct SubtitleBoxPreview;
+namespace SubtitleBoxLookahead {
+    inline SubtitleBoxPreview ResolveOwnedWindow(const SubtitleBoxObservation*,const ActivePictureFrameIdentity*,size_t,uint64_t,uint64_t);
+    inline void ResolveOwnedWindowInto(SubtitleBoxPreview&,const SubtitleBoxObservation*,const ActivePictureFrameIdentity*,size_t,uint64_t,uint64_t);
+}
+// Only the queue's independent prepared-source ownership check can mint this
+// immutable prefix. Rebinding never turns an arbitrary preview into owned data.
+class SubtitleOwnedWindowCertificate {
+    friend SubtitleBoxPreview SubtitleBoxLookahead::ResolveOwnedWindow(
+        const SubtitleBoxObservation*,const ActivePictureFrameIdentity*,size_t,uint64_t,uint64_t);
+    friend void SubtitleBoxLookahead::ResolveOwnedWindowInto(SubtitleBoxPreview&,
+        const SubtitleBoxObservation*,const ActivePictureFrameIdentity*,size_t,uint64_t,uint64_t);
+    struct Stamp {
+        ActivePictureFrameIdentity identity;const SubtitleInkSnapshot* ink=nullptr;
+        int width=0,height=0,nearBar=0,optimization=0;SubtitleScriptHint script=SubtitleScriptHint::Latin;
+    };
+    std::array<Stamp,8> m_frames{};size_t m_count=0;uint64_t m_policy=0,m_continuity=0;
+    void Record(const SubtitleBoxObservation* frames,size_t count,uint64_t policy,uint64_t continuity) {
+        m_count=(std::min)(count,m_frames.size());m_policy=policy;m_continuity=continuity;
+        for(size_t i=0;i<m_count;++i) {
+            const auto& f=frames[i];auto& s=m_frames[i];s.identity=f.identity;s.ink=f.ink.get();
+            s.width=f.width;s.height=f.height;s.nearBar=f.nearBarDistance;s.optimization=f.optimizationMode;s.script=f.scriptHint;
+        }
+    }
+public:
+    size_t Count() const { return m_count; }
+    bool Matches(size_t index,const SubtitleBoxObservation& f,uint64_t policy,uint64_t continuity) const {
+        if(index>=m_count || policy!=m_policy || continuity!=m_continuity)return false;
+        const auto& s=m_frames[index];
+        return SameAnalysisFrameIdentity(s.identity,f.identity) && s.ink==f.ink.get() &&
+            s.width==f.width && s.height==f.height && s.nearBar==f.nearBarDistance &&
+            s.optimization==f.optimizationMode && s.script==f.scriptHint &&
+            f.policyGeneration==policy && f.continuityGeneration==continuity;
+    }
+};
 struct SubtitleBoxPreview
 {
     SubtitleBoxObservation current;
@@ -170,6 +205,7 @@ struct SubtitleBoxPreview
     // Dropout bridging below remains explicitly capped at two frames.
     std::array<SubtitleBoxObservation,7> following;
     unsigned followingCount = 0;
+    SubtitleOwnedWindowCertificate ownedWindow;
 };
 
 // One successful tracker call may certify its already acquired complete cue.
@@ -1712,13 +1748,16 @@ namespace SubtitleBoxLookahead
 
 
 
-    inline SubtitleBoxPreview Resolve(const SubtitleBoxObservation* frames, size_t count,
+    // Internal output-reference path: result must not overlap frames. OwnedWindow
+    // copies its input to separate storage before calling this reset-and-resolve step.
+    inline void ResolveInto(SubtitleBoxPreview& result,const SubtitleBoxObservation* frames, size_t count,
         uint64_t policy, uint64_t continuity)
     {
-        SubtitleBoxPreview result;
-        if (!frames || !count) return result;
+        auto empty=std::make_unique<SubtitleBoxPreview>();
+        result=std::move(*empty);
+        if (!frames || !count) return;
         result.current=frames[0];result.policyGeneration=policy;result.continuityGeneration=continuity;
-        if (!frames[0].analyzed) return result;
+        if (!frames[0].analyzed) return;
         result.available = true; result.current = frames[0]; result.text = frames[0].text;
         result.policyGeneration = policy; result.continuityGeneration = continuity;
         // Queued but unfinished analysis is unknown. It cannot veto a clear
@@ -1741,7 +1780,7 @@ namespace SubtitleBoxLookahead
         result.futureAvailable = count > 1;
         result.followingCount=static_cast<unsigned>((std::min)(count-1,result.following.size()));
         for (unsigned i=0;i<result.followingCount;++i) result.following[i]=frames[i+1];
-        if (!HasBarEvidence(frames[0]) || !frames[0].text.detected || frames[0].text.workLimit) { result.text = {}; return result; }
+        if (!HasBarEvidence(frames[0]) || !frames[0].text.detected || frames[0].text.workLimit) { result.text = {}; return; }
         result.matchingFrames = 1;
         for (size_t i = 1; i < (std::min)(count,MaxFrames); ++i)
         {
@@ -1903,7 +1942,7 @@ namespace SubtitleBoxLookahead
         // In the crowded-grouping path the current frame is authoritative
         // after per-row pruning. The legacy whole-box future union would
         // reintroduce the very transient row this gate removed.
-        if(frames[0].text.lineCount>=3) return result;
+        if(frames[0].text.lineCount>=3) return;
         for (size_t i = 1; i < result.matchingFrames; ++i)
         {
             const auto& next = frames[i];
@@ -1988,7 +2027,12 @@ namespace SubtitleBoxLookahead
                 result.text.signature = next.text.signature;
             }
         }
-        return result;
+        return;
+    }
+
+    inline SubtitleBoxPreview Resolve(const SubtitleBoxObservation* frames,size_t count,uint64_t policy,uint64_t continuity)
+    {
+        SubtitleBoxPreview result;ResolveInto(result,frames,count,policy,continuity);return result;
     }
 
     // A short queue may expose only current plus two future scans. One retained
@@ -2038,12 +2082,13 @@ namespace SubtitleBoxLookahead
     // Subtitle readiness is independent of native AR readiness. The caller
     // supplies identities rechecked against the owned current queue, including
     // each prepared source domain. Missing/stale future work ends this prefix.
-    inline SubtitleBoxPreview ResolveOwnedWindow(const SubtitleBoxObservation* frames,
+    inline void ResolveOwnedWindowInto(SubtitleBoxPreview& result,const SubtitleBoxObservation* frames,
         const ActivePictureFrameIdentity* ownedIdentities,size_t count,
         uint64_t policy,uint64_t continuity)
     {
-        if(!frames || !ownedIdentities || !count)return {};
-        std::array<SubtitleBoxObservation,MaxFrames> independent;
+        if(!frames || !ownedIdentities || !count){ResolveInto(result,nullptr,0,policy,continuity);return;}
+        auto independentStorage=std::make_unique<std::array<SubtitleBoxObservation,MaxFrames>>();
+        auto& independent=*independentStorage;
         size_t ready=0;
         for(size_t i=0;i<(std::min)(count,MaxFrames);++i) {
             const auto& current=frames[i];
@@ -2064,7 +2109,70 @@ namespace SubtitleBoxLookahead
             if(!current.analyzed || current.pendingRefresh || current.analysisRefresh)break;
             independent[ready++]=current;
         }
-        return ready?Resolve(independent.data(),ready,policy,continuity):SubtitleBoxPreview{};
+        ResolveInto(result,independent.data(),ready,policy,continuity);
+        if(result.available)result.ownedWindow.Record(independent.data(),size_t(result.followingCount)+1,policy,continuity);
+    }
+
+    inline SubtitleBoxPreview ResolveOwnedWindow(const SubtitleBoxObservation* frames,
+        const ActivePictureFrameIdentity* owned,size_t count,uint64_t policy,uint64_t continuity)
+    {
+        SubtitleBoxPreview result;ResolveOwnedWindowInto(result,frames,owned,count,policy,continuity);return result;
+    }
+
+    inline std::unique_ptr<SubtitleBoxPreview> RebindOwnedIndependentWindowHeap(const SubtitleBoxPreview& preview,
+        const ActivePictureFrameIdentity& current,const SubtitlePictureAuthority& picture,
+        uint64_t policy,uint64_t continuity,const OwnedScanBacklogWitness* backlog=nullptr,uint64_t timelinePolicy=0)
+    {
+        auto result=std::make_unique<SubtitleBoxPreview>();
+        if(!preview.available || preview.policyGeneration!=policy ||
+            !SameAnalysisFrameIdentity(preview.current.identity,current))return result;
+        const bool crossing=preview.continuityGeneration!=continuity;
+        const bool ownedBacklog=crossing && backlog && backlog->Matches(current,timelinePolicy,
+            preview.continuityGeneration,continuity);
+        auto framesStorage=std::make_unique<std::array<SubtitleBoxObservation,MaxFrames>>();
+        auto& frames=*framesStorage;
+        std::array<ActivePictureFrameIdentity,MaxFrames> owned;
+        size_t count=0;
+        const bool ownsCurrent=preview.ownedWindow.Matches(0,preview.current,policy,preview.continuityGeneration);
+        const size_t wanted=(std::min)(size_t(preview.followingCount)+1,MaxFrames);
+        auto frameStorage=std::make_unique<SubtitleBoxObservation>();
+        auto& frame=*frameStorage;
+        for(size_t i=0;i<wanted;++i) {
+            frame=i?preview.following[i-1]:preview.current;
+            // The current-only legacy fallback remains possible, but only the
+            // queue producer's immutable prefix may contribute future pixels.
+            const bool stamped=preview.ownedWindow.Matches(i,frame,policy,preview.continuityGeneration);
+            if((i && (!ownsCurrent || !stamped)) || (crossing && !ownedBacklog && i))break;
+            if(!frame.analyzed || frame.pendingRefresh || frame.analysisRefresh || frame.discontinuity ||
+                frame.text.workLimit || frame.text.held || frame.text.confirmationPending || frame.barTrackingAuthority ||
+                frame.currentAnchorUsesTrackedEdge || frame.glyphLocalTop || frame.glyphLocalBottom ||
+                frame.inspectionCandidateUsed || !frame.barAuthority || !frame.ink ||
+                !frame.ink->rawEvidenceComplete || frame.policyGeneration!=policy ||
+                frame.continuityGeneration!=preview.continuityGeneration)break;
+            if(frame.independentBarAnalysis && (frame.barEvidence.topRevalidatedAtReference ||
+                frame.barEvidence.topRevalidatedNearby || frame.barEvidence.bottomRevalidatedAtReference ||
+                frame.barEvidence.bottomRevalidatedNearby || frame.barEvidence.captionBackedTop ||
+                frame.barEvidence.captionBackedBottom))break;
+            if(i && (frame.analysisStride!=1 || frames[i-1].analysisStride!=1 ||
+                frame.identity.acceptedSequence!=owned[i-1].acceptedSequence+1 ||
+                frame.identity.sourceFrameNumber!=owned[i-1].sourceFrameNumber+1 ||
+                frame.identity.captureTimestamp<=owned[i-1].captureTimestamp))break;
+            if(crossing && !(RebindIndependentMeasurement(frame,continuity) ||
+                RebindCompletedIndependentScanAfterBacklog(frame,continuity,ownedBacklog)))break;
+            auto target=picture;target.identity=frame.identity;
+            if(!RebindIndependentPicture(frame,target))break;
+            owned[count]=frame.identity;frames[count++]=std::move(frame);
+        }
+        ResolveOwnedWindowInto(*result,frames.data(),owned.data(),count,policy,continuity);
+        return result;
+    }
+
+    inline SubtitleBoxPreview RebindOwnedIndependentWindow(const SubtitleBoxPreview& preview,
+        const ActivePictureFrameIdentity& current,const SubtitlePictureAuthority& picture,
+        uint64_t policy,uint64_t continuity,const OwnedScanBacklogWitness* backlog=nullptr,uint64_t timelinePolicy=0)
+    {
+        auto result=RebindOwnedIndependentWindowHeap(preview,current,picture,policy,continuity,backlog,timelinePolicy);
+        return std::move(*result);
     }
 
     // Before conversion completes, the render queue has only immutable
