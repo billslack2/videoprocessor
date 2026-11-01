@@ -19,6 +19,17 @@ hint. Ready observations and active-job deduplication use full source keys, and
 late obsolete completions cannot evict current window evidence. Parallel work
 must not manufacture consecutive confirmation from nonadjacent source frames.
 
+An established caption can retain its layout while complete CURRENT source
+pixels still prove its glyph ownership. A source-bound tracker certificate may
+permit only prepared-erasure verification for that held layout. It requires
+fresh independent bars, complete current raw ink and every accepted line, strict
+existing-cue pixel agreement and no novel owned extension. It cannot acquire a
+new cue, promote native AR, seed or renew a semantic lease, or certify another
+source. All actual capture, cleanup and residual-pixel checks remain mandatory;
+unknown or changed glyphs retain the existing rejection. A successfully verified
+held output can anchor one complete-image repeat without sealing a reusable
+source-analysis receipt.
+
 The progressive D3D11 path with inactive temporal processing may bridge
 one inconclusive input by copying the previous successful complete final image.
 Picture, subtitles, crop and HDR provenance remain together. The original source
@@ -63,6 +74,15 @@ different glyph-backing limits; a fixture must satisfy the production rules for
 its own range. The controlled UNKNOWN fixture independently hits the real
 component budget before asserting one complete-output repeat and a fresh clean
 successor. Fixtures that fail preflight do not establish renderer coverage.
+
+Cold shader preparation and steady-state cadence have separate bounded test
+budgets. The advanced fixture validates every safe raw fallback output during
+its 180-second startup budget, then begins its independent 90-second observation
+budget on the first valid composed output. It never resets that observation on
+a bounce. Per-pass preparation timings expose the measured cold compilation
+cost; a longer startup allowance does not establish instant cold readiness.
+Classic startup permits only caption-preserving presentation while its configured
+engage runs; the exact settled translated native crop then remains strict.
 
 Opt-in `ar-boundary-chain` records separate nomination, physical observation,
 retained guard, accepted native crop and submitted output. Physical confidence

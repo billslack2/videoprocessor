@@ -1982,7 +1982,7 @@ namespace VideoProcessorTest
                     "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n"
                     "[vprenderer.zoom.scope]\nautomatic_crop: true\nsubtitle_fit: true\n"
                     "[vprenderer.subtitles.cadence]\ntype: "<<initialType<<"\nshortcut: F5\noffset_pixels: "<<(requestedMode?10:15)<<"\n"
-                    "subtitle_engage_drift_ms: 500\nsubtitle_release_drift_ms: 2000\nsubtitle_hold_seconds: 2\n"
+                    "subtitle_engage_drift_ms: 500\nsubtitle_release_drift_ms: 2000\nsubtitle_hold_seconds: 2\nsubtitle_target_buffer_pixels: 10\n"
                     "subtitle_hold_ms: 250\nsubtitle_near_bar_px: 20\ncleanup_fill: stable_surround\nminimum_headroom_pixels: 30\n";
                 SnapshotTestCallback callback;NativeP210Buffer buffer;
                 struct Cleanup{HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;const char* path;
@@ -2008,7 +2008,55 @@ namespace VideoProcessorTest
                 std::vector<AnalysisDiagnosticRecordV1> outputs;
                 std::set<uint64_t> repeatedAnchors;
                 auto require=[&](bool ok,const wchar_t* why){if(ok)return;
-                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);for(const auto& line:classicPoseMessages)Logger::WriteMessage(line.c_str());}
+                    std::vector<AnalysisDiagnosticRecordV1> failureRecords;std::vector<std::string> failureMessages;
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);failureRecords=classicPoseRecords;failureMessages=classicPoseMessages;}
+                    size_t firstRecord=failureRecords.size(),remaining=80;
+                    for(size_t i=failureRecords.size();i>0;--i) {
+                        const auto& record=failureRecords[i-1];
+                        if(!strcmp(record.stage,"submitted-presentation")&&(record.flags&1u)) {
+                            firstRecord=i-1;if(--remaining==0)break;
+                        }
+                    }
+                    Logger::WriteMessage("DV FAILURE FINAL OUTPUTS BEGIN (up to80; original sink order, no fabricated timestamps)");
+                    for(size_t i=firstRecord;i<failureRecords.size();++i) {
+                        const auto& record=failureRecords[i];
+                        if(strcmp(record.stage,"submitted-presentation")||!(record.flags&1u))continue;
+                        const AnalysisDiagnosticRecordV1* current=nullptr;const AnalysisDiagnosticRecordV1* selected=nullptr;
+                        const AnalysisDiagnosticRecordV1* chain=nullptr;const AnalysisDiagnosticRecordV1* subtitle=nullptr;
+                        for(const auto& candidate:failureRecords) {
+                            if(candidate.transportGeneration!=record.transportGeneration ||
+                                candidate.rendererInstanceKey!=record.rendererInstanceKey)continue;
+                            if(!strcmp(candidate.stage,"analysis-input")) {
+                                if(candidate.acceptedSequence==record.counters[0])current=&candidate;
+                                if(candidate.acceptedSequence==record.counters[1])selected=&candidate;
+                            }
+                            if(candidate.acceptedSequence!=record.counters[0])continue;
+                            if(!strcmp(candidate.stage,"ar-boundary-chain"))chain=&candidate;
+                            if(!strcmp(candidate.stage,"subtitle-output"))subtitle=&candidate;
+                        }
+                        std::ostringstream row;row<<"DV FINAL: generation="<<record.transportGeneration
+                            <<" accepted_displayed="<<record.acceptedSequence<<" consumed="<<record.counters[0]
+                            <<" selected="<<record.counters[1]<<" consumed_input="<<(current?current->sourceFrameNumber:0)
+                            <<" displayed_input="<<(selected?selected->sourceFrameNumber:0)
+                            <<" flags="<<record.flags<<" repeat="<<record.cadenceRepeat<<" reason="<<record.reason
+                            <<" mode="<<record.counters[3]<<" cue="<<record.counters[2]<<" native="<<record.counters[4]
+                            <<" cert="<<record.counters[5]<<" cert_origin="<<record.counters[6]<<" packet="<<record.counters[7]
+                            <<" viewport="<<record.viewportGeneration<<" domain="<<record.analysisDomainKey
+                            <<" format="<<record.sourceFormatGeneration<<" policy="<<(chain?chain->policyGeneration:0)
+                            <<" continuity="<<(chain?chain->continuityGeneration:0)<<" chain_present="<<(chain!=nullptr)
+                            <<" selected_pts="<<record.metrics[0]<<" current_pts="<<record.metrics[5];
+                        row<<" native_rect=";for(int e=0;e<4;++e)row<<record.published[e]<<',';
+                        row<<" actual_crop=";for(int e=8;e<12;++e)row<<record.metrics[e]<<',';
+                        row<<" certificate_crop=";for(int e=0;e<4;++e)row<<record.candidate[e]<<',';
+                        if(subtitle)row<<" subtitle_flags="<<subtitle->flags<<" subtitle_reason="<<subtitle->reason
+                            <<" subtitle_decision="<<subtitle->detail<<" accepted_lines="<<subtitle->resultCode
+                            <<" raw_lines="<<subtitle->counters[4]<<" components="<<subtitle->counters[5]
+                            <<" matching="<<subtitle->counters[3]<<" ink_context="<<subtitle->counters[6]
+                            <<" ink_preconditions="<<subtitle->counters[7]<<" ink_compared="<<subtitle->metrics[4];
+                        Logger::WriteMessage(row.str().c_str());
+                    }
+                    Logger::WriteMessage("DV FAILURE FINAL OUTPUTS END");
+                    for(const auto& line:failureMessages)Logger::WriteMessage(line.c_str());
                     Assert::Fail(why);};
                 auto drain=[&] {
                     std::vector<AnalysisDiagnosticRecordV1> records;
@@ -2070,7 +2118,14 @@ namespace VideoProcessorTest
                         // stalls in this producer thread. Arrival pacing stays wall based.
                         const auto ticks=(sequence-1)*uint64_t(clock.TimingClockTicksPerSecond())*duration/scale;
                         const auto stamp=captureOrigin+static_cast<timingclocktime_t>(ticks);delivered[sequence]=stamp;
-                        if(forceUnknown)pressureInput=sequence;
+                        if(forceUnknown){
+                            pressureInput=sequence;
+                            std::ostringstream injection;injection<<"DV UNKNOWN INJECT: source_input="<<pressureInput
+                                <<" capture_timestamp="<<stamp<<" expected_clean_input="<<(pressureInput+1)
+                                <<" last_submitted_consumed="<<(outputs.empty()?0:outputs.back().counters[0])
+                                <<" last_submitted_selected="<<(outputs.empty()?0:outputs.back().counters[1]);
+                            Logger::WriteMessage(injection.str().c_str());
+                        }
                         const auto& pixels=forceUnknown?pressure[sequence%2]:(cue?caption[sequence%2]:blank[sequence%2]);
                         VideoFrame frame(pixels.data(),sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);}
                     next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0/inputHz));
@@ -2097,6 +2152,15 @@ namespace VideoProcessorTest
                     size_t inspected=mode?0:outputs.size();uint64_t ready=0;size_t checked=0;
                     std::set<uint64_t> distinct;bool odd=false,even=false,displayedOdd=false,displayedEven=false;
                     double pinned[4]={},previousTop=native[1];
+                    // Same fixture contract as the public Classic controller:
+                    // measured lower extent + source padding + configured offset,
+                    // then its target buffer, clipped to the available encoded bar.
+                    const int classicTargetBuffer=10,classicOffset=15;
+                    const int classicRequested=(std::min)(height-native[3],
+                        captionBottom+(std::max)(8,height/90)+classicOffset+classicTargetBuffer-native[3]);
+                    const int classicShift=(classicRequested+1)&~1;
+                    const double classicSettledTop=native[1]+classicShift;
+                    const double classicSettledBottom=native[3]+classicShift;
                     bool unknownSent=false,unknownRepeated=false,nextCleanFresh=false;
                     uint64_t retiredAccepted=0;
                     auto cleanupMotionCoverage=[&](bool requireLegacyRejection) {
@@ -2187,13 +2251,37 @@ namespace VideoProcessorTest
                             }else{
                                 for(int edge=0;edge<4;++edge)require(record.published[edge]==native[edge],
                                     L"Persistent Classic subtitle changed native AR or black-bar boundaries.");
-                                require(std::abs((bottom-top)-(native[3]-native[1]))<0.01,
-                                    L"Classic persistent subtitle resized its native crop instead of translating it.");
-                                require(top+0.01>=previousTop,L"Classic persistent subtitle reversed its translation between submitted frames.");
-                                previousTop=top;
-                                if(top>native[1]+1&&displayedSource>=first+90&&!ready){beginSteadyObservation(record.counters[1]);for(int e=0;e<4;++e)pinned[e]=record.metrics[8+e];}
-                                if(ready)for(int e=0;e<4;++e)require(std::abs(record.metrics[8+e]-pinned[e])<0.01,
-                                    L"Settled Classic crop bounced during a persistent subtitle.");
+                                const bool fullWidth=std::abs(record.metrics[8])<0.01&&std::abs(record.metrics[10]-width)<0.01;
+                                const bool captionVisible=top<=1770.01&&bottom>=captionBottom-0.01;
+                                const bool safeEnvelope=fullWidth&&captionVisible&&top>=-0.01&&bottom<=height+0.01&&
+                                    top<=native[1]+0.01&&bottom>=native[3]-0.01;
+                                const bool nativePose=fullWidth&&captionVisible&&
+                                    std::abs((bottom-top)-(native[3]-native[1]))<0.01&&
+                                    top>=native[1]-0.01&&top<=classicSettledTop+0.01;
+                                if(!ready) {
+                                    // Pending three-source confirmation and the 500ms
+                                    // engage may use a wider safe visibility envelope.
+                                    // A translated native-height window deliberately
+                                    // pans the picture under the explicit Classic mode.
+                                    require(safeEnvelope||nativePose,
+                                        L"Classic startup neither preserves the picture/caption envelope nor presents a bounded caption-safe native translation.");
+                                    if(nativePose){require(top+0.01>=previousTop,
+                                        L"Classic startup native translation reversed during engage.");previousTop=top;}
+                                    if(nativePose&&std::abs(top-classicSettledTop)<0.01&&std::abs(bottom-classicSettledBottom)<0.01){
+                                        beginSteadyObservation(record.counters[1]);
+                                        for(int e=0;e<4;++e)pinned[e]=record.metrics[8+e];
+                                        std::ostringstream target;target<<"Classic exact settled pose: shift="<<classicShift
+                                            <<" caption_bottom="<<captionBottom<<" padding="<<(std::max)(8,height/90)
+                                            <<" offset="<<classicOffset<<" buffer="<<classicTargetBuffer
+                                            <<" top="<<classicSettledTop<<" bottom="<<classicSettledBottom;
+                                        Logger::WriteMessage(target.str().c_str());
+                                    }
+                                }
+                                if(ready) {
+                                    require(nativePose,L"Settled Classic output lost its exact native-height caption-safe translation.");
+                                    for(int e=0;e<4;++e)require(std::abs(record.metrics[8+e]-pinned[e])<0.01,
+                                        L"Settled Classic crop bounced during a persistent subtitle.");
+                                }
                             }
                             if(ready){++checked;const auto source=nativeInputs.at(record.counters[1]).sourceFrameNumber;
                                 distinct.insert(source);odd|=(consumedSource%2)!=0;even|=(consumedSource%2)==0;

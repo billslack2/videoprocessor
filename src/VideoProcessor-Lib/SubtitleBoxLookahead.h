@@ -6,6 +6,7 @@
 #include <SubtitleBarEvidence.h>
 #include <SubtitleLocalGlyphProof.h>
 #include <SubtitleBarStripClearance.h>
+#include <SubtitleCurrentPreparedCueCertificate.h>
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -2091,6 +2092,7 @@ class SubtitleBoxPresentation
 public:
     void Reset() {
         m_acceptedCueSeedCertificate = {};
+        m_currentPreparedCueCertificate = {};
         m_queueContinuation = {};
         m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
         m_previousRawCrowded = {};
@@ -2152,6 +2154,7 @@ public:
         return HasAcceptedQueueTemplate()?m_previous.continuityGeneration:0;
     }
     const SubtitleAcceptedCueSeedCertificate& AcceptedCueSeedCertificate() const { return m_acceptedCueSeedCertificate; }
+    const SubtitleCurrentPreparedCueCertificate& CurrentPreparedCueCertificate() const { return m_currentPreparedCueCertificate; }
     const char* DecisionReason() const { return m_decisionReason; }
     const SubtitleBoxLookahead::InkMatchDiagnostics& InkDiagnostics() const { return m_inkDiagnostic; }
     double WeakHoldMilliseconds() const { return m_diagnosticWeakMs; }
@@ -2255,6 +2258,7 @@ public:
         // Certificates belong to one completed current-source Consume call.
         // Repeats, pending reuse and all early returns cannot renew a seed.
         m_acceptedCueSeedCertificate = {};
+        m_currentPreparedCueCertificate = {};
         m_inkDiagnostic={};
         if (!preview.available) {
             // A queue-only gap can retain the template internally. Unknown
@@ -2713,6 +2717,44 @@ public:
             m_acceptedCueSeedCertificate.m_current=preview.current;
             m_acceptedCueSeedCertificate.m_accepted=result;
         }
+        // A held pose can still have complete, independently measured CURRENT
+        // glyph ownership. Certify only this source's prepared erasure; do not
+        // renew the cue seed, weak grace, native bars, or handoff allowance.
+        const bool currentRawCoversAccepted=[&] {
+            const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
+                return outer.Valid() && inner.Valid() && outer.left<=inner.left && outer.top<=inner.top &&
+                    outer.right>=inner.right && outer.bottom>=inner.bottom;
+            };
+            if(result.lineCount<1 || result.lineCount>3 ||
+                preview.current.text.lineCount!=result.lineCount)return false;
+            for(int line=0;line<result.lineCount;++line) {
+                bool covered=false;
+                for(int rawLine=0;rawLine<preview.current.text.lineCount;++rawLine)
+                    covered|=contains(preview.current.text.lineBounds[rawLine],result.lineBounds[line]);
+                if(!covered)return false;
+            }
+            return true;
+        }();
+        if(templateHeld && currentTemplateEligible && currentTemplatePixelsMatch &&
+            result.detected && result.held && !result.revised && !result.confirmationPending && !result.workLimit &&
+            !weakTemplateEligible && !bridged && !hasNovelExtension && !extensionConfirmed &&
+            preview.available && preview.current.analyzed && !preview.current.discontinuity &&
+            !preview.current.analysisRefresh && !preview.current.pendingRefresh &&
+            preview.current.independentBarAnalysis && preview.current.barAuthority && preview.current.barEvidence.available &&
+            !preview.current.barTrackingAuthority && !preview.current.currentAnchorUsesTrackedEdge &&
+            !preview.current.barEvidence.topRevalidatedAtReference && !preview.current.barEvidence.topRevalidatedNearby &&
+            !preview.current.barEvidence.bottomRevalidatedAtReference && !preview.current.barEvidence.bottomRevalidatedNearby &&
+            !preview.current.barEvidence.captionBackedTop && !preview.current.barEvidence.captionBackedBottom &&
+            !preview.current.glyphLocalTop && !preview.current.glyphLocalBottom &&
+            preview.current.text.detected && !preview.current.text.held && !preview.current.text.confirmationPending &&
+            !preview.current.text.workLimit && preview.current.text.topSearchComplete && preview.current.text.bottomSearchComplete &&
+            preview.current.ink && preview.current.ink->paletteValid && preview.current.ink->rawEvidenceComplete &&
+            preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height) &&
+            preview.current.pictureTop==preview.current.barEvidence.top && preview.current.pictureBottom==preview.current.barEvidence.bottom &&
+            preview.current.policyGeneration==preview.policyGeneration && preview.current.continuityGeneration==preview.continuityGeneration &&
+            currentRawCoversAccepted && SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,preview.current) &&
+            NoNewOwnedInkOutsideReference(preview.current))
+            m_currentPreparedCueCertificate.Record(preview.current,result);
         // Only ordinary strong acceptance starts a fresh handoff allowance.
         // Weak/held/unknown results cannot restart the original two-source cap.
         if(result.detected && !result.held && !result.confirmationPending && !weakTemplateEligible &&
@@ -2738,6 +2780,7 @@ private:
         std::array<SubtitleBoxRect,3> lines{},captures{};
     } m_queueContinuation;
     SubtitleAcceptedCueSeedCertificate m_acceptedCueSeedCertificate;
+    SubtitleCurrentPreparedCueCertificate m_currentPreparedCueCertificate;
     SubtitleBoxObservation m_previousRawCrowded;
     SubtitleBoxObservation m_pendingPictureGlyphAcquisition;
     bool m_hasPendingPictureGlyphAcquisition=false;

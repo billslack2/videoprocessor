@@ -79,7 +79,11 @@ try {
         $run=[ordered]@{variant=$variant;buildExit=0;testExit=$null;binary=$binary;trx=$null;trxSha256=$null;executed=0;native=0;actualClassic=0}
         $runs+=,$run
         $settings=Join-Path $runDirectory 'critical.runsettings'
-        '<RunSettings><RunConfiguration><TestSessionTimeout>1200000</TestSessionTimeout></RunConfiguration></RunSettings>' | Set-Content -LiteralPath $settings -Encoding UTF8
+        # The six persistent advanced methods each exercise two input rates.
+        # Measured cold shader preparation takes 122 seconds per renderer, so
+        # those cases alone can exceed the former 20-minute session cap. Each
+        # case retains its own bounded startup and steady-state assertions.
+        '<RunSettings><RunConfiguration><TestSessionTimeout>3600000</TestSessionTimeout></RunConfiguration></RunSettings>' | Set-Content -LiteralPath $settings -Encoding UTF8
         Write-Host "Mandatory qualification: execute all $($plan.nativeCount) native contracts and $($plan.actualCount) real AR/subtitle presentation tests [$variant]"
         Push-Location -LiteralPath (Split-Path -Parent (Join-Path $Root $binary))
         try {

@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 798,
+  "minimumNativeTests": 803,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -78,7 +78,12 @@
     "StopJoinsBothActiveSamplersAndCancelsPendingWithoutPublication",
     "LateOldGenerationCompletionCannotReplaceTheCurrentReadySource",
     "AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed",
-    "ParallelSamplersShareOneDiagnosticCaptureClaimForEveryCaptureMode"
+    "ParallelSamplersShareOneDiagnosticCaptureClaimForEveryCaptureMode",
+    "CurrentOwnedHeldCueQualifiesOnlyItsPreparedErasureAcrossConsecutiveSources",
+    "CurrentHeldErasureCertificateCannotBypassIdentityCompositionOrPictureSafety",
+    "CurrentCompleteRawCueCertifiesConsecutiveHeldPosesWithoutRenewingAcceptance",
+    "CurrentHeldPreparedCertificateRejectsPartialChangedAndNovelOwnedGlyphs",
+    "CurrentHeldFinalPixelsNeverSealReusableSourceAnalysis"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -170,6 +175,16 @@
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
       "method": "AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentCompleteRawCueCertifiesConsecutiveHeldPosesWithoutRenewingAcceptance"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentHeldPreparedCertificateRejectsPartialChangedAndNovelOwnedGlyphs"
     }
   ]
 }

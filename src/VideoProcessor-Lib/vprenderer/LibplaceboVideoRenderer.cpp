@@ -4590,6 +4590,7 @@ struct LibplaceboVideoRenderer::Impl
         SubtitleCutPasteGeometry geometry;
         ActivePictureBounds captionBounds;
         SubtitleBoxObservation ownershipObservation;
+        SubtitleCurrentPreparedCueCertificate currentPreparedCue;
         SubtitleCueContinuation continuation;
         SubtitleBoxResult ownershipAccepted;
         uint64_t ownershipPolicy=0,ownershipContinuity=0;
@@ -14363,6 +14364,7 @@ struct LibplaceboVideoRenderer::Impl
         // retain a conclusive progressive packet or recover an incomplete one.
         const bool reuseSourceSubtitle=repeatedTemporalOutput && sourceReuse.subtitle;
         bool currentSubtitleWorkIncomplete=false;
+        bool qualifiedHeldFinalPixels=false;
         bool revisedSubtitlePacket=false;
         const auto retireSubtitleRevision=[this,frameGeneration,sourceSequence] {
             sourcePreparationReceipt.Reset();subtitleSourcePreparation.valid=false;
@@ -14652,7 +14654,14 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleContinuationStateLogTick=continuationStateNow;
                 const auto& observed=currentSubtitlePreview.current;
                 const auto& shared=observed.sharedPicture;
-                DebugLog::Log("SUBTITLE CONTINUATION STATE: gen=%llu seq=%llu format_gen=%llu domain=%llu viewport=%llu renderer=%llu base_available=%d reference=%d last_seed_reason=%s native=%d,%d-%d,%d native_gen=%llu native_origin=%d native_class=%d raw=%d-%d preview=%d analyzed=%d raw_text=%d accepted=%d shared_required=%d shared_current=%d shared=%d,%d-%d,%d mode=%d float=%d opacity=%.3f hold_ms=%d held=%d cue=%llu raw_lines=%d decision=%s",
+                const bool acceptedHeldProofBaseCurrent=acceptedNativeCrop.available &&
+                    acceptedNativeCrop.sourceGeneration==frameGeneration &&
+                    acceptedNativeCrop.sourceFormatKey==AlphaSourceFormatKey(state) &&
+                    (!queuedAnalysisDomainKey || acceptedNativeCrop.analysisDomainKey==queuedAnalysisDomainKey);
+                const auto& heldProofBase=acceptedHeldProofBaseCurrent?acceptedNativeCrop.bounds:nlsGeometry;
+                const auto& heldProof=subtitleBoxPresentation.CurrentPreparedCueCertificate();
+                const bool heldCurrentProof=heldProof.Matches(observed,subtitleBoxResult,heldProofBase);
+                DebugLog::Log("SUBTITLE CONTINUATION STATE: gen=%llu seq=%llu format_gen=%llu domain=%llu viewport=%llu renderer=%llu base_available=%d reference=%d last_seed_reason=%s native=%d,%d-%d,%d native_gen=%llu native_origin=%d native_class=%d raw=%d-%d preview=%d analyzed=%d raw_text=%d accepted=%d shared_required=%d shared_current=%d shared=%d,%d-%d,%d mode=%d float=%d opacity=%.3f hold_ms=%d held=%d cue=%llu raw_lines=%d decision=%s held_current_proof=%d held_proof_base=%s held_nls_base_match=%d",
                     observed.identity.transportGeneration,observed.identity.acceptedSequence,
                     observed.identity.sourceFormatGeneration,observed.identity.analysisDomainKey,
                     observed.identity.viewportGeneration,observed.identity.rendererGeneration,
@@ -14668,7 +14677,9 @@ struct LibplaceboVideoRenderer::Impl
                     int(subtitlePreviewMode),activeSettings.subtitleFloatBackground?1:0,
                     double(activeSettings.subtitleGeneratedGray.opacity),activeSettings.subtitleHoldMs,
                     subtitleBoxResult.held?1:0,subtitleBoxResult.cue,observed.text.lineCount,
-                    subtitleBoxPresentation.DecisionReason());
+                    subtitleBoxPresentation.DecisionReason(),heldCurrentProof?1:0,
+                    acceptedHeldProofBaseCurrent?"accepted-native":"nls",
+                    SameSubtitlePresentationBounds(heldProofBase,nlsGeometry)?1:0);
             }
 
             // A bounded source caption can constrain a first picture crop only
@@ -15292,6 +15303,7 @@ struct LibplaceboVideoRenderer::Impl
             subtitleSourcePreparation.composed=subtitleCompositionSucceeded;
             subtitleSourcePreparation.completePacket=completeSubtitleComposition;
             subtitleSourcePreparation.ownershipObservation=currentSubtitlePreview.current;
+            subtitleSourcePreparation.currentPreparedCue=subtitleBoxPresentation.CurrentPreparedCueCertificate();
             subtitleSourcePreparation.continuation=currentCueContinuation;
             subtitleSourcePreparation.ownershipAccepted=subtitleBoxResult;
             subtitleSourcePreparation.ownershipPolicy=currentSubtitlePreview.policyGeneration;
@@ -15824,7 +15836,7 @@ struct LibplaceboVideoRenderer::Impl
              subtitleIdentity, captureClockFrequency, &temporalPolicyCaptionProof,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
-             currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof,
+             currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels,
              currentCaptionFitWorkerBase, captionAnchorContextMatches, &state, &videoFrame,
              &renderedCaptionCandidate, &renderedCaptionHoldCandidate,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
@@ -15862,6 +15874,7 @@ struct LibplaceboVideoRenderer::Impl
 				bool* trustedActivePicture = nullptr,
 				HdrPeakAnalysisCrop::TrustedPicture* hdrTrustedPicture = nullptr)
 		{
+            qualifiedHeldFinalPixels=false;
             temporalPolicyPreFillAvailable=false;
             temporalPolicyPreFillBounds={};temporalPolicyPreFillTarget=0;
 			source = subtitleComposedImage;
@@ -15944,6 +15957,7 @@ struct LibplaceboVideoRenderer::Impl
             ownershipInput.policyGeneration=localBoundaryPolicyGeneration;
             ownershipInput.continuityGeneration=localBoundaryContinuityGeneration;
             ownershipInput.pendingCurrentPixelsVerified=subtitleSourcePreparation.pendingPixelsVerified;
+            ownershipInput.currentPreparedCue=&subtitleSourcePreparation.currentPreparedCue;
             ownershipInput.continuation=subtitleSourcePreparation.continuation.valid
                 ? &subtitleSourcePreparation.continuation : nullptr;
             ownershipInput.sourcePrepared=subtitleCompositionSucceeded &&
@@ -15986,6 +16000,11 @@ struct LibplaceboVideoRenderer::Impl
                 scopePresentationHistory,scopePresentationCurrentBounds,effectiveGeometry,subtitleIdentity,
                 latestCropRetentionEvidence);
             const bool relocatedCaptionQualified=presentationView.qualified;
+            qualifiedHeldFinalPixels=presentationView.qualified && SourceCadenceHeldFinalPixelsComplete(
+                subtitleSourcePreparation.ownershipObservation,subtitleSourcePreparation.ownershipAccepted,
+                subtitleIdentity,effectiveGeometry,ownershipInput.currentPreparedCue,displayCaptionProof,
+                subtitlePreviewMode,ownershipInput.sourcePrepared,subtitleCompositionSucceeded,
+                currentSubtitleWorkIncomplete);
             if(SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 subtitleSourcePreparation.ownershipAccepted.detected) {
                 const auto proofLogNow=GetTickCount64();
@@ -20000,7 +20019,8 @@ releaseDriftBaseRetention =
             !temporalRenderer.Active() && !state.displayMode->IsInterlaced() &&
             !displayCadenceRecovery.Pending() && !displayCadenceRecovery.Fallback() &&
             SourceCadenceObservationComplete(currentSubtitlePreview.current,subtitleIdentity) &&
-            sourcePreparationReceipt.ReuseAnalysis(sourcePreparationContext,SourceRepeatKind::CadenceRepeat);
+            (sourcePreparationReceipt.ReuseAnalysis(sourcePreparationContext,SourceRepeatKind::CadenceRepeat) ||
+                qualifiedHeldFinalPixels);
         if (rendered) {
             const bool captured=CacheDisplayFrame(baseTarget.planes[0].texture, frameGeneration,
                 viewportRequestSerial,startupFrameRevision,completeSourceCandidate);

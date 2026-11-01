@@ -2,6 +2,7 @@
 #include <SubtitlePreviewMode.h>
 #include <SubtitleCutPaste.h>
 #include <SubtitleBoxLookahead.h>
+#include <SubtitleCurrentPreparedCueCertificate.h>
 #include <cstring>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 
@@ -251,6 +252,7 @@ struct QualifiedSubtitlePresentationInput
     const SubtitleBoxResult* accepted = nullptr;
     const SubtitleCutPasteGeometry* composition = nullptr;
     const SubtitleCueContinuation* continuation = nullptr;
+    const SubtitleCurrentPreparedCueCertificate* currentPreparedCue = nullptr;
     ActivePictureBounds physicalBase;
     // Current renderer-owned output authority. A queued worker's geometry hint
     // may predate this source packet even when its measured pixels are current.
@@ -369,12 +371,14 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
             SameAnalysisFrameIdentity(observation.sharedPicture.identity,current) &&
             observation.sharedPicture.Matches(display);
     }();
+    const bool currentHeldPreparedErasure=preparedErasureOnly && input.currentPreparedCue &&
+        input.currentPreparedCue->Matches(observation,accepted,base);
     if(!SameAnalysisFrameIdentity(observation.identity,input.currentIdentity) ||
         observation.policyGeneration!=input.policyGeneration || observation.continuityGeneration!=input.continuityGeneration ||
         observation.discontinuity || !observation.analyzed || (!observation.barAuthority && !currentVerifiedNonlocalCadence) ||
         (observation.pendingRefresh && !input.pendingCurrentPixelsVerified && !currentVerifiedNonlocalCadence) || text.workLimit ||
         !text.detected || !text.nearBarEligibilityMeasured || !text.nearBarEligible ||
-        !accepted.detected || (accepted.held && !continuation) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
+        !accepted.detected || (accepted.held && !continuation && !currentHeldPreparedErasure) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
         text.lineCount<1 || text.lineCount>3 || !move.valid)
         return reject("current-caption-proof-unavailable");
     const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {

@@ -17,6 +17,24 @@ inline bool SourceCadenceObservationComplete(const SubtitleBoxObservation& obser
          ConfirmedSubtitleAbsentForPresentation(observed,observed.text,identity));
 }
 
+// A current held pose may certify final pixels after actual erasure checks.
+// This permission is deliberately separate from reusable source analysis: it
+// cannot seal a SourcePreparationReceipt, acquire a cue, or renew its lease.
+inline bool SourceCadenceHeldFinalPixelsComplete(const SubtitleBoxObservation& observation,
+    const SubtitleBoxResult& accepted,const ActivePictureFrameIdentity& identity,
+    const ActivePictureBounds& physicalBase,const SubtitleCurrentPreparedCueCertificate* certificate,
+    const QualifiedSubtitlePresentationEvidence& prepared,SubtitlePreviewMode mode,
+    bool sourcePrepared,bool compositionSucceeded,bool workIncomplete)
+{
+    return sourcePrepared && compositionSucceeded && !workIncomplete &&
+        SubtitlePreviewOverridesClassicHandling(mode) && accepted.held &&
+        SourceCadenceObservationComplete(observation,identity) && certificate &&
+        certificate->Matches(observation,accepted,physicalBase) &&
+        prepared.qualified && prepared.preparedErasureOnly && !prepared.renewsHold &&
+        SameAnalysisFrameIdentity(prepared.identity,identity) &&
+        SameSubtitlePresentationBounds(prepared.physicalBase,physicalBase);
+}
+
 // Context of final display-referred pixels. Source sequence and PTS are kept
 // separately: retirement of the next input cannot turn it into a new anchor.
 struct SourceCadencePresentationContext {

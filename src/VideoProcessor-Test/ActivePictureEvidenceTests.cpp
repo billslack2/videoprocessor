@@ -9,6 +9,8 @@
 #include <vprenderer/SubtitleAspectRetention.h>
 #include <ActivePictureDecisionTimeline.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vprenderer/SourceCadencePresentation.h>
+#include <vprenderer/SourcePreparationReceipt.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 #include "CppUnitTest.h"
 
@@ -2764,6 +2766,167 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(CurrentOwnedHeldCueQualifiesOnlyItsPreparedErasureAcrossConsecutiveSources)
+        {
+            for(bool p210:{false,true}) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                f.observation.policyGeneration=7;f.observation.continuityGeneration=9;
+                f.observation.independentBarAnalysis=true;f.observation.barEvidence.available=true;
+                f.observation.barEvidence.top=f.observation.pictureTop;f.observation.barEvidence.bottom=f.observation.pictureBottom;
+                f.observation.text.topSearchComplete=f.observation.text.bottomSearchComplete=true;
+                for(int line=0;line<2;++line)f.observation.text.lineSignatures[line].fill(0x55);
+                f.observation.sharedPicture.required=true;f.observation.sharedPicture.identity=f.observation.identity;
+                f.observation.sharedPicture.bounds=f.base;
+                SubtitleBoxPresentation tracker;
+                const auto previewFor=[&]() {
+                    SubtitleBoxPreview p;p.available=p.futureAvailable=p.currentLinesConfirmed=true;
+                    p.current=f.observation;p.text=f.observation.text;p.matchingFrames=4;
+                    p.policyGeneration=7;p.continuityGeneration=9;return p;
+                };
+                auto initial=previewFor();tracker.RefreshReferencePixels(initial,f.Source());
+                const auto acquired=tracker.Consume(initial,250,16.683);
+                Assert::IsTrue(acquired.detected && !acquired.held && acquired.lineCount==2);
+                SubtitleCurrentPreparedCueCertificate previous;
+                for(int source=0;source<3;++source) {
+                    ++f.observation.identity.acceptedSequence;++f.observation.identity.sourceFrameNumber;
+                    f.observation.identity.captureTimestamp+=166833;
+                    f.observation.sharedPicture.identity=f.observation.identity;
+                    auto current=previewFor();current.text.lineCount=1;current.text.lineBounds[1]={};
+                    tracker.RefreshReferencePixels(current,f.Source());
+                    f.accepted=tracker.Consume(current,250,16.683);
+                    Assert::IsTrue(f.accepted.detected && f.accepted.held && f.accepted.lineCount==2);
+                    Assert::AreEqual(acquired.observations,f.accepted.observations);
+                    const auto certificate=tracker.CurrentPreparedCueCertificate();
+                    Assert::IsTrue(certificate.Matches(f.observation,f.accepted,f.base));
+                    Assert::IsFalse(previous.Matches(f.observation,f.accepted,f.base),
+                        L"A prior source certificate cannot become current just because the held geometry matches.");
+                    auto input=f.Input();input.policyGeneration=7;input.continuityGeneration=9;input.currentPreparedCue=&certificate;
+                    const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                    Assert::IsFalse(EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input).qualified,
+                        L"Current prepared-erasure ownership cannot promote a held cue into semantic or native authority.");
+                    const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                    Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly);
+                    Assert::IsFalse(prepared.renewsHold);
+                    Assert::AreEqual(int(raw.activePicture.classification),int(prepared.retention.activePicture.classification));
+                    Assert::AreEqual(raw.activePicture.reason,prepared.retention.activePicture.reason);
+                    const auto hold=CommitQualifiedSubtitlePresentationHold({},prepared,f.observation.identity,f.base,
+                        input.mode,7,9,1000,true,false,10000000);
+                    Assert::IsFalse(hold.available,L"Per-source erasure proof cannot seed a renewable caption lease.");
+                    input.currentPreparedCue=nullptr;
+                    Assert::IsFalse(EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input).qualified,
+                        L"The existing unproven-held rejection remains mandatory.");
+                    previous=certificate;
+                }
+            }
+        }
+        TEST_METHOD(CurrentHeldFinalPixelsNeverSealReusableSourceAnalysis)
+        {
+            LoggedRelocatedCaptionFixture f(false,true);
+            f.observation.policyGeneration=7;f.observation.continuityGeneration=9;
+            f.observation.independentBarAnalysis=true;f.observation.barEvidence.available=true;
+            f.observation.barEvidence.top=f.observation.pictureTop;f.observation.barEvidence.bottom=f.observation.pictureBottom;
+            f.observation.text.topSearchComplete=f.observation.text.bottomSearchComplete=true;
+            for(int line=0;line<2;++line)f.observation.text.lineSignatures[line].fill(0x55);
+            f.observation.sharedPicture.required=true;f.observation.sharedPicture.identity=f.observation.identity;
+            f.observation.sharedPicture.bounds=f.base;
+            SubtitleBoxPreview preview;preview.available=preview.futureAvailable=preview.currentLinesConfirmed=true;
+            preview.current=f.observation;preview.text=f.observation.text;preview.matchingFrames=4;
+            preview.policyGeneration=7;preview.continuityGeneration=9;
+            SubtitleBoxPresentation tracker;tracker.RefreshReferencePixels(preview,f.Source());
+            Assert::IsTrue(tracker.Consume(preview,250,16.683).detected);
+            ++f.observation.identity.acceptedSequence;++f.observation.identity.sourceFrameNumber;
+            f.observation.identity.captureTimestamp+=166833;f.observation.sharedPicture.identity=f.observation.identity;
+            preview.current=f.observation;preview.text=f.observation.text;preview.text.lineCount=1;preview.text.lineBounds[1]={};
+            tracker.RefreshReferencePixels(preview,f.Source());f.accepted=tracker.Consume(preview,250,16.683);
+            const auto certificate=tracker.CurrentPreparedCueCertificate();
+            auto input=f.Input();input.policyGeneration=7;input.continuityGeneration=9;input.currentPreparedCue=&certificate;
+            const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+            Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly && !prepared.renewsHold);
+            AlphaSourceCrop::PresentationEnvelopeExtentState history;
+            Assert::IsTrue(ProjectQualifiedSubtitlePresentationEvidence(prepared,history,f.base,f.base,
+                f.observation.identity,raw).qualified,L"Final output also requires a valid current presentation projection.");
+            const auto owned=std::make_shared<const std::vector<uint8_t>>(f.frame.bytes);
+            SourcePreparationContext context;context.identity=f.observation.identity;int gpuToken=0;context.gpu=&gpuToken;
+            context.source=f.Source();context.source.data=owned->data();context.source.dataBytes=owned->size();context.source.backingOwner=owned;
+            context.queuedSource=context.source;context.queuedSource.generation=context.identity.sourceFormatGeneration;
+            context.policyGeneration=7;context.continuityGeneration=9;context.outputContract=1;
+            SourcePreparationReceipt receipt;receipt.Begin(context,SourceRepeatKind::NewSource);
+            receipt.Commit(context,true,false);
+            Assert::IsTrue(receipt.ReuseUpload(context,SourceRepeatKind::CadenceRepeat));
+            for(int fault=-1;fault<11;++fault) {
+                auto proof=prepared;auto identity=f.observation.identity;auto base=f.base;
+                auto mode=SubtitlePreviewMode::GeneratedGrayBackground;
+                const SubtitleCurrentPreparedCueCertificate* token=&certificate;
+                bool sourcePrepared=true,composed=true,incomplete=false;
+                if(fault==0)token=nullptr;
+                if(fault==1)sourcePrepared=false;
+                if(fault==2)composed=false;
+                if(fault==3)incomplete=true;
+                if(fault==4)++identity.acceptedSequence;
+                if(fault==5)--base.bottom;
+                if(fault==6)mode=SubtitlePreviewMode::None;
+                if(fault==7)proof.preparedErasureOnly=false;
+                if(fault==8)proof.renewsHold=true;
+                if(fault==9)proof.qualified=false;
+                if(fault==10)++proof.identity.acceptedSequence;
+                Assert::AreEqual(fault<0,SourceCadenceHeldFinalPixelsComplete(f.observation,f.accepted,identity,base,
+                    token,proof,mode,sourcePrepared,composed,incomplete));
+                Assert::IsFalse(receipt.ReuseAnalysis(context,SourceRepeatKind::CadenceRepeat),
+                    L"Permission to retain one successful final image cannot seal or renew source analysis.");
+                Assert::IsFalse(receipt.ReuseSubtitle(context,SourceRepeatKind::CadenceRepeat));
+            }
+        }
+        TEST_METHOD(CurrentHeldErasureCertificateCannotBypassIdentityCompositionOrPictureSafety)
+        {
+            LoggedRelocatedCaptionFixture f(false,true);
+            f.observation.policyGeneration=7;f.observation.continuityGeneration=9;
+            f.observation.independentBarAnalysis=true;f.observation.barEvidence.available=true;
+            f.observation.barEvidence.top=f.observation.pictureTop;f.observation.barEvidence.bottom=f.observation.pictureBottom;
+            f.observation.text.topSearchComplete=f.observation.text.bottomSearchComplete=true;
+            for(int line=0;line<2;++line)f.observation.text.lineSignatures[line].fill(0x55);
+            f.observation.sharedPicture.required=true;f.observation.sharedPicture.identity=f.observation.identity;
+            f.observation.sharedPicture.bounds=f.base;
+            SubtitleBoxPreview preview;preview.available=preview.futureAvailable=preview.currentLinesConfirmed=true;
+            preview.current=f.observation;preview.text=f.observation.text;preview.matchingFrames=4;
+            preview.policyGeneration=7;preview.continuityGeneration=9;
+            SubtitleBoxPresentation tracker;tracker.RefreshReferencePixels(preview,f.Source());
+            Assert::IsTrue(tracker.Consume(preview,250,16.683).detected);
+            ++f.observation.identity.acceptedSequence;++f.observation.identity.sourceFrameNumber;
+            f.observation.identity.captureTimestamp+=166833;f.observation.sharedPicture.identity=f.observation.identity;
+            preview.current=f.observation;preview.text=f.observation.text;preview.text.lineCount=1;preview.text.lineBounds[1]={};
+            tracker.RefreshReferencePixels(preview,f.Source());f.accepted=tracker.Consume(preview,250,16.683);
+            const auto certificate=tracker.CurrentPreparedCueCertificate();
+            Assert::IsTrue(certificate.Matches(f.observation,f.accepted,f.base));
+            // Carrying an unused reference is diagnostic metadata, not use of
+            // tracked bars. Used tracking authority must still fail below.
+            auto unused=f.observation;unused.hasBarTrackingReference=true;
+            Assert::IsTrue(certificate.Matches(unused,f.accepted,f.base));
+            for(int fault=0;fault<10;++fault) {
+                auto observation=f.observation;auto accepted=f.accepted;auto composition=f.composition;
+                auto input=f.Input();input.observation=&observation;input.accepted=&accepted;input.composition=&composition;
+                input.policyGeneration=7;input.continuityGeneration=9;input.currentPreparedCue=&certificate;
+                auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                if(fault==0)++observation.identity.acceptedSequence;
+                if(fault==1)++observation.continuityGeneration;
+                if(fault==2)++accepted.cue;
+                if(fault==3)observation.ink=std::make_shared<SubtitleInkSnapshot>(*observation.ink);
+                if(fault==4)observation.barTrackingAuthority=true;
+                if(fault==5)input.sourcePrepared=false;
+                if(fault==6)--input.physicalBase.top;
+                if(fault==7)composition.glyphLines={};
+                if(fault==8) {
+                    composition.generatedCleanupRowCount=1;
+                    composition.generatedCleanupRows[0]={0,f.base.bottom,20,f.base.bottom+1};
+                }
+                if(fault==9) {
+                    raw.activePicture.available=true;raw.activePicture.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+                    raw.activePicture.trustedBounds={0,0,3840,2160,3840,2160};
+                }
+                Assert::IsFalse(EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input).qualified,
+                    L"Current held ownership never bypasses source identity, actual capture/cleanup or independent picture vetoes.");
+            }
+        }
         TEST_METHOD(CurrentContinuedCueRetainsPreparedOwnershipWithoutPromotingMissingRawEdge)
         {
             for(bool p210:{false,true})for(int invalid=0;invalid<8;++invalid) {

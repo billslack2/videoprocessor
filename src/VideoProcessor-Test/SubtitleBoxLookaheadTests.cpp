@@ -363,7 +363,72 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
             return p;
         }
     };
+    static SubtitleBoxObservation CurrentHeldProofCue(uint64_t sequence) {
+        auto current=CompleteBackedCue(sequence);
+        current.policyGeneration=7;current.continuityGeneration=9;
+        current.independentBarAnalysis=true;current.barEvidence.available=true;
+        current.barEvidence.top=current.pictureTop;current.barEvidence.bottom=current.pictureBottom;
+        current.text.nearBarEligibilityMeasured=current.text.nearBarEligible=true;
+        current.text.topSearchComplete=current.text.bottomSearchComplete=true;
+        auto ink=std::make_shared<SubtitleInkSnapshot>(*current.ink);ink->paletteValid=true;current.ink=ink;
+        current.sharedPicture.required=true;current.sharedPicture.identity=current.identity;
+        current.sharedPicture.bounds={0,45,640,315,640,360,640.0/270,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        return current;
+    }
 public:
+    TEST_METHOD(CurrentCompleteRawCueCertifiesConsecutiveHeldPosesWithoutRenewingAcceptance) {
+        SubtitleBoxPresentation tracker;
+        auto first=CurrentHeldProofCue(1),future=CurrentHeldProofCue(2);
+        const SubtitleBoxObservation seed[2]={first,future};
+        const auto initial=tracker.Consume(SubtitleBoxLookahead::Resolve(seed,2,7,9),250,16.683);
+        Assert::IsTrue(initial.detected && !initial.held && initial.lineCount==2);
+        for(uint64_t sequence=2;sequence<=6;++sequence) {
+            const SubtitleBoxObservation scans[2]={CurrentHeldProofCue(sequence),CurrentHeldProofCue(sequence+1)};
+            auto preview=SubtitleBoxLookahead::Resolve(scans,2,7,9);
+            preview.text.lineCount=1;preview.text.lineBounds[1]={};
+            const auto held=tracker.Consume(preview,250,16.683);
+            Assert::IsTrue(held.detected && held.held && held.lineCount==2);
+            Assert::AreEqual(initial.cue,held.cue);
+            Assert::AreEqual(initial.observations,held.observations,L"Prepared erasure must not add acquisition observations");
+            const auto& certificate=tracker.CurrentPreparedCueCertificate();
+            Assert::IsTrue(certificate.Matches(preview.current,held,preview.current.sharedPicture.bounds),
+                L"Complete current raw ownership must certify the held pose despite future-row pruning");
+            auto wrong=preview.current;wrong.identity.acceptedSequence++;
+            Assert::IsFalse(certificate.Matches(wrong,held,preview.current.sharedPicture.bounds));
+            auto stale=held;stale.cue++;
+            Assert::IsFalse(certificate.Matches(preview.current,stale,preview.current.sharedPicture.bounds));
+        }
+    }
+    TEST_METHOD(CurrentHeldPreparedCertificateRejectsPartialChangedAndNovelOwnedGlyphs) {
+        for(int fault=0;fault<7;++fault) {
+            SubtitleBoxPresentation tracker;
+            const SubtitleBoxObservation seed[2]={CurrentHeldProofCue(1),CurrentHeldProofCue(2)};
+            const auto initial=tracker.Consume(SubtitleBoxLookahead::Resolve(seed,2,7,9),250,16.683);
+            Assert::IsTrue(initial.detected && !initial.held);
+            auto current=CurrentHeldProofCue(2);
+            if(fault==0)current.text.lineCount=1;
+            if(fault==1 || fault==2) {
+                auto ink=std::make_shared<SubtitleInkSnapshot>(*current.ink);
+                if(fault==1)for(int y=318;y<332;++y)for(int x=200;x<320;++x) {
+                    const size_t pixel=size_t(y)*640+x;
+                    ink->rawInk[pixel/64]&=~(uint64_t(1)<<(pixel%64));
+                    ink->ownedInk[pixel/64]&=~(uint64_t(1)<<(pixel%64));
+                }
+                else {const size_t pixel=size_t(310)*640+100;
+                    ink->rawInk[pixel/64]|=uint64_t(1)<<(pixel%64);ink->ownedInk[pixel/64]|=uint64_t(1)<<(pixel%64);}
+                current.ink=ink;
+            }
+            if(fault==3)current.text.workLimit=true;
+            if(fault==4)current.independentBarAnalysis=false;
+            if(fault==5)current.pendingRefresh=true;
+            if(fault==6)current.discontinuity=true;
+            auto preview=SubtitleBoxLookahead::Resolve(&current,1,7,9);
+            preview.text.lineCount=1;preview.text.lineBounds[1]={};
+            const auto accepted=tracker.Consume(preview,250,16.683);
+            Assert::IsFalse(tracker.CurrentPreparedCueCertificate().Matches(current,accepted,current.sharedPicture.bounds),
+                L"Incomplete, changed, novel, or unmeasured current glyphs cannot borrow a held pose certificate");
+        }
+    }
     TEST_METHOD(PictureGlyphConfirmationFollowsIndependentInputAnalysisCadence) {
         auto first=CompleteBackedCue(1),next=CompleteBackedCue(3);
         first.text.diagnosticPictureGlyphProofRequired=true;
