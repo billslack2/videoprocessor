@@ -300,3 +300,10 @@ A bounded raw-only archive now retains those genuine measurements separately fro
 Test iteration also improves: the Standard shader correctness class passes 24 cases in 209.63 seconds versus the prior 23-case method sum of 1,026.68 seconds, approximately 4.9 times faster. Fresh-device program-reuse/pixel probes pass on both dependencies; dedicated cold Motion caches remain private. Full-suite timing is still pending.
 
 Matched Release cold six-case validation is running, followed by required broad dual-dependency GPU/cue and full qualification. Installed ced983fd remains unchanged; no new deployment or full receipt is claimed. The 120 supplied boundary replays remain passing evidence; the separate 95-frame dim-edge ambiguity and unverified visual transition flash remain open. Draft PR243 is updated with these limits.
+
+
+## Typed backlog work and original held-seed repair, 2026-11-01 03:18 EST
+
+Candidate 58ecfb5834cdbdf82dbac5e05480d84c35bf2783 is clean, committed and pushed. All 864 native contracts pass in 20261101-031602-3df6ee2f. Previous a1a71892 cold matrix 20261101-024708-83f08457 finished 5/6; Standard Black 60Hz exposed duplicate 21/22/23 work after queue continuity 6 to 7 (about 82ms CPU) and held 22/23 clearing genuine seed 21. Typed queue ownership now coalesces only exact-source work, with strict completion-copy admission and canonical retry for incomplete results. Held current cue proof preserves original source/samples/expiry only when backing and native context agree. RED evidence 030420-33678f75 plus independent expanded-backing RED 031424-c352073e; no increased expiry, extra runtime wait or AR threshold relaxation.
+
+Matched Release cold-six is running (58ecfb58-cold-six.log). Required broad GPU and final full qualification remain pending. Installed ced983fd unchanged. Five Luna reviews complete; native boundary 120/120 passes remain scoped replay evidence. Separate dim-edge uncertainty and visual flash remain open.
