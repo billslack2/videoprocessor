@@ -1,0 +1,77 @@
+{
+  "scope": "Existing CPU conversion contracts executed for design audit; no runtime build, deployment or new qualification",
+  "identity": {
+    "dotNetAvx2Supported": true,
+    "testDllSha256": "B56FFCF8F5FA0ED017F5A8493006B762AF2A1DB1D28868B6FF62FDC10D931DEF",
+    "sourceCommit": "25a6abfd6cdc848a0380e71f4338d9b0479caa0f"
+  },
+  "tests": [
+    {
+      "method": "PreparedSourcesCarryAuthoritativeRangeWithoutChangingSamples",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000883"
+    },
+    {
+      "method": "DecodedDolbyVisionKeepsTwelveBitStorageAndLegacyUpperTenEvidence",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000427"
+    },
+    {
+      "method": "ThreadedRowsAndUnevenTailPreserveEverySample",
+      "outcome": "Passed",
+      "duration": "00:00:00.0474301"
+    },
+    {
+      "method": "NativeP210MatchesV210PictureAndCaptionEvidenceForLiveAndQueuedConsumers",
+      "outcome": "Passed",
+      "duration": "00:00:00.8561545"
+    },
+    {
+      "method": "AllTwelveBitCodesSurviveScalarAndAvx2WithPaddingAndTails",
+      "outcome": "Passed",
+      "duration": "00:00:00.0012127"
+    },
+    {
+      "method": "NativeP210RejectsShortPlanesAndRetainsSourceThroughAnalysisCopies",
+      "outcome": "Passed",
+      "duration": "00:00:00.0021006"
+    },
+    {
+      "method": "P010AndP210UploadChoicesKeepOneNativeAnalysisDomain",
+      "outcome": "Passed",
+      "duration": "00:00:00.1180737"
+    },
+    {
+      "method": "CV210toP210AVX2MatchesScalarBitExactly",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001399"
+    },
+    {
+      "method": "SameSourceSharesCanonicalKeysAcrossProfilesAndOutputPaths",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000328"
+    },
+    {
+      "method": "P210SamplingPreservesEachChromaRow",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000127"
+    },
+    {
+      "method": "InvalidMetadataFormatStrideAndDepthCannotCreateDvEvidence",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000247"
+    },
+    {
+      "method": "V210SparseSamplingDecodesAllSixPixels",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000377"
+    },
+    {
+      "method": "CV210toP210VideoFrameFormatterPreservesPaddedEdgeSamples",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000588"
+    }
+  ],
+  "source_result": "E:\\codex\\diagnostics\\ar-design-review-20261101\\conversion-contracts\\conversion.trx",
+  "no_dv_avx_skip_reported": true
+}

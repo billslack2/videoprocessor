@@ -377,3 +377,52 @@ existing-black-startup-gap.md. BroadGPU220/220 results remain previous58ecfb58
 coverage, not a new run. Current observer-only repair reran the full actual
 presentation matrix on both dependencies. Manual AR-transition flash and full
 live acceptance remain open; stories stay InProgress. No merge/public release.
+
+
+## Design-first review after new live failures, 2026-11-01
+
+User confirmed the ten core source-picture requirements and explicitly requested
+review/redesign before further implementation. Runtime/source remains25a6abfd;
+no production edits, rebuild or deployment in this review. The previous371
+captured-frame passes and883/883 per-renderer qualification do not cover the new
+failures or establish complete live acceptance.
+
+New grid capture082835 reproduces1476 false strong [136,332,3840,2160]
+observations despite58,914 real header pixels above332. Sparse fixed probes miss
+avatar/logo components. New scope capture083046 contains15 byte-identical paused
+frames: true263..1897 bottom is missed by nomination and spatial support rules;
+fine search instead visits1814..1838 around interior1826. Both are independently
+measured source-pixel failures. The grid's exactly black outer layout margins
+need explicit full-canvas-versus-matte inference, not a forced16:9 label.
+
+Three independent reviewers audited geometry/OSS, capture conversion and
+lookahead/cadence. Current raw crop-guard detector and optional physical/OSD
+detector have conflicting geometry ownership; queued/live confirmation also
+needs consolidation. Preserve canonical source adapters, exact ownership,
+calibrated range, conservative discard checks and working subtitle machinery.
+Proposed flow: shared spatial evidence and competing candidates, global picture/
+matte reconciliation, one logical source-timeline decision owner, and separate
+measurement/uncertainty, crop permission and rendering outputs. No extra dwell,
+standard-ratio snapping, whole-input fallback masquerading as detection, or
+new subtitle lease/cleanup authority. Explicit missing/partial/contradicted
+outcomes and bounded speculative evaluation are required.
+
+Primary FFmpeg, mpv and HandBrake sources were compared. Their useful spatial
+techniques do not establish live HDMI transition correctness; timing/aggregation
+policies are not adopted blindly. No new scaling/unpacking defect was found on
+reviewed paths. All13 existing selected CPU conversion/parity contracts ran and
+passed, exact method set verified, no DV AVX skip reported. These methods are
+not all in the current critical gate: add the cheap conversion subset during
+implementation. Paired live raw-tunnel/decoded data remains a specific gap if
+conversion becomes suspect; arbitrary extra captures are not required now.
+
+[Reviewed design and rule disposition](../assets/VP-0222/ar-design-review-20261101/design-review.md)
+includes independent review appendices, source locations, preserved/replaced
+rules, outcome/authority contracts, staged migration and acceptance. Prototype
+choices (feature coverage, scoring, full-canvas criteria and numeric live shadow
+budgets) remain to be measured; live shadow cannot be enabled before budget
+selection/testing. Next deliverable is a failing-first CPU prototype/corpus and
+deterministic first-source timing replay, not another threshold patch. Genuine
+scope-to-IMAX-and-back full-rate transition capture is needed for final dynamic
+validation because current diagnostics subsample native frames. Existing Black
+startup gap remains separate. Keep story InProgress and PR243 draft.
