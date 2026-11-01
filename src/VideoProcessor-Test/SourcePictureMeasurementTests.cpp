@@ -83,6 +83,124 @@ namespace VideoProcessorTest
             Assert::AreEqual(expected.aspectRatio,measured.measuredBounds.aspectRatio,1e-9);
         }
     public:
+        TEST_METHOD(SourcePictureQuantizedFourPhaseEdgeKeepsBoundedNativeGeometry)
+        {
+            constexpr int width=960,height=540,top=17,bottom=523;
+            // The same paused source can alternate four legal 8-bit HDMI
+            // quantization phases: differences are only 0 or +/-4 in 10-bit
+            // code space. The picture-to-matte departure occupies <=3 rows.
+            const int profiles[4][3]={{64,72,76},{64,72,76},{68,68,72},{68,68,76}};
+            for(int phase=0;phase<4;++phase) {
+                SourcePictureFrame frame(width,height);
+                frame.Fill(0,top,width,bottom-3,300);
+                frame.Fill(0,bottom-3,width,bottom-2,80);
+                for(int offset=0;offset<3;++offset)
+                    frame.Fill(0,bottom-offset,width,bottom-offset+1,profiles[phase][offset]);
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Logger::WriteMessage((std::string("Quantized native phase=")+std::to_string(phase)+" reason="+observed.reason).c_str());
+                Assert::IsTrue(observed.complete && observed.rectangleAvailable && observed.outcome==SourcePictureOutcome::Measured,
+                    L"A bounded 4+4-code native edge cannot disappear on one quantization phase while an equivalent 8-code step passes.");
+                Assert::AreEqual(0,observed.measuredBounds.left);Assert::AreEqual(width,observed.measuredBounds.right);
+                Assert::AreEqual(top,observed.measuredBounds.top);
+                Assert::IsTrue(std::abs(observed.measuredBounds.bottom-bottom)<=1);
+                Assert::AreEqual(double(width)/(observed.measuredBounds.bottom-top),observed.measuredBounds.aspectRatio,1e-12);
+                const auto& edges=observed.edges[unsigned(SourcePictureEdge::Bottom)];
+                Assert::IsTrue(std::any_of(edges.begin(),edges.end(),[&](const SourcePictureEdgeCandidate& edge) {
+                    return edge.coordinate==observed.measuredBounds.bottom && edge.minimum<=bottom && edge.maximum>=bottom &&
+                        edge.minimum>=bottom-1 && edge.maximum<=bottom+1 && edge.support<=edge.coverage;
+                }),L"Quantized edge uncertainty must remain bounded in native rows rather than inventing a phase-invariant exact row.");
+                const auto verified=DetectSourcePictureForWorker(frame.Source());
+                Assert::IsTrue(verified.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                    L"The independently measured rectangle must still pass the real excluded-band verifier.");
+            }
+        }
+        TEST_METHOD(SourcePictureQuantizedContinuingRampCannotInventAnInsetBoundary)
+        {
+            SourcePictureFrame frame(960,540);
+            for(int y=0;y<540;++y) {
+                const int distance=std::min(y,539-y);
+                frame.Fill(0,y,960,y+1,std::min(300,64+4*(distance/2)));
+            }
+            const auto observed=MeasureSourcePicture(frame.Source());
+            Assert::IsTrue(observed.complete);
+            Assert::IsFalse(observed.rectangleAvailable &&
+                (observed.measuredBounds.top>0 || observed.measuredBounds.bottom<540),
+                L"A continuing quantized 4,0,4 ramp has no localized matte-to-picture edge and must not be cropped.");
+        }
+        TEST_METHOD(SourcePictureNearbyCoherentEdgeVotesRetainTheirNativeInterval)
+        {
+            constexpr int width=960,height=540,top=17,bottom=523;
+            SourcePictureFrame frame(width,height);
+            // Each fixed ray sees exactly one current edge. Adjacent source
+            // rows are one coherent boundary, not three competing pictures.
+            for(int x=0;x<width;++x) {
+                const int ray=std::min(127,x*128/width);
+                frame.Fill(x,top,x+1,bottom+(ray%3)-1,300);
+            }
+            const auto observed=MeasureSourcePicture(frame.Source());
+            Assert::IsTrue(observed.complete && observed.rectangleAvailable);
+            const auto& edges=observed.edges[unsigned(SourcePictureEdge::Bottom)];
+            Assert::IsTrue(std::any_of(edges.begin(),edges.end(),[&](const SourcePictureEdgeCandidate& edge) {
+                return edge.minimum==bottom-1 && edge.maximum==bottom+1 && edge.support==128 && edge.coverage==128 &&
+                    std::all_of(edge.regionSupport.begin(),edge.regionSupport.end(),[](unsigned count){return count==32;});
+            }),L"Coherent adjacent-row support must aggregate each source ray once and expose its measured two-row span.");
+            Assert::IsTrue(observed.measuredBounds.bottom>=bottom-1 && observed.measuredBounds.bottom<=bottom+1);
+        }
+        TEST_METHOD(SourcePictureDarkStructuredTerminalDoesNotEraseFullRasterPicture)
+        {
+            for(bool horizontal:{false,true})for(bool leading:{false,true}) {
+                SourcePictureFrame frame(960,540,104);
+                for(int y=0;y<540;++y)for(int x=0;x<960;++x) {
+                    const int depth=horizontal?960:540;
+                    const int across=horizontal?x:y,along=horizontal?y:x;
+                    const int distance=leading?across:depth-1-across;
+                    // One connected picture fades continuously toward a dark
+                    // textured terminal. There is no flat encoded outer matte
+                    // or inset abrupt boundary. Its own dark pixels must not
+                    // become an assumed black floor that erases that edge.
+                    const int value=104+std::min(196,distance/2)+4*((along/8)%3-1);
+                    frame.Fill(x,y,x+1,y+1,value);
+                }
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Logger::WriteMessage(observed.reason);
+                Exact(observed,Bounds(960,540,0,0,960,540));
+            }
+        }
+        TEST_METHOD(SourcePictureFlatRaisedPrefixBeforeFaintRampCannotProveFullRaster)
+        {
+            for(bool horizontal:{false,true})for(bool leading:{false,true}) {
+                SourcePictureFrame frame(960,540,104);
+                for(int y=0;y<540;++y)for(int x=0;x<960;++x) {
+                    const int depth=horizontal?960:540,across=horizontal?x:y;
+                    const int distance=leading?across:depth-1-across;
+                    const int prefix=depth/8+16;
+                    const int value=distance<prefix?104:std::min(300,104+(distance-prefix)/2);
+                    frame.Fill(x,y,x+1,y+1,value);
+                }
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Assert::IsTrue(observed.complete);
+                Assert::IsFalse(observed.rectangleAvailable && observed.measuredBounds.left==0 && observed.measuredBounds.top==0 &&
+                    observed.measuredBounds.right==960 && observed.measuredBounds.bottom==540,
+                    L"Later body gradients cannot manufacture picture contact through a genuine flat raised outer matte.");
+            }
+        }
+        TEST_METHOD(SourcePictureRaisedTexturedMatteAndSparseWidgetsDoNotProveTerminalPicture)
+        {
+            for(bool widgets:{false,true}) {
+                SourcePictureFrame frame(960,540,104);
+                frame.Fill(128,0,960,540,300,530,490);
+                for(int y=0;y<540;++y)
+                    frame.Fill(0,y,128,y+1,104+4*((y/8)%3-1));
+                if(widgets) {
+                    frame.Fill(0,90,16,99,240);frame.Fill(0,420,16,429,240);
+                }
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Assert::IsTrue(observed.complete);
+                Assert::IsFalse(observed.rectangleAvailable && observed.measuredBounds.left==0,
+                    L"A genuinely raised textured sidebar cannot become picture merely because it exceeds nominal black or contains sparse widgets.");
+                if(observed.rectangleAvailable)Assert::AreEqual(128,observed.measuredBounds.left);
+            }
+        }
         TEST_METHOD(SourcePictureMissingGeometryPreservesBlackReferenceWithoutNativeVotes)
         {
             const auto scope=Bounds(960,540,0,66,960,474);
@@ -482,6 +600,13 @@ namespace VideoProcessorTest
             }
             const auto edges=environment("VP_SOURCE_PICTURE_CAPTURE_EXPECTED_EDGES");
             const auto outcome=environment("VP_SOURCE_PICTURE_CAPTURE_EXPECTED_OUTCOME");
+            const auto uncertaintyText=environment("VP_SOURCE_PICTURE_CAPTURE_EDGE_UNCERTAINTY");
+            int uncertainty=0;
+            if(!uncertaintyText.empty()) {
+                Assert::AreEqual(1,sscanf_s(uncertaintyText.c_str(),"%d",&uncertainty));
+                Assert::IsTrue(uncertainty>=0 && uncertainty<=2,L"Explicit native-edge uncertainty is bounded to at most two source rows/pixels.");
+            }
+            const auto sameCoordinate=[&](int actual,int expected){return std::abs(actual-expected)<=uncertainty;};
             const bool verify=environment("VP_SOURCE_PICTURE_CAPTURE_VERIFY")=="1";
             const bool captions=environment("VP_SOURCE_PICTURE_CAPTURE_CAPTION_VERIFY")=="1";
             Assert::IsTrue(!captions || verify,L"Caption crop verification requires independent native spatial measurement.");
@@ -533,8 +658,8 @@ namespace VideoProcessorTest
                 ++count;samples+=observed.samples;totalMs+=elapsed;peakMs=std::max(peakMs,elapsed);
                 bool matches=observed.complete && observed.sourceGeneration==1 && observed.width==width && observed.height==height;
                 if(outcome=="Measured")matches=matches && observed.outcome==SourcePictureOutcome::Measured && observed.rectangleAvailable &&
-                    observed.measuredBounds.left==left && observed.measuredBounds.top==top &&
-                    observed.measuredBounds.right==right && observed.measuredBounds.bottom==bottom;
+                    sameCoordinate(observed.measuredBounds.left,left) && sameCoordinate(observed.measuredBounds.top,top) &&
+                    sameCoordinate(observed.measuredBounds.right,right) && sameCoordinate(observed.measuredBounds.bottom,bottom);
                 if(outcome=="CanvasEstimate") {
                     Assert::IsTrue(left==0 && top==0 && right==width && bottom==height,
                         L"Canvas expectations must explicitly name the whole source; blank margins remain an inference.");
@@ -552,9 +677,9 @@ namespace VideoProcessorTest
                     const auto& evidence=active.evidence;
                     matches=matches && evidence.detector!=ActivePictureDetectorKind::Legacy;
                     if(outcome=="Measured")matches=matches && evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
-                        evidence.physicalEdges.estimateAvailable && evidence.physicalEdges.estimate.left==left &&
-                        evidence.physicalEdges.estimate.top==top && evidence.physicalEdges.estimate.right==right &&
-                        evidence.physicalEdges.estimate.bottom==bottom;
+                        evidence.physicalEdges.estimateAvailable && sameCoordinate(evidence.physicalEdges.estimate.left,left) &&
+                        sameCoordinate(evidence.physicalEdges.estimate.top,top) && sameCoordinate(evidence.physicalEdges.estimate.right,right) &&
+                        sameCoordinate(evidence.physicalEdges.estimate.bottom,bottom);
                     if(outcome=="CanvasEstimate")matches=matches && evidence.detector==ActivePictureDetectorKind::SourceSpatialCanvas &&
                         evidence.available && !evidence.physicalEdges.estimateAvailable &&
                         evidence.trustedBounds.left==0 && evidence.trustedBounds.top==0 &&

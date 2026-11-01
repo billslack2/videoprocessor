@@ -16,8 +16,11 @@ $realPlan=Get-VpCriticalTestPlan $Root
 $standardPlan=Get-VpCriticalVariantPlan $realPlan 'standard'
 $betaPlan=Get-VpCriticalVariantPlan $realPlan 'beta'
 $actualUnion=@(@($standardPlan.expected.Keys | Where-Object {$standardPlan.expected[$_] -ne 'native'})+@($betaPlan.expected.Keys | Where-Object {$betaPlan.expected[$_] -ne 'native'}))
-if($actualUnion.Count -ne $realPlan.actualCount -or @($actualUnion|Select-Object -Unique).Count -ne $realPlan.actualCount -or $standardPlan.nativeCount -ne $realPlan.nativeCount -or $betaPlan.nativeCount -ne $realPlan.nativeCount){throw 'Per-variant execution lost or duplicated required coverage.'}
-Write-Host 'PASS: every actual renderer case is assigned exactly once; native coverage retained on both ABIs'
+if($actualUnion.Count -ne $realPlan.actualCount -or @($actualUnion|Select-Object -Unique).Count -ne $realPlan.actualCount -or $standardPlan.nativeCount -ne $realPlan.nativeCount -or $betaPlan.nativeCount -ne 0){throw 'Per-variant execution lost or duplicated required coverage.'}
+$allKeys=@($standardPlan.expected.Keys)+@($betaPlan.expected.Keys)
+if($allKeys.Count -ne $realPlan.expected.Count -or @($allKeys|Select-Object -Unique).Count -ne $realPlan.expected.Count){throw 'Every mandatory contract must execute exactly once across both hosts.'}
+if($betaPlan.filter -match [regex]::Escape($realPlan.nativeFilter)){throw 'Beta selection repeated shared native contracts.'}
+Write-Host 'PASS: every shared CPU and actual renderer case is assigned exactly once; both GPU dependencies retained'
 Write-Host "Manifest discovered $($realPlan.nativeCount) native methods and $($realPlan.actualCount) mandatory actual-renderer methods."
 if($NativeTrx) {
     $nativeExpected=@{}

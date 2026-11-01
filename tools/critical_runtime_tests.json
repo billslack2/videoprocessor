@@ -10,8 +10,21 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 944,
+  "minimumNativeTests": 956,
   "requiredNativeMethods": [
+    "SourcePictureFlatRaisedPrefixBeforeFaintRampCannotProveFullRaster",
+    "SourcePictureDarkStructuredTerminalDoesNotEraseFullRasterPicture",
+    "SourcePictureRaisedTexturedMatteAndSparseWidgetsDoNotProveTerminalPicture",
+    "VerifiedSpatialOutwardQueuedHandoffUsesCurrentPixelAuthorityWithoutLegacyVotes",
+    "SourcePictureQuantizedContinuingRampCannotInventAnInsetBoundary",
+    "VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources",
+    "VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof",
+    "VerifiedSpatialTransitionStillResetsOnGenuineOldGeometryContradiction",
+
+    "SourcePictureQuantizedFourPhaseEdgeKeepsBoundedNativeGeometry",
+    "SourcePictureNearbyCoherentEdgeVotesRetainTheirNativeInterval",
+    "FreshConfirmedCueOutranksRedundantLocalContinuation",
+    "GenuineMissingEdgeStillRequiresLocalContinuationCompositionSafety",
     "ImmediateSpatialAcquisitionRejectsUnboundChangedOrStaleProofAndKeepsTransitionConfirmation",
     "CurrentVerifiedSpatialCropAcquiresImmediatelyWithoutLegacyStartupVotes",
     "CurrentCrossingCaptionSpatialVerificationAcquiresWithoutExtraDisplayedFrames",
@@ -269,6 +282,13 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 28,
   "explicitNativeMethods": [
+    {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialOutwardQueuedHandoffUsesCurrentPixelAuthorityWithoutLegacyVotes"},
+    {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources"},
+    {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof"},
+    {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialTransitionStillResetsOnGenuineOldGeometryContradiction"},
+
+    {"source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "FreshConfirmedCueOutranksRedundantLocalContinuation"},
+    {"source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "GenuineMissingEdgeStillRequiresLocalContinuationCompositionSafety"},
     {
       "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
       "class": "ActivePictureTransitionModelTests",

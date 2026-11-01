@@ -1012,6 +1012,17 @@ namespace AlphaSourceCrop
 		decision.pillarboxContradiction = ConfirmPillarboxContradiction(input);
 		decision.observation = MakeActivePictureObservation(input.evidence,
 			input.sourceSequence, input.framesPerSecond, &input.currentIdentity);
+        const auto& target=decision.observation.bounds;
+        const auto& base=input.trustedGeometry;
+        decision.currentSpatialOutward=input.compatiblePresentation && input.trustedGeometryAvailable &&
+            input.sourceGeneration && input.sourceGeneration==input.trustedGeneration &&
+            input.sourceGeneration==input.currentIdentity.transportGeneration &&
+            input.sourceSequence==input.currentIdentity.acceptedSequence &&
+            decision.observation.currentSpatialCropProof.Matches(decision.observation) &&
+            ValidBounds(base,target.rasterWidth,target.rasterHeight) &&
+            SameTrustedCropContract(target,input.outwardCandidate) &&
+            target.left<=base.left && target.top<=base.top && target.right>=base.right && target.bottom>=base.bottom &&
+            (target.left<base.left || target.top<base.top || target.right>base.right || target.bottom>base.bottom);
 		decision.deferPresentation = input.evidence.available &&
 			input.trustedGeometryAvailable && input.trustedGeneration == input.sourceGeneration &&
 			ShouldDeferVerticalGeometryTransition(input.trustedGeometry,
@@ -1036,6 +1047,12 @@ namespace AlphaSourceCrop
 		// Broad current picture on the expanding edges can supersede an old
 		// subtitle action; a subtitle must not pin a genuinely obsolete aspect.
 		decision.deferPresentation = decision.deferPresentation && !decision.outward.authoritative;
+        // The spatial route already measured the new picture and verified every
+        // discarded band on this exact source. Do not require legacy brightness
+        // or three-source occupancy votes before the model's own confirmation.
+        if(decision.currentSpatialOutward) {
+            decision.deferPresentation=false;decision.deferOutward=false;
+        }
 		decision.observation.transitionDeferred = decision.deferPresentation || decision.deferOutward;
 		if (input.evidence.available)
 		{

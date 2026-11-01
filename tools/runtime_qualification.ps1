@@ -117,20 +117,27 @@ function Get-VpCriticalTestPlan([string]$Root) {
 }
 # Actual proxy cases explicitly load the named shipped renderer DLL. Running
 # Standard* and Beta* again in both ABI test hosts duplicated expensive GPU work.
-# Keep native contracts in BOTH hosts; assign each actual case to its named host.
+# Shared CPU contracts run once in the standard host. Each dependency still
+# runs its own actual GPU/presentation cases; neither variant can substitute for
+# the other. Both test binaries and renderer dependencies remain hash-bound.
 function Get-VpCriticalVariantPlan($Plan, [string]$Variant) {
     if($Variant -notin @('standard','beta')){throw 'Unknown qualification dependency variant.'}
     $prefix=if($Variant -eq 'standard'){'StandardRenderer'}else{'BetaRenderer'}
     $expected=@{};$methods=@()
     foreach($key in $Plan.expected.Keys) {
-        if($Plan.expected[$key] -eq 'native'){$expected[$key]='native';continue}
+        if($Plan.expected[$key] -eq 'native'){
+            if($Variant -eq 'standard'){$expected[$key]='native'}
+            continue
+        }
         $method=($key -split '::')[-1]
         if($method -notmatch '^(Standard|Beta)Renderer'){throw "Actual method has no explicit renderer owner: $method"}
         if($method.StartsWith($prefix)){$expected[$key]=$Plan.expected[$key];$methods+=,$method}
     }
     if(-not $methods.Count){throw "No actual renderer coverage for $Variant"}
-    $filters=@($Plan.nativeFilter)+@($methods|Sort-Object|ForEach-Object {"FullyQualifiedName~$_"})
-    return [pscustomobject]@{expected=$expected;nativeCount=$Plan.nativeCount;actualCount=$methods.Count;filter=($filters -join '|')}
+    $filters=@($methods|Sort-Object|ForEach-Object {"FullyQualifiedName~$_"})
+    $nativeCount=0
+    if($Variant -eq 'standard'){$filters=@($Plan.nativeFilter)+$filters;$nativeCount=$Plan.nativeCount}
+    return [pscustomobject]@{expected=$expected;nativeCount=$nativeCount;actualCount=$methods.Count;filter=($filters -join '|')}
 }
 function Get-VpQualifiedOutputInventory([string]$Root) {
     $files = @(

@@ -1210,6 +1210,97 @@ public:
         Assert::AreEqual(0,missing.current.pictureTop);Assert::IsFalse(missing.current.text.detected);
         Assert::IsTrue(missing.current.ink==nullptr);
     }
+    TEST_METHOD(FreshConfirmedCueOutranksRedundantLocalContinuation) {
+        for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422})
+        for(bool inspected:{false,true}) {
+            auto fixture=std::make_unique<NativeBarCueFixture>(format);auto& f=*fixture;
+            f.AddRoundedLipAndHollowGlyphs();
+            auto window=[&](uint64_t head) {
+                auto scans=std::make_unique<std::array<SubtitleBoxObservation,3>>();
+                for(size_t i=0;i<scans->size();++i) {
+                    auto identity=Identity(head+i);identity.transportGeneration=2;identity.analysisDomainKey=17;
+                    auto shared=f.acquired.current.sharedPicture;shared.identity=identity;shared.bounds={};
+                    if(inspected) {
+                        auto& hint=shared.inspectionCandidate;hint.valid=true;hint.bounds=f.base;
+                        hint.bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                        hint.originIdentity=identity;hint.policyGeneration=7;hint.continuityGeneration=9;hint.nativeGeometryRevision=1;
+                        Assert::IsTrue(hint.AvailableFor(identity,3840,2160,7,9),
+                            L"The real inspection scanner requires a nonzero exact analysis domain and a coordinate-only contextual hint.");
+                    }
+                    SubtitleBoxDetector scanner;scanner.SetNearBarDistance(20);
+                    auto& scan=(*scans)[i];scan=SubtitleBoxLookahead::Measure(scanner,f.Native(),
+                        ExtractActivePictureEvidence(f.Native()),identity,false,{},7,9,shared);
+                    Assert::IsTrue(scan.analyzed && scan.barAuthority &&
+                        scan.barEvidence.available && scan.text.detected && scan.ink && scan.ink->rawEvidenceComplete);
+                    Assert::IsTrue(scan.text.topSearchComplete && scan.text.bottomSearchComplete);
+                    Assert::AreEqual(inspected,scan.inspectionCandidateUsed);
+                    Assert::IsTrue(inspected?SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(scan):scan.independentBarAnalysis);
+                    Assert::IsTrue(scan.pictureAuthorityUnavailableForMeasurement);
+                    Assert::IsFalse(scan.sharedPicture.AvailableFor(identity,3840,2160));
+                }
+                auto result=std::make_unique<SubtitleBoxPreview>();
+                SubtitleBoxLookahead::ResolveInto(*result,scans->data(),scans->size(),7,9);
+                return result;
+            };
+            auto tracker=std::make_unique<SubtitleBoxPresentation>();
+            auto guard=std::make_unique<SubtitleCueContinuationGuard>();
+            auto compositor=std::make_unique<SubtitleCutPastePresentation>();
+            auto initial=window(1);tracker->RefreshReferencePixels(*initial,f.Native());
+            auto acquired=tracker->Consume(*initial,250,41.708);
+            Assert::IsTrue(acquired.detected && !acquired.held);
+            // Local-unshared continuation can seed only an established cue.
+            // Obtain that state from a second real source, not an edited count.
+            initial=window(2);tracker->RefreshReferencePixels(*initial,f.Native());
+            acquired=tracker->Consume(*initial,250,41.708);
+            Assert::IsTrue(acquired.detected && !acquired.held && acquired.observations>=2);
+            const bool seeded=guard->Remember(*initial,acquired,f.base,f.Native());
+            Logger::WriteMessage(guard->LastSeedReason());
+            Assert::IsTrue(seeded);
+            const auto first=compositor->Consume(acquired,*initial,{60,40,21},20);
+            Assert::IsTrue(first.valid);
+            auto current=window(3);
+            Assert::IsTrue(current->currentLinesConfirmed && current->matchingFrames==3);
+            Assert::IsTrue(guard->NeedsCurrentProof(*current));
+            const auto proof=guard->Prepare(*current,f.Native(),f.base,250,41.708);
+            Assert::IsTrue(proof.valid && proof.localGlyphsOnly && proof.accepted.held);
+            const auto rawIdentity=current->current.identity;
+            const auto rawTop=current->current.pictureTop,rawBottom=current->current.pictureBottom;
+            tracker->RefreshReferencePixels(*current,f.Native());
+            const auto consumeStarted=std::chrono::steady_clock::now();
+            const auto accepted=tracker->Consume(*current,250,41.708,nullptr,false,false,&proof);
+            const double consumeMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-consumeStarted).count();
+            Logger::WriteMessage((std::string("Fresh caption ordinary trial: tracker_bytes=")+std::to_string(sizeof(SubtitleBoxPresentation))+
+                " inspected="+std::to_string(inspected)+" consume_ms="+std::to_string(consumeMs)).c_str());
+            Assert::IsTrue(accepted.detected && !accepted.held,
+                L"A complete fresh confirmed cue must not be downgraded to a weaker local-only continuation.");
+            Assert::AreEqual(acquired.cue,accepted.cue);
+            const auto composed=compositor->Consume(accepted,*current,{60,40,21},20,nullptr,&proof);
+            Assert::IsTrue(composed.valid,L"Redundant fallback availability cannot interrupt actual current subtitle composition.");
+            Assert::IsTrue(SubtitleCueContinuation::SameRect(first.destination,composed.destination));
+            Assert::IsTrue(SameAnalysisFrameIdentity(rawIdentity,current->current.identity));
+            Assert::AreEqual(rawTop,current->current.pictureTop);Assert::AreEqual(rawBottom,current->current.pictureBottom);
+            Assert::IsFalse(current->current.sharedPicture.AvailableFor(rawIdentity,3840,2160));
+        }
+    }
+    TEST_METHOD(GenuineMissingEdgeStillRequiresLocalContinuationCompositionSafety) {
+        auto fixture=std::make_unique<NativeBarCueFixture>();auto& f=*fixture;
+        auto tracker=std::make_unique<SubtitleBoxPresentation>();
+        auto guard=std::make_unique<SubtitleCueContinuationGuard>();
+        const auto acquired=tracker->Consume(f.acquired);
+        Assert::IsTrue(acquired.detected && !acquired.held);
+        Assert::IsTrue(guard->Remember(f.acquired,acquired,f.base,f.Native()));
+        auto missing=std::make_unique<SubtitleBoxPreview>(f.OppositeMissing(2));
+        const auto proof=guard->Prepare(*missing,f.Native(),f.base,250,41.708);
+        Assert::IsTrue(proof.valid && proof.localGlyphsOnly);
+        const auto accepted=tracker->Consume(*missing,250,41.708,nullptr,false,false,&proof);
+        Assert::IsTrue(accepted.detected && accepted.held,
+            L"Missing current picture evidence still uses the explicitly weaker nonrenewing fallback.");
+        auto freshCompositor=std::make_unique<SubtitleCutPastePresentation>();
+        Assert::IsFalse(freshCompositor->Consume(accepted,*missing,{60,40,21},20,nullptr,&proof).valid,
+            L"A local held proof cannot acquire uncached source capture or erasure authority.");
+        Assert::AreEqual(0,missing->current.pictureTop);
+        Assert::AreEqual(1776,missing->current.pictureBottom);
+    }
     TEST_METHOD(PresentationConsumeKeepsCueAndGeometryAcrossMissingEdgeAndRecovery) {
         ContinuationFixture f;SubtitleCueContinuationGuard guard;
         SubtitleBoxPresentation presentation;SubtitleCutPastePresentation compositor;

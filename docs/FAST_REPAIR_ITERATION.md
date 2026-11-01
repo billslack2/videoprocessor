@@ -34,9 +34,11 @@ requested by the operator, and must disclose incomplete qualification. Release
 packaging still requires the full matching source/binary qualification receipt.
 
 Native test compilation uses four compiler workers per test project. Full
-qualification retains native contracts in both ABI test hosts and runs each
-Standard/Beta actual-renderer case exactly once in its matching host, removing
-the duplicate cross-product. GPU assertions and input-rate coverage are unchanged.
+qualification runs shared native contracts once in the standard host and each
+Standard/Beta actual-renderer case exactly once in its matching host. Both test
+binaries and runtime dependencies remain built and hash-verified. The strict TRX
+gate requires the complete CPU suite and both GPU suites; a missing case or
+dependency cannot qualify. GPU assertions and input-rate coverage are unchanged.
 
 Tests use a persistent writable shader cache under
 `%LOCALAPPDATA%/VideoProcessor/TestShaderCache` (override with
@@ -82,3 +84,13 @@ All existing dependency hashes, selected classes and TRX checks remain required.
 Its receipt records `reusedQualifiedBuild=true`, build mode
 `reused-qualified-build` and a null build exit because no build ran. Without the
 switch, the existing rebuild behavior remains and can invalidate qualification.
+
+Shared shader-correctness fixtures retain only compiled program bytes, bounded
+by adapter and feature level; each fixture still owns fresh GPU resources,
+textures, frame history and assertions. Reconstruction/motion fixtures now use
+the same program cache as subtitle composition fixtures. The preparation/cache
+matrix starts with its own empty cache, then reuses compatible programs across
+its three source-processing scenarios. Later scenarios are not independently
+cold-start claims. Full runtime qualification still creates an empty application
+cache for each run and exercises both renderer dependencies; cold startup and
+post-readiness caption correctness remain required.

@@ -2701,6 +2701,24 @@ public:
             cueContinuation->MatchesLocal(preview.current.identity,preview.policyGeneration,
                 preview.continuityGeneration,preview.current.width,preview.current.height,
                 m_result,m_previous.current.identity);
+        if(localContinuation && m_hasPrevious && m_result.detected &&
+            !preview.current.pendingRefresh && !preview.current.analysisRefresh && !preview.current.cadenceSkipped &&
+            preview.current.pictureTop>0 && preview.current.pictureBottom<preview.current.height &&
+            (preview.current.independentBarAnalysis ||
+                SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(preview.current))) {
+            // Reuse the ordinary acquisition/current-ink rules rather than
+            // maintain a second definition of a strong caption. A rejected
+            // trial cannot spend a cue lease or mutate the live tracker.
+            auto fresh=std::make_unique<SubtitleBoxPresentation>(*this);
+            fresh->m_completeOutputRetirement=completeOutputRetirement;
+            const auto accepted=fresh->Consume(suppliedPreview,holdMilliseconds,sourceFrameMilliseconds,
+                backlogTemplateIdentity,backlogRetirementOnly,backlogPendingPixelsVerified,nullptr);
+            if(accepted.detected && !accepted.held && !accepted.confirmationPending && !accepted.workLimit &&
+                accepted.lineCount==preview.current.text.lineCount) {
+                *this=std::move(*fresh);
+                return accepted;
+            }
+        }
         if(cueContinuation && m_hasPrevious && m_result.detected &&
             (sharedContinuation || localContinuation) &&
             SameAnalysisFrameIdentity(cueContinuation->previousIdentity,m_previous.current.identity) &&

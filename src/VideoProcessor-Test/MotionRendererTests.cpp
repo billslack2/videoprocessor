@@ -240,9 +240,13 @@ struct SubtitlePacketHoldFixture {
 }
 TEST_CLASS(MotionRendererTests){public:
     TEST_METHOD(SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases) {
+        // One private, initially empty cache per test/dependency. The worker
+        // must prepare every new scenario; compiled programs common to RGB,
+        // temporal RGB and P010 need not be compiled three times. Keep every
+        // geometry/phase assertion and the no-live-compilation signature check.
+        struct Cache { pl_cache value=pl_cache_create(nullptr); ~Cache(){pl_cache_destroy(&value);} } cache;
         for (int scenario : {0, 1, 2}) {
             GpuFixture g;
-            struct Cache { pl_cache value=pl_cache_create(nullptr); ~Cache(){pl_cache_destroy(&value);} } cache;
             pl_gpu_set_cache(g.device->gpu,cache.value);
             g.Upload(100);
             if (scenario==2) g.CreateP010AlternatingChroma();

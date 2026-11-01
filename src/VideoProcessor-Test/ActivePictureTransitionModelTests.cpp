@@ -114,6 +114,151 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureTransitionModelTests)
 	{
 	public:
+        TEST_METHOD(VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources)
+        {
+            const ActivePictureBounds scope{0,66,960,474,960,540,960.0/408,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            SpatialStartupPixels pixels(960,540,17,523);pixels.Fill(0,17,960,523,80);
+            const auto measured=DetectSourcePictureForWorker(pixels.source);
+            SpatialStartupPixels nearbyPixels(960,540,17,521);nearbyPixels.Fill(0,17,960,521,80);
+            const auto nearby=DetectSourcePictureForWorker(nearbyPixels.source);
+            Assert::IsTrue(measured.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            for(double fps:{23.976,60.0})for(auto action:{AlphaSourceCrop::VerticalBarPresentationAction::NONE,
+                AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE,AlphaSourceCrop::VerticalBarPresentationAction::FIT}) {
+                ActivePictureTransitionModel model;const auto first=Establish(model,scope);
+                AlphaSourceCrop::OutwardPictureConfirmationState previous;
+                bool published=false;uint64_t publication=0;
+                for(unsigned offset=0;offset<8;++offset) {
+                    const auto& currentPixels=offset%4==1?nearbyPixels:pixels;
+                    const auto& currentMeasured=offset%4==1?nearby:measured;
+                    const auto id=SpatialStartupIdentity(first+offset);auto live=currentPixels.source;live.generation=id.transportGeneration;
+                    AlphaSourceCrop::TransitionAdmissionInput input;
+                    input.currentIdentity=id;input.sourceGeneration=input.trustedGeneration=id.transportGeneration;
+                    input.sourceSequence=id.acceptedSequence;input.framesPerSecond=fps;
+                    input.trustedGeometryAvailable=input.compatiblePresentation=true;
+                    input.trustedGeometry=input.presentationBeforeObservation=scope;
+                    input.presentation.action=action;input.presentationEvidenceGeneration=id.transportGeneration;
+                    input.translationDriftActive=action==AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
+                    input.previousOutward=previous;
+                    if(offset%4!=3) {
+                        ActivePictureMeasurementCache cache;cache.Begin(live,id,47,23);
+                        Assert::IsTrue(cache.SeedQueued(currentPixels.source,id,currentMeasured.evidence,
+                            EvaluateActivePictureArDarkness(currentPixels.source,currentMeasured.evidence)));
+                        input.evidence=cache.Picture();
+                        // Current guards may differ by a retained sampling row;
+                        // geometry is measured, never forced to a standard ratio.
+                        input.outwardCandidate=input.evidence.trustedBounds;
+                        input.retention=EvaluateActivePicturePresentationRetention(live,scope,input.evidence,
+                            EvaluateActivePictureGlobalNearBlack(live),EvaluateActivePictureArDarkness(live,input.evidence));
+                        Assert::IsTrue(CurrentSpatialObservation(input.evidence,id,fps,0).currentSpatialCropProof.Matches(
+                            CurrentSpatialObservation(input.evidence,id,fps,0)));
+                    } else input.evidence=MissingSourcePictureEvidence(live);
+                    const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);previous=admission.outward.state;
+                    if(offset%4!=3) {
+                        Assert::IsTrue(admission.currentSpatialOutward);
+                        Assert::IsFalse(admission.outward.authoritative,
+                            L"The spatial route must not invent legacy broad-occupancy votes or three-source confirmation.");
+                        Assert::IsFalse(admission.observation.transitionDeferred,
+                            L"A fully verified current spatial rectangle must reach the single transition owner without a second legacy brightness/three-source gate.");
+                    }
+                    const auto decision=model.Observe(admission.observation);
+                    if(decision.publish) {published=true;if(!publication)publication=id.acceptedSequence;}
+                }
+                Assert::IsTrue(published);
+                Assert::IsTrue(publication<=first+1,
+                    L"Existing two-source transition confirmation must finish before each fourth unavailable input; stacked three-plus-two gates must not pin old scope forever.");
+            }
+        }
+        TEST_METHOD(VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof)
+        {
+            const ActivePictureBounds scope{0,66,960,474,960,540,960.0/408,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            SpatialStartupPixels pixels(960,540,17,523);pixels.Fill(0,17,960,523,80);
+            const auto raw=DetectSourcePictureForWorker(pixels.source);const auto id=SpatialStartupIdentity(5);
+            auto live=pixels.source;live.generation=id.transportGeneration;
+            ActivePictureMeasurementCache cache;cache.Begin(live,id,47,23);
+            Assert::IsTrue(cache.SeedQueued(pixels.source,id,raw.evidence,EvaluateActivePictureArDarkness(pixels.source,raw.evidence)));
+            const auto bound=cache.Picture();
+            Assert::IsTrue(CurrentSpatialObservation(bound,id,60,0).currentSpatialCropProof.Matches(CurrentSpatialObservation(bound,id,60,0)));
+            for(int fault=0;fault<8;++fault) {
+                AlphaSourceCrop::TransitionAdmissionInput input;input.evidence=bound;input.currentIdentity=id;
+                input.sourceGeneration=input.trustedGeneration=id.transportGeneration;input.sourceSequence=id.acceptedSequence;
+                input.trustedGeometryAvailable=input.compatiblePresentation=true;
+                input.trustedGeometry=input.presentationBeforeObservation=scope;input.outwardCandidate=bound.trustedBounds;
+                input.retention=EvaluateActivePicturePresentationRetention(live,scope,bound,
+                    EvaluateActivePictureGlobalNearBlack(live),EvaluateActivePictureArDarkness(live,bound));
+                switch(fault) {
+                case 0:input.evidence.currentSourceIdentityAvailable=false;break;
+                case 1:++input.currentIdentity.analysisDomainKey;break;
+                case 2:++input.currentIdentity.sourceFormatGeneration;break;
+                case 3:++input.currentIdentity.acceptedSequence;break;
+                case 4:input.evidence.candidateVerification.vertical=ActivePictureCandidateVerificationState::CONTRADICTED;break;
+                case 5:input.evidence.physicalEdges.estimateAvailable=false;break;
+                case 6:input.evidence.detector=ActivePictureDetectorKind::Legacy;break;
+                case 7:input.evidence.classification=ActivePictureClassification::PROVISIONAL;break;
+                }
+                const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+                Assert::IsFalse(admission.currentSpatialOutward);
+                Assert::IsTrue(admission.observation.transitionDeferred,
+                    L"Missing, foreign or contradicted source proof cannot bypass the legacy conservative outward admission path.");
+            }
+        }
+        TEST_METHOD(VerifiedSpatialOutwardQueuedHandoffUsesCurrentPixelAuthorityWithoutLegacyVotes)
+        {
+            const ActivePictureBounds queuedBase{0,66,960,474,960,540,960.0/408,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            const ActivePictureBounds liveBase{0,68,960,474,960,540,960.0/406,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            SpatialStartupPixels pixels(960,540,17,523);pixels.Fill(0,17,960,523,80);
+            const auto raw=DetectSourcePictureForWorker(pixels.source);
+            ActivePictureTransitionModel queued,live;const auto first=Establish(queued,queuedBase);Establish(live,liveBase);
+            AlphaSourceCrop::TransitionAdmissionDecision last;
+            ActivePictureTransitionDecision published;
+            for(uint64_t sequence=first;sequence<=first+1;++sequence) {
+                const auto id=SpatialStartupIdentity(sequence);auto current=pixels.source;current.generation=id.transportGeneration;
+                ActivePictureMeasurementCache cache;cache.Begin(current,id,47,23);
+                Assert::IsTrue(cache.SeedQueued(pixels.source,id,raw.evidence,EvaluateActivePictureArDarkness(pixels.source,raw.evidence)));
+                AlphaSourceCrop::TransitionAdmissionInput input;input.evidence=cache.Picture();input.currentIdentity=id;
+                input.sourceSequence=sequence;input.sourceGeneration=input.trustedGeneration=id.transportGeneration;
+                input.trustedGeometryAvailable=input.compatiblePresentation=true;
+                input.trustedGeometry=input.presentationBeforeObservation=queuedBase;input.outwardCandidate=input.evidence.trustedBounds;
+                last=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+                Assert::IsTrue(last.currentSpatialOutward);Assert::IsFalse(last.outward.authoritative);
+                published=queued.Observe(last.observation);
+            }
+            Assert::IsTrue(published.publish);
+            ActivePicturePublicationAdmission reason;
+            Assert::IsFalse(live.AdoptPublishedDecision(published,last.observation.classification,
+                last.observation.transitionDeferred,&reason,&last.observation.axisEvidence,false));
+            Assert::IsTrue(reason==ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
+            ActivePictureTransitionModel excessiveReference;
+            const ActivePictureBounds opposingErrors{0,68,960,472,960,540,960.0/404,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            Establish(excessiveReference,opposingErrors);
+            Assert::IsFalse(excessiveReference.AdoptPublishedDecision(published,last.observation.classification,
+                last.observation.transitionDeferred,&reason,&last.observation.axisEvidence,last.currentSpatialOutward),
+                L"Moving both reference edges a scan step cannot double the permitted total size error.");
+            Assert::IsTrue(reason==ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
+            Assert::IsTrue(live.AdoptPublishedDecision(published,last.observation.classification,
+                last.observation.transitionDeferred,&reason,&last.observation.axisEvidence,last.currentSpatialOutward),
+                L"The exact current spatial proof can authorize the existing one-scan-step reference handoff without fabricating legacy confirmation or strip brightness.");
+        }
+
+        TEST_METHOD(VerifiedSpatialTransitionStillResetsOnGenuineOldGeometryContradiction)
+        {
+            const ActivePictureBounds scope{0,66,960,474,960,540,960.0/408,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            SpatialStartupPixels pixels(960,540,17,523);pixels.Fill(0,17,960,523,80);
+            const auto raw=DetectSourcePictureForWorker(pixels.source);
+            ActivePictureTransitionModel model;const auto first=Establish(model,scope);
+            const auto current=[&](uint64_t sequence) {
+                const auto id=SpatialStartupIdentity(sequence);auto live=pixels.source;live.generation=id.transportGeneration;
+                ActivePictureMeasurementCache cache;cache.Begin(live,id,47,23);
+                Assert::IsTrue(cache.SeedQueued(pixels.source,id,raw.evidence,EvaluateActivePictureArDarkness(pixels.source,raw.evidence)));
+                return CurrentSpatialObservation(cache.Picture(),id,23.976,0);
+            };
+            Assert::IsFalse(model.Observe(current(first)).publish);
+            const auto old=Observe(model,scope,first+1);Assert::IsFalse(old.publish);
+            Assert::IsFalse(model.Observe(current(first+2)).publish,
+                L"A real return to the old picture must discard the prior outward vote.");
+            Assert::IsTrue(model.Observe(current(first+3)).publish);
+        }
+
         TEST_METHOD(CurrentVerifiedSpatialCropAcquiresImmediatelyWithoutLegacyStartupVotes)
         {
             for (const bool odd : {false,true}) {

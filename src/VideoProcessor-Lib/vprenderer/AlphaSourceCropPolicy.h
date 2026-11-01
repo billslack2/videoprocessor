@@ -411,6 +411,9 @@ namespace AlphaSourceCrop
 		OutwardPictureConfirmationDecision outward;
 		// Withdraws obsolete side-bar authority; never certifies replacement bounds.
 		OutwardPictureConfirmationDecision pillarboxContradiction;
+        // Exact-current spatial crop proof supplies pixel authority directly;
+        // the transition model alone owns temporal confirmation on this route.
+        bool currentSpatialOutward = false;
 		bool deferPresentation = false;
 		bool deferOutward = false;
 		// Unresolved margins defer composition changes unless the exact vertical

@@ -720,7 +720,15 @@ public:
             Reset();return {};
         }
         const auto& current=preview.current;
-        if(cueContinuation && cueContinuation->valid && cueContinuation->localGlyphsOnly &&
+        // A local continuation authorizes held coordinates only. When the
+        // tracker selected fresh text, its ordinary current capture/cleanup
+        // path must not be vetoed by an unused weaker fallback certificate.
+        if(cueContinuation && cueContinuation->localGlyphsOnly && !text.held)
+            cueContinuation=nullptr;
+        // A redundant fallback certificate must not route a fresh unheld cue
+        // through the stricter coordinate-only cache path. Fresh text still
+        // passes the ordinary current capture/backing/cleanup checks below.
+        if(text.held && cueContinuation && cueContinuation->valid && cueContinuation->localGlyphsOnly &&
             current.sharedPicture.required && current.pictureAuthorityUnavailableForMeasurement &&
             !current.sharedPicture.AvailableFor(current.identity,current.width,current.height)) {
             const auto& display=displayBounds && displayBounds->Valid()?*displayBounds:text.bounds;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <iterator>
 
 namespace {
 constexpr unsigned kEdgeProbes=128;
@@ -120,43 +121,103 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
     const bool leading=edge==SourcePictureEdge::Top||edge==SourcePictureEdge::Left;
     const int depth=vertical?out.height:out.width,along=vertical?out.width:out.height;
     const int step=std::max(2,depth/540),sustain=std::max(6,depth/270);
-    std::map<int,SourcePictureEdgeCandidate> candidates;
+    struct Votes {
+        SourcePictureEdgeCandidate edge;
+        std::array<uint64_t,2> rays{};
+    };
+    std::map<int,Votes> candidates;
     for(unsigned i=0;i<kEdgeProbes;++i) {
         const int position=int((uint64_t(2*i+1)*along)/(2*kEdgeProbes));
         auto read=[&](int offset) {const int p=leading?offset:depth-1-offset;return reader.At(vertical?position:p,vertical?p:position);};
         const auto border=read(0);
-        auto add=[&](int offset,bool strong) {
+        auto add=[&](int offset,bool strong,int uncertainty=0) {
             const int coordinate=leading?offset:depth-offset;
-            auto& candidate=candidates[coordinate];candidate.coordinate=coordinate;
-            candidate.minimum=coordinate;candidate.maximum=coordinate;
-            ++candidate.support;++candidate.regionSupport[i/32];candidate.coverage=kEdgeProbes;
+            auto& votes=candidates[coordinate];auto& candidate=votes.edge;
+            const int minimum=leading?coordinate:coordinate-uncertainty;
+            const int maximum=leading?coordinate+uncertainty:coordinate;
+            if(!candidate.coverage) {candidate.minimum=minimum;candidate.maximum=maximum;}
+            else {candidate.minimum=std::min(candidate.minimum,minimum);candidate.maximum=std::max(candidate.maximum,maximum);}
+            candidate.coordinate=coordinate;candidate.coverage=kEdgeProbes;
+            const uint64_t bit=uint64_t(1)<<(i%64);
+            if(!(votes.rays[i/64]&bit)) {++candidate.support;++candidate.regionSupport[i/32];}
+            votes.rays[i/64]|=bit;
             candidate.strong=candidate.strong||strong;
         };
         if(Foreground(border,floor) && Foreground(read(sustain),floor))add(0,true);
         // Keep every sustained matte-to-picture departure, including a scene
-        // behind an earlier detached graphic. A drift from the perimeter is
-        // insufficient: the local boundary itself must be abrupt.
+        // behind an earlier detached graphic. Integrate only a bounded native
+        // profile; a continuing drift from the perimeter is not a boundary.
         int lastHit=-sustain;
         int previousDelta=0;
         for(int coarse=step;coarse<depth/2;coarse+=step) {
             const int delta=Difference(read(coarse),border);
             const bool possible=delta>=6 && previousDelta<16;previousDelta=delta;
             if(!possible)continue;
-            const int start=std::max(1,coarse-step+1);
+            // A quantized departure may start two rows before the first coarse
+            // sample crosses the ordinary detection threshold.
+            const int start=std::max(1,coarse-step-1);
             for(int at=start;at<=coarse;++at) {
                 if(at<=lastHit+sustain)continue;
                 const auto first=read(at),outside=read(at-1);
                 const int halo=Difference(outside,border),jump=int(first.luma)-int(outside.luma);
-                if(halo>12 || jump<6 || (halo>5 && jump<std::max(16,4*halo+4)))continue;
+                if(halo>12 || jump<=0 || (jump<6 && halo>5))continue;
                 const auto second=read(at+1),third=read(at+2),inside=read(at+sustain);
-                if(Difference(second,border)<6||Difference(third,border)<6||Difference(inside,border)<6)continue;
-                if(Difference(first,border)<16 && Difference(second,border)>=16)continue;
-                add(at,Difference(first,border)>=16);lastHit=at;
+                const int next=int(second.luma)-int(first.luma),last=int(third.luma)-int(second.luma);
+                // The paused HDMI source can dither an 8-code native step into
+                // 4,0,4 (or 4,0,8). Preserve its <=2-row uncertainty instead of
+                // accepting only the phase with a single large adjacent jump.
+                // A real plateau and monotonic bounded profile distinguish this
+                // from a smooth ramp; neither halo nor sustain gates are waived.
+                bool integrated=halo<=5 && jump>0 && jump<6 && next>=0 && last>=0 &&
+                    (next==0 || last==0) && int(third.luma)-int(outside.luma)>=8 &&
+                    int(third.luma)-int(outside.luma)<=16 && Difference(inside,border)>=6;
+                if(integrated) {
+                    const auto farther=read(at+sustain+2),farthest=read(at+sustain+4);
+                    // A quantized ramp also contains local plateaus. It is not
+                    // a localized edge if the same monotone departure keeps
+                    // accumulating another complete profile beyond sustain.
+                    if(inside.luma<=farther.luma && farther.luma<=farthest.luma &&
+                        int(farthest.luma)-int(inside.luma)>=8)integrated=false;
+                }
+                const bool abrupt=halo<=12 && jump>=6 && (halo<=5 || jump>=std::max(16,4*halo+4)) &&
+                    Difference(second,border)>=6 && Difference(third,border)>=6 && Difference(inside,border)>=6 &&
+                    !(Difference(first,border)<16 && Difference(second,border)>=16);
+                if(!abrupt && !integrated)continue;
+                add(at,Difference(first,border)>=16,integrated?2:0);lastHit=at;
             }
         }
     }
     auto& result=out.edges[unsigned(edge)];
-    for(auto& entry:candidates)result.push_back(entry.second);
+    // Merge only a fixed two-native-coordinate span, never a transitive chain.
+    // Bitsets count each source ray once even when it supports two close rows.
+    for(auto current=candidates.begin();current!=candidates.end();) {
+        Votes merged=current->second;const int firstCoordinate=current->first;
+        unsigned strongestSupport=merged.edge.support;
+        int strongestCoordinate=current->first;
+        auto next=std::next(current);
+        const bool terminal=firstCoordinate==0 || firstCoordinate==depth;
+        while(next!=candidates.end() && !terminal && next->first!=0 && next->first!=depth &&
+            next->first-firstCoordinate<=2 &&
+            std::max(merged.edge.maximum,next->second.edge.maximum)-std::min(merged.edge.minimum,next->second.edge.minimum)<=2) {
+            if(next->second.edge.support>strongestSupport ||
+                (!leading && next->second.edge.support==strongestSupport)) {
+                strongestSupport=next->second.edge.support;strongestCoordinate=next->first;
+            }
+            merged.edge.minimum=std::min(merged.edge.minimum,next->second.edge.minimum);
+            merged.edge.maximum=std::max(merged.edge.maximum,next->second.edge.maximum);
+            merged.edge.strong=merged.edge.strong||next->second.edge.strong;
+            for(unsigned word=0;word<2;++word)merged.rays[word]|=next->second.rays[word];
+            ++next;
+        }
+        // The interval retains weak neighboring votes; they cannot move the
+        // nominal physical boundary away from its strongest current support.
+        merged.edge.coordinate=strongestCoordinate;
+        merged.edge.support=0;merged.edge.regionSupport={};
+        for(unsigned ray=0;ray<kEdgeProbes;++ray)if(merged.rays[ray/64]&(uint64_t(1)<<(ray%64))) {
+            ++merged.edge.support;++merged.edge.regionSupport[ray/32];
+        }
+        result.push_back(merged.edge);current=next;
+    }
     std::sort(result.begin(),result.end(),[&](const auto& a,const auto& b){return leading?a.coordinate<b.coordinate:a.coordinate>b.coordinate;});
 }
 void ClassifyGlyphRows(SourcePictureObservation& out,const AnalysisEvaluationBudget* budget) {
@@ -202,6 +263,65 @@ const SourcePictureEdgeCandidate* Select(const std::vector<SourcePictureEdgeCand
             (candidate.support>=kEdgeProbes/4 && (regions>=3 || pairedOuter))))return &candidate;
     }
     return nullptr;
+}
+// A dark picture edge must not be erased by treating an unqualified picture
+// percentile as matte. This bounded current-source route requires the other
+// three measured raster contacts, no competing inset, and distributed early
+// spatial change connected continuously to the same picture body.
+// The trend score describes sampled agreement, not independent-probability
+// confidence: neighboring source samples can be correlated.
+bool CompleteDarkTerminal(Reader& reader,int floor,SourcePictureObservation& out) {
+    if(reader.source.range==AnalysisLumaRange::Unknown)return false;
+    const int terminals[4]={0,0,out.width,out.height};
+    int missing=-1;
+    for(unsigned side=0;side<4;++side) {
+        const auto* selected=Select(out.edges[side],terminals[side]);
+        if(!selected) {if(missing>=0)return false;missing=int(side);}
+        else if(selected->coordinate!=terminals[side])return false;
+    }
+    if(missing<0)return false;
+    const bool vertical=missing==1 || missing==3,leading=missing<2;
+    const int depth=vertical?out.height:out.width,along=vertical?out.width:out.height;
+    if(depth<96 || along<96)return false;
+    const int nominal=reader.source.range==AnalysisLumaRange::Full?0:64;
+    std::array<unsigned,4> support{};std::array<double,4> regionalTrend{};
+    double trendSum=0,trendSquares=0;
+    for(unsigned ray=0;ray<kEdgeProbes;++ray) {
+        const int position=int(uint64_t(2*ray+1)*along/(2*kEdgeProbes));
+        auto read=[&](int offset) {
+            const int coordinate=leading?offset:depth-1-offset;
+            return reader.At(vertical?position:coordinate,vertical?coordinate:position);
+        };
+        double outer=0,innerPatch=0;
+        for(int offset=0;offset<16;offset+=2) {
+            outer+=read(offset).luma;innerPatch+=read(depth/24+offset).luma;
+        }
+        const double trend=(innerPatch-outer)/8;
+        trendSum+=trend;trendSquares+=trend*trend;regionalTrend[ray/32]+=trend;
+        const auto border=read(0);auto previous=border;
+        bool continuous=true;unsigned rises=0;
+        for(int sample=1;sample<=4;++sample) {
+            const auto current=read(sample*depth/8);
+            const int difference=int(current.luma)-int(previous.luma);
+            if(difference < -8)continuous=false;
+            if(difference>=6)++rises;
+            previous=current;
+        }
+        if(continuous && rises>=2 && int(previous.luma)-int(border.luma)>=16 &&
+            Foreground(border,nominal) && Foreground(previous,floor))++support[ray/32];
+    }
+    const double mean=trendSum/kEdgeProbes;
+    const double variance=std::max(0.0,(trendSquares-trendSum*trendSum/kEdgeProbes)/(kEdgeProbes-1));
+    if(mean<=0 || mean*mean*kEdgeProbes<=9*variance ||
+        std::any_of(regionalTrend.begin(),regionalTrend.end(),[](double sum){return sum<=0;}))return false;
+    unsigned total=0,regions=0;
+    for(auto count:support) {total+=count;if(count>=12)++regions;}
+    if(total<kEdgeProbes/2 || regions<3)return false;
+    SourcePictureEdgeCandidate terminal;
+    terminal.coordinate=terminal.minimum=terminal.maximum=terminals[missing];
+    terminal.support=total;terminal.coverage=kEdgeProbes;terminal.regionSupport=support;terminal.strong=true;
+    out.edges[unsigned(missing)].insert(out.edges[unsigned(missing)].begin(),terminal);
+    return true;
 }
 }
 namespace {
@@ -335,6 +455,7 @@ SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,c
         ClassifyGlyphRows(out,budget);
         for(auto edge:{SourcePictureEdge::Left,SourcePictureEdge::Top,SourcePictureEdge::Right,SourcePictureEdge::Bottom})EdgeCandidates(reader,edge,floor,out);
         MarkGlyphEdges(out,budget);
+        const bool darkTerminalCompleted=CompleteDarkTerminal(reader,floor,out);
         out.complete=true;out.outcome=SourcePictureOutcome::Partial;out.reason="insufficient-distributed-edge-support";
         const auto* left=Select(out.edges[0],0);const auto* top=Select(out.edges[1],0);
         const auto* right=Select(out.edges[2],out.width);const auto* bottom=Select(out.edges[3],out.height);
@@ -350,7 +471,7 @@ SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,c
                 out.reason=out.canvasSupported?"composite-canvas-with-unresolved-blank-margins":"candidate-contradicted-canvas-unproven";
                 for(auto& side:out.edges)for(auto& candidate:side)candidate.contradicted=true;
             } else {
-                out.measuredBounds=bounds;out.rectangleAvailable=true;out.outcome=SourcePictureOutcome::Measured;out.reason="distributed-source-boundaries";
+                out.measuredBounds=bounds;out.rectangleAvailable=true;out.outcome=SourcePictureOutcome::Measured;out.reason=darkTerminalCompleted?"distributed-source-boundaries-with-dark-terminal-continuity":"distributed-source-boundaries";
             }
         }
     } catch(const TopologyLimit&) {

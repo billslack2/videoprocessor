@@ -12310,8 +12310,9 @@ struct LibplaceboVideoRenderer::Impl
 				nlsTransition.AdoptPublishedDecision(
 					scheduledDecision->transition, evidence.classification,
 				admission.observation.transitionDeferred, &publicationAdmission,
-					&admission.observation.axisEvidence, (admission.outward.authoritative || bufferedExpansionReady) &&
-					retentionEvidence.expansionStripsAvailable && !retentionEvidence.EffectiveArNearBlack());
+					&admission.observation.axisEvidence, admission.currentSpatialOutward ||
+                    ((admission.outward.authoritative || bufferedExpansionReady) &&
+					retentionEvidence.expansionStripsAvailable && !retentionEvidence.EffectiveArNearBlack()));
 			if (scheduledDecision &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
@@ -12421,6 +12422,7 @@ struct LibplaceboVideoRenderer::Impl
                 (uint64_t(bufferedExpansionReady) << 8) |
                 (uint64_t(scopeVerticalBarPresentation.action) << 9) |
                 (uint64_t(admission.outward.broadOpposingPicture) << 12) |
+                (uint64_t(admission.currentSpatialOutward) << 13) |
                 (uint64_t(evidence.axisEvidence.horizontal.reason) << 16) |
                 (uint64_t(evidence.axisEvidence.vertical.reason) << 20);
             {
@@ -12433,7 +12435,7 @@ struct LibplaceboVideoRenderer::Impl
                 trace.resultCode=static_cast<int32_t>(evidence.classification);trace.cadenceRepeat=cadenceRepeat;
                 trace.flags=(transition.publish?1u:0u)|(applyScheduledDecision?2u:0u)|(admission.deferPresentation?4u:0u)|
                     (admission.deferOutward?8u:0u)|(admission.deferPartialComposition?16u:0u)|(nearBlackAcquisitionBlocked?32u:0u)|
-                    (bufferedExpansionReady?64u:0u)|(globalNearBlack.nearBlack?128u:0u);
+                    (bufferedExpansionReady?64u:0u)|(globalNearBlack.nearBlack?128u:0u)|(admission.currentSpatialOutward?256u:0u);
                 trace.counters[0]=transition.matchingCandidates;trace.counters[1]=transition.contradictoryCandidates;
                 trace.counters[2]=transition.candidateReversals;trace.counters[3]=transition.decisionLatencyFrames;
                 trace.counters[4]=admission.outward.state.confirmations;trace.counters[5]=AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
