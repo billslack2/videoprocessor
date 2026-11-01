@@ -93,7 +93,14 @@ try {
     # Renderers share version.h. Generate it once before parallel compilation;
     # all object, PDB and output paths of the companion projects are distinct.
     if ($Lane -ne 'Native') {
-        & (Join-Path $Root 'tools/generate_version.ps1') -Project (Join-Path $Root 'src/VideoProcessor-VPRenderer') -GitRoot $Root *> (Join-Path $runDirectory 'renderer-version.log')
+        # Match the project's existing Windows PowerShell prebuild environment.
+        # PowerShell 7 native quoting preserves legacy git-format backslashes.
+        $versionHost=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $versionCode=Invoke-VpQualificationNativeProcess $versionHost @('-NoProfile','-ExecutionPolicy','Bypass','-File',
+            (Join-Path $Root 'tools/generate_version.ps1'),'-Project',(Join-Path $Root 'src/VideoProcessor-VPRenderer'),'-GitRoot',$Root) (Join-Path $runDirectory 'renderer-version.log')
+        if($versionCode -ne 0){throw 'Renderer version generation failed.'}
+        $versionHeader=Get-Content -LiteralPath (Join-Path $Root 'src/VideoProcessor-VPRenderer/version.h') -Raw
+        if($versionHeader -notmatch 'VERSION_URL=TEXT\("https://github.com/billslack2/videoprocessor/commit/[a-f0-9]{40}"\)'){throw 'Renderer version header contains invalid source identity quoting.'}
         foreach($project in $projects) { if($project.name -like '*-renderer') { $project.extra+= '/p:PreBuildEventUseInBuild=false' } }
     }
     . (Join-Path $Root 'tools/runtime_build_jobs.ps1')

@@ -40,6 +40,12 @@ try {
     Require ([int]$sourceXml.Project.PropertyGroup.VPCriticalNativeCompileCount -eq $sourceList.count) 'Generated compile-source count is inconsistent.'
     Require (([string]$sourceXml.Project.PropertyGroup.VPCriticalNativeCompileFiles) -eq ($sourceList.files -join ';')) 'Generated MSBuild whitelist changed source membership.'
     Write-Host "PASS: manifest-derived Critical Native whitelist contains exactly $($sourceList.count) required sources including PCH."
+    $versionHost=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $versionExit=Invoke-VpQualificationNativeProcess $versionHost @('-NoProfile','-ExecutionPolicy','Bypass','-File',
+        (Join-Path $Root 'tools/generate_version.ps1'),'-Project',$temp,'-GitRoot',$Root) (Join-Path $temp 'version.log')
+    $versionText=Get-Content -LiteralPath (Join-Path $temp 'version.h') -Raw
+    Require ($versionExit -eq 0 -and $versionText -match 'VERSION_URL=TEXT\("https://github.com/billslack2/videoprocessor/commit/[a-f0-9]{40}"\)') 'Parallel prebuild generated invalid C++ source identity quoting.'
+    Write-Host 'PASS: version generation uses the project-compatible PowerShell host and valid C++ identity quoting.'
     $realHelper=(Join-Path $Root 'tools/runtime_qualification.ps1').Replace("'","''")
     ". '$realHelper'" | Set-Content -LiteralPath (Join-Path $temp 'tools/runtime_qualification.ps1')
     @'
