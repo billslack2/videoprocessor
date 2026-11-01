@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 848,
+  "minimumNativeTests": 850,
   "requiredNativeMethods": [
     "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines",
     "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
@@ -82,6 +82,8 @@
     "CompletedOutwardRawCanGainPhysicalObservationWithoutRepeatingMandatoryProof",
     "ColdOutwardPublicationCannotEraseARacingCurrentPhysicalObservation",
     "HighInputCadenceRunsTwoIndependentSamplersAndDeduplicatesBothActiveKeys",
+    "UnavailablePlaneWorkCoalescesCanonicalRequestWithoutDuplicatingActiveOrPendingScan",
+    "CoalescedUnavailableWorkPreservesReadyEvidenceAndAllowsCanonicalRetry",
     "LowInputCadenceRetainsOneSerialSampler",
     "ParallelSourceCompletionOutOfOrderRemainsBoundToItsExactIdentity",
     "NonAdjacentOrNewGenerationSourceCannotBorrowWorkerTrackingReference",

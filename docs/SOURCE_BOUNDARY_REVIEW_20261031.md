@@ -192,3 +192,28 @@ in 20261101-012857-8fdf0069 and pass after repair in
 20261101-012938-d81cd4af. The duplicate test covers 17 lifecycle cases, including
 backing-edge coordinates/support and measured/proven panel metadata. Actual
 renderer and full cold-cache validation of this final candidate remain next.
+
+## Worker scheduling and changed-plane retry checkpoint
+
+The ceb7e211 matched Release run passes five of six actual renderer cases
+(20261101-013042-c237da79). The remaining Beta Generated failure follows queue
+recovery into an unfinished source. Its trace also shows two concurrent scans of
+the same source after native geometry becomes available, consuming both worker
+slots. Changing queue recovery or extending subtitle expiry is not justified.
+
+Pending and active raw scans now coalesce an exact source/settings/policy/
+continuity request when its picture plane becomes available. The original job
+key and closure stay immutable. A completed raw result may satisfy that new plane
+only with conclusive independent bars, complete searches and immutable ink.
+Complete caption absence is valid evidence; incomplete, work-limited or dependent
+results cause a miss so the canonical scan can run. Same-key partial observations
+remain observable. No new wait, source vote or AR authority is introduced.
+
+Valid-domain dispatch regressions fail with the old two-job behavior in
+20261101-014136-4cbd3872. The wider run then exposed incomplete-result retry
+suppression, reproduced in 20261101-014225-a818df00. All 850 mandatory native
+methods pass after both repairs in 20261101-014730-4c362151, including 27 work-key
+mismatch controls and a 15-case complete/incomplete-result matrix. The legacy
+stale-plane test still rejects dependent results and verifies that distinct
+available planes execute separately. Actual renderer and cold qualification of
+this final worker change remain pending at this checkpoint.

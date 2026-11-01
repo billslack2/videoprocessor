@@ -276,6 +276,34 @@ public:
                     a.sharedPicture.required && b.sharedPicture.required)) &&
             a.discontinuity==b.discontinuity && (samePicture || sameUnavailablePictureScan);
     }
+    // WORK ownership is weaker than READY admission: an already-running raw
+    // full-source scan need not run twice merely because native geometry became
+    // available. Keep its original key/closure and validate the completed result
+    // through the strict completed-result read/rebind path. An incompatible completed
+    // result cannot suppress a later canonical request.
+    static bool SamePendingFullSourceWork(const SubtitleBoxObservation& existing,
+        const SubtitleBoxObservation& incoming) {
+        const auto ordinary=[](const SubtitleBoxObservation& key) {
+            return !key.analyzed && !key.analysisRefresh && !key.pendingRefresh &&
+                !key.cadenceSkipped && !key.discontinuity && !key.inspectionCandidateUsed &&
+                !key.sharedPicture.inspectionCandidate.valid && !key.glyphLocalTop && !key.glyphLocalBottom &&
+                !key.barTrackingAuthority && !key.currentAnchorUsesTrackedEdge &&
+                !key.hasBarTrackingReference && !key.incomingBarTrackingReference.valid &&
+                !key.trackedBottomHypothesisAttempted;
+        };
+        return ordinary(existing) && ordinary(incoming) &&
+            existing.identity.acceptedSequence && existing.identity.analysisDomainKey &&
+            SameAnalysisFrameIdentity(existing.identity,incoming.identity) &&
+            existing.width>0 && existing.height>0 && existing.width==incoming.width && existing.height==incoming.height &&
+            existing.analysisStride==1 && incoming.analysisStride==1 &&
+            existing.nearBarDistance==incoming.nearBarDistance && existing.optimizationMode==incoming.optimizationMode &&
+            existing.scriptHint==incoming.scriptHint && existing.policyGeneration==incoming.policyGeneration &&
+            existing.continuityGeneration==incoming.continuityGeneration &&
+            existing.pictureAuthorityUnavailableForMeasurement && existing.sharedPicture.required &&
+            !existing.sharedPicture.AvailableFor(existing.identity,existing.width,existing.height) &&
+            incoming.sharedPicture.required &&
+            incoming.sharedPicture.AvailableFor(incoming.identity,incoming.width,incoming.height);
+    }
     // The head has advanced; queued scans for older transport frames cannot
     // become current. The active worker is left alone and remains nonblocking.
     void BeginSourceWindow(const ActivePictureFrameIdentity& head) {
@@ -303,7 +331,8 @@ public:
     }
     // Observation-only query used by the queue owner to request an exact
     // timeline witness. It grants no reuse and never changes cached evidence.
-    static bool CompleteIndependentScanForKey(const SubtitleBoxObservation& scan,const SubtitleBoxObservation& key) {
+    static bool CompleteIndependentScanForKey(const SubtitleBoxObservation& scan,const SubtitleBoxObservation& key,
+        bool requireDetected=true) {
         const auto& b=scan.barEvidence;
         return SameAnalysisFrameIdentity(scan.identity,key.identity) && scan.policyGeneration==key.policyGeneration &&
             scan.width==key.width && scan.height==key.height && scan.nearBarDistance==key.nearBarDistance &&
@@ -315,7 +344,7 @@ public:
             !scan.inspectionCandidateUsed && !b.topRevalidatedAtReference && !b.topRevalidatedNearby &&
             !b.bottomRevalidatedAtReference && !b.bottomRevalidatedNearby && !b.captionBackedTop && !b.captionBackedBottom &&
             scan.pictureTop==b.top && scan.pictureBottom==b.bottom &&
-            scan.text.detected && !scan.text.held && !scan.text.workLimit && !scan.text.confirmationPending &&
+            (!requireDetected || scan.text.detected) && !scan.text.held && !scan.text.workLimit && !scan.text.confirmationPending &&
             scan.text.topSearchComplete && scan.text.bottomSearchComplete && scan.ink &&
             scan.ink->rawEvidenceComplete && scan.ink->paletteValid;
     }
@@ -350,10 +379,10 @@ public:
             ++m_diagnostics.expired;return;
         }
         for(const auto& active:m_activeJobs)
-            if(active.active && SameKey(active.key,requestKey)) {
+            if(active.active && (SameKey(active.key,requestKey) || SamePendingFullSourceWork(active.key,requestKey))) {
                 Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return;
             }
-        for(const auto& job:m_pending)if(SameKey(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return;}
+        for(const auto& job:m_pending)if(SameKey(job.key,requestKey) || SamePendingFullSourceWork(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return;}
         for(const auto& ready:m_ready)if(SameKey(ready,requestKey)){Trace(requestKey,"worker-dedup","ready");++m_diagnostics.deduplicated;return;}
         if(m_pending.size()>=8) {
             // Keep the nearest accepted source. A new current-frame request may
@@ -410,6 +439,20 @@ private:
         uint64_t mismatches=0;
         for(auto i=m_ready.begin();i!=m_ready.end();++i) {
             auto candidate=*i;
+            const bool newCanonicalPlane=candidate.pictureAuthorityUnavailableForMeasurement &&
+                candidate.sharedPicture.required && key.sharedPicture.required &&
+                !candidate.sharedPicture.AvailableFor(candidate.identity,candidate.width,candidate.height) &&
+                key.sharedPicture.AvailableFor(key.identity,key.width,key.height) &&
+                !candidate.sharedPicture.Matches(key.sharedPicture);
+            // Coalescing WORK must not turn an incomplete raw scan into the
+            // canonical request's permanent answer. The original same-key
+            // observation remains readable as UNKNOWN; a new-plane miss lets
+            // the caller submit the canonical job without changing its cache.
+            if(newCanonicalPlane && (!CompleteIndependentScanForKey(candidate,key,false) ||
+                (candidate.text.detected ? (!candidate.text.bounds.Valid() || candidate.text.lineCount<=0) :
+                    candidate.text.lineCount!=0))) {
+                mismatches|=1024ull;continue;
+            }
             if (!SubtitleBoxLookahead::RebindIndependentPicture(candidate,key.sharedPicture)) {
                 mismatches|=16ull;continue;
             }

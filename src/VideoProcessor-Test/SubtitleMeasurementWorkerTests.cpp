@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include <SubtitleMeasurementWorker.h>
 #include <SubtitleCadenceGuard.h>
+#include <vprenderer/SourceCadencePresentation.h>
 #include <atomic>
 #include <chrono>
 #include <mutex>
@@ -202,6 +203,161 @@ public:
         Assert::IsTrue(owners.size()==3 && owners[0]!=owners[1],L"Concurrent source scans must own different stateful samplers.");
         Assert::AreEqual(uint64_t(1),a.text.cue);Assert::AreEqual(uint64_t(2),b.text.cue);Assert::AreEqual(uint64_t(3),c.text.cue);
         Assert::IsTrue(worker.TakeDiagnostics().deduplicated>=2);
+    }
+    TEST_METHOD(UnavailablePlaneWorkCoalescesCanonicalRequestWithoutDuplicatingActiveOrPendingScan) {
+        {
+            auto canonical=Ready(10).current;canonical.identity.analysisDomainKey=0xA11CE;
+            canonical.sharedPicture.identity=canonical.identity;canonical.analyzed=false;canonical.text={};
+            auto raw=canonical;raw.sharedPicture.bounds={};raw.pictureAuthorityUnavailableForMeasurement=true;
+            Assert::IsTrue(SubtitleMeasurementWorker::SamePendingFullSourceWork(raw,canonical));
+            Assert::IsFalse(SubtitleMeasurementWorker::SamePendingFullSourceWork(canonical,raw),L"The new alias is directional, not a replacement READY key.");
+            for(unsigned fault=0;fault<27;++fault) {
+                auto changed=canonical;auto prior=raw;
+                switch(fault) {
+                case 0:++changed.identity.acceptedSequence;break;
+                case 1:++changed.identity.sourceFrameNumber;break;
+                case 2:++changed.identity.captureTimestamp;break;
+                case 3:++changed.identity.transportGeneration;break;
+                case 4:++changed.identity.sourceFormatGeneration;break;
+                case 5:++changed.identity.analysisDomainKey;break;
+                case 6:++changed.identity.viewportGeneration;break;
+                case 7:++changed.identity.rendererGeneration;break;
+                case 8:++changed.width;break;
+                case 9:++changed.height;break;
+                case 10:++changed.nearBarDistance;break;
+                case 11:++changed.optimizationMode;break;
+                case 12:changed.scriptHint=SubtitleScriptHint::Arabic;break;
+                case 13:++changed.policyGeneration;break;
+                case 14:++changed.continuityGeneration;break;
+                case 15:changed.analysisStride=2;break;
+                case 16:changed.discontinuity=true;break;
+                case 17:changed.sharedPicture.inspectionCandidate.valid=true;break;
+                case 18:prior.sharedPicture.inspectionCandidate.valid=true;break;
+                case 19:prior.glyphLocalTop=true;break;
+                case 20:prior.currentAnchorUsesTrackedEdge=true;break;
+                case 21:prior.analysisRefresh=true;break;
+                case 22:prior.pendingRefresh=true;break;
+                case 23:prior.incomingBarTrackingReference.valid=true;break;
+                case 24:prior.pictureAuthorityUnavailableForMeasurement=false;break;
+                case 25:changed.sharedPicture.required=false;break;
+                case 26:prior.trackedBottomHypothesisAttempted=true;break;
+                }
+                Assert::IsFalse(SubtitleMeasurementWorker::SamePendingFullSourceWork(prior,changed),
+                    L"Work coalescing cannot cross source/settings/epochs or dependent scan paths.");
+            }
+        }
+        for(bool pending:{false,true}) {
+            std::atomic_bool release{false};SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};
+            worker.SetInputRateHz(24.0);std::atomic_uint entered{0},rawCalls{0},replacementCalls{0};
+            auto pixels=PixelsWithCurrentBars();auto completed=CompleteThreeLineScan(10,pixels);
+            completed.identity.analysisDomainKey=0xA11CE;completed.sharedPicture.identity=completed.identity;
+            completed.text.topSearchComplete=completed.text.bottomSearchComplete=true;
+            auto canonical=completed;canonical.analyzed=false;canonical.text={};canonical.ink.reset();
+            auto raw=canonical;raw.sharedPicture.bounds={};raw.pictureAuthorityUnavailableForMeasurement=true;
+            completed.sharedPicture=raw.sharedPicture;completed.pictureAuthorityUnavailableForMeasurement=true;
+            if(pending) {
+                auto blocker=WorkerKey(9,0xA11CE);
+                worker.Submit(blocker,[&,blocker](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                    ++entered;while(!release.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    auto result=blocker;result.analyzed=true;return result;
+                });
+                Assert::IsTrue(WaitForEntered(entered,1));
+            }
+            worker.Submit(raw,[&,completed](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                ++rawCalls;++entered;while(!release.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                return completed;
+            });
+            if(!pending)Assert::IsTrue(WaitForEntered(entered,1));
+            worker.Submit(canonical,[&,canonical](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                ++replacementCalls;auto result=canonical;result.analyzed=true;return result;
+            });
+            const auto before=worker.TakeDiagnostics();
+            release.store(true);SubtitleBoxObservation result;
+            const bool ready=WaitForRead(worker,canonical,result);worker.Stop();
+            Assert::AreEqual(uint64_t(pending?2:1),before.submitted,
+                L"A newly available native plane must not duplicate the same owned source full scan already active or pending.");
+            Assert::AreEqual(1u,rawCalls.load());Assert::AreEqual(0u,replacementCalls.load());
+            Assert::IsTrue(ready,L"Only the existing strict completed independent-result rebind may admit the original raw scan.");
+            Assert::IsTrue(result.independentBarAnalysis && result.sharedPicture.Matches(canonical.sharedPicture));
+            Assert::IsTrue(SubtitleBoxLookahead::SameContext(completed,result));
+        }
+    }
+    TEST_METHOD(CoalescedUnavailableWorkPreservesReadyEvidenceAndAllowsCanonicalRetry) {
+        std::atomic_bool release{false};SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};
+        worker.SetInputRateHz(24.0);std::atomic_uint entered{0},replacementCalls{0};
+        auto pixels=PixelsWithCurrentBars();auto complete=CompleteThreeLineScan(10,pixels);
+        complete.identity.analysisDomainKey=0xA11CE;complete.sharedPicture.identity=complete.identity;
+        complete.text.topSearchComplete=complete.text.bottomSearchComplete=true;
+        auto canonical=complete;canonical.analyzed=false;canonical.text={};canonical.ink.reset();
+        auto raw=canonical;raw.sharedPicture.bounds={};raw.pictureAuthorityUnavailableForMeasurement=true;
+        auto failed=raw;failed.analyzed=true;failed.text.workLimit=true;failed.independentBarAnalysis=false;
+        worker.Submit(raw,[&,failed](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            ++entered;while(!release.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));return failed;
+        });
+        Assert::IsTrue(WaitForEntered(entered,1));
+        const auto replacement=[&,complete](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            ++replacementCalls;return complete;
+        };
+        worker.Submit(canonical,replacement);
+        const auto before=worker.TakeDiagnostics();release.store(true);
+        SubtitleBoxObservation result;Assert::IsTrue(WaitForRead(worker,raw,result));
+        Assert::IsFalse(worker.TryRead(canonical,result),L"A dependent result without independent bars cannot rebind to the new canonical plane.");
+        worker.Submit(canonical,replacement);
+        Assert::IsTrue(WaitForRead(worker,canonical,result));worker.Stop();
+        Assert::AreEqual(uint64_t(1),before.submitted,L"Only active work is coalesced; READY compatibility remains strict.");
+        Assert::AreEqual(1u,replacementCalls.load(),L"An incompatible completed result must permit a subsequent canonical scan.");
+        // A complete independent negative is reusable too. Every incomplete
+        // changed-plane observation remains readable under its ORIGINAL key,
+        // but must allow a canonical retry instead of suppressing that work.
+        for(unsigned fault=0;fault<15;++fault) {
+            SubtitleMeasurementWorker independentWorker;auto observation=complete;
+            observation.sharedPicture=raw.sharedPicture;observation.pictureAuthorityUnavailableForMeasurement=true;
+            const bool expectedConclusive=fault<2;
+            switch(fault) {
+            case 0:break;
+            case 1: {
+                auto emptyPixels=PixelsWithCurrentBars();
+                for(int y=0;y<90;++y)for(int x=0;x<160;++x)
+                    emptyPixels[y*160+x]=uint16_t((y>=12 && y<78?300:64)<<6);
+                auto empty=CompleteThreeLineScan(10,emptyPixels);
+                observation.ink=empty.ink;observation.text={};
+                observation.text.topSearchComplete=observation.text.bottomSearchComplete=true;
+                observation.text.diagnosticReason="no-bright-ink";break;
+            }
+            case 2:observation.text.workLimit=true;break;
+            case 3:observation.text.topSearchComplete=false;break;
+            case 4:observation.text.bottomSearchComplete=false;break;
+            case 5:observation.ink.reset();break;
+            case 6:observation.independentBarAnalysis=false;break;
+            case 7:observation.text.held=true;break;
+            case 8:observation.text.confirmationPending=true;break;
+            case 9:observation.text.bounds={};break;
+            case 10: {auto ink=std::make_shared<SubtitleInkSnapshot>(*observation.ink);ink->rawEvidenceComplete=false;observation.ink=ink;break;}
+            case 11: {auto ink=std::make_shared<SubtitleInkSnapshot>(*observation.ink);ink->paletteValid=false;observation.ink=ink;break;}
+            case 12:observation.text={};observation.text.topSearchComplete=true;break;
+            case 13:observation.text={};observation.text.topSearchComplete=observation.text.bottomSearchComplete=true;observation.barEvidence.available=false;break;
+            case 14:observation.barEvidence.captionBackedBottom=true;break;
+            }
+            independentWorker.Submit(raw,[observation](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                return observation;
+            });
+            Assert::IsTrue(WaitForRead(independentWorker,raw,result),L"Same-key partial/negative observations remain readable without becoming caption proof.");
+            Assert::AreEqual(expectedConclusive,independentWorker.TryRead(canonical,result),
+                L"Only a full independent current scan can satisfy a changed unavailable-to-canonical plane request.");
+            if(!expectedConclusive) {
+                std::atomic_uint retried{0};
+                independentWorker.Submit(canonical,[&,complete](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                    ++retried;return complete;
+                });
+                const bool ran=WaitForEntered(retried,1);
+                SubtitleBoxObservation oldResult;
+                Assert::IsTrue(independentWorker.TryTake(raw,oldResult));
+                Assert::IsTrue(WaitForRead(independentWorker,canonical,result));
+                const auto d=independentWorker.TakeDiagnostics();independentWorker.Stop();
+                Assert::IsTrue(ran);Assert::AreEqual(uint64_t(2),d.submitted);
+                Assert::IsTrue(SourceCadenceObservationComplete(result,canonical.identity));
+            } else independentWorker.Stop();
+        }
     }
     TEST_METHOD(LowInputCadenceRetainsOneSerialSampler) {
         for(double hz:{23.976,24.0,29.97,30.0}) {
@@ -477,15 +633,26 @@ public:
         SubtitleBoxObservation ready;
         Assert::IsFalse(worker.TryTake(currentKey,ready),
             L"A full-raster scan cannot be rebound to a new authority when it supplied no independent bar proof.");
+        Assert::IsTrue(WaitForRead(worker,staleKey,ready));
+        Assert::IsFalse(worker.TryRead(currentKey,ready),
+            L"A completed dependent full-raster result must still fail canonical READY admission.");
+        // Coalescing active work grants no READY authority. Once the original
+        // result is known to be incompatible, a new canonical request may run.
         worker.Submit(currentKey,work(currentKey));
-
         Assert::IsTrue(WaitForTake(worker,staleKey,ready));
         Assert::IsTrue(WaitForTake(worker,currentKey,ready));
         Assert::AreEqual(2u,calls.load(),
-            L"Changing only the shared-picture snapshot makes the old frame scan unavailable and queues another.");
+            L"An incompatible completed snapshot must permit a subsequent canonical scan.");
         const auto diagnostics=worker.TakeDiagnostics();
         Assert::IsTrue(diagnostics.requestMisses>=1,
             L"The stale-authority lookup must be recorded as a miss.");
+        auto otherAvailable=currentKey;otherAvailable.sharedPicture.bounds={0,30,640,330,640,360};
+        Assert::IsFalse(SubtitleMeasurementWorker::SamePendingFullSourceWork(currentKey,otherAvailable),
+            L"Distinct available native planes are distinct dependent scan paths.");
+        worker.Submit(currentKey,work(currentKey));worker.Submit(otherAvailable,work(otherAvailable));
+        Assert::IsTrue(WaitForTake(worker,currentKey,ready));
+        Assert::IsTrue(WaitForTake(worker,otherAvailable,ready));
+        Assert::AreEqual(4u,calls.load(),L"Two distinct available plane requests must both execute independently.");
     }
 
     TEST_METHOD(UnavailablePictureSnapshotsCoalesceOneActiveExactFrameScan) {
