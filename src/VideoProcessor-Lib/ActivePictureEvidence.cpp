@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "ActivePictureEvidence.h"
+#include "SourcePictureDetector.h"
 #include "SubtitleBarEvidence.h"
 #include "SubtitleBoxLookahead.h"
 
@@ -1197,15 +1198,117 @@ ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidenc
 	ActivePictureObservation observation;
 	observation.frameNumber = frameNumber;
 	observation.framesPerSecond = framesPerSecond;
+    if(SourcePictureDetectorEnabled() && evidence.detector==ActivePictureDetectorKind::Legacy) {
+        observation.detector=ActivePictureDetectorKind::SourceSpatialUnavailable;
+        return observation; // Retention may inspect legacy pixels, but cannot nominate geometry.
+    }
 	observation.available = evidence.available;
 	observation.classification = evidence.classification;
 	observation.bounds = evidence.classification == ActivePictureClassification::PROVISIONAL
 		? evidence.proposedBounds : evidence.trustedBounds;
 	observation.axisEvidence = evidence.axisEvidence;
 	observation.authorityOrigin = evidence.authorityOrigin;
+    observation.detector=evidence.detector;
 	observation.sparseTransitionProof = evidence.sparseTransitionProof;
 	observation.rememberedEdgeReturnProof = evidence.rememberedEdgeReturnProof;
 	return observation;
+}
+
+ActivePictureEvidence VerifySuppliedActivePictureCandidate(const AnalysisLumaSource& source,
+    const ActivePictureBounds& measuredBounds, const AnalysisEvaluationBudget* budget)
+{
+    ActivePictureEvidence result;
+    const auto unavailable=[](const char* reason) {
+        ActivePictureEvidence empty;empty.reason=reason;return empty;
+    };
+    if(!source.IsValid() || !IsValidBoundsForSource(measuredBounds,source))
+        return unavailable("invalid supplied source candidate");
+    try {
+        CheckAnalysisEvaluationBudget(budget);
+        result.proposedBounds=measuredBounds;
+        result.proposedBounds.aspectRatio=double(measuredBounds.right-measuredBounds.left)/
+            (measuredBounds.bottom-measuredBounds.top);
+        result.trustedBounds=result.proposedBounds;
+        auto& guard=result.trustedBounds;
+        // Retain the adjacent chroma footprint; never move an odd measured
+        // edge inward. The caller's unrounded physical measurement is intact.
+        guard.left&=~1;guard.top&=~1;
+        if(guard.right<source.width)guard.right+=guard.right&1;
+        if(guard.bottom<source.height)guard.bottom+=guard.bottom&1;
+        guard.aspectRatio=double(guard.right-guard.left)/(guard.bottom-guard.top);
+        const bool vertical=guard.top>0 || guard.bottom<source.height;
+        const bool horizontal=guard.left>0 || guard.right<source.width;
+        const unsigned axes=(vertical?1u:0u)|(horizontal?2u:0u);
+        guard.trustedBarAxes=static_cast<ActivePictureBounds::BarAxes>(axes);
+        result.proposedBounds.trustedBarAxes=static_cast<ActivePictureBounds::BarAxes>(
+            (measuredBounds.top>0 || measuredBounds.bottom<source.height?1u:0u)|
+            (measuredBounds.left>0 || measuredBounds.right<source.width?2u:0u));
+        const auto axis=[](bool cropped) {
+            ActivePictureAxisEvidence value;value.scanComplete=true;value.barCandidate=cropped;
+            value.state=cropped?ActivePictureAxisState::TRUSTED_BARS:ActivePictureAxisState::FULL_EXTENT_SUPPORTED;
+            value.reason=cropped?ActivePictureAxisReason::BAR_CONFIRMED:ActivePictureAxisReason::FULL_EXTENT_SUPPORTED;
+            return value;
+        };
+        result.axisEvidence.vertical=axis(vertical);result.axisEvidence.horizontal=axis(horizontal);
+        result.available=true;
+        if(!axes) {
+            // The supplied positive extent owns geometry. There is no excluded
+            // band to verify and no new physical measurement is manufactured.
+            result.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            result.reason="supplied source extent retains the entire raster";
+            return result;
+        }
+        SampleContext samples{source};samples.budget=budget;
+        std::vector<int> perimeter;perimeter.reserve(256);
+        for(int i=0;i<64;++i) {
+            const int x=(2*i+1)*source.width/128,y=(2*i+1)*source.height/128;
+            const int positions[4][2]={{x,0},{x,source.height-1},{0,y},{source.width-1,y}};
+            for(const auto& position:positions) {
+                samples.Checkpoint();AnalysisLumaSample pixel;
+                if(!source.Sample(position[0],position[1],pixel))return unavailable("supplied candidate source sampling failed");
+                ++samples.lumaSamples;++samples.chromaSamples;perimeter.push_back(pixel.luma);
+            }
+        }
+        const int observedLow=int(Percentile(perimeter,.10));
+        const bool fullRange=source.range==AnalysisLumaRange::Full;
+        const int floor=observedLow<32?0:fullRange?std::min(observedLow,80):Bounded(observedLow,48,80);
+        const int threshold=std::min(104,floor+24);
+        auto& reference=result.blackReference;
+        reference.evaluated=true;reference.observedFloor=reference.floor=floor;
+        reference.observedThreshold=reference.threshold=threshold;
+        reference.mode=!fullRange?ActivePictureBlackReferenceMode::LEGACY:
+            floor?ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED:ActivePictureBlackReferenceMode::FULL_NOMINAL;
+        // These are diagnostic measurements only. Their legacy positive-edge
+        // contrast/trust decisions do NOT admit this independently supplied
+        // nomination. Only the existing excluded-band verifier below does.
+        if(guard.top>0)result.top=InspectHorizontalEdge(samples,true,guard.top,guard.top,floor,threshold);
+        if(guard.bottom<source.height)result.bottom=InspectHorizontalEdge(samples,false,source.height-guard.bottom,guard.bottom,floor,threshold);
+        if(guard.left>0)result.left=InspectVerticalEdge(samples,true,guard.left,guard.left,floor,threshold);
+        if(guard.right<source.width)result.right=InspectVerticalEdge(samples,false,source.width-guard.right,guard.right,floor,threshold);
+        result.lumaSamples=samples.lumaSamples;result.chromaSamples=samples.chromaSamples;
+        result.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        VerifyNativeCandidate(source,result,budget);
+        if(result.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED)
+            result.top.trusted=result.bottom.trusted=true;
+        if(result.candidateVerification.horizontal==ActivePictureCandidateVerificationState::VERIFIED)
+            result.left.trusted=result.right.trusted=true;
+        if(result.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED) {
+            result.axisEvidence.verticalCropGuardTop=measuredBounds.top-result.trustedBounds.top;
+            result.axisEvidence.verticalCropGuardBottom=result.trustedBounds.bottom-measuredBounds.bottom;
+        }
+        if(result.classification==ActivePictureClassification::BAR_CROP_TRUSTED) {
+            result.reason="supplied source candidate independently passes excluded-band verification";
+            if(fullRange && floor>0) {
+                reference.mode=ActivePictureBlackReferenceMode::FULL_QUALIFIED_RAISED;
+                reference.qualifiedAxes=static_cast<uint8_t>(axes);
+                reference.qualifiedEdgeMask=uint8_t((guard.left>0?1:0)|(guard.top>0?2:0)|
+                    (guard.right<source.width?4:0)|(guard.bottom<source.height?8:0));
+            }
+        }
+        return result;
+    } catch(const AnalysisEvaluationCancelled&) {
+        return unavailable("supplied candidate verification budget exhausted");
+    }
 }
 
 // A clean outer bar can be shorter than an over-detected opposite bar when
@@ -2372,6 +2475,103 @@ bool SubtitleAssistedVerticalBarProof::IsCurrentFor(
         policyGeneration == currentPolicyGeneration &&
         continuityGeneration == currentContinuityGeneration &&
         scriptHint == currentScriptHint;
+}
+
+SubtitleAssistedVerticalBarProof VerifySuppliedActivePictureCandidateWithSubtitle(
+    const AnalysisLumaSource& source, const ActivePictureEvidence& measured,
+    const SubtitleBoxObservation& current, const ActivePictureFrameIdentity& currentIdentity,
+    uint64_t policyGeneration, uint64_t continuityGeneration, SubtitleScriptHint scriptHint)
+{
+    SubtitleAssistedVerticalBarProof proof;
+    proof.evidence=measured;
+    proof.reason="supplied-current-caption-proof-unavailable";
+    const auto& bounds=measured.proposedBounds;
+    const auto& physical=measured.physicalEdges;
+    if(!source.IsValid() || !source.generation || source.generation!=currentIdentity.transportGeneration ||
+        !currentIdentity.acceptedSequence || !measured.available ||
+        measured.detector!=ActivePictureDetectorKind::SourceSpatialMeasured ||
+        measured.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+        !physical.evaluated || !physical.estimateAvailable ||
+        (physical.sourceGeneration!=currentIdentity.sourceFormatGeneration &&
+         physical.sourceGeneration!=source.generation) ||
+        !IsValidBoundsForSource(bounds,source) || bounds.left!=0 || bounds.right!=source.width ||
+        bounds.top<=0 || bounds.bottom>=source.height ||
+        physical.estimate.left!=bounds.left || physical.estimate.top!=bounds.top ||
+        physical.estimate.right!=bounds.right || physical.estimate.bottom!=bounds.bottom ||
+        physical.estimate.rasterWidth!=source.width || physical.estimate.rasterHeight!=source.height ||
+        !measured.blackReference.evaluated || measured.blackReference.floor<0 || measured.blackReference.floor>80 ||
+        !current.analyzed || current.analysisRefresh || current.pendingRefresh || current.discontinuity ||
+        current.glyphLocalTop || current.glyphLocalBottom || current.inspectionCandidateUsed ||
+        current.policyGeneration!=policyGeneration || current.continuityGeneration!=continuityGeneration ||
+        current.scriptHint!=scriptHint || current.width!=source.width || current.height!=source.height ||
+        !SameAnalysisFrameIdentity(current.identity,currentIdentity) ||
+        !current.text.detected || current.text.held || current.text.confirmationPending || current.text.workLimit ||
+        current.text.lineCount<=0 || current.text.lineCount>3 || !current.text.bounds.Valid() ||
+        !current.text.anchor.Valid() || !current.ink || !current.ink->rawEvidenceComplete || !current.ink->paletteValid)
+        return proof;
+    const auto& ink=*current.ink;
+    if(ink.width<=0 || ink.height<=0 || ink.step<=0 || ink.sourceRows.size()!=size_t(ink.height))return proof;
+    const size_t words=(size_t(ink.width)*size_t(ink.height)+63)/64;
+    if(ink.rawInk.size()!=words || ink.ownedInk.size()!=words || ink.blackBacking.size()!=words)return proof;
+    bool hasOwned=false;
+    for(size_t i=0;i<words;++i) {
+        if(ink.ownedInk[i]&~ink.rawInk[i])return proof;
+        hasOwned=hasOwned || ink.ownedInk[i]!=0;
+    }
+    if(!hasOwned)return proof;
+    int previous=-1;
+    for(int row:ink.sourceRows) {
+        if(row<=previous || row<0 || row>=source.height)return proof;
+        previous=row;
+    }
+    auto guard=bounds;
+    guard.top&=~1;guard.bottom=std::min(source.height,(guard.bottom+1)&~1);
+    guard.aspectRatio=double(source.width)/(guard.bottom-guard.top);
+    guard.trustedBarAxes=ActivePictureBounds::BarAxes::TOP_BOTTOM;
+    const auto panels=MeasuredBoundaryPanels(current,guard);
+    const int floor=measured.blackReference.floor;
+    const auto top=InspectSubtitleOccludedBar(source,true,guard.top,floor,current,panels);
+    const auto bottom=InspectSubtitleOccludedBar(source,false,guard.bottom,floor,current,panels);
+    proof.topFlankSupport=top.flankSupport;proof.bottomFlankSupport=bottom.flankSupport;
+    proof.unknownSamples=top.unknown+bottom.unknown;proof.lumaSamples=top.samples+bottom.samples;
+    proof.usedMeasuredBacking=top.backingExcluded || bottom.backingExcluded;
+    if(!top.edge.trusted || !bottom.edge.trusted || top.connectedPicture || bottom.connectedPicture) {
+        proof.reason=top.connectedPicture || bottom.connectedPicture?"supplied-caption-connected-picture":"supplied-caption-unoccluded-bar-unproved";
+        return proof;
+    }
+    SampleContext samples{source};
+    const auto profile=InspectVerticalCropBarProfile(samples,guard.top,guard.bottom,current.ink.get());
+    proof.lumaSamples+=samples.lumaSamples;
+    if(!profile.completed || !profile.clean) {
+        proof.reason="supplied-caption-excluded-band-profile-failed";return proof;
+    }
+    auto& evidence=proof.evidence;
+    evidence.trustedBounds=guard;evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+    evidence.top=top.edge;evidence.bottom=bottom.edge;
+    evidence.top.barPixels=guard.top;evidence.bottom.barPixels=source.height-guard.bottom;
+    auto& axes=evidence.axisEvidence;
+    axes.horizontal.state=ActivePictureAxisState::FULL_EXTENT_SUPPORTED;
+    axes.horizontal.reason=ActivePictureAxisReason::FULL_EXTENT_SUPPORTED;
+    axes.horizontal.scanComplete=true;axes.horizontal.barCandidate=false;
+    axes.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+    axes.vertical.reason=ActivePictureAxisReason::BAR_CONFIRMED;
+    axes.vertical.scanComplete=true;axes.vertical.barCandidate=true;
+    axes.sidePictureWidth=source.width;axes.sidePictureHeight=source.height;
+    axes.sidePictureTop=bounds.top;axes.sidePictureBottom=bounds.bottom;
+    axes.verticalCropProfileEvaluated=true;axes.verticalCropProfileClean=true;
+    axes.verticalCropGlyphExclusions=true;
+    axes.verticalCropGuardTop=bounds.top-guard.top;axes.verticalCropGuardBottom=guard.bottom-bounds.bottom;
+    evidence.verticalBarGuardProfile=profile;
+    auto& certificate=evidence.candidateVerification;certificate={};
+    certificate.nomination=bounds;certificate.bounds=guard;certificate.sourceGeneration=source.generation;
+    certificate.vertical=ActivePictureCandidateVerificationState::VERIFIED;certificate.samples=proof.lumaSamples;
+    evidence.lumaSamples+=proof.lumaSamples;
+    evidence.reason="supplied spatial nominee verified with exact-current owned caption mask";
+    proof.candidate=guard;proof.identity=currentIdentity;proof.policyGeneration=policyGeneration;
+    proof.continuityGeneration=continuityGeneration;proof.scriptHint=scriptHint;
+    proof.width=source.width;proof.height=source.height;proof.accepted=true;
+    proof.reason="supplied-caption-masked-bars-verified";
+    return proof;
 }
 
 SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(

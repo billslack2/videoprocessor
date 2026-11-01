@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "PreparedPictureEvidence.h"
 #include "PreparedOutwardWindow.h"
 
@@ -164,9 +164,9 @@ private:
             uint64_t domainKey=0;
             ActivePictureEvidence evidence;
             ActivePictureArDarknessEvidence darkness;
-            // Opt-in diagnostic facts, owned by this exact source packet.
-            // Never imported as crop or transition authority.
-            std::shared_ptr<const SourcePictureObservation> sourcePictureShadow;
+            // Immutable spatial facts owned by this exact source packet.
+            // Active mode verifies these independently before granting crop authority.
+            std::shared_ptr<const SourcePictureObservation> sourcePictureObservation;
         };
         using LookaheadWorker = OptionalAnalysisWorker<LookaheadMeasurement>;
         using OutwardWindowResult = PreparedOutwardWindowResult;

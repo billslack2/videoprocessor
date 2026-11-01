@@ -1,5 +1,6 @@
 #include "pch.h"
 #include <SourcePictureMeasurement.h>
+#include <SourcePictureDetector.h>
 #include "CppUnitTest.h"
 
 #include <algorithm>
@@ -81,6 +82,105 @@ namespace VideoProcessorTest
             Assert::AreEqual(expected.aspectRatio,measured.measuredBounds.aspectRatio,1e-9);
         }
     public:
+        TEST_METHOD(SourcePictureActiveAdapterSeparatesOddMeasurementFromOutwardGuard)
+        {
+            SourcePictureFrame frame(960,540);frame.Fill(17,63,939,487,240,530,490);
+            const auto detected=DetectSourcePictureForWorker(frame.Source());
+            Assert::IsTrue(bool(detected.observation));
+            Exact(*detected.observation,Bounds(960,540,17,63,939,487));
+            const auto& evidence=detected.evidence;
+            Assert::IsTrue(evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured);
+            Assert::IsTrue(evidence.available && evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::IsTrue(evidence.physicalEdges.estimateAvailable);
+            Assert::AreEqual(17,evidence.physicalEdges.estimate.left);Assert::AreEqual(63,evidence.physicalEdges.estimate.top);
+            Assert::AreEqual(939,evidence.physicalEdges.estimate.right);Assert::AreEqual(487,evidence.physicalEdges.estimate.bottom);
+            Assert::IsTrue(evidence.trustedBounds.left<=17 && evidence.trustedBounds.top<=63 &&
+                evidence.trustedBounds.right>=939 && evidence.trustedBounds.bottom>=487);
+            Assert::IsTrue(evidence.trustedBounds.left!=17 || evidence.trustedBounds.top!=63,
+                L"The independently verified retained guard must not overwrite odd physical coordinates.");
+            const auto admitted=MakeActivePictureObservation(evidence,31,59.94);
+            Assert::IsTrue(admitted.available && admitted.detector==ActivePictureDetectorKind::SourceSpatialMeasured,
+                L"The new source detector must reach native decision input, not only an OSD measurement attachment.");
+            Assert::AreEqual(evidence.trustedBounds.left,admitted.bounds.left);
+        }
+        TEST_METHOD(SourcePictureActiveNomineeDoesNotRequireLegacySymmetryAcquisition)
+        {
+            SourcePictureFrame frame(960,540);frame.Fill(17,63,939,487,240,530,490);
+            const auto legacy=ExtractActivePictureEvidence(frame.Source());
+            Assert::IsTrue(legacy.axisEvidence.vertical.state!=ActivePictureAxisState::TRUSTED_BARS,
+                L"This authentic asymmetric source deliberately fails the old paired-symmetry acquisition path.");
+            const auto detected=DetectSourcePictureForWorker(frame.Source());
+            Assert::IsTrue(detected.evidence.available);
+            Assert::IsTrue(detected.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::IsTrue(detected.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured);
+            Assert::AreEqual(63,detected.evidence.proposedBounds.top);
+            Assert::AreEqual(487,detected.evidence.proposedBounds.bottom);
+            Assert::IsTrue(detected.evidence.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+        }
+        TEST_METHOD(SourcePictureActiveCanvasRetainsSourceWithoutInventingPhysicalRatio)
+        {
+            SourcePictureFrame frame(960,540);
+            frame.Fill(34,100,960,325,200,530,490);frame.Fill(34,385,960,540,180,490,540);
+            frame.Fill(34,15,60,43,200,560,480);frame.Fill(360,20,422,40,180);
+            frame.Fill(908,15,926,43,220,450,650);frame.Fill(35,64,165,82,200);
+            const auto detected=DetectSourcePictureForWorker(frame.Source());
+            Assert::IsTrue(bool(detected.observation));
+            Assert::IsTrue(detected.observation->outcome==SourcePictureOutcome::CanvasEstimate);
+            const auto& evidence=detected.evidence;
+            Assert::IsTrue(evidence.available && evidence.classification==ActivePictureClassification::FULL_RASTER_TRUSTED);
+            Assert::IsTrue(evidence.detector==ActivePictureDetectorKind::SourceSpatialCanvas);
+            Assert::IsFalse(evidence.physicalEdges.estimateAvailable);
+            Assert::IsTrue(evidence.physicalEdges.confidence==PhysicalPictureEdgeConfidence::SOURCE_CANVAS_ESTIMATE);
+            Assert::AreEqual(0,evidence.physicalEdges.estimate.right);Assert::AreEqual(0,evidence.physicalEdges.estimate.bottom);
+            Assert::AreEqual(0,evidence.trustedBounds.left);Assert::AreEqual(0,evidence.trustedBounds.top);
+            Assert::AreEqual(960,evidence.trustedBounds.right);Assert::AreEqual(540,evidence.trustedBounds.bottom);
+            const auto admitted=MakeActivePictureObservation(evidence,32,60);
+            Assert::IsTrue(admitted.available && admitted.detector==ActivePictureDetectorKind::SourceSpatialCanvas);
+        }
+        TEST_METHOD(SourcePictureMissingOrCancelledActiveFactsNeverBecomeLegacyVotes)
+        {
+            SourcePictureFrame frame(960,540);frame.Fill(0,80,960,460,240);
+            const auto missing=MissingSourcePictureEvidence(frame.Source());
+            Assert::IsFalse(missing.available);
+            Assert::IsTrue(missing.detector==ActivePictureDetectorKind::SourceSpatialUnavailable);
+            const auto missingVote=MakeActivePictureObservation(missing,40,60);
+            Assert::IsFalse(missingVote.available);
+            Assert::IsTrue(missingVote.detector==ActivePictureDetectorKind::SourceSpatialUnavailable);
+            AnalysisEvaluationBudget expired([](void*){return true;},nullptr);
+            const auto cancelled=DetectSourcePictureForWorker(frame.Source(),&expired);
+            Assert::IsTrue(expired.Cancelled());Assert::IsFalse(cancelled.evidence.available);
+            Assert::IsTrue(cancelled.evidence.detector==ActivePictureDetectorKind::SourceSpatialUnavailable);
+            SourcePictureFrame noise(960,540);
+            for(int y=0;y<540;y+=6)for(int x=0;x<960;x+=6)noise.Fill(x,y,x+2,y+2,240);
+            const auto incomplete=DetectSourcePictureForWorker(noise.Source());
+            Assert::IsTrue(bool(incomplete.observation) && !incomplete.observation->complete);
+            Assert::IsFalse(incomplete.evidence.available);
+            Assert::IsTrue(incomplete.evidence.detector==ActivePictureDetectorKind::SourceSpatialUnavailable);
+        }
+        TEST_METHOD(SourcePictureActiveAdapterPreservesPortraitAndCaptionMeasurement)
+        {
+            SourcePictureFrame portrait(540,960);portrait.Fill(31,41,509,917,240,530,490);
+            const auto upright=DetectSourcePictureForWorker(portrait.Source());
+            Assert::IsTrue(bool(upright.observation));
+            Exact(*upright.observation,Bounds(540,960,31,41,509,917));
+            Assert::IsTrue(upright.evidence.physicalEdges.estimateAvailable);
+            Assert::AreEqual(31,upright.evidence.physicalEdges.estimate.left);
+            for(int lines=0;lines<=3;++lines) {
+                SourcePictureFrame frame(960,540);frame.Fill(0,66,960,426,220,530,490);
+                for(int line=0;line<lines;++line)for(int glyph=0;glyph<52;++glyph) {
+                    const int x=64+glyph*16,y=440+line*26;frame.Fill(x,y,x+10,y+18,850);
+                }
+                const auto detected=DetectSourcePictureForWorker(frame.Source());
+                Assert::IsTrue(bool(detected.observation));
+                Exact(*detected.observation,Bounds(960,540,0,66,960,426));
+                Assert::IsTrue(detected.evidence.physicalEdges.estimateAvailable);
+                Assert::AreEqual(66,detected.evidence.physicalEdges.estimate.top);
+                Assert::AreEqual(426,detected.evidence.physicalEdges.estimate.bottom);
+                Assert::IsTrue(detected.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured);
+                // Excluded glyph pixels still need the separate existing
+                // caption/erasure proof; measurement is not that permission.
+            }
+        }
         TEST_METHOD(SourcePictureCanvasEstimateRequiresIndependentPanelScaffold)
         {
             for(int variant=0;variant<6;++variant) {
@@ -314,6 +414,7 @@ namespace VideoProcessorTest
             }
             const auto edges=environment("VP_SOURCE_PICTURE_CAPTURE_EXPECTED_EDGES");
             const auto outcome=environment("VP_SOURCE_PICTURE_CAPTURE_EXPECTED_OUTCOME");
+            const bool verify=environment("VP_SOURCE_PICTURE_CAPTURE_VERIFY")=="1";
             int left=0,top=0,right=0,bottom=0;
             Assert::AreEqual(4,sscanf_s(edges.c_str(),"%d,%d,%d,%d",&left,&top,&right,&bottom),
                 L"A supplied private corpus requires independently verified explicit expected source coordinates.");
@@ -349,7 +450,15 @@ namespace VideoProcessorTest
                 Assert::IsTrue(source.IsValid(),L"Saved source must retain valid native strides/layout/precision.");
                 // No sidecar retained crop is passed into the measurement.
                 const auto started=std::chrono::steady_clock::now();
-                const auto observed=MeasureSourcePicture(source);
+                SourcePictureObservation direct;SourcePictureDetectionResult active;
+                if(verify)active=DetectSourcePictureForWorker(source);
+                else direct=MeasureSourcePicture(source);
+                Assert::IsTrue(!verify || bool(active.observation));
+                const auto& observed=verify?*active.observation:direct;
+                if(verify) {
+                    const auto darkness=EvaluateActivePictureArDarkness(source,active.evidence);
+                    Assert::IsTrue(darkness.global.evaluated,L"Active replay timing includes current source AR darkness evaluation.");
+                }
                 const auto elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
                 ++count;samples+=observed.samples;totalMs+=elapsed;peakMs=std::max(peakMs,elapsed);
                 bool matches=observed.complete && observed.sourceGeneration==1 && observed.width==width && observed.height==height;
@@ -368,6 +477,27 @@ namespace VideoProcessorTest
                         std::any_of(observed.edges[side].begin(),observed.edges[side].end(),[&](const SourcePictureEdgeCandidate& edge) {
                             return edge.coverage>0 && edge.minimum<=coordinates[side] && edge.maximum>=coordinates[side];
                         });
+                }
+                if(verify) {
+                    const auto& evidence=active.evidence;
+                    matches=matches && evidence.detector!=ActivePictureDetectorKind::Legacy;
+                    if(outcome=="Measured")matches=matches && evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+                        evidence.physicalEdges.estimateAvailable && evidence.physicalEdges.estimate.left==left &&
+                        evidence.physicalEdges.estimate.top==top && evidence.physicalEdges.estimate.right==right &&
+                        evidence.physicalEdges.estimate.bottom==bottom;
+                    if(outcome=="CanvasEstimate")matches=matches && evidence.detector==ActivePictureDetectorKind::SourceSpatialCanvas &&
+                        evidence.available && !evidence.physicalEdges.estimateAvailable &&
+                        evidence.trustedBounds.left==0 && evidence.trustedBounds.top==0 &&
+                        evidence.trustedBounds.right==width && evidence.trustedBounds.bottom==height;
+                    if(outcome=="Partial")matches=matches && evidence.detector==ActivePictureDetectorKind::SourceSpatialUnavailable && !evidence.available;
+                    Logger::WriteMessage((std::string("Native source-picture active verification: ")+path+
+                        " detector="+std::to_string(int(evidence.detector))+" available="+std::to_string(evidence.available)+
+                        " classification="+std::to_string(int(evidence.classification))+
+                        " vertical="+std::to_string(int(evidence.candidateVerification.vertical))+
+                        " horizontal="+std::to_string(int(evidence.candidateVerification.horizontal))+
+                        " trusted="+std::to_string(evidence.trustedBounds.left)+","+std::to_string(evidence.trustedBounds.top)+"-"+
+                        std::to_string(evidence.trustedBounds.right)+","+std::to_string(evidence.trustedBounds.bottom)+
+                        " combined_measure_verify_darkness_ms="+std::to_string(elapsed)+" reason="+evidence.reason).c_str());
                 }
                 if(!matches) {
                     ++mismatches;
@@ -394,7 +524,7 @@ namespace VideoProcessorTest
             }while(FindNextFileA(search.value,&entry));
             Assert::AreEqual(DWORD(ERROR_NO_MORE_FILES),GetLastError(),L"Directory enumeration must finish without an IO error.");
             Logger::WriteMessage((std::string("Native source-picture corpus exercised: directory=")+directory+
-                " frames="+std::to_string(count)+" mismatches="+std::to_string(mismatches)+" samples="+std::to_string(samples)+
+                " active_verification="+std::to_string(verify)+" frames="+std::to_string(count)+" mismatches="+std::to_string(mismatches)+" samples="+std::to_string(samples)+
                 " total_ms="+std::to_string(totalMs)+" peak_ms="+std::to_string(peakMs)).c_str());
             Assert::IsTrue(count>0);Assert::AreEqual(size_t(0),mismatches);
         }

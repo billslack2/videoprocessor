@@ -54,6 +54,7 @@ bool SameLookaheadObservation(
 	return left.frameNumber == right.frameNumber &&
 		left.available == right.available &&
 		left.classification == right.classification &&
+        left.detector == right.detector &&
 		left.axisEvidence == right.axisEvidence &&
 		left.transitionDeferred == right.transitionDeferred &&
 		SameTrustedBounds(left.bounds, right.bounds);

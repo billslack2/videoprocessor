@@ -67,6 +67,7 @@
 #include <vprenderer/PreparedPictureWindow.h>
 #include <vprenderer/SourcePictureShadowPolicy.h>
 #include <SourcePictureMeasurement.h>
+#include <SourcePictureDetector.h>
 #include <vprenderer/SourceCadenceNativeHandoff.h>
 #include <vprenderer/TemporalPresentationLedger.h>
 #include <vprenderer/TemporalPresentationPose.h>
@@ -149,7 +150,7 @@ namespace
     bool CurrentLookaheadMeasurement(const PreparedAnalysisFrame& frame,
         const ActivePictureFrameIdentity& identity, const std::shared_ptr<const Measurement>& measured)
     {
-        if (!measured || measured->domainKey!=frame.domainKey ||
+        if (!measured || !PreparedSourceDetectorCurrent(measured->evidence) || measured->domainKey!=frame.domainKey ||
             !SameAnalysisFrameIdentity(measured->identity,identity)) return false;
         auto imported=frame;
         imported.source=measured->source;
@@ -235,6 +236,7 @@ namespace
         const PreparedAnalysisFrame& frame,const ActivePictureFrameIdentity& identity,
         const ActivePictureEvidence& legacy)
     {
+        if(SourcePictureDetectorEnabled())return {};
         static SourcePictureShadowPolicy admission([] {
             char value[8]{};
             return GetEnvironmentVariableA("VP_SOURCE_PICTURE_SHADOW",value,sizeof(value))==1 && value[0]=='1';
@@ -285,6 +287,7 @@ namespace
     PhysicalPictureEdgeObservation ObservePhysicalSourceForWorker(const AnalysisLumaSource& source,
         ActivePictureEvidence& evidence,const ActivePictureFrameIdentity& identity)
     {
+        if(SourcePictureDetectorEnabled())return evidence.physicalEdges;
         const auto started=SteadyClock::now();
         if(!ActivePictureMeasurementCache::CompletePhysicalObservationIfMissing(source,evidence))
             return evidence.physicalEdges;
@@ -313,6 +316,31 @@ namespace
         return physical;
     }
 
+
+
+    template<class Measurement>
+    void PopulateNativeSourceMeasurement(Measurement& result,const PreparedAnalysisFrame& prepared,
+        const ActivePictureFrameIdentity& identity) {
+        const auto started=SteadyClock::now();
+        result.domainKey=prepared.domainKey;result.source=prepared.source;result.identity=identity;
+        result.identity.analysisDomainKey=prepared.domainKey;
+        if(SourcePictureDetectorEnabled()) {
+            auto detected=DetectPreparedSourcePictureBounded(prepared.source,result.identity);
+            result.evidence=std::move(detected.evidence);
+            result.sourcePictureObservation=std::move(detected.observation);
+        } else {
+            result.evidence=ExtractActivePictureEvidence(prepared.source);
+            result.evidence.physicalEdges=ObservePhysicalSourceForWorker(prepared.source,result.evidence,result.identity);
+            result.sourcePictureObservation=ObserveSourcePictureShadow(prepared,result.identity,result.evidence);
+        }
+        result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
+        if(SourcePictureDetectorEnabled()) {
+            auto trace=AnalysisTraceRecord(result.identity,nullptr,"source-picture-job",result.evidence.reason.c_str());
+            trace.resultCode=static_cast<int32_t>(result.evidence.detector);
+            trace.metrics[0]=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
+            AnalysisDiagnosticTrace::Emit(trace);
+        }
+    }
 
 	int64_t SteadyClockNowNs()
 	{
@@ -4746,6 +4774,7 @@ struct LibplaceboVideoRenderer::Impl
         MadVRActivePictureGeometry nlsGeometry{};
         bool trustedActivePicture=false;
         bool nlsGeometryAvailable=false;
+        ActivePictureDetectorKind detector = ActivePictureDetectorKind::Legacy;
         bool nlsHookActive=false;
         double nlsTargetAspect=0.0;
     };
@@ -5232,6 +5261,7 @@ struct LibplaceboVideoRenderer::Impl
     std::string rememberedEdgeLastReason;
 
 	ActivePictureAuthorityOrigin nlsGeometryOrigin = ActivePictureAuthorityOrigin::NATIVE;
+    ActivePictureDetectorKind nlsGeometryDetector = ActivePictureDetectorKind::Legacy;
 	bool localBoundaryTraceConfigured = false, localBoundaryTraceComparison = false;
 	unsigned localBoundaryTraceRemaining = 0, localBoundaryTraceSnapshot = 0;
 	uint64_t localBoundaryTraceNextTick = 0, localBoundaryLastSequence = 0;
@@ -5318,6 +5348,7 @@ struct LibplaceboVideoRenderer::Impl
         ActivePictureTransitionModel model;
         ActivePictureBounds bounds;
         ActivePictureFrameIdentity identity;
+        ActivePictureDetectorKind detector = ActivePictureDetectorKind::Legacy;
     } pendingQueueNativeContinuity;
     uint64_t deferredQueueNativeResetEpoch = 0, deferredQueueNativeResetGeneration = 0;
 	std::mutex renderMutex;
@@ -10329,6 +10360,7 @@ struct LibplaceboVideoRenderer::Impl
 		nlsGeometryAvailable = false;
 		nlsTransitionWithdrawn = true;
 		nlsGeometry = {};
+		nlsGeometryDetector = ActivePictureDetectorKind::Legacy;
 		nlsGeometryClassification =
 			ActivePictureClassification::UNAVAILABLE;
 		nlsGeometrySourceGeneration = 0;
@@ -10384,6 +10416,7 @@ struct LibplaceboVideoRenderer::Impl
             pending.model = nlsTransition;
             pending.bounds = nlsGeometry;
             pending.identity = lastNativeAnalysisIdentity;
+            pending.detector = nlsGeometryDetector;
         }
         ClearActivePictureAuthorityForReacquisition();
         pendingQueueNativeContinuity = std::move(pending);
@@ -10583,6 +10616,11 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		if (sparseBoundaryConfigured) return;
 		sparseBoundaryConfigured = true;
+        if(SourcePictureDetectorEnabled()) {
+            sparseBoundaryEnabled=false; sparseBoundaryTransitionsEnabled=false;
+            DebugLog::Log("VP source picture detector: mode=active-experimental worker_budget_ms=24 source_pixels=1 legacy_geometry_fallback=0 retention_checks=1");
+            return;
+        }
 		char option[32] = {};
 		const DWORD count = GetEnvironmentVariableA("VP_SPARSE_BOUNDARY_CROP", option, sizeof(option));
 		sparseBoundaryTransitionsEnabled = count > 0 && count < sizeof(option) &&
@@ -10599,6 +10637,7 @@ struct LibplaceboVideoRenderer::Impl
     {
         if (rememberedEdgeConfigured) return;
         rememberedEdgeConfigured = true;
+        if(SourcePictureDetectorEnabled()) { rememberedEdgeEnabled=false; rememberedEdgeShadow=false; rememberedEdgeGuarded=false; return; }
         char option[32] = {};
         const DWORD count = GetEnvironmentVariableA("VP_REMEMBERED_EDGE_RETURN", option, sizeof(option));
         const auto mode = ResolveRememberedEdgeReturnMode(
@@ -10958,8 +10997,11 @@ struct LibplaceboVideoRenderer::Impl
                 current && physical.confidence==PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE?
                     PhysicalAspectConfidence::STRONG_ABRUPT_EDGE:
                 current && physical.confidence==PhysicalPictureEdgeConfidence::SOURCE_RASTER_EXTENT?
-                    PhysicalAspectConfidence::SOURCE_RASTER_EXTENT:PhysicalAspectConfidence::UNKNOWN,
-                edge.left,edge.top,edge.right,edge.bottom);
+                    PhysicalAspectConfidence::SOURCE_RASTER_EXTENT:
+                current && physical.confidence==PhysicalPictureEdgeConfidence::SOURCE_CANVAS_ESTIMATE?
+                    PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE:PhysicalAspectConfidence::UNKNOWN,
+                edge.left,edge.top,edge.right,edge.bottom,
+                SourcePictureDetectorEnabled()?pixelMeasurements.Picture().detector:ActivePictureDetectorKind::Legacy);
             osdTelemetry.PublishAspect(aspectTelemetry.Read());
         };
 		ConfigureSparseBoundaryExperiment();
@@ -10991,6 +11033,7 @@ struct LibplaceboVideoRenderer::Impl
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = false;
 			nlsGeometry = {};
+			nlsGeometryDetector = ActivePictureDetectorKind::Legacy;
 			nlsGeometryClassification =
 				ActivePictureClassification::UNAVAILABLE;
 			latestActivePictureObservationSupportsCrop = false;
@@ -11047,13 +11090,14 @@ struct LibplaceboVideoRenderer::Impl
             {
                 nlsTransition = std::move(continuity.model);
                 nlsGeometry = continuity.nativeBounds;
+                nlsGeometryDetector = pending.detector;
                 nlsGeometryAvailable = true; nlsTransitionWithdrawn = false;
                 nlsGeometryClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
                 nlsGeometryOrigin = ActivePictureAuthorityOrigin::NATIVE;
                 nlsGeometrySourceGeneration = continuity.sourceGeneration;
                 nlsGeometrySourceFormatKey = currentIdentity.sourceFormatGeneration;
                 acceptedNativeCrop = {true, nlsGeometry, analysisSource.generation, frameNumber,
-                    currentIdentity.sourceFormatGeneration, currentIdentity.analysisDomainKey};
+                    currentIdentity.sourceFormatGeneration, currentIdentity.analysisDomainKey, nlsGeometryDetector};
                 forceAnalysis = true;
             }
             DebugLog::Log("Alpha queue native continuity: old_generation=%llu generation=%llu sequence=%llu retained=%d rect=%d,%d-%d,%d reason=%s",
@@ -11164,6 +11208,7 @@ struct LibplaceboVideoRenderer::Impl
              nlsGeometry.right == captionBootstrapProofBounds.right &&
              nlsGeometry.bottom == captionBootstrapProofBounds.bottom);
         const bool currentWorkerBarProof = currentSubtitlePreview &&
+            (!SourcePictureDetectorEnabled() || currentSubtitlePreview->current.subtitleArProof.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured) &&
             currentSubtitlePreview->current.subtitleArProof.IsCurrentFor(analysisSource,currentIdentity,
                 localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                 activeSettings.subtitleScriptHint);
@@ -11186,7 +11231,8 @@ struct LibplaceboVideoRenderer::Impl
             frameNumber >= captionBootstrapFirstProofSequence &&
             frameNumber - captionBootstrapFirstProofSequence < captionBurstFrames &&
             captionBurstGeometryCompatible;
-		if (scheduledAnalysis || forceAnalysis || forceWorkerBarAcquisition || forceCaptionBootstrapBurstAnalysis || hasScheduledDecision || movingPictureTransition.active || movingPictureTransition.awaitingPublication || movingPictureTransition.onsetPending ||
+		if ((SourcePictureDetectorEnabled() && pixelMeasurements.Picture().available) ||
+            scheduledAnalysis || forceAnalysis || forceWorkerBarAcquisition || forceCaptionBootstrapBurstAnalysis || hasScheduledDecision || movingPictureTransition.active || movingPictureTransition.awaitingPublication || movingPictureTransition.onsetPending ||
 			forceRetentionSafetyAnalysis || forceStartupBootstrapAnalysis ||
             (rememberedEdgeEnabled && rememberedContext.enabled) ||
 			(sparseBoundaryEnabled && (sparseBoundaryStartupGate.IsOpen(analysisSource.generation) ||
@@ -11497,7 +11543,7 @@ struct LibplaceboVideoRenderer::Impl
                 latestColdStrictEpoch = currentIdentity.viewportGeneration;
                 latestColdStrictDomain = currentIdentity.analysisDomainKey;
             }
-            if (evidence.available && evidence.classification == ActivePictureClassification::PROVISIONAL)
+            if (!SourcePictureDetectorEnabled() && evidence.available && evidence.classification == ActivePictureClassification::PROVISIONAL)
             {
                 ActivePictureEvidence hypothesis = hadCompatiblePresentation ? evidence :
                     EvaluateSymmetricVerticalBarHypothesis(analysisSource, evidence);
@@ -11668,7 +11714,7 @@ struct LibplaceboVideoRenderer::Impl
                 ? inwardCaptionEstablishedBase : presentationBeforeObservation;
             inwardCaptionEvidence = {};
             inwardCaptionIdentity = {};
-            if (hadCurrentTrustedCropGeometry && automaticSourceCrop && scopeSubtitleFit &&
+            if (!SourcePictureDetectorEnabled() && hadCurrentTrustedCropGeometry && automaticSourceCrop && scopeSubtitleFit &&
                 configuredScreenActive && !nlsRequested && !fixedCropAspectConfigured &&
                 globalNearBlack.evaluated && !globalNearBlack.nearBlack &&
                 nearBlackPresentationEpisode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
@@ -12026,7 +12072,7 @@ struct LibplaceboVideoRenderer::Impl
                 AlphaSourceCrop::ObserveSubtitleAssistedMovingPictureTransition(
                     movingPictureTransition, currentIdentity, movementInput,
                     !SubtitlePreviewOverridesClassicHandling(pictureSubtitleMode),
-                    analysisSource, currentSubtitlePreview ? currentSubtitlePreview->current.subtitleArProof :
+                    analysisSource, !SourcePictureDetectorEnabled() && currentSubtitlePreview ? currentSubtitlePreview->current.subtitleArProof :
                         noSubtitleBarProof,
                     localBoundaryPolicyGeneration, localBoundaryContinuityGeneration,
                     activeSettings.subtitleScriptHint);
@@ -12518,6 +12564,7 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometryAvailable = false;
 				nlsTransitionWithdrawn = true;
 				nlsGeometry = {};
+				nlsGeometryDetector = ActivePictureDetectorKind::Legacy;
 				nlsGeometryClassification =
 					ActivePictureClassification::UNAVAILABLE;
 				latestActivePictureObservationSupportsCrop = false;
@@ -12532,6 +12579,7 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometry = transition.bounds;
 				sparseBoundaryStartupGate.OnPublication(analysisSource.generation);
 				nlsGeometryOrigin = transition.authorityOrigin;
+                nlsGeometryDetector = transition.detector;
                 if (nlsGeometryOrigin == ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN)
                     DebugLog::Log("Alpha remembered-edge published: instance=%s generation=%llu sequence=%llu history=%llu rect=%d,%d-%d,%d origin=%d history_eligible=0 queued=%d",
                         diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
@@ -12554,10 +12602,17 @@ struct LibplaceboVideoRenderer::Impl
                 if (nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE) {
                     if (nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED)
                         acceptedNativeCrop = {true, nlsGeometry, analysisSource.generation, frameNumber,
-                            currentIdentity.sourceFormatGeneration, currentIdentity.analysisDomainKey};
+                            currentIdentity.sourceFormatGeneration, currentIdentity.analysisDomainKey, nlsGeometryDetector};
                     else if (nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED)
                         acceptedNativeCrop = {};
                 }
+                auto detectorTrace=AnalysisTraceRecord(currentIdentity,this,"accepted-picture-detector","accepted-model-publication");
+                detectorTrace.resultCode=static_cast<int32_t>(nlsGeometryDetector);
+                detectorTrace.policyGeneration=localBoundaryPolicyGeneration;
+                detectorTrace.continuityGeneration=localBoundaryContinuityGeneration;
+                detectorTrace.counters[0]=frameNumber;
+                AnalysisTraceRect(detectorTrace.published,nlsGeometry);
+                AnalysisDiagnosticTrace::Emit(detectorTrace);
                 ++nlsGeometryGeneration;
                 if (CurrentInwardCaptionProtection(analysisSource.generation,
                     frameNumber, currentIdentity.viewportGeneration, nlsGeometry))
@@ -12611,6 +12666,7 @@ struct LibplaceboVideoRenderer::Impl
 				// to reaffirm authority, so ambiguity expands to full raster.
 				nlsGeometry = transition.stableBounds;
 				nlsGeometryOrigin = transition.stableAuthorityOrigin;
+                nlsGeometryDetector = transition.stableDetector;
 				nlsGeometryAvailable = true;
 			}
 			// Admission used the old base. Once geometry is adopted, publish its
@@ -13085,6 +13141,7 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometryAvailable = false;
 				nlsTransitionWithdrawn = true;
 				nlsGeometry = {};
+				nlsGeometryDetector = ActivePictureDetectorKind::Legacy;
 				nlsGeometryClassification =
 					ActivePictureClassification::UNAVAILABLE;
 				nlsGeometrySourceGeneration = 0;
@@ -13452,6 +13509,7 @@ struct LibplaceboVideoRenderer::Impl
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = true;
 			nlsGeometry = {};
+			nlsGeometryDetector = ActivePictureDetectorKind::Legacy;
 			nlsGeometryClassification =
 				ActivePictureClassification::UNAVAILABLE;
 			latestActivePictureObservationSupportsCrop = false;
@@ -13836,6 +13894,7 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometryAvailable = false;
 				nlsTransitionWithdrawn = false;
 				nlsGeometry = {};
+				nlsGeometryDetector = ActivePictureDetectorKind::Legacy;
 				nlsGeometryClassification =
 					ActivePictureClassification::UNAVAILABLE;
 				latestActivePictureObservationSupportsCrop = false;
@@ -19553,6 +19612,9 @@ releaseDriftBaseRetention =
                     sourceSnapshot.nlsGeometry=temporalRuntimeNlsGeometry;
                     sourceSnapshot.trustedActivePicture=trustedActivePicture;
                     sourceSnapshot.nlsGeometryAvailable=temporalRuntimeNlsGeometryAvailable;
+                    sourceSnapshot.detector=sourceSnapshot.cropAdmission.acceptedNativeCrop.available
+                        ? sourceSnapshot.cropAdmission.acceptedNativeCrop.detector
+                        : (nlsGeometryAvailable ? nlsGeometryDetector : ActivePictureDetectorKind::Legacy);
                     sourceSnapshot.nlsHookActive=renderParams.num_hooks==1 &&
                         renderParams.hooks && renderParams.hooks[0]==nlsHook;
                     sourceSnapshot.nlsTargetAspect=temporalRuntimeNlsTargetAspect;
@@ -20545,6 +20607,13 @@ releaseDriftBaseRetention =
                     (hookRender.retried?512u:0u)|(poseEligible?1024u:0u)|
                     (selectedPresentationValid?2048u:0u)|(scopeAnchorCommit.fullRasterAuthority?4096u:0u)|
                     ((selectedPresentationValid?selectedPresentationForCommit.captionConfirmedAbsent:currentNoCaptionConfirmed)?8192u:0u);
+                // Bits24..25 are frozen producing-detector metadata, not crop
+                // authority. Whole-output repeat copies this original trace.
+                const auto submittedDetector=selectedPresentationValid
+                    ? selectedPresentationForCommit.detector
+                    : (native.available ? native.detector
+                        : (nlsGeometryAvailable ? nlsGeometryDetector : ActivePictureDetectorKind::Legacy));
+                outputTrace.flags|=(static_cast<uint32_t>(submittedDetector)&3u)<<24;
                 // counters: processing source, selected source, final cue source,
                 // frozen selected mode, accepted native source, cert source/origin,
                 // composition metadata source. Never borrow another attempt's flags.
@@ -24293,9 +24362,9 @@ void LibplaceboVideoRenderer::PrimePictureProofMeasurements(
             AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
             !m_impl->scopeSubtitleDrift.IsActive() &&
             !m_impl->outwardPictureConfirmation.verticalPresentationSeen;
-        captionEligible=unowned && m_impl->scopeSubtitleFit &&
+        captionEligible=!SourcePictureDetectorEnabled() && unowned && m_impl->scopeSubtitleFit &&
             m_impl->nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED;
-        relativeEligible=m_impl->rememberedEdgeGuarded && !m_impl->scopeSubtitleDrift.IsActive();
+        relativeEligible=!SourcePictureDetectorEnabled() && m_impl->rememberedEdgeGuarded && !m_impl->scopeSubtitleDrift.IsActive();
         scene=m_impl->rememberedEdgeSceneId; tick=GetTickCount64();
     }
     const auto minimum=frames.front().activePictureIdentity.acceptedSequence;
@@ -24461,7 +24530,7 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
     const std::vector<QueuedFrame>& frames, uint64_t policy, uint64_t continuity)
 {
     if (frames.empty()) return;
-    {
+    if(!SourcePictureDetectorEnabled()) {
         std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);
         if (!guard.owns_lock() ||
             policy != m_impl->localBoundaryPolicyGeneration ||
@@ -24490,9 +24559,20 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
         const auto identity=queued.activePictureIdentity;
         auto currentExpected=identity;currentExpected.analysisDomainKey=prepared.domainKey;
         const bool currentRaw=CurrentLookaheadMeasurement(prepared,currentExpected,ready);
-        const bool currentPhysical=currentRaw && ready->evidence.physicalEdges.evaluated &&
-            ready->evidence.physicalEdges.sourceGeneration==prepared.source.generation;
+        const bool currentPhysical=currentRaw && (SourcePictureDetectorEnabled() ||
+            (ready->evidence.physicalEdges.evaluated && ready->evidence.physicalEdges.sourceGeneration==prepared.source.generation));
         if(currentPhysical || slot->pending.load(std::memory_order_acquire))continue;
+        if(SourcePictureDetectorEnabled()) {
+            std::unique_lock<std::mutex> owner(m_queueMutex,std::try_to_lock);
+            if(!owner.owns_lock() || policy!=m_activePictureTimeline.LookaheadPolicyGeneration() ||
+                continuity!=m_activePictureTimeline.ContinuityGeneration())continue;
+            const auto present=std::find_if(m_frameQueue.begin(),m_frameQueue.end(),[&](const QueuedFrame& owned) {
+                return !owned.cadenceRepeat && SameActivePictureFrameIdentity(owned.activePictureIdentity,identity) &&
+                    owned.state==queued.state && owned.analysis==queued.analysis && owned.converted==queued.converted &&
+                    owned.frame.GetData()==queued.frame.GetData();
+            });
+            if(present==m_frameQueue.end())continue;
+        }
         m_impl->lookaheadMeasurementWorker.Submit(slot,identity.transportGeneration,
             identity.acceptedSequence,minimumSequence,[prepared,identity,slot] {
                 auto expected=identity;expected.analysisDomainKey=prepared.domainKey;
@@ -24507,15 +24587,7 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
                     SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                 (void)prioritySet;
                 QueuedFrame::LookaheadMeasurement result;
-                result.domainKey=prepared.domainKey;
-                result.source=prepared.source;
-                result.identity=identity;
-                result.identity.analysisDomainKey=prepared.domainKey;
-                result.evidence=ExtractActivePictureEvidence(prepared.source);
-                result.evidence.physicalEdges=ObservePhysicalSourceForWorker(
-                    prepared.source,result.evidence,result.identity);
-                result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
-                    result.sourcePictureShadow=ObserveSourcePictureShadow(prepared,result.identity,result.evidence);
+                PopulateNativeSourceMeasurement(result,prepared,identity);
                 return result;
             });
     }
@@ -24798,7 +24870,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         subtitleAssistedArEnabled=subtitlePreviewEnabled && m_impl->automaticSourceCrop &&
             m_impl->renderConfiguredScreenActive && !m_impl->nlsRequested &&
             !m_impl->fixedCropAspectConfigured;
-        if (!cachedOnly && !previewFrames.empty() && (m_impl->rememberedEdgeGuarded ||
+        if (!SourcePictureDetectorEnabled() && !cachedOnly && !previewFrames.empty() && (m_impl->rememberedEdgeGuarded ||
             (m_impl->rememberedEdgeShadow && rememberedWindowTick >= m_impl->rememberedShadowWindowNextTick)))
         {
             rememberedWindowStatusDue = rememberedWindowTick >= m_impl->rememberedShadowWindowNextTick;
@@ -24891,7 +24963,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         {
             proofBase = m_impl->nlsGeometry;
             liveProofModel = m_impl->nlsTransition;
-            relativeContrastEligible = m_impl->rememberedEdgeGuarded &&
+            relativeContrastEligible = !SourcePictureDetectorEnabled() && m_impl->rememberedEdgeGuarded &&
                 m_impl->automaticSourceCrop && m_impl->renderConfiguredScreenActive &&
                 !m_impl->nlsRequested && !m_impl->fixedCropAspectConfigured &&
                 m_impl->nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
@@ -24905,7 +24977,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 !m_impl->movingPictureTransition.awaitingPublication;
             // Caption inspection remains a bar-base path; full-raster returns
             // need direct native bar evidence in every contributing frame.
-            inwardCaptionInspectionEligible = inwardProofEligible && diagnosticTrustedBase &&
+            inwardCaptionInspectionEligible = !SourcePictureDetectorEnabled() && inwardProofEligible && diagnosticTrustedBase &&
                 m_impl->automaticSourceCrop && m_impl->scopeSubtitleFit &&
                 m_impl->renderConfiguredScreenActive && !m_impl->nlsRequested &&
                 !m_impl->fixedCropAspectConfigured &&
@@ -25017,14 +25089,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                         SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                     (void)prioritySet;
                     QueuedFrame::LookaheadMeasurement result;
-                    result.domainKey=prepared.domainKey;
-                    result.source=prepared.source;
-                    result.identity=analysisIdentity;
-                    result.evidence=ExtractActivePictureEvidence(prepared.source);
-                    result.evidence.physicalEdges=ObservePhysicalSourceForWorker(
-                        prepared.source,result.evidence,result.identity);
-                    result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
-                    result.sourcePictureShadow=ObserveSourcePictureShadow(prepared,result.identity,result.evidence);
+                    PopulateNativeSourceMeasurement(result,prepared,analysisIdentity);
                     return result;
                 });
             if(subtitlePreviewEnabled && allowBackgroundDispatch)
@@ -25117,7 +25182,8 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             const auto& proof=subtitleObservations[rememberedIndex].subtitleArProof;
             auto proofSource=source;proofSource.generation=analysisIdentity.transportGeneration;
             const auto& darkness=subtitleObservations[rememberedIndex].subtitleArDarkness;
-            if (proof.IsCurrentFor(proofSource,analysisIdentity,lookaheadPolicyGeneration,
+            if ((!SourcePictureDetectorEnabled() || proof.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured) &&
+                proof.IsCurrentFor(proofSource,analysisIdentity,lookaheadPolicyGeneration,
                 subtitleContinuityGeneration,subtitleScriptHint) &&
                 darkness.global.evaluated && !darkness.EffectiveNearBlack())
             {

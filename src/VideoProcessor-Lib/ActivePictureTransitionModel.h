@@ -72,6 +72,9 @@ struct ActivePictureBounds
 	BarAxes trustedBarAxes = BarAxes::NONE;
 };
 
+// Detector provenance is metadata, independent of pixel/crop authority.
+enum class ActivePictureDetectorKind : uint8_t { Legacy, SourceSpatialMeasured, SourceSpatialCanvas, SourceSpatialUnavailable };
+
 enum class ActivePictureClassification
 {
 	UNAVAILABLE,
@@ -259,6 +262,7 @@ struct ActivePictureObservation
 	ActivePictureAuthorityOrigin authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
 	SparseBoundaryTransitionProof sparseTransitionProof;
 	RememberedEdgeReturnProof rememberedEdgeReturnProof;
+    ActivePictureDetectorKind detector = ActivePictureDetectorKind::Legacy;
 
 };
 
@@ -298,6 +302,8 @@ struct ActivePictureTransitionDecision
 	// Origin of stableBounds; normally the pre-publication reference. Exact
 	// native verification of identical bounds upgrades both origins together.
 	ActivePictureAuthorityOrigin stableAuthorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
+    ActivePictureDetectorKind detector = ActivePictureDetectorKind::Legacy;
+    ActivePictureDetectorKind stableDetector = ActivePictureDetectorKind::Legacy;
 };
 
 
@@ -404,6 +410,7 @@ private:
 	struct TrustedGeometry
 	{
 		ActivePictureBounds bounds;
+        ActivePictureDetectorKind detector = ActivePictureDetectorKind::Legacy;
 		ActivePictureClassification classification =
 			ActivePictureClassification::UNAVAILABLE;
 	};
@@ -429,10 +436,11 @@ private:
 	static bool HasAuthorityForCroppedAxes(
 		const ActivePictureBounds& bounds);
 	void RememberTrustedGeometry(const ActivePictureBounds& bounds,
-		ActivePictureClassification classification, ActivePictureAuthorityOrigin origin);
+		ActivePictureClassification classification, ActivePictureAuthorityOrigin origin,
+        ActivePictureDetectorKind detector);
 	bool FindRecentTrustedGeometry(const ActivePictureObservation& observation,
 		ActivePictureBounds& bounds,
-		ActivePictureClassification& classification) const;
+		ActivePictureClassification& classification, ActivePictureDetectorKind& detector) const;
 	ActivePictureTransitionDecision CommitCandidate(
 		const ActivePictureObservation& observation,
 		const char* reason);
@@ -477,6 +485,8 @@ private:
 	void StartCandidate(const ActivePictureObservation& observation);
 	void ClearCandidate();
 
+    ActivePictureDetectorKind m_stableDetector = ActivePictureDetectorKind::Legacy;
+    ActivePictureDetectorKind m_candidateDetector = ActivePictureDetectorKind::Legacy;
 	ActivePictureAuthorityOrigin m_stableOrigin = ActivePictureAuthorityOrigin::NATIVE;
 	ActivePictureAuthorityOrigin m_candidateOrigin = ActivePictureAuthorityOrigin::NATIVE;
 	SparseBoundaryTransitionProof m_candidateSparseTransitionProof;

@@ -1,6 +1,7 @@
 #pragma once
 #include "AsyncOutwardWindow.h"
 #include "PreparedPictureEvidence.h"
+#include <SourcePictureDetector.h>
 #include <array>
 #include <limits>
 
@@ -37,7 +38,7 @@ template<class RawMeasurement>
 inline bool PreparedOutwardRawMeasurementCurrent(const PreparedAnalysisFrame& frame,
     const ActivePictureFrameIdentity& identity, const std::shared_ptr<const RawMeasurement>& raw)
 {
-    if (!raw || raw->domainKey != frame.domainKey || !SameAnalysisFrameIdentity(raw->identity, identity))
+    if (!raw || !PreparedSourceDetectorCurrent(raw->evidence) || raw->domainKey != frame.domainKey || !SameAnalysisFrameIdentity(raw->identity, identity))
         return false;
     auto imported = frame;
     imported.source = raw->source;
@@ -113,7 +114,8 @@ PreparedOutwardWindowResult EvaluatePreparedOutwardWindow(
             measured->source = frame.source;
             measured->identity = identity;
             measured->domainKey = frame.domainKey;
-            measured->evidence = ExtractActivePictureEvidence(frame.source);
+            measured->evidence = SourcePictureDetectorEnabled()?
+                DetectPreparedSourcePictureBounded(frame.source,identity).evidence:ExtractActivePictureEvidence(frame.source);
             measured->darkness = EvaluateActivePictureArDarkness(frame.source, measured->evidence);
             std::shared_ptr<const RawMeasurement> computed=std::move(measured);
             raw=PublishPreparedOutwardRaw<RawMeasurement>(frame,identity,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ActivePictureEvidence.h>
+#include <SourcePictureDetector.h>
 #include <algorithm>
 #include <chrono>
 
@@ -65,7 +66,7 @@ public:
     {
         auto rebound = queuedSource;
         rebound.generation = m_source.generation;
-        if (!m_cacheable || !SameAnalysisFrameIdentity(identity, m_identity) ||
+        if (!PreparedSourceDetectorCurrent(picture) || !m_cacheable || !SameAnalysisFrameIdentity(identity, m_identity) ||
             queuedSource.generation != identity.sourceFormatGeneration ||
             m_source.generation != identity.transportGeneration ||
             !SameSource(rebound, m_source))
@@ -109,6 +110,7 @@ public:
     static PhysicalPictureEdgeObservation MeasurePhysicalEdgesOptional(
         const AnalysisLumaSource& source,const ActivePictureEvidence& evidence)
     {
+        if(SourcePictureDetectorEnabled())return evidence.physicalEdges;
         auto deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(2);
         AnalysisEvaluationBudget budget([](void* value) {
             return std::chrono::steady_clock::now()>=
@@ -123,6 +125,7 @@ public:
     static bool CompletePhysicalObservationIfMissing(const AnalysisLumaSource& source,
         ActivePictureEvidence& evidence,const AnalysisEvaluationBudget* optionalBudget = nullptr)
     {
+        if(SourcePictureDetectorEnabled())return false;
         if(evidence.physicalEdges.evaluated &&
             evidence.physicalEdges.sourceGeneration==source.generation)return false;
         if(optionalBudget) {
@@ -273,7 +276,8 @@ private:
 
     ActivePictureEvidence Native()
     {
-        if (m_cacheable && m_pictureValid) return m_picture;
+        if (m_cacheable && m_pictureValid && PreparedSourceDetectorCurrent(m_picture)) return m_picture;
+        if(SourcePictureDetectorEnabled())return MissingSourcePictureEvidence(m_source,"source-picture-native-worker-not-ready");
         const auto started = std::chrono::steady_clock::now();
         ++m_statistics.pictureScans;
         const auto value = ExtractActivePictureEvidence(m_source);

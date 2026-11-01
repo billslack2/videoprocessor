@@ -139,7 +139,7 @@ struct ActivePictureCandidateVerification
 
 // Source-pixel edge observation only. Does not authorize discarding pixels,
 // acquiring native AR, or changing the conservative retention rectangle.
-enum class PhysicalPictureEdgeConfidence : uint8_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT };
+enum class PhysicalPictureEdgeConfidence : uint8_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT, SOURCE_CANVAS_ESTIMATE };
 struct PhysicalPictureEdgeObservation
 {
     bool evaluated=false, estimateAvailable=false;
@@ -161,6 +161,7 @@ struct ActivePictureEvidence
     ActivePictureCandidateVerification candidateVerification;
     PhysicalPictureEdgeObservation physicalEdges;
     ActivePictureBlackReference blackReference;
+    ActivePictureDetectorKind detector=ActivePictureDetectorKind::Legacy;
 	bool available = false;
 	ActivePictureClassification classification =
 		ActivePictureClassification::UNAVAILABLE;
@@ -376,6 +377,13 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source,
     const AnalysisEvaluationBudget* budget = nullptr);
 
+// Verify only the caller's independently measured source nomination. No coarse
+// detector, symmetry prior or inherited crop certificate participates. Proposed
+// bounds remain unrounded; trusted bounds may retain outward alignment/collar.
+ActivePictureEvidence VerifySuppliedActivePictureCandidate(
+    const AnalysisLumaSource& source, const ActivePictureBounds& measuredBounds,
+    const AnalysisEvaluationBudget* budget = nullptr);
+
 ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
 	const AnalysisLumaSource& source,
     const AnalysisEvaluationBudget* budget = nullptr);
@@ -459,6 +467,13 @@ struct SubtitleAssistedVerticalBarProof
         uint64_t currentPolicyGeneration, uint64_t currentContinuityGeneration,
         SubtitleScriptHint currentScriptHint) const;
 };
+
+// Verify only the supplied spatial nominee, masking exact-current owned ink.
+// Failure preserves measured evidence and supplies no crop permission.
+SubtitleAssistedVerticalBarProof VerifySuppliedActivePictureCandidateWithSubtitle(
+    const AnalysisLumaSource& source, const ActivePictureEvidence& measured,
+    const SubtitleBoxObservation& current, const ActivePictureFrameIdentity& currentIdentity,
+    uint64_t policyGeneration, uint64_t continuityGeneration, SubtitleScriptHint scriptHint);
 
 SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
     const AnalysisLumaSource& source,

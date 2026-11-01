@@ -10,7 +10,7 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 910,
+  "minimumNativeTests": 927,
   "requiredNativeMethods": [
     "V210SparseSamplingDecodesAllSixPixels",
     "P210SamplingPreservesEachChromaRow",
@@ -190,7 +190,24 @@
     "ZeroForegroundBudgetPreservesBoundedDispatchAfterPrimeMiss",
     "BacklogConsumesExactReadyNativeWindowWithoutDispatchOrRepeatVotes",
     "HistoryConfirmedThreeLineCueExportsPendingSeedWithoutBorrowedFutureGeometry",
-    "HistoryConfirmedPendingSeedRejectsForeignPartialHeldAndReusedProof"
+    "HistoryConfirmedPendingSeedRejectsForeignPartialHeldAndReusedProof",
+    "SuppliedCandidateVerifiesUnevenAsymmetricOddGeometryWithoutLegacyNomination",
+    "SuppliedCandidateRejectsExcludedConnectedPictureWithoutInventingAnotherMeasurement",
+    "SuppliedCandidateKeepsSparseOverlayGeometrySeparateFromOccupiedPixelRetention",
+    "SuppliedCandidateInvalidOrCancelledVerificationCannotCarryAuthority",
+    "SpatialDetectorTagCannotGrantCropAuthorityOrRenewUnknownFrames",
+    "ExactCurrentGeometryCanAcceptNewDetectorButProvisionalCannotRelabelIt",
+    "ReacquiredHistoryAndQueuedAdoptionKeepTheirActualDetector",
+    "SpatialCanvasEstimateNeverClaimsMeasuredBoundsOrChangesSubmittedAspect",
+    "SpatialMeasuredAndUnavailableReadingsExposeTheirRealProducingMode",
+    "LegacyPhysicalObservationKeepsExistingLabelAndSourceResetClearsSpatialProvenance",
+    "SourcePictureActiveAdapterSeparatesOddMeasurementFromOutwardGuard",
+    "SourcePictureActiveNomineeDoesNotRequireLegacySymmetryAcquisition",
+    "SourcePictureActiveCanvasRetainsSourceWithoutInventingPhysicalRatio",
+    "SourcePictureMissingOrCancelledActiveFactsNeverBecomeLegacyVotes",
+    "SourcePictureActiveAdapterPreservesPortraitAndCaptionMeasurement",
+    "SuppliedSpatialCaptionProofUsesExactNomineeAndCurrentInkWithoutLegacyBars",
+    "SuppliedSpatialCaptionMaskCannotExplainUnownedConnectedPictureOrMenu"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -222,7 +239,9 @@
     "StandardRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
     "BetaRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
     "StandardRendererDecodedDvUnknownInputRepeatsOneCompleteOutput",
-    "BetaRendererDecodedDvUnknownInputRepeatsOneCompleteOutput"
+    "BetaRendererDecodedDvUnknownInputRepeatsOneCompleteOutput",
+    "StandardRendererRetainsUncertainPictureAndAcceptsRealTransitions",
+    "BetaRendererRetainsUncertainPictureAndAcceptsRealTransitions"
   ],
   "optionalPrivateFixtures": [
     "VP_AR_COLLAR_CAPTURE_FRAME",
@@ -572,6 +591,36 @@
       "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
       "class": "ActivePictureDecisionTimelineTests",
       "method": "BacklogConsumesExactReadyNativeWindowWithoutDispatchOrRepeatVotes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "SpatialDetectorTagCannotGrantCropAuthorityOrRenewUnknownFrames"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "ExactCurrentGeometryCanAcceptNewDetectorButProvisionalCannotRelabelIt"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "ReacquiredHistoryAndQueuedAdoptionKeepTheirActualDetector"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "SpatialCanvasEstimateNeverClaimsMeasuredBoundsOrChangesSubmittedAspect"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "SpatialMeasuredAndUnavailableReadingsExposeTheirRealProducingMode"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "LegacyPhysicalObservationKeepsExistingLabelAndSourceResetClearsSpatialProvenance"
     }
   ]
 }

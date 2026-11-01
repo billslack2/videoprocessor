@@ -1,11 +1,12 @@
 #pragma once
 
+#include <ActivePictureTransitionModel.h>
 #include <cmath>
 #include <cstdint>
 #include <cwchar>
 #include <string>
 
-enum class PhysicalAspectConfidence : uint32_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT };
+enum class PhysicalAspectConfidence : uint32_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT, SOURCE_CANVAS_ESTIMATE };
 
 enum class PictureAspectUse : uint32_t { UNAVAILABLE, STARTUP_FALLBACK, DETECTED, HELD, PRESENTATION };
 
@@ -24,6 +25,7 @@ struct DetectedPictureAspect
     PhysicalAspectConfidence physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
     int physicalBounds[4] = {};
     bool physicalBoundsAvailable = false;
+    ActivePictureDetectorKind detectorKind = ActivePictureDetectorKind::Legacy;
 };
 
 // Presentation-only labels for the VP Renderer Ctrl+I OSD.
@@ -58,7 +60,11 @@ public:
             else if (reading.inUseState == PictureAspectUse::PRESENTATION) status = L"presentation";
             rows.inUse = Named(reading.inUseRatio, status);
         }
-        if (reading.available && !reading.provisional) {
+        const bool spatial = reading.detectorKind != ActivePictureDetectorKind::Legacy;
+        if (reading.physicalEvaluated &&
+            reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE) {
+            rows.detected = L"Canvas estimate (blank margins unresolved; source spatial experimental)";
+        } else if (reading.available && !reading.provisional) {
             wchar_t numeric[64] = {};
             swprintf_s(numeric, L"%.5f:1", reading.ratio);
             rows.detected = numeric;
@@ -70,10 +76,16 @@ public:
                     reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT ? L"source extent" : L"strong edge");
                 rows.detected += geometry;
             }
+            if (spatial) rows.detected += L" (source spatial experimental)";
         } else if (reading.physicalEvaluated)
             rows.detected = L"Unknown (boundaries unresolved)";
         else if (reading.provisional)
             rows.detected = L"Unknown (awaiting physical measurement)";
+        if (spatial && !reading.available &&
+            reading.physicalConfidence != PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE)
+            rows.detected = reading.physicalEvaluated ?
+                L"Unknown (boundaries unresolved; source spatial experimental)" :
+                L"Pending (source spatial experimental)";
         return rows;
     }
 
@@ -159,15 +171,18 @@ public:
         m_value.physicalEvaluated = false;
         m_value.physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
         m_value.physicalBoundsAvailable = false;
+        m_value.detectorKind = ActivePictureDetectorKind::Legacy;
         for (auto& coordinate : m_value.physicalBounds) coordinate = 0;
     }
     void ObservePhysical(uint64_t generation, uint64_t sequence,
         bool evaluated, bool estimateAvailable, PhysicalAspectConfidence confidence,
-        int left, int top, int right, int bottom)
+        int left, int top, int right, int bottom,
+        ActivePictureDetectorKind detectorKind = ActivePictureDetectorKind::Legacy)
     {
         Source(generation);
         m_value.detectedSequence = sequence;
         m_value.physicalEvaluated = evaluated;
+        m_value.detectorKind = detectorKind;
         m_value.physicalConfidence = confidence;
         m_value.available = evaluated && estimateAvailable &&
             (confidence == PhysicalAspectConfidence::STRONG_ABRUPT_EDGE ||
@@ -180,7 +195,8 @@ public:
         m_value.physicalBounds[1] = m_value.available ? top : 0;
         m_value.physicalBounds[2] = m_value.available ? right : 0;
         m_value.physicalBounds[3] = m_value.available ? bottom : 0;
-        if (!m_value.available) m_value.physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
+        if (!m_value.available && !(evaluated && confidence == PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE))
+            m_value.physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
     }
     void ClearDetection()
     { Observe(m_value.sourceGeneration, m_value.detectedSequence, 0.0, false, false); }

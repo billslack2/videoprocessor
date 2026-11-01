@@ -73,6 +73,92 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureTransitionModelTests)
 	{
 	public:
+        TEST_METHOD(SpatialDetectorTagCannotGrantCropAuthorityOrRenewUnknownFrames)
+        {
+            ActivePictureTransitionModel model;
+            ActivePictureObservation observation;
+            observation.bounds=ScopeBounds();observation.available=true;
+            observation.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+            observation.classification=ActivePictureClassification::PROVISIONAL;
+            for(uint64_t frame=1;frame<=6;++frame) {
+                observation.frameNumber=frame;
+                Assert::IsFalse(model.Observe(observation).publish);
+            }
+            observation.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            ActivePictureTransitionDecision accepted;
+            for(uint64_t frame=7;frame<=10;++frame) {
+                observation.frameNumber=frame;accepted=model.Observe(observation);
+                Assert::AreEqual(frame==10,accepted.publish);
+            }
+            Assert::AreEqual(int(observation.detector),int(accepted.detector));
+            observation.available=false;observation.frameNumber=11;
+            observation.detector=ActivePictureDetectorKind::SourceSpatialUnavailable;
+            const auto unknown=model.Observe(observation);
+            Assert::IsFalse(unknown.publish);
+            Assert::AreEqual(int(ActivePictureDetectorKind::SourceSpatialMeasured),int(unknown.detector));
+            Assert::AreEqual(int(unknown.detector),int(unknown.stableDetector));
+            observation.available=true;observation.frameNumber=10;
+            observation.detector=ActivePictureDetectorKind::Legacy;
+            const auto repeat=model.Observe(observation);
+            Assert::IsFalse(repeat.publish);
+            Assert::AreEqual(int(unknown.detector),int(repeat.detector));
+        }
+
+        TEST_METHOD(ExactCurrentGeometryCanAcceptNewDetectorButProvisionalCannotRelabelIt)
+        {
+            ActivePictureTransitionModel model;Establish(model,ScopeBounds());
+            ActivePictureObservation observation;
+            observation.bounds=ScopeBounds();observation.available=true;observation.frameNumber=5;
+            observation.classification=ActivePictureClassification::PROVISIONAL;
+            observation.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+            const auto provisional=model.Observe(observation);
+            Assert::IsFalse(provisional.publish);
+            Assert::AreEqual(int(ActivePictureDetectorKind::Legacy),int(provisional.stableDetector));
+            observation.classification=ActivePictureClassification::BAR_CROP_TRUSTED;observation.frameNumber=6;
+            const auto verified=model.Observe(observation);
+            Assert::IsTrue(verified.publish);
+            Assert::AreEqual(int(observation.detector),int(verified.detector));
+            Assert::AreEqual(int(observation.detector),int(verified.stableDetector));
+            Assert::IsTrue(model.ResetForNativeQueueContinuity(ScopeBounds()));
+            observation.available=false;observation.frameNumber=7;
+            Assert::AreEqual(int(observation.detector),int(model.Observe(observation).stableDetector));
+        }
+
+        TEST_METHOD(ReacquiredHistoryAndQueuedAdoptionKeepTheirActualDetector)
+        {
+            ActivePictureTransitionModel model;
+            ActivePictureObservation observation;
+            observation.available=true;observation.bounds=ScopeBounds();
+            observation.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            observation.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+            for(uint64_t frame=1;frame<=4;++frame){observation.frameNumber=frame;model.Observe(observation);}
+            observation.bounds=ImaxBounds();observation.detector=ActivePictureDetectorKind::Legacy;
+            observation.frameNumber=5;model.Observe(observation);observation.frameNumber=6;
+            Assert::IsTrue(model.Observe(observation).publish);
+            observation.bounds=ScopeBounds();observation.classification=ActivePictureClassification::PROVISIONAL;
+            observation.frameNumber=7;model.Observe(observation);observation.frameNumber=8;
+            const auto returning=model.Observe(observation);
+            Assert::IsTrue(returning.publish);
+            Assert::IsTrue(returning.knownTrustedGeometryReacquired);
+            Assert::AreEqual(int(ActivePictureDetectorKind::SourceSpatialMeasured),int(returning.detector));
+            Assert::AreEqual(int(ActivePictureDetectorKind::Legacy),int(returning.stableDetector));
+            ActivePictureTransitionModel queued;
+            ActivePictureObservation canvas;
+            canvas.available=true;canvas.bounds={0,0,3840,2160,3840,2160,16.0/9.0,ActivePictureBounds::BarAxes::NONE};
+            canvas.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            canvas.detector=ActivePictureDetectorKind::SourceSpatialCanvas;canvas.frameNumber=1;
+            const auto publication=queued.Observe(canvas);
+            Assert::IsTrue(publication.publish);
+            ActivePictureTransitionModel live;
+            Assert::IsTrue(live.AdoptPublishedDecision(publication,canvas.classification));
+            canvas.available=false;canvas.frameNumber=2;
+            Assert::AreEqual(int(canvas.detector),int(live.Observe(canvas).detector));
+            auto forged=publication;forged.bounds=ScopeBounds();forged.stableBounds={};
+            ActivePictureTransitionModel untrusted;
+            Assert::IsFalse(untrusted.AdoptPublishedDecision(forged,ActivePictureClassification::PROVISIONAL),
+                L"Detector provenance must not promote provisional geometry to native crop authority");
+        }
+
         TEST_METHOD(IncompletePillarboxCannotAcquireFromStartupOrFullRaster)
         {
             for (bool fullFirst : {false, true})

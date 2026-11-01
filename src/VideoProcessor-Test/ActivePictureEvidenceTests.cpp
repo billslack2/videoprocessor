@@ -9593,4 +9593,145 @@ namespace VideoProcessorTest
         }
     };
 
+    TEST_CLASS(SuppliedActivePictureCandidateTests)
+    {
+    public:
+        TEST_METHOD(SuppliedCandidateVerifiesUnevenAsymmetricOddGeometryWithoutLegacyNomination)
+        {
+            for(bool windowbox:{false,true}) {
+                const int width=windowbox?960:3840,height=windowbox?540:2160;
+                P010Frame frame(width,height,0,true);frame.Fill(64,512,512);
+                ActivePictureBounds measured=windowbox?ActivePictureBounds{17,63,939,487,960,540}:
+                    ActivePictureBounds{0,263,3840,1897,3840,2160};
+                measured.aspectRatio=double(measured.right-measured.left)/(measured.bottom-measured.top);
+                frame.FillRectangle(measured.left,measured.top,measured.right,measured.bottom,68,512,512);
+                frame.FillRectangle(measured.left,measured.top,measured.right,measured.bottom-24,200,530,490);
+                frame.FillRectangle(measured.left,measured.bottom-24,measured.left+(measured.right-measured.left)/4,measured.bottom,240,530,490);
+                auto source=frame.P210Source();source.range=AnalysisLumaRange::Limited;
+                const auto checked=VerifySuppliedActivePictureCandidate(source,measured);
+                Logger::WriteMessage(checked.reason.c_str());
+                Assert::IsTrue(checked.available);
+                Assert::IsTrue(checked.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                    L"Independent strong nomination must not re-enter legacy symmetry/even-coordinate/positive-quartile acquisition gates.");
+                Assert::AreEqual(measured.top,checked.proposedBounds.top);Assert::AreEqual(measured.bottom,checked.proposedBounds.bottom);
+                Assert::AreEqual(measured.left,checked.proposedBounds.left);Assert::AreEqual(measured.right,checked.proposedBounds.right);
+                Assert::IsTrue(checked.trustedBounds.left<=measured.left && checked.trustedBounds.top<=measured.top &&
+                    checked.trustedBounds.right>=measured.right && checked.trustedBounds.bottom>=measured.bottom,
+                    L"Chroma-safe discard guard can expand outward, never round into measured picture.");
+                Assert::IsTrue(checked.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                if(windowbox)Assert::IsTrue(checked.candidateVerification.horizontal==ActivePictureCandidateVerificationState::VERIFIED);
+                Assert::IsTrue(checked.detector==ActivePictureDetectorKind::Legacy,
+                    L"The adapter owns detector provenance; a standalone verifier invents no upstream detector tag.");
+            }
+        }
+        TEST_METHOD(SuppliedCandidateRejectsExcludedConnectedPictureWithoutInventingAnotherMeasurement)
+        {
+            P010Frame frame(960,540,0,true);frame.Fill(64,512,512);
+            frame.FillRectangle(0,66,960,474,240,530,490);
+            const auto wrong=ScopePresentation(960,540,80,460);
+            const auto checked=VerifySuppliedActivePictureCandidate(frame.P210Source(),wrong);
+            Assert::IsTrue(checked.classification!=ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::IsTrue(checked.candidateVerification.vertical==ActivePictureCandidateVerificationState::CONTRADICTED);
+            Assert::AreEqual(80,checked.proposedBounds.top);Assert::AreEqual(460,checked.proposedBounds.bottom);
+            Assert::IsFalse(checked.physicalEdges.estimateAvailable,
+                L"Rejecting an unsafe supplied crop does not make the safe retained raster a measured replacement aspect.");
+        }
+        TEST_METHOD(SuppliedCandidateKeepsSparseOverlayGeometrySeparateFromOccupiedPixelRetention)
+        {
+            P010Frame frame(960,540,0,true);frame.Fill(64,512,512);
+            frame.FillRectangle(0,66,960,474,240,530,490);
+            frame.FillRectangle(480,500,488,512,800,512,512);
+            const auto checked=VerifySuppliedActivePictureCandidate(frame.P210Source(),ScopePresentation(960,540,66,474));
+            Assert::IsTrue(checked.available);
+            Assert::IsTrue(checked.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                L"An isolated sparse glyph outlier may coexist with a verified native boundary; it is not permission to erase the glyph.");
+            const auto retention=EvaluateActivePicturePresentationRetention(frame.P210Source(),checked.trustedBounds);
+            Assert::IsFalse(retention.excludedBandsPixelSafe,
+                L"Native boundary verification and preservation of occupied excluded pixels remain separate authorities.");
+        }
+        TEST_METHOD(SuppliedSpatialCaptionProofUsesExactNomineeAndCurrentInkWithoutLegacyBars)
+        {
+            auto frame=MakeSubtitleProofFrame(264,1896,true);
+            auto source=frame.P010Source();source.generation=17;
+            const auto identity=MakeSubtitleProofIdentity(source,9);
+            const auto bounds=ScopePresentation(3840,2160,264,1896);
+            auto current=std::make_unique<SubtitleBoxObservation>(MeasureSubtitleProofFrame(source,identity,47,23,SubtitleScriptHint::Latin));
+            Assert::IsTrue(current->analyzed && current->text.detected && current->ink && current->ink->rawEvidenceComplete);
+            auto measured=VerifySuppliedActivePictureCandidate(source,bounds);
+            measured.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+            measured.physicalEdges.evaluated=measured.physicalEdges.estimateAvailable=true;
+            measured.physicalEdges.estimate=bounds;
+            // Native pixels retain their format generation while the proof
+            // source has already been rebound to current transport generation.
+            measured.physicalEdges.sourceGeneration=identity.sourceFormatGeneration;
+            current->independentBarAnalysis=false;current->barAuthority=false;current->barEvidence={};
+            const auto proof=VerifySuppliedActivePictureCandidateWithSubtitle(source,measured,*current,identity,47,23,SubtitleScriptHint::Latin);
+            Logger::WriteMessage(proof.reason);
+            Assert::IsTrue(proof.accepted,L"Exact current glyph masking must verify a supplied spatial edge without legacy bar nomination.");
+            Assert::IsTrue(proof.IsCurrentFor(source,identity,47,23,SubtitleScriptHint::Latin));
+            Assert::AreEqual(264,proof.candidate.top);Assert::AreEqual(1896,proof.candidate.bottom);
+            Assert::IsTrue(proof.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured);
+            Assert::IsTrue(proof.evidence.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+            Assert::AreEqual(1896,proof.evidence.physicalEdges.estimate.bottom);
+            for(int fault=0;fault<10;++fault) {
+                auto wrong=*current;auto supplied=measured;
+                switch(fault) {
+                case 0: ++wrong.identity.acceptedSequence;break;
+                case 1: ++wrong.identity.analysisDomainKey;break;
+                case 2: ++wrong.policyGeneration;break;
+                case 3: ++wrong.continuityGeneration;break;
+                case 4: wrong.text.held=true;break;
+                case 5: wrong.pendingRefresh=true;break;
+                case 6: wrong.text.workLimit=true;break;
+                case 7: supplied.detector=ActivePictureDetectorKind::SourceSpatialCanvas;break;
+                case 8: supplied.physicalEdges.sourceGeneration=99;break;
+                case 9: supplied.physicalEdges.estimate.bottom-=2;break;
+                }
+                const auto rejected=VerifySuppliedActivePictureCandidateWithSubtitle(source,supplied,wrong,identity,47,23,SubtitleScriptHint::Latin);
+                Assert::IsFalse(rejected.accepted);
+                Assert::AreEqual(supplied.proposedBounds.bottom,rejected.evidence.proposedBounds.bottom);
+                Assert::IsTrue(rejected.evidence.classification==supplied.classification);
+            }
+        }
+        TEST_METHOD(SuppliedSpatialCaptionMaskCannotExplainUnownedConnectedPictureOrMenu)
+        {
+            auto frame=MakeSubtitleProofFrame(264,1896,true);
+            auto source=frame.P010Source();const auto identity=MakeSubtitleProofIdentity(source,9);
+            const auto bounds=ScopePresentation(3840,2160,264,1896);
+            auto current=std::make_unique<SubtitleBoxObservation>(MeasureSubtitleProofFrame(source,identity,47,23,SubtitleScriptHint::Latin));
+            auto measured=VerifySuppliedActivePictureCandidate(source,bounds);
+            measured.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+            measured.physicalEdges.evaluated=measured.physicalEdges.estimateAvailable=true;
+            measured.physicalEdges.estimate=bounds;measured.physicalEdges.sourceGeneration=source.generation;
+            Assert::IsTrue(VerifySuppliedActivePictureCandidateWithSubtitle(source,measured,*current,identity,47,23,SubtitleScriptHint::Latin).accepted);
+            // Unowned picture continuation lies away from all actual glyphs.
+            frame.FillRectangle(100,1880,900,1940,400,530,490);
+            Assert::IsFalse(VerifySuppliedActivePictureCandidateWithSubtitle(source,measured,*current,identity,47,23,SubtitleScriptHint::Latin).accepted);
+            // A broad detached interface panel also cannot be explained by
+            // the original caption mask or promoted into a different nominee.
+            frame.FillRectangle(0,1950,3840,2060,300,530,490);
+            const auto menu=VerifySuppliedActivePictureCandidateWithSubtitle(source,measured,*current,identity,47,23,SubtitleScriptHint::Latin);
+            Assert::IsFalse(menu.accepted);Assert::AreEqual(1896,menu.evidence.proposedBounds.bottom);
+        }
+        TEST_METHOD(SuppliedCandidateInvalidOrCancelledVerificationCannotCarryAuthority)
+        {
+            P010Frame frame(960,540,0,true);frame.Fill(64,512,512);
+            frame.FillRectangle(0,66,960,474,240,530,490);
+            const auto candidate=ScopePresentation(960,540,66,474);
+            auto bad=candidate;bad.rasterWidth=959;
+            Assert::IsFalse(VerifySuppliedActivePictureCandidate(frame.P210Source(),bad).available);
+            auto missing=frame.P210Source();missing.data=nullptr;
+            Assert::IsFalse(VerifySuppliedActivePictureCandidate(missing,candidate).available);
+            AnalysisEvaluationBudget expired([](void*){return true;},nullptr);
+            const auto cancelled=VerifySuppliedActivePictureCandidate(frame.P210Source(),candidate,&expired);
+            Assert::IsTrue(expired.Cancelled());
+            Assert::IsFalse(cancelled.available);
+            Assert::IsTrue(cancelled.classification==ActivePictureClassification::UNAVAILABLE);
+            auto full=ScopePresentation(960,540,0,540);
+            const auto retained=VerifySuppliedActivePictureCandidate(frame.P210Source(),full);
+            Assert::IsTrue(retained.available && retained.classification==ActivePictureClassification::FULL_RASTER_TRUSTED);
+            Assert::IsFalse(retained.physicalEdges.estimateAvailable);
+        }
+    };
+
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include <SourcePictureDetector.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCadenceGuard.h>
 #include <AnalysisDiagnosticHooks.h>
@@ -79,14 +80,26 @@ public:
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
         result.analysisStride=key.analysisStride;
-        if (!result.inspectionCandidateUsed && result.independentBarAnalysis && result.text.detected && !result.text.held &&
-            !result.text.workLimit) {
-            const auto raw=nativeEvidence.available ? nativeEvidence : ExtractActivePictureEvidence(source);
-            // Prepared queued pixels use a format generation for cache ownership;
-            // the proof contract is bound to the immutable transport identity.
+        if (!result.inspectionCandidateUsed && result.text.detected && !result.text.held && !result.text.workLimit) {
+            // Geometry and current glyph ownership are independent facts. Active
+            // mode verifies the spatial nominee through its occlusion; a caption
+            // never nominates a replacement rectangle.
             auto proofSource=source;proofSource.generation=result.identity.transportGeneration;
-            result.subtitleArProof=EvaluateSubtitleAssistedVerticalBarProof(proofSource,raw,result,
-                result.identity,result.policyGeneration,result.continuityGeneration,result.scriptHint);
+            if(SourcePictureDetectorEnabled()) {
+                result.subtitleArProof=VerifySuppliedActivePictureCandidateWithSubtitle(proofSource,nativeEvidence,result,
+                    result.identity,result.policyGeneration,result.continuityGeneration,result.scriptHint);
+                auto trace=AnalysisTraceRecord(result.identity,nullptr,"source-picture-caption-proof",result.subtitleArProof.reason);
+                trace.policyGeneration=result.policyGeneration;trace.continuityGeneration=result.continuityGeneration;
+                trace.resultCode=static_cast<int32_t>(result.subtitleArProof.evidence.detector);
+                trace.flags=(result.subtitleArProof.accepted?1u:0u)|(nativeEvidence.physicalEdges.estimateAvailable?2u:0u);
+                AnalysisTraceRect(trace.measured,nativeEvidence.physicalEdges.estimate);
+                AnalysisTraceRect(trace.published,result.subtitleArProof.candidate);
+                AnalysisDiagnosticTrace::Emit(trace);
+            } else if(result.independentBarAnalysis) {
+                const auto raw=nativeEvidence.available ? nativeEvidence : ExtractActivePictureEvidence(source);
+                result.subtitleArProof=EvaluateSubtitleAssistedVerticalBarProof(proofSource,raw,result,
+                    result.identity,result.policyGeneration,result.continuityGeneration,result.scriptHint);
+            }
             if (result.subtitleArProof.accepted)
                 result.subtitleArDarkness=EvaluateActivePictureArDarkness(proofSource,result.subtitleArProof.evidence);
         }

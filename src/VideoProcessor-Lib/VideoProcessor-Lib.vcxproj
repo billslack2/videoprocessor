@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -284,6 +284,7 @@
 	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="ActivePictureEvidence.h" />
     <ClInclude Include="SourcePictureMeasurement.h" />
+    <ClInclude Include="SourcePictureDetector.h" />
     <ClInclude Include="LocalBoundaryDiagnostics.h" />
     <ClInclude Include="SparseBoundaryCropExperiment.h" />
     <ClInclude Include="vprenderer\InwardCaptionEvidence.h" />
@@ -382,6 +383,7 @@
 	<ClCompile Include="ActivePictureAnalyzer.cpp" />
     <ClCompile Include="ActivePictureEvidence.cpp" />
     <ClCompile Include="SourcePictureMeasurement.cpp" />
+    <ClCompile Include="SourcePictureDetector.cpp" />
     <ClCompile Include="LocalBoundaryDiagnostics.cpp" />
     <ClCompile Include="SparseBoundaryCropExperiment.cpp" />
     <ClCompile Include="vprenderer\InwardCaptionEvidence.cpp" />

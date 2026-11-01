@@ -1278,6 +1278,8 @@ namespace AlphaSourceCrop
         ActivePictureBounds bounds;
         uint64_t sourceGeneration = 0, acceptedSourceSequence = 0;
         uint64_t sourceFormatKey = 0, analysisDomainKey = 0;
+        // Producing detector only; never grants crop or caption authority.
+        ActivePictureDetectorKind detector = ActivePictureDetectorKind::Legacy;
     };
 
     enum class NativePresentationOrigin : uint8_t

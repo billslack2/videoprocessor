@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <SourcePictureDetector.h>
 #include "CppUnitTest.h"
 
 #include "../VideoProcessor-Lib/vprenderer/LibplaceboPluginVideoRenderer.h"
@@ -272,6 +273,15 @@ namespace
             return found==sources.end()?empty:found->second;
         }
     };
+    bool SourceSpatialExperimentRequested() {
+        char value[8]={};
+        return GetEnvironmentVariableA("VP_SOURCE_PICTURE_DETECTOR",value,sizeof(value))==1 && value[0]=='1';
+    }
+    bool IsMeasuredSpatialNativeSubmission(const AnalysisDiagnosticRecordV1& record) {
+        return (record.flags&1u) && record.counters[4]!=0 && (record.flags&32u) && (record.flags&64u) &&
+            ((record.flags>>24)&3u)==unsigned(ActivePictureDetectorKind::SourceSpatialMeasured);
+    }
+
     struct ScopedCadenceDiagnostics {
         std::string previous;bool existed=false,enabled=false;
         explicit ScopedCadenceDiagnostics(bool activate):enabled(activate) {
@@ -611,6 +621,64 @@ namespace VideoProcessorTest
             Assert::AreEqual(L"libplacebo-388.dll", PrivateDependencies(true)[3]);
             Assert::AreEqual(L"libplacebo-360.dll", PrivateDependencies()[3]);
         }
+        TEST_METHOD(SpatialCanvasEstimateNeverClaimsMeasuredBoundsOrChangesSubmittedAspect)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.Submitted(7,1,2.35,16.0/9.0,true,true);
+            const auto used=telemetry.Read().inUseRatio;
+            telemetry.ObservePhysical(7,2,true,false,PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE,
+                0,0,3840,2160,ActivePictureDetectorKind::SourceSpatialCanvas);
+            const auto reading=telemetry.Read();
+            Assert::IsFalse(reading.available);
+            Assert::IsFalse(reading.physicalBoundsAvailable);
+            Assert::AreEqual(0.0,reading.ratio);
+            Assert::AreEqual(used,reading.inUseRatio);
+            Assert::AreEqual(int(PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE),int(reading.physicalConfidence));
+            Assert::IsTrue(AspectRatioOsd::Format(reading).detected==
+                L"Canvas estimate (blank margins unresolved; source spatial experimental)");
+            telemetry.Submitted(7,2,16.0/9.0,16.0/9.0,true,false);
+            Assert::AreEqual(used,telemetry.Read().inUseRatio,
+                L"Neither source inference nor failed submission can change the actually used aspect");
+        }
+
+        TEST_METHOD(SpatialMeasuredAndUnavailableReadingsExposeTheirRealProducingMode)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.ObservePhysical(3,10,true,true,PhysicalAspectConfidence::STRONG_ABRUPT_EDGE,
+                0,263,3840,1897,ActivePictureDetectorKind::SourceSpatialMeasured);
+            const auto measured=telemetry.Read();
+            Assert::IsTrue(measured.available);
+            Assert::AreEqual(3840.0/1634.0,measured.ratio);
+            const auto label=AspectRatioOsd::Format(measured).detected;
+            Assert::IsTrue(label.find(L"0,263..3840,1897")!=std::wstring::npos);
+            Assert::IsTrue(label.find(L"source spatial experimental")!=std::wstring::npos);
+            telemetry.ObservePhysical(3,11,false,false,PhysicalAspectConfidence::UNKNOWN,
+                0,0,0,0,ActivePictureDetectorKind::SourceSpatialUnavailable);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected==
+                L"Pending (source spatial experimental)");
+            telemetry.ObservePhysical(3,12,true,false,PhysicalAspectConfidence::UNKNOWN,
+                0,0,0,0,ActivePictureDetectorKind::SourceSpatialUnavailable);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected==
+                L"Unknown (boundaries unresolved; source spatial experimental)");
+            Assert::IsFalse(telemetry.Read().physicalBoundsAvailable);
+        }
+
+        TEST_METHOD(LegacyPhysicalObservationKeepsExistingLabelAndSourceResetClearsSpatialProvenance)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.ObservePhysical(3,1,true,true,PhysicalAspectConfidence::STRONG_ABRUPT_EDGE,
+                0,263,3840,1897);
+            Assert::AreEqual(int(ActivePictureDetectorKind::Legacy),int(telemetry.Read().detectorKind));
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"experimental")==std::wstring::npos);
+            telemetry.ObservePhysical(3,2,true,false,PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE,
+                0,0,3840,2160,ActivePictureDetectorKind::SourceSpatialCanvas);
+            telemetry.Source(4);
+            Assert::IsFalse(telemetry.Read().physicalEvaluated);
+            Assert::IsFalse(telemetry.Read().physicalBoundsAvailable);
+            Assert::AreEqual(int(ActivePictureDetectorKind::Legacy),int(telemetry.Read().detectorKind));
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected==L"Unavailable");
+        }
+
 		TEST_METHOD(AspectOsdMapsEveryNamedFormat)
 		{
 			struct Expected { double value; const wchar_t* ratio; const wchar_t* name; };
@@ -2288,6 +2356,7 @@ namespace VideoProcessorTest
         // output is inspected in sink order, including outputs between OSD publications.
         void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputRepeat=false,bool nativePreflightOnly=false,bool alternatingPreflight=false)
         {
+            const bool requireSpatial=SourceSpatialExperimentRequested();
             ScopedCadenceDiagnostics cadenceDiagnostics(!nativePreflightOnly&&SubtitlePreviewOverridesClassicHandling(static_cast<SubtitlePreviewMode>(requestedMode)));
             constexpr int width=3840,height=2160,pictureTop=262,pictureBottom=1898,captionBottom=1940;
             struct ProbeClock final : ITimingClock {
@@ -2333,6 +2402,17 @@ namespace VideoProcessorTest
                 AnalysisLumaSource decoded{converted.data(),converted.size(),width,height,size_t(width)*2,size_t(width)*2,
                     AnalysisLumaFormat::DecodedDolbyVision422,VideoFrameEncoding::R210,ColorSpace::BT_2020,1};
                 decoded.range=AnalysisLumaRange::Full; // DmBody explicitly declares full range.
+                ActivePictureEvidence spatialPreflight;
+                if(requireSpatial) {
+                    const auto measured=DetectSourcePictureForWorker(decoded);spatialPreflight=measured.evidence;
+                    Logger::WriteMessage((std::string("Active DV spatial preflight: phase=")+std::to_string(phase)+
+                        " available="+std::to_string(spatialPreflight.available)+" classification="+std::to_string(int(spatialPreflight.classification))+
+                        " physical="+std::to_string(spatialPreflight.physicalEdges.estimate.top)+"-"+std::to_string(spatialPreflight.physicalEdges.estimate.bottom)+
+                        " reason="+spatialPreflight.reason).c_str());
+                    Assert::IsTrue(spatialPreflight.physicalEdges.estimateAvailable &&
+                        spatialPreflight.physicalEdges.estimate.top==pictureTop && spatialPreflight.physicalEdges.estimate.bottom==pictureBottom,
+                        L"Active spatial measurement must preserve the exact DV picture despite crossing captions.");
+                }
                 if(alternatingPreflight)alternatingDecoded[phase]=converted; // Immutable base copy before pressure mutation.
                 AnalysisLumaSample sample;
                 Assert::IsTrue(decoded.Sample(1552,1890,sample)&&sample.luma==892,
@@ -2353,7 +2433,14 @@ namespace VideoProcessorTest
                     key->sharedPicture.required=true;key->sharedPicture.identity=key->identity;
                     key->sharedPicture.bounds={0,pictureTop,width,pictureBottom,width,height,
                         double(width)/(pictureBottom-pictureTop),ActivePictureBounds::BarAxes::TOP_BOTTOM};
-                    auto measured=baseSampler->Measure(decoded,*key,prior,60.0);
+                    auto measured=baseSampler->Measure(decoded,*key,prior,60.0,spatialPreflight);
+                    if(requireSpatial)Logger::WriteMessage((std::string("Active DV caption proof: accepted=")+std::to_string(measured.subtitleArProof.accepted)+
+                        " pending="+std::to_string(measured.text.confirmationPending)+" local="+std::to_string(measured.glyphLocalTop)+"/"+std::to_string(measured.glyphLocalBottom)+
+                        " reason="+measured.subtitleArProof.reason).c_str());
+                    if(requireSpatial && index>=2)Assert::IsTrue(measured.subtitleArProof.accepted &&
+                        measured.subtitleArProof.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+                        measured.subtitleArProof.candidate.top==pictureTop && measured.subtitleArProof.candidate.bottom==pictureBottom,
+                        L"Current caption occlusion must verify the supplied spatial nominee without replacing its geometry.");
                     Logger::WriteMessage((std::string("Decoded-DV base preflight: phase=")+std::to_string(phase)+
                         " sequence="+std::to_string(index+1)+" analyzed="+std::to_string(measured.analyzed)+
                         " detected="+std::to_string(measured.text.detected)+" lines="+std::to_string(measured.text.lineCount)+
@@ -2769,6 +2856,8 @@ namespace VideoProcessorTest
                                 record.flags==(original.flags|16384u)&&record.metrics[0]==original.metrics[0]&&
                                 record.metrics[5]>record.metrics[0]&&record.metrics[5]-record.metrics[0]<=1.5/inputHz,
                                 L"Repeated output must retain its original complete successful image and bounded source age.");
+                            if(requireSpatial)require(((record.flags>>24)&3u)==((original.flags>>24)&3u),
+                                L"Whole-image repeat must retain the original producing detector, not borrow current metadata.");
                             for(int i=1;i<8;++i)require(record.counters[i]==original.counters[i],
                                 L"Repeating final pixels cannot renew caption, native or certificate source ownership.");
                             for(int i=0;i<4;++i)require(record.displayed[i]==original.displayed[i]&&
@@ -2778,6 +2867,8 @@ namespace VideoProcessorTest
                                 L"Whole-image repeat cannot silently change source or target crop coordinates.");
                         } else require((record.flags&16384u)==0,
                             L"A repeat must expose consumed current and original displayed source separately.");
+                        if(requireSpatial && record.counters[4])require(IsMeasuredSpatialNativeSubmission(record),
+                            L"ACTIVE native authority and successfully submitted certificate must originate in source-spatial measurement (flags24..25), not legacy or unavailable evidence.");
                         require(std::isfinite(record.metrics[8])&&std::isfinite(record.metrics[9])&&
                             record.metrics[10]>record.metrics[8]&&record.metrics[11]>record.metrics[9],
                             L"Every successful output must publish valid actual source coordinates.");
@@ -3153,6 +3244,7 @@ namespace VideoProcessorTest
         { VerifyClassicUhdBarOverlay(true,true,true,true,false,false,true); }
         void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false)
         {
+            const bool requireSpatial=SourceSpatialExperimentRequested();
             HMODULE self=nullptr;
             Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                 GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -3182,6 +3274,18 @@ namespace VideoProcessorTest
             const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(
                 GetProcAddress(plugin,VP_LIBPLACEBO_DESTROY_EXPORT));
             Assert::IsTrue(create&&destroy);
+            const auto diagnostics=requireSpatial?reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticFn>(
+                GetProcAddress(plugin,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT)):nullptr;
+            struct DiagnosticCleanup {
+                VideoProcessorLibplaceboConfigureDiagnosticFn callback;
+                ~DiagnosticCleanup(){if(callback)callback(nullptr,nullptr,nullptr,nullptr);}
+            } diagnosticCleanup{diagnostics};
+            size_t spatialCursor=0;std::vector<AnalysisDiagnosticRecordV1> spatialOutputs,spatialAccepted;
+            if(requireSpatial) {
+                Assert::IsTrue(diagnostics!=nullptr);
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=true;}
+                diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
+            }
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
             Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0);
             Assert::IsTrue(GetTempFileNameA(temp,"art",0,configPath)!=0);
@@ -3202,7 +3306,7 @@ namespace VideoProcessorTest
             std::vector<uint16_t> taller=scope,dark=scope;
             for(int y=0;y<height;++y) for(int x=0;x<width;++x) {
                 scope[y*width+x]=uint16_t(((y>=scopeBar&&y<height-scopeBar)?300:64)<<6);
-                taller[y*width+x]=uint16_t(((y>=12&&y<348)?300:64)<<6);
+                taller[y*width+x]=uint16_t(((requireSpatial || (y>=12&&y<348))?300:64)<<6);
                 dark[y*width+x]=uint16_t(64<<6);
             }
             SnapshotTestCallback callback;NativeP210Buffer buffer;
@@ -3213,9 +3317,13 @@ namespace VideoProcessorTest
             } cleanup{CreateWindowExW(0,L"STATIC",L"AR transition fixture",WS_POPUP,
                 0,0,640,360,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
             Assert::IsNotNull(cleanup.window);
-            cleanup.renderer=create(&callback,42,cleanup.window,nullptr,false,1,
+            cleanup.renderer=create(&callback,42,cleanup.window,nullptr,requireSpatial,requireSpatial?9:1,
                 VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,SnapshotTestLog);
             Assert::IsNotNull(cleanup.renderer);
+            // This experiment requires prepared-source lead. Keep the legacy
+            // zero-depth case, and exercise the active mode with the user's
+            // queued playback contract rather than inventing a stale-frame vote.
+            if(requireSpatial) { cleanup.renderer->SetQueueFramePolicy(4,9,true);cleanup.renderer->SetActivePictureLookaheadFrames(4); }
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));
             cleanup.renderer->Build();cleanup.renderer->Start();
             uint64_t sequence=1;
@@ -3228,6 +3336,17 @@ namespace VideoProcessorTest
                     cleanup.renderer->OnVideoFrame(frame);
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                if(requireSpatial) {
+                    std::vector<AnalysisDiagnosticRecordV1> tail;
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);CopyUnreadCallbackTail(classicPoseRecords,spatialCursor,tail);}
+                    for(const auto& record:tail) {
+                        if(!strcmp(record.stage,"accepted-picture-detector"))spatialAccepted.push_back(record);
+                        if(strcmp(record.stage,"submitted-presentation") || !(record.flags&1u))continue;
+                        if(record.counters[4])Assert::IsTrue(IsMeasuredSpatialNativeSubmission(record),
+                            L"ACTIVE native and submitted crop/certificate must carry source-spatial measured provenance, not merely new OSD metadata.");
+                        if(((record.flags>>24)&3u)==unsigned(ActivePictureDetectorKind::SourceSpatialMeasured))spatialOutputs.push_back(record);
+                    }
+                }
                 DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);
                 return value;
             };
@@ -3239,7 +3358,25 @@ namespace VideoProcessorTest
                     value=pump(pixels);
                     if(value.inUseAvailable&&value.available&&!value.provisional&&
                         value.presentedSequence>=first&&value.detectedSequence>=first&&
-                        std::abs(value.inUseRatio-applied)<0.015&&std::abs(value.ratio-expected)<0.015) return value;
+                        std::abs(value.inUseRatio-applied)<0.015&&std::abs(value.ratio-expected)<0.015) {
+                        if(requireSpatial) {
+                            Assert::AreEqual(int(ActivePictureDetectorKind::SourceSpatialMeasured),int(value.detectorKind));
+                            bool submitted=false;
+                            for(const auto& record:spatialOutputs)if(record.counters[1]>=first) {
+                                const double cropWidth=record.metrics[10]-record.metrics[8],cropHeight=record.metrics[11]-record.metrics[9];
+                                for(const auto& accepted:spatialAccepted) {
+                                    const double nativeWidth=accepted.published[2]-accepted.published[0],nativeHeight=accepted.published[3]-accepted.published[1];
+                                    submitted|=accepted.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
+                                        accepted.acceptedSequence>=first && accepted.acceptedSequence<=record.counters[1] &&
+                                        accepted.transportGeneration==record.transportGeneration &&
+                                        nativeWidth>0&&nativeHeight>0&&cropWidth>0&&cropHeight>0&&
+                                        std::abs(nativeWidth/nativeHeight-expected)<0.015&&std::abs(cropWidth/cropHeight-applied)<0.015;
+                                }
+                            }
+                            Assert::IsTrue(submitted,L"Matching ACTIVE detected AR must reach accepted native bounds and actual submitted crop for the changed source.");
+                        }
+                        return value;
+                    }
                 }while(std::chrono::steady_clock::now()<deadline&&callback.state!=RENDERSTATE_FAILED);
                 Logger::WriteMessage((std::string("AR actual in_use=")+std::to_string(value.inUseRatio)+
                     " detected="+std::to_string(value.ratio)+" provisional="+std::to_string(value.provisional)).c_str());
@@ -3259,7 +3396,8 @@ namespace VideoProcessorTest
                 }
             }
             Assert::IsTrue(checked>20,L"Dark interval did not exercise enough actual submissions");
-            acquire(taller,640.0/336,640.0/336,L"Real renderer retained old scope over verified taller picture");
+            const double tallerAspect=requireSpatial?double(width)/height:640.0/336;
+            acquire(taller,tallerAspect,tallerAspect,L"Real renderer retained old scope over verified taller/full-raster picture");
             acquire(scope,nativeScope,configuredFill?2.35:nativeScope,L"Real renderer did not return to verified scope and selected presentation");
         }
 		TEST_METHOD(ActivePictureLookaheadHasExplicitProxyOverride)
