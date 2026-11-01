@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 822,
+  "minimumNativeTests": 824,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -102,7 +102,8 @@
     "InwardOwnerBypassRetainsExactSourceAndMovingPictureVetoes",
     "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey",
     "ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource",
-    "SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate"
+    "SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate",
+    "ComposedCaptionRequiresFreshSourceOrOneIdenticalCompletedImageRepeat"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -145,6 +146,11 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 28,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/SubmittedNativeFillRetentionTests.cpp",
+      "class": "SubmittedNativeFillRetentionTests",
+      "method": "AdvancedNativeFillIgnoresCaptionLeaseWhileShadersBuildAndAfterPreparation"
+    },
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
@@ -264,6 +270,11 @@
       "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
       "class": "MotionRendererTests",
       "method": "SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ComposedCaptionRequiresFreshSourceOrOneIdenticalCompletedImageRepeat"
     }
   ]
 }

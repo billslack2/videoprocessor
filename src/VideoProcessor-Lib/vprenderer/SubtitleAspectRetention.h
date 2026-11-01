@@ -63,7 +63,14 @@ inline bool CanRecordSubtitleOptionalAspectFill(const AlphaSourceCrop::Input& cr
     // Advanced styles have already undone the shared Classic translation.
     // The exact-native check below forbids certifying any remaining shift or
     // expanded viewport; mode alone is never evidence of a native presentation.
-    return (!captionPresentationHeld || fill.retainedSubmittedFill) && fill.applied && presentation.applyCrop &&
+    // The requested advanced policy owns the unshifted native picture even
+    // while its effective shader mode is None. A caption lease still protects
+    // glyph/erasure continuity, but cannot veto recording that actual fill.
+    // Exact native bounds and every normal fill/owner gate remain mandatory.
+    const bool advancedNativePicture=exactNativeBounds &&
+        (crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::BLACK ||
+         crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION);
+    return (!captionPresentationHeld || advancedNativePicture || fill.retainedSubmittedFill) && fill.applied && presentation.applyCrop &&
         !fixedCropAspectConfigured && !nlsRequested && !protectedCaptionFit &&
         !presentation.outwardExpanded &&
         (!presentation.verticallyTranslated ||

@@ -18262,7 +18262,7 @@ releaseDriftBaseRetention =
                 cropPresentationAdmission.nativePresentation.origin !=
                     AlphaSourceCrop::NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL &&
                 !cropDecision.nativePresentation.captionPreservation.available &&
-                !captionPresentationHeld && !unknownCaptionHold.retained &&
+                !captionPresentationHeld && (!unknownCaptionHold.retained || advancedPictureOnlyRequested) &&
                 sameBounds(cropPresentationAdmission.acceptedNativeCrop.bounds,cropInput.geometry))
             {
                 const auto captionLease = cropPresentationAdmission.nativePresentation.captionTranslationMeasurement;

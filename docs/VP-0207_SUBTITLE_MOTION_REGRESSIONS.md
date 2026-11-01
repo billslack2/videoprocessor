@@ -333,3 +333,22 @@ Ordinary active Smooth Motion does not normally enqueue the host's true cadence
 correction repeats, so reproducing that supported retry contract does not prove
 it caused steady-playback subtitle flashing. Discontinuity-source inserted-output
 reuse is tested independently. Retain this distinction in deployment receipts.
+
+## Startup and picture-only follow-up
+
+Repeat eligibility uses the declared input time scale and frame duration. The
+measured-rate estimate remains telemetry: its initial five-second observation
+window must not disable complete-output retention for a declared60Hz input.
+
+Classic's current visibility envelope also applies before translation target
+confirmation. Every enlarged viewport requires current visible source pixels;
+carried controller measurements retain their original source and expiry.
+
+Black/Reconstruction use measured native picture geometry independently of
+caption continuity and shader readiness. Caption clipping while shaders compile
+is intentionally permitted by the operator. A caption hold cannot suppress the
+certificate for an independently authorized, actually applied native fill.
+Unowned UI in encoded bars must not enlarge the measured movie viewport.
+After readiness, actual-output tests require complete source-bound captions or
+one identical complete-image repeat; fresh moving cleanup need not trigger a
+legacy stale-mask rejection to count as coverage.

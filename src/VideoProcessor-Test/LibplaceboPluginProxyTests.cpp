@@ -7,6 +7,7 @@
 
 #include <type_traits>
 #include <array>
+#include <limits>
 #include <vprenderer/ShaderCacheStorage.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vector>
@@ -161,6 +162,32 @@ namespace
             record.counters[4]>0 && (record.flags&1024u)==0 && std::abs(record.metrics[2])<0.01 &&
             (record.flags&32u)!=0 && (record.flags&64u)!=0 && record.counters[5]==record.acceptedSequence;
     }
+    bool IsSourceBoundComposedCaption(const AnalysisDiagnosticRecordV1& current,
+        const AnalysisDiagnosticRecordV1* previous,uint64_t generation,unsigned mode,double sourcePeriod)
+    {
+        if(!std::isfinite(sourcePeriod) || sourcePeriod<=0 || !std::isfinite(current.metrics[0]) ||
+            !std::isfinite(current.metrics[5]) || !IsExactCompletedOutput(current,generation,mode) || (current.flags&2u)==0 ||
+            current.counters[2]!=current.counters[1])return false;
+        if(current.counters[0]==current.counters[1])return (current.flags&16384u)==0;
+        if(!previous || (previous->flags&16384u)!=0 || !current.cadenceRepeat ||
+            strcmp(current.reason,"complete-output-input-cadence-repeat") ||
+            current.flags!=(previous->flags|16384u) || current.counters[0]!=current.counters[1]+1 ||
+            current.acceptedSequence!=previous->acceptedSequence ||
+            current.rendererInstanceKey!=previous->rendererInstanceKey ||
+            current.transportGeneration!=previous->transportGeneration ||
+            current.rendererGeneration!=previous->rendererGeneration ||
+            current.viewportGeneration!=previous->viewportGeneration ||
+            current.sourceFormatGeneration!=previous->sourceFormatGeneration ||
+            current.analysisDomainKey!=previous->analysisDomainKey ||
+            current.metrics[0]!=previous->metrics[0] || current.metrics[5]<=current.metrics[0] ||
+            current.metrics[5]-current.metrics[0]>1.5*sourcePeriod ||
+            !IsSourceBoundComposedCaption(*previous,nullptr,generation,mode,sourcePeriod))return false;
+        for(int i=1;i<8;++i)if(current.counters[i]!=previous->counters[i])return false;
+        for(int i=0;i<4;++i)if(current.published[i]!=previous->published[i] ||
+            current.candidate[i]!=previous->candidate[i] || current.displayed[i]!=previous->displayed[i])return false;
+        for(int i=8;i<16;++i)if(current.metrics[i]!=previous->metrics[i])return false;
+        return true;
+    }
     struct NativeP210Buffer : IUnknown
     {
         std::atomic<int> references{0};
@@ -186,6 +213,30 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboPluginProxyTests)
 	{
 	public:
+        TEST_METHOD(ComposedCaptionRequiresFreshSourceOrOneIdenticalCompletedImageRepeat) {
+            AnalysisDiagnosticRecordV1 original{};strcpy_s(original.stage,"submitted-presentation");
+            original.flags=1u|2u|32u|64u;original.transportGeneration=original.rendererGeneration=7;
+            original.acceptedSequence=50;original.counters[0]=original.counters[1]=original.counters[2]=original.counters[5]=50;
+            original.counters[3]=3;original.counters[4]=4;original.metrics[0]=original.metrics[5]=1.0;
+            Assert::IsTrue(IsSourceBoundComposedCaption(original,nullptr,7,3,1.0/60));
+            auto repeat=original;repeat.flags|=16384u;repeat.cadenceRepeat=true;
+            strcpy_s(repeat.reason,"complete-output-input-cadence-repeat");repeat.counters[0]=51;repeat.metrics[5]=1.0+1.0/60;
+            Assert::IsTrue(IsSourceBoundComposedCaption(repeat,&original,7,3,1.0/60));
+            for(int fault=0;fault<10;++fault) {
+                auto invalid=repeat;auto prior=original;
+                if(fault==0)invalid.flags&=~2u;
+                if(fault==1)++invalid.counters[2];
+                if(fault==2)++invalid.counters[0];
+                if(fault==3)++invalid.viewportGeneration;
+                if(fault==4)++invalid.sourceFormatGeneration;
+                if(fault==5)++invalid.analysisDomainKey;
+                if(fault==6)invalid.metrics[9]=1;
+                if(fault==7)invalid.metrics[5]=1.1;
+                if(fault==8)prior.flags|=16384u;
+                if(fault==9)invalid.metrics[5]=std::numeric_limits<double>::quiet_NaN();
+                Assert::IsFalse(IsSourceBoundComposedCaption(invalid,&prior,7,3,1.0/60));
+            }
+        }
         TEST_METHOD(ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource) {
             AnalysisDiagnosticRecordV1 output{};strcpy_s(output.stage,"submitted-presentation");
             output.flags=1u|2u|64u;output.transportGeneration=output.rendererGeneration=7;
@@ -1155,6 +1206,16 @@ namespace VideoProcessorTest
                         if(!strcmp(record.stage,"submitted-presentation"))composed=(record.flags&2u)!=0;
                         if(!strcmp(record.stage,"submitted-presentation")) {
                             hasPresentation=true;
+                            if(!IsExactCompletedOutput(record,value.sourceGeneration,3)) {
+                                char failure[1200]{};
+                                sprintf_s(failure,"Reconstruction final identity veto: ready=%llu snapshot=%llu snapshot_gen=%llu record_gen=%llu renderer=%llu accepted=%llu flags=%u current=%llu selected=%llu cue=%llu mode=%llu native_source=%llu cert_source=%llu cert_origin=%llu pose_delta=%.6f displayed=%d,%d-%d,%d actual=%.3f,%.3f-%.3f,%.3f\n",
+                                    reconstructionReady,value.presentedSequence,value.sourceGeneration,record.transportGeneration,
+                                    record.rendererGeneration,record.acceptedSequence,record.flags,record.counters[0],record.counters[1],
+                                    record.counters[2],record.counters[3],record.counters[4],record.counters[5],record.counters[6],record.metrics[2],
+                                    record.displayed[0],record.displayed[1],record.displayed[2],record.displayed[3],
+                                    record.metrics[8],record.metrics[9],record.metrics[10],record.metrics[11]);
+                                Logger::WriteMessage(failure);
+                            }
                             require(IsExactCompletedOutput(record,value.sourceGeneration,3),L"Reconstruction final output lacks current mode/source/certificate identity.");
                             require(record.displayed[0]==initial.left && record.displayed[1]==initial.top &&
                                 record.displayed[2]==initial.right && record.displayed[3]==initial.bottom,
@@ -1436,7 +1497,8 @@ namespace VideoProcessorTest
                 const auto at=line.find(key);return at==std::string::npos?uint64_t(0):uint64_t(std::strtoull(line.c_str()+at+strlen(key),nullptr,10));
             };
 
-            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,poseEligible=false;int routedTranslation=0;double poseDelta=0;};
+            AnalysisDiagnosticRecordV1 previousSuccessfulOutput{};bool havePreviousSuccessfulOutput=false;
+            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,sourceBoundCaption=false,shaderBuilding=false,poseEligible=false;int routedTranslation=0;double poseDelta=0;};
             auto geometries=[&] {
                 std::vector<Geometry> result;std::vector<AnalysisDiagnosticRecordV1> trace;
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
@@ -1448,6 +1510,17 @@ namespace VideoProcessorTest
                     Geometry g;g.sequence=record.counters[1];g.pts=record.metrics[0];g.mode=unsigned(record.counters[3]);
                     g.left=record.metrics[8];g.top=record.metrics[9];g.right=record.metrics[10];g.bottom=record.metrics[11];
                     g.composed=(record.flags&2u)!=0;g.poseEligible=(record.flags&1024u)!=0;
+                    g.sourceBoundCaption=IsSourceBoundComposedCaption(record,
+                        havePreviousSuccessfulOutput?&previousSuccessfulOutput:nullptr,1,advancedMode,
+                        1001.0/(narrower?24000.0:60000.0));
+                    {
+                        std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                        const auto preparation=classicSubmittedShaderPreparation.find(
+                            {record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
+                        g.shaderBuilding=preparation!=classicSubmittedShaderPreparation.end() &&
+                            preparation->second.AllowsInitialBuildFallback(record.transportGeneration,record.sourceFormatGeneration,advancedMode);
+                    }
+                    previousSuccessfulOutput=record;havePreviousSuccessfulOutput=true;
                     g.poseDelta=record.metrics[2];g.routedTranslation=int(std::lround(record.metrics[4]));
                     require(std::isfinite(g.pts) && g.pts>0 && std::isfinite(g.left) && std::isfinite(g.top) &&
                         std::isfinite(g.right) && std::isfinite(g.bottom) && g.left<g.right && g.top<g.bottom,
@@ -1562,18 +1635,14 @@ namespace VideoProcessorTest
                     const auto value=pump(caption);
                     for(const auto& g:geometries())if(g.sequence>=requested) {
                         lastMode=g.mode;
-                        if(g.mode==advancedMode) {
-                            require(!g.poseEligible && std::abs(g.poseDelta)<0.01,L"UHD advanced preparation applied a Classic translation pose.");
-                            if(g.composed && same(g,initial) && !ready) {
-                                ready=g.sequence;observationDeadline=GetTickCount64()+5000;warmSettle=GetTickCount64()+500;
-                            }
-                            if(ready && !crossingEdge)require(same(g,initial),L"Ready UHD Reconstruction changed its native presentation.");
-                            else if(ready)require(g.left<=0.01 && g.right>=width-0.01 && g.top<=bar+0.01 &&
-                                g.bottom>=(g.composed?pictureBottom:captionBottom)-0.01,
-                                L"Ready cross-edge output hid native picture or current uncomposed caption pixels.");
-                            else require(g.left<=initial.left+0.01 && g.right>=initial.right-0.01 &&
-                                g.top<=initial.top+0.01 && g.bottom>=captionBottom-0.01,
-                                L"Unready UHD advanced output hid current raw caption pixels or native picture instead of preserving a safe visibility envelope.");
+                        if(ready)require(g.mode==advancedMode && g.sourceBoundCaption && same(g,initial),
+                            L"Ready UHD output lost its current caption or changed the native viewport.");
+                        if(g.shaderBuilding && !ready) {
+                            require(same(g,initial),L"Shader building changed the accepted native picture viewport.");
+                        }else if(g.mode==advancedMode) {
+                            require(g.sourceBoundCaption && same(g,initial) && !g.poseEligible && std::abs(g.poseDelta)<0.01,
+                                L"Shader-ready UHD output lost its current source-bound caption or native picture.");
+                            if(!ready){ready=g.sequence;observationDeadline=GetTickCount64()+5000;warmSettle=GetTickCount64()+500;}
                         }
                     }
                     if(ready && value.presentedSequence>=ready) {
@@ -1630,13 +1699,12 @@ namespace VideoProcessorTest
                         if(line.find("SUBTITLE CADENCE:")!=std::string::npos &&
                             line.find(" reason=cadence-current-cleanup-changed ")!=std::string::npos && integer(line," samples=")>0)
                             cleanupChangedRejection=true;
-                        if(line.find("SUBTITLE CAPTURE:")!=std::string::npos) {
-                            const auto at=line.find(" cleanup=");int l=0,t=0,r=0,d=0;
-                            if(at!=std::string::npos && sscanf_s(line.c_str()+at+9,"%d,%d-%d,%d",&l,&t,&r,&d)==4)
-                                for(int y=(std::max)(bar,t);y<(std::min)(pictureBottom,d) && !cleanupIntersection;++y)
-                                    for(int x=(std::max)(0,l);x<(std::min)(width,r);++x)
-                                        if(motionOnly[0][size_t(y)*width+x]!=motionOnly[1][size_t(y)*width+x]){cleanupIntersection=true;break;}
-                        }
+                        SubtitleBoxRect cleanup;bool submitted=false;
+                        for(const auto& output:records())if(output.acceptedSequence>=first && output.acceptedSequence<=presented &&
+                            TrySubmittedSubtitleCleanup(line,output,1,cleanup)){submitted=true;break;}
+                        if(submitted)for(int y=(std::max)(bar,cleanup.top);y<(std::min)(pictureBottom,cleanup.bottom)&&!cleanupIntersection;++y)
+                            for(int x=(std::max)(0,cleanup.left);x<(std::min)(width,cleanup.right);++x)
+                                if(motionOnly[0][size_t(y)*width+x]!=motionOnly[1][size_t(y)*width+x]){cleanupIntersection=true;break;}
                     }
                 };
                 if(crossingEdge) {
@@ -1646,9 +1714,9 @@ namespace VideoProcessorTest
                     do {
                         const auto value=pump(motionOnly[phase++%2]);
                         for(const auto& g:geometries())if(g.sequence>=motionFirst)
-                            require(g.mode==advancedMode && !g.poseEligible && std::abs(g.poseDelta)<0.01 && g.left<=0.01 && g.right>=width-0.01 &&
-                                g.top<=bar+0.01 && g.bottom>=(g.composed?pictureBottom:captionBottom)-0.01,
-                                L"Moving cross-edge caption output clipped native picture or an uncomposed source cue.");
+                            require(g.mode==advancedMode && g.sourceBoundCaption && same(g,initial) &&
+                                !g.poseEligible && std::abs(g.poseDelta)<0.01,
+                                L"Moving cross-edge output lost its source-bound complete caption or fixed native picture.");
                         if(value.presentedSequence>=motionFirst) {
                             const auto trace=records();const AnalysisDiagnosticRecordV1* p=nullptr;
                             for(const auto& r:trace)if(r.acceptedSequence==value.presentedSequence) {
@@ -1708,15 +1776,15 @@ namespace VideoProcessorTest
                             }
                             inspectMovingCleanup(motionFirst,value.presentedSequence);
                         }
-                        if(stableMotion.size()>=24 && !composedMotion.empty() && !uncomposedMotion.empty() && cleanupIntersection && cleanupChangedRejection)break;
+                        if(stableMotion.size()>=24 && composedMotion.size()>=24 && cleanupIntersection)break;
                     }while(GetTickCount64()<motionDeadline && callback.state!=RENDERSTATE_FAILED);
                     Logger::WriteMessage((std::string("Cross-edge bottom-only motion: stable=")+std::to_string(stableMotion.size())+
                         " composed="+std::to_string(composedMotion.size())+" uncomposed="+std::to_string(uncomposedMotion.size())+
                         " cleanup_hull_intersection="+std::to_string(cleanupIntersection)+" actual_erase_change_rejection="+std::to_string(cleanupChangedRejection)).c_str());
-                    require(cleanupIntersection && cleanupChangedRejection,
-                        L"No actual cleanup-row movement proved: require intersecting generated cleanup plus sampled cadence-current-cleanup-changed; no moving-erasure coverage established.");
-                    require(stableMotion.size()>=24 && !composedMotion.empty() && !uncomposedMotion.empty(),
-                        L"Bottom-only moving cleanup did not preserve one stable viewport over 24 distinct sources spanning naturally composed and uncomposed outputs.");
+                    require(cleanupIntersection,
+                        L"No successfully composed source cleanup intersected actual changing native picture pixels.");
+                    require(stableMotion.size()>=24 && composedMotion.size()>=24,
+                        L"Moving cleanup did not preserve source-bound complete captions and one fixed native viewport over24distinct sources.");
                 }
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseAllRecordStages=false;}
                 const uint64_t residualFirst=sequence;std::set<uint64_t> residualSources,composedSources,uncomposedSources;
@@ -1726,9 +1794,11 @@ namespace VideoProcessorTest
                 do {
                     const auto value=pump(residual[phase++%2]);
                     for(const auto& g:geometries())if(g.sequence>=residualFirst) {
-                        require(g.mode==advancedMode && g.left<=0.01 && g.right>=width-0.01 && g.top<=140.01 &&
-                            g.bottom>=(g.composed?pictureBottom:captionBottom)-0.01,
-                            L"Reconstruction composition hid unowned top-bar UI or left an uncomposed bottom caption outside the viewport.");
+                        // This off-center top-bar badge is unowned UI in encoded
+                        // bars, not native picture. It must not enlarge the movie
+                        // viewport; the actual bottom caption remains source-owned.
+                        require(g.mode==advancedMode && g.sourceBoundCaption && same(g,initial),
+                            L"Residual bar UI changed the native picture or revoked current complete caption pixels.");
                     }
                     if(value.presentedSequence>=residualFirst) {
                         const auto trace=records();const AnalysisDiagnosticRecordV1* presentation=nullptr;
@@ -1743,12 +1813,10 @@ namespace VideoProcessorTest
                             presentation->published[2]==width && presentation->published[3]==pictureBottom,
                             L"Residual UI changed the source-owned native picture contract.");
                         const bool composed=(presentation->flags&2u)!=0;
-                        require(presentation->displayed[0]<=0 && presentation->displayed[2]>=width &&
-                            presentation->displayed[1]<=140 && presentation->displayed[3]>=(composed?pictureBottom:captionBottom),
-                            L"An exact submitted Reconstruction source used bottom-caption ownership to hide unrelated bar UI.");
-                        require(value.inUseAvailable && std::isfinite(value.inUseRatio) && value.inUseRatio>0 &&
-                            value.inUseRatio<=double(width)/(pictureBottom-140)+0.00001,
-                            L"Reconstruction actual submitted viewport cannot preserve residual top-bar UI and native picture.");
+                        require(composed && presentation->counters[2]==presentation->counters[1] &&
+                            presentation->displayed[0]==initial.left && presentation->displayed[1]==initial.top &&
+                            presentation->displayed[2]==initial.right && presentation->displayed[3]==initial.bottom,
+                            L"An exact submitted caption lost source ownership or changed native framing for unrelated bar UI.");
                         verifyNativeContract(residualFirst);
                                                 if(GetTickCount64()>=stableAfter) {
                             if(!stableEnvelope){for(int edge=0;edge<4;++edge)stableBounds[edge]=presentation->displayed[edge];stableEnvelope=true;}
@@ -1760,14 +1828,14 @@ namespace VideoProcessorTest
                     }
                                         if(crossingEdge)inspectMovingCleanup(residualFirst,value.presentedSequence);
 
-                    if(residualSources.size()>=24 && composedSources.size()>=24 && (!crossingEdge || (cleanupIntersection && cleanupChangedRejection)))break;
+                    if(residualSources.size()>=24 && composedSources.size()>=24 && (!crossingEdge || cleanupIntersection))break;
                 }while(GetTickCount64()<residualDeadline && callback.state!=RENDERSTATE_FAILED);
                 require(residualSources.size()>=24 && composedSources.size()>=24,
                     L"UHD moving-picture residual UI did not survive 24 distinct actually composed and presented sources.");
                 Logger::WriteMessage((std::string("Residual UI observed composition states: composed=")+std::to_string(composedSources.size())+
                     " uncomposed="+std::to_string(uncomposedSources.size())+" moving_source_footprint_intersection="+std::to_string(cleanupIntersection)).c_str());
-                if(crossingEdge)require(cleanupIntersection && cleanupChangedRejection,
-                    L"Cross-edge fixture acquired no actual cleanup rectangle intersection plus sampled cadence cleanup-change rejection; no moving-cleanup coverage established.");
+                if(crossingEdge)require(cleanupIntersection,
+                    L"Cross-edge fixture acquired no actual composed cleanup rectangle intersecting changing source pixels.");
                 // Exact current top-band clearance retires that edge independently.
                 // The still-occupied raw bottom band may retain its safe margin
                 // through composed/uncomposed outputs without changing native AR.
@@ -1777,9 +1845,9 @@ namespace VideoProcessorTest
                     do {
                         const auto value=pump(caption);
                         for(const auto& g:geometries())if(g.sequence>=topClearFirst)
-                            require(g.mode==advancedMode && !g.poseEligible && std::abs(g.poseDelta)<0.01 && g.left<=0.01 && g.right>=width-0.01 &&
-                                g.top<=bar+0.01 && g.bottom>=(g.composed?pictureBottom:captionBottom)-0.01,
-                                L"Top-UI clearance clipped native picture or the still-current uncomposed bottom caption.");
+                            require(g.mode==advancedMode && g.sourceBoundCaption && same(g,initial) &&
+                                !g.poseEligible && std::abs(g.poseDelta)<0.01,
+                                L"Top-UI clearance changed native framing or lost the current composed caption.");
                         if(value.presentedSequence>=topClearFirst) {
                             const auto trace=records();const AnalysisDiagnosticRecordV1* p=nullptr;
                             for(const auto& r:trace)if(r.acceptedSequence==value.presentedSequence) {
@@ -1830,15 +1898,24 @@ namespace VideoProcessorTest
                 restart=reset=false;require(cleanup.renderer->ApplyApplicationState(*selection.snapshot,active,restart,reset) && !restart,
                     L"Reconstruction-to-Classic transition required a restart or rejected live controller intent.");
                 const uint64_t classicFirst=sequence;uint64_t final=0;std::set<uint64_t> resumed;std::set<int> ramp;double lastTop=initial.top;
+                bool classicSafeNativePanSeen=false;
                 const auto classicDeadline=GetTickCount64()+10000;
                 do {
                     const auto value=pump(caption);
                     for(const auto& g:geometries())if(g.sequence>=classicFirst && g.mode==0) {
-                        require(sameSize(g) && g.top>=initial.top-0.01 && g.top>=lastTop-0.01 && g.top<=settled.top+0.01 &&
-                            std::abs(g.top-initial.top-g.routedTranslation)<0.01,
-                            L"Returning to Classic lost its bounded native-size monotonic engage drift.");
-                        lastTop=g.top;if(g.top>initial.top+0.01 && g.top<settled.top-0.01)ramp.insert(int(std::lround(g.top)));
-                        if(same(g,settled) && !final)final=g.sequence;
+                        const bool nativePan=sameSize(g)&&g.top>=initial.top-0.01&&g.top<=settled.top+0.01&&g.bottom>=captionBottom-0.01;
+                        const bool envelope=std::abs(g.left-physical.left)<0.01&&std::abs(g.right-physical.right)<0.01&&
+                            std::abs(g.top-physical.top)<0.01&&g.bottom>=captionBottom-0.01&&g.bottom<=settled.bottom+0.01;
+                        require(nativePan||(!final&&!classicSafeNativePanSeen&&envelope),
+                            L"Returning to Classic clipped its fresh caption or left the bounded current visibility envelope.");
+                        if(nativePan){
+                            require(g.top>=lastTop-0.01&&std::abs(g.top-initial.top-g.routedTranslation)<0.01,
+                                L"Returning Classic native pan reversed or lost its routed controller intent.");
+                            classicSafeNativePanSeen=true;lastTop=g.top;
+                            if(g.top>initial.top+0.01&&g.top<settled.top-0.01)ramp.insert(int(std::lround(g.top)));
+                        }
+                        if(final)require(same(g,settled),L"Returning Classic left its exact settled native-height pose.");
+                        if(same(g,settled)&&!final)final=g.sequence;
                     }
                     if(final && value.presentedSequence>=final)resumed.insert(value.presentedSequence);
                     if(resumed.size()>=24)break;

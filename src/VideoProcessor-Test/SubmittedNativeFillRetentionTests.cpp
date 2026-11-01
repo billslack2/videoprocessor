@@ -392,6 +392,33 @@ public:
             Assert::IsTrue(ConfirmedSubtitleConflictsWithHorizontalFill(true,true,mode,true,nearTrim,moved,filled));
         }
     }
+    TEST_METHOD(AdvancedNativeFillIgnoresCaptionLeaseWhileShadersBuildAndAfterPreparation)
+    {
+        for(const auto requested:{PreparedNativeMode::BLACK,PreparedNativeMode::RECONSTRUCTION})
+        for(bool building:{true,false})for(int fault=-1;fault<10;++fault) {
+            Fixture fixture;fixture.Seed();auto input=fixture.Frame(101);
+            input.crop.subtitlePresentationMode=requested;
+            const auto effective=building?SubtitlePreviewMode::None:
+                requested==PreparedNativeMode::BLACK?SubtitlePreviewMode::BlackBackground:SubtitlePreviewMode::GeneratedGrayBackground;
+            auto fill=EvaluateFinalAspectLimitFill(input);AssertLoggedFill(fill);
+            bool fixed=false,nls=false,protectedCaption=false,recovery=false;
+            auto origin=ActivePictureAuthorityOrigin::NATIVE;
+            if(fault==0)input.crop.subtitlePresentationMode=PreparedNativeMode::NONE;
+            if(fault==1){input.presentation.sourceBounds.top+=2;input.presentation.sourceBounds.bottom+=2;}
+            if(fault==2){input.presentation.outwardExpanded=true;input.presentation.sourceBounds.bottom+=2;}
+            if(fault==3)input.crop.movingPictureTransition=true;
+            if(fault==4)fixed=true;
+            if(fault==5)nls=true;
+            if(fault==6)origin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
+            if(fault==7)protectedCaption=true;
+            if(fault==8)recovery=true;
+            if(fault==9)fill.applied=false;
+            const bool recorded=CanRecordSubtitleOptionalAspectFill(input.crop,input.presentation,fill,
+                effective,true,fixed,nls,protectedCaption,recovery,origin);
+            Assert::AreEqual(fault==-1,recorded,
+                L"A caption lease cannot block the certificate for an actually applied exact advanced native fill; all physical-owner gates remain mandatory");
+        }
+    }
     TEST_METHOD(AdvancedLogicalTranslationWithNativeActualBoundsRetainsFillButRealShiftDoesNot)
     {
         for(const auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
