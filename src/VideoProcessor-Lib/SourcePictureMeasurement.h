@@ -24,6 +24,8 @@ struct SourcePictureObservation {
     bool complete=false, rectangleAvailable=false;
     // CanvasEstimate is a structural inference, not a precisely measured blank margin.
     bool canvasSupported=false, blankMarginsUnresolved=false;
+    // Independent sampled source reference survives inconclusive geometry.
+    ActivePictureBlackReference blackReference;
     ActivePictureBounds measuredBounds;
     std::array<std::vector<SourcePictureEdgeCandidate>,4> edges;
     std::vector<SourcePictureComponent> components;

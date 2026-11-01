@@ -9392,7 +9392,19 @@ struct LibplaceboVideoRenderer::Impl
             }
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
-            return scanner.Measure(prepared.source,key,reference,fps,currentNative);
+            auto result=scanner.Measure(prepared.source,key,reference,fps,currentNative);
+            if(SourcePictureDetectorEnabled() && !result.subtitleArProof.accepted && analysisCache) {
+                // The spatial job can finish while glyphs are being measured.
+                const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
+                if(CurrentLookaheadMeasurement(prepared,key.identity,raw)) {
+                    auto source=prepared.source;source.generation=key.identity.transportGeneration;
+                    result.subtitleArProof=VerifySuppliedActivePictureCandidateWithSubtitle(source,raw->evidence,result,
+                        key.identity,key.policyGeneration,key.continuityGeneration,key.scriptHint);
+                    if(result.subtitleArProof.accepted)
+                        result.subtitleArDarkness=EvaluateActivePictureArDarkness(source,result.subtitleArProof.evidence);
+                }
+            }
+            return result;
         },ownedWitness,ownedTimelinePolicy);
         return key;
     }
@@ -11207,15 +11219,45 @@ struct LibplaceboVideoRenderer::Impl
              nlsGeometry.top == captionBootstrapProofBounds.top &&
              nlsGeometry.right == captionBootstrapProofBounds.right &&
              nlsGeometry.bottom == captionBootstrapProofBounds.bottom);
-        const bool currentWorkerBarProof = currentSubtitlePreview &&
-            (!SourcePictureDetectorEnabled() || currentSubtitlePreview->current.subtitleArProof.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured) &&
-            currentSubtitlePreview->current.subtitleArProof.IsCurrentFor(analysisSource,currentIdentity,
+        SubtitleAssistedVerticalBarProof joinedSpatialCaptionProof;
+        ActivePictureArDarknessEvidence joinedSpatialCaptionDarkness;
+        const auto* captionBarProof=currentSubtitlePreview?&currentSubtitlePreview->current.subtitleArProof:nullptr;
+        const auto* captionBarDarkness=currentSubtitlePreview?&currentSubtitlePreview->current.subtitleArDarkness:nullptr;
+        if(SourcePictureDetectorEnabled() && currentSubtitlePreview &&
+            (!captionBarProof->IsCurrentFor(analysisSource,currentIdentity,localBoundaryPolicyGeneration,
+                localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint) ||
+             captionBarProof->evidence.detector!=ActivePictureDetectorKind::SourceSpatialMeasured)) {
+            // Join completed same-source facts even when the independent workers
+            // finished in the opposite order. This only checks the supplied
+            // boundary through current owned ink; it never runs the spatial scan.
+            const auto raw=pixelMeasurements.Picture();
+            if(raw.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+                raw.classification==ActivePictureClassification::PROVISIONAL) {
+                const auto began=SteadyClock::now();
+                joinedSpatialCaptionProof=VerifySuppliedActivePictureCandidateWithSubtitle(analysisSource,raw,
+                    currentSubtitlePreview->current,currentIdentity,localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint);
+                auto joined=AnalysisTraceRecord(currentIdentity,this,"source-picture-caption-join",joinedSpatialCaptionProof.reason);
+                joined.flags=joinedSpatialCaptionProof.accepted?1u:0u;
+                joined.metrics[0]=std::chrono::duration<double,std::milli>(SteadyClock::now()-began).count();
+                AnalysisTraceRect(joined.measured,raw.physicalEdges.estimate);
+                AnalysisTraceRect(joined.published,joinedSpatialCaptionProof.candidate);
+                AnalysisDiagnosticTrace::Emit(joined);
+                if(joinedSpatialCaptionProof.accepted) {
+                    joinedSpatialCaptionDarkness=EvaluateActivePictureArDarkness(analysisSource,
+                        joinedSpatialCaptionProof.evidence,pixelMeasurements.GlobalNearBlack());
+                    captionBarProof=&joinedSpatialCaptionProof;captionBarDarkness=&joinedSpatialCaptionDarkness;
+                }
+            }
+        }
+        const bool currentWorkerBarProof = captionBarProof &&
+            (!SourcePictureDetectorEnabled() || captionBarProof->evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured) &&
+            captionBarProof->IsCurrentFor(analysisSource,currentIdentity,
                 localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                 activeSettings.subtitleScriptHint);
         // A newly proved boundary may wake acquisition, but an unchanged
         // subtitle must not raise steady-state AR scanning above its cadence.
-        const auto* workerCandidate=currentWorkerBarProof ?
-            &currentSubtitlePreview->current.subtitleArProof.candidate : nullptr;
+        const auto* workerCandidate=currentWorkerBarProof ? &captionBarProof->candidate : nullptr;
         const bool forceWorkerBarAcquisition=workerCandidate && automaticSourceCrop &&
             configuredScreenActive && subtitleMeasurementEnabled &&
             !nlsRequested && !fixedCropAspectConfigured &&
@@ -11530,10 +11572,10 @@ struct LibplaceboVideoRenderer::Impl
             if (automaticSourceCrop && configuredScreenActive &&
                 subtitleMeasurementEnabled && !nlsRequested &&
                 !fixedCropAspectConfigured && currentWorkerBarProof &&
-                currentSubtitlePreview->current.subtitleArDarkness.global.evaluated)
+                captionBarDarkness && captionBarDarkness->global.evaluated)
             {
-                evidence=currentSubtitlePreview->current.subtitleArProof.evidence;
-                arDarkness=currentSubtitlePreview->current.subtitleArDarkness;
+                evidence=captionBarProof->evidence;
+                arDarkness=*captionBarDarkness;
                 captionBackedStrictProofCurrent=true;
                 captionProofRoute=4;
                 latestColdStrictWorkerProof = true;

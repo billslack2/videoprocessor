@@ -315,6 +315,12 @@ SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,c
         int floor=perimeter[perimeter.size()/20];
         // Bright picture covering every raster edge is not a bright matte.
         if(floor>104)floor=source.range==AnalysisLumaRange::Full?0:64;
+        auto& reference=out.blackReference;
+        reference.evaluated=true;reference.floor=reference.observedFloor=floor;
+        reference.threshold=reference.observedThreshold=std::min(104,floor+24);
+        reference.mode=source.range!=AnalysisLumaRange::Full?ActivePictureBlackReferenceMode::LEGACY:
+            floor?ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED:ActivePictureBlackReferenceMode::FULL_NOMINAL;
+        // No qualified edge/axis follows from a perimeter percentile alone.
         Components(reader,floor,out);
         ClassifyGlyphRows(out,budget);
         for(auto edge:{SourcePictureEdge::Left,SourcePictureEdge::Top,SourcePictureEdge::Right,SourcePictureEdge::Bottom})EdgeCandidates(reader,edge,floor,out);

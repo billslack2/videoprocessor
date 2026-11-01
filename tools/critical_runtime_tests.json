@@ -10,7 +10,7 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 927,
+  "minimumNativeTests": 928,
   "requiredNativeMethods": [
     "V210SparseSamplingDecodesAllSixPixels",
     "P210SamplingPreservesEachChromaRow",
@@ -207,7 +207,8 @@
     "SourcePictureMissingOrCancelledActiveFactsNeverBecomeLegacyVotes",
     "SourcePictureActiveAdapterPreservesPortraitAndCaptionMeasurement",
     "SuppliedSpatialCaptionProofUsesExactNomineeAndCurrentInkWithoutLegacyBars",
-    "SuppliedSpatialCaptionMaskCannotExplainUnownedConnectedPictureOrMenu"
+    "SuppliedSpatialCaptionMaskCannotExplainUnownedConnectedPictureOrMenu",
+    "SourcePictureMissingGeometryPreservesBlackReferenceWithoutNativeVotes"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",

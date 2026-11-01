@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <SourcePictureDetector.h>
 #include <AnalysisDiagnosticHooks.h>
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -16,6 +17,14 @@ bool SourcePictureDetectorEnabled() {
 }
 ActivePictureEvidence MissingSourcePictureEvidence(const AnalysisLumaSource& source,const char* reason) {
     ActivePictureEvidence result;
+    // Missing geometry is not zero-code black. Nominal range is available
+    // without sampling; evaluated remains false until a source reference exists.
+    result.blackReference.floor=source.range==AnalysisLumaRange::Full?0:64;
+    result.blackReference.threshold=std::min(104,result.blackReference.floor+24);
+    result.blackReference.observedFloor=result.blackReference.floor;
+    result.blackReference.observedThreshold=result.blackReference.threshold;
+    result.blackReference.mode=source.range==AnalysisLumaRange::Full?
+        ActivePictureBlackReferenceMode::FULL_NOMINAL:ActivePictureBlackReferenceMode::LEGACY;
     result.detector=ActivePictureDetectorKind::SourceSpatialUnavailable;
     result.reason=reason;
     result.physicalEdges.sourceGeneration=source.generation;
@@ -30,6 +39,8 @@ SourcePictureDetectionResult DetectSourcePictureForWorker(const AnalysisLumaSour
     const auto& facts=*result.observation;
     auto& evidence=result.evidence;
     evidence.reason=facts.reason;
+    if(facts.sourceGeneration==source.generation && facts.width==source.width && facts.height==source.height &&
+        facts.blackReference.evaluated)evidence.blackReference=facts.blackReference;
     if(!source.IsValid() || !facts.complete || facts.sourceGeneration!=source.generation ||
         facts.width!=source.width || facts.height!=source.height)return result;
     const bool measured=facts.outcome==SourcePictureOutcome::Measured && facts.rectangleAvailable;
@@ -51,6 +62,8 @@ SourcePictureDetectionResult DetectSourcePictureForWorker(const AnalysisLumaSour
     catch(const AnalysisEvaluationCancelled&) {
         evidence=MissingSourcePictureEvidence(source,"source-spatial-candidate-verification-budget-exhausted");
     }
+    if(!evidence.blackReference.evaluated && facts.blackReference.evaluated)
+        evidence.blackReference=facts.blackReference;
     evidence.detector=measured?ActivePictureDetectorKind::SourceSpatialMeasured:ActivePictureDetectorKind::SourceSpatialCanvas;
     auto& physical=evidence.physicalEdges;
     physical.evaluated=true;physical.sourceGeneration=source.generation;physical.samples=facts.samples;

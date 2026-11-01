@@ -82,6 +82,40 @@ namespace VideoProcessorTest
             Assert::AreEqual(expected.aspectRatio,measured.measuredBounds.aspectRatio,1e-9);
         }
     public:
+        TEST_METHOD(SourcePictureMissingGeometryPreservesBlackReferenceWithoutNativeVotes)
+        {
+            const auto scope=Bounds(960,540,0,66,960,474);
+            for(const auto range:{AnalysisLumaRange::Limited,AnalysisLumaRange::Full}) {
+                const int floor=range==AnalysisLumaRange::Limited?64:0;
+                SourcePictureFrame frame(960,540,floor);
+                const auto source=frame.Source(range);
+                auto missing=MissingSourcePictureEvidence(source);
+                Assert::AreEqual(floor,missing.blackReference.floor);
+                Assert::AreEqual(floor+24,missing.blackReference.threshold);
+                Assert::IsFalse(missing.available);Assert::IsFalse(missing.physicalEdges.estimateAvailable);
+                const auto retained=EvaluateActivePicturePresentationRetention(source,scope,missing,
+                    EvaluateActivePictureGlobalNearBlack(source),EvaluateActivePictureArDarkness(source,missing));
+                Assert::IsTrue(retained.excludedBandsPixelSafe);
+                Assert::IsFalse(MakeActivePictureObservation(missing,1,1).available);
+                AnalysisEvaluationBudget expired([](void*){return true;},nullptr);
+                const auto cancelled=DetectSourcePictureForWorker(source,&expired);
+                Assert::AreEqual(floor,cancelled.evidence.blackReference.floor);
+                Assert::IsFalse(cancelled.evidence.available);
+            }
+            SourcePictureFrame raised(960,540,64);
+            const auto source=raised.Source(AnalysisLumaRange::Full);
+            const auto detected=DetectSourcePictureForWorker(source);
+            Assert::IsTrue(detected.observation->blackReference.evaluated);
+            Assert::AreEqual(64,detected.evidence.blackReference.floor);
+            Assert::AreEqual(88,detected.evidence.blackReference.threshold);
+            Assert::IsFalse(detected.evidence.available);
+            Assert::IsFalse(detected.evidence.physicalEdges.estimateAvailable);
+            Assert::IsTrue(detected.evidence.blackReference.mode==ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED);
+            const auto retained=EvaluateActivePicturePresentationRetention(source,scope,detected.evidence,
+                EvaluateActivePictureGlobalNearBlack(source),EvaluateActivePictureArDarkness(source,detected.evidence));
+            Assert::IsTrue(retained.excludedBandsPixelSafe);
+            Assert::IsFalse(MakeActivePictureObservation(detected.evidence,1,1).available);
+        }
         TEST_METHOD(SourcePictureActiveAdapterSeparatesOddMeasurementFromOutwardGuard)
         {
             SourcePictureFrame frame(960,540);frame.Fill(17,63,939,487,240,530,490);
