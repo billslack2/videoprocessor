@@ -10,8 +10,9 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 956,
+  "minimumNativeTests": 957,
   "requiredNativeMethods": [
+    "SourcePictureQualifiedRasterContactsKeepMeasurementWorkBounded",
     "SourcePictureFlatRaisedPrefixBeforeFaintRampCannotProveFullRaster",
     "SourcePictureDarkStructuredTerminalDoesNotEraseFullRasterPicture",
     "SourcePictureRaisedTexturedMatteAndSparseWidgetsDoNotProveTerminalPicture",

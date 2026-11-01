@@ -116,19 +116,62 @@ void Components(Reader& reader,int floor,SourcePictureObservation& out) {
     }
     out.topologyComplete=true;
 }
+void MarkGlyphEdge(SourcePictureObservation& out,unsigned side,SourcePictureEdgeCandidate& edge,
+    const AnalysisEvaluationBudget* budget);
 void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictureObservation& out) {
     const bool vertical=edge==SourcePictureEdge::Top||edge==SourcePictureEdge::Bottom;
     const bool leading=edge==SourcePictureEdge::Top||edge==SourcePictureEdge::Left;
     const int depth=vertical?out.height:out.width,along=vertical?out.width:out.height;
     const int step=std::max(2,depth/540),sustain=std::max(6,depth/270);
+    // A qualified raster contact is the first eligible outer candidate. Its
+    // interior alternatives cannot change selection or topology reconciliation.
+    // Apply the same glyph veto before short-circuiting; rejected/local terminal
+    // evidence still takes the complete competing-boundary scan below.
+    SourcePictureEdgeCandidate terminal;
+    terminal.coordinate=terminal.minimum=terminal.maximum=leading?0:depth;
+    terminal.coverage=kEdgeProbes;terminal.strong=true;
+    for(unsigned ray=0;ray<kEdgeProbes;++ray) {
+        const int position=int(uint64_t(2*ray+1)*along/(2*kEdgeProbes));
+        auto read=[&](int offset) {
+            const int coordinate=leading?offset:depth-1-offset;
+            return reader.At(vertical?position:coordinate,vertical?coordinate:position);
+        };
+        if(Foreground(read(0),floor) && Foreground(read(sustain),floor)) {
+            ++terminal.support;++terminal.regionSupport[ray/32];
+        }
+    }
+    unsigned terminalRegions=0;
+    for(auto count:terminal.regionSupport)if(count>=2)++terminalRegions;
+    if(terminal.support>=kEdgeProbes/2 && terminalRegions>=2) {
+        MarkGlyphEdge(out,unsigned(edge),terminal,reader.budget);
+        if(!terminal.overlayLike) {out.edges[unsigned(edge)].push_back(terminal);return;}
+    }
     struct Votes {
         SourcePictureEdgeCandidate edge;
         std::array<uint64_t,2> rays{};
     };
     std::map<int,Votes> candidates;
+    // Exact immutable native samples, reused only within this ray. Bound memory
+    // independently of source dimensions; unusual larger offsets still read
+    // directly. All luma/chroma bits and source coordinates remain unchanged.
+    const size_t cacheSize=size_t(std::min(8192,depth/2+sustain+8));
+    std::vector<AnalysisLumaSample> raySamples(cacheSize);
+    std::vector<uint8_t> raySampleValid(cacheSize);
     for(unsigned i=0;i<kEdgeProbes;++i) {
+        std::fill(raySampleValid.begin(),raySampleValid.end(),uint8_t(0));
         const int position=int((uint64_t(2*i+1)*along)/(2*kEdgeProbes));
-        auto read=[&](int offset) {const int p=leading?offset:depth-1-offset;return reader.At(vertical?position:p,vertical?p:position);};
+        unsigned logicalRequests=0;
+        auto read=[&](int offset) {
+            // Cache hits are still work inside the same cooperative deadline.
+            if((logicalRequests++&255u)==0)CheckAnalysisEvaluationBudget(reader.budget);
+            if(offset>=0 && size_t(offset)<cacheSize && raySampleValid[size_t(offset)])return raySamples[size_t(offset)];
+            const int p=leading?offset:depth-1-offset;
+            const auto value=reader.At(vertical?position:p,vertical?p:position);
+            if(offset>=0 && size_t(offset)<cacheSize) {
+                raySamples[size_t(offset)]=value;raySampleValid[size_t(offset)]=1;
+            }
+            return value;
+        };
         const auto border=read(0);
         auto add=[&](int offset,bool strong,int uncertainty=0) {
             const int coordinate=leading?offset:depth-offset;
@@ -147,7 +190,7 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
         // Keep every sustained matte-to-picture departure, including a scene
         // behind an earlier detached graphic. Integrate only a bounded native
         // profile; a continuing drift from the perimeter is not a boundary.
-        int lastHit=-sustain;
+        int lastHit=-sustain,lastExamined=-1;
         int previousDelta=0;
         for(int coarse=step;coarse<depth/2;coarse+=step) {
             const int delta=Difference(read(coarse),border);
@@ -157,10 +200,11 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
             // sample crosses the ordinary detection threshold.
             const int start=std::max(1,coarse-step-1);
             for(int at=start;at<=coarse;++at) {
-                if(at<=lastHit+sustain)continue;
+                if(at<=lastHit+sustain || at<=lastExamined)continue;
+                lastExamined=at;
                 const auto first=read(at),outside=read(at-1);
                 const int halo=Difference(outside,border),jump=int(first.luma)-int(outside.luma);
-                if(halo>12 || jump<=0 || (jump<6 && halo>5))continue;
+                if(halo>12 || jump<=0 || (halo>5 && jump<std::max(16,4*halo+4)))continue;
                 const auto second=read(at+1),third=read(at+2),inside=read(at+sustain);
                 const int next=int(second.luma)-int(first.luma),last=int(third.luma)-int(second.luma);
                 // The paused HDMI source can dither an 8-code native step into
@@ -234,20 +278,23 @@ void ClassifyGlyphRows(SourcePictureObservation& out,const AnalysisEvaluationBud
         component.glyphLike=peers>=6;
     }
 }
-void MarkGlyphEdges(SourcePictureObservation& out,const AnalysisEvaluationBudget* budget) {
-    for(unsigned side:{1u,3u})for(auto& edge:out.edges[side]) {
-        CheckAnalysisEvaluationBudget(budget);
-        unsigned glyphVotes=0;
-        for(unsigned i=0;i<kEdgeProbes;++i) {
-            const int x=int(uint64_t(2*i+1)*out.width/(2*kEdgeProbes));
-            for(const auto& component:out.components) {
-                const int position=side==1?component.top:component.bottom;
-                if(component.glyphLike && x>=component.left && x<component.right &&
-                    std::abs(position-edge.coordinate)<=out.overviewStepY) {++glyphVotes;break;}
-            }
+void MarkGlyphEdge(SourcePictureObservation& out,unsigned side,SourcePictureEdgeCandidate& edge,
+    const AnalysisEvaluationBudget* budget) {
+    if(side!=1 && side!=3)return;
+    CheckAnalysisEvaluationBudget(budget);
+    unsigned glyphVotes=0;
+    for(unsigned i=0;i<kEdgeProbes;++i) {
+        const int x=int(uint64_t(2*i+1)*out.width/(2*kEdgeProbes));
+        for(const auto& component:out.components) {
+            const int position=side==1?component.top:component.bottom;
+            if(component.glyphLike && x>=component.left && x<component.right &&
+                std::abs(position-edge.coordinate)<=out.overviewStepY) {++glyphVotes;break;}
         }
-        edge.overlayLike=glyphVotes*2>=edge.support && glyphVotes>=8;
     }
+    edge.overlayLike=glyphVotes*2>=edge.support && glyphVotes>=8;
+}
+void MarkGlyphEdges(SourcePictureObservation& out,const AnalysisEvaluationBudget* budget) {
+    for(unsigned side:{1u,3u})for(auto& edge:out.edges[side])MarkGlyphEdge(out,side,edge,budget);
 }
 const SourcePictureEdgeCandidate* Select(const std::vector<SourcePictureEdgeCandidate>& candidates,int terminal) {
     for(const auto& candidate:candidates) {

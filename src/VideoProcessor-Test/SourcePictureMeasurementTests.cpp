@@ -201,6 +201,17 @@ namespace VideoProcessorTest
                 if(observed.rectangleAvailable)Assert::AreEqual(128,observed.measuredBounds.left);
             }
         }
+        TEST_METHOD(SourcePictureQualifiedRasterContactsKeepMeasurementWorkBounded)
+        {
+            SourcePictureFrame frame(3840,2160,300);
+            const auto observed=MeasureSourcePicture(frame.Source());
+            Exact(observed,Bounds(3840,2160,0,0,3840,2160));
+            Assert::IsTrue(observed.topologyComplete);
+            // The complete fixed overview remains mandatory. Strong qualified
+            // source contacts must not trigger four redundant half-raster scans.
+            Assert::IsTrue(observed.samples<=size_t(480)*270+2048,
+                L"Full-source contact acquisition must retain bounded work without discarding its topology or changing geometry.");
+        }
         TEST_METHOD(SourcePictureMissingGeometryPreservesBlackReferenceWithoutNativeVotes)
         {
             const auto scope=Bounds(960,540,0,66,960,474);
@@ -609,6 +620,8 @@ namespace VideoProcessorTest
             const auto sameCoordinate=[&](int actual,int expected){return std::abs(actual-expected)<=uncertainty;};
             const bool verify=environment("VP_SOURCE_PICTURE_CAPTURE_VERIFY")=="1";
             const bool captions=environment("VP_SOURCE_PICTURE_CAPTURE_CAPTION_VERIFY")=="1";
+            const bool boundedWorker=environment("VP_SOURCE_PICTURE_CAPTURE_BOUNDED_WORKER")=="1";
+            Assert::IsTrue(!boundedWorker || verify,L"Bounded worker replay requires the active detector and real verification path.");
             Assert::IsTrue(!captions || verify,L"Caption crop verification requires independent native spatial measurement.");
             int left=0,top=0,right=0,bottom=0;
             Assert::AreEqual(4,sscanf_s(edges.c_str(),"%d,%d,%d,%d",&left,&top,&right,&bottom),
@@ -646,10 +659,19 @@ namespace VideoProcessorTest
                 // No sidecar retained crop is passed into the measurement.
                 const auto started=std::chrono::steady_clock::now();
                 SourcePictureObservation direct;SourcePictureDetectionResult active;
-                if(verify)active=DetectSourcePictureForWorker(source);
+                if(boundedWorker) {
+                    ActivePictureFrameIdentity identity;
+                    identity.transportGeneration=identity.sourceFormatGeneration=identity.analysisDomainKey=1;
+                    identity.viewportGeneration=identity.rendererGeneration=1;
+                    identity.acceptedSequence=identity.sourceFrameNumber=count+1;
+                    identity.captureTimestamp=(count+1)*417083;
+                    active=DetectPreparedSourcePictureBounded(source,identity);
+                } else if(verify)active=DetectSourcePictureForWorker(source);
                 else direct=MeasureSourcePicture(source);
-                Assert::IsTrue(!verify || bool(active.observation));
-                const auto& observed=verify?*active.observation:direct;
+                Assert::IsTrue(!verify || boundedWorker || bool(active.observation));
+                // A real budget timeout is a failed frame, never an early exit
+                // that prevents the rest of the explicitly supplied corpus.
+                const auto& observed=verify && active.observation?*active.observation:direct;
                 if(verify) {
                     const auto darkness=EvaluateActivePictureArDarkness(source,active.evidence);
                     Assert::IsTrue(darkness.global.evaluated,L"Active replay timing includes current source AR darkness evaluation.");
@@ -725,6 +747,7 @@ namespace VideoProcessorTest
                         " horizontal="+std::to_string(int(evidence.candidateVerification.horizontal))+
                         " trusted="+std::to_string(evidence.trustedBounds.left)+","+std::to_string(evidence.trustedBounds.top)+"-"+
                         std::to_string(evidence.trustedBounds.right)+","+std::to_string(evidence.trustedBounds.bottom)+
+                        " bounded_worker_24ms="+std::to_string(boundedWorker)+
                         " combined_measure_verify_darkness_ms="+std::to_string(elapsed)+" reason="+evidence.reason).c_str());
                 }
                 if(!matches) {
