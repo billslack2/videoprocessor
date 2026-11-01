@@ -21,6 +21,29 @@ configuration round trips, default compatibility, and x64 Release builds.
 2026-10-31: Created from the user's Screen geometry configuration screenshot
 and request. Story definition only; implementation has not started.
 
+## Implementation progress (2026-10-31)
+
+- Added per-Screen `picture_alignment_mode` (Manual default / Auto) and signed
+  `picture_offset_pixels`; Manual padding is retained independently.
+- Auto centers the physical screen reference and performs a destination-only
+  transform after temporal source selection. Frozen packets carry their own
+  trusted active bounds. Source crop, detector thresholds and authority policy
+  are unchanged. Linear fallback is aligned independently, once.
+- Added inverse vertical-coordinate mapping for shipped NLS/NLS+ and explicit
+  unknown-mapping fallback; output bounds and subtitle accommodations limit trim.
+- A separate live placement-update comparison checks all parsed configuration
+  except the two new Screen keys before preserving AR/subtitle history. It does
+  not broadly ignore changed configuration identity or unknown detector keys.
+- Independent read-only review caught the configuration-identity and shader-name
+  matching issues; both are addressed and undergoing final review.
+- Added geometry, native configuration/inheritance, reset-isolation, Qt UI
+  round-trip and GPU pixel-readback tests. Initial focused run passed 11/12,
+  including both GPU tests; remaining fixture used a reserved profile name,
+  now corrected. Test re-execution and final x64 Release build are in progress.
+- First build's runtime receipt step needed a corrected process-local Windows
+  PowerShell module path. A subsequent full x64 Release solution build passed.
+  No deployment, active configuration modification, or other worktree edit.
+
 ## User story
 
 As a VideoProcessor operator with a configured physical screen inside a larger
