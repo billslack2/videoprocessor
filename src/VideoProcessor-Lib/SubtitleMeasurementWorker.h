@@ -80,7 +80,9 @@ public:
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
         result.analysisStride=key.analysisStride;
-        if (!result.inspectionCandidateUsed && result.text.detected && !result.text.held && !result.text.workLimit) {
+        const bool currentInspectionMask=SourcePictureDetectorEnabled() &&
+            SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(result);
+        if ((!result.inspectionCandidateUsed || currentInspectionMask) && result.text.detected && !result.text.held && !result.text.workLimit) {
             // Geometry and current glyph ownership are independent facts. Active
             // mode verifies the spatial nominee through its occlusion; a caption
             // never nominates a replacement rectangle.
@@ -658,6 +660,10 @@ private:
         uint64_t mismatches=0;
         for(auto i=m_ready.begin();i!=m_ready.end();++i) {
             auto candidate=*i;
+            // A nominated scan is not independent-bar proof. Reuse only its
+            // exact completed glyph work when the SAME plane becomes canonical.
+            // The cache keeps the original record; only this read copy is rebound.
+            SubtitleBoxLookahead::RebindCompletedInspectedPlane(candidate,key.sharedPicture);
             const bool newCanonicalPlane=candidate.pictureAuthorityUnavailableForMeasurement &&
                 candidate.sharedPicture.required && key.sharedPicture.required &&
                 !candidate.sharedPicture.AvailableFor(candidate.identity,candidate.width,candidate.height) &&

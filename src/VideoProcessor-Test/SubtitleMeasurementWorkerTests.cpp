@@ -218,6 +218,214 @@ public:
         Assert::AreEqual(uint64_t(1),a.text.cue);Assert::AreEqual(uint64_t(2),b.text.cue);Assert::AreEqual(uint64_t(3),c.text.cue);
         Assert::IsTrue(worker.TakeDiagnostics().deduplicated>=2);
     }
+    TEST_METHOD(CurrentInspectedGlyphScanCanVerifyOnlyTheIndependentSpatialNominee) {
+        constexpr int width=3840,height=2160,top=264,bottom=1896;
+        std::vector<uint16_t> pixels(size_t(width)*height*3/2,uint16_t(512<<6));
+        for(int y=0;y<height;++y)for(int x=0;x<width;++x)
+            pixels[size_t(y)*width+x]=uint16_t((y>=top&&y<bottom?300:64)<<6);
+        const auto fill=[&](int l,int t,int r,int b,int code) {
+            for(int y=t;y<b;++y)for(int x=l;x<r;++x)pixels[size_t(y)*width+x]=uint16_t(code<<6);
+        };
+        // Same native two-line crossing-card fixture as the independently
+        // qualified supplied-candidate mask controls; no copied detector result.
+        fill(1190,bottom-146,2650,bottom+16,64);
+        for(int y:{bottom-134,bottom-52})for(int glyph=0;glyph<26;++glyph) {
+            const int x=1210+glyph*52;
+            fill(x-2,y-2,x+36,y+58,64);fill(x,y,x+34,y+56,800);fill(x+8,y+10,x+26,y+46,64);
+        }
+        AnalysisLumaSource source;
+        source.data=reinterpret_cast<const uint8_t*>(pixels.data());source.dataBytes=pixels.size()*2;
+        source.width=width;source.height=height;source.rowBytes=source.chromaRowBytes=width*2;
+        source.format=AnalysisLumaFormat::P010;source.range=AnalysisLumaRange::Limited;source.generation=2;
+        ActivePictureBounds spatial{0,top,width,bottom,width,height,double(width)/(bottom-top),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        auto native=VerifySuppliedActivePictureCandidate(source,spatial);
+        native.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+        native.physicalEdges.evaluated=native.physicalEdges.estimateAvailable=true;
+        native.physicalEdges.estimate=spatial;native.physicalEdges.sourceGeneration=2;
+        SubtitleBoxObservation key;key.identity=Identity(10);key.identity.analysisDomainKey=0xA11CE;
+        key.width=width;key.height=height;key.policyGeneration=11;key.continuityGeneration=21;
+        key.nearBarDistance=20;key.sharedPicture.required=true;key.sharedPicture.identity=key.identity;
+        auto& hint=key.sharedPicture.inspectionCandidate;
+        hint.valid=true;hint.bounds=spatial;hint.bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+        hint.originIdentity=Identity(8);hint.originIdentity.analysisDomainKey=key.identity.analysisDomainKey;
+        hint.policyGeneration=11;hint.continuityGeneration=21;hint.nativeGeometryRevision=1;
+        SubtitleMeasurementSampler sampler;
+        const auto measured=sampler.Measure(source,key,{},23.976,native);
+        Assert::IsTrue(measured.analyzed&&measured.inspectionCandidateUsed&&measured.text.detected&&
+            measured.ink&&measured.ink->rawEvidenceComplete&&measured.ink->paletteValid,
+            L"The native source must produce a fresh complete owned glyph mask using the valid contextual inspection hint");
+        Assert::AreEqual(2,measured.text.lineCount);
+        auto proofSource=source;proofSource.generation=key.identity.transportGeneration;
+        const auto direct=VerifySuppliedActivePictureCandidateWithSubtitle(proofSource,native,measured,
+            key.identity,key.policyGeneration,key.continuityGeneration,key.scriptHint);
+        Assert::IsTrue(direct.accepted,
+            L"Current inspected glyph ownership must verify the independent spatial nominee in either test process mode");
+        Assert::AreEqual(top,direct.candidate.top);Assert::AreEqual(bottom,direct.candidate.bottom);
+        Assert::AreEqual(int(ActivePictureDetectorKind::SourceSpatialMeasured),int(direct.evidence.detector));
+        Assert::IsTrue(direct.IsCurrentFor(proofSource,key.identity,11,21,key.scriptHint));
+        if(SourcePictureDetectorEnabled()) {
+            Assert::IsTrue(measured.subtitleArProof.accepted,
+                L"Explicit active-mode integration must consume inspected current glyphs through its normal sampler gate");
+            Assert::IsTrue(measured.subtitleArProof.IsCurrentFor(proofSource,key.identity,11,21,key.scriptHint));
+            Logger::WriteMessage("Active source detector sampler gate exercised; independent supplied mask proof accepted.");
+        } else {
+            Assert::IsFalse(measured.subtitleArProof.accepted,
+                L"Legacy mode must retain its original prohibition on hint-derived AR proof");
+            Logger::WriteMessage("Legacy sampler gate preserved; independent supplied mask verifier exercised directly. Active sampler coverage requires explicit env1 run.");
+        }
+    }
+
+    TEST_METHOD(CompletedInspectionScanSurvivesIdenticalCanonicalPlaneWithoutRescan) {
+        auto pixels=PixelsWithCurrentBars();
+        auto completed=CompleteThreeLineScan(10,pixels);
+        completed.identity.analysisDomainKey=0xA11CE;
+        completed.sharedPicture.identity=completed.identity;
+        completed.text.topSearchComplete=completed.text.bottomSearchComplete=true;
+        completed.text.anchor=completed.text.lineBounds[2];
+        auto canonical=completed;
+        canonical.analyzed=false;canonical.text={};canonical.ink.reset();
+        auto inspected=canonical;
+        inspected.sharedPicture.bounds={};
+        auto& nominee=inspected.sharedPicture.inspectionCandidate;
+        nominee.valid=true;nominee.bounds=canonical.sharedPicture.bounds;
+        nominee.bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+        nominee.originIdentity=inspected.identity;nominee.originIdentity.acceptedSequence=8;
+        nominee.originIdentity.sourceFrameNumber=8;nominee.originIdentity.captureTimestamp=8000;
+        nominee.policyGeneration=inspected.policyGeneration;
+        nominee.continuityGeneration=inspected.continuityGeneration;
+        nominee.nativeGeometryRevision=1;
+        inspected.pictureAuthorityUnavailableForMeasurement=true;
+        completed.sharedPicture=inspected.sharedPicture;
+        completed.pictureAuthorityUnavailableForMeasurement=true;
+        completed.inspectionCandidateUsed=true;
+        completed.independentBarAnalysis=false;
+        const auto originalInk=completed.ink;
+        SubtitleMeasurementWorker worker;worker.SetInputRateHz(23.976);
+        worker.Submit(inspected,[completed](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {return completed;});
+        SubtitleBoxObservation original;
+        Assert::IsTrue(WaitForRead(worker,inspected,original));
+        Assert::AreEqual(uint64_t(1),worker.TakeDiagnostics().submitted);
+        SubtitleBoxObservation rebound;
+        Assert::IsTrue(worker.TryRead(canonical,rebound),
+            L"Completed exact-source glyph work against the identical plane must survive inspection-to-canonical publication without a new job");
+        Assert::IsTrue(rebound.ink==originalInk);
+        Assert::IsTrue(rebound.inspectedPlaneWork!=nullptr);
+        Assert::IsTrue(SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(rebound));
+        Assert::IsTrue(rebound.sharedPicture.Matches(canonical.sharedPicture));
+        Assert::IsTrue(rebound.inspectionCandidateUsed,L"Original nominated-scan provenance must remain explicit");
+        Assert::IsFalse(rebound.independentBarAnalysis,L"Canonical geometry cannot manufacture independent native bar proof");
+        Assert::IsFalse(rebound.subtitleArProof.accepted);
+        Assert::IsTrue(SubtitleBoxLookahead::CanReuseMeasurement(rebound,canonical.identity,
+            canonical.width,canonical.height,canonical.policyGeneration,canonical.continuityGeneration,false,{},canonical.scriptHint));
+        Assert::AreEqual(uint64_t(0),worker.TakeDiagnostics().submitted,
+            L"Metadata publication alone cannot resubmit an already completed scan");
+        Assert::IsFalse(SubtitleMeasurementWorker::CompleteIndependentScanForKey(rebound,canonical),
+            L"Work equivalence must never become independent bar/crop authority");
+        SubtitleBoxObservation originalAgain;
+        Assert::IsTrue(worker.TryRead(inspected,originalAgain));
+        Assert::IsTrue(originalAgain.sharedPicture.Matches(inspected.sharedPicture));
+        Assert::IsTrue(originalAgain.inspectedPlaneWork==nullptr,L"READY cache retains its original interpretation");
+        auto foreign=rebound;++foreign.identity.acceptedSequence;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(foreign),
+            L"An immutable work stamp cannot be copied to another source");
+        for(int fault=0;fault<8;++fault) {
+            auto changed=rebound;
+            switch(fault) {
+            case 0:++changed.sharedPicture.identity.transportGeneration;break;
+            case 1:++changed.sharedPicture.identity.sourceFormatGeneration;break;
+            case 2:++changed.sharedPicture.identity.analysisDomainKey;break;
+            case 3:++changed.sharedPicture.identity.viewportGeneration;break;
+            case 4:++changed.sharedPicture.identity.rendererGeneration;break;
+            case 5:++changed.sharedPicture.bounds.top;break;
+            case 6:++changed.policyGeneration;break;
+            case 7:++changed.continuityGeneration;break;
+            }
+            Assert::IsFalse(SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(changed),
+                L"A copied stamp cannot authorize stale or altered canonical source metadata");
+        }
+        worker.Stop();
+    }
+
+    TEST_METHOD(InspectedPlaneWorkRejectsChangedSourceSettingsGeometryAndIncompleteInk) {
+        auto pixels=PixelsWithCurrentBars();auto completed=CompleteThreeLineScan(10,pixels);
+        completed.identity.analysisDomainKey=0xA11CE;completed.sharedPicture.identity=completed.identity;
+        completed.text.topSearchComplete=completed.text.bottomSearchComplete=true;
+        completed.text.anchor=completed.text.lineBounds[2];
+        auto canonical=completed;canonical.analyzed=false;canonical.text={};canonical.ink.reset();
+        auto inspected=canonical;inspected.sharedPicture.bounds={};
+        auto& nominee=inspected.sharedPicture.inspectionCandidate;
+        nominee.valid=true;nominee.bounds=canonical.sharedPicture.bounds;
+        nominee.bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+        nominee.originIdentity=Identity(8);nominee.originIdentity.analysisDomainKey=0xA11CE;
+        nominee.policyGeneration=11;nominee.continuityGeneration=21;nominee.nativeGeometryRevision=1;
+        inspected.pictureAuthorityUnavailableForMeasurement=true;
+        completed.sharedPicture=inspected.sharedPicture;completed.pictureAuthorityUnavailableForMeasurement=true;
+        completed.inspectionCandidateUsed=true;completed.independentBarAnalysis=false;
+        Assert::IsTrue(SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(completed));
+        SubtitleMeasurementWorker worker;
+        worker.Submit(inspected,[completed](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return completed;});
+        SubtitleBoxObservation original;Assert::IsTrue(WaitForRead(worker,inspected,original));
+        Assert::AreEqual(uint64_t(1),worker.TakeDiagnostics().submitted);
+        for(int fault=0;fault<19;++fault) {
+            auto changed=canonical;
+            switch(fault) {
+            case 0:++changed.sharedPicture.bounds.top;break;
+            case 1:++changed.identity.acceptedSequence;break;
+            case 2:++changed.identity.sourceFrameNumber;break;
+            case 3:++changed.identity.captureTimestamp;break;
+            case 4:++changed.identity.transportGeneration;break;
+            case 5:++changed.identity.sourceFormatGeneration;break;
+            case 6:++changed.identity.analysisDomainKey;break;
+            case 7:++changed.identity.viewportGeneration;break;
+            case 8:++changed.identity.rendererGeneration;break;
+            case 9:++changed.policyGeneration;break;
+            case 10:++changed.continuityGeneration;break;
+            case 11:++changed.nearBarDistance;break;
+            case 12:++changed.optimizationMode;break;
+            case 13:changed.scriptHint=SubtitleScriptHint::Arabic;break;
+            case 14:changed.discontinuity=true;break;
+            case 15:changed.analysisStride=2;break;
+            case 16:++changed.width;break;
+            case 17:++changed.height;break;
+            case 18:changed.sharedPicture.inspectionCandidate.valid=true;break;
+            }
+            SubtitleBoxObservation rejected;
+            Assert::IsFalse(worker.TryRead(changed,rejected),L"Different source/settings/geometry must not reuse inspected work");
+            Assert::IsTrue(worker.TryRead(inspected,rejected),L"A failed read must preserve the original immutable READY entry");
+        }
+        Assert::AreEqual(uint64_t(0),worker.TakeDiagnostics().submitted);worker.Stop();
+        for(int fault=0;fault<18;++fault) {
+            auto bad=completed;
+            switch(fault) {
+            case 0:bad.text.workLimit=true;break;
+            case 1:bad.text.held=true;break;
+            case 2:bad.text.confirmationPending=true;break;
+            case 3:bad.pendingRefresh=true;break;
+            case 4:bad.analysisRefresh=true;break;
+            case 5:bad.glyphLocalBottom=true;break;
+            case 6:bad.hasBarTrackingReference=true;break;
+            case 7:bad.barTrackingAuthority=true;break;
+            case 8:bad.text.topSearchComplete=false;break;
+            case 9:bad.text.bottomSearchComplete=false;break;
+            case 10:bad.sharedPicture.inspectionCandidate.nativeGeometryRevision=0;break;
+            case 11:bad.sharedPicture.inspectionCandidate.valid=false;break;
+            case 12:bad.barAuthority=false;break;
+            case 13:bad.barEvidence.available=false;break;
+            case 14: {auto ink=std::make_shared<SubtitleInkSnapshot>(*bad.ink);ink->rawEvidenceComplete=false;bad.ink=ink;break;}
+            case 15: {auto ink=std::make_shared<SubtitleInkSnapshot>(*bad.ink);ink->paletteValid=false;bad.ink=ink;break;}
+            case 16: {auto ink=std::make_shared<SubtitleInkSnapshot>(*bad.ink);ink->rawInk[0]=0;ink->ownedInk[0]=1;bad.ink=ink;break;}
+            case 17:bad.text.anchor={};break;
+            }
+            Assert::IsFalse(SubtitleBoxLookahead::RebindCompletedInspectedPlane(bad,canonical.sharedPicture),
+                L"A canonical publication cannot repair incomplete, stale or unowned glyph work");
+        }
+        auto proofCarrier=completed;proofCarrier.subtitleArProof.accepted=true;
+        proofCarrier.subtitleArDarkness.global.evaluated=true;
+        Assert::IsTrue(SubtitleBoxLookahead::RebindCompletedInspectedPlane(proofCarrier,canonical.sharedPicture));
+        Assert::IsFalse(proofCarrier.subtitleArProof.accepted);
+        Assert::IsFalse(proofCarrier.subtitleArDarkness.global.evaluated);
+    }
+
     TEST_METHOD(UnavailablePlaneWorkCoalescesCanonicalRequestWithoutDuplicatingActiveOrPendingScan) {
         {
             auto canonical=Ready(10).current;canonical.identity.analysisDomainKey=0xA11CE;

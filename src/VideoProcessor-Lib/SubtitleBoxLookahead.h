@@ -104,6 +104,27 @@ struct SubtitlePictureAuthority {
     }
 };
 
+struct SubtitleBoxObservation;
+namespace SubtitleBoxLookahead {
+    inline bool HasCurrentInspectionGlyphMeasurement(const SubtitleBoxObservation&);
+    inline bool RebindCompletedInspectedPlane(SubtitleBoxObservation&,const SubtitlePictureAuthority&);
+}
+// Immutable provenance of already completed work, not a native/caption/erasure
+// certificate. Only the exact-plane adapter can mint it; the original ink owner
+// and full source/settings/continuity remain bound after snapshot publication.
+class SubtitleInspectionWorkStamp {
+    friend bool SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(const SubtitleBoxObservation&);
+    friend bool SubtitleBoxLookahead::RebindCompletedInspectedPlane(SubtitleBoxObservation&,const SubtitlePictureAuthority&);
+    SubtitleInspectionWorkStamp() = default;
+    ActivePictureFrameIdentity identity;
+    SubtitleInspectionCandidate nominee;
+    const SubtitleInkSnapshot* ink=nullptr;
+    uint64_t policy=0,continuity=0;
+    int width=0,height=0,nearBar=0,optimization=0,pictureTop=0,pictureBottom=0;
+    SubtitleScriptHint script=SubtitleScriptHint::Latin;
+    bool independentBars=false;
+};
+
 // A measurement belongs to source pixels, never retained presentation geometry.
 struct SubtitleBoxObservation
 {
@@ -157,6 +178,7 @@ struct SubtitleBoxObservation
     SubtitleBarEvidence barEvidence;
     SubtitleBarStripClearance barStripClearance;
     std::shared_ptr<const SubtitleInkSnapshot> ink;
+    std::shared_ptr<const SubtitleInspectionWorkStamp> inspectedPlaneWork;
 };
 
 struct SubtitleBoxPreview;
@@ -298,6 +320,72 @@ private:
 
 namespace SubtitleBoxLookahead
 {
+    inline bool SameInspectedPlaneBounds(const ActivePictureBounds& a,const ActivePictureBounds& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+            a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;
+    }
+    // This describes usable exact-current glyph measurement ONLY. A valid hint
+    // never supplies an AR nominee; callers must independently verify their
+    // spatial rectangle against these current pixels before granting crop proof.
+    inline bool HasCurrentInspectionGlyphMeasurement(const SubtitleBoxObservation& o) {
+        if(!o.inspectionCandidateUsed || !o.pictureAuthorityUnavailableForMeasurement ||
+            !o.sharedPicture.required || !o.analyzed || o.analysisStride!=1 || o.cadenceSkipped ||
+            o.discontinuity || o.analysisRefresh || o.pendingRefresh || o.glyphLocalTop || o.glyphLocalBottom ||
+            o.barTrackingAuthority || o.currentAnchorUsesTrackedEdge || o.hasBarTrackingReference ||
+            o.trackedBottomHypothesisAttempted || !o.barAuthority || !o.barEvidence.available ||
+            !o.text.detected || o.text.held || o.text.confirmationPending || o.text.workLimit ||
+            o.text.lineCount<1 || o.text.lineCount>3 || !o.text.bounds.Valid() || !o.text.anchor.Valid() ||
+            !o.text.topSearchComplete || !o.text.bottomSearchComplete || !o.ink ||
+            !o.ink->rawEvidenceComplete || !o.ink->paletteValid)return false;
+        const auto& ink=*o.ink;
+        if(ink.step<=0 || ink.width<=0 || ink.height<=0 || ink.width>o.width || ink.height>o.height ||
+            ink.sourceRows.size()!=size_t(ink.height))return false;
+        const size_t words=(size_t(ink.width)*size_t(ink.height)+63)/64;
+        if(ink.rawInk.size()!=words || ink.ownedInk.size()!=words || ink.blackBacking.size()!=words)return false;
+        bool owned=false;
+        for(size_t i=0;i<words;++i) {
+            if(ink.ownedInk[i]&~ink.rawInk[i])return false;
+            owned=owned || ink.ownedInk[i]!=0;
+        }
+        if(!owned)return false;
+        int previous=-1;
+        for(int row:ink.sourceRows) {if(row<=previous || row<0 || row>=o.height)return false;previous=row;}
+        if(o.inspectedPlaneWork) {
+            const auto& stamp=*o.inspectedPlaneWork;
+            return SameAnalysisFrameIdentity(stamp.identity,o.identity) && stamp.ink==o.ink.get() &&
+                stamp.policy==o.policyGeneration && stamp.continuity==o.continuityGeneration &&
+                stamp.width==o.width && stamp.height==o.height && stamp.nearBar==o.nearBarDistance &&
+                stamp.optimization==o.optimizationMode && stamp.script==o.scriptHint &&
+                stamp.pictureTop==o.pictureTop && stamp.pictureBottom==o.pictureBottom &&
+                stamp.independentBars==o.independentBarAnalysis &&
+                stamp.nominee.AvailableFor(o.identity,o.width,o.height,o.policyGeneration,o.continuityGeneration) &&
+                !o.sharedPicture.inspectionCandidate.valid &&
+                o.sharedPicture.AvailableFor(o.identity,o.width,o.height) &&
+                SameInspectedPlaneBounds(stamp.nominee.bounds,o.sharedPicture.bounds);
+        }
+        return !o.sharedPicture.AvailableFor(o.identity,o.width,o.height) &&
+            o.sharedPicture.inspectionCandidate.AvailableFor(o.identity,o.width,o.height,
+                o.policyGeneration,o.continuityGeneration);
+    }
+    inline bool RebindCompletedInspectedPlane(SubtitleBoxObservation& o,const SubtitlePictureAuthority& picture) {
+        if(!HasCurrentInspectionGlyphMeasurement(o) || picture.inspectionCandidate.valid ||
+            !picture.AvailableFor(o.identity,o.width,o.height))return false;
+        if(o.inspectedPlaneWork)return o.sharedPicture.Matches(picture);
+        const auto& nominee=o.sharedPicture.inspectionCandidate;
+        if(!SameInspectedPlaneBounds(nominee.bounds,picture.bounds))return false;
+        std::shared_ptr<SubtitleInspectionWorkStamp> stamp(new SubtitleInspectionWorkStamp());
+        stamp->identity=o.identity;stamp->nominee=nominee;stamp->ink=o.ink.get();
+        stamp->policy=o.policyGeneration;stamp->continuity=o.continuityGeneration;
+        stamp->width=o.width;stamp->height=o.height;stamp->nearBar=o.nearBarDistance;
+        stamp->optimization=o.optimizationMode;stamp->script=o.scriptHint;
+        stamp->pictureTop=o.pictureTop;stamp->pictureBottom=o.pictureBottom;
+        stamp->independentBars=o.independentBarAnalysis;
+        o.inspectedPlaneWork=std::move(stamp);o.sharedPicture=picture;
+        // Work reuse neither transfers AR proof nor changes original scan flags.
+        o.subtitleArProof={};o.subtitleArDarkness={};
+        return true;
+    }
+
     constexpr size_t MaxFrames = 8;
     inline bool NeedsCurrentSubtitleBarStripClearance(
         const SubtitleBoxObservation& observation)
@@ -651,6 +739,9 @@ namespace SubtitleBoxLookahead
     inline bool RebindIndependentPicture(SubtitleBoxObservation& observation,
         const SubtitlePictureAuthority& picture)
     {
+        if(observation.inspectedPlaneWork)
+            return HasCurrentInspectionGlyphMeasurement(observation) && observation.sharedPicture.Matches(picture);
+        if(RebindCompletedInspectedPlane(observation,picture))return true;
         if((observation.sharedPicture.inspectionCandidate.valid &&
                 !observation.sharedPicture.inspectionCandidate.AvailableFor(observation.identity,observation.width,observation.height,
                     observation.policyGeneration,observation.continuityGeneration)) ||
@@ -758,7 +849,9 @@ namespace SubtitleBoxLookahead
             observation.discontinuity != discontinuity) return false;
         if(observation.inspectionCandidateUsed &&
             !observation.sharedPicture.inspectionCandidate.AvailableFor(identity,width,height,
-                policyGeneration,continuityGeneration))return false;
+                policyGeneration,continuityGeneration) &&
+            !HasCurrentInspectionGlyphMeasurement(observation))return false;
+        if(observation.inspectedPlaneWork)return HasCurrentInspectionGlyphMeasurement(observation);
         // The available shared-picture branch measures current pixels and
         // returns before consulting priorBar. This includes partial/negative
         // scans: accepting their result does not turn unsearched bars into

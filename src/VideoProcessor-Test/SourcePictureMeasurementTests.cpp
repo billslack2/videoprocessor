@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <SourcePictureMeasurement.h>
 #include <SourcePictureDetector.h>
+#include <SubtitleMeasurementWorker.h>
 #include "CppUnitTest.h"
 
 #include <algorithm>
@@ -115,6 +116,39 @@ namespace VideoProcessorTest
                 EvaluateActivePictureGlobalNearBlack(source),EvaluateActivePictureArDarkness(source,detected.evidence));
             Assert::IsTrue(retained.excludedBandsPixelSafe);
             Assert::IsFalse(MakeActivePictureObservation(detected.evidence,1,1).available);
+        }
+        TEST_METHOD(SourcePictureOppositeOuterEdgesSurviveAnOpaqueCentralCaptionPanel)
+        {
+            for(bool uhd:{false,true}) {
+                const int width=uhd?3840:960,height=uhd?2160:540;
+                const int top=uhd?263:63,bottom=uhd?1897:477,panelTop=uhd?1829:453;
+                SourcePictureFrame frame(width,height);
+                frame.Fill(0,top,width,bottom,240,530,490);
+                frame.Fill(width/4,panelTop,3*width/4,std::min(height,bottom+80),64);
+                for(int glyph=0;glyph<18;++glyph) {
+                    const int x=width/2-126+14*glyph;
+                    frame.Fill(x,bottom-12,x+7,bottom+1,850);
+                    frame.Fill(x,bottom+8,x+7,bottom+21,850);
+                }
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Exact(observed,Bounds(width,height,0,top,width,bottom));
+                Assert::IsTrue(observed.measuredBounds.bottom!=panelTop,
+                    L"The interior top of an opaque caption panel must not replace a same-row border seen broadly at both outer quarters.");
+            }
+        }
+        TEST_METHOD(SourcePicturePairedNarrowWidgetsCannotImpersonateBroadOuterPictureSupport)
+        {
+            SourcePictureFrame frame(3840,2160);
+            frame.Fill(0,263,250,1897,240,530,490);
+            frame.Fill(3590,263,3840,1897,240,530,490);
+            const auto widgets=MeasureSourcePicture(frame.Source());
+            Assert::IsFalse(widgets.rectangleAvailable,
+                L"Two narrow edge widgets supply too little opposite-quarter support to establish a picture rectangle.");
+            frame.Fill(0,0,3840,2160,64);
+            frame.Fill(960,1829,2880,1990,240,530,490);
+            const auto center=MeasureSourcePicture(frame.Source());
+            Assert::IsFalse(center.rectangleAvailable,
+                L"A centered caption-sized panel cannot establish the full-raster picture's borders.");
         }
         TEST_METHOD(SourcePictureActiveAdapterSeparatesOddMeasurementFromOutwardGuard)
         {
@@ -449,6 +483,8 @@ namespace VideoProcessorTest
             const auto edges=environment("VP_SOURCE_PICTURE_CAPTURE_EXPECTED_EDGES");
             const auto outcome=environment("VP_SOURCE_PICTURE_CAPTURE_EXPECTED_OUTCOME");
             const bool verify=environment("VP_SOURCE_PICTURE_CAPTURE_VERIFY")=="1";
+            const bool captions=environment("VP_SOURCE_PICTURE_CAPTURE_CAPTION_VERIFY")=="1";
+            Assert::IsTrue(!captions || verify,L"Caption crop verification requires independent native spatial measurement.");
             int left=0,top=0,right=0,bottom=0;
             Assert::AreEqual(4,sscanf_s(edges.c_str(),"%d,%d,%d,%d",&left,&top,&right,&bottom),
                 L"A supplied private corpus requires independently verified explicit expected source coordinates.");
@@ -524,6 +560,39 @@ namespace VideoProcessorTest
                         evidence.trustedBounds.left==0 && evidence.trustedBounds.top==0 &&
                         evidence.trustedBounds.right==width && evidence.trustedBounds.bottom==height;
                     if(outcome=="Partial")matches=matches && evidence.detector==ActivePictureDetectorKind::SourceSpatialUnavailable && !evidence.available;
+                    if(captions) {
+                        // Replay the captured search hint only into the glyph
+                        // scanner. Spatial geometry above never receives it.
+                        auto key=std::make_unique<SubtitleBoxObservation>();
+                        auto& id=key->identity;
+                        id.transportGeneration=id.sourceFormatGeneration=id.analysisDomainKey=1;
+                        id.viewportGeneration=id.rendererGeneration=1;
+                        id.acceptedSequence=id.sourceFrameNumber=count;
+                        id.captureTimestamp=count*417083;
+                        key->width=width;key->height=height;key->analysisStride=1;
+                        key->policyGeneration=key->continuityGeneration=1;
+                        key->nearBarDistance=20;key->scriptHint=static_cast<SubtitleScriptHint>(script);
+                        key->sharedPicture.required=true;key->sharedPicture.identity=id;
+                        auto& hint=key->sharedPicture.inspectionCandidate;
+                        hint.valid=retainedTop>0 && retainedBottom<height && retainedTop<retainedBottom;
+                        hint.bounds={0,retainedTop,width,retainedBottom,width,height,
+                            double(width)/std::max(1,retainedBottom-retainedTop),ActivePictureBounds::BarAxes::NONE};
+                        hint.originIdentity=id;hint.policyGeneration=hint.continuityGeneration=hint.nativeGeometryRevision=1;
+                        auto scanner=std::make_unique<SubtitleMeasurementSampler>();
+                        auto caption=std::make_unique<SubtitleBoxObservation>(scanner->Measure(source,*key,{},24.0,evidence));
+                        const auto masked=VerifySuppliedActivePictureCandidateWithSubtitle(source,evidence,*caption,id,1,1,key->scriptHint);
+                        const bool cropped=evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED || masked.accepted;
+                        matches=matches && cropped;
+                        Logger::WriteMessage((std::string("Native captured caption/crop verification: ")+path+
+                            " detected="+std::to_string(caption->text.detected)+" inspection="+std::to_string(caption->inspectionCandidateUsed)+
+                            " crop_verified="+std::to_string(cropped)+" masked="+std::to_string(masked.accepted)+
+                            " profile="+masked.maskedProfile.reason+
+                            " mismatch_xy="+std::to_string(masked.maskedProfile.firstMismatchX)+","+std::to_string(masked.maskedProfile.firstMismatchY)+
+                            " top_span="+std::to_string(masked.maskedProfile.topFirstMismatchY)+","+std::to_string(masked.maskedProfile.topLastMismatchY)+
+                            " bottom_span="+std::to_string(masked.maskedProfile.bottomFirstMismatchY)+","+std::to_string(masked.maskedProfile.bottomLastMismatchY)+
+                            " dy="+std::to_string(masked.maskedProfile.maxLumaDelta)+" duv="+std::to_string(masked.maskedProfile.maxChromaDelta)+
+                            " caption_reason="+caption->text.diagnosticReason+" proof_reason="+masked.reason).c_str());
+                    }
                     Logger::WriteMessage((std::string("Native source-picture active verification: ")+path+
                         " detector="+std::to_string(int(evidence.detector))+" available="+std::to_string(evidence.available)+
                         " classification="+std::to_string(int(evidence.classification))+

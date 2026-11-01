@@ -14,11 +14,14 @@ struct SourceReadFailure {};
 struct Reader {
     const AnalysisLumaSource& source;
     const AnalysisEvaluationBudget* budget;
+    ValidatedAnalysisLumaSampler sampler;
     size_t samples=0;
+    Reader(const AnalysisLumaSource& value,const AnalysisEvaluationBudget* limit)
+        : source(value),budget(limit),sampler(value) {}
     AnalysisLumaSample At(int x,int y) {
         if((samples++&255)==0)CheckAnalysisEvaluationBudget(budget);
         AnalysisLumaSample value;
-        if(!source.Sample(x,y,value))throw SourceReadFailure{};
+        if(!sampler.Sample(x,y,value))throw SourceReadFailure{};
         return value;
     }
 };
@@ -189,7 +192,14 @@ const SourcePictureEdgeCandidate* Select(const std::vector<SourcePictureEdgeCand
     for(const auto& candidate:candidates) {
         unsigned regions=0;for(auto n:candidate.regionSupport)if(n>=2)++regions;
         const bool extent=candidate.coordinate==terminal && candidate.support>=kEdgeProbes/2 && regions>=2;
-        if(!candidate.overlayLike && (extent || (candidate.support>=kEdgeProbes/4 && regions>=3)))return &candidate;
+        // A center caption/backing can occlude both middle quarters of a real
+        // border. Broad agreement at the SAME coordinate in opposite outer
+        // quarters is independently sufficient; two narrow edge widgets are
+        // not. Retain the existing total-support requirement and all topology
+        // reconciliation instead of inferring an edge from caption geometry.
+        const bool pairedOuter=candidate.regionSupport[0]>=12 && candidate.regionSupport[3]>=12;
+        if(!candidate.overlayLike && (extent ||
+            (candidate.support>=kEdgeProbes/4 && (regions>=3 || pairedOuter))))return &candidate;
     }
     return nullptr;
 }

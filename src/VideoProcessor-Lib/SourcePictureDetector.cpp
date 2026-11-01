@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <SourcePictureDetector.h>
 #include <AnalysisDiagnosticHooks.h>
+#include <DebugLog.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -103,5 +104,30 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
         AnalysisTraceRect(trace.measured,facts.measuredBounds);
     }
     AnalysisTraceRect(trace.published,result.evidence.trustedBounds);
+    // Low-rate experimental health telemetry separates completed source facts
+    // from accepted crop authority; no pixels or presentation decisions change.
+    struct Health {
+        uint64_t tick=0,generation=0,jobs=0,measured=0,canvas=0,verified=0,budget=0;
+        double totalMs=0,peakMs=0;
+    };
+    static thread_local Health health;
+    const auto now=GetTickCount64();
+    if(!health.tick || health.generation!=source.generation) {
+        health={};health.tick=now;health.generation=source.generation;
+    }
+    ++health.jobs;
+    health.measured+=result.evidence.physicalEdges.estimateAvailable;
+    health.canvas+=result.evidence.detector==ActivePictureDetectorKind::SourceSpatialCanvas;
+    health.verified+=result.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED;
+    health.budget+=result.evidence.reason.find("budget")!=std::string::npos;
+    health.totalMs+=trace.metrics[0];health.peakMs=std::max(health.peakMs,trace.metrics[0]);
+    if(now-health.tick>=2000) {
+        const auto& edge=result.evidence.physicalEdges.estimate;
+        DebugLog::Log("VP spatial detector interval: worker=%lu format=%s generation=%llu source=%llu jobs=%llu measured=%llu canvas=%llu unknown=%llu raw_verified=%llu budget_exhausted=%llu avg_ms=%.3f peak_ms=%.3f last_physical=%d,%d-%d,%d last_reason=%s",
+            GetCurrentThreadId(),AnalysisLumaFormatName(source),source.generation,identity.acceptedSequence,
+            health.jobs,health.measured,health.canvas,health.jobs-health.measured-health.canvas,health.verified,
+            health.budget,health.totalMs/health.jobs,health.peakMs,edge.left,edge.top,edge.right,edge.bottom,result.evidence.reason.c_str());
+        health={};health.tick=now;health.generation=source.generation;
+    }
     AnalysisDiagnosticTrace::Emit(trace);return result;
 }

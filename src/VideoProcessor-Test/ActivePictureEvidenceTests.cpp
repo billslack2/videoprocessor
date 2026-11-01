@@ -2,6 +2,7 @@
 #include <vprenderer/SubtitleBarRecovery.h>
 
 #include <ActivePictureEvidence.h>
+#include <SourcePictureDetector.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCueContinuation.h>
 #include <SubtitleCadenceGuard.h>
@@ -9712,6 +9713,141 @@ namespace VideoProcessorTest
             frame.FillRectangle(0,1950,3840,2060,300,530,490);
             const auto menu=VerifySuppliedActivePictureCandidateWithSubtitle(source,measured,*current,identity,47,23,SubtitleScriptHint::Latin);
             Assert::IsFalse(menu.accepted);Assert::AreEqual(1896,menu.evidence.proposedBounds.bottom);
+        }
+        TEST_METHOD(SuppliedSpatialCaptionCollarRetainsFaintRowsWithoutChangingPhysicalMeasurement)
+        {
+            // Current source filtering fringes are retained pixels, not a new
+            // measured edge and not permission to erase a caption.
+            for (const int top : {263,264}) {
+                const int bottom=2160-top;
+                auto frame=MakeSubtitleProofFrame(top,bottom,true);
+                for(int i=0;i<17;++i) {
+                    const int x=((i*5)%96)*3839/95;
+                    frame.FillRectangle(x,top-3,x+1,top-2,76);
+                    frame.FillRectangle(x,bottom+2,x+1,bottom+3,76);
+                }
+                for(int i=0;i<7;++i) {
+                    const int x=((i*13)%96)*3839/95;
+                    frame.FillRectangle(x,top-5,x+1,top-4,70);
+                    frame.FillRectangle(x,bottom+4,x+1,bottom+5,70);
+                }
+                if(top==263) {
+                    // The sampled source fringe is exactly eight rows away.
+                    // Its retained aperture must then align outward, not move
+                    // the measured odd physical edge or reject the last row.
+                    frame.FillRectangle(3232,top-8,3233,top-7,70);
+                    frame.FillRectangle(3232,bottom+8,3233,bottom+9,70);
+                }
+                auto source=frame.P010Source();source.generation=17;
+                const auto identity=MakeSubtitleProofIdentity(source,9);
+                const auto bounds=ScopePresentation(3840,2160,top,bottom);
+                auto current=std::make_unique<SubtitleBoxObservation>(MeasureSubtitleProofFrame(source,identity,47,23,SubtitleScriptHint::Latin));
+                Assert::IsTrue(current->analyzed && current->text.detected && current->ink && current->ink->rawEvidenceComplete);
+                Assert::IsFalse(current->inspectionCandidateUsed);
+                const auto originalInk=current->ink;
+                auto measured=VerifySuppliedActivePictureCandidate(source,bounds);
+                measured.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+                measured.physicalEdges.evaluated=measured.physicalEdges.estimateAvailable=true;
+                measured.physicalEdges.estimate=bounds;measured.physicalEdges.sourceGeneration=source.generation;
+                const auto proof=VerifySuppliedActivePictureCandidateWithSubtitle(source,measured,*current,identity,47,23,SubtitleScriptHint::Latin);
+                Logger::WriteMessage(proof.reason);
+                Assert::IsTrue(proof.accepted,L"Current-owned caption masking must retain a bounded faint filtering collar without moving the independently measured edge.");
+                Assert::IsTrue(proof.IsCurrentFor(source,identity,47,23,SubtitleScriptHint::Latin));
+                Assert::AreEqual(top,proof.evidence.proposedBounds.top);
+                Assert::AreEqual(bottom,proof.evidence.proposedBounds.bottom);
+                Assert::AreEqual(top,proof.evidence.physicalEdges.estimate.top);
+                Assert::AreEqual(bottom,proof.evidence.physicalEdges.estimate.bottom);
+                if(top==263) {
+                    Assert::AreEqual(254,proof.candidate.top);
+                    Assert::AreEqual(1906,proof.candidate.bottom);
+                } else {
+                    Assert::IsTrue(proof.candidate.top<=top-5 && proof.candidate.top>=top-8);
+                    Assert::IsTrue(proof.candidate.bottom>=bottom+5 && proof.candidate.bottom<=bottom+8);
+                }
+                Assert::AreEqual(0,proof.candidate.top%2);Assert::AreEqual(0,proof.candidate.bottom%2);
+                Assert::IsTrue(proof.evidence.verticalBarGuardProfile.completed && proof.evidence.verticalBarGuardProfile.clean);
+                Assert::AreEqual(top,proof.evidence.candidateVerification.nomination.top);
+                Assert::AreEqual(bottom,proof.evidence.candidateVerification.nomination.bottom);
+                Assert::AreEqual(proof.candidate.top,proof.evidence.candidateVerification.bounds.top);
+                Assert::AreEqual(proof.candidate.bottom,proof.evidence.candidateVerification.bounds.bottom);
+                Assert::IsTrue(originalInk==current->ink);
+            }
+        }
+        TEST_METHOD(SuppliedSpatialCaptionCollarCannotHideDeepOrUnownedPicture)
+        {
+            for(int fault=0;fault<6;++fault) {
+                auto frame=MakeSubtitleProofFrame(263,1897,true);
+                auto source=frame.P010Source();source.generation=17;
+                const auto identity=MakeSubtitleProofIdentity(source,9);
+                const auto bounds=ScopePresentation(3840,2160,263,1897);
+                auto current=std::make_unique<SubtitleBoxObservation>(MeasureSubtitleProofFrame(source,identity,47,23,SubtitleScriptHint::Latin));
+                Assert::IsTrue(current->analyzed && current->text.detected && current->ink && current->ink->rawEvidenceComplete);
+                auto measured=VerifySuppliedActivePictureCandidate(source,bounds);
+                measured.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+                measured.physicalEdges.evaluated=measured.physicalEdges.estimateAvailable=true;
+                measured.physicalEdges.estimate=bounds;measured.physicalEdges.sourceGeneration=source.generation;
+                // These are outside the ORIGINAL immutable current glyph mask.
+                if(fault==0)frame.FillRectangle(0,252,3840,254,70);
+                // A deep band spans two scan steps so this veto does not
+                // depend on the odd/even aperture's sample-grid phase.
+                if(fault==1)frame.FillRectangle(0,1908,3840,1916,70);
+                if(fault==2)frame.FillRectangle(100,1880,900,1940,400,530,490);
+                if(fault==3)frame.FillRectangle(0,1950,3840,2060,300,530,490);
+                // Even a faint unowned sample nine rows away is outside the
+                // source-support allowance; alignment cannot authorize it.
+                if(fault==4)frame.FillRectangle(3232,254,3233,255,70);
+                if(fault==5)frame.FillRectangle(3232,1906,3233,1907,70);
+                const auto proof=VerifySuppliedActivePictureCandidateWithSubtitle(source,measured,*current,identity,47,23,SubtitleScriptHint::Latin);
+                Logger::WriteMessage((std::string("Caption collar veto control: fault=")+std::to_string(fault)+
+                    " accepted="+std::to_string(proof.accepted)+" reason="+proof.reason+
+                    " first="+std::to_string(proof.maskedProfile.firstMismatchY)+
+                    " top_first="+std::to_string(proof.maskedProfile.topFirstMismatchY)+
+                    " bottom_last="+std::to_string(proof.maskedProfile.bottomLastMismatchY)).c_str());
+                Assert::IsFalse(proof.accepted,L"A collar cannot excuse deep unowned bands, connected picture, or a detached menu.");
+                Assert::AreEqual(263,proof.evidence.proposedBounds.top);
+                Assert::AreEqual(1897,proof.evidence.proposedBounds.bottom);
+                Assert::AreEqual(263,proof.evidence.physicalEdges.estimate.top);
+                Assert::AreEqual(1897,proof.evidence.physicalEdges.estimate.bottom);
+            }
+        }
+        TEST_METHOD(SuppliedSpatialDimFlanksWithOpaqueCaptionKeepIndependentEdgeProof)
+        {
+            auto frame=MakeSubtitleProofFrame(264,1896,true);
+            // A dark shot has sustained visible flanks only eight codes above
+            // matte. The measured caption card occludes the middle of the
+            // lower boundary. Interior picture grows brighter away from edges.
+            frame.FillRectangle(0,264,3840,304,72);
+            frame.FillRectangle(0,1856,3840,1896,72);
+            AddMeasuredProofCard(frame,1896,true);
+            auto source=frame.P010Source();source.generation=17;
+            const auto identity=MakeSubtitleProofIdentity(source,9);
+            const auto bounds=ScopePresentation(3840,2160,264,1896);
+            const auto detection=DetectSourcePictureForWorker(source);
+            Assert::IsTrue(detection.observation && detection.observation->complete);
+            Assert::IsTrue(detection.observation->outcome==SourcePictureOutcome::Measured,
+                L"The spatial detector must independently measure the dark scene; a test-authored strong tag is insufficient.");
+            Assert::AreEqual(264,detection.observation->measuredBounds.top);
+            Assert::AreEqual(1896,detection.observation->measuredBounds.bottom);
+            Assert::IsTrue(detection.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured);
+            auto current=std::make_unique<SubtitleBoxObservation>(MeasureSubtitleProofFrame(
+                source,identity,47,23,SubtitleScriptHint::Latin,&bounds));
+            Assert::IsTrue(current->analyzed && current->text.detected && current->ink && current->ink->rawEvidenceComplete);
+            Assert::IsFalse(current->inspectionCandidateUsed);
+            const auto proof=VerifySuppliedActivePictureCandidateWithSubtitle(
+                source,detection.evidence,*current,identity,47,23,SubtitleScriptHint::Latin);
+            Logger::WriteMessage(proof.reason);
+            Assert::IsTrue(proof.accepted,
+                L"A separately measured distributed edge plus clean current masked bars must not require the legacy mean inner-contrast threshold.");
+            Assert::AreEqual(264,proof.evidence.physicalEdges.estimate.top);
+            Assert::AreEqual(1896,proof.evidence.physicalEdges.estimate.bottom);
+            Assert::IsTrue(proof.evidence.verticalBarGuardProfile.completed && proof.evidence.verticalBarGuardProfile.clean);
+            // Independent geometry never excuses unowned current picture in a
+            // discarded band, including when positive contrast was redundant.
+            frame.FillRectangle(100,1880,900,1940,400,530,490);
+            const auto connected=VerifySuppliedActivePictureCandidateWithSubtitle(
+                source,detection.evidence,*current,identity,47,23,SubtitleScriptHint::Latin);
+            Assert::IsFalse(connected.accepted);
+            Assert::AreEqual(1896,connected.evidence.proposedBounds.bottom);
         }
         TEST_METHOD(SuppliedCandidateInvalidOrCancelledVerificationCannotCarryAuthority)
         {

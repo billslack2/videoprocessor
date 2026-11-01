@@ -10,8 +10,18 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 928,
+  "minimumNativeTests": 938,
   "requiredNativeMethods": [
+    "InspectedPlaneWorkRejectsChangedSourceSettingsGeometryAndIncompleteInk",
+    "SuppliedSpatialDimFlanksWithOpaqueCaptionKeepIndependentEdgeProof",
+    "SuppliedSpatialCaptionCollarCannotHideDeepOrUnownedPicture",
+    "SuppliedSpatialCaptionCollarRetainsFaintRowsWithoutChangingPhysicalMeasurement",
+    "CurrentInspectedGlyphScanCanVerifyOnlyTheIndependentSpatialNominee",
+    "CompletedInspectionScanSurvivesIdenticalCanonicalPlaneWithoutRescan",
+    "SourcePicturePairedNarrowWidgetsCannotImpersonateBroadOuterPictureSupport",
+    "SourcePictureOppositeOuterEdgesSurviveAnOpaqueCentralCaptionPanel",
+    "ValidatedSamplerRejectsInvalidViewsAndRetainsImmutableOwnedMetadata",
+    "ValidatedSamplerMatchesCanonicalCodesAcrossFormatsRangesAndCoordinates",
     "V210SparseSamplingDecodesAllSixPixels",
     "P210SamplingPreservesEachChromaRow",
     "DecodedDolbyVisionKeepsTwelveBitStorageAndLegacyUpperTenEvidence",
@@ -253,6 +263,16 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 28,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "ValidatedSamplerRejectsInvalidViewsAndRetainsImmutableOwnedMetadata"
+    },
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "ValidatedSamplerMatchesCanonicalCodesAcrossFormatsRangesAndCoordinates"
+    },
     {
       "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
       "class": "NativeRgbAnalysisTests",

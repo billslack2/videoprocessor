@@ -460,6 +460,8 @@ struct SubtitleAssistedVerticalBarProof
     int topFlankSupport = 0, bottomFlankSupport = 0;
     size_t unknownSamples = 0, lumaSamples = 0;
     bool usedMeasuredBacking = false;
+    // Diagnostic sampled residuals, including failed verification. No authority.
+    ActivePictureVerticalBarProfile maskedProfile;
     const char* reason = "not-evaluated";
 
     bool IsCurrentFor(const AnalysisLumaSource& source,

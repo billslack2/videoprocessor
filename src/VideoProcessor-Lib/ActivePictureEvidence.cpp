@@ -2344,7 +2344,8 @@ std::array<SubtitleBoxRect, 3> MeasuredBoundaryPanels(
 OccludedBarInspection InspectSubtitleOccludedBar(
     const AnalysisLumaSource& source, bool top, int boundary, int floor,
     const SubtitleBoxObservation& current,
-    const std::array<SubtitleBoxRect, 3>& measuredPanels)
+    const std::array<SubtitleBoxRect, 3>& measuredPanels,
+    bool independentlyMeasuredBoundary = false)
 {
     OccludedBarInspection out;
     const int barPixels = top ? boundary : source.height - boundary;
@@ -2425,7 +2426,11 @@ OccludedBarInspection InspectSubtitleOccludedBar(
         out.edge.lumaP90 <= threshold &&
         out.edge.lumaDispersion <= 24.0 && out.edge.texture <= 8.0 &&
         out.edge.neutralChromaFraction >= 0.90 &&
-        out.edge.innerBoundaryContrast >= requiredContrast &&
+        // A supplied exact-current spatial boundary already has distributed
+        // positive edge evidence. Its dark picture flanks need not also pass
+        // this legacy single-row mean-contrast nomination test. Bar purity
+        // and the connected-picture veto below remain mandatory in both paths.
+        (independentlyMeasuredBoundary || out.edge.innerBoundaryContrast >= requiredContrast) &&
         out.edge.continuity >= 0.99;
     if (!out.edge.trusted) return out;
     // Never allow masking to explain an actual picture continuation. It is
@@ -2501,7 +2506,8 @@ SubtitleAssistedVerticalBarProof VerifySuppliedActivePictureCandidateWithSubtitl
         physical.estimate.rasterWidth!=source.width || physical.estimate.rasterHeight!=source.height ||
         !measured.blackReference.evaluated || measured.blackReference.floor<0 || measured.blackReference.floor>80 ||
         !current.analyzed || current.analysisRefresh || current.pendingRefresh || current.discontinuity ||
-        current.glyphLocalTop || current.glyphLocalBottom || current.inspectionCandidateUsed ||
+        current.glyphLocalTop || current.glyphLocalBottom ||
+        (current.inspectionCandidateUsed && !SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(current)) ||
         current.policyGeneration!=policyGeneration || current.continuityGeneration!=continuityGeneration ||
         current.scriptHint!=scriptHint || current.width!=source.width || current.height!=source.height ||
         !SameAnalysisFrameIdentity(current.identity,currentIdentity) ||
@@ -2530,8 +2536,8 @@ SubtitleAssistedVerticalBarProof VerifySuppliedActivePictureCandidateWithSubtitl
     guard.trustedBarAxes=ActivePictureBounds::BarAxes::TOP_BOTTOM;
     const auto panels=MeasuredBoundaryPanels(current,guard);
     const int floor=measured.blackReference.floor;
-    const auto top=InspectSubtitleOccludedBar(source,true,guard.top,floor,current,panels);
-    const auto bottom=InspectSubtitleOccludedBar(source,false,guard.bottom,floor,current,panels);
+    const auto top=InspectSubtitleOccludedBar(source,true,guard.top,floor,current,panels,true);
+    const auto bottom=InspectSubtitleOccludedBar(source,false,guard.bottom,floor,current,panels,true);
     proof.topFlankSupport=top.flankSupport;proof.bottomFlankSupport=bottom.flankSupport;
     proof.unknownSamples=top.unknown+bottom.unknown;proof.lumaSamples=top.samples+bottom.samples;
     proof.usedMeasuredBacking=top.backingExcluded || bottom.backingExcluded;
@@ -2540,8 +2546,38 @@ SubtitleAssistedVerticalBarProof VerifySuppliedActivePictureCandidateWithSubtitl
         return proof;
     }
     SampleContext samples{source};
-    const auto profile=InspectVerticalCropBarProfile(samples,guard.top,guard.bottom,current.ink.get());
+    auto profile=InspectVerticalCropBarProfile(samples,guard.top,guard.bottom,current.ink.get());
+    if(profile.completed && !profile.clean) {
+        // Filtering can leave faint current-source pixels outside an exact
+        // physical edge. Retain only the same bounded outward collar as the
+        // native verifier; never move the measured edge or mask a whole card.
+        // The original boundary's flank/connected-picture proof above remains
+        // mandatory, and every remaining excluded band is checked again below.
+        const int collar=2*std::max(2,source.height/540);
+        auto retained=guard;
+        if(profile.topFirstMismatchY>=0)
+            retained.top=std::min(retained.top,profile.topFirstMismatchY&~1);
+        if(profile.bottomLastMismatchY>=0)
+            retained.bottom=std::max(retained.bottom,(profile.bottomLastMismatchY+2)&~1);
+        // Bound the actual mismatching source rows before chroma alignment.
+        // An exclusive lower aperture and outward even alignment can retain
+        // one more row than the sampled fringe itself; that is not evidence
+        // of a deeper fringe or a change to the physical measurement.
+        const bool rowsBounded=
+            (profile.topFirstMismatchY<0 || profile.topFirstMismatchY>=bounds.top-collar) &&
+            (profile.bottomLastMismatchY<0 || profile.bottomLastMismatchY<=bounds.bottom+collar);
+        const bool bounded=rowsBounded && retained.top>0 && retained.bottom<source.height &&
+            (retained.top!=guard.top || retained.bottom!=guard.bottom);
+        if(bounded) {
+            retained.aspectRatio=double(source.width)/(retained.bottom-retained.top);
+            auto remaining=InspectVerticalCropBarProfile(samples,retained.top,retained.bottom,current.ink.get());
+            if(remaining.completed && remaining.clean) {
+                guard=retained;profile=remaining;
+            }
+        }
+    }
     proof.lumaSamples+=samples.lumaSamples;
+    proof.maskedProfile=profile;
     if(!profile.completed || !profile.clean) {
         proof.reason="supplied-caption-excluded-band-profile-failed";return proof;
     }
