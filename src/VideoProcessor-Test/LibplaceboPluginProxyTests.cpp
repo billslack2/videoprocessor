@@ -3280,7 +3280,7 @@ namespace VideoProcessorTest
                 VideoProcessorLibplaceboConfigureDiagnosticFn callback;
                 ~DiagnosticCleanup(){if(callback)callback(nullptr,nullptr,nullptr,nullptr);}
             } diagnosticCleanup{diagnostics};
-            size_t spatialCursor=0;std::vector<AnalysisDiagnosticRecordV1> spatialOutputs,spatialAccepted;
+            size_t spatialCursor=0;std::vector<AnalysisDiagnosticRecordV1> spatialOutputs,spatialAccepted,spatialProduced;
             if(requireSpatial) {
                 Assert::IsTrue(diagnostics!=nullptr);
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=true;}
@@ -3341,9 +3341,15 @@ namespace VideoProcessorTest
                     {std::lock_guard<std::mutex> lock(classicPoseLogMutex);CopyUnreadCallbackTail(classicPoseRecords,spatialCursor,tail);}
                     for(const auto& record:tail) {
                         if(!strcmp(record.stage,"accepted-picture-detector"))spatialAccepted.push_back(record);
+                        if(!strcmp(record.stage,"source-picture-active"))spatialProduced.push_back(record);
                         if(strcmp(record.stage,"submitted-presentation") || !(record.flags&1u))continue;
-                        if(record.counters[4])Assert::IsTrue(IsMeasuredSpatialNativeSubmission(record),
-                            L"ACTIVE native and submitted crop/certificate must carry source-spatial measured provenance, not merely new OSD metadata.");
+                        if(record.counters[4]) {
+                            const bool wholeSource=std::abs(record.metrics[8])<0.01 && std::abs(record.metrics[9])<0.01 &&
+                                std::abs(record.metrics[10]-width)<0.01 && std::abs(record.metrics[11]-height)<0.01;
+                            const bool measured=((record.flags>>24)&3u)==unsigned(ActivePictureDetectorKind::SourceSpatialMeasured);
+                            Assert::IsTrue(measured && (wholeSource ? (record.flags&4096u)!=0 : IsMeasuredSpatialNativeSubmission(record)),
+                                L"Cropped outputs need spatial native/crop proof; a whole-source output needs explicit current full-raster authority and no discard certificate.");
+                        }
                         if(((record.flags>>24)&3u)==unsigned(ActivePictureDetectorKind::SourceSpatialMeasured))spatialOutputs.push_back(record);
                     }
                 }
@@ -3371,6 +3377,19 @@ namespace VideoProcessorTest
                                         accepted.transportGeneration==record.transportGeneration &&
                                         nativeWidth>0&&nativeHeight>0&&cropWidth>0&&cropHeight>0&&
                                         std::abs(nativeWidth/nativeHeight-expected)<0.015&&std::abs(cropWidth/cropHeight-applied)<0.015;
+                                }
+                                // Current full-source geometry may preserve all
+                                // pixels before logical history changes. Join it
+                                // to its own measured input, never the old crop.
+                                for(const auto& produced:spatialProduced) {
+                                    const double measuredWidth=produced.published[2]-produced.published[0],measuredHeight=produced.published[3]-produced.published[1];
+                                    const bool full=produced.published[0]==0 && produced.published[1]==0 && produced.published[2]==width && produced.published[3]==height;
+                                    const bool admitted=full ? (record.flags&4096u)!=0 :
+                                        IsMeasuredSpatialNativeSubmission(record) && record.counters[5]==record.counters[1];
+                                    submitted|=produced.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) && (produced.flags&1u) &&
+                                        produced.acceptedSequence==record.counters[1] && produced.transportGeneration==record.transportGeneration && admitted &&
+                                        measuredWidth>0 && measuredHeight>0 && std::abs(measuredWidth/measuredHeight-expected)<0.015 &&
+                                        cropWidth>0 && cropHeight>0 && std::abs(cropWidth/cropHeight-applied)<0.015;
                                 }
                             }
                             Assert::IsTrue(submitted,L"Matching ACTIVE detected AR must reach accepted native bounds and actual submitted crop for the changed source.");
