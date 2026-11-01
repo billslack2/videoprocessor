@@ -276,3 +276,45 @@ by instrumentation overhead. Black and Generated first-Ready cases still fail
 at measured59.97/60.68Hz; these remain runtime failures requiring investigation.
 The diagnostic is recorded under incremental-harness-cold-three with exact
 unchanged Release renderer and new harness hashes. No full qualification claimed.
+
+## Late raw-source evidence loss reproduced
+
+Faithfully paced failures establish complete measured predecessor chains before
+current consumption. Black sources 23/24/25 complete at callback ordinals
+627/635/701 before current 26 completes at 704 and is read at 706. Generated
+sources 15/16/17 complete at 444/479/483 before current 18 completes at 521;
+15 and 16 are excluded from current-ready storage after expiry. Those exclusions
+are correct for current display, but their genuine raw observations were lost to
+four-source confirmation. Repeating source 16 or 24 adds no measurement vote.
+
+Four new regressions fail before repair in 20261101-023636-2ae75ea2. They cover
+late completion after current-ready expiry, a newer incomplete interpretation
+followed by older out-of-order completion, current acquisition from real measured
+predecessors, and withdrawal from both raw-history caches. The repair under test
+uses a bounded raw-only archive and a worker-issued current-source snapshot;
+current-ready expiry, native authority, cue leases and the existing current-pixel
+four-source proof remain separate. No further wait or timing grace is proposed.
+
+The isolated Standard subtitle shader class now passes all 24 cases in 209.63
+seconds, including the new fresh-device program-reuse/pixel assertion. The prior
+23-case method sum was 1026.68 seconds: approximately 4.9 times faster for this
+class. This is not a full-suite timing claim. Dedicated cold Motion fixtures keep
+their private caches, and full dual-dependency qualification remains pending.
+
+All 859 mandatory native contracts pass after implementation in
+20261101-024510-29ee90a7. The worker retains at most three expired raw observations,
+with 16 MiB per-entry and 48 MiB aggregate limits, alongside existing ready facts.
+Accepted-job revisions and tombstones prevent a newer incomplete interpretation
+from being superseded by an older completion. Querying history never makes an
+expired result current-ready. Copied shared-picture rebinding requires the
+original independent physical border measurement to agree; original source
+coordinates and ink remain intact. Context changes preserve already dispatched
+work in the matching new context while withdrawing incompatible history.
+
+The worker-issued snapshot is bound to the actual current ink owner and context.
+Import atomically replaces both raw-history paths and does not acquire a cue,
+renew expiry or publish native geometry. Renderer harvest runs before the warmup
+trial and immediately before actual consumption, using the existing four-source
+pixel proof. Independent review confirmed serialized Submit/Harvest wiring and
+found no additional blocker. Matched actual renderer and full qualification are
+next; the installed runtime remains unchanged at this checkpoint.

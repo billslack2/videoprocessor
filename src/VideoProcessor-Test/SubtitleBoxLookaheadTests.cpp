@@ -6345,6 +6345,76 @@ public:
         VerifyCrowdedRawHistoryWindow(1);
     }
 
+    __declspec(noinline) static std::unique_ptr<SubtitleMeasuredRawPredecessors> MeasuredPredecessorSnapshot(
+        const SubtitleBoxObservation* frames,bool completed)
+    {
+        SubtitleMeasurementWorker worker;worker.SetInputRateHz(60);
+        const size_t first=completed?0:3;
+        for(size_t i=first;i<4;++i) {
+            auto key=frames[i];key.analyzed=false;key.text={};key.ink.reset();const auto* measured=&frames[i];
+            worker.Submit(key,[measured](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return *measured;});
+        }
+        auto read=std::make_unique<SubtitleBoxObservation>();
+        for(size_t i=first;i<4;++i) {
+            bool ready=false;const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+            while(std::chrono::steady_clock::now()<until && !(ready=worker.TryRead(frames[i],*read)))std::this_thread::yield();
+            Assert::IsTrue(ready);
+        }
+        worker.BeginSourceWindow(frames[3].identity);
+        auto measured=worker.ReadMeasuredRawPredecessors(frames[3]);worker.Stop();return measured;
+    }
+    static void SetMeasuredHistoryFrames(SubtitleBoxObservation* frames,size_t count) {
+        for(size_t i=0;i<count;++i) {
+            frames[i]=NearCardThreeRows(23+i,false);frames[i].policyGeneration=7;frames[i].continuityGeneration=8;
+            frames[i].sharedPicture.required=true;frames[i].sharedPicture.identity=frames[i].identity;
+            frames[i].sharedPicture.bounds={0,45,640,315,640,360};
+            frames[i].barEvidence.available=true;frames[i].barEvidence.top=45;frames[i].barEvidence.bottom=315;
+            frames[i].independentBarAnalysis=true;
+            frames[i].text.topSearchComplete=frames[i].text.bottomSearchComplete=true;
+            auto ink=std::make_shared<SubtitleInkSnapshot>(*frames[i].ink);ink->paletteValid=true;frames[i].ink=ink;
+        }
+    }
+    TEST_METHOD(LateMeasuredPredecessorsConfirmCurrentPixelsWithoutAcquiringHistoricalCue) {
+        struct Workspace {std::array<SubtitleBoxObservation,4> frames;SubtitleBoxPreview current;SubtitleBoxPresentation tracker;};
+        auto storage=std::make_unique<Workspace>();auto& w=*storage;SetMeasuredHistoryFrames(w.frames.data(),w.frames.size());
+        auto measured=MeasuredPredecessorSnapshot(w.frames.data(),true);
+        SubtitleBoxLookahead::ResolveOwnedWindowInto(w.current,&w.frames[3],&w.frames[3].identity,1,7,8);
+        const auto owner=w.tracker.AcceptedQueueTemplateIdentity();const auto hold=w.tracker.WeakHoldMilliseconds();
+        Assert::IsTrue(w.tracker.ReplaceMeasuredRawPredecessors(*measured,w.current,w.frames[3].identity,7,8));
+        Assert::IsFalse(w.tracker.HasAcceptedSourceTemplate());
+        Assert::IsTrue(SameAnalysisFrameIdentity(owner,w.tracker.AcceptedQueueTemplateIdentity()));Assert::AreEqual(hold,w.tracker.WeakHoldMilliseconds());
+        Assert::AreEqual(3,w.tracker.Consume(w.current).lineCount,
+            L"Only current26 is acquired; real completed23/24/25 supply the existing four-source raw/current-pixel proof.");
+        Assert::IsTrue(SameAnalysisFrameIdentity(w.frames[3].identity,w.tracker.AcceptedQueueTemplateIdentity()));
+    }
+    TEST_METHOD(WithdrawnMeasuredPredecessorsCannotReuseEitherTrackerRawCache) {
+        struct Workspace {std::array<SubtitleBoxObservation,6> frames;SubtitleBoxPreview current,changed,previous;SubtitleBoxPresentation tracker;};
+        for(int fault=0;fault<8;++fault) {
+            auto storage=std::make_unique<Workspace>();auto& w=*storage;SetMeasuredHistoryFrames(w.frames.data(),w.frames.size());
+            for(size_t i=0;i<3;++i) {
+                SubtitleBoxLookahead::ResolveOwnedWindowInto(w.previous,&w.frames[i],&w.frames[i].identity,1,7,8);
+                Assert::IsTrue(w.tracker.Consume(w.previous).lineCount<3);
+            }
+            auto measured=MeasuredPredecessorSnapshot(w.frames.data(),fault!=0);
+            std::array<ActivePictureFrameIdentity,3> owned{{w.frames[3].identity,w.frames[4].identity,w.frames[5].identity}};
+            SubtitleBoxLookahead::ResolveOwnedWindowInto(w.current,&w.frames[3],owned.data(),3,7,8);
+            Assert::AreEqual(2,w.current.text.lineCount);
+            w.changed=w.current;auto identity=w.frames[3].identity;uint64_t policy=7,continuity=8;
+            if(fault==1)++identity.acceptedSequence;
+            if(fault==2)++policy;
+            if(fault==3)++continuity;
+            if(fault==4)w.changed.current.ink=std::make_shared<SubtitleInkSnapshot>(*w.changed.current.ink);
+            if(fault==5)++w.changed.current.identity.viewportGeneration;
+            if(fault==6)++w.changed.current.sharedPicture.bounds.top;
+            if(fault==7)++w.changed.current.optimizationMode;
+            const auto owner=w.tracker.AcceptedQueueTemplateIdentity();const auto hold=w.tracker.WeakHoldMilliseconds();
+            Assert::IsFalse(w.tracker.ReplaceMeasuredRawPredecessors(*measured,w.changed,identity,policy,continuity));
+            Assert::IsTrue(SameAnalysisFrameIdentity(owner,w.tracker.AcceptedQueueTemplateIdentity()));Assert::AreEqual(hold,w.tracker.WeakHoldMilliseconds());
+            Assert::IsTrue(w.tracker.Consume(w.current).lineCount<3,
+                L"Withdrawn/foreign archive evidence clears both the deque and legacy previous-raw route; valid futures cannot revive the invalid predecessor.");
+        }
+    }
+
     TEST_METHOD(WarmupReadyInputNeedsCurrentCueAcquisitionBeforeSpendingPreviousImage) {
         struct Workspace {std::array<SubtitleBoxObservation,4> frames;SubtitleBoxPreview preview;SubtitleBoxPresentation tracker;};
         auto storage=std::make_unique<Workspace>();auto& w=*storage;

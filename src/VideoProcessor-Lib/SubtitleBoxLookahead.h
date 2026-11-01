@@ -14,6 +14,7 @@
 #include <cmath>
 #include <memory>
 #include <deque>
+#include <vector>
 
 // A strongly acquired bar plane may be carried forward only when every new
 // frame freshly revalidates that exact plane from its own pixels. The identity
@@ -207,6 +208,36 @@ struct SubtitleBoxPreview
     std::array<SubtitleBoxObservation,7> following;
     unsigned followingCount = 0;
     SubtitleOwnedWindowCertificate ownedWindow;
+};
+
+// An atomic worker snapshot of measured RAW predecessors, never accepted
+// caption/native authority. Only the worker can mint an exact-current binding;
+// an empty bound snapshot explicitly withdraws superseded cached RAW history.
+class SubtitleMeasuredRawPredecessors {
+    friend class SubtitleMeasurementWorker;
+    bool m_bound=false;ActivePictureFrameIdentity m_current;
+    uint64_t m_policy=0,m_continuity=0;
+    int m_width=0,m_height=0,m_nearBar=0,m_optimization=0;
+    SubtitleScriptHint m_script=SubtitleScriptHint::Latin;
+    SubtitlePictureAuthority m_picture;
+    std::shared_ptr<const SubtitleInkSnapshot> m_currentInk;
+    std::vector<SubtitleBoxObservation> m_frames;
+    void Record(const SubtitleBoxObservation& current,std::vector<SubtitleBoxObservation> frames) {
+        m_bound=frames.size()<=3;m_current=current.identity;m_policy=current.policyGeneration;
+        m_continuity=current.continuityGeneration;m_width=current.width;m_height=current.height;
+        m_nearBar=current.nearBarDistance;m_optimization=current.optimizationMode;m_script=current.scriptHint;
+        m_picture=current.sharedPicture;m_currentInk=current.ink;m_frames=std::move(frames);
+        if(!m_bound)m_frames.clear();
+    }
+public:
+    bool MatchesCurrent(const SubtitleBoxObservation& current) const {
+        return m_bound && SameAnalysisFrameIdentity(m_current,current.identity) &&
+            m_policy==current.policyGeneration && m_continuity==current.continuityGeneration &&
+            m_width==current.width && m_height==current.height && m_nearBar==current.nearBarDistance &&
+            m_optimization==current.optimizationMode && m_script==current.scriptHint &&
+            m_currentInk==current.ink && m_picture.Matches(current.sharedPicture);
+    }
+    const std::vector<SubtitleBoxObservation>& Frames() const {return m_frames;}
 };
 
 // One successful tracker call may certify its already acquired complete cue.
@@ -2356,6 +2387,27 @@ public:
             if(!SubtitleCueContinuation::SameRect(q.lines[line],m_result.lineBounds[line]) ||
                 !SubtitleCueContinuation::SameRect(q.captures[line],m_result.lineCapturePanels[line]))return false;
         return q.lineCount>0 && q.lineCount<=3;
+    }
+    bool ReplaceMeasuredRawPredecessors(const SubtitleMeasuredRawPredecessors& measured,
+        const SubtitleBoxPreview& current,const ActivePictureFrameIdentity& identity,uint64_t policy,uint64_t continuity)
+    {
+        // This is authoritative replacement of RAW facts, including withdrawal.
+        // Neither cache may retain a superseded source after an invalid/empty
+        // worker snapshot. Accepted cue/reference/lease/native state is intact.
+        const auto clear=[&] {m_crowdedRawHistory.clear();m_previousRawCrowded={};return false;};
+        if(!SubtitleBoxLookahead::IsCurrent(current,identity,policy,continuity) ||
+            !measured.MatchesCurrent(current.current) ||
+            !SubtitleBoxLookahead::CompleteConsecutiveCrowdedRaw(current.current) ||
+            (current.ownedWindow.Count() && !current.ownedWindow.Matches(0,current.current,policy,continuity)))return clear();
+        const auto& frames=measured.Frames();
+        if(frames.empty() || frames.size()>3)return clear();
+        for(size_t i=0;i<frames.size();++i) {
+            if(!SubtitleBoxLookahead::CompleteConsecutiveCrowdedRaw(frames[i]) ||
+                (i && !SubtitleBoxLookahead::ConsecutiveCrowdedRawContext(frames[i-1],frames[i])))return clear();
+        }
+        if(!SubtitleBoxLookahead::ConsecutiveCrowdedRawContext(frames.back(),current.current))return clear();
+        m_crowdedRawHistory.assign(frames.begin(),frames.end());m_previousRawCrowded=frames.back();
+        return true;
     }
     // A successfully repeated final image grants no cue/lease update. An
     // independently measured consumed input can nevertheless be remembered as

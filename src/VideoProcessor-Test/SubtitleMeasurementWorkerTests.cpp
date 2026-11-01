@@ -152,6 +152,20 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         return entered.load(std::memory_order_acquire)>=count;
     }
+    static bool WaitForWorkerIdle(SubtitleMeasurementWorker& worker) {
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+        while(std::chrono::steady_clock::now()<deadline) {
+            const auto d=worker.TakeDiagnostics();if(!d.activeWorkers && !d.pending)return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    }
+    static SubtitleBoxObservation HistoricalRawScan(uint64_t sequence) {
+        auto pixels=PixelsWithCurrentBars();auto scan=CompleteThreeLineScan(sequence,pixels);
+        scan.identity.analysisDomainKey=0xA11CE;scan.sharedPicture.identity=scan.identity;
+        scan.text.topSearchComplete=scan.text.bottomSearchComplete=true;
+        return scan;
+    }
 public:
     TEST_METHOD(ParallelSamplersShareOneDiagnosticCaptureClaimForEveryCaptureMode) {
         struct RestoreClaim {
@@ -358,6 +372,116 @@ public:
                 Assert::IsTrue(SourceCadenceObservationComplete(result,canonical.identity));
             } else independentWorker.Stop();
         }
+    }
+    TEST_METHOD(LateCompletedRawPredecessorsSurviveReadyExpiryWithoutBecomingCurrentEvidence) {
+        std::atomic_bool release{false};std::atomic_uint entered{0};
+        SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};worker.SetInputRateHz(24.0);
+        for(uint64_t sequence=15;sequence<18;++sequence) {
+            auto scan=HistoricalRawScan(sequence);auto key=scan;key.analyzed=false;key.text={};key.ink.reset();
+            worker.BeginSourceWindow(key.identity);release.store(false);const auto target=entered.load()+1;
+            worker.Submit(key,[&,scan](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                ++entered;while(!release.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));return scan;
+            });
+            const bool started=WaitForEntered(entered,target);
+            worker.BeginSourceWindow(HistoricalRawScan(sequence+1).identity);release.store(true);
+            Assert::IsTrue(started&&WaitForWorkerIdle(worker));
+            SubtitleBoxObservation rejected;
+            Assert::IsFalse(worker.TryRead(key,rejected),L"Expired predecessor scans must remain unavailable through current READY reads.");
+        }
+        auto current=HistoricalRawScan(18);auto key=current;key.analyzed=false;key.text={};key.ink.reset();
+        worker.Submit(key,[current](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return current;});
+        SubtitleBoxObservation ready;Assert::IsTrue(WaitForRead(worker,key,ready));
+        auto snapshot=worker.ReadMeasuredRawPredecessors(ready);worker.Stop();
+        Assert::IsTrue(snapshot && snapshot->MatchesCurrent(ready));
+        Assert::AreEqual(size_t(3),snapshot->Frames().size(),
+            L"Real completed inputs15/16/17 must remain available as RAW-only confirmation when current18 is ready, even though every old READY result expired.");
+        for(size_t i=0;i<snapshot->Frames().size();++i) {
+            const auto& raw=snapshot->Frames()[i];
+            Assert::AreEqual(uint64_t(15+i),raw.identity.acceptedSequence);
+            Assert::AreEqual(uint64_t((15+i)*1000),raw.identity.captureTimestamp);
+            Assert::IsFalse(raw.subtitleArProof.accepted,L"RAW history must not export native AR publication proof.");
+        }
+        auto owned=std::make_unique<std::array<SubtitleBoxObservation,4>>();
+        for(size_t i=0;i<3;++i)(*owned)[i]=snapshot->Frames()[i];(*owned)[3]=ready;
+        const auto confirmed=SubtitleBoxLookahead::Resolve(owned->data(),4,ready.policyGeneration,ready.continuityGeneration);
+        Assert::AreEqual(3,confirmed.text.lineCount,L"The unchanged four-source current-pixel/backing proof still decides which rows exist.");
+        // The original RAW job may predate canonical native authority. Only
+        // its copied context can rebind, with the measured physical bars exact.
+        SubtitleMeasurementWorker coldWorker;
+        for(uint64_t sequence=23;sequence<=26;++sequence) {
+            auto scan=HistoricalRawScan(sequence);auto request=scan;
+            if(sequence<26) {scan.sharedPicture.bounds={};scan.pictureAuthorityUnavailableForMeasurement=true;}
+            request=scan;request.analyzed=false;request.text={};request.ink.reset();
+            coldWorker.BeginSourceWindow(request.identity);
+            coldWorker.Submit(request,[scan](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return scan;});
+            SubtitleBoxObservation observed;Assert::IsTrue(WaitForRead(coldWorker,request,observed));
+            if(sequence==26) {
+                auto cold=coldWorker.ReadMeasuredRawPredecessors(observed);
+                Assert::AreEqual(size_t(3),cold->Frames().size());
+                for(const auto& raw:cold->Frames()) {
+                    Assert::IsTrue(raw.sharedPicture.Matches(observed.sharedPicture));
+                    Assert::IsTrue(raw.pictureAuthorityUnavailableForMeasurement,L"Original scan provenance is retained despite copy-only context rebinding.");
+                    Assert::AreEqual(12,raw.pictureTop);Assert::AreEqual(78,raw.pictureBottom);
+                }
+                auto changed=observed;changed.pictureTop=14;changed.barEvidence.top=14;
+                auto rejected=coldWorker.ReadMeasuredRawPredecessors(changed);
+                Assert::IsTrue(rejected->Frames().empty(),L"A changed current physical picture cannot borrow old RAW history.");
+            }
+        }
+        coldWorker.Stop();
+        SubtitleMeasurementWorker epochWorker;
+        epochWorker.BeginSourceWindow(HistoricalRawScan(30).identity);
+        auto oldEpoch=HistoricalRawScan(30);auto oldKey=oldEpoch;oldKey.analyzed=false;oldKey.text={};oldKey.ink.reset();
+        epochWorker.Submit(oldKey,[oldEpoch](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return oldEpoch;});
+        SubtitleBoxObservation oldReady;Assert::IsTrue(WaitForRead(epochWorker,oldKey,oldReady));
+        // A valid new-epoch FUTURE can finish before current adopts that epoch.
+        // Adopting current must only remove incompatible old-epoch metadata.
+        for(uint64_t sequence:{uint64_t(31),uint64_t(30),uint64_t(32)}) {
+            auto scan=HistoricalRawScan(sequence);++scan.policyGeneration;++scan.continuityGeneration;
+            scan.hasBarTrackingReference=true; // supplied but UNUSED by independent current pixels
+            auto request=scan;request.analyzed=false;request.text={};request.ink.reset();
+            if(sequence==32)epochWorker.BeginSourceWindow(request.identity);
+            epochWorker.Submit(request,[scan](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return scan;});
+            SubtitleBoxObservation observed;Assert::IsTrue(WaitForRead(epochWorker,request,observed));
+            if(sequence==32) {
+                auto retained=epochWorker.ReadMeasuredRawPredecessors(observed);
+                Assert::AreEqual(size_t(2),retained->Frames().size(),L"A current epoch change must preserve already-dispatched matching new-epoch future work.");
+                Assert::AreEqual(uint64_t(30),retained->Frames()[0].identity.acceptedSequence);
+                Assert::AreEqual(uint64_t(31),retained->Frames()[1].identity.acceptedSequence);
+                Assert::IsTrue(retained->Frames()[0].hasBarTrackingReference,L"An unused supplied reference cannot erase independently measured current RAW evidence.");
+            }
+        }
+        epochWorker.Stop();
+    }
+    TEST_METHOD(RawPredecessorHistoryCannotResurrectAnOlderCompletionAfterAChangedDuplicate) {
+        std::atomic_bool release{false};std::atomic_uint entered{0};
+        SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};worker.SetInputRateHz(60.0);
+        auto old=HistoricalRawScan(15);auto oldKey=old;oldKey.analyzed=false;oldKey.text={};oldKey.ink.reset();
+        worker.BeginSourceWindow(old.identity);
+        worker.Submit(oldKey,[&,old](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            ++entered;while(!release.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));return old;
+        });
+        Assert::IsTrue(WaitForEntered(entered,1));
+        auto changed=oldKey;changed.sharedPicture.bounds={0,14,160,76,160,90};
+        worker.Submit(changed,[changed](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            auto incomplete=changed;incomplete.analyzed=true;incomplete.text.workLimit=true;return incomplete;
+        });
+        SubtitleBoxObservation partial;Assert::IsTrue(WaitForRead(worker,changed,partial));
+        SubtitleBoxObservation current;
+        for(uint64_t sequence=16;sequence<=18;++sequence) {
+            auto scan=HistoricalRawScan(sequence);auto key=scan;key.analyzed=false;key.text={};key.ink.reset();
+            worker.BeginSourceWindow(key.identity);
+            worker.Submit(key,[scan](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&){return scan;});
+            SubtitleBoxObservation done;Assert::IsTrue(WaitForRead(worker,key,done));if(sequence==18)current=done;
+        }
+        // The older valid15 finishes AFTER a newer incompatible interpretation.
+        // Its late completion cannot reverse that withdrawal of RAW evidence.
+        release.store(true);Assert::IsTrue(WaitForWorkerIdle(worker));
+        auto snapshot=worker.ReadMeasuredRawPredecessors(current);worker.Stop();
+        Assert::IsTrue(snapshot && snapshot->MatchesCurrent(current));
+        Assert::AreEqual(size_t(2),snapshot->Frames().size(),L"Only the newest contiguous16/17 suffix survives; the invalidated15 cannot resurrect from out-of-order completion.");
+        Assert::AreEqual(uint64_t(16),snapshot->Frames()[0].identity.acceptedSequence);
+        Assert::AreEqual(uint64_t(17),snapshot->Frames()[1].identity.acceptedSequence);
     }
     TEST_METHOD(LowInputCadenceRetainsOneSerialSampler) {
         for(double hz:{23.976,24.0,29.97,30.0}) {

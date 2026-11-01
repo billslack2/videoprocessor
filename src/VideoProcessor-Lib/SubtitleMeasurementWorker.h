@@ -312,6 +312,7 @@ public:
             (m_windowHead.transportGeneration==head.transportGeneration &&
                 m_windowHead.acceptedSequence>=head.acceptedSequence))return;
         m_windowHead=head;
+        PruneRawHistory();
         for(auto i=m_pending.begin();i!=m_pending.end();) {
             const auto& identity=i->key.identity;
             if(identity.transportGeneration<head.transportGeneration ||
@@ -360,6 +361,45 @@ public:
     }
     bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
         return ReadReady(key,out,true,false);
+    }
+    // Historical RAW observations are separate from current READY admission.
+    // A bound empty snapshot withdraws prior history instead of reusing it.
+    std::unique_ptr<SubtitleMeasuredRawPredecessors> ReadMeasuredRawPredecessors(
+        const SubtitleBoxObservation& currentKey) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto snapshot=std::make_unique<SubtitleMeasuredRawPredecessors>();
+        std::vector<SubtitleBoxObservation> frames;
+        PruneRawHistory();
+        if(RawResultEligible(currentKey,currentKey) && RawVersionOwns(currentKey)) {
+            const SubtitleBoxObservation* next=&currentKey;size_t exportedBytes=0;
+            for(uint64_t offset=1;offset<=3 && currentKey.identity.acceptedSequence>=offset;++offset) {
+                const uint64_t wanted=currentKey.identity.acceptedSequence-offset;
+                std::unique_ptr<SubtitleBoxObservation> found;
+                const auto inspect=[&](const SubtitleBoxObservation& candidate) {
+                    const size_t bytes=RawInkBytes(candidate);
+                    if(candidate.identity.acceptedSequence!=wanted || !RawVersionOwns(candidate) ||
+                        !RawResultEligible(candidate,candidate) || bytes>16u*1024u*1024u ||
+                        exportedBytes+bytes>48u*1024u*1024u)return;
+                    auto copy=std::make_unique<SubtitleBoxObservation>(candidate);
+                    if(!copy->sharedPicture.Matches(currentKey.sharedPicture)) {
+                        // Independent RAW pixels may have completed before the
+                        // canonical plane existed. Rebind only the COPY, using
+                        // the existing strict path and identical physical bars.
+                        if(copy->pictureTop!=currentKey.pictureTop || copy->pictureBottom!=currentKey.pictureBottom ||
+                            !SubtitleBoxLookahead::RebindIndependentPicture(*copy,currentKey.sharedPicture))return;
+                    }
+                    if(SubtitleBoxLookahead::ConsecutiveCrowdedRawContext(*copy,*next))found=std::move(copy);
+                };
+                for(const auto& candidate:m_ready)inspect(candidate);
+                for(const auto& candidate:m_pastRaw)inspect(candidate);
+                if(!found)break;
+                exportedBytes+=RawInkBytes(*found);frames.push_back(std::move(*found));next=&frames.back();
+            }
+            std::reverse(frames.begin(),frames.end());
+            for(auto& frame:frames) {frame.subtitleArProof={};frame.subtitleArDarkness={};}
+        }
+        snapshot->Record(currentKey,std::move(frames));
+        return snapshot;
     }
     void Submit(const SubtitleBoxObservation& key,Work work) {
         auto requestKey=key;
@@ -421,18 +461,135 @@ public:
                     (incoming.transportGeneration==existing.transportGeneration &&
                         incoming.acceptedSequence<existing.acceptedSequence);
             });
-        m_pending.insert(place,{requestKey,std::move(work)});
+        const uint64_t rawRevision=RecordAcceptedRawJob(requestKey);
+        m_pending.insert(place,{requestKey,std::move(work),rawRevision});
         ++m_diagnostics.submitted;
         for(size_t index=0;index<m_workerLimit;++index)
             if(!m_threads[index].joinable())m_threads[index]=std::thread([this,index]{ Run(index); });
         m_changed.notify_all();
     }
     void Stop() {
-        {std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;m_pending.clear();}
+        {std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;m_pending.clear();m_pastRaw.clear();m_rawVersions.clear();}
         m_changed.notify_all();
         for(auto& thread:m_threads)if(thread.joinable())thread.join();
     }
 private:
+    struct RawVersion {
+        SubtitleBoxObservation key;
+        uint64_t revision=0;
+        bool ambiguous=false,complete=false;
+        const SubtitleInkSnapshot* ink=nullptr;
+        std::unique_ptr<SubtitleBoxObservation> original;
+    };
+    static bool RawSettingsMatch(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+        const auto& x=a.identity;const auto& y=b.identity;
+        return x.transportGeneration==y.transportGeneration && x.sourceFormatGeneration==y.sourceFormatGeneration &&
+            x.analysisDomainKey==y.analysisDomainKey && x.viewportGeneration==y.viewportGeneration &&
+            x.rendererGeneration==y.rendererGeneration && a.policyGeneration==b.policyGeneration &&
+            a.continuityGeneration==b.continuityGeneration && a.width==b.width && a.height==b.height &&
+            a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode &&
+            a.scriptHint==b.scriptHint && a.analysisStride==b.analysisStride;
+    }
+    static bool SameRawSource(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+        return SameAnalysisFrameIdentity(a.identity,b.identity) && RawSettingsMatch(a,b);
+    }
+    static bool RawResultEligible(const SubtitleBoxObservation& result,const SubtitleBoxObservation& jobKey) {
+        return SameRawSource(result,jobKey) && result.sharedPicture.Matches(jobKey.sharedPicture) &&
+            SubtitleBoxLookahead::CompleteConsecutiveCrowdedRaw(result) && CompleteIndependentScanForKey(result,jobKey) &&
+            !result.cadenceSkipped;
+    }
+    static size_t RawInkBytes(const SubtitleBoxObservation& raw) {
+        constexpr size_t limit=16u*1024u*1024u;
+        if(!raw.ink)return limit+1;
+        size_t total=sizeof(raw)+sizeof(SubtitleInkSnapshot);
+        const auto add=[&](size_t count,size_t width) {
+            if(count>(limit-total)/width)return false;total+=count*width;return true;
+        };
+        if(!add(raw.ink->sourceRows.capacity(),sizeof(int)) || !add(raw.ink->rawInk.capacity(),sizeof(uint64_t)) ||
+            !add(raw.ink->ownedInk.capacity(),sizeof(uint64_t)) || !add(raw.ink->blackBacking.capacity(),sizeof(uint64_t)))return limit+1;
+        return total;
+    }
+    bool RawWindowContext(const ActivePictureFrameIdentity& id) const {
+        return m_windowHead.transportGeneration && id.transportGeneration==m_windowHead.transportGeneration &&
+            id.sourceFormatGeneration==m_windowHead.sourceFormatGeneration &&
+            id.viewportGeneration==m_windowHead.viewportGeneration && id.rendererGeneration==m_windowHead.rendererGeneration &&
+            (!m_windowHead.analysisDomainKey || id.analysisDomainKey==m_windowHead.analysisDomainKey);
+    }
+    void PruneRawHistory() {
+        if(!m_windowHead.transportGeneration)return;
+        const uint64_t floor=m_windowHead.acceptedSequence>3?m_windowHead.acceptedSequence-3:0;
+        for(auto i=m_pastRaw.begin();i!=m_pastRaw.end();) {
+            if(!RawWindowContext(i->identity) || i->identity.acceptedSequence<floor ||
+                i->identity.acceptedSequence>=m_windowHead.acceptedSequence)i=m_pastRaw.erase(i);else ++i;
+        }
+        for(auto i=m_rawVersions.begin();i!=m_rawVersions.end();) {
+            const auto& id=i->key.identity;
+            if(!RawWindowContext(id) || id.acceptedSequence<floor ||
+                (id.acceptedSequence>m_windowHead.acceptedSequence &&
+                 id.acceptedSequence-m_windowHead.acceptedSequence>ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES+2))
+                i=m_rawVersions.erase(i);else ++i;
+        }
+    }
+    uint64_t RecordAcceptedRawJob(const SubtitleBoxObservation& key) {
+        PruneRawHistory();
+        // A changed current detector epoch cannot inherit older RAW history.
+        if(m_windowHead.acceptedSequence==key.identity.acceptedSequence && RawWindowContext(key.identity)) {
+            if(m_rawSettingsKnown && !RawSettingsMatch(m_rawSettings,key)) {
+                for(auto i=m_pastRaw.begin();i!=m_pastRaw.end();)if(!RawSettingsMatch(*i,key))i=m_pastRaw.erase(i);else ++i;
+                for(auto i=m_rawVersions.begin();i!=m_rawVersions.end();)if(!RawSettingsMatch(i->key,key))i=m_rawVersions.erase(i);else ++i;
+            }
+            m_rawSettings=key;m_rawSettings.text={};m_rawSettings.ink.reset();m_rawSettingsKnown=true;
+        }
+        const uint64_t revision=++m_nextRawRevision;
+        for(auto& v:m_rawVersions)if(SameRawSource(v.key,key)) {
+            // A distinct accepted interpretation withdraws prior history. Calls
+            // deduplicated above never reach this point and add no version.
+            v.revision=revision;v.ambiguous=true;v.complete=false;v.ink=nullptr;v.original.reset();
+            for(auto i=m_pastRaw.begin();i!=m_pastRaw.end();)if(SameRawSource(*i,key))i=m_pastRaw.erase(i);else ++i;
+            return revision;
+        }
+        RawVersion version;version.key=key;version.key.text={};version.key.ink.reset();version.revision=revision;
+        m_rawVersions.push_back(std::move(version));
+        // Metadata only; completed future work cannot evict nearer past sources.
+        while(m_rawVersions.size()>32) {
+            auto oldest=m_rawVersions.begin();
+            for(auto i=m_rawVersions.begin();i!=m_rawVersions.end();++i)
+                if(i->key.identity.acceptedSequence<oldest->key.identity.acceptedSequence)oldest=i;
+            m_rawVersions.erase(oldest);
+        }
+        return revision;
+    }
+    bool RawVersionOwns(const SubtitleBoxObservation& raw) const {
+        for(const auto& v:m_rawVersions)if(SameRawSource(v.key,raw)) {
+            if(v.ambiguous || !v.complete || v.ink!=raw.ink.get() || !v.original)return false;
+            auto original=std::make_unique<SubtitleBoxObservation>(*v.original);original->ink=raw.ink;
+            if(!original->sharedPicture.Matches(raw.sharedPicture) &&
+                (original->pictureTop!=raw.pictureTop || original->pictureBottom!=raw.pictureBottom ||
+                 !SubtitleBoxLookahead::RebindIndependentPicture(*original,raw.sharedPicture)))return false;
+            return SubtitleBoxLookahead::SameRepeatedCrowdedRaw(*original,raw);
+        }
+        return false;
+    }
+    void RecordCompletedRaw(const SubtitleBoxObservation& key,uint64_t revision,const SubtitleBoxObservation& result) {
+        PruneRawHistory();
+        RawVersion* version=nullptr;
+        for(auto& v:m_rawVersions)if(SameRawSource(v.key,key)) {version=&v;break;}
+        if(!version || version->revision!=revision || version->ambiguous)return;
+        version->complete=RawResultEligible(result,key);version->ink=version->complete?result.ink.get():nullptr;
+        if(version->complete) {
+            version->original=std::make_unique<SubtitleBoxObservation>(result);
+            version->original->ink.reset(); // Shape/provenance only; do not retain an unbudgeted bitmap owner.
+        } else version->original.reset();
+        if(!version->complete || !RawWindowContext(result.identity) ||
+            result.identity.acceptedSequence>=m_windowHead.acceptedSequence ||
+            m_windowHead.acceptedSequence-result.identity.acceptedSequence>3 || RawInkBytes(result)>16u*1024u*1024u)return;
+        m_pastRaw.push_back(result);
+        std::sort(m_pastRaw.begin(),m_pastRaw.end(),[](const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+            return a.identity.acceptedSequence<b.identity.acceptedSequence;
+        });
+        size_t bytes=0;for(const auto& raw:m_pastRaw)bytes+=RawInkBytes(raw);
+        while(m_pastRaw.size()>3 || bytes>48u*1024u*1024u) {bytes-=RawInkBytes(m_pastRaw.front());m_pastRaw.pop_front();}
+    }
     bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,bool backlogRetirementOnly,
         const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t timelinePolicy=0) {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -499,7 +656,7 @@ private:
         Trace(key,"worker-miss",m_ready.empty()?"no-ready-results":"no-compatible-result",mismatches);
         ++m_diagnostics.requestMisses;return false;
     }
-    struct Job {SubtitleBoxObservation key;Work work;std::chrono::steady_clock::time_point queued=std::chrono::steady_clock::now();};
+    struct Job {SubtitleBoxObservation key;Work work;uint64_t rawRevision=0;std::chrono::steady_clock::time_point queued=std::chrono::steady_clock::now();};
     void Run(size_t workerIndex) {
         SubtitleMeasurementSampler scanner;
         SubtitleBarTrackingReference previous;
@@ -530,6 +687,7 @@ private:
                 else if(result.analysisRefresh){++m_diagnostics.refreshes;m_diagnostics.refreshMs+=ms;m_diagnostics.refreshPeakMs=(std::max)(m_diagnostics.refreshPeakMs,ms);}
                 else {++m_diagnostics.fullScans;m_diagnostics.fullMs+=ms;m_diagnostics.fullPeakMs=(std::max)(m_diagnostics.fullPeakMs,ms);}
                 m_activeJobs[workerIndex]={};
+                if(!m_stopping)RecordCompletedRaw(job.key,job.rawRevision,result);
                 const bool stale=m_windowHead.transportGeneration &&
                     (result.identity.transportGeneration<m_windowHead.transportGeneration ||
                      (result.identity.transportGeneration==m_windowHead.transportGeneration &&
@@ -549,6 +707,10 @@ private:
     std::array<std::thread,2> m_threads;
     std::deque<Job> m_pending;
     std::deque<SubtitleBoxObservation> m_ready;
+    std::deque<SubtitleBoxObservation> m_pastRaw;
+    std::deque<RawVersion> m_rawVersions;
+    SubtitleBoxObservation m_rawSettings;
+    uint64_t m_nextRawRevision=0;bool m_rawSettingsKnown=false;
     ActivePictureFrameIdentity m_windowHead;
     struct ActiveJob { bool active=false;SubtitleBoxObservation key; };
     std::array<ActiveJob,2> m_activeJobs;

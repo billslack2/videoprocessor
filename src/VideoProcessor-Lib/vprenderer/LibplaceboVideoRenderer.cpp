@@ -4480,6 +4480,7 @@ struct LibplaceboVideoRenderer::Impl
     DisplayFrameCache displayFrameCache;
     SourceCadencePresentation sourceCadencePresentation;
     unsigned subtitleOwnedWindowDiagnosticTail=0;
+    unsigned subtitleRawPredecessorDiagnosticTail=0;
     AlphaPresentationRecord sourceCadenceRecord{};
     AnalysisDiagnosticRecordV1 sourceCadenceOutputTrace{};
     AnalysisBoundaryChainFacts sourceCadenceBoundaryFacts{};
@@ -9311,6 +9312,25 @@ struct LibplaceboVideoRenderer::Impl
         return key;
     }
 
+    bool HarvestMeasuredRawPredecessors(const SubtitleBoxPreview& current,
+        const ActivePictureFrameIdentity& identity,const char* site)
+    {
+        auto measured=subtitleMeasurementWorker.ReadMeasuredRawPredecessors(current.current);
+        const SubtitleMeasuredRawPredecessors unavailable;
+        const auto& snapshot=measured?*measured:unavailable;
+        const bool bound=snapshot.MatchesCurrent(current.current);
+        const auto count=snapshot.Frames().size();
+        const bool imported=subtitleBoxPresentation.ReplaceMeasuredRawPredecessors(snapshot,current,identity,
+            localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+        const bool diagnostic=identity.acceptedSequence<=128 || (!imported && subtitleRawPredecessorDiagnosticTail<64);
+        if(SubtitleCadenceCacheDiagnosticsEnabled() && diagnostic) {
+            if(identity.acceptedSequence>128)++subtitleRawPredecessorDiagnosticTail;
+            DebugLog::Log("VP subtitle cadence cache: stage=raw-predecessors site=%s source=%llu measured=%zu bound=%d imported=%d cue_renewal=0 native_votes=0",
+                site,identity.acceptedSequence,count,bound?1:0,imported?1:0);
+        }
+        return imported;
+    }
+
 	bool SubtitleBoxTestEnabled(const RendererSettings&) const
 	{
 		return CurrentSubtitlePreviewMode() == SubtitlePreviewMode::GreenBox;
@@ -13276,6 +13296,7 @@ struct LibplaceboVideoRenderer::Impl
                 }
             }
             if(exactCurrentReady && previousCompletePresentation.DisplayedIsWarmup() && warmupMeasuredPreview) {
+                HarvestMeasuredRawPredecessors(*warmupMeasuredPreview,inputRepeatIdentity,"warmup");
                 const bool handoff=SourceCadenceHasCurrentNativeHandoff(inputRepeatIdentity,nlsGeometry,
                     localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                     activePicturePreviewDecision,bufferedExpansion,guardedReturn);
@@ -14752,6 +14773,7 @@ struct LibplaceboVideoRenderer::Impl
                 }
             }
             const auto* cueContinuation=currentCueContinuation.valid?&currentCueContinuation:nullptr;
+            HarvestMeasuredRawPredecessors(currentSubtitlePreview,subtitleIdentity,"consume");
             subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,analysisSource);
             subtitlePreview=&currentSubtitlePreview;
             subtitleBoxResult = subtitleBoxPresentation.Consume(*subtitlePreview,
