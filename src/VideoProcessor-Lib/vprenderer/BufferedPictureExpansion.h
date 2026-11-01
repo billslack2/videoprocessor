@@ -176,6 +176,15 @@ namespace AlphaSourceCrop
         const ActivePictureFrameIdentity& currentIdentity,
         const TransitionAdmissionInput& current,
         bool modelWouldAdmit);
+    // Complete queued native picture proof may replace an unrelated old
+    // caption owner. No untrusted/relative proposal gains native authority.
+    bool ValidateBufferedIndependentPictureExpansion(const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& identity,const TransitionAdmissionInput& current,
+        bool modelWouldAdmit);
+    bool ValidatePreparedInwardPictureTransition(const ActivePictureFrameDecision& proof,
+        const ActivePictureFrameIdentity& identity,const TransitionAdmissionInput& current,
+        bool movingOnset,bool movingActive,bool awaitingPublication);
+
     // Apply after the live observer, before any queued override. This revalidates
     // the exact current source and only defers its publication; future positions
     // never enter the live model, active hold, or quiet/endpoint counters.

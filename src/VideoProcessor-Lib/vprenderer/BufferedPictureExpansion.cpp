@@ -903,6 +903,50 @@ namespace AlphaSourceCrop
         // satisfied by this independent complete proof.
         return !EvaluateTransitionAdmission(current).deferPartialComposition;
     }
+    bool ValidateBufferedIndependentPictureExpansion(const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& identity,const TransitionAdmissionInput& current,bool modelWouldAdmit)
+    {
+        // The complete native source window replaces only the old presentation
+        // veto. Exact current pixels, composition, identity and model admission
+        // are still checked by the ordinary consumer; relative guesses cannot
+        // enter this route.
+        auto independent=current;
+        independent.presentation.action=VerticalBarPresentationAction::NONE;
+        independent.translationDriftActive=false;
+        independent.previousOutward.verticalPresentationSeen=false;
+        return ValidateBufferedPictureExpansion(proof,identity,independent,modelWouldAdmit);
+    }
+    bool ValidatePreparedInwardPictureTransition(const ActivePictureFrameDecision& proof,
+        const ActivePictureFrameIdentity& identity,const TransitionAdmissionInput& current,
+        bool movingOnset,bool movingActive,bool awaitingPublication)
+    {
+        if(movingOnset || movingActive || awaitingPublication ||
+            !current.compatiblePresentation || !current.trustedGeometryAvailable ||
+            !current.sourceGeneration || current.sourceGeneration!=identity.transportGeneration ||
+            current.trustedGeneration!=current.sourceGeneration || current.sourceSequence!=identity.acceptedSequence ||
+            !current.evidence.available || current.evidence.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+            current.evidence.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+            current.retention.EffectiveArNearBlack() ||
+            current.evidence.axisEvidence.HasBlockingFailedBar(current.evidence.trustedBounds) ||
+            proof.association!=ActivePictureDecisionAssociation::EXACT_INWARD ||
+            proof.inwardProof!=ActivePictureInwardProofValidation::ACCEPTED ||
+            !proof.transition.publish || !proof.transition.stable || proof.transition.clearTransition ||
+            proof.transition.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+            proof.transition.authoritativeClassification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+            !proof.continuityGeneration || !proof.lookaheadPolicyGeneration ||
+            proof.configuredLookahead>ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES ||
+            proof.effectiveLookahead!=(std::min)(proof.configuredLookahead,proof.availableLookahead) ||
+            proof.proofFrameCount<2 || proof.proofFrameCount>size_t(proof.effectiveLookahead)+1 ||
+            identity.acceptedSequence>UINT64_MAX-(proof.proofFrameCount-1) ||
+            proof.observationIdentity.acceptedSequence!=identity.acceptedSequence+proof.proofFrameCount-1 ||
+            !SameBounds(proof.transition.stableBounds,current.trustedGeometry) ||
+            !SameBounds(current.presentationBeforeObservation,current.trustedGeometry) ||
+            !IsExactInwardActivePictureAssociationGeometry(proof.transition,current.evidence.classification))
+            return false;
+        return ValidateActivePictureScheduledDecision(proof,identity,current.evidence.trustedBounds,
+            current.evidence.classification)==ActivePictureScheduledDecisionValidation::ACCEPTED;
+    }
+
     bool ConstrainBufferedMovingPictureOnset(
         const BufferedPictureExpansionProof& proof,
         const ActivePictureFrameIdentity& currentIdentity,

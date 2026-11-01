@@ -181,6 +181,16 @@ public:
 		ActivePictureFrameDecision& published,
 		const ActivePicturePresentationIntent& presentation = {});
 
+    // Already measured queued observations spend no detector scan budget.
+    // Keep source/continuity/proof validation identical to scheduled input.
+    bool SubmitPreparedLookaheadObservation(const ActivePictureFrameIdentity& identity,
+        const ActivePictureObservation& observation,uint8_t configuredLookahead,
+        uint8_t availableLookahead,ActivePictureFrameDecision& published,
+        const ActivePicturePresentationIntent& presentation={}) {
+        return SubmitScheduledObservation(identity,observation,configuredLookahead,
+            availableLookahead,published,presentation);
+    }
+
 	// Before stamping a buffered certificate, every contributing identity must
 	// still be pending in the same current source-continuity generation.
 	bool CanProveBufferedFrames(const ActivePictureFrameIdentity* identities,

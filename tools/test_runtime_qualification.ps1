@@ -13,6 +13,11 @@ $macroSequence=($macroFixture|ForEach-Object {$_.kind+':'+$_.name}) -join ','
 if($macroSequence -ne 'CLASS:First,METHOD:One,METHOD:Two,CLASS:Second,METHOD:Three'){throw 'Inline/multiple macro tokens were dropped or reordered'}
 Write-Host 'PASS: inline multiple-method and multiple-class macro order preserved'
 $realPlan=Get-VpCriticalTestPlan $Root
+$standardPlan=Get-VpCriticalVariantPlan $realPlan 'standard'
+$betaPlan=Get-VpCriticalVariantPlan $realPlan 'beta'
+$actualUnion=@(@($standardPlan.expected.Keys | Where-Object {$standardPlan.expected[$_] -ne 'native'})+@($betaPlan.expected.Keys | Where-Object {$betaPlan.expected[$_] -ne 'native'}))
+if($actualUnion.Count -ne $realPlan.actualCount -or @($actualUnion|Select-Object -Unique).Count -ne $realPlan.actualCount -or $standardPlan.nativeCount -ne $realPlan.nativeCount -or $betaPlan.nativeCount -ne $realPlan.nativeCount){throw 'Per-variant execution lost or duplicated required coverage.'}
+Write-Host 'PASS: every actual renderer case is assigned exactly once; native coverage retained on both ABIs'
 Write-Host "Manifest discovered $($realPlan.nativeCount) native methods and $($realPlan.actualCount) mandatory actual-renderer methods."
 if($NativeTrx) {
     $nativeExpected=@{}
@@ -121,7 +126,10 @@ try {
     $null=New-Item -ItemType Directory -Force -Path $evidence
     function WriteFullTrx([switch]$MissingActual,[switch]$FailedActual) {
         $defs=[Text.StringBuilder]::new();$results=[Text.StringBuilder]::new();$i=0;$changed=$false
-        foreach($key in ($fixturePlan.expected.Keys|Sort-Object)) {
+        foreach($variant in @('standard','beta')) {
+        $variantPlan=Get-VpCriticalVariantPlan $fixturePlan $variant
+        $defs=[Text.StringBuilder]::new();$results=[Text.StringBuilder]::new();$i=0;$changed=$false
+        foreach($key in ($variantPlan.expected.Keys|Sort-Object)) {
             if($MissingActual -and -not $changed -and $fixturePlan.expected[$key] -eq 'actual-classic'){$changed=$true;continue}
             $parts=$key -split '::';$outcome='Passed'
             if($FailedActual -and -not $changed -and $fixturePlan.expected[$key] -eq 'actual-classic'){$changed=$true;$outcome='Failed'}
@@ -129,17 +137,21 @@ try {
             $null=$results.Append('<UnitTestResult testId="'+$i+'" testName="'+$parts[1]+'" outcome="'+$outcome+'" />');$i++
         }
         $xml='<TestRun><Results>'+$results+'</Results><TestDefinitions>'+$defs+'</TestDefinitions><ResultSummary><Counters total="'+$i+'" executed="'+$i+'" passed="'+$i+'" failed="0" error="0" notExecuted="0" aborted="0" /></ResultSummary></TestRun>'
-        foreach($variant in @('standard','beta')){$xml|Set-Content -LiteralPath (Join-Path $evidence ($variant+'.trx'))}
+        $xml|Set-Content -LiteralPath (Join-Path $evidence ($variant+'.trx'))
+        }
     }
     WriteFullTrx
     . (Join-Path $tempPath 'tools\installer_build_identity.ps1')
-    $receipt=[ordered]@{schemaVersion=1;status='Passed';configuration='Release';platform='x64';source=(Get-VpSourceIdentity $tempPath);manifestHash=$fixturePlan.manifestHash;binaries=(Get-VpQualifiedOutputInventory $tempPath);builds=@(@('native-library','host','standard-renderer','beta-renderer','standard-tests','beta-tests')|ForEach-Object {[ordered]@{name=$_;exit=0}});runs=@()}
+    $receipt=[ordered]@{schemaVersion=2;status='Passed';coldShaderCache=$true;configuration='Release';platform='x64';source=(Get-VpSourceIdentity $tempPath);manifestHash=$fixturePlan.manifestHash;binaries=(Get-VpQualifiedOutputInventory $tempPath);builds=@(@('native-library','host','standard-renderer','beta-renderer','standard-tests','beta-tests')|ForEach-Object {[ordered]@{name=$_;exit=0}});runs=@()}
     function SaveFixtureReceipt {
-        $receipt.runs=@(foreach($variant in @('standard','beta')){[ordered]@{variant=$variant;buildExit=0;testExit=0;trx=('artifacts/qualification/runs/fixture/'+$variant+'.trx');trxSha256=(Get-FileHash -LiteralPath (Join-Path $evidence ($variant+'.trx'))).Hash;executed=$fixturePlan.expected.Count;actualClassic=$fixturePlan.actualCount}})
+        $receipt.runs=@(foreach($variant in @('standard','beta')){$variantPlan=Get-VpCriticalVariantPlan $fixturePlan $variant;[ordered]@{variant=$variant;buildExit=0;testExit=0;trx=('artifacts/qualification/runs/fixture/'+$variant+'.trx');trxSha256=(Get-FileHash -LiteralPath (Join-Path $evidence ($variant+'.trx'))).Hash;executed=$variantPlan.expected.Count;actualClassic=$variantPlan.actualCount}})
         $receipt|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Get-VpQualificationReceiptPath $tempPath)
     }
     SaveFixtureReceipt
     $null=Assert-VpRuntimeQualification $tempPath (Join-Path $tempPath 'x64/Release/VideoProcessor-GUI.exe')
+    $receipt.coldShaderCache=$false;SaveFixtureReceipt
+    MustReject 'warm-only evidence cannot qualify cold startup' '*failed or unsupported*' {Assert-VpRuntimeQualification $tempPath}
+    $receipt.coldShaderCache=$true;SaveFixtureReceipt
     $receipt.runs[0].testExit=7
     $receipt|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Get-VpQualificationReceiptPath $tempPath)
     MustReject 'recorded native nonzero exit fails qualification' '*Failed renderer dependency qualification*' {Assert-VpRuntimeQualification $tempPath}

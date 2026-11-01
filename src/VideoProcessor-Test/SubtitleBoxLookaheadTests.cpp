@@ -387,9 +387,14 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
         return current;
     }
     static SubtitleBoxPreview RetiredThreeLinePreview(uint64_t sequence,bool prune) {
-        const SubtitleBoxObservation scans[2]={RetiredThreeLineCue(sequence),RetiredThreeLineCue(sequence+1)};
-        auto preview=SubtitleBoxLookahead::Resolve(scans,2,7,9);
-        if(prune){preview.text.lineCount=2;preview.text.lineBounds[2]={};}
+        const SubtitleBoxObservation scans[4]={RetiredThreeLineCue(sequence),RetiredThreeLineCue(sequence+1),
+            RetiredThreeLineCue(sequence+2),RetiredThreeLineCue(sequence+3)};
+        // This near-picture three-line cue genuinely needs four source scans
+        // for full acquisition. A two-scan future window confirms only two
+        // rows, reproducing the live partial grouping without editing Resolve.
+        auto preview=SubtitleBoxLookahead::Resolve(scans,prune?2:4,7,9);
+        Assert::AreEqual(3,preview.current.text.lineCount);
+        Assert::AreEqual(prune?2:3,preview.text.lineCount);
         return preview;
     }
 public:

@@ -4089,6 +4089,37 @@ namespace AlphaSourceCrop
             CropEdgesAreChromaAligned(contract.bounds,input.rasterWidth,input.rasterHeight);
     }
 
+    static bool UsesAdvancedNativePicturePolicy(const Input& input)
+    {
+        return input.automaticCropEnabled &&
+            (input.subtitlePresentationMode==PreparedNativeMode::BLACK ||
+             input.subtitlePresentationMode==PreparedNativeMode::RECONSTRUCTION) &&
+            HasAcceptedNativeCrop(input) && !input.fullRasterPresentationAuthoritative &&
+            input.latestObservationClassification!=ActivePictureClassification::FULL_RASTER_TRUSTED;
+    }
+
+    static Decision AdvancedNativePictureDecision(const Input& crop,
+        const ActivePictureBounds* currentPicture=nullptr)
+    {
+        Decision result;
+        result.sourceBounds=currentPicture?*currentPicture:crop.geometry;
+        result.applyCrop=!SameBounds(result.sourceBounds,FullRaster(crop.rasterWidth,crop.rasterHeight));
+        result.outwardExpanded=currentPicture && !SameBounds(*currentPicture,crop.geometry);
+        result.owner=result.outwardExpanded?DecisionOwner::OUTWARD_FIT:DecisionOwner::TRUSTED_CROP;
+        result.reason=currentPicture?"current independently proved native picture extent":
+            "advanced subtitle layout does not change the accepted native picture";
+        auto& proof=result.nativePresentation;
+        proof.available=true;proof.origin=currentPicture?NativePresentationOrigin::CONFIRMED_PICTURE:NativePresentationOrigin::EXACT_NATIVE;
+        proof.nativeBase=crop.geometry;proof.approvedBounds=result.sourceBounds;
+        proof.sourceGeneration=crop.frameSourceGeneration;proof.sourceSequence=crop.frameSourceSequence;
+        proof.presentationEpoch=crop.framePresentationEpoch;
+        if(!currentPicture && HasCurrentPreparedSubtitlePresentation(crop)) {
+            proof.preparedNativeMode=crop.subtitlePresentationMode;
+            proof.preparedNativeSourceSequence=crop.frameSourceSequence;
+        }
+        return result;
+    }
+
     static bool MatchesTranslatedConfiguredFill(const NativePresentationCertificate& proof,
         const ActivePictureBounds& native, const ActivePictureBounds& actual)
     {
@@ -4205,7 +4236,9 @@ namespace AlphaSourceCrop
             ValidBounds(proof.candidate,crop.rasterWidth,crop.rasterHeight) &&
             CropEdgesAreChromaAligned(proof.candidate,crop.rasterWidth,crop.rasterHeight) &&
             ContainedBounds(proof.candidate,crop.geometry) && !SameBounds(proof.candidate,crop.geometry) &&
-            SamePictureWithinDetectorStep(proof.referenceCandidate,proof.candidate);
+            (SamePictureWithinDetectorStep(proof.referenceCandidate,proof.candidate) ||
+             (SameBounds(proof.candidate,FullRaster(crop.rasterWidth,crop.rasterHeight)) &&
+              SameBounds(proof.referenceCandidate,proof.candidate)));
     }
 
     static bool MatchesNativePicturePreservationPresentation(const PresentationRecoveryInput& input,const Decision& proposed)
@@ -4735,6 +4768,12 @@ namespace AlphaSourceCrop
             result.presentation.confirmedFitOwnership=input.confirmedFitOwnership;
 		result.required = NearBlackCropRevalidationSamples(input.framesPerSecond);
 		const auto& crop = input.crop;
+        if(UsesAdvancedNativePicturePolicy(crop)) {
+            result.ended=result.released=result.state.active;result.state={};
+            result.presentation=AdvancedNativePictureDecision(crop,HasCurrentNativePicturePreservation(input)?
+                &input.nativeOutwardPictureProof.candidate:nullptr);
+            return result;
+        }
         // Native outside-picture proof owns visibility itself. It does not need
         // a caption owner or a second recovery dwell, and does not publish AR.
         const bool nativePicturePreservation=HasCurrentNativePicturePreservation(input);
@@ -6032,7 +6071,12 @@ namespace AlphaSourceCrop
 			SameTrustedCropContract(input.currentVisibleBase, input.geometry) &&
 			ValidBounds(input.currentVisibleBounds, input.rasterWidth, input.rasterHeight) &&
 			ContainedBounds(input.currentVisibleBounds, input.geometry);
-		if (!previouslyPresented && currentVisibleWitness &&
+        const bool advancedPictureAuthorized=UsesAdvancedNativePicturePolicy(input) &&
+            (SameBounds(candidate.sourceBounds,input.geometry) ||
+             (candidate.nativePresentation.origin==NativePresentationOrigin::CONFIRMED_PICTURE &&
+              MatchesNativePresentation(candidate.nativePresentation,input.geometry,candidate.sourceBounds,
+                  input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch)));
+		if (!previouslyPresented && !advancedPictureAuthorized && currentVisibleWitness &&
 			!ContainedBounds(candidate.sourceBounds, input.currentVisibleBounds))
 		{
 			result.blocked = true;
@@ -6770,6 +6814,14 @@ namespace AlphaSourceCrop
         const auto& crop = input.crop;
         const auto& anchor = input.submittedScopeAnchor;
         const auto raster = FullRaster(crop.rasterWidth, crop.rasterHeight);
+        if(UsesAdvancedNativePicturePolicy(crop)) {
+            const bool currentPicture=HasCurrentNativePicturePreservation(input);
+            result.presentation=AdvancedNativePictureDecision(crop,currentPicture?
+                &input.nativeOutwardPictureProof.candidate:nullptr);
+            result.retained=true;result.nativeCrop=crop.geometry;
+            result.expanded=result.currentPixelExtent=currentPicture;
+            return result;
+        }
         const bool committedFull = crop.sharedGeometryAvailable &&
             crop.geometrySourceGeneration == crop.frameSourceGeneration &&
             crop.frameSourceGeneration != 0 &&
@@ -7341,6 +7393,7 @@ namespace AlphaSourceCrop
 	{
 		Decision decision;
 		decision.sourceBounds = FullRaster(input.rasterWidth, input.rasterHeight);
+        if(UsesAdvancedNativePicturePolicy(input))return AdvancedNativePictureDecision(input);
         const bool acceptedUncertainNative = HasAcceptedNativeCrop(input) &&
             input.latestObservationClassification != ActivePictureClassification::FULL_RASTER_TRUSTED &&
             !input.fullRasterPresentationAuthoritative && !input.currentVisibleBoundsAvailable;

@@ -6,6 +6,8 @@
 #include "../VideoProcessor-Lib/vprenderer/OptionalRendererLayout.h"
 
 #include <type_traits>
+#include <array>
+#include <vprenderer/ShaderCacheStorage.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vector>
 #include <map>
@@ -42,15 +44,41 @@ namespace
     }
     std::mutex classicPoseLogMutex;
     std::vector<std::string> classicPoseMessages;
+    struct ClassicShaderPreparationSelection {
+        std::string state;
+        uint64_t key=0,generation=0,format=0,requested=0,effective=0;
+        bool AllowsInitialBuildFallback(uint64_t sourceGeneration,uint64_t sourceFormat,unsigned mode) const {
+            return (state=="missing" || state=="pending") && key && generation==sourceGeneration &&
+                format==sourceFormat && requested==mode && effective==0;
+        }
+    };
+    ClassicShaderPreparationSelection classicCurrentShaderPreparation;
+    using ClassicSubmittedPreparationKey=std::array<uint64_t,3>;
+    std::map<ClassicSubmittedPreparationKey,ClassicShaderPreparationSelection> classicSubmittedShaderPreparation;
+
     void __cdecl ClassicPoseTestLog(const char* message)
     {
         if(!strstr(message,"VP submitted geometry:") && !strstr(message,"Alpha source crop:") &&
             !strstr(message,"Alpha native presentation commit:") && !strstr(message,"SUBTITLE ") &&
             !strstr(message,"application profile") && !strstr(message,"Renderer configuration snapshot") &&
             !strstr(message,"VP source measurement interval:") && !strstr(message,"VP aspect telemetry:") && !strstr(message,"VP subtitle background preparation:") &&
-            !strstr(message,"Subtitle shader preparation rejected:") && !strstr(message,"Alpha relocated caption evidence:") &&
+            !strstr(message,"Subtitle shader preparation rejected:") && !strstr(message,"shader cache") && !strstr(message,"Alpha relocated caption evidence:") &&
             !strstr(message,"Alpha relocated caption geometry:") && !strstr(message,"Alpha caption unknown presentation:"))return;
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
+        const std::string line(message);
+        if(line.find("VP subtitle background preparation: stage=selection state=")!=std::string::npos) {
+            auto integer=[&](const char* key) {
+                const auto at=line.find(key);
+                return at==std::string::npos?uint64_t(0):uint64_t(std::strtoull(line.c_str()+at+strlen(key),nullptr,10));
+            };
+            const auto at=line.find(" state=")+7;const auto end=line.find(' ',at);
+            classicCurrentShaderPreparation.state=line.substr(at,end-at);
+            classicCurrentShaderPreparation.key=integer(" key=");
+            classicCurrentShaderPreparation.generation=integer(" generation=");
+            classicCurrentShaderPreparation.format=integer(" format=");
+            classicCurrentShaderPreparation.requested=integer(" requested=");
+            classicCurrentShaderPreparation.effective=integer(" effective=");
+        }
         classicPoseMessages.emplace_back(message);
     }
     // Background callbacks retain all failure evidence. Forward only preparation
@@ -65,7 +93,8 @@ namespace
                 for(;cursor<classicPoseMessages.size();++cursor) {
                     const auto& line=classicPoseMessages[cursor];
                     if(line.find("VP subtitle background preparation:")!=std::string::npos ||
-                        line.find("Subtitle shader preparation rejected:")!=std::string::npos)
+                        line.find("Subtitle shader preparation rejected:")!=std::string::npos ||
+                        line.find("shader cache")!=std::string::npos)
                         progress.push_back(line);
                 }
             }
@@ -82,6 +111,8 @@ namespace
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
         if(!classicPoseAllRecordStages && strcmp(record->stage,"submitted-presentation") && strcmp(record->stage,"presentation") && strcmp(record->stage,"ar-decision") &&
             strcmp(record->stage,"subtitle-output"))return;
+        if(!strcmp(record->stage,"submitted-presentation") && (record->flags&1u))
+            classicSubmittedShaderPreparation[{record->rendererInstanceKey,record->transportGeneration,record->acceptedSequence}]=classicCurrentShaderPreparation;
         classicPoseRecords.push_back(*record);
     }
     // OSD publication can precede the success-only final record. Consume the last
@@ -133,6 +164,43 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboPluginProxyTests)
 	{
 	public:
+        TEST_METHOD(ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey) {
+            ClassicShaderPreparationSelection prepared;
+            prepared.state="pending";prepared.key=99;prepared.generation=7;prepared.format=13;
+            prepared.requested=3;prepared.effective=0;
+            Assert::IsTrue(prepared.AllowsInitialBuildFallback(7,13,3));
+            prepared.state="missing";Assert::IsTrue(prepared.AllowsInitialBuildFallback(7,13,3));
+            for(int fault=0;fault<8;++fault) {
+                auto invalid=prepared;
+                if(fault==0)invalid.state="ready";
+                if(fault==1)invalid.state="failed";
+                if(fault==2)invalid.state="";
+                if(fault==3)invalid.key=0;
+                if(fault==4)++invalid.generation;
+                if(fault==5)++invalid.format;
+                if(fault==6)++invalid.requested;
+                if(fault==7)invalid.effective=3;
+                Assert::IsFalse(invalid.AllowsInitialBuildFallback(7,13,3));
+            }
+        }
+        TEST_METHOD(ShaderCacheOverridePreservesDefaultsSeparatesVariantsAndRejectsRelativePaths) {
+            const std::string executable="C:\\Program Files\\TestPlatform\\testhost.exe";
+            const std::string relative="vprenderer\\VideoProcessorShaderCache.bin";
+            Assert::IsTrue(ShaderCacheStorage::Resolve("",executable,relative,false)==
+                "C:\\Program Files\\TestPlatform\\"+relative);
+            Assert::IsTrue(ShaderCacheStorage::Resolve("","",relative,false)==relative);
+            const auto standard=ShaderCacheStorage::Resolve("E:\\cache\\vp",executable,relative,false);
+            const auto beta=ShaderCacheStorage::Resolve("E:\\cache\\vp",executable,relative,true);
+            Assert::IsTrue(standard=="E:\\cache\\vp\\VideoProcessorShaderCache-standard.bin");
+            Assert::IsTrue(beta=="E:\\cache\\vp\\VideoProcessorShaderCache-beta.bin");
+            Assert::IsTrue(ShaderCacheStorage::Resolve("E:\\cache\\vp",executable,relative,true,true)==
+                "E:\\cache\\vp\\VideoProcessorShaderCache-beta.clear");
+            for(const std::string value:{"relative","C:relative","\\rooted-without-drive"})
+                Assert::ExpectException<std::invalid_argument>([&] {ShaderCacheStorage::Resolve(value,executable,relative,false);});
+            Assert::IsTrue(ShaderCacheStorage::TemporaryPath(standard,10,1)!=ShaderCacheStorage::TemporaryPath(standard,11,1));
+            Assert::IsTrue(ShaderCacheStorage::TemporaryPath(standard,10,1)!=ShaderCacheStorage::TemporaryPath(standard,10,2));
+        }
+
         TEST_METHOD(BetaUsesSeparatePluginAndRuntimeNames)
         {
             using namespace OptionalRendererLayout;
@@ -1362,19 +1430,40 @@ namespace VideoProcessorTest
             };
             Logger::WriteMessage("Classic UHD live reproduction: bottom cue with no optional fill\n");
             const uint64_t onset=sequence;uint64_t settledFirst=0;double previousTop=initial.top;
+            bool safeNativePanSeen=false;
             std::set<uint64_t> settledSources;std::set<int> intermediate;
             const auto engageDeadline=GetTickCount64()+10000;
             do {
-                const auto value=pump(caption);
+                pump(caption);
                 for(const auto& g:geometries())if(g.sequence>=onset) {
-                    require(g.mode==0 && sameSize(g),L"UHD Classic bottom cue resized its no-fill native viewport.");
-                    require(g.top>=previousTop-0.01 && g.top>=initial.top-0.01 && g.top<=settled.top+0.01,
-                        L"UHD Classic bottom-cue drift reversed or left its measured translation interval.");
-                    previousTop=g.top;
-                    if(g.top>initial.top+0.01 && g.top<settled.top-0.01)intermediate.insert(int(std::lround(g.top)));
-                    if(same(g,settled) && !settledFirst)settledFirst=g.sequence;
+                    require(g.mode==0 && std::abs(g.left-physical.left)<0.01 &&
+                        std::abs(g.right-physical.right)<0.01 && g.top>=-0.01 && g.bottom<=height+0.01,
+                        L"UHD Classic engage changed mode, horizontal picture coverage, or raster bounds.");
+                    if(settledFirst) {
+                        require(same(g,settled),L"UHD Classic left its exact independently derived settled pose.");
+                        settledSources.insert(g.sequence);
+                        continue;
+                    }
+                    // The confirmed controller target does not make a partial
+                    // pan caption-safe. Keep the picture-plus-caption envelope
+                    // until the actual native-height viewport contains all ink.
+                    const bool nativePan=sameSize(g) && g.top>=initial.top-0.01 &&
+                        g.top<=settled.top+0.01 && g.bottom>=captionBottom-0.01;
+                    const bool visibilityEnvelope=std::abs(g.top-physical.top)<0.01 &&
+                        g.bottom>=captionBottom-0.01 && g.bottom<=settled.bottom+0.01;
+                    require(nativePan || (!safeNativePanSeen && visibilityEnvelope),
+                        L"UHD Classic engage clipped current caption pixels or left its bounded visibility envelope.");
+                    if(nativePan) {
+                        require(g.top>=previousTop-0.01,
+                            L"UHD Classic caption-safe native pan reversed its measured translation.");
+                        safeNativePanSeen=true;previousTop=g.top;
+                        if(g.top>initial.top+0.01 && g.top<settled.top-0.01)intermediate.insert(int(std::lround(g.top)));
+                    }
+                    if(same(g,settled)) {
+                        settledFirst=g.sequence;
+                        settledSources.insert(g.sequence);
+                    }
                 }
-                if(settledFirst && value.presentedSequence>=settledFirst)settledSources.insert(value.presentedSequence);
                 if(settledSources.size()>=24 && scans(onset))break;
             }while(GetTickCount64()<engageDeadline && callback.state!=RENDERSTATE_FAILED);
             require(settledSources.size()>=24 && intermediate.size()>=2 && scans(onset),
@@ -2006,6 +2095,7 @@ namespace VideoProcessorTest
                 uint64_t sequence=1;size_t cursor=0;std::map<uint64_t,timingclocktime_t> delivered;
                 std::map<uint64_t,AnalysisDiagnosticRecordV1> nativeInputs;
                 std::vector<AnalysisDiagnosticRecordV1> outputs;
+                std::vector<ClassicShaderPreparationSelection> outputPreparation;
                 std::set<uint64_t> repeatedAnchors;
                 auto require=[&](bool ok,const wchar_t* why){if(ok)return;
                     std::vector<AnalysisDiagnosticRecordV1> failureRecords;std::vector<std::string> failureMessages;
@@ -2105,7 +2195,14 @@ namespace VideoProcessorTest
                         require(std::isfinite(record.metrics[8])&&std::isfinite(record.metrics[9])&&
                             record.metrics[10]>record.metrics[8]&&record.metrics[11]>record.metrics[9],
                             L"Every successful output must publish valid actual source coordinates.");
-                        outputs.push_back(record);
+                        ClassicShaderPreparationSelection preparation;
+                        {
+                            std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                            const auto found=classicSubmittedShaderPreparation.find(
+                                {record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
+                            if(found!=classicSubmittedShaderPreparation.end())preparation=found->second;
+                        }
+                        outputs.push_back(record);outputPreparation.push_back(preparation);
                     }
                 };
                 auto next=std::chrono::steady_clock::now();
@@ -2152,6 +2249,7 @@ namespace VideoProcessorTest
                     size_t inspected=mode?0:outputs.size();uint64_t ready=0;size_t checked=0;
                     std::set<uint64_t> distinct;bool odd=false,even=false,displayedOdd=false,displayedEven=false;
                     double pinned[4]={},previousTop=native[1];
+                    bool warmupNativeKnown=false;int32_t warmupNative[4]={};
                     // Same fixture contract as the public Classic controller:
                     // measured lower extent + source padding + configured offset,
                     // then its target buffer, clipped to the available encoded bar.
@@ -2227,8 +2325,28 @@ namespace VideoProcessorTest
                             }
                             const auto top=record.metrics[9],bottom=record.metrics[11];
                             if(mode){
-                                if(!composed)require(record.metrics[8]<=0&&record.metrics[10]>=width&&top<=pictureTop&&bottom>=captionBottom,
-                                    L"Unprepared actual output clipped the persistent raw caption or picture.");
+                                // The user explicitly permits clipped raw subtitles while
+                                // shader programs are being built. This exception belongs
+                                // ONLY to an exact current Missing/Pending preparation key
+                                // before the first composed output; never to failure, a
+                                // Ready-but-unprepared cue, or any later cadence gap.
+                                const auto& preparation=outputPreparation[inspected];
+                                const auto& displayedInput=nativeInputs.at(record.counters[1]);
+                                const bool building=!ready && preparation.AllowsInitialBuildFallback(
+                                    displayedInput.transportGeneration,displayedInput.sourceFormatGeneration,mode);
+                                require(preparation.state!="failed",L"Shader preparation failed instead of completing bounded startup.");
+                                if(!composed&&!building)require(record.metrics[8]<=0&&record.metrics[10]>=width&&top<=pictureTop&&bottom>=captionBottom,
+                                    L"Unprepared output outside explicit shader building clipped the persistent raw caption or picture.");
+                                if(record.counters[4]>0) {
+                                    require(record.published[0]==0&&record.published[2]==width&&
+                                        record.published[1]>=pictureTop-8&&record.published[1]<=pictureTop&&
+                                        record.published[3]>=pictureBottom&&record.published[3]<=pictureBottom+8,
+                                        L"Shader preparation or caption presence inflated the accepted native picture bounds.");
+                                    if(!warmupNativeKnown){std::copy_n(record.published,4,warmupNative);warmupNativeKnown=true;}
+                                    for(int edge=0;edge<4;++edge)require(record.published[edge]==warmupNative[edge]&&
+                                        std::abs(record.metrics[8+edge]-record.published[edge])<0.01,
+                                        L"Shader preparation changed the fixed native picture viewport.");
+                                }
                                 if(composed&&!ready){
                                     require(record.counters[4]>0&&record.published[0]==0&&record.published[2]==width&&
                                         record.published[1]>=pictureTop-8&&record.published[1]<=pictureTop&&

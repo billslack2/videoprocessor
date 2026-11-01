@@ -1,6 +1,9 @@
 #include <pch.h>
 #include "../SubtitleProfileUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
+#include "ShaderCacheStorage.h"
+#include <shlobj.h>
+#pragma comment(lib,"shell32.lib")
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
@@ -669,39 +672,35 @@ namespace
 		return result;
 	}
 
-	std::string ShaderCachePath()
-	{
-		char modulePath[MAX_PATH] = {};
-		const DWORD length =
-			GetModuleFileNameA(nullptr, modulePath, ARRAYSIZE(modulePath));
-		if (length == 0 || length >= ARRAYSIZE(modulePath))
-			return SHADER_CACHE_RELATIVE_PATH;
+    std::string ShaderCacheStoragePath(bool clearRequest)
+    {
+        char modulePath[MAX_PATH] = {};
+        const DWORD length=GetModuleFileNameA(nullptr,modulePath,ARRAYSIZE(modulePath));
+        char* configured=nullptr;size_t configuredLength=0;
+        if(_dupenv_s(&configured,&configuredLength,"VP_SHADER_CACHE_DIRECTORY")!=0)
+            throw std::runtime_error("Unable to read VP_SHADER_CACHE_DIRECTORY");
+        const std::unique_ptr<char,decltype(&free)> owned(configured,&free);
+        const std::string directory=configured?configured:"";
+        const auto path=ShaderCacheStorage::Resolve(directory,
+            length>0 && length<ARRAYSIZE(modulePath)?std::string(modulePath,length):std::string{},
+            clearRequest?SHADER_CACHE_CLEAR_RELATIVE_PATH:SHADER_CACHE_RELATIVE_PATH,
+#if defined(VP_LIBPLACEBO_BETA)
+            true,
+#else
+            false,
+#endif
+            clearRequest);
+        if(!directory.empty()) {
+            const int error=SHCreateDirectoryExA(nullptr,directory.c_str(),nullptr);
+            if(error!=ERROR_SUCCESS && error!=ERROR_ALREADY_EXISTS && error!=ERROR_FILE_EXISTS)
+                DebugLog::Log("libplacebo shader cache directory unavailable: path=%s error=%d",
+                    directory.c_str(),error);
+        }
+        return path;
+    }
 
-		std::string path(modulePath, length);
-		const size_t separator = path.find_last_of("\\/");
-		if (separator == std::string::npos)
-			return SHADER_CACHE_RELATIVE_PATH;
-		path.resize(separator + 1);
-		path += SHADER_CACHE_RELATIVE_PATH;
-		return path;
-	}
-
-	std::string ShaderCacheClearRequestPath()
-	{
-		char modulePath[MAX_PATH] = {};
-		const DWORD length =
-			GetModuleFileNameA(nullptr, modulePath, ARRAYSIZE(modulePath));
-		if (length == 0 || length >= ARRAYSIZE(modulePath))
-			return SHADER_CACHE_CLEAR_RELATIVE_PATH;
-
-		std::string path(modulePath, length);
-		const size_t separator = path.find_last_of("\\/");
-		if (separator == std::string::npos)
-			return SHADER_CACHE_CLEAR_RELATIVE_PATH;
-		path.resize(separator + 1);
-		path += SHADER_CACHE_CLEAR_RELATIVE_PATH;
-		return path;
-	}
+    std::string ShaderCachePath() { return ShaderCacheStoragePath(false); }
+    std::string ShaderCacheClearRequestPath() { return ShaderCacheStoragePath(true); }
 
 	template<typename T>
 	const T& LibplaceboExportedData(const char* exportName)
@@ -4861,6 +4860,7 @@ struct LibplaceboVideoRenderer::Impl
     std::atomic<bool> subtitlePipelinePreparationFailed{false};
     std::string subtitlePipelinePreparationKey;
     bool subtitlePreparationRequested = false;
+    SubtitlePreviewMode subtitlePreparationRequestedMode=SubtitlePreviewMode::None;
     int subtitlePreparationLoggedState=-1,subtitlePreparationLoggedRequested=-1;
     uint64_t subtitlePreparationLoggedKey=0,subtitlePreparationStateTick=0;
     uint64_t subtitlePreparationStateLogTick=0,subtitlePreparationDispatchLogTick=0;
@@ -5887,7 +5887,9 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		}
 
-		const std::string temporaryPath = shaderCachePath + ".tmp";
+        static std::atomic<unsigned long long> temporarySequence{0};
+        const std::string temporaryPath=ShaderCacheStorage::TemporaryPath(shaderCachePath,
+            GetCurrentProcessId(),temporarySequence.fetch_add(1,std::memory_order_relaxed));
 		{
 			std::ofstream output(
 				temporaryPath,
@@ -5897,6 +5899,8 @@ struct LibplaceboVideoRenderer::Impl
 					reinterpret_cast<const char*>(data.data()),
 					static_cast<std::streamsize>(data.size())))
 			{
+                output.close();
+                DeleteFileA(temporaryPath.c_str());
 				DebugLog::Log(
 					"libplacebo persistent shader cache not saved: write failed");
 				return;
@@ -9677,6 +9681,7 @@ struct LibplaceboVideoRenderer::Impl
         uint64_t generation, uint64_t sourceFormat, double sourceHz, double displayHz,
         bool inputInterlaced, int inputOrder) {
         const bool previouslyRequested = subtitlePreparationRequested;
+        subtitlePreparationRequestedMode=requested;
         subtitlePreparationRequested = SubtitlePreviewOverridesClassicHandling(requested);
         subtitlePreparationFallback = false;
         if (!subtitlePreparationRequested) {
@@ -11974,6 +11979,13 @@ struct LibplaceboVideoRenderer::Impl
                 !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
                 AlphaSourceCrop::ValidateBufferedTranslatedPictureExpansion(*bufferedExpansion,
                     currentIdentity, admissionInput, eligiblePictureChange, subtitleBase);
+            const bool bufferedIndependentOwnerHandoff=!movingPictureOnset && bufferedExpansion &&
+                !nearBlackAcquisitionBlocked && !wasMovingPicture && !wasAwaitingPicturePublication &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+                (admissionInput.presentation.action!=AlphaSourceCrop::VerticalBarPresentationAction::NONE ||
+                 admissionInput.translationDriftActive || admissionInput.previousOutward.verticalPresentationSeen) &&
+                AlphaSourceCrop::ValidateBufferedIndependentPictureExpansion(*bufferedExpansion,
+                    currentIdentity,admissionInput,eligiblePictureChange);
             RelativeBarContrastEvidence currentRelativeContrast;
             bool currentQualifiedPair = false;
             const bool relativeOwnerEligible = !movingPictureOnset && rememberedEdgeGuarded && automaticSourceCrop &&
@@ -11996,7 +12008,7 @@ struct LibplaceboVideoRenderer::Impl
             const bool bufferedRelativeFitHandoff = bufferedRelativeReady &&
                 scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::FIT;
             const bool bufferedExpansionReady = !movingPictureOnset &&
-                (bufferedTranslationHandoff || bufferedRelativeReady ||
+                (bufferedIndependentOwnerHandoff || bufferedTranslationHandoff || bufferedRelativeReady ||
                  (!movingPictureTransition.active && bufferedExpansion &&
                   AlphaSourceCrop::ValidateBufferedPictureExpansion(*bufferedExpansion,
                     currentIdentity, admissionInput, eligiblePictureChange)));
@@ -12071,11 +12083,16 @@ struct LibplaceboVideoRenderer::Impl
 				: ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
 			ActivePicturePublicationAdmission publicationAdmission =
 				ActivePicturePublicationAdmission::NOT_EVALUATED;
-            const bool inwardPresentationCompatible = !movingPictureOnset && (!scheduledDecision ||
-                scheduledDecision->association != ActivePictureDecisionAssociation::EXACT_INWARD ||
-                (scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
-                 !scopeSubtitleDrift.IsActive() && !outwardPictureConfirmation.verticalPresentationSeen &&
-                 !movingPictureTransition.active && !movingPictureTransition.awaitingPublication));
+            const bool exactPreparedInward=scheduledDecision &&
+                scheduledDecision->association==ActivePictureDecisionAssociation::EXACT_INWARD;
+            const bool validatedPreparedInward=exactPreparedInward &&
+                AlphaSourceCrop::ValidatePreparedInwardPictureTransition(*scheduledDecision,currentIdentity,
+                    admissionInput,movingPictureOnset,movingPictureTransition.active,movingPictureTransition.awaitingPublication);
+            const bool preparedInwardOwnerHandoff=validatedPreparedInward &&
+                (scopeVerticalBarPresentation.action!=AlphaSourceCrop::VerticalBarPresentationAction::NONE ||
+                 scopeSubtitleDrift.IsActive() || outwardPictureConfirmation.verticalPresentationSeen);
+            const bool inwardPresentationCompatible=!movingPictureOnset &&
+                (!exactPreparedInward || validatedPreparedInward);
             const bool applyScheduledDecision = scheduledDecision && inwardPresentationCompatible &&
 				observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
 				scheduledValidation ==
@@ -12443,7 +12460,8 @@ struct LibplaceboVideoRenderer::Impl
                         inwardCaptionEvidence.protectedBounds.left, inwardCaptionEvidence.protectedBounds.top,
                         inwardCaptionEvidence.protectedBounds.right, inwardCaptionEvidence.protectedBounds.bottom);
                 }
-                if (applyScheduledDecision && (bufferedTranslationHandoff || bufferedRelativeFitHandoff))
+                if (applyScheduledDecision && (bufferedIndependentOwnerHandoff || preparedInwardOwnerHandoff ||
+                    bufferedTranslationHandoff || bufferedRelativeFitHandoff))
                 {
                     // Retire the old owner only after the actual geometry publication.
                     // Rejected preview/adoption must leave subtitle presentation intact.
@@ -12456,7 +12474,7 @@ struct LibplaceboVideoRenderer::Impl
                     scopeVerticalInspectionBridge = {};
                     DebugLog::Log("Alpha buffered presentation handoff: instance=%s generation=%llu sequence=%llu through=%llu old_shift=%.1f new_base=%d,%d-%d,%d owner_retired=1 relative_fit=%d",
                         diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
-                        bufferedExpansion->decision.observationIdentity.acceptedSequence, oldShift,
+                        scheduledDecision->observationIdentity.acceptedSequence, oldShift,
                         nlsGeometry.left, nlsGeometry.top, nlsGeometry.right, nlsGeometry.bottom,
                         bufferedRelativeFitHandoff ? 1 : 0);
                 }
@@ -12833,6 +12851,11 @@ struct LibplaceboVideoRenderer::Impl
 		// the next frame instead of mixing box and cut/paste modes in one render.
 		const SubtitlePreviewMode subtitlePreviewMode =
 			sourceSubtitleMode;
+        // Source picture policy follows the requested style even while its
+        // compositor is preparing. Readiness cannot change the movie viewport.
+        const auto picturePolicySubtitleMode=subtitlePreparationRequested?
+            subtitlePreparationRequestedMode:subtitlePreviewMode;
+        const bool advancedPictureOnlyRequested=SubtitlePreviewOverridesClassicHandling(picturePolicySubtitleMode);
 		const bool subtitleBoxTest =
 			subtitlePreviewMode == SubtitlePreviewMode::GreenBox;
 		const bool subtitleCutPasteTest =
@@ -15834,7 +15857,7 @@ struct LibplaceboVideoRenderer::Impl
 			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
 			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels, queuedAnalysisDomainKey,
-			 subtitlePreviewMode,
+			 subtitlePreviewMode, picturePolicySubtitleMode, advancedPictureOnlyRequested,
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
              coldStrictWorkerProof, coldStrictWorkerPicture,
@@ -15890,7 +15913,7 @@ struct LibplaceboVideoRenderer::Impl
             temporalPolicyNearBlackEnvelopeMode = AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
             temporalPolicyNearBlackEnvelopeSourceSequence = 0;
             temporalPolicyNearBlackEnvelopeEpisodeStart = 0;
-			if (SubtitlePreviewRequiresFullRaster(subtitlePreviewMode) || subtitlePreparationFallback)
+			if (SubtitlePreviewRequiresFullRaster(subtitlePreviewMode))
             {
                 source.crop = {0.0f,0.0f,static_cast<float>(width),static_cast<float>(height)};
                 renderParams.hooks=nullptr; renderParams.num_hooks=0;
@@ -17150,7 +17173,7 @@ releaseDriftBaseRetention =
             if (relocatedCaptionQualified)
                 cropInput.preparedSubtitle=QualifyPreparedSubtitleCropPresentation(
                     displayCaptionProof,subtitleIdentity,cropInput.geometry);
-            cropInput=CanonicalSubtitleModeCropInput(cropInput,subtitlePreviewMode);
+            cropInput=CanonicalSubtitleModeCropInput(cropInput,picturePolicySubtitleMode);
 			bool submittedScopeContinuityRetention = false;
 			temporalPolicySubmittedScopeContinuityRetention = false;
 			if (automaticSourceCrop && !fixedCropAspectConfigured && !nlsRequested &&
@@ -17204,7 +17227,7 @@ releaseDriftBaseRetention =
 					cropInput.submittedScopeContinuityRetention = true;
 				}
 			}
-            const bool protectedCaptionFit = !suppressCaptionPresentation && inwardCaptionProtected && configuredScreenActive &&
+            const bool protectedCaptionFit = !advancedPictureOnlyRequested && !suppressCaptionPresentation && inwardCaptionProtected && configuredScreenActive &&
                 effectiveGeometryAvailable && effectiveGeometrySourceGeneration == frameGeneration &&
                 CurrentInwardCaptionProtection(frameGeneration, sourceSequence,
                     viewportRequestSerial, effectiveGeometry) &&
@@ -17229,8 +17252,8 @@ releaseDriftBaseRetention =
                 cropInput.currentVisibleSourceSequence = sourceSequence;
                 cropInput.currentVisibleBounds = inwardCaptionEvidence.protectedBounds;
             }
-            // Relocation success is deliberately absent from crop authority.
-            // The same raw-source policy protects Classic, reconstructed and solid captions.
+            // Picture authority is independent of caption relocation. Advanced
+            // styles never acquire a larger picture viewport to fit a caption.
             // Fill enables analysis, not unconditional black-bar removal. Decide
             // from the trusted movie bounds before subtitle/retention expansion.
             cropInput.automaticCropEnabled = AlphaSourceCrop::ShouldApplyDynamicSourceCrop(
@@ -17250,7 +17273,7 @@ releaseDriftBaseRetention =
             captionFitInput.captionBounds = currentConfirmedCaptionBounds;
             captionFitInput.captionSourceGeneration = frameGeneration;
             captionFitInput.captionSourceSequence = sourceSequence;
-            captionFitInput.captionConfirmed = !suppressCaptionPresentation && currentConfirmedCaptionAvailable;
+            captionFitInput.captionConfirmed = !advancedPictureOnlyRequested && !suppressCaptionPresentation && currentConfirmedCaptionAvailable;
             captionFitInput.initialAcquisition = !AlphaSourceCrop::HasCurrentCropPresentationAdmission(
                 cropPresentationAdmission, cropInput, viewportRequestSerial);
             captionFitInput.translationProposed = cropInput.verticalTranslationActive;
@@ -17270,7 +17293,7 @@ releaseDriftBaseRetention =
                 cropInput.outwardExpansionSourceGeneration = frameGeneration;
             }
 			AlphaSourceCrop::PresentationRecoveryInput recoveryInput;
-            recoveryInput.classicTranslationEnabled = subtitlePreviewMode == SubtitlePreviewMode::None &&
+            recoveryInput.classicTranslationEnabled = !advancedPictureOnlyRequested && subtitlePreviewMode == SubtitlePreviewMode::None &&
                 !suppressCaptionPresentation;
             recoveryInput.classicTranslationEngaging=establishedTranslation.engagingTranslation &&
                 scopeSubtitleFit && !fixedCropAspectConfigured && !nlsRequested && !inwardCaptionProtected;
@@ -17814,7 +17837,7 @@ releaseDriftBaseRetention =
                 uncertainPicture.presentation.nativePresentation.captionTranslationMeasurement.available)
                 admissionDecision.state.nativePresentation.captionTranslationMeasurement =
                     uncertainPicture.presentation.nativePresentation.captionTranslationMeasurement;
-            if(unknownCaptionHold.retained &&
+            if(!advancedPictureOnlyRequested && unknownCaptionHold.retained &&
                 !uncertainPicture.presentation.nativePresentation.captionPreservation.available) {
                 admissionDecision.state=cropPresentationAdmission;
                 admissionDecision.state.confirmedFitOwnership={};
@@ -17877,7 +17900,8 @@ releaseDriftBaseRetention =
             temporalPolicyStartupPoseQualified = !admissionDecision.blocked &&
                 cropDecision.owner != AlphaSourceCrop::DecisionOwner::FULL_RASTER &&
                 (cropDecision.owner != AlphaSourceCrop::DecisionOwner::OUTWARD_FIT ||
-                 recoveryInput.confirmedFitOwnership.available);
+                 recoveryInput.confirmedFitOwnership.available ||
+                 cropDecision.nativePresentation.origin==AlphaSourceCrop::NativePresentationOrigin::CONFIRMED_PICTURE);
 
             // Stage an admitted translation; only selected successful output commits it.
             // crop. Release-only output cannot renew this provenance.
@@ -18118,7 +18142,7 @@ releaseDriftBaseRetention =
             captionHoldInput.targetTranslationPixels = verticalTranslationConfirmationPending
                 ? (pendingCaptionTarget < 0 ? -pendingCaptionMagnitude : pendingCaptionMagnitude)
                 : establishedTranslation.engageTargetTranslationPixels;
-            captionHoldInput.eligible = captionAnchorContextMatches &&
+            captionHoldInput.eligible = !advancedPictureOnlyRequested && captionAnchorContextMatches &&
                 !cropDecision.applyCrop && !aspectLimitFill.applied &&
                 cropInput.automaticCropEnabled && configuredScreenActive &&
                 episodeInput.measurementCurrent && episodeInput.retentionEvaluated &&
@@ -25197,11 +25221,11 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 						preview.identity.acceptedSequence));
 				continue;
 			}
-			if (!m_activePictureTimeline.ShouldAnalyze(
-				preview.observation.frameNumber, preview.framesPerSecond))
-				continue;
+            // The native worker already measured these immutable source pixels.
+            // Scan cadence must not discard adjacent proof that is ready before
+            // this pending source is displayed. Model/identity vetoes still apply.
 			ActivePictureFrameDecision decision;
-			if (!m_activePictureTimeline.SubmitScheduledObservation(
+			if (!m_activePictureTimeline.SubmitPreparedLookaheadObservation(
 				preview.identity, preview.observation, configured,
 				availableLookahead, decision))
 				continue;

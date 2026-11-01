@@ -41,13 +41,20 @@
 
 ## Testing and diagnostics
 
-- Every runtime build must pass the mandatory native AR/subtitle contracts and
-  the real Classic lifecycle matrix on both shipped renderer dependencies.
+- Repair iteration uses `tools/qualify_runtime_build.ps1 -Lane Native` for CPU
+  proofs or `-Lane Focused -Methods <names>` for matching Release runtime builds
+  and selected renderer checks. These lanes record partial evidence and never
+  issue full qualification. See `docs/FAST_REPAIR_ITERATION.md`.
+- Release/packaging builds must pass the mandatory native AR/subtitle contracts
+  and the real Classic lifecycle matrix on both shipped renderer dependencies.
   `tools/qualify_runtime_build.ps1` builds and tests the matching x64 Release
   host, renderers and test binaries; there is no skip-tests release path.
   `tools/assert_runtime_qualification.ps1` must pass immediately before copying
   runtime binaries for deployment or packaging. Missing, failed or stale source,
-  binary or test evidence blocks that operation. A successful compiler exit alone
+  binary or test evidence blocks release/packaging. An explicitly requested
+  manual-review deployment may use disclosed focused evidence while full
+  qualification continues; it must never be represented as qualified.
+  A successful compiler exit alone
   is not qualification. Keep the user configuration intact when deploying.
 - The critical matrix covers both fill directions with normal 500 ms engage,
   2,000 ms hold and 2,000 ms release, natural skipped analyses, true measured

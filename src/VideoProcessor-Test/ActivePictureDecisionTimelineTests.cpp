@@ -399,6 +399,57 @@ namespace VideoProcessorTest
 			}
 		}
 
+        TEST_METHOD(PreparedReadyNativeWindowChangesAtFirstPendingSourceWithoutScanThrottle) {
+            for(double inputHz:{23.976,24.0,59.94,60.0})for(bool inward:{false,true})for(size_t readyCount:{size_t(2),size_t(5)}) {
+                const uint8_t configured=inputHz<=30?3:5; // Active VP_24 and VP_60/50 profiles.
+                ActivePictureDecisionTimeline timeline;timeline.Reset(3);
+                uint64_t sequence=1;
+                EstablishGeometry(timeline,3,sequence,inward?ShallowScopeBounds():ScopeBounds());
+                const uint64_t first=sequence;
+                std::array<ActivePictureFrameIdentity,5> identities;
+                std::array<ActivePictureObservation,5> observations;
+                for(size_t i=0;i<identities.size();++i) {
+                    identities[i]=Identity(3,sequence,sequence);
+                    observations[i]=Trusted(sequence,inward?ScopeBounds():ShallowScopeBounds());
+                    observations[i].framesPerSecond=inputHz;
+                    Assert::IsTrue(timeline.TrackAcceptedFrame(identities[i]));
+                    if(i<readyCount)Assert::IsTrue(timeline.TrackLookaheadEvidence(identities[i],observations[i],true,false));
+                    ++sequence;
+                }
+                ActivePictureFrameDecision decision;bool published=false;
+                for(size_t i=0;i<readyCount && !published;++i)
+                    published=timeline.SubmitPreparedLookaheadObservation(identities[i],observations[i],configured,configured,decision);
+                Assert::IsTrue(published,L"Adjacent ready source proofs must not be discarded by the detector's 80ms scan cadence");
+                Assert::AreEqual(first,decision.effectiveIdentity.acceptedSequence,L"Proof ready before playback must apply on the first changed displayed source");
+                Assert::AreEqual(first+1,decision.observationIdentity.acceptedSequence,L"Two genuine current native observations suffice for this transition");
+                Assert::IsFalse(decision.late);
+                Assert::AreEqual(int(inward?ActivePictureDecisionAssociation::EXACT_INWARD:ActivePictureDecisionAssociation::OUTWARD),int(decision.association));
+            }
+        }
+        TEST_METHOD(PreparedReadyWindowStillRejectsAlternatingUnprovedAndConsumedInwardFrames) {
+            for(int fault=0;fault<3;++fault) {
+                ActivePictureDecisionTimeline timeline;timeline.Reset(3);uint64_t sequence=1;
+                EstablishGeometry(timeline,3,sequence,ShallowScopeBounds());
+                const auto first=sequence;
+                std::array<ActivePictureFrameIdentity,5> identities;
+                std::array<ActivePictureObservation,5> observations;
+                for(size_t i=0;i<identities.size();++i) {
+                    identities[i]=Identity(3,sequence,sequence);
+                    observations[i]=Trusted(sequence,fault==0 && i%2?FullBounds():ScopeBounds());
+                    if(fault==1) {observations[i].classification=ActivePictureClassification::PROVISIONAL;observations[i].transitionDeferred=true;}
+                    Assert::IsTrue(timeline.TrackAcceptedFrame(identities[i]));
+                    if(fault!=2 || i!=0)Assert::IsTrue(timeline.TrackLookaheadEvidence(identities[i],observations[i],true,false));
+                    ++sequence;
+                }
+                if(fault==2)timeline.MarkConsumed(identities[0]);
+                ActivePictureFrameDecision decision;
+                for(size_t i=0;i<identities.size();++i) {
+                    const bool published=timeline.SubmitPreparedLookaheadObservation(identities[i],observations[i],4,4,decision);
+                    Assert::IsFalse(published && decision.effectiveIdentity.acceptedSequence==first,
+                        L"Ready metadata cannot manufacture proof for unstable, untrusted, or already consumed source pixels");
+                }
+            }
+        }
 		TEST_METHOD(BufferedConfirmationBackdatesToPendingCandidate)
 		{
 			ActivePictureDecisionTimeline timeline;

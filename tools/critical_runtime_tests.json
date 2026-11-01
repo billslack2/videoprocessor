@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 809,
+  "minimumNativeTests": 819,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -89,7 +89,17 @@
     "ClassicEngageUsesCurrentVisiblePixelsAcrossDenseScanGapsAndUiOnlyContent",
     "ClassicUnscannedEngageSubmissionsPreserveOriginalControllerLeaseWithoutRenewal",
     "OneCompleteOutputRetirementPreservesFreshThreeLineOwnershipWithoutRenewal",
-    "CompleteOutputRetirementNeverAuthorizesOtherGapsOrUnprovenCurrentPixels"
+    "CompleteOutputRetirementNeverAuthorizesOtherGapsOrUnprovenCurrentPixels",
+    "ShaderCacheOverridePreservesDefaultsSeparatesVariantsAndRejectsRelativePaths",
+    "PreparedReadyNativeWindowChangesAtFirstPendingSourceWithoutScanThrottle",
+    "PreparedReadyWindowStillRejectsAlternatingUnprovedAndConsumedInwardFrames",
+    "AdvancedSubtitleUncertaintyNeverChangesTheNativePictureViewport",
+    "AdvancedPictureGrowthUsesTheFirstCurrentNativeWitnessWithoutCaptionInflation",
+    "CompleteNativeExpansionSupersedesReleaseDriftAndFitOnFirstPendingSource",
+    "IndependentOwnerBypassRejectsProvisionalAndForeignCurrentPixelProofs",
+    "ExactQueuedInwardProofCannotWaitForOldSubtitlePresentationTimers",
+    "InwardOwnerBypassRetainsExactSourceAndMovingPictureVetoes",
+    "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -201,6 +211,46 @@
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
       "method": "CompleteOutputRetirementNeverAuthorizesOtherGapsOrUnprovenCurrentPixels"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ShaderCacheOverridePreservesDefaultsSeparatesVariantsAndRejectsRelativePaths"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "PreparedReadyNativeWindowChangesAtFirstPendingSourceWithoutScanThrottle"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "PreparedReadyWindowStillRejectsAlternatingUnprovedAndConsumedInwardFrames"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LookaheadOutwardProofTests.cpp",
+      "class": "LookaheadOutwardProofTests",
+      "method": "CompleteNativeExpansionSupersedesReleaseDriftAndFitOnFirstPendingSource"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LookaheadOutwardProofTests.cpp",
+      "class": "LookaheadOutwardProofTests",
+      "method": "IndependentOwnerBypassRejectsProvisionalAndForeignCurrentPixelProofs"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LookaheadOutwardProofTests.cpp",
+      "class": "LookaheadOutwardProofTests",
+      "method": "ExactQueuedInwardProofCannotWaitForOldSubtitlePresentationTimers"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LookaheadOutwardProofTests.cpp",
+      "class": "LookaheadOutwardProofTests",
+      "method": "InwardOwnerBypassRetainsExactSourceAndMovingPictureVetoes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey"
     }
   ]
 }

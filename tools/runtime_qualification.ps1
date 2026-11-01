@@ -110,9 +110,27 @@ function Get-VpCriticalTestPlan([string]$Root) {
     }
     $filters = @($classes.Keys | Sort-Object | ForEach-Object { "FullyQualifiedName~$_" })
     $filters += @($explicitEntries | ForEach-Object { "FullyQualifiedName~$($_.method)" })
+    $nativeFilter=$filters -join '|'
     $filters += @($manifest.actualMethods | ForEach-Object { "FullyQualifiedName~$_" })
     return [pscustomobject]@{ manifest=$manifest; manifestHash=(Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash;
-        expected=$expected; nativeCount=$nativeCount; actualCount=$manifest.actualMethods.Count; filter=($filters -join '|') }
+        expected=$expected; nativeCount=$nativeCount; actualCount=$manifest.actualMethods.Count; nativeFilter=$nativeFilter; filter=($filters -join '|') }
+}
+# Actual proxy cases explicitly load the named shipped renderer DLL. Running
+# Standard* and Beta* again in both ABI test hosts duplicated expensive GPU work.
+# Keep native contracts in BOTH hosts; assign each actual case to its named host.
+function Get-VpCriticalVariantPlan($Plan, [string]$Variant) {
+    if($Variant -notin @('standard','beta')){throw 'Unknown qualification dependency variant.'}
+    $prefix=if($Variant -eq 'standard'){'StandardRenderer'}else{'BetaRenderer'}
+    $expected=@{};$methods=@()
+    foreach($key in $Plan.expected.Keys) {
+        if($Plan.expected[$key] -eq 'native'){$expected[$key]='native';continue}
+        $method=($key -split '::')[-1]
+        if($method -notmatch '^(Standard|Beta)Renderer'){throw "Actual method has no explicit renderer owner: $method"}
+        if($method.StartsWith($prefix)){$expected[$key]=$Plan.expected[$key];$methods+=,$method}
+    }
+    if(-not $methods.Count){throw "No actual renderer coverage for $Variant"}
+    $filters=@($Plan.nativeFilter)+@($methods|Sort-Object|ForEach-Object {"FullyQualifiedName~$_"})
+    return [pscustomobject]@{expected=$expected;nativeCount=$Plan.nativeCount;actualCount=$methods.Count;filter=($filters -join '|')}
 }
 function Get-VpQualifiedOutputInventory([string]$Root) {
     $files = @(
@@ -183,8 +201,9 @@ function Assert-VpRuntimeQualification([string]$Root, [string]$RequiredBinaryPat
     $receiptPath = Get-VpQualificationReceiptPath $Root
     if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { throw 'Runtime build is UNQUALIFIED: mandatory qualification receipt is missing. Build Release|x64 through MSBuild; passing tests are required.' }
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
-    if ($receipt.schemaVersion -ne 1 -or $receipt.status -ne 'Passed' -or
-        $receipt.configuration -ne 'Release' -or $receipt.platform -ne 'x64') { throw 'Runtime build is UNQUALIFIED: failed or unsupported qualification receipt.' }
+    if ($receipt.schemaVersion -ne 2 -or $receipt.status -ne 'Passed' -or
+        $receipt.configuration -ne 'Release' -or $receipt.platform -ne 'x64' -or
+        -not ($receipt.PSObject.Properties.Name -contains 'coldShaderCache') -or $receipt.coldShaderCache -ne $true) { throw 'Runtime build is UNQUALIFIED: failed or unsupported qualification receipt.' }
     $identity = Get-VpSourceIdentity $Root
     if ($receipt.source.commit -ne $identity.commit -or $receipt.source.fingerprint -ne $identity.fingerprint -or
         $receipt.source.dirty -ne $identity.dirty) { throw 'Runtime qualification is STALE: current source commit/content digest differs.' }
@@ -211,8 +230,9 @@ function Assert-VpRuntimeQualification([string]$Root, [string]$RequiredBinaryPat
         $allowed = (Join-Path $Root 'artifacts\qualification\runs').TrimEnd('\')+'\'
         if (-not $trx.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase)) { throw 'Qualification TRX is outside its evidence directory.' }
         if ((Get-FileHash -LiteralPath $trx -Algorithm SHA256).Hash -ne $run.trxSha256) { throw "Qualification evidence changed: $trx" }
-        $counts = Read-VpCriticalTrx $trx $plan
-        if ($counts.executed -ne $run.executed -or $counts.actualClassic -ne $plan.actualCount -or $counts.actualClassic -ne $run.actualClassic) { throw 'Qualification execution receipt differs from its TRX.' }
+        $variantPlan=Get-VpCriticalVariantPlan $plan $run.variant
+        $counts = Read-VpCriticalTrx $trx $variantPlan
+        if ($counts.executed -ne $run.executed -or $counts.actualClassic -ne $variantPlan.actualCount -or $counts.actualClassic -ne $run.actualClassic) { throw 'Qualification execution receipt differs from its TRX.' }
     }
     return $receipt
 }
