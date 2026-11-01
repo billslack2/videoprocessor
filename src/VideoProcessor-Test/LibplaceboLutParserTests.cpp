@@ -7,6 +7,7 @@
 #include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <vprenderer/AnamorphicPresentation.h>
+#include <vprenderer/AutoPictureAlignment.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
 #include <vprenderer/NlsHookRecovery.h>
 #include <NlsGeometryPolicy.h>
@@ -180,6 +181,11 @@ namespace
         double screenAspect = 64.0/27.0, lens = 4.0/3.0;
         pl_rect2df submittedCrop{};
         bool retried = false;
+        bool autoAlignment=false;
+        int pixelTrim=0;
+        AlphaSourceCrop::VerticalPictureAlignment alignment=AlphaSourceCrop::VerticalPictureAlignment::CENTER;
+        AutoPictureAlignment::ActivePicture activePicture{};
+        AutoPictureAlignment::Warp alignmentWarp{};
         bool overlay = false, cropLocalOverlay = false;
     };
 
@@ -583,14 +589,19 @@ namespace
             if (geometry)
             {
                 using namespace AlphaSourceCrop;
-                const auto screen = AnamorphicPresentation::FitScreen(geometry->configured,
+                const auto screen = AutoPictureAlignment::FitScreen(geometry->autoAlignment, geometry->configured,
                     geometry->screenAspect, geometry->lens,
                     {0,0,static_cast<double>(targetParams.w),static_cast<double>(targetParams.h)},
-                    VerticalPictureAlignment::CENTER, 0);
+                    geometry->alignment, 0);
                 image.crop = geometry->sourceCrop;
                 const auto fit = AnamorphicPresentation::FitPicture(pl_rect2df_aspect(&image.crop),
-                    geometry->lens, screen, VerticalPictureAlignment::CENTER);
-                const auto rect = hook ? screen.rect : fit.picture;
+                    geometry->lens, screen, geometry->alignment);
+                const auto unplaced = hook ? screen.rect : fit.picture;
+                const auto placed=AutoPictureAlignment::Place(geometry->autoAlignment,geometry->alignment,
+                    geometry->pixelTrim,{0,0,double(targetParams.w),double(targetParams.h)},screen.rect,
+                    {image.crop.x0,image.crop.y0,image.crop.x1,image.crop.y1},unplaced,
+                    geometry->activePicture,geometry->alignmentWarp);
+                const auto rect=placed.picture;
                 Assert::IsTrue(targetTexture->params.blit_dst, L"Recovery target must support clearing");
                 const pl_frame fullTarget = target;
                 target.crop = {static_cast<float>(rect.left),static_cast<float>(rect.top),
@@ -1981,6 +1992,49 @@ namespace VideoProcessorTest
 				L"Distinct calibration LUT was not applied after HDR-to-SDR DTM");
 		}
 
+
+        TEST_METHOD(AutoPictureAlignmentGpuPinsScopeEdgesWithPixelTrim)
+        {
+            using namespace AutoPictureAlignment;
+            TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+            for (auto alignment:{Alignment::TOP,Alignment::BOTTOM}) for(int trim:{-3,0,3}) {
+                AnamorphicGpuCase g; g.lens=1; g.screenAspect=2.35;
+                g.autoAlignment=true; g.alignment=alignment; g.pixelTrim=trim;
+                g.sourceCrop={0,20,256,120}; g.activePicture={{0,20,256,120},true,false};
+                const auto pixels=fixture.RenderCoordinateField(nullptr,256,144,nullptr,&g);
+                const auto screen=FitScreen(true,true,2.35,1,{0,0,192,108},alignment,0);
+                const double edge=alignment==Alignment::TOP?g.submittedCrop.y0:g.submittedCrop.y1;
+                Assert::AreEqual((alignment==Alignment::TOP?screen.rect.top:screen.rect.bottom)+trim,edge,0.51);
+                const int x=96,y=int(std::ceil(g.submittedCrop.y0))+2;
+                Assert::IsTrue(pixels[y*192+x].r>50);
+                const int outside=alignment==Alignment::TOP?int(std::floor(g.submittedCrop.y0))-2:int(std::ceil(g.submittedCrop.y1))+2;
+                if(outside>=0 && outside<108) Assert::IsTrue(pixels[outside*192+x].r<3);
+            }
+        }
+        TEST_METHOD(AutoPictureAlignmentGpuInvertsShippedNlsInteriorEdges)
+        {
+            using namespace AutoPictureAlignment;
+            TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+            for(const char* shader:{"NLS.glsl","NLSPlus.glsl"}) {
+                const auto* hook=ParseBundledNlsShader(fixture.Gpu(),shader,0.25,0.8);
+                BindNlsShader(hook,1.2f,1.0f);
+                AnamorphicGpuCase g;g.lens=1;g.screenAspect=2.35;g.autoAlignment=true;
+                g.alignment=Alignment::BOTTOM;g.sourceCrop={0,0,256,144};
+                g.activePicture={{0,10,256,132},true,false};
+                const bool plus=std::string(shader)=="NLSPlus.glsl";
+                g.alignmentWarp={plus?std::pow(1.0/1.2,0.25*0.8-1):1+(1.2-1)*0.8,2,plus?0.25:0.35,true};
+                const auto pixels=fixture.RenderCoordinateField(hook,256,144,nullptr,&g);
+                Assert::IsFalse(g.retried);
+                const auto screen=FitScreen(true,true,2.35,1,{0,0,192,108},Alignment::BOTTOM,0);
+                const double edge=g.submittedCrop.y0+OutputCoordinate(132.0/144,g.alignmentWarp)*
+                    (g.submittedCrop.y1-g.submittedCrop.y0);
+                Assert::AreEqual(screen.rect.bottom,edge,0.51);
+                const int y=int(std::floor(edge))-1;
+                Assert::IsTrue(std::abs(int(pixels[y*192+96].g)-int(255*132.0/144))<8,
+                    L"GPU interior edge does not agree with the inverse NLS placement map");
+                pl_mpv_user_shader_destroy(&hook);
+            }
+        }
 
         TEST_METHOD(AnamorphicGpuMatchingContentFillsRasterAndCropsSourceBars)
         {

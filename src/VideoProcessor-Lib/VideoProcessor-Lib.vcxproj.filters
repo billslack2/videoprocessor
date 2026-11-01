@@ -246,6 +246,8 @@
     <ClInclude Include="RendererResetPolicy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="PicturePlacementUpdatePolicy.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="vprenderer\AutoPictureAlignment.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="SubtitleProfileUpdatePolicy.h">
       <Filter>Header Files</Filter>
     </ClInclude>

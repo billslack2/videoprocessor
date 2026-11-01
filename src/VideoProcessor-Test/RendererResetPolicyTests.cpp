@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <PicturePlacementUpdatePolicy.h>
 #include "CppUnitTest.h"
 
 #include <BoundedDeliveryGate.h>
@@ -30,6 +31,9 @@ namespace Tests
         int configuredScreenTarget = 0;
         int verticalAlignment = 0;
         int screenEdgePadding = 0;
+        int autoPictureAlignment = 0, pictureOffsetPixels = 0;
+        uint64_t configurationIdentity=0;
+        std::string placementConfigurationContract;
         int anamorphicScale = 0;
         int automaticSourceCropRequested = 0;
         int automaticSourceCrop = 0;
@@ -74,7 +78,7 @@ namespace Tests
             out << s.configuredScreenAspect << '|';
             out << s.configuredScreenTarget << '|';
             out << s.verticalAlignment << '|';
-            out << s.screenEdgePadding << '|';
+            out << s.screenEdgePadding << '|' << s.autoPictureAlignment << '|' << s.pictureOffsetPixels << '|';
             out << s.anamorphicScale << '|';
             out << s.automaticSourceCropRequested << '|';
             out << s.automaticSourceCrop << '|';
@@ -99,6 +103,7 @@ namespace Tests
             out << s.hdrPeakAnalysisMotionCompensation << '|';
             out << s.hdrPeakAnalysisHeightPercent << '|';
             out << s.hdrPeakAnalysisPosition << '|';
+            out << s.configurationIdentity << '|' << s.placementConfigurationContract << '|';
             out << s.detector << '|' << s.viewport << '|' << s.format << '|' << s.futureSetting;
             return out.str();
         }
@@ -107,6 +112,23 @@ namespace Tests
 	TEST_CLASS(RendererResetPolicyTests)
 	{
 	public:
+        TEST_METHOD(PicturePlacementOnlyUpdateRejectsMixedDetectorAndPendingIntent)
+        {
+            using S=SubtitleUpdateSettingsFixture; S before,after;
+            Assert::IsFalse(IsPicturePlacementOnlyUpdate(before,after,S::Fingerprint));
+            after.autoPictureAlignment=1; after.pictureOffsetPixels=-12; after.configurationIdentity=7;
+            Assert::IsTrue(IsPicturePlacementOnlyUpdate(before,after,S::Fingerprint));
+            Assert::IsFalse(IsSubtitlePresentationOnlyUpdate(before,after,S::Fingerprint));
+            auto unmodeled=after; unmodeled.placementConfigurationContract="changed-detector-key";
+            Assert::IsFalse(IsPicturePlacementOnlyUpdate(before,unmodeled,S::Fingerprint));
+            int S::* blocked[]={&S::detector,&S::viewport,&S::format,&S::futureSetting,
+                &S::configuredScreenAspect,&S::automaticSourceCrop,&S::scopeSubtitleFit,&S::subtitleMode};
+            for (auto field:blocked) { auto mixed=after; mixed.*field=1;
+                Assert::IsFalse(IsPicturePlacementOnlyUpdate(before,mixed,S::Fingerprint)); }
+            Assert::IsTrue(SubtitleUpdateHasCommittedContext(false,7,7));
+            Assert::IsFalse(SubtitleUpdateHasCommittedContext(true,7,7));
+            Assert::IsFalse(SubtitleUpdateHasCommittedContext(false,7,8));
+        }
         TEST_METHOD(SubtitlePresentationFieldsPreservePictureContractOnly)
         {
             using S = SubtitleUpdateSettingsFixture;
