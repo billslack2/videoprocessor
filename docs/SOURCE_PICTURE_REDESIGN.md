@@ -35,8 +35,11 @@ The observation's retained topology is at most 259,200 label bytes, plus compone
 and edge candidates. Temporary CPU scratch is released with the evaluation.
 
 The separate production timing repair consumes already-ready exact source evidence
-when the optional fresh-scan deadline is zero or expires. The cache-only pass cannot
-submit native, subtitle, or component scans. Repeated displayed inputs do not gain
+when the optional fresh-scan deadline is zero or expires. The new expired-ticket fallback cannot submit background jobs. A fresh original
+zero-foreground-budget pass retains its existing bounded asynchronous dispatch
+opportunity after missed priming; it still performs no foreground pixel scans.
+Foreground evaluation, background dispatch, and consumption of ready evidence
+have separate permissions. Repeated displayed inputs do not gain
 new votes. Existing source identity, pending-prefix, epoch and effective-source checks
 still govern publication. No new confirmation dwell is added.
 
@@ -59,7 +62,7 @@ passing paused native frames is not proof of those transitions.
 
 The first optimized private replay exercised 479 saved frame instances in seven capture
 sets with zero mismatches (including 15 byte-identical paused scope instances). Average
-CPU measurement time was 5.5–9.4 ms by set; observed peaks reached 14.1 ms. These are
+CPU measurement time was 5.5â€“9.4 ms by set; observed peaks reached 14.1 ms. These are
 unbudgeted CPU replay timings, not live latency guarantees. The 12 ms opt-in deadline
 may intentionally leave slow packets incomplete; its admission rate stays two per second.
 Further optimization and full-rate temporal evidence remain prerequisites to replacing

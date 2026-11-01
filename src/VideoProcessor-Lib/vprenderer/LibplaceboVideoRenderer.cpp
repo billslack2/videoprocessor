@@ -253,23 +253,27 @@ namespace
             },&deadline);
             auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(frame.source,&budget));
             const auto& guard=legacy.classification==ActivePictureClassification::PROVISIONAL?legacy.proposedBounds:legacy.trustedBounds;
-            const auto assessment=ReconcileSourcePictureCandidate(*facts,guard,&budget);
+            SourcePictureCandidateAssessment assessment;
+            try { assessment=ReconcileSourcePictureCandidate(*facts,guard,&budget); }
+            catch(const AnalysisEvaluationCancelled&) {
+                // Comparison is optional; its expiry cannot erase completed source facts.
+            }
             const double ms=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
             auto record=AnalysisTraceRecord(identity,nullptr,"source-picture-shadow",facts->reason);
             record.resultCode=static_cast<int>(facts->outcome);
             record.flags=(facts->complete?1u:0u)|(facts->rectangleAvailable?2u:0u)|
                 (facts->canvasSupported?4u:0u)|(facts->blankMarginsUnresolved?8u:0u)|
-                (assessment.contradicted?16u:0u);
+                (assessment.contradicted?16u:0u)|(assessment.evaluated?32u:0u);
             record.counters[0]=facts->samples;record.counters[1]=facts->components.size();
             record.counters[2]=facts->overviewStepX;record.counters[3]=facts->overviewStepY;
             record.counters[4]=assessment.exteriorComponents;record.counters[5]=assessment.exteriorRegions;
             record.metrics[0]=ms;AnalysisTraceRect(record.measured,facts->measuredBounds);
             AnalysisTraceRect(record.candidate,guard);AnalysisDiagnosticTrace::Emit(record);
-            DebugLog::Log("VP source picture shadow: generation=%llu sequence=%llu domain=%llu outcome=%d complete=%d measured=%d rect=%d,%d-%d,%d canvas=%d blank_margins=%d guard_contradicted=%d samples=%llu ms=%.3f reason=%s authority=none",
+            DebugLog::Log("VP source picture shadow: generation=%llu sequence=%llu domain=%llu outcome=%d complete=%d measured=%d rect=%d,%d-%d,%d canvas=%d blank_margins=%d comparison_evaluated=%d guard_contradicted=%d samples=%llu ms=%.3f reason=%s authority=none",
                 identity.transportGeneration,identity.acceptedSequence,identity.analysisDomainKey,
                 int(facts->outcome),facts->complete?1:0,facts->rectangleAvailable?1:0,
                 facts->measuredBounds.left,facts->measuredBounds.top,facts->measuredBounds.right,facts->measuredBounds.bottom,
-                facts->canvasSupported?1:0,facts->blankMarginsUnresolved?1:0,assessment.contradicted?1:0,
+                facts->canvasSupported?1:0,facts->blankMarginsUnresolved?1:0,assessment.evaluated?1:0,assessment.contradicted?1:0,
                 static_cast<unsigned long long>(facts->samples),ms,facts->reason);
             return facts;
         } catch(const std::exception& error) {
@@ -24643,7 +24647,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     std::vector<QueuedFrame>& previewFrames,
     size_t queuedFutureFrames,
     uint64_t lookaheadPolicyGeneration,
-    uint64_t subtitleContinuityGeneration, int64_t deadlineQpc)
+    uint64_t subtitleContinuityGeneration, int64_t deadlineQpc, bool allowBackgroundDispatch)
 {
     struct AttemptMetrics {
         LookaheadPerf& perf;
@@ -24970,7 +24974,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         // lookahead proof for this window; playback continues with live rules.
         const auto measured=QueuedFrame::LookaheadWorker::Ready(queued.analysis->lookahead);
         if(!CurrentLookaheadMeasurement(prepared,analysisIdentity,measured)) {
-            if(!cachedOnly)m_impl->lookaheadMeasurementWorker.Submit(queued.analysis->lookahead,
+            if(allowBackgroundDispatch)m_impl->lookaheadMeasurementWorker.Submit(queued.analysis->lookahead,
                 analysisIdentity.transportGeneration,analysisIdentity.acceptedSequence,
                 previewFrames.front().activePictureIdentity.acceptedSequence,[prepared,analysisIdentity,slot=queued.analysis->lookahead] {
                     if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
@@ -24995,7 +24999,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     result.sourcePictureShadow=ObserveSourcePictureShadow(prepared,result.identity,result.evidence);
                     return result;
                 });
-            if(subtitlePreviewEnabled && !cachedOnly)
+            if(subtitlePreviewEnabled && allowBackgroundDispatch)
                 m_impl->QueueSubtitleMeasurement(queued.frame,state,analysisIdentity,
                     queued.frame.IsSourceDiscontinuity(),subtitleBarTrackingReference,
                     lookaheadPolicyGeneration,subtitleContinuityGeneration,subtitleNearBarDistance,
@@ -25030,7 +25034,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     queued.frame,state,analysisIdentity,queued.frame.IsSourceDiscontinuity(),
                     subtitleBarTrackingReference,lookaheadPolicyGeneration,subtitleContinuityGeneration,
                     subtitleNearBarDistance,subtitleDetectionOptimization,subtitleScriptHint,
-                    sharedPicture,prepared,evidence,false,!cachedOnly,queued.analysis);
+                    sharedPicture,prepared,evidence,false,allowBackgroundDispatch,queued.analysis);
             }
             subtitleBarTrackingReference=SubtitleBoxLookahead::AdvanceBarTrackingReference(
                 subtitleObservations[rememberedIndex]);
@@ -26300,17 +26304,17 @@ void LibplaceboVideoRenderer::RenderLoop()
             lookaheadAttempted=true;
 			try
 			{
-                // A zero/expired scan allowance still permits consuming exact
-                // ready source evidence. Each pass retains the queue/epoch
-                // validation and nonblocking locks inside the analyzer.
+                // Foreground scans, bounded background dispatch, and ready
+                // consumption have separate permissions. Each pass preserves
+                // exact queue/epoch validation and nonblocking locks.
                 const bool freshSourceEligible=!activePicturePreviewFrames.front().cadenceRepeat &&
                     (allowCachedLookahead || lookaheadTicket.deadlineQpc>0);
                 const auto phases=RunPreparedPictureWindowPhases(freshSourceEligible,
                     lookaheadTicket.deadlineQpc,[]{return PerformanceCounterNow();},
-                    [&](int64_t deadline) {
+                    [&](int64_t deadline,bool allowBackgroundDispatch) {
                         return AnalyzeActivePictureLookahead(activePicturePreviewFrames,
                             activePictureAvailableLookahead,activePictureLookaheadPolicyGeneration,
-                            activePictureContinuityGeneration,deadline);
+                            activePictureContinuityGeneration,deadline,allowBackgroundDispatch);
                     });
                 lookaheadCompleted=phases.completed;
 			}

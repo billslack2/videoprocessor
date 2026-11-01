@@ -1724,7 +1724,7 @@ TEST_CLASS(MotionRendererTests){public:
         Assert::AreEqual(int64_t(0),skipped.deadlineQpc);
         OptionalAnalysisPrefix repeatedPrefix;
         const auto repeated=RunPreparedPictureWindowPhases(false,skipped.deadlineQpc,
-            []{return int64_t(1000000);},[&](int64_t) {
+            []{return int64_t(1000000);},[&](int64_t,bool) {
                 repeatedPrefix.Admit(0,headResult!=nullptr);return true;
             });
         Assert::IsFalse(repeated.completed);
@@ -1732,7 +1732,7 @@ TEST_CLASS(MotionRendererTests){public:
             L"A repeated presentation cannot contribute another source observation");
         OptionalAnalysisPrefix freshPrefix;
         const auto fresh=RunPreparedPictureWindowPhases(true,skipped.deadlineQpc,
-            []{return int64_t(1000000);},[&](int64_t deadline) {
+            []{return int64_t(1000000);},[&](int64_t deadline,bool) {
                 Assert::AreEqual(int64_t(0),deadline);
                 return freshPrefix.Admit(0,headResult->domain==7) &&
                     freshPrefix.Admit(1,futureResult->domain==7);

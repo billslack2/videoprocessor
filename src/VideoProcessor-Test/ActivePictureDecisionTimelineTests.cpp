@@ -3,6 +3,8 @@
 #include <ActivePictureDecisionTimeline.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 #include <vprenderer/PreparedPictureWindow.h>
+#include <vprenderer/OptionalAnalysisWorker.h>
+#include <future>
 #include <array>
 #include "CppUnitTest.h"
 
@@ -416,7 +418,7 @@ namespace VideoProcessorTest
                     ++sequence;
                 }
                 unsigned freshScans=0,harvests=0;ActivePictureFrameDecision published;
-                const auto result=RunPreparedPictureWindowPhases(true,deadline,[]{return int64_t(100);},[&](int64_t workDeadline) {
+                const auto result=RunPreparedPictureWindowPhases(true,deadline,[]{return int64_t(100);},[&](int64_t workDeadline,bool) {
                     if(workDeadline>0){++freshScans;return false;}
                     ++harvests;bool complete=false;
                     for(size_t i=0;i<ids.size();++i) {
@@ -443,7 +445,7 @@ namespace VideoProcessorTest
         }
         TEST_METHOD(ReadyNativeHarvestAfterOptionalExpiryDoesNotRestartWorkOrCountRepeats) {
             int64_t clock=100;unsigned scans=0,harvests=0;bool ready=false;
-            const auto result=RunPreparedPictureWindowPhases(true,101,[&]{return clock;},[&](int64_t deadline) {
+            const auto result=RunPreparedPictureWindowPhases(true,101,[&]{return clock;},[&](int64_t deadline,bool) {
                 if(!deadline){++harvests;return ready;}
                 ++scans;ready=true;clock=101;return false; // Complete a fact, then miss the optional publication deadline.
             });
@@ -451,7 +453,7 @@ namespace VideoProcessorTest
             Assert::AreEqual(unsigned(1),scans);
             Assert::AreEqual(unsigned(1),harvests); // No cache prepass may finalize a provisional source.
             Assert::IsTrue(result.optionalAttempted);
-            const auto repeated=RunPreparedPictureWindowPhases(false,200,[&]{return clock;},[&](int64_t) {
+            const auto repeated=RunPreparedPictureWindowPhases(false,200,[&]{return clock;},[&](int64_t,bool) {
                 Assert::Fail(L"A repeated presentation must not consume another source observation");return true;
             });
             Assert::IsFalse(repeated.completed);
@@ -460,7 +462,7 @@ namespace VideoProcessorTest
             EstablishGeometry(timeline,3,sequence,ScopeBounds());
             const auto first=Identity(3,sequence,sequence);
             ActivePictureFrameDecision decision;
-            const auto repeatVote=RunPreparedPictureWindowPhases(false,200,[&]{return clock;},[&](int64_t) {
+            const auto repeatVote=RunPreparedPictureWindowPhases(false,200,[&]{return clock;},[&](int64_t,bool) {
                 return timeline.SubmitPreparedLookaheadObservation(first,
                     Trusted(sequence,ShallowScopeBounds()),3,1,decision);
             });
@@ -471,6 +473,55 @@ namespace VideoProcessorTest
             ++sequence;
             Assert::IsTrue(timeline.SubmitPreparedLookaheadObservation(Identity(3,sequence,sequence),
                 Trusted(sequence,ShallowScopeBounds()),3,1,decision));
+        }
+
+        TEST_METHOD(ZeroForegroundBudgetPreservesBoundedDispatchAfterPrimeMiss) {
+            using Worker=OptionalAnalysisWorker<int,2>;
+            Worker worker;auto slot=std::make_shared<Worker::Slot>();
+            auto missing=std::make_shared<Worker::Slot>();
+            std::promise<void> entered,release;auto gate=release.get_future().share();
+            struct Finish {
+                std::promise<void>& release;Worker& worker;bool opened=false;
+                void Open(){if(!opened){release.set_value();opened=true;}}
+                ~Finish(){Open();worker.Stop();}
+            } finish{release,worker};
+            // Prime missed its nonblocking lock: no request exists yet. Use the
+            // same phase dispatcher as RenderLoop, not a separate test policy.
+            const auto first=RunPreparedPictureWindowPhases(true,0,[]{return int64_t(100);},
+                [&](int64_t deadline,bool dispatch) {
+                    Assert::AreEqual(int64_t(0),deadline,L"No synchronous pixel evaluation is admitted");
+                    if(const auto ready=Worker::Ready(slot))return *ready==73;
+                    if(dispatch)Assert::IsTrue(worker.Submit(slot,3,40,40,[&] {
+                        entered.set_value();gate.wait();return 73;
+                    }));
+                    return false;
+                });
+            Assert::IsFalse(first.completed);
+            Assert::IsFalse(first.optionalAttempted);
+            Assert::IsTrue(entered.get_future().wait_for(std::chrono::seconds(5))==std::future_status::ready);
+            Assert::AreEqual(uint64_t(1),worker.Snapshot().submitted);
+            finish.Open();worker.Stop();
+            // On the next pass the original immutable result is ready even if
+            // a positive foreground ticket has already expired.
+            const auto ready=RunPreparedPictureWindowPhases(true,99,[]{return int64_t(100);},
+                [&](int64_t deadline,bool dispatch) {
+                    Assert::AreEqual(int64_t(0),deadline);
+                    Assert::IsFalse(dispatch,L"Expiry fallback cannot create new background work");
+                    const auto result=Worker::Ready(slot);return result && *result==73;
+                });
+            Assert::IsTrue(ready.completed);
+            unsigned forbiddenDispatch=0;
+            const auto absent=RunPreparedPictureWindowPhases(true,99,[]{return int64_t(100);},
+                [&](int64_t,bool dispatch) {
+                    if(dispatch){++forbiddenDispatch;worker.Submit(missing,3,41,40,[]{return 74;});}
+                    return Worker::Ready(missing)!=nullptr;
+                });
+            Assert::IsFalse(absent.completed);
+            Assert::AreEqual(unsigned(0),forbiddenDispatch);
+            Assert::AreEqual(uint64_t(1),worker.Snapshot().submitted);
+            const auto repeated=RunPreparedPictureWindowPhases(false,0,[]{return int64_t(100);},
+                [&](int64_t,bool) {Assert::Fail(L"Repeated output neither dispatches nor consumes a new source");return true;});
+            Assert::IsFalse(repeated.completed);
         }
 
         TEST_METHOD(PreparedReadyNativeWindowChangesAtFirstPendingSourceWithoutScanThrottle) {
@@ -517,7 +568,7 @@ namespace VideoProcessorTest
                 }
                 if(fault==2)timeline.MarkConsumed(identities[0]);
                 ActivePictureFrameDecision decision;
-                RunPreparedPictureWindowPhases(true,99,[]{return int64_t(100);},[&](int64_t deadline) {
+                RunPreparedPictureWindowPhases(true,99,[]{return int64_t(100);},[&](int64_t deadline,bool) {
                     Assert::AreEqual(int64_t(0),deadline);
                     for(size_t i=0;i<identities.size();++i) {
                         const bool published=timeline.SubmitPreparedLookaheadObservation(identities[i],observations[i],4,4,decision);
