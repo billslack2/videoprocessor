@@ -796,12 +796,23 @@ namespace VideoProcessorTest
             bool nativeAcquired=false;
             do {
                 const auto value=pump(native);
-                if(value.available&&!value.provisional&&value.inUseAvailable&&
-                    std::abs(value.ratio-physical.aspectRatio)<0.005) {
-                    for(const auto& line:messages())if(line.find("Alpha native presentation commit:")!=std::string::npos &&
-                        equal(line," native_rect=",physical) && line.find("reason=accepted-native-and-presentation-committed")!=std::string::npos)
-                        nativeAcquired=true;
+                // The accepted native pixel plane and optional exact-edge telemetry
+                // have separate readiness. Never label missing physical evidence exact.
+                if(value.available)Assert::IsTrue(!value.provisional&&std::abs(value.ratio-physical.aspectRatio)<0.005,
+                    L"Available physical measurement disagrees with the source-defined edges.");
+                auto initialFillInput=fillInput;initialFillInput.sourceBounds=physical;
+                const auto initial=AlphaSourceCrop::EvaluateAspectLimitFill(initialFillInput).sourceBounds;
+                for(const auto& line:messages())if(line.find("Alpha native presentation commit:")!=std::string::npos &&
+                    source(line," generation=")==1 && source(line," selected=")>0 && source(line," native=")==1 &&
+                    source(line," accepted=")>0 && source(line," format=")>0 && source(line," domain=")>0 &&
+                    equal(line," native_rect=",physical) && line.find("reason=accepted-native-and-presentation-committed")!=std::string::npos) {
+                    const auto selected=source(line," selected=");
+                    for(const auto& output:messages())if(output.find("VP submitted geometry:")!=std::string::npos &&
+                        source(output," generation=")==1 && source(output," source=")==selected &&
+                        source(output," selected=")==selected && equal(output," actual_source=",initial))nativeAcquired=true;
                 }
+                if(nativeAcquired&&!value.available)Logger::WriteMessage(
+                    "Native-plane acquisition verified from accepted source pixels and exact configured output; optional physical-edge telemetry remains UNKNOWN.\n");
             }while(!nativeAcquired&&std::chrono::steady_clock::now()<acquireDeadline&&callback.state!=RENDERSTATE_FAILED);
             if(!nativeAcquired)for(const auto& line:messages())Logger::WriteMessage(line.c_str());
             Assert::IsTrue(nativeAcquired,L"The real plugin must independently acquire the source-defined native bar plane before caption onset.");
@@ -969,7 +980,7 @@ namespace VideoProcessorTest
                 const auto at=line.find(key);return at==std::string::npos?uint64_t(0):uint64_t(std::strtoull(line.c_str()+at+strlen(key),nullptr,10));
             };
 
-            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,poseEligible=false;int routedTranslation=0;double poseDelta=0;};
+            struct Geometry {uint64_t sequence=0,nativeSource=0,certificateSource=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0,certificateOrigin=0,flags=0;int native[4]{};bool composed=false,poseEligible=false;int routedTranslation=0;double poseDelta=0;};
             auto geometries=[&] {
                 std::vector<Geometry> result;std::vector<AnalysisDiagnosticRecordV1> trace;
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
@@ -981,6 +992,9 @@ namespace VideoProcessorTest
                     Geometry g;g.sequence=record.counters[1];g.pts=record.metrics[0];g.mode=unsigned(record.counters[3]);
                     g.left=record.metrics[8];g.top=record.metrics[9];g.right=record.metrics[10];g.bottom=record.metrics[11];
                     g.composed=(record.flags&2u)!=0;g.poseEligible=(record.flags&1024u)!=0;
+                    g.nativeSource=record.counters[4];g.certificateSource=record.counters[5];
+                    g.certificateOrigin=unsigned(record.counters[6]);g.flags=record.flags;
+                    for(int e=0;e<4;++e)g.native[e]=record.published[e];
                     g.poseDelta=record.metrics[2];g.routedTranslation=int(std::lround(record.metrics[4]));
                     require(std::isfinite(g.pts) && g.pts>0 && std::isfinite(g.left) && std::isfinite(g.top) &&
                         std::isfinite(g.right) && std::isfinite(g.bottom) && g.left<g.right && g.top<g.bottom,
@@ -1030,7 +1044,24 @@ namespace VideoProcessorTest
             do {
                 const auto value=pump(caption);
                 for(const auto& g:geometries())if(g.sequence>=onset) {
-                    require(g.mode==0&&sameSize(g),L"Classic onset resized its picture instead of keeping the configured filled viewport size.");
+                    require(g.mode==0,L"Classic onset changed subtitle composition mode.");
+                    require(g.top<=captionTop+0.01&&g.bottom>=captionBottom-0.01,
+                        L"Classic confirmation or engage clipped current source-caption pixels.");
+                    if(!sameSize(g)) {
+                        // Until the timed native-height pose contains the current
+                        // caption, only its certified bounded visibility envelope
+                        // may temporarily change the presented picture size.
+                        require(!finalSequence && g.nativeSource>0 && g.certificateSource==g.sequence &&
+                            (g.flags&96u)==96u &&
+                            g.certificateOrigin==unsigned(AlphaSourceCrop::NativePresentationOrigin::VISIBILITY_FALLBACK) &&
+                            g.native[0]==physical.left&&g.native[1]==physical.top&&
+                            g.native[2]==physical.right&&g.native[3]==physical.bottom &&
+                            std::abs(g.left-physical.left)<0.01&&std::abs(g.top-physical.top)<0.01&&
+                            std::abs(g.right-physical.right)<0.01&&
+                            g.bottom>=captionBottom&&g.bottom<=captionBottom+4.01,
+                            L"Classic engage resized outside the exact current native/caption visibility envelope.");
+                        continue;
+                    }
                     require(g.top>=previousTop-0.01&&g.top>=initial.top-0.01&&g.top<=settled.top+0.01,
                         L"Classic engage drift reversed or left its bounded native-to-caption translation interval.");
                     previousTop=g.top;if(g.top>initial.top+0.01&&g.top<settled.top-0.01)intermediate.insert(int(std::lround(g.top)));

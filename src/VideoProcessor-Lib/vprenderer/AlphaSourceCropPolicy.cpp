@@ -6859,7 +6859,14 @@ namespace AlphaSourceCrop
         // A confirmed target owns the controller lifetime, not visibility of a
         // smaller timed-engage pose. Keep CURRENT caption/occupied pixels until
         // that actual pose covers them; physical/native admission stays intact.
-        const bool currentEngageCaption=input.classicTranslationEngaging && captionLifetime &&
+        // Before the three-source target confirmation, the same validated
+        // controller lifetime already exists. Its pending native-sized proposal
+        // must not clip the independently sampled CURRENT caption extent.
+        // A carried lease identifies that controller across dense-scan gaps;
+        // it does not nominate old pixels or extend its original expiry.
+        const bool pendingCaptionTarget=crop.verticalTranslationConfirmationPending &&
+            proposed.owner==DecisionOwner::TRANSLATION_CONFIRMATION;
+        const bool currentEngageCaption=(input.classicTranslationEngaging || pendingCaptionTarget) && captionLifetime &&
             crop.automaticCropEnabled && !crop.fullRasterPresentationAuthoritative && !committedFull &&
             currentExactVisible && input.measurementCurrent;
         if(currentEngageCaption) {

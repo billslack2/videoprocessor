@@ -51,6 +51,23 @@ $tempPath=[IO.Path]::GetFullPath((Join-Path $tempRoot ('vp-qualification-contrac
 if(-not $tempPath.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase) -or $tempPath -eq $tempRoot.TrimEnd('\')){throw 'Unsafe fixture directory'}
 $null=New-Item -ItemType Directory -Path $tempPath
 try {
+    $capture=Join-Path $tempPath 'private-capture';$null=New-Item -ItemType Directory -Path (Join-Path $capture 'nested') -Force
+    'native frame A' | Set-Content -LiteralPath (Join-Path $capture 'z.raw')
+    'native frame B' | Set-Content -LiteralPath (Join-Path $capture 'nested/a.raw')
+    $directoryFixture=Get-VpOptionalPrivateFixtureEvidence 'VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY' $capture
+    if($directoryFixture.kind -ne 'directory' -or $directoryFixture.status -ne 'supplied-not-proven-exercised' -or
+        $directoryFixture.files.Count -ne 2 -or ($directoryFixture.files.path -join '|') -ne 'nested/a.raw|z.raw') {
+        throw 'Directory fixture must record its canonical complete file inventory without claiming execution.'
+    }
+    $again=Get-VpOptionalPrivateFixtureEvidence 'VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY' $capture
+    if($again.sha256 -ne $directoryFixture.sha256){throw 'Unchanged directory fixture digest is not deterministic.'}
+    'changed native frame' | Set-Content -LiteralPath (Join-Path $capture 'nested/a.raw')
+    $changed=Get-VpOptionalPrivateFixtureEvidence 'VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY' $capture
+    if($changed.sha256 -eq $directoryFixture.sha256){throw 'Directory fixture digest did not bind recursive file content.'}
+    $leafFixture=Get-VpOptionalPrivateFixtureEvidence 'VP_PHYSICAL_EDGE_CAPTURE_FRAME' (Join-Path $capture 'z.raw')
+    if($leafFixture.kind -ne 'file' -or $leafFixture.sha256 -ne (Get-FileHash -LiteralPath (Join-Path $capture 'z.raw')).Hash){throw 'Leaf fixture hash changed.'}
+    MustReject 'missing private directory' '*missing*' {Get-VpOptionalPrivateFixtureEvidence 'VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY' (Join-Path $capture 'missing')}
+    Write-Host 'PASS: private directory inventory is canonical, recursively content-bound, and does not claim execution.'
     $nativeHost=Join-Path $PSHOME $(if($PSVersionTable.PSEdition -eq 'Desktop'){'powershell.exe'}else{'pwsh.exe'})
     foreach($exit in @(0,7)) {
         $log=Join-Path $tempPath ('stderr-exit-'+$exit+'.log')

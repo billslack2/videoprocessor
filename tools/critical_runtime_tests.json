@@ -8,7 +8,7 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp"
   ],
-  "minimumNativeTests": 821,
+  "minimumNativeTests": 822,
   "requiredNativeMethods": [
     "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
     "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
@@ -19,6 +19,7 @@
     "ClassicCoarseOppositeEdgeRequiresCompleteCurrentBandPixelProof",
     "RawPerEdgeSafetyKeepsCaptionSideUnsafeThroughOverlayProjection",
     "CurrentDenseCaptionOwnsPendingEngageAndDriftButNeverPictureExpansion",
+    "ClassicFirstCueConfirmationKeepsCurrentMeasuredCaptionVisible",
     "CurrentEmptyNativeBandsPermitControllerReleaseWithoutFreshCaption",
     "VerifiedCadenceAdvancesPendingAnchorAcrossDeterministicQueueRetirement",
     "UhdScheduledTranslationCannotPromoteUnownedOppositeBarPixels",

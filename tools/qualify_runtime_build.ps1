@@ -151,11 +151,7 @@ try {
     }
     Assert-VpSameOutputInventory $binaries (Get-VpQualifiedOutputInventory $Root)
     $fixtures=@(foreach($name in $plan.manifest.optionalPrivateFixtures) {
-        $value=[Environment]::GetEnvironmentVariable([string]$name)
-        if ($value) {
-            if(-not (Test-Path -LiteralPath $value -PathType Leaf)){throw "Specified optional private fixture is missing: $name"}
-            [ordered]@{environment=$name;status='supplied-not-proven-exercised';sha256=(Get-FileHash -LiteralPath $value).Hash;path=[IO.Path]::GetFullPath($value)}
-        } else { [ordered]@{environment=$name;status='absent-not-claimed';sha256=$null;path=$null} }
+        Get-VpOptionalPrivateFixtureEvidence ([string]$name) ([Environment]::GetEnvironmentVariable([string]$name))
     })
     $receipt=[ordered]@{schemaVersion=2;status='Passed';configuration='Release';platform='x64';source=$source;
         manifestHash=$plan.manifestHash;binaries=$binaries;builds=$builds;runs=$runs;optionalPrivateFixtures=$fixtures;seconds=[Math]::Round($totalTimer.Elapsed.TotalSeconds,3);shaderCacheDirectory=$env:VP_SHADER_CACHE_DIRECTORY;coldShaderCache=[bool]$coldCache;finished=(Get-Date).ToString('o')}

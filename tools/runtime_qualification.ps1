@@ -236,3 +236,31 @@ function Assert-VpRuntimeQualification([string]$Root, [string]$RequiredBinaryPat
     }
     return $receipt
 }
+
+function Get-VpOptionalPrivateFixtureEvidence([string]$Name,[string]$Value) {
+    if(-not $Value){return [ordered]@{environment=$Name;status='absent-not-claimed';sha256=$null;path=$null}}
+    $path=[IO.Path]::GetFullPath($Value)
+    if(Test-Path -LiteralPath $path -PathType Leaf) {
+        return [ordered]@{environment=$Name;status='supplied-not-proven-exercised';kind='file';sha256=(Get-FileHash -LiteralPath $path).Hash;path=$path}
+    }
+    if(-not (Test-Path -LiteralPath $path -PathType Container)){throw "Specified optional private fixture is missing: $Name"}
+    $prefix=$path.TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
+    $entries=[Collections.Generic.SortedDictionary[string,object]]::new([StringComparer]::Ordinal)
+    $pending=[Collections.Generic.Stack[string]]::new();$pending.Push($path)
+    while($pending.Count) {
+        foreach($entry in @(Get-ChildItem -LiteralPath $pending.Pop() -Force)) {
+            # Do not follow junctions/links outside the supplied private fixture.
+            if($entry.Attributes -band [IO.FileAttributes]::ReparsePoint){throw "Private fixture contains a reparse point: $($entry.FullName)"}
+            if($entry.PSIsContainer){$pending.Push($entry.FullName);continue}
+            if(-not $entry.FullName.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Private fixture inventory escaped its root.'}
+            $relative=$entry.FullName.Substring($prefix.Length).Replace('\','/')
+            $entries.Add($relative,[ordered]@{path=$relative;bytes=$entry.Length;sha256=(Get-FileHash -LiteralPath $entry.FullName).Hash})
+        }
+    }
+    $files=@($entries.Values)
+    $canonical=ConvertTo-Json -InputObject $files -Depth 5 -Compress
+    $hasher=[Security.Cryptography.SHA256]::Create()
+    try{$digest=([BitConverter]::ToString($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical)))).Replace('-','')}
+    finally{$hasher.Dispose()}
+    return [ordered]@{environment=$Name;status='supplied-not-proven-exercised';kind='directory';sha256=$digest;path=$path;files=$files}
+}
