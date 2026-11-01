@@ -2,7 +2,21 @@
 
 ## Status
 
-Backlog
+In Progress
+
+2026-10-31: Implementation started on `codex/vp-0224-auto-screen-alignment`
+in `E:\codex\videoprocessor\vp-0224-auto-screen-alignment`, from freshly
+fetched `origin/v1.4.02-beta` at `a591ad3b532771911e85f8ef026958279f2065f0`.
+The user requested isolated implementation through completion with tests and
+permitted review agents. No deployment or detector changes are planned.
+
+Readiness: configuration uses ResolvedViewport plus renderer parsing and live
+Apply; final destination mapping is separate from detector decisions. Auto
+uses centered FitScreen with no manual padding, then a shared placement helper
+for active-edge mapping and bounded signed output-pixel trim. Temporal packet
+selection and NLS fallback must use the same final helper. Existing subtitle
+source accommodations take priority over edge pinning. Validate geometry,
+configuration round trips, default compatibility, and x64 Release builds.
 
 2026-10-31: Created from the user's Screen geometry configuration screenshot
 and request. Story definition only; implementation has not started.
