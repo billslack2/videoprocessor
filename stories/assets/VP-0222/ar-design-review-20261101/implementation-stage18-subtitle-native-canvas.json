@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-02",
+  "status": "qualified-deployed-awaiting-live-replay",
+  "source": {
+    "commit": "01c1e13ff7f8bb6b418a083f16a3d3debd76ac23",
+    "dirty": false,
+    "fingerprint": "f50b734e30439790dfea2c74cb06d62bb877f87b6c611a6df9736d15ad4ec8ac",
+    "label": "01c1e13ff7f8",
+    "build": "01c1e13ff7f8bb6b418a083f16a3d3debd76ac23"
+  },
+  "branch": "codex/subtitle-ar-invariant-20261102",
+  "baselineBeta": "a591ad3b532771911e85f8ef026958279f2065f0",
+  "contract": {
+    "Off": "May widen raw caption aperture",
+    "processed": "Keep native movie dimensions independent of captions",
+    "ClassicBothBars": "User explicitly requires bottom content to win; top content can fall outside the fixed-size window",
+    "detection": "Pixel-derived native picture changes still win; no standard aspect or screen ratio is forced",
+    "initialShaderBuild": "Existing operator-allowed native-size raw playback during initial preparation remains, without completed-caption or cleanup ownership"
+  },
+  "qualifiedRuns": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\VideoProcessor-Test.dll",
+      "trx": "artifacts/qualification/runs/20261102-125513-89d118e7/standard.trx",
+      "trxSha256": "79E3226EFB4904E7951119534A38D466EF8C2B96EE1B73E3C622AC427ACE4385",
+      "executed": 1045,
+      "native": 1029,
+      "actualClassic": 16,
+      "seconds": 165.841
+    },
+    {
+      "variant": "beta",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "trx": "artifacts/qualification/runs/20261102-125513-89d118e7/beta.trx",
+      "trxSha256": "AB7A3D17598793E7B7D8D147EADBA7A1154843B5519B4D1C9717D446E7E75270",
+      "executed": 16,
+      "native": 0,
+      "actualClassic": 16,
+      "seconds": 130.974
+    }
+  ],
+  "motionRuns": [
+    {
+      "variant": "standard",
+      "passed": 220,
+      "testExit": 0,
+      "sha256": "168F9E51E50569A173159E37BA47D0F5FBE8F8AA4E336A6A58F5B8E7B8EAFE14",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "variant": "beta",
+      "passed": 220,
+      "testExit": 0,
+      "sha256": "43AEE0CD9F4310F6C7445364158A807978E5D52E3A496F3901C31A781B22289B",
+      "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    }
+  ],
+  "evidenceRoot": "E:\\codex\\videoprocessor\\evidence\\subtitle-fixed-canvas-01c1e13f-20261102",
+  "preservedFailures": [
+    "20261102-113433-aa9b6e4e",
+    "20261102-123508-40896a99",
+    "20261102-124859-fbb18adf"
+  ],
+  "changes": [
+    "Final processed-profile policy uses one fixed native movie canvas",
+    "Same-source pending completion and temporal pan constraints keep original source time and reject foreign context",
+    "Acquired frame lease releases deferred targets without Present; shader preparation continues",
+    "Classic both-bar selection prefers bottom from current pixels and retains an already safe downward pan",
+    "Actual renderer tests reject temporary wider caption envelopes",
+    "Structured processing profile distinguishes Off/Classic/Black/Reconstruction; submitted diagnostics include admissible pan range",
+    "Profile/context switches cancel capture followups and reset cooldown without resetting the 12-image session limit"
+  ],
+  "deployment": {
+    "backup": "C:\\Videoprocessor\\vp\\backups\\subtitle-canvas-01c1e13f-20261102-131240",
+    "verifiedRuntimeFiles": 28,
+    "configurationEdits": [],
+    "configurationPreservedBeforeRestart": true,
+    "process": 59892
+  },
+  "startup": {
+    "profile": "Classic selected by existing renderer-ready action",
+    "currentSubmittedOutputs": 1276,
+    "timecodeDrawn": true,
+    "initialNativeAvailable": false,
+    "acceptance": "Startup/logging verification only; no scope picture currently established. Same-scene replay requested."
+  },
+  "remaining": [
+    "Post-repair live playback acceptance in Classic and advanced profiles",
+    "Independent native boundary accuracy/refinement remains open"
+  ]
+}

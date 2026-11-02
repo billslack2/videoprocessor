@@ -1,0 +1,42 @@
+{
+  "process": 59892,
+  "structuredOutputs": 1276,
+  "currentSubmittedOutputs": 1276,
+  "latest": {
+    "instance": "{37C9C191-B6C9-4B94-B063-2891086B3CB6}",
+    "generation": 2,
+    "selected": 1288,
+    "submitted": true,
+    "requested_mode": 0,
+    "mode": 0,
+    "subtitle_processing_profile": 1,
+    "native_available": false,
+    "native": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "actual_source": [
+      0,
+      0,
+      3840,
+      2160
+    ],
+    "reason": "shared trusted geometry is unavailable",
+    "timecode": "18:13:26.264Z 37C9C191 G2 O1276 S1288",
+    "timecode_drawn": true
+  },
+  "configurationSha256": "969D9790FBD5A63106ABEDCFB3A5E766F2C4D595EFF82F25112DE02022DD7082",
+  "state": "# Managed by VideoProcessor.\r\nprofile.motion: profile_1\r\nprofile.display: standard_scope\r\nprofile.color: bt2020\r\nprofile.viewport: scope\r\nprofile.zoom: scope\r\nprofile.subtitles: classic\r\nprofile.queue: madvr_queue\r\nprofile.lldv: default\r\nprofile.nls: profile_1\r\n",
+  "loadedRenderers": [
+    {
+      "ModuleName": "VideoProcessorVPRenderer.dll",
+      "FileName": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "ModuleName": "VideoProcessorVPRendererBeta.dll",
+      "FileName": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    }
+  ]
+}

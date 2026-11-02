@@ -847,3 +847,56 @@ prolonged waiting, UI behavior and live acceptance remain failures to resolve, n
 proof of success. No additional user capture is requested at this stage.
 
 [Replay and contract evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage17-fixed-canvas-contract.json).
+
+### Qualified fixed-canvas subtitle repair deployed (2026-11-02)
+
+The user clarified Classic's simultaneous-bar rule: bottom content wins. Classic
+cannot keep both sides in one native-size window, and top content must not force
+a wider movie aperture. Source `01c1e13ff7f8bb6b418a083f16a3d3debd76ac23`, pushed
+on `codex/subtitle-ar-invariant-20261102`, implements this explicit priority and
+the processed-subtitle fixed-native-canvas contract. Off retains its larger raw
+caption aperture behavior. Independently proved picture transitions still win;
+no screen ratio or standard aspect is imposed on source measurement.
+
+Classic clamps the actual same-size pan to keep current bottom/confirmed caption
+pixels visible without changing the controller's targets, votes or capture clock.
+An already safe downward pan survives coarse sampling jitter. Bottom priority also
+wins over a previous upward pose and does not require invented caption confirmation.
+Black/Reconstruction use current source-bound composition or prepared evidence;
+the existing initial shader-build allowance continues native-size playback without
+claiming finished captions or erasure. Pending source completion and temporal repeats
+retain source/context identity and the original lifetime. Deferred targets are released
+without Present, and shader preparation continues while an output is withheld.
+
+Actual-renderer tests now reject the temporary wider caption envelopes previously
+allowed during confirmation/engage. Raw generic-policy coverage remains explicitly
+unprocessed; it is not evidence for a selected processed profile. The first expanded
+run caught unresolved both-bar waiting and an obsolete unconstrained-pose assertion.
+A later run caught coarse-sampling pan jitter. Failures are preserved; final tests
+require the fixed aspect, bottom caption coverage, actual advancing sources, normal
+movement and genuine measured picture transitions.
+
+Clean x64 Release qualification passes all 1,045 standard checks (1,029 native plus
+16 renderer scenarios) and all 16 beta scenarios. The separate required GPU/cue/motion
+suite then passes all 220 checks on each shipped dependency using the qualified build.
+The final qualification run is `20261102-125513-89d118e7`; the runtime source fingerprint
+is `f50b734e30439790dfea2c74cb06d62bb877f87b6c611a6df9736d15ad4ec8ac`.
+
+The paired host and both renderer variants are backed up and all 28 deployed runtime
+hashes verified against that build. Identical dependencies held open by Config are
+kept. No configuration edit was made; configuration and state hashes match before
+restart. Backup: `C:\Videoprocessor\vp\backups\subtitle-canvas-01c1e13f-20261102-131240`.
+Player 59892 loads both new DLLs. The existing renderer-ready action selects Classic;
+this expected runtime selection changes state from Reconstruction, without a manual
+configuration/state overwrite. Startup verifies 1,276 current submitted structured
+outputs and a drawn timecode, but no current native scope picture is established.
+This is startup/logging verification, not live movie acceptance.
+
+Telemetry now distinguishes Off, Classic, Black and Reconstruction independently of
+effective shader mode and exposes the source-specific pan interval. A profile/context
+switch cancels the old followup and rearms incident cooldown while keeping the global
+12-image session cap. The same 10-15 second 3 Body Problem replay was requested in
+Classic, including controls. Live playback acceptance and native boundary refinement
+remain open. Private captures and detailed test evidence stay outside the repository.
+
+[Fixed-canvas implementation and deployment evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage18-subtitle-native-canvas.json).
