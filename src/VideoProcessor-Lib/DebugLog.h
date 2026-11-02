@@ -201,6 +201,9 @@ public:
 
 	// Extra telemetry artifacts are intentionally opt-in. Normal logging writes
 	// only vp.log and its bounded archives.
+	static void SetExternalEnhancedLoggingEnabled(bool enabled)
+	{ GetEnhancedLoggingEnabled().store(enabled, std::memory_order_release); }
+
 	static bool IsEnhancedLoggingEnabled()
 	{
 		return GetEnhancedLoggingEnabled().load(std::memory_order_acquire);

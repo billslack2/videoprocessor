@@ -68,3 +68,7 @@ static constexpr const char* VP_LIBPLACEBO_HDR_STATUS_EXPORT =
 using VideoProcessorLibplaceboGetHdrStatusFn = bool (__cdecl *)(
 	const IVideoRenderer* renderer,
 	RendererHdrStatus* status);
+
+// Optional diagnostic-only side channel; no shared snapshot or factory ABI change.
+static constexpr const char* VP_LIBPLACEBO_LOGGING_EXPORT = "VideoProcessorLibplaceboConfigureLoggingV1";
+using VideoProcessorLibplaceboConfigureLoggingFn = void (__cdecl *)(bool enhanced);

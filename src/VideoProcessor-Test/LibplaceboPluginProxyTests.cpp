@@ -39,11 +39,13 @@ namespace
     std::ofstream snapshotTestLog;
     std::atomic<unsigned> snapshotTestReads{0};
     std::atomic<unsigned> nativeP210Initializations{0};
+    std::vector<std::string> decisionTestMessages;
     void __cdecl SnapshotTestLog(const char* message)
     {
         if (strstr(message, "native P210 (no CPU repack) upload")) ++nativeP210Initializations;
         if (strstr(message, "Configuration disk read:")) ++snapshotTestReads;
         std::lock_guard<std::mutex> guard(snapshotTestLogMutex);
+        if(strstr(message,"VP presentation decision:"))decisionTestMessages.emplace_back(message);
         if (snapshotTestLog) snapshotTestLog << message << std::endl;
     }
     std::mutex classicPoseLogMutex;
@@ -1289,7 +1291,12 @@ namespace VideoProcessorTest
         TEST_METHOD(BetaRendererPublishesSubmittedAspectForNativeCapture)
         { VerifyNativeCaptureAspect(true); }
 
-        void VerifyNativeCaptureAspect(bool beta)
+        TEST_METHOD(StandardRendererVerboseTelemetryMatchesSubmittedNativeOutput)
+        { VerifyNativeCaptureAspect(false,true); }
+        TEST_METHOD(BetaRendererVerboseTelemetryMatchesSubmittedNativeOutput)
+        { VerifyNativeCaptureAspect(true,true); }
+
+        void VerifyNativeCaptureAspect(bool beta,bool telemetry=false)
         {
             HMODULE module = nullptr;
             Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -1312,6 +1319,12 @@ namespace VideoProcessorTest
             const auto destroy = reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(
                 GetProcAddress(plugin, VP_LIBPLACEBO_DESTROY_EXPORT));
             Assert::IsTrue(create && destroy);
+            const auto configureLogging=reinterpret_cast<VideoProcessorLibplaceboConfigureLoggingFn>(
+                GetProcAddress(plugin,VP_LIBPLACEBO_LOGGING_EXPORT));
+            Assert::IsTrue(configureLogging!=nullptr);
+            configureLogging(telemetry);
+            struct ResetLogging {VideoProcessorLibplaceboConfigureLoggingFn fn;~ResetLogging(){fn(false);}} resetLogging{configureLogging};
+            {std::lock_guard<std::mutex> guard(snapshotTestLogMutex);decisionTestMessages.clear();}
             VideoStateComPtr state = new VideoState();
             for (const auto nativeEncoding : {VideoFrameEncoding::P210, VideoFrameEncoding::P010})
             {
@@ -1381,6 +1394,30 @@ namespace VideoProcessorTest
                     Assert::IsTrue(aspect.inUseAvailable, L"Actual renderer did not publish submitted AR");
                     Assert::AreEqual(1.0,aspect.inUseRatio,0.0001,L"Source is 130x130; target window aspect must not replace it");
                     Assert::IsTrue(aspect.presentedSequence>0);
+                    if(telemetry) {
+                        bool matched=false;
+                        const auto telemetryDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
+                        do {
+                            {std::lock_guard<std::mutex> guard(snapshotTestLogMutex);
+                             for(const auto& line:decisionTestMessages) {
+                                if(line.find("\"submitted\":true")!=std::string::npos &&
+                                   line.find("\"generation\":"+std::to_string(aspect.sourceGeneration)+",")!=std::string::npos &&
+                                   line.find("\"selected\":"+std::to_string(aspect.presentedSequence)+",")!=std::string::npos &&
+                                   line.find("\"facts_current\":true")!=std::string::npos &&
+                                   line.find("\"actual_source\":[0,0,130,130]")!=std::string::npos &&
+                                   line.find("\"scan_reason\":")!=std::string::npos)matched=true;
+                             }}
+                            if(!matched)std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        }while(!matched && std::chrono::steady_clock::now()<telemetryDeadline);
+                        if(!matched){std::lock_guard<std::mutex> guard(snapshotTestLogMutex);
+                            for(const auto& line:decisionTestMessages)Logger::WriteMessage(line.c_str());}
+                        Assert::IsTrue(matched,L"Verbose plugin telemetry must include current source facts and actual submitted bounds.");
+                        {std::lock_guard<std::mutex> guard(snapshotTestLogMutex);decisionTestMessages.clear();}
+                    } else {
+                        std::lock_guard<std::mutex> guard(snapshotTestLogMutex);
+                        Assert::IsTrue(decisionTestMessages.empty(),L"Detailed decision telemetry must be opt-in.");
+                    }
+
                     Assert::AreEqual(initialized+(nativeEncoding==VideoFrameEncoding::P210?1u:0u), nativeP210Initializations.load());
                 }
                 Assert::AreEqual(0, buffer.references.load(), L"Renderer retained a capture buffer after shutdown");

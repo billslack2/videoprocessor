@@ -1,5 +1,6 @@
 #include "pch.h"
 #include <vprenderer/SubtitleBarRecovery.h>
+#include <vprenderer/PresentationDecisionTelemetry.h>
 
 #include <ActivePictureEvidence.h>
 #include <SourcePictureDetector.h>
@@ -3229,6 +3230,50 @@ namespace VideoProcessorTest
             Assert::IsTrue(capped.status==QualifiedSubtitlePresentationStatus::Unknown);
             Assert::IsTrue(std::strcmp(capped.reason,"ownership-budget")==0);
             Assert::IsTrue(capped.ownershipSamples==0,L"An insufficient budget must be rejected before native scanning.");
+        }
+        TEST_METHOD(PresentationTelemetryExplainsShrinkAndRestorationWithoutPixels)
+        {
+            using namespace PresentationDecisionTelemetry;
+            Output o;o.generation=3;o.inputSequence=o.selectedSequence=10;o.tickMs=100;o.rendered=o.submitted=true;
+            o.facts.available=true;o.facts.generation=3;o.facts.sequence=10;
+            o.source={0,263,3840,1897};o.facts.native=o.facts.measured=o.source;
+            o.facts.composed=true;o.facts.currentComposition=true;o.facts.captionCurrent=true;
+            Recorder recorder;Assert::IsTrue(recorder.Observe(o).emit);
+            ++o.inputSequence;++o.selectedSequence;++o.facts.sequence;o.tickMs=101;
+            Assert::IsFalse(recorder.Observe(o).emit,L"Advancing current identities alone must not spam the log.");
+            o.source={0,202,3840,1998};o.facts.composed=false;o.facts.currentComposition=false;
+            o.facts.scanReason="no-centered-text-line";o.facts.decisionReason="unprepared advanced output preserves current raw visibility";
+            o.facts.preparationFailures=1;
+            auto e=recorder.Observe(o);Assert::IsTrue(e.emit && e.changed);Assert::AreEqual(std::string("presentation-change"),std::string(e.event));
+            const auto json=Json(o);Assert::IsTrue(json.find("no-centered-text-line")!=std::string::npos);
+            Assert::IsTrue(json.find("\"native\":[0,263,3840,1897]")!=std::string::npos);
+            Assert::IsTrue(json.find("\"actual_source\":[0,202,3840,1998]")!=std::string::npos);
+            o.source=o.facts.native;o.facts.composed=true;o.facts.currentComposition=true;
+            Assert::IsTrue(recorder.Observe(o).emit,L"Even same-millisecond restoration must be recorded.");
+            o.tickMs=1101;Assert::IsTrue(recorder.Observe(o).emit,L"A stable scene needs a timed heartbeat.");
+        }
+        TEST_METHOD(PresentationTelemetryNeverJoinsLatestInputToAnotherDisplayedSource)
+        {
+            using namespace PresentationDecisionTelemetry;
+            Output o;o.generation=3;o.inputSequence=20;o.selectedSequence=19;
+            o.facts.available=true;o.facts.generation=3;o.facts.sequence=20;o.facts.scanReason="latest-only";
+            auto json=Json(o);Assert::IsTrue(json.find("selected-source-facts-unavailable")!=std::string::npos);
+            Assert::IsTrue(json.find("latest-only")==std::string::npos);
+            o.facts.sequence=19;o.facts.scanReason="selected-packet";
+            Assert::IsTrue(Json(o).find("selected-packet")!=std::string::npos);
+            ++o.generation;Assert::IsTrue(Json(o).find("selected-source-facts-unavailable")!=std::string::npos);
+        }
+        TEST_METHOD(PresentationTelemetryBoundsEscapedRecordsBelowAsyncTransportLimit)
+        {
+            using namespace PresentationDecisionTelemetry;
+            Output o;o.generation=o.selectedSequence=1;o.facts.available=true;o.facts.generation=o.facts.sequence=1;
+            o.sourcePts=std::numeric_limits<double>::infinity();o.outputPts=std::numeric_limits<double>::quiet_NaN();
+            const std::string controls(192,'\x01');o.facts.measurementReason=controls;o.facts.scanReason=controls;o.facts.ownershipReason=controls;
+            o.facts.erasureReason=controls;o.facts.continuationReason=controls;o.facts.decisionReason=controls;o.facts.owner=controls;
+            const auto json=Json(o);Assert::IsTrue(json.size()+128<4096,L"Structured records must not be truncated by the async transport.");
+            Assert::IsTrue(json.find("\"source_pts\":null")!=std::string::npos);
+            Assert::IsTrue(json.find("\"output_pts\":null")!=std::string::npos);
+            Assert::IsTrue(json.find("\\u0001")!=std::string::npos);Assert::IsTrue(json.find('\x01')==std::string::npos);
         }
         TEST_METHOD(CurrentComposedCaptionViewportFactDoesNotCertifyResidualUiErasure)
         {

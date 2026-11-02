@@ -11,8 +11,11 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1012,
+  "minimumNativeTests": 1015,
   "requiredNativeMethods": [
+    "PresentationTelemetryExplainsShrinkAndRestorationWithoutPixels",
+    "PresentationTelemetryNeverJoinsLatestInputToAnotherDisplayedSource",
+    "PresentationTelemetryBoundsEscapedRecordsBelowAsyncTransportLimit",
     "CurrentComposedCaptionViewportFactDoesNotCertifyResidualUiErasure",
     "UnpreparedAdvancedOutputPreservesCurrentRawPixelsWithoutChangingNativeGeometry",
     "AdvancedNativePresentationRequiresCurrentCompositionAbsenceOrInitialBuild",
@@ -298,6 +301,8 @@
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
   "actualMethods": [
+    "StandardRendererVerboseTelemetryMatchesSubmittedNativeOutput",
+    "BetaRendererVerboseTelemetryMatchesSubmittedNativeOutput",
     "StandardRendererClassicLifecycleWithNormalDriftAndWiderFill",
     "StandardRendererClassicLifecycleWithNormalDriftAndNarrowerFill",
     "BetaRendererClassicLifecycleWithNormalDriftAndWiderFill",

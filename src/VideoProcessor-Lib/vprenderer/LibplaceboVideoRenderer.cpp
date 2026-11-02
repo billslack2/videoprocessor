@@ -2,6 +2,7 @@
 #include "../SubtitleProfileUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
 #include "ShaderCacheStorage.h"
+#include "PresentationDecisionTelemetry.h"
 #include <shlobj.h>
 #pragma comment(lib,"shell32.lib")
 
@@ -4669,7 +4670,20 @@ struct LibplaceboVideoRenderer::Impl
     };
     std::array<SubtitlePresentationPacket,8> subtitlePresentationPackets{};
 
+    PresentationDecisionTelemetry::Recorder presentationDecisionRecorder;
+    uint64_t presentationDecisionOutputId=0;
+    PresentationDecisionTelemetry::Output lastSubmittedDecisionOutput;
+    void RecordPresentationDecision(const PresentationDecisionTelemetry::Output& output) {
+        if(!DebugLog::IsEnhancedLoggingEnabled())return;
+        const auto event=presentationDecisionRecorder.Observe(output);
+        if(event.emit) {
+            const auto json=PresentationDecisionTelemetry::Json(output);
+            DebugLog::Log("VP presentation decision: event=%s span=%llu %s",event.event,event.span,json.c_str());
+        }
+        if(output.rendered && output.submitted)lastSubmittedDecisionOutput=output;
+    }
     struct TemporalPresentationSnapshot {
+        PresentationDecisionTelemetry::Facts decisionFacts;
         bool startupPoseQualified=false;
         uint64_t startupFormatKey=0, startupOutputContract=0;
         AlphaSourceCrop::CropPresentationAdmissionState cropAdmission{};
@@ -6166,7 +6180,8 @@ struct LibplaceboVideoRenderer::Impl
 	void CaptureRenderedOutput(ID3D11Texture2D* authoritativeBackbuffer,
 		const char* owner, uint64_t frameGeneration, uint64_t sourceSequence,
 		const struct pl_frame& sourceImage,
-		const DolbyVisionLuminanceStatus& captureDvLuminance)
+		const DolbyVisionLuminanceStatus& captureDvLuminance,
+        const PresentationDecisionTelemetry::Output& decisionOutput)
 	{
 		std::vector<uint32_t> pixels;
 		D3D11_TEXTURE2D_DESC desc{};
@@ -6208,6 +6223,7 @@ struct LibplaceboVideoRenderer::Impl
 			<< "{\n  \"schema\": \"vp-rendered-output-capture-v1\",\n"
 			<< "  \"capture_id\": \"" << JsonEscape(WideToUtf8(stem)) << "\",\n"
 			<< "  \"source_sequence\": " << sourceSequence << ",\n"
+            << "  \"presentation_decision\": " << PresentationDecisionTelemetry::Json(decisionOutput) << ",\n"
 			<< "  \"renderer_generation\": " << frameGeneration << ",\n"
 			<< "  \"presenter_owner\": \"" << JsonEscape(owner) << "\",\n"
 			<< "  \"swapchain_generation\": " << vpOwnedSwapchainGeneration << ",\n"
@@ -13457,6 +13473,15 @@ struct LibplaceboVideoRenderer::Impl
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                     DebugLog::Log("SUBTITLE OUTPUT RETIREMENT: consumed=%llu displayed=%llu cue_transport_retired=%d analysis_votes=0 cue_renewal=0",
                         inputRepeatIdentity.acceptedSequence,previousCompletePresentation.DisplayedSource(),cueTransportRetired?1:0);
+                    if(DebugLog::IsEnhancedLoggingEnabled()) {
+                        auto repeated=lastSubmittedDecisionOutput;
+                        repeated.generation=frameGeneration;repeated.inputSequence=sourceSequence;
+                        repeated.selectedSequence=previousCompletePresentation.DisplayedSource();
+                        repeated.outputPts=temporalRenderer.currentPts;repeated.repeated=true;
+                        repeated.rendered=true;repeated.submitted=true;repeated.tickMs=GetTickCount64();
+                        repeated.qpc=PerformanceCounterNow();repeated.outputId=++presentationDecisionOutputId;
+                        RecordPresentationDecision(repeated);
+                    }
                     previousCompletePresentation.RepeatSubmitted(true);
                     sourceCadencePresentation=previousCompletePresentation;
                     return true;
@@ -16142,6 +16167,7 @@ struct LibplaceboVideoRenderer::Impl
             temporalSourceEvidence.Find({frameGeneration,sourceSequence}):nullptr;
         const uint64_t revisedSourcePolicyTick=priorRevisionSnapshot?priorRevisionSnapshot->sourceTick:0;
         QualifiedSubtitlePresentationEvidence temporalPolicyCaptionProof;
+        PresentationDecisionTelemetry::Facts temporalPolicyDecisionFacts;
 		auto configureViewport =
 			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
 			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
@@ -16151,7 +16177,7 @@ struct LibplaceboVideoRenderer::Impl
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
              coldStrictWorkerProof, coldStrictWorkerPicture,
-             subtitleIdentity, captureClockFrequency, sceneDetectorGeneration, &temporalPolicyCaptionProof,
+             subtitleIdentity, captureClockFrequency, sceneDetectorGeneration, &temporalPolicyCaptionProof, &temporalPolicyDecisionFacts, &currentSubtitlePreview,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
              currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels, &qualifiedPendingFinalPixels, cadenceCacheDiagnostic,
@@ -18284,6 +18310,47 @@ releaseDriftBaseRetention =
                     sharedSubtitleCrop,physicalSubtitleCrop);
             cropDecision.sourceBounds = SubtitlePresentationBounds(cropDecision, subtitlePreviewMode,
                 subtitleCompositionSucceeded, currentNoCaptionConfirmed, discardedStripClear);
+            // Copy existing decisions only. In particular, unavailable caption
+            // work is a recordable state, not a condition for skipping telemetry.
+            if(DebugLog::IsEnhancedLoggingEnabled() || renderedOutputCaptureRequested.load(std::memory_order_relaxed)) {
+                auto& f=temporalPolicyDecisionFacts;f={};f.available=true;
+                f.generation=frameGeneration;f.sequence=sourceSequence;f.viewport=viewportRequestSerial;
+                f.format=AlphaSourceFormatKey(state);f.domain=queuedAnalysisDomainKey;
+                f.policy=localBoundaryPolicyGeneration;f.continuity=localBoundaryContinuityGeneration;
+                f.width=width;f.height=height;f.classification=static_cast<int>(latestActivePictureEvidenceClassification);
+                f.measurementSequence=latestActivePictureEvidenceFrame;f.measuredAvailable=latestActivePictureEvidenceAvailable;
+                f.measurementReason=latestCropRetentionEvidence.activePicture.reason;
+                f.measured=PresentationDecisionTelemetry::BoundsRect(latestActivePictureEvidenceBounds);
+                f.nativeAvailable=acceptedNativeCrop.available;f.nativeAcceptedSequence=acceptedNativeCrop.acceptedSourceSequence;
+                f.native=PresentationDecisionTelemetry::BoundsRect(effectiveGeometry);
+                f.observationSupportsCrop=cropInput.latestObservationSupportsCrop;
+                f.retentionEvaluated=cropInput.frameLocalPresentationRetentionEvaluated;f.retentionSafe=cropInput.frameLocalPresentationRetentionSafe;
+                f.visibleAvailable=cropInput.currentVisibleBoundsAvailable;f.visible=PresentationDecisionTelemetry::BoundsRect(cropInput.currentVisibleBounds);
+                const auto& observation=currentSubtitlePreview.current;
+                f.captionSequence=observation.identity.acceptedSequence;
+                f.captionCurrent=SameAnalysisFrameIdentity(observation.identity,subtitleIdentity);
+                f.captionDetected=observation.text.detected;f.captionHeld=subtitleSourcePreparation.ownershipAccepted.held;
+                f.cue=subtitleSourcePreparation.ownershipAccepted.cue;f.mode=static_cast<int>(subtitlePreviewMode);
+                f.caption=PresentationDecisionTelemetry::BoundsRect(observation.text.bounds);
+                f.captionDestination=PresentationDecisionTelemetry::BoundsRect(relocatedSubtitle.destination);
+                f.captionIncomplete=currentSubtitleWorkIncomplete;f.composed=subtitleCompositionSucceeded;
+                f.sourcePrepared=ownershipInput.sourcePrepared;f.absence=currentNoCaptionConfirmed;
+                const bool gates[]={subtitleCompositionSucceeded,subtitleSourcePreparation.valid,
+                    subtitleSourcePreparation.generation==frameGeneration,subtitleSourcePreparation.sequence==sourceSequence,
+                    subtitleSourcePreparation.viewportEpoch==viewportRequestSerial,subtitleSourcePreparation.mode==subtitlePreviewMode,
+                    subtitleSourcePreparation.ownershipPolicy==localBoundaryPolicyGeneration,
+                    subtitleSourcePreparation.ownershipContinuity==localBoundaryContinuityGeneration,
+                    effectiveGeometryAvailable,effectiveGeometrySourceGeneration==frameGeneration,!useSceneVerificationGeometry,
+                    nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE,effectiveClassification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                    latestActivePicturePresentationRetentionSourceGeneration==frameGeneration,
+                    latestActivePicturePresentationRetentionSourceSequence==sourceSequence};
+                for(unsigned i=0;i<sizeof(gates)/sizeof(gates[0]);++i)if(!gates[i])f.preparationFailures|=uint32_t(1)<<i;
+                f.currentComposition=AlphaSourceCrop::HasCurrentSubtitleCompositionPresentation(cropInput);
+                f.strongPrepared=AlphaSourceCrop::HasCurrentPreparedSubtitlePresentation(cropInput);
+                f.scanReason=currentSubtitleScanReason;f.ownershipReason=ownershipProof.reason;f.erasureReason=displayCaptionProof.reason;
+                f.continuationReason=subtitleCueContinuation.LastSeedReason();
+                f.decisionReason=cropDecision.reason;f.owner=AlphaSourceCrop::DecisionOwnerName(cropDecision.owner);
+            }
             if(sourceSequence % 120 == 0 && scopeSubtitleFit)
                 DebugLog::Log("SUBTITLE ASPECT POLICY: frame=%llu style=%d shared_policy=1 composed=%d no_caption_confirmed=%d discarded_strip_clear=%d strip_samples=%zu cue_reason=%s owner=%s shared=%d,%d-%d,%d display=%d,%d-%d,%d requested_translation=%d",
                     sourceSequence,static_cast<int>(subtitlePreviewMode),subtitleCompositionSucceeded?1:0,
@@ -19542,6 +19609,7 @@ releaseDriftBaseRetention =
             const auto buildSourcePresentation=[&](TemporalPresentationSnapshot& sourceSnapshot) {
                     configureViewport(renderImage,target,configuredScreenActive,
                         subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
+                    sourceSnapshot.decisionFacts=temporalPolicyDecisionFacts;
                     sourceSnapshot.viewportEpoch=viewportRequestSerial;
                     sourceSnapshot.startupPoseQualified=temporalPolicyStartupPoseQualified;
                     sourceSnapshot.startupFormatKey=startupContext.sourceFormatKey;
@@ -20373,6 +20441,24 @@ releaseDriftBaseRetention =
                 completeSourceCandidate,captured);
         } else { displayRepeatValid=false;sourceCadencePresentation.Reset(); }
         displayVsyncClock.SkipMissed(SteadyClockNowNs());
+        PresentationDecisionTelemetry::Output decisionOutput;
+        const bool decisionTelemetryEnabled=DebugLog::IsEnhancedLoggingEnabled();
+        if(decisionTelemetryEnabled || renderedOutputCaptureRequested.load(std::memory_order_relaxed)) {
+            decisionOutput.facts=selectedPresentationValid ? selectedPresentationForCommit.decisionFacts :
+                (!temporalRenderer.Active()?temporalPolicyDecisionFacts:PresentationDecisionTelemetry::Facts{});
+            decisionOutput.instance=diagnosticInstanceId;decisionOutput.process=GetCurrentProcessId();
+            decisionOutput.generation=frameGeneration;decisionOutput.inputSequence=sourceSequence;
+            decisionOutput.selectedSequence=temporalRenderer.Active()?temporalRenderer.SelectedPacketSequence():sourceSequence;
+            decisionOutput.tickMs=GetTickCount64();decisionOutput.qpc=PerformanceCounterNow();
+            LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);decisionOutput.qpcFrequency=frequency.QuadPart;
+            decisionOutput.outputId=++presentationDecisionOutputId;
+            decisionOutput.sourcePts=selectedPresentationValid?selectedPresentationForCommit.sourcePts:temporalRenderer.currentPts;
+            decisionOutput.outputPts=temporalRenderer.outputPts;decisionOutput.screenAspect=configuredScreenAspect;
+            decisionOutput.temporal=temporalRenderer.Active();decisionOutput.repeated=cadenceRepeat || repeatedTemporalOutput;
+            decisionOutput.rendered=rendered;
+            decisionOutput.source={renderImage.crop.x0,renderImage.crop.y0,renderImage.crop.x1,renderImage.crop.y1};
+            decisionOutput.target={target.crop.x0,target.crop.y0,target.crop.x1,target.crop.y1};
+        }
 		const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
 		if (vpOwnedSwapchain)
@@ -20385,7 +20471,7 @@ releaseDriftBaseRetention =
 				std::memory_order_acq_rel))
 			{
 				CaptureRenderedOutput(vpOwnedBackbuffer, "VP-owned-DXGI",
-					frameGeneration, sourceSequence, image, frameDvLuminance);
+					frameGeneration, sourceSequence, image, frameDvLuminance, decisionOutput);
 			}
 			if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
 			{
@@ -20419,7 +20505,7 @@ releaseDriftBaseRetention =
 				std::memory_order_acq_rel))
 			{
 				CaptureRenderedOutput(nullptr, "libplacebo-owned",
-					frameGeneration, sourceSequence, image, frameDvLuminance);
+					frameGeneration, sourceSequence, image, frameDvLuminance, decisionOutput);
 			}
 			if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
 			{
@@ -20439,6 +20525,10 @@ releaseDriftBaseRetention =
             }
             submitted = SubmitLibplaceboFrameChecked();
 		}
+        if(decisionTelemetryEnabled) {
+            decisionOutput.submitted=submitted;
+            RecordPresentationDecision(decisionOutput);
+        }
 		const int64_t swapEndQpc = PerformanceCounterNow();
 		LARGE_INTEGER qpcFrequency{};
 		QueryPerformanceFrequency(&qpcFrequency);
