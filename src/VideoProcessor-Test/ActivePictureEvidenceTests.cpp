@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <vprenderer/SubtitleBarRecovery.h>
 #include <vprenderer/PresentationDecisionTelemetry.h>
+#include <vprenderer/PresentationIncidentPolicy.h>
 
 #include <ActivePictureEvidence.h>
 #include <SourcePictureDetector.h>
@@ -3230,6 +3231,45 @@ namespace VideoProcessorTest
             Assert::IsTrue(capped.status==QualifiedSubtitlePresentationStatus::Unknown);
             Assert::IsTrue(std::strcmp(capped.reason,"ownership-budget")==0);
             Assert::IsTrue(capped.ownershipSamples==0,L"An insufficient budget must be rejected before native scanning.");
+        }
+        TEST_METHOD(RecordingTimecodeHasExactUtcAndDisplayedOutputIdentity)
+        {
+            PresentationDecisionTelemetry::Output o;o.utcMs=12345;o.instance="{12345678-abcd}";
+            o.generation=3;o.outputId=42;o.selectedSequence=41;
+            Assert::AreEqual(std::string("00:00:12.345Z 12345678 G3 O42 S41"),PresentationIncident::Timecode(o));
+            PresentationDecisionTelemetry::Recorder recorder;o.tickMs=100;o.submitted=o.rendered=true;
+            Assert::IsTrue(recorder.Observe(o).emit);++o.outputId;
+            Assert::IsFalse(recorder.Observe(o).emit);Assert::IsTrue(recorder.Observe(o,true).emit);
+        }
+        TEST_METHOD(IncidentCaptureBoundsFailuresAndIncludesAfterContext)
+        {
+            using namespace PresentationIncident;
+            Output o;o.generation=1;o.selectedSequence=1;o.rendered=o.submitted=true;o.tickMs=100;
+            o.facts.available=true;o.facts.generation=1;o.facts.sequence=1;o.facts.nativeAvailable=true;
+            o.facts.native=o.source={0,263,3840,1897};
+            Policy policy;Assert::IsFalse(policy.Plan(o,true).capture);policy.Submitted(o);
+            o.tickMs=200;o.source={0,202,3840,1998};auto failure=policy.Plan(o,true);
+            Assert::IsTrue(failure.capture);Assert::AreEqual(std::string("failure"),std::string(failure.phase));
+            policy.Submitted(o);o.tickMs=2199;Assert::IsFalse(policy.Plan(o,true).capture);
+            o.tickMs=2200;auto after=policy.Plan(o,true);Assert::IsTrue(after.capture);
+            Assert::AreEqual(failure.incident,after.incident);Assert::AreEqual(std::string("after"),std::string(after.phase));
+            o.tickMs=2300;Assert::IsFalse(policy.Plan(o,true).capture);
+            for(int i=0;i<20;++i) {
+                o.tickMs+=21000;o.source={0,263,3840,1897};policy.Submitted(o);
+                o.source={0,202,3840,1998};policy.Plan(o,true);policy.Submitted(o);
+                o.tickMs+=2000;policy.Plan(o,true);
+            }
+            Assert::AreEqual(Policy::MaxCaptures,policy.CapturesReserved());
+        }
+        TEST_METHOD(IncidentCaptureRejectsWrongSourceAndProfileTransition)
+        {
+            using namespace PresentationIncident;
+            Output o;o.generation=1;o.selectedSequence=1;o.rendered=o.submitted=true;o.tickMs=100;
+            o.facts.available=true;o.facts.generation=1;o.facts.sequence=1;o.facts.nativeAvailable=true;
+            o.facts.native=o.source={0,263,3840,1897};Policy policy;policy.Submitted(o);
+            o.source={0,0,3840,2160};++o.facts.sequence;Assert::IsFalse(policy.Plan(o,true).capture);
+            o.facts.sequence=1;++o.facts.viewport;Assert::IsFalse(policy.Plan(o,true).capture);
+            o.facts.viewport=0;Assert::IsFalse(policy.Plan(o,false).capture);
         }
         TEST_METHOD(PresentationTelemetryExplainsShrinkAndRestorationWithoutPixels)
         {

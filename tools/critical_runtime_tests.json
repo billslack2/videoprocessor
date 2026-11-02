@@ -11,8 +11,11 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1015,
+  "minimumNativeTests": 1018,
   "requiredNativeMethods": [
+    "RecordingTimecodeHasExactUtcAndDisplayedOutputIdentity",
+    "IncidentCaptureBoundsFailuresAndIncludesAfterContext",
+    "IncidentCaptureRejectsWrongSourceAndProfileTransition",
     "PresentationTelemetryExplainsShrinkAndRestorationWithoutPixels",
     "PresentationTelemetryNeverJoinsLatestInputToAnotherDisplayedSource",
     "PresentationTelemetryBoundsEscapedRecordsBelowAsyncTransportLimit",

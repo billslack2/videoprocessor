@@ -3,6 +3,7 @@
 #include "SubtitleBarRecovery.h"
 #include "ShaderCacheStorage.h"
 #include "PresentationDecisionTelemetry.h"
+#include "PresentationIncidentPolicy.h"
 #include <shlobj.h>
 #pragma comment(lib,"shell32.lib")
 
@@ -1012,6 +1013,7 @@ namespace
         std::string outputDisplayMonitor;
 		// [general] scale_osd: size OSDs from the stable fitted screen geometry.
 		bool scaleOsd = false;
+        bool recordingTimecode=false,incidentScreenshots=false;
         float statsOsdSizePercent = NativeStatsOverlayPlacement::kDefaultStatsSizePercent;
 		std::string quality = "high";
 		std::string toneMapping = "auto";
@@ -1156,7 +1158,7 @@ namespace
 		for (const DisplayOutputMode& mode : settings.allowedDisplayModes)
 			stream << mode.width << 'x' << mode.height << 'p'
 				<< mode.refreshRate.numerator << '/' << mode.refreshRate.denominator << ',';
-		stream << '|' << settings.scaleOsd << '|' << settings.statsOsdSizePercent << '|' << settings.quality << '|'
+		stream << '|' << settings.recordingTimecode << '|' << settings.incidentScreenshots << '|' << settings.scaleOsd << '|' << settings.statsOsdSizePercent << '|' << settings.quality << '|'
 			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
 			<< static_cast<int>(settings.peakDetection) << '|'
 			<< settings.customToneMapping << '|'
@@ -2360,6 +2362,8 @@ namespace
         config.TryGetBool("general", "present_every_vsync", settings.presentEveryVsync);
         settings.presentationQueueDepth = PresentationConfig::Depth(config);
         settings.statsOsdSizePercent = StatsOsdSettings::ReadSizePercent(&config);
+        config.TryGetBool("logging","video_timecode",settings.recordingTimecode);
+        config.TryGetBool("logging","incident_screenshots",settings.incidentScreenshots);
         TryGetDisplayBool(config, "subtitle_bbox_test", settings.subtitleBoxTest);
         TryGetDisplayBool(config, "subtitle_cut_paste_test", settings.subtitleCutPasteTest);
         std::string subtitleBackground;
@@ -4672,13 +4676,164 @@ struct LibplaceboVideoRenderer::Impl
 
     PresentationDecisionTelemetry::Recorder presentationDecisionRecorder;
     uint64_t presentationDecisionOutputId=0;
+    pl_tex recordingTimecodeTexture=nullptr;
+    pl_renderer recordingTimecodeRenderer=nullptr;
+    pl_frame recordingTargetMetadata{};
+    PresentationDecisionTelemetry::Rect recordingScreen;
+    PresentationIncident::Policy presentationIncidentPolicy;
+    std::deque<std::string> recentPresentationDecisions;
+    struct PendingIncidentScreenshot {
+        CComPtr<ID3D11Texture2D> staging;CComPtr<ID3D11Query> ready;
+        D3D11_TEXTURE2D_DESC desc{};PresentationDecisionTelemetry::Output decision;
+        std::string phase,reason;uint64_t incident=0;std::vector<std::string> context;
+    };
+    std::deque<PendingIncidentScreenshot> pendingIncidentScreenshots;
+    std::atomic_bool incidentScreenshotWriterBusy{false};
+    void StampDecisionIdentity(PresentationDecisionTelemetry::Output& o) {
+        o.tickMs=GetTickCount64();o.qpc=PerformanceCounterNow();
+        LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);o.qpcFrequency=frequency.QuadPart;
+        FILETIME utc{};GetSystemTimePreciseAsFileTime(&utc);ULARGE_INTEGER ticks{};
+        ticks.LowPart=utc.dwLowDateTime;ticks.HighPart=utc.dwHighDateTime;
+        o.utcMs=(ticks.QuadPart-116444736000000000ull)/10000;
+        o.outputId=++presentationDecisionOutputId;o.timecode=PresentationIncident::Timecode(o);
+    }
+    void DrawRecordingTimecode(pl_tex output,PresentationDecisionTelemetry::Output& o) {
+        o.timecodeDrawn=false;
+        if(!DebugLog::IsEnhancedLoggingEnabled() || !activeSettings.recordingTimecode || !output)return;
+        const auto diagnosticStarted=SteadyClock::now();
+        const int fontHeight=(std::max)(14,(std::min)(42,int(output->params.h/64)));
+        HDC dc=CreateCompatibleDC(nullptr);if(!dc)return;
+        HFONT font=CreateFontA(-fontHeight,0,0,0,FW_BOLD,FALSE,FALSE,FALSE,ANSI_CHARSET,
+            OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,NONANTIALIASED_QUALITY,FIXED_PITCH,"Consolas");
+        auto oldFont=SelectObject(dc,font);SIZE size{};GetTextExtentPoint32A(dc,o.timecode.c_str(),int(o.timecode.size()),&size);
+        const int width=size.cx+16,height=size.cy+12;
+        BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=width;
+        info.bmiHeader.biHeight=-height;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;info.bmiHeader.biCompression=BI_RGB;
+        void* bytes=nullptr;HBITMAP bitmap=CreateDIBSection(dc,&info,DIB_RGB_COLORS,&bytes,nullptr,0);
+        if(bitmap && bytes) {
+            auto oldBitmap=SelectObject(dc,bitmap);memset(bytes,0,size_t(width)*height*4);
+            SetBkMode(dc,TRANSPARENT);SetTextColor(dc,RGB(255,255,255));TextOutA(dc,8,6,o.timecode.c_str(),int(o.timecode.size()));GdiFlush();
+            auto* pixels=static_cast<uint32_t*>(bytes);for(size_t i=0;i<size_t(width)*height;++i)pixels[i]|=0xff000000u;
+            pl_plane_data data{};data.type=PL_FMT_UNORM;data.width=width;data.height=height;
+            data.pixel_stride=4;data.row_stride=size_t(width)*4;data.pixels=bytes;
+            uint64_t masks[4]={0x00ff0000,0x0000ff00,0x000000ff,0xff000000};pl_plane_data_from_mask(&data,masks);
+            pl_frame text{};text.num_planes=1;text.repr=pl_color_repr_rgb;text.repr.alpha=PL_ALPHA_INDEPENDENT;
+            text.color=pl_color_space_srgb;text.crop={0,0,float(width),float(height)};
+            if(pl_upload_plane(d3d11->gpu,&text.planes[0],&recordingTimecodeTexture,&data)) {
+                auto target=recordingTargetMetadata;target.planes[0].texture=output;target.overlays=nullptr;target.num_overlays=0;
+                const float screenLeft=float((std::max)(0.0,recordingScreen.left));
+                const float screenBottom=float((std::min)(double(output->params.h),recordingScreen.bottom>0?recordingScreen.bottom:double(output->params.h)));
+                const float available=float(output->params.w)-screenLeft-24;
+                const float w=(std::min)(available,AnamorphicPresentation::OverlayWidth(float(width),anamorphicScale));
+                const float h=float(height)*w/(std::max)(1.0f,AnamorphicPresentation::OverlayWidth(float(width),anamorphicScale));
+                target.crop={screenLeft+12,(std::max)(0.0f,screenBottom-h-12),screenLeft+12+w,screenBottom-12};
+                auto params=pl_render_fast_params;params.border=PL_CLEAR_SKIP;params.background=PL_CLEAR_SKIP;
+                if(!recordingTimecodeRenderer)recordingTimecodeRenderer=pl_renderer_create(log,d3d11->gpu);
+                o.timecodeDrawn=recordingTimecodeRenderer && pl_render_image(recordingTimecodeRenderer,&text,&target,&params);
+                if(!o.timecodeDrawn)DebugLog::Log("VP recording timecode: output=%llu action=draw-failed",o.outputId);
+            }
+            SelectObject(dc,oldBitmap);
+        }
+        if(bitmap)DeleteObject(bitmap);SelectObject(dc,oldFont);if(font)DeleteObject(font);DeleteDC(dc);
+        o.diagnosticCpuMs=std::chrono::duration<double,std::milli>(SteadyClock::now()-diagnosticStarted).count();
+    }
+    void PollIncidentScreenshots() {
+        if(pendingIncidentScreenshots.empty() || !d3d11)return;
+        auto& pending=pendingIncidentScreenshots.front();
+        if(GetTickCount64()-pending.decision.tickMs>5000) {
+            DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=readback-or-writer-expired",pending.decision.outputId);
+            pendingIncidentScreenshots.pop_front();return;
+        }
+        if(incidentScreenshotWriterBusy.load(std::memory_order_acquire))return;
+        CComPtr<ID3D11DeviceContext> context;d3d11->device->GetImmediateContext(&context);
+        const HRESULT ready=context->GetData(pending.ready,nullptr,0,D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if(ready==S_FALSE)return;
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        const HRESULT result=FAILED(ready)?ready:context->Map(pending.staging,0,D3D11_MAP_READ,D3D11_MAP_FLAG_DO_NOT_WAIT,&mapped);
+        if(result==DXGI_ERROR_WAS_STILL_DRAWING)return;
+        if(FAILED(result)) {
+            DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=readback-failed hr=0x%08lx",pending.decision.outputId,result);
+            pendingIncidentScreenshots.pop_front();return;
+        }
+        const unsigned step=(std::max)(1u,(pending.desc.Width+1919)/1920);
+        const unsigned width=(pending.desc.Width+step-1)/step,height=(pending.desc.Height+step-1)/step;
+        std::vector<uint32_t> pixels(size_t(width)*height);
+        for(unsigned y=0;y<height;++y) {
+            const auto* row=reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(mapped.pData)+size_t(y*step)*mapped.RowPitch);
+            for(unsigned x=0;x<width;++x)pixels[size_t(y)*width+x]=row[x*step];
+        }
+        context->Unmap(pending.staging,0);
+        auto captured=std::move(pending);pendingIncidentScreenshots.pop_front();
+        incidentScreenshotWriterBusy.store(true,std::memory_order_release);
+        captureWorkers.emplace_back([this,captured=std::move(captured),pixels=std::move(pixels),width,height]() {
+            struct Done {std::atomic_bool& busy;~Done(){busy.store(false,std::memory_order_release);}} done{incidentScreenshotWriterBusy};
+            try {
+            const auto directory=ScreenshotDirectory();CreateDirectoryW(directory.c_str(),nullptr);
+            const auto incidentDirectory=directory+L"\\incident-"+std::to_wstring(captured.decision.process)+L"-"+
+                std::wstring(captured.decision.instance.begin(),captured.decision.instance.end())+L"-"+std::to_wstring(captured.incident);
+            CreateDirectoryW(incidentDirectory.c_str(),nullptr);
+            const auto stem=incidentDirectory+L"\\"+std::wstring(captured.phase.begin(),captured.phase.end())+L"-output-"+std::to_wstring(captured.decision.outputId);
+            std::string error;
+            if(!WriteR10Png16(stem+L".png",pixels,width,height,error)) {
+                DebugLog::Log("VP presentation incident: action=write-failed output=%llu reason=%s",captured.decision.outputId,error.c_str());return;
+            }
+            std::ofstream metadata(stem+L".json",std::ios::binary);
+            metadata<<"{\"schema\":\"vp-presentation-incident-v1\",\"phase\":"<<PresentationDecisionTelemetry::Quote(captured.phase)
+                <<",\"reason\":"<<PresentationDecisionTelemetry::Quote(captured.reason)
+                <<",\"stage\":\"after-render-before-present\",\"width\":"<<width<<",\"height\":"<<height
+                <<",\"original_width\":"<<captured.desc.Width<<",\"original_height\":"<<captured.desc.Height
+                <<",\"presentation_decision\":"<<PresentationDecisionTelemetry::Json(captured.decision)<<"}";
+            std::ofstream history(stem+L".decisions.jsonl",std::ios::binary);for(const auto& line:captured.context)history<<line<<'\n';
+            metadata.flush();history.flush();
+            DebugLog::Log("VP presentation incident: action=%s output=%llu incident=%llu phase=%s png=%ls metadata=%ls",
+                metadata.good()&&history.good()?"saved":"write-failed",captured.decision.outputId,captured.incident,captured.phase.c_str(),
+                (stem+L".png").c_str(),(stem+L".json").c_str());
+            }catch(const std::exception& error){DebugLog::Log("VP presentation incident: action=writer-exception reason=%s",error.what());}
+            catch(...){DebugLog::Log("VP presentation incident: action=writer-exception reason=unknown");}
+        });
+    }
+    bool QueueIncidentScreenshot(ID3D11Texture2D* backbuffer,const PresentationDecisionTelemetry::Output& o) {
+        PollIncidentScreenshots();
+        const auto request=presentationIncidentPolicy.Plan(o,DebugLog::IsEnhancedLoggingEnabled() && activeSettings.incidentScreenshots);
+        if(!request.capture){if(request.phase[0])DebugLog::Log("VP presentation incident: action=%s output=%llu reason=%s",request.phase,o.outputId,request.reason);return false;}
+        if(pendingIncidentScreenshots.size()>=2) {
+            DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=readback-queue-full",o.outputId);return true;
+        }
+        CComPtr<ID3D11Texture2D> texture=backbuffer;
+        if(!texture) {
+            CComPtr<IDXGISwapChain> native;native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+            if(native)native->GetBuffer(0,IID_PPV_ARGS(&texture));
+        }
+        if(!texture){DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=no-backbuffer",o.outputId);return true;}
+        PendingIncidentScreenshot pending;texture->GetDesc(&pending.desc);pending.decision=o;
+        pending.incident=request.incident;pending.phase=request.phase;pending.reason=request.reason;
+        pending.context.assign(recentPresentationDecisions.begin(),recentPresentationDecisions.end());
+        pending.context.push_back(PresentationDecisionTelemetry::Json(o));
+        auto staging=pending.desc;staging.Usage=D3D11_USAGE_STAGING;staging.BindFlags=0;staging.CPUAccessFlags=D3D11_CPU_ACCESS_READ;staging.MiscFlags=0;
+        D3D11_QUERY_DESC query{D3D11_QUERY_EVENT,0};
+        if(staging.Format!=DXGI_FORMAT_R10G10B10A2_UNORM || FAILED(d3d11->device->CreateTexture2D(&staging,nullptr,&pending.staging)) ||
+            FAILED(d3d11->device->CreateQuery(&query,&pending.ready))) {
+            DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=unsupported-or-allocation-failed",o.outputId);return true;
+        }
+        CComPtr<ID3D11DeviceContext> context;d3d11->device->GetImmediateContext(&context);
+        context->CopyResource(pending.staging,texture);context->End(pending.ready);
+        pendingIncidentScreenshots.push_back(std::move(pending));
+        DebugLog::Log("VP presentation incident: action=queued output=%llu incident=%llu phase=%s reason=%s",o.outputId,request.incident,request.phase,request.reason);
+        return true;
+    }
+    void CompleteDiagnosticOutput(PresentationDecisionTelemetry::Output& o,bool force=false) {
+        for(auto& pending:pendingIncidentScreenshots)if(pending.decision.outputId==o.outputId)pending.decision.submitted=o.submitted;
+        presentationIncidentPolicy.Submitted(o);RecordPresentationDecision(o,force);PollIncidentScreenshots();
+    }
+
     PresentationDecisionTelemetry::Output lastSubmittedDecisionOutput;
-    void RecordPresentationDecision(const PresentationDecisionTelemetry::Output& output) {
+    void RecordPresentationDecision(const PresentationDecisionTelemetry::Output& output,bool force=false) {
         if(!DebugLog::IsEnhancedLoggingEnabled())return;
-        const auto event=presentationDecisionRecorder.Observe(output);
+        const auto event=presentationDecisionRecorder.Observe(output,force || activeSettings.recordingTimecode);
         if(event.emit) {
             const auto json=PresentationDecisionTelemetry::Json(output);
             DebugLog::Log("VP presentation decision: event=%s span=%llu %s",event.event,event.span,json.c_str());
+            recentPresentationDecisions.push_back(json);if(recentPresentationDecisions.size()>512)recentPresentationDecisions.pop_front();
         }
         if(output.rendered && output.submitted)lastSubmittedDecisionOutput=output;
     }
@@ -5713,6 +5868,8 @@ struct LibplaceboVideoRenderer::Impl
 			for (std::thread& worker : captureWorkers)
 				if (worker.joinable()) worker.join();
 			captureWorkers.clear();
+            for(const auto& pending:pendingIncidentScreenshots)DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=renderer-retired",pending.decision.outputId);
+            pendingIncidentScreenshots.clear();
 			pl_mpv_user_shader_destroy(&nlsHook);
             pl_mpv_user_shader_destroy(&subtitleCutPasteHook);
             subtitleCutPasteHookFailed = false;
@@ -5732,6 +5889,8 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleSourcePreparation={};
                 pl_tex_destroy(d3d11->gpu, &subtitleTemporalTexture);
 				pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
+                pl_tex_destroy(d3d11->gpu, &recordingTimecodeTexture);
+                pl_renderer_destroy(&recordingTimecodeRenderer);
 				pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
 				pl_tex_destroy(d3d11->gpu, &profileOverlayTexture);
 				for (pl_tex& texture : textures)
@@ -13473,15 +13632,6 @@ struct LibplaceboVideoRenderer::Impl
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                     DebugLog::Log("SUBTITLE OUTPUT RETIREMENT: consumed=%llu displayed=%llu cue_transport_retired=%d analysis_votes=0 cue_renewal=0",
                         inputRepeatIdentity.acceptedSequence,previousCompletePresentation.DisplayedSource(),cueTransportRetired?1:0);
-                    if(DebugLog::IsEnhancedLoggingEnabled()) {
-                        auto repeated=lastSubmittedDecisionOutput;
-                        repeated.generation=frameGeneration;repeated.inputSequence=sourceSequence;
-                        repeated.selectedSequence=previousCompletePresentation.DisplayedSource();
-                        repeated.outputPts=temporalRenderer.currentPts;repeated.repeated=true;
-                        repeated.rendered=true;repeated.submitted=true;repeated.tickMs=GetTickCount64();
-                        repeated.qpc=PerformanceCounterNow();repeated.outputId=++presentationDecisionOutputId;
-                        RecordPresentationDecision(repeated);
-                    }
                     previousCompletePresentation.RepeatSubmitted(true);
                     sourceCadencePresentation=previousCompletePresentation;
                     return true;
@@ -18331,6 +18481,10 @@ releaseDriftBaseRetention =
                 f.captionCurrent=SameAnalysisFrameIdentity(observation.identity,subtitleIdentity);
                 f.captionDetected=observation.text.detected;f.captionHeld=subtitleSourcePreparation.ownershipAccepted.held;
                 f.cue=subtitleSourcePreparation.ownershipAccepted.cue;f.mode=static_cast<int>(subtitlePreviewMode);
+                f.requestedMode=static_cast<int>(subtitlePreparationRequested?subtitlePreparationRequestedMode:subtitlePreviewMode);
+                f.preparationState=static_cast<int>(subtitleSelectedPreparationState);
+                f.preparationKey=subtitlePipelinePreparationKey.empty()?0:uint64_t(std::hash<std::string>{}(subtitlePipelinePreparationKey));
+                f.shaderFailed=subtitleCutPasteHookFailed;
                 f.caption=PresentationDecisionTelemetry::BoundsRect(observation.text.bounds);
                 f.captionDestination=PresentationDecisionTelemetry::BoundsRect(relocatedSubtitle.destination);
                 f.captionIncomplete=currentSubtitleWorkIncomplete;f.composed=subtitleCompositionSucceeded;
@@ -20449,9 +20603,7 @@ releaseDriftBaseRetention =
             decisionOutput.instance=diagnosticInstanceId;decisionOutput.process=GetCurrentProcessId();
             decisionOutput.generation=frameGeneration;decisionOutput.inputSequence=sourceSequence;
             decisionOutput.selectedSequence=temporalRenderer.Active()?temporalRenderer.SelectedPacketSequence():sourceSequence;
-            decisionOutput.tickMs=GetTickCount64();decisionOutput.qpc=PerformanceCounterNow();
-            LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);decisionOutput.qpcFrequency=frequency.QuadPart;
-            decisionOutput.outputId=++presentationDecisionOutputId;
+            StampDecisionIdentity(decisionOutput);
             decisionOutput.sourcePts=selectedPresentationValid?selectedPresentationForCommit.sourcePts:temporalRenderer.currentPts;
             decisionOutput.outputPts=temporalRenderer.outputPts;decisionOutput.screenAspect=configuredScreenAspect;
             decisionOutput.temporal=temporalRenderer.Active();decisionOutput.repeated=cadenceRepeat || repeatedTemporalOutput;
@@ -20459,6 +20611,14 @@ releaseDriftBaseRetention =
             decisionOutput.source={renderImage.crop.x0,renderImage.crop.y0,renderImage.crop.x1,renderImage.crop.y1};
             decisionOutput.target={target.crop.x0,target.crop.y0,target.crop.x1,target.crop.y1};
         }
+        if(rendered && decisionTelemetryEnabled) {
+            recordingTargetMetadata=baseTarget;recordingTargetMetadata.overlays=nullptr;recordingTargetMetadata.num_overlays=0;
+            recordingScreen=frameScreen.valid?PresentationDecisionTelemetry::Rect{frameScreen.rect.left,frameScreen.rect.top,frameScreen.rect.right,frameScreen.rect.bottom}:
+                PresentationDecisionTelemetry::Rect{0,0,double(baseTarget.planes[0].texture->params.w),double(baseTarget.planes[0].texture->params.h)};
+            DrawRecordingTimecode(baseTarget.planes[0].texture,decisionOutput);
+        }
+        const bool manualScreenshot=rendered && renderedOutputCaptureRequested.exchange(false,std::memory_order_acq_rel);
+        bool incidentScreenshot=false;
 		const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
 		if (vpOwnedSwapchain)
@@ -20466,9 +20626,9 @@ releaseDriftBaseRetention =
 			// This mirrors libplacebo's submit ordering while keeping the actual
 			// DXGI presentation boundary in VP: flush GPU work, release every
 			// backbuffer reference, then Present exactly once.
-			pl_gpu_flush(d3d11->gpu);
-			if (rendered && renderedOutputCaptureRequested.exchange(false,
-				std::memory_order_acq_rel))
+			if(rendered && decisionTelemetryEnabled)incidentScreenshot=QueueIncidentScreenshot(vpOwnedBackbuffer,decisionOutput);
+            pl_gpu_flush(d3d11->gpu);
+			if (manualScreenshot)
 			{
 				CaptureRenderedOutput(vpOwnedBackbuffer, "VP-owned-DXGI",
 					frameGeneration, sourceSequence, image, frameDvLuminance, decisionOutput);
@@ -20501,8 +20661,8 @@ releaseDriftBaseRetention =
 		}
 		else
 		{
-			if (rendered && renderedOutputCaptureRequested.exchange(false,
-				std::memory_order_acq_rel))
+            if(rendered && decisionTelemetryEnabled)incidentScreenshot=QueueIncidentScreenshot(nullptr,decisionOutput);
+			if (manualScreenshot)
 			{
 				CaptureRenderedOutput(nullptr, "libplacebo-owned",
 					frameGeneration, sourceSequence, image, frameDvLuminance, decisionOutput);
@@ -20527,7 +20687,7 @@ releaseDriftBaseRetention =
 		}
         if(decisionTelemetryEnabled) {
             decisionOutput.submitted=submitted;
-            RecordPresentationDecision(decisionOutput);
+            CompleteDiagnosticOutput(decisionOutput,manualScreenshot || incidentScreenshot);
         }
 		const int64_t swapEndQpc = PerformanceCounterNow();
 		LARGE_INTEGER qpcFrequency{};
@@ -22013,6 +22173,14 @@ releaseDriftBaseRetention =
     // complete output. Both presenters use the pinned D3D11 backend, whose
     // submit_frame releases the acquired backbuffer without presenting it.
     // This backend-specific split is verified against both shipped sources.
+    PresentationDecisionTelemetry::Output PrepareRepeatedDiagnostic(pl_tex output,uint64_t generation,
+        uint64_t input,uint64_t selected,double outputPts) {
+        PresentationDecisionTelemetry::Output o;
+        if(!DebugLog::IsEnhancedLoggingEnabled())return o;
+        o=lastSubmittedDecisionOutput;o.generation=generation;o.inputSequence=input;o.selectedSequence=selected;
+        o.outputPts=outputPts;o.repeated=true;o.rendered=true;o.submitted=false;
+        StampDecisionIdentity(o);DrawRecordingTimecode(output,o);return o;
+    }
     bool PresentInputCadenceRepeat(const SourceCadencePresentation& previous,
         const SourceCadencePresentationContext& context,const ActivePictureFrameIdentity& consumed,
         double inputHz,double outputPts,bool& presentationTargetTimingKnown,double& presentationTargetLeadMs)
@@ -22069,6 +22237,9 @@ releaseDriftBaseRetention =
         const bool current=copied && context.startupRevision==startupReadinessRevision.load(std::memory_order_acquire) &&
             context.outputEpoch==displayCadenceOutputEpoch && context.outputContract==SourceCadenceOutputContract() &&
             !resizePending.load(std::memory_order_acquire) && !outputRenegotiationPending.load(std::memory_order_acquire);
+        auto diagnostic=PrepareRepeatedDiagnostic(acquired.fbo,context.generation,consumed.acceptedSequence,
+            previous.DisplayedSource(),outputPts);
+        const bool incident=current && DebugLog::IsEnhancedLoggingEnabled()?QueueIncidentScreenshot(backbuffer,diagnostic):false;
         pl_gpu_flush(d3d11->gpu);
         pl_tex_destroy(d3d11->gpu,&wrapped);backbuffer.Release();
         // Pinned std7.360.1/beta7.388 D3D11 d3d11_sw_submit_frame only
@@ -22085,7 +22256,9 @@ releaseDriftBaseRetention =
         CComPtr<IDXGISwapChain> native;
         if(vpOwnedSwapchain)native=vpOwnedSwapchain;
         else native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
-        if(!PresentNativeChecked(native))return false;
+        const bool diagnosticSubmitted=PresentNativeChecked(native);
+        if(DebugLog::IsEnhancedLoggingEnabled()){diagnostic.submitted=diagnosticSubmitted;CompleteDiagnosticOutput(diagnostic,incident);}
+        if(!diagnosticSubmitted)return false;
         const int64_t ended=PerformanceCounterNow();
         auto record=sourceCadenceRecord;
         record.presentId=record.presentedRefresh=0;record.presented=false;record.presentedQpc=0;
@@ -22157,6 +22330,10 @@ releaseDriftBaseRetention =
             const float black[] = {0.0f, 0.0f, 0.0f};
             pl_frame_clear(d3d11->gpu, &target, black);
         }
+        auto diagnostic=PrepareRepeatedDiagnostic(acquired.fbo,displayRepeatRecord.generation,
+            displayRepeatRecord.sourceSequence,displayRepeatRecord.selectedSourceSequence?displayRepeatRecord.selectedSourceSequence:displayRepeatRecord.sourceSequence,
+            displayVsyncClock.SourcePts());
+        const bool incident=compatible && DebugLog::IsEnhancedLoggingEnabled()?QueueIncidentScreenshot(backbuffer,diagnostic):false;
         const int64_t started = PerformanceCounterNow();
         bool submitted = false;
         if (vpOwnedSwapchain)
@@ -22170,6 +22347,7 @@ releaseDriftBaseRetention =
         {
             submitted = SubmitLibplaceboFrameChecked();
         }
+        if(DebugLog::IsEnhancedLoggingEnabled()){diagnostic.submitted=compatible&&submitted;CompleteDiagnosticOutput(diagnostic,incident);}
         if (!compatible || !submitted)
         {
             displayRepeatValid = false;

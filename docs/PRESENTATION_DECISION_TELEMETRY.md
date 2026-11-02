@@ -38,8 +38,8 @@ Existing rendered-output screenshots now include `presentation_decision` in thei
 JSON sidecar. It describes that selected output, with the same instance/output ID
 as the log, rather than the latest input. Screenshot readback occurs before Present;
 its `submitted:false` is not a failed Present result. Correlate with the output log
-to see the eventual submission result. No automatic screenshots or native frame
-capture are added.
+to see the eventual submission result. Screenshot requests force the corresponding
+output record even between normal heartbeats.
 
 Create a retrospective report without source video pixels:
 
@@ -57,3 +57,44 @@ are retained in the summary; an absent counter is not proof of complete recordin
 For basic shrinking reports, inspect the first actual-source/target change and its
 native geometry, scan/composition/preparation state and reason. Request source
 pixels only when the remaining question concerns the correctness of pixel evidence.
+
+## Recording and incident feedback
+
+In Config > Logging, enable **Show recording timecode on video** and/or **Capture
+suspected AR failures automatically**, alongside enhanced logging. Both default off.
+The configuration keys are `[logging] video_timecode: true` and
+`incident_screenshots: true`. Logging settings apply on the next VP start.
+
+The small panel reads `HH:MM:SS.mmmZ INSTANCE Ggeneration Ooutput Ssource`.
+It uses UTC, and the exact text plus full UTC milliseconds are logged for every
+output while the panel is enabled. The panel is drawn after the movie image has
+been cached: repeated images receive a fresh timestamp without changing their
+source identity or contaminating the repeat cache. It uses a separate renderer.
+A false `timecode_drawn` explicitly records a failed panel render.
+
+Automatic capture treats an unexpected widening with unchanged native geometry,
+lost advanced composition, or a disagreement between measured and accepted geometry
+as a **suspected incident**, not proof of a detector bug. It saves an output image
+at the failure and another two seconds later, plus up to 512 preceding decision
+records and source-bound metadata. Persistent geometry disagreement is captured
+once until it clears. Limits are 12 images per renderer session, a 20-second cooldown,
+two pending GPU copies and one writer. It does not capture native input frames.
+The GPU copy is queried without flushing or blocking; Map uses DO_NOT_WAIT.
+Expired, full, unsupported or failed captures are logged. Images are at most
+1920 pixels wide, preserve R10 code values in 16-bit PNG, and encode off-thread.
+
+Bundles are in the existing screenshot folder, under `incident-PROCESS-INSTANCE-ID`.
+The sidecar includes the selected decision and the eventual submission result;
+its image stage remains after-render-before-present. A picture from a failed
+submission is not claimed visible. Each capture's `.decisions.jsonl` contains the
+preceding history; the after capture adds post-failure context.
+
+Paste a recording timecode into the report command with `-VideoTimecode '<text>'`.
+Pass `-IncidentDirectory <bundle>` to include saved context and an image index.
+`video-match.csv` is an exact instance/generation/output/source match, never a
+nearest-frame guess. Missing matches and dropped logs remain explicit.
+
+Use the bundle to identify the first changed decision and failed gate, write a
+regression for that source/state transition, fix the responsible producer/policy,
+and compare the same recording interval after repair. Pixel-level source analysis
+is reserved for questions the decision trail and displayed images cannot answer.

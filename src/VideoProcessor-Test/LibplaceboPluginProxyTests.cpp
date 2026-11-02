@@ -1340,6 +1340,7 @@ namespace VideoProcessorTest
                 Assert::IsTrue(GetTempFileNameA(temporary, "p21", 0, configPath) != 0);
                 std::ofstream(configPath) << "[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
                     "[vprenderer]\nquality: fast\n";
+                if(telemetry)std::ofstream(configPath,std::ios::app)<<"\n[logging]\nvideo_timecode: true\n";
                 SnapshotTestCallback callback; NativeP210Buffer buffer;
                 const unsigned initialized = nativeP210Initializations.load();
                 {
@@ -1405,7 +1406,8 @@ namespace VideoProcessorTest
                                    line.find("\"selected\":"+std::to_string(aspect.presentedSequence)+",")!=std::string::npos &&
                                    line.find("\"facts_current\":true")!=std::string::npos &&
                                    line.find("\"actual_source\":[0,0,130,130]")!=std::string::npos &&
-                                   line.find("\"scan_reason\":")!=std::string::npos)matched=true;
+                                   line.find("\"scan_reason\":")!=std::string::npos &&
+                                   line.find("\"timecode_drawn\":true")!=std::string::npos)matched=true;
                              }}
                             if(!matched)std::this_thread::sleep_for(std::chrono::milliseconds(5));
                         }while(!matched && std::chrono::steady_clock::now()<telemetryDeadline);
