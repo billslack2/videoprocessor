@@ -3617,9 +3617,9 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload)
 		{
-			// API 34 separates submitted and detected picture aspect snapshots.
+			// API 35 adds separate stabilized detection history to the shared snapshot.
 			// Host and renderer must reject older payload and vtable layouts.
-			Assert::AreEqual(static_cast<uint32_t>(34),
+			Assert::AreEqual(static_cast<uint32_t>(35),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
             using LutApplyMethod=void (IVideoRenderer::*)();
             const LutApplyMethod apply=&IVideoRenderer::RequestCalibrationLutReload;

@@ -10,8 +10,21 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 962,
+  "minimumNativeTests": 975,
   "requiredNativeMethods": [
+    "DetectedAspectSameSourceCompletionAcquiresWithoutWaitingForNextFrame",
+    "AspectSnapshotIsIndependentOfBusyRenderLockAndOutputInvalidation",
+    "DetectedAspectDeadbandRetainsAnchorAcross60HzJitterAndUnknowns",
+    "DetectedAspectDeadbandIsAnchoredAndLargeChangesAreImmediate",
+    "DetectedAspectStableHistoryRejectsStaleInvalidAndCanvasThenResets",
+    "AspectDisplayNeverHidesMeasurementDriftAndKeepsPresentationLabels",
+    "AspectDisplayResetsForUnavailableNewSourceAndRenderer",
+    "AspectTelemetryUsesNativeStartupWithoutClaimingDetection",
+    "AspectTelemetryKeepsSubmittedScopeWhileMenuCandidateIsLive",
+    "AspectTelemetryDoesNotHideARealSubmittedAspectChange",
+    "AspectTelemetryPreservesPresentedPacketAndRejectsFailedSubmission",
+    "AspectTelemetryResetsAcrossRealSourceChangeAndUsesNonWideRaster",
+    "LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload",
     "BroadOutsideOccupancyCannotTrimUnverifiedOuterRows",
     "StaleOutsideOccupancyAndVisiblePixelsCannotManufactureCurrentAuthority",
     "CurrentOutwardCropVerificationNeverSurvivesProvisionalOrForeignEvidence",
@@ -288,6 +301,71 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 28,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DetectedAspectSameSourceCompletionAcquiresWithoutWaitingForNextFrame"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OutputOsdTelemetryCacheTests.cpp",
+      "class": "OutputOsdTelemetryCacheTests",
+      "method": "AspectSnapshotIsIndependentOfBusyRenderLockAndOutputInvalidation"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DetectedAspectDeadbandRetainsAnchorAcross60HzJitterAndUnknowns"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DetectedAspectDeadbandIsAnchoredAndLargeChangesAreImmediate"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DetectedAspectStableHistoryRejectsStaleInvalidAndCanvasThenResets"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectDisplayNeverHidesMeasurementDriftAndKeepsPresentationLabels"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectDisplayResetsForUnavailableNewSourceAndRenderer"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryUsesNativeStartupWithoutClaimingDetection"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryKeepsSubmittedScopeWhileMenuCandidateIsLive"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryDoesNotHideARealSubmittedAspectChange"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryPreservesPresentedPacketAndRejectsFailedSubmission"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryResetsAcrossRealSourceChangeAndUsesNonWideRaster"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ConfigFileTests.cpp",
+      "class": "ConfigFileTests",
+      "method": "LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload"
+    },
     {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialOutwardQueuedHandoffUsesCurrentPixelAuthorityWithoutLegacyVotes"},
     {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources"},
     {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof"},

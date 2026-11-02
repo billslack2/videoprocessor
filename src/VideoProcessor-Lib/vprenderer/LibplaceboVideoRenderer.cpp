@@ -20510,11 +20510,19 @@ releaseDriftBaseRetention =
                 aspect.available != lastLoggedAspect.available ||
                 aspect.provisional != lastLoggedAspect.provisional ||
                 std::abs(aspect.inUseRatio-lastLoggedAspect.inUseRatio) >= 0.001 ||
-                std::abs(aspect.ratio-lastLoggedAspect.ratio) >= 0.001) {
+                std::abs(aspect.ratio-lastLoggedAspect.ratio) >= 0.001 ||
+                aspect.stableDetection.available != lastLoggedAspect.stableDetection.available ||
+                aspect.stableDetection.acceptedSequence != lastLoggedAspect.stableDetection.acceptedSequence ||
+                aspect.stableDetection.held != lastLoggedAspect.stableDetection.held) {
                 lastLoggedAspect = aspect;
-                DebugLog::Log("VP aspect telemetry: generation=%llu presented=%llu detected_sequence=%llu in_use=%.6f use_state=%u detected=%.6f available=%d provisional=%d",
+                DebugLog::Log("VP aspect telemetry: generation=%llu presented=%llu detected_sequence=%llu in_use=%.6f use_state=%u detected=%.6f available=%d provisional=%d stable_detected=%.6f stable_available=%d stable_sequence=%llu stable_held=%d stable_confidence=%u stable_detector=%u stable_bounds=%d,%d-%d,%d",
                     frameGeneration, aspect.presentedSequence, aspect.detectedSequence, aspect.inUseRatio,
-                    static_cast<unsigned>(aspect.inUseState), aspect.ratio, aspect.available?1:0, aspect.provisional?1:0);
+                    static_cast<unsigned>(aspect.inUseState), aspect.ratio, aspect.available?1:0, aspect.provisional?1:0,
+                    aspect.stableDetection.ratio,aspect.stableDetection.available?1:0,
+                    aspect.stableDetection.acceptedSequence,aspect.stableDetection.held?1:0,
+                    static_cast<unsigned>(aspect.stableDetection.confidence),static_cast<unsigned>(aspect.stableDetection.detectorKind),
+                    aspect.stableDetection.physicalBounds[0],aspect.stableDetection.physicalBounds[1],
+                    aspect.stableDetection.physicalBounds[2],aspect.stableDetection.physicalBounds[3]);
             }
             const bool submittedGeometryChanged=submittedOutputGeometryTrace.Observe(true,frameGeneration,viewportRequestSerial,
                 {renderImage.crop.x0,renderImage.crop.y0,renderImage.crop.x1,renderImage.crop.y1},
