@@ -2,7 +2,7 @@
   "sourceCommit": "0c2919f6bbbe345e8f8e2596df4d3da13f4fde9a",
   "branch": "codex/coherent-source-measurement-20261101",
   "parent": "8b49f560e1607be0f2136f25b598ea8dfbec69ec",
-  "status": "Clean full qualification running",
+  "status": "Full qualification failed; no deployment",
   "deploymentPerformed": false,
   "configurationChanged": false,
   "changes": [
@@ -33,9 +33,12 @@
     "addedDiagnostics": "Queue policy, hard overflow, backlog, due-source retirement, pressure-neighbor original identities and timing."
   },
   "fullQualification": {
-    "state": "Running",
+    "state": "Failed",
     "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261102-004412-f21c3106",
-    "requiredNative": 1010
+    "requiredNative": 1010,
+    "standardPassed": 1021,
+    "standardTotal": 1025,
+    "failure": "All 1010 native contracts passed. Four actual residual-UI scenes failed: strong clean-band permission incorrectly controlled current composed-caption viewport. Beta not run after standard failure. Follow-up 14da4730 separates permissions without weakening cleanup authority."
   },
   "motion": {
     "state": "Pending"
