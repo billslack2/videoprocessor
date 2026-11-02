@@ -626,3 +626,23 @@ promise. The final pin also wakes from common outward raw publication and adds i
 deterministic race test. Mandatory native count is1,008. Full matching Release
 qualification and the two-dependency motion suite remain pending, with no deployment.
 See [stage10 evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage10-preparation.json).
+
+### Native geometry and current output visibility (2026-11-02)
+
+Clean source0c2919f6bbbe345e8f8e2596df4d3da13f4fde9a restores parallel queued glyph
+preparation while retaining bounded ordered preparation at zero lookahead. Advanced
+mode no longer authorizes clipping untranslated raw captions merely from requested
+mode and accepted native bounds. Missing current composition preserves current raw
+visibility or full raster, while native geometry stays unchanged. Current composition
+restores native presentation immediately; optional fill cannot trim the safety
+aperture. Current visible pixels defeat contradictory absence claims.
+
+The native suite passed1,009/1,010 before correcting one fixture's omitted renderer
+admission bridge; that exact initialization check now passes with all same-source
+and wrong-context rejections retained. Both Black persistent-caption and both
+zero-lookahead renderer checks pass. One beta repeat iteration showed correct repeat
+but two subsequent source discards; the unchanged test later passes both59.94/60Hz
+with additional queue/timing diagnostics. The failure remains recorded, and no queue
+policy, source cadence or renderer assertion was weakened. Full qualification on the
+new clean pin, motion coverage and final private replay are pending. No deployment.
+[Stage11 evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage11-visibility.json).

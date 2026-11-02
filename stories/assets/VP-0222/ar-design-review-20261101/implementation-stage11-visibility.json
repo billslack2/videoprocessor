@@ -1,0 +1,49 @@
+{
+  "sourceCommit": "0c2919f6bbbe345e8f8e2596df4d3da13f4fde9a",
+  "branch": "codex/coherent-source-measurement-20261101",
+  "parent": "8b49f560e1607be0f2136f25b598ea8dfbec69ec",
+  "status": "Clean full qualification running",
+  "deploymentPerformed": false,
+  "configurationChanged": false,
+  "changes": [
+    "Queued future glyph preparation remains independent; zero-lookahead keeps bounded native-to-subtitle completion ordering.",
+    "Advanced unprepared outputs retain current raw visibility or full raster; native measured geometry remains unchanged.",
+    "Current expanded visibility overrides contradictory claimed caption absence; optional fill cannot trim visibility fallback.",
+    "Current qualified composition immediately restores native presentation; no sticky wider viewport state."
+  ],
+  "native": {
+    "fullRun": "20261102-002311-257d1252",
+    "passed": 1009,
+    "total": 1010,
+    "remainingFixtureCorrected": "Actual renderer post-Resolve admission bridge; all wrong-context and same-source initialization rejection assertions retained.",
+    "correctedMethodPass": "20261102-003344-c24da149"
+  },
+  "focused": {
+    "run": "20261102-002828-53d54dda",
+    "passed": 7,
+    "total": 9,
+    "captionClippingCases": "Standard and beta Black persistent cases passed; both no-lookahead cases passed.",
+    "repeatFailure": "Beta repeated source79 for input80, then discarded81-82 before displaying83; exact-adjacent-successor coverage failed. Preserved, not hidden.",
+    "repeatDiagnosticPass": "20261102-003910-76a1b039",
+    "repeatRates": [
+      59.9401,
+      60
+    ],
+    "assertionsAndInputSettingsUnchanged": true,
+    "addedDiagnostics": "Queue policy, hard overflow, backlog, due-source retirement, pressure-neighbor original identities and timing."
+  },
+  "fullQualification": {
+    "state": "Running",
+    "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261102-004412-f21c3106",
+    "requiredNative": 1010
+  },
+  "motion": {
+    "state": "Pending"
+  },
+  "finalPrivateReplay": {
+    "priorEvidence": "implementation-stage9-coherent-source.json",
+    "state": "Pending"
+  },
+  "design": "docs/SOURCE_PICTURE_REDESIGN.md",
+  "failureHistory": "docs/SOURCE_PICTURE_COHERENCE_20261101.md"
+}
