@@ -1,0 +1,42 @@
+{
+  "sourceCommit": "aee2c7dfe0ff47aa9372b79c6afc200440f36e34",
+  "sourceBranch": "codex/native-boundary-investigation-20261101",
+  "betaBase": "a591ad3b532771911e85f8ef026958279f2065f0",
+  "cumulativeDeployedHistory": "c4c915360e1572650d6b3e85681f8b9a3690bf86",
+  "nativeTests": {
+    "passed": 981,
+    "total": 981,
+    "run": "artifacts/qualification/runs/20261101-204340-db8b7f83",
+    "trxSha256": "5a1f003d40c59474b32e3075d32795f159b70e94bd4eab12f42850b6db27f58d"
+  },
+  "nativeReplay": {
+    "frames": 150,
+    "mismatches": 0,
+    "expected": [
+      0,
+      7,
+      3840,
+      2160
+    ],
+    "budgetMs": 2,
+    "peakMs": [
+      0.5588,
+      0.4619
+    ]
+  },
+  "samplerParity": {
+    "points": 1596,
+    "mismatches": 0
+  },
+  "privateEvidenceDirectory": "E:\\codex\\videoprocessor\\evidence\\native-boundary-20261101",
+  "deployment": false,
+  "gpuIntegration": false,
+  "fullQualification": false,
+  "playback": "No stop/restart performed; runtime logged keyboard-close shutdown at20:42:05; left closed",
+  "remaining": [
+    "earlier1.96 source geometry unproven without matching pixels",
+    "actual renderer and OSD layout checks",
+    "full-rate dynamic scope/IMAX transition evidence",
+    "existing Black/reconstruction queue-gap defects remain separate"
+  ]
+}
