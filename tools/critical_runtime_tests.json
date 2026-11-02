@@ -11,7 +11,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1033,
+  "minimumNativeTests": 1039,
   "requiredNativeMethods": [
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
     "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",
@@ -286,6 +286,12 @@
     "SourcePictureSparseOverviewCannotClaimDenseAbsenceCoverage",
     "SourcePictureCanvasEstimateRequiresIndependentPanelScaffold",
     "SourcePictureClippedExteriorRetainsHeaderConnectedToBody",
+    "SourcePictureInteriorComplexityCannotHideRasterCaption",
+    "SourcePictureOpposedSunContactsAndSparseStarsProveNativeRaster",
+    "SourcePictureOpposedSunCannotInventWidthThroughFlatMatteOrLoneLogo",
+    "SourcePictureEdgeMarksCannotBorrowBodyBehindThinMatte",
+    "SourcePictureComplexInteriorCannotInvalidateProvedRasterContacts",
+    "SourcePictureComplexInteriorCannotBypassInsetReconciliation",
     "SourcePictureAdversarialTopologyStopsWithoutClaimingCompleteGeometry",
     "DisabledShadowNeverStartsDiagnosticWork",
     "ShadowAdmitsFirstValidSourceAndExactHalfSecondBoundary",

@@ -561,6 +561,98 @@ namespace VideoProcessorTest
             Assert::IsTrue(observed.canvasSupported);
             Assert::IsTrue(observed.blankMarginsUnresolved);
         }
+        TEST_METHOD(SourcePictureInteriorComplexityCannotHideRasterCaption)
+        {
+            SourcePictureFrame frame(960,540);
+            frame.Fill(0,0,960,12,300);frame.Fill(0,488,960,500,300);
+            frame.Fill(0,0,12,500,300);frame.Fill(948,0,960,500,300);
+            for(int y=30;y<470;y+=10)for(int x=30;x<930;x+=10)
+                frame.Fill(x,y,x+2,y+2,240);
+            for(int x=0;x<950;x+=14)frame.Fill(x,527,x+7,540,850);
+            const auto observed=MeasureSourcePicture(frame.Source());
+            Assert::IsFalse(observed.topologyComplete);
+            Assert::IsTrue(std::any_of(observed.components.begin(),observed.components.end(),
+                [](const auto& component){return component.glyphLike && component.bottom==540;}),
+                L"Boundary captions retain classification priority over interior stars.");
+            Assert::IsFalse(observed.rasterContact.sparseAccepted,
+                L"The sparse native contact route must retain the same positive glyph veto.");
+            Assert::IsFalse(observed.rectangleAvailable && observed.measuredBounds.bottom==540);
+        }
+        TEST_METHOD(SourcePictureOpposedSunContactsAndSparseStarsProveNativeRaster)
+        {
+            SourcePictureFrame frame(960,540,104);
+            frame.Fill(0,0,440,540,500);
+            // Bright source content reaches both vertical extremes over less
+            // than half the width. Three separated near-edge stars and one
+            // exact raster contact independently prove the dark right edge.
+            for(int y:{60,280,460})frame.Fill(956,y,960,y+6,240);
+            const auto observed=MeasureSourcePicture(frame.Source());
+            Exact(observed,Bounds(960,540,0,0,960,540));
+            Assert::IsTrue(observed.rasterContact.opposed);
+            Assert::IsTrue(observed.rasterContact.sparseAccepted);
+            Assert::IsTrue(observed.rasterContact.textureRegions>=3);
+        }
+        TEST_METHOD(SourcePictureOpposedSunCannotInventWidthThroughFlatMatteOrLoneLogo)
+        {
+            for(bool logo:{false,true}) {
+                SourcePictureFrame frame(960,540,104);
+                frame.Fill(0,0,440,540,500);
+                if(logo)frame.Fill(956,460,960,470,240);
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Assert::IsFalse(observed.rectangleAvailable);
+                Assert::IsFalse(observed.rasterContact.sparseAccepted);
+                Assert::IsTrue(observed.rasterContact.opposed);
+            }
+        }
+        TEST_METHOD(SourcePictureEdgeMarksCannotBorrowBodyBehindThinMatte)
+        {
+            SourcePictureFrame frame(960,540,104);
+            frame.Fill(0,0,956,540,500);
+            for(int y:{60,280,460})frame.Fill(958,y,960,y+6,240);
+            const auto observed=MeasureSourcePicture(frame.Source());
+            Assert::IsFalse(observed.rasterContact.sparseAccepted);
+            Assert::IsFalse(observed.rectangleAvailable && observed.measuredBounds.right==960,
+                L"A distributed near-terminal inward onset must not be hidden by isolated edge marks.");
+        }
+        TEST_METHOD(SourcePictureComplexInteriorCannotInvalidateProvedRasterContacts)
+        {
+            SourcePictureFrame frame(960,540);
+            frame.Fill(0,0,960,12,300);frame.Fill(0,528,960,540,300);
+            frame.Fill(0,0,12,540,300);frame.Fill(948,0,960,540,300);
+            for(int y=30;y<510;y+=10)for(int x=30;x<930;x+=10)
+                frame.Fill(x,y,x+2,y+2,240);
+            const auto observed=MeasureSourcePicture(frame.Source());
+            Exact(observed,Bounds(960,540,0,0,960,540));
+            Assert::IsFalse(observed.topologyComplete);
+            Assert::AreEqual(size_t(512),observed.components.size());
+            Assert::AreEqual(540,observed.components.front().bottom,
+                L"Retained components must have complete extents even after the label budget fills.");
+            Assert::IsFalse(ReconcileSourcePictureCandidate(observed,Bounds(960,540,0,80,960,460)).evaluated,
+                L"Independent full-raster proof cannot turn incomplete topology into permission to crop.");
+            const auto detected=DetectSourcePictureForWorker(frame.Source());
+            Assert::IsTrue(detected.evidence.physicalEdges.estimateAvailable);
+            Assert::AreEqual(960,detected.evidence.physicalEdges.estimate.right);
+            Assert::AreEqual(540,detected.evidence.physicalEdges.estimate.bottom);
+        }
+        TEST_METHOD(SourcePictureComplexInteriorCannotBypassInsetReconciliation)
+        {
+            SourcePictureFrame frame(960,540);
+            frame.Fill(40,40,920,52,300);frame.Fill(40,488,920,500,300);
+            frame.Fill(40,40,52,500,300);frame.Fill(908,40,920,500,300);
+            for(int y=70;y<470;y+=10)for(int x=70;x<890;x+=10)
+                frame.Fill(x,y,x+2,y+2,240);
+            const auto detected=DetectSourcePictureForWorker(frame.Source());
+            Assert::IsTrue(bool(detected.observation));
+            const auto& observed=*detected.observation;
+            Assert::IsFalse(observed.complete);Assert::IsFalse(observed.topologyComplete);
+            Assert::IsFalse(observed.rectangleAvailable);Assert::IsFalse(observed.canvasSupported);
+            Assert::IsTrue(observed.outcome==SourcePictureOutcome::Partial);
+            Assert::AreEqual(size_t(512),observed.components.size());
+            Assert::IsFalse(ReconcileSourcePictureCandidate(observed,Bounds(960,540,40,40,920,500)).evaluated);
+            Assert::IsFalse(detected.evidence.physicalEdges.estimateAvailable);
+            Assert::AreEqual(std::string("bounded-topology-component-limit"),
+                std::string(detected.evidence.physicalEdges.reason));
+        }
         TEST_METHOD(SourcePictureAdversarialTopologyStopsWithoutClaimingCompleteGeometry)
         {
             SourcePictureFrame frame(960,540);

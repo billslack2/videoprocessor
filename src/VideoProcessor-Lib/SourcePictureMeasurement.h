@@ -14,6 +14,7 @@ struct SourcePictureEdgeCandidate {
     // Merging retains their union together with the coordinate uncertainty.
     std::array<uint64_t,2> supportingRays{};
     bool strong=false, contradicted=false, overlayLike=false;
+    bool rasterContactProved=false; // Independently corroborated current native contact.
 };
 struct SourcePictureComponent {
     int left=0, top=0, right=0, bottom=0;
@@ -36,7 +37,8 @@ struct SourcePictureObservation {
     int overviewStepX=0, overviewStepY=0;
     bool denseCoverage=false;
     // Bounded sampled-cell membership. Zero is sampled background; nonzero
-    // identifies components[index-1]. It never describes unsampled pixels.
+    // identifies components[index-1]. 0xffff is occupied but unclassified
+    // after the component cap. It never describes unsampled pixels.
     int overviewWidth=0, overviewHeight=0;
     bool topologyComplete=false;
     std::vector<uint16_t> overviewLabels;
@@ -47,6 +49,13 @@ struct SourcePictureObservation {
         std::array<double,4> regionalMean{};
         unsigned supportingRays=0,supportingRegions=0;
     } darkTerminal;
+    struct RasterContactProof {
+        bool opposed=false,sparseEvaluated=false,sparseAccepted=false,insetVeto=false,glyphVeto=false;
+        int sparseSide=-1;
+        unsigned contactPatches=0,textureRegions=0;
+        double peakContrast=0;
+        std::array<unsigned,4> textureSupport{};
+    } rasterContact;
     unsigned lumaQuantum=1; // Observed perimeter code spacing, capped at one 8-bit-equivalent step.
     size_t samples=0;
     const char* reason="not-measured";

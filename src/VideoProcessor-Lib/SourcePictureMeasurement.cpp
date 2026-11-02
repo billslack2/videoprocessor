@@ -10,7 +10,7 @@ constexpr unsigned kEdgeProbes=128;
 // Fixed-size source-coordinate overview, not an averaged/resized picture.
 constexpr int kOverviewWidth=480,kOverviewHeight=270;
 constexpr size_t kMaximumComponents=512;
-struct TopologyLimit {};
+constexpr uint16_t kUnclassifiedForeground=0xffff;
 struct SourceReadFailure {};
 struct Reader {
     const AnalysisLumaSource& source;
@@ -97,28 +97,45 @@ void Components(Reader& reader,int floor,SourcePictureObservation& out) {
             std::min(out.height-1,y*sy+sy/2)),floor);
     },reader.budget);
     std::vector<uint16_t> labels(runs.size());
+    bool topologyComplete=true;
+    auto labelRoot=[&](size_t index) {
+        const auto root=RunRoot(runs,index);auto& label=labels[root];const auto& run=runs[index];
+        if(!label) {
+            if(out.components.size()>=kMaximumComponents) {
+                label=kUnclassifiedForeground;topologyComplete=false;
+            } else {
+                label=uint16_t(out.components.size()+1);
+                out.components.push_back({run.left*sx,run.row*sy,std::min(out.width,run.right*sx),
+                    std::min(out.height,(run.row+1)*sy),0});
+            }
+        }
+        return label;
+    };
+    // Protect current raster caption/contact classification from an interior
+    // starfield consuming the bounded component budget in row-major order.
+    for(unsigned pass=0;pass<2;++pass)for(size_t i=0;i<runs.size();++i) {
+        if((i&255)==0)CheckAnalysisEvaluationBudget(reader.budget);
+        const auto& run=runs[i];
+        if(pass==0?(run.row==0 || run.row==h-1):(run.left==0 || run.right==w))labelRoot(i);
+    }
     for(size_t i=0;i<runs.size();++i) {
         if((i&255)==0)CheckAnalysisEvaluationBudget(reader.budget);
-        const auto root=RunRoot(runs,i);auto& label=labels[root];const auto& run=runs[i];
-        if(!label) {
-            if(out.components.size()>=kMaximumComponents)throw TopologyLimit{};
-            label=uint16_t(out.components.size()+1);
-            out.components.push_back({run.left*sx,run.row*sy,std::min(out.width,run.right*sx),
-                std::min(out.height,(run.row+1)*sy),0});
+        const auto label=labelRoot(i);const auto& run=runs[i];
+        if(label!=kUnclassifiedForeground) {
+            auto& component=out.components[label-1];
+            component.left=std::min(component.left,run.left*sx);component.top=std::min(component.top,run.row*sy);
+            component.right=std::max(component.right,std::min(out.width,run.right*sx));
+            component.bottom=std::max(component.bottom,std::min(out.height,(run.row+1)*sy));
+            component.samples+=unsigned(run.right-run.left);
         }
-        auto& component=out.components[label-1];
-        component.left=std::min(component.left,run.left*sx);component.top=std::min(component.top,run.row*sy);
-        component.right=std::max(component.right,std::min(out.width,run.right*sx));
-        component.bottom=std::max(component.bottom,std::min(out.height,(run.row+1)*sy));
-        component.samples+=unsigned(run.right-run.left);
         std::fill(out.overviewLabels.begin()+size_t(run.row)*w+run.left,
             out.overviewLabels.begin()+size_t(run.row)*w+run.right,label);
     }
-    out.topologyComplete=true;
+    out.topologyComplete=topologyComplete;
 }
 void MarkGlyphEdge(SourcePictureObservation& out,unsigned side,SourcePictureEdgeCandidate& edge,
     const AnalysisEvaluationBudget* budget);
-void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictureObservation& out) {
+void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictureObservation& out,bool terminalOnly=false) {
     const bool vertical=edge==SourcePictureEdge::Top||edge==SourcePictureEdge::Bottom;
     const bool leading=edge==SourcePictureEdge::Top||edge==SourcePictureEdge::Left;
     const int depth=vertical?out.height:out.width,along=vertical?out.width:out.height;
@@ -141,6 +158,7 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
             terminal.supportingRays[ray/64]|=uint64_t(1)<<(ray%64);
         }
     }
+    if(terminalOnly) {out.edges[unsigned(edge)].push_back(terminal);return;}
     unsigned terminalRegions=0;
     for(auto count:terminal.regionSupport)if(count>=2)++terminalRegions;
     if(terminal.support>=kEdgeProbes/2 && terminalRegions>=2) {
@@ -301,7 +319,8 @@ void MarkGlyphEdges(SourcePictureObservation& out,const AnalysisEvaluationBudget
 const SourcePictureEdgeCandidate* Select(const std::vector<SourcePictureEdgeCandidate>& candidates,int terminal) {
     for(const auto& candidate:candidates) {
         unsigned regions=0;for(auto n:candidate.regionSupport)if(n>=2)++regions;
-        const bool extent=candidate.coordinate==terminal && candidate.support>=kEdgeProbes/2 && regions>=2;
+        const bool extent=candidate.coordinate==terminal &&
+            ((candidate.support>=kEdgeProbes/2 && regions>=2) || candidate.rasterContactProved);
         // A center caption/backing can occlude both middle quarters of a real
         // border. Broad agreement at the SAME coordinate in opposite outer
         // quarters is independently sufficient; two narrow edge widgets are
@@ -312,6 +331,118 @@ const SourcePictureEdgeCandidate* Select(const std::vector<SourcePictureEdgeCand
             (candidate.support>=kEdgeProbes/4 && (regions>=3 || pairedOuter))))return &candidate;
     }
     return nullptr;
+}
+// Opposite native contacts on the same rays corroborate the full span even
+// when a bright picture occupies under half the edge. A third independently
+// selected raster contact anchors that span; glyph vetoes already apply.
+void CorroborateOpposedRasterContacts(SourcePictureObservation& out) {
+    const int terminals[4]={0,0,out.width,out.height};
+    for(unsigned first:{0u,1u}) {
+        const unsigned second=first+2,adjacent=first==0?1:0;
+        SourcePictureEdgeCandidate* pair[2]={};
+        for(unsigned i=0;i<2;++i)for(auto& edge:out.edges[i?second:first])
+            if(edge.coordinate==terminals[i?second:first] && !edge.overlayLike && edge.strong) {pair[i]=&edge;break;}
+        if(!pair[0] || !pair[1] || pair[0]->support<32 || pair[1]->support<32)continue;
+        bool anchor=false;
+        for(unsigned side:{adjacent,adjacent+2}) {
+            const auto* edge=Select(out.edges[side],terminals[side]);
+            anchor=anchor || (edge && edge->coordinate==terminals[side]);
+        }
+        if(!anchor)continue;
+        unsigned shared=0;std::array<unsigned,4> regions{};
+        for(unsigned ray=0;ray<kEdgeProbes;++ray)if(pair[0]->supportingRays[ray/64]&pair[1]->supportingRays[ray/64]&(uint64_t(1)<<(ray%64))) {
+            ++shared;++regions[ray/32];
+        }
+        unsigned broad=0;for(auto count:regions)if(count>=8)++broad;
+        if(shared<32 || broad<2)continue;
+        pair[0]->rasterContactProved=pair[1]->rasterContactProved=true;
+        out.rasterContact.opposed=true;
+    }
+}
+// A sparse starfield need not illuminate half an edge. Require a coherent
+// native patch touching the exact raster plus strong near-edge texture in
+// three separated quarters, with the other three boundaries already proved.
+// This is positive source content, never an empty-overview certificate.
+bool CompleteSparseTerminal(Reader& reader,int floor,SourcePictureObservation& out) {
+    if(reader.source.range==AnalysisLumaRange::Unknown)return false;
+    const int terminals[4]={0,0,out.width,out.height};
+    int missing=-1;
+    for(unsigned side=0;side<4;++side) {
+        const auto* selected=Select(out.edges[side],terminals[side]);
+        if(!selected) {if(missing>=0)return false;missing=int(side);}
+        else if(selected->coordinate!=terminals[side])return false;
+    }
+    if(missing<0)return false;
+    auto& proof=out.rasterContact;proof.sparseEvaluated=true;proof.sparseSide=missing;
+    const bool vertical=missing==1||missing==3,leading=missing<2;
+    const int along=vertical?out.width:out.height,depth=vertical?out.height:out.width;
+    const int alongStep=std::max(1,(along+1079)/1080),inwardStep=2;
+    const int band=std::max(6,std::min(16,depth/240));
+    auto read=[&](int position,int inward) {
+        position=std::max(0,std::min(along-1,position));inward=std::max(0,std::min(depth-1,inward));
+        const int coordinate=leading?inward:depth-1-inward;
+        return int(reader.At(vertical?position:coordinate,vertical?coordinate:position).luma);
+    };
+    auto glyphAt=[&](int position,int inward) {
+        const int coordinate=leading?inward:depth-1-inward;
+        const int x=vertical?position:coordinate,y=vertical?coordinate:position;
+        if(x<0 || y<0 || x>=out.width || y>=out.height || out.overviewStepX<=0 || out.overviewStepY<=0)return false;
+        const int cellX=x/out.overviewStepX,cellY=y/out.overviewStepY;
+        // A native stroke may occupy the unsampled half of its cell. Positive
+        // glyph evidence in an adjacent cell retains that sampling uncertainty.
+        for(int row=std::max(0,cellY-1);row<std::min(out.overviewHeight,cellY+2);++row)
+            for(int column=std::max(0,cellX-1);column<std::min(out.overviewWidth,cellX+2);++column) {
+                const auto label=out.overviewLabels[size_t(row)*out.overviewWidth+column];
+                if(label && label<=out.components.size() && out.components[label-1].glyphLike)return true;
+            }
+        return false;
+    };
+    auto coherent=[&](int position,int inward) {
+        unsigned support=0;int peak=0;
+        for(int a=-1;a<=1;++a)for(int d=-1;d<=1;++d) {
+            const int value=read(position+a,inward+d);
+            support+=value>floor+24;peak=std::max(peak,value);
+        }
+        return support>=6 && peak>floor+48;
+    };
+    for(int position=alongStep/2;position<along;position+=alongStep) {
+        const unsigned region=std::min(3u,unsigned(uint64_t(position)*4/along));
+        for(int inward=inwardStep/2;inward<band;inward+=inwardStep) {
+            const int value=read(position,inward);
+            if(value>floor+48 && coherent(position,inward)) {
+                if(glyphAt(position,inward))proof.glyphVeto=true;
+                else ++proof.textureSupport[region];
+            }
+        }
+        // Select clear candidates near the edge, then verify a 3x3 native
+        // footprint at the exact terminal. No threshold is lowered to noise.
+        if(read(position,0)>floor+48 && coherent(position,1)) {
+            if(glyphAt(position,0))proof.glyphVeto=true;
+            else {
+                ++proof.contactPatches;proof.peakContrast=std::max(proof.peakContrast,double(read(position,0)-floor));
+            }
+        }
+    }
+    for(auto count:proof.textureSupport)if(count)++proof.textureRegions;
+    if(!proof.contactPatches || proof.textureRegions<3)return false;
+    // A small edge mark cannot borrow a nearby bright body behind a matte.
+    // Check the same candidate strip for a distributed inward onset first.
+    unsigned insetSupport=0;std::array<unsigned,4> insetRegions{};
+    for(unsigned ray=0;ray<kEdgeProbes;++ray) {
+        const int position=int(uint64_t(2*ray+1)*along/(2*kEdgeProbes));
+        const int outer=read(position,0),inner=read(position,band*2);
+        if(outer<=floor+12 && inner>floor+24 && inner-outer>24) {
+            ++insetSupport;++insetRegions[ray/32];
+        }
+    }
+    unsigned broad=0;for(auto count:insetRegions)if(count>=2)++broad;
+    if(insetSupport>=32 && broad>=3) {proof.insetVeto=true;return false;}
+    proof.sparseAccepted=true;
+    SourcePictureEdgeCandidate terminal;
+    terminal.coordinate=terminal.minimum=terminal.maximum=terminals[missing];
+    terminal.strong=true;terminal.rasterContactProved=true;
+    out.edges[unsigned(missing)].insert(out.edges[unsigned(missing)].begin(),terminal);
+    return true;
 }
 // A dark picture edge must not be erased by treating an unqualified picture
 // percentile as matte. This bounded current-source route requires the other
@@ -578,32 +709,62 @@ SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,c
         reference.mode=source.range!=AnalysisLumaRange::Full?ActivePictureBlackReferenceMode::LEGACY:
             floor?ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED:ActivePictureBlackReferenceMode::FULL_NOMINAL;
         // No qualified edge/axis follows from a perimeter percentile alone.
+        // Native boundary evidence comes first. Interior object complexity
+        // cannot prevent collecting independent current-source edge facts.
+        for(auto edge:{SourcePictureEdge::Left,SourcePictureEdge::Top,SourcePictureEdge::Right,SourcePictureEdge::Bottom})EdgeCandidates(reader,edge,floor,out,true);
         Components(reader,floor,out);
         ClassifyGlyphRows(out,budget);
-        for(auto edge:{SourcePictureEdge::Left,SourcePictureEdge::Top,SourcePictureEdge::Right,SourcePictureEdge::Bottom})EdgeCandidates(reader,edge,floor,out);
         MarkGlyphEdges(out,budget);
-        const bool darkTerminalCompleted=CompleteDarkTerminal(reader,floor,out);
-        out.complete=true;out.outcome=SourcePictureOutcome::Partial;out.reason="insufficient-distributed-edge-support";
+        CorroborateOpposedRasterContacts(out);
+        // Gradient continuity still requires the complete competing inset
+        // scan below; only direct coherent terminal content has a fast route.
+        bool darkTerminalCompleted=false;
+        const bool sparseTerminalCompleted=CompleteSparseTerminal(reader,floor,out);
+        bool allRasterContacts=true;
+        const int terminals[4]={0,0,out.width,out.height};
+        for(unsigned side=0;side<4;++side) {
+            const auto* selected=Select(out.edges[side],terminals[side]);
+            allRasterContacts=allRasterContacts && selected && selected->coordinate==terminals[side];
+        }
+        if(!allRasterContacts) {
+            // Any uncertain geometry takes the complete competing-boundary
+            // route with glyph classification ready before its fast paths.
+            for(unsigned side=0;side<4;++side) {
+                out.edges[side].clear();EdgeCandidates(reader,SourcePictureEdge(side),floor,out);
+            }
+            MarkGlyphEdges(out,budget);
+            CorroborateOpposedRasterContacts(out);
+            darkTerminalCompleted=CompleteDarkTerminal(reader,floor,out);
+        }
+        out.complete=out.topologyComplete;out.outcome=SourcePictureOutcome::Partial;
+        out.reason=out.topologyComplete?"insufficient-distributed-edge-support":"bounded-topology-component-limit";
         const auto* left=Select(out.edges[0],0);const auto* top=Select(out.edges[1],0);
         const auto* right=Select(out.edges[2],out.width);const auto* bottom=Select(out.edges[3],out.height);
         if(left&&top&&right&&bottom&&left->coordinate<right->coordinate&&top->coordinate<bottom->coordinate) {
             ActivePictureBounds bounds;bounds.rasterWidth=source.width;bounds.rasterHeight=source.height;
             bounds.left=left->coordinate;bounds.top=top->coordinate;bounds.right=right->coordinate;bounds.bottom=bottom->coordinate;
             bounds.aspectRatio=double(bounds.right-bounds.left)/(bounds.bottom-bounds.top);
-            const auto reconciliation=ReconcileSourcePictureCandidate(out,bounds,budget);
-            if(reconciliation.contradicted) {
-                out.canvasSupported=reconciliation.canvasScaffoldSupported;
-                out.blankMarginsUnresolved=out.canvasSupported;
-                out.outcome=out.canvasSupported?SourcePictureOutcome::CanvasEstimate:SourcePictureOutcome::Partial;
-                out.reason=out.canvasSupported?"composite-canvas-with-unresolved-blank-margins":"candidate-contradicted-canvas-unproven";
-                for(auto& side:out.edges)for(auto& candidate:side)candidate.contradicted=true;
-            } else {
-                out.measuredBounds=bounds;out.rectangleAvailable=true;out.outcome=SourcePictureOutcome::Measured;out.reason=darkTerminalCompleted?"distributed-source-boundaries-with-dark-terminal-continuity":"distributed-source-boundaries";
+            const bool fullRaster=bounds.left==0 && bounds.top==0 && bounds.right==source.width && bounds.bottom==source.height;
+            // Incomplete topology cannot certify any discarded margin. Four
+            // independently proved raster contacts discard nothing and need
+            // no claim about the unclassified interior components.
+            if(out.topologyComplete || fullRaster) {
+                out.complete=true;
+                const auto reconciliation=out.topologyComplete?ReconcileSourcePictureCandidate(out,bounds,budget):SourcePictureCandidateAssessment{};
+                if(reconciliation.contradicted) {
+                    out.canvasSupported=reconciliation.canvasScaffoldSupported;
+                    out.blankMarginsUnresolved=out.canvasSupported;
+                    out.outcome=out.canvasSupported?SourcePictureOutcome::CanvasEstimate:SourcePictureOutcome::Partial;
+                    out.reason=out.canvasSupported?"composite-canvas-with-unresolved-blank-margins":"candidate-contradicted-canvas-unproven";
+                    for(auto& side:out.edges)for(auto& candidate:side)candidate.contradicted=true;
+                } else {
+                    out.measuredBounds=bounds;out.rectangleAvailable=true;out.outcome=SourcePictureOutcome::Measured;
+                    out.reason=sparseTerminalCompleted?"native-raster-contact-with-distributed-sparse-texture":
+                        !out.topologyComplete?"distributed-raster-contacts-with-bounded-topology":darkTerminalCompleted?
+                        "distributed-source-boundaries-with-dark-terminal-continuity":"distributed-source-boundaries";
+                }
             }
         }
-    } catch(const TopologyLimit&) {
-        out.complete=false;out.topologyComplete=false;out.rectangleAvailable=false;out.canvasSupported=false;
-        out.outcome=SourcePictureOutcome::Partial;out.reason="bounded-topology-component-limit";
     } catch(const SourceReadFailure&) {
         out.complete=false;out.rectangleAvailable=false;out.canvasSupported=false;
         out.outcome=SourcePictureOutcome::NotMeasured;out.reason="measurement-source-unavailable";

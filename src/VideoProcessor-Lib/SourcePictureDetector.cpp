@@ -39,6 +39,7 @@ static SourcePictureDetectionResult VerifySourcePictureObservation(const Analysi
     const auto& facts=*result.observation;
     auto& evidence=result.evidence;
     evidence.reason=facts.reason;
+    evidence.physicalEdges.reason=facts.reason;
     if(facts.sourceGeneration==source.generation && facts.width==source.width && facts.height==source.height &&
         facts.blackReference.evaluated)evidence.blackReference=facts.blackReference;
     if(!source.IsValid() || !facts.complete || facts.sourceGeneration!=source.generation ||
@@ -130,6 +131,8 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
         const auto& facts=*result.observation;
         trace.flags|=(facts.complete?4u:0u)|(facts.rectangleAvailable?8u:0u)|
             (facts.canvasSupported?16u:0u)|(facts.blankMarginsUnresolved?32u:0u);
+        trace.flags|=facts.topologyComplete?512u:0u;
+        if(!facts.topologyComplete && facts.components.size()>=512)trace.flags|=1024u;
         trace.counters[0]=facts.samples;trace.counters[1]=facts.components.size();
         trace.counters[2]=static_cast<uint64_t>(facts.outcome);
         const auto& dark=facts.darkTerminal;
@@ -144,6 +147,14 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
         trace.metrics[12]=static_cast<int>(source.range);trace.metrics[13]=static_cast<int>(source.colorspace);
         trace.metrics[14]=dark.lateMean;trace.metrics[15]=facts.lumaQuantum;
         AnalysisTraceRect(trace.measured,facts.measuredBounds);
+    }
+    if(result.observation) {
+        const auto& contact=result.observation->rasterContact;
+        trace.flags|=(contact.opposed?2048u:0u)|(contact.sparseEvaluated?4096u:0u)|(contact.sparseAccepted?8192u:0u)|
+            (contact.insetVeto?16384u:0u)|(contact.glyphVeto?32768u:0u);
+        trace.metrics[16]=contact.peakContrast;trace.metrics[17]=contact.contactPatches;
+        trace.metrics[18]=contact.textureRegions;trace.metrics[19]=contact.sparseSide+1;
+        for(unsigned i=0;i<4;++i)trace.metrics[20+i]=contact.textureSupport[i];
     }
     AnalysisTraceRect(trace.published,result.evidence.trustedBounds);
     // Low-rate experimental health telemetry separates completed source facts
