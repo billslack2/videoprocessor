@@ -1,0 +1,253 @@
+{
+  "runtimeCommit": "9cd3e5a2c085b639f518040e5cf54f87e74faeee",
+  "reportToolCommit": "62d28af28159216b90978341ac350f9145317d0c",
+  "status": "Real reproduction captured and correlated; underlying presentation/AR defect remains open",
+  "evidenceDirectory": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943",
+  "rendererInstance": "{D32E0673-8811-40DC-BB9A-EA8C1267171F}",
+  "process": 63012,
+  "recordWindow": {
+    "first": "14:41:47.761Z D32E0673 G1 O1 S1",
+    "last": "14:43:06.875Z D32E0673 G1 O4563 S1897",
+    "records": 4563,
+    "factsCurrentFalse": 0,
+    "unsubmitted": 0
+  },
+  "automaticCapture": {
+    "incidentPairs": 4,
+    "images": 8,
+    "exactLogMatches": 8,
+    "index": "incident-index.csv",
+    "nativeInputCaptured": false
+  },
+  "logging": {
+    "allSessionReportRecords": 43049,
+    "malformedRecords": 0,
+    "lastReportedCumulativeDropped": 0,
+    "lastReportedCumulativeTruncated": 0,
+    "lossLimit": "Last reported counters are not a proof that no record could ever be lost."
+  },
+  "activeMode": {
+    "requested": 0,
+    "effective": 0,
+    "name": "Classic",
+    "records": 4563,
+    "startupAction": "actions.Reset_Shader_and_Sub-Titles",
+    "trigger": "renderer.ready",
+    "configurationLine": 703,
+    "command": "vp_sendkeypress.bat Ctrl+Alt+C && vp_sendkeypress.bat N",
+    "evidence": "09:41:48 action process created; 09:41:48 Unified profile key selected: subtitles=classic",
+    "interpretation": "This recording does not reproduce Reconstruction mode."
+  },
+  "geometry": {
+    "acceptedNative": [
+      0,
+      254,
+      3840,
+      1906
+    ],
+    "acceptedSource": 110,
+    "acceptedRecordCount": 4456,
+    "commonCurrentMeasurement": [
+      0,
+      263,
+      3840,
+      1897
+    ],
+    "interpretation": "The accepted native reference stays available while presentation widens. Current measured bounds vary slightly; this does not establish exact detector accuracy."
+  },
+  "subtitleHandoff": {
+    "before": "14:42:37.095Z D32E0673 G1 O2778 S1183",
+    "beforeSource": [
+      0,
+      374,
+      3840,
+      2010
+    ],
+    "failure": "14:42:37.135Z D32E0673 G1 O2780 S1184",
+    "failureSource": [
+      0,
+      254,
+      3840,
+      2010
+    ],
+    "preRecoverySource": [
+      0,
+      362,
+      3840,
+      2014
+    ],
+    "after": "14:42:37.187Z D32E0673 G1 O2783 S1185",
+    "afterSource": [
+      0,
+      368,
+      3840,
+      2004
+    ],
+    "caption": [
+      1630,
+      1862,
+      2210,
+      1978
+    ],
+    "rawVisible": [
+      0,
+      254,
+      3840,
+      1983
+    ],
+    "durationMs": 52,
+    "submittedOutputs": [
+      2780,
+      2781,
+      2782
+    ],
+    "contextRecords": 17,
+    "contextFile": "subtitle-handoff.decisions.jsonl",
+    "observed": "Translation switches to outward fit for one selected source, then resumes translation. Caption and raw-visible bounds are identical across S1183-S1185.",
+    "policy": "ResolveUncertainPicturePresentation / current excluded-band contradiction preserves outward visibility without changing native AR",
+    "limits": "The trace identifies the recovery branch, not the exact failed translation eligibility predicate. Full recovery input is not serialized, so the compact sequence is an investigation case rather than a standalone deterministic policy replay."
+  },
+  "screenshotsReviewed": [
+    "incident-1/failure: streaming controls visible",
+    "incident-2/failure: rating overlay visible",
+    "incident-3/failure and after: subtitle cue with ordinary movie playback",
+    "incident-4/after: streaming controls and VP stats visible"
+  ],
+  "interpretation": "Incident triggers are suspected failures, not proof every widening is wrong. Controls and captions require separate preservation rules; do not disable current-pixel safety or force a screen aspect.",
+  "nextRepairTargets": [
+    "Classic translation lifetime/recovery handoff on S1184, retaining current caption and native-picture safety",
+    "Startup action selecting Classic when Reconstruction behavior is being investigated",
+    "Accepted/native versus current measured boundary refinement, independently of screen fit"
+  ],
+  "incidentImages": [
+    {
+      "Phase": "after",
+      "Reason": "presentation-widened-with-unchanged-native",
+      "Timecode": "14:41:54.374Z D32E0673 G1 O218 S158",
+      "Output": "218",
+      "Selected": "158",
+      "Native": "0,254,3840,1906",
+      "Measured": "0,263,3840,1897",
+      "ActualSource": "0,0,3840,2160",
+      "Mode": "0",
+      "Scan": "no-centered-text-line",
+      "Decision": "current excluded-band contradiction preserves outward visibility without changing native AR",
+      "Image": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943\\incident-63012-{D32E0673-8811-40DC-BB9A-EA8C1267171F}-1\\after-output-218.png",
+      "Sha256": "6193E7148710C0ADF10DD012DFCBACD0AEF77D2D1E533B258F13C0B97E8423C1",
+      "ExactLogMatch": "True"
+    },
+    {
+      "Phase": "failure",
+      "Reason": "presentation-widened-with-unchanged-native",
+      "Timecode": "14:41:52.378Z D32E0673 G1 O110 S112",
+      "Output": "110",
+      "Selected": "112",
+      "Native": "0,254,3840,1906",
+      "Measured": "0,263,3840,1897",
+      "ActualSource": "0,0,3840,1996",
+      "Mode": "0",
+      "Scan": "no-centered-text-line",
+      "Decision": "current excluded-band contradiction preserves outward visibility without changing native AR",
+      "Image": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943\\incident-63012-{D32E0673-8811-40DC-BB9A-EA8C1267171F}-1\\failure-output-110.png",
+      "Sha256": "B5ACB90447748E6C974BC2C8F9DD9814E4744A1E85F4227A70F985E0F9689D0C",
+      "ExactLogMatch": "True"
+    },
+    {
+      "Phase": "after",
+      "Reason": "presentation-widened-with-unchanged-native",
+      "Timecode": "14:42:17.592Z D32E0673 G1 O1609 S715",
+      "Output": "1609",
+      "Selected": "715",
+      "Native": "0,254,3840,1906",
+      "Measured": "0,263,3840,1897",
+      "ActualSource": "0,188,3840,1984",
+      "Mode": "0",
+      "Scan": "detected",
+      "Decision": "current excluded-band contradiction preserves outward visibility without changing native AR",
+      "Image": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943\\incident-63012-{D32E0673-8811-40DC-BB9A-EA8C1267171F}-2\\after-output-1609.png",
+      "Sha256": "1F0C2642ACA271F92FD64F1BAB8DEF51C7501970EDFC8CBACCC13C757689D17A",
+      "ExactLogMatch": "True"
+    },
+    {
+      "Phase": "failure",
+      "Reason": "presentation-widened-with-unchanged-native",
+      "Timecode": "14:42:15.588Z D32E0673 G1 O1488 S667",
+      "Output": "1488",
+      "Selected": "667",
+      "Native": "0,254,3840,1906",
+      "Measured": "0,263,3840,1897",
+      "ActualSource": "0,200,3840,1906",
+      "Mode": "0",
+      "Scan": "no-centered-text-line",
+      "Decision": "current excluded-band contradiction preserves outward visibility without changing native AR",
+      "Image": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943\\incident-63012-{D32E0673-8811-40DC-BB9A-EA8C1267171F}-2\\failure-output-1488.png",
+      "Sha256": "33D17390A13652874754B7252D7A909C3D88E539E144CCE9CE0AA37CF97F7E32",
+      "ExactLogMatch": "True"
+    },
+    {
+      "Phase": "after",
+      "Reason": "presentation-widened-with-unchanged-native",
+      "Timecode": "14:42:39.135Z D32E0673 G1 O2900 S1232",
+      "Output": "2900",
+      "Selected": "1232",
+      "Native": "0,254,3840,1906",
+      "Measured": "0,256,3840,1904",
+      "ActualSource": "0,374,3840,2010",
+      "Mode": "0",
+      "Scan": "detected",
+      "Decision": "same-size vertical presentation translation accepted",
+      "Image": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943\\incident-63012-{D32E0673-8811-40DC-BB9A-EA8C1267171F}-3\\after-output-2900.png",
+      "Sha256": "1755603AE56442E1A54168C0F1BCDB497C776B6376032E59EA56B27EBABBD91B",
+      "ExactLogMatch": "True"
+    },
+    {
+      "Phase": "failure",
+      "Reason": "presentation-widened-with-unchanged-native",
+      "Timecode": "14:42:37.135Z D32E0673 G1 O2780 S1184",
+      "Output": "2780",
+      "Selected": "1184",
+      "Native": "0,254,3840,1906",
+      "Measured": "0,256,3840,1906",
+      "ActualSource": "0,254,3840,2010",
+      "Mode": "0",
+      "Scan": "detected",
+      "Decision": "current excluded-band contradiction preserves outward visibility without changing native AR",
+      "Image": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943\\incident-63012-{D32E0673-8811-40DC-BB9A-EA8C1267171F}-3\\failure-output-2780.png",
+      "Sha256": "D9231B26ACC2891FA57A323EACA09968423EDB4926F614B13038231F3E473248",
+      "ExactLogMatch": "True"
+    },
+    {
+      "Phase": "after",
+      "Reason": "presentation-widened-with-unchanged-native",
+      "Timecode": "14:43:04.922Z D32E0673 G1 O4446 S1850",
+      "Output": "4446",
+      "Selected": "1850",
+      "Native": "0,254,3840,1906",
+      "Measured": "0,263,3840,1897",
+      "ActualSource": "0,0,3840,2160",
+      "Mode": "0",
+      "Scan": "no-centered-text-line",
+      "Decision": "current excluded-band contradiction preserves outward visibility without changing native AR",
+      "Image": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943\\incident-63012-{D32E0673-8811-40DC-BB9A-EA8C1267171F}-4\\after-output-4446.png",
+      "Sha256": "487F160E3FE8E31911D930858DBF774E6657934F4F28212A09B58D89FEDD8C0A",
+      "ExactLogMatch": "True"
+    },
+    {
+      "Phase": "failure",
+      "Reason": "presentation-widened-with-unchanged-native",
+      "Timecode": "14:43:02.925Z D32E0673 G1 O4326 S1802",
+      "Output": "4326",
+      "Selected": "1802",
+      "Native": "0,254,3840,1906",
+      "Measured": "0,254,3840,1906",
+      "ActualSource": "0,254,3840,2010",
+      "Mode": "0",
+      "Scan": "detected",
+      "Decision": "current excluded-band contradiction preserves outward visibility without changing native AR",
+      "Image": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943\\incident-63012-{D32E0673-8811-40DC-BB9A-EA8C1267171F}-4\\failure-output-4326.png",
+      "Sha256": "1133603DD87F7B2541FA5C4F2F7439C07F71057CEEAA47C94DCF1DA8D6B3385D",
+      "ExactLogMatch": "True"
+    }
+  ],
+  "mutations": "No runtime, source, configuration or profile changes during this reproduction analysis."
+}

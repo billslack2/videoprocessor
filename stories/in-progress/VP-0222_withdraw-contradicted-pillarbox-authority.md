@@ -739,3 +739,40 @@ input is a near-black/full-raster title state, so no incident image has yet been
 observed. A fresh reproduction was requested. The underlying AR defect remains open.
 
 [Recording evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage14-recording.json).
+
+### Captured 3 Body Problem reproduction (2026-11-02)
+
+The recording workflow captured four suspected incidents with eight rendered images.
+Every image sidecar resolves to its exact submitted output in the preserved log.
+The latest renderer session has 4,563 structured records with current selected-source
+facts throughout. The combined report parses 43,049 records with zero malformed
+entries; last reported drop/truncation counters are zero. Native input pixels were
+not captured or reanalyzed.
+
+This reproduction used requested/effective Classic (mode 0) throughout. The active
+`actions.Reset_Shader_and_Sub-Titles` renderer-ready action sends `Ctrl+Alt+C`,
+and the 09:41:48 log confirms it selects Classic. It therefore does not establish
+Reconstruction behavior. Configuration and selected profiles were left unchanged.
+
+The accepted native reference remains `[0,254,3840,1906]` from S110 while final
+presentation can widen to full raster. Current measurements often report
+`[0,263,3840,1897]` and sometimes slightly different boundaries; exact detector
+accuracy is still a separate open question. Controls/rating overlays appear in
+some captures, so an incident trigger alone does not establish an incorrect crop.
+
+A specific ordinary-playback subtitle handoff is now isolated: S1183/O2778 translates
+`[0,374,3840,2010]`; S1184/O2780-O2782 widens to `[0,254,3840,2010]` for 52 ms;
+S1185/O2783 resumes translation at `[0,368,3840,2004]`. Caption and raw-visible
+bounds are identical across these sources. Crop admission records a translated
+pre-recovery proposal `[0,362,3840,2014]` replaced by the current-excluded-band
+contradiction fallback. This pinpoints the recovery path; the exact failed
+translation eligibility predicate remains unproven. The saved 17 output records
+are an investigation case, not a full serialized policy-input replay.
+
+Evidence is preserved under
+`E:\codex\videoprocessor\evidence\three-body-repro-20261102-0943`, including
+`incident-index.csv`, `subtitle-handoff.decisions.jsonl`, `recovery-and-startup.log`,
+the full log/config/state and all eight images. No new runtime/source/configuration
+changes were made. The presentation/AR defect remains open; no fix is claimed.
+
+[Captured reproduction evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage15-captured-reproduction.json).
