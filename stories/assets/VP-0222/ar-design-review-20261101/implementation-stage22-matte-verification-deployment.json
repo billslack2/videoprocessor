@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "status": "qualified-deployed-matte-repair-latest-dark-case-open",
+  "source": {
+    "commit": "ce55ed99db1a91f77ba8a2d74e8098496c3470b1",
+    "dirty": false,
+    "fingerprint": "a59e7abfc958a61ea49b42f8f8b8cea3bc56306963d5c6e640fda6612dfe3804",
+    "label": "ce55ed99db1a",
+    "build": "ce55ed99db1a91f77ba8a2d74e8098496c3470b1"
+  },
+  "branch": "codex/eternals-paused-evidence-20261102",
+  "privateEvidence": "E:\\codex\\videoprocessor\\evidence\\classic-subtitle-stutter-20261102-1536",
+  "rootCause": "Correct physical 2.38 nomination rejected by strict per-sample matte chroma tolerance; sparse source bar departures reach 6-7 canonical codes against a four-code cutoff.",
+  "repair": [
+    "Known-range measured matte permits four luma/eight chroma codes; unknown range retains four-code comparison",
+    "Quiet outer-reference qualification remains; coherent connected chroma and broad colored rows remain vetoes",
+    "Conservative collar retains every measured departure and counts outward chroma alignment in its total allowance",
+    "Native and subtitle-masked profiles share the rounding comparison",
+    "Explicit native-crop verification and skipped-presentation telemetry; file skip summaries limited to two-second intervals"
+  ],
+  "tests": {
+    "nativeContracts": 1043,
+    "standardActualRenderer": 16,
+    "betaActualRenderer": 16,
+    "standardMotion": 220,
+    "betaMotion": 220,
+    "scopeLogoNativeFrames": 51,
+    "scopeLogoBaselineRejectedCrops": 51,
+    "scopeLogoFinalTrustedCrops": 51,
+    "actual24msWorkerRequired": true,
+    "qualificationRun": "20261102-170239-6f85b971",
+    "priorFailedRuns": [
+      "20261102-161137-5cbd2f15",
+      "20261102-164940-612d6c55"
+    ],
+    "failureIsolation": "Prior runs overlapped live VP. The isolated decoded-DV check passed, then full isolated standard/beta qualification passed unchanged; no prior failed receipt is counted as qualified."
+  },
+  "configurationEdits": [],
+  "backup": "C:\\Videoprocessor\\vp\\backups\\scope-matte-ce55ed99-20261102-171754",
+  "deployedFilesVerified": 28,
+  "process": 51064,
+  "live": {
+    "sourceCommit": "ce55ed99db1a91f77ba8a2d74e8098496c3470b1",
+    "process": 51064,
+    "submitted": 5117,
+    "postStartupOutputs": 4881,
+    "currentFacts": 4881,
+    "measuredAvailable": 0,
+    "captionCandidates": 4881,
+    "nativeAvailable": 0,
+    "measurementBounds": {
+      "[0, 0, 0, 0]": 4881
+    },
+    "presentationBounds": {
+      "[0, 0, 3840, 2160]": 4881
+    },
+    "reasons": {
+      "shared trusted geometry is unavailable": 4881
+    },
+    "firstTimecode": "22:18:14.720Z 1A81EBC3 G2 O237 S240",
+    "lastTimecode": "22:21:38.251Z 1A81EBC3 G2 O5117 S5120",
+    "scopeLogoCorpusAcceptance": "51/51 measured and independently trusted crop; the current dark-caption scene is a different capture",
+    "latestDarkCaptionCase": "Source measurement remains unavailable on the paused scene; not claimed fixed.",
+    "nativeSnapshot": {
+      "bytes": 22118400,
+      "sha256": "aad496094ba3dbac2d9b7d2b45765c2b5ec8fc7eec970a37cbb4067f69f7d0c2",
+      "sidecar": "3840 2160 10240 0 3 3 4 276 1883 1 1\n"
+    }
+  },
+  "stutter": "Actual gaps preserved in both modes. The capture interval peaked around 111 KB/s; disk throughput alone unlikely, CPU/lock cost not ruled out. New skipped-presentation diagnostics installed. Stutter repair not claimed from static paused input.",
+  "latestDarkCapture": {
+    "directory": "analysis-20261102-165422-57852-1",
+    "nativeFrames": 18,
+    "selectedMissed": 76,
+    "sourceOutcomes": {
+      "insufficient-distributed-edge-support": 1286,
+      "measurement-budget-exhausted": 290
+    },
+    "context": "Old build, captured while GPU qualification and live player overlapped. Native pixels preserved; not a clean playback performance comparison."
+  },
+  "remaining": [
+    "Latest paused dark dog/caption scene still has unavailable source measurements and no native crop authority on ce55ed99 despite detected caption candidates.",
+    "Fix the weak-boundary/unknown-geometry case using preserved native data; do not force a scope ratio.",
+    "Replay moving caption section to verify stutter with new skip reasons; do not claim static output proves moving playback."
+  ]
+}

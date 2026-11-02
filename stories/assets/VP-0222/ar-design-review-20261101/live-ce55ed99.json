@@ -1,0 +1,28 @@
+{
+  "sourceCommit": "ce55ed99db1a91f77ba8a2d74e8098496c3470b1",
+  "process": 51064,
+  "submitted": 5117,
+  "postStartupOutputs": 4881,
+  "currentFacts": 4881,
+  "measuredAvailable": 0,
+  "captionCandidates": 4881,
+  "nativeAvailable": 0,
+  "measurementBounds": {
+    "[0, 0, 0, 0]": 4881
+  },
+  "presentationBounds": {
+    "[0, 0, 3840, 2160]": 4881
+  },
+  "reasons": {
+    "shared trusted geometry is unavailable": 4881
+  },
+  "firstTimecode": "22:18:14.720Z 1A81EBC3 G2 O237 S240",
+  "lastTimecode": "22:21:38.251Z 1A81EBC3 G2 O5117 S5120",
+  "scopeLogoCorpusAcceptance": "51/51 measured and independently trusted crop; the current dark-caption scene is a different capture",
+  "latestDarkCaptionCase": "Source measurement remains unavailable on the paused scene; not claimed fixed.",
+  "nativeSnapshot": {
+    "bytes": 22118400,
+    "sha256": "aad496094ba3dbac2d9b7d2b45765c2b5ec8fc7eec970a37cbb4067f69f7d0c2",
+    "sidecar": "3840 2160 10240 0 3 3 4 276 1883 1 1\n"
+  }
+}

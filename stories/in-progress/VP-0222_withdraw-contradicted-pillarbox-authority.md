@@ -4,7 +4,7 @@
 
 In Progress
 
-Latest implementation (2026-11-02): clean x64 Release source `fcaa9aab` is qualified and deployed. The paused Eternals sun/starfield detection-label failure is repaired using independent native contacts, bounded sparse-edge texture proof and the retained 512-component cap. All 95 new native frames and all 96 earlier paused frames pass. The new runtime snapshot matches the original paused pixels; 2,793 consecutive post-startup outputs have exact-current 1.78:1 measurements with zero dropouts. Both qualification lanes and both 220-check motion suites pass. No configuration edits or merge/public release. [Stage21 evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage21-sparse-raster-contact-repair.json). Broader source-boundary and dynamic-transition acceptance remains In Progress.
+Latest implementation (2026-11-02): clean x64 Release `ce55ed99` is qualified and deployed, with host/both renderers and all 28 hashes verified. The 51-frame scope-logo corpus now passes independent crop acceptance; 1,043 native, 16 standard/16 beta actual renderer and 220 standard/220 beta motion checks pass. Classic/Scope and configuration are preserved. The newer dark dog/caption scene still has unavailable aspect measurement, and moving-playback stutter is not yet verified fixed. [Stage22 evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage22-matte-verification-deployment.json). Broader repair remains In Progress; no merge/public release.
 
 Previous qualification record (superseded by failed live acceptance below): In Progress (2026-10-31). Reopened after failed live scope-to-IMAX acceptance of combined candidate 27dc733a. Repair and focused regression checks are underway in E:\codex\videoprocessor\combined-transition-regression-20261031. Prior controlled qualification below does not establish live acceptance. Previously implemented, reviewed and deployed from clean x64 Release commit `27dc733ad6b7f5afa01a13c1a114ff9337cc40a8` on [draft PR #241](https://github.com/billslack2/videoprocessor/pull/241). All 3,621 standard methods executed: 3,620 passed, with one investigated pre-existing configuration-cache failure retained as an explicit local-deployment exception. Actual plugins 20/20, standard and beta GPU suites each 209/209, focused regressions 941/941 and native capture replays 3/3 passed. Host/both renderers, live output and final configuration/state hashes verified. User visual acceptance remains pending; keep PR draft and unmerged. [Final report](../assets/VP-0222/ar-continuity-20261031/validation-report.txt).
 
@@ -1035,3 +1035,57 @@ Broader content and dynamic-transition acceptance remains open.
 Private pixels and complete logs remain under
 `E:\codex\videoprocessor\evidence\eternals-starfield-20261102-1430`.
 Source design/telemetry: `docs/ETERNALS_SPARSE_RASTER_CONTACTS_20261102.md`.
+
+
+### Scope matte acceptance repair deployed; new dark case remains open (2026-11-02)
+
+The Marvel-logo screenshot shows correct current/retained physical measurement
+[0,273,3840,1884] at 2.38:1 while presentation holds 16:9. All 51 preserved native
+frames reproduce correct measurement but an unverified crop axis on fcaa9aab.
+Native bar luma is 64-68, with sparse chroma departures of 6-7 canonical codes;
+four-code equality rejects them. Recording stopped before its final summary,
+but all 51 native files are complete and retain original sidecars.
+
+Source ce55ed99db1a91f77ba8a2d74e8098496c3470b1 consistently tolerates bounded
+near-black chroma rounding in raw and subtitle-masked bars for known range.
+Connected low-code picture and broad colored rows remain vetoes, collar repair
+retains measured departures, and outward alignment counts against its total
+collar allowance. An initially too-permissive candidate failed the existing
+full-width chroma collar test; the corrected candidate adds a six-code coherent
+collar control and passes all safety tests. Replay now explicitly requires a
+trusted crop, not just correct physical nomination. No screen ratio is forced.
+
+Full isolated qualification 20261102-170239-6f85b971 passes 1,043 native contracts,
+16 standard/16 beta actual renderer scenarios and all 51 native scope frames
+through the actual 24 ms worker with crop acceptance required. Both separate
+motion suites pass 220/220. Two earlier failed runs overlapped live VP; they
+remain failed evidence, never qualification. The unchanged isolated startup
+regression and final full matrix pass with VP closed. The exact qualified
+Release host and both renderers are deployed; all 28 inventory hashes match.
+Backup: `C:\Videoprocessor\vp\backups\scope-matte-ce55ed99-20261102-171754`.
+No configuration edits. Config SHA remains
+26B5BACB253DB172B0418AA51BD0A2F3CB29047E3934D099098D0FF16F31074C.
+Process 51064 loads both deployed DLLs with Classic/Scope selected.
+
+The moving-playback logs contain real multi-second presentation gaps in both
+Classic and Reconstruction while DeckLink delivery stays near 24 fps. Log
+volume peaks around 111 KB/s; disk throughput alone is unlikely, but formatting/
+scheduling overhead has not been ruled out. Source-crop verifier records now
+expose nomination, actual retained bounds, axis states, reference and mismatch
+pixels. Successful render attempts without a submission now record explicit
+skip reasons/elapsed work, with two-second file summaries; prior successful-
+submission timing omitted these attempts. Stutter is not claimed repaired yet.
+
+The later dark dog/caption capture is distinct: analysis-20261102-165422-57852-1
+contains 18 native frames and 76 selected-frame misses during overlapping
+qualification/player load. Of its source jobs, 1,286 return insufficient edge
+support and 290 exhaust budget; no crop is nominated. On the newly deployed
+build, the same paused scene still has 4,881 post-startup exact-current outputs
+with caption candidates but zero available aspect measurements/native crops.
+It presents full raster. This is explicit failed live acceptance for that newer
+scene, not a claim that the logo repair fixed every scope case. Native data and
+screenshot remain saved; no new capture is needed to begin its investigation.
+
+[Deployment, tests and unresolved-case evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage22-matte-verification-deployment.json).
+Private evidence: `E:\codex\videoprocessor\evidence\classic-subtitle-stutter-20261102-1536`.
+Source design: `docs/SCOPE_MATTE_VERIFICATION_AND_STUTTER_20261102.md`.
