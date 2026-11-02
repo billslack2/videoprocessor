@@ -1,0 +1,74 @@
+{
+  "source": "c4c915360e1572650d6b3e85681f8b9a3690bf86",
+  "branch": "codex/source-picture-redesign-20261101",
+  "betaBase": "a591ad3b532771911e85f8ef026958279f2065f0",
+  "deployed": false,
+  "fullyQualified": false,
+  "behavior": "Exact current native retained-entry verification releases without a consecutive-frame quota and carries a frame/generation/epoch/bounds proof through final uncertain-presentation resolution. It neither creates native crop authority nor renews caption ownership.",
+  "limits": "Specific retained-entry return repair. Weaker/dark/sparse/full-raster recovery routes are unchanged. Broader Black/reconstruction queue-gap failures remain unresolved; no full release qualification claimed.",
+  "cpu": {
+    "red": "artifacts/qualification/runs/20261101-194045-a5110cd8/standard.trx",
+    "redResult": "2 failed, 1 passed before production changes",
+    "full": "artifacts/qualification/runs/20261101-195455-baeb9021/iteration.json",
+    "fullPassed": 978,
+    "commitNote": "Final production/test content passed the full CPU suite immediately before committing unchanged content.",
+    "newMandatoryMethods": [
+      "VerifiedReturningScopeReleasesRetainedEpisodeOnFirstCurrentSource",
+      "ImmediateScopeEpisodeReleaseRejectsUnverifiedOrContradictoryPixels",
+      "VerifiedReturningScopeClearsSavedTallerPresentationOnSameSource"
+    ],
+    "negativeControls": "27 producer mutations plus 5 final-handoff identity/bounds mutations",
+    "rates": [
+      23.976,
+      59.94,
+      60
+    ],
+    "sourceGaps": [
+      1,
+      2,
+      7,
+      100,
+      10000
+    ]
+  },
+  "renderer": {
+    "legacy": "artifacts/qualification/runs/20261101-195718-4789627e/iteration.json",
+    "legacyExecuted": 5,
+    "legacyActual": 2,
+    "spatial": "artifacts/qualification/runs/20261101-195920-16103c7b/iteration.json",
+    "spatialActual": 4,
+    "sourceFrameProof": "Both legacy renderer traces: source111 release proof0/0, detected2.352941, submitted2.352941 on111; previously held1.904762.",
+    "build": "Matching clean x64 Release host and standard/beta DLLs",
+    "modeIsolation": "Separate VSTest processes inherit detector0/1 at startup. Receipt records mode; actual detector kind assertion prevents mismatches."
+  },
+  "beforeAfter": {
+    "baselineDirectory": "E:\\codex\\diagnostics\\paused-imax-20261101\\legacy-recovery-parent-baseline",
+    "baselineSource": "85b6dd4f966a7b832415ce5488ff31a8118a175e",
+    "legacyBaseline": "Both actual transition tests failed with raw2.352941 but used1.904762",
+    "spatialBaseline": "Beta Generated and both Black persistent-caption tests failed; Standard Generated passed. Confirms existing queue-gap failure class, not every individual failure attribution.",
+    "newEarlierSpatialRun": "artifacts/qualification/runs/20261101-195011-424779fd/failed.json",
+    "newEarlierSpatialResult": "Both AR and both Classic passed; both Black and both Generated failed. Those subtitle failures did not exercise the new episode exit.",
+    "discardedHarnessExperiment": "artifacts/qualification/runs/20261101-194508-210347c8/failed.json",
+    "harnessReason": "In-process Win32 environment override conflicts with cached CRT detector setting; removed. No failure assertions relaxed."
+  },
+  "playback": {
+    "restoredInstalledPid": 34692,
+    "installedSource": "85b6dd4f966a7b832415ce5488ff31a8118a175e",
+    "configurationEdits": [],
+    "note": "Authorized isolated GPU checks stopped/restarted the existing installation; no new binaries deployed."
+  },
+  "runtimeHashes": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\x64\\Release\\VideoProcessor-GUI.exe",
+      "Hash": "910DB72C769C8CBA561CEFD8A90733DCDC328064ED906BD466441F033840D839"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Hash": "412AF3C838BD5A59A790498D22D966306E276C2BB8E79F3D5C2DA30D9D129B25"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "Hash": "395DB79401A60967A18061CB655255D2A1D0E2585AA0C3E4D5AAE4EB6C3FD13A"
+    }
+  ]
+}
