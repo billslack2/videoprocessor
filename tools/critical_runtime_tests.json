@@ -11,10 +11,12 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1010,
+  "minimumNativeTests": 1012,
   "requiredNativeMethods": [
+    "CurrentComposedCaptionViewportFactDoesNotCertifyResidualUiErasure",
     "UnpreparedAdvancedOutputPreservesCurrentRawPixelsWithoutChangingNativeGeometry",
     "AdvancedNativePresentationRequiresCurrentCompositionAbsenceOrInitialBuild",
+    "CurrentAdvancedCompositionPermitsNativeViewportWithoutResidualCleanupAuthority",
     "OutwardRawCompletionWakesPreparationBeforeNormalWorkerFinishes",
     "SubtitleCompletionSignalFollowsReadyCachePublication",
     "WorkerCompletionWakesOnlyAfterImmutablePublication",

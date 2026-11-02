@@ -17479,6 +17479,9 @@ releaseDriftBaseRetention =
             if (relocatedCaptionQualified)
                 cropInput.preparedSubtitle=QualifyPreparedSubtitleCropPresentation(
                     displayCaptionProof,subtitleIdentity,cropInput.geometry);
+            cropInput.currentSubtitleComposition=QualifyCurrentSubtitleCompositionPresentation(
+                ownershipProof.currentCompositionVerified?ownershipProof:displayCaptionProof,
+                subtitleIdentity,cropInput.geometry,subtitlePreviewMode);
             cropInput.currentCaptionAbsenceConfirmed=currentNoCaptionConfirmed;
             cropInput.initialSubtitleShaderBuild=SourceCadencePresentation::WarmupContextEligible(
                 SourceCadenceContext(state,frameGeneration,queuedAnalysisDomainKey,viewportRequestSerial,

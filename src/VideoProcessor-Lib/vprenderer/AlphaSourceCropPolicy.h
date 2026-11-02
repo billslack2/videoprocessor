@@ -6,6 +6,7 @@
 
 #include "ActivePictureTransitionModel.h"
 #include "ActivePictureEvidence.h"
+#include "ActivePictureDecisionTimeline.h"
 #include "SceneDetector.h"
 
 
@@ -1347,6 +1348,15 @@ namespace AlphaSourceCrop
         uint64_t preparedNativeSourceSequence=0;
     };
 
+    // Exact selected-source composition only. This does not certify that
+    // unrelated residual bands are empty, nor grant erasure or caption leases.
+    struct CurrentSubtitleComposition
+    {
+        bool available=false;
+        ActivePictureFrameIdentity identity;
+        ActivePictureBounds nativeBase;
+        PreparedNativeMode mode=PreparedNativeMode::NONE;
+    };
     struct PreparedSubtitlePresentation
     {
         bool available=false;
@@ -1358,6 +1368,7 @@ namespace AlphaSourceCrop
         AcceptedNativeCropContract acceptedNativeCrop;
         uint64_t frameSourceFormatKey = 0, frameAnalysisDomainKey = 0;
         PreparedSubtitlePresentation preparedSubtitle;
+        CurrentSubtitleComposition currentSubtitleComposition;
         PreparedNativeMode subtitlePresentationMode=PreparedNativeMode::NONE;
         // Exact selected-source adapter facts, never inferred from an absent cue
         // or a requested mode. Build permission ends after initial preparation.
@@ -2187,6 +2198,7 @@ namespace AlphaSourceCrop
     // Exact current composition can resolve presentation-only inspection and
     // recovery of this independently trusted native base, without detector votes.
     bool HasCurrentPreparedSubtitlePresentation(const Input& input);
+    bool HasCurrentSubtitleCompositionPresentation(const Input& input);
 	Decision Evaluate(const Input& input);
 
 	// A scene boundary resets candidate proof, but presentation is atomic:

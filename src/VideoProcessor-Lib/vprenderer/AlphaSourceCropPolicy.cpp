@@ -4200,7 +4200,7 @@ namespace AlphaSourceCrop
         Decision result;
         const bool rawVisibilityContradictsAbsence=HasCurrentAdvancedRawVisibility(crop) &&
             !SameBounds(crop.currentVisibleBounds,crop.geometry);
-        if(!HasCurrentPreparedSubtitlePresentation(crop) &&
+        if(!HasCurrentPreparedSubtitlePresentation(crop) && !HasCurrentSubtitleCompositionPresentation(crop) &&
             !(crop.currentCaptionAbsenceConfirmed && !rawVisibilityContradictsAbsence) &&
             !crop.initialSubtitleShaderBuild) {
             // Requested advanced mode does not erase raw caption pixels. Missing
@@ -6104,6 +6104,22 @@ namespace AlphaSourceCrop
 			previous.trustedCrop.rasterHeight == input.rasterHeight &&
 			SameTrustedCropContract(previous.trustedCrop, input.geometry);
 	}
+
+    bool HasCurrentSubtitleCompositionPresentation(const Input& input)
+    {
+        const auto& proof=input.currentSubtitleComposition;
+        return proof.available && UsesAdvancedNativePicturePolicy(input) &&
+            input.geometrySourceGeneration==input.frameSourceGeneration &&
+            input.frameSourceGeneration && input.frameSourceSequence &&
+            input.frameSourceFormatKey && input.frameAnalysisDomainKey &&
+            proof.identity.transportGeneration==input.frameSourceGeneration &&
+            proof.identity.acceptedSequence==input.frameSourceSequence &&
+            proof.identity.sourceFormatGeneration==input.frameSourceFormatKey &&
+            proof.identity.analysisDomainKey==input.frameAnalysisDomainKey &&
+            proof.identity.viewportGeneration==input.framePresentationEpoch &&
+            proof.mode==input.subtitlePresentationMode &&
+            SameTrustedCropContract(proof.nativeBase,input.geometry);
+    }
 
     bool HasCurrentPreparedSubtitlePresentation(const Input& input)
     {

@@ -3230,6 +3230,44 @@ namespace VideoProcessorTest
             Assert::IsTrue(std::strcmp(capped.reason,"ownership-budget")==0);
             Assert::IsTrue(capped.ownershipSamples==0,L"An insufficient budget must be rejected before native scanning.");
         }
+        TEST_METHOD(CurrentComposedCaptionViewportFactDoesNotCertifyResidualUiErasure)
+        {
+            LoggedRelocatedCaptionFixture f(false,true);
+            // Unrelated top-bar badge is neither part of the current caption nor
+            // permission to erase/clean the remaining raw source bands.
+            f.frame.FillRectangle(100,100,180,180,700);
+            const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            auto input=f.Input();
+            const auto proof=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+            Assert::IsFalse(proof.qualified);Assert::IsFalse(proof.renewsHold);
+            Assert::IsTrue(std::strcmp(proof.reason,"unowned-picture-outside-erasure")==0);
+            Assert::IsTrue(proof.currentCompositionVerified);
+            const auto viewport=QualifyCurrentSubtitleCompositionPresentation(proof,input.currentIdentity,f.base,input.mode);
+            Assert::IsTrue(viewport.available);
+            Assert::IsFalse(QualifyPreparedSubtitleCropPresentation(proof,input.currentIdentity,f.base).available);
+            Assert::IsFalse(raw.excludedBandsPixelSafe);
+            auto foreign=input.currentIdentity;++foreign.captureTimestamp;
+            Assert::IsFalse(QualifyCurrentSubtitleCompositionPresentation(proof,foreign,f.base,input.mode).available);
+            auto wrongBase=f.base;++wrongBase.top;
+            Assert::IsFalse(QualifyCurrentSubtitleCompositionPresentation(proof,input.currentIdentity,wrongBase,input.mode).available);
+            const auto wrongMode=input.mode==SubtitlePreviewMode::BlackBackground?
+                SubtitlePreviewMode::GeneratedGrayBackground:SubtitlePreviewMode::BlackBackground;
+            Assert::IsFalse(QualifyCurrentSubtitleCompositionPresentation(proof,input.currentIdentity,f.base,wrongMode).available);
+            for(int fault=0;fault<7;++fault) {
+                auto bad=input;auto observation=f.observation;auto accepted=f.accepted;auto composition=f.composition;
+                bad.observation=&observation;bad.accepted=&accepted;bad.composition=&composition;
+                if(fault==0)bad.sourcePrepared=false;
+                if(fault==1)++bad.currentIdentity.acceptedSequence;
+                if(fault==2)++bad.policyGeneration;
+                if(fault==3)++bad.continuityGeneration;
+                if(fault==4)accepted.held=true;
+                if(fault==5)composition.glyphLines[0].bottom=1990;
+                if(fault==6)bad.mode=SubtitlePreviewMode::None;
+                const auto rejected=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,bad);
+                Assert::IsFalse(rejected.currentCompositionVerified);
+                Assert::IsFalse(QualifyCurrentSubtitleCompositionPresentation(rejected,bad.currentIdentity,f.base,bad.mode).available);
+            }
+        }
         TEST_METHOD(RealSubtitleBuilderRejectsTruncatedGlyphCaptureAndUnownedPicture)
         {
             for(int scenario=0;scenario<9;++scenario) {

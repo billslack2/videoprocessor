@@ -329,6 +329,10 @@ struct QualifiedSubtitlePresentationEvidence
     ActivePictureBounds erasedSourceBounds;
     QualifiedSubtitlePresentationStatus status=QualifiedSubtitlePresentationStatus::Unknown;
     bool qualified = false;
+    // Successful current caption composition is a narrower fact than clean
+    // remaining source bands. It permits only the requested native viewport.
+    bool currentCompositionVerified=false;
+    SubtitlePreviewMode currentCompositionMode=SubtitlePreviewMode::None;
     bool renewsHold=false;
     // Current compositor output only; never native ownership or a renewable lease.
     bool preparedErasureOnly=false;
@@ -653,6 +657,10 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     }
     const ActivePictureBounds erased{box.left,box.top,box.right,box.bottom,source.width,source.height,
         double(bw)/(box.bottom-box.top),ActivePictureBounds::BarAxes::NONE};
+    // All current-source/cue/capture/geometry and owned-erasure checks above
+    // passed. Residual UI can still veto cleanup/retention below, independently
+    // of this exact successful caption composition's native viewport permission.
+    result.currentCompositionVerified=true;result.currentCompositionMode=input.mode;
     const auto projected=EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(source,base,raw,erased,0);
     if(!projected.relocatedOverlayExclusionEvaluated)return reject("outside-proof-unavailable");
     if(!projected.excludedBandsPixelSafe)
@@ -685,6 +693,21 @@ inline QualifiedSubtitlePresentationEvidence EvaluatePreparedSubtitlePresentatio
     const QualifiedSubtitlePresentationInput& input)
 {
     return EvaluateSubtitlePresentationEvidence(source,raw,input,true);
+}
+inline AlphaSourceCrop::CurrentSubtitleComposition QualifyCurrentSubtitleCompositionPresentation(
+    const QualifiedSubtitlePresentationEvidence& proof,
+    const ActivePictureFrameIdentity& selectedIdentity,const ActivePictureBounds& nativeBase,
+    SubtitlePreviewMode mode)
+{
+    AlphaSourceCrop::CurrentSubtitleComposition result;
+    if(!proof.currentCompositionVerified || proof.currentCompositionMode!=mode ||
+        !SubtitlePreviewOverridesClassicHandling(mode) ||
+        !SameAnalysisFrameIdentity(proof.identity,selectedIdentity) ||
+        !SameSubtitlePresentationBounds(proof.physicalBase,nativeBase))return result;
+    result.available=true;result.identity=selectedIdentity;result.nativeBase=nativeBase;
+    result.mode=mode==SubtitlePreviewMode::BlackBackground?AlphaSourceCrop::PreparedNativeMode::BLACK:
+        AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION;
+    return result;
 }
 inline AlphaSourceCrop::PreparedSubtitlePresentation QualifyPreparedSubtitleCropPresentation(
     const QualifiedSubtitlePresentationEvidence& proof,
