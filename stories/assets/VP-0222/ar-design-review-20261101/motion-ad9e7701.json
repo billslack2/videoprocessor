@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "ad9e7701e05393c1d79fb5f9b11b5a88484c3a35",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "reusedQualifiedBuild": true,
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "ReconstructionMotionTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildMode": "reused-qualified-build",
+      "reusedQualifiedBuild": true,
+      "buildExit": null,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\dark-scope-relative-edges-20261102\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "37F402E3B18DCD662FD5ACD95028294E0221B8EA1A2007E3CB7A29C832AD7BC1",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "passed": 220
+    },
+    {
+      "variant": "beta",
+      "buildMode": "reused-qualified-build",
+      "reusedQualifiedBuild": true,
+      "buildExit": null,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\dark-scope-relative-edges-20261102\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "2813F69DF699F7DA234DA0D6394AB7D6AF6DCC5C267CFC3BCD1B7ECA20C6A3E0",
+      "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "passed": 220
+    }
+  ],
+  "finished": "2026-11-02T18:19:03.3880145-05:00",
+  "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+}

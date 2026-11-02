@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 2,
+  "status": "Passed",
+  "configuration": "Release",
+  "platform": "x64",
+  "source": {
+    "commit": "ad9e7701e05393c1d79fb5f9b11b5a88484c3a35",
+    "dirty": false,
+    "fingerprint": "62d10f79fe43bbe61ebb74b1bfbbe1b8fa4a942aca72e17814192c9767344ea2",
+    "label": "ad9e7701e053",
+    "build": "ad9e7701e05393c1d79fb5f9b11b5a88484c3a35"
+  },
+  "manifestHash": "EF56B367F8466D8B5526B45610D298A0FB295D3F2C2FB86F94281F81C1AEAAF4",
+  "testEnvironment": {
+    "sourcePictureDetector": true,
+    "legacyDetectorEnvironment": null,
+    "sourcePictureShadow": null
+  },
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "B0C8B8FEBB0DF03C6574BAC19226A483D952F2E4DEFA9F695FEEA6CB769AAD8C"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Lib.lib",
+      "sha256": "DEE2711C931FD8D7AD119A7DE62AF4C031CAB8492B59B96F6DAB2F528A728CD2"
+    },
+    {
+      "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "36EC0C1099ECA0C1D9CBBA9608D846437214F4E19F2A69F0B8E025D17E56285D"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "4F7EBDEE362FECF7AB6DF9CAABFD445DC5D88753760482A29DCEDD9025940AC2"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Test.dll",
+      "sha256": "37F402E3B18DCD662FD5ACD95028294E0221B8EA1A2007E3CB7A29C832AD7BC1"
+    },
+    {
+      "path": "x64/Release/tests-beta/VideoProcessor-TestBeta.dll",
+      "sha256": "2813F69DF699F7DA234DA0D6394AB7D6AF6DCC5C267CFC3BCD1B7ECA20C6A3E0"
+    },
+    {
+      "path": "x64/Release/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/tests-beta/libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    },
+    {
+      "path": "x64/Release/vprenderer/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    }
+  ],
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0,
+      "seconds": 0.661,
+      "log": "E:\\codex\\videoprocessor\\dark-scope-relative-edges-20261102\\artifacts\\qualification\\runs\\20261102-175902-e075cc45\\native-library-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "e53c030f-6186-493e-9933-b43f8ebd05d7",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "host",
+      "project": "src\\VideoProcessor-GUI\\VideoProcessor-GUI.vcxproj",
+      "exit": 0,
+      "seconds": 28.271,
+      "log": "E:\\codex\\videoprocessor\\dark-scope-relative-edges-20261102\\artifacts\\qualification\\runs\\20261102-175902-e075cc45\\host-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "643233e1-8f57-4bb7-82a9-a0f4ea09e318",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRenderer.vcxproj",
+      "exit": 0,
+      "seconds": 50.082,
+      "log": "E:\\codex\\videoprocessor\\dark-scope-relative-edges-20261102\\artifacts\\qualification\\runs\\20261102-175902-e075cc45\\standard-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "f88c31b0-7e54-4172-ae2a-ce8778a25be5",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "beta-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRendererBeta.vcxproj",
+      "exit": 0,
+      "seconds": 39.264,
+      "log": "E:\\codex\\videoprocessor\\dark-scope-relative-edges-20261102\\artifacts\\qualification\\runs\\20261102-175902-e075cc45\\beta-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "c23d7b3d-0719-4d55-8f3d-466e6e7ba412",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "exit": 0,
+      "seconds": 102.122,
+      "log": "E:\\codex\\videoprocessor\\dark-scope-relative-edges-20261102\\artifacts\\qualification\\runs\\20261102-175902-e075cc45\\standard-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "3817d9f0-0bda-4ad3-854f-eede3c849408",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "beta-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "exit": 0,
+      "seconds": 138.305,
+      "log": "E:\\codex\\videoprocessor\\dark-scope-relative-edges-20261102\\artifacts\\qualification\\runs\\20261102-175902-e075cc45\\beta-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "e2d72390-6f63-4a7a-acb8-b43c74577828",
+      "PSShowComputerName": false
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\VideoProcessor-Test.dll",
+      "trx": "artifacts/qualification/runs/20261102-175902-e075cc45/standard.trx",
+      "trxSha256": "9C80F8CC9603F036955D25D1FEA02B7B4033F50679239EF41709F5960D8BC3DA",
+      "executed": 1061,
+      "native": 1045,
+      "actualClassic": 16,
+      "seconds": 190.824
+    },
+    {
+      "variant": "beta",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "trx": "artifacts/qualification/runs/20261102-175902-e075cc45/beta.trx",
+      "trxSha256": "05E2A47CC7E384C094C82B7278CD73C6F48950012CAE0B4203332359F981F4E2",
+      "executed": 16,
+      "native": 0,
+      "actualClassic": 16,
+      "seconds": 131.913
+    }
+  ],
+  "optionalPrivateFixtures": [
+    {
+      "environment": "VP_AR_COLLAR_CAPTURE_FRAME",
+      "status": "absent-not-claimed",
+      "sha256": null,
+      "path": null
+    },
+    {
+      "environment": "VP_DARK_AR_ANALYSIS_FRAME",
+      "status": "absent-not-claimed",
+      "sha256": null,
+      "path": null
+    },
+    {
+      "environment": "VP_PHYSICAL_EDGE_CAPTURE_FRAME",
+      "status": "absent-not-claimed",
+      "sha256": null,
+      "path": null
+    },
+    {
+      "environment": "VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY",
+      "status": "absent-not-claimed",
+      "sha256": null,
+      "path": null
+    }
+  ],
+  "seconds": 533.484,
+  "shaderCacheDirectory": "E:\\codex\\videoprocessor\\dark-scope-relative-edges-20261102\\artifacts\\qualification\\runs\\20261102-175902-e075cc45\\shader-cache",
+  "coldShaderCache": true,
+  "finished": "2026-11-02T18:07:55.1954582-05:00"
+}

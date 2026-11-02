@@ -1,0 +1,43 @@
+{
+  "stage": 24,
+  "sourceCommit": "ad9e7701e05393c1d79fb5f9b11b5a88484c3a35",
+  "status": "Qualified x64 Release deployed and running",
+  "process": 36456,
+  "deployedFilesVerified": 28,
+  "backup": "C:\\Videoprocessor\\vp\\backups\\dark-relative-ad9e7701-20261102-181918",
+  "configurationEdits": [],
+  "configurationSha256": "26B5BACB253DB172B0418AA51BD0A2F3CB29047E3934D099098D0FF16F31074C",
+  "selectedSubtitleProfile": "classic",
+  "startupProfileNote": "Existing renderer.ready action invokes Ctrl+Alt+C, selecting Classic. No source-example or active configuration replacement. Agent sent no profile-switch input.",
+  "qualification": {
+    "native": 1045,
+    "standardActualRenderer": 16,
+    "betaActualRenderer": 16,
+    "standardMotion": 220,
+    "betaMotion": 220,
+    "allPassed": true
+  },
+  "privateCaptureReplays": {
+    "preDeploymentFrames": 338,
+    "darkFramesWithWorkerCaptionProof": 96,
+    "postDeploymentFrames": 1,
+    "postNativeSha256": "f24b3d22ed82d19ce75a900a1ae9158d3c599f49154c1f75f240a15748135e01",
+    "postNativeMatchesBaselineFrames": 24,
+    "allPassed": true
+  },
+  "liveClassic": {
+    "steadyExactCurrentOutputs": 2354,
+    "measurementAvailable": 2354,
+    "scopeBounds": "0,272-3840,1886 (conservative verified bounds; private native measurement checked independently)",
+    "captionDetected": 2354,
+    "owner": "translation",
+    "reason": "confirmed Classic subtitle uses a same-size native movie canvas"
+  },
+  "limits": [
+    "Live Reconstruction verification was interrupted by physical Escape before any profile-switch input.",
+    "Moving-playback stutter remains unverified; passing motion suites are not live visual acceptance.",
+    "Broader story remains In Progress; no integration merge or public release."
+  ],
+  "telemetry": "New bounded source-relative-matte-contact trace records current reference/noise, texture, margins, support and coverage; existing debug/timecode/incident screenshots were already enabled.",
+  "evidenceRoot": "E:\\codex\\videoprocessor\\evidence\\dark-scope-subtitle-20261102-1726"
+}

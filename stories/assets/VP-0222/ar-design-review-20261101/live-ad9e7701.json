@@ -1,0 +1,167 @@
+{
+  "process": 36456,
+  "records": 2562,
+  "exactCurrentRecords": 2562,
+  "steadyRecords": 2354,
+  "sourceCommit": "ad9e7701e05393c1d79fb5f9b11b5a88484c3a35",
+  "measurement_available": {
+    "true": 2354
+  },
+  "measurement_reason": {
+    "\"native candidate has an unverified nominated crop axis\"": 2354
+  },
+  "measured": {
+    "[0,272,3840,1886]": 2354
+  },
+  "native": {
+    "[0,272,3840,1886]": 2354
+  },
+  "actual_source": {
+    "[24,462,3816,2076]": 2354
+  },
+  "detected": {
+    "true": 2354
+  },
+  "current_composition": {
+    "false": 2354
+  },
+  "strong_prepared": {
+    "false": 2354
+  },
+  "ownership_reason": {
+    "\"not-qualified\"": 2354
+  },
+  "erasure_reason": {
+    "\"not-qualified\"": 2354
+  },
+  "continuation_reason": {
+    "\"seeded-local-bar-glyphs\"": 2354
+  },
+  "mode": {
+    "0": 2354
+  },
+  "requested_mode": {
+    "0": 2354
+  },
+  "subtitle_processing_profile": {
+    "1": 2354
+  },
+  "shader_failed": {
+    "false": 2354
+  },
+  "prepare_failures": {
+    "1": 2354
+  },
+  "last": {
+    "schema": 1,
+    "instance": "{E8907050-A3BF-433E-9A99-903CC2918E1C}",
+    "process": 36456,
+    "tick_ms": 251536406,
+    "qpc": 2515366430239,
+    "qpc_hz": 10000000,
+    "diagnostic_cpu_ms": 0.372,
+    "utc_ms": 1793661676816,
+    "timecode": "23:21:16.816Z E8907050 G2 O2562 S2593",
+    "timecode_drawn": true,
+    "output": 2562,
+    "generation": 2,
+    "input": 2593,
+    "selected": 2593,
+    "facts_source": 2593,
+    "facts_current": true,
+    "source_pts": 251536.5078,
+    "output_pts": 251536.5078,
+    "temporal": false,
+    "repeated": false,
+    "rendered": true,
+    "submitted": true,
+    "screen_aspect": 2.35,
+    "actual_source": [
+      24,
+      462,
+      3816,
+      2076
+    ],
+    "actual_target": [
+      0.4555040598,
+      262.9787292,
+      3839.544434,
+      1897.02124
+    ],
+    "viewport": 4,
+    "format": 15805081878477807578,
+    "domain": 4768279117495752782,
+    "policy": 2,
+    "continuity": 10,
+    "raster": [
+      3840,
+      2160
+    ],
+    "measurement_source": 2593,
+    "measurement_available": true,
+    "measurement_reason": "native candidate has an unverified nominated crop axis",
+    "classification": 2,
+    "measured": [
+      0,
+      272,
+      3840,
+      1886
+    ],
+    "native_available": true,
+    "native_accepted_source": 187,
+    "native": [
+      0,
+      272,
+      3840,
+      1886
+    ],
+    "observation_supports_crop": false,
+    "retention_evaluated": true,
+    "retention_safe": false,
+    "visible_available": true,
+    "raw_visible": [
+      0,
+      272,
+      3840,
+      2037
+    ],
+    "subtitle_processing_profile": 1,
+    "requested_mode": 0,
+    "preparation_state": 0,
+    "preparation_key": 12832300491286232719,
+    "shader_failed": false,
+    "mode": 0,
+    "caption_source": 2593,
+    "caption_current": true,
+    "cue": 5,
+    "detected": true,
+    "held": false,
+    "incomplete": false,
+    "caption": [
+      1474,
+      1926,
+      2370,
+      2042
+    ],
+    "destination": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "composed": false,
+    "source_prepared": false,
+    "prepare_failures": 1,
+    "current_composition": false,
+    "strong_prepared": false,
+    "absence": false,
+    "scan_reason": "detected",
+    "ownership_reason": "not-qualified",
+    "erasure_reason": "not-qualified",
+    "continuation_reason": "seeded-local-bar-glyphs",
+    "owner": "translation",
+    "reason": "confirmed Classic subtitle uses a same-size native movie canvas"
+  },
+  "configurationHashAfterLaunch": "26B5BACB253DB172B0418AA51BD0A2F3CB29047E3934D099098D0FF16F31074C",
+  "configurationPreserved": true
+}

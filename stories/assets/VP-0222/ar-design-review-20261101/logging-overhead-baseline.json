@@ -1,0 +1,12 @@
+{
+  "process": 51064,
+  "observedPresentationRecords": 8070,
+  "presentationLoggingCpuMs": {
+    "median": 0.3363,
+    "p95": 0.4797,
+    "p99": 0.5973,
+    "maximum": 3.9076
+  },
+  "lastAsyncWriterTelemetry": "2026-11-02 17:27:34 | VP async log telemetry: process=51064 transport=00007FF67B766710 enqueued=31018 processed=31018 dropped_full=0 dropped_contended=0 truncated=0 queue=0 high_water=263 capacity=8192 memory_bytes=36065472 pool_in_use=0 pool_high_water=263 write_calls=2364 write_bytes=31188131 write_failures=0 write_total_us=279110 write_peak_us=957 flushes=2233 flush_total_us=37592 flush_peak_us=774 overflow=drop_newest admission=atomic_pool batch=256 flush_interval_ms=250",
+  "interpretation": "No asynchronous writer drops or write failures in this evidence. This paused evidence does not establish the cause of reported moving-playback stutter."
+}
