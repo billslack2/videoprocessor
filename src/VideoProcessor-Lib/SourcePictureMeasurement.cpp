@@ -335,18 +335,30 @@ bool CompleteDarkTerminal(Reader& reader,int floor,SourcePictureObservation& out
     const int nominal=reader.source.range==AnalysisLumaRange::Full?0:64;
     std::array<unsigned,4> support{};std::array<double,4> regionalTrend{};
     std::array<uint64_t,2> supportingRays{};
-    double trendSum=0,trendSquares=0;
+    double trendSum=0,trendSquares=0,earlyTrendSum=0,earlyTrendSquares=0,lateTrendSum=0;
+    auto& proof=out.darkTerminal;proof.evaluated=true;proof.side=missing;
     for(unsigned ray=0;ray<kEdgeProbes;++ray) {
         const int position=int(uint64_t(2*ray+1)*along/(2*kEdgeProbes));
         auto read=[&](int offset) {
             const int coordinate=leading?offset:depth-1-offset;
             return reader.At(vertical?position:coordinate,vertical?coordinate:position);
         };
-        double outer=0,innerPatch=0;
-        for(int offset=0;offset<16;offset+=2) {
-            outer+=read(offset).luma;innerPatch+=read(depth/24+offset).luma;
+        // Integrate contiguous native samples: every-other-pixel probes can
+        // lock to one HDMI quantization phase. Three bounded spatial scales
+        // test a continuing dark picture trend, not one fragile luma delta.
+        double outer=0,innerPatch=0,earlyPatch=0,latePatch=0;
+        for(int offset=0;offset<16;++offset) {
+            outer+=read(offset).luma;
+            const double early=read(depth/24+offset).luma;
+            earlyPatch+=early;
+            const double late=read(depth/8+offset).luma;
+            latePatch+=late;
+            innerPatch+=early+read(depth/12+offset).luma+late;
         }
-        const double trend=(innerPatch-outer)/8;
+        const double earlyTrend=(earlyPatch-outer)/16;
+        earlyTrendSum+=earlyTrend;earlyTrendSquares+=earlyTrend*earlyTrend;
+        lateTrendSum+=(latePatch-outer)/16;
+        const double trend=(innerPatch/3-outer)/16;
         trendSum+=trend;trendSquares+=trend*trend;regionalTrend[ray/32]+=trend;
         const auto border=read(0);auto previous=border;
         bool continuous=true;unsigned rises=0;
@@ -364,11 +376,23 @@ bool CompleteDarkTerminal(Reader& reader,int floor,SourcePictureObservation& out
     }
     const double mean=trendSum/kEdgeProbes;
     const double variance=std::max(0.0,(trendSquares-trendSum*trendSum/kEdgeProbes)/(kEdgeProbes-1));
-    if(mean<=0 || mean*mean*kEdgeProbes<=9*variance ||
-        std::any_of(regionalTrend.begin(),regionalTrend.end(),[](double sum){return sum<=0;}))return false;
+    const double earlyMean=earlyTrendSum/kEdgeProbes;
+    const double earlyVariance=std::max(0.0,(earlyTrendSquares-earlyTrendSum*earlyTrendSum/kEdgeProbes)/(kEdgeProbes-1));
+    proof.earlyMean=earlyMean;proof.integratedMean=mean;proof.lateMean=lateTrendSum/kEdgeProbes;
+    proof.earlyScore=earlyVariance>0?std::min(1e6,earlyMean*earlyMean*kEdgeProbes/earlyVariance):(earlyMean>0?1e6:0);
+    proof.integratedScore=variance>0?std::min(1e6,mean*mean*kEdgeProbes/variance):(mean>0?1e6:0);
     unsigned total=0,regions=0;
-    for(auto count:support) {total+=count;if(count>=12)++regions;}
-    if(total<kEdgeProbes/2 || regions<3)return false;
+    for(unsigned i=0;i<4;++i){total+=support[i];if(support[i]>=12)++regions;proof.regionalMean[i]=regionalTrend[i]/32;}
+    proof.supportingRays=total;proof.supportingRegions=regions;
+    // The early patch remains independent evidence: later picture contrast
+    // cannot manufacture contact through a noisy raised matte prefix. The
+    // third patch is three times deeper; allow one 8-bit-equivalent code of
+    // rounding, not an arbitrarily delayed rise hidden by spatial averaging.
+    if(earlyMean<=0 || earlyMean*earlyMean*kEdgeProbes<=4*earlyVariance ||
+        proof.lateMean>3*earlyMean+4 || mean<=0 || mean*mean*kEdgeProbes<=9*variance ||
+        std::any_of(regionalTrend.begin(),regionalTrend.end(),[](double sum){return sum<=0;}) ||
+        total<kEdgeProbes/2 || regions<3)return false;
+    proof.accepted=true;
     SourcePictureEdgeCandidate terminal;
     terminal.coordinate=terminal.minimum=terminal.maximum=terminals[missing];
     terminal.support=total;terminal.coverage=kEdgeProbes;terminal.regionSupport=support;terminal.strong=true;
@@ -520,19 +544,37 @@ SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,c
     Reader reader{source,budget};
     try {
         CheckAnalysisEvaluationBudget(budget);
-        std::vector<int> perimeter;perimeter.reserve(256);
+        std::vector<int> perimeter;perimeter.reserve(768);
         for(int i=0;i<64;++i) {
             const int x=(2*i+1)*source.width/128,y=(2*i+1)*source.height/128;
-            perimeter.push_back(reader.At(x,0).luma);perimeter.push_back(reader.At(x,source.height-1).luma);
-            perimeter.push_back(reader.At(0,y).luma);perimeter.push_back(reader.At(source.width-1,y).luma);
+            // A single regularly spaced pixel can sample just the high phase
+            // of encoded bar noise and misclassify the reference as picture.
+            // Keep native coordinates, but cover neighboring encoding phases.
+            for(int sample=0;sample<3;++sample) {
+                // An L-shaped footprint covers both along-edge and inward
+                // phase variation. Along-edge-only probes still alias a stripe
+                // whose encoding phase is constant in that direction.
+                const int along=sample==1?1:0,inward=sample==2?1:0;
+                const int px=std::min(source.width-1,x+along),py=std::min(source.height-1,y+along);
+                perimeter.push_back(reader.At(px,std::min(source.height-1,inward)).luma);
+                perimeter.push_back(reader.At(px,std::max(0,source.height-1-inward)).luma);
+                perimeter.push_back(reader.At(std::min(source.width-1,inward),py).luma);
+                perimeter.push_back(reader.At(std::max(0,source.width-1-inward),py).luma);
+            }
         }
         std::sort(perimeter.begin(),perimeter.end());
         int floor=perimeter[perimeter.size()/20];
-        // Bright picture covering every raster edge is not a bright matte.
-        if(floor>104)floor=source.range==AnalysisLumaRange::Full?0:64;
+        unsigned codeBits=0;for(int value:perimeter)codeBits|=unsigned(value);
+        while(out.lumaQuantum<4 && !(codeBits&out.lumaQuantum))out.lumaQuantum*=2;
+        // Allow one 8-bit-equivalent code in the canonical ten-bit domain.
+        // RGB/matrix conversion may populate low bits even when source rounding
+        // varies by four codes, so observed code spacing is diagnostic only.
+        // In particular, 104 ->108 must not reset the reference to nominal 64.
+        // Bright perimeter content still falls back to nominal source black.
+        if(floor>108)floor=source.range==AnalysisLumaRange::Full?0:64;
         auto& reference=out.blackReference;
         reference.evaluated=true;reference.floor=reference.observedFloor=floor;
-        reference.threshold=reference.observedThreshold=std::min(104,floor+24);
+        reference.threshold=reference.observedThreshold=std::max(floor,std::min(104,floor+24));
         reference.mode=source.range!=AnalysisLumaRange::Full?ActivePictureBlackReferenceMode::LEGACY:
             floor?ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED:ActivePictureBlackReferenceMode::FULL_NOMINAL;
         // No qualified edge/axis follows from a perimeter percentile alone.

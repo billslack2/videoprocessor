@@ -132,6 +132,17 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
             (facts.canvasSupported?16u:0u)|(facts.blankMarginsUnresolved?32u:0u);
         trace.counters[0]=facts.samples;trace.counters[1]=facts.components.size();
         trace.counters[2]=static_cast<uint64_t>(facts.outcome);
+        const auto& dark=facts.darkTerminal;
+        trace.flags|=(dark.evaluated?128u:0u)|(dark.accepted?256u:0u);
+        trace.counters[3]=dark.evaluated?uint64_t(dark.side+1):0;
+        trace.counters[4]=dark.supportingRays;trace.counters[5]=dark.supportingRegions;
+        trace.counters[6]=static_cast<uint64_t>(source.format);trace.counters[7]=static_cast<uint64_t>(source.encoding);
+        trace.metrics[2]=facts.blackReference.floor;trace.metrics[3]=facts.blackReference.threshold;
+        trace.metrics[4]=dark.earlyMean;trace.metrics[5]=dark.earlyScore;
+        trace.metrics[6]=dark.integratedMean;trace.metrics[7]=dark.integratedScore;
+        for(unsigned i=0;i<4;++i)trace.metrics[8+i]=dark.regionalMean[i];
+        trace.metrics[12]=static_cast<int>(source.range);trace.metrics[13]=static_cast<int>(source.colorspace);
+        trace.metrics[14]=dark.lateMean;trace.metrics[15]=facts.lumaQuantum;
         AnalysisTraceRect(trace.measured,facts.measuredBounds);
     }
     AnalysisTraceRect(trace.published,result.evidence.trustedBounds);

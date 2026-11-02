@@ -40,6 +40,14 @@ struct SourcePictureObservation {
     int overviewWidth=0, overviewHeight=0;
     bool topologyComplete=false;
     std::vector<uint16_t> overviewLabels;
+    struct DarkTerminalProof {
+        bool evaluated=false,accepted=false;
+        int side=-1;
+        double earlyMean=0,earlyScore=0,integratedMean=0,integratedScore=0,lateMean=0;
+        std::array<double,4> regionalMean{};
+        unsigned supportingRays=0,supportingRegions=0;
+    } darkTerminal;
+    unsigned lumaQuantum=1; // Observed perimeter code spacing, capped at one 8-bit-equivalent step.
     size_t samples=0;
     const char* reason="not-measured";
 };

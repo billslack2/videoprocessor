@@ -167,6 +167,132 @@ namespace VideoProcessorTest
                 Exact(observed,Bounds(960,540,0,0,960,540));
             }
         }
+        TEST_METHOD(SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats)
+        {
+            for(bool horizontal:{false,true})for(bool leading:{false,true})for(int phase=0;phase<4;++phase) {
+                SourcePictureFrame frame(960,540,104);
+                const int depth=horizontal?960:540;
+                for(int y=0;y<540;++y)for(int x=0;x<960;++x) {
+                    const int across=horizontal?x:y,along=horizontal?y:x;
+                    const int d=leading?across:depth-1-across;
+                    // Quantize a genuinely weak continuous fade through four
+                    // ordered rounding phases, rather than insert a flat prefix.
+                    const int64_t level=104*256+int64_t(d)*256/80+int64_t(d)*d*196*256/(int64_t(depth)*depth);
+                    const int value=int(4*((level+(2*((across+along+phase)%4)+1)*128)/1024));
+                    frame.Fill(x,y,x+1,y+1,value);
+                }
+                const auto planar=frame.Source();
+                const auto measured=MeasureSourcePicture(planar);
+                if(!measured.rectangleAvailable)Logger::WriteMessage((std::string("Weak terminal: horizontal=")+std::to_string(horizontal)+
+                    " leading="+std::to_string(leading)+" phase="+std::to_string(phase)+" reason="+measured.reason).c_str());
+                Exact(measured,Bounds(960,540,0,0,960,540));
+                auto p010=planar;p010.format=AnalysisLumaFormat::P010;
+                Exact(MeasureSourcePicture(p010),Bounds(960,540,0,0,960,540));
+                std::vector<uint32_t> v210(size_t(540)*640);
+                for(int y=0;y<540;++y)for(int x=0;x<960;x+=6) {
+                    unsigned codes[6];for(int k=0;k<6;++k){AnalysisLumaSample q;Assert::IsTrue(planar.Sample(x+k,y,q));codes[k]=q.luma;}
+                    auto* out=v210.data()+size_t(y)*640+size_t(x/6)*4;
+                    out[0]=512|(codes[0]<<10)|(512<<20);out[1]=codes[1]|(512<<10)|(codes[2]<<20);
+                    out[2]=512|(codes[3]<<10)|(512<<20);out[3]=codes[4]|(512<<10)|(codes[5]<<20);
+                }
+                AnalysisLumaSource packed10{reinterpret_cast<const uint8_t*>(v210.data()),v210.size()*4,960,540,2560,0,
+                    AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::V210,ColorSpace::REC_709,7};
+                packed10.range=AnalysisLumaRange::Limited;
+                Exact(MeasureSourcePicture(packed10),Bounds(960,540,0,0,960,540));
+                // Same source codes packed as 8-bit 4:2:2 must not change AR.
+                std::vector<uint8_t> packed(size_t(960)*540*2);
+                for(int y=0;y<540;++y)for(int x=0;x<960;x+=2) {
+                    const auto offset=size_t(y)*1920+size_t(x)*2;
+                    AnalysisLumaSample a,b;Assert::IsTrue(planar.Sample(x,y,a)&&planar.Sample(x+1,y,b));
+                    packed[offset]=128;packed[offset+1]=uint8_t(a.luma/4);
+                    packed[offset+2]=128;packed[offset+3]=uint8_t(b.luma/4);
+                }
+                AnalysisLumaSource native{packed.data(),packed.size(),960,540,1920,0,
+                    AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::HDYC,ColorSpace::REC_709,7};
+                native.range=AnalysisLumaRange::Limited;
+                Exact(MeasureSourcePicture(native),Bounds(960,540,0,0,960,540));
+            }
+        }
+        TEST_METHOD(SourcePictureQuantizedRaisedMattePrefixCannotBecomeTerminalPicture)
+        {
+            for(bool horizontal:{false,true})for(bool leading:{false,true})for(int phase=0;phase<4;++phase)
+            for(int divisor:{24,8}) {
+                SourcePictureFrame frame(960,540,104);const int depth=horizontal?960:540;
+                for(int y=0;y<540;++y)for(int x=0;x<960;++x) {
+                    const int across=horizontal?x:y,d=leading?across:depth-1-across;
+                    const int prefix=depth/divisor+16;
+                    const int level=d<prefix?104:std::min(300,104+(d-prefix)/2);
+                    const int value=4*((level+(x+y+phase)%4)/4);
+                    frame.Fill(x,y,x+1,y+1,value);
+                }
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Assert::IsTrue(observed.complete);
+                Assert::IsFalse(observed.rectangleAvailable && observed.measuredBounds.left==0 && observed.measuredBounds.top==0 &&
+                    observed.measuredBounds.right==960 && observed.measuredBounds.bottom==540,
+                    L"Encoding phase and later body gradients cannot convert a genuine flat raised matte into raster contact.");
+            }
+        }
+        TEST_METHOD(SourcePictureNoisyRaisedMattePrefixCannotBorrowLaterPictureTrend)
+        {
+            for(bool horizontal:{false,true})for(bool leading:{false,true})for(int phase=0;phase<4;++phase)
+            for(bool blocks:{false,true}) {
+                SourcePictureFrame frame(960,540,104);const int depth=horizontal?960:540;
+                for(int y=0;y<540;++y)for(int x=0;x<960;++x) {
+                    const int across=horizontal?x:y,d=leading?across:depth-1-across;
+                    const int prefix=depth/24+16;
+                    const int level=d<prefix?104:std::min(300,104+(d-prefix)/2);
+                    const int noise=4*((blocks?(x/8+3*(y/7)+phase):(x+3*y+phase))%3-1);
+                    frame.Fill(x,y,x+1,y+1,level+noise);
+                }
+                const auto observed=MeasureSourcePicture(frame.Source());
+                if(observed.rectangleAvailable && observed.measuredBounds.left==0 && observed.measuredBounds.top==0 &&
+                    observed.measuredBounds.right==960 && observed.measuredBounds.bottom==540) {
+                    Logger::WriteMessage((std::string("Noisy matte false raster: horizontal=")+std::to_string(horizontal)+
+                        " leading="+std::to_string(leading)+" phase="+std::to_string(phase)+" blocks="+std::to_string(blocks)+
+                        " floor="+std::to_string(observed.blackReference.floor)+" proof="+std::to_string(observed.darkTerminal.accepted)).c_str());
+                    Assert::Fail(L"Quantization/noise in a flat matte cannot borrow later body contrast to claim a raster contact.");
+                }
+            }
+        }
+        TEST_METHOD(SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions)
+        {
+            for(bool matte:{false,true})for(int phase=0;phase<4;++phase)
+            for(auto color:{ColorSpace::REC_709,ColorSpace::BT_2020}) {
+                SourcePictureFrame frame(960,540,104);
+                std::vector<uint8_t> r210(size_t(960)*540*4),bgra(r210.size());
+                for(int y=0;y<540;++y)for(int x=0;x<960;++x) {
+                    const int d=959-x;int value=0;
+                    if(matte) {
+                        const int prefix=960/24+16;
+                        value=(d<prefix?104:std::min(300,104+(d-prefix)/2))+4*((x/8+3*(y/7)+phase)%3-1);
+                    } else {
+                        const int64_t level=104*256+int64_t(d)*256/80+int64_t(d)*d*196*256/(int64_t(960)*960);
+                        value=int(4*((level+(2*((x+y+phase)%4)+1)*128)/1024));
+                    }
+                    frame.Fill(x,y,x+1,y+1,value);
+                    // Native r210 uses 64..960 RGB; limited YUV uses 64..940.
+                    const unsigned rgb=unsigned(64+((value-64)*896+438)/876);
+                    const unsigned word=(rgb<<20)|(rgb<<10)|rgb;const size_t at=(size_t(y)*960+x)*4;
+                    for(unsigned k=0;k<4;++k)r210[at+k]=uint8_t(word>>(24-8*k));
+                    const uint8_t rgb8=uint8_t(((value-64)*255+438)/876);
+                    bgra[at]=bgra[at+1]=bgra[at+2]=rgb8;bgra[at+3]=255;
+                }
+                AnalysisLumaSource a{r210.data(),r210.size(),960,540,3840,0,
+                    AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::R210,color,7};a.range=AnalysisLumaRange::Limited;
+                AnalysisLumaSource b{bgra.data(),bgra.size(),960,540,3840,0,
+                    AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::BGRA_8BIT,color,7};b.range=AnalysisLumaRange::Full;
+                for(const auto& source:{frame.Source(),a,b}) {
+                    const auto observed=MeasureSourcePicture(source);
+                    const bool full=observed.rectangleAvailable && observed.measuredBounds.left==0 && observed.measuredBounds.top==0 &&
+                        observed.measuredBounds.right==960 && observed.measuredBounds.bottom==540;
+                    if(full==matte)Logger::WriteMessage((std::string("RGB/YUV geometry mismatch: matte=")+std::to_string(matte)+
+                        " phase="+std::to_string(phase)+" format="+std::to_string(int(source.format))+" encoding="+std::to_string(int(source.encoding))+
+                        " color="+std::to_string(int(color))+" reason="+observed.reason).c_str());
+                    Assert::IsTrue(observed.complete);Assert::AreEqual(!matte,full,
+                        L"RGB matrix/range rounding cannot change a full picture into a bar or a raised matte into full-picture contact.");
+                }
+            }
+        }
         TEST_METHOD(SourcePictureFlatRaisedPrefixBeforeFaintRampCannotProveFullRaster)
         {
             for(bool horizontal:{false,true})for(bool leading:{false,true}) {
