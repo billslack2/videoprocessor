@@ -4,7 +4,7 @@
   "baseBeta": "v1.4.02-beta",
   "baseBetaCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
   "preservedDeployedHistory": "aee2c7dfe0ff47aa9372b79c6afc200440f36e34",
-  "status": "Native and private replay passed; matching full runtime qualification in progress",
+  "status": "Native and private replay passed; full runtime qualification failed; no-lookahead preparation fix in progress",
   "deploymentPerformed": false,
   "configurationChanged": false,
   "pausedCapture": {
@@ -57,8 +57,11 @@
     "evidenceRoot": "E:/codex/videoprocessor/evidence/native-boundary-20261101/common-bounded-postgeometry"
   },
   "runtimeQualification": {
-    "state": "Running",
-    "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261101-231143-220c418e"
+    "state": "Failed",
+    "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261101-231143-220c418e",
+    "standardPassed": 1013,
+    "standardTotal": 1017,
+    "followup": "Focused 20261101-233224-86c3c7b5 passed7/9 after production-mode and both-bar UI fixture corrections. Only standard/beta no-lookahead Classic translation remains. Diagnostic 20261101-234143-c37b0ac7 failed2/2: sampled ingress dispatched native and subtitle jobs while sources were owned, but exact results rarely arrive before source consumption. Bounded current-source preparation eligibility is being implemented; original pose and24-source assertions retained."
   },
   "designRecord": "docs/SOURCE_PICTURE_COHERENCE_20261101.md",
   "limits": [

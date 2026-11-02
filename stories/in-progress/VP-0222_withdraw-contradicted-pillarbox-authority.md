@@ -598,3 +598,17 @@ Matching clean-commit x64 Release host/both renderer qualification is running.
 No runtime/configuration deployment, beta merge or release packaging has occurred
 in this repair. Full qualification and live acceptance are not claimed. Story stays
 InProgress; the unrelated dirty VP-0207 design asset remains untouched.
+
+### Runtime follow-up
+
+Full clean2dc qualification completed all six matching x64 Release builds but
+failed4/1017 standard tests (1,013 passed). Production-mode and both-bar UI fixture
+expectations were corrected without relaxing pixel preservation. Focused follow-up
+passed7/9, including both renderer AR transition and both-bar UI checks. The two
+remaining no-lookahead Classic translation failures persist in diagnostic run
+20261101-234143-c37b0ac7. Its sampled ingress records show both jobs dispatched
+while sources remain owned; asynchronous results usually complete after selection.
+A bounded current-source preparation handoff is in progress. Source identity,
+original translated pose and24 distinct presented-source checks remain required.
+The earlier Black/reconstruction failures pass on the new runtime. No qualification
+receipt or new deployment is claimed. Stage9 evidence retains failed run locations.
