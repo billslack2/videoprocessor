@@ -11,8 +11,9 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1018,
+  "minimumNativeTests": 1019,
   "requiredNativeMethods": [
+    "IncidentCaptureRecordsEffectiveModeLossWithoutTreatingUserProfileChangeAsFailure",
     "RecordingTimecodeHasExactUtcAndDisplayedOutputIdentity",
     "IncidentCaptureBoundsFailuresAndIncludesAfterContext",
     "IncidentCaptureRejectsWrongSourceAndProfileTransition",

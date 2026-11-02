@@ -3261,6 +3261,20 @@ namespace VideoProcessorTest
             }
             Assert::AreEqual(Policy::MaxCaptures,policy.CapturesReserved());
         }
+        TEST_METHOD(IncidentCaptureRecordsEffectiveModeLossWithoutTreatingUserProfileChangeAsFailure)
+        {
+            using namespace PresentationIncident;
+            Output o;o.generation=1;o.selectedSequence=1;o.rendered=o.submitted=true;o.tickMs=100;
+            o.facts.available=true;o.facts.generation=1;o.facts.sequence=1;o.facts.nativeAvailable=true;
+            o.facts.native=o.source={0,263,3840,1897};o.facts.mode=o.facts.requestedMode=3;o.facts.composed=true;
+            Policy automatic;automatic.Submitted(o);
+            o.facts.mode=0;o.facts.composed=false;
+            const auto failure=automatic.Plan(o,true);
+            Assert::IsTrue(failure.capture);Assert::AreEqual(std::string("advanced-composition-lost"),std::string(failure.reason));
+            o.facts.mode=o.facts.requestedMode=3;o.facts.composed=true;
+            Policy manual;manual.Submitted(o);o.facts.mode=o.facts.requestedMode=0;o.facts.composed=false;
+            Assert::IsFalse(manual.Plan(o,true).capture,L"An intentional profile change is a different context.");
+        }
         TEST_METHOD(IncidentCaptureRejectsWrongSourceAndProfileTransition)
         {
             using namespace PresentationIncident;

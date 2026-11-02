@@ -29,13 +29,13 @@ public:
         }
         const bool same=have_ && Current(previous_) && previous_.generation==o.generation &&
             previous_.facts.viewport==o.facts.viewport && previous_.facts.format==o.facts.format &&
-            previous_.facts.domain==o.facts.domain && previous_.facts.mode==o.facts.mode;
+            previous_.facts.domain==o.facts.domain && previous_.facts.requestedMode==o.facts.requestedMode;
         if(!same){mismatchCaptured_=false;return r;}
         if(incident_ && o.tickMs-lastIncident_<20000)return r;
         const char* reason=nullptr;
         if(previous_.facts.nativeAvailable && o.facts.nativeAvailable && previous_.facts.native==o.facts.native &&
             Area(o.source)>Area(previous_.source)*1.03)reason="presentation-widened-with-unchanged-native";
-        else if(o.facts.mode>=2 && previous_.facts.composed && !o.facts.composed && !o.facts.absence)
+        else if((o.facts.requestedMode>=2 || previous_.facts.mode>=2) && previous_.facts.composed && !o.facts.composed && !o.facts.absence)
             reason="advanced-composition-lost";
         else if(!mismatchCaptured_ && o.facts.nativeAvailable && o.facts.measuredAvailable && Area(o.facts.measured)>0 &&
             std::abs(Area(o.facts.native)-Area(o.facts.measured))>Area(o.facts.native)*0.03)
