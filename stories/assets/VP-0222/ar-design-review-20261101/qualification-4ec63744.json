@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 2,
+  "status": "Passed",
+  "configuration": "Release",
+  "platform": "x64",
+  "source": {
+    "commit": "4ec637441505ced8fcecc68944edc5fa5e2b5aa3",
+    "dirty": false,
+    "fingerprint": "62bf405bd4ea57e8a8d7b1554fe57cad6e247a269a908aeb12ee633cf44a5c5e",
+    "label": "4ec637441505",
+    "build": "4ec637441505ced8fcecc68944edc5fa5e2b5aa3"
+  },
+  "manifestHash": "F58308761C91DDC45809EFC49EFC1351EA02B91850DCA29A8B710E7D6669EBDD",
+  "testEnvironment": {
+    "sourcePictureDetector": true,
+    "legacyDetectorEnvironment": null,
+    "sourcePictureShadow": null
+  },
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "FF1657004178BAD69B702CD6BB45541928D21E045A1D372FC91F7800749E5232"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Lib.lib",
+      "sha256": "CE12FE54C586443B39D1726236387E590EA071E4831F2888E0EE3797DF4EFCDF"
+    },
+    {
+      "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "8438161DFF6F74618880FA7B9A3957997BBBD3BC7A3CD8E13F7C51A2232ED30A"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "6B6011D2BBBDC29A7E6B23DD42F8A086913C2EA567D763B00ADFF9A4D4AA6698"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Test.dll",
+      "sha256": "8F701496DFAAD8DBFF3301F8C45B7C45383067D3CA9BB6B30B20191D71A38011"
+    },
+    {
+      "path": "x64/Release/tests-beta/VideoProcessor-TestBeta.dll",
+      "sha256": "C6EC68DAED1A668E366F6B4A6250A54FE22855BA30B499200C47D3B2D62579D8"
+    },
+    {
+      "path": "x64/Release/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/tests-beta/libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    },
+    {
+      "path": "x64/Release/vprenderer/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    }
+  ],
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0,
+      "seconds": 0.698,
+      "log": "E:\\codex\\videoprocessor\\three-body-reconstruction-20261102\\artifacts\\qualification\\runs\\20261102-075705-f7f44c5d\\native-library-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "1b61eb8c-a2a2-47c1-9603-6afd84144588",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRenderer.vcxproj",
+      "exit": 0,
+      "seconds": 23.983,
+      "log": "E:\\codex\\videoprocessor\\three-body-reconstruction-20261102\\artifacts\\qualification\\runs\\20261102-075705-f7f44c5d\\standard-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "31268a9e-361f-4d8e-80ac-eb53d5650197",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "host",
+      "project": "src\\VideoProcessor-GUI\\VideoProcessor-GUI.vcxproj",
+      "exit": 0,
+      "seconds": 33.369,
+      "log": "E:\\codex\\videoprocessor\\three-body-reconstruction-20261102\\artifacts\\qualification\\runs\\20261102-075705-f7f44c5d\\host-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "5399b236-fb36-4498-9595-a29519bae43e",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "exit": 0,
+      "seconds": 5.331,
+      "log": "E:\\codex\\videoprocessor\\three-body-reconstruction-20261102\\artifacts\\qualification\\runs\\20261102-075705-f7f44c5d\\standard-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "a5104a7e-b39e-4d22-bfd7-18cdf189bc33",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "beta-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRendererBeta.vcxproj",
+      "exit": 0,
+      "seconds": 25.241,
+      "log": "E:\\codex\\videoprocessor\\three-body-reconstruction-20261102\\artifacts\\qualification\\runs\\20261102-075705-f7f44c5d\\beta-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "440267ff-f428-4d11-a9a9-b806a2889117",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "beta-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "exit": 0,
+      "seconds": 80.798,
+      "log": "E:\\codex\\videoprocessor\\three-body-reconstruction-20261102\\artifacts\\qualification\\runs\\20261102-075705-f7f44c5d\\beta-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "5a40744a-4d24-40e0-b570-5eda0fccd16c",
+      "PSShowComputerName": false
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\VideoProcessor-Test.dll",
+      "trx": "artifacts/qualification/runs/20261102-075705-f7f44c5d/standard.trx",
+      "trxSha256": "D093824335B07F82AF6B06DEF71E3B210FC1C73ABFF2149E3E0DF39B9CDF94AB",
+      "executed": 1031,
+      "native": 1015,
+      "actualClassic": 16,
+      "seconds": 176.691
+    },
+    {
+      "variant": "beta",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "trx": "artifacts/qualification/runs/20261102-075705-f7f44c5d/beta.trx",
+      "trxSha256": "A307A6A28CA78BE6A289BDCCB97D5E3DB8AF5917DB901BB52662BB5C78139CE9",
+      "executed": 16,
+      "native": 0,
+      "actualClassic": 16,
+      "seconds": 138.281
+    }
+  ],
+  "optionalPrivateFixtures": [
+    {
+      "environment": "VP_AR_COLLAR_CAPTURE_FRAME",
+      "status": "absent-not-claimed",
+      "sha256": null,
+      "path": null
+    },
+    {
+      "environment": "VP_DARK_AR_ANALYSIS_FRAME",
+      "status": "absent-not-claimed",
+      "sha256": null,
+      "path": null
+    },
+    {
+      "environment": "VP_PHYSICAL_EDGE_CAPTURE_FRAME",
+      "status": "absent-not-claimed",
+      "sha256": null,
+      "path": null
+    },
+    {
+      "environment": "VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY",
+      "status": "absent-not-claimed",
+      "sha256": null,
+      "path": null
+    }
+  ],
+  "seconds": 441.222,
+  "shaderCacheDirectory": "E:\\codex\\videoprocessor\\three-body-reconstruction-20261102\\artifacts\\qualification\\runs\\20261102-075705-f7f44c5d\\shader-cache",
+  "coldShaderCache": true,
+  "finished": "2026-11-02T08:04:25.6369066-05:00"
+}

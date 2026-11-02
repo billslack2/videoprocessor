@@ -670,3 +670,33 @@ the saved paused scene; window capture timed out, so live visual acceptance of t
 original scene remains unconfirmed. No source playback controls were used.
 
 [Final evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage12-qualified.json).
+
+### Presentation observability first (2026-11-02)
+
+The user reported another shrink during normal 3 Body Problem scope playback with
+reconstruction captions, then directed work toward retrospective logging rather
+than repeated deep frame inspection. Preserved logs show accepted native geometry
+unchanged while the submitted aperture jumps to full raster and then wider raw
+visibility. A legacy-only report records 61 submitted-geometry changes; missing
+caption/preparation facts remain explicitly unknown.
+
+Qualified source `4ec63744` adds opt-in, source-bound presentation decision JSON to
+the existing enhanced logger. Each selected packet carries measured/native/visible
+bounds, caption currentness, scan/composition/preparation/ownership/continuation
+results and final decision reason into the actual submitted output. Changes log
+immediately; stable state has a one-second heartbeat. Cadence repeats retain their
+original displayed-source facts. Missing identities are explicit. Screenshot
+sidecars carry the same decision/output identity. The timeline tool decodes these
+records and flags malformed records and reported logger loss, without source pixels.
+
+All 1,015 native contracts and 16 standard renderer scenarios passed (1,031 total),
+as did all 16 beta scenarios and two additional normal-mode opt-out checks. The
+fully matching Release host and both renderers were backed up and deployed, with
+all 28 hashes verified. Added only `[logging] debug: true`; profile state is
+unchanged. Backup: `C:\Videoprocessor\vp\backups\telemetry-4ec63744-20261102-080502`.
+Live verification parsed 56 records with exact displayed-source facts, 22 state
+changes and 34 heartbeats; zero malformed records, reported drops or truncation.
+No computer input automation or native source frame capture was used in this work.
+The underlying AR/reconstruction defect remains open; this is observability work.
+
+[Evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage13-telemetry.json).

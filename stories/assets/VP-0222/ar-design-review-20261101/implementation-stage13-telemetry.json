@@ -1,0 +1,45 @@
+{
+  "sourceCommit": "4ec637441505ced8fcecc68944edc5fa5e2b5aa3",
+  "status": "Qualified telemetry deployed; AR defect remains open",
+  "sourceBase": "Fetched origin/v1.4.02-beta a591ad3b, then preserved deployed 14da4730 history",
+  "scope": "Logging and metadata only; no detection, crop, caption or frame-analysis policy changed",
+  "fullQualification": {
+    "run": "20261102-075705-f7f44c5d",
+    "standardPassed": 1031,
+    "native": 1015,
+    "betaPassed": 16
+  },
+  "focused": {
+    "pluginAndRecordPass": "20261102-075449-440654b2",
+    "nativePass": "20261102-074715-afe6d833",
+    "corrections": "Assert actual transport generation instead of constructor generation; serialize unavailable timestamps as JSON null",
+    "failedRuns": [
+      "20261102-075112-23f10ee4",
+      "20261102-075300-06c167ee"
+    ]
+  },
+  "optOut": {
+    "passed": 2,
+    "trx": "E:\\codex\\videoprocessor\\evidence\\three-body-reconstruction-20261102-0738\\telemetry-opt-out\\opt-out.trx"
+  },
+  "reportTool": {
+    "liveHeartbeats": 34,
+    "directory": "E:\\codex\\videoprocessor\\evidence\\three-body-reconstruction-20261102-0738\\live-report",
+    "malformed": 0,
+    "liveRecords": 56,
+    "currentSourceFacts": 56,
+    "liveChanges": 22,
+    "submitted": 56,
+    "reportedDrops": 0,
+    "reportedTruncation": 0,
+    "syntheticContract": "Passed malformed JSON detection, bit-mask decoding and exact screenshot/output correlation",
+    "legacyGeometryChanges": 61
+  },
+  "deployment": "deployment-4ec63744.json",
+  "configurationEdit": "Added [logging] debug: true after backup; selected profiles/state preserved",
+  "processId": 19788,
+  "noComputerUse": true,
+  "noSourceFrameCapture": true,
+  "documentation": "docs/PRESENTATION_DECISION_TELEMETRY.md",
+  "workflow": "Read timeline and per-output reasons first. Use screenshot sidecar output identity. Request source pixels only for unresolved pixel-evidence correctness."
+}
