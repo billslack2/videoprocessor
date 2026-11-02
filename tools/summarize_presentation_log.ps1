@@ -42,9 +42,10 @@ $mode='structured';$reportRows=$rows
 if(!$rows.Count){$mode='legacy-limited';$reportRows=$legacy}
 $reportRows | Select-Object * -ExcludeProperty Record | Export-Csv -LiteralPath (Join-Path $OutputDirectory 'timeline.csv') -NoTypeInformation
 if($rows.Count){$rows.Record | Set-Content -LiteralPath (Join-Path $OutputDirectory 'decisions.jsonl')}
-$changes=@($reportRows | Where-Object {$_.Event -ne 'heartbeat'})
+$changes=@($reportRows | Where-Object {$_.Event -in @('initial','state-change','presentation-change','legacy-geometry-change')})
+$correlations=@($reportRows | Where-Object {$_.Event -eq 'correlation'})
 $summary=[Collections.Generic.List[string]]::new()
-$summary.Add("Presentation report: $mode");$summary.Add("Source: $LogPath");$summary.Add("Records: $($reportRows.Count); changes: $($changes.Count); malformed/unsupported records: $invalid")
+$summary.Add("Presentation report: $mode");$summary.Add("Source: $LogPath");$summary.Add("Records: $($reportRows.Count); decision changes: $($changes.Count); per-output correlations: $($correlations.Count); malformed/unsupported records: $invalid")
 if($mode -eq 'legacy-limited'){$summary.Add('Legacy log: geometry changes only. Missing caption/preparation facts are UNKNOWN. They cannot be reconstructed from these records.')}
 $sumDropped=0L;$sumTruncated=0L;foreach($v in $loss.Values){$sumDropped+=$v[0];$sumTruncated+=$v[1]}
 $summary.Add("Last reported cumulative async losses by transport: dropped=$sumDropped truncated=$sumTruncated. Missing loss reports do not prove zero loss.")
