@@ -1,0 +1,33 @@
+{
+  "sourceCommit": "fcaa9aab4a6dda839d7c25b6c20140240b5011bd",
+  "process": 30576,
+  "submittedOutputs": 3028,
+  "allUnavailable": 21,
+  "startupExclusion": "Latest renderer/viewport/format/domain/policy identity, selected source >=240, ALL continuity epochs included",
+  "steadyOutputs": 2793,
+  "steadyUnavailable": 0,
+  "steadyWrongOrNoncurrent": 0,
+  "firstTimecode": "20:31:28.674Z CE8B36F0 G2 O236 S240",
+  "lastTimecode": "20:33:25.288Z CE8B36F0 G2 O3028 S3036",
+  "measurementBounds": {
+    "[0, 0, 3840, 2160]": 2793
+  },
+  "measurementReasons": {
+    "": 2793
+  },
+  "presentationBounds": {
+    "[0, 0, 3840, 2160]": 2793
+  },
+  "parseErrors": 0,
+  "lastUnavailableSource": 174,
+  "steadyContinuityEpochs": [
+    10,
+    14
+  ],
+  "nativeSnapshot": {
+    "sha256": "c754597091f5afed73a927c281099713f1b80e3e80b6b07b7c47c500c559e9ef",
+    "bytes": 22118400,
+    "matchesOriginalPixelGroup": true,
+    "sidecar": "3840 2160 10240 0 3 3 4 0 2160 1 1\n"
+  }
+}

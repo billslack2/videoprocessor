@@ -1,0 +1,225 @@
+{
+  "sourceCommit": "fcaa9aab4a6dda839d7c25b6c20140240b5011bd",
+  "configuration": "Release",
+  "architecture": "x64",
+  "deploymentStatus": "Qualified",
+  "fullQualification": true,
+  "backup": "C:\\Videoprocessor\\vp\\backups\\eternals-starfield-fcaa9aab-20261102-153107",
+  "configurationEdits": [],
+  "configurationHashesBefore": {
+    "VideoProcessor.state": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0",
+    "VideoProcessor.cfg": "26B5BACB253DB172B0418AA51BD0A2F3CB29047E3934D099098D0FF16F31074C"
+  },
+  "configurationPreservedBeforeRestart": true,
+  "motionTests": [
+    {
+      "variant": "standard",
+      "passed": 220,
+      "testExit": 0
+    },
+    {
+      "variant": "beta",
+      "passed": 220,
+      "testExit": 0
+    }
+  ],
+  "files": [
+    {
+      "source": "VideoProcessor-GUI.exe",
+      "target": "VideoProcessor.exe",
+      "sha256": "5D89D9728B399BE21A1A1D737119ACAEFCA2723E28ABA102F0F311F02317FE8D",
+      "before": "5C4B78CC5E555125AD2FBD4E0B4336C9A2CAD1A61E7407DB9037CE289E89C521",
+      "action": "copy"
+    },
+    {
+      "source": "VideoProcessor-GUI.exe.runtime.json",
+      "target": "VideoProcessor.exe.runtime.json",
+      "sha256": "E0F6140F72EADE39FC0C8BC635C0898D7964C77E6E81CDF9C664AE5467A9EC6A",
+      "before": "098483F4D1A4B862D162EC6F48B00C30B0962E0D1D1643F7979CBD978C22F207",
+      "action": "copy"
+    },
+    {
+      "source": "VideoProcessor-GUI.exe.runtime.json",
+      "target": "VideoProcessor-GUI.exe.runtime.json",
+      "sha256": "E0F6140F72EADE39FC0C8BC635C0898D7964C77E6E81CDF9C664AE5467A9EC6A",
+      "before": "098483F4D1A4B862D162EC6F48B00C30B0962E0D1D1643F7979CBD978C22F207",
+      "action": "copy"
+    },
+    {
+      "source": "VideoProcessor-GUI.pdb",
+      "target": "VideoProcessor-GUI.pdb",
+      "sha256": "FF4152D6CB6C2805F532243E8404CECE5E1449047F1EEEE53E936DA4D365B96F",
+      "before": "B26937C3421F5999C833773F9E74FF967CA2D23D11171C93169D0BB9DEFD5AB4",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer\\libdovi.dll",
+      "target": "vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "before": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libgcc_s_seh-1.dll",
+      "target": "vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "before": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\liblcms2-2.dll",
+      "target": "vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "before": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libplacebo-360.dll",
+      "target": "vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "before": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libshaderc_shared.dll",
+      "target": "vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "before": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libspirv-cross-c-shared.dll",
+      "target": "vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "before": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libstdc++-6.dll",
+      "target": "vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "before": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libwinpthread-1.dll",
+      "target": "vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "before": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "E2AD5FE15DB4144319D7897B6773B71DEF27734F4A059007464FB433CF0867BC",
+      "before": "F82A1576900DD6C58B24A7A00090B36BF8FF300A7F079C1F281DAFCBE62FB842",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer\\vulkan-1.dll",
+      "target": "vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "before": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "sha256": "B56175D068D611C42E845FB78B51699A156F87FB4465AC93B1EF5C6B56D228B1",
+      "before": "435CF08B715AB0D57C6585EA198C7B1EF5DFBC499F16CCFAFCFD77CE743320A4",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "target": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "sha256": "C042331C7765883BB5734F8BA3BF9D45E6309B8A355B9BA2AF93809EA6F048ED",
+      "before": "E15B4800FC888D1CAEE9CA66FD06AC669BDE8FD4697A01A7EF21C154CFE22207",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer-beta\\libdovi.dll",
+      "target": "vprenderer-beta\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "before": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libgcc_s_seh-1.dll",
+      "target": "vprenderer-beta\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "before": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\liblcms2-2.dll",
+      "target": "vprenderer-beta\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "before": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libplacebo-388.dll",
+      "target": "vprenderer-beta\\libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "before": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libshaderc_shared.dll",
+      "target": "vprenderer-beta\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "before": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "target": "vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "before": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libstdc++-6.dll",
+      "target": "vprenderer-beta\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "before": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libwinpthread-1.dll",
+      "target": "vprenderer-beta\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "before": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "BCC47ADAEA715862EDDDF031EDECC64CB1F1D908E5EA0A52D356C2C5F702FC0D",
+      "before": "568AE631EDE3AC6248E55C99CDFC4E3F03E97352AC192FB3D7458C32B023169C",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer-beta\\vulkan-1.dll",
+      "target": "vprenderer-beta\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "before": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "sha256": "0CD476A7542370732929438A79A88A8E9E1D18A8D28A753CA94539347B9A0505",
+      "before": "07B3E720EEF1AA8A23465CFC5AB36790CF6D375396A7AEF01A20EB98E9BDE095",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "sha256": "BE2B86400428DAA81BF619D9175175E11E85BB9F2BB1FCAE2A21D1646FC219C2",
+      "before": "06B4EDD4FC4B970FB35DD55416E96AEFA9BA4D28BD440714712919ED28CB5775",
+      "action": "copy"
+    }
+  ],
+  "deployedAt": "2026-11-02T15:31:09.3966111-05:00"
+}

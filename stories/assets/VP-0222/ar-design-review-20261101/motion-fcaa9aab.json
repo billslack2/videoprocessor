@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "fcaa9aab4a6dda839d7c25b6c20140240b5011bd",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "reusedQualifiedBuild": true,
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "ReconstructionMotionTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildMode": "reused-qualified-build",
+      "reusedQualifiedBuild": true,
+      "buildExit": null,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\eternals-paused-evidence-20261102\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "442C9232608FFC87857035022CB5BD754D3C931EA14C8BF99BCC9B223700E2E4",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "passed": 220
+    },
+    {
+      "variant": "beta",
+      "buildMode": "reused-qualified-build",
+      "reusedQualifiedBuild": true,
+      "buildExit": null,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\eternals-paused-evidence-20261102\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "298F8D32C31AFE208D8A191150104A257E02D4ECDA8905BD7E1EE572C775E894",
+      "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "passed": 220
+    }
+  ],
+  "finished": "2026-11-02T15:30:44.2058857-05:00",
+  "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+}

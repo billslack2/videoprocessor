@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "status": "qualified-deployed-specific-starfield-dropout-repaired-live",
+  "source": {
+    "commit": "fcaa9aab4a6dda839d7c25b6c20140240b5011bd",
+    "dirty": false,
+    "fingerprint": "843956dd0df08460dae729372c72fb7a010717f4ac869030844c3273a8a2b452",
+    "label": "fcaa9aab4a6d",
+    "build": "fcaa9aab4a6dda839d7c25b6c20140240b5011bd"
+  },
+  "branch": "codex/eternals-paused-evidence-20261102",
+  "privateEvidence": "E:\\codex\\videoprocessor\\evidence\\eternals-starfield-20261102-1430",
+  "rootCauses": [
+    "512 connected-component cap aborted independent native boundary analysis",
+    "Top/bottom sun contacts at 60/63 of 128 rays were rejected by the 64-ray terminal rule despite shared opposing-edge evidence",
+    "Fixed right-side ray positions missed coherent native star contact at the exact raster"
+  ],
+  "repair": [
+    "Native terminal contacts first; opposing contacts can corroborate their shared current rays with an independent third boundary",
+    "Bounded 6-16-pixel native strip, coherent exact-raster patch and positive texture in three quarters verify sparse dark edge content",
+    "Retain 512 classified-component cap; prioritize boundary captions; complete tracked extents; mark excess occupied cells unclassified rather than background",
+    "Incomplete topology cannot authorize inset geometry; full raster requires independent current source contacts",
+    "Preserve glyph veto including adjacent-cell uncertainty, thin-matte inward-onset veto, full competing-inset scan before gradient inference",
+    "Trace proof/texture/glyph/inset decisions and actual incomplete-measurement reason"
+  ],
+  "baseline": {
+    "nativeFrames": 95,
+    "uniquePixelGroups": 4,
+    "failedFrames": 95,
+    "traceComponentCapJobs": 2873,
+    "traceBlackFloor": 104
+  },
+  "tests": {
+    "mandatoryNative": 1039,
+    "standardRenderer": 16,
+    "betaRenderer": 16,
+    "motionStandard": 220,
+    "motionBeta": 220,
+    "currentStarfieldReplay": {
+      "frames": 95,
+      "failed": 0,
+      "actualBoundedWorker": true,
+      "budgetMs": 24,
+      "averageMs": 3.572,
+      "peakMs": 5.3856
+    },
+    "previousPausedCorpus": {
+      "frames": 96,
+      "failed": 0,
+      "averageMs": 3.289,
+      "peakMs": 5.0859
+    },
+    "qualificationRun": "20261102-151121-2ce87960",
+    "qualificationSourceClean": true
+  },
+  "live": {
+    "sourceCommit": "fcaa9aab4a6dda839d7c25b6c20140240b5011bd",
+    "process": 30576,
+    "submittedOutputs": 3028,
+    "allUnavailable": 21,
+    "startupExclusion": "Latest renderer/viewport/format/domain/policy identity, selected source >=240, ALL continuity epochs included",
+    "steadyOutputs": 2793,
+    "steadyUnavailable": 0,
+    "steadyWrongOrNoncurrent": 0,
+    "firstTimecode": "20:31:28.674Z CE8B36F0 G2 O236 S240",
+    "lastTimecode": "20:33:25.288Z CE8B36F0 G2 O3028 S3036",
+    "measurementBounds": {
+      "[0, 0, 3840, 2160]": 2793
+    },
+    "measurementReasons": {
+      "": 2793
+    },
+    "presentationBounds": {
+      "[0, 0, 3840, 2160]": 2793
+    },
+    "parseErrors": 0,
+    "lastUnavailableSource": 174,
+    "steadyContinuityEpochs": [
+      10,
+      14
+    ],
+    "nativeSnapshot": {
+      "sha256": "c754597091f5afed73a927c281099713f1b80e3e80b6b07b7c47c500c559e9ef",
+      "bytes": 22118400,
+      "matchesOriginalPixelGroup": true,
+      "sidecar": "3840 2160 10240 0 3 3 4 0 2160 1 1\n"
+    }
+  },
+  "configurationEdits": [],
+  "backup": "C:\\Videoprocessor\\vp\\backups\\eternals-starfield-fcaa9aab-20261102-153107",
+  "deploymentFilesVerified": 28,
+  "remaining": "Broader source-boundary/transition acceptance remains open. Inset candidates with incomplete topology remain unmeasured; this full-raster repair never chooses a standard or screen aspect. Startup generation/viewport reacquisition is explicitly reported, not hidden as steady success."
+}
