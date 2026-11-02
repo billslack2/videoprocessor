@@ -6735,12 +6735,16 @@ namespace AlphaSourceCrop
     static bool SubmittedTranslationCoversCurrentBarVisibility(
         const PresentationRecoveryInput& input, const Decision& proposed)
     {
+        // Confirmation belongs to a replacement target. It cannot revoke an
+        // already submitted live translation during a dense-scan gap. Continue
+        // only the controller's current pose, with the same native contract and
+        // current outside-native visibility checks below; no target is admitted.
         const auto& crop=input.crop;const auto& anchor=input.submittedScopeAnchor;
         if(!input.classicTranslationEnabled || !HasAcceptedNativeCrop(crop) || input.presentationEpoch!=crop.framePresentationEpoch ||
             !crop.verticalTranslationActive || crop.verticalTranslationPixels==0 ||
             crop.verticalTranslationSourceGeneration!=crop.frameSourceGeneration ||
             !SameTrustedCropContract(crop.verticalTranslationBase,crop.geometry) ||
-            crop.verticalTranslationConfirmationPending || crop.verticalFitConfirmationPending ||
+            crop.verticalFitConfirmationPending ||
             crop.verticalTranslationBaseRetentionActive || crop.verticalTranslationEngageBaseRetentionActive ||
             crop.outwardPresentationActive || crop.outwardExpansionAvailable ||
             crop.movingPictureTransition || HasCurrentPictureTransitionHandoff(crop) ||
@@ -6759,6 +6763,14 @@ namespace AlphaSourceCrop
             !anchor.submittedPresentationAvailable ||
             (anchor.submittedPresentationOrigin!=NativePresentationOrigin::CONFIRMED_TRANSLATION &&
              anchor.submittedPresentationOrigin!=NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL))return false;
+        // A pending replacement may use this exception only with current band
+        // inspection. Unknown work cannot dismiss the pending-target veto.
+        if(crop.verticalTranslationConfirmationPending &&
+            (!input.measurementCurrent || !input.retentionEvaluated ||
+             input.retentionSourceGeneration!=crop.frameSourceGeneration ||
+             input.retentionSourceSequence!=crop.frameSourceSequence ||
+             !SameTrustedCropContract(input.retentionBounds,crop.geometry) ||
+             (!input.excludedBandsPixelSafe && !crop.currentVisibleBoundsAvailable)))return false;
         const auto& native=crop.geometry;
         const auto& prior=anchor.submittedPresentationProof;
         if(prior.origin!=anchor.submittedPresentationOrigin ||

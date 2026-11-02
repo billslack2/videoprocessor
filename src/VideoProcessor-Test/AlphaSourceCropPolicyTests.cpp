@@ -18206,6 +18206,114 @@ public:
                 }
             }
         }
+        static PresentationRecoveryInput CapturedClassicRetargetGap(bool top)
+        {
+            // 3 Body Problem O2780/S1184: a submitted 112px translation is
+            // releasing at 108px while a new 102px target has only 1/3 votes.
+            // S1183 and S1185 have dense scans; S1184 does not. Current raw
+            // visibility and the caption rectangle are unchanged across all three.
+            auto c=Native(1183);
+            c.geometry={0,254,3840,1906,3840,2160,3840.0/1652,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            c.acceptedNativeCrop.bounds=c.geometry;c.acceptedNativeCrop.acceptedSourceSequence=110;
+            c.verticalTranslationBase=c.geometry;c.verticalTranslationActive=true;
+            c.verticalTranslationSourceGeneration=c.frameSourceGeneration;
+            c.verticalTranslationPixels=top?-112:112;
+            FinalAspectLimitFillInput route;route.crop=c;route.presentation=Evaluate(c);
+            route.configuredScreenActive=true;route.configured.screenAspect=2.35;
+            route.configured.cropNarrowerContentToFillScreen=route.configured.narrowerLimitConfigured=true;
+            route.configured.narrowerAspectLimit=2.32;
+            const auto admitted=AdmitCropPresentation({},c,route.presentation,c.framePresentationEpoch);
+            const auto fill=EvaluateFinalAspectLimitFill(route);
+            Assert::IsTrue(fill.applied);
+            auto u=Submission(c);u.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            u.selectedOwner=DecisionOwner::VERTICAL_TRANSLATION;u.submittedBounds=fill.sourceBounds;
+            u.selectedAdmission=QualifyTranslatedNativePresentation(admitted.state,route,fill);
+            const auto anchor=CommitSubmittedNativeScopeAnchor(u);
+            Assert::IsTrue(anchor.available && anchor.submittedPresentationAvailable);
+            Assert::AreEqual(int(NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL),int(anchor.submittedPresentationOrigin));
+            if(!top){Assert::AreEqual(374,anchor.submittedPresentation.top);Assert::AreEqual(2010,anchor.submittedPresentation.bottom);}
+            ++c.frameSourceSequence;c.verticalTranslationPixels=top?-108:108;
+            c.verticalTranslationConfirmationPending=true;
+            auto r=Unknown(c,anchor);r.excludedBandsPixelSafe=false;r.confirmedPresentationResolved=false;
+            r.crop.latestObservationSupportsCrop=true;r.crop.latestObservationIsProvisional=false;
+            r.crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            r.observation=c.geometry;
+            if(top)r.observation.bottom-=2;else r.observation.top+=2;
+            r.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            r.crop.currentVisibleBoundsAvailable=true;r.crop.currentVisibleBase=c.geometry;
+            r.crop.currentVisibleSourceGeneration=c.frameSourceGeneration;
+            r.crop.currentVisibleSourceSequence=c.frameSourceSequence;
+            r.crop.currentVisibleBounds=c.geometry;
+            if(top)r.crop.currentVisibleBounds.top=177;else r.crop.currentVisibleBounds.bottom=1983;
+            r.captionObservation={CaptionObservationState::PRESENT,c.frameSourceGeneration,c.frameSourceSequence,
+                c.framePresentationEpoch,c.frameSourceFormatKey,c.frameAnalysisDomainKey};
+            // No new dense measurement or caption-controller lease on this source.
+            r.currentCaptionTranslation={};r.candidate=Evaluate(r.crop);
+            Assert::AreEqual(int(DecisionOwner::VERTICAL_TRANSLATION),int(r.candidate.owner));
+            return r;
+        }
+        TEST_METHOD(PendingClassicRetargetKeepsSubmittedTranslationThroughDenseScanGap)
+        {
+            for(bool top:{false,true})for(bool pending:{false,true}) {
+                auto r=CapturedClassicRetargetGap(top);r.crop.verticalTranslationConfirmationPending=pending;
+                const auto proposed=Evaluate(r.crop);
+                const auto resolved=ResolveUncertainPicturePresentation(r,proposed);
+                Assert::IsFalse(resolved.currentPixelExtent || resolved.expanded,
+                    L"A pending replacement target must not cancel an already submitted controller pose that covers current outside-native pixels.");
+                Assert::AreEqual(int(DecisionOwner::VERTICAL_TRANSLATION),int(resolved.presentation.owner));
+                Assert::AreEqual(r.crop.geometry.top+r.crop.verticalTranslationPixels,resolved.presentation.sourceBounds.top);
+                Assert::AreEqual(1652,resolved.presentation.sourceBounds.bottom-resolved.presentation.sourceBounds.top);
+                Assert::AreEqual(uint64_t(110),r.crop.acceptedNativeCrop.acceptedSourceSequence);
+                Assert::IsFalse(resolved.presentation.nativePresentation.captionTranslationMeasurement.available,
+                    L"Continuation does not fabricate or renew a caption-controller lease.");
+                FinalAspectLimitFillInput route;route.crop=r.crop;route.presentation=resolved.presentation;
+                route.evidence=r;route.uncertainPicture=resolved;route.configuredScreenActive=true;
+                route.configured.screenAspect=2.35;
+                route.configured.cropNarrowerContentToFillScreen=route.configured.narrowerLimitConfigured=true;
+                route.configured.narrowerAspectLimit=2.32;
+                const auto fill=EvaluateFinalAspectLimitFill(route);
+                Assert::IsTrue(fill.applied,L"Existing configured fill remains available around the authorized translation.");
+                Assert::AreEqual(1636,fill.sourceBounds.bottom-fill.sourceBounds.top);
+            }
+        }
+        TEST_METHOD(PendingClassicRetargetStillYieldsToUncoveredPixelsAndCompetingOwners)
+        {
+            for(bool top:{false,true})for(int fault=0;fault<8;++fault) {
+                auto r=CapturedClassicRetargetGap(top);
+                if(fault==0) {
+                    // New occupied pixels beyond the CURRENT drift pose win now.
+                    if(top)r.crop.currentVisibleBounds.top=r.crop.geometry.top-110;
+                    else r.crop.currentVisibleBounds.bottom=r.crop.geometry.bottom+110;
+                }
+                if(fault==1) {
+                    // Occupancy on the opposite bar cannot borrow this translation.
+                    if(top)r.crop.currentVisibleBounds.bottom=r.crop.geometry.bottom+2;
+                    else r.crop.currentVisibleBounds.top=r.crop.geometry.top-2;
+                }
+                if(fault==2)r.crop.verticalFitConfirmationPending=true;
+                if(fault==3)r.submittedScopeAnchor.submittedPresentationOrigin=NativePresentationOrigin::EXACT_NATIVE;
+                if(fault==4)r.classicTranslationEnabled=false;
+                if(fault==5) {
+                    r.crop.verticalTranslationActive=false;
+                    r.crop.verticalTranslationPixels=0;
+                }
+                if(fault==6)r.crop.movingPictureHold.competingPresentation=true;
+                if(fault==7) {
+                    // A coarse occupied nomination is not an exact raw-band proof.
+                    r.observation=r.crop.currentVisibleBounds;
+                    r.observationClassification=ActivePictureClassification::PROVISIONAL;
+                    r.crop.currentVisibleBoundsAvailable=false;
+                }
+                const auto proposed=Evaluate(r.crop);
+                const auto resolved=ResolveUncertainPicturePresentation(r,proposed);
+                Assert::IsTrue(resolved.currentPixelExtent && resolved.expanded,
+                    L"Pending-target continuity cannot initialize a translation, override another owner, or hide current outside-native pixels.");
+                Assert::AreEqual(int(DecisionOwner::OUTWARD_FIT),int(resolved.presentation.owner));
+                Assert::IsTrue(resolved.presentation.sourceBounds.top<=r.crop.currentVisibleBounds.top);
+                Assert::IsTrue(resolved.presentation.sourceBounds.bottom>=r.crop.currentVisibleBounds.bottom);
+            }
+        }
         TEST_METHOD(CurrentEmptyNativeBandsPermitControllerReleaseWithoutFreshCaption)
         {
             auto route=TranslatedRoute(LoggedNative(10707));

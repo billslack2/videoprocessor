@@ -11,8 +11,10 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1019,
+  "minimumNativeTests": 1021,
   "requiredNativeMethods": [
+    "PendingClassicRetargetKeepsSubmittedTranslationThroughDenseScanGap",
+    "PendingClassicRetargetStillYieldsToUncoveredPixelsAndCompetingOwners",
     "IncidentCaptureRecordsEffectiveModeLossWithoutTreatingUserProfileChangeAsFailure",
     "RecordingTimecodeHasExactUtcAndDisplayedOutputIdentity",
     "IncidentCaptureBoundsFailuresAndIncludesAfterContext",
