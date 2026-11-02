@@ -1,0 +1,132 @@
+{
+  "sourceCommit": "129457b0b6a7c60d5b3daf3cb360885240bae4b5",
+  "branch": "codex/classic-recovery-research-20261102",
+  "remoteBeta": "v1.4.02-beta",
+  "remoteBetaCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
+  "worktree": "E:\\codex\\videoprocessor\\classic-recovery-research-20261102",
+  "decision": "Enough existing data for a narrow Classic repair attempt; no further pre-repair native-pixel capture needed. Post-repair replay remains required.",
+  "issueStatus": "Primary presentation/AR issue remains open; qualified candidate repair deployed for the captured Classic retarget flash",
+  "evidence": "E:\\codex\\videoprocessor\\evidence\\three-body-repro-20261102-0943",
+  "observed": {
+    "source": 1184,
+    "outputs": [
+      2780,
+      2781,
+      2782
+    ],
+    "timecode": "14:42:37.135Z D32E0673 G1 O2780 S1184",
+    "durationMs": 52,
+    "denseScan": "skipped",
+    "translationConfirmations": "1/3",
+    "currentControllerTranslationPixels": 108,
+    "proposed": [
+      0,
+      362,
+      3840,
+      2014
+    ],
+    "rawVisible": [
+      0,
+      254,
+      3840,
+      1983
+    ],
+    "actual": [
+      0,
+      254,
+      3840,
+      2010
+    ],
+    "native": [
+      0,
+      254,
+      3840,
+      1906
+    ],
+    "caption": [
+      1630,
+      1862,
+      2210,
+      1978
+    ]
+  },
+  "mechanism": "SubmittedTranslationCoversCurrentBarVisibility unconditionally rejected a pending replacement target, even with an already submitted active translation covering current raw-visible pixels. Adjacent dense scans supply another ownership route; the skipped source widens when that route is unavailable.",
+  "repair": "Keep the already submitted current Classic controller pose while a replacement target is pending, only with current retention inspection and clean excluded bands or an exact current raw-visible witness. Existing context, native contract, pose, competing-owner and pixel-coverage vetoes remain.",
+  "unchanged": [
+    "Native source measurement and accepted geometry",
+    "Screen/fill/NLS policies",
+    "Confirmation counts and drift timings",
+    "Caption lease expiry and acquisition rules",
+    "Reconstruction composition and cleanup permission",
+    "Active configuration and selected profiles"
+  ],
+  "regression": {
+    "methods": [
+      "PendingClassicRetargetKeepsSubmittedTranslationThroughDenseScanGap",
+      "PendingClassicRetargetStillYieldsToUncoveredPixelsAndCompetingOwners"
+    ],
+    "baselineRun": "20261102-100929-afc8a999",
+    "baseline": {
+      "passed": 1,
+      "failed": 1,
+      "failure": "Expected continuation assertion fails on original policy; safety controls pass"
+    },
+    "initialRepairNative": {
+      "run": "20261102-101207-76d9d854",
+      "passed": 1021,
+      "total": 1021
+    },
+    "tightenedRepairFocused": {
+      "run": "20261102-101539-7c6bc42e",
+      "passed": 2,
+      "total": 2
+    },
+    "limits": "Captured coordinates plus reconstructed controller state, not a full serialized runtime-input replay. Positive coverage mirrored for top/bottom captions. Controls cover uncovered pixels, missing raw inspection, competing owners and absent prior translation."
+  },
+  "qualification": {
+    "run": "20261102-101652-2fa1fc3e",
+    "configuration": "Release",
+    "platform": "x64",
+    "cleanSource": true,
+    "native": 1021,
+    "standardTotal": 1037,
+    "standardPassed": 1037,
+    "betaTotal": 16,
+    "betaPassed": 16,
+    "receipt": "qualification-129457b0.json",
+    "bothDependencyMotionSuite": "Not repeated: this change only affects presentation recovery policy, not source processing, packet lifetime or subtitle GPU preparation."
+  },
+  "deployment": {
+    "backup": "C:\\Videoprocessor\\vp\\backups\\classic-retarget-129457b0-20261102-102718",
+    "filesVerified": 28,
+    "process": 61024,
+    "receipt": "deployment-129457b0.json",
+    "configurationEdits": [],
+    "configurationAndStateHashesUnchangedAfterRestart": true,
+    "initialCopyIssue": "Config process 55888 held hash-identical beta dependencies open. Original backup retained; matching files were preserved, remaining three changed files copied, and all 28 runtime hashes verified before player start."
+  },
+  "live": {
+    "requestedMode": 0,
+    "effectiveMode": 0,
+    "modeName": "Classic",
+    "timecode": "15:30:11.862Z D96A3F1E G2 O3978 S3989",
+    "factsCurrent": true,
+    "submitted": true,
+    "timecodeDrawn": true,
+    "nativeAvailable": false,
+    "reason": "shared trusted geometry is unavailable",
+    "newIncidentDirectoriesAtVerification": 0,
+    "interpretation": "Logging/startup verification only; this input has no native picture candidate and is not acceptance of the 3 Body Problem replay."
+  },
+  "nextCapture": {
+    "requested": true,
+    "scene": "Same 3 Body Problem girl-shrieks / alarms-blaring section, 10-15 seconds",
+    "firstMode": "Classic, to compare the captured case",
+    "success": "No translation-to-outward-fit size pulse on a pending-target dense-scan gap while current pixels remain covered",
+    "safety": "Current pixels outside the actual pose must still force preservation",
+    "separateFollowup": "Verify requested/effective Reconstruction mode before attributing any new failure to Reconstruction; renderer-ready action currently selects Classic",
+    "userResponse": "Pending"
+  },
+  "documentation": "docs/CLASSIC_RETARGET_RECOVERY_20261102.md",
+  "sourceUrl": "https://github.com/billslack2/videoprocessor/commit/129457b0b6a7c60d5b3daf3cb360885240bae4b5"
+}

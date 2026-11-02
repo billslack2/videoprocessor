@@ -776,3 +776,43 @@ the full log/config/state and all eight images. No new runtime/source/configurat
 changes were made. The presentation/AR defect remains open; no fix is claimed.
 
 [Captured reproduction evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage15-captured-reproduction.json).
+
+### Evidence-based Classic retarget repair (2026-11-02)
+
+Existing recording data is sufficient for a focused repair attempt without another
+native-pixel capture. S1184 records `dense_scan=skipped`, a pending replacement
+translation at 1/3 votes, and a current 108px controller pose that covers the same
+outside-native pixels seen on adjacent sources. The submitted-translation continuity
+helper unconditionally rejected any pending replacement target. A reconstructed
+regression using these coordinates fails its continuation assertion on the deployed
+policy; preservation controls pass.
+
+Source `129457b0` retains the already submitted current Classic translation during
+that pending-target gap only with current band inspection and safe excluded bands
+or an exact current raw-visible witness. Existing context, accepted-native, actual
+pose and competing-owner checks remain, and uncovered current pixels still win.
+No target vote/permission or caption lease is created or renewed. Source detection,
+fill/NLS, timings and Reconstruction composition are unchanged.
+
+The first repair passes 1,021 native tests; a stricter missing-proof guard then passes
+both focused contracts. Final clean x64 Release qualification passes all 1,037
+standard checks (1,021 native +16 actual renderer) and all 16 beta scenarios.
+The exact source is pushed to `codex/classic-recovery-research-20261102`.
+
+The matching host and both renderer variants were backed up and deployed; all 28
+runtime hashes match qualification. Config held identical beta dependencies open
+during the initial copy. The original backup was retained, matching files skipped,
+and the remaining three changed files copied before final verification/startup.
+No active configuration or profile edit was made; both configuration/state hashes
+remain unchanged after restart. Backup:
+`C:\Videoprocessor\vp\backups\classic-retarget-129457b0-20261102-102718`.
+
+Player 61024 loads both new renderer DLLs and emits current-source, submitted output
+records with the visible timecode. Current input has no native picture candidate,
+so this is logging/startup verification only. A 10-15 second Classic replay of the
+same subtitle section was requested for before/after comparison. Reconstruction
+requires a separate verified-mode follow-up because the renderer-ready action
+currently selects Classic. Physical playback acceptance and the broader AR issue
+remain open.
+
+[Repair and qualification evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage16-classic-retarget.json).
