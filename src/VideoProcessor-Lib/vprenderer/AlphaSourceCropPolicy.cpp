@@ -4184,10 +4184,54 @@ namespace AlphaSourceCrop
             input.latestObservationClassification!=ActivePictureClassification::FULL_RASTER_TRUSTED;
     }
 
+    static bool HasCurrentAdvancedRawVisibility(const Input& crop)
+    {
+        return crop.currentVisibleBoundsAvailable && crop.frameSourceGeneration && crop.frameSourceSequence &&
+            crop.currentVisibleSourceGeneration==crop.frameSourceGeneration &&
+            crop.currentVisibleSourceSequence==crop.frameSourceSequence &&
+            SameTrustedCropContract(crop.currentVisibleBase,crop.geometry) &&
+            ValidBounds(crop.currentVisibleBounds,crop.rasterWidth,crop.rasterHeight) &&
+            ContainedBounds(crop.currentVisibleBounds,crop.geometry);
+    }
+
     static Decision AdvancedNativePictureDecision(const Input& crop,
         const ActivePictureBounds* currentPicture=nullptr)
     {
         Decision result;
+        const bool rawVisibilityContradictsAbsence=HasCurrentAdvancedRawVisibility(crop) &&
+            !SameBounds(crop.currentVisibleBounds,crop.geometry);
+        if(!HasCurrentPreparedSubtitlePresentation(crop) &&
+            !(crop.currentCaptionAbsenceConfirmed && !rawVisibilityContradictsAbsence) &&
+            !crop.initialSubtitleShaderBuild) {
+            // Requested advanced mode does not erase raw caption pixels. Missing
+            // current composition needs current visibility evidence, independently
+            // of the immutable accepted picture rectangle.
+            const bool visible=HasCurrentAdvancedRawVisibility(crop);
+            result.sourceBounds=visible?crop.currentVisibleBounds:FullRaster(crop.rasterWidth,crop.rasterHeight);
+            if(currentPicture) {
+                result.sourceBounds.left=std::min(result.sourceBounds.left,currentPicture->left);
+                result.sourceBounds.top=std::min(result.sourceBounds.top,currentPicture->top);
+                result.sourceBounds.right=std::max(result.sourceBounds.right,currentPicture->right);
+                result.sourceBounds.bottom=std::max(result.sourceBounds.bottom,currentPicture->bottom);
+            }
+            // A visibility aperture may only align outward to chroma footprints.
+            result.sourceBounds.left&=~1;result.sourceBounds.top&=~1;
+            result.sourceBounds.right=std::min(crop.rasterWidth,(result.sourceBounds.right+1)&~1);
+            result.sourceBounds.bottom=std::min(crop.rasterHeight,(result.sourceBounds.bottom+1)&~1);
+            result.sourceBounds.aspectRatio=double(result.sourceBounds.right-result.sourceBounds.left)/
+                std::max(1,result.sourceBounds.bottom-result.sourceBounds.top);
+            result.applyCrop=!SameBounds(result.sourceBounds,FullRaster(crop.rasterWidth,crop.rasterHeight));
+            result.outwardExpanded=!SameBounds(result.sourceBounds,crop.geometry);
+            result.owner=DecisionOwner::OUTWARD_FIT;
+            result.reason=visible?"unprepared advanced output preserves current raw visibility":
+                "unprepared advanced output preserves full raster without current visibility proof";
+            auto& proof=result.nativePresentation;
+            proof.available=true;proof.origin=NativePresentationOrigin::VISIBILITY_FALLBACK;
+            proof.nativeBase=crop.geometry;proof.approvedBounds=result.sourceBounds;
+            proof.sourceGeneration=crop.frameSourceGeneration;proof.sourceSequence=crop.frameSourceSequence;
+            proof.presentationEpoch=crop.framePresentationEpoch;
+            return result;
+        }
         result.sourceBounds=currentPicture?*currentPicture:crop.geometry;
         result.applyCrop=!SameBounds(result.sourceBounds,FullRaster(crop.rasterWidth,crop.rasterHeight));
         result.outwardExpanded=currentPicture && !SameBounds(*currentPicture,crop.geometry);
@@ -6910,7 +6954,8 @@ namespace AlphaSourceCrop
             result.presentation=AdvancedNativePictureDecision(crop,currentPicture?
                 &input.nativeOutwardPictureProof.candidate:nullptr);
             result.retained=true;result.nativeCrop=crop.geometry;
-            result.expanded=result.currentPixelExtent=currentPicture;
+            result.expanded=result.presentation.outwardExpanded;
+            result.currentPixelExtent=currentPicture || (result.expanded && HasCurrentAdvancedRawVisibility(crop));
             return result;
         }
         const bool committedFull = crop.sharedGeometryAvailable &&

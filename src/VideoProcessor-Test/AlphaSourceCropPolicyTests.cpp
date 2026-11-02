@@ -17947,7 +17947,9 @@ public:
                 }
                 if(fault==6) {
                     Assert::AreEqual(r.crop.geometry.top,resolved.presentation.sourceBounds.top);
-                    Assert::AreEqual(r.crop.geometry.bottom,resolved.presentation.sourceBounds.bottom);
+                    Assert::AreEqual(1954,resolved.presentation.sourceBounds.bottom);
+                    Assert::AreEqual(1898,r.crop.geometry.bottom);
+                    Assert::IsFalse(resolved.presentation.verticallyTranslated);
                 }
             }
         }
@@ -18275,7 +18277,7 @@ public:
                 }
             }
         }
-        TEST_METHOD(AdvancedSubtitleUncertaintyNeverChangesTheNativePictureViewport)
+        TEST_METHOD(AdvancedSubtitleUncertaintyPreservesRawVisibilityAndNativeGeometry)
         {
             for(auto mode:{PreparedNativeMode::BLACK,PreparedNativeMode::RECONSTRUCTION})
             for(int state=0;state<4;++state) {
@@ -18289,8 +18291,11 @@ public:
                 r.crop.currentVisibleBounds=r.observation;
                 r.crop.currentVisibleSourceGeneration=r.crop.frameSourceGeneration;
                 r.crop.currentVisibleSourceSequence=r.crop.frameSourceSequence;
-                if(state==1){r.measurementCurrent=false;r.retentionEvaluated=false;r.observationAvailable=false;}
+                if(state==1){r.measurementCurrent=false;r.retentionEvaluated=false;r.observationAvailable=false;
+                    r.crop.currentVisibleBoundsAvailable=false;}
                 if(state==2) {
+                    r.crop.frameLocalPresentationRetentionSafe=r.excludedBandsPixelSafe=true;
+                    r.crop.currentVisibleBoundsAvailable=false;
                     r.crop.preparedSubtitle.available=true;r.crop.preparedSubtitle.nativeBase=r.crop.geometry;
                     r.crop.preparedSubtitle.sourceGeneration=r.crop.frameSourceGeneration;
                     r.crop.preparedSubtitle.sourceSequence=r.crop.frameSourceSequence;
@@ -18305,9 +18310,11 @@ public:
                 const auto recovered=EvaluatePresentationRecovery(r);
                 const auto admitted=AdmitCropPresentation(submitted.selectedAdmission,r.crop,recovered.presentation,r.presentationEpoch);
                 const auto actual=ResolveUncertainPicturePresentation(r,admitted.presentation);
-                Assert::AreEqual(native.geometry.top,actual.presentation.sourceBounds.top,
-                    L"Advanced caption preparation, uncertainty and old caption FIT cannot move the physical picture viewport.");
-                Assert::AreEqual(native.geometry.bottom,actual.presentation.sourceBounds.bottom);
+                Assert::AreEqual(state==1?0:native.geometry.top,actual.presentation.sourceBounds.top,
+                    L"Unknown raw output stays visible; exact current preparation immediately restores native presentation.");
+                Assert::AreEqual(state==1?2160:state==2?native.geometry.bottom:2028,actual.presentation.sourceBounds.bottom);
+                Assert::AreEqual(native.geometry.top,r.crop.geometry.top);
+                Assert::AreEqual(native.geometry.bottom,r.crop.geometry.bottom);
                 Assert::AreEqual(native.geometry.left,actual.presentation.sourceBounds.left);
                 Assert::AreEqual(native.geometry.right,actual.presentation.sourceBounds.right);
                 Assert::IsFalse(actual.presentation.verticallyTranslated);
@@ -18327,7 +18334,12 @@ public:
                 anchor.captionPreservation.presentationEpoch=9;
                 anchor.captionPreservation.sourceFormatKey=11;anchor.captionPreservation.analysisDomainKey=12;
                 auto r=Unknown(Native(10708),anchor);r.classicTranslationEnabled=false;
-                r.crop.subtitlePresentationMode=mode;r.excludedBandsPixelSafe=false;
+                r.crop.subtitlePresentationMode=mode;
+                // Current composition removes caption uncertainty; only independently current picture growth may expand it.
+                r.excludedBandsPixelSafe=r.crop.frameLocalPresentationRetentionSafe=true;
+                r.crop.preparedSubtitle={true,r.crop.geometry,r.crop.frameSourceGeneration,
+                    r.crop.frameSourceSequence,r.presentationEpoch};
+                Assert::IsTrue(HasCurrentPreparedSubtitlePresentation(r.crop));
                 const ActivePictureBounds picture{0,fullRaster?0:120,3840,fullRaster?2160:2040,3840,2160,
                     fullRaster?3840.0/2160:2.0,fullRaster?ActivePictureBounds::BarAxes::NONE:ActivePictureBounds::BarAxes::TOP_BOTTOM};
                 auto& proof=r.nativeOutwardPictureProof;proof.base=r.crop.geometry;
@@ -19167,6 +19179,80 @@ public:
             r.crop=CanonicalSubtitleModeCropInput(r.crop,mode);
             return r;
         }
+        TEST_METHOD(UnpreparedAdvancedOutputPreservesCurrentRawPixelsWithoutChangingNativeGeometry)
+        {
+            for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+            for(int fault=0;fault<5;++fault) {
+                auto r=AdvancedLoggedFrame(3909,{},false,mode);
+                if(fault==1)r.crop.currentVisibleBoundsAvailable=false;
+                if(fault==2)--r.crop.currentVisibleSourceSequence;
+                if(fault==3)++r.crop.currentVisibleSourceGeneration;
+                if(fault==4)++r.crop.currentVisibleBase.top;
+                const auto native=r.crop.geometry;
+                const auto evaluated=Evaluate(r.crop);
+                r.candidate=evaluated;
+                const auto recovered=EvaluatePresentationRecovery(r);
+                const auto resolved=ResolveUncertainPicturePresentation(r,recovered.presentation);
+                const auto admitted=AdmitCropPresentation({},r.crop,resolved.presentation,r.presentationEpoch);
+                Assert::IsTrue(admitted.presentation.sourceBounds.top<=250 && admitted.presentation.sourceBounds.bottom>=2000,
+                    L"Final admission cannot collapse unprepared raw visibility back to native picture bounds.");
+                for(double screenAspect:{1.5,2.35}) {
+                    FinalAspectLimitFillInput fill;
+                    fill.crop=r.crop;fill.presentation=resolved.presentation;fill.evidence=r;
+                    fill.uncertainPicture=resolved;fill.configuredScreenActive=true;
+                    fill.configured.screenAspect=screenAspect;
+                    fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                    fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+                    fill.configured.narrowerAspectLimit=1.0;fill.configured.widerAspectLimit=4.0;
+                    const auto fitted=EvaluateFinalAspectLimitFill(fill);
+                    Assert::IsFalse(fitted.applied,L"Optional narrower or wider fill cannot trim an unprepared raw-visibility fallback.");
+                    Assert::AreEqual(resolved.presentation.sourceBounds.left,fitted.sourceBounds.left);
+                    Assert::AreEqual(resolved.presentation.sourceBounds.top,fitted.sourceBounds.top);
+                    Assert::AreEqual(resolved.presentation.sourceBounds.right,fitted.sourceBounds.right);
+                    Assert::AreEqual(resolved.presentation.sourceBounds.bottom,fitted.sourceBounds.bottom);
+                }
+                for(const auto& output:{evaluated,recovered.presentation,resolved.presentation}) {
+                    Assert::AreEqual(fault==0?250:0,output.sourceBounds.top);
+                    Assert::AreEqual(fault==0?2000:2160,output.sourceBounds.bottom);
+                    Assert::AreEqual(0,output.sourceBounds.left);Assert::AreEqual(3840,output.sourceBounds.right);
+                    Assert::IsTrue(output.nativePresentation.origin==NativePresentationOrigin::VISIBILITY_FALLBACK);
+                    Assert::AreEqual(native.top,output.nativePresentation.nativeBase.top);
+                    Assert::AreEqual(native.bottom,output.nativePresentation.nativeBase.bottom);
+                    Assert::IsFalse(output.verticallyTranslated);
+                }
+                Assert::AreEqual(native.top,r.crop.geometry.top);Assert::AreEqual(native.bottom,r.crop.geometry.bottom);
+                Assert::AreEqual(native.top,r.crop.acceptedNativeCrop.bounds.top);
+                Assert::AreEqual(native.bottom,r.crop.acceptedNativeCrop.bounds.bottom);
+            }
+        }
+        TEST_METHOD(AdvancedNativePresentationRequiresCurrentCompositionAbsenceOrInitialBuild)
+        {
+            for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+            for(int permission=0;permission<3;++permission) {
+                auto r=AdvancedLoggedFrame(3909,{},permission==0,mode);
+                r.crop.currentCaptionAbsenceConfirmed=permission==1;
+                r.crop.initialSubtitleShaderBuild=permission==2;
+                if(permission==1) {
+                    // No-caption does not erase noncaption UI. Current expanded visibility wins.
+                    const auto contradicted=Evaluate(r.crop);
+                    Assert::AreEqual(2000,contradicted.sourceBounds.bottom);
+                    Assert::AreEqual(1906,contradicted.nativePresentation.nativeBase.bottom);
+                    Assert::IsTrue(contradicted.nativePresentation.origin==NativePresentationOrigin::VISIBILITY_FALLBACK);
+                    r.crop.currentVisibleBoundsAvailable=false;
+                }
+                const auto native=Evaluate(r.crop);
+                Assert::AreEqual(250,native.sourceBounds.top);Assert::AreEqual(1906,native.sourceBounds.bottom);
+                Assert::IsTrue(native.nativePresentation.origin==NativePresentationOrigin::EXACT_NATIVE);
+                // A later unknown output cannot inherit a composed packet,
+                // absence result, or the initial shader-building exception.
+                auto next=AdvancedLoggedFrame(3910,{},false,mode);
+                next.crop.preparedSubtitle=r.crop.preparedSubtitle;
+                Assert::IsFalse(HasCurrentPreparedSubtitlePresentation(next.crop));
+                const auto safe=Evaluate(next.crop);
+                Assert::AreEqual(250,safe.sourceBounds.top);Assert::AreEqual(2000,safe.sourceBounds.bottom);
+                Assert::IsTrue(safe.nativePresentation.origin==NativePresentationOrigin::VISIBILITY_FALLBACK);
+            }
+        }
         TEST_METHOD(PreparedAdvancedFinalNativePoseCommitsItsExactSubmittedGeometry)
         {
             const auto prior=Submission(AdvancedLoggedNative(3908));
@@ -19201,13 +19287,13 @@ public:
             auto unsafeAdmission=AdmitCropPresentation(prior.selectedAdmission,unsafe.crop,Evaluate(unsafe.crop),5);
             unsafe.candidate=unsafeAdmission.presentation;
             const auto fallback=ResolveUncertainPicturePresentation(unsafe,unsafeAdmission.presentation);
-            Assert::IsTrue(fallback.retained && !fallback.currentPixelExtent);
-            Assert::AreEqual(1906,fallback.presentation.sourceBounds.bottom);
-            // Recreate an actually submitted older-version viewport solely as
-            // historical input. Current advanced policy must not create it.
+            Assert::IsTrue(fallback.retained && fallback.currentPixelExtent);
+            Assert::AreEqual(2000,fallback.presentation.sourceBounds.bottom);
+            Assert::AreEqual(1906,fallback.presentation.nativePresentation.nativeBase.bottom);
+            // Commit the current visibility fallback with its actual bounds and certificate.
             auto output=Submission(unsafe.crop);output.previous=native;output.selectedAdmission=unsafeAdmission.state;
-            output.selectedOwner=DecisionOwner::OUTWARD_FIT;output.submittedBounds.bottom=2000;
-            AuthorizeActual(output,NativePresentationOrigin::VISIBILITY_FALLBACK);
+            output.selectedOwner=fallback.presentation.owner;output.submittedBounds=fallback.presentation.sourceBounds;
+            output.selectedAdmission.nativePresentation=fallback.presentation.nativePresentation;
             const auto old=CommitSubmittedNativeScopeAnchor(output);
             Assert::AreEqual(uint64_t(3910),old.lastSubmittedPresentationSourceSequence);
             Assert::AreEqual(2000,old.submittedPresentation.bottom);
@@ -19258,8 +19344,8 @@ public:
                 const auto resolved=ResolveUncertainPicturePresentation(r,admission.presentation);
                 const auto actual=SubtitlePresentationBounds(resolved.presentation,
                     SubtitlePreviewMode::GeneratedGrayBackground,true,false);
-                Assert::AreEqual(250,actual.top);Assert::AreEqual(1906,actual.bottom,
-                    L"Unqualified caption erasure cannot change independently accepted picture bounds.");
+                Assert::AreEqual(r.crop.currentVisibleBounds.top,actual.top);Assert::AreEqual(r.crop.currentVisibleBounds.bottom,actual.bottom,
+                    L"Unqualified caption erasure must preserve current raw pixels while native geometry stays unchanged.");
                 Assert::AreEqual(int(PreparedNativeMode::NONE),int(resolved.presentation.nativePresentation.preparedNativeMode),
                     L"Keeping native picture bounds must not manufacture current erasure permission.");
                 Assert::AreEqual(uint64_t(694),r.crop.acceptedNativeCrop.acceptedSourceSequence);
@@ -19294,7 +19380,7 @@ public:
                     Assert::AreEqual(250,r.crop.geometry.top);Assert::AreEqual(1906,r.crop.geometry.bottom);
                 }
         }
-        static void VerifyAdvancedCueViewportProcessingStability(SubtitlePreviewMode mode)
+        static void VerifyAdvancedCueRawVisibilityAndNativeRestoration(SubtitlePreviewMode mode)
         {
             const auto initialized=AdvancedLoggedFrame(3909,{},true,mode);
             Assert::IsTrue(HasCurrentPreparedSubtitlePresentation(initialized.crop));
@@ -19328,7 +19414,7 @@ public:
                 Assert::AreEqual(0,actual.left);Assert::AreEqual(3840,actual.right);
                 Assert::AreEqual(250,actual.top);
                 Assert::AreEqual(expectedBottom,actual.bottom,
-                    L"Current processing success is not a cue-end event: the same raw caption must not resize the viewport on every composed/uncomposed source.");
+                    L"Unprepared output must retain current raw caption pixels; current composition immediately restores native presentation.");
                 const auto& certificate=admission.state.nativePresentation;
                 Assert::IsTrue(certificate.available);
                 Assert::AreEqual(r.crop.frameSourceSequence,certificate.sourceSequence);
@@ -19347,14 +19433,14 @@ public:
             };
             auto first=AdvancedLoggedFrame(3910,anchor,false,mode);
             rawBands(first,false);caption(first,CaptionObservationState::PRESENT);
-            present(first,false,1906);
+            present(first,false,2000);
             for(uint64_t source=3911;source<=3922;++source) {
                 const bool composed=(source%2)!=0;
                 auto current=AdvancedLoggedFrame(source,anchor,composed,mode);
                 rawBands(current,false);
                 caption(current,composed?CaptionObservationState::PRESENT:CaptionObservationState::UNKNOWN);
                 if(composed)Assert::IsTrue(HasCurrentPreparedSubtitlePresentation(current.crop));
-                present(current,composed,1906);
+                present(current,composed,composed?1906:2000);
             }
             auto picture=AdvancedLoggedFrame(3923,anchor,true,mode);
             rawBands(picture,false);caption(picture,CaptionObservationState::PRESENT);
@@ -19371,15 +19457,16 @@ public:
             clear.crop.latestObservationSupportsCrop=true;clear.crop.latestObservationIsProvisional=false;
             clear.crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
             rawBands(clear,true);caption(clear,CaptionObservationState::ABSENT);
+            clear.crop.currentCaptionAbsenceConfirmed=true;
             present(clear,false,1906);
         }
-        TEST_METHOD(AdvancedCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing)
+        TEST_METHOD(AdvancedCuePreservesRawVisibilityAndRestoresPreparedNativePresentation)
         {
-            VerifyAdvancedCueViewportProcessingStability(SubtitlePreviewMode::GeneratedGrayBackground);
+            VerifyAdvancedCueRawVisibilityAndNativeRestoration(SubtitlePreviewMode::GeneratedGrayBackground);
         }
-        TEST_METHOD(BlackCueViewportDoesNotBounceWithPreparedAndUnpreparedProcessing)
+        TEST_METHOD(BlackCuePreservesRawVisibilityAndRestoresPreparedNativePresentation)
         {
-            VerifyAdvancedCueViewportProcessingStability(SubtitlePreviewMode::BlackBackground);
+            VerifyAdvancedCueRawVisibilityAndNativeRestoration(SubtitlePreviewMode::BlackBackground);
         }
         TEST_METHOD(AdvancedColdFallbackAllowsFirstPreparedNativeInitialization)
         {
@@ -19401,13 +19488,14 @@ public:
             auto admission=AdmitCropPresentation(seed.selectedAdmission,unsafe.crop,recovery.presentation,5);
             unsafe.candidate=admission.presentation;
             const auto fallback=ResolveUncertainPicturePresentation(unsafe,admission.presentation);
-            Assert::IsTrue(fallback.retained && !fallback.currentPixelExtent);
+            Assert::IsTrue(fallback.retained && fallback.currentPixelExtent);
             admission.state.nativePresentation=fallback.presentation.nativePresentation;
             auto output=Submission(unsafe.crop);output.previous=anchor;output.selectedAdmission=admission.state;
             output.selectedOwner=fallback.presentation.owner;output.submittedBounds=fallback.presentation.sourceBounds;
             anchor=CommitSubmittedNativeScopeAnchor(output);
             Assert::AreEqual(uint64_t(3910),anchor.lastSubmittedPresentationSourceSequence);
-            Assert::AreEqual(1906,anchor.submittedPresentation.bottom);
+            Assert::AreEqual(2000,anchor.submittedPresentation.bottom);
+            Assert::AreEqual(1906,anchor.crop.bottom);
             Assert::AreEqual(uint64_t(0),anchor.preparedNativeInitializedSourceSequence,
                 L"Unprepared native viewport stability must not mark compositor initialization complete.");
             // A long shader/worker warmup cannot turn the startup fallback into
@@ -19461,8 +19549,35 @@ public:
             }
             const auto initialized=CommitSubmittedNativeScopeAnchor(valid);
             Assert::AreEqual(uint64_t(3909),initialized.preparedNativeInitializedSourceSequence);
-            auto unprepared=current.crop;unprepared.preparedSubtitle={};
-            const auto ordinary=CommitSubmittedNativeScopeAnchor(Submission(unprepared));
+            // Model an actual unprepared source with its independently measured raw envelope.
+            auto raw=AdvancedLoggedFrame(3909,{},false);
+            auto admission=AdmitCropPresentation({},raw.crop,Evaluate(raw.crop),raw.presentationEpoch);
+            const auto resolved=ResolveUncertainPicturePresentation(raw,admission.presentation);
+            Assert::IsTrue(resolved.retained && resolved.currentPixelExtent);
+            // Match the renderer's post-Resolve bridge: admission alone cannot
+            // acquire a transformed fallback, but current visibility resolution
+            // preserves the existing native contract with its own certificate.
+            admission.blocked=false;admission.presentation=resolved.presentation;
+            admission.state.available=true;admission.state.trustedCrop=resolved.nativeCrop;
+            admission.state.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+            admission.state.sourceGeneration=raw.crop.frameSourceGeneration;
+            admission.state.presentationEpoch=raw.presentationEpoch;
+            admission.state.outwardPresentationAvailable=resolved.expanded;
+            admission.state.outwardPresentation=resolved.presentation.sourceBounds;
+            admission.state.presentationSourceSequence=raw.crop.frameSourceSequence;
+            admission.state.confirmedFitOwnership=resolved.presentation.confirmedFitOwnership;
+            Assert::IsTrue(resolved.presentation.nativePresentation.available);
+            admission.state.nativePresentation=resolved.presentation.nativePresentation;
+            auto ordinarySubmission=Submission(raw.crop);
+            ordinarySubmission.selectedAdmission=admission.state;
+            ordinarySubmission.submittedBounds=resolved.presentation.sourceBounds;
+            ordinarySubmission.selectedOwner=resolved.presentation.owner;
+            Assert::IsTrue(ordinarySubmission.selectedAdmission.available);
+            Assert::AreEqual(2000,ordinarySubmission.submittedBounds.bottom);
+            Assert::AreEqual(1906,ordinarySubmission.selectedAdmission.nativePresentation.nativeBase.bottom);
+            const auto ordinary=CommitSubmittedNativeScopeAnchor(ordinarySubmission);
+            Assert::IsTrue(ordinary.available);
+            Assert::AreEqual(uint64_t(3909),ordinary.lastSubmittedPresentationSourceSequence);
             Assert::AreEqual(uint64_t(0),ordinary.preparedNativeInitializedSourceSequence);
             valid.previous=ordinary;
             Assert::AreEqual(uint64_t(0),CommitSubmittedNativeScopeAnchor(valid).preparedNativeInitializedSourceSequence,
@@ -19610,7 +19725,7 @@ public:
                 Assert::AreEqual(uint64_t(0),CommitSubmittedNativeScopeAnchor(u).preparedNativeInitializedSourceSequence);
             }
         }
-        TEST_METHOD(AdvancedConfirmedFitViewportDoesNotBounceWithProcessingSuccess)
+        TEST_METHOD(AdvancedConfirmedFitPreservesRawVisibilityUntilCurrentComposition)
         {
             for(const auto origin : {ConfirmedFitOwnershipOrigin::CURRENT_UI_OVERLAY,
                 ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT}) {
@@ -19640,7 +19755,7 @@ public:
                     const auto actual=SubtitlePresentationBounds(resolved.presentation,
                         SubtitlePreviewMode::GeneratedGrayBackground,composed,false);
                     Assert::AreEqual(250,actual.top);Assert::AreEqual(bottom,actual.bottom,
-                        L"A genuine confirmed UI/bar FIT must not shrink merely because the same occupied source was processed successfully.");
+                        L"Current raw UI stays visible until exact current composition authorizes native presentation.");
                     const auto& proof=admission.state.nativePresentation;
                     Assert::IsTrue(proof.available);Assert::IsTrue(proof.origin!=NativePresentationOrigin::NONE);
                     Assert::AreEqual(r.crop.frameSourceGeneration,proof.sourceGeneration);
@@ -19653,7 +19768,7 @@ public:
                     Assert::AreEqual(actual.right,proof.approvedBounds.right);Assert::AreEqual(actual.bottom,proof.approvedBounds.bottom);
                     if(mustCommitFit) {
                         Assert::IsTrue(r.confirmedFitOwnership.available);
-                        Assert::IsTrue(admission.state.nativePresentation.origin==NativePresentationOrigin::EXACT_NATIVE,
+                        Assert::IsTrue(admission.state.nativePresentation.origin==NativePresentationOrigin::VISIBILITY_FALLBACK,
                             L"Confirmed UI/bar content remains separate from the advanced native picture viewport.");
                         Assert::IsFalse(admission.state.confirmedFitOwnership.available);
                     }
@@ -19666,7 +19781,7 @@ public:
                     Assert::AreEqual(250,anchor.crop.top);Assert::AreEqual(1906,anchor.crop.bottom);
                     Assert::IsFalse(anchor.captionPreservation.available,
                         L"UI/bar presentation ownership cannot manufacture caption glyph or erasure authority.");
-                    if(mustCommitFit)Assert::IsTrue(anchor.submittedPresentationOrigin==NativePresentationOrigin::EXACT_NATIVE);
+                    if(mustCommitFit)Assert::IsTrue(anchor.submittedPresentationOrigin==NativePresentationOrigin::VISIBILITY_FALLBACK);
                 };
                 for(uint64_t source=4910;source<=4922;++source) {
                     const bool composed=(source%2)!=0;
@@ -19674,8 +19789,7 @@ public:
                     r.captionObservation={composed?CaptionObservationState::PRESENT:CaptionObservationState::UNKNOWN,
                         r.crop.frameSourceGeneration,source,5,r.crop.frameSourceFormatKey,r.crop.frameAnalysisDomainKey};
                     if(!composed) {
-                        // Exercise the real public FIT producers, not a hand-edited
-                        // native certificate or the weaker raw-fallback route.
+                        // Exercise public FIT producers alongside independently current raw visibility.
                         const ActivePictureBounds occupied{1300,1940,2500,1966,3840,2160,0.0,ActivePictureBounds::BarAxes::NONE};
                         PresentationEnvelopeGeometryInput measured;measured.trustedPicture=r.crop.geometry;
                         measured.observedContent=occupied;measured.observedContentAvailable=true;
@@ -19691,7 +19805,7 @@ public:
                         r.confirmedPresentationResolved=true;r.crop.outwardPresentationActive=r.crop.outwardExpansionAvailable=true;
                         r.crop.outwardExpansion=envelope.bounds;r.crop.outwardExpansionSourceGeneration=r.crop.frameSourceGeneration;
                     }
-                    present(r,composed,1906,!composed);
+                    present(r,composed,composed?1906:2000,!composed);
                 }
                 auto picture=AdvancedLoggedFrame(4923,anchor,true);rawBands(picture,false);
                 auto& growth=picture.nativeOutwardPictureProof;growth.base=picture.crop.geometry;
@@ -19709,6 +19823,7 @@ public:
                 clear.crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
                 clear.captionObservation={CaptionObservationState::ABSENT,clear.crop.frameSourceGeneration,
                     4924,5,clear.crop.frameSourceFormatKey,clear.crop.frameAnalysisDomainKey};
+                clear.crop.currentCaptionAbsenceConfirmed=true;
                 present(clear,false,1906,false);
             }
         }
@@ -19757,7 +19872,8 @@ public:
                 Assert::AreEqual(actual.right,proof.approvedBounds.right);Assert::AreEqual(actual.bottom,proof.approvedBounds.bottom);
                 if(full) {
                     Assert::IsFalse(resolved.presentation.applyCrop);
-                    Assert::IsTrue(admission.state.nativePresentation.origin==NativePresentationOrigin::CONFIRMED_PICTURE);
+                    Assert::IsTrue(admission.state.nativePresentation.origin==(prepared?
+                        NativePresentationOrigin::CONFIRMED_PICTURE:NativePresentationOrigin::VISIBILITY_FALLBACK));
                 }
                 auto output=Submission(r.crop);output.previous=anchor;output.selectedAdmission=admission.state;
                 output.selectedOwner=resolved.presentation.owner;output.submittedBounds=actual;
@@ -19779,8 +19895,8 @@ public:
                     r.crop.currentVisibleSourceSequence=source;
                     r.crop.currentVisibleBounds={0,0,3840,2160,3840,2160,16.0/9.0,ActivePictureBounds::BarAxes::NONE};
                 }
-                present(r,prepared,false);
-                if(source==5910)present(r,prepared,false); // Same-source replay cannot renew initialization.
+                present(r,prepared,!prepared);
+                if(source==5910)present(r,prepared,!prepared); // Same-source replay cannot renew initialization.
             }
             auto growth=AdvancedLoggedFrame(5916,anchor,true);
             auto& nativeGrowth=growth.nativeOutwardPictureProof;nativeGrowth.base=growth.crop.geometry;
@@ -19797,6 +19913,7 @@ public:
             clear.crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
             clear.captionObservation={CaptionObservationState::ABSENT,clear.crop.frameSourceGeneration,
                 5917,5,clear.crop.frameSourceFormatKey,clear.crop.frameAnalysisDomainKey};
+            clear.crop.currentCaptionAbsenceConfirmed=true;
             present(clear,false,false);
         }
     };

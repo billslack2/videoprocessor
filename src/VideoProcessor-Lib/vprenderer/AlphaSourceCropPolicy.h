@@ -1359,6 +1359,10 @@ namespace AlphaSourceCrop
         uint64_t frameSourceFormatKey = 0, frameAnalysisDomainKey = 0;
         PreparedSubtitlePresentation preparedSubtitle;
         PreparedNativeMode subtitlePresentationMode=PreparedNativeMode::NONE;
+        // Exact selected-source adapter facts, never inferred from an absent cue
+        // or a requested mode. Build permission ends after initial preparation.
+        bool currentCaptionAbsenceConfirmed=false;
+        bool initialSubtitleShaderBuild=false;
         MovingPicturePresentationHold movingPictureHold;
 		PictureTransitionHandoff pictureTransitionHandoff;
 		uint64_t framePresentationEpoch = 0;

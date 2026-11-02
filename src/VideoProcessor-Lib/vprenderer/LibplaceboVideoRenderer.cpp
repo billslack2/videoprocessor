@@ -16151,7 +16151,7 @@ struct LibplaceboVideoRenderer::Impl
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
              coldStrictWorkerProof, coldStrictWorkerPicture,
-             subtitleIdentity, captureClockFrequency, &temporalPolicyCaptionProof,
+             subtitleIdentity, captureClockFrequency, sceneDetectorGeneration, &temporalPolicyCaptionProof,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
              currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels, &qualifiedPendingFinalPixels, cadenceCacheDiagnostic,
@@ -17479,6 +17479,10 @@ releaseDriftBaseRetention =
             if (relocatedCaptionQualified)
                 cropInput.preparedSubtitle=QualifyPreparedSubtitleCropPresentation(
                     displayCaptionProof,subtitleIdentity,cropInput.geometry);
+            cropInput.currentCaptionAbsenceConfirmed=currentNoCaptionConfirmed;
+            cropInput.initialSubtitleShaderBuild=SourceCadencePresentation::WarmupContextEligible(
+                SourceCadenceContext(state,frameGeneration,queuedAnalysisDomainKey,viewportRequestSerial,
+                    sceneDetectorGeneration,subtitlePreviewMode,configuredScreenActive));
             cropInput=CanonicalSubtitleModeCropInput(cropInput,picturePolicySubtitleMode);
 			bool submittedScopeContinuityRetention = false;
 			temporalPolicySubmittedScopeContinuityRetention = false;
@@ -24653,7 +24657,8 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
         }
     }
     const auto nativeReady=QueuedFrame::LookaheadWorker::Ready(slot);
-    if(subtitleEligible && (!CurrentLookaheadMeasurement(prepared,identity,nativeReady) ||
+    if(subtitleEligible && m_activePictureLookaheadFrames.load(std::memory_order_acquire)==0 &&
+        (!CurrentLookaheadMeasurement(prepared,identity,nativeReady) ||
         !SourcePictureMeasurementWorkComplete(nativeReady->evidence))) {
         subtitleEligible=false;trace.subtitleReason="awaiting-native-dependency";
     }
@@ -24882,11 +24887,13 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         } // Pending DV conversion is never raw RGB evidence.
         auto identity=queued.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
         preparedDomains[i]=prepared.domainKey;observations[i].identity=identity;
-        // A subtitle completion must not permanently encode an absent native
-        // dependency. The source preparation stage retries admission when the
-        // exact raw facts complete, including a completed negative geometry.
+        // The unbuffered current-source stage orders native facts before its
+        // subtitle verification. Queued future sources retain independent glyph
+        // prefetch; delaying those scans until a later queue traversal discards
+        // their available lead. Ready consumption still checks exact current proof.
         const auto nativeReady=QueuedFrame::LookaheadWorker::Ready(queued.analysis->lookahead);
-        if(!harvestOnly && (!CurrentLookaheadMeasurement(prepared,identity,nativeReady) ||
+        if(!harvestOnly && m_activePictureLookaheadFrames.load(std::memory_order_acquire)==0 &&
+            (!CurrentLookaheadMeasurement(prepared,identity,nativeReady) ||
             !SourcePictureMeasurementWorkComplete(nativeReady->evidence)))continue;
         if(i==0) {
             std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);
@@ -26414,6 +26421,10 @@ void LibplaceboVideoRenderer::RenderLoop()
                         !queuedWillMix(m_frameQueue[1]) &&
                         output.displayVsyncClock.CanRetireBefore(pts(m_frameQueue[1])))
                     {
+                        DebugLog::Log("Alpha queue due-source retirement: generation=%llu source=%llu next_source=%llu depth=%zu target=%zu current_pts=%.6f next_pts=%.6f display_pts=%.6f",
+                            m_queueGeneration,m_frameQueue.front().activePictureIdentity.acceptedSequence,
+                            m_frameQueue[1].activePictureIdentity.acceptedSequence,m_frameQueue.size(),PrefillTargetLocked(),
+                            pts(m_frameQueue.front()),pts(m_frameQueue[1]),output.displayVsyncClock.SourcePts());
                         m_activePictureTimeline.MarkDiscarded(
                             m_frameQueue.front().activePictureIdentity,
                             m_frameQueue.front().frame.GetCounter(), ActivePictureDiscardReason::BacklogRecovery);

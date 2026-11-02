@@ -413,6 +413,12 @@ public:
             input.crop.frameSourceFormatKey=31;input.crop.frameAnalysisDomainKey=41;
             input.crop.acceptedNativeCrop=fixture.anchor.acceptedNativeCrop;
             input.crop.nearBlackEpisodeRetainCrop=false;
+            input.crop.frameLocalPresentationRetentionEvaluated=true;
+            input.crop.frameLocalPresentationRetentionSafe=true;
+            input.crop.currentVisibleBoundsAvailable=false;
+            input.crop.preparedSubtitle={true,input.crop.geometry,input.crop.frameSourceGeneration,
+                input.crop.frameSourceSequence,input.crop.framePresentationEpoch};
+            Assert::IsTrue(HasCurrentPreparedSubtitlePresentation(input.crop));
             input.presentation=Evaluate(input.crop);
             input.evidence.crop=input.crop;
             input.uncertainPicture.retained=true;

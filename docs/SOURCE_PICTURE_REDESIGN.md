@@ -62,9 +62,10 @@ padding requirement.
 
 Source preparation includes the already accepted head even when temporal AR
 lookahead is zero. Ingress dispatches metadata-only work using owned canonical
-storage; raw Dolby tunnel bytes are not treated as converted pixels. Subtitle
-work depends on this source's completed native measurement, including a completed
-negative, and is admitted after that dependency completes.
+storage; raw Dolby tunnel bytes are not treated as converted pixels. With zero
+lookahead, subtitle work is admitted after this source's native measurement completes,
+including a completed negative. Already queued future sources retain independent
+parallel glyph preparation; exact native/caption proofs are joined at consumption.
 
 At zero lookahead, the accepted head has a cooperative preparation deadline of
 one input interval from its original enqueue timestamp, capped at 50 ms. This can
@@ -80,6 +81,23 @@ and overflow policy remain unchanged, and capture never waits for analysis. This
 is a cooperative CPU/OS scheduling bound, not a hard realtime guarantee. Stage
 telemetry records the source, completion state, elapsed time, interval and exit
 reason. Crop/caption permission still requires the exact source's verified proof.
+
+## Native geometry and output visibility
+
+An accepted native picture rectangle is not permission to hide untranslated raw
+captions. Advanced subtitle modes may present the native rectangle when exact
+current composition is qualified, when current caption absence is confirmed with
+no contradictory current raw-visibility expansion, or during the explicitly
+qualified initial shader-building interval. Requested mode alone grants no crop
+permission; completed shader programs do not make a missing cue ready.
+
+Other unprepared outputs preserve the exact current raw-visibility envelope, or
+the full raster if that evidence is unavailable. This changes the presentation
+aperture only: measured and accepted native picture bounds remain unchanged.
+Optional fill cannot trim this visibility fallback. Fresh qualified current
+composition restores native presentation immediately; one late scan must not
+latch a wider viewport until the cue ends. Stable prepared playback must still
+preserve its viewport and complete captions through natural skipped analyses.
 
 ## Completion and temporal ownership
 

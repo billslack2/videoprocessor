@@ -87,7 +87,7 @@ namespace
     void __cdecl ClassicPoseTestLog(const char* message)
     {
         if(!strstr(message,"VP submitted geometry:") && !strstr(message,"Alpha source crop:") &&
-            !strstr(message,"Alpha native presentation commit:") && !strstr(message,"SUBTITLE ") &&
+            !strstr(message,"Alpha queue ") && !strstr(message,"Alpha backlog recovery:") && !strstr(message,"Alpha native presentation commit:") && !strstr(message,"SUBTITLE ") &&
             !strstr(message,"application profile") && !strstr(message,"Renderer configuration snapshot") &&
             !strstr(message,"VP source preparation stage:") && !strstr(message,"VP source preparation dispatch:") && !strstr(message,"VP accepted source preparation unavailable:") &&
             !strstr(message,"VP spatial detector interval:") &&
@@ -2969,12 +2969,37 @@ namespace VideoProcessorTest
                 struct ArrivalTiming {uint64_t source=0;int64_t capture=0,entered=0,returned=0,pump=0,messages=0,
                     sleepStarted=0,slept=0,drainStarted=0,drained=0,flushed=0,previous=0;};
                 auto arrivalStorage=std::make_unique<std::array<ArrivalTiming,64>>();
+                std::array<ArrivalTiming,9> pressureArrivals{};
+                uint64_t pressureInput=0;
                 uint64_t arrivalCount=0,fastArrivalGaps=0;int64_t firstArrival=0,firstCapture=0,lastArrival=0,lastCapture=0;
                 int64_t longestArrivalGap=0,longestOnFrame=0,longestPump=0;
                 const auto arrivalFrequency=clock.TimingClockTicksPerSecond();
                 const auto arrivalPeriod=static_cast<int64_t>(uint64_t(arrivalFrequency)*duration/scale);
                 auto reportProducerTiming=[&](bool failure) {
                     const auto failureQpc=clock.TimingClockNow();
+                    if(pressureInput) {
+                        for(const auto& a:pressureArrivals)if(a.source) {
+                            std::ostringstream line;line<<"DV PRESSURE ARRIVAL: input="<<a.source
+                                <<" capture_qpc="<<a.capture<<" entered_qpc="<<a.entered<<" returned_qpc="<<a.returned
+                                <<" slept_qpc="<<a.slept<<" drained_qpc="<<a.drained<<" flushed_qpc="<<a.flushed;
+                            Logger::WriteMessage(line.str().c_str());
+                        }
+                        for(const auto& output:outputs)if(output.counters[0]+4>=pressureInput && output.counters[0]<=pressureInput+4) {
+                            const auto selected=nativeInputs.find(output.counters[1]);
+                            std::ostringstream line;line.setf(std::ios::fixed);line.precision(9);
+                            line<<"DV PRESSURE OUTPUT: consumed="<<output.counters[0]<<" selected="<<output.counters[1]
+                                <<" ordinal="<<output.recordSequence<<" output_timestamp_ns=";
+                            if(output.timestampNs)line<<output.timestampNs;else line<<"unavailable";
+                            if(selected!=nativeInputs.end()) {
+                                const auto& original=selected->second;
+                                line<<" selected_input_metadata=joined original_frame="<<original.sourceFrameNumber
+                                    <<" capture_qpc="<<original.captureTimestamp<<" input_continuity="<<original.continuityGeneration
+                                    <<" input_generation="<<original.transportGeneration<<" input_domain="<<original.analysisDomainKey;
+                            } else line<<" selected_input_metadata=unavailable";
+                            line<<" flags="<<output.flags<<" source_pts="<<output.metrics[0]<<" output_pts="<<output.metrics[1];
+                            Logger::WriteMessage(line.str().c_str());
+                        }
+                    }
                     const auto milliseconds=[&](int64_t a,int64_t b){return a>0&&b>=a?1000.0*double(b-a)/arrivalFrequency:-1.0;};
                     std::ostringstream timingSummary;timingSummary<<"DV PRODUCER TIMING: samples="<<arrivalCount
                         <<" input_hz="<<inputHz<<" qpc_hz="<<arrivalFrequency<<" observed_qpc="<<failureQpc
@@ -2987,6 +3012,16 @@ namespace VideoProcessorTest
                         <<" actual_elapsed_ms="<<milliseconds(firstArrival,lastArrival)
                         <<" nominal_elapsed_ms="<<milliseconds(firstCapture,lastCapture);
                     Logger::WriteMessage(timingSummary.str().c_str());
+                    if(!failure && pressureInput) {
+                        std::vector<std::string> queueDiagnostics;
+                        {std::lock_guard<std::mutex> guard(classicPoseLogMutex);
+                            for(const auto& line:classicPoseMessages)
+                                if(line.find("Alpha queue ")!=std::string::npos ||
+                                    line.find("Alpha backlog recovery:")!=std::string::npos)
+                                    queueDiagnostics.push_back(line);
+                        }
+                        for(const auto& line:queueDiagnostics)Logger::WriteMessage(line.c_str());
+                    }
                     if(!failure)return;
                     const auto arrivalBegin=arrivalCount>arrivalStorage->size()?arrivalCount-arrivalStorage->size():0;
                     for(uint64_t index=arrivalBegin;index<arrivalCount;++index) {
@@ -3229,7 +3264,6 @@ namespace VideoProcessorTest
                 };
                 auto next=std::chrono::steady_clock::now();
                 const auto captureOrigin=clock.TimingClockNow();
-                uint64_t pressureInput=0;
                 auto pump=[&](bool cue,bool forceUnknown=false) {
                     const auto pumpStarted=clock.TimingClockNow();
                     MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
@@ -3241,6 +3275,9 @@ namespace VideoProcessorTest
                         const auto stamp=captureOrigin+static_cast<timingclocktime_t>(ticks);delivered[sequence]=stamp;
                         if(forceUnknown){
                             pressureInput=sequence;
+                            for(const auto& prior:*arrivalStorage)
+                                if(prior.source && prior.source+4>=pressureInput && prior.source<pressureInput)
+                                    pressureArrivals[size_t(prior.source+4-pressureInput)]=prior;
                             std::ostringstream injection;injection<<"DV UNKNOWN INJECT: source_input="<<pressureInput
                                 <<" capture_timestamp="<<stamp<<" expected_clean_input="<<(pressureInput+1)
                                 <<" last_submitted_consumed="<<(outputs.empty()?0:outputs.back().counters[0])
@@ -3267,6 +3304,8 @@ namespace VideoProcessorTest
                     if(arrival){arrival->slept=clock.TimingClockNow();arrival->drainStarted=arrival->slept;}
                     drain();if(arrival)arrival->drained=clock.TimingClockNow();
                     preparationLog.Flush();if(arrival)arrival->flushed=clock.TimingClockNow();
+                    if(arrival && pressureInput && arrival->source+4>=pressureInput && arrival->source<=pressureInput+4)
+                        pressureArrivals[size_t(arrival->source+4-pressureInput)]=*arrival;
                     longestPump=(std::max)(longestPump,clock.TimingClockNow()-pumpStarted);
                     require(callback.state!=RENDERSTATE_FAILED,L"Persistent Dolby cadence renderer entered failed state.");
                 };

@@ -105,3 +105,36 @@ The standard renderer preserves the committed pose across 124 distinct observed
 sources, beta across 123, both with natural scheduled and skipped analyses. The
 original pose/coverage assertions are unchanged. Final shared raw-publication
 notification coverage and full qualification follow on a clean source pin.
+
+The clean `8b49f560` full run `20261102-000112-e441a669` passes all 1,023 standard
+checks (1,008 native plus 15 renderer tests). Beta passes 13/15: the decoded-DV
+unknown-input-repeat and Black persistent-caption cases fail at 60 Hz after cue
+and continuity changes. The untranslated raw caption is clipped by the retained
+native presentation rectangle. This is a real safety failure, not changed physical
+picture geometry. The final follow-up restores independent future glyph prefetch
+for queued input while retaining serialized zero-lookahead preparation, and makes
+advanced-mode crop permission conditional on exact current composition, confirmed
+absence, or the explicit initial shader-building exception. Missing work otherwise
+requires source visibility protection, without modifying measured native bounds.
+Full qualification remains unsatisfied until that follow-up passes both variants.
+
+The visibility-policy native run `20261102-002311-257d1252` passes 1,009/1,010;
+the remaining initialization fixture omitted the renderer's post-resolution
+admission bridge. Its corrected isolated check passes in
+`20261102-003344-c24da149`, retaining all wrong-context and same-source replay
+rejections. Older tests that equated native geometry with every presentation
+aperture now assert immutable native bounds, current raw visibility and immediate
+return to native presentation on fresh qualified composition. Optional fill is
+checked in both directions; contradictory current raw visibility defeats claimed
+caption absence. No sticky wider-viewport state was added.
+
+Focused run `20261102-002828-53d54dda` passes both Black persistent-caption cases
+and both zero-lookahead Classic cases. The beta one-input-repeat test repeated
+correctly, then sources 81-82 were discarded before source 83; its required adjacent
+successor therefore failed. That failure is retained. Diagnostic follow-up
+`20261102-003910-76a1b039` passes the unchanged repeat and exact-adjacent-successor
+assertions at both 59.94 and 60 Hz. Queue policy, overflow, backlog and due-source
+retirement logs are now preserved, alongside pressure-neighbor original-source
+metadata. No scheduling rule, input cadence, queue setting or fault-injection
+eligibility was changed to obtain the pass. Full clean-pin qualification remains
+required; this focused result alone is not deployment acceptance.
