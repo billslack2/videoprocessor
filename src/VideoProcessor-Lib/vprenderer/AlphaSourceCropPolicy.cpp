@@ -3515,6 +3515,58 @@ namespace AlphaSourceCrop
 			}
 		}
 
+        // A current independently verified native entry is already sufficient
+        // evidence. The episode must not wait for consecutive transport IDs or
+        // a model association whose acquisition it is itself suppressing.
+        // This releases only the retained presentation veto: no new geometry,
+        // subtitle ownership, crop authority or measurement lease is created.
+        const auto& entry = decision.state.entryTrustedCrop;
+        const bool verifiedCurrentEntry =
+            decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
+            decision.state.entryTrustedCropAvailable &&
+            decision.state.entryTrustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            input.sourceGeneration != 0 && input.sourceSequence != 0 &&
+            decision.state.sourceGeneration == input.sourceGeneration &&
+            decision.state.presentationEpoch == input.presentationEpoch &&
+            input.sourceSequence > decision.state.startedSourceSequence &&
+            input.sourceSequence > decision.state.lastEvaluatedSourceSequence &&
+            input.measurementCurrent && !input.cadenceRepeat &&
+            input.nearBlackEvaluated && !input.globalNearBlack &&
+            !input.sceneBoundary && !input.fullRasterAuthorityAvailable &&
+            !input.boundedVisibleContentOutsideCrop && !input.currentVisibleBoundsAvailable &&
+            !pendingSubmittedEnvelope &&
+            input.trustedCropAvailable &&
+            input.trustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            ValidBounds(entry, entry.rasterWidth, entry.rasterHeight) &&
+            HasAuthorityForCroppedAxes(entry, entry.rasterWidth, entry.rasterHeight) &&
+            SameTrustedCropContract(input.trustedCrop, entry) &&
+            input.currentObservationAvailable &&
+            input.currentObservationOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            input.currentObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            SameBounds(input.currentObservation, entry) &&
+            input.currentNativeObservationAvailable &&
+            SameTrustedCropContract(input.currentNativeObservation, entry) &&
+            input.currentNativeProposedAvailable &&
+            SameBounds(input.currentNativeProposedBounds, entry) &&
+            input.retentionEvaluated && input.retentionSafe && input.retentionExcludedBandsPixelSafe &&
+            input.retentionSourceGeneration == input.sourceGeneration &&
+            input.retentionSourceSequence == input.sourceSequence &&
+            SameTrustedCropContract(input.retentionBounds, entry);
+        if (verifiedCurrentEntry)
+        {
+            auto& release = decision.currentNativeEntryRelease;
+            release.available = true;
+            release.nativeEntry = entry;
+            release.sourceGeneration = input.sourceGeneration;
+            release.sourceSequence = input.sourceSequence;
+            release.presentationEpoch = input.presentationEpoch;
+            decision.state = {};
+            decision.releasedToTrustedCrop = true;
+            decision.ended = true;
+            decision.revalidationSamplesRequired = 0;
+            decision.reason = "current verified native entry released retained episode without frame-count dwell";
+        }
+
 		// A retained-crop episode must also end after fresh bright frames prove
 		// its exact entry crop safe. Otherwise a long-finished fade keeps owning
 		// presentation and a later bounded menu/subtitle intrusion takes the title
@@ -7026,6 +7078,29 @@ namespace AlphaSourceCrop
             certificate.presentationEpoch=input.presentationEpoch;certificate.captionPreservation=heldCaption;
             return result;
         }
+        // Analysis may have suppressed this source before its exact native
+        // entry verification released the episode. That CURRENT proof defeats
+        // unknown-only retention of the old displayed envelope, not caption or
+        // visibility ownership, which has already been checked above.
+        const auto& release = input.currentNativeEntryRelease;
+        const bool currentNativeEntryReleased = release.available &&
+            crop.automaticCropEnabled && HasAcceptedNativeCrop(crop) &&
+            release.sourceGeneration == crop.frameSourceGeneration &&
+            release.sourceSequence == crop.frameSourceSequence &&
+            release.presentationEpoch == input.presentationEpoch &&
+            input.presentationEpoch == crop.framePresentationEpoch &&
+            SameTrustedCropContract(release.nativeEntry,crop.geometry) &&
+            input.measurementCurrent && input.retentionEvaluated && input.excludedBandsPixelSafe &&
+            input.retentionSourceGeneration == crop.frameSourceGeneration &&
+            input.retentionSourceSequence == crop.frameSourceSequence &&
+            SameTrustedCropContract(input.retentionBounds,crop.geometry) &&
+            !input.globalNearBlack && input.nearBlackEvaluated &&
+            !crop.fullRasterPresentationAuthoritative && !crop.currentVisibleBoundsAvailable &&
+            input.observationAvailable && input.observationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            SameBounds(input.observation,crop.geometry) &&
+            proposed.applyCrop && !proposed.verticallyTranslated && !proposed.outwardExpanded &&
+            SameBounds(proposed.sourceBounds,crop.geometry);
+        if (currentNativeEntryReleased) return result;
         if (crop.automaticCropEnabled && HasAcceptedNativeCrop(crop) &&
             !crop.fullRasterPresentationAuthoritative &&
             crop.latestObservationClassification != ActivePictureClassification::FULL_RASTER_TRUSTED &&

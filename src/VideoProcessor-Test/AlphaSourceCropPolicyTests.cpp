@@ -491,6 +491,150 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+        static NearBlackPresentationEpisodeInput CurrentVerifiedReturningScope(uint64_t sequence=1970)
+        {
+            auto input=ReaffirmedRetainedScope();
+            input.sourceSequence=input.retentionSourceSequence=sequence;
+            input.currentNativeObservationAvailable=input.currentNativeProposedAvailable=true;
+            input.currentNativeObservation=input.currentNativeProposedBounds=input.trustedCrop;
+            // An episode suppresses model acquisition. Recovery must use raw
+            // current pixels, not wait for that suppressed association to return.
+            input.knownTrustedGeometryReacquired=input.reacquisitionIsCurrentAssociation=false;
+            input.previous.lastEvaluatedSourceSequence=1962;
+            return input;
+        }
+        TEST_METHOD(VerifiedReturningScopeReleasesRetainedEpisodeOnFirstCurrentSource)
+        {
+            for(double rate:{23.976,59.94,60.0})for(uint64_t gap:{1ULL,2ULL,7ULL,100ULL,10000ULL}) {
+                auto input=CurrentVerifiedReturningScope(1962+gap);
+                input.framesPerSecond=rate;
+                const auto result=EvaluateNearBlackPresentationEpisode(input);
+                Assert::IsTrue(result.releasedToTrustedCrop,
+                    L"Current independently verified entry bars must release on this source, without an N-frame wait or consecutive input IDs.");
+                Assert::IsTrue(result.ended);
+                Assert::AreEqual(int(NearBlackPresentationMode::INACTIVE),int(result.state.mode));
+                Assert::AreEqual(0u,result.state.revalidationSamples);
+            }
+        }
+        TEST_METHOD(ImmediateScopeEpisodeReleaseRejectsUnverifiedOrContradictoryPixels)
+        {
+            for(int variant=0;variant<27;++variant) {
+                auto input=CurrentVerifiedReturningScope();
+                switch(variant) {
+                case 0:input.measurementCurrent=false;break;
+                case 1:input.cadenceRepeat=true;break;
+                case 2:input.sourceSequence=input.retentionSourceSequence=1962;break;
+                case 3:input.retentionSourceSequence--;break;
+                case 4:input.retentionSourceGeneration++;break;
+                case 5:input.presentationEpoch++;break;
+                case 6:input.sourceGeneration++;break;
+                case 7:input.retentionEvaluated=false;break;
+                case 8:input.retentionSafe=false;break;
+                case 9:input.retentionExcludedBandsPixelSafe=false;break;
+                case 10:input.globalNearBlack=true;break;
+                case 11:input.nearBlackEvaluated=false;break;
+                case 12:input.currentNativeObservationAvailable=false;break;
+                case 13:input.currentObservationClassification=ActivePictureClassification::PROVISIONAL;break;
+                case 14:input.currentObservationOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;break;
+                case 15:input.currentNativeObservation.top-=2;break;
+                case 16:input.currentNativeProposedAvailable=false;break;
+                case 17:input.currentNativeProposedBounds.bottom+=2;break;
+                case 18:input.retentionBounds.top-=2;break;
+                case 19:input.trustedCrop.bottom+=2;break;
+                case 20:input.boundedVisibleContentOutsideCrop=true;break;
+                case 21:input.currentObservationAvailable=false;break;
+                case 22:input.currentObservation.top-=2;break;
+                case 23:input.previous.entryTrustedCropOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;break;
+                case 24:input.fullRasterAuthorityAvailable=true;break;
+                case 25:input.trustedCropOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;break;
+                case 26:input.currentVisibleBoundsAvailable=true;break;
+                }
+                const auto result=EvaluateNearBlackPresentationEpisode(input);
+                Assert::IsFalse(result.releasedToTrustedCrop,
+                    L"Retained/history-only, stale, repeated, contradicted or occupied-bar evidence cannot release a picture hold.");
+            }
+        }
+        TEST_METHOD(VerifiedReturningScopeClearsSavedTallerPresentationOnSameSource)
+        {
+            auto input=CurrentVerifiedReturningScope();
+            const auto episode=EvaluateNearBlackPresentationEpisode(input);
+            auto crop=TrustedScopeCrop();
+            crop.geometry=input.trustedCrop;
+            crop.frameSourceGeneration=crop.geometrySourceGeneration=input.sourceGeneration;
+            crop.frameSourceSequence=input.sourceSequence;
+            crop.framePresentationEpoch=input.presentationEpoch;
+            crop.frameSourceFormatKey=11;crop.frameAnalysisDomainKey=22;
+            crop.acceptedNativeCrop.available=true;crop.acceptedNativeCrop.bounds=crop.geometry;
+            crop.acceptedNativeCrop.sourceGeneration=input.sourceGeneration;
+            crop.acceptedNativeCrop.acceptedSourceSequence=1960;
+            crop.acceptedNativeCrop.sourceFormatKey=crop.frameSourceFormatKey;
+            crop.acceptedNativeCrop.analysisDomainKey=crop.frameAnalysisDomainKey;
+            crop.latestObservationClassification=ActivePictureClassification::PROVISIONAL;
+            crop.latestObservationIsProvisional=true;crop.latestObservationSupportsCrop=false;
+            crop.frameLocalPresentationRetentionEvaluated=crop.frameLocalPresentationRetentionSafe=true;
+            crop.nearBlackEpisodeRetainCrop=NearBlackEpisodeOwnsCropThisFrame(episode);
+            auto priorCrop=crop;priorCrop.frameSourceSequence=1962;
+            priorCrop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            priorCrop.latestObservationIsProvisional=false;priorCrop.latestObservationSupportsCrop=true;
+            priorCrop.nearBlackEpisodeRetainCrop=false;
+            auto admission=AdmitCropPresentation({},priorCrop,Evaluate(priorCrop),input.presentationEpoch).state;
+            // The real failure retained a taller, already submitted presentation
+            // while its logical native contract was still the original scope.
+            Assert::IsTrue(admission.available,L"The fixture must originate a genuinely admitted native contract.");
+            admission.outwardPresentationAvailable=true;
+            admission.outwardPresentation=input.trustedCrop;
+            admission.outwardPresentation.top=68;admission.outwardPresentation.bottom=2092;
+            admission.presentationSourceSequence=1962;
+            PresentationRecoveryInput recovery;
+            recovery.crop=crop;recovery.candidate=Evaluate(crop);recovery.previousAdmission=admission;
+            recovery.presentationEpoch=input.presentationEpoch;
+            recovery.previous.active=true;recovery.previous.sourceGeneration=input.sourceGeneration;
+            recovery.previous.presentationEpoch=input.presentationEpoch;recovery.previous.trustedCrop=input.trustedCrop;
+            recovery.measurementCurrent=recovery.retentionEvaluated=recovery.nearBlackEvaluated=true;
+            recovery.excludedBandsPixelSafe=true;recovery.retentionBounds=input.trustedCrop;
+            recovery.retentionSourceGeneration=input.sourceGeneration;recovery.retentionSourceSequence=input.sourceSequence;
+            recovery.observationAvailable=true;recovery.observation=input.trustedCrop;
+            recovery.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            recovery.confirmedPresentationResolved=episode.releasedToTrustedCrop;
+            const auto resolved=EvaluatePresentationRecovery(recovery);
+            Assert::IsFalse(resolved.state.active,L"Current native recovery must retire the saved taller envelope immediately.");
+            const auto admitted=AdmitCropPresentation(admission,crop,resolved.presentation,input.presentationEpoch);
+            if(admitted.blocked)Logger::WriteMessage(admitted.presentation.reason.c_str());
+            Assert::IsFalse(admitted.blocked);
+            Assert::AreEqual(input.trustedCrop.top,admitted.presentation.sourceBounds.top);
+            Assert::AreEqual(input.trustedCrop.bottom,admitted.presentation.sourceBounds.bottom);
+            auto& anchor=recovery.submittedScopeAnchor;
+            anchor.available=true;anchor.crop=crop.geometry;
+            anchor.sourceGeneration=input.sourceGeneration;anchor.presentationEpoch=input.presentationEpoch;
+            anchor.lastSubmittedSourceSequence=anchor.lastSubmittedPresentationSourceSequence=1962;
+            anchor.acceptedNativeCrop=crop.acceptedNativeCrop;
+            anchor.submittedPresentationAvailable=true;
+            anchor.submittedPresentation=admission.outwardPresentation;
+            const auto oldUnknown=ResolveUncertainPicturePresentation(recovery,admitted.presentation);
+            Assert::IsTrue(oldUnknown.retained);
+            Assert::AreEqual(68,oldUnknown.presentation.sourceBounds.top,
+                L"Without the exact release handoff the final unknown policy preserves the actually shown taller output.");
+            recovery.currentNativeEntryRelease=episode.currentNativeEntryRelease;
+            Assert::IsTrue(recovery.currentNativeEntryRelease.available);
+            const auto final=ResolveUncertainPicturePresentation(recovery,admitted.presentation);
+            Assert::IsFalse(final.retained,L"Current entry verification must reach the final resolver on this same source.");
+            Assert::AreEqual(input.trustedCrop.top,final.presentation.sourceBounds.top);
+            Assert::AreEqual(input.trustedCrop.bottom,final.presentation.sourceBounds.bottom);
+            for(int fault=0;fault<5;++fault) {
+                auto stale=recovery;
+                switch(fault) {
+                case 0:stale.currentNativeEntryRelease.available=false;break;
+                case 1:--stale.currentNativeEntryRelease.sourceGeneration;break;
+                case 2:--stale.currentNativeEntryRelease.sourceSequence;break;
+                case 3:++stale.currentNativeEntryRelease.presentationEpoch;break;
+                case 4:stale.currentNativeEntryRelease.nativeEntry.top-=2;break;
+                }
+                const auto rejected=ResolveUncertainPicturePresentation(stale,admitted.presentation);
+                Assert::IsTrue(rejected.retained,L"Missing, stale or changed entry handoffs cannot withdraw the actually submitted envelope.");
+                Assert::AreEqual(68,rejected.presentation.sourceBounds.top);
+            }
+        }
+
         TEST_METHOD(CenteredFillQuantizationIsSymmetricAndIdempotentOnBothAxes)
         {
             for(bool vertical:{false,true})for(int excess:{2,4,6}) {

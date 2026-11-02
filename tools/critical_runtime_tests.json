@@ -10,8 +10,11 @@
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
   ],
-  "minimumNativeTests": 975,
+  "minimumNativeTests": 978,
   "requiredNativeMethods": [
+    "VerifiedReturningScopeReleasesRetainedEpisodeOnFirstCurrentSource",
+    "ImmediateScopeEpisodeReleaseRejectsUnverifiedOrContradictoryPixels",
+    "VerifiedReturningScopeClearsSavedTallerPresentationOnSameSource",
     "DetectedAspectSameSourceCompletionAcquiresWithoutWaitingForNextFrame",
     "AspectSnapshotIsIndependentOfBusyRenderLockAndOutputInvalidation",
     "DetectedAspectDeadbandRetainsAnchorAcross60HzJitterAndUnknowns",

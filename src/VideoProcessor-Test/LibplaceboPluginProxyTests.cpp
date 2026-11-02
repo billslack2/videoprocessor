@@ -3505,6 +3505,7 @@ namespace VideoProcessorTest
         void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false)
         {
             const bool requireSpatial=SourceSpatialExperimentRequested();
+            Logger::WriteMessage(requireSpatial?"AR transition fixture: detector=spatial":"AR transition fixture: detector=legacy");
             HMODULE self=nullptr;
             Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                 GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -3528,7 +3529,8 @@ namespace VideoProcessorTest
               snapshotTestLog.close();snapshotTestLog.clear();
               snapshotTestLog.open(configuredFill
                   ? (beta?"ar-fill-beta.log":"ar-fill-standard.log")
-                  : (beta?"ar-transition-beta.log":"ar-transition-standard.log"),std::ios::trunc); }
+                  : (requireSpatial?(beta?"ar-transition-spatial-beta.log":"ar-transition-spatial-standard.log"):
+                    (beta?"ar-transition-beta.log":"ar-transition-standard.log")),std::ios::trunc); }
             const auto create=reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(
                 GetProcAddress(plugin,VP_LIBPLACEBO_CREATE_EXPORT));
             const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(
@@ -3625,6 +3627,9 @@ namespace VideoProcessorTest
                     if(value.inUseAvailable&&value.available&&!value.provisional&&
                         value.presentedSequence>=first&&value.detectedSequence>=first&&
                         std::abs(value.inUseRatio-applied)<0.015&&std::abs(value.ratio-expected)<0.015) {
+                        Assert::AreEqual(int(requireSpatial?ActivePictureDetectorKind::SourceSpatialMeasured:
+                            ActivePictureDetectorKind::Legacy),int(value.detectorKind),
+                            L"The actual renderer must match the detector mode selected at process startup.");
                         if(requireSpatial) {
                             Assert::AreEqual(int(ActivePictureDetectorKind::SourceSpatialMeasured),int(value.detectorKind));
                             bool submitted=false;

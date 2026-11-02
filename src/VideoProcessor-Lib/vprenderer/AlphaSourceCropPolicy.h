@@ -1175,8 +1175,17 @@ namespace AlphaSourceCrop
 		uint64_t sourceSequence = 0;
 	};
 
+    // Exact-current independently verified return to an existing native entry.
+    // Presentation-only; never creates a native contract or caption ownership.
+    struct NativeEntryReleaseProof
+    {
+        bool available = false;
+        ActivePictureBounds nativeEntry;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+    };
 	struct NearBlackPresentationEpisodeDecision
 	{
+        NativeEntryReleaseProof currentNativeEntryRelease;
 		NearBlackPresentationEpisodeState state;
 		bool started = false;
 		bool changedToFullRaster = false;
@@ -1203,7 +1212,9 @@ namespace AlphaSourceCrop
 	// two weak source rows with a current, previously applied optional-fill certificate. A
 	// full-raster episode may restore only its exact entry crop after a bounded,
 	// current-frame pixel-safe revalidation dwell. The same proof ends retained
-	// crop episodes once bright scope returns. Neither path grants authority to
+	// crop episodes with incomplete evidence. Independently verified current native
+	// entry bars release a retained-crop episode immediately, without a dwell or
+	// consecutive-frame requirement. Neither path grants authority to
 	// startup or unrelated recent geometry. An independently safe sampling-sized
 	// outward correction may instead withdraw the undersized trusted contract
 	// and reopen ordinary acquisition; it never restores that unsafe old crop.
@@ -1922,6 +1933,7 @@ namespace AlphaSourceCrop
     };
 	struct PresentationRecoveryInput
 	{
+        NativeEntryReleaseProof currentNativeEntryRelease;
         // Completed current native-pixel inspection of individual excluded bands.
         // Coarse edge nominations may disagree; only this exact identity may
         // show that an opposite-edge nomination contains no visible pixels.

@@ -17684,6 +17684,7 @@ releaseDriftBaseRetention =
                 caption.leaseExpiryTick = scopeCurrentVerticalTick + scopeSubtitleHoldMs +
                     scopeSubtitleEngageDriftMs + scopeSubtitleReleaseDriftMs + 500;
             }
+            recoveryInput.currentNativeEntryRelease = episodeDecision.currentNativeEntryRelease;
             recoveryInput.nativeOutwardPictureProof = outwardPictureConfirmation;
             recoveryInput.nativeOutwardPictureProofPresentationEpoch = outwardPictureConfirmationEpoch;
 			recoveryInput.crop = cropInput;

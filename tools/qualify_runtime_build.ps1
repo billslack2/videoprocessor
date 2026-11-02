@@ -37,6 +37,9 @@ if (-not $MagewellSdkRoot) { $MagewellSdkRoot=$env:MagewellSdkRoot }
 if (-not $MagewellSdkRoot) { $MagewellSdkRoot=Join-Path $Root '3rdparty\magewell\SDKv3' }
 if (-not (Test-Path -LiteralPath (Join-Path $MagewellSdkRoot 'Include\LibMWCapture\MWCapture.h'))) { throw 'Pass -MagewellSdkRoot with the official capture SDK used by the runtime build.' }
 $MagewellSdkRoot=[IO.Path]::GetFullPath($MagewellSdkRoot)
+# Detector mode is fixed at process startup inside the native renderer. Record
+# the inherited setting, and use a separate VSTest process/run for each mode.
+$testEnvironment=[ordered]@{sourcePictureDetector=($env:VP_SOURCE_PICTURE_DETECTOR -eq '1');sourcePictureShadow=$env:VP_SOURCE_PICTURE_SHADOW}
 $plan=Get-VpCriticalTestPlan $Root
 . (Join-Path $Root 'tools/runtime_iteration.ps1')
 $plan=Get-VpIterationTestPlan $plan $Lane $Methods
@@ -143,7 +146,7 @@ try {
     if ($after.commit -ne $source.commit -or $after.fingerprint -ne $source.fingerprint -or $after.dirty -ne $source.dirty) { throw 'Sources changed during qualification; no runtime qualification is valid.' }
     if ($Lane -ne 'Qualification') {
         Assert-VpSameOutputInventory $binaries (Get-VpIterationOutputInventory $Root $Lane)
-        $receipt=[ordered]@{schemaVersion=1;status=($Lane+'Passed');qualification=$false;lane=$Lane;source=$source;binaries=$binaries;builds=$builds;runs=$runs;seconds=[Math]::Round($totalTimer.Elapsed.TotalSeconds,3);shaderCacheDirectory=$env:VP_SHADER_CACHE_DIRECTORY;coldShaderCache=[bool]$coldCache;finished=(Get-Date).ToString('o')}
+        $receipt=[ordered]@{schemaVersion=1;status=($Lane+'Passed');qualification=$false;lane=$Lane;source=$source;testEnvironment=$testEnvironment;binaries=$binaries;builds=$builds;runs=$runs;seconds=[Math]::Round($totalTimer.Elapsed.TotalSeconds,3);shaderCacheDirectory=$env:VP_SHADER_CACHE_DIRECTORY;coldShaderCache=[bool]$coldCache;finished=(Get-Date).ToString('o')}
         $receipt|ConvertTo-Json -Depth 10|Set-Content -LiteralPath (Join-Path $runDirectory 'iteration.json') -Encoding UTF8
         $success=$true
         Write-Host "$Lane iteration passed: $runDirectory (not full runtime qualification)."
@@ -154,7 +157,7 @@ try {
         Get-VpOptionalPrivateFixtureEvidence ([string]$name) ([Environment]::GetEnvironmentVariable([string]$name))
     })
     $receipt=[ordered]@{schemaVersion=2;status='Passed';configuration='Release';platform='x64';source=$source;
-        manifestHash=$plan.manifestHash;binaries=$binaries;builds=$builds;runs=$runs;optionalPrivateFixtures=$fixtures;seconds=[Math]::Round($totalTimer.Elapsed.TotalSeconds,3);shaderCacheDirectory=$env:VP_SHADER_CACHE_DIRECTORY;coldShaderCache=[bool]$coldCache;finished=(Get-Date).ToString('o')}
+        manifestHash=$plan.manifestHash;testEnvironment=$testEnvironment;binaries=$binaries;builds=$builds;runs=$runs;optionalPrivateFixtures=$fixtures;seconds=[Math]::Round($totalTimer.Elapsed.TotalSeconds,3);shaderCacheDirectory=$env:VP_SHADER_CACHE_DIRECTORY;coldShaderCache=[bool]$coldCache;finished=(Get-Date).ToString('o')}
     $temporary=$receiptPath+'.'+[Guid]::NewGuid().ToString('N')+'.tmp'
     $receipt|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $temporary -Encoding UTF8
     Move-Item -LiteralPath $temporary -Destination $receiptPath -Force
@@ -166,7 +169,7 @@ try {
     $env:VP_SHADER_CACHE_DIRECTORY=$oldCacheDirectory
     if (-not $success -and $locked) {
         if(Test-Path -LiteralPath $receiptPath){Remove-Item -LiteralPath $receiptPath -Force}
-        if($runDirectory){[ordered]@{status='Failed';source=$source;builds=$builds;runs=$runs;finished=(Get-Date).ToString('o')}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $runDirectory 'failed.json') -Encoding UTF8}
+        if($runDirectory){[ordered]@{status='Failed';source=$source;testEnvironment=$testEnvironment;builds=$builds;runs=$runs;finished=(Get-Date).ToString('o')}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $runDirectory 'failed.json') -Encoding UTF8}
     }
     if($locked){$mutex.ReleaseMutex()};$mutex.Dispose()
 }
