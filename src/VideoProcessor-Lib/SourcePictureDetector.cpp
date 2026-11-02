@@ -156,6 +156,21 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
         trace.metrics[18]=contact.textureRegions;trace.metrics[19]=contact.sparseSide+1;
         for(unsigned i=0;i<4;++i)trace.metrics[20+i]=contact.textureSupport[i];
     }
+    if(result.observation)for(unsigned side=0;side<4;++side) {
+        const auto& proof=result.observation->relativeMatteContacts[side];
+        if(!proof.evaluated)continue;
+        auto contact=AnalysisTraceRecord(identity,nullptr,"source-relative-matte-contact",
+            proof.accepted?"current-bar-relative-contact":"insufficient-relative-contact-proof");
+        contact.flags=(proof.accepted?1u:0u)|(proof.referencesMatched?2u:0u);
+        contact.counters[0]=side;contact.counters[1]=proof.coverage;
+        contact.counters[2]=proof.support;contact.counters[3]=proof.regions;
+        for(unsigned c=0;c<3;++c) {
+            contact.metrics[c]=proof.reference[c];contact.metrics[3+c]=proof.noise[c];
+            contact.metrics[6+c]=proof.texture[c];
+        }
+        contact.metrics[9]=proof.lumaMargin;contact.metrics[10]=proof.chromaMargin;
+        AnalysisDiagnosticTrace::Emit(contact);
+    }
     if(result.observation && result.observation->rectangleAvailable) {
         const auto& bounds=result.observation->measuredBounds;
         if(bounds.left || bounds.top || bounds.right<source.width || bounds.bottom<source.height) {

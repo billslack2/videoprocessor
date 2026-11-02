@@ -561,6 +561,54 @@ namespace VideoProcessorTest
             Assert::IsTrue(observed.canvasSupported);
             Assert::IsTrue(observed.blankMarginsUnresolved);
         }
+        TEST_METHOD(SourcePictureRelativeMatteContactRecoversDarkSideWithoutChangingCaptionAr)
+        {
+            const int levels[8]={8,8,8,8,12,12,12,20};
+            for(unsigned side=0;side<4;++side)for(bool full:{false,true})
+                for(int raised:{0,16})for(bool caption:{false,true}) {
+                const bool horizontal=side==1 || side==3;
+                if(horizontal && caption)continue;
+                const int floor=(full?0:64)+raised;
+                const int width=horizontal?540:960,height=horizontal?960:540;
+                SourcePictureFrame frame(width,height,floor);
+                const auto bounds=horizontal?Bounds(width,height,70,0,470,height):
+                    Bounds(width,height,0,70,width,470);
+                for(int y=bounds.top;y<bounds.bottom;++y)for(int x=bounds.left;x<bounds.right;++x) {
+                    const int along=(horizontal?x:y)-70;
+                    const int inward=side==0?x:side==2?width-1-x:side==1?y:height-1-y;
+                    const int base=floor+levels[(along/12)%8];
+                    frame.Fill(x,y,x+1,y+1,base+(300-base)*inward/959);
+                }
+                if(caption)frame.Caption(1,500);
+                const auto measured=MeasureSourcePicture(frame.Source(full?AnalysisLumaRange::Full:AnalysisLumaRange::Limited));
+                Exact(measured,bounds);
+                Assert::IsTrue(measured.relativeMatteContacts[side].accepted,
+                    L"Every weak side must be proved against the measured bars, in both ranges and with raised source black.");
+            }
+        }
+        TEST_METHOD(SourcePictureRelativeMatteContactRejectsFlatMatteAndUnmatchedReferences)
+        {
+            const int levels[8]={8,8,8,8,12,12,12,20};
+            for(int fault=0;fault<4;++fault) {
+                SourcePictureFrame frame(960,540);
+                for(int y=70;y<470;++y) {
+                    const int base=64+(fault==0?8:levels[((y-70)/12)%8]);
+                    for(int x=0;x<960;++x) {
+                        const int ramp=fault==0?std::max(0,x-192):x;
+                        frame.Fill(x,y,x+1,y+1,base+(300-base)*ramp/(fault==0?767:959));
+                    }
+                }
+                if(fault==1)frame.Fill(0,470,960,540,76);
+                if(fault==3) {
+                    // Quantized source noise in the bars is not picture texture.
+                    for(int y=0;y<540;++y)for(int x=0;x<8;++x)
+                        frame.Fill(x,y,x+1,y+1,(y>=70 && y<470?72:64)+(y%2)*4);
+                }
+                const auto measured=MeasureSourcePicture(frame.Source(fault==2?AnalysisLumaRange::Unknown:AnalysisLumaRange::Limited));
+                Assert::IsFalse(measured.rectangleAvailable && measured.measuredBounds.left==0 && measured.measuredBounds.top==70,
+                    L"A flat side matte, unmatched outer bars or unknown source range cannot supply relative-contact authority.");
+            }
+        }
         TEST_METHOD(SourcePictureChromaRoundingCannotEraseCoherentBoundaryCollar)
         {
             SourcePictureFrame frame(960,540);
@@ -1093,10 +1141,11 @@ namespace VideoProcessorTest
                         auto caption=std::make_unique<SubtitleBoxObservation>(scanner->Measure(source,*key,{},24.0,evidence));
                         const auto masked=VerifySuppliedActivePictureCandidateWithSubtitle(source,evidence,*caption,id,1,1,key->scriptHint);
                         const bool cropped=evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED || masked.accepted;
-                        matches=matches && cropped;
+                        matches=matches && cropped && caption->text.detected &&
+                            (evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED || caption->subtitleArProof.accepted);
                         Logger::WriteMessage((std::string("Native captured caption/crop verification: ")+path+
                             " detected="+std::to_string(caption->text.detected)+" inspection="+std::to_string(caption->inspectionCandidateUsed)+
-                            " crop_verified="+std::to_string(cropped)+" masked="+std::to_string(masked.accepted)+
+                            " worker_proof="+std::to_string(caption->subtitleArProof.accepted)+" crop_verified="+std::to_string(cropped)+" masked="+std::to_string(masked.accepted)+
                             " profile="+masked.maskedProfile.reason+
                             " mismatch_xy="+std::to_string(masked.maskedProfile.firstMismatchX)+","+std::to_string(masked.maskedProfile.firstMismatchY)+
                             " top_span="+std::to_string(masked.maskedProfile.topFirstMismatchY)+","+std::to_string(masked.maskedProfile.topLastMismatchY)+

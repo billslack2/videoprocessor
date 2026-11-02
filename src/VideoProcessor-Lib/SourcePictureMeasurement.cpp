@@ -444,6 +444,93 @@ bool CompleteSparseTerminal(Reader& reader,int floor,SourcePictureObservation& o
     out.edges[unsigned(missing)].insert(out.edges[unsigned(missing)].begin(),terminal);
     return true;
 }
+// A weak raster contact can be measured against two independently bounded
+// current bars. Only run after every competing inset has been scanned. The
+// native ray lattice is preserved for downstream perpendicular support tests.
+void CompleteRelativeMatteContacts(Reader& reader,int floor,SourcePictureObservation& out) {
+    if(reader.source.range==AnalysisLumaRange::Unknown)return;
+    const int terminals[4]={0,0,out.width,out.height};
+    for(unsigned side=0;side<4;++side) {
+        if(Select(out.edges[side],terminals[side]))continue;
+        const bool horizontal=side==1 || side==3,leading=side<2;
+        const unsigned cross=horizontal?0:1;
+        const auto* first=Select(out.edges[cross],terminals[cross]);
+        const auto* last=Select(out.edges[cross+2],terminals[cross+2]);
+        const int along=horizontal?out.width:out.height,depth=horizontal?out.height:out.width;
+        if(!first || !last || first->coordinate<8 || last->coordinate>along-8 ||
+            last->coordinate-first->coordinate<32)continue;
+        const int begin=first->coordinate,end=last->coordinate;
+        auto& proof=out.relativeMatteContacts[side];proof.evaluated=true;
+        const int sustain=std::max(2,depth/960);
+        const int offsets[4]={0,1,sustain,sustain+1};
+        auto read=[&](int position,int inward) {
+            const int d=leading?inward:depth-1-inward;
+            const auto pixel=reader.At(horizontal?position:d,horizontal?d:position);
+            return std::array<double,3>{double(pixel.luma),double(pixel.chromaU),double(pixel.chromaV)};
+        };
+        std::array<double,3> means[2]{},low[2],high[2];
+        for(unsigned bar=0;bar<2;++bar) {
+            low[bar].fill(1024);high[bar].fill(0);
+            for(int n=0;n<8;++n)for(int d:offsets) {
+                const auto pixel=read(bar?along-1-n:n,d);
+                for(unsigned c=0;c<3;++c) {
+                    means[bar][c]+=pixel[c]/32;
+                    low[bar][c]=std::min(low[bar][c],pixel[c]);
+                    high[bar][c]=std::max(high[bar][c],pixel[c]);
+                }
+            }
+        }
+        bool matched=true;
+        for(unsigned c=0;c<3;++c) {
+            proof.reference[c]=(means[0][c]+means[1][c])/2;
+            proof.noise[c]=std::max(high[0][c]-low[0][c],high[1][c]-low[1][c]);
+            matched=matched && proof.noise[c]<=8 && std::abs(means[0][c]-means[1][c])<=4;
+        }
+        matched=matched && std::abs(proof.reference[0]-floor)<=std::max(4.0,proof.noise[0]+2);
+        proof.referencesMatched=matched;if(!matched)continue;
+        proof.lumaMargin=std::max(6.0,proof.noise[0]+2);
+        proof.chromaMargin=std::max(6.0,std::max(proof.noise[1],proof.noise[2])+2);
+        SourcePictureEdgeCandidate terminal;
+        terminal.coordinate=terminal.minimum=terminal.maximum=terminals[side];
+        std::array<unsigned,4> activeRegions{};
+        std::array<std::vector<double>,3> values;
+        for(unsigned ray=0;ray<kEdgeProbes;++ray) {
+            const int position=int(uint64_t(2*ray+1)*along/(2*kEdgeProbes));
+            if(position<begin || position>=end)continue;
+            ++proof.coverage;std::array<std::array<double,12>,3> patch{};unsigned sample=0;
+            unsigned coherent=0;
+            for(int a=-1;a<=1;++a)for(int d:offsets) {
+                const auto pixel=read(std::max(begin,std::min(end-1,position+a)),d);
+                for(unsigned c=0;c<3;++c)patch[c][sample]=pixel[c];
+                ++sample;
+                const double dy=pixel[0]-proof.reference[0];
+                coherent+=dy>=-proof.lumaMargin && (dy>=proof.lumaMargin ||
+                    std::max(std::abs(pixel[1]-proof.reference[1]),std::abs(pixel[2]-proof.reference[2]))>=proof.chromaMargin);
+            }
+            // Preserve native quantization; averaging a four-code edge can
+            // turn real texture into a fractional, apparently weaker signal.
+            for(unsigned c=0;c<3;++c) {
+                auto& channel=patch[c];std::sort(channel.begin(),channel.end());
+                values[c].push_back((channel[5]+channel[6])/2);
+            }
+            if(coherent<9)continue;
+            ++proof.support;++activeRegions[std::min(3,(position-begin)*4/(end-begin))];
+            ++terminal.regionSupport[ray/32];
+            terminal.supportingRays[ray/64]|=uint64_t(1)<<(ray%64);
+        }
+        bool textured=false;
+        for(unsigned c=0;c<3;++c)if(!values[c].empty()) {
+            auto& v=values[c];std::sort(v.begin(),v.end());
+            proof.texture[c]=v[(v.size()-1)*9/10]-v[(v.size()-1)/10];
+            textured=textured || proof.texture[c]>=std::max(4.0,2*proof.noise[c]+2);
+        }
+        for(auto count:activeRegions)if(count>=4)++proof.regions;
+        if(proof.coverage<32 || proof.support*2<proof.coverage || proof.regions<3 || !textured)continue;
+        proof.accepted=true;terminal.support=proof.support;terminal.coverage=proof.coverage;
+        terminal.strong=true;terminal.rasterContactProved=true;
+        out.edges[side].insert(out.edges[side].begin(),terminal);
+    }
+}
 // A dark picture edge must not be erased by treating an unqualified picture
 // percentile as matte. This bounded current-source route requires the other
 // three measured raster contacts, no competing inset, and distributed early
@@ -734,6 +821,7 @@ SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,c
             }
             MarkGlyphEdges(out,budget);
             CorroborateOpposedRasterContacts(out);
+            CompleteRelativeMatteContacts(reader,floor,out);
             darkTerminalCompleted=CompleteDarkTerminal(reader,floor,out);
         }
         out.complete=out.topologyComplete;out.outcome=SourcePictureOutcome::Partial;

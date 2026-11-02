@@ -56,6 +56,13 @@ struct SourcePictureObservation {
         double peakContrast=0;
         std::array<unsigned,4> textureSupport{};
     } rasterContact;
+    struct RelativeMatteContactProof {
+        bool evaluated=false,accepted=false,referencesMatched=false;
+        unsigned coverage=0,support=0,regions=0;
+        std::array<double,3> reference{},noise{},texture{};
+        double lumaMargin=0,chromaMargin=0;
+    };
+    std::array<RelativeMatteContactProof,4> relativeMatteContacts;
     unsigned lumaQuantum=1; // Observed perimeter code spacing, capped at one 8-bit-equivalent step.
     size_t samples=0;
     const char* reason="not-measured";
