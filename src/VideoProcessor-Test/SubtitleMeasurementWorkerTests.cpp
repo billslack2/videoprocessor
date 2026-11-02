@@ -167,6 +167,20 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         return scan;
     }
 public:
+    TEST_METHOD(SubtitleCompletionSignalFollowsReadyCachePublication) {
+        SubtitleMeasurementWorker worker;
+        auto signal=std::make_shared<AnalysisCompletionSignal>();
+        auto key=Ready(1).current;
+        const auto revision=signal->Snapshot();
+        Assert::IsTrue(worker.Submit(key,[key](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            return key;
+        },nullptr,0,false,signal));
+        Assert::IsTrue(signal->WaitUntil(revision,std::chrono::steady_clock::now()+std::chrono::seconds(5)));
+        auto result=std::make_unique<SubtitleBoxObservation>();
+        Assert::IsTrue(worker.TryRead(key,*result));
+        Assert::IsTrue(result->analyzed);
+        Assert::IsTrue(SameAnalysisFrameIdentity(key.identity,result->identity));
+    }
     TEST_METHOD(ParallelSamplersShareOneDiagnosticCaptureClaimForEveryCaptureMode) {
         struct RestoreClaim {
             bool original=SubtitleDiagnosticCaptureClaimed().exchange(false);

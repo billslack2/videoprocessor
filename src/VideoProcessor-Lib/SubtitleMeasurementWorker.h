@@ -1,4 +1,5 @@
 #pragma once
+#include <AnalysisCompletionSignal.h>
 #include <SourcePictureDetector.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCadenceGuard.h>
@@ -216,8 +217,9 @@ private:
     bool m_capturedDiagnostic=false;
 };
 
-// Bounded CPU-only work. Jobs own their source storage; rendering never waits
-// for a scan or consumes a result for another source frame or policy epoch.
+// Bounded CPU-only work. Jobs own their source storage. Current-source preparation
+// may await completion within its enqueue-derived deadline; presentation never
+// consumes a result for another source frame or policy epoch.
 class SubtitleMeasurementWorker {
 public:
     struct Diagnostics {
@@ -461,8 +463,9 @@ public:
             SubtitleBoxLookahead::RebindCompletedIndependentScanAfterBacklog(*copy,incoming.continuityGeneration,true) &&
             SameKey(*copy,incoming);
     }
-    void Submit(const SubtitleBoxObservation& key,Work work,
-        const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t timelinePolicy=0) {
+    bool Submit(const SubtitleBoxObservation& key,Work work,
+        const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t timelinePolicy=0,bool nonblocking=false,
+        std::shared_ptr<AnalysisCompletionSignal> completion={}) {
         auto requestKey=key;
         // QueueSubtitleMeasurement submits only valid prepared sources. Mark
         // the request's scan path here so active and pending jobs can coalesce
@@ -471,23 +474,24 @@ public:
             requestKey.sharedPicture.required &&
             !requestKey.sharedPicture.AvailableFor(
                 requestKey.identity,requestKey.width,requestKey.height);
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if(m_stopping)return;
+        std::unique_lock<std::mutex> lock(m_mutex,std::defer_lock);
+        if(nonblocking) {if(!lock.try_lock())return false;}else lock.lock();
+        if(m_stopping)return false;
         if(requestKey.identity.transportGeneration<m_windowHead.transportGeneration ||
             (requestKey.identity.transportGeneration==m_windowHead.transportGeneration &&
                 requestKey.identity.acceptedSequence<m_windowHead.acceptedSequence)) {
             Trace(requestKey,"worker-drop","source-window-expired");
-            ++m_diagnostics.expired;return;
+            ++m_diagnostics.expired;return false;
         }
         for(const auto& active:m_activeJobs)
             if(active.active && (SameKey(active.key,requestKey) || SamePendingFullSourceWork(active.key,requestKey) ||
                 CanCoalesceOwnedWork(active.key,requestKey,ownedWitness,timelinePolicy))) {
-                Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return;
+                Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return false;
             }
         for(const auto& job:m_pending)if(SameKey(job.key,requestKey) || SamePendingFullSourceWork(job.key,requestKey) ||
-            CanCoalesceOwnedWork(job.key,requestKey,ownedWitness,timelinePolicy)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return;}
+            CanCoalesceOwnedWork(job.key,requestKey,ownedWitness,timelinePolicy)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return false;}
         for(const auto& ready:m_ready)if(SameKey(ready,requestKey) ||
-            CanCoalesceOwnedCompleted(ready,requestKey,ownedWitness,timelinePolicy)){Trace(requestKey,"worker-dedup","ready");++m_diagnostics.deduplicated;return;}
+            CanCoalesceOwnedCompleted(ready,requestKey,ownedWitness,timelinePolicy)){Trace(requestKey,"worker-dedup","ready");++m_diagnostics.deduplicated;return false;}
         if(m_pending.size()>=8) {
             // Keep the nearest accepted source. A new current-frame request may
             // replace the farthest future; a later future cannot evict the head.
@@ -510,7 +514,7 @@ public:
             } else {
                 Trace(requestKey,"worker-drop","future-capacity");
                 ++m_diagnostics.dropped;
-                return;
+                return false;
             }
             ++m_diagnostics.dropped;
         }
@@ -526,11 +530,12 @@ public:
                         incoming.acceptedSequence<existing.acceptedSequence);
             });
         const uint64_t rawRevision=RecordAcceptedRawJob(requestKey);
-        m_pending.insert(place,{requestKey,std::move(work),rawRevision});
+        m_pending.insert(place,{requestKey,std::move(work),rawRevision,std::move(completion)});
         ++m_diagnostics.submitted;
         for(size_t index=0;index<m_workerLimit;++index)
             if(!m_threads[index].joinable())m_threads[index]=std::thread([this,index]{ Run(index); });
         m_changed.notify_all();
+        return true;
     }
     void Stop() {
         {std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;m_pending.clear();m_pastRaw.clear();m_rawVersions.clear();}
@@ -724,7 +729,7 @@ private:
         Trace(key,"worker-miss",m_ready.empty()?"no-ready-results":"no-compatible-result",mismatches);
         ++m_diagnostics.requestMisses;return false;
     }
-    struct Job {SubtitleBoxObservation key;Work work;uint64_t rawRevision=0;std::chrono::steady_clock::time_point queued=std::chrono::steady_clock::now();};
+    struct Job {SubtitleBoxObservation key;Work work;uint64_t rawRevision=0;std::shared_ptr<AnalysisCompletionSignal> completion;std::chrono::steady_clock::time_point queued=std::chrono::steady_clock::now();};
     void Run(size_t workerIndex) {
         SubtitleMeasurementSampler scanner;
         SubtitleBarTrackingReference previous;
@@ -767,6 +772,7 @@ private:
                     m_ready.push_back(std::move(result));
                 }
             }
+            if(job.completion)job.completion->Notify();
         }
     }
     Diagnostics m_diagnostics;

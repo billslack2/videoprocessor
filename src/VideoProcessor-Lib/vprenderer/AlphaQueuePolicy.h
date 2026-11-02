@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <string>
@@ -14,6 +15,15 @@ namespace AlphaQueuePolicy
 	constexpr double DEFAULT_FRAME_RATE_HZ = 60.0;
 	constexpr double MINIMUM_RENDER_STALL_MS = 50.0;
 	constexpr double MINIMUM_STALE_BACKLOG_AGE_MS = 100.0;
+
+    // One current-source processing interval, never a future-frame quorum.
+    // A completed negative is complete; no crop decision enters this policy.
+    inline bool AwaitCurrentSourcePreparation(bool owned,bool nativeComplete,
+        bool subtitleRequired,bool subtitleComplete,int64_t now,int64_t deadline)
+    {
+        return owned && deadline>0 && now<deadline &&
+            (!nativeComplete || (subtitleRequired && !subtitleComplete));
+    }
 
 	struct ActivePicturePreviewWindow
 	{
@@ -65,6 +75,19 @@ namespace AlphaQueuePolicy
 		indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
 		return indices;
 	}
+
+    // Native geometry and glyph work are source preparation, independent of
+    // the temporal AR admission horizon. Include the already-owned head even
+    // for unqueued input; this selector never requests an extra source or wait.
+    template<typename Queue>
+    std::vector<size_t> SelectSourceMeasurementPreparation(const Queue& queue,
+        size_t configured,size_t maxLookahead,size_t requiredOutwardFutureFrames)
+    {
+        auto indices=SelectActivePicturePreparation(queue,configured,maxLookahead,requiredOutwardFutureFrames);
+        if(!queue.empty() && !queue.front().cadenceRepeat && (indices.empty() || indices.front()!=0))
+            indices.insert(indices.begin(),0);
+        return indices;
+    }
 
 	inline size_t NormalizeDesiredDepth(size_t value)
 	{

@@ -222,6 +222,8 @@ private:
 	bool HasConversionWorkLocked() const;
 	std::shared_ptr<QueuedFrame::ConvertedPayload> AcquireConversionPayload();
 	void StopInternal(const std::function<void()>& drainAfterGraphStop);
+    void PrepareCurrentSourceBeforePresentation(const std::vector<QueuedFrame>& frames,uint64_t policy,uint64_t continuity);
+    void DispatchAcceptedSourcePreparation(const QueuedFrame& frame,uint64_t policy,uint64_t continuity);
     void PrimeSubtitleMeasurements(const std::vector<QueuedFrame>& frames,
         uint64_t policyGeneration, uint64_t continuityGeneration,bool harvestOnly=false);
     void PrimePictureProofMeasurements(const std::vector<QueuedFrame>& frames,
@@ -270,6 +272,7 @@ private:
 
 	mutable std::mutex m_queueMutex;
 	std::condition_variable m_queueChanged;
+    std::shared_ptr<AnalysisCompletionSignal> m_sourcePreparationChanged=std::make_shared<AnalysisCompletionSignal>();
 	std::deque<QueuedFrame> m_frameQueue;
 	ActivePictureDecisionTimeline m_activePictureTimeline;
 	size_t m_frameQueueDesiredDepth = 1;

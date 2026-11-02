@@ -1,4 +1,5 @@
 #pragma once
+#include <AnalysisCompletionSignal.h>
 #include <atomic>
 #include <chrono>
 #include <Windows.h>
@@ -10,14 +11,16 @@
 #include <mutex>
 #include <thread>
 
-// Optional immutable measurements only. The presentation thread never waits for
-// a job or for this worker's mutex. Each slot belongs to one captured frame.
+// Immutable measurements. A bounded current-source preparation stage may await
+// completion notifications; it never waits on this worker's mutex. Each slot
+// belongs to one captured frame.
 template<class Result, size_t Capacity = 8>
 class OptionalAnalysisWorker {
     static_assert(Capacity>0,"Optional work queue must be bounded and nonempty");
 public:
     struct Slot {
         std::shared_ptr<const Result> ready;
+        std::shared_ptr<AnalysisCompletionSignal> completion;
         std::atomic<bool> pending{false};
     };
     struct Metrics {
@@ -141,6 +144,7 @@ private:
             }
             activeStartUs.store(0,std::memory_order_relaxed);++completed;
             job.slot->pending.store(false);
+            if(job.slot->completion)job.slot->completion->Notify();
         }
     }
 };

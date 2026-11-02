@@ -41,7 +41,9 @@ work, not evidence that bars are absent.
 
 Completed geometry facts may be reused only after exact equality of every declared
 native byte and compatible source interpretation, dimensions, pitches, format,
-transport/format/domain identity and continuity. The per-worker cache holds one owned
+transport/format/domain identity and nondecreasing source sequence. These pure pixel
+facts may survive a timeline discontinuity; continuity is enforced separately on
+derived temporal, caption and publication proofs. The per-worker cache holds one owned
 source of at most 64 MiB of declared storage, without copying its raster. An owner may
 also retain other allocations; this is not a bound on that owner's total memory.
 Unowned or oversized storage is not cached. No crop certificate, glyph mask, subtitle
@@ -55,6 +57,29 @@ verification. Retention changes recheck excluded bands using the same source fac
 they do not invoke another geometry detector. Exact spatial subtitle recovery consumes
 the current identity, measured nominee and verified retained bounds, not a legacy fixed
 padding requirement.
+
+## Current-source preparation without lookahead
+
+Source preparation includes the already accepted head even when temporal AR
+lookahead is zero. Ingress dispatches metadata-only work using owned canonical
+storage; raw Dolby tunnel bytes are not treated as converted pixels. Subtitle
+work depends on this source's completed native measurement, including a completed
+negative, and is admitted after that dependency completes.
+
+At zero lookahead, the accepted head has a cooperative preparation deadline of
+one input interval from its original enqueue timestamp, capped at 50 ms. This can
+add source-to-display latency; it is not a zero-wait promise. Completed native and
+due subtitle work permits presentation immediately. Disabled or cadence-skipped
+subtitle work imposes no additional wait. The stage does not wait for trusted
+geometry, a desired aspect, detected captions, future frames or confirmation votes.
+
+Completion notifications wake the preparation stage. Each attempt uses the same
+absolute deadline; retries cannot extend it. Expiry, ownership/context changes or
+contended stage locks leave missing-work semantics intact. Existing queue capacity
+and overflow policy remain unchanged, and capture never waits for analysis. This
+is a cooperative CPU/OS scheduling bound, not a hard realtime guarantee. Stage
+telemetry records the source, completion state, elapsed time, interval and exit
+reason. Crop/caption permission still requires the exact source's verified proof.
 
 ## Completion and temporal ownership
 

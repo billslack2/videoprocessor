@@ -11,8 +11,14 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1002,
+  "minimumNativeTests": 1008,
   "requiredNativeMethods": [
+    "OutwardRawCompletionWakesPreparationBeforeNormalWorkerFinishes",
+    "SubtitleCompletionSignalFollowsReadyCachePublication",
+    "WorkerCompletionWakesOnlyAfterImmutablePublication",
+    "CompletionSignalKeepsEarlyNotificationAndAbsoluteExpiry",
+    "CurrentSourcePreparationCompletesOrExpiresWithoutFutureVotes",
+    "SourcePreparationIncludesUnqueuedHeadWhenArLookaheadIsDisabled",
     "BoundedWorkerBindsOnlyValidCurrentSourceIdentity",
     "LateCurrentCaptionVerificationReplacesOneProvisionalEvaluationOnly",
     "SourceCompletionRevisionInvalidatesOnlyDerivedPendingFacts",
@@ -827,6 +833,26 @@
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
       "method": "LegacyPhysicalObservationKeepsExistingLabelAndSourceResetClearsSpatialProvenance"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AlphaQueuePolicyTests.cpp",
+      "class": "AlphaQueuePolicyTests",
+      "method": "SourcePreparationIncludesUnqueuedHeadWhenArLookaheadIsDisabled"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AlphaQueuePolicyTests.cpp",
+      "class": "AlphaQueuePolicyTests",
+      "method": "CurrentSourcePreparationCompletesOrExpiresWithoutFutureVotes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "CompletionSignalKeepsEarlyNotificationAndAbsoluteExpiry"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "WorkerCompletionWakesOnlyAfterImmutablePublication"
     }
   ]
 }

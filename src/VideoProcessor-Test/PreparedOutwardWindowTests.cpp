@@ -143,6 +143,36 @@ namespace VideoProcessorTest
             const auto foreign=DetectPreparedSourcePictureBounded(source,identity);
             Assert::IsFalse(foreign.evidence.currentSourceIdentityAvailable);
         }
+        TEST_METHOD(OutwardRawCompletionWakesPreparationBeforeNormalWorkerFinishes)
+        {
+            OwnedWindow window;const auto complete=window.PublishRaw(0);
+            auto partial=std::make_shared<WindowRawMeasurement>(*complete);
+            partial->evidence=MissingSourcePictureEvidence(partial->source);
+            std::shared_ptr<const WindowRawMeasurement> missing=partial;
+            const auto slot=window.request.rawSlots[0];std::atomic_store(&slot->ready,missing);
+            slot->completion=std::make_shared<AnalysisCompletionSignal>();
+            const auto revision=slot->completion->Snapshot();
+            Event started,release;WindowRequest::RawWorker worker;ReleaseOnExit unblock{release.handle};
+            Assert::IsTrue(worker.Submit(slot,7,100,100,[&] {
+                SetEvent(started.handle);WaitForSingleObject(release.handle,5000);return *missing;
+            },[&](std::shared_ptr<const WindowRawMeasurement> result) {
+                PublishPreparedOutwardRaw<WindowRawMeasurement>(window.request.frames[0],
+                    window.request.identities[0],slot,missing,std::move(result));
+            }));
+            Assert::IsTrue(WaitForSingleObject(started.handle,2000)==WAIT_OBJECT_0);
+            PublishPreparedOutwardRaw<WindowRawMeasurement>(window.request.frames[0],
+                window.request.identities[0],slot,missing,complete);
+            Assert::IsTrue(slot->completion->WaitUntil(revision,std::chrono::steady_clock::now()));
+            Assert::IsTrue(slot->pending.load()); // Normal worker has not completed.
+            Assert::IsTrue(WindowRequest::RawWorker::Ready(slot)==complete);
+            const auto publishedRevision=slot->completion->Snapshot();
+            PublishPreparedOutwardRaw<WindowRawMeasurement>(window.request.frames[0],
+                window.request.identities[0],slot,missing,missing);
+            Assert::IsTrue(slot->completion->Snapshot()==publishedRevision); // Rejected downgrade is not publication.
+            SetEvent(release.handle);worker.Stop();
+            Assert::IsTrue(WindowRequest::RawWorker::Ready(slot)==complete);
+            Assert::IsTrue(slot->completion->Snapshot()>publishedRevision); // Normal completion also wakes.
+        }
         TEST_METHOD(NormalAndOutwardRawPublishersNeverDowngradeEitherCompletionOrder)
         {
             for(bool normalCompletes:{false,true})for(bool foreignWinner:{false,true}) {

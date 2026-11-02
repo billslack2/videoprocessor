@@ -9184,10 +9184,11 @@ struct LibplaceboVideoRenderer::Impl
         const std::shared_ptr<const QueuedFrame::ConvertedPayload>& converted,
         const std::shared_ptr<QueuedFrame::AnalysisPayload>& cache,
         AnalysisSourceProfile profile, uint64_t generation,
-        bool rendererUsesNative = false, bool converted422 = false)
+        bool rendererUsesNative = false, bool converted422 = false,bool nonblocking=false)
     {
         if (!cache || !state.displayMode) return {};
-        std::lock_guard<std::mutex> guard(cache->mutex);
+        std::unique_lock<std::mutex> guard(cache->mutex,std::defer_lock);
+        if(nonblocking) {if(!guard.try_lock())return {};}else guard.lock();
         auto& stored = profile == AnalysisSourceProfile::LiveRenderer ? cache->live : cache->queued;
         const bool sameSelection = profile == AnalysisSourceProfile::QueuedCapture ||
             (cache->liveNative == rendererUsesNative && cache->live422 == converted422);
@@ -9269,6 +9270,37 @@ struct LibplaceboVideoRenderer::Impl
         key.height=static_cast<int>(state.displayMode->FrameHeight());
     }
 
+    static SubtitleMeasurementWorker::Work MakeSubtitleMeasurementWork(const PreparedAnalysisFrame& prepared,
+        const SubtitleBoxObservation& key,const SubtitleBarTrackingReference& prior,double fps,
+        const ActivePictureEvidence& nativeEvidence,const std::shared_ptr<QueuedFrame::AnalysisPayload>& analysisCache)
+    {
+        return [prepared,key,prior,fps,nativeEvidence,analysisCache](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
+            // The native worker may finish after dispatch but before this job
+            // starts. Reuse only its exact immutable source/owner/domain result;
+            // no presentation geometry or another source can satisfy this read.
+            auto currentNative=nativeEvidence;
+            if(!currentNative.available && analysisCache) {
+                const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
+                if(CurrentLookaheadMeasurement(prepared,key.identity,raw))currentNative=raw->evidence;
+            }
+            const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
+                key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
+            auto result=scanner.Measure(prepared.source,key,reference,fps,currentNative);
+            if(SourcePictureDetectorEnabled() && !result.subtitleArProof.accepted && analysisCache) {
+                // The spatial job can finish while glyphs are being measured.
+                const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
+                if(CurrentLookaheadMeasurement(prepared,key.identity,raw)) {
+                    auto source=prepared.source;source.generation=key.identity.transportGeneration;
+                    result.subtitleArProof=VerifySuppliedActivePictureCandidateWithSubtitle(source,raw->evidence,result,
+                        key.identity,key.policyGeneration,key.continuityGeneration,key.scriptHint);
+                    if(result.subtitleArProof.accepted)
+                        result.subtitleArDarkness=EvaluateActivePictureArDarkness(source,result.subtitleArProof.evidence);
+                }
+            }
+            return result;
+        };
+    }
+
     SubtitleBoxObservation QueueSubtitleMeasurement(const VideoFrame& frame,const VideoState& state,
         const ActivePictureFrameIdentity& identity,bool discontinuity,
         const SubtitleBarTrackingReference& prior,uint64_t policy,uint64_t continuity,int nearBar,int optimizationMode,
@@ -9341,31 +9373,8 @@ struct LibplaceboVideoRenderer::Impl
                 "input-cadence-not-analyzed" : "current-analysis-submission-disabled";
             return key;
         }
-        subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence,analysisCache](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
-            // The native worker may finish after dispatch but before this job
-            // starts. Reuse only its exact immutable source/owner/domain result;
-            // no presentation geometry or another source can satisfy this read.
-            auto currentNative=nativeEvidence;
-            if(!currentNative.available && analysisCache) {
-                const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
-                if(CurrentLookaheadMeasurement(prepared,key.identity,raw))currentNative=raw->evidence;
-            }
-            const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
-                key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
-            auto result=scanner.Measure(prepared.source,key,reference,fps,currentNative);
-            if(SourcePictureDetectorEnabled() && !result.subtitleArProof.accepted && analysisCache) {
-                // The spatial job can finish while glyphs are being measured.
-                const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
-                if(CurrentLookaheadMeasurement(prepared,key.identity,raw)) {
-                    auto source=prepared.source;source.generation=key.identity.transportGeneration;
-                    result.subtitleArProof=VerifySuppliedActivePictureCandidateWithSubtitle(source,raw->evidence,result,
-                        key.identity,key.policyGeneration,key.continuityGeneration,key.scriptHint);
-                    if(result.subtitleArProof.accepted)
-                        result.subtitleArDarkness=EvaluateActivePictureArDarkness(source,result.subtitleArProof.evidence);
-                }
-            }
-            return result;
-        },ownedWitness,ownedTimelinePolicy);
+        subtitleMeasurementWorker.Submit(key,MakeSubtitleMeasurementWork(prepared,key,prior,fps,nativeEvidence,analysisCache),
+            ownedWitness,ownedTimelinePolicy,false,analysisCache?analysisCache->lookahead->completion:nullptr);
         return key;
     }
 
@@ -22234,6 +22243,7 @@ LibplaceboVideoRenderer::~LibplaceboVideoRenderer()
 		m_stopRequested = true;
 	}
 	m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 	if (m_renderThread.joinable())
 	{
 		m_renderThread.join();
@@ -22436,6 +22446,8 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		return;
 	}
 
+    std::unique_ptr<QueuedFrame> acceptedPreparation;
+    uint64_t preparationPolicy=0,preparationContinuity=0;
 	{
 		std::lock_guard<std::mutex> guard(m_queueMutex);
 		// A callback that began before a reset must not populate the new
@@ -22526,7 +22538,12 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			queuedFrame.activePictureIdentity = activePictureIdentity;
 			queuedFrame.callbackQpc = callbackQpc;
 			queuedFrame.enqueueQpc = PerformanceCounterNow();
+            queuedFrame.analysis->lookahead->completion=m_sourcePreparationChanged;
+            acceptedPreparation=std::make_unique<QueuedFrame>(queuedFrame);
 			m_frameQueue.push_back(std::move(queuedFrame));
+            acceptedPreparation->frame.SourceBufferAddRef();
+            preparationPolicy=m_activePictureTimeline.LookaheadPolicyGeneration();
+            preparationContinuity=m_activePictureTimeline.ContinuityGeneration();
 		}
 		catch (const std::exception& e)
 		{
@@ -22536,7 +22553,17 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			return;
 		}
 	}
+    // Dispatch metadata for this already accepted owned source before waking
+    // presentation. Workers scan independently; capture never waits for them.
+    if(acceptedPreparation) {
+        try {DispatchAcceptedSourcePreparation(*acceptedPreparation,preparationPolicy,preparationContinuity);}
+        catch(const std::exception& error) {
+            DebugLog::Log("VP accepted source preparation unavailable: %s; action=normal-render-prime",error.what());
+        }
+        acceptedPreparation->frame.SourceBufferRelease();
+    }
 	m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 }
 
 
@@ -23203,6 +23230,7 @@ void LibplaceboVideoRenderer::StopWithIngressDrain(
 		m_stopRequested = true;
 	}
 	m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 	try
 	{
 		m_stopWorker = std::thread([this, drainAfterGraphStop]()
@@ -23226,6 +23254,7 @@ void LibplaceboVideoRenderer::StopInternal(
 		m_stopRequested = true;
 	}
 	m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 	if (m_renderThread.joinable())
 		m_renderThread.join();
 	if (m_conversionThread.joinable())
@@ -23248,6 +23277,7 @@ void LibplaceboVideoRenderer::Retire() noexcept
 			m_stopRequested = true;
 		}
 		m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 		// Do not call Stop(): this can run after the GUI has already processed
 		// the stopped-state notification, and a second callback could be applied
 		// to the replacement renderer. Join directly before releasing the
@@ -23670,6 +23700,7 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 	// A target reduction can satisfy an already pending startup prefill.
 	// A target increase after release deliberately does not re-arm it.
 	m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 }
 
 void LibplaceboVideoRenderer::SetQueueFramePolicy(
@@ -23690,6 +23721,7 @@ void LibplaceboVideoRenderer::SetQueueFramePolicy(
 			steadyReserveFrames, m_frameQueueDesiredDepth, m_frameQueueMaxSize);
 	}
 	m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 }
 
 
@@ -24547,6 +24579,157 @@ void LibplaceboVideoRenderer::PrimeBufferedOutwardWindow(
     }
 }
 
+void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFrame& queued,
+    uint64_t policy,uint64_t continuity)
+{
+    struct DispatchTrace {
+        uint64_t sequence=0,domain=0;unsigned lookahead=0;bool nativeQueued=false,subtitleQueued=false,owned=false;
+        const char* reason="entered";const char* nativeReason="not-requested";const char* subtitleReason="not-requested";
+        ~DispatchTrace() {
+            if(sequence<=8 || sequence%120==0)
+                DebugLog::Log("VP source preparation dispatch: stage=accepted-before-notify source=%llu domain=%llu lookahead=%u native_queued=%d subtitle_queued=%d source_owned=%d pixel_scans_on_caller=0 reason=%s native_reason=%s subtitle_reason=%s",
+                    sequence,domain,lookahead,nativeQueued?1:0,subtitleQueued?1:0,owned?1:0,reason,nativeReason,subtitleReason);
+        }
+    } trace;
+    trace.sequence=queued.activePictureIdentity.acceptedSequence;
+    trace.lookahead=unsigned(m_activePictureLookaheadFrames.load(std::memory_order_acquire));
+    if(!queued.analysis || !queued.state || !queued.state->displayMode || !queued.frame.GetData() ||
+        queued.cadenceRepeat || queued.conversionFailed){trace.reason="invalid-source-packet";return;}
+    // A tunnel needs the canonical decoded packet. Raw transport bytes may
+    // never enter this ordinary-source fast preparation path.
+    if(queued.state->dolbyVisionTunnel && !queued.converted){trace.reason="awaiting-canonical-decode";return;}
+    uint64_t minimumSequence=queued.activePictureIdentity.acceptedSequence;
+    {
+        std::unique_lock<std::mutex> owner(m_queueMutex,std::try_to_lock);
+        if(!owner.owns_lock()){trace.reason="queue-lock-contended";return;}
+        if(m_stopRequested){trace.reason="stopping";return;}
+        if(policy!=m_activePictureTimeline.LookaheadPolicyGeneration() ||
+            continuity!=m_activePictureTimeline.ContinuityGeneration()){trace.reason="queue-context-changed";return;}
+        const auto found=std::find_if(m_frameQueue.begin(),m_frameQueue.end(),[&](const QueuedFrame& current) {
+            return SameActivePictureFrameIdentity(current.activePictureIdentity,queued.activePictureIdentity) &&
+                current.analysis==queued.analysis && current.converted==queued.converted && current.state==queued.state &&
+                current.frame.GetData()==queued.frame.GetData();
+        });
+        if(found==m_frameQueue.end()){trace.reason="source-no-longer-owned";return;}
+        trace.owned=true;
+        minimumSequence=m_frameQueue.front().activePictureIdentity.acceptedSequence;
+    }
+    const auto prepared=Impl::PrepareFrameAnalysis(queued.frame,*queued.state,queued.converted,queued.analysis,
+        AnalysisSourceProfile::QueuedCapture,queued.activePictureIdentity.sourceFormatGeneration,false,
+        queued.state->dolbyVisionTunnel,true);
+    if(!prepared.IsValid()){trace.reason="canonical-source-unavailable";return;}
+    trace.domain=prepared.domainKey;
+    auto identity=queued.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
+    const auto slot=queued.analysis->lookahead;const auto initial=QueuedFrame::LookaheadWorker::Ready(slot);
+
+    if(!CurrentLookaheadMeasurement(prepared,identity,initial) || !SourcePictureMeasurementWorkComplete(initial->evidence)) {
+        trace.nativeQueued=m_impl->lookaheadMeasurementWorker.Submit(slot,identity.transportGeneration,identity.acceptedSequence,
+            minimumSequence,[prepared,identity,slot] {
+                const auto ready=QueuedFrame::LookaheadWorker::Ready(slot);
+                if(CurrentLookaheadMeasurement(prepared,identity,ready) && SourcePictureMeasurementWorkComplete(ready->evidence))return *ready;
+                QueuedFrame::LookaheadMeasurement result;PopulateNativeSourceMeasurement(result,prepared,identity);return result;
+            },[prepared,identity,slot,initial](std::shared_ptr<const QueuedFrame::LookaheadMeasurement> result) {
+                PublishPreparedOutwardRaw<QueuedFrame::LookaheadMeasurement>(prepared,identity,slot,initial,std::move(result));
+            });
+    }
+    trace.nativeReason=trace.nativeQueued?"submitted":slot->pending.load(std::memory_order_acquire)?"already-pending":
+        CurrentLookaheadMeasurement(prepared,identity,initial)?"already-ready":"worker-not-admitted";
+    auto key=std::make_unique<SubtitleBoxObservation>();bool subtitleEligible=false;
+    {
+        std::unique_lock<std::mutex> settings(m_impl->renderMutex,std::try_to_lock);
+        trace.subtitleReason=!settings.owns_lock()?"settings-lock-contended":"settings-context-or-mode";
+        if(settings.owns_lock() && policy==m_impl->localBoundaryPolicyGeneration &&
+            continuity==m_impl->localBoundaryContinuityGeneration && identity.viewportGeneration==m_impl->renderViewportRequestSerial &&
+            (m_impl->SubtitlePreviewEnabled(m_impl->activeSettings) ||
+                AlphaSourceCrop::ScopeCaptionArAnalysisEligible(m_impl->automaticSourceCrop,m_impl->renderConfiguredScreenActive,
+                    m_impl->nlsRequested,m_impl->fixedCropAspectConfigured,m_impl->nearBlackPresentationEpisode.mode,m_impl->scopeSubtitleFit))) {
+            auto shared=m_impl->subtitleSharedPicture;shared.required=true;
+            if(shared.identity.analysisDomainKey!=prepared.domainKey)shared.bounds={};
+            Impl::MakeSubtitleWorkerKeyInto(*key,*queued.state,identity,queued.frame.IsSourceDiscontinuity(),policy,continuity,
+                m_impl->activeSettings.subtitleNearBarDistance,m_impl->activeSettings.subtitleDetectionOptimization,
+                m_impl->activeSettings.subtitleScriptHint,shared,prepared);
+            subtitleEligible=!key->cadenceSkipped;
+            trace.subtitleReason=subtitleEligible?"eligible":"cadence-not-due";
+        }
+    }
+    const auto nativeReady=QueuedFrame::LookaheadWorker::Ready(slot);
+    if(subtitleEligible && (!CurrentLookaheadMeasurement(prepared,identity,nativeReady) ||
+        !SourcePictureMeasurementWorkComplete(nativeReady->evidence))) {
+        subtitleEligible=false;trace.subtitleReason="awaiting-native-dependency";
+    }
+    if(subtitleEligible) {
+        trace.subtitleQueued=m_impl->subtitleMeasurementWorker.Submit(*key,Impl::MakeSubtitleMeasurementWork(prepared,*key,{},
+            queued.state->displayMode->RefreshRateHz(),{},queued.analysis),nullptr,0,true,slot->completion);
+    }
+    if(subtitleEligible)trace.subtitleReason=trace.subtitleQueued?"submitted":"already-owned-or-worker-busy";
+    trace.reason="completed-dispatch";
+}
+
+void LibplaceboVideoRenderer::PrepareCurrentSourceBeforePresentation(
+    const std::vector<QueuedFrame>& frames,uint64_t policy,uint64_t continuity)
+{
+    if(frames.empty() || m_activePictureLookaheadFrames.load(std::memory_order_acquire)!=0)return;
+    const auto& head=frames.front();
+    if(head.cadenceRepeat || !head.analysis || !head.state || !head.state->displayMode)return;
+    const auto prepared=Impl::PrepareFrameAnalysis(head.frame,*head.state,head.converted,head.analysis,
+        AnalysisSourceProfile::QueuedCapture,head.activePictureIdentity.sourceFormatGeneration,false,
+        head.state->dolbyVisionTunnel,true);
+    if(!prepared.IsValid())return;
+    auto identity=head.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
+    const double fps=head.state->displayMode->RefreshRateHz();
+    LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);
+    // The absolute deadline starts at enqueue, never at a retry or a completion.
+    // The existing minimum render-stall bound also caps malformed/very slow rates.
+    const double intervalMs=(std::min)(AlphaQueuePolicy::MINIMUM_RENDER_STALL_MS,
+        1000.0/(std::isfinite(fps) && fps>0.0?fps:AlphaQueuePolicy::DEFAULT_FRAME_RATE_HZ));
+    const int64_t deadline=head.enqueueQpc+int64_t(intervalMs*frequency.QuadPart/1000.0);
+    bool subtitleRequired=false;
+    {
+        std::unique_lock<std::mutex> settings(m_impl->renderMutex,std::try_to_lock);
+        if(!settings.owns_lock())return;
+        if(policy!=m_impl->localBoundaryPolicyGeneration || continuity!=m_impl->localBoundaryContinuityGeneration ||
+            identity.viewportGeneration!=m_impl->renderViewportRequestSerial)return;
+        subtitleRequired=InputFrameAnalysisDue(fps,identity.acceptedSequence) &&
+            (m_impl->SubtitlePreviewEnabled(m_impl->activeSettings) ||
+            AlphaSourceCrop::ScopeCaptionArAnalysisEligible(m_impl->automaticSourceCrop,m_impl->renderConfiguredScreenActive,
+                m_impl->nlsRequested,m_impl->fixedCropAspectConfigured,m_impl->nearBlackPresentationEpisode.mode,m_impl->scopeSubtitleFit));
+    }
+    bool nativeComplete=false,subtitleComplete=false,owned=false;
+    const auto started=PerformanceCounterNow();
+    const auto waitDeadline=SteadyClock::now()+std::chrono::duration_cast<SteadyClock::duration>(
+        std::chrono::duration<double>(double(deadline-PerformanceCounterNow())/frequency.QuadPart));
+    for(;;) {
+        const auto completionRevision=m_sourcePreparationChanged->Snapshot();
+        const auto raw=QueuedFrame::LookaheadWorker::Ready(head.analysis->lookahead);
+        nativeComplete=CurrentLookaheadMeasurement(prepared,identity,raw) && SourcePictureMeasurementWorkComplete(raw->evidence);
+        if(nativeComplete && subtitleRequired)
+            PrimeSubtitleMeasurements(frames,policy,continuity,PerformanceCounterNow()>=deadline);
+        std::unique_lock<std::mutex> owner(m_queueMutex,std::try_to_lock);
+        if(!owner.owns_lock())break;
+        owned=!m_stopRequested && policy==m_activePictureTimeline.LookaheadPolicyGeneration() &&
+            continuity==m_activePictureTimeline.ContinuityGeneration() && !m_frameQueue.empty() &&
+            SameActivePictureFrameIdentity(m_frameQueue.front().activePictureIdentity,head.activePictureIdentity) &&
+            m_frameQueue.front().analysis==head.analysis && m_frameQueue.front().converted==head.converted &&
+            m_frameQueue.front().state==head.state && m_frameQueue.front().frame.GetData()==head.frame.GetData();
+        if(owned) {
+            const auto& observation=m_frameQueue.front().subtitleBoxObservation;
+            subtitleComplete=observation.analyzed && SameAnalysisFrameIdentity(observation.identity,identity) &&
+                observation.policyGeneration==policy && observation.continuityGeneration==continuity;
+        }
+        const auto now=PerformanceCounterNow();
+        if(!AlphaQueuePolicy::AwaitCurrentSourcePreparation(owned,nativeComplete,subtitleRequired,subtitleComplete,now,deadline))break;
+        owner.unlock();
+        // Notification follows publication. Revision tracking covers completion
+        // between the snapshot and wait; no timer polling or source mutex held.
+        m_sourcePreparationChanged->WaitUntil(completionRevision,waitDeadline);
+    }
+    if(identity.acceptedSequence<=8 || identity.acceptedSequence%120==0)
+        DebugLog::Log("VP source preparation stage: source=%llu owned=%d native_complete=%d subtitle_required=%d subtitle_complete=%d expired=%d elapsed_ms=%.3f interval_ms=%.3f deadline_qpc=%lld reason=%s",
+            identity.acceptedSequence,owned?1:0,nativeComplete?1:0,subtitleRequired?1:0,subtitleComplete?1:0,
+            PerformanceCounterNow()>=deadline?1:0,double(PerformanceCounterNow()-started)*1000.0/frequency.QuadPart,
+            intervalMs,deadline,!owned?"ownership-changed":nativeComplete && (!subtitleRequired || subtitleComplete)?"complete":"deadline");
+}
+
 void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
     const std::vector<QueuedFrame>& frames, uint64_t policy, uint64_t continuity)
 {
@@ -24699,6 +24882,12 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         } // Pending DV conversion is never raw RGB evidence.
         auto identity=queued.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
         preparedDomains[i]=prepared.domainKey;observations[i].identity=identity;
+        // A subtitle completion must not permanently encode an absent native
+        // dependency. The source preparation stage retries admission when the
+        // exact raw facts complete, including a completed negative geometry.
+        const auto nativeReady=QueuedFrame::LookaheadWorker::Ready(queued.analysis->lookahead);
+        if(!harvestOnly && (!CurrentLookaheadMeasurement(prepared,identity,nativeReady) ||
+            !SourcePictureMeasurementWorkComplete(nativeReady->evidence)))continue;
         if(i==0) {
             std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);
             if(!guard.owns_lock()) {
@@ -26034,6 +26223,7 @@ void LibplaceboVideoRenderer::ConversionLoop()
 						static_cast<unsigned long long>(failures), error.c_str());
 			}
 			m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 		}
 	}
 	DebugLog::Log("Alpha conversion worker stopped");
@@ -26266,6 +26456,7 @@ void LibplaceboVideoRenderer::RenderLoop()
         if (refreshRepeated)
         {
             m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
             continue;
         }
 		VideoFrame frame;
@@ -26359,16 +26550,10 @@ void LibplaceboVideoRenderer::RenderLoop()
             // Prepare both independent owned windows. At configured depth2,
             // the next-source outward proof still needs its third future source.
             // The first selected source stays the admission/retirement minimum.
-            auto pictureIndices=AlphaQueuePolicy::SelectActivePicturePreparation(m_frameQueue,
+            auto pictureIndices=AlphaQueuePolicy::SelectSourceMeasurementPreparation(m_frameQueue,
                 m_activePictureLookaheadFrames.load(std::memory_order_acquire),
                 ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES,
                 AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED);
-            // Native physical observation is independent of crop/lookahead
-            // admission. Include the buffered head even when admission is off;
-            // this adds no queue wait and cannot publish a detector proof vote.
-            if(!m_frameQueue.empty() && !m_frameQueue.front().cadenceRepeat &&
-                (pictureIndices.empty() || pictureIndices.front()!=0))
-                pictureIndices.insert(pictureIndices.begin(),0);
             for (size_t index:pictureIndices) {
                 pictureMeasurementFrames.push_back(m_frameQueue[index]);
                 pictureMeasurementFrames.back().frame.SourceBufferAddRef();
@@ -26395,7 +26580,7 @@ void LibplaceboVideoRenderer::RenderLoop()
             DebugLog::Log("Alpha look-ahead prime: failed=unknown action=continue-current-source");
         }
         try {
-            PrimeSubtitleMeasurements(activePicturePreviewFrames,
+            PrimeSubtitleMeasurements(pictureMeasurementFrames,
                 activePictureLookaheadPolicyGeneration,activePictureContinuityGeneration);
         } catch(const std::exception& error) {
             DebugLog::Log("SUBTITLE DISPATCH: failed=%s action=continue-current-source",error.what());
@@ -26417,6 +26602,12 @@ void LibplaceboVideoRenderer::RenderLoop()
             DebugLog::Log("Alpha outward async prime: failed=%s action=continue-current-source",error.what());
         } catch(...) {
             DebugLog::Log("Alpha outward async prime: failed=unknown action=continue-current-source");
+        }
+        try {
+            PrepareCurrentSourceBeforePresentation(pictureMeasurementFrames,
+                activePictureLookaheadPolicyGeneration,activePictureContinuityGeneration);
+        } catch(...) {
+            DebugLog::Log("VP source preparation stage: reason=unavailable action=render-current-source-without-proof");
         }
         for (QueuedFrame& preview : futureOutwardFrames)
             preview.frame.SourceBufferRelease();
@@ -26736,6 +26927,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		// Popping the head can expose a not-yet-converted frame inside the
 		// bounded preparation window even when no new capture has arrived.
 		m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 
 		if (prefillReleased)
 		{
@@ -27300,6 +27492,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 							shaderName.c_str(),
 							NlsMappingModeName(m_impl->nlsDecision.mode));
 						m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 					}
 				}
 			}
@@ -27672,6 +27865,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 						repeatCount);
 				}
 				m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 				continue;
 			}
 			{
@@ -27783,6 +27977,7 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 		target,
 		capacity);
 	m_queueChanged.notify_all();
+    m_sourcePreparationChanged->Notify();
 }
 
 

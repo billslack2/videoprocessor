@@ -64,7 +64,13 @@ std::shared_ptr<const RawMeasurement> PublishPreparedOutwardRaw(
             // An old producer cannot overwrite a newer source/context owner.
             return computed;
         }
-        if(std::atomic_compare_exchange_weak(&slot->ready,&expected,computed))return computed;
+        if(std::atomic_compare_exchange_weak(&slot->ready,&expected,computed)) {
+            // Outward computation can complete this raw slot while its normal
+            // worker is still running. Wake preparation at the common immutable
+            // publication point, not only when that normal worker exits.
+            if(slot->completion)slot->completion->Notify();
+            return computed;
+        }
     }
 }
 

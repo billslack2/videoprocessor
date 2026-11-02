@@ -89,6 +89,8 @@ namespace
         if(!strstr(message,"VP submitted geometry:") && !strstr(message,"Alpha source crop:") &&
             !strstr(message,"Alpha native presentation commit:") && !strstr(message,"SUBTITLE ") &&
             !strstr(message,"application profile") && !strstr(message,"Renderer configuration snapshot") &&
+            !strstr(message,"VP source preparation stage:") && !strstr(message,"VP source preparation dispatch:") && !strstr(message,"VP accepted source preparation unavailable:") &&
+            !strstr(message,"VP spatial detector interval:") &&
             !strstr(message,"VP subtitle cadence cache:") && !strstr(message,"VP source measurement interval:") && !strstr(message,"VP aspect telemetry:") && !strstr(message,"VP subtitle background preparation:") &&
             !strstr(message,"Subtitle shader preparation rejected:") && !strstr(message,"shader cache") && !strstr(message,"Alpha relocated caption evidence:") &&
             !strstr(message,"Alpha relocated caption geometry:") && !strstr(message,"Alpha caption unknown presentation:"))return;
@@ -273,9 +275,8 @@ namespace
             return found==sources.end()?empty:found->second;
         }
     };
-    bool SourceSpatialExperimentRequested() {
-        char value[8]={};
-        return GetEnvironmentVariableA("VP_SOURCE_PICTURE_DETECTOR",value,sizeof(value))==1 && value[0]=='1';
+    bool SourceSpatialProductionEnabled() {
+        return SourcePictureDetectorEnabled();
     }
     bool IsMeasuredSpatialNativeSubmission(const AnalysisDiagnosticRecordV1& record) {
         return (record.flags&1u) && record.counters[4]!=0 && (record.flags&32u) && (record.flags&64u) &&
@@ -1569,6 +1570,16 @@ namespace VideoProcessorTest
             Logger::WriteMessage((std::string("Classic direct pose observations: committed=")+std::to_string(committedPose)+
                 " distinct_presented="+std::to_string(observedPresentedSources.size())+
                 " scheduled="+std::to_string(scheduled)+" skipped="+std::to_string(skipped)).c_str());
+            bool nativeIngress=false,sourcePrepared=false;
+            for(const auto& line:messages())if(line.find("VP source preparation dispatch: stage=accepted-before-notify")!=std::string::npos &&
+                line.find("lookahead=0")!=std::string::npos && line.find("source_owned=1 pixel_scans_on_caller=0")!=std::string::npos) {
+                nativeIngress|=line.find("native_queued=1")!=std::string::npos;
+            }
+            for(const auto& line:messages())if(line.find("VP source preparation stage:")!=std::string::npos &&
+                line.find("owned=1 native_complete=1 subtitle_required=1 subtitle_complete=1")!=std::string::npos)
+                sourcePrepared=true;
+            Assert::IsTrue(nativeIngress && sourcePrepared,
+                L"With AR lookahead disabled, ingress must dispatch native work and bounded preparation must complete current native and subtitle work before presentation.");
             Assert::IsTrue(committedPose>0,L"Real plugin never committed the independently acquired Classic translation plus configured side fill.");
             Assert::IsTrue(scheduled&&skipped,L"The real renderer must exercise natural scheduled and skipped dense scans; the fixture cannot force a pose.");
             Assert::IsTrue(observedPresentedSources.size()>=24 && submittedPoseEvents>0,
@@ -2596,6 +2607,7 @@ namespace VideoProcessorTest
             Logger::WriteMessage("Classic UHD live reproduction: opposite sparse top UI while bottom cue remains\n");
             const uint64_t bothFirst=sequence;uint64_t fitFirst=0;Geometry fixedFit;
             std::set<uint64_t> fitSources;bool scanSeen=false,skipSeen=false;
+            bool unknownWithCurrentRetention=false,freshRetentionInterval=false;
             const auto bothDeadline=GetTickCount64()+10000;
             do {
                 const auto value=pump(both);
@@ -2620,27 +2632,38 @@ namespace VideoProcessorTest
                     if(line.find("Alpha source crop:")!=std::string::npos && integer(line," sequence=")>=bothFirst) {
                         scanSeen|=line.find(" dense_scan=scheduled")!=std::string::npos;
                         skipSeen|=line.find(" dense_scan=skipped")!=std::string::npos;
+                        unknownWithCurrentRetention|=integer(line," latest_evidence=")==0 &&
+                            integer(line," retention_eval=")==1 && integer(line," coarse_current=")==1 &&
+                            line.find(" dense_scan=skipped")!=std::string::npos &&
+                            line.find(" authority=none")!=std::string::npos;
                     }
                     if(line.find("VP source measurement interval:")!=std::string::npos) {
                         const auto end=integer(line," source="),batches=integer(line," batches=");
                         const auto requests=integer(line," subtitle_requests="),hits=integer(line," subtitle_hits=");
                         if(previousIntervalSource>=bothFirst && batches>0 && requests>=hits) {
                             scanSeen|=requests-hits>0;skipSeen|=requests-hits<batches;
+                            // Unknown geometry cannot authorize the Classic fit
+                            // scan. Its replacement safety path must still inspect
+                            // current excluded bands for every output batch over a
+                            // complete interval wholly inside this UI phase.
+                            freshRetentionInterval|=batches>=24 && integer(line," retention_scans=")>=batches;
                         }
                         previousIntervalSource=end;
                     }
                 }
-                if(fitSources.size()>=24 && scanSeen && skipSeen)break;
+                if(fitSources.size()>=24 && ((scanSeen && skipSeen) ||
+                    (unknownWithCurrentRetention && freshRetentionInterval)))break;
             }while(GetTickCount64()<bothDeadline && callback.state!=RENDERSTATE_FAILED);
-            require(fitSources.size()>=24 && scanSeen && skipSeen,
-                L"Both-bar safe visibility did not survive 24 distinct actual presented sources with real dense scans and skips.");
+            require(fitSources.size()>=24 && ((scanSeen && skipSeen) ||
+                (unknownWithCurrentRetention && freshRetentionInterval)),
+                L"Both-bar safe visibility needs 24 distinct outputs plus current Classic scan cadence or explicit unknown geometry with fresh per-batch retention coverage.");
         }
 
         // Exercise the complete production tunnel/worker/render path. Every successful
         // output is inspected in sink order, including outputs between OSD publications.
         void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputRepeat=false,bool nativePreflightOnly=false,bool alternatingPreflight=false)
         {
-            const bool requireSpatial=SourceSpatialExperimentRequested();
+            const bool requireSpatial=SourceSpatialProductionEnabled();
             ScopedCadenceDiagnostics cadenceDiagnostics(!nativePreflightOnly&&SubtitlePreviewOverridesClassicHandling(static_cast<SubtitlePreviewMode>(requestedMode)));
             constexpr int width=3840,height=2160,pictureTop=262,pictureBottom=1898,captionBottom=1940;
             struct ProbeClock final : ITimingClock {
@@ -3566,7 +3589,7 @@ namespace VideoProcessorTest
         { VerifyClassicUhdBarOverlay(true,true,true,true,false,false,true); }
         void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false)
         {
-            const bool requireSpatial=SourceSpatialExperimentRequested();
+            const bool requireSpatial=SourceSpatialProductionEnabled();
             Logger::WriteMessage(requireSpatial?"AR transition fixture: detector=spatial":"AR transition fixture: detector=legacy");
             HMODULE self=nullptr;
             Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -3691,7 +3714,7 @@ namespace VideoProcessorTest
                         std::abs(value.inUseRatio-applied)<0.015&&std::abs(value.ratio-expected)<0.015) {
                         Assert::AreEqual(int(requireSpatial?ActivePictureDetectorKind::SourceSpatialMeasured:
                             ActivePictureDetectorKind::Legacy),int(value.detectorKind),
-                            L"The actual renderer must match the detector mode selected at process startup.");
+                            L"The actual renderer must use the common production source measurement.");
                         if(requireSpatial) {
                             Assert::AreEqual(int(ActivePictureDetectorKind::SourceSpatialMeasured),int(value.detectorKind));
                             bool submitted=false;

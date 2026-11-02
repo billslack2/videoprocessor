@@ -76,3 +76,32 @@ Private pixels and local replay logs remain outside the repository under
 Actual standard/beta renderer and motion-suite qualification must be recorded for
 the final pinned binaries separately. CPU and saved-frame success alone does not
 establish live transition, caption rendering or deployment acceptance.
+
+## Runtime scheduling follow-up
+
+The first clean-commit full run `20261101-231143-220c418e` built the matching
+Release runtime but failed four of 1,017 standard tests. Production-mode fixture
+expectations and both-bar UI scan coverage were corrected while retaining pixel
+preservation and 24-source observation checks. Follow-up `20261101-233224-86c3c7b5`
+passed seven of nine checks; only the no-lookahead Classic pose failed in each
+renderer. Black and reconstruction regressions pass on the new producer.
+
+Dispatch diagnostics in `20261101-234143-c37b0ac7` show both jobs admitted while
+sources are owned, but exact results usually arrive after presentation. The first
+bounded preparation attempt (`20261101-235116-3c9ba23a`) passed both new native
+contracts but failed both actual renderer tests: timer polling consumed about
+31 ms against a 16.683 ms input interval and allowed overflow to retire the head.
+The repair therefore uses completion notification with a lifetime-owned signal,
+serialized native-to-subtitle dependencies and one unchanged enqueue deadline.
+These failed runs remain evidence; final matching-runtime qualification is still
+required. Original translated-pose and 24 distinct presented-source assertions
+remain mandatory.
+
+Completion-notification focused run `20261101-235740-0cdcc74d` passes seven of
+seven checks: five preparation/publication contracts and both actual zero-lookahead
+Classic pose cases. Sampled successful stages finish in 7.5-8.2 ms against the
+16.683 ms interval; these are observed values, not general latency guarantees.
+The standard renderer preserves the committed pose across 124 distinct observed
+sources, beta across 123, both with natural scheduled and skipped analyses. The
+original pose/coverage assertions are unchanged. Final shared raw-publication
+notification coverage and full qualification follow on a clean source pin.
