@@ -540,3 +540,30 @@ Story remains InProgress; unrelated dirty VP-0207 design asset is preserved.
 See [stage8 evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage8-native-boundary.json)
 and source docs/SOURCE_BOUNDARY_INVESTIGATION_20261101.md for reproduction and
 bounded remaining work.
+
+
+## Authorized deployment of source-margin measurement (2026-11-01 20:55)
+
+After the operator requested deployment, clean aee2c7dfe0ff47aa9372b79c6afc200440f36e34
+was built as a matching x64 Release host and both renderer DLLs. Five build stages
+succeeded. Focused checks passed7/7: three native geometry/OSD controls plus actual
+AR transitions and persistent Classic captions through both renderers. A fresh
+spatial-detector process passed both additional actual transition methods2/2.
+The prior full981 native contracts and150 exact native replay frames remain the
+measurement evidence. This is an explicitly requested local manual-review deployment;
+full qualification remains unsatisfied and separate Black/reconstruction failures
+are still disclosed. No beta integration merge or release packaging occurred.
+
+Backed up and deployed to C:\Videoprocessor\vp. Backup:
+C:\Videoprocessor\vp\backups\native-boundary-aee2c7df-20261101-205511.
+All deployed runtime/dependency hashes match build artifacts. Both active cfg/state
+hashes remain identical, including after launch; no configuration edits were made.
+VP is running asPID28524 in ordinary legacy mode. Startup logs verify the clean
+commit in both host and renderer and59.94Hz native input. Live physical observations
+now measure[0,7..3840,2160],1.783558: the first120 observations were strong, Unknown0,
+budget exhaustions0, peak0.761ms. Applied AR remains separately reported16:9.
+This confirms the reproduced thin-margin reporting repair on current live content,
+not complete scope/IMAX transition or earlier1.96-event qualification.
+
+[Deployment receipt](../assets/VP-0222/ar-design-review-20261101/deployment-aee2c7df.json).
+Story remains InProgress; unrelated VP-0207 design changes were preserved.
