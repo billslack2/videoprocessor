@@ -224,6 +224,7 @@ bool IsExactInwardActivePictureAssociationGeometry(
 
 void ActivePictureDecisionTimeline::AdvanceContinuityGeneration()
 {
+    m_verificationBaseline.reset();
 	++m_continuityGeneration;
 	if (m_continuityGeneration == 0)
 		++m_continuityGeneration;
@@ -232,7 +233,7 @@ void ActivePictureDecisionTimeline::AdvanceContinuityGeneration()
 
 void ActivePictureDecisionTimeline::Reset(uint64_t transportGeneration)
 {
-	m_transition.Reset();
+	m_verificationBaseline.reset();m_transition.Reset();
 	m_observed.clear();
 	m_lookaheadEvidence.clear();
 	m_accepted.clear();
@@ -263,7 +264,7 @@ bool ActivePictureDecisionTimeline::TrackAcceptedFrame(
 		if (identity.sourceFormatGeneration !=
 			m_lastAcceptedIdentity.sourceFormatGeneration)
 		{
-			m_transition.Reset();
+			m_verificationBaseline.reset();m_transition.Reset();
 			m_observed.clear();
 			m_lookaheadEvidence.clear();
 			RecordContinuityBoundary(identity.acceptedSequence);
@@ -293,6 +294,8 @@ void ActivePictureDecisionTimeline::MarkConsumed(
 {
 	if (identity.transportGeneration != m_transportGeneration)
 		return;
+    if(m_verificationBaseline && identity.acceptedSequence>=m_verificationIdentity.acceptedSequence)
+        m_verificationBaseline.reset();
 	m_lastConsumedSequence = std::max(
 		m_lastConsumedSequence, identity.acceptedSequence);
 	if (identity.acceptedSequence &&
@@ -482,7 +485,7 @@ void ActivePictureDecisionTimeline::BreakContinuityAtSequence(
 	// A continuity break invalidates partial proof but is not itself a decoded
 	// source observation. Resetting candidate evidence lets the current real
 	// frame contribute once while retaining the last affirmative geometry.
-	m_transition.ResetCandidateEvidence();
+	m_verificationBaseline.reset();m_transition.ResetCandidateEvidence();
 	m_observed.clear();
 	m_lookaheadEvidence.clear();
 	RecordContinuityBoundary(acceptedSequence, reason, discarded);
@@ -516,10 +519,11 @@ void ActivePictureDecisionTimeline::InvalidateLookaheadPolicy(
 	// the disabled interval.
 	if (resetPartialEvidence)
 	{
-		m_transition.ResetCandidateEvidence();
+		m_verificationBaseline.reset();m_transition.ResetCandidateEvidence();
 		m_observed.clear();
 		m_lookaheadEvidence.clear();
 	}
+    m_verificationBaseline.reset();
 	++m_lookaheadPolicyGeneration;
 	if (m_lookaheadPolicyGeneration == 0)
 		++m_lookaheadPolicyGeneration;
@@ -528,7 +532,7 @@ void ActivePictureDecisionTimeline::InvalidateLookaheadPolicy(
 
 void ActivePictureDecisionTimeline::InvalidateGeometryForReacquisition()
 {
-	m_transition.Reset();
+	m_verificationBaseline.reset();m_transition.Reset();
 	InvalidateLookaheadPolicy(true);
 	// Accepted identities, FIFO position, and transport continuity remain valid.
 	// Only decisions derived from the withdrawn geometry must be regenerated.
@@ -553,7 +557,7 @@ bool ActivePictureDecisionTimeline::TrackLookaheadEvidence(
     {
         // A new decoded/source interpretation cannot inherit transition votes
         // or same-frame evidence from the old one. Accepted transport IDs stay.
-        m_transition.Reset();
+        m_verificationBaseline.reset();m_transition.Reset();
         m_observed.clear();
         m_lookaheadEvidence.clear();
         m_lastAnalysisDomainKey = identity.analysisDomainKey;
@@ -568,12 +572,48 @@ bool ActivePictureDecisionTimeline::TrackLookaheadEvidence(
 			existing.nearBlack == nearBlack;
 	}
 	m_lookaheadEvidence.push_back(
-		{ identity, observation, nearBlackEvaluated, nearBlack });
+		{ identity, observation, nearBlackEvaluated, nearBlack,m_lookaheadPolicyGeneration,m_continuityGeneration });
 	while (m_lookaheadEvidence.size() > MAX_RETAINED_IDENTITIES)
 		m_lookaheadEvidence.pop_front();
 	return true;
 }
 
+
+bool ActivePictureDecisionTimeline::CompleteLookaheadSpatialVerification(
+    const ActivePictureFrameIdentity& identity,const ActivePictureObservation& observation,
+    bool nearBlackEvaluated,bool nearBlack,uint8_t configuredLookahead,uint8_t availableLookahead,
+    ActivePictureFrameDecision& published)
+{
+    published={};AcceptedIdentity accepted;
+    const auto& proof=observation.currentSpatialCropProof;
+    if(identity.transportGeneration!=m_transportGeneration || identity.acceptedSequence<=m_lastConsumedSequence ||
+        !FindAcceptedIdentity(identity,accepted) || accepted.continuityGeneration!=m_continuityGeneration ||
+        !nearBlackEvaluated || nearBlack || !proof.Matches(observation) ||
+        proof.sequence!=identity.acceptedSequence || proof.transport!=identity.transportGeneration ||
+        proof.format!=identity.sourceFormatGeneration || proof.domain!=identity.analysisDomainKey)return false;
+    for(auto& existing:m_lookaheadEvidence) {
+        if(existing.identity.acceptedSequence!=identity.acceptedSequence)continue;
+        const auto& old=existing.observation;const auto& a=old.bounds;const auto& b=proof.measured;
+        if(existing.policyGeneration!=m_lookaheadPolicyGeneration || existing.continuityGeneration!=m_continuityGeneration ||
+            !SameAnalysisFrameIdentity(existing.identity,identity) || !old.available || old.transitionDeferred ||
+            old.detector!=ActivePictureDetectorKind::SourceSpatialMeasured ||
+            old.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+            old.classification!=ActivePictureClassification::PROVISIONAL ||
+            a.left!=b.left || a.top!=b.top || a.right!=b.right || a.bottom!=b.bottom ||
+            a.rasterWidth!=b.rasterWidth || a.rasterHeight!=b.rasterHeight)return false;
+        existing.observation=observation;existing.nearBlackEvaluated=nearBlackEvaluated;existing.nearBlack=nearBlack;
+        if(m_verificationBaseline && SameAnalysisFrameIdentity(m_verificationIdentity,identity) &&
+            m_verificationContinuity==m_continuityGeneration && m_verificationPolicy==m_lookaheadPolicyGeneration &&
+            !m_observed.empty() && SameAnalysisFrameIdentity(m_observed.back().identity,identity)) {
+            // Replace exactly one latest evaluation from its pre-source state.
+            // This is not another confirmation and cannot replay a newer source.
+            m_transition=*m_verificationBaseline;m_verificationBaseline.reset();m_observed.pop_back();
+            SubmitScheduledObservation(identity,observation,configuredLookahead,availableLookahead,published,m_verificationPresentation);
+        }
+        return true;
+    }
+    return false;
+}
 
 bool ActivePictureDecisionTimeline::IsDecisionCurrent(
 	const ActivePictureFrameDecision& decision) const
@@ -797,12 +837,20 @@ bool ActivePictureDecisionTimeline::SubmitScheduledObservation(
 	if (HasObservedSequence(identity.acceptedSequence))
 		return false;
 
+    m_verificationBaseline.reset();
+    if(observation.available && observation.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+        observation.classification==ActivePictureClassification::PROVISIONAL && !observation.transitionDeferred) {
+        m_verificationBaseline=std::make_shared<const ActivePictureTransitionModel>(m_transition);
+        m_verificationIdentity=identity;m_verificationContinuity=m_continuityGeneration;
+        m_verificationPolicy=m_lookaheadPolicyGeneration;m_verificationPresentation=presentation;
+    }
 	RetainIdentity(identity, observation.frameNumber);
 
 	const ActivePictureTransitionDecision transition =
 		m_transition.Observe(observation);
 	if (!transition.publish)
 		return false;
+    m_verificationBaseline.reset(); // Never replace an already published decision.
 
 	published = {};
 	published.observationIdentity = identity;

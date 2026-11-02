@@ -8,10 +8,35 @@
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp",
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
-    "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp"
+    "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
+    "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 978,
+  "minimumNativeTests": 1002,
   "requiredNativeMethods": [
+    "BoundedWorkerBindsOnlyValidCurrentSourceIdentity",
+    "LateCurrentCaptionVerificationReplacesOneProvisionalEvaluationOnly",
+    "SourceCompletionRevisionInvalidatesOnlyDerivedPendingFacts",
+    "UnfinishedRawRetriesButCompletedNegativeIsReusable",
+    "NormalAndOutwardRawPublishersNeverDowngradeEitherCompletionOrder",
+    "ConvertedP010AnalyzerNewGenerationCannotPublishOldOrIncompleteGeometry",
+    "ConvertedP010AnalyzerUsesCommonFactsAndDoesNotCacheMutableSample",
+    "OwnedPictureFactsUhdEqualityCostIsRecordedWithoutInventingGeometry",
+    "OwnedPictureFactsCacheRejectsMissingWorkAndBoundsRetainedStorage",
+    "OwnedPictureFactsRequireExactPixelsAndCompatibleInterpretation",
+    "SourcePicturePausedPixelsRemainDeterministicAcrossCancelledWorkAndSourceIds",
+    "SourcePicturePerpendicularDarkBoundaryFactsPreventFalseInsetGeometry",
+    "SourcePictureOuterContradictionDominatesCompetingInnerEdges",
+    "AspectCurrentMeasurementRejectsLateAndDuplicatePublications",
+    "OptionalObserverCannotRescanOrOverwriteReadySourceFacts",
+    "VerificationCompletionPublishesNegativeAndFullRasterWithoutGrantingCrop",
+    "CompletedVerificationUpgradesOnlyTheSameMeasuredGeometry",
+    "CompletedExactSourceReplacesPendingFactsWithoutMissingDowngrade",
+    "NewCapturedFrameMeasuresItsOwnPixels",
+    "PublishedGeometryHandoffRechecksBandsWithoutReplacingWorkerFacts",
+    "VerifiedSingleAxisPermissionDoesNotAuthorizeOtherAxisRemoval",
+    "VerifiedVerticalCropPreservesSideLogosBordersAndDimMargins",
+    "UhdVerifiedScopeHasSameExactApertureAtStartupLiveAndQueuedTransition",
+    "StartupUsesMeasuredAsymmetricBarsAndPreservesUnownedCaptionPixels",
     "VerifiedReturningScopeReleasesRetainedEpisodeOnFirstCurrentSource",
     "ImmediateScopeEpisodeReleaseRejectsUnverifiedOrContradictoryPixels",
     "VerifiedReturningScopeClearsSavedTallerPresentationOnSameSource",
@@ -42,7 +67,6 @@
     "VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources",
     "VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof",
     "VerifiedSpatialTransitionStillResetsOnGenuineOldGeometryContradiction",
-
     "SourcePictureQuantizedFourPhaseEdgeKeepsBoundedNativeGeometry",
     "SourcePictureNearbyCoherentEdgeVotesRetainTheirNativeInterval",
     "FreshConfirmedCueOutranksRedundantLocalContinuation",
@@ -50,7 +74,7 @@
     "ImmediateSpatialAcquisitionRejectsUnboundChangedOrStaleProofAndKeepsTransitionConfirmation",
     "CurrentVerifiedSpatialCropAcquiresImmediatelyWithoutLegacyStartupVotes",
     "CurrentCrossingCaptionSpatialVerificationAcquiresWithoutExtraDisplayedFrames",
-    "LegacyForegroundNativeMeasurementPublishesOnlyItsOwnBoundedPhysicalObservation",
+    "ProductionForegroundCannotSelectLegacyOrPublishMissingAsMeasured",
     "InspectedPlaneWorkRejectsChangedSourceSettingsGeometryAndIncompleteInk",
     "SuppliedSpatialDimFlanksWithOpaqueCaptionKeepIndependentEdgeProof",
     "SuppliedSpatialCaptionCollarCannotHideDeepOrUnownedPicture",
@@ -143,7 +167,7 @@
     "SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence",
     "DecodedDvCrossEdgeFixtureNativePreflight",
     "DecodedDvUnknownInputFixtureNativePreflight",
-    "CompletedOutwardRawCanGainPhysicalObservationWithoutRepeatingMandatoryProof",
+    "CompletedOutwardRawIncludesPhysicalObservationWithoutCompetingRescan",
     "ColdOutwardPublicationCannotEraseARacingCurrentPhysicalObservation",
     "HighInputCadenceRunsTwoIndependentSamplersAndDeduplicatesBothActiveKeys",
     "UnavailablePlaneWorkCoalescesCanonicalRequestWithoutDuplicatingActiveOrPendingScan",
@@ -304,7 +328,16 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 28,
   "explicitNativeMethods": [
-    {"source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp", "class": "LibplaceboPluginProxyTests", "method": "AspectOsdSeparatesCurrentMeasurementRetainedEstimateAndAppliedAspect"},
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectCurrentMeasurementRejectsLateAndDuplicatePublications"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectOsdSeparatesCurrentMeasurementRetainedEstimateAndAppliedAspect"
+    },
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
@@ -370,13 +403,36 @@
       "class": "ConfigFileTests",
       "method": "LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload"
     },
-    {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialOutwardQueuedHandoffUsesCurrentPixelAuthorityWithoutLegacyVotes"},
-    {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources"},
-    {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof"},
-    {"source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp", "class": "ActivePictureTransitionModelTests", "method": "VerifiedSpatialTransitionStillResetsOnGenuineOldGeometryContradiction"},
-
-    {"source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "FreshConfirmedCueOutranksRedundantLocalContinuation"},
-    {"source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "GenuineMissingEdgeStillRequiresLocalContinuationCompositionSafety"},
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "VerifiedSpatialOutwardQueuedHandoffUsesCurrentPixelAuthorityWithoutLegacyVotes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "VerifiedSpatialTransitionStillResetsOnGenuineOldGeometryContradiction"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "FreshConfirmedCueOutranksRedundantLocalContinuation"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "GenuineMissingEdgeStillRequiresLocalContinuationCompositionSafety"
+    },
     {
       "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
       "class": "ActivePictureTransitionModelTests",

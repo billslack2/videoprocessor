@@ -31,6 +31,8 @@ struct PreparedPictureEvidenceKey
     // Retain the stable raw request slot for this exact immutable frame/key.
     // Identical concurrent completions share it; replacement contexts use a new slot.
     std::shared_ptr<const void> rawOwner;
+    // Immutable completion revision; pending-derived proof cannot survive retry.
+    std::shared_ptr<const void> rawRevision;
     AlphaSourceCrop::InwardCaptionReference caption;
 };
 
@@ -70,6 +72,7 @@ inline bool SamePreparedPictureEvidenceKey(const PreparedPictureEvidenceKey& a,
         SamePreparedPictureFrame(a.frame, b.frame) && SamePreparedPictureBounds(a.base, b.base) &&
         a.policyGeneration == b.policyGeneration && a.continuityGeneration == b.continuityGeneration &&
         SamePreparedPictureOwner(a.rawOwner, b.rawOwner) &&
+        SamePreparedPictureOwner(a.rawRevision,b.rawRevision) &&
         (a.kind != PreparedPictureEvidenceKind::InwardCaption ||
             (a.caption.valid == b.caption.valid &&
                 SamePreparedPictureBounds(a.caption.base, b.caption.base) &&
@@ -98,12 +101,13 @@ inline PreparedPictureEvidenceKey MakePreparedPictureEvidenceKey(PreparedPicture
     const PreparedAnalysisFrame& frame, const ActivePictureFrameIdentity& identity,
     const ActivePictureBounds& base, uint64_t policyGeneration, uint64_t continuityGeneration,
     std::shared_ptr<const void> rawOwner,
-    const AlphaSourceCrop::InwardCaptionReference& caption = {})
+    const AlphaSourceCrop::InwardCaptionReference& caption = {},
+    std::shared_ptr<const void> rawRevision = {})
 {
     PreparedPictureEvidenceKey key;
     key.kind = kind; key.frame = frame; key.identity = identity; key.base = base;
     key.policyGeneration = policyGeneration; key.continuityGeneration = continuityGeneration;
-    key.rawOwner = std::move(rawOwner); key.caption = caption;
+    key.rawOwner = std::move(rawOwner); key.caption = caption;key.rawRevision=std::move(rawRevision);
     return key;
 }
 
@@ -213,13 +217,25 @@ private:
     Entry* Find(const PreparedPictureEvidenceKey& key)
     {
         for (auto& entry : m_entries[static_cast<size_t>(key.kind)])
-            if (entry.slot && SamePreparedPictureEvidenceKey(entry.key, key)) return &entry;
+            if (entry.slot) {
+                if(SamePreparedPictureEvidenceKey(entry.key,key))return &entry;
+                if(!entry.key.rawRevision) {
+                    const auto ready=Worker::Ready(entry.slot);
+                    if(ready && SamePreparedPictureEvidenceKey(ready->key,key))return &entry;
+                }
+            }
         return nullptr;
     }
     const Entry* Find(const PreparedPictureEvidenceKey& key) const
     {
         for (const auto& entry : m_entries[static_cast<size_t>(key.kind)])
-            if (entry.slot && SamePreparedPictureEvidenceKey(entry.key, key)) return &entry;
+            if (entry.slot) {
+                if(SamePreparedPictureEvidenceKey(entry.key,key))return &entry;
+                if(!entry.key.rawRevision) {
+                    const auto ready=Worker::Ready(entry.slot);
+                    if(ready && SamePreparedPictureEvidenceKey(ready->key,key))return &entry;
+                }
+            }
         return nullptr;
     }
 };

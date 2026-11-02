@@ -53,7 +53,7 @@ namespace VideoProcessorTest
             {
                 AnalysisLumaSource source{ pixels->data(), pixels->size(), width, height,
                     pitch, pitch, AnalysisLumaFormat::P010, VideoFrameEncoding::V210,
-                    ColorSpace::REC_709, 17 };
+                    ColorSpace::REC_709, 1 };
                 source.backingOwner = pixels;
                 source.range = AnalysisLumaRange::Limited;
                 return source;
@@ -123,9 +123,18 @@ namespace VideoProcessorTest
             SameBounds(actual.establishedBase, expected.establishedBase);
             SameBounds(actual.rememberedBounds, expected.rememberedBounds);
         }
+        void SamePhysical(const PhysicalPictureEdgeObservation& actual,const PhysicalPictureEdgeObservation& expected)
+        {
+            CHECK_FIELD(evaluated);CHECK_FIELD(estimateAvailable);CHECK_FIELD(confidence);
+            CHECK_FIELD(sourceGeneration);CHECK_FIELD(samples);
+            SameBounds(actual.estimate,expected.estimate);SameBounds(actual.conservativeBounds,expected.conservativeBounds);
+            Assert::IsTrue(std::string(actual.reason?actual.reason:"")==std::string(expected.reason?expected.reason:""));
+        }
         void SamePicture(const ActivePictureEvidence& actual, const ActivePictureEvidence& expected)
         {
-            CHECK_FIELD(available); CHECK_FIELD(classification); CHECK_FIELD(axisEvidence);
+            CHECK_FIELD(available); CHECK_FIELD(classification); CHECK_FIELD(axisEvidence);CHECK_FIELD(detector);
+            CHECK_FIELD(sourceCandidateVerificationComplete);
+            SamePhysical(actual.physicalEdges,expected.physicalEdges);
             CHECK_FIELD(lumaSamples); CHECK_FIELD(chromaSamples); CHECK_FIELD(reason);
             CHECK_FIELD(authorityOrigin);
             SameBounds(actual.proposedBounds, expected.proposedBounds);
@@ -201,24 +210,6 @@ namespace VideoProcessorTest
         }
 #undef CHECK_FIELD
 
-        void SameAsDirect(ActivePictureMeasurementCache& cache, const AnalysisLumaSource& source,
-            const ActivePictureBounds& bounds = Scope())
-        {
-            SameGlobal(cache.GlobalNearBlack(), EvaluateActivePictureGlobalNearBlack(source));
-            const auto native = ExtractActivePictureEvidence(source);
-            SamePicture(cache.Picture(), native);
-            SameDarkness(cache.ArDarkness(), EvaluateActivePictureArDarkness(source, native));
-            SameRetention(cache.Retention(bounds), EvaluateActivePicturePresentationRetention(source, bounds));
-        }
-
-        void Counts(const ActivePictureMeasurementCache& cache, size_t requests, size_t hits)
-        {
-            const auto& stats = cache.Snapshot();
-            Assert::IsTrue(stats.globalRequests == requests && stats.globalHits == hits);
-            Assert::IsTrue(stats.pictureRequests == requests && stats.pictureHits == hits);
-            Assert::IsTrue(stats.retentionRequests == requests && stats.retentionHits == hits);
-        }
-
         struct Owned4kMeasurementFrame
         {
             static constexpr int Width = 3840, Height = 2160, Top = 260, Bottom = 1900;
@@ -272,544 +263,354 @@ namespace VideoProcessorTest
             { return { 0, Top, Width, Bottom, Width, Height, double(Width) / (Bottom - Top), ActivePictureBounds::BarAxes::TOP_BOTTOM }; }
         };
 
-        struct MeasurementRun
-        {
-            ActivePictureGlobalNearBlackEvidence global;
-            ActivePictureArDarknessEvidence darkness;
-            ActivePicturePresentationRetentionEvidence retention;
-            ActivePictureMeasurementCache::Statistics scans;
-        };
-        MeasurementRun BaselineLiveMeasurements(const AnalysisLumaSource& source, const ActivePictureBounds& bounds)
-        {
-            MeasurementRun result;
-            result.global = EvaluateActivePictureGlobalNearBlack(source);
-            result.retention = EvaluateActivePicturePresentationRetention(source, bounds);
-            result.darkness = EvaluateActivePictureArDarkness(source, result.retention.activePicture, result.global);
-            return result;
+    }
+
+    namespace {
+        ActivePictureEvidence WorkerFacts(const AnalysisLumaSource& source) {
+            return DetectSourcePictureForWorker(source).evidence;
         }
-        MeasurementRun CachedLiveMeasurements(const AnalysisLumaSource& source, const ActivePictureBounds& bounds)
-        {
-            ActivePictureMeasurementCache cache;
-            cache.Begin(source, Identity(), 7, 8);
-            MeasurementRun result;
-            result.global = cache.GlobalNearBlack();
-            result.retention = cache.Retention(bounds);
-            result.darkness = cache.ArDarkness();
-            result.scans = cache.Snapshot();
-            return result;
+        bool SeedWorker(ActivePictureMeasurementCache& cache,const AnalysisLumaSource& live,
+            const ActivePictureFrameIdentity& identity) {
+            auto queued=live;queued.generation=identity.sourceFormatGeneration;
+            const auto facts=WorkerFacts(queued);
+            return cache.SeedQueued(queued,identity,facts,EvaluateActivePictureArDarkness(queued,facts));
         }
-        void SameRun(const MeasurementRun& actual, const MeasurementRun& expected)
-        {
-            SameGlobal(actual.global, expected.global);
-            SameDarkness(actual.darkness, expected.darkness);
-            SameRetention(actual.retention, expected.retention);
+        void BeginWorker(ActivePictureMeasurementCache& cache,const AnalysisLumaSource& source,
+            const ActivePictureFrameIdentity& identity=Identity(),uint64_t policy=7,uint64_t continuity=8) {
+            cache.Begin(source,identity,policy,continuity);
+            Assert::IsTrue(SeedWorker(cache,source,identity));
         }
-        double TimedRun(const std::function<MeasurementRun()>& run, MeasurementRun& result)
-        {
-            const auto started = std::chrono::steady_clock::now();
-            result = run();
-            return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+        void Pending(ActivePictureMeasurementCache& cache) {
+            const auto value=cache.Picture();
+            Assert::IsFalse(value.available);Assert::IsFalse(value.physicalEdges.evaluated);
+            Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
+            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
         }
-        double Percentile(std::vector<double> values, double percentile)
-        {
-            std::sort(values.begin(), values.end());
-            return values[static_cast<size_t>(std::ceil((values.size() - 1) * percentile))];
-        }
-        void ChangedContextIsFresh(const AnalysisLumaSource& original,
-            const AnalysisLumaSource& changed, const ActivePictureFrameIdentity& identity,
-            const ActivePictureFrameIdentity& changedIdentity, uint64_t policy = 7, uint64_t continuity = 8)
-        {
-            ActivePictureMeasurementCache cache;
-            cache.Begin(original, identity, 7, 8);
-            SameAsDirect(cache, original);
-            cache.Begin(changed, changedIdentity, policy, continuity);
-            SameAsDirect(cache, changed);
-            Counts(cache, 2, 0);
+        void CheckWorker(ActivePictureMeasurementCache& cache,const AnalysisLumaSource& source,
+            const ActivePictureBounds& bounds=Scope()) {
+            const auto raw=WorkerFacts(source);const auto global=EvaluateActivePictureGlobalNearBlack(source);
+            const auto dark=EvaluateActivePictureArDarkness(source,raw,global);
+            SamePicture(cache.Picture(),raw);SameGlobal(cache.GlobalNearBlack(),global);
+            SameDarkness(cache.ArDarkness(),dark);
+            SameRetention(cache.Retention(bounds),EvaluateActivePicturePresentationRetention(source,bounds,raw,global,dark));
+            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
         }
     }
 
     TEST_CLASS(ActivePictureMeasurementCacheTests)
     {
     public:
-        TEST_METHOD(LegacyForegroundNativeMeasurementPublishesOnlyItsOwnBoundedPhysicalObservation)
+        TEST_METHOD(ProductionForegroundCannotSelectLegacyOrPublishMissingAsMeasured)
         {
-            const OwnedMeasurementFrame frame;auto source=frame.Source();const auto identity=Identity();
-            source.generation=identity.transportGeneration;
-            ActivePictureMeasurementCache cache;cache.Begin(source,identity,7,8);
-            Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
-            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
-            const auto native=cache.Picture();
-            if(SourcePictureDetectorEnabled()) {
-                Assert::IsFalse(native.available);
-                Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
-                Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
-                return; // Active mode still requires its exact worker result.
-            }
-            Assert::IsTrue(native.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
-            const auto physical=cache.PhysicalEdges();
-            Assert::IsTrue(physical.evaluated && physical.estimateAvailable,
-                L"A zero-lead legacy foreground scan must publish independently measured current physical edges, not only its retained native crop.");
-            SameBounds(physical.estimate,Scope());
-            Assert::AreEqual(source.generation,physical.sourceGeneration);
-            Assert::AreEqual(size_t(1),cache.Snapshot().pictureScans);
-            Assert::AreEqual(size_t(0),cache.Snapshot().workerImports);
-            const OwnedMeasurementFrame dark(1);auto next=dark.Source();next.generation=source.generation;
-            auto nextIdentity=identity;++nextIdentity.acceptedSequence;++nextIdentity.sourceFrameNumber;++nextIdentity.captureTimestamp;
-            cache.Begin(next,nextIdentity,7,8);
-            Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
-            cache.Picture();
-            Assert::IsFalse(cache.PhysicalEdges().estimateAvailable,
-                L"An inconclusive next frame must not publish the previous physical measurement or infer full-raster detection.");
-        }
 
+            Assert::IsTrue(SourcePictureDetectorEnabled());
+            const OwnedMeasurementFrame frame;ActivePictureMeasurementCache cache;
+            cache.Begin(frame.Source(),Identity(),7,8);Pending(cache);
+            auto legacy=ExtractActivePictureEvidence(frame.Source());
+            Assert::IsFalse(PreparedSourceDetectorCurrent(legacy));
+            for(int repeat=0;repeat<4;++repeat)Pending(cache);
+            BeginWorker(cache,frame.Source());CheckWorker(cache,frame.Source());
+        }
         TEST_METHOD(SingleOutputReusesRawGlobalAndArAcrossCurrentRetentionBases)
         {
-            const OwnedMeasurementFrame frame;
-            const auto source = frame.Source();
-            ActivePictureMeasurementCache cache;
-            cache.Begin(source, Identity(), 7, 8);
-            const auto global = cache.GlobalNearBlack();
-            const auto retained = cache.Retention(Scope());
-            const auto darkness = cache.ArDarkness();
-            auto secondBase = Scope(); secondBase.top += 2; secondBase.bottom -= 2;
-            SameRetention(cache.Retention(secondBase), EvaluateActivePicturePresentationRetention(source, secondBase));
-            SameRetention(cache.Retention(secondBase), EvaluateActivePicturePresentationRetention(source, secondBase));
-            SameGlobal(global, EvaluateActivePictureGlobalNearBlack(source));
-            SameDarkness(darkness, EvaluateActivePictureArDarkness(source, retained.activePicture, global));
-            SamePicture(cache.Picture(), ExtractActivePictureEvidence(source));
-            const auto& scans = cache.Snapshot();
-            Assert::AreEqual(size_t(1), scans.globalScans);
-            Assert::AreEqual(size_t(1), scans.pictureScans);
-            Assert::AreEqual(size_t(1), scans.darknessScans);
-            Assert::AreEqual(size_t(2), scans.retentionScans,
-                L"Changing a crop base still requires current excluded-band inspection");
-            Assert::AreEqual(size_t(1), scans.retentionHits);
-        }
 
+            const OwnedMeasurementFrame frame;const auto source=frame.Source();ActivePictureMeasurementCache cache;
+            BeginWorker(cache,source);CheckWorker(cache,source);
+            auto changed=Scope();changed.top+=2;changed.bottom-=2;
+            CheckWorker(cache,source,changed);CheckWorker(cache,source,changed);
+            Assert::AreEqual(size_t(0),cache.Snapshot().globalScans);
+            Assert::AreEqual(size_t(0),cache.Snapshot().darknessScans);
+            Assert::AreEqual(size_t(2),cache.Snapshot().retentionScans);
+            Assert::AreEqual(size_t(1),cache.Snapshot().retentionHits);
+        }
+        TEST_METHOD(PublishedGeometryHandoffRechecksBandsWithoutReplacingWorkerFacts)
+        {
+            const OwnedMeasurementFrame frame;const auto source=frame.Source();
+            ActivePictureMeasurementCache cache;BeginWorker(cache,source);
+            const auto facts=cache.Picture();auto oldBase=Scope();oldBase.top+=10;oldBase.bottom-=10;
+            const auto oldRetention=cache.Retention(oldBase);
+            Assert::IsFalse(oldRetention.excludedBandsPixelSafe);
+            const auto handoff=cache.RetentionHandoff(oldBase,oldRetention,Scope());
+            Assert::IsTrue(handoff.refreshed);Assert::IsTrue(handoff.evidence.excludedBandsPixelSafe);
+            SamePicture(handoff.evidence.activePicture,facts);SamePhysical(cache.PhysicalEdges(),facts.physicalEdges);
+            Assert::IsTrue(handoff.evidence.activePicture.detector==ActivePictureDetectorKind::SourceSpatialMeasured);
+            const auto repeat=cache.RetentionHandoff(handoff.bounds,handoff.evidence,Scope());
+            Assert::IsFalse(repeat.refreshed);SamePicture(repeat.evidence.activePicture,facts);
+            Assert::AreEqual(size_t(2),cache.Snapshot().retentionScans);
+            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
+        }
         TEST_METHOD(QueuedNativeSeedRebindsOnlyGenerationAndKeepsReturnedRefinementsLocal)
         {
-            const OwnedMeasurementFrame frame;
-            const auto identity = Identity();
-            auto live = frame.Source(); live.generation = identity.transportGeneration;
-            auto queued = live; queued.generation = identity.sourceFormatGeneration;
-            const auto raw = ExtractActivePictureEvidence(queued);
-            const auto darkness = EvaluateActivePictureArDarkness(queued, raw);
-            ActivePictureMeasurementCache cache;
-            cache.Begin(live, identity, 7, 8);
-            Assert::IsTrue(cache.SeedQueued(queued, identity, raw, darkness));
-            SameAsDirect(cache, live);
-            auto refined = cache.Picture();
-            refined.authorityOrigin = ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
-            refined.trustedBounds = {}; refined.reason = "caption-only caller refinement";
-            auto refinedDarkness = cache.ArDarkness();
-            refinedDarkness.distributedDarkPicture = !refinedDarkness.distributedDarkPicture;
-            SamePicture(cache.Picture(), raw);
-            SameDarkness(cache.ArDarkness(), darkness);
-            Assert::IsTrue(raw.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE);
-            const auto seeded = cache.Snapshot();
-            Assert::AreEqual(size_t(1), seeded.workerImports);
-            Assert::AreEqual(size_t(0), seeded.pictureScans);
-            Assert::AreEqual(size_t(0), seeded.globalScans);
-            Assert::AreEqual(size_t(0), seeded.darknessScans);
-            Assert::AreEqual(size_t(1), seeded.retentionScans);
-            cache.Begin(live, identity, 9, 8);
-            SameAsDirect(cache, live);
-            Assert::AreEqual(size_t(1), cache.Snapshot().pictureScans,
-                L"A changed policy must not keep a prior cache lease");
-            cache.Begin(live, identity, 9, 10);
-            SameAsDirect(cache, live);
-            Assert::AreEqual(size_t(2), cache.Snapshot().pictureScans);
-        }
 
+            const OwnedMeasurementFrame frame;const auto source=frame.Source();ActivePictureMeasurementCache cache;
+            BeginWorker(cache,source);const auto original=cache.Picture();auto changed=original;
+            changed.trustedBounds={};changed.physicalEdges.estimate={};changed.reason="caller-refinement";
+            SamePicture(cache.Picture(),original);SameBounds(cache.PhysicalEdges().estimate,original.physicalEdges.estimate);
+            Assert::AreEqual(source.generation,cache.PhysicalEdges().sourceGeneration);
+            cache.Begin(source,Identity(),9,8);Pending(cache);Assert::IsTrue(SeedWorker(cache,source,Identity()));
+            CheckWorker(cache,source);cache.Begin(source,Identity(),9,10);Pending(cache);
+        }
         TEST_METHOD(QueuedPhysicalObservationRebindsOnlyAnExactCurrentSource)
         {
-            const OwnedMeasurementFrame frame;
-            const auto identity=Identity();
-            auto live=frame.Source();live.generation=identity.transportGeneration;
-            auto queued=live;queued.generation=identity.sourceFormatGeneration;
-            auto raw=ExtractActivePictureEvidence(queued);
-            raw.physicalEdges=MeasurePhysicalPictureEdges(queued,Scope());
-            Assert::IsTrue(raw.physicalEdges.estimateAvailable);
-            const auto darkness=EvaluateActivePictureArDarkness(queued,raw);
-            ActivePictureMeasurementCache cache;cache.Begin(live,identity,7,8);
-            Assert::IsTrue(cache.SeedQueued(queued,identity,raw,darkness));
-            const auto physical=cache.PhysicalEdges();
-            Assert::IsTrue(physical.evaluated && physical.estimateAvailable);
-            Assert::AreEqual(identity.transportGeneration,physical.sourceGeneration);
-            SameBounds(physical.estimate,raw.physicalEdges.estimate);
-            SameBounds(physical.conservativeBounds,raw.physicalEdges.conservativeBounds);
-            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
-            // Same adapter generation/storage does not mean the same frame.
+
+            const OwnedMeasurementFrame frame;const auto source=frame.Source();const auto id=Identity();
             for(int field=0;field<6;++field) {
-                ActivePictureMeasurementCache changed;changed.Begin(live,identity,7,8);
-                Assert::IsTrue(changed.SeedQueued(queued,identity,raw,darkness));
-                auto nextIdentity=identity;auto nextSource=live;
-                uint64_t policy=7,continuity=8;
-                switch(field) {
-                case 0:++nextIdentity.acceptedSequence;break;
-                case 1:++nextIdentity.sourceFormatGeneration;break;
-                case 2:++nextIdentity.analysisDomainKey;break;
-                case 3:++policy;break;
-                case 4:++continuity;break;
-                case 5:
-                    nextSource.backingOwner=std::make_shared<const std::vector<uint8_t>>(*frame.pixels);
-                    break;
-                }
-                changed.Begin(nextSource,nextIdentity,policy,continuity);
-                Assert::IsFalse(changed.PhysicalEdges().estimateAvailable,
-                    L"A previous frame's physical observation cannot survive identity, policy or ownership changes.");
-                Assert::AreEqual(size_t(0),changed.Snapshot().pictureScans,
-                    L"Reading unavailable physical telemetry must not initiate a detector scan.");
-                changed.Picture();
-                const auto remeasured=changed.PhysicalEdges();
-                Assert::IsTrue(remeasured.evaluated && remeasured.estimateAvailable,
-                    L"After invalidation, explicit legacy Picture work may independently remeasure current physical edges; the pre-scan read above must remain unavailable.");
-                Assert::AreEqual(nextSource.generation,remeasured.sourceGeneration);
-                SameBounds(remeasured.estimate,Scope());
-                Assert::AreEqual(size_t(1),changed.Snapshot().pictureScans);
+                ActivePictureMeasurementCache cache;BeginWorker(cache,source,id);
+                auto next=id;auto pixels=source;uint64_t policy=7,continuity=8;
+                switch(field){case 0:++next.acceptedSequence;break;case 1:++next.sourceFormatGeneration;break;
+                case 2:++next.analysisDomainKey;break;case 3:++policy;break;case 4:++continuity;break;
+                case 5:pixels.backingOwner=std::make_shared<const std::vector<uint8_t>>(*frame.pixels);break;}
+                cache.Begin(pixels,next,policy,continuity);Pending(cache);
+                Assert::IsTrue(SeedWorker(cache,pixels,next));CheckWorker(cache,pixels);
             }
         }
         TEST_METHOD(ForeignPhysicalGenerationCannotBecomeCurrentThroughAValidNativeSeed)
         {
-            const OwnedMeasurementFrame frame;const auto identity=Identity();
-            auto live=frame.Source();live.generation=identity.transportGeneration;
-            auto queued=live;queued.generation=identity.sourceFormatGeneration;
-            auto raw=ExtractActivePictureEvidence(queued);
-            raw.physicalEdges=MeasurePhysicalPictureEdges(queued,Scope());
-            Assert::IsTrue(raw.physicalEdges.estimateAvailable);
-            ++raw.physicalEdges.sourceGeneration;
-            const auto darkness=EvaluateActivePictureArDarkness(queued,raw);
-            ActivePictureMeasurementCache cache;cache.Begin(live,identity,7,8);
-            Assert::IsTrue(cache.SeedQueued(queued,identity,raw,darkness));
-            Assert::IsFalse(cache.Picture().physicalEdges.evaluated,
-                L"Valid native evidence cannot launder a physical observation from a foreign adapter generation.");
-            Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
-            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);
+
+            const OwnedMeasurementFrame frame;const auto source=frame.Source();auto queued=source;
+            queued.generation=Identity().sourceFormatGeneration;auto facts=WorkerFacts(queued);
+            Assert::IsTrue(facts.physicalEdges.estimateAvailable);++facts.physicalEdges.sourceGeneration;
+            ActivePictureMeasurementCache cache;cache.Begin(source,Identity(),7,8);
+            Assert::IsTrue(cache.SeedQueued(queued,Identity(),facts,EvaluateActivePictureArDarkness(queued,facts)));
+            Assert::IsFalse(cache.Picture().physicalEdges.evaluated);Assert::IsFalse(cache.PhysicalEdges().estimateAvailable);
         }
         TEST_METHOD(QueuedSeedRejectsEveryIdentityFieldAndStorageInterpretationMismatch)
         {
-            const OwnedMeasurementFrame frame;
-            const auto identity = Identity();
-            auto live = frame.Source(); live.generation = identity.transportGeneration;
-            auto queued = live; queued.generation = identity.sourceFormatGeneration;
-            const auto raw = ExtractActivePictureEvidence(queued);
-            const auto darkness = EvaluateActivePictureArDarkness(queued, raw);
-            for (int field = 0; field < 8; ++field)
-            {
-                auto changed = identity;
-                switch (field)
-                {
-                case 0: ++changed.transportGeneration; break;
-                case 1: ++changed.acceptedSequence; break;
-                case 2: ++changed.sourceFrameNumber; break;
-                case 3: ++changed.captureTimestamp; break;
-                case 4: ++changed.sourceFormatGeneration; break;
-                case 5: ++changed.viewportGeneration; break;
-                case 6: ++changed.rendererGeneration; break;
-                case 7: ++changed.analysisDomainKey; break;
-                }
-                ActivePictureMeasurementCache cache;
-                cache.Begin(live, identity, 7, 8);
-                Assert::IsFalse(cache.SeedQueued(queued, changed, raw, darkness));
-                SameAsDirect(cache, live);
-                Assert::AreEqual(size_t(1), cache.Snapshot().workerImportRejects);
-                Assert::AreEqual(size_t(1), cache.Snapshot().pictureScans);
-            }
-            for (int field = 0; field < 15; ++field)
-            {
-                auto changed = queued;
-                const auto owner = queued.backingOwner;
-                switch (field)
-                {
-                case 0: changed.data += 2; break;
-                case 1: changed.dataBytes -= 2; break;
-                case 2: changed.width -= 2; break;
-                case 3: changed.height -= 2; break;
-                case 4: changed.rowBytes -= 4; break;
-                case 5: changed.chromaRowBytes -= 4; break;
-                case 6: changed.format = AnalysisLumaFormat::P210; break;
-                case 7: changed.encoding = VideoFrameEncoding::UYVY; break;
-                case 8: changed.colorspace = ColorSpace::BT_2020; break;
-                case 9: ++changed.generation; break;
-                case 10: changed.rgbBitAlignment = 1; break;
-                case 11: changed.range = AnalysisLumaRange::Full; break;
-                case 12: changed.backingOwner.reset(); break;
-                case 13: changed.backingOwner = std::shared_ptr<const void>(owner.get(), [owner](const void*) {}); break;
-                case 14: changed.backingOwner = std::shared_ptr<const void>(owner, queued.data); break;
-                }
-                ActivePictureMeasurementCache cache;
-                cache.Begin(live, identity, 7, 8);
-                Assert::IsFalse(cache.SeedQueued(changed, identity, raw, darkness));
-                SameAsDirect(cache, live);
-                Assert::AreEqual(size_t(0), cache.Snapshot().workerImports);
-                Assert::AreEqual(size_t(1), cache.Snapshot().workerImportRejects);
-            }
-            auto incorrectLive = live; ++incorrectLive.generation;
-            ActivePictureMeasurementCache cache;
-            cache.Begin(incorrectLive, identity, 7, 8);
-            Assert::IsFalse(cache.SeedQueued(queued, identity, raw, darkness),
-                L"Only format-generation to matching transport-generation adaptation is allowed");
-        }
 
+            const OwnedMeasurementFrame frame;const auto live=frame.Source();const auto id=Identity();auto queued=live;
+            queued.generation=id.sourceFormatGeneration;const auto facts=WorkerFacts(queued);
+            const auto darkness=EvaluateActivePictureArDarkness(queued,facts);
+            for(int field=0;field<8;++field) {
+                auto wrong=id;switch(field){case 0:++wrong.transportGeneration;break;case 1:++wrong.acceptedSequence;break;
+                case 2:++wrong.sourceFrameNumber;break;case 3:++wrong.captureTimestamp;break;case 4:++wrong.sourceFormatGeneration;break;
+                case 5:++wrong.viewportGeneration;break;case 6:++wrong.rendererGeneration;break;case 7:++wrong.analysisDomainKey;break;}
+                ActivePictureMeasurementCache cache;cache.Begin(live,id,7,8);
+                Assert::IsFalse(cache.SeedQueued(queued,wrong,facts,darkness));Pending(cache);
+            }
+            for(int field=0;field<15;++field) {
+                auto wrong=queued;const auto owner=queued.backingOwner;
+                switch(field){case 0:wrong.data+=2;break;case 1:wrong.dataBytes-=2;break;case 2:wrong.width-=2;break;
+                case 3:wrong.height-=2;break;case 4:wrong.rowBytes-=4;break;case 5:wrong.chromaRowBytes-=4;break;
+                case 6:wrong.format=AnalysisLumaFormat::P210;break;case 7:wrong.encoding=VideoFrameEncoding::UYVY;break;
+                case 8:wrong.colorspace=ColorSpace::BT_2020;break;case 9:++wrong.generation;break;case 10:wrong.rgbBitAlignment=1;break;
+                case 11:wrong.range=AnalysisLumaRange::Full;break;case 12:wrong.backingOwner.reset();break;
+                case 13:wrong.backingOwner=std::shared_ptr<const void>(owner.get(),[owner](const void*){});break;
+                case 14:wrong.backingOwner=std::shared_ptr<const void>(owner,queued.data);break;}
+                ActivePictureMeasurementCache cache;cache.Begin(live,id,7,8);
+                Assert::IsFalse(cache.SeedQueued(wrong,id,facts,darkness));Pending(cache);
+            }
+            auto wrongLive=live;++wrongLive.generation;ActivePictureMeasurementCache wrongGeneration;
+            wrongGeneration.Begin(wrongLive,id,7,8);
+            Assert::IsFalse(wrongGeneration.SeedQueued(queued,id,facts,darkness),
+                L"Only matching format-generation to transport-generation adaptation is allowed.");
+            Pending(wrongGeneration);
+        }
         TEST_METHOD(PairedWarmed4kMeasurementsReportCostAndPreserveEveryEvidenceField)
         {
-            const char* patterns[] = { "scope", "full", "dark-textured", "subtitle-edge-panel", "expansion" };
-            const AnalysisLumaFormat formats[] = { AnalysisLumaFormat::P010, AnalysisLumaFormat::P210, AnalysisLumaFormat::NativeRgb };
-            const char* names[] = { "P010", "P210", "BGRA8" };
-            for (int format = 0; format < 3; ++format) for (int pattern = 0; pattern < 5; ++pattern)
-            {
-                // Source allocation, filling and ownership are outside both timers.
-                const Owned4kMeasurementFrame frame(formats[format], pattern);
-                const auto source = frame.Source();
-                const auto bounds = Owned4kMeasurementFrame::Bounds();
-                Assert::IsTrue(source.IsValid());
-                const auto baseline = [&] { return BaselineLiveMeasurements(source, bounds); };
-                const auto cached = [&] { return CachedLiveMeasurements(source, bounds); };
-                for (int warm = 0; warm < 3; ++warm) SameRun(cached(), baseline());
-                std::vector<double> baselineMs, cacheMs;
-                MeasurementRun direct, optimized;
-                for (int sample = 0; sample < 21; ++sample)
-                {
-                    // Alternate order to reduce warm-cache/order bias. Evidence
-                    // comparisons run after timing and impose no speed threshold.
-                    if (sample % 2 == 0)
-                    { baselineMs.push_back(TimedRun(baseline, direct)); cacheMs.push_back(TimedRun(cached, optimized)); }
-                    else
-                    { cacheMs.push_back(TimedRun(cached, optimized)); baselineMs.push_back(TimedRun(baseline, direct)); }
-                    SameRun(optimized, direct);
-                    Assert::AreEqual(size_t(1), optimized.scans.pictureScans);
-                    Assert::AreEqual(size_t(1), optimized.scans.globalScans);
-                    Assert::AreEqual(size_t(1), optimized.scans.darknessScans);
-                    Assert::AreEqual(size_t(1), optimized.scans.retentionScans);
-                }
-                std::ostringstream report;
-                report << "4K analysis paired cost: format=" << names[format] << " pattern=" << patterns[pattern]
-                    << " pairs=21 baseline_median_ms=" << Percentile(baselineMs, 0.5)
-                    << " baseline_p95_ms=" << Percentile(baselineMs, 0.95)
-                    << " baseline_peak_ms=" << Percentile(baselineMs, 1.0)
-                    << " cache_median_ms=" << Percentile(cacheMs, 0.5)
-                    << " cache_p95_ms=" << Percentile(cacheMs, 0.95)
-                    << " cache_peak_ms=" << Percentile(cacheMs, 1.0)
-                    << " cache_actual_scans=" << optimized.scans.pictureScans << '/' << optimized.scans.globalScans
-                    << '/' << optimized.scans.darknessScans << '/' << optimized.scans.retentionScans
-                    << " raw_global_ar_retention fixture_preparation_timed=0 live_jitter_evidence=0";
-                Logger::WriteMessage(report.str().c_str());
+
+            for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::NativeRgb})
+            for(int pattern=0;pattern<5;++pattern) {
+                const Owned4kMeasurementFrame frame(format,pattern);const auto source=frame.Source();
+                ActivePictureMeasurementCache cache;BeginWorker(cache,source);
+                CheckWorker(cache,source,Owned4kMeasurementFrame::Bounds());
+                CheckWorker(cache,source,Owned4kMeasurementFrame::Bounds());
+                Assert::AreEqual(size_t(1),cache.Snapshot().workerImports);
+                Assert::AreEqual(size_t(1),cache.Snapshot().retentionScans);
             }
         }
         TEST_METHOD(ThreeRepeatedOutputsReuseExactScopeDarkAndFullRasterMeasurements)
         {
-            for (int pattern = 0; pattern < 3; ++pattern)
-            {
-                const OwnedMeasurementFrame frame(pattern);
-                const auto source = frame.Source();
-                const auto direct = ExtractActivePictureEvidence(source);
-                if (pattern != 1) Assert::IsTrue(direct.available);
-                if (pattern == 0)
-                    Assert::IsTrue(direct.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
-                if (pattern == 1)
-                    Assert::IsTrue(EvaluateActivePictureGlobalNearBlack(source).nearBlack);
-                ActivePictureMeasurementCache cache;
-                for (int output = 0; output < 3; ++output)
-                {
-                    cache.Begin(source, Identity(), 7, 8);
-                    SameAsDirect(cache, source);
-                }
-                Counts(cache, 3, 2);
+
+            for(int pattern=0;pattern<3;++pattern) {
+                const OwnedMeasurementFrame frame(pattern);ActivePictureMeasurementCache cache;BeginWorker(cache,frame.Source());
+                for(int repeat=0;repeat<3;++repeat){cache.Begin(frame.Source(),Identity(),7,8);CheckWorker(cache,frame.Source());}
+                Assert::AreEqual(size_t(1),cache.Snapshot().workerImports);
+                Assert::AreEqual(size_t(3),cache.Snapshot().pictureHits);
+                Assert::AreEqual(size_t(2),cache.Snapshot().retentionHits);
             }
         }
-
         TEST_METHOD(RefiningReturnedCopiesCannotPoisonCachedPixelEvidence)
         {
-            const OwnedMeasurementFrame frame;
-            const auto source = frame.Source();
-            ActivePictureMeasurementCache cache;
-            cache.Begin(source, Identity(), 7, 8);
-            auto global = cache.GlobalNearBlack();
-            auto picture = cache.Picture();
-            auto retention = cache.Retention(Scope());
-            global.nearBlack = !global.nearBlack;
-            picture.classification = ActivePictureClassification::UNAVAILABLE;
-            picture.trustedBounds = {};
-            picture.reason = "caller-only refinement";
-            retention.currentlyPixelSafe = !retention.currentlyPixelSafe;
-            retention.activePicture = picture;
-            retention.reason = "caller-only refinement";
-            SameAsDirect(cache, source);
-            Counts(cache, 2, 1);
-        }
 
+            const OwnedMeasurementFrame frame;ActivePictureMeasurementCache cache;BeginWorker(cache,frame.Source());
+            auto global=cache.GlobalNearBlack();auto picture=cache.Picture();auto retention=cache.Retention(Scope());
+            global.nearBlack=!global.nearBlack;picture.trustedBounds={};picture.reason="changed";
+            retention.currentlyPixelSafe=!retention.currentlyPixelSafe;retention.activePicture=picture;
+            CheckWorker(cache,frame.Source());
+        }
         TEST_METHOD(EverySourceIdentityFieldAndPolicyOrContinuityChangeInvalidates)
         {
-            const OwnedMeasurementFrame frame;
-            const auto source = frame.Source();
-            const auto identity = Identity();
-            for (int field = 0; field < 8; ++field)
-            {
-                auto changed = identity;
-                switch (field)
-                {
-                case 0: ++changed.transportGeneration; break;
-                case 1: ++changed.acceptedSequence; break;
-                case 2: ++changed.sourceFrameNumber; break;
-                case 3: ++changed.captureTimestamp; break;
-                case 4: ++changed.sourceFormatGeneration; break;
-                case 5: ++changed.viewportGeneration; break;
-                case 6: ++changed.rendererGeneration; break;
-                case 7: ++changed.analysisDomainKey; break;
-                }
-                ChangedContextIsFresh(source, source, identity, changed);
-            }
-            ChangedContextIsFresh(source, source, identity, identity, 9, 8);
-            ChangedContextIsFresh(source, source, identity, identity, 7, 9);
-        }
 
+            const OwnedMeasurementFrame frame;
+            for(int field=0;field<10;++field) {
+                ActivePictureMeasurementCache cache;BeginWorker(cache,frame.Source());auto id=Identity();uint64_t policy=7,continuity=8;
+                switch(field){case 0:++id.transportGeneration;break;case 1:++id.acceptedSequence;break;case 2:++id.sourceFrameNumber;break;
+                case 3:++id.captureTimestamp;break;case 4:++id.sourceFormatGeneration;break;case 5:++id.viewportGeneration;break;
+                case 6:++id.rendererGeneration;break;case 7:++id.analysisDomainKey;break;case 8:++policy;break;case 9:++continuity;break;}
+                cache.Begin(frame.Source(),id,policy,continuity);Pending(cache);
+            }
+        }
         TEST_METHOD(PixelLayoutRangeAndColorInterpretationChangesInvalidate)
         {
+
             const OwnedMeasurementFrame frame;
-            const auto source = frame.Source();
-            for (int field = 0; field < 12; ++field)
-            {
-                auto changed = source;
-                switch (field)
-                {
-                case 0: changed.data += 2; changed.dataBytes -= 2; break;
-                case 1: changed.dataBytes -= 2; break;
-                case 2: changed.width -= 2; break;
-                case 3: changed.height -= 2; break;
-                case 4: changed.rowBytes -= 4; break;
-                case 5: changed.chromaRowBytes -= 4; break;
-                case 6: changed.format = AnalysisLumaFormat::P210; break;
-                case 7: changed.encoding = VideoFrameEncoding::UYVY; break;
-                case 8: changed.colorspace = ColorSpace::BT_2020; break;
-                case 9: ++changed.generation; break;
-                case 10: changed.rgbBitAlignment = 1; break;
-                case 11: changed.range = AnalysisLumaRange::Full; break;
-                }
-                ChangedContextIsFresh(source, changed, Identity(), Identity());
+            for(int field=0;field<12;++field) {
+                ActivePictureMeasurementCache cache;BeginWorker(cache,frame.Source());auto changed=frame.Source();
+                switch(field){case 0:changed.data+=2;changed.dataBytes-=2;break;case 1:changed.dataBytes-=2;break;
+                case 2:changed.width-=2;break;case 3:changed.height-=2;break;case 4:changed.rowBytes-=4;break;case 5:changed.chromaRowBytes-=4;break;
+                case 6:changed.format=AnalysisLumaFormat::P210;break;case 7:changed.encoding=VideoFrameEncoding::UYVY;break;
+                case 8:changed.colorspace=ColorSpace::BT_2020;break;case 9:++changed.generation;break;
+                case 10:changed.rgbBitAlignment=1;break;case 11:changed.range=AnalysisLumaRange::Full;break;}
+                cache.Begin(changed,Identity(),7,8);Pending(cache);
             }
         }
-
         TEST_METHOD(RetentionRequiresExactCropBaseButKeepsOtherMeasurements)
         {
+
             const OwnedMeasurementFrame frame;
-            const auto source = frame.Source();
-            const auto bounds = Scope();
-            for (int field = 0; field < 8; ++field)
-            {
-                auto changed = bounds;
-                switch (field)
-                {
-                case 0: ++changed.left; break;
-                case 1: ++changed.top; break;
-                case 2: --changed.right; break;
-                case 3: --changed.bottom; break;
-                case 4: ++changed.rasterWidth; break;
-                case 5: ++changed.rasterHeight; break;
-                case 6: changed.aspectRatio += 0.01; break;
-                case 7: changed.trustedBarAxes = ActivePictureBounds::BarAxes::NONE; break;
-                }
-                ActivePictureMeasurementCache cache;
-                cache.Begin(source, Identity(), 7, 8);
-                SameAsDirect(cache, source, bounds);
-                SameAsDirect(cache, source, changed);
-                SameAsDirect(cache, source, changed);
-                const auto& stats = cache.Snapshot();
-                Assert::IsTrue(stats.globalRequests == 3 && stats.globalHits == 2);
-                Assert::IsTrue(stats.pictureRequests == 3 && stats.pictureHits == 2);
-                Assert::IsTrue(stats.retentionRequests == 3 && stats.retentionHits == 1);
+            for(int field=0;field<8;++field) {
+                ActivePictureMeasurementCache cache;BeginWorker(cache,frame.Source());auto changed=Scope();
+                switch(field){case 0:++changed.left;break;case 1:++changed.top;break;case 2:--changed.right;break;case 3:--changed.bottom;break;
+                case 4:++changed.rasterWidth;break;case 5:++changed.rasterHeight;break;case 6:changed.aspectRatio+=.01;break;
+                case 7:changed.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;break;}
+                CheckWorker(cache,frame.Source());CheckWorker(cache,frame.Source(),changed);CheckWorker(cache,frame.Source(),changed);
+                Assert::AreEqual(size_t(2),cache.Snapshot().retentionScans);Assert::AreEqual(size_t(1),cache.Snapshot().retentionHits);
             }
         }
-
         TEST_METHOD(BorrowedPixelsAndIncompleteIdentitiesAreNeverReused)
         {
+
             const OwnedMeasurementFrame frame;
-            for (int missing = 0; missing < 6; ++missing)
-            {
-                auto source = frame.Source();
-                auto identity = Identity();
-                switch (missing)
-                {
-                case 0: source.backingOwner.reset(); break;
-                case 1: source.generation = 0; break;
-                case 2: identity.transportGeneration = 0; break;
-                case 3: identity.acceptedSequence = 0; break;
-                case 4: identity.analysisDomainKey = 0; break;
-                case 5: source.data = nullptr; break;
-                }
-                ActivePictureMeasurementCache cache;
-                for (int output = 0; output < 3; ++output)
-                {
-                    cache.Begin(source, identity, 7, 8);
-                    SameAsDirect(cache, source);
-                }
-                Counts(cache, 3, 0);
+            for(int missing=0;missing<6;++missing){auto source=frame.Source();auto id=Identity();
+                switch(missing){case 0:source.backingOwner.reset();break;case 1:source.generation=0;break;case 2:id.transportGeneration=0;break;
+                case 3:id.acceptedSequence=0;break;case 4:id.analysisDomainKey=0;break;case 5:source.data=nullptr;break;}
+                ActivePictureMeasurementCache cache;cache.Begin(source,id,7,8);
+                Assert::IsFalse(SeedWorker(cache,source,id));for(int repeat=0;repeat<3;++repeat)Pending(cache);
             }
         }
-
         TEST_METHOD(BorrowedCurrentRawAndGlobalDoNotGetExtractedAgainForDarkness)
         {
-            const OwnedMeasurementFrame frame;
-            auto source=frame.Source();
-            source.backingOwner.reset();
-            ActivePictureMeasurementCache cache;
-            cache.Begin(source,Identity(),7,8);
-            const auto raw=cache.Picture();
-            const auto global=cache.GlobalNearBlack();
-            SameDarkness(cache.ArDarkness(raw,global),
-                EvaluateActivePictureArDarkness(source,raw,global));
-            Assert::IsTrue(cache.Snapshot().pictureScans==1);
-            Assert::IsTrue(cache.Snapshot().globalScans==1);
-            Assert::IsTrue(cache.Snapshot().darknessScans==1);
-        }
 
+            const OwnedMeasurementFrame frame;auto source=frame.Source();source.backingOwner.reset();
+            ActivePictureMeasurementCache cache;cache.Begin(source,Identity(),7,8);
+            const auto raw=cache.Picture();const auto global=cache.GlobalNearBlack();
+            SameDarkness(cache.ArDarkness(raw,global),EvaluateActivePictureArDarkness(source,raw,global));
+            Assert::AreEqual(size_t(0),cache.Snapshot().pictureScans);Assert::AreEqual(size_t(1),cache.Snapshot().globalScans);
+        }
         TEST_METHOD(DisabledCachePreservesDirectSingleOutputMeasurements)
         {
-            const OwnedMeasurementFrame frame;
-            const auto source = frame.Source();
-            ActivePictureMeasurementCache cache(false);
-            for (int output = 0; output < 3; ++output)
-            {
-                cache.Begin(source, Identity(), 7, 8);
-                SameAsDirect(cache, source);
-            }
-            Counts(cache, 3, 0);
+
+            const OwnedMeasurementFrame frame;ActivePictureMeasurementCache cache(false);
+            cache.Begin(frame.Source(),Identity(),7,8);Assert::IsFalse(SeedWorker(cache,frame.Source(),Identity()));
+            for(int repeat=0;repeat<3;++repeat){Pending(cache);SameGlobal(cache.GlobalNearBlack(),EvaluateActivePictureGlobalNearBlack(frame.Source()));}
+            Assert::AreEqual(size_t(3),cache.Snapshot().globalScans);
         }
         TEST_METHOD(ExactOwnerControlBlockIsPartOfImmutableSourceIdentity)
         {
-            const OwnedMeasurementFrame frame;
-            const auto source = frame.Source();
-            auto changed = source;
-            const auto owner = source.backingOwner;
-            changed.backingOwner = std::shared_ptr<const void>(owner.get(),
-                [owner](const void*) { /* The distinct owner still retains the same immutable pixels. */ });
-            Assert::IsTrue(source.backingOwner.get() == changed.backingOwner.get());
-            Assert::IsTrue(source.backingOwner.owner_before(changed.backingOwner) ||
-                changed.backingOwner.owner_before(source.backingOwner));
-            ChangedContextIsFresh(source, changed, Identity(), Identity());
-            // An alias with the same control block but a different owner pointer
-            // also represents a changed retention contract for this source view.
-            changed.backingOwner = std::shared_ptr<const void>(owner, source.data);
-            Assert::IsTrue(source.backingOwner.get() != changed.backingOwner.get());
-            Assert::IsFalse(source.backingOwner.owner_before(changed.backingOwner) ||
-                changed.backingOwner.owner_before(source.backingOwner));
-            ChangedContextIsFresh(source, changed, Identity(), Identity());
-        }
 
+            const OwnedMeasurementFrame frame;const auto owner=frame.Source().backingOwner;
+            for(bool alias:{false,true}) {ActivePictureMeasurementCache cache;BeginWorker(cache,frame.Source());auto changed=frame.Source();
+                changed.backingOwner=alias?std::shared_ptr<const void>(owner,changed.data):std::shared_ptr<const void>(owner.get(),[owner](const void*){});
+                cache.Begin(changed,Identity(),7,8);Pending(cache);}
+        }
         TEST_METHOD(CacheRetainsBackingUntilSourceReplacement)
         {
-            ActivePictureMeasurementCache cache;
-            std::weak_ptr<const std::vector<uint8_t>> lifetime;
-            {
-                const OwnedMeasurementFrame frame;
-                lifetime = frame.pixels;
-                cache.Begin(frame.Source(), Identity(), 7, 8);
-                cache.Picture();
-            }
-            Assert::IsFalse(lifetime.expired());
-            cache.Begin({}, Identity(), 7, 8);
-            Assert::IsTrue(lifetime.expired());
-        }
 
+            ActivePictureMeasurementCache cache;std::weak_ptr<const std::vector<uint8_t>> owner;
+            {const OwnedMeasurementFrame frame;owner=frame.pixels;BeginWorker(cache,frame.Source());}
+            Assert::IsFalse(owner.expired());cache.Begin({},Identity(),7,8);Assert::IsTrue(owner.expired());
+        }
+        TEST_METHOD(NewCapturedFrameMeasuresItsOwnPixels)
+        {
+
+            const OwnedMeasurementFrame scope(0),full(2);ActivePictureMeasurementCache cache;
+            BeginWorker(cache,scope.Source());const auto before=cache.Picture();auto id=Identity();++id.acceptedSequence;++id.sourceFrameNumber;
+            cache.Begin(full.Source(),id,7,8);Pending(cache);Assert::IsTrue(SeedWorker(cache,full.Source(),id));
+            const auto after=cache.Picture();SamePicture(after,WorkerFacts(full.Source()));
+            Assert::IsTrue(before.trustedBounds.top>after.trustedBounds.top);
+        }
+        TEST_METHOD(CompletedExactSourceReplacesPendingFactsWithoutMissingDowngrade)
+        {
+
+            const OwnedMeasurementFrame frame;auto queued=frame.Source();queued.generation=Identity().sourceFormatGeneration;
+            const auto missing=MissingSourcePictureEvidence(queued,"measurement-budget-exhausted");
+            ActivePictureMeasurementCache cache;cache.Begin(frame.Source(),Identity(),7,8);
+            Assert::IsTrue(cache.SeedQueued(queued,Identity(),missing,EvaluateActivePictureArDarkness(queued,missing)));
+            Pending(cache);cache.Retention(Scope());
+            Assert::IsTrue(SeedWorker(cache,frame.Source(),Identity()));CheckWorker(cache,frame.Source());
+            const auto complete=cache.Picture();
+            Assert::IsTrue(cache.SeedQueued(queued,Identity(),missing,EvaluateActivePictureArDarkness(queued,missing)));
+            SamePicture(cache.Picture(),complete);Assert::IsTrue(cache.PhysicalEdges().estimateAvailable);
+            Assert::AreEqual(size_t(2),cache.Snapshot().retentionScans);
+        }
+        TEST_METHOD(CompletedVerificationUpgradesOnlyTheSameMeasuredGeometry)
+        {
+            const OwnedMeasurementFrame frame;auto queued=frame.Source();queued.generation=Identity().sourceFormatGeneration;
+            const auto complete=WorkerFacts(queued);
+            Assert::IsTrue(complete.available);Assert::IsTrue(complete.physicalEdges.estimateAvailable);
+            Assert::IsTrue(complete.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+            auto pending=MissingSourcePictureEvidence(queued,"supplied candidate verification budget exhausted");
+            pending.detector=complete.detector;pending.physicalEdges=complete.physicalEdges;
+            pending.physicalEdges.conservativeBounds={};
+            ActivePictureMeasurementCache cache;cache.Begin(frame.Source(),Identity(),7,8);
+            const auto seed=[&](const ActivePictureEvidence& facts) {
+                return cache.SeedQueued(queued,Identity(),facts,EvaluateActivePictureArDarkness(queued,facts));
+            };
+            Assert::IsTrue(seed(pending));Assert::IsFalse(cache.Picture().available);
+            const auto before=cache.Picture();cache.Retention(Scope());
+            auto unfinished=complete;unfinished.sourceCandidateVerificationComplete=false;
+            Assert::IsTrue(seed(unfinished));SamePicture(cache.Picture(),before);
+            auto changed=complete;++changed.physicalEdges.estimate.top;
+            Assert::IsTrue(seed(changed));SamePicture(cache.Picture(),before);
+            auto foreign=complete;++foreign.physicalEdges.sourceGeneration;
+            Assert::IsTrue(seed(foreign));SamePicture(cache.Picture(),before);
+            Assert::IsTrue(seed(complete));CheckWorker(cache,frame.Source());
+            const auto verified=cache.Picture();Assert::IsTrue(seed(pending));SamePicture(cache.Picture(),verified);
+            Assert::AreEqual(size_t(2),cache.Snapshot().retentionScans);
+        }
+        TEST_METHOD(VerificationCompletionPublishesNegativeAndFullRasterWithoutGrantingCrop)
+        {
+            const OwnedMeasurementFrame frame(2);auto queued=frame.Source();queued.generation=Identity().sourceFormatGeneration;
+            for(bool negative:{false,true}) {
+                auto complete=WorkerFacts(queued);
+                if(negative) {
+                    // Exercise the completed rejection of a supplied crop into picture.
+                    complete=VerifySuppliedActivePictureCandidate(queued,Scope());
+                    Assert::IsTrue(complete.classification==ActivePictureClassification::PROVISIONAL);
+                    complete.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+                    complete.physicalEdges.evaluated=complete.physicalEdges.estimateAvailable=true;
+                    complete.physicalEdges.sourceGeneration=queued.generation;
+                    complete.physicalEdges.estimate=Scope();
+                    complete.physicalEdges.conservativeBounds=complete.trustedBounds;
+                }
+                Assert::IsTrue(complete.sourceCandidateVerificationComplete);
+                auto pending=MissingSourcePictureEvidence(queued,"supplied candidate verification budget exhausted");
+                pending.detector=complete.detector;pending.physicalEdges=complete.physicalEdges;
+                pending.physicalEdges.conservativeBounds={};
+                ActivePictureMeasurementCache cache;cache.Begin(frame.Source(),Identity(),7,8);
+                Assert::IsTrue(cache.SeedQueued(queued,Identity(),pending,EvaluateActivePictureArDarkness(queued,pending)));
+                Assert::IsFalse(cache.Picture().sourceCandidateVerificationComplete);
+                Assert::IsTrue(cache.SeedQueued(queued,Identity(),complete,EvaluateActivePictureArDarkness(queued,complete)));
+                auto rebound=complete;rebound.physicalEdges.sourceGeneration=frame.Source().generation;
+                SamePicture(cache.Picture(),rebound);
+                Assert::AreEqual(0,cache.Picture().trustedBounds.top);
+                Assert::AreEqual(frame.height,cache.Picture().trustedBounds.bottom);
+            }
+            AnalysisEvaluationBudget expired([](void*){return true;},nullptr);
+            const auto cancelled=VerifySuppliedActivePictureCandidate(queued,Scope(),&expired);
+            Assert::IsFalse(cancelled.sourceCandidateVerificationComplete);
+        }
+        TEST_METHOD(OptionalObserverCannotRescanOrOverwriteReadySourceFacts)
+        {
+
+            const OwnedMeasurementFrame frame;auto facts=WorkerFacts(frame.Source());const auto original=facts;
+            int checks=0;AnalysisEvaluationBudget expired([](void* p){++*static_cast<int*>(p);return true;},&checks);
+            Assert::IsFalse(ActivePictureMeasurementCache::CompletePhysicalObservationIfMissing(frame.Source(),facts,&expired));
+            SamePicture(facts,original);SameBounds(ActivePictureMeasurementCache::MeasurePhysicalEdgesOptional(frame.Source(),facts).estimate,original.physicalEdges.estimate);
+            Assert::AreEqual(0,checks);auto missing=MissingSourcePictureEvidence(frame.Source());
+            Assert::IsFalse(ActivePictureMeasurementCache::CompletePhysicalObservationIfMissing(frame.Source(),missing,&expired));
+            Assert::IsFalse(missing.physicalEdges.evaluated);Assert::AreEqual(0,checks);
+        }
         TEST_METHOD(ScrubLineAndSeparatedTimeLabelsOwnCompleteBoundedOffFitAndReleaseHold)
         {
             using namespace AlphaSourceCrop;
@@ -899,21 +700,6 @@ namespace VideoProcessorTest
                 const auto cached=cache.SubtitleContent(native,64);
                 Assert::AreEqual(occupied,top?cached.upperOccupiedRows:cached.lowerOccupiedRows);
             }
-        }
-
-        TEST_METHOD(NewCapturedFrameMeasuresItsOwnPixels)
-        {
-            const OwnedMeasurementFrame scope(0), fullRaster(2);
-            auto next = Identity();
-            ++next.acceptedSequence; ++next.sourceFrameNumber; ++next.captureTimestamp;
-            ActivePictureMeasurementCache cache;
-            cache.Begin(scope.Source(), Identity(), 7, 8);
-            const auto before = cache.Picture();
-            cache.Begin(fullRaster.Source(), next, 7, 8);
-            const auto after = cache.Picture();
-            SamePicture(after, ExtractActivePictureEvidence(fullRaster.Source()));
-            Assert::IsTrue(before.trustedBounds.top > after.trustedBounds.top);
-            Assert::IsTrue(cache.Snapshot().pictureRequests == 2 && cache.Snapshot().pictureHits == 0);
         }
     };
 }

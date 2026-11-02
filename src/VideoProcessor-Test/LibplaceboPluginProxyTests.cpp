@@ -635,7 +635,7 @@ namespace VideoProcessorTest
             Assert::AreEqual(used,reading.inUseRatio);
             Assert::AreEqual(int(PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE),int(reading.physicalConfidence));
             Assert::IsTrue(AspectRatioOsd::Format(reading).detected==
-                L"Canvas estimate (blank margins unresolved; source spatial experimental)");
+                L"Canvas estimate (blank margins unresolved; source spatial)");
             telemetry.Submitted(7,2,16.0/9.0,16.0/9.0,true,false);
             Assert::AreEqual(used,telemetry.Read().inUseRatio,
                 L"Neither source inference nor failed submission can change the actually used aspect");
@@ -651,7 +651,7 @@ namespace VideoProcessorTest
             Assert::AreEqual(3840.0/1634.0,measured.ratio);
             const auto label=AspectRatioOsd::Format(measured).retained;
             Assert::IsTrue(label.find(L"0,263..3840,1897")!=std::wstring::npos);
-            Assert::IsTrue(label.find(L"source spatial experimental")!=std::wstring::npos);
+            Assert::IsTrue(label.find(L"source spatial")!=std::wstring::npos);
             telemetry.ObservePhysical(3,11,false,false,PhysicalAspectConfidence::UNKNOWN,
                 0,0,0,0,ActivePictureDetectorKind::SourceSpatialUnavailable);
             Assert::IsFalse(telemetry.Read().available);
@@ -902,7 +902,9 @@ namespace VideoProcessorTest
             // Even an unknown newer source advances ordering; a late older
             // measurement cannot masquerade as a new aspect transition.
             telemetry.Observe(8,104,1.90,true,false);
-            Assert::AreEqual(1.90,telemetry.Read().ratio);
+            Assert::AreEqual(0.0,telemetry.Read().ratio);
+            Assert::AreEqual(uint64_t(105),telemetry.Read().detectedSequence);
+            Assert::IsFalse(telemetry.Read().available);
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).retained==anchor);
             // First qualified completion of source105 is inside the band.
             // That consumes its qualification slot without walking the anchor.
@@ -961,7 +963,8 @@ namespace VideoProcessorTest
             const auto scope=AspectRatioOsd::Format(telemetry.Read()).retained;
             telemetry.ObservePhysical(3,1,true,true,PhysicalAspectConfidence::STRONG_ABRUPT_EDGE,
                 0,70,3840,2090,ActivePictureDetectorKind::SourceSpatialMeasured);
-            Assert::AreEqual(3840.0/2020.0,telemetry.Read().ratio);
+            Assert::AreEqual(3840.0/1634.0,telemetry.Read().ratio,
+                L"The second qualified interpretation cannot replace this source's current measurement either.");
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).retained==scope,
                 L"A second qualified interpretation of the same source cannot replace its accepted anchor.");
             telemetry.ObservePhysical(3,2,true,false,PhysicalAspectConfidence::UNKNOWN,
@@ -985,6 +988,33 @@ namespace VideoProcessorTest
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).retained==imax,
                 L"The first qualified in-band completion still consumes its source slot, even though the anchor is retained.");
             Assert::AreEqual(uint64_t(2),telemetry.Read().stableDetection.acceptedSequence);
+        }
+        TEST_METHOD(AspectCurrentMeasurementRejectsLateAndDuplicatePublications)
+        {
+            PictureAspectTelemetry telemetry;
+            telemetry.ObservePhysical(3,100,false,false,PhysicalAspectConfidence::UNKNOWN,0,0,0,0);
+            telemetry.ObservePhysical(3,100,true,true,PhysicalAspectConfidence::STRONG_ABRUPT_EDGE,0,263,3840,1897);
+            const auto measured=telemetry.Read();
+            telemetry.ObservePhysical(3,100,false,false,PhysicalAspectConfidence::UNKNOWN,0,0,0,0);
+            Assert::IsTrue(telemetry.Read().available,L"An incomplete duplicate cannot erase this exact source's completed measurement.");
+            telemetry.ObservePhysical(3,99,true,false,PhysicalAspectConfidence::UNKNOWN,0,0,0,0);
+            Assert::AreEqual(uint64_t(100),telemetry.Read().detectedSequence,L"Late source results cannot roll current reporting backward.");
+            telemetry.ObservePhysical(3,100,true,true,PhysicalAspectConfidence::STRONG_ABRUPT_EDGE,0,0,3840,2160);
+            Assert::AreEqual(measured.ratio,telemetry.Read().ratio,L"One immutable source has one accepted qualified interpretation.");
+            telemetry.Observe(3,99,16.0/9.0,true,false);
+            Assert::AreEqual(measured.ratio,telemetry.Read().ratio);
+            telemetry.ObservePhysical(3,101,true,false,PhysicalAspectConfidence::UNKNOWN,0,0,0,0);
+            Assert::IsFalse(telemetry.Read().available,L"A newer evaluated inconclusive source must remain Unknown, not inherit a fresh measurement.");
+            Assert::AreEqual(uint64_t(101),telemetry.Read().detectedSequence);
+            Assert::IsTrue(telemetry.Read().stableDetection.available && telemetry.Read().stableDetection.held);
+            telemetry.ObservePhysical(3,100,true,true,PhysicalAspectConfidence::STRONG_ABRUPT_EDGE,0,263,3840,1897);
+            Assert::IsFalse(telemetry.Read().available);
+            Assert::AreEqual(uint64_t(101),telemetry.Read().detectedSequence);
+            telemetry.ObservePhysical(3,101,true,true,PhysicalAspectConfidence::STRONG_ABRUPT_EDGE,0,263,3840,1897);
+            Assert::IsTrue(telemetry.Read().available,L"The first qualified completion of the current source still publishes immediately.");
+            telemetry.Source(4);
+            telemetry.ObservePhysical(4,1,true,true,PhysicalAspectConfidence::SOURCE_RASTER_EXTENT,0,0,3840,2160);
+            Assert::AreEqual(uint64_t(1),telemetry.Read().detectedSequence);
         }
         TEST_METHOD(AspectPhysicalUnknownCannotReusePreviousCurrentMeasurement)
         {
@@ -1029,7 +1059,7 @@ namespace VideoProcessorTest
             telemetry.ObservePhysical(3, 12, false, false, PhysicalAspectConfidence::UNKNOWN,
                 0, 0, 0, 0, ActivePictureDetectorKind::SourceSpatialUnavailable);
             const auto pending = AspectRatioOsd::Format(telemetry.Read());
-            Assert::IsTrue(pending.detected.find(L"Current: Pending (source spatial experimental)") == 0);
+            Assert::IsTrue(pending.detected.find(L"Current: Pending (source spatial)") == 0);
             Assert::IsTrue(pending.retained == accepted.retained);
             telemetry.ObservePhysical(3, 13, true, true, PhysicalAspectConfidence::STRONG_ABRUPT_EDGE,
                 0, 6, 3840, 1970, ActivePictureDetectorKind::SourceSpatialMeasured);

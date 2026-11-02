@@ -77,7 +77,16 @@ public:
         }
         // A later Begin for another policy/continuity invalidates the import
         // just as it invalidates locally computed measurements.
-        if (!m_pictureValid) {
+        // The same monotonic completion contract is used by both publishers
+        // and this adapter. Normalize only after exact source ownership passed.
+        auto prior=m_picture;
+        prior.physicalEdges.sourceGeneration=queuedSource.generation;
+        const bool completesSource=m_pictureValid &&
+            (!m_picture.physicalEdges.evaluated || m_picture.physicalEdges.sourceGeneration==m_source.generation) &&
+            picture.physicalEdges.sourceGeneration==queuedSource.generation &&
+            SourcePictureMeasurementCanComplete(prior,picture);
+        if (!m_pictureValid || completesSource) {
+            if(completesSource) {m_darknessValid=false;m_retentionValid=false;}
             m_picture = picture;
             // The full source/owner/domain identity was checked above. Only
             // now rebind the queued adapter generation to this live adapter.
@@ -112,35 +121,18 @@ public:
         return Native();
     }
 
-    // Optional observation of already-measured native bounds. This never
-    // starts a mandatory detector scan or changes its conservative authority.
+    // Measurement is produced once by the source worker. Reading an optional
+    // view cannot rerun a competing detector or convert a missed deadline into
+    // new negative geometry. Exact-source import owns completion/publication.
     static PhysicalPictureEdgeObservation MeasurePhysicalEdgesOptional(
-        const AnalysisLumaSource& source,const ActivePictureEvidence& evidence)
+        const AnalysisLumaSource& /*source*/,const ActivePictureEvidence& evidence)
     {
-        if(SourcePictureDetectorEnabled())return evidence.physicalEdges;
-        auto deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(2);
-        AnalysisEvaluationBudget budget([](void* value) {
-            return std::chrono::steady_clock::now()>=
-                *static_cast<std::chrono::steady_clock::time_point*>(value);
-        },&deadline);
-        const auto& bounds=evidence.classification==ActivePictureClassification::PROVISIONAL?
-            evidence.proposedBounds:evidence.trustedBounds;
-        return MeasurePhysicalPictureEdges(source,bounds,&budget,&evidence.blackReference);
+        return evidence.physicalEdges;
     }
-    // Called only after the queued frame's complete source/owner/domain key
-    // has matched. This optional upgrade must never rerun mandatory AR proof.
-    static bool CompletePhysicalObservationIfMissing(const AnalysisLumaSource& source,
-        ActivePictureEvidence& evidence,const AnalysisEvaluationBudget* optionalBudget = nullptr)
+    static bool CompletePhysicalObservationIfMissing(const AnalysisLumaSource& /*source*/,
+        ActivePictureEvidence& /*evidence*/,const AnalysisEvaluationBudget* /*optionalBudget*/ = nullptr)
     {
-        if(SourcePictureDetectorEnabled())return false;
-        if(evidence.physicalEdges.evaluated &&
-            evidence.physicalEdges.sourceGeneration==source.generation)return false;
-        if(optionalBudget) {
-            const auto& bounds=evidence.classification==ActivePictureClassification::PROVISIONAL?
-                evidence.proposedBounds:evidence.trustedBounds;
-            evidence.physicalEdges=MeasurePhysicalPictureEdges(source,bounds,optionalBudget,&evidence.blackReference);
-        } else evidence.physicalEdges=MeasurePhysicalEdgesOptional(source,evidence);
-        return true;
+        return false;
     }
     PhysicalPictureEdgeObservation PhysicalEdges()
     {
@@ -197,6 +189,16 @@ public:
         m_presentation = presentation;
         m_retentionValid = m_cacheable;
         return m_retention; // Callers may refine their copy with current worker evidence.
+    }
+
+    ActivePictureRetentionHandoff RetentionHandoff(const ActivePictureBounds& measuredBounds,
+        const ActivePicturePresentationRetentionEvidence& measured,const ActivePictureBounds& presentationBounds)
+    {
+        if(m_source.IsValid() && measured.analysisValid && measured.presentationValid &&
+            SameBounds(measuredBounds,presentationBounds))return {measured,measuredBounds,false};
+        // A new presentation base needs its own excluded-band scan, while the
+        // source geometry still comes from the one exact-source worker result.
+        return {Retention(presentationBounds),presentationBounds,true};
     }
 
     VerticalBarContent SubtitleContent(const ActivePictureBounds& presentation, int blackCode)
@@ -284,20 +286,7 @@ private:
     ActivePictureEvidence Native()
     {
         if (m_cacheable && m_pictureValid && PreparedSourceDetectorCurrent(m_picture)) return m_picture;
-        if(SourcePictureDetectorEnabled())return MissingSourcePictureEvidence(m_source,"source-picture-native-worker-not-ready");
-        const auto started = std::chrono::steady_clock::now();
-        ++m_statistics.pictureScans;
-        auto value = ExtractActivePictureEvidence(m_source);
-        // Zero-lead legacy playback cannot import this same frame's worker
-        // result after it has already been displayed. When mandatory native
-        // extraction is already running locally, publish a separately measured
-        // physical observation from those exact pixels with the existing 2 ms
-        // optional budget. Reading PhysicalEdges alone still does no work;
-        // active spatial mode above remains exclusively worker-produced.
-        value.physicalEdges=MeasurePhysicalEdgesOptional(m_source,value);
-        RecordTime(started);
-        if (m_cacheable) { m_picture = value; m_pictureValid = true; }
-        return value;
+        return MissingSourcePictureEvidence(m_source,"source-picture-native-worker-not-ready");
     }
 
     ActivePictureArDarknessEvidence Darkness()

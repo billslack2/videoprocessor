@@ -138,6 +138,7 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
         };
         if(Foreground(read(0),floor) && Foreground(read(sustain),floor)) {
             ++terminal.support;++terminal.regionSupport[ray/32];
+            terminal.supportingRays[ray/64]|=uint64_t(1)<<(ray%64);
         }
     }
     unsigned terminalRegions=0;
@@ -257,6 +258,7 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
         // nominal physical boundary away from its strongest current support.
         merged.edge.coordinate=strongestCoordinate;
         merged.edge.support=0;merged.edge.regionSupport={};
+        merged.edge.supportingRays=merged.rays;
         for(unsigned ray=0;ray<kEdgeProbes;++ray)if(merged.rays[ray/64]&(uint64_t(1)<<(ray%64))) {
             ++merged.edge.support;++merged.edge.regionSupport[ray/32];
         }
@@ -332,6 +334,7 @@ bool CompleteDarkTerminal(Reader& reader,int floor,SourcePictureObservation& out
     if(depth<96 || along<96)return false;
     const int nominal=reader.source.range==AnalysisLumaRange::Full?0:64;
     std::array<unsigned,4> support{};std::array<double,4> regionalTrend{};
+    std::array<uint64_t,2> supportingRays{};
     double trendSum=0,trendSquares=0;
     for(unsigned ray=0;ray<kEdgeProbes;++ray) {
         const int position=int(uint64_t(2*ray+1)*along/(2*kEdgeProbes));
@@ -355,7 +358,9 @@ bool CompleteDarkTerminal(Reader& reader,int floor,SourcePictureObservation& out
             previous=current;
         }
         if(continuous && rises>=2 && int(previous.luma)-int(border.luma)>=16 &&
-            Foreground(border,nominal) && Foreground(previous,floor))++support[ray/32];
+            Foreground(border,nominal) && Foreground(previous,floor)) {
+            ++support[ray/32];supportingRays[ray/64]|=uint64_t(1)<<(ray%64);
+        }
     }
     const double mean=trendSum/kEdgeProbes;
     const double variance=std::max(0.0,(trendSquares-trendSum*trendSum/kEdgeProbes)/(kEdgeProbes-1));
@@ -367,11 +372,41 @@ bool CompleteDarkTerminal(Reader& reader,int floor,SourcePictureObservation& out
     SourcePictureEdgeCandidate terminal;
     terminal.coordinate=terminal.minimum=terminal.maximum=terminals[missing];
     terminal.support=total;terminal.coverage=kEdgeProbes;terminal.regionSupport=support;terminal.strong=true;
+    terminal.supportingRays=supportingRays;
     out.edges[unsigned(missing)].insert(out.edges[unsigned(missing)].begin(),terminal);
     return true;
 }
 }
 namespace {
+// A rectangle cannot discard distributed native boundary support shared by
+// both perpendicular edges. Overview foreground intentionally has a different
+// support scale and may miss dark picture that these native profiles measured.
+bool PerpendicularSupportOutside(const SourcePictureObservation& observation,const ActivePictureBounds& bounds) {
+    const int coordinates[4]={bounds.left,bounds.top,bounds.right,bounds.bottom};
+    const SourcePictureEdgeCandidate* edges[4]={};
+    for(unsigned side=0;side<4;++side)for(const auto& edge:observation.edges[side]) {
+        if(edge.coordinate==coordinates[side] && !edge.overlayLike) {edges[side]=&edge;break;}
+    }
+    for(unsigned side=0;side<4;++side) {
+        const bool horizontal=side==0 || side==2;
+        const unsigned first=horizontal?1:0,second=horizontal?3:2;
+        if(!edges[first] || !edges[second])continue;
+        const int extent=horizontal?observation.width:observation.height;
+        const int low=side<2?0:coordinates[side],high=side<2?coordinates[side]:extent;
+        if(low>=high)continue;
+        unsigned count=0;std::array<unsigned,4> regions{};
+        for(unsigned ray=0;ray<kEdgeProbes;++ray) {
+            const uint64_t bit=uint64_t(1)<<(ray%64);
+            if(!(edges[first]->supportingRays[ray/64]&edges[second]->supportingRays[ray/64]&bit))continue;
+            const int position=int(uint64_t(2*ray+1)*extent/(2*kEdgeProbes));
+            if(position<low || position>=high)continue;
+            ++count;++regions[unsigned(uint64_t(position-low)*4/(high-low))];
+        }
+        unsigned distributed=0;for(auto region:regions)if(region>=2)++distributed;
+        if(count>=kEdgeProbes/4 && distributed>=3)return true;
+    }
+    return false;
+}
 bool UsableCell(const SourcePictureObservation& observation,int index) {
     const auto label=observation.overviewLabels[size_t(index)];
     return label && label<=observation.components.size() && !observation.components[label-1].glyphLike;
@@ -471,9 +506,12 @@ SourcePictureCandidateAssessment ReconcileSourcePictureCandidate(const SourcePic
         out.contradicted=out.contradicted || distributed;
         headerSupported=headerSupported || (side==1 && distributed);
     }
+    const bool perpendicularContradiction=PerpendicularSupportOutside(observation,candidate);
+    out.contradicted=out.contradicted || perpendicularContradiction;
     out.canvasScaffoldSupported=headerSupported && PanelScaffold(observation,candidate,budget);
     out.reason=out.canvasScaffoldSupported?"composite-layout-scaffold":out.contradicted?
-        "distributed-exterior-components":"no-distributed-exterior-contradiction";
+        (perpendicularContradiction?"perpendicular-native-boundaries-outside-candidate":"distributed-exterior-components"):
+        "no-distributed-exterior-contradiction";
     return out;
 }
 SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,const AnalysisEvaluationBudget* budget) {

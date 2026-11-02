@@ -1292,6 +1292,7 @@ ActivePictureEvidence VerifySuppliedActivePictureCandidate(const AnalysisLumaSou
             // band to verify and no new physical measurement is manufactured.
             result.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
             result.reason="supplied source extent retains the entire raster";
+            result.sourceCandidateVerificationComplete=true;
             return result;
         }
         SampleContext samples{source};samples.budget=budget;
@@ -1345,6 +1346,7 @@ ActivePictureEvidence VerifySuppliedActivePictureCandidate(const AnalysisLumaSou
                     (guard.right<source.width?4:0)|(guard.bottom<source.height?8:0));
             }
         }
+        result.sourceCandidateVerificationComplete=true;
         return result;
     } catch(const AnalysisEvaluationCancelled&) {
         return unavailable("supplied candidate verification budget exhausted");

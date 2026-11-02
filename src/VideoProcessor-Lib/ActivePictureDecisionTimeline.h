@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <memory>
 
 
 struct ActivePictureFrameIdentity
@@ -183,6 +184,12 @@ public:
 		const ActivePictureObservation& observation,
 		bool nearBlackEvaluated,
 		bool nearBlack);
+    // Complete same-source crop verification without adding a second vote.
+    // Only the latest provisional observation may replace its model evaluation;
+    // older pending sources update proof ledger only, never newer decisions.
+    bool CompleteLookaheadSpatialVerification(const ActivePictureFrameIdentity& identity,
+        const ActivePictureObservation& observation,bool nearBlackEvaluated,bool nearBlack,
+        uint8_t configuredLookahead,uint8_t availableLookahead,ActivePictureFrameDecision& published);
 	bool IsDecisionCurrent(
 		const ActivePictureFrameDecision& decision) const;
 	uint64_t LookaheadPolicyGeneration() const
@@ -231,6 +238,7 @@ private:
 		ActivePictureObservation observation;
 		bool nearBlackEvaluated = false;
 		bool nearBlack = false;
+        uint64_t policyGeneration=0,continuityGeneration=0;
 	};
 	struct AcceptedIdentity
 	{
@@ -277,6 +285,10 @@ private:
 		const ActivePictureFrameIdentity* discarded = nullptr);
 	void AdvanceContinuityGeneration();
 
+    std::shared_ptr<const ActivePictureTransitionModel> m_verificationBaseline;
+    ActivePictureFrameIdentity m_verificationIdentity;
+    ActivePicturePresentationIntent m_verificationPresentation;
+    uint64_t m_verificationContinuity=0,m_verificationPolicy=0;
 	ActivePictureTransitionModel m_transition;
 	std::deque<ObservedIdentity> m_observed;
 	std::deque<LookaheadEvidence> m_lookaheadEvidence;

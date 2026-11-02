@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <SourcePictureDetector.h>
 #include "CppUnitTest.h"
 
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
@@ -6,8 +7,11 @@
 #include <SceneDetector.h>
 #include <CropDiagnosticThrottle.h>
 #include <vector>
+#include <memory>
+#include <sstream>
 #include <limits>
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vprenderer/ActivePictureMeasurementCache.h>
 #include <vprenderer/AnamorphicPresentation.h>
 #include <NlsGeometryPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
@@ -301,25 +305,30 @@ namespace Tests
             return update;
         }
 
-		TransitionAdmissionInput MovingRecoveryObservation(const ActivePictureBounds& base,
-			uint64_t generation,uint64_t sequence,unsigned index,double hz)
-		{
-			TransitionAdmissionInput input;
-			input.trustedGeometry=input.presentationBeforeObservation=base;
-			input.trustedGeometryAvailable=input.compatiblePresentation=input.evidence.available=true;
-			input.trustedGeneration=input.sourceGeneration=input.presentationEvidenceGeneration=generation;
-			input.sourceSequence=sequence; input.framesPerSecond=hz;
-			auto target=base; target.top-=8+int(index)*4; target.bottom+=8+int(index)*4;
-			target.aspectRatio=double(target.right-target.left)/(target.bottom-target.top);
-			input.evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
-			input.evidence.trustedBounds=input.evidence.proposedBounds=input.outwardCandidate=target;
-			input.retention.analysisValid=input.retention.presentationValid=input.retention.expansionStripsAvailable=true;
-			input.retention.expansionBase=base; input.retention.expansionCandidate=target;
-			auto& edge=input.retention.expandingTop;
-			edge.barPixels=8+int(index)*4; edge.blackFraction=.2; edge.continuity=.4; edge.lumaP90=300;
-			input.retention.expandingBottom=edge;
-			return input;
-		}
+        TransitionAdmissionInput MovingRecoveryObservation(const ActivePictureBounds& base,
+            uint64_t generation,uint64_t sequence,unsigned index,double hz)
+        {
+            TransitionAdmissionInput input;
+            input.trustedGeometry=input.presentationBeforeObservation=base;
+            input.trustedGeometryAvailable=input.compatiblePresentation=true;
+            input.trustedGeneration=input.sourceGeneration=input.presentationEvidenceGeneration=generation;
+            input.sourceSequence=sequence;input.framesPerSecond=hz;
+            auto target=base;target.top-=8+int(index)*4;target.bottom+=8+int(index)*4;
+            target.aspectRatio=double(target.right-target.left)/(target.bottom-target.top);
+            const int width=base.rasterWidth,height=base.rasterHeight;
+            std::vector<uint16_t> pixels(size_t(width)*height*3/2,uint16_t(512<<6));
+            for(int y=0;y<height;++y)if(y<target.top || y>=target.bottom)
+                std::fill(pixels.begin()+size_t(y)*width,pixels.begin()+size_t(y+1)*width,uint16_t(64<<6));
+            AnalysisLumaSource source{reinterpret_cast<const uint8_t*>(pixels.data()),pixels.size()*2,
+                width,height,size_t(width)*2,size_t(width)*2,AnalysisLumaFormat::P010,
+                VideoFrameEncoding::V210,ColorSpace::REC_709,generation};
+            input.evidence=DetectSourcePictureForWorker(source).evidence;
+            input.outwardCandidate=input.evidence.trustedBounds;
+            const auto global=EvaluateActivePictureGlobalNearBlack(source);
+            input.retention=EvaluateActivePicturePresentationRetention(source,base,input.evidence,global,
+                EvaluateActivePictureArDarkness(source,input.evidence,global));
+            return input;
+        }
 		KnownFullRasterRetentionInput CommittedFullRasterRetention(uint64_t sequence = 100)
 		{
 			KnownFullRasterRetentionInput input;
@@ -378,7 +387,7 @@ namespace Tests
 					AnalysisLumaFormat::P010, VideoFrameEncoding::V210, ColorSpace::REC_709, 1};
 				scene = detector.Analyze({pixels.data(), 320, 180, 640, sequence,
 					static_cast<int64_t>(sequence * 416667), 1, 416667, true, &source});
-				raw = ExtractActivePictureEvidence(source);
+				raw = DetectSourcePictureForWorker(source).evidence;
 				const auto darkness = EvaluateActivePictureGlobalNearBlack(source);
 				if (scene.safeBoundary) transitionModel.ResetCandidateEvidence();
 				const auto evidence = ConstrainNearBlackCropAcquisition(raw,
@@ -1842,8 +1851,12 @@ namespace Tests
 			replay.Frame(105, 80, true);
 			Assert::IsFalse(replay.scene.safeBoundary); // Scene notification cooldown.
 			Assert::IsTrue(replay.scene.nearBlackEntry && replay.scene.hardCutCandidate);
-			Assert::AreEqual(static_cast<int>(ActivePictureClassification::UNAVAILABLE),
-				static_cast<int>(replay.raw.classification));
+            // Physical dark-scope boundaries are measurable; the near-black
+            // acquisition policy, not missing geometry, prevents a new crop.
+            Assert::AreEqual(24,replay.raw.physicalEdges.estimate.top);
+            Assert::AreEqual(156,replay.raw.physicalEdges.estimate.bottom);
+            Assert::AreEqual(static_cast<int>(ActivePictureClassification::PROVISIONAL),
+                static_cast<int>(ConstrainNearBlackCropAcquisition(replay.raw,true).classification));
 			Assert::IsFalse(replay.retention.available,
 				L"A suppressed cut notification must not preserve full-frame authority over dark scope.");
 			Assert::AreEqual(static_cast<int>(NearBlackPresentationMode::FULL_RASTER),
@@ -5023,10 +5036,11 @@ namespace Tests
 		{
 			const ActivePictureBounds scope{0,276,3840,1884,3840,2160,3840.0/1608,ActivePictureBounds::BarAxes::TOP_BOTTOM};
 			const ActivePictureBounds taller{0,68,3840,2092,3840,2160,3840.0/2024,ActivePictureBounds::BarAxes::TOP_BOTTOM};
-			// Stable source pixels; only detector measurements jitter. Recheck
-			// the newly committed rectangle against these same P010 bytes,
-			// exactly as the renderer does after a model publication.
-			std::vector<uint16_t> pixels(3840*2160*3/2,uint16_t(512<<6));
+            // Stable physical boundaries with small source-luma noise. The
+            // coherent worker owns geometry; an injected inward nomination
+            // must not replace it merely because an old scan tolerated jitter.
+            auto ownedPixels=std::make_shared<std::vector<uint16_t>>(3840*2160*3/2,uint16_t(512<<6));
+            auto& pixels=*ownedPixels;
 			for (int y=0;y<2160;++y)
 				if (y<taller.top || y>=taller.bottom)
 					std::fill(pixels.begin()+size_t(y)*3840,pixels.begin()+size_t(y+1)*3840,uint16_t(64<<6));
@@ -5034,6 +5048,7 @@ namespace Tests
 			source.data=reinterpret_cast<const uint8_t*>(pixels.data()); source.dataBytes=pixels.size()*sizeof(uint16_t);
 			source.width=3840; source.height=2160; source.rowBytes=source.chromaRowBytes=3840*sizeof(uint16_t);
 			source.format=AnalysisLumaFormat::P010;
+            source.backingOwner=ownedPixels;
 			ActivePictureTransitionModel model;
 			for (uint64_t seq=1;seq<=4;++seq)
 				model.Observe({scope,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
@@ -5060,16 +5075,66 @@ namespace Tests
 				input.trustedGeometryAvailable=input.compatiblePresentation=input.evidence.available=true;
 				input.trustedGeneration=input.sourceGeneration=7; input.sourceSequence=seq;
 				input.framesPerSecond=24;
-				input.evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
-				input.evidence.trustedBounds=input.evidence.proposedBounds=input.outwardCandidate=observed;
-				input.retention=EvaluateActivePicturePresentationRetention(source,geometry);
+                source.generation=7;
+                const int lumaNoise=(seq&1)!=0?edgeNoise:0;
+                for(int y=taller.top;y<taller.bottom;++y)
+                    std::fill(pixels.begin()+size_t(y)*3840,pixels.begin()+size_t(y+1)*3840,
+                        uint16_t((512+lumaNoise)<<6));
+                if(edgeNoise>0 && (seq&1)!=0) {
+                    const auto checked=VerifySuppliedActivePictureCandidate(source,observed);
+                    if(seq==3729+cycle) {
+                        std::ostringstream details;
+                        details << "Inward nomination noise=" << edgeNoise << " classification=" << int(checked.classification)
+                            << " nomination=" << observed.top << ',' << observed.bottom
+                            << " retained=" << checked.trustedBounds.top << ',' << checked.trustedBounds.bottom
+                            << " verification=" << int(checked.candidateVerification.vertical) << " reason=" << checked.reason;
+                        Logger::WriteMessage(details.str().c_str());
+                    }
+                    Assert::IsTrue(checked.classification==ActivePictureClassification::PROVISIONAL ||
+                        checked.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                    Assert::IsTrue(checked.trustedBounds.left<=taller.left && checked.trustedBounds.right>=taller.right &&
+                        checked.trustedBounds.top<=taller.top && checked.trustedBounds.bottom>=taller.bottom,
+                        L"An inward nomination cannot remove any current picture pixel, including after outward aperture repair.");
+                    if(checked.classification==ActivePictureClassification::BAR_CROP_TRUSTED) {
+                        const auto& certificate=checked.candidateVerification;
+                        Assert::IsTrue(certificate.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                        Assert::AreEqual(source.generation,certificate.sourceGeneration);
+                        Assert::IsTrue(certificate.samples>0);
+                        Assert::AreEqual(observed.top,certificate.nomination.top);
+                        Assert::AreEqual(observed.bottom,certificate.nomination.bottom);
+                        Assert::AreEqual(checked.trustedBounds.left,certificate.bounds.left);
+                        Assert::AreEqual(checked.trustedBounds.right,certificate.bounds.right);
+                        Assert::AreEqual(checked.trustedBounds.top,certificate.bounds.top);
+                        Assert::AreEqual(checked.trustedBounds.bottom,certificate.bounds.bottom);
+                        Assert::IsTrue(checked.sourceCandidateVerificationComplete,
+                            L"A repaired aperture needs its own completed supplied-candidate verification.");
+                    }
+                }
+                ActivePictureFrameIdentity sourceIdentity;
+                sourceIdentity.transportGeneration=sourceIdentity.sourceFormatGeneration=7;
+                sourceIdentity.acceptedSequence=sourceIdentity.sourceFrameNumber=seq;
+                sourceIdentity.analysisDomainKey=19;
+                const auto workerEvidence=DetectSourcePictureForWorker(source).evidence;
+                ActivePictureMeasurementCache measurementCache;
+                measurementCache.Begin(source,sourceIdentity,9,1);
+                Assert::IsTrue(measurementCache.SeedQueued(source,sourceIdentity,workerEvidence,
+                    EvaluateActivePictureArDarkness(source,workerEvidence)));
+                input.evidence=measurementCache.Picture();
+                input.currentIdentity=sourceIdentity;
+                Assert::AreEqual(taller.top,input.evidence.physicalEdges.estimate.top);
+                Assert::AreEqual(taller.bottom,input.evidence.physicalEdges.estimate.bottom);
+                observed=input.evidence.physicalEdges.estimate;
+                input.outwardCandidate=input.evidence.trustedBounds;
+                const auto global=EvaluateActivePictureGlobalNearBlack(source);
+                input.retention=EvaluateActivePicturePresentationRetention(source,geometry,input.evidence,global,
+                    EvaluateActivePictureArDarkness(source,input.evidence,global));
 				input.retention.expansionStripsAvailable=true;
 				input.retention.expansionBase=geometry; input.retention.expansionCandidate=observed;
 				auto& edge=input.retention.expandingTop;
 				edge.barPixels=206; edge.blackFraction=.2; edge.continuity=.4; edge.lumaP90=300;
 				input.retention.expandingBottom=edge;
 				input.previousOutward=outward;
-				const bool eligible=model.WouldAdmitGeometryChange(MakeActivePictureObservation(input.evidence,seq,24));
+				const bool eligible=model.WouldAdmitGeometryChange(MakeActivePictureObservation(input.evidence,seq,24,&sourceIdentity));
 				const auto admission=EvaluateTransitionAdmission(input);
 				outward=admission.outward.state;
 				ActivePictureTransitionDecision transition;
@@ -5092,7 +5157,9 @@ namespace Tests
 				if (!adopted) transition=model.Observe(admission.observation);
 				const auto handoff=MakePictureTransitionHandoff(input,admission,transition,eligible,9);
 				if (transition.publish) { geometry=transition.bounds; dense={}; accepted={}; }
-				const auto currentPixels=ResolveActivePictureRetentionHandoff(source,measuredBase,input.retention,geometry);
+                // Match the production handoff: inspect the changed presentation
+                // base using this worker's geometry, without a legacy rescan.
+                const auto currentPixels=measurementCache.RetentionHandoff(measuredBase,input.retention,geometry);
 				const bool sameBase=geometry.top==scope.top;
 				const bool denseCurrent=sameBase && ((seq-3729-cycle)%densePeriod==0);
 				if (denseCurrent)
@@ -5171,6 +5238,32 @@ namespace Tests
 				auto recovered=EvaluatePresentationRecovery(recover); recovery=recovered.state;
 				const auto visible=AdmitCropPresentation(admitted,crop,recovered.presentation,9);
 				admitted=visible.state;
+                if(seq==3731+cycle) {
+                    const auto& raw=input.evidence;
+                    const auto& retained=currentPixels.evidence;
+                    std::ostringstream details;
+                    details << "Transition retention sequence=" << seq << " detector=" << int(raw.detector)
+                        << " identity_bound=" << raw.currentSourceIdentityAvailable
+                        << " identity_match=" << SameAnalysisFrameIdentity(raw.currentSourceIdentity,input.currentIdentity)
+                        << " spatial_proof=" << admission.observation.currentSpatialCropProof.Matches(admission.observation)
+                        << " classification=" << int(raw.classification) << " reason=" << raw.reason
+                        << " proposed=" << raw.proposedBounds.top << ',' << raw.proposedBounds.bottom
+                        << " trusted=" << raw.trustedBounds.top << ',' << raw.trustedBounds.bottom
+                        << " physical=" << raw.physicalEdges.estimate.top << ',' << raw.physicalEdges.estimate.bottom
+                        << " verification=" << int(raw.candidateVerification.vertical)
+                        << " profile=" << raw.verticalBarGuardProfile.completed << ',' << raw.verticalBarGuardProfile.clean
+                        << " base=" << currentPixels.bounds.top << ',' << currentPixels.bounds.bottom
+                        << " retained_detector=" << int(retained.activePicture.detector)
+                        << " retained_classification=" << int(retained.activePicture.classification)
+                        << " retained_reason=" << retained.reason
+                        << " pixel_safe=" << retained.excludedBandsPixelSafe
+                        << " raw_safe=" << retained.rawBandSafetyEvaluated << ',' << retained.rawBandTopSafe << ',' << retained.rawBandBottomSafe
+                        << " visible=" << retained.visibleTop.available << ',' << retained.visibleTop.coordinate
+                        << '/' << retained.visibleBottom.available << ',' << retained.visibleBottom.coordinate
+                        << " excluded_top=" << retained.excludedTop.blackFraction << ',' << retained.excludedTop.lumaP90
+                        << " excluded_bottom=" << retained.excludedBottom.blackFraction << ',' << retained.excludedBottom.lumaP90;
+                    Logger::WriteMessage(details.str().c_str());
+                }
 				const auto diagnostic=L"sequence="+std::to_wstring(seq)+L" noise="+std::to_wstring(edgeNoise)+
 					L" lookahead="+std::to_wstring(lookahead)+L" published="+std::to_wstring(transition.publish)+
 					L" logical_top="+std::to_wstring(geometry.top)+L" observed_top="+std::to_wstring(observed.top)+
@@ -5197,10 +5290,16 @@ namespace Tests
 				input.trustedGeometryAvailable=input.compatiblePresentation=input.evidence.available=true;
 				input.trustedGeneration=input.sourceGeneration=7; input.sourceSequence=seq;
 				input.framesPerSecond=24;
-				input.evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
-				input.evidence.trustedBounds=input.evidence.proposedBounds=input.outwardCandidate=scope;
-				input.retention.analysisValid=input.retention.presentationValid=true;
-				input.retention.excludedBandsPixelSafe=true;
+                auto inwardPixels=pixels;
+                for(int y=0;y<2160;++y)
+                    std::fill(inwardPixels.begin()+size_t(y)*3840,inwardPixels.begin()+size_t(y+1)*3840,
+                        uint16_t((y<scope.top || y>=scope.bottom?64:512)<<6));
+                auto inwardSource=source;inwardSource.data=reinterpret_cast<const uint8_t*>(inwardPixels.data());
+                input.evidence=DetectSourcePictureForWorker(inwardSource).evidence;
+                input.outwardCandidate=input.evidence.trustedBounds;
+                const auto global=EvaluateActivePictureGlobalNearBlack(inwardSource);
+                input.retention=EvaluateActivePicturePresentationRetention(inwardSource,geometry,input.evidence,global,
+                    EvaluateActivePictureArDarkness(inwardSource,input.evidence,global));
 				const bool eligible=model.WouldAdmitGeometryChange(MakeActivePictureObservation(input.evidence,seq,24));
 				const auto admission=EvaluateTransitionAdmission(input);
 				const auto transition=model.Observe(admission.observation);

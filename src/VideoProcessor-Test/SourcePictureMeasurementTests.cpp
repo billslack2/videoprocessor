@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <SourcePictureMeasurement.h>
 #include <SourcePictureDetector.h>
+#include <OwnedSourcePictureObservationCache.h>
 #include <SubtitleMeasurementWorker.h>
 #include "CppUnitTest.h"
 
@@ -542,6 +543,86 @@ namespace VideoProcessorTest
             // rectangle: reconciliation must decide what the detached graphic
             // means without having discarded the actual scene hypothesis.
         }
+        TEST_METHOD(SourcePictureOuterContradictionDominatesCompetingInnerEdges)
+        {
+            for(bool connected:{false,true}) {
+                SourcePictureFrame frame(960,540);
+                frame.Fill(0,80,960,110,200,530,490);
+                frame.Fill(0,160,960,460,200,530,490);
+                frame.Fill(34,15,60,43,220);
+                frame.Fill(360,20,422,40,220);
+                frame.Fill(908,15,926,43,220);
+                if(connected) {
+                    frame.Fill(44,40,48,84,220);
+                    frame.Fill(400,36,404,84,220);
+                    frame.Fill(916,40,920,84,220);
+                }
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Assert::IsTrue(observed.complete);Assert::IsTrue(observed.topologyComplete);
+                const auto& top=observed.edges[unsigned(SourcePictureEdge::Top)];
+                for(int coordinate:{80,160}) {
+                    const auto found=std::find_if(top.begin(),top.end(),[&](const SourcePictureEdgeCandidate& edge) {
+                        return edge.coordinate==coordinate;
+                    });
+                    Assert::IsTrue(found!=top.end());
+                    Assert::IsFalse(found->overlayLike);
+                    Assert::IsTrue(found->support>=32);
+                    Assert::IsTrue(std::count_if(found->regionSupport.begin(),found->regionSupport.end(),
+                        [](unsigned count){return count>=2;})>=3,
+                        L"Both competing boundaries independently satisfy distributed edge qualification.");
+                }
+                for(unsigned side=0;side<4;++side) {
+                    const auto& edges=observed.edges[side];
+                    Assert::IsTrue(std::is_sorted(edges.begin(),edges.end(),[&](const auto& a,const auto& b) {
+                        return side<2?a.coordinate<b.coordinate:a.coordinate>b.coordinate;
+                    }),L"Qualification must walk from the enclosing edge toward nested alternatives.");
+                }
+                const auto outer=ReconcileSourcePictureCandidate(observed,Bounds(960,540,0,80,960,460));
+                Assert::IsTrue(outer.evaluated);Assert::IsTrue(outer.contradicted);
+                Assert::IsFalse(observed.rectangleAvailable,
+                    L"Every nested eligible rectangle still excludes the positively observed exterior header.");
+                Assert::IsTrue(std::all_of(top.begin(),top.end(),[](const auto& edge){return edge.contradicted;}));
+                if(connected) {
+                    const auto inner=ReconcileSourcePictureCandidate(observed,Bounds(960,540,0,160,960,460));
+                    Assert::IsTrue(inner.evaluated);
+                    Assert::IsFalse(inner.contradicted,
+                        L"A deeper clip merges the header into one excluded panel; absence of a new count-based contradiction cannot revoke the outer witness.");
+                }
+            }
+        }
+        TEST_METHOD(SourcePicturePerpendicularDarkBoundaryFactsPreventFalseInsetGeometry)
+        {
+            for(bool transpose:{false,true})for(bool mirror:{false,true})for(int variant=0;variant<3;++variant) {
+                SourcePictureFrame frame(transpose?540:960,transpose?960:540,variant==1?70:64);
+                auto fill=[&](int left,int top,int right,int bottom,int luma) {
+                    if(mirror) {const int oldLeft=left;left=960-right;right=960-oldLeft;}
+                    if(transpose)frame.Fill(top,left,bottom,right,luma);
+                    else frame.Fill(left,top,right,bottom,luma);
+                };
+                fill(280,70,960,470,300);
+                if(variant==0)fill(0,70,280,470,70);
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Assert::IsTrue(observed.complete);
+                if(variant==0) {
+                    Assert::IsTrue(observed.outcome==SourcePictureOutcome::Partial);
+                    Assert::IsFalse(observed.rectangleAvailable,
+                        L"A dark strip absent from coarse topology still supports both perpendicular native boundaries; its internal bright seam is not a measured picture edge.");
+                    Assert::IsFalse(observed.canvasSupported);
+                } else {
+                    const int left=mirror?0:280,right=mirror?680:960;
+                    Exact(observed,transpose?Bounds(540,960,70,left,470,right):Bounds(960,540,left,70,right,470));
+                }
+            }
+            SourcePictureFrame original(3840,2160);
+            original.Fill(0,276,3840,1884,300);
+            original.Fill(0,276,1100,1884,70);
+            original.Caption(2,1900);
+            const auto observed=MeasureSourcePicture(original.Source());
+            Assert::IsTrue(observed.complete);
+            Assert::IsTrue(observed.outcome==SourcePictureOutcome::Partial);
+            Assert::IsFalse(observed.rectangleAvailable,
+                L"The original neutral +6-code scope strip must not publish left1100 as measured geometry, independently of crop-verifier vetoes.");
+        }
         TEST_METHOD(SourcePictureInvalidInputsCannotBecomeMeasuredBlackFrames)
         {
             SourcePictureFrame frame(960,540);frame.Fill(0,80,960,460,240);
@@ -656,6 +737,12 @@ namespace VideoProcessorTest
                     static_cast<AnalysisLumaFormat>(format),static_cast<VideoFrameEncoding>(encoding),static_cast<ColorSpace>(color),1};
                 source.range=static_cast<AnalysisLumaRange>(range);
                 Assert::IsTrue(source.IsValid(),L"Saved source must retain valid native strides/layout/precision.");
+                if(boundedWorker) {
+                    // Match live worker ownership; move the already loaded native
+                    // buffer rather than making an extra full-raster copy.
+                    auto owner=std::make_shared<std::vector<uint8_t>>(std::move(bytes));
+                    source.data=owner->data();source.backingOwner=owner;
+                }
                 // No sidecar retained crop is passed into the measurement.
                 const auto started=std::chrono::steady_clock::now();
                 SourcePictureObservation direct;SourcePictureDetectionResult active;
@@ -748,6 +835,7 @@ namespace VideoProcessorTest
                         " trusted="+std::to_string(evidence.trustedBounds.left)+","+std::to_string(evidence.trustedBounds.top)+"-"+
                         std::to_string(evidence.trustedBounds.right)+","+std::to_string(evidence.trustedBounds.bottom)+
                         " bounded_worker_24ms="+std::to_string(boundedWorker)+
+                        " geometry_reused="+std::to_string(active.geometryReused)+" geometry_lookup_ms="+std::to_string(active.geometryLookupMs)+
                         " combined_measure_verify_darkness_ms="+std::to_string(elapsed)+" reason="+evidence.reason).c_str());
                 }
                 if(!matches) {
@@ -778,6 +866,29 @@ namespace VideoProcessorTest
                 " active_verification="+std::to_string(verify)+" frames="+std::to_string(count)+" mismatches="+std::to_string(mismatches)+" samples="+std::to_string(samples)+
                 " total_ms="+std::to_string(totalMs)+" peak_ms="+std::to_string(peakMs)).c_str());
             Assert::IsTrue(count>0);Assert::AreEqual(size_t(0),mismatches);
+        }
+        TEST_METHOD(SourcePicturePausedPixelsRemainDeterministicAcrossCancelledWorkAndSourceIds)
+        {
+            SourcePictureFrame frame(960,540);
+            frame.Fill(0,66,960,474,200,530,490);
+            frame.Fill(0,450,960,474,68);
+            const int starts[4]={0,250,525,750},lengths[4]={240,63,35,49};
+            for(int region=0;region<4;++region)frame.Fill(starts[region],450,starts[region]+lengths[region],474,240,530,490);
+            const auto expected=Bounds(960,540,0,66,960,474);
+            for(uint64_t generation=1;generation<=12;++generation) {
+                auto source=frame.Source();source.generation=generation;
+                AnalysisEvaluationBudget cancelled([](void*) {return true;},nullptr);
+                const auto missing=DetectSourcePictureForWorker(source,&cancelled);
+                Assert::IsFalse(missing.evidence.physicalEdges.evaluated);
+                Assert::IsFalse(missing.evidence.physicalEdges.estimateAvailable);
+                Assert::AreEqual(int(SourcePictureOutcome::NotMeasured),int(missing.observation->outcome));
+                const auto completed=DetectSourcePictureForWorker(source);
+                Exact(*completed.observation,expected);
+                Assert::IsTrue(completed.evidence.physicalEdges.estimateAvailable);
+                Assert::AreEqual(generation,completed.evidence.physicalEdges.sourceGeneration);
+                Assert::AreEqual(66,completed.evidence.physicalEdges.estimate.top);
+                Assert::AreEqual(474,completed.evidence.physicalEdges.estimate.bottom);
+            }
         }
         TEST_METHOD(SourcePictureMeasuresUnevenlyLitScopeFromDistributedNativeEdges)
         {
@@ -892,6 +1003,119 @@ namespace VideoProcessorTest
                     }),L"Faint first-picture uncertainty must remain explicit rather than vanish or move to a stronger interior edge.");
                 }
             }
+        }
+        TEST_METHOD(OwnedPictureFactsRequireExactPixelsAndCompatibleInterpretation)
+        {
+            auto frame=std::make_shared<SourcePictureFrame>(640,360);
+            frame->Fill(0,40,640,320,220);
+            auto source=frame->Source();source.backingOwner=frame;
+            ActivePictureFrameIdentity id;id.transportGeneration=2;id.sourceFormatGeneration=7;
+            id.analysisDomainKey=11;id.acceptedSequence=10;
+            auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(source));
+            Assert::IsTrue(facts->complete);
+            OwnedSourcePictureObservationCache cache;Assert::IsTrue(cache.Store(source,id,facts,3));
+            auto copy=std::make_shared<SourcePictureFrame>(*frame);
+            auto current=copy->Source();current.backingOwner=copy;current.generation=9;
+            auto next=id;next.acceptedSequence=11;next.sourceFrameNumber=200;next.captureTimestamp=900;
+            const auto reused=cache.Find(current,next,3);
+            Assert::IsTrue(bool(reused));Assert::AreEqual(uint64_t(9),reused->sourceGeneration);
+            Assert::AreEqual(uint64_t(7),facts->sourceGeneration);
+            Exact(*reused,Bounds(640,360,0,40,640,320));
+            // A single changed source pixel outside the measured rectangle is
+            // still a different source and must not reuse geometry facts.
+            copy->bytes[0]^=64;
+            Assert::IsFalse(bool(cache.Find(current,next,3)));copy->bytes[0]^=64;
+            for(int variant=0;variant<19;++variant) {
+                auto altered=current;auto key=next;uint64_t continuity=3;
+                if(variant==0)++key.transportGeneration;
+                if(variant==1)++key.sourceFormatGeneration;
+                if(variant==2)++key.analysisDomainKey;
+                if(variant==3)++continuity;
+                if(variant==4)key.acceptedSequence=9;
+                if(variant==5)altered.range=AnalysisLumaRange::Full;
+                if(variant==6)altered.chromaRowBytes+=2;
+                if(variant==7)altered.colorspace=ColorSpace::UNKNOWN;
+                if(variant==8)altered.rgbBitAlignment=1;
+                if(variant==9)altered.width-=2;
+                if(variant==10)altered.height-=2;
+                if(variant==11)altered.format=AnalysisLumaFormat::P010;
+                if(variant==12)altered.encoding=VideoFrameEncoding::UNKNOWN;
+                if(variant==13)--altered.dataBytes;
+                if(variant==14)key.transportGeneration=0;
+                if(variant==15)key.sourceFormatGeneration=0;
+                if(variant==16)key.analysisDomainKey=0;
+                if(variant==17)key.acceptedSequence=0;
+                if(variant==18)altered.generation=0;
+                Assert::IsFalse(bool(cache.Find(altered,key,continuity)));
+            }
+            current.backingOwner.reset();Assert::IsFalse(bool(cache.Find(current,next,3)));
+
+            // Valid padded planes allow row-stride and byte-extent changes to
+            // remain valid source views, so their misses are interpretation
+            // isolation rather than merely invalid-input rejection.
+            const size_t paddedPitch=source.rowBytes+16;
+            auto paddedBytes=std::make_shared<std::vector<uint8_t>>(paddedPitch*720+16,0);
+            for(int row=0;row<720;++row)
+                std::copy_n(frame->bytes.data()+source.rowBytes*row,source.rowBytes,paddedBytes->data()+paddedPitch*row);
+            auto padded=source;padded.data=paddedBytes->data();padded.dataBytes=paddedBytes->size();
+            padded.rowBytes=padded.chromaRowBytes=paddedPitch;padded.backingOwner=paddedBytes;
+            auto paddedFacts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(padded));
+            Exact(*paddedFacts,Bounds(640,360,0,40,640,320));
+            Assert::IsTrue(cache.Store(padded,id,paddedFacts,3));
+            auto reinterpreted=padded;reinterpreted.rowBytes=source.rowBytes;
+            Assert::IsTrue(reinterpreted.IsValid());Assert::IsFalse(bool(cache.Find(reinterpreted,next,3)));
+            reinterpreted=padded;reinterpreted.dataBytes-=16;
+            Assert::IsTrue(reinterpreted.IsValid());Assert::IsFalse(bool(cache.Find(reinterpreted,next,3)));
+            auto newBytes=std::make_shared<std::vector<uint8_t>>(*paddedBytes);
+            auto samePadded=padded;samePadded.data=newBytes->data();samePadded.backingOwner=newBytes;
+            Assert::IsTrue(bool(cache.Find(samePadded,next,3)));
+            (*newBytes)[paddedPitch-1]^=1; // luma row padding, never a picture sample
+            Assert::IsFalse(bool(cache.Find(samePadded,next,3)));
+            Exact(MeasureSourcePicture(samePadded),Bounds(640,360,0,40,640,320));
+        }
+        TEST_METHOD(OwnedPictureFactsCacheRejectsMissingWorkAndBoundsRetainedStorage)
+        {
+            auto frame=std::make_shared<SourcePictureFrame>(640,360);
+            frame->Fill(0,40,640,320,220);
+            auto source=frame->Source();source.backingOwner=frame;
+            ActivePictureFrameIdentity id;id.transportGeneration=1;id.sourceFormatGeneration=7;
+            id.analysisDomainKey=1;id.acceptedSequence=1;
+            auto facts=std::make_shared<SourcePictureObservation>(MeasureSourcePicture(source));
+            OwnedSourcePictureObservationCache cache;Assert::IsTrue(cache.Store(source,id,facts));
+            Assert::AreEqual(source.dataBytes,cache.RetainedSourceBytes());
+            auto incomplete=std::make_shared<SourcePictureObservation>(*facts);incomplete->complete=false;
+            Assert::IsFalse(cache.Store(source,id,incomplete));Assert::AreEqual(size_t(0),cache.RetainedSourceBytes());
+            Assert::IsFalse(bool(cache.Find(source,id)));
+            auto oversize=source;oversize.dataBytes=OwnedSourcePictureObservationCache::MaximumSourceBytes+1;
+            Assert::IsFalse(cache.Store(oversize,id,facts));
+            auto unowned=source;unowned.backingOwner.reset();Assert::IsFalse(cache.Store(unowned,id,facts));
+            auto wrongGeneration=std::make_shared<SourcePictureObservation>(*facts);++wrongGeneration->sourceGeneration;
+            Assert::IsFalse(cache.Store(source,id,wrongGeneration));
+            Assert::IsTrue(cache.Store(source,id,facts));cache.Clear();
+            Assert::AreEqual(size_t(0),cache.RetainedSourceBytes());
+        }
+        TEST_METHOD(OwnedPictureFactsUhdEqualityCostIsRecordedWithoutInventingGeometry)
+        {
+            auto frame=std::make_shared<SourcePictureFrame>(3840,2160);
+            frame->Fill(0,263,3840,1897,220);
+            auto source=frame->Source();source.backingOwner=frame;
+            ActivePictureFrameIdentity id;id.transportGeneration=1;id.sourceFormatGeneration=7;
+            id.analysisDomainKey=1;id.acceptedSequence=1;
+            const auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(source));
+            OwnedSourcePictureObservationCache cache;Assert::IsTrue(cache.Store(source,id,facts));
+            auto copy=std::make_shared<SourcePictureFrame>(*frame);
+            auto current=copy->Source();current.backingOwner=copy;
+            double total=0,peak=0;
+            for(unsigned repeat=0;repeat<12;++repeat) {
+                ++id.acceptedSequence;
+                const auto started=std::chrono::steady_clock::now();
+                const auto reused=cache.Find(current,id);
+                const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+                total+=ms;peak=std::max(peak,ms);
+                Assert::IsTrue(bool(reused));Exact(*reused,Bounds(3840,2160,0,263,3840,1897));
+            }
+            Logger::WriteMessage((std::string("Owned UHD source equality: bytes=")+std::to_string(source.dataBytes)+
+                " repetitions=12 avg_ms="+std::to_string(total/12)+" peak_ms="+std::to_string(peak)).c_str());
         }
     };
 

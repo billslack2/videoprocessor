@@ -253,6 +253,7 @@ struct ActivePictureFrameIdentity;
 // A source-bound summary of already completed spatial measurement AND verified
 // discarded bands. Metadata tags and historical geometry cannot mint it.
 class ActivePictureCurrentSpatialCropProof {
+    friend class ActivePictureDecisionTimeline;
 public:
     bool Matches(const ActivePictureObservation& observation) const;
 private:

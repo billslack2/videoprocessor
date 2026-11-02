@@ -37,9 +37,9 @@ if (-not $MagewellSdkRoot) { $MagewellSdkRoot=$env:MagewellSdkRoot }
 if (-not $MagewellSdkRoot) { $MagewellSdkRoot=Join-Path $Root '3rdparty\magewell\SDKv3' }
 if (-not (Test-Path -LiteralPath (Join-Path $MagewellSdkRoot 'Include\LibMWCapture\MWCapture.h'))) { throw 'Pass -MagewellSdkRoot with the official capture SDK used by the runtime build.' }
 $MagewellSdkRoot=[IO.Path]::GetFullPath($MagewellSdkRoot)
-# Detector mode is fixed at process startup inside the native renderer. Record
-# the inherited setting, and use a separate VSTest process/run for each mode.
-$testEnvironment=[ordered]@{sourcePictureDetector=($env:VP_SOURCE_PICTURE_DETECTOR -eq '1');sourcePictureShadow=$env:VP_SOURCE_PICTURE_SHADOW}
+# Runtime geometry always uses the common source-picture producer. Preserve the
+# inherited legacy switch as diagnostics only; it cannot select another detector.
+$testEnvironment=[ordered]@{sourcePictureDetector=$true;legacyDetectorEnvironment=$env:VP_SOURCE_PICTURE_DETECTOR;sourcePictureShadow=$env:VP_SOURCE_PICTURE_SHADOW}
 $plan=Get-VpCriticalTestPlan $Root
 . (Join-Path $Root 'tools/runtime_iteration.ps1')
 $plan=Get-VpIterationTestPlan $plan $Lane $Methods

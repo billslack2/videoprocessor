@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include <ActivePictureDecisionTimeline.h>
 #include <ActivePictureEvidence.h>
+#include <SourcePictureDetector.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 #include <vprenderer/AlphaQueuePolicy.h>
@@ -50,7 +51,7 @@ namespace Tests
 				source.data=reinterpret_cast<const uint8_t*>(pixels.data()); source.dataBytes=pixels.size()*sizeof(uint16_t);
 				source.width=3840; source.height=2160; source.rowBytes=source.chromaRowBytes=3840*sizeof(uint16_t);
 				source.format=AnalysisLumaFormat::P010; source.generation=11;
-				evidence=ExtractActivePictureEvidence(source);
+				evidence=DetectSourcePictureForWorker(source).evidence;
 				retention=EvaluateActivePicturePresentationRetention(source,BufferedScope());
 			}
 			AnalysisLumaSource Source() const
@@ -505,7 +506,7 @@ namespace Tests
                     for (int y=top;y<bottom;++y)
                         std::fill(frame.pixels.begin()+size_t(y)*3840+left,
                             frame.pixels.begin()+size_t(y)*3840+right,uint16_t(512<<6));
-                    frame.evidence=ExtractActivePictureEvidence(frame.Source());
+                    frame.evidence=DetectSourcePictureForWorker(frame.Source()).evidence;
                     frame.retention=EvaluateActivePicturePresentationRetention(frame.Source(),BufferedScope());
                 }
                 const auto samples=BufferedSamples(frames);

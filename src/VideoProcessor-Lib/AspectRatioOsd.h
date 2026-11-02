@@ -78,7 +78,7 @@ public:
         const bool spatial = reading.detectorKind != ActivePictureDetectorKind::Legacy;
         if (reading.physicalEvaluated &&
             reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE) {
-            rows.detected = L"Canvas estimate (blank margins unresolved; source spatial experimental)";
+            rows.detected = L"Canvas estimate (blank margins unresolved; source spatial)";
         } else if (reading.available && !reading.provisional) {
             wchar_t numeric[64] = {};
             swprintf_s(numeric, L"%.2f:1", reading.ratio);
@@ -91,7 +91,7 @@ public:
                     reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT ? L"source extent" : L"strong edge");
                 rows.detected += geometry;
             }
-            if (spatial) rows.detected += L" (source spatial experimental)";
+            if (spatial) rows.detected += L" (source spatial)";
         } else if (reading.physicalEvaluated)
             rows.detected = L"Unknown (boundaries unresolved)";
         else if (reading.provisional)
@@ -99,8 +99,8 @@ public:
         if (spatial && !reading.available &&
             reading.physicalConfidence != PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE)
             rows.detected = reading.physicalEvaluated ?
-                L"Unknown (boundaries unresolved; source spatial experimental)" :
-                L"Pending (source spatial experimental)";
+                L"Unknown (boundaries unresolved; source spatial)" :
+                L"Pending (source spatial)";
         // The producing mode belongs to the current observation, not to its
         // retained predecessor. Missing current evidence stays visible.
         if (!spatial && (reading.physicalEvaluated || reading.provisional))
@@ -117,7 +117,7 @@ public:
                 rows.retained += geometry;
             } else rows.retained += L" [stable]";
             if (stable.detectorKind != ActivePictureDetectorKind::Legacy)
-                rows.retained += L" (source spatial experimental)";
+                rows.retained += L" (source spatial)";
             // Observe() also supports legacy non-physical consumers.
             if (!spatial && !reading.physicalEvaluated && !reading.provisional)
                 rows.detected += L" (legacy)";
@@ -203,6 +203,7 @@ public:
         bool available, bool provisional)
     {
         Source(generation);
+        if (!CanPublishCurrent(sequence)) return;
         m_value.detectedSequence = sequence;
         m_value.available = available && !provisional && std::isfinite(ratio) && ratio > 0.0;
         m_value.ratio = m_value.available ? ratio : 0.0;
@@ -220,6 +221,7 @@ public:
         ActivePictureDetectorKind detectorKind = ActivePictureDetectorKind::Legacy)
     {
         Source(generation);
+        if (!CanPublishCurrent(sequence)) return;
         m_value.detectedSequence = sequence;
         m_value.physicalEvaluated = evaluated;
         m_value.detectorKind = detectorKind;
@@ -241,7 +243,11 @@ public:
     }
     void ClearDetection()
     {
-        Observe(m_value.sourceGeneration, m_value.detectedSequence, 0.0, false, false);
+        // Explicit invalidation resets current ordering while preserving the
+        // independently submitted presentation state.
+        m_value.available=false;
+        m_value.detectedSequence=0;
+        Observe(m_value.sourceGeneration, 0, 0.0, false, false);
         m_value.stableDetection={};
         m_stableLastObservedSequence=0;
         m_stableLastQualifiedSequence=0;
@@ -266,6 +272,16 @@ public:
     void ClearPresentation() { m_value.inUseAvailable = false; m_value.inUseState = PictureAspectUse::UNAVAILABLE; }
     const DetectedPictureAspect& Read() const { return m_value; }
 private:
+    bool CanPublishCurrent(uint64_t sequence) const
+    {
+        // A queued completion cannot roll reporting back to an older source.
+        // Once this immutable source has a qualified result, a pending duplicate
+        // or competing second interpretation cannot replace it. Newer sources
+        // still publish missing/inconclusive work, and the current source may
+        // upgrade to its first qualified completion without a new frame.
+        return sequence>=m_value.detectedSequence &&
+            !(sequence && sequence==m_value.detectedSequence && m_value.available);
+    }
     void ObserveStableDetection(uint64_t sequence)
     {
         auto& stable=m_value.stableDetection;

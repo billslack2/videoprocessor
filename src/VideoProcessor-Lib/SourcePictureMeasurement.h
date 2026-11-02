@@ -10,6 +10,9 @@ struct SourcePictureEdgeCandidate {
     int coordinate=0, minimum=0, maximum=0;
     unsigned support=0, coverage=0;
     std::array<unsigned,4> regionSupport{};
+    // Exact supporting native ray positions, indexed over 128 fixed probes.
+    // Merging retains their union together with the coordinate uncertainty.
+    std::array<uint64_t,2> supportingRays{};
     bool strong=false, contradicted=false, overlayLike=false;
 };
 struct SourcePictureComponent {

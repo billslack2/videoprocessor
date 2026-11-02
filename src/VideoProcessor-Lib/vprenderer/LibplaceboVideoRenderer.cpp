@@ -284,59 +284,15 @@ namespace
         }
     }
 
-    PhysicalPictureEdgeObservation ObservePhysicalSourceForWorker(const AnalysisLumaSource& source,
-        ActivePictureEvidence& evidence,const ActivePictureFrameIdentity& identity)
-    {
-        if(SourcePictureDetectorEnabled())return evidence.physicalEdges;
-        const auto started=SteadyClock::now();
-        if(!ActivePictureMeasurementCache::CompletePhysicalObservationIfMissing(source,evidence))
-            return evidence.physicalEdges;
-        const auto physical=evidence.physicalEdges;
-        const double ms=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
-        auto record=AnalysisTraceRecord(identity,nullptr,"physical-source-observation",physical.reason);
-        record.flags=(physical.evaluated?1u:0u)|(physical.estimateAvailable?2u:0u);
-        record.counters[0]=physical.samples;record.metrics[0]=ms;
-        AnalysisTraceRect(record.measured,physical.estimate);
-        AnalysisTraceRect(record.candidate,physical.conservativeBounds);
-        AnalysisDiagnosticTrace::Emit(record);
-        struct Interval { uint64_t tick=GetTickCount64(),count=0,strong=0,exhausted=0,samples=0;
-            double totalMs=0,peakMs=0; };
-        static thread_local Interval stats;
-        ++stats.count;stats.strong+=physical.estimateAvailable?1u:0u;
-        stats.exhausted+=physical.reason &&
-            std::strcmp(physical.reason,"physical-edge-optional-budget-exhausted")==0?1u:0u;
-        stats.samples+=physical.samples;stats.totalMs+=ms;stats.peakMs=std::max(stats.peakMs,ms);
-        const auto now=GetTickCount64();
-        if(now-stats.tick>=2000) {
-            DebugLog::Log("VP physical source observation: generation=%llu source=%llu observations=%llu strong=%llu unknown=%llu budget_exhaustions=%llu samples=%llu total_ms=%.3f peak_ms=%.3f crop_options=independent",
-                identity.transportGeneration,identity.acceptedSequence,stats.count,stats.strong,
-                stats.count-stats.strong,stats.exhausted,stats.samples,stats.totalMs,stats.peakMs);
-            stats={};stats.tick=now;
-        }
-        return physical;
-    }
-
-
-
     template<class Measurement>
     void PopulateNativeSourceMeasurement(Measurement& result,const PreparedAnalysisFrame& prepared,
         const ActivePictureFrameIdentity& identity) {
         const auto started=SteadyClock::now();
         result.domainKey=prepared.domainKey;result.source=prepared.source;result.identity=identity;
         result.identity.analysisDomainKey=prepared.domainKey;
-        if(SourcePictureDetectorEnabled()) {
-            auto detected=DetectPreparedSourcePictureBounded(prepared.source,result.identity);
-            result.evidence=std::move(detected.evidence);
-            // This result belongs to the exact prepared source job, not a raw
-            // geometry hint. Future consumers still validate the complete job key.
-            result.evidence.currentSourceIdentity=result.identity;
-            result.evidence.currentSourceIdentityAvailable=true;
-            result.sourcePictureObservation=std::move(detected.observation);
-        } else {
-            result.evidence=ExtractActivePictureEvidence(prepared.source);
-            result.evidence.physicalEdges=ObservePhysicalSourceForWorker(prepared.source,result.evidence,result.identity);
-            result.sourcePictureObservation=ObserveSourcePictureShadow(prepared,result.identity,result.evidence);
-        }
+        auto detected=DetectPreparedSourcePictureBounded(prepared.source,result.identity);
+        result.evidence=std::move(detected.evidence);
+        result.sourcePictureObservation=std::move(detected.observation);
         result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
         if(SourcePictureDetectorEnabled()) {
             auto trace=AnalysisTraceRecord(result.identity,nullptr,"source-picture-job",result.evidence.reason.c_str());
@@ -12723,7 +12679,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (nlsGeometryAvailable && nlsGeometrySourceGeneration == analysisSource.generation &&
 				nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED)
 			{
-				const auto handoff = ResolveActivePictureRetentionHandoff(analysisSource,
+				const auto handoff = pixelMeasurements.RetentionHandoff(
 					presentationBeforeObservation, retentionEvidence, nlsGeometry);
 				if (handoff.refreshed)
 					DebugLog::Log("Alpha crop handoff: sequence=%llu generation=%llu old_base=%d,%d-%d,%d new_base=%d,%d-%d,%d refreshed=1 valid=%d bands_safe=%d outward_visible=%d",
@@ -24467,14 +24423,14 @@ void LibplaceboVideoRenderer::PrimePictureProofMeasurements(
             const auto caption=AlphaSourceCrop::NominateInwardCaptionReference(
                 frame.source,raw->evidence,base,model);
             if (caption.valid) request(MakePreparedPictureEvidenceKey(PictureKind::InwardCaption,
-                frame,identity,base,policy,continuity,queued.analysis->lookahead,caption));
+                frame,identity,base,policy,continuity,queued.analysis->lookahead,caption,raw));
         }
         request(MakePreparedPictureEvidenceKey(PictureKind::Retention,
-            frame,identity,base,policy,continuity,queued.analysis->lookahead));
+            frame,identity,base,policy,continuity,queued.analysis->lookahead,{},raw));
         if (relativeEligible && model.HasQualifiedNativeAspectPair(base,raw->evidence.trustedBounds,
                 identity.transportGeneration,scene,tick))
             request(MakePreparedPictureEvidenceKey(PictureKind::RelativeContrast,
-                frame,identity,base,policy,continuity,queued.analysis->lookahead));
+                frame,identity,base,policy,continuity,queued.analysis->lookahead,{},raw));
     }
 }
 
@@ -24624,8 +24580,7 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
         const auto identity=queued.activePictureIdentity;
         auto currentExpected=identity;currentExpected.analysisDomainKey=prepared.domainKey;
         const bool currentRaw=CurrentLookaheadMeasurement(prepared,currentExpected,ready);
-        const bool currentPhysical=currentRaw && (SourcePictureDetectorEnabled() ||
-            (ready->evidence.physicalEdges.evaluated && ready->evidence.physicalEdges.sourceGeneration==prepared.source.generation));
+        const bool currentPhysical=currentRaw && SourcePictureMeasurementWorkComplete(ready->evidence);
         if(currentPhysical || slot->pending.load(std::memory_order_acquire))continue;
         if(SourcePictureDetectorEnabled()) {
             std::unique_lock<std::mutex> owner(m_queueMutex,std::try_to_lock);
@@ -24642,18 +24597,16 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
             identity.acceptedSequence,minimumSequence,[prepared,identity,slot] {
                 auto expected=identity;expected.analysisDomainKey=prepared.domainKey;
                 if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
-                    if (CurrentLookaheadMeasurement(prepared,expected,ready)) {
-                        auto upgraded=*ready;
-                        upgraded.evidence.physicalEdges=ObservePhysicalSourceForWorker(
-                            prepared.source,upgraded.evidence,upgraded.identity);
-                        return upgraded; // No mandatory native/darkness/proof scan.
-                    }
+                    if (CurrentLookaheadMeasurement(prepared,expected,ready) &&
+                        SourcePictureMeasurementWorkComplete(ready->evidence))return *ready;
                 static thread_local const bool prioritySet=
                     SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                 (void)prioritySet;
                 QueuedFrame::LookaheadMeasurement result;
                 PopulateNativeSourceMeasurement(result,prepared,identity);
                 return result;
+            },[prepared,currentExpected,slot,ready](std::shared_ptr<const QueuedFrame::LookaheadMeasurement> result) {
+                PublishPreparedOutwardRaw<QueuedFrame::LookaheadMeasurement>(prepared,currentExpected,slot,ready,std::move(result));
             });
     }
 }
@@ -25190,17 +25143,14 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         // Fresh raster scans run independently. A missing result means no
         // lookahead proof for this window; playback continues with live rules.
         const auto measured=QueuedFrame::LookaheadWorker::Ready(queued.analysis->lookahead);
-        if(!CurrentLookaheadMeasurement(prepared,analysisIdentity,measured)) {
+        if(!CurrentLookaheadMeasurement(prepared,analysisIdentity,measured) ||
+            !SourcePictureMeasurementWorkComplete(measured->evidence)) {
             if(allowBackgroundDispatch)m_impl->lookaheadMeasurementWorker.Submit(queued.analysis->lookahead,
                 analysisIdentity.transportGeneration,analysisIdentity.acceptedSequence,
                 previewFrames.front().activePictureIdentity.acceptedSequence,[prepared,analysisIdentity,slot=queued.analysis->lookahead] {
                     if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
-                        if (CurrentLookaheadMeasurement(prepared,analysisIdentity,ready)) {
-                            auto upgraded=*ready;
-                            upgraded.evidence.physicalEdges=ObservePhysicalSourceForWorker(
-                                prepared.source,upgraded.evidence,upgraded.identity);
-                            return upgraded;
-                        }
+                        if (CurrentLookaheadMeasurement(prepared,analysisIdentity,ready) &&
+                            SourcePictureMeasurementWorkComplete(ready->evidence))return *ready;
                     // Optional CPU work yields to capture/presentation under load.
                     static thread_local const bool prioritySet=
                         SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
@@ -25208,6 +25158,8 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     QueuedFrame::LookaheadMeasurement result;
                     PopulateNativeSourceMeasurement(result,prepared,analysisIdentity);
                     return result;
+                },[prepared,analysisIdentity,slot=queued.analysis->lookahead,measured](std::shared_ptr<const QueuedFrame::LookaheadMeasurement> result) {
+                    PublishPreparedOutwardRaw<QueuedFrame::LookaheadMeasurement>(prepared,analysisIdentity,slot,measured,std::move(result));
                 });
             if(subtitlePreviewEnabled && allowBackgroundDispatch)
                 m_impl->QueueSubtitleMeasurement(queued.frame,state,analysisIdentity,
@@ -25261,7 +25213,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         const auto component=[&](PictureKind kind,
             const AlphaSourceCrop::InwardCaptionReference& caption=AlphaSourceCrop::InwardCaptionReference{}) {
             const auto key=MakePreparedPictureEvidenceKey(kind,prepared,analysisIdentity,proofBase,
-                lookaheadPolicyGeneration,subtitleContinuityGeneration,queued.analysis->lookahead,caption);
+                lookaheadPolicyGeneration,subtitleContinuityGeneration,queued.analysis->lookahead,caption,measured);
             auto ready=queued.analysis->pictureProof.Lookup(key);
             currentStage=PictureStage(kind);
             m_impl->lookaheadPerformance.RecordCache(currentStage,bool(ready),!expired());
@@ -25693,34 +25645,31 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 						candidate.activePictureIdentity.acceptedSequence ==
 						preview.identity.acceptedSequence;
 				});
-			if (queued == m_frameQueue.end() ||
-				(queued->activePicturePreviewAnalyzed && queued->activePicturePreviewDomainKey==preview.identity.analysisDomainKey))
-				continue;
-			queued->activePicturePreviewAnalyzed = true;
+            if(queued==m_frameQueue.end())continue;
+            ActivePictureFrameDecision decision;
+            const bool alreadyRegistered=queued->activePicturePreviewAnalyzed &&
+                queued->activePicturePreviewDomainKey==preview.identity.analysisDomainKey;
+            if(alreadyRegistered) {
+                if(!m_activePictureTimeline.CompleteLookaheadSpatialVerification(
+                    preview.identity,preview.observation,preview.nearBlackEvaluated,preview.nearBlack,
+                    configured,availableLookahead,decision))continue;
+            } else {
+                if(!m_activePictureTimeline.TrackLookaheadEvidence(preview.identity,preview.observation,
+                    preview.nearBlackEvaluated,preview.nearBlack)) {
+                    DebugLog::Log("Alpha active-picture look-ahead evidence rejected: generation=%llu source=%llu reason=stale_or_conflicting_identity",
+                        static_cast<unsigned long long>(preview.identity.transportGeneration),
+                        static_cast<unsigned long long>(preview.identity.acceptedSequence));
+                    continue;
+                }
+                m_activePictureTimeline.SubmitPreparedLookaheadObservation(preview.identity,preview.observation,
+                    configured,availableLookahead,decision);
+            }
+            queued->activePicturePreviewAnalyzed=true;
             queued->activePicturePreviewDomainKey=preview.identity.analysisDomainKey;
-			queued->activePicturePreviewEvidence = preview.evidence;
-			queued->activePicturePreviewNearBlackEvaluated = preview.nearBlackEvaluated;
-			queued->activePicturePreviewNearBlack = preview.nearBlack;
-			if (!m_activePictureTimeline.TrackLookaheadEvidence(
-				preview.identity, preview.observation,
-				preview.nearBlackEvaluated, preview.nearBlack))
-			{
-				DebugLog::Log(
-					"Alpha active-picture look-ahead evidence rejected: generation=%llu source=%llu reason=stale_or_conflicting_identity",
-					static_cast<unsigned long long>(
-						preview.identity.transportGeneration),
-					static_cast<unsigned long long>(
-						preview.identity.acceptedSequence));
-				continue;
-			}
-            // The native worker already measured these immutable source pixels.
-            // Scan cadence must not discard adjacent proof that is ready before
-            // this pending source is displayed. Model/identity vetoes still apply.
-			ActivePictureFrameDecision decision;
-			if (!m_activePictureTimeline.SubmitPreparedLookaheadObservation(
-				preview.identity, preview.observation, configured,
-				availableLookahead, decision))
-				continue;
+            queued->activePicturePreviewEvidence=preview.evidence; // Raw geometry remains immutable.
+            queued->activePicturePreviewNearBlackEvaluated=preview.nearBlackEvaluated;
+            queued->activePicturePreviewNearBlack=preview.nearBlack;
+            if(!decision.transition.publish)continue;
 			auto target = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
 				[&decision](const QueuedFrame& candidate)
 				{

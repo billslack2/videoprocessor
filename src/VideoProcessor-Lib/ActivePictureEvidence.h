@@ -159,6 +159,9 @@ struct ActivePictureEvidence
 {
     // Exact-current native candidate certificate; not transferable to other bounds.
     ActivePictureCandidateVerification candidateVerification;
+    // Scheduling disposition only: completed negative verification is complete too.
+    // This flag never authorizes crop, retention or reuse on another source.
+    bool sourceCandidateVerificationComplete = false;
     PhysicalPictureEdgeObservation physicalEdges;
     ActivePictureBlackReference blackReference;
     ActivePictureDetectorKind detector=ActivePictureDetectorKind::Legacy;
