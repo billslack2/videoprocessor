@@ -816,3 +816,34 @@ currently selects Classic. Physical playback acceptance and the broader AR issue
 remain open.
 
 [Repair and qualification evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage16-classic-retarget.json).
+
+### Failed repair replay and corrected subtitle contract (2026-11-02)
+
+The 129457b0 live replay still shrank. The user observed it during ordinary playback
+with controls hidden and while pausing/showing controls. A captured Classic initial
+caption entry at 16:00:50.408Z O366/S217 keeps native [0,256,3840,1904] but submits
+[0,256,3840,2014]. This is a different case from the repaired retarget gap.
+After the verified switch to Reconstruction, many composed outputs retain the native
+picture, but later missing inspection/composition falls back to a wider raw aperture.
+Classic's 20-second capture cooldown suppressed the later Reconstruction screenshot.
+The complete failed replay log, configuration, state and Classic image pair are saved.
+
+The user clarified the governing requirement: Off may retain raw captions by changing
+the aperture. Classic and all processed Black/Reconstruction modes must preserve the
+movie's aspect and dimensions. Earlier temporary-widening safety rules and tests
+conflict with that requirement. This is now an explicit fixed-native-canvas contract;
+true independently measured picture changes remain pixel-derived and still win.
+
+An undeployed candidate enforces same-size caption-safe Classic translation, requires
+current advanced preparation/composition, and carries source-specific pan constraints
+through temporal snapshots. Pending output cannot be represented as submitted or
+renew source/caption lifetime. Its first integration tests caught an acquired-target
+leak and skipped shader warmup dispatch in the new wait path; both are corrected.
+Two focused real-renderer cases now pass, including the live profile switch, and all
+1,027 native contracts pass. Tests now reject temporary wider caption envelopes;
+profile changes also rearm incident capture while retaining the session image cap.
+Full matching Release qualification is running. The candidate remains undeployed;
+prolonged waiting, UI behavior and live acceptance remain failures to resolve, not
+proof of success. No additional user capture is requested at this stage.
+
+[Replay and contract evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage17-fixed-canvas-contract.json).
