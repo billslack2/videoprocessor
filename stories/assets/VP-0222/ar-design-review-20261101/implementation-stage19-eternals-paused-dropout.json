@@ -1,0 +1,61 @@
+{
+  "status": "reproduced-no-production-change",
+  "userClarification": "Detected-AR label drops out; picture size does not change",
+  "deployedCommit": "01c1e13ff7f8bb6b418a083f16a3d3debd76ac23",
+  "input": "3840x2160 native V210, paused Eternals",
+  "capturedFrames": 96,
+  "uniqueFrameGroups": {
+    "723f3f7106919cc3919c2432b5c1d732f0a78df4416c8a0aebb712bb0cc9df65": {
+      "representative": "frame-000001.bin",
+      "count": 24,
+      "outcomes": {
+        "distributed-source-boundaries-with-dark-terminal-continuity": 24
+      }
+    },
+    "ce6b3092907a30396df0c0cdc5efa454e02da16aac273e4bbcab7f537821e55f": {
+      "representative": "frame-000002.bin",
+      "count": 24,
+      "outcomes": {
+        "insufficient-distributed-edge-support": 24
+      }
+    },
+    "888dfa9074e231146d88ee1a55e102fbf3c30eb41647ba1cec08d256ac42c35a": {
+      "representative": "frame-000003.bin",
+      "count": 24,
+      "outcomes": {
+        "insufficient-distributed-edge-support": 24
+      }
+    },
+    "852494a6a92601fc04c1cb0a64276619e9a098113518a8957f4f92b72a8cced9": {
+      "representative": "frame-000004.bin",
+      "count": 24,
+      "outcomes": {
+        "insufficient-distributed-edge-support": 24
+      }
+    }
+  },
+  "measurementOutcomes": {
+    "insufficient-distributed-edge-support": 540,
+    "distributed-source-boundaries-with-dark-terminal-continuity": 180
+  },
+  "verifiedReplay": {
+    "test": "SourcePictureOptionalNativeCaptureReplay",
+    "exactQualifiedBinary": true,
+    "frames": 4,
+    "mismatches": 3,
+    "expectedEdges": [
+      0,
+      0,
+      3840,
+      2160
+    ],
+    "runtimePictureResizingObserved": false
+  },
+  "diagnosis": "Dark right terminal continuity depends on an early-gradient significance and per-region sign test. Luma changes of only -4/0/+4 between four repeated input variants cross these gates. Three variants return Partial; one returns full raster. No current opposite crop or subtitle is involved.",
+  "limitations": [
+    "The 20-second recorded output stays full raster; this is a measurement-availability dropout, not a picture resize.",
+    "Do not force full-raster measurement or erase Unknown without valid current pixel evidence.",
+    "No repair or new deployment is claimed."
+  ],
+  "next": "Use the four exact variants as a regression; evaluate a pixel-qualified stable tracking/terminal proof while retaining raised-flat-matte and true boundary-change rejection."
+}

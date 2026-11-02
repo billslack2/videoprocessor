@@ -900,3 +900,38 @@ Classic, including controls. Live playback acceptance and native boundary refine
 remain open. Private captures and detailed test evidence stay outside the repository.
 
 [Fixed-canvas implementation and deployment evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage18-subtitle-native-canvas.json).
+
+### Eternals paused detection-label dropout reproduced (2026-11-02)
+
+The user reports improved subtitle behavior, then a paused Eternals scene with
+intermittent AR loss. They explicitly clarify that the detected-AR label drops out;
+the picture does not change size. The screenshot is timecoded 18:21:29.840Z,
+C97BD648 G1 O816/S816, Classic, showing full-raster output and current unknown
+boundaries with retained 16:9. The 20-second recorded output stays full raster.
+This is a native measurement-availability defect, distinct from subtitle resizing.
+
+The native diagnostic contains 96 frames in four byte-identical repeating groups,
+24 instances each. Source luma differs by only -4/0/+4 codes among those variants.
+All 24 samples of one variant measure full 3840x2160 through dark-terminal
+continuity; the other three variants consistently return insufficient distributed
+edge support. Across the full trace: 180 full-raster measurements and 540 partial
+measurements. A CPU replay through the exact qualified 01c1e13f test binary reproduces
+three mismatches out of the four unique source frames, with current worker verification.
+No additional capture is needed to reproduce the classifier problem.
+
+The missing side is the dark right terminal. The existing early-gradient t-score
+is 13.55 for the passing variant, versus 6.77, 1.87 and 6.28 for the others, against
+a threshold of 9; regional sign gates also change. Large-depth current continuity
+support remains 124-128 of 128 rays. This locates a quantization-sensitive proof,
+but does not justify lowering its gates: existing flat raised matte counterexamples
+must still fail. Do not force a full-raster measurement, conflate retained output
+with current measurement, or merely hide uncertainty to make the label steady.
+
+All source frames, original sidecars, screenshot, diagnostic trace, current settings,
+log snapshot and failing CPU replay are preserved privately under
+`E:\codex\videoprocessor\evidence\eternals-paused-20261102-1323`.
+A clean investigation worktree was created from fetched current beta and fast-forwarded
+to the deployed 01c1e13f history. No production code, configuration or runtime change
+has been made for this new defect; repair and live acceptance remain open.
+
+[Paused dropout evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage19-eternals-paused-dropout.json).
