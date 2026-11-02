@@ -4152,9 +4152,70 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
             const int reference=leading?std::max(0,hint-margin-3):std::min(depth-1,hint+margin+2);
             const int referenceDirection=terminalHint?(leading?1:-1):(leading?-1:1);
             std::array<std::array<AnalysisLumaSample,positions>,5> strip;
-            for(int r=0;r<5;++r)
-                if(!sampleRow(std::max(0,std::min(depth-1,reference+referenceDirection*2*r)),strip[r]))
+            int terminalPrefix=0;
+            const bool subsampledDepth=vertical?source.format==AnalysisLumaFormat::P010:
+                (source.format==AnalysisLumaFormat::P010 || source.format==AnalysisLumaFormat::P210 ||
+                 source.format==AnalysisLumaFormat::NativeYuv422 || source.format==AnalysisLumaFormat::DecodedDolbyVision422);
+            const auto exteriorChromaDepth=[&](int prefix) {
+                const int coordinate=leading?prefix:depth-prefix;
+                return prefix-(subsampledDepth && (coordinate&1)?1:0);
+            };
+            std::array<std::array<AnalysisLumaSample,positions>,12> terminalRows;
+            if(terminalHint) {
+                // Fit references outside the candidate, rather than reaching
+                // through a small encoded margin into current picture pixels.
+                for(int offset=0;offset<12;++offset)
+                    if(!sampleRow(leading?offset:depth-1-offset,terminalRows[offset]))
+                        return unknown("physical-edge-source-unavailable");
+                for(int boundary=1;boundary<=9 && !terminalPrefix;++boundary) {
+                    int support[4]={},weakSupport[4]={};
+                    for(int i=0;i<positions;++i) {
+                        int low[3]={1023,1023,1023},high[3]={};
+                        for(int offset=0;offset<boundary;++offset) {
+                            const auto& pixel=terminalRows[offset][i];
+                            const int code[3]={pixel.luma,pixel.chromaU,pixel.chromaV};
+                            for(int channel=0;channel<3;++channel) {
+                                if(channel && offset>=exteriorChromaDepth(boundary))continue;
+                                low[channel]=std::min(low[channel],code[channel]);
+                                high[channel]=std::max(high[channel],code[channel]);
+                            }
+                        }
+                        bool matte=high[0]<=104;
+                        // A subsampled-chroma footprint may cross
+                        // the edge. Luma locates shallow candidates; the ordinary
+                        // color-reference and continuation proof still follows.
+                        for(int channel=0;channel<(exteriorChromaDepth(boundary)?3:1);++channel)
+                            matte=matte && high[channel]-low[channel]<=12;
+                        const int out=terminalRows[boundary-1][i].luma;
+                        const int jump=int(terminalRows[boundary][i].luma)-out;
+                        const int next=int(terminalRows[boundary+1][i].luma)-out;
+                        const int after=int(terminalRows[boundary+2][i].luma)-out;
+                        if(matte && jump>4 && jump<16 && next>4 && next<16 && after>4 && after<16)
+                            ++weakSupport[i/8];
+                        if(matte && jump>=std::max(16,4*(high[0]-low[0])+4) &&
+                            next>=jump/2 && after>=jump/2)++support[i/8];
+                    }
+                    // Do not fit a real faint picture collar into the matte.
+                    if(broadSupport(weakSupport))return unknown("physical-edge-earlier-low-contrast-picture");
+                    if(broadSupport(support))terminalPrefix=boundary;
+                }
+            }
+            for(int r=0;r<5;++r) {
+                if(terminalPrefix) {
+                    strip[r]=terminalRows[r*(terminalPrefix-1)/4];
+                    if(exteriorChromaDepth(terminalPrefix)>0) {
+                        // Leave the boundary-adjacent chroma pair out of the
+                        // reference because it may include an inside pixel.
+                        const auto& color=terminalRows[r*(exteriorChromaDepth(terminalPrefix)-1)/4];
+                        for(int i=0;i<positions;++i) {
+                            strip[r][i].chromaU=color[i].chromaU;
+                            strip[r][i].chromaV=color[i].chromaV;
+                        }
+                    }
+                }
+                else if(!sampleRow(std::max(0,std::min(depth-1,reference+referenceDirection*2*r)),strip[r]))
                     return unknown("physical-edge-source-unavailable");
+            }
             std::array<std::array<int,3>,positions> spread{};
             std::array<std::array<int,16>,3> centers{},noiseSamples{};
             int referenceCount=0;
@@ -4165,9 +4226,19 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                 for(int channel=0;channel<3;++channel) {
                     std::sort(values[channel],values[channel]+3);
                     // Three-row median absolute deviation ignores one corrupted
-                    // fit row; the two independent holdouts must still agree.
+                    // fit row; exterior holdouts must still agree. A shallow
+                    // prefix instead uses its complete measured color spread.
                     spread[i][channel]=std::min(values[channel][1]-values[channel][0],
                         values[channel][2]-values[channel][1]);
+                    if(terminalPrefix) {
+                        int low=1023,high=0;
+                        for(int offset=0;offset<(channel?exteriorChromaDepth(terminalPrefix):terminalPrefix);++offset) {
+                            const auto& pixel=terminalRows[offset][i];
+                            const int code=channel==0?pixel.luma:channel==1?pixel.chromaU:pixel.chromaV;
+                            low=std::min(low,code);high=std::max(high,code);
+                        }
+                        spread[i][channel]=std::max(0,high-low);
+                    }
                 }
                 matte[i]=strip[1][i];matte[i].luma=values[0][1];
                 matte[i].chromaU=values[1][1];matte[i].chromaV=values[2][1];
@@ -4233,10 +4304,12 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
             for(int i=0;i<positions;++i) {
                 const int sample[3]={matte[i].luma,matte[i].chromaU,matte[i].chromaV};
                 bool qualified=sample[0]<=104;
-                for(int channel=0;channel<3;++channel) {
+                const int referenceChannels=terminalPrefix && !exteriorChromaDepth(terminalPrefix)?1:3;
+                for(int channel=0;channel<referenceChannels;++channel) {
                     qualified=qualified && spread[i][channel]<=noise[channel] &&
                         std::abs(sample[channel]-center[channel])<=2*noise[channel];
-                    // These rows were not used to fit this column's reference.
+                    // Exterior reference checks; shallow prefixes can reuse
+                    // rows and rely on independent spatial support.
                     for(int holdout=3;holdout<5;++holdout) {
                         const auto& p=strip[holdout][i];
                         const int value=channel==0?p.luma:channel==1?p.chromaU:p.chromaV;
@@ -4335,7 +4408,7 @@ PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
                 }
                 if(verifiedWeakBoundary && !structuredReference)return unknown("physical-edge-earlier-low-contrast-picture");
             }
-            const int low=std::max(3,nominal-margin),high=std::min(depth-3,nominal+margin);
+            const int low=std::max(leading?1:3,nominal-margin),high=std::min(leading?depth-3:depth-1,nominal+margin);
             // Share these source samples across fine candidates and gap checks.
             // A short bright graphic can lie inside the fine search interval.
             const int first=std::max(0,leading?low-3:low-25);

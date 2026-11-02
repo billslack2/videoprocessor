@@ -54,7 +54,7 @@ public:
 		int target = -1;
 	};
 
-    struct Rows { std::wstring inUse, detected; };
+    struct Rows { std::wstring inUse, detected, retained = L"Unavailable"; };
     // Raw observations remain exact; the separate detection estimate has its own anchored history.
     Rows Update(const DetectedPictureAspect& reading) { return Format(reading); }
     void Reset() {}
@@ -74,20 +74,6 @@ public:
             if (reading.inUseState == PictureAspectUse::HELD) status = L"held";
             else if (reading.inUseState == PictureAspectUse::PRESENTATION) status = L"presentation";
             rows.inUse = Named(reading.inUseRatio, status);
-        }
-        const auto& stable=reading.stableDetection;
-        if(stable.available && std::isfinite(stable.ratio) && stable.ratio>0.0) {
-            wchar_t numeric[64]={};swprintf_s(numeric,L"%.2f:1",stable.ratio);
-            rows.detected=numeric;
-            if(stable.physicalBoundsAvailable) {
-                wchar_t geometry[128]={};
-                swprintf_s(geometry,L" [%d,%d..%d,%d; stable]",stable.physicalBounds[0],
-                    stable.physicalBounds[1],stable.physicalBounds[2],stable.physicalBounds[3]);
-                rows.detected+=geometry;
-            } else rows.detected+=L" [stable]";
-            if(stable.detectorKind!=ActivePictureDetectorKind::Legacy)
-                rows.detected+=L" (source spatial experimental)";
-            return rows;
         }
         const bool spatial = reading.detectorKind != ActivePictureDetectorKind::Legacy;
         if (reading.physicalEvaluated &&
@@ -115,6 +101,28 @@ public:
             rows.detected = reading.physicalEvaluated ?
                 L"Unknown (boundaries unresolved; source spatial experimental)" :
                 L"Pending (source spatial experimental)";
+        // The producing mode belongs to the current observation, not to its
+        // retained predecessor. Missing current evidence stays visible.
+        if (!spatial && (reading.physicalEvaluated || reading.provisional))
+            rows.detected += L" (legacy)";
+        const auto& stable = reading.stableDetection;
+        if (stable.available && std::isfinite(stable.ratio) && stable.ratio > 0.0) {
+            wchar_t numeric[64] = {};
+            swprintf_s(numeric, L"%.2f:1", stable.ratio);
+            rows.retained = numeric;
+            if (stable.physicalBoundsAvailable) {
+                wchar_t geometry[128] = {};
+                swprintf_s(geometry, L" [%d,%d..%d,%d; stable]", stable.physicalBounds[0],
+                    stable.physicalBounds[1], stable.physicalBounds[2], stable.physicalBounds[3]);
+                rows.retained += geometry;
+            } else rows.retained += L" [stable]";
+            if (stable.detectorKind != ActivePictureDetectorKind::Legacy)
+                rows.retained += L" (source spatial experimental)";
+            // Observe() also supports legacy non-physical consumers.
+            if (!spatial && !reading.physicalEvaluated && !reading.provisional)
+                rows.detected += L" (legacy)";
+            rows.detected = L"Current: " + rows.detected + L"; retained: " + rows.retained;
+        }
         return rows;
     }
 

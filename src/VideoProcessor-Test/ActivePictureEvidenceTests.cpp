@@ -9115,16 +9115,27 @@ namespace VideoProcessorTest
                 AnalysisLumaSource source{bytes.data(),bytes.size(),width,height,pitch,uvPitch,
                     static_cast<AnalysisLumaFormat>(format),static_cast<VideoFrameEncoding>(encoding),static_cast<ColorSpace>(color),1};
                 source.range=static_cast<AnalysisLumaRange>(range);
+                std::ostringstream nativePoints;
+                nativePoints<<"Native sampler luma "<<capture;
+                for(int y:{0,1,4,6,7,8,2159})for(int x:{0,123,2048,3839}) {
+                    AnalysisLumaSample pixel;Assert::IsTrue(source.Sample(x,y,pixel));
+                    nativePoints<<" "<<x<<","<<y<<"="<<pixel.luma;
+                }
+                Logger::WriteMessage(nativePoints.str().c_str());
                 const bool sidecarGuardValid=top>=0 && top<bottom && bottom<=height;
                 const int guardTop=fullExpected?0:suppliedEdges?(sidecarGuardValid?top:0):254;
                 const int guardBottom=fullExpected?height:suppliedEdges?(sidecarGuardValid?bottom:height):1906;
                 // Full-source coordinates are explicit fixture expectations, not
                 // inferred from native full-raster classification or a screen.
                 // Invalid sidecar0..0 supplies no measurement authority.
-                const auto raw=fullExpected?ExtractActivePictureEvidence(source):ActivePictureEvidence{};
-                const auto* reference=fullExpected?&raw.blackReference:nullptr;
+                const auto raw=ExtractActivePictureEvidence(source);
+                const auto* reference=&raw.blackReference;
                 const auto observedStarted=std::chrono::steady_clock::now();
-                const auto observed=MeasurePhysicalPictureEdges(source,ScopePresentation(width,height,guardTop,guardBottom),nullptr,reference);
+                auto deadline=observedStarted+std::chrono::milliseconds(2);
+                const AnalysisEvaluationBudget budget([](void* context) {
+                    return std::chrono::steady_clock::now()>=*static_cast<const std::chrono::steady_clock::time_point*>(context);
+                },&deadline);
+                const auto observed=MeasurePhysicalPictureEdges(source,ScopePresentation(width,height,guardTop,guardBottom),&budget,reference);
                 const double observedMs=std::chrono::duration<double,std::milli>(
                     std::chrono::steady_clock::now()-observedStarted).count();
                 ++replayCount;replaySamples+=observed.samples;replayTotalMs+=observedMs;
@@ -9181,6 +9192,68 @@ namespace VideoProcessorTest
             }
             Assert::AreEqual(size_t(0),replayMismatches,
                 L"All supplied native frames must independently match their exact source edges and retained guard; see every logged mismatch.");
+        }
+        TEST_METHOD(ThinOneSidedSourceMarginsAreMeasuredWithoutRatioOrRetention)
+        {
+            for(bool fullChroma:{false,true})for(int side=0;side<4;++side)for(int thickness=1;thickness<=9;++thickness) {
+                P010Frame frame(640,360,16,fullChroma);frame.Fill(220,530,490);
+                const int left=side==2?thickness:0,top=side==0?thickness:0;
+                const int right=side==3?640-thickness:640,bottom=side==1?360-thickness:360;
+                frame.BlackOutside(left,top,right,bottom);
+                if(thickness==1 && (side>=2 || !fullChroma)) {
+                    // The shared pair can contain arbitrary picture chroma;
+                    // there is no independent exterior color for this margin.
+                    for(int row=0;row<frame.chromaRows;++row)for(int x=0;x<640;x+=2) {
+                        const bool shared=side==0?row==0:side==1?row==frame.chromaRows-1:side==2?x==0:x==638;
+                        if(!shared)continue;
+                        auto* uv=frame.bytes.data()+frame.pitch*(frame.height+row)+x*2;
+                        WriteCode(uv,200+(x/2+row)%5*120);WriteCode(uv+2,800-(x/2+row)%5*120);
+                    }
+                }
+                auto source=fullChroma?frame.P210Source():frame.P010Source();source.range=AnalysisLumaRange::Limited;
+                const auto raw=ExtractActivePictureEvidence(source);
+                const ActivePictureBounds raster{0,0,640,360,640,360,640.0/360,ActivePictureBounds::BarAxes::NONE};
+                const auto measured=MeasurePhysicalPictureEdges(source,raster,nullptr,&raw.blackReference);
+                Logger::WriteMessage((std::string("Thin margin side=")+std::to_string(side)+" thickness="+std::to_string(thickness)+
+                    " reason="+measured.reason+" reference="+ActivePictureBlackReferenceModeName(raw.blackReference.mode)).c_str());
+                Assert::IsTrue(measured.estimateAvailable,L"A tiny one-sided source margin needs a measurable boundary, independently of retention.");
+                Assert::AreEqual(left,measured.estimate.left);Assert::AreEqual(top,measured.estimate.top);
+                Assert::AreEqual(right,measured.estimate.right);Assert::AreEqual(bottom,measured.estimate.bottom);
+                Assert::AreEqual(double(right-left)/(bottom-top),measured.estimate.aspectRatio,1e-9);
+            }
+        }
+        TEST_METHOD(ThinMarginReferencePreservesFaintCollarsAndPartialSourceEdges)
+        {
+            const ActivePictureBounds raster{0,0,640,360,640,360,640.0/360,ActivePictureBounds::BarAxes::NONE};
+            for(int side=0;side<4;++side)for(int collar:{3,10}) {
+                P010Frame frame(640,360,0,true);frame.Fill(240,512,512);
+                for(int offset=0;offset<=collar;++offset) {
+                    const int code=offset==0?64:72;
+                    if(side==0)frame.FillRectangle(0,offset,640,offset+1,code);
+                    if(side==1)frame.FillRectangle(0,359-offset,640,360-offset,code);
+                    if(side==2)frame.FillRectangle(offset,0,offset+1,360,code);
+                    if(side==3)frame.FillRectangle(639-offset,0,640-offset,360,code);
+                }
+                const auto source=frame.P210Source();const auto raw=ExtractActivePictureEvidence(source);
+                const auto measured=MeasurePhysicalPictureEdges(source,raster,nullptr,&raw.blackReference);
+                Assert::IsFalse(measured.estimateAvailable,L"Refitting a shallow matte must never erase a sustained faint picture collar.");
+            }
+            P010Frame frame(640,360,16,true);frame.Fill(240,530,490);
+            for(int row=0;row<7;++row)frame.FillRectangle(0,row,640,row+1,64+(row%3)*4,512+(row%3)*4,512-(row%3)*4);
+            // Local exterior contamination and a dark central scene region do
+            // not erase independent matching edges in both outer regions.
+            frame.FillRectangle(260,0,380,7,200);
+            frame.FillRectangle(200,7,440,32,64);
+            const auto source=frame.P210Source();const auto raw=ExtractActivePictureEvidence(source);
+            for(int repeat=0;repeat<3;++repeat) {
+                const auto measured=MeasurePhysicalPictureEdges(source,raster,nullptr,&raw.blackReference);
+                Assert::IsTrue(measured.estimateAvailable);
+                Assert::AreEqual(7,measured.estimate.top);Assert::AreEqual(360,measured.estimate.bottom);
+            }
+            frame.Fill(240,530,490);frame.FillRectangle(0,4,640,7,64);
+            const auto interior=MeasurePhysicalPictureEdges(source,raster,nullptr,&raw.blackReference);
+            Assert::IsTrue(!interior.estimateAvailable || (interior.estimate.top==0 && interior.estimate.bottom==360),
+                L"An interior dark strip with current picture outside cannot become a source crop.");
         }
         TEST_METHOD(SeparatedOuterPictureEdgesSurviveAnOccludedCenter)
         {
@@ -9258,8 +9331,10 @@ namespace VideoProcessorTest
             Assert::AreEqual(510.0/360,measured.estimate.aspectRatio,1e-9);
             Assert::AreEqual(64,measured.conservativeBounds.left);Assert::AreEqual(576,measured.conservativeBounds.right);
             frame.FillRectangle(65,0,575,4,0,512,512);
-            Assert::IsFalse(MeasurePhysicalPictureEdges(source,guard,nullptr,&raw.blackReference).estimateAvailable,
-                L"Measured side bars do not prove unresolved dark top pixels are full-raster picture.");
+            const auto thinTop=MeasurePhysicalPictureEdges(source,guard,nullptr,&raw.blackReference);
+            Assert::IsTrue(thinTop.estimateAvailable,L"A measurable four-row margin must produce its own boundary.");
+            Assert::AreEqual(4,thinTop.estimate.top);Assert::AreEqual(360,thinTop.estimate.bottom);
+            Assert::AreEqual(65,thinTop.estimate.left);Assert::AreEqual(575,thinTop.estimate.right);
         }
         TEST_METHOD(WindowboxPhysicalObservationMeasuresBothAxesFromSourcePixels)
         {
