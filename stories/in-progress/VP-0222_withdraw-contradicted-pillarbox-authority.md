@@ -935,3 +935,53 @@ to the deployed 01c1e13f history. No production code, configuration or runtime c
 has been made for this new defect; repair and live acceptance remain open.
 
 [Paused dropout evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage19-eternals-paused-dropout.json).
+
+### Encoding-phase detector repair qualified, deployed and checked live (2026-11-02)
+
+Source `c84a216b892b8295d0ca05ce37d8533e06f7e0d3` is clean and pushed on
+`codex/eternals-paused-evidence-20261102`. The captured native v210 decoding is
+correct; RGB screenshot values are scaled/color-converted and are not source YUV
+thresholds. The actual failure is phase-sensitive spatial evidence, compounded
+by a black-reference discontinuity around 104/108 canonical ten-bit codes.
+
+The terminal proof now integrates contiguous native samples at three source
+scales. Independent early evidence and a delayed-rise guard prevent later body
+contrast from proving contact through a noisy raised matte. L-shaped perimeter
+footprints cover along-edge and inward phase variation. A one-eight-bit-equivalent
+reference allowance prevents one code step from resetting black to nominal.
+Observed low-bit spacing is diagnostic only: matrix conversion can populate low
+bits without removing larger upstream rounding variation. Current pixels, range,
+other raster contacts, distributed body continuity, topology, budget and separate
+native discard verification remain required. No ratio is forced, no temporal hold
+is added, and the OSD is not changed to hide missing measurements.
+
+The original qualified binary fails 3 of 4 unique captured variants. The final
+repair passes all 96 captured frames through actual native measurement/verification,
+all 1,033 native contracts, 16 standard and 16 beta renderer scenarios. The separate
+motion suite passes all 220 checks on each dependency. Additional mandatory tests
+cover weak four-phase edges, P210/P010/v210/8-bit YUV equivalence, raised/noisy matte
+prefixes, and limited-r210/full-RGB8 conversion under Rec.709/BT.2020 metadata.
+Failed permissive candidates are retained; a noisy-matte test exposed the separate
+reference-reset bug during iteration. Final qualification run:
+`20261102-140431-f565cdbe`. The private replay averages 2.934 ms, peaks at 4.4711 ms
+on this controlled run; this is not a universal live latency guarantee.
+
+Both matching Release renderers and host are deployed, all 28 hashes verified.
+No configuration edit was made; the active configuration hash is preserved.
+Backup: `C:\Videoprocessor\vp\backups\eternals-encoding-c84a216b-20261102-142440`.
+The player is running as 56380 and loads both deployed DLLs. Startup has three
+unavailable rows coinciding with a viewport/continuity reset. The later steady
+window, 19:26:51.323Z through 19:28:37.052Z, contains 2,536 consecutive submitted
+outputs with exact-current measurements, zero unavailable readings, and one
+measured/presented rectangle [0,0,3840,2160]. This checks current measurement,
+not merely retained output. An optional native snapshot has different bytes from
+the original corpus, so live input identity with that original paused frame is
+not assumed; exact original-corpus replay and live stability are separate evidence.
+The specific defect is repaired and checked. Broader native-boundary refinement
+and acceptance on other content remain open.
+
+Source-format/range, reference floor/threshold, phase-spacing and early/integrated
+proof diagnostics are documented in `docs/ETERNALS_PAUSED_ENCODING_VARIATION_20261102.md`.
+Private frames, logs and failed runs remain outside the repository.
+
+[Encoding-phase repair evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage20-encoding-phase-repair.json).

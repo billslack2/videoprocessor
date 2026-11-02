@@ -1,0 +1,29 @@
+{
+  "process": 56380,
+  "outputs": 2536,
+  "firstTimecode": "19:26:51.323Z 870C8A52 G2 O2700 S2703",
+  "lastTimecode": "19:28:37.052Z 870C8A52 G2 O5235 S5238",
+  "sourceRange": [
+    2703.0,
+    5238.0
+  ],
+  "measured": 2536,
+  "unavailable": 0,
+  "measurementBounds": [
+    "0,0,3840,2160"
+  ],
+  "presentationBounds": [
+    "0,0,3840,2160"
+  ],
+  "configSha": "26B5BACB253DB172B0418AA51BD0A2F3CB29047E3934D099098D0FF16F31074C",
+  "loadedRenderers": [
+    {
+      "ModuleName": "VideoProcessorVPRenderer.dll",
+      "FileName": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "ModuleName": "VideoProcessorVPRendererBeta.dll",
+      "FileName": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    }
+  ]
+}

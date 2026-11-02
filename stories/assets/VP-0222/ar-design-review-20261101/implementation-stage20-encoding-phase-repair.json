@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "status": "qualified-deployed-specific-dropout-repaired",
+  "source": {
+    "commit": "c84a216b892b8295d0ca05ce37d8533e06f7e0d3",
+    "dirty": false,
+    "fingerprint": "b4a058c5ce52b67de06f9d85ba43ccc9e206ed19d3c2c39b5ee8645b680160ce",
+    "label": "c84a216b892b",
+    "build": "c84a216b892b8295d0ca05ce37d8533e06f7e0d3"
+  },
+  "branch": "codex/eternals-paused-evidence-20261102",
+  "originalEvidence": "E:\\codex\\videoprocessor\\evidence\\eternals-paused-20261102-1323",
+  "rootCauses": [
+    "Single-distance every-other-pixel terminal sampling aliased encoding phases",
+    "Perimeter sampling and hard dark-reference cutoff could reset floor 104 to nominal 64 when the sampled value became 108"
+  ],
+  "repair": [
+    "Contiguous same-frame native samples at three spatial scales",
+    "Independent early contrast and delayed-rise safeguard reject noisy raised matte prefixes",
+    "L-shaped native perimeter footprint covers along-edge and inward variation",
+    "One eight-bit-equivalent rounding allowance in canonical ten-bit reference codes; code spacing is diagnostic rather than an uncertainty bound",
+    "Additional source-format/range/black-reference/proof-score trace fields"
+  ],
+  "controls": [
+    "Existing exact-source, range, budget, three raster contact, body continuity, no-inset and separate discard-verification requirements remain",
+    "No temporal smoothing, retained-as-current measurement, screen ratio or standard aspect forcing"
+  ],
+  "tests": {
+    "initialCaptureReplayFrames": 4,
+    "initialMismatches": 3,
+    "finalExactPrivateCaptureFrames": 96,
+    "finalMismatches": 0,
+    "nativeContracts": 1033,
+    "standardRendererScenarios": 16,
+    "betaRendererScenarios": 16,
+    "motionStandard": 220,
+    "motionBeta": 220,
+    "nativeReplayAverageMs": 2.934,
+    "nativeReplayPeakMs": 4.4711,
+    "formatCoverage": [
+      "P210",
+      "P010",
+      "native v210",
+      "8-bit HDYC",
+      "native limited r210",
+      "full RGB8 BGRA"
+    ],
+    "matrixCoverage": [
+      "Rec.709 neutral RGB/YUV range conversion",
+      "BT.2020 neutral RGB/YUV range conversion"
+    ]
+  },
+  "qualificationRun": "20261102-140431-f565cdbe",
+  "live": {
+    "process": 56380,
+    "exactCurrentSubmittedOutputs": 2536,
+    "unavailable": 0,
+    "bounds": [
+      0,
+      0,
+      3840,
+      2160
+    ],
+    "firstTimecode": "19:26:51.323Z 870C8A52 G2 O2700 S2703",
+    "lastTimecode": "19:28:37.052Z 870C8A52 G2 O5235 S5238",
+    "startupReacquisition": "Three unavailable rows at viewport/continuity reset; subsequent steady window has none",
+    "originalPixelIdentity": "Optional post-deployment native snapshot does not byte-match original corpus; same original frame identity is not assumed for the live window. Exact original 96-frame replay is separate evidence."
+  },
+  "configurationEdits": [],
+  "backup": "C:\\Videoprocessor\\vp\\backups\\eternals-encoding-c84a216b-20261102-142440",
+  "remaining": "Broader native boundary refinement and new content acceptance remain open; this source-specific paused-label defect has deterministic replay and steady live validation."
+}
