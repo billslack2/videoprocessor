@@ -2,7 +2,7 @@
   "sourceCommit": "8b49f560e1607be0f2136f25b598ea8dfbec69ec",
   "branch": "codex/coherent-source-measurement-20261101",
   "parent": "2dc6ca0217be23dd9e4362dec86ea8818038c770",
-  "status": "Focused reproduction repaired; full clean-commit qualification running",
+  "status": "Full standard passed; beta exposed queued caption readiness and unprepared-output safety gaps; follow-up in progress",
   "deploymentPerformed": false,
   "configurationChanged": false,
   "focused": {
@@ -24,8 +24,23 @@
     "tests": "Original translated-pose and24-source checks retained; required native count1008"
   },
   "fullQualification": {
-    "state": "Running",
-    "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261102-000112-e441a669"
+    "state": "Failed",
+    "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261102-000112-e441a669",
+    "standard": {
+      "passed": 1023,
+      "native": 1008,
+      "actualRenderer": 15,
+      "total": 1023
+    },
+    "beta": {
+      "failed": [
+        "BetaRendererDecodedDvUnknownInputRepeatsOneCompleteOutput",
+        "BetaRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker"
+      ],
+      "passed": 13,
+      "total": 15,
+      "reason": "After a cue/continuity change, unprepared outputs retained the native crop and clipped untranslated caption pixels."
+    }
   },
   "motion": {
     "state": "Pending"
