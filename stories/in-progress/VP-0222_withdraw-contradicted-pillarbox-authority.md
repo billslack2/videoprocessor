@@ -700,3 +700,42 @@ No computer input automation or native source frame capture was used in this wor
 The underlying AR/reconstruction defect remains open; this is observability work.
 
 [Evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage13-telemetry.json).
+
+### Recording correlation and automatic incident collection (2026-11-02)
+
+The user requested enough telemetry and screenshots to turn visible failures into
+regressions, then requested a visible recording timecode. Runtime `9cd3e5a2` adds
+UTC plus instance/generation/output/source IDs to the video and exact per-output
+logs when enabled. Requested/effective mode and shader preparation state/key are
+recorded. The late timecode pass uses a separate renderer and leaves the cached
+movie image clean so repeated outputs get fresh timestamps.
+
+Suspected aperture widening, measured/accepted geometry disagreement or automatic
+advanced composition loss may save a failure image and a two-second follow-up,
+with up to512 prior decisions. Readback uses DONOTFLUSH/DONOTWAIT, at most2 pending
+copies and one writer; captures have a20-second cooldown and a12-image session
+limit. Images are at most1920pixels wide and never capture native input frames.
+The report tool can look up the entire visible code and index incident images.
+Tool-only commit `62d28af2` separates correlation rows from actual decision changes;
+it lives in an isolated worktree and leaves the qualified runtime pin unchanged.
+
+All1,019 native contracts and16 standard scenarios passed (1,035total), followed
+by all16 beta scenarios, in controlled qualification without a concurrent live
+VP renderer. Earlier same-pin runs under concurrent VP load failed a180-second
+shader preparation deadline, and one also failed initial Generated caption viewport
+coverage. A single recorded compile pass took94seconds; the exact case passed in
+isolation. Failures are retained; causation is unproven and no assertions or
+budgets were loosened. The targeted Config recording controls and report checks
+pass. A broader Config test stops at the unrelated existing tab-sizing assertion.
+
+The matching Release host, both renderer variants, Config app and discovery helper
+were backed up, deployed and all33 file hashes verified. Only the two requested
+logging options were added to the active configuration; selected profiles are
+preserved. Backup: `C:\Videoprocessor\vp\backups\recording-9cd3e5a2-20261102-093158`.
+Live verification parsed8,582 records without malformed entries or reported loss;
+`14:35:00.042Z 123AA9E6 G1 O10352 S10358` resolves to exactly one submitted output
+with current facts and the panel rendered. Automatic capture is armed. The current
+input is a near-black/full-raster title state, so no incident image has yet been
+observed. A fresh reproduction was requested. The underlying AR defect remains open.
+
+[Recording evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage14-recording.json).

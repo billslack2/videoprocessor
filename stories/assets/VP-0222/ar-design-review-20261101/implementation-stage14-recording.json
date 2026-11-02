@@ -1,0 +1,78 @@
+{
+  "runtimeCommit": "9cd3e5a2c085b639f518040e5cf54f87e74faeee",
+  "reportToolCommit": "62d28af2",
+  "status": "Qualified runtime deployed; recording enabled; automatic incident capture armed",
+  "primaryArDefect": "Open",
+  "changes": [
+    "Visible UTC/instance/generation/output/source timecode and an exact record for every output when enabled.",
+    "Late dedicated output renderer keeps the timecode independent of movie processing and outside the clean repeat cache.",
+    "Requested/effective subtitle mode, preparation state/key and shader failure recorded.",
+    "Suspected widening, geometry disagreement or automatic composition loss can capture failure/after images with up to 512 prior decisions.",
+    "Two nonblocking GPU readbacks, one PNG writer, 20-second cooldown, 12 images per renderer session, maximum 1920-pixel image width.",
+    "Exact timecode lookup and incident image/context index; correlation rows distinguished from actual state changes."
+  ],
+  "finalQualification": {
+    "run": "20261102-092506-c28c4369",
+    "native": 1019,
+    "betaTotal": 16,
+    "condition": "No concurrent live VP renderer",
+    "standardTotal": 1035,
+    "betaPassed": 16,
+    "standardPassed": 1035
+  },
+  "priorEvidence": {
+    "baselinePass": "618673db full run 20261102-083623-b5e2c3e0",
+    "isolatedCasePass": "20261102-090125-c2929888",
+    "failedRuns": [
+      "20261102-084905-7c33a3a5",
+      "20261102-091131-8b4cee1a"
+    ],
+    "failures": [
+      "Black UHD V210 stayed in shader preparation Pending beyond the unchanged 180-second budget. One recorded pass took 94 seconds.",
+      "Second concurrent run also failed Generated persistent-caption initial viewport coverage."
+    ],
+    "interpretation": "Same pinned code passes controlled qualification; correlation with concurrent live VP load is not proof of causation. No timeout or preservation assertion was weakened."
+  },
+  "configurationChecks": {
+    "reportTest": "Passed exact code lookup, incident deduplication and correlation/change separation",
+    "toolchains": {
+      "toolsetIsolation": "E:\\codex\\videoprocessor\\evidence\\three-body-reconstruction-20261102-0738\\config-toolset-isolation.targets",
+      "qtVersion": "6.8.3",
+      "native": "14.29.30133",
+      "qt": "14.51.36231"
+    },
+    "targetedRecordingControls": "Passed save/reopen/defaults/enhanced gating on final pin",
+    "broadConfigTest": "Stopped at pre-existing grouped-tab compact-sizing assertion before new controls; failure preserved"
+  },
+  "deployment": {
+    "backup": "C:\\Videoprocessor\\vp\\backups\\recording-9cd3e5a2-20261102-093158",
+    "selectedProfilesPreserved": true,
+    "filesVerified": 33,
+    "configurationEdits": [
+      "[logging] video_timecode: true",
+      "[logging] incident_screenshots: true"
+    ],
+    "receipt": "deployment-9cd3e5a2.json"
+  },
+  "live": {
+    "submitted": true,
+    "automaticImagesObserved": 0,
+    "malformedRecords": 0,
+    "reportedDrops": 0,
+    "captureStatus": "Armed; current input is a near-black full-raster title state with no native candidate, so no incident was triggered",
+    "nativeInputFramesCaptured": false,
+    "exactMatches": 1,
+    "reportedTruncation": 0,
+    "correlationRecords": 8582,
+    "decisionChangesInWindow": 0,
+    "configProcess": 55888,
+    "timecode": "14:35:00.042Z 123AA9E6 G1 O10352 S10358",
+    "reproductionRequested": true,
+    "currentSourceFacts": true,
+    "parsedRecords": 8582,
+    "timecodeDrawn": true,
+    "process": 63012
+  },
+  "documentation": "docs/PRESENTATION_DECISION_TELEMETRY.md",
+  "report": "E:\\codex\\videoprocessor\\evidence\\three-body-reconstruction-20261102-0738\\recording-live-report-events"
+}

@@ -1,0 +1,7 @@
+Presentation report: structured
+Source: E:\codex\videoprocessor\evidence\three-body-reconstruction-20261102-0738\recording-live-9cd3e5a2.log
+Records: 8582; decision changes: 0; per-output correlations: 8582; malformed/unsupported records: 0
+Last reported cumulative async losses by transport: dropped=0 truncated=0. Missing loss reports do not prove zero loss.
+Video timecode: 14:35:00.042Z 123AA9E6 G1 O10352 S10358; exact records=1
+Matched decision: near-black title episode latched full-raster presentation; scan=not-analyzed; preparation=composition-failed,geometry-missing,geometry-generation-mismatch,geometry-untrusted,retention-generation-mismatch,retention-source-mismatch
+Latest changes (see timeline.csv for complete chronology):
