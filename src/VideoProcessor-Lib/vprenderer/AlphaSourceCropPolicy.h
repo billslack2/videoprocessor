@@ -1531,6 +1531,10 @@ namespace AlphaSourceCrop
 		std::string reason;
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
         NativePresentationCertificate nativePresentation;
+        // An unprocessed source is withheld as a whole; it cannot resize the movie or clip its caption.
+        bool waitForSubtitleProcessing=false;
+        bool subtitleCanvasApplied=false, subtitleTranslationRange=false;
+        int subtitleMinimumTranslation=0, subtitleMaximumTranslation=0;
 	};
 
 
@@ -1939,6 +1943,7 @@ namespace AlphaSourceCrop
     ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
         const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding);
 
+    enum class SubtitleCanvasMode : uint8_t { OFF, CLASSIC, BLACK, RECONSTRUCTION };
     enum class CaptionObservationState : uint8_t { UNKNOWN, PRESENT, ABSENT };
     struct CurrentCaptionObservation
     {
@@ -1966,6 +1971,14 @@ namespace AlphaSourceCrop
         // Live timed engage state; presentation safety does not change its clock or target.
         bool classicTranslationEngaging=false;
         CurrentCaptionObservation captionObservation;
+        // Live processing profile and exact current confirmed caption, distinct
+        // from native measurement and the historical movement-controller lease.
+        SubtitleCanvasMode subtitleCanvasMode=SubtitleCanvasMode::OFF;
+        ActivePictureBounds confirmedCaptionBounds;
+        // Exact current raw candidate is preservation-only, never confirmation.
+        ActivePictureBounds currentTextCandidate;
+        ActivePictureBounds fixedNativeViewport;
+        int captionEdgeMarginPixels=0;
         // An exact current independently confirmed native expansion can own
         // preservation without acquiring caption/UI presentation authority.
         OutwardPictureConfirmationState nativeOutwardPictureProof;

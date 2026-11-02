@@ -6969,11 +6969,178 @@ namespace AlphaSourceCrop
         return true;
     }
 
+    static bool ResolveProcessedSubtitleCanvas(const PresentationRecoveryInput& input,
+        UncertainPicturePresentationDecision& result)
+    {
+        const auto& c=input.crop;const auto& contract=c.acceptedNativeCrop;const auto& n=contract.bounds;
+        if(input.subtitleCanvasMode==SubtitleCanvasMode::OFF || !c.automaticCropEnabled ||
+            !contract.available || contract.sourceGeneration!=c.frameSourceGeneration || !contract.acceptedSourceSequence ||
+            contract.acceptedSourceSequence>c.frameSourceSequence || contract.sourceFormatKey!=c.frameSourceFormatKey ||
+            contract.analysisDomainKey!=c.frameAnalysisDomainKey || !ValidBounds(n,c.rasterWidth,c.rasterHeight) ||
+            c.fullRasterPresentationAuthoritative || HasCurrentNativePicturePreservation(input))return false;
+        result.nativeCrop=n;result.presentation={};result.presentation.sourceBounds=n;
+        result.presentation.applyCrop=true;result.presentation.owner=DecisionOwner::TRUSTED_CROP;
+        result.presentation.subtitleCanvasApplied=true;
+        auto& d=result.presentation;
+        const auto wait=[&](const char* reason) {
+            d.waitForSubtitleProcessing=true;d.reason=reason;return true;
+        };
+        if(!HasAcceptedNativeCrop(c))return wait("native canvas context pending; keep the last complete movie canvas");
+        const auto& o=input.captionObservation;
+        const bool emptyBands=input.measurementCurrent && input.retentionEvaluated && input.excludedBandsPixelSafe &&
+            input.retentionSourceGeneration==c.frameSourceGeneration && input.retentionSourceSequence==c.frameSourceSequence &&
+            SameTrustedCropContract(input.retentionBounds,n) &&
+            (!c.currentVisibleBoundsAvailable || (c.currentVisibleSourceGeneration==c.frameSourceGeneration &&
+             c.currentVisibleSourceSequence==c.frameSourceSequence && SameTrustedCropContract(c.currentVisibleBase,n) &&
+             ValidBounds(c.currentVisibleBounds,c.rasterWidth,c.rasterHeight) && ContainedBounds(n,c.currentVisibleBounds)));
+        const bool current=o.sourceGeneration==c.frameSourceGeneration && o.sourceSequence==c.frameSourceSequence &&
+            o.presentationEpoch==input.presentationEpoch && input.presentationEpoch==c.framePresentationEpoch &&
+            o.sourceFormatKey==c.frameSourceFormatKey && o.analysisDomainKey==c.frameAnalysisDomainKey;
+        const bool advanced=input.subtitleCanvasMode!=SubtitleCanvasMode::CLASSIC;
+        const auto expected=input.subtitleCanvasMode==SubtitleCanvasMode::BLACK?PreparedNativeMode::BLACK:
+            input.subtitleCanvasMode==SubtitleCanvasMode::RECONSTRUCTION?PreparedNativeMode::RECONSTRUCTION:PreparedNativeMode::NONE;
+        if(c.subtitlePresentationMode!=expected)return wait("subtitle profile context changed; keep the last complete movie canvas");
+        const bool composed=HasCurrentSubtitleCompositionPresentation(c) || HasCurrentPreparedSubtitlePresentation(c);
+        const bool rawCurrent=c.currentVisibleBoundsAvailable && input.measurementCurrent && input.retentionEvaluated &&
+            input.retentionSourceGeneration==c.frameSourceGeneration && input.retentionSourceSequence==c.frameSourceSequence &&
+            SameTrustedCropContract(input.retentionBounds,n) && c.currentVisibleSourceGeneration==c.frameSourceGeneration &&
+            c.currentVisibleSourceSequence==c.frameSourceSequence && SameTrustedCropContract(c.currentVisibleBase,n) &&
+            ValidBounds(c.currentVisibleBounds,c.rasterWidth,c.rasterHeight);
+        const bool bothBars=rawCurrent && c.currentVisibleBounds.top<n.top && c.currentVisibleBounds.bottom>n.bottom;
+        if(advanced && composed) {
+            d.reason="processed subtitle preserves the fixed native movie canvas";
+        } else if(advanced && c.initialSubtitleShaderBuild) {
+            // Preserve the existing initial-build exception: playback may show
+            // the native canvas before subtitle shaders are ready. This grants
+            // neither caption completion nor erasure/cleanup ownership.
+            d.reason="initial subtitle shader build preserves native movie size; caption processing pending";
+        } else if(!advanced && bothBars) {
+            // Classic cannot preserve both bars in one native-size window.
+            // Bottom content wins explicitly; top content never widens it.
+            const auto viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)?input.fixedNativeViewport:n;
+            const int margin=std::max(0,input.captionEdgeMarginPixels);
+            int minimum=std::max(-n.top,c.currentVisibleBounds.bottom+margin-viewport.bottom);
+            int maximum=c.rasterHeight-n.bottom;
+            auto bottom=input.currentTextCandidate;
+            if(current && o.state==CaptionObservationState::PRESENT)bottom=input.confirmedCaptionBounds;
+            if(ValidBounds(bottom,c.rasterWidth,c.rasterHeight) && bottom.bottom>n.bottom) {
+                if(bottom.left<viewport.left || bottom.right>viewport.right)
+                    return wait("bottom content requires relocation; no same-size Classic window is available");
+                minimum=std::max(minimum,bottom.bottom+margin-viewport.bottom);
+                // A union spanning both bars must not constrain the top edge.
+                if(bottom.top>=n.top)maximum=std::min(maximum,bottom.top-margin-viewport.top);
+            }
+            minimum=(minimum+1)&~1;maximum&=~1;
+            if(minimum>maximum)return wait("bottom content requires relocation before the fixed Classic canvas can be submitted");
+            int requested=c.verticalTranslationActive?c.verticalTranslationPixels:0;
+            const auto& a=input.submittedScopeAnchor;const auto& prior=a.submittedPresentation;
+            if(IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,input.presentationEpoch,
+                c.rasterWidth,c.rasterHeight) && SameTrustedCropContract(a.crop,n) &&
+                a.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey && a.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey &&
+                a.submittedPresentationAvailable && prior.left==n.left && prior.right==n.right &&
+                prior.bottom-prior.top==n.bottom-n.top && prior.top>n.top)
+                requested=std::max(requested,prior.top-n.top);
+            const int shift=std::max(minimum,std::min(requested,maximum));
+            d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+            d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+            d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+            d.subtitleTranslationRange=true;d.subtitleMinimumTranslation=minimum;d.subtitleMaximumTranslation=maximum;
+            d.reason="Classic bottom content wins when both bars are occupied; movie canvas size is unchanged";
+        } else if(emptyBands && (!current || o.state!=CaptionObservationState::PRESENT)) {
+            const int shift=!advanced && c.verticalTranslationActive?c.verticalTranslationPixels:0;
+            auto viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)?input.fixedNativeViewport:n;
+            viewport.top+=shift;viewport.bottom+=shift;
+            if(ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight) &&
+                !ContainedBounds(viewport,input.currentTextCandidate))
+                return wait("current text needs processing before the fixed movie canvas can be submitted");
+            if(n.top+shift<0 || n.bottom+shift>c.rasterHeight)
+                return wait("Classic release pose unavailable; keep the last complete movie canvas");
+            d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+            d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+            d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+            d.reason="current empty native bands preserve the fixed movie canvas without claiming caption absence";
+        } else {
+            if(!current || o.state==CaptionObservationState::UNKNOWN) {
+                // Opposite, unclassified bar UI is not permission to resize the
+                // movie. Continue an established Classic pan using CURRENT raw
+                // extent on its occupied side; this is not a caption observation
+                // or permission to hide independently proved picture expansion.
+                const auto& a=input.submittedScopeAnchor;const auto& pose=a.submittedPresentation;
+                const bool priorPan=!advanced && IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,
+                    input.presentationEpoch,c.rasterWidth,c.rasterHeight) && SameTrustedCropContract(a.crop,n) &&
+                    a.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey && a.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey &&
+                    a.submittedPresentationAvailable && pose.left==n.left && pose.right==n.right &&
+                    pose.bottom-pose.top==n.bottom-n.top && pose.top!=n.top;
+                if(!rawCurrent || !priorPan)return wait("subtitle inspection pending; keep the last complete movie canvas");
+                const auto viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)?input.fixedNativeViewport:n;
+                const int margin=std::max(0,input.captionEdgeMarginPixels);
+                int minimum=-n.top,maximum=c.rasterHeight-n.bottom;
+                if(pose.top>n.top && c.currentVisibleBounds.bottom>n.bottom)
+                    minimum=std::max(minimum,c.currentVisibleBounds.bottom+margin-viewport.bottom);
+                else if(pose.top<n.top && c.currentVisibleBounds.top<n.top)
+                    maximum=std::min(maximum,c.currentVisibleBounds.top-margin-viewport.top);
+                else return wait("current occupied-side inspection pending; keep the last complete movie canvas");
+                minimum=(minimum+1)&~1;maximum&=~1;
+                if(minimum>maximum)return wait("current bar content needs relocation before the fixed canvas can be submitted");
+                const int shift=std::max(minimum,std::min(pose.top-n.top,maximum));
+                auto actualViewport=viewport;actualViewport.top+=shift;actualViewport.bottom+=shift;
+                if(ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight) &&
+                    !ContainedBounds(actualViewport,input.currentTextCandidate))
+                    return wait("current text needs relocation before the fixed canvas can be submitted");
+                d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+                d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+                d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+                d.subtitleTranslationRange=true;d.subtitleMinimumTranslation=minimum;d.subtitleMaximumTranslation=maximum;
+                d.reason="current occupied-side pixels retain the fixed Classic canvas; opposite unclassified UI is not picture aspect";
+            } else
+            if(o.state==CaptionObservationState::PRESENT) {
+                const auto& caption=input.confirmedCaptionBounds;
+                if(!ValidBounds(caption,c.rasterWidth,c.rasterHeight))
+                    return wait("confirmed caption extent unavailable; keep the last complete movie canvas");
+                if(advanced)return wait("subtitle composition pending; keep the last complete movie canvas");
+                // Classic can move its window; a caption cannot change its size.
+                // Use the ordinary configured canvas to account for fixed fill,
+                // then constrain only translation so every caption pixel remains.
+                const auto& viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)
+                    ? input.fixedNativeViewport:n;
+                if(!ContainedBounds(n,viewport) || caption.left<viewport.left || caption.right>viewport.right)
+                    return wait("caption requires relocation; no same-size Classic window is available");
+                const int margin=std::max(0,input.captionEdgeMarginPixels);
+                int minimum=std::max(-n.top,caption.bottom+margin-viewport.bottom);
+                int maximum=std::min(c.rasterHeight-n.bottom,caption.top-margin-viewport.top);
+                // Round the admissible interval INWARD to chroma-aligned poses.
+                minimum=(minimum+1)&~1;maximum&=~1;
+                if(minimum>maximum)return wait("caption requires relocation; no same-size Classic window is available");
+                const int requested=c.verticalTranslationActive?c.verticalTranslationPixels:0;
+                const int shift=std::max(minimum,std::min(requested,maximum));
+                d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+                d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+                d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+                d.subtitleTranslationRange=true;d.subtitleMinimumTranslation=minimum;d.subtitleMaximumTranslation=maximum;
+                d.reason="confirmed Classic subtitle uses a same-size native movie canvas";
+            } else {
+                // Absence retires the caption constraint, not the live release clock.
+                const int shift=!advanced && c.verticalTranslationActive?c.verticalTranslationPixels:0;
+                if(n.top+shift<0 || n.bottom+shift>c.rasterHeight)
+                    return wait("Classic release pose unavailable; keep the last complete movie canvas");
+                d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+                d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+                d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+                d.reason="current caption absence preserves the fixed native movie canvas";
+            }
+        }
+        auto& p=d.nativePresentation;p.available=true;
+        p.origin=d.verticallyTranslated?NativePresentationOrigin::CONFIRMED_TRANSLATION:NativePresentationOrigin::EXACT_NATIVE;
+        p.nativeBase=n;p.approvedBounds=d.sourceBounds;p.sourceGeneration=c.frameSourceGeneration;
+        p.sourceSequence=c.frameSourceSequence;p.presentationEpoch=input.presentationEpoch;
+        return true;
+    }
     UncertainPicturePresentationDecision ResolveUncertainPicturePresentation(
         const PresentationRecoveryInput& input, const Decision& proposed)
     {
         UncertainPicturePresentationDecision result;
         result.presentation = proposed;
+        if(ResolveProcessedSubtitleCanvas(input,result))return result;
         const auto& crop = input.crop;
         const auto& anchor = input.submittedScopeAnchor;
         const auto raster = FullRaster(crop.rasterWidth, crop.rasterHeight);

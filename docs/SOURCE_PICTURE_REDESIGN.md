@@ -11,6 +11,11 @@ historical evidence. They do not describe the current production scheduling poli
 Current qualification must use the matching source and binaries; native capture replay
 alone does not establish live transition or subtitle-rendering correctness.
 
+The governing subtitle presentation contract is
+[SUBTITLE_PICTURE_AR_CONTRACT_20261102.md](SUBTITLE_PICTURE_AR_CONTRACT_20261102.md).
+Processed caption preservation must keep native movie dimensions; historical raw
+visibility fallback rules do not authorize subtitle-driven resizing in processed modes.
+
 ## Measurement order
 
 1. Validate the canonical native source and retain its source-coordinate domain.

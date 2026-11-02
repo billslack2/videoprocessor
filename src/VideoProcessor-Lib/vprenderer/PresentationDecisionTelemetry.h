@@ -18,7 +18,7 @@ struct Facts {
     bool available=false;
     uint64_t generation=0,sequence=0,viewport=0,format=0,domain=0,policy=0,continuity=0;
     uint64_t measurementSequence=0,nativeAcceptedSequence=0,captionSequence=0,cue=0;
-    int width=0,height=0,classification=0,mode=0,requestedMode=0,preparationState=0;
+    int width=0,height=0,classification=0,mode=0,requestedMode=0,processingProfile=0,preparationState=0;
     uint64_t preparationKey=0;bool shaderFailed=false;
     Rect measured,native,visible,caption,captionDestination;
     bool measuredAvailable=false,nativeAvailable=false,observationSupportsCrop=false;
@@ -68,7 +68,7 @@ inline std::string Json(const Output& o) {
     s<<",\"native_available\":"<<f.nativeAvailable<<",\"native_accepted_source\":"<<f.nativeAcceptedSequence<<",\"native\":";WriteRect(s,f.native);
     s<<",\"observation_supports_crop\":"<<f.observationSupportsCrop<<",\"retention_evaluated\":"<<f.retentionEvaluated<<",\"retention_safe\":"<<f.retentionSafe
      <<",\"visible_available\":"<<f.visibleAvailable<<",\"raw_visible\":";WriteRect(s,f.visible);
-    s<<",\"requested_mode\":"<<f.requestedMode<<",\"preparation_state\":"<<f.preparationState<<",\"preparation_key\":"<<f.preparationKey<<",\"shader_failed\":"<<f.shaderFailed<<",\"mode\":"<<f.mode<<",\"caption_source\":"<<f.captionSequence<<",\"caption_current\":"<<f.captionCurrent<<",\"cue\":"<<f.cue
+    s<<",\"subtitle_processing_profile\":"<<f.processingProfile<<",\"requested_mode\":"<<f.requestedMode<<",\"preparation_state\":"<<f.preparationState<<",\"preparation_key\":"<<f.preparationKey<<",\"shader_failed\":"<<f.shaderFailed<<",\"mode\":"<<f.mode<<",\"caption_source\":"<<f.captionSequence<<",\"caption_current\":"<<f.captionCurrent<<",\"cue\":"<<f.cue
      <<",\"detected\":"<<f.captionDetected<<",\"held\":"<<f.captionHeld<<",\"incomplete\":"<<f.captionIncomplete<<",\"caption\":";WriteRect(s,f.caption);
     s<<",\"destination\":";WriteRect(s,f.captionDestination);
     s<<",\"composed\":"<<f.composed<<",\"source_prepared\":"<<f.sourcePrepared<<",\"prepare_failures\":"<<f.preparationFailures

@@ -1,5 +1,11 @@
 # Classic translation during a pending replacement target
 
+Historical repair record: the later replay still shrank at initial caption entry
+and in Reconstruction. The governing requirement is now
+[SUBTITLE_PICTURE_AR_CONTRACT_20261102.md](SUBTITLE_PICTURE_AR_CONTRACT_20261102.md).
+A larger raw caption extent cannot justify resizing processed movie output.
+
+
 The 2026-11-02 3 Body Problem reproduction used Classic, selected by the active
 renderer-ready action. Its rendered screenshots and source-bound output records
 are preserved outside the repository under

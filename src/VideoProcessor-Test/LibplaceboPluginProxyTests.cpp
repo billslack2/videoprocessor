@@ -93,7 +93,7 @@ namespace
             !strstr(message,"application profile") && !strstr(message,"Renderer configuration snapshot") &&
             !strstr(message,"VP source preparation stage:") && !strstr(message,"VP source preparation dispatch:") && !strstr(message,"VP accepted source preparation unavailable:") &&
             !strstr(message,"VP spatial detector interval:") &&
-            !strstr(message,"VP subtitle cadence cache:") && !strstr(message,"VP source measurement interval:") && !strstr(message,"VP aspect telemetry:") && !strstr(message,"VP subtitle background preparation:") &&
+            !strstr(message,"VP subtitle canvas ") && !strstr(message,"VP subtitle cadence cache:") && !strstr(message,"VP source measurement interval:") && !strstr(message,"VP aspect telemetry:") && !strstr(message,"VP subtitle background preparation:") &&
             !strstr(message,"Subtitle shader preparation rejected:") && !strstr(message,"shader cache") && !strstr(message,"Alpha relocated caption evidence:") &&
             !strstr(message,"Alpha relocated caption geometry:") && !strstr(message,"Alpha caption unknown presentation:"))return;
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
@@ -1736,7 +1736,7 @@ namespace VideoProcessorTest
                 const auto at=line.find(key);return at==std::string::npos?uint64_t(0):uint64_t(std::strtoull(line.c_str()+at+strlen(key),nullptr,10));
             };
 
-            struct Geometry {uint64_t sequence=0,nativeSource=0,certificateSource=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0,certificateOrigin=0,flags=0;int native[4]{};bool composed=false,poseEligible=false;int routedTranslation=0;double poseDelta=0;};
+            struct Geometry {uint64_t sequence=0,nativeSource=0,certificateSource=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0,certificateOrigin=0,flags=0;int native[4]{};bool composed=false,poseEligible=false;int routedTranslation=0;double poseDelta=0,minimumTop=0,maximumTop=0;};
             auto geometries=[&] {
                 std::vector<Geometry> result;std::vector<AnalysisDiagnosticRecordV1> trace;
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
@@ -1752,6 +1752,7 @@ namespace VideoProcessorTest
                     g.certificateOrigin=unsigned(record.counters[6]);g.flags=record.flags;
                     for(int e=0;e<4;++e)g.native[e]=record.published[e];
                     g.poseDelta=record.metrics[2];g.routedTranslation=int(std::lround(record.metrics[4]));
+                    g.minimumTop=record.metrics[6];g.maximumTop=record.metrics[7];
                     require(std::isfinite(g.pts) && g.pts>0 && std::isfinite(g.left) && std::isfinite(g.top) &&
                         std::isfinite(g.right) && std::isfinite(g.bottom) && g.left<g.right && g.top<g.bottom,
                         L"Actual successful output has invalid native source coordinates or QPC timestamps.");
@@ -1803,21 +1804,7 @@ namespace VideoProcessorTest
                     require(g.mode==0,L"Classic onset changed subtitle composition mode.");
                     require(g.top<=captionTop+0.01&&g.bottom>=captionBottom-0.01,
                         L"Classic confirmation or engage clipped current source-caption pixels.");
-                    if(!sameSize(g)) {
-                        // Until the timed native-height pose contains the current
-                        // caption, only its certified bounded visibility envelope
-                        // may temporarily change the presented picture size.
-                        require(!finalSequence && g.nativeSource>0 && g.certificateSource==g.sequence &&
-                            (g.flags&96u)==96u &&
-                            g.certificateOrigin==unsigned(AlphaSourceCrop::NativePresentationOrigin::VISIBILITY_FALLBACK) &&
-                            g.native[0]==physical.left&&g.native[1]==physical.top&&
-                            g.native[2]==physical.right&&g.native[3]==physical.bottom &&
-                            std::abs(g.left-physical.left)<0.01&&std::abs(g.top-physical.top)<0.01&&
-                            std::abs(g.right-physical.right)<0.01&&
-                            g.bottom>=captionBottom&&g.bottom<=captionBottom+4.01,
-                            L"Classic engage resized outside the exact current native/caption visibility envelope.");
-                        continue;
-                    }
+                    require(sameSize(g),L"Processed Classic subtitle changed the picture size during confirmation or engage.");
                     require(g.top>=previousTop-0.01&&g.top>=initial.top-0.01&&g.top<=settled.top+0.01,
                         L"Classic engage drift reversed or left its bounded native-to-caption translation interval.");
                     previousTop=g.top;if(g.top>initial.top+0.01&&g.top<settled.top-0.01)intermediate.insert(int(std::lround(g.top)));
@@ -1899,9 +1886,8 @@ namespace VideoProcessorTest
                         reconstructionReady=g.sequence;observationDeadline=GetTickCount64()+5000;
                     }
                     if(reconstructionReady)require(same(g,initial),L"Ready Classic-to-Reconstruction output changed its native presentation.");
-                    else require(g.left<=initial.left+0.01 && g.right>=initial.right-0.01 &&
-                        g.top<=initial.top+0.01 && g.bottom>=captionBottom-0.01,
-                        L"Unready Reconstruction output clipped the current raw caption or native picture instead of preserving outward visibility.");
+                    else require(same(g,initial) && g.composed,
+                        L"Reconstruction submitted an unprocessed caption or changed the native picture size during preparation.");
                 }
                 if(reconstructionReady && value.presentedSequence>=reconstructionReady) {
                     bool hasPresentation=false,composed=false;
@@ -2209,7 +2195,7 @@ namespace VideoProcessorTest
             };
 
             AnalysisDiagnosticRecordV1 previousSuccessfulOutput{};bool havePreviousSuccessfulOutput=false;
-            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,sourceBoundCaption=false,shaderBuilding=false,poseEligible=false;int routedTranslation=0;double poseDelta=0;};
+            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,sourceBoundCaption=false,shaderBuilding=false,poseEligible=false;int routedTranslation=0;double poseDelta=0,minimumTop=0,maximumTop=0;};
             auto geometries=[&] {
                 std::vector<Geometry> result;std::vector<AnalysisDiagnosticRecordV1> trace;
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
@@ -2233,6 +2219,7 @@ namespace VideoProcessorTest
                     }
                     previousSuccessfulOutput=record;havePreviousSuccessfulOutput=true;
                     g.poseDelta=record.metrics[2];g.routedTranslation=int(std::lround(record.metrics[4]));
+                    g.minimumTop=record.metrics[6];g.maximumTop=record.metrics[7];
                     require(std::isfinite(g.pts) && g.pts>0 && std::isfinite(g.left) && std::isfinite(g.top) &&
                         std::isfinite(g.right) && std::isfinite(g.bottom) && g.left<g.right && g.top<g.bottom,
                         L"Actual successful output has invalid native source coordinates or QPC timestamps.");
@@ -2307,15 +2294,12 @@ namespace VideoProcessorTest
                         settledSources.insert(g.sequence);
                         continue;
                     }
-                    // The confirmed controller target does not make a partial
-                    // pan caption-safe. Keep the picture-plus-caption envelope
-                    // until the actual native-height viewport contains all ink.
+                    // Every submitted Classic frame keeps the native dimensions
+                    // and contains the complete caption, including initial entry.
                     const bool nativePan=sameSize(g) && g.top>=initial.top-0.01 &&
                         g.top<=settled.top+0.01 && g.bottom>=captionBottom-0.01;
-                    const bool visibilityEnvelope=std::abs(g.top-physical.top)<0.01 &&
-                        g.bottom>=captionBottom-0.01 && g.bottom<=settled.bottom+0.01;
-                    require(nativePan || (!safeNativePanSeen && visibilityEnvelope),
-                        L"UHD Classic engage clipped current caption pixels or left its bounded visibility envelope.");
+                    require(nativePan,
+                        L"UHD Classic engage resized the picture or clipped current caption pixels.");
                     if(nativePan) {
                         require(g.top>=previousTop-0.01,
                             L"UHD Classic caption-safe native pan reversed its measured translation.");
@@ -2621,13 +2605,13 @@ namespace VideoProcessorTest
                     const auto value=pump(caption);
                     for(const auto& g:geometries())if(g.sequence>=classicFirst && g.mode==0) {
                         const bool nativePan=sameSize(g)&&g.top>=initial.top-0.01&&g.top<=settled.top+0.01&&g.bottom>=captionBottom-0.01;
-                        const bool envelope=std::abs(g.left-physical.left)<0.01&&std::abs(g.right-physical.right)<0.01&&
-                            std::abs(g.top-physical.top)<0.01&&g.bottom>=captionBottom-0.01&&g.bottom<=settled.bottom+0.01;
-                        require(nativePan||(!final&&!classicSafeNativePanSeen&&envelope),
-                            L"Returning to Classic clipped its fresh caption or left the bounded current visibility envelope.");
+                        require(nativePan,
+                            L"Returning to Classic resized the picture or clipped its fresh caption.");
                         if(nativePan){
-                            require(g.top>=lastTop-0.01&&std::abs(g.top-initial.top-g.routedTranslation)<0.01,
-                                L"Returning Classic native pan reversed or lost its routed controller intent.");
+                            const double requested=initial.top+g.routedTranslation;
+                            const double projected=(std::max)(g.minimumTop,(std::min)(requested,g.maximumTop));
+                            require(g.minimumTop<=g.maximumTop && g.top>=lastTop-0.01 && std::abs(g.top-projected)<0.01,
+                                L"Returning Classic pan reversed or lost its source-specific caption-safe controller projection.");
                             classicSafeNativePanSeen=true;lastTop=g.top;
                             if(g.top>initial.top+0.01&&g.top<settled.top-0.01)ramp.insert(int(std::lround(g.top)));
                         }
@@ -2651,17 +2635,18 @@ namespace VideoProcessorTest
             do {
                 const auto value=pump(both);
                 for(const auto& g:geometries())if(g.sequence>=bothFirst) {
-                    require(g.mode==0 && g.left<=0.01 && g.right>=width-0.01 && g.top<=134.01 && g.bottom>=1939.99,
-                        L"Classic simultaneous top-bar UI and bottom caption were clipped by a scheduled/skipped translated pose.");
+                    require(g.mode==0 && sameSize(g) && g.left<=0.01 && g.right>=width-0.01 &&
+                        g.top<=captionTop+0.01 && g.bottom>=captionBottom-0.01,
+                        L"Opposite unclassified UI resized Classic's native movie canvas or clipped the bottom caption.");
                     if(!fitFirst){fitFirst=g.sequence;fixedFit=g;}
                     else require(std::abs(g.left-fixedFit.left)<0.01 && std::abs(g.top-fixedFit.top)<0.01 &&
                         std::abs(g.right-fixedFit.right)<0.01 && std::abs(g.bottom-fixedFit.bottom)<0.01,
-                        L"Classic simultaneous bar content alternated its successfully submitted safe visibility envelope.");
+                        L"Classic opposite UI alternated its successfully submitted fixed-size canvas.");
                 }
                 if(value.presentedSequence>=bothFirst) {
                     require(value.inUseAvailable && std::isfinite(value.inUseRatio) && value.inUseRatio>0 &&
-                        value.inUseRatio<=double(width)/(1940-134)+0.00001,
-                        L"Classic first observed both-bar output retained a viewport too short to preserve both overlays.");
+                        std::abs(value.inUseRatio-double(width)/(pictureBottom-bar))<0.00001,
+                        L"Unclassified opposite UI changed Classic's submitted native movie aspect.");
                     verifyNativeContract(bothFirst);
 
                     if(fitFirst)fitSources.insert(value.presentedSequence);
@@ -2695,7 +2680,7 @@ namespace VideoProcessorTest
             }while(GetTickCount64()<bothDeadline && callback.state!=RENDERSTATE_FAILED);
             require(fitSources.size()>=24 && ((scanSeen && skipSeen) ||
                 (unknownWithCurrentRetention && freshRetentionInterval)),
-                L"Both-bar safe visibility needs 24 distinct outputs plus current Classic scan cadence or explicit unknown geometry with fresh per-batch retention coverage.");
+                L"Both-bar Classic needs 24 distinct constant-AR caption-safe outputs plus current scan cadence or explicit unknown geometry with fresh per-batch retention coverage.");
         }
 
         // Exercise the complete production tunnel/worker/render path. Every successful
@@ -3545,18 +3530,12 @@ namespace VideoProcessorTest
                                     L"Persistent Classic subtitle changed native AR or black-bar boundaries.");
                                 const bool fullWidth=std::abs(record.metrics[8])<0.01&&std::abs(record.metrics[10]-width)<0.01;
                                 const bool captionVisible=top<=1770.01&&bottom>=captionBottom-0.01;
-                                const bool safeEnvelope=fullWidth&&captionVisible&&top>=-0.01&&bottom<=height+0.01&&
-                                    top<=native[1]+0.01&&bottom>=native[3]-0.01;
                                 const bool nativePose=fullWidth&&captionVisible&&
                                     std::abs((bottom-top)-(native[3]-native[1]))<0.01&&
                                     top>=native[1]-0.01&&top<=classicSettledTop+0.01;
                                 if(!ready) {
-                                    // Pending three-source confirmation and the 500ms
-                                    // engage may use a wider safe visibility envelope.
-                                    // A translated native-height window deliberately
-                                    // pans the picture under the explicit Classic mode.
-                                    require(safeEnvelope||nativePose,
-                                        L"Classic startup neither preserves the picture/caption envelope nor presents a bounded caption-safe native translation.");
+                                    require(nativePose,
+                                        L"Classic startup resized the picture or clipped the current caption.");
                                     if(nativePose){require(top+0.01>=previousTop,
                                         L"Classic startup native translation reversed during engage.");previousTop=top;}
                                     if(nativePose&&std::abs(top-classicSettledTop)<0.01&&std::abs(bottom-classicSettledBottom)<0.01){

@@ -3275,6 +3275,26 @@ namespace VideoProcessorTest
             Policy manual;manual.Submitted(o);o.facts.mode=o.facts.requestedMode=0;o.facts.composed=false;
             Assert::IsFalse(manual.Plan(o,true).capture,L"An intentional profile change is a different context.");
         }
+        TEST_METHOD(IncidentCaptureProfileSwitchCancelsOldFollowupAndRearmsCooldown)
+        {
+            using namespace PresentationIncident;
+            for(bool afterCaptured:{false,true})for(bool shaderModeChange:{false,true}) {
+                Output o;o.generation=1;o.selectedSequence=1;o.rendered=o.submitted=true;o.tickMs=100;
+                o.facts.available=true;o.facts.generation=1;o.facts.sequence=1;o.facts.nativeAvailable=true;
+                o.facts.native=o.source={0,263,3840,1897};Policy policy;policy.Submitted(o);
+                o.tickMs=200;o.source={0,202,3840,1998};Assert::IsTrue(policy.Plan(o,true).capture);policy.Submitted(o);
+                if(afterCaptured){o.tickMs=2200;Assert::IsTrue(policy.Plan(o,true).capture);}
+                o.tickMs+=10;o.facts.mode=o.facts.requestedMode=shaderModeChange?3:0;
+                o.facts.processingProfile=shaderModeChange?3:1;o.source=o.facts.native;o.facts.composed=true;
+                const auto change=policy.Plan(o,true);Assert::IsFalse(change.capture);policy.Submitted(o);
+                o.tickMs+=10;o.source={0,202,3840,1998};o.facts.composed=false;
+                const auto failure=policy.Plan(o,true);Assert::IsTrue(failure.capture,
+                    L"A previous profile's capture cooldown must not hide the new profile's first failure.");
+                Assert::AreEqual(uint64_t(2),failure.incident);
+                Assert::AreEqual(std::string("failure"),std::string(failure.phase));
+                Assert::AreEqual(unsigned(afterCaptured?3:2),policy.CapturesReserved());
+            }
+        }
         TEST_METHOD(IncidentCaptureRejectsWrongSourceAndProfileTransition)
         {
             using namespace PresentationIncident;

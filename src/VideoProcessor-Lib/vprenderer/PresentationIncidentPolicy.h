@@ -22,6 +22,16 @@ public:
     Request Plan(const Output& o,bool enabled) {
         Request r;if(!enabled || !o.rendered || !Current(o))return r;
         if(captures_>=MaxCaptures){if(!limitReported_){limitReported_=true;return {false,incident_,"limit","session-capture-limit"};}return r;}
+        const bool contextChanged=have_ && (o.generation!=previous_.generation ||
+            o.facts.viewport!=previous_.facts.viewport || o.facts.format!=previous_.facts.format ||
+            o.facts.domain!=previous_.facts.domain || o.facts.requestedMode!=previous_.facts.requestedMode || o.facts.processingProfile!=previous_.facts.processingProfile);
+        if(contextChanged) {
+            // Start comparison in the new profile without carrying a screenshot
+            // or cooldown from the previous profile. The session cap still applies.
+            const bool canceled=followupAt_!=0;followupAt_=lastIncident_=0;mismatchCaptured_=false;
+            if(canceled)return {false,incident_,"canceled","context-changed"};
+            return r;
+        }
         if(followupAt_) {
             if(o.generation!=previous_.generation || o.facts.viewport!=previous_.facts.viewport || o.facts.format!=previous_.facts.format || o.facts.domain!=previous_.facts.domain){followupAt_=0;return {false,incident_,"canceled","context-changed"};}
             if(o.tickMs>=followupAt_){followupAt_=0;++captures_;return {true,incident_,"after",reason_};}
@@ -29,9 +39,9 @@ public:
         }
         const bool same=have_ && Current(previous_) && previous_.generation==o.generation &&
             previous_.facts.viewport==o.facts.viewport && previous_.facts.format==o.facts.format &&
-            previous_.facts.domain==o.facts.domain && previous_.facts.requestedMode==o.facts.requestedMode;
+            previous_.facts.domain==o.facts.domain && previous_.facts.requestedMode==o.facts.requestedMode && previous_.facts.processingProfile==o.facts.processingProfile;
         if(!same){mismatchCaptured_=false;return r;}
-        if(incident_ && o.tickMs-lastIncident_<20000)return r;
+        if(lastIncident_ && o.tickMs-lastIncident_<20000)return r;
         const char* reason=nullptr;
         if(previous_.facts.nativeAvailable && o.facts.nativeAvailable && previous_.facts.native==o.facts.native &&
             Area(o.source)>Area(previous_.source)*1.03)reason="presentation-widened-with-unchanged-native";

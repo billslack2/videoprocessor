@@ -17914,7 +17914,171 @@ public:
             m.measurementTick=100;m.leaseExpiryTick=6000;
             r.candidate=Evaluate(r.crop);return r;
         }
-        TEST_METHOD(ClassicFirstCueConfirmationKeepsCurrentMeasuredCaptionVisible) {
+        TEST_METHOD(ConfirmedProcessedCaptionsCannotResizeTheNativeMovieAperture)
+        {
+            for(auto mode:{PreparedNativeMode::NONE,PreparedNativeMode::BLACK,PreparedNativeMode::RECONSTRUCTION})
+            for(int applied:{0,10,54,92}) {
+                auto r=CurrentClassicEngageVisibility(applied);
+                r.crop.subtitlePresentationMode=mode;
+                r.subtitleCanvasMode=mode==PreparedNativeMode::NONE?SubtitleCanvasMode::CLASSIC:
+                    mode==PreparedNativeMode::BLACK?SubtitleCanvasMode::BLACK:SubtitleCanvasMode::RECONSTRUCTION;
+                r.confirmedCaptionBounds=r.currentCaptionTranslation.occupiedBounds;
+                r.captionObservation={CaptionObservationState::PRESENT,r.crop.frameSourceGeneration,r.crop.frameSourceSequence,
+                    r.presentationEpoch,r.crop.frameSourceFormatKey,r.crop.frameAnalysisDomainKey};
+                r.classicTranslationEnabled=mode==PreparedNativeMode::NONE;
+                const auto native=r.crop.geometry;
+                const auto resolved=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+                const auto& actual=resolved.presentation.sourceBounds;
+                Assert::AreEqual(native.right-native.left,actual.right-actual.left,
+                    L"Confirmed processed subtitles cannot change movie width.");
+                Assert::AreEqual(native.bottom-native.top,actual.bottom-actual.top,
+                    L"Confirmed processed subtitles cannot change movie height, including confirmation, engage and preparation gaps.");
+                if(mode==PreparedNativeMode::NONE) {
+                    Assert::IsFalse(resolved.presentation.waitForSubtitleProcessing);
+                    Assert::IsTrue(actual.top<=r.currentCaptionTranslation.occupiedBounds.top &&
+                        actual.bottom>=r.currentCaptionTranslation.occupiedBounds.bottom,
+                        L"Classic must keep the complete current caption visible in a same-size viewport, never resize or clip it.");
+                } else {
+                    Assert::IsTrue(resolved.presentation.waitForSubtitleProcessing,
+                        L"Without current advanced composition, withhold the whole new source instead of resizing or clipping its caption.");
+                    Assert::AreEqual(native.top,actual.top);
+                }
+                Assert::AreEqual(native.top,r.crop.geometry.top);
+                Assert::AreEqual(native.bottom,r.crop.geometry.bottom);
+            }
+        }
+        TEST_METHOD(PreparedAdvancedCaptionKeepsNativeApertureAndNeedsNoWait)
+        {
+            for(auto mode:{PreparedNativeMode::BLACK,PreparedNativeMode::RECONSTRUCTION}) {
+                auto r=CurrentClassicEngageVisibility(10);
+                r.crop.subtitlePresentationMode=mode;
+                r.subtitleCanvasMode=mode==PreparedNativeMode::NONE?SubtitleCanvasMode::CLASSIC:
+                    mode==PreparedNativeMode::BLACK?SubtitleCanvasMode::BLACK:SubtitleCanvasMode::RECONSTRUCTION;
+                r.confirmedCaptionBounds=r.currentCaptionTranslation.occupiedBounds;
+                r.captionObservation={CaptionObservationState::PRESENT,r.crop.frameSourceGeneration,r.crop.frameSourceSequence,
+                    r.presentationEpoch,r.crop.frameSourceFormatKey,r.crop.frameAnalysisDomainKey};r.classicTranslationEnabled=false;
+                auto& composed=r.crop.currentSubtitleComposition;composed.available=true;
+                composed.nativeBase=r.crop.geometry;composed.mode=mode;
+                composed.identity.transportGeneration=r.crop.frameSourceGeneration;
+                composed.identity.acceptedSequence=r.crop.frameSourceSequence;
+                composed.identity.sourceFormatGeneration=r.crop.frameSourceFormatKey;
+                composed.identity.analysisDomainKey=r.crop.frameAnalysisDomainKey;
+                composed.identity.viewportGeneration=r.presentationEpoch;
+                Assert::IsTrue(HasCurrentSubtitleCompositionPresentation(r.crop));
+                const auto resolved=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+                Assert::IsFalse(resolved.presentation.waitForSubtitleProcessing);
+                Assert::AreEqual(r.crop.geometry.top,resolved.presentation.sourceBounds.top);
+                Assert::AreEqual(r.crop.geometry.bottom,resolved.presentation.sourceBounds.bottom);
+            }
+        }
+        TEST_METHOD(ProcessedCaptionIdentityAndFillAreRequiredBeforeSubmittingTheFixedCanvas)
+        {
+            for(int fault=-1;fault<8;++fault) {
+                auto r=CurrentClassicEngageVisibility(0);r.subtitleCanvasMode=SubtitleCanvasMode::CLASSIC;
+                r.confirmedCaptionBounds=r.currentCaptionTranslation.occupiedBounds;
+                r.captionObservation={CaptionObservationState::PRESENT,r.crop.frameSourceGeneration,r.crop.frameSourceSequence,
+                    r.presentationEpoch,r.crop.frameSourceFormatKey,r.crop.frameAnalysisDomainKey};
+                r.fixedNativeViewport=r.crop.geometry;r.fixedNativeViewport.top+=10;r.fixedNativeViewport.bottom-=10;
+                r.captionEdgeMarginPixels=4;
+                if(fault==0)--r.captionObservation.sourceSequence;
+                if(fault==1)++r.captionObservation.sourceGeneration;
+                if(fault==2)++r.captionObservation.presentationEpoch;
+                if(fault==3)++r.captionObservation.sourceFormatKey;
+                if(fault==4)++r.captionObservation.analysisDomainKey;
+                if(fault==5)r.confirmedCaptionBounds={};
+                if(fault==6)r.crop.subtitlePresentationMode=PreparedNativeMode::BLACK;
+                if(fault==7)r.fixedNativeViewport.right=r.confirmedCaptionBounds.left;
+                const auto d=ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).presentation;
+                Assert::IsTrue(d.subtitleCanvasApplied);Assert::AreEqual(fault!=-1,d.waitForSubtitleProcessing);
+                Assert::AreEqual(1636,d.sourceBounds.bottom-d.sourceBounds.top);
+                Assert::AreEqual(3840,d.sourceBounds.right-d.sourceBounds.left);
+                if(fault==-1) {
+                    Assert::IsTrue(r.fixedNativeViewport.bottom+d.verticalTranslationPixels>=r.confirmedCaptionBounds.bottom+4);
+                    Assert::AreEqual(0,r.crop.verticalTranslationPixels,L"Presentation constraints must not advance the controller clock.");
+                }
+            }
+        }
+        TEST_METHOD(ClassicBothBarContentPrefersBottomWithoutResizingOrBorrowingCaptionProof)
+        {
+            for(int priorShift:{-92,0,92})for(int fault=-1;fault<9;++fault) {
+                auto r=CurrentClassicEngageVisibility(priorShift);r.subtitleCanvasMode=SubtitleCanvasMode::CLASSIC;
+                r.captionObservation={};r.measurementCurrent=r.retentionEvaluated=true;
+                r.retentionBounds=r.crop.geometry;r.retentionSourceGeneration=r.crop.frameSourceGeneration;
+                r.retentionSourceSequence=r.crop.frameSourceSequence;
+                auto& a=r.submittedScopeAnchor;a.submittedPresentationAvailable=true;
+                a.submittedPresentation=r.crop.geometry;a.submittedPresentation.top+=priorShift;a.submittedPresentation.bottom+=priorShift;
+                r.crop.currentVisibleBounds.top=134;
+                if(fault==0)--r.crop.currentVisibleSourceSequence;
+                if(fault==1)--r.retentionSourceSequence;
+                if(fault==2)r.crop.currentVisibleBase.bottom-=20;
+                if(fault==3)r.retentionBounds.bottom-=20;
+                if(fault==4)r.currentTextCandidate={-1,1850,600,1950,3840,2160};
+                if(fault==5)r.subtitleCanvasMode=SubtitleCanvasMode::RECONSTRUCTION;
+                if(fault==6)r.currentTextCandidate={100,134,600,200,3840,2160};
+                if(fault==7)r.currentTextCandidate={100,134,600,1950,3840,2160};
+                if(fault==8)r.submittedScopeAnchor={};
+                // A valid bottom candidate outside a configured fixed fill cannot be clipped.
+                if(fault==4){r.currentTextCandidate.left=10;r.fixedNativeViewport=r.crop.geometry;r.fixedNativeViewport.left=20;}
+                const auto d=ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).presentation;
+                const bool ready=fault==-1 || fault>=6;
+                Assert::AreEqual(!ready,d.waitForSubtitleProcessing);
+                Assert::AreEqual(1636,d.sourceBounds.bottom-d.sourceBounds.top);
+                if(ready) {
+                    Assert::IsTrue(d.sourceBounds.bottom>=r.crop.currentVisibleBounds.bottom);
+                    Assert::IsTrue(d.sourceBounds.top>r.crop.geometry.top,L"Bottom wins even if the previous pan preferred top content.");
+                    Assert::IsFalse(d.nativePresentation.captionTranslationMeasurement.available);
+                    Assert::AreEqual(int(CaptionObservationState::UNKNOWN),int(r.captionObservation.state));
+                }
+            }
+        }
+        TEST_METHOD(ProcessedEmptyBandsNeedCurrentPixelProofButDoNotInventCaptionAbsence)
+        {
+            for(int fault=-1;fault<5;++fault) {
+                auto r=CurrentClassicEngageVisibility(0);r.subtitleCanvasMode=SubtitleCanvasMode::CLASSIC;
+                r.captionObservation={};r.excludedBandsPixelSafe=true;
+                r.crop.currentVisibleBounds=r.crop.geometry;
+                r.measurementCurrent=r.retentionEvaluated=true;r.retentionBounds=r.crop.geometry;
+                r.retentionSourceGeneration=r.crop.frameSourceGeneration;r.retentionSourceSequence=r.crop.frameSourceSequence;
+                if(fault==0)--r.retentionSourceSequence;
+                if(fault==1)r.retentionBounds.bottom-=20;
+                if(fault==2)r.crop.currentVisibleBounds.bottom+=40;
+                if(fault==3)r.measurementCurrent=false;
+                if(fault==4)r.currentTextCandidate=r.currentCaptionTranslation.occupiedBounds;
+                const auto d=ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).presentation;
+                Assert::AreEqual(fault!=-1,d.waitForSubtitleProcessing);
+                Assert::AreEqual(1636,d.sourceBounds.bottom-d.sourceBounds.top);
+                Assert::AreEqual(int(CaptionObservationState::UNKNOWN),int(r.captionObservation.state));
+            }
+        }
+        TEST_METHOD(InitialSubtitleShaderBuildKeepsNativeSizeWithoutClaimingCaptionCompletion)
+        {
+            for(auto mode:{PreparedNativeMode::BLACK,PreparedNativeMode::RECONSTRUCTION}) {
+                auto r=CurrentClassicEngageVisibility(0);r.crop.subtitlePresentationMode=mode;
+                r.subtitleCanvasMode=mode==PreparedNativeMode::BLACK?SubtitleCanvasMode::BLACK:SubtitleCanvasMode::RECONSTRUCTION;
+                r.crop.initialSubtitleShaderBuild=true;
+                const auto d=ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).presentation;
+                Assert::IsFalse(d.waitForSubtitleProcessing);
+                Assert::AreEqual(r.crop.geometry.top,d.sourceBounds.top);
+                Assert::AreEqual(r.crop.geometry.bottom,d.sourceBounds.bottom);
+                Assert::IsFalse(HasCurrentSubtitleCompositionPresentation(r.crop));
+                Assert::IsFalse(HasCurrentPreparedSubtitlePresentation(r.crop));
+                Assert::AreEqual(int(PreparedNativeMode::NONE),int(d.nativePresentation.preparedNativeMode));
+            }
+        }
+        TEST_METHOD(OffModeMayPreserveTheLargerRawCaptionAperture)
+        {
+            auto r=CurrentClassicEngageVisibility(0);
+            r.classicTranslationEnabled=false;r.classicTranslationEngaging=false;
+            r.crop.verticalTranslationEngageBaseRetentionActive=false;
+            r.crop.verticalTranslationActive=false;r.crop.verticalTranslationPixels=0;
+            const auto resolved=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+            Assert::IsFalse(resolved.presentation.waitForSubtitleProcessing);
+            Assert::IsTrue(resolved.presentation.sourceBounds.bottom-resolved.presentation.sourceBounds.top>
+                r.crop.geometry.bottom-r.crop.geometry.top,
+                L"Off can reveal raw bar captions by changing the presentation aperture.");
+            Assert::IsTrue(resolved.presentation.sourceBounds.bottom>=r.currentCaptionTranslation.occupiedBounds.bottom);
+        }
+        TEST_METHOD(RawVisibilityFirstCueConfirmationKeepsCurrentMeasuredCaptionVisible) {
             for(int fault=-1;fault<7;++fault) {
                 auto r=CurrentClassicEngageVisibility(0);
                 r.classicTranslationEngaging=false;
@@ -17953,7 +18117,7 @@ public:
                 }
             }
         }
-        TEST_METHOD(ClassicTimedEngageKeepsCurrentCaptionVisibleUntilActualPanCoversIt) {
+        TEST_METHOD(RawVisibilityTimedEngageKeepsCurrentCaptionVisibleUntilActualPanCoversIt) {
             for(int applied:{0,2,10,30,54,56,72,92}) {
                 auto r=CurrentClassicEngageVisibility(applied);
                 const auto before=r.crop.geometry;const auto target=r.currentCaptionTranslation.targetTranslationPixels;
@@ -17992,7 +18156,7 @@ public:
                 Assert::AreEqual(applied,r.crop.verticalTranslationPixels,L"Visibility cannot alter the live controller pose");
             }
         }
-        TEST_METHOD(ClassicEngageUsesCurrentVisiblePixelsAcrossDenseScanGapsAndUiOnlyContent) {
+        TEST_METHOD(RawVisibilityEngageUsesCurrentVisiblePixelsAcrossDenseScanGapsAndUiOnlyContent) {
             for(int mode=0;mode<2;++mode) {
                 auto r=CurrentClassicEngageVisibility(10);
                 if(mode==0) {
@@ -18016,7 +18180,7 @@ public:
                 Assert::IsTrue(resolved.presentation.reason==std::string("current caption remains visible until timed engage pose covers its pixels"));
             }
         }
-        TEST_METHOD(ClassicUnscannedEngageSubmissionsPreserveOriginalControllerLeaseWithoutRenewal) {
+        TEST_METHOD(RawVisibilityUnscannedEngageSubmissionsPreserveOriginalControllerLeaseWithoutRenewal) {
           for(bool pending:{false,true}) {
             auto r=CurrentClassicEngageVisibility(pending?0:10);
             if(pending) {
@@ -18063,7 +18227,7 @@ public:
             Assert::IsTrue(expired.presentation.reason!=std::string("current caption remains visible until timed engage pose covers its pixels"));
           }
         }
-        TEST_METHOD(ClassicEngageVisibilityCannotBorrowStaleCaptionOrMaskPicturePriority) {
+        TEST_METHOD(RawVisibilityEngageCannotBorrowStaleCaptionOrMaskPicturePriority) {
             for(int fault=0;fault<10;++fault) {
                 auto r=CurrentClassicEngageVisibility(10);
                 if(fault==0)r.classicTranslationEngaging=false;
