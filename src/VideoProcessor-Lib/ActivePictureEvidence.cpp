@@ -16,6 +16,20 @@ namespace
 {
 bool CurrentOwnedInkAt(const SubtitleInkSnapshot& ink, int x, int y);
 
+// Canonical ten-bit black can acquire sub-two-code (eight-bit equivalent)
+// chroma variation through decoding/resampling while luma stays at black.
+// Use one policy for native crop, collar repair and subtitle-masked bars.
+// Unknown encoding keeps the original strict comparison. Independent
+// connected-picture checks remain more sensitive and still veto real content.
+bool MatchesMeasuredMatte(const AnalysisLumaSample& value,int y,int u,int v,
+    AnalysisLumaRange range)
+{
+    const int dy=std::abs(int(value.luma)-y);
+    const int dc=std::max(std::abs(int(value.chromaU)-u),std::abs(int(value.chromaV)-v));
+    return dy<=4 && dc<=(range==AnalysisLumaRange::Unknown?4:8);
+}
+
+
 constexpr int kLineSamples = 48;
 constexpr int kEdgeDepthSamples = 6;
 constexpr int kGlobalGridWidth = 16;
@@ -346,6 +360,7 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 		rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
 		for (int y : rows) {
             int known=0,leftKnown=0,rightKnown=0;
+            std::array<int,4> rounded{},coverage{},firstRounded{{-1,-1,-1,-1}};
 			for (int i = 0; i < columns; ++i)
 			{
 				AnalysisLumaSample value;
@@ -360,7 +375,11 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 					std::abs(static_cast<int>(value.chromaV) - vMedian));
 				result.maxLumaDelta = std::max(result.maxLumaDelta, dy);
 				result.maxChromaDelta = std::max(result.maxChromaDelta, duv);
-				if (dy > tolerance || duv > tolerance)
+                ++coverage[i/24];
+                if(dy<=4 && duv>4 && MatchesMeasuredMatte(value,yMedian,uMedian,vMedian,source.range)) {
+                    ++rounded[i/24];if(firstRounded[i/24]<0)firstRounded[i/24]=x;
+                }
+				if (!MatchesMeasuredMatte(value,yMedian,uMedian,vMedian,source.range))
 				{
 					++result.mismatchSamples;
 					const int boundaryRows = std::max(2, source.height / 540);
@@ -378,6 +397,17 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 					}
 				}
 			}
+            for(unsigned q=0;q<4;++q)if(coverage[q] && rounded[q]*2>=coverage[q]) {
+                // A coherent colored row cannot be dismissed as sparse noise.
+                result.mismatchSamples+=rounded[q];
+                const int boundaryRows=std::max(2,source.height/540);
+                const bool adjacent=upper?y>=top-boundaryRows:y<bottom+boundaryRows;
+                if(adjacent)result.boundaryMismatchSamples+=rounded[q];else result.deepMismatchSamples+=rounded[q];
+                auto& firstY=upper?result.topFirstMismatchY:result.bottomFirstMismatchY;
+                auto& lastY=upper?result.topLastMismatchY:result.bottomLastMismatchY;
+                if(firstY<0)firstY=y;lastY=y;
+                if(result.firstMismatchY<0){result.firstMismatchX=firstRounded[q];result.firstMismatchY=y;}
+            }
             if(known<columns/3 || leftKnown<4 || rightKnown<4) {
                 result.reason="excluded-band-support-insufficient";return result;
             }
@@ -461,7 +491,7 @@ bool HasMatteRelativeContinuation(SampleContext& samples, bool rows, bool leadin
         if (!source.Sample(rows?position:coordinate,rows?coordinate:position,pixel)) return false;
         ++samples.lumaSamples; ++samples.chromaSamples;
         return std::abs(int(pixel.luma)-reference.y)>=8 ||
-            std::abs(int(pixel.chromaU)-reference.u)>=8 || std::abs(int(pixel.chromaV)-reference.v)>=8;
+            std::abs(int(pixel.chromaU)-reference.u)>4 || std::abs(int(pixel.chromaV)-reference.v)>4;
     };
     const int positions=std::min(256,across);
     bool previous=false;
@@ -533,12 +563,12 @@ ActivePictureCandidateVerificationState VerifyNativeAxisBands(SampleContext& sam
                 ++samples.lumaSamples; ++samples.chromaSamples;
                 const int dy=std::abs(int(pixel.luma)-reference.y);
                 const int dc=std::max(std::abs(int(pixel.chromaU)-reference.u),std::abs(int(pixel.chromaV)-reference.v));
-                if (dy>4 || dc>4) {
+                if (!MatchesMeasuredMatte(pixel,reference.y,reference.u,reference.v,source.range)) {
                     ++outliers;
                     ++bad[i/24];
                     if (certificate.firstMismatchX<0) { certificate.firstMismatchX=x; certificate.firstMismatchY=y; }
                 }
-                broad[i/24] += dy>=8 || dc>=8;
+                broad[i/24] += dy>=8 || dc>4;
             }
             // Do not turn one column, a disconnected small UI mark, or local
             // filtering fringe into a new native picture boundary. Existing
@@ -586,9 +616,9 @@ bool RepairNativeVerticalBoundaryCollar(SampleContext& samples,
         samples.Checkpoint();AnalysisLumaSample pixel;
         if (!source.Sample(x,y,pixel)) return false;
         ++samples.lumaSamples;++samples.chromaSamples;
+        // Retention remains conservative even for a rounding-tolerant bar.
         different=std::abs(int(pixel.luma)-reference.y)>4 ||
-            std::abs(int(pixel.chromaU)-reference.u)>4 ||
-            std::abs(int(pixel.chromaV)-reference.v)>4;
+            std::abs(int(pixel.chromaU)-reference.u)>4 || std::abs(int(pixel.chromaV)-reference.v)>4;
         return true;
     };
     for (bool leading:{true,false}) {
@@ -1286,6 +1316,8 @@ ActivePictureEvidence VerifySuppliedActivePictureCandidate(const AnalysisLumaSou
             return value;
         };
         result.axisEvidence.vertical=axis(vertical);result.axisEvidence.horizontal=axis(horizontal);
+        result.axisEvidence.verticalCropGuardTop=measuredBounds.top-guard.top;
+        result.axisEvidence.verticalCropGuardBottom=guard.bottom-measuredBounds.bottom;
         result.available=true;
         if(!axes) {
             // The supplied positive extent owns geometry. There is no excluded

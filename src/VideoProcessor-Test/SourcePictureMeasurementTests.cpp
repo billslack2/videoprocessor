@@ -561,6 +561,56 @@ namespace VideoProcessorTest
             Assert::IsTrue(observed.canvasSupported);
             Assert::IsTrue(observed.blankMarginsUnresolved);
         }
+        TEST_METHOD(SourcePictureChromaRoundingCannotEraseCoherentBoundaryCollar)
+        {
+            SourcePictureFrame frame(960,540);
+            frame.Fill(0,70,960,470,300);
+            frame.Fill(0,68,960,70,64,518,512);frame.Fill(0,470,960,472,64,518,512);
+            const auto detected=DetectSourcePictureForWorker(frame.Source());
+            Assert::IsTrue(detected.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::AreEqual(68,detected.evidence.trustedBounds.top);
+            Assert::AreEqual(472,detected.evidence.trustedBounds.bottom);
+        }
+        TEST_METHOD(SourcePictureNearBlackChromaRoundingKeepsIndependentCrop)
+        {
+            for(bool full:{false,true})for(int phase=0;phase<4;++phase) {
+                const int floor=full?0:64;
+                SourcePictureFrame frame(960,540,floor);
+                frame.Fill(0,70,960,470,300);
+                // Sparse near-black chroma differs by 5..8 canonical codes,
+                // as in the captured black bars; luma stays within one code.
+                frame.Fill(750,24,870,25,floor+4,517+phase,512);
+                frame.Fill(30,511,150,512,floor,512,507-phase);
+                const auto detected=DetectSourcePictureForWorker(frame.Source(full?AnalysisLumaRange::Full:AnalysisLumaRange::Limited));
+                Exact(*detected.observation,Bounds(960,540,0,70,960,470));
+                Assert::IsTrue(detected.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                    L"Independent native crop verification must tolerate bounded near-black chroma rounding.");
+                Assert::IsTrue(detected.evidence.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+            }
+        }
+        TEST_METHOD(SourcePictureNearBlackChromaAllowancePreservesConnectedPicture)
+        {
+            for(int chroma:{518,520}) {
+            SourcePictureFrame frame(960,540);
+            frame.Fill(0,70,960,470,300);
+            frame.Fill(80,60,200,70,68,chroma,512);
+            const auto detected=DetectSourcePictureForWorker(frame.Source());
+            Assert::IsFalse(detected.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            Assert::IsTrue(detected.evidence.candidateVerification.vertical==ActivePictureCandidateVerificationState::CONTRADICTED,
+                L"Coherent current picture across the boundary remains a veto even at low luma.");
+            }
+        }
+        TEST_METHOD(SourcePictureChromaAllowanceCannotHideLumaOrUnknownEncoding)
+        {
+            for(bool unknown:{false,true}) {
+                SourcePictureFrame frame(960,540);
+                frame.Fill(0,70,960,470,300);
+                frame.Fill(750,24,870,25,unknown?64:76,unknown?518:512,512);
+                const auto detected=DetectSourcePictureForWorker(frame.Source(unknown?AnalysisLumaRange::Unknown:AnalysisLumaRange::Limited));
+                Assert::IsFalse(detected.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                    L"The chroma allowance cannot erase elevated luma or assume a known source range.");
+            }
+        }
         TEST_METHOD(SourcePictureInteriorComplexityCannotHideRasterCaption)
         {
             SourcePictureFrame frame(960,540);
@@ -918,6 +968,8 @@ namespace VideoProcessorTest
             }
             const auto sameCoordinate=[&](int actual,int expected){return std::abs(actual-expected)<=uncertainty;};
             const bool verify=environment("VP_SOURCE_PICTURE_CAPTURE_VERIFY")=="1";
+            const bool requireCrop=environment("VP_SOURCE_PICTURE_CAPTURE_REQUIRE_TRUSTED_CROP")=="1";
+            Assert::IsTrue(!requireCrop || verify,L"Private crop acceptance must execute the real verifier.");
             const bool captions=environment("VP_SOURCE_PICTURE_CAPTURE_CAPTION_VERIFY")=="1";
             const bool boundedWorker=environment("VP_SOURCE_PICTURE_CAPTURE_BOUNDED_WORKER")=="1";
             Assert::IsTrue(!boundedWorker || verify,L"Bounded worker replay requires the active detector and real verification path.");
@@ -1002,6 +1054,13 @@ namespace VideoProcessorTest
                 }
                 if(verify) {
                     const auto& evidence=active.evidence;
+                    if(requireCrop) {
+                        const auto& guard=evidence.trustedBounds;
+                        const int collar=2*std::max(2,height/540);
+                        matches=matches && evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                            guard.left<=left && guard.top<=top && guard.right>=right && guard.bottom>=bottom &&
+                            left-guard.left<=collar && top-guard.top<=collar && guard.right-right<=collar && guard.bottom-bottom<=collar;
+                    }
                     matches=matches && evidence.detector!=ActivePictureDetectorKind::Legacy;
                     if(outcome=="Measured")matches=matches && evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
                         evidence.physicalEdges.estimateAvailable && sameCoordinate(evidence.physicalEdges.estimate.left,left) &&
@@ -1050,6 +1109,7 @@ namespace VideoProcessorTest
                         " classification="+std::to_string(int(evidence.classification))+
                         " vertical="+std::to_string(int(evidence.candidateVerification.vertical))+
                         " horizontal="+std::to_string(int(evidence.candidateVerification.horizontal))+
+                        " mismatch_xy="+std::to_string(evidence.candidateVerification.firstMismatchX)+","+std::to_string(evidence.candidateVerification.firstMismatchY)+
                         " trusted="+std::to_string(evidence.trustedBounds.left)+","+std::to_string(evidence.trustedBounds.top)+"-"+
                         std::to_string(evidence.trustedBounds.right)+","+std::to_string(evidence.trustedBounds.bottom)+
                         " bounded_worker_24ms="+std::to_string(boundedWorker)+

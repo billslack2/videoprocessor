@@ -4610,6 +4610,31 @@ struct LibplaceboVideoRenderer::Impl
         double consumeMs=0,consumePeak=0,composeCpu[2]{},gpuMs[2]{},gpuPeak[2]{};
     } subtitlePerf;
     ULONGLONG subtitlePerfTick=0;
+    const char* lastRenderSkipReason=nullptr;
+    uint64_t presentationSkipTick=0,presentationSkipCount=0;
+    double presentationSkipPeakMs=0;
+    void RecordSkippedPresentation(const ActivePictureFrameIdentity& identity,
+        SubtitlePreviewMode mode,double elapsedMs)
+    {
+        const char* reason=lastRenderSkipReason?lastRenderSkipReason:"unclassified-no-submit";
+        auto trace=AnalysisTraceRecord(identity,this,"presentation-skipped",reason);
+        trace.counters[0]=static_cast<uint64_t>(mode);
+        trace.counters[1]=static_cast<uint64_t>(latestActivePictureEvidenceClassification);
+        trace.counters[2]=temporalRenderer.SelectedPacketSequence();
+        trace.flags=(subtitleBoxResult.detected?1u:0u)|(nlsGeometryAvailable?2u:0u)|(scopeSubtitleFit?4u:0u);
+        trace.counters[3]=temporalRenderer.Active()?1u:0u;
+        trace.metrics[0]=elapsedMs;AnalysisDiagnosticTrace::Emit(trace);
+        if(!DebugLog::IsEnhancedLoggingEnabled())return;
+        const auto now=GetTickCount64();if(!presentationSkipTick)presentationSkipTick=now;
+        ++presentationSkipCount;presentationSkipPeakMs=std::max(presentationSkipPeakMs,elapsedMs);
+        if(now-presentationSkipTick>=2000) {
+            DebugLog::Log("VP presentation skips: window_ms=%llu skipped=%llu source=%llu mode=%d last_reason=%s caption=%d geometry=%d peak_attempt_ms=%.3f",
+                now-presentationSkipTick,presentationSkipCount,identity.acceptedSequence,int(mode),reason,
+                subtitleBoxResult.detected?1:0,int(latestActivePictureEvidenceClassification),presentationSkipPeakMs);
+            presentationSkipTick=now;presentationSkipCount=0;presentationSkipPeakMs=0;
+        }
+    }
+
     SubtitleBoxPresentation subtitleBoxPresentation;
     SubtitleCueContinuationGuard subtitleCueContinuation;
     SubtitleCadenceGuard subtitleCadenceGuard;
@@ -13210,6 +13235,7 @@ struct LibplaceboVideoRenderer::Impl
         sourceCadencePresentation.Reset();
         bool sourceTransportEvaluated=false;
         presentationAttempt.Begin();
+        lastRenderSkipReason=nullptr;
         lastRenderPresentationPaused=false;
         const auto renderWorkStarted=SteadyClock::now();
 		// Snapshot once so a hotkey arriving mid-frame takes effect cleanly on
@@ -19990,10 +20016,13 @@ releaseDriftBaseRetention =
                     }
                 }
             }            if (!sourceReady) {
+                lastRenderSkipReason=temporalSubtitleCanvasDecision.waitForSubtitleProcessing?
+                    "subtitle-canvas-pending":"source-evidence-not-ready";
                 frameGpuTiming.EndRender();
                 return true;
             }
             if (temporalSkipPresentation) {
+                lastRenderSkipReason="temporal-output-not-ready";
                 frameGpuTiming.EndRender();
                 return true;
             }
@@ -20008,6 +20037,7 @@ releaseDriftBaseRetention =
                 temporalPresentations.Find({frameGeneration,selected,
                     viewportRequestSerial,temporalOutputContract});
             if (!selectedSnapshot) {
+                lastRenderSkipReason="selected-presentation-unavailable";
                 frameGpuTiming.EndRender();
                 return true;
             }
@@ -27702,6 +27732,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                     }
                     if (!currentMotionOutput()) { staleGeneration = true; break; }
                 const uint64_t beforeSubmission=m_impl->renderLoadSubmissionSerial;
+                const auto attemptStarted=SteadyClock::now();
 				rendered = state && m_impl->RenderLocked(
 					frame,
 					state,
@@ -27741,6 +27772,9 @@ void LibplaceboVideoRenderer::RenderLoop()
                     subtitleBacklogRetirementOnly,backlogTemplateIdentity,
                     ownedSubtitleScanWitness,ownedSubtitleTimelinePolicy,sourceUploadBatch, pixelMeasurements);
                     presentationPaused=state && m_impl->lastRenderPresentationPaused;
+                    if(rendered && !presentationPaused && m_impl->renderLoadSubmissionSerial==beforeSubmission)
+                        m_impl->RecordSkippedPresentation(activePictureIdentity,sourceSubtitleMode,
+                            std::chrono::duration<double,std::milli>(SteadyClock::now()-attemptStarted).count());
                     ++renderedMotionDraws;
                     actuallySubmitted=actuallySubmitted || m_impl->renderLoadSubmissionSerial>beforeSubmission;
                     if(!rendered)break;

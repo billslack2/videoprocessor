@@ -156,6 +156,35 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
         trace.metrics[18]=contact.textureRegions;trace.metrics[19]=contact.sparseSide+1;
         for(unsigned i=0;i<4;++i)trace.metrics[20+i]=contact.textureSupport[i];
     }
+    if(result.observation && result.observation->rectangleAvailable) {
+        const auto& bounds=result.observation->measuredBounds;
+        if(bounds.left || bounds.top || bounds.right<source.width || bounds.bottom<source.height) {
+            const auto& evidence=result.evidence;const auto& check=evidence.candidateVerification;
+            auto crop=AnalysisTraceRecord(identity,nullptr,"source-crop-verification",evidence.reason.c_str());
+            crop.flags=(evidence.sourceCandidateVerificationComplete?1u:0u)|
+                (evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED?2u:0u);
+            crop.counters[0]=static_cast<uint64_t>(check.vertical);crop.counters[1]=static_cast<uint64_t>(check.horizontal);
+            crop.counters[2]=check.samples;crop.counters[3]=static_cast<uint64_t>(evidence.classification);
+            crop.metrics[0]=check.firstMismatchX;crop.metrics[1]=check.firstMismatchY;
+            const auto* matte=bounds.top?&evidence.top.measuredMatteReference:
+                bounds.bottom<source.height?&evidence.bottom.measuredMatteReference:
+                bounds.left?&evidence.left.measuredMatteReference:&evidence.right.measuredMatteReference;
+            if(check.firstMismatchX>=0 && check.firstMismatchY>=0) {
+                if(check.firstMismatchX<bounds.left)matte=&evidence.left.measuredMatteReference;
+                else if(check.firstMismatchX>=bounds.right)matte=&evidence.right.measuredMatteReference;
+                else if(check.firstMismatchY<bounds.top)matte=&evidence.top.measuredMatteReference;
+                else if(check.firstMismatchY>=bounds.bottom)matte=&evidence.bottom.measuredMatteReference;
+            }
+            if(matte->state==ActivePictureMatteReferenceState::QUALIFIED)crop.flags|=8u;
+            crop.metrics[2]=matte->y;crop.metrics[3]=matte->u;crop.metrics[4]=matte->v;
+            AnalysisLumaSample pixel;
+            if(check.firstMismatchX>=0 && check.firstMismatchY>=0 && source.Sample(check.firstMismatchX,check.firstMismatchY,pixel)) {
+                crop.flags|=4u;crop.metrics[5]=pixel.luma;crop.metrics[6]=pixel.chromaU;crop.metrics[7]=pixel.chromaV;
+            }
+            AnalysisTraceRect(crop.measured,bounds);AnalysisTraceRect(crop.candidate,check.nomination);
+            AnalysisTraceRect(crop.published,evidence.trustedBounds);AnalysisDiagnosticTrace::Emit(crop);
+        }
+    }
     AnalysisTraceRect(trace.published,result.evidence.trustedBounds);
     // Low-rate experimental health telemetry separates completed source facts
     // from accepted crop authority; no pixels or presentation decisions change.
