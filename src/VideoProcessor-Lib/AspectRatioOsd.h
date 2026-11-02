@@ -77,7 +77,7 @@ public:
         }
         const auto& stable=reading.stableDetection;
         if(stable.available && std::isfinite(stable.ratio) && stable.ratio>0.0) {
-            wchar_t numeric[64]={};swprintf_s(numeric,L"%.5f:1",stable.ratio);
+            wchar_t numeric[64]={};swprintf_s(numeric,L"%.2f:1",stable.ratio);
             rows.detected=numeric;
             if(stable.physicalBoundsAvailable) {
                 wchar_t geometry[128]={};
@@ -95,7 +95,7 @@ public:
             rows.detected = L"Canvas estimate (blank margins unresolved; source spatial experimental)";
         } else if (reading.available && !reading.provisional) {
             wchar_t numeric[64] = {};
-            swprintf_s(numeric, L"%.5f:1", reading.ratio);
+            swprintf_s(numeric, L"%.2f:1", reading.ratio);
             rows.detected = numeric;
             if (reading.physicalBoundsAvailable) {
                 wchar_t geometry[128] = {};

@@ -752,7 +752,7 @@ namespace VideoProcessorTest
                 L"A provisional caption envelope cannot become measured physical aspect.");
         }
 
-        TEST_METHOD(AspectDisplayReportsSubPercentNativeMeasurementChangeExactly)
+        TEST_METHOD(AspectDisplayRoundsNativeMeasurementWithoutChangingIt)
         {
             AspectRatioOsd osd;
             DetectedPictureAspect r;
@@ -761,21 +761,21 @@ namespace VideoProcessorTest
             const auto first = osd.Update(r).detected;
             r.ratio = 3840.0 / 1636.0;
             const auto second = osd.Update(r).detected;
-            Assert::IsTrue(first.find(L"2.32727") != std::wstring::npos);
-            Assert::IsTrue(second.find(L"2.34719") != std::wstring::npos);
+            Assert::IsTrue(first.find(L"2.33") != std::wstring::npos);
+            Assert::IsTrue(second.find(L"2.35") != std::wstring::npos);
             Assert::IsTrue(first != second);
         }
 
-        TEST_METHOD(AspectDisplayNeverHidesMeasurementDriftAndKeepsPresentationLabels)
+        TEST_METHOD(AspectDisplayRoundingKeepsPresentationLabels)
         {
             AspectRatioOsd osd;
             DetectedPictureAspect r;
             r.sourceGeneration=1; r.available=true; r.ratio=1.50;
-            Assert::IsTrue(osd.Update(r).detected == L"1.50000:1");
+            Assert::IsTrue(osd.Update(r).detected == L"1.50:1");
             r.ratio=1.509;
-            Assert::IsTrue(osd.Update(r).detected == L"1.50900:1");
+            Assert::IsTrue(osd.Update(r).detected == L"1.51:1");
             r.ratio=1.514;
-            Assert::IsTrue(osd.Update(r).detected == L"1.51400:1");
+            Assert::IsTrue(osd.Update(r).detected == L"1.51:1");
             r.inUseAvailable=true; r.inUseState=PictureAspectUse::DETECTED; r.inUseRatio=2.39;
             Assert::IsTrue(osd.Update(r).inUse == L"2.39:1 (Scope)");
         }
@@ -865,11 +865,11 @@ namespace VideoProcessorTest
             Assert::AreEqual(outsideSequence,telemetry.Read().stableDetection.acceptedSequence);
             Assert::IsFalse(telemetry.Read().stableDetection.held);
             auto changed=AspectRatioOsd::Format(telemetry.Read()).detected;
-            Assert::IsTrue(changed.find(L"2.42100:1")==0 && changed!=anchor,
+            Assert::IsTrue(changed.find(L"2.42:1")==0 && changed!=anchor,
                 L"The first valid measurement outside three percent updates immediately.");
             telemetry.Observe(7,sequence++,1.90,true,false);
             const auto imax=AspectRatioOsd::Format(telemetry.Read()).detected;
-            Assert::IsTrue(imax.find(L"1.90000:1")==0);
+            Assert::IsTrue(imax.find(L"1.90:1")==0);
             const auto imaxSequence=telemetry.Read().stableDetection.acceptedSequence;
             Assert::AreEqual(sequence-1,imaxSequence);
             Assert::AreEqual(1.90,telemetry.Read().stableDetection.ratio);
@@ -879,7 +879,7 @@ namespace VideoProcessorTest
             Assert::AreEqual(imaxSequence,telemetry.Read().stableDetection.acceptedSequence);
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected==imax);
             telemetry.Observe(7,sequence++,2.35,true,false);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"2.35000:1")==0,
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"2.35:1")==0,
                 L"A real IMAX-to-scope transition has no additional confirmation delay.");
         }
         TEST_METHOD(DetectedAspectStableHistoryRejectsStaleInvalidAndCanvasThenResets)
@@ -924,7 +924,7 @@ namespace VideoProcessorTest
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected==L"Unavailable");
             Assert::AreEqual(2.39,telemetry.Read().inUseRatio);
             telemetry.Observe(8,1,1.90,true,false);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"1.90000:1")==0,
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"1.90:1")==0,
                 L"Explicit ClearDetection resets the source ordering anchor as well as the stable value.");
             telemetry.Source(9);
             Assert::IsFalse(telemetry.Read().available);
@@ -932,13 +932,13 @@ namespace VideoProcessorTest
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected==L"Unavailable");
             telemetry.ObservePhysical(9,1,true,false,PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE,
                 0,0,3840,2160,ActivePictureDetectorKind::SourceSpatialCanvas);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"1.90000:1")==std::wstring::npos);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"1.90:1")==std::wstring::npos);
             Assert::IsFalse(telemetry.Read().stableDetection.available);
             telemetry.Observe(9,2,2.0,true,true);
             Assert::IsFalse(telemetry.Read().available);
             Assert::IsFalse(telemetry.Read().stableDetection.available);
             telemetry.Observe(9,3,2.0,true,false);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"2.00000:1")==0);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"2.00:1")==0);
             Assert::AreEqual(uint64_t(3),telemetry.Read().stableDetection.acceptedSequence);
             Assert::AreEqual(uint64_t(9),telemetry.Read().stableDetection.sourceGeneration);
             Assert::IsFalse(telemetry.Read().stableDetection.held);
@@ -1014,7 +1014,7 @@ namespace VideoProcessorTest
                 0, 0, 3840, 2160);
             Assert::IsTrue(telemetry.Read().available);
             const auto acceptedLabel=AspectRatioOsd::Format(telemetry.Read()).detected;
-            Assert::IsTrue(acceptedLabel.find(L"1.77778:1 [0,0..3840,2160; stable]")==0);
+            Assert::IsTrue(acceptedLabel.find(L"1.78:1 [0,0..3840,2160; stable]")==0);
             Assert::AreEqual(int(PhysicalAspectConfidence::SOURCE_RASTER_EXTENT),int(telemetry.Read().stableDetection.confidence));
             telemetry.ObservePhysical(1, 11, true, false, PhysicalAspectConfidence::SOURCE_RASTER_EXTENT,
                 0, 0, 3840, 2160);
@@ -1031,11 +1031,11 @@ namespace VideoProcessorTest
             osd.Update(r); r.available=false;
             Assert::IsTrue(osd.Update(r).detected == L"Unavailable");
             r.available=true; r.ratio=1.509;
-            Assert::IsTrue(osd.Update(r).detected == L"1.50900:1");
+            Assert::IsTrue(osd.Update(r).detected == L"1.51:1");
             r.sourceGeneration=2; r.ratio=1.519;
-            Assert::IsTrue(osd.Update(r).detected == L"1.51900:1");
+            Assert::IsTrue(osd.Update(r).detected == L"1.52:1");
             osd.Reset(); r.ratio=1.529;
-            Assert::IsTrue(osd.Update(r).detected == L"1.52900:1");
+            Assert::IsTrue(osd.Update(r).detected == L"1.53:1");
         }
 
         TEST_METHOD(AspectTelemetryUsesNativeStartupWithoutClaimingDetection)
@@ -1061,7 +1061,7 @@ namespace VideoProcessorTest
             Assert::IsFalse(telemetry.Read().available);
             Assert::IsTrue(telemetry.Read().provisional);
             Assert::AreEqual(2.39,telemetry.Read().stableDetection.ratio);
-            Assert::IsTrue(rows.detected.find(L"2.39000:1")==0 && rows.detected.find(L"stable")!=std::wstring::npos);
+            Assert::IsTrue(rows.detected.find(L"2.39:1")==0 && rows.detected.find(L"stable")!=std::wstring::npos);
             telemetry.ClearDetection();
             telemetry.Submitted(1, 12, 2.39, 16.0/9.0, true, true);
             Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected == L"Unavailable");
@@ -1078,7 +1078,7 @@ namespace VideoProcessorTest
             telemetry.Observe(1, 3, 2.17, true, false);
             Assert::AreEqual(2.17,telemetry.Read().ratio);
             Assert::AreEqual(2.17,telemetry.Read().stableDetection.ratio);
-            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"2.17000:1")==0);
+            Assert::IsTrue(AspectRatioOsd::Format(telemetry.Read()).detected.find(L"2.17:1")==0);
         }
         TEST_METHOD(AspectTelemetryPreservesPresentedPacketAndRejectsFailedSubmission)
         {

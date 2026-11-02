@@ -17,7 +17,7 @@
     "DetectedAspectDeadbandRetainsAnchorAcross60HzJitterAndUnknowns",
     "DetectedAspectDeadbandIsAnchoredAndLargeChangesAreImmediate",
     "DetectedAspectStableHistoryRejectsStaleInvalidAndCanvasThenResets",
-    "AspectDisplayNeverHidesMeasurementDriftAndKeepsPresentationLabels",
+    "AspectDisplayRoundingKeepsPresentationLabels",
     "AspectDisplayResetsForUnavailableNewSourceAndRenderer",
     "AspectTelemetryUsesNativeStartupWithoutClaimingDetection",
     "AspectTelemetryKeepsSubmittedScopeWhileMenuCandidateIsLive",
@@ -117,7 +117,7 @@
     "NativeCaptureSamplesWholeDurationAndBothInputParitiesWithinBudget",
     "BoundaryChainSeparatesUnknownPhysicalFromGuardAndCaptionNomination",
     "CaptionEnvelopeCannotRelabelPhysicalAspect2_24",
-    "AspectDisplayReportsSubPercentNativeMeasurementChangeExactly",
+    "AspectDisplayRoundsNativeMeasurementWithoutChangingIt",
     "AspectPhysicalUnknownCannotReusePreviousCurrentMeasurement",
     "PhysicalSourceEdgeDoesNotBecomeItsDecodedHaloRetentionEnvelope",
     "SeparatedOuterPictureEdgesSurviveAnOccludedCenter",
@@ -329,7 +329,7 @@
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
-      "method": "AspectDisplayNeverHidesMeasurementDriftAndKeepsPresentationLabels"
+      "method": "AspectDisplayRoundingKeepsPresentationLabels"
     },
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
@@ -481,7 +481,7 @@
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
-      "method": "AspectDisplayReportsSubPercentNativeMeasurementChangeExactly"
+      "method": "AspectDisplayRoundsNativeMeasurementWithoutChangingIt"
     },
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
