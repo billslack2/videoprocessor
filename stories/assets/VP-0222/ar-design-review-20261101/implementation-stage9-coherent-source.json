@@ -1,0 +1,69 @@
+{
+  "sourceCommit": "2dc6ca0217be23dd9e4362dec86ea8818038c770",
+  "branch": "codex/coherent-source-measurement-20261101",
+  "baseBeta": "v1.4.02-beta",
+  "baseBetaCommit": "a591ad3b532771911e85f8ef026958279f2065f0",
+  "preservedDeployedHistory": "aee2c7dfe0ff47aa9372b79c6afc200440f36e34",
+  "status": "Native and private replay passed; matching full runtime qualification in progress",
+  "deploymentPerformed": false,
+  "configurationChanged": false,
+  "pausedCapture": {
+    "instances": 64,
+    "allBytesIdentical": true,
+    "sha256": "b9461e4459f1e06ba34cb9f533d044d11695bec65af49fc84d8829d7cd9e3a46",
+    "measuredBounds": [
+      0,
+      263,
+      3840,
+      1897
+    ],
+    "measuredAspect": 2.350061199510404,
+    "boundedMeasurementPass": 64,
+    "currentCaptionCropVerificationPass": 64,
+    "geometryReuse": 63,
+    "postGeometryCombinedPeakMs": 6.832,
+    "evidenceRoot": "E:/codex/videoprocessor/evidence/scope-20261101-220745"
+  },
+  "native": {
+    "passed": 1002,
+    "total": 1002,
+    "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261101-230857-80e95dff",
+    "scope": "Pre-commit code validation; final clean-commit native and actual renderer qualification runs separately"
+  },
+  "savedCorpus": {
+    "instances": 479,
+    "sets": 7,
+    "regressionPass": 479,
+    "groundTruthLimit": "Independent native row profiles for representative first frames; not479 separately labelled source images",
+    "paused56Bounds": [
+      0,
+      275,
+      3840,
+      1884
+    ],
+    "initialWrongHypothesisFailurePreserved": true,
+    "evidenceRoot": "E:/codex/videoprocessor/evidence/scope-20261101-220745/corpus-postgeometry"
+  },
+  "brightRegression": {
+    "instances": 150,
+    "passed": 150,
+    "bounds": [
+      0,
+      7,
+      3840,
+      2160
+    ],
+    "boundedPeakMs": 5.7553,
+    "evidenceRoot": "E:/codex/videoprocessor/evidence/native-boundary-20261101/common-bounded-postgeometry"
+  },
+  "runtimeQualification": {
+    "state": "Running",
+    "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261101-231143-220c418e"
+  },
+  "designRecord": "docs/SOURCE_PICTURE_COHERENCE_20261101.md",
+  "limits": [
+    "Earlier successful alternating log entries lack matching native captures; exact cause of every historical flicker is not claimed.",
+    "Full renderer, motion and live acceptance are not established by CPU/capture success.",
+    "No beta merge or release packaging."
+  ]
+}

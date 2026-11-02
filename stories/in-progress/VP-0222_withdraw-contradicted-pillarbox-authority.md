@@ -567,3 +567,34 @@ not complete scope/IMAX transition or earlier1.96-event qualification.
 
 [Deployment receipt](../assets/VP-0222/ar-design-review-20261101/deployment-aee2c7df.json).
 Story remains InProgress; unrelated VP-0207 design changes were preserved.
+
+
+## Paused source coherence redesign (2026-11-01)
+
+The operator reported a paused scope scene that sometimes detected and required a
+review of the agreed design rather than another observer exception. The64 captured
+native frames are byte-identical; independent source boundaries are0,263–3840,1897
+(2.350061). Legacy replay fails spatially even without a budget limit. Earlier
+alternating successful log entries lack matching captured pixels, so no claim is
+made to have reproduced every historical flicker.
+
+Pushed source2dc6ca0217be23dd9e4362dec86ea8818038c770 consolidates production geometry
+under the common source worker, including converted-P010 analysis. It separates
+geometry, completion and crop permission; shares only completed exact-byte source
+facts; makes raw publication monotonic; keys derived retention by completed-result
+revision; and removes competing retention/subtitle padding rules. Late current
+caption proof replaces one provisional evaluation without another vote or an older
+source rewinding newer state. Perpendicular native boundary facts now prevent a
+confident wrong inset when coarse topology misses broad dim picture.
+
+All1,002 native contracts pass. The current paused capture passes64/64 exact
+measurements and64/64 current-caption crop checks. Saved corpus regression passes
+479 instances; representative native profiles establish the older paused56 set's
+different275–1884 bounds, and its initial wrong-hypothesis failure remains recorded.
+The prior bright seven-row margin passes150/150 exact bounded replays. No private
+pixels are committed. Exact source and evidence are in the [stage9 record](../assets/VP-0222/ar-design-review-20261101/implementation-stage9-coherent-source.json).
+
+Matching clean-commit x64 Release host/both renderer qualification is running.
+No runtime/configuration deployment, beta merge or release packaging has occurred
+in this repair. Full qualification and live acceptance are not claimed. Story stays
+InProgress; the unrelated dirty VP-0207 design asset remains untouched.
