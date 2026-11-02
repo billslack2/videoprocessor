@@ -504,3 +504,39 @@ After explicit operator deployment authorization, clean c4c915360e1572650d6b3e85
 Backup: C:\Videoprocessor\vp\backups\native-recovery-c4c91536-20261101-200412. All deployed hashes match their tested build artifacts. Active cfg/state were backed up and preserved without edits; unchanged dependencies and shader caches were preserved. VP restarted asPID61872 with active spatial mode and shadow disabled. The startup log confirms clean c4c91536 host, both API35 plugins loaded and DeckLink Quad HDMI Recorder(2) capture starting; the process responds. No incoming input frames were observed during startup verification, so live visual acceptance remains pending. Story remains InProgress; no beta merge or release packaging performed.
 
 See [deployment record](../assets/VP-0222/ar-design-review-20261101/deployment-c4c91536.json).
+
+
+## Fresh native boundary investigation (2026-11-01)
+
+Independently queried the current beta and started a clean E: source worktree at
+remote a591ad3b, then fast-forwarded cumulative deployed c4c91536 history to
+preserve subtitle/runtime dependencies. New commit aee2c7df is pushed on
+codex/native-boundary-investigation-20261101. No beta merge or deployment.
+
+Production-context replay reproduced legacy physical-reporting Unknown on the
+bright TV capture. Fixed reference holdouts crossed the seven-row dark margin
+into picture, while terminal fallback required picture at that dark raster edge.
+The correction fits references outside measured shallow candidates and retains
+existing continuation/contradiction proofs and faint-prefix vetoes. P010/422
+chroma footprints are handled explicitly. No temporal rule or crop verifier was
+relaxed. OSD now distinguishes current measured/Unknown, retained estimate and
+applied AR while preserving existing retention policy.
+
+All981 CPU contracts pass. Independently decoded57+93 native frames reproduce
+exact[0,7..3840,2160] under the2ms production observer budget, with zero mismatches
+and peaks0.559/0.462ms.1596 production luma samples match independent v210 unpacking.
+The existing spatial bounded worker already measures this boundary on57 frames
+while its crop verification remains provisional; normal startup selected legacy.
+Earlier1.96 logs prove reporting/crop authority divergence only; matching source
+pixels and the true geometry of that event remain unproven.
+
+Separate measurement and pipeline reviewers found no final CPU-scope blocker.
+GPU integration, OSD screen fit, source-inset overlay and full-rate dynamic
+transition validation remain pending; full qualification is not claimed. Playback
+was not stopped or restarted by this investigation. Runtime logs record an orderly
+keyboard-close shutdown at20:42:05; VP was left closed. No runtime/config edits.
+Story remains InProgress; unrelated dirty VP-0207 design asset is preserved.
+
+See [stage8 evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage8-native-boundary.json)
+and source docs/SOURCE_BOUNDARY_INVESTIGATION_20261101.md for reproduction and
+bounded remaining work.
