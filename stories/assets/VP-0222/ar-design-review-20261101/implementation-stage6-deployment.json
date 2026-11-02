@@ -1,0 +1,245 @@
+{
+  "source": {
+    "commit": "85b6dd4f966a7b832415ce5488ff31a8118a175e",
+    "dirty": false,
+    "fingerprint": "ecb47e18e61b26db30fd3354e78d176e7f327ddb0a27bcf4eb318f1267ce5573",
+    "label": "85b6dd4f966a",
+    "build": "85b6dd4f966a7b832415ce5488ff31a8118a175e"
+  },
+  "configuration": "Release",
+  "architecture": "x64",
+  "deploymentStatus": "ExperimentalManualReview",
+  "fullQualification": false,
+  "fullQualificationCheck": "Runtime build is UNQUALIFIED: mandatory qualification receipt is missing. Build Release|x64 through MSBuild; passing tests are required.",
+  "focusedEvidence": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-192752-79e5758f\\iteration.json",
+  "testEnvironment": {
+    "VP_SOURCE_PICTURE_DETECTOR": "1",
+    "VP_SOURCE_PICTURE_SHADOW": "0"
+  },
+  "knownLimitations": [
+    "Default legacy detector failed both return-to-scope renderer checks in run20261101-192040-b4ea6c6e; active spatial mode passed. Legacy recovery resets on skipped input IDs. No full qualification claimed."
+  ],
+  "executed": {
+    "executed": 15,
+    "native": 9,
+    "actualClassic": 6,
+    "passed": 15
+  },
+  "earlierNativeEvidence": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-191025-f7918174\\iteration.json",
+  "displayEvidence": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-191413-3dd54b5f\\iteration.json",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\detection-85b6dd4f-20261101-192928",
+  "configurationEdits": [],
+  "configurationHashes": {
+    "VideoProcessor.cfg": "B01F2889523BED7C751A25F027D3C6F294AE263E5CBB41E76398C87AC5548149",
+    "VideoProcessor.state": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0"
+  },
+  "files": [
+    {
+      "source": "VideoProcessor-GUI.exe",
+      "target": "VideoProcessor.exe",
+      "before": "06F3B756CF4D7963C98102D691D57585CC4935CB84CB3C1F2C5B832141B1B3EB",
+      "sha256": "4B7FC23681ABCCD4EE2BAE57424FC504AF89778A55D70E69040B838857E70593",
+      "changed": true
+    },
+    {
+      "source": "VideoProcessor-GUI.exe.runtime.json",
+      "target": "VideoProcessor.exe.runtime.json",
+      "before": "8A9086898142F38F2776602A4B047B9E05ACA514E7568493594EB77C3F76BF37",
+      "sha256": "3A086E19889C12F51E2534AA59884CDFAEA25F46E707B3E17486D37C4E2A26C3",
+      "changed": true
+    },
+    {
+      "source": "VideoProcessor-GUI.exe.runtime.json",
+      "target": "VideoProcessor-GUI.exe.runtime.json",
+      "before": "8A9086898142F38F2776602A4B047B9E05ACA514E7568493594EB77C3F76BF37",
+      "sha256": "3A086E19889C12F51E2534AA59884CDFAEA25F46E707B3E17486D37C4E2A26C3",
+      "changed": true
+    },
+    {
+      "source": "VideoProcessor-GUI.pdb",
+      "target": "VideoProcessor-GUI.pdb",
+      "before": "515684741AED662E26A0137AACD47445D31999F08B75755F2852AF861C1B7DDA",
+      "sha256": "06722C87B6E50A9D74AF300D0AF4E11F55915FD1C3D80FD6AE27E322B2259DEE",
+      "changed": true
+    },
+    {
+      "source": "vprenderer\\libdovi.dll",
+      "target": "vprenderer\\libdovi.dll",
+      "before": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "changed": false
+    },
+    {
+      "source": "vprenderer\\libgcc_s_seh-1.dll",
+      "target": "vprenderer\\libgcc_s_seh-1.dll",
+      "before": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "changed": false
+    },
+    {
+      "source": "vprenderer\\liblcms2-2.dll",
+      "target": "vprenderer\\liblcms2-2.dll",
+      "before": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "changed": false
+    },
+    {
+      "source": "vprenderer\\libplacebo-360.dll",
+      "target": "vprenderer\\libplacebo-360.dll",
+      "before": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "changed": false
+    },
+    {
+      "source": "vprenderer\\libshaderc_shared.dll",
+      "target": "vprenderer\\libshaderc_shared.dll",
+      "before": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "changed": false
+    },
+    {
+      "source": "vprenderer\\libspirv-cross-c-shared.dll",
+      "target": "vprenderer\\libspirv-cross-c-shared.dll",
+      "before": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "changed": false
+    },
+    {
+      "source": "vprenderer\\libstdc++-6.dll",
+      "target": "vprenderer\\libstdc++-6.dll",
+      "before": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "changed": false
+    },
+    {
+      "source": "vprenderer\\libwinpthread-1.dll",
+      "target": "vprenderer\\libwinpthread-1.dll",
+      "before": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "changed": false
+    },
+    {
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "before": "52291596BD45F57F4C4127B8C8C0F1BA669B1147423492BCC53DF8866E086D60",
+      "sha256": "17F1A3B88507AC8608DFE04F2C7A0074611DDD24964866BE96971BF3E5467B63",
+      "changed": true
+    },
+    {
+      "source": "vprenderer\\vulkan-1.dll",
+      "target": "vprenderer\\vulkan-1.dll",
+      "before": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "changed": false
+    },
+    {
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "before": "DDD9451DD7B560CB21C160E4B5E1434868B67042E75B62A790EE5B87C0F56F3D",
+      "sha256": "F486FB1849ADBB01341C74DA6B1861AF2E3DD60D5D254839CBC4638A4E543DB9",
+      "changed": true
+    },
+    {
+      "source": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "target": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "before": "1A62F74A9AA64641BE9B67402D9E6A15D0D44C339E00E1D20E5B5A1FA8001CA6",
+      "sha256": "38EF6F9E8B6C13E52C4CD614E3EC1BCCB2DDC4A594D1FF1B7FFC5E448EC053CB",
+      "changed": true
+    },
+    {
+      "source": "vprenderer-beta\\libdovi.dll",
+      "target": "vprenderer-beta\\libdovi.dll",
+      "before": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "changed": false
+    },
+    {
+      "source": "vprenderer-beta\\libgcc_s_seh-1.dll",
+      "target": "vprenderer-beta\\libgcc_s_seh-1.dll",
+      "before": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "changed": false
+    },
+    {
+      "source": "vprenderer-beta\\liblcms2-2.dll",
+      "target": "vprenderer-beta\\liblcms2-2.dll",
+      "before": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "changed": false
+    },
+    {
+      "source": "vprenderer-beta\\libplacebo-388.dll",
+      "target": "vprenderer-beta\\libplacebo-388.dll",
+      "before": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "changed": false
+    },
+    {
+      "source": "vprenderer-beta\\libshaderc_shared.dll",
+      "target": "vprenderer-beta\\libshaderc_shared.dll",
+      "before": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "changed": false
+    },
+    {
+      "source": "vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "target": "vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "before": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "changed": false
+    },
+    {
+      "source": "vprenderer-beta\\libstdc++-6.dll",
+      "target": "vprenderer-beta\\libstdc++-6.dll",
+      "before": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "changed": false
+    },
+    {
+      "source": "vprenderer-beta\\libwinpthread-1.dll",
+      "target": "vprenderer-beta\\libwinpthread-1.dll",
+      "before": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "changed": false
+    },
+    {
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "before": "8548732D9F9CE0246AF3FE22B6F8569DAE0B878218C4A0461F79A965C04EC932",
+      "sha256": "D6FF63E531E54FA027A9B09E5463DFDDD62B751CDA375BCE044072D2BFF5CFB2",
+      "changed": true
+    },
+    {
+      "source": "vprenderer-beta\\vulkan-1.dll",
+      "target": "vprenderer-beta\\vulkan-1.dll",
+      "before": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "changed": false
+    },
+    {
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "before": "F3F3D5A312B39FC9F139C3AD48DC9FC2C73D2D8312F139792E189E78CD62488F",
+      "sha256": "1CDC8F609C213DF21E2656918945E77325CD5FA861D72F67575959FD0EA16718",
+      "changed": true
+    },
+    {
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "before": "290D7F944F3082BF5A988FEAF3BBE0BC8B7D5681649F9EA86B7C8A06AAC31520",
+      "sha256": "AE3D85743E52DA80298D5F9C59D176269CAA649F2CD8193990B526728631C0F9",
+      "changed": true
+    }
+  ],
+  "spatialMode": true,
+  "deployedAt": "2026-11-01T19:29:30.3565366-05:00",
+  "startupVerification": {
+    "pluginsLoadedApi": 35,
+    "incomingFramesObserved": false,
+    "captureDevice": "DeckLink Quad HDMI Recorder (2)",
+    "hostCommit": "85b6dd4f966a7b832415ce5488ff31a8118a175e",
+    "pid": 59412,
+    "note": "Process and both plugin loads verified. Capture requested; no graph or incoming frames observed at startup check. Live playback acceptance remains pending.",
+    "responding": true
+  }
+}
