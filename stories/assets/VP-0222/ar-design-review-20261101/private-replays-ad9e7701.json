@@ -1,0 +1,50 @@
+[
+  {
+    "boundedWorker": true,
+    "summary": [
+      "Native source-picture corpus exercised: directory=E:\\codex\\videoprocessor\\evidence\\dark-scope-subtitle-20261102-1726\\analysis-20261102-172440-51064-1\\ active_verification=1 frames=96 mismatches=0 samples=34863264 total_ms=1110.108700 peak_ms=16.888300"
+    ],
+    "expectedEdges": "0,276,3840,1883",
+    "trustedCropRequired": false,
+    "captionVerify": true,
+    "exitCode": 0,
+    "nativeFrames": 96,
+    "name": "dark-worker"
+  },
+  {
+    "boundedWorker": true,
+    "summary": [
+      "Native source-picture corpus exercised: directory=E:\\codex\\videoprocessor\\evidence\\classic-subtitle-stutter-20261102-1536\\analysis-20261102-153904-30576-1\\ active_verification=1 frames=51 mismatches=0 samples=10337164 total_ms=256.740500 peak_ms=7.626300"
+    ],
+    "expectedEdges": "0,273,3840,1884",
+    "trustedCropRequired": true,
+    "captionVerify": false,
+    "exitCode": 0,
+    "nativeFrames": 51,
+    "name": "scope-logo"
+  },
+  {
+    "boundedWorker": true,
+    "summary": [
+      "Native source-picture corpus exercised: directory=E:\\codex\\videoprocessor\\evidence\\eternals-starfield-20261102-1430\\analysis-20261102-144827-56380-2\\ active_verification=1 frames=95 mismatches=0 samples=13424735 total_ms=390.107100 peak_ms=7.619100"
+    ],
+    "expectedEdges": "0,0,3840,2160",
+    "trustedCropRequired": false,
+    "captionVerify": false,
+    "exitCode": 0,
+    "nativeFrames": 95,
+    "name": "sun-starfield"
+  },
+  {
+    "boundedWorker": true,
+    "summary": [
+      "Native source-picture corpus exercised: directory=E:\\codex\\videoprocessor\\evidence\\eternals-paused-20261102-1323\\analysis-20261102-132132-59892-1\\ active_verification=1 frames=96 mismatches=0 samples=22467720 total_ms=489.795600 peak_ms=8.006600"
+    ],
+    "expectedEdges": "0,0,3840,2160",
+    "trustedCropRequired": false,
+    "captionVerify": false,
+    "exitCode": 0,
+    "nativeFrames": 96,
+    "name": "paused-full-raster"
+  }
+]

@@ -1,0 +1,26 @@
+{
+  "stage": 23,
+  "sourceCommit": "ad9e7701e05393c1d79fb5f9b11b5a88484c3a35",
+  "deployedCommit": "ce55ed99db1a91f77ba8a2d74e8098496c3470b1",
+  "status": "Implemented; full Release qualification running; not deployed",
+  "failure": "96/96 dark paused v210 frames missing left raster contact; captions found but current physical proof unavailable",
+  "nativePixelEvidence": {
+    "barY": 64,
+    "leftPictureY": "mostly 76-80, excursions to 88",
+    "oldLeftSupport": "24/128"
+  },
+  "repair": "Current quiet matching bars provide relative contrast/noise reference after all competing inset scans; quantization-preserving median texture; existing crop and subtitle proofs retained",
+  "tests": {
+    "nativeContracts": 1045,
+    "nativePassed": true,
+    "fourSidesRaisedBlackRangeControlsPassed": true,
+    "privateNativeFramesPassed": 338,
+    "darkFramesWithDetectedGlyphsAndSamplerProof": 96
+  },
+  "configurationChanges": [],
+  "fullQualification": "running",
+  "motionSuites": "pending",
+  "liveAcceptance": "pending deployment",
+  "movingPlaybackStutter": "unresolved; paused capture has zero presentation-skipped events",
+  "evidenceRoot": "E:\\codex\\videoprocessor\\evidence\\dark-scope-subtitle-20261102-1726"
+}
