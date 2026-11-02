@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "14da4730e0ba94451944cd7dcb82961e8844a8d7",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "reusedQualifiedBuild": true,
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "ReconstructionMotionTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildMode": "reused-qualified-build",
+      "reusedQualifiedBuild": true,
+      "buildExit": null,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\coherent-source-measurement-20261101\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "79C0F49824A89D2905881A2DB185A75BA00260F0A86F7C65941086AFE077A056",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "passed": 220
+    },
+    {
+      "variant": "beta",
+      "buildMode": "reused-qualified-build",
+      "reusedQualifiedBuild": true,
+      "buildExit": null,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\coherent-source-measurement-20261101\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "F33B627A4DAD666EB1397087A1FC0B9379BE0C06A28D037661C4EFF653856775",
+      "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "passed": 220
+    }
+  ],
+  "finished": "2026-11-02T01:14:17.0897792-05:00",
+  "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+}

@@ -646,3 +646,27 @@ with additional queue/timing diagnostics. The failure remains recorded, and no q
 policy, source cadence or renderer assertion was weakened. Full qualification on the
 new clean pin, motion coverage and final private replay are pending. No deployment.
 [Stage11 evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage11-visibility.json).
+
+### Qualified coherent measurement deployment (2026-11-02)
+
+Source `14da4730` separates current successful caption composition from the stronger
+proof that remaining source bands are clean. Exact composition may retain the
+measured native viewport without granting cleanup, erasure, initialization or caption
+lease authority. Missing/stale composition retains current raw visibility. This
+resolves the four residual-UI renderer failures at `0c2919f6` without weakening
+existing renderer assertions.
+
+Final qualification passed all 1,012 native contracts and 15 standard renderer
+scenarios (1,027 total), plus all 15 beta renderer scenarios. The additional seven
+GPU/cue classes passed 220 tests on each dependency. Final bounded replay of the
+64 byte-identical paused source captures measured `[0,263,3840,1897]` on every
+frame, with zero mismatches and current caption verification on all 64.
+
+The matching x64 Release host and both renderers were deployed and all 28 destination
+hashes verified. Configuration/state are unchanged. Backup is
+`C:\Videoprocessor\vp\backups\coherent-14da4730-20261102-011508`.
+The runtime was launched and both plugins loaded. Current input format differs from
+the saved paused scene; window capture timed out, so live visual acceptance of that
+original scene remains unconfirmed. No source playback controls were used.
+
+[Final evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage12-qualified.json).

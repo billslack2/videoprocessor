@@ -1,0 +1,57 @@
+{
+  "sourceCommit": "14da4730e0ba94451944cd7dcb82961e8844a8d7",
+  "status": "Qualified and deployed",
+  "deploymentPerformed": true,
+  "configurationChanged": false,
+  "changes": [
+    "One common source geometry producer; exact owned-byte geometry reuse with fresh caption verification.",
+    "Monotonic raw completion and source identity prevent late work from downgrading completed geometry.",
+    "Bounded owned-source preparation at zero lookahead; queued future glyph prefetch remains independent.",
+    "Unknown advanced output retains raw visibility. Exact current composition permits native viewport, independently from stronger remaining-band cleanup proof."
+  ],
+  "focused": {
+    "passed": 6,
+    "run": "20261102-005519-789475a9",
+    "total": 6
+  },
+  "fullQualification": {
+    "standardPassed": 1027,
+    "run": "20261102-005823-017139cf",
+    "betaPassed": 15,
+    "native": 1012,
+    "betaTotal": 15,
+    "standardTotal": 1027
+  },
+  "motion": {
+    "betaPassed": 220,
+    "classes": 7,
+    "standardPassed": 220,
+    "receipt": "motion-14da4730.json"
+  },
+  "privateReplay": {
+    "aspect": 2.3500611995,
+    "mismatches": 0,
+    "bounds": [
+      0,
+      263,
+      3840,
+      1897
+    ],
+    "directory": "E:\\codex\\videoprocessor\\evidence\\scope-20261101-220745\\final-replay-14da4730",
+    "geometryReuse": 63,
+    "frames": 64,
+    "peakMeasureVerifyDarknessMs": 5.5622,
+    "captionVerified": 64,
+    "scope": "Saved native pixels, not live latency guarantee"
+  },
+  "deployment": "deployment-14da4730.json",
+  "live": {
+    "originalSceneVisuallyConfirmed": false,
+    "pluginsLoaded": 2,
+    "source": "native-yuv422-sparse, unlike original captured decoded DV",
+    "processId": 62000,
+    "started": "2026-11-02 01:16:00",
+    "observation": "Current input produced insufficient-distributed-edge-support; cannot identify original scene. Window capture failed twice; no playback controls used."
+  },
+  "priorFailure": "implementation-stage11-visibility.json"
+}
