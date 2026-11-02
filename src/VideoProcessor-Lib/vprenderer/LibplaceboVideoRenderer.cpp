@@ -4677,6 +4677,22 @@ struct LibplaceboVideoRenderer::Impl
 	pl_tex statsOverlayTexture = nullptr;
 	pl_tex sweepOverlayTexture = nullptr;
 	pl_tex profileOverlayTexture = nullptr;
+	// Source-plugin cues (SourceCue.h), uploaded once per cue id.
+	pl_tex sourceSubtitleTexture = nullptr;
+	pl_tex sourceMessageTexture = nullptr;
+	pl_tex sourceCuePanelTexture = nullptr;
+	pl_tex sourceCueBorderTexture = nullptr;
+	uint64_t appliedSourceSubtitleId = 0;
+	uint64_t appliedSourceMessageId = 0;
+	uint32_t appliedSourceCuePanelColor = 0;
+	uint32_t appliedSourceCueBorderColor = 0;
+	// Cue white as a fraction of the profile's SDR white (1/1024 steps),
+	// applied to the cue pixels on an SDR-declared target; see the upload.
+	uint32_t appliedSourceSubtitleScale = 0;
+	uint32_t appliedSourceMessageScale = 0;
+	std::array<uint8_t, 256> sourceCueScaleLut{};
+	uint32_t sourceCueScaleLutKey = 0;
+	std::vector<uint8_t> sourceCueScaled;
 	std::mutex statsOverlayMutex;
 	std::vector<uint8_t> statsOverlayPixels;
 	std::atomic_bool statsOverlayVisible{ false };
@@ -5588,6 +5604,10 @@ struct LibplaceboVideoRenderer::Impl
 				pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
 				pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
 				pl_tex_destroy(d3d11->gpu, &profileOverlayTexture);
+				pl_tex_destroy(d3d11->gpu, &sourceSubtitleTexture);
+				pl_tex_destroy(d3d11->gpu, &sourceMessageTexture);
+				pl_tex_destroy(d3d11->gpu, &sourceCuePanelTexture);
+				pl_tex_destroy(d3d11->gpu, &sourceCueBorderTexture);
 				for (pl_tex& texture : textures)
 					pl_tex_destroy(d3d11->gpu, &texture);
 			}
@@ -19172,9 +19192,151 @@ releaseDriftBaseRetention =
 			}
 			appliedProfileOverlaySerial = profileSerial;
 		}
-		struct pl_overlay overlays[4]{};
+		// Source-plugin cues ride with the frame; a new id (or a texture lost
+		// with the device) uploads, an unchanged one draws the texture again.
+		// A natively uploaded frame (P010) has no converted payload, so its
+		// cues are read from the frame's source buffer here.
+		const SourceCues sourceCues = convertedPayload ? convertedPayload->cues :
+			ReadSourceCues(videoFrame.GetSourceBuffer());
+		// The cue's white level. On an HDR-declared target the overlay
+		// carries it as max_luma and libplacebo honours it. On an
+		// SDR-declared target libplacebo draws an sRGB overlay at target
+		// white whatever its max_luma (pl_color_space_infer_map copies an
+		// SDR source's luminance to the target), so the level is applied to
+		// the cue's pixels instead, in linear light, as a fraction of the
+		// profile's SDR white: an SDR title and an HDR title mapped to SDR
+		// then show the same subtitle brightness. Once per new cue or new
+		// fraction, never per frame.
+		const bool cueTargetHdr = pl_color_space_is_hdr(&target.color);
+		const float cueScale = cueTargetHdr ? 1.0f : (std::max)(0.0f, (std::min)(1.0f,
+			sourceCues.whiteNits / static_cast<float>((std::max)(1.0, sdrTargetNits))));
+		const uint32_t cueScaleKey = static_cast<uint32_t>(std::lround(cueScale * 1024.0f));
+		if (cueScaleKey != 1024 && cueScaleKey != sourceCueScaleLutKey)
+		{
+			const float k = cueScaleKey / 1024.0f;
+			for (int u = 0; u < 256; ++u)
+			{
+				const float c = u / 255.0f;
+				const float linear = c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
+				const float scaled = linear * k;
+				const float v = scaled <= 0.0031308f ? 12.92f * scaled
+					: 1.055f * std::pow(scaled, 1.0f / 2.4f) - 0.055f;
+				sourceCueScaleLut[u] = static_cast<uint8_t>(std::lround(
+					(std::max)(0.0f, (std::min)(1.0f, v)) * 255.0f));
+			}
+			sourceCueScaleLutKey = cueScaleKey;
+		}
+		const auto uploadSourceCue = [&](const std::shared_ptr<const SourceCue>& cue,
+			pl_tex& texture, uint64_t& appliedId, uint32_t& appliedScale, const char* kind)
+		{
+			if (!cue)
+				return;
+			if (texture && appliedId == cue->id && appliedScale == cueScaleKey)
+				return;
+			struct pl_plane_data plane{};
+			plane.type = PL_FMT_UNORM;
+			plane.width = static_cast<int>(cue->width);
+			plane.height = static_cast<int>(cue->height);
+			plane.pixel_stride = 4;
+			plane.row_stride = static_cast<size_t>(cue->width) * 4;
+			plane.pixels = cue->pixels.data();
+			if (cueScaleKey != 1024)
+			{
+				// Premultiplied BGRA: scale the un-premultiplied colour,
+				// premultiply again; alpha and chromaticity are kept.
+				sourceCueScaled.resize(cue->pixels.size());
+				const size_t count = cue->pixels.size() / 4;
+				for (size_t i = 0; i < count; ++i)
+				{
+					const uint8_t* s = &cue->pixels[i * 4];
+					uint8_t* d = &sourceCueScaled[i * 4];
+					const unsigned a = s[3];
+					d[3] = s[3];
+					for (int c = 0; c < 3; ++c)
+					{
+						if (a == 0) { d[c] = 0; continue; }
+						const unsigned u = (std::min)(255u, (s[c] * 255u + a / 2) / a);
+						d[c] = static_cast<uint8_t>((sourceCueScaleLut[u] * a + 127u) / 255u);
+					}
+				}
+				plane.pixels = sourceCueScaled.data();
+			}
+			uint64_t masks[4] = {
+				0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
+			};
+			pl_plane_data_from_mask(&plane, masks);
+			frameGpuTiming.BeginStage(
+				AlphaD3D11FrameGpuTimer::Stage::OverlayUpload);
+			const bool uploaded = pl_upload_plane(
+				d3d11->gpu, nullptr, &texture, &plane);
+			frameGpuTiming.EndStage();
+			if (!uploaded)
+			{
+				DebugLog::Log("Source cue %s texture upload failed: id=%llu %ux%u",
+					kind, static_cast<unsigned long long>(cue->id), cue->width, cue->height);
+				pl_tex_destroy(d3d11->gpu, &texture);
+				appliedId = 0;
+				return;
+			}
+			appliedId = cue->id;
+			appliedScale = cueScaleKey;
+		};
+		uploadSourceCue(sourceCues.subtitle, sourceSubtitleTexture,
+			appliedSourceSubtitleId, appliedSourceSubtitleScale, "subtitle");
+		uploadSourceCue(sourceCues.message, sourceMessageTexture,
+			appliedSourceMessageId, appliedSourceMessageScale, "message");
+		// His Move background and border as 1x1 textures (RGBA, sRGB-encoded).
+		const auto uploadSourceCueColor = [&](const std::array<float, 3>& linear,
+			float opacity, pl_tex& texture, uint32_t& appliedColor)
+		{
+			const auto encode = [](float c) {
+				c = (std::max)(0.0f, (std::min)(1.0f, c));
+				const float v = c <= 0.0031308f ? 12.92f * c : 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
+				return static_cast<uint8_t>(std::lround(v * 255.0f));
+			};
+			const uint8_t rgba[4] = { encode(linear[0]), encode(linear[1]), encode(linear[2]),
+				static_cast<uint8_t>(std::lround((std::max)(0.0f, (std::min)(1.0f, opacity)) * 255.0f)) };
+			const uint32_t color = rgba[0] | (rgba[1] << 8) | (rgba[2] << 16) |
+				(static_cast<uint32_t>(rgba[3]) << 24);
+			if (texture && appliedColor == color)
+				return;
+			struct pl_plane_data plane{};
+			plane.type = PL_FMT_UNORM; plane.width = plane.height = 1;
+			plane.pixel_stride = plane.row_stride = 4; plane.pixels = rgba;
+			uint64_t masks[4] = { 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000 };
+			pl_plane_data_from_mask(&plane, masks);
+			if (!pl_upload_plane(d3d11->gpu, nullptr, &texture, &plane))
+			{
+				DebugLog::Log("Source cue panel texture upload failed");
+				pl_tex_destroy(d3d11->gpu, &texture);
+				return;
+			}
+			appliedColor = color;
+		};
+		// Background 3 is his black backing, 5 his generated-gray style.
+		const auto& cueStyle = activeSettings.subtitleGeneratedGray;
+		// Panel and border follow the cue's white level (linear colours).
+		const auto cueLevel = [&](const std::array<float, 3>& linear) {
+			return std::array<float, 3>{ linear[0] * cueScale, linear[1] * cueScale,
+				linear[2] * cueScale };
+		};
+		if (sourceCues.subtitle && subtitleCutPasteTest)
+		{
+			if (subtitleCutPasteBackground == 5)
+				uploadSourceCueColor(cueLevel(cueStyle.color), cueStyle.opacity,
+					sourceCuePanelTexture, appliedSourceCuePanelColor);
+			else
+				uploadSourceCueColor({ 0.0f, 0.0f, 0.0f }, 1.0f,
+					sourceCuePanelTexture, appliedSourceCuePanelColor);
+			if (subtitleCutPasteBackground == 5 && cueStyle.borderWidth > 0.0f)
+				uploadSourceCueColor(cueLevel(cueStyle.borderColor), cueStyle.borderOpacity,
+					sourceCueBorderTexture, appliedSourceCueBorderColor);
+		}
+		struct pl_overlay overlays[8]{};
 		struct pl_overlay_part subtitleBoxParts[4]{};
 		struct pl_overlay_part overlayParts[3]{};
+		struct pl_overlay_part sourceCuePanelPart{}, sourceCueBorderParts[4]{};
+		struct pl_overlay_part sourceSubtitlePart{}, sourceMessagePart{};
 		int overlayCount = 0;
 		auto assembleOverlays = [&]()
 		{
@@ -19452,6 +19614,153 @@ releaseDriftBaseRetention =
                 overlay.parts=subtitleBoxParts; overlay.num_parts=4;
             }
         }
+		// Source-plugin cues: drawn over the output after tone mapping, white
+		// at the cue's level, placed in the source frame's own pixels
+		// (PL_OVERLAY_COORDS_SRC_FRAME), so libplacebo crops and scales them
+		// with the picture. A cue may lie above or below the frame, up to a
+		// frame's height either way (a subtitle in a film's bars): it then
+		// lands in the output's bars. Under a configured screen a subtitle in
+		// the bars takes his Move placement (pure geometry, none of his
+		// detection state) and the message sits at the top of the visible
+		// picture; otherwise both keep the source's own position.
+		if (sourceSubtitleTexture || sourceMessageTexture)
+		{
+			const float sx = (target.crop.x1 - target.crop.x0) / width;
+			const float sy = (target.crop.y1 - target.crop.y0) / height;
+			const auto rect = [](float l, float t, float r, float b) {
+				return pl_rect2df{ l, t, r, b };
+			};
+			SubtitleBoxRect visible{ 0, 0, width, height };
+			if (configuredScreenActive && nlsGeometryAvailable &&
+				nlsGeometrySourceGeneration == frameGeneration)
+				visible = { nlsGeometry.left, nlsGeometry.top, nlsGeometry.right, nlsGeometry.bottom };
+			else if (validScreenRect(overlayScreen) && sx > 0.0f && sy > 0.0f)
+			{
+				const auto toSource = [](double v, float origin, float scale, int limit) {
+					return (std::max)(0, (std::min)(limit,
+						static_cast<int>(std::lround((v - origin) / scale))));
+				};
+				visible = { toSource(overlayScreen.rect.left, target.crop.x0, sx, width),
+					toSource(overlayScreen.rect.top, target.crop.y0, sy, height),
+					toSource(overlayScreen.rect.right, target.crop.x0, sx, width),
+					toSource(overlayScreen.rect.bottom, target.crop.y0, sy, height) };
+			}
+			const bool placeInPicture = configuredScreenActive && visible.Valid();
+			const auto cueOverlay = [&](pl_tex texture, pl_overlay_part& part, const pl_rect2df& dst) {
+				part.src = { 0.0f, 0.0f, static_cast<float>(texture->params.w),
+					static_cast<float>(texture->params.h) };
+				part.dst = dst;
+				auto& overlay = overlays[overlayCount++];
+				overlay.tex = texture;
+				overlay.mode = PL_OVERLAY_NORMAL;
+				overlay.coords = PL_OVERLAY_COORDS_SRC_FRAME;
+				overlay.repr = pl_color_repr_rgb;
+				overlay.repr.levels = PL_COLOR_LEVELS_FULL;
+				overlay.repr.alpha = PL_ALPHA_PREMULTIPLIED;
+				overlay.color = pl_color_space_srgb;
+				// Nits on an HDR-declared target; on an SDR-declared one the
+				// level is in the pixels (see the upload) and the tag is sRGB.
+				overlay.color.hdr.max_luma = cueTargetHdr ? sourceCues.whiteNits : 0.0f;
+				overlay.parts = &part;
+				overlay.num_parts = 1;
+			};
+			if (sourceSubtitleTexture && sourceCues.subtitle)
+			{
+				const auto& cue = *sourceCues.subtitle;
+				const SubtitleBoxRect bounds{ cue.x, cue.y,
+					cue.x + static_cast<int>(cue.width), cue.y + static_cast<int>(cue.height) };
+				// His cut-paste expects a cue inside its raster and a bar it
+				// can see, so it runs in the frame padded by the rows the cue
+				// lies above or below it: a bar subtitle on a frame without
+				// stored bars (a bars-cropped scope film) is then placed as one
+				// with bars stored. Its results come back in padded rows;
+				// inFrame takes them back to frame rows.
+				const int padTop = (std::max)(0, -bounds.top);
+				const int padBottom = (std::max)(0, bounds.bottom - height);
+				const SubtitleBoxRect padded{ bounds.left, bounds.top + padTop,
+					bounds.right, bounds.bottom + padTop };
+				const auto inFrame = [&](float l, float t, float r, float b) {
+					return pl_rect2df{ l, t - padTop, r, b - padTop };
+				};
+				SubtitleCutPasteGeometry move;
+				if (subtitleCutPasteTest && placeInPicture)
+				{
+					const SubtitleBoxRect visiblePadded{ visible.left, visible.top + padTop,
+						visible.right, visible.bottom + padTop };
+					move = ComputeSubtitleCutPaste(padded, width, height + padTop + padBottom,
+						visiblePadded.top, visiblePadded.bottom,
+						activeSettings.subtitleBoxPadding, activeSettings.subtitleMoveInset);
+					move = ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(move,
+						visiblePadded, activeSettings.subtitleMoveInset),
+						activeSettings.subtitleTextReductionPercent, activeSettings.subtitleBoxPadding,
+						activeSettings.subtitleRoundedCorners, activeSettings.subtitleFloatBackground);
+				}
+				pl_rect2df glyphs = rect(static_cast<float>(bounds.left), static_cast<float>(bounds.top),
+					static_cast<float>(bounds.right), static_cast<float>(bounds.bottom));
+				if (move.valid)
+				{
+					const auto& d = move.destination;
+					if (sourceCuePanelTexture)
+					{
+						sourceCuePanelPart.src = { 0.0f, 0.0f, 1.0f, 1.0f };
+						sourceCuePanelPart.dst = inFrame(static_cast<float>(d.left), static_cast<float>(d.top),
+							static_cast<float>(d.right), static_cast<float>(d.bottom));
+						auto& panel = overlays[overlayCount++];
+						panel.tex = sourceCuePanelTexture; panel.mode = PL_OVERLAY_NORMAL;
+						panel.coords = PL_OVERLAY_COORDS_SRC_FRAME;
+						panel.repr = pl_color_repr_rgb; panel.repr.levels = PL_COLOR_LEVELS_FULL;
+						panel.repr.alpha = PL_ALPHA_INDEPENDENT;
+						panel.color = pl_color_space_srgb;
+						panel.color.hdr.max_luma = cueTargetHdr ? sourceCues.whiteNits : 0.0f;
+						panel.parts = &sourceCuePanelPart; panel.num_parts = 1;
+					}
+					if (sourceCueBorderTexture && subtitleCutPasteBackground == 5 && cueStyle.borderWidth > 0.0f)
+					{
+						const auto p = inFrame(static_cast<float>(d.left), static_cast<float>(d.top),
+							static_cast<float>(d.right), static_cast<float>(d.bottom));
+						// Source pixels, as the rest of the rectangle is.
+						const float bx = cueStyle.borderWidth, by = cueStyle.borderWidth;
+						const pl_rect2df edges[4] = {
+							{ p.x0, p.y0, p.x1, (std::min)(p.y1, p.y0 + by) },
+							{ p.x0, (std::max)(p.y0, p.y1 - by), p.x1, p.y1 },
+							{ p.x0, p.y0, (std::min)(p.x1, p.x0 + bx), p.y1 },
+							{ (std::max)(p.x0, p.x1 - bx), p.y0, p.x1, p.y1 } };
+						for (int i = 0; i < 4; ++i) { sourceCueBorderParts[i].src = { 0, 0, 1, 1 }; sourceCueBorderParts[i].dst = edges[i]; }
+						auto& border = overlays[overlayCount++];
+						border.tex = sourceCueBorderTexture; border.mode = PL_OVERLAY_NORMAL;
+						border.coords = PL_OVERLAY_COORDS_SRC_FRAME;
+						border.repr = pl_color_repr_rgb; border.repr.levels = PL_COLOR_LEVELS_FULL;
+						border.repr.alpha = PL_ALPHA_INDEPENDENT;
+						border.color = pl_color_space_srgb;
+						border.color.hdr.max_luma = cueTargetHdr ? sourceCues.whiteNits : 0.0f;
+						border.parts = sourceCueBorderParts; border.num_parts = 4;
+					}
+					// His glyph mapping: scaled about the panel when reduced,
+					// else moved with the panel. In padded rows, as his
+					// results are.
+					const float scale = move.centeredGlyphMapping ? move.glyphScale : 1.0f;
+					const float tx = move.centeredGlyphMapping ? move.glyphTranslateX
+						: static_cast<float>(d.left - move.source.left);
+					const float ty = move.centeredGlyphMapping ? move.glyphTranslateY
+						: static_cast<float>(d.top - move.source.top);
+					glyphs = inFrame(scale * padded.left + tx, scale * padded.top + ty,
+						scale * padded.right + tx, scale * padded.bottom + ty);
+				}
+				cueOverlay(sourceSubtitleTexture, sourceSubtitlePart, glyphs);
+			}
+			if (sourceMessageTexture && sourceCues.message)
+			{
+				const auto& cue = *sourceCues.message;
+				float left = static_cast<float>(cue.x), top = static_cast<float>(cue.y);
+				if (placeInPicture)
+				{
+					left = (visible.left + visible.right - static_cast<float>(cue.width)) * 0.5f;
+					top = static_cast<float>(visible.top + activeSettings.subtitleMoveInset);
+				}
+				cueOverlay(sourceMessageTexture, sourceMessagePart, rect(left, top,
+					left + cue.width, top + cue.height));
+			}
+		}
 		if (overlayCount > 0)
 		{
 			target.overlays = overlays;
@@ -21240,7 +21549,8 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	}
 
 	const uint64_t counter = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-	UpdateFrameRateAndPPM(videoFrame.GetTimingTimestamp());
+	UpdateFrameRateAndPPM(videoFrame.GetTimingTimestamp(),
+		videoFrame.IsSourceCadenceRestart());
 	if (m_timingClock && counter % 20 == 0)
 	{
 		m_entryLatencyMs.store(
@@ -21380,10 +21690,19 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 
 
 void LibplaceboVideoRenderer::UpdateFrameRateAndPPM(
-	timingclocktime_t frameTimestamp)
+	timingclocktime_t frameTimestamp, bool sourceCadenceRestart)
 {
 	if (!m_timingClock || frameTimestamp <= 0)
 		return;
+
+	const auto restartAtThisFrame = [&]()
+	{
+		ResetFrameRateAndPPM();
+		m_firstPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
+		m_lastPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
+		m_lastPpmPublishTimestamp.store(frameTimestamp, std::memory_order_release);
+		m_ppmFrameCount.store(1, std::memory_order_release);
+	};
 
 	const timingclocktime_t previousTimestamp =
 		m_lastPpmFrameTimestamp.exchange(frameTimestamp, std::memory_order_acq_rel);
@@ -21403,13 +21722,20 @@ void LibplaceboVideoRenderer::UpdateFrameRateAndPPM(
 				"libplacebo: capture timestamp discontinuity (%lld ticks; expected %lld); resetting cadence estimate",
 				static_cast<long long>(observedTicks),
 				static_cast<long long>(expectedFrameTicks));
-			ResetFrameRateAndPPM();
-			m_firstPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
-			m_lastPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
-			m_lastPpmPublishTimestamp.store(frameTimestamp, std::memory_order_release);
-			m_ppmFrameCount.store(1, std::memory_order_release);
+			restartAtThisFrame();
 			return;
 		}
+	}
+
+	// The source says its timing has settled on this frame (its start-up or
+	// post-seek correction is over). Restart the same way as for a gap, so the
+	// settling period is not counted as oscillator drift. A gap restart above
+	// already covers this frame.
+	if (sourceCadenceRestart)
+	{
+		DebugLog::Log("libplacebo: source marked its cadence settled; resetting cadence estimate");
+		restartAtThisFrame();
+		return;
 	}
 
 	timingclocktime_t firstTimestamp =
@@ -24718,6 +25044,7 @@ void LibplaceboVideoRenderer::ConversionLoop()
 					throw std::runtime_error("frame conversion failed");
 				converted->contract = m_impl->formatter->GetOutputContract();
 				converted->dolby = m_impl->formatter->GetDolbyVisionTunnelMetadata();
+				converted->cues = ReadSourceCues(frame.GetSourceBuffer());
 			}
 			converted->conversionCpuMs = std::chrono::duration<double, std::milli>(
 				SteadyClock::now() - started).count();
