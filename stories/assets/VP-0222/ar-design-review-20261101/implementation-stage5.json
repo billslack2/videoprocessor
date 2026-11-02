@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "d985c21fee92f5cbedf58e9287d5669f3abde145",
+  "branch": "codex/source-picture-redesign-20261101",
+  "policy": "reported detection: anchored inclusive3% deadband with retained unknown samples",
+  "pluginApiVersion": 35,
+  "initialRed": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-190335-8d12567a",
+  "initialRedCounts": {
+    "failed": 3,
+    "executed": 3
+  },
+  "sameSourceRed": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-190815-55ddbaa8",
+  "sameSourceRedCounts": {
+    "failed": 1,
+    "executed": 1
+  },
+  "focusedGreen": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-190939-30354d80",
+  "focusedCounts": {
+    "passed": 11,
+    "executed": 11
+  },
+  "nativeGreen": "E:\\codex\\videoprocessor\\source-picture-redesign-20261101\\artifacts\\qualification\\runs\\20261101-191025-f7918174",
+  "nativeCounts": {
+    "executed": 975,
+    "failed": 0,
+    "passed": 975
+  },
+  "newHistoryMethods": 4,
+  "testedBeforeCommitWithIdenticalContent": true,
+  "rawMeasurementsPreserved": true,
+  "cropAuthorityChanged": false,
+  "deployed": false,
+  "gpuExecuted": false,
+  "configurationChanged": false,
+  "remaining": [
+    "Underlying boundary-verification consistency remains separate",
+    "Matching Release host and both renderer builds plus live/GPU review before deployment",
+    "Full release qualification"
+  ]
+}
