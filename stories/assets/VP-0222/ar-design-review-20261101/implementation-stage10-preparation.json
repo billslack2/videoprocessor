@@ -1,0 +1,35 @@
+{
+  "sourceCommit": "8b49f560e1607be0f2136f25b598ea8dfbec69ec",
+  "branch": "codex/coherent-source-measurement-20261101",
+  "parent": "2dc6ca0217be23dd9e4362dec86ea8818038c770",
+  "status": "Focused reproduction repaired; full clean-commit qualification running",
+  "deploymentPerformed": false,
+  "configurationChanged": false,
+  "focused": {
+    "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261101-235740-0cdcc74d",
+    "passed": 7,
+    "total": 7,
+    "native": 5,
+    "actualRenderer": 2,
+    "standardDistinctSources": 124,
+    "betaDistinctSources": 123,
+    "sampledPreparationMs": "7.5-8.2 (not a general latency guarantee)"
+  },
+  "design": {
+    "geometry": "Common source-pixel producer from2dc; no competing legacy fallback",
+    "dependency": "Exact native completion before subtitle admission",
+    "scheduling": "Zero-lookahead current head preparation; original enqueue plus one input interval capped50ms; cooperative OS bound",
+    "notification": "Lifetime-owned signal, revision-before-read, publication-before-notify; normal and outward publishers",
+    "identity": "No relaxed proof identity, future-frame wait or confirmation vote",
+    "tests": "Original translated-pose and24-source checks retained; required native count1008"
+  },
+  "fullQualification": {
+    "state": "Running",
+    "run": "E:/codex/videoprocessor/coherent-source-measurement-20261101/artifacts/qualification/runs/20261102-000112-e441a669"
+  },
+  "motion": {
+    "state": "Pending"
+  },
+  "sourceDesign": "docs/SOURCE_PICTURE_REDESIGN.md",
+  "priorEvidence": "implementation-stage9-coherent-source.json"
+}

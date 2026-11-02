@@ -612,3 +612,17 @@ A bounded current-source preparation handoff is in progress. Source identity,
 original translated pose and24 distinct presented-source checks remain required.
 The earlier Black/reconstruction failures pass on the new runtime. No qualification
 receipt or new deployment is claimed. Stage9 evidence retains failed run locations.
+
+### Source preparation repaired; final qualification running (2026-11-02)
+
+Pushed clean8b49f560e1607be0f2136f25b598ea8dfbec69ec serializes exact native-to-subtitle
+preparation and gives the zero-lookahead queue head one enqueue-derived processing
+interval. It uses lifetime-owned completion notifications with a revision predicate,
+not timer polling; source identity and original pose/24-source checks remain strict.
+The notification-focused run passes7/7. Actual standard and beta renderers retain
+the translated/fill pose across124 and123 distinct presented sources respectively.
+Sampled preparation takes7.5-8.2ms against16.683ms; this is not a general latency
+promise. The final pin also wakes from common outward raw publication and adds its
+deterministic race test. Mandatory native count is1,008. Full matching Release
+qualification and the two-dependency motion suite remain pending, with no deployment.
+See [stage10 evidence](../assets/VP-0222/ar-design-review-20261101/implementation-stage10-preparation.json).
