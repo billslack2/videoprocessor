@@ -16403,7 +16403,9 @@ struct LibplaceboVideoRenderer::Impl
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
              coldStrictWorkerProof, coldStrictWorkerPicture,
-             subtitleIdentity, captureClockFrequency, sceneDetectorGeneration, &temporalPolicyCaptionProof, &temporalPolicyDecisionFacts, &rawSubtitleFallbackCurrent, &currentSubtitlePreview,
+             subtitleIdentity, captureClockFrequency, sceneDetectorGeneration, &temporalPolicyCaptionProof, &temporalPolicyDecisionFacts,
+             &rawSubtitleFallbackCurrent, &unprocessedCurrentSourceCurrent,
+             &reviseSourcePresentation, &priorRevisionSnapshot, &revisedSourcePolicyTick, &currentSubtitlePreview,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
              currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels, &qualifiedPendingFinalPixels, cadenceCacheDiagnostic,
@@ -21316,7 +21318,7 @@ releaseDriftBaseRetention =
                 const auto& certificate=scopeAnchorCommit.selectedAdmission.nativePresentation;
                 const auto& packet=subtitlePresentationPackets[
                     scopeAnchorCommit.sourceSequence%subtitlePresentationPackets.size()];
-                const bool packetMatches=!rawSubtitleFallbackOutput && scopeAnchorCommit.sourceSequence &&
+                const bool packetMatches=!rawSubtitleFallbackOutput && !unprocessedCurrentSourceOutput && scopeAnchorCommit.sourceSequence &&
                     packet.generation==scopeAnchorCommit.sourceGeneration &&
                     packet.sequence==scopeAnchorCommit.sourceSequence;
                 const auto equalRect=[](const ActivePictureBounds& a,const ActivePictureBounds& b) {
@@ -21389,7 +21391,7 @@ releaseDriftBaseRetention =
                 outputTrace.counters[4]=native.acceptedSourceSequence;
                 outputTrace.counters[5]=certificate.sourceSequence;
                 outputTrace.counters[6]=static_cast<uint64_t>(certificate.origin);
-                outputTrace.counters[7]=rawSubtitleFallbackOutput?0:packet.sequence;
+                outputTrace.counters[7]=(rawSubtitleFallbackOutput || unprocessedCurrentSourceOutput)?0:packet.sequence;
                 // metrics 0..5: selected source PTS, output PTS, pose delta Y,
                 // requested/routed translation, processing source PTS; 8..11 actual
                 // source crop and 12..15 actual target crop retain fractional pixels.
