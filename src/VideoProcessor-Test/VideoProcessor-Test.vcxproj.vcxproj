@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -229,6 +229,7 @@
     <ClCompile Include="AnalysisRecoveryParityTests.cpp" />
     <ClCompile Include="AnalysisRecoveryDvTests.cpp" />
     <ClCompile Include="SubtitleMeasurementWorkerTests.cpp" />
+    <ClCompile Include="DecodedSubtitleCueWorkerTests.cpp" />
     <ClCompile Include="SubtitleCutPasteTests.cpp" />
     <ClCompile Include="LookaheadOutwardProofTests.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
