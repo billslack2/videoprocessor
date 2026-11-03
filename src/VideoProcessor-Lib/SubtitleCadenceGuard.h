@@ -1123,12 +1123,17 @@ private:
             bool fringe=false;
             if(oldPixel.line>=0 && oldPixel.ink!=now.ink) {
                 const int owner=oldPixel.fringeComponent;
-                if(owner<0 || !NearFloor(oldPixel.pixel,*m_baseline) || !NearFloor(now.pixel,*m_baseline))
+                if(owner<0 || !NearFloor(oldPixel.pixel,*m_baseline) || !NearFloor(now.pixel,*m_baseline)) {
+                    mismatchX=oldPixel.x;mismatchY=oldPixel.y;
                     return fail(samples,"cadence-current-glyph-changed");
+                }
                 const auto& component=m_components[owner];
                 if(component.area<16 || component.cores<4 ||
                     ++m_changedComponents[owner]>(std::min)(16u,(std::max)(2u,component.area/64)) ||
-                    ++lineChanges[oldPixel.line]>32)return fail(samples,"cadence-current-glyph-changed");
+                    ++lineChanges[oldPixel.line]>32) {
+                    mismatchX=oldPixel.x;mismatchY=oldPixel.y;
+                    return fail(samples,"cadence-current-glyph-changed");
+                }
                 bool survivingCore=false;
                 for(const auto& d:Neighbours()) {
                     const int at=Index(oldPixel.x+d.first,oldPixel.y+d.second);
@@ -1137,13 +1142,18 @@ private:
                         currentPixels[at].ink && currentPixels[at].pixel.luma>=m_baseline->inkFloor+16)
                         survivingCore=true;
                 }
-                if(!survivingCore)return fail(samples,"cadence-current-glyph-changed");
+                if(!survivingCore) {
+                    mismatchX=oldPixel.x;mismatchY=oldPixel.y;
+                    return fail(samples,"cadence-current-glyph-changed");
+                }
                 fringe=true;
             }
             // Never tolerate a disappearing strong core, even if another edge
             // happens to gain the same number of pixels on this frame.
-            if(oldPixel.core && (!now.ink || now.pixel.luma<m_baseline->inkFloor+16))
+            if(oldPixel.core && (!now.ink || now.pixel.luma<m_baseline->inkFloor+16)) {
+                mismatchX=oldPixel.x;mismatchY=oldPixel.y;
                 return fail(samples,"cadence-current-glyph-changed");
+            }
             if(oldPixel.erase && !fringe) {
                 if(oldPixel.black && !now.black) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
