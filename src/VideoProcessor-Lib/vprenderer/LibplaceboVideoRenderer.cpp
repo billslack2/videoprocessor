@@ -15338,6 +15338,18 @@ struct LibplaceboVideoRenderer::Impl
                     // seed source. Current pixels verified every retained capture
                     // and cleanup footprint; no refit or new backing is admitted.
                     move=currentSubtitleCadence.geometry;
+                } else if(pendingCurrentPixelsVerified &&
+                    SubtitlePreviewOverridesClassicHandling(sourceSubtitleMode)) {
+                    // Reuse the exact successfully composed operation whose
+                    // CURRENT pixels just passed footprint verification. The
+                    // semantic preview intentionally has no bar authority, so
+                    // it cannot enter fresh layout/backing acquisition below.
+                    // The one-use cleanup receipt is consumed before rendering.
+                    if(!nlsGeometryAvailable || !subtitlePendingFootprintGuard.CopyCurrentFootprintGeometry(
+                        currentSubtitlePreview.current,nlsGeometry,move)) {
+                        move={};pendingCurrentPixelsVerified=false;
+                        currentSubtitleWorkIncomplete=true;
+                    }
                 } else {
                 const auto displayBounds=subtitlePaddingGuard.DisplayBounds();
                 subtitleCutPastePresentation.SetBackgroundGuard(activeSettings.subtitleBackgroundGuard);

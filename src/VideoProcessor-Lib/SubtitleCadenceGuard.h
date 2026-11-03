@@ -131,6 +131,20 @@ public:
     // Apply a one-frame cleanup projection only after this exact current key
     // passed pixel verification. The accepted native geometry and seed are not
     // changed; the returned geometry merely leaves verified-edge rows live.
+    // Coordinates only, from an operation already composed on the seed source.
+    // The caller must still consume ApplyCurrentFootprintProtection for this
+    // exact current source before using the operation in the compositor.
+    bool CopyCurrentFootprintGeometry(const SubtitleBoxObservation& currentKey,
+        const ActivePictureBounds& base,SubtitleCutPasteGeometry& geometry) const {
+        geometry={};
+        if(!m_currentFootprintReceiptValid ||
+            !SameAnalysisFrameIdentity(m_currentFootprintReceiptIdentity,currentKey.identity) ||
+            m_currentFootprintReceiptPolicy!=currentKey.policyGeneration ||
+            !SamePhysicalBase(m_currentFootprintReceiptBase,base) ||
+            !SameGeometry(m_currentFootprintReceiptGeometry,m_geometry))return false;
+        geometry=m_currentFootprintReceiptGeometry;
+        return geometry.valid;
+    }
     bool ApplyCurrentFootprintProtection(const SubtitleBoxObservation& currentKey,
         const ActivePictureBounds& base,SubtitleCutPasteGeometry& currentGeometry) const {
         const bool noCleanupProjection=m_currentFootprintReceiptTop==-1 &&
@@ -492,8 +506,12 @@ private:
         const auto& c=preview.current;const auto& previous=m_reference->current;const auto& p=*c.ink;
         if(!SameContext(c,previous) || preview.policyGeneration!=m_reference->policyGeneration ||
             preview.continuityGeneration!=m_reference->continuityGeneration ||
-            c.identity.acceptedSequence!=previous.identity.acceptedSequence+
-                (allowAnalyzedStrideOne && c.analysisStride==1?1u:2u) ||
+            // A fresh complete pending-footprint source may follow intervening
+            // pending sources. This reuses topology, not a cadence permission;
+            // keep the original native pixel baseline for later verification.
+            (allowAnalyzedStrideOne
+                ? c.identity.acceptedSequence<=previous.identity.acceptedSequence
+                : c.identity.acceptedSequence!=previous.identity.acceptedSequence+2) ||
             c.identity.sourceFrameNumber<=previous.identity.sourceFrameNumber ||
             c.identity.captureTimestamp<=previous.identity.captureTimestamp ||
             source.format!=m_source.format || source.encoding!=m_source.encoding || source.range!=m_source.range ||

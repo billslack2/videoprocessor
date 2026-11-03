@@ -92,7 +92,7 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
     }
     static SubtitleBoxPreview ReassociateThreeLineCue(SubtitleBoxPresentation& tracker,
         const std::vector<uint16_t>& pixels,SubtitleBoxResult& accepted,bool addUnownedRaw=false,
-        int nearBarDistance=0) {
+        int nearBarDistance=0,uint64_t firstSequence=1) {
         const auto addUnownedRawBit=[&](SubtitleBoxObservation& observation) {
             if(!addUnownedRaw)return;
             auto ink=std::make_shared<SubtitleInkSnapshot>(*observation.ink);
@@ -103,11 +103,11 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         };
         std::array<SubtitleBoxObservation,4> initial;
         for(size_t i=0;i<initial.size();++i) {
-            initial[i]=CompleteThreeLineScan(i+1,pixels,21,nearBarDistance);addUnownedRawBit(initial[i]);
+            initial[i]=CompleteThreeLineScan(firstSequence+i,pixels,21,nearBarDistance);addUnownedRawBit(initial[i]);
         }
         const auto acquired=tracker.Consume(SubtitleBoxLookahead::Resolve(initial.data(),initial.size(),11,21));
         Assert::IsTrue(acquired.detected);Assert::AreEqual(3,acquired.lineCount);
-        auto current=CompleteThreeLineScan(5,pixels,22,nearBarDistance);addUnownedRawBit(current);
+        auto current=CompleteThreeLineScan(firstSequence+4,pixels,22,nearBarDistance);addUnownedRawBit(current);
         auto preview=SubtitleBoxLookahead::Resolve(&current,1,11,22);
         Assert::IsFalse(preview.text.detected,L"One ready frame cannot freshly acquire a crowded cue.");
         accepted=tracker.Consume(preview,250,40,&initial[0].identity,true);
@@ -410,6 +410,28 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
         positivePending->current.hasBarTrackingReference,
         L"Protected-row continuation grants no current bar or caption-absence authority.");
 
+    const auto sameRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+    };
+    SubtitleCutPasteGeometry copiedGeometry;
+    auto staleKey=positivePending->current;++staleKey.identity.acceptedSequence;
+    Assert::IsFalse(footprint->CopyCurrentFootprintGeometry(staleKey,base,copiedGeometry),
+        L"A geometry copy is available only for the exact source whose pixels were just verified.");
+    auto wrongBase=base;++wrongBase.top;
+    Assert::IsFalse(footprint->CopyCurrentFootprintGeometry(positivePending->current,wrongBase,copiedGeometry),
+        L"A receipt cannot transfer to a different accepted native base.");
+    Assert::IsTrue(footprint->CopyCurrentFootprintGeometry(positivePending->current,base,copiedGeometry));
+    Assert::IsTrue(copiedGeometry.valid);
+    Assert::IsTrue(sameRect(geometry.source,copiedGeometry.source));
+    Assert::IsTrue(sameRect(geometry.destination,copiedGeometry.destination));
+    Assert::IsTrue(sameRect(geometry.content,copiedGeometry.content));
+    Assert::IsTrue(sameRect(geometry.generatedCleanup,copiedGeometry.generatedCleanup));
+    Assert::IsTrue(sameRect(geometry.pictureCapture,copiedGeometry.pictureCapture));
+    Assert::IsTrue(sameRect(geometry.layoutCoverage,copiedGeometry.layoutCoverage));
+    Assert::AreEqual(geometry.generatedCleanupRowCount,copiedGeometry.generatedCleanupRowCount);
+    for(size_t line=0;line<geometry.glyphLines.size();++line)
+        Assert::IsTrue(sameRect(geometry.glyphLines[line],copiedGeometry.glyphLines[line]));
+
     auto wrongGeometry=geometry;
     ++wrongGeometry.destination.top;
     Assert::IsFalse(footprint->ApplyCurrentFootprintProtection(positivePending->current,base,wrongGeometry),
@@ -438,6 +460,9 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     Assert::AreEqual(geometry.layoutCoverage.top,appliedGeometry.layoutCoverage.top);
     Assert::AreEqual(geometry.layoutCoverage.right,appliedGeometry.layoutCoverage.right);
     Assert::AreEqual(geometry.layoutCoverage.bottom,appliedGeometry.layoutCoverage.bottom);
+    SubtitleCutPasteGeometry consumedCopy;
+    Assert::IsFalse(footprint->CopyCurrentFootprintGeometry(positivePending->current,base,consumedCopy),
+        L"Applying the exact protected projection consumes the one-frame receipt.");
     Assert::IsTrue(protectedX>=appliedGeometry.pendingProtectedCleanup.left&&
         protectedX<appliedGeometry.pendingProtectedCleanup.right&&
         protectedY>=appliedGeometry.pendingProtectedCleanup.top&&protectedY<appliedGeometry.pendingProtectedCleanup.bottom);
@@ -695,6 +720,68 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
 
 
 
+
+    TEST_METHOD(UhdFreshReadyCertificateRearmsWithBoundedCurrentPixelChecks) {
+        constexpr auto format=AnalysisLumaFormat::P010;
+        constexpr double frameMs=1000.0/23.976;
+        auto pixels=UhdCaption(format);auto source=UhdSource(pixels,format);
+        SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+        auto scans=std::make_unique<std::array<SubtitleBoxObservation,4>>();
+        for(size_t i=0;i<scans->size();++i) {
+            (*scans)[i]=MeasureUhd(detector,source,UhdIdentity(i+1,format));
+            Assert::IsTrue((*scans)[i].analyzed && (*scans)[i].text.detected &&
+                (*scans)[i].ink && (*scans)[i].ink->rawEvidenceComplete,
+                L"Initial UHD seed must come from complete source scans.");
+        }
+        auto seed=std::make_unique<SubtitleBoxPreview>();
+        SubtitleBoxLookahead::ResolveInto(*seed,scans->data(),scans->size(),UhdPolicy,UhdContinuity);
+        Assert::AreEqual(uint64_t(0),seed->current.text.cue,
+            L"The UHD detector supplies raw current geometry without a tracker cue identity.");
+        SubtitleBoxPresentation tracker;const auto acquired=tracker.Consume(*seed,1000,frameMs);
+        Assert::IsTrue(acquired.detected && !acquired.held && !acquired.confirmationPending);
+        Assert::AreNotEqual(uint64_t(0),acquired.cue);
+        auto guard=std::make_unique<SubtitlePendingMeasurementGuard>();
+        Assert::IsTrue(guard->RememberAccepted(*seed,acquired,source,frameMs,1000),
+            L"The first independent UHD positive scan establishes the immutable reference.");
+        const auto original=guard->AcceptedSeedIdentity();
+
+        SubtitleBoxResult currentAccepted;SubtitleBoxPreview current;
+        bool foundFreshCertificate=false;
+        for(uint64_t sequence=2;sequence<=4;++sequence) {
+            const auto scan=MeasureUhd(detector,source,UhdIdentity(sequence,format));
+            current=SubtitleBoxLookahead::Resolve(&scan,1,UhdPolicy,UhdContinuity);
+            currentAccepted=tracker.Consume(current,1000,frameMs);
+            const auto& certificate=tracker.AcceptedCueSeedCertificate();
+            if(certificate.Matches(current,currentAccepted)) {
+                Assert::AreEqual(uint64_t(0),current.current.text.cue);
+                Assert::AreNotEqual(uint64_t(0),currentAccepted.cue,
+                    L"The rearm compares current raw geometry with a distinct accepted tracker cue.");
+                foundFreshCertificate=true;
+                const auto started=std::chrono::steady_clock::now();
+                const bool rearmed=guard->RememberAccepted(current,currentAccepted,source,frameMs,1000,&certificate);
+                const double elapsed=std::chrono::duration<double,std::milli>(
+                    std::chrono::steady_clock::now()-started).count();
+                Logger::WriteMessage((std::string("UHD ready rearm ms=")+std::to_string(elapsed)+
+                    " source="+std::to_string(sequence)+
+                    " mask_words="+std::to_string(guard->DecisionDiagnostics().readyRearmMaskWordsChecked)+
+                    " glyph_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmGlyphSamplesChecked)+
+                " backing_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmBackingSamplesChecked)+
+                " known_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmKnownSamplesChecked)).c_str());
+                Assert::IsTrue(rearmed);
+                Assert::AreEqual("accepted-same-cue-current-scan-rearmed",guard->DecisionReason());
+                Assert::AreEqual(uint64_t(0),guard->DecisionDiagnostics().seedBandSamplesChecked,
+                    L"Ready rearm must not reread the entire UHD search bands.");
+                Assert::IsTrue(guard->DecisionDiagnostics().readyRearmGlyphSamplesChecked>0);
+                Assert::IsTrue(guard->DecisionDiagnostics().readyRearmBackingSamplesChecked>0);
+            Assert::IsTrue(guard->DecisionDiagnostics().readyRearmKnownSamplesChecked>0);
+                Assert::AreEqual(original.acceptedSequence,guard->AcceptedSeedIdentity().acceptedSequence,
+                    L"The original UHD pixel reference remains immutable.");
+                break;
+            }
+        }
+        Assert::IsTrue(foundFreshCertificate,
+            L"A later complete independent UHD scan should produce a source-bound accepted-cue certificate.");
+    }
 
     TEST_METHOD(SubtitleCompletionSignalFollowsReadyCachePublication) {
         SubtitleMeasurementWorker worker;
@@ -1980,6 +2067,96 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::IsTrue(guard.DecisionDiagnostics().currentBandSamplesChecked>0);
         Assert::IsTrue(guard.DecisionDiagnostics().glyphSamplesChecked>=12);
     }
+    TEST_METHOD(IndependentSameCueScansRearmOriginalPendingSeedWithoutBandResampling) {
+        auto pixels=PixelsWithCurrentBars();SubtitleBoxPresentation firstTracker;SubtitleBoxResult firstAccepted;
+        auto first=ReassociateThreeLineCue(firstTracker,pixels,firstAccepted,false,0,1);
+        const auto firstCertificate=firstTracker.AcceptedCueSeedCertificate();
+        SubtitlePendingMeasurementGuard guard;
+        Assert::IsTrue(guard.RememberAccepted(first,firstAccepted,Source(pixels),1000.0/60,250,&firstCertificate));
+        const auto originalSeed=guard.AcceptedSeedIdentity();
+        Assert::AreEqual(uint64_t(5),originalSeed.acceptedSequence);
+
+        // Non-owned current-picture margins move while the complete raw cue,
+        // owned glyphs, physical bars and accepted geometry remain unchanged.
+        pixels[50*160+49]=uint16_t(340<<6);
+        pixels[50*160+111]=uint16_t(270<<6);
+        for(uint64_t firstSequence:{uint64_t(6),uint64_t(11),uint64_t(16)}) {
+            SubtitleBoxPresentation currentTracker;SubtitleBoxResult currentAccepted;
+            auto current=ReassociateThreeLineCue(currentTracker,pixels,currentAccepted,false,0,firstSequence);
+            const auto& certificate=currentTracker.AcceptedCueSeedCertificate();
+            Assert::IsTrue(certificate.Matches(current,currentAccepted),
+                L"Each rearm needs a fresh tracker certificate for this exact complete current scan.");
+            const auto started=std::chrono::steady_clock::now();
+            Assert::IsTrue(guard.RememberAccepted(current,currentAccepted,Source(pixels),1000.0/60,250,&certificate));
+            const double elapsed=std::chrono::duration<double,std::milli>(
+                std::chrono::steady_clock::now()-started).count();
+            Logger::WriteMessage((std::string("ready same-cue rearm ms=")+std::to_string(elapsed)+
+                " mask_words="+std::to_string(guard.DecisionDiagnostics().readyRearmMaskWordsChecked)+
+                " glyph_samples="+std::to_string(guard.DecisionDiagnostics().readyRearmGlyphSamplesChecked)+
+                " backing_samples="+std::to_string(guard.DecisionDiagnostics().readyRearmBackingSamplesChecked)+
+                " known_samples="+std::to_string(guard.DecisionDiagnostics().readyRearmKnownSamplesChecked)).c_str());
+            Assert::AreEqual("accepted-same-cue-current-scan-rearmed",guard.DecisionReason());
+            Assert::AreEqual(uint64_t(0),guard.DecisionDiagnostics().seedBandSamplesChecked,
+                L"Ready rearm must not reread the full subtitle search bands.");
+            Assert::IsTrue(guard.DecisionDiagnostics().readyRearmMaskWordsChecked>0);
+            Assert::IsTrue(guard.DecisionDiagnostics().readyRearmGlyphSamplesChecked>0);
+            Assert::IsTrue(guard.DecisionDiagnostics().readyRearmBackingSamplesChecked>0);
+            Assert::IsTrue(guard.DecisionDiagnostics().readyRearmKnownSamplesChecked>0);
+            Assert::AreEqual(originalSeed.acceptedSequence,guard.AcceptedSeedIdentity().acceptedSequence,
+                L"Rearm must retain the first immutable source and pixel baseline.");
+            Assert::AreEqual(current.current.identity.acceptedSequence,guard.LastVerifiedIdentity().acceptedSequence);
+            Assert::AreEqual(0.0,guard.PendingElapsedMilliseconds(),0.001,
+                L"Only this fresh complete positive certificate resets the pending age.");
+
+            Assert::IsFalse(guard.RememberAccepted(current,currentAccepted,Source(pixels),1000.0/60,250,&certificate),
+                L"Replaying the same certified source must not rearm twice.");
+            Assert::AreEqual("accepted-certificate-already-consumed",guard.DecisionReason());
+            Assert::AreEqual(current.current.identity.acceptedSequence,guard.LastVerifiedIdentity().acceptedSequence);
+            Assert::AreEqual(0.0,guard.PendingElapsedMilliseconds(),0.001);
+        }
+
+        // A pending frame still checks against the original seed after several
+        // fresh ready re-arms; it cannot replace that seed or extend its age.
+        auto pending=PendingAfterReassociation(21);
+        Assert::IsTrue(guard.Resolve(pending,Source(pixels),1000.0/60,250));
+        Assert::IsTrue(pending.current.pendingRefresh);
+        Assert::AreEqual(originalSeed.acceptedSequence,guard.AcceptedSeedIdentity().acceptedSequence);
+        Assert::AreEqual(uint64_t(21),guard.LastVerifiedIdentity().acceptedSequence);
+        Assert::IsTrue(guard.PendingElapsedMilliseconds()>0);
+    }
+    TEST_METHOD(ReadySameCueRearmFallsBackToFreshSeedOnChangedInkBackingOrContext) {
+        for(int scenario=0;scenario<4;++scenario) {
+            auto seedPixels=PixelsWithCurrentBars();SubtitleBoxPresentation seedTracker;SubtitleBoxResult seedAccepted;
+            auto seed=ReassociateThreeLineCue(seedTracker,seedPixels,seedAccepted,false,0,1);
+            const auto seedCertificate=seedTracker.AcceptedCueSeedCertificate();SubtitlePendingMeasurementGuard guard;
+            Assert::IsTrue(guard.RememberAccepted(seed,seedAccepted,Source(seedPixels),1000.0/60,250,&seedCertificate));
+            const auto oldIdentity=guard.AcceptedSeedIdentity();
+
+            auto currentPixels=PixelsWithCurrentBars();
+            if(scenario==0)currentPixels[50*160+50]=uint16_t(300<<6); // Acquired owned glyph disappears.
+            if(scenario==1)currentPixels[48*160+41]=uint16_t(64<<6); // Existing panel backing changes black state.
+            if(scenario==2)for(int y=38;y<44;++y)for(int x=20;x<44;++x)
+                if((x%7)<3)currentPixels[y*160+x]=uint16_t(700<<6); // A new companion line enters the complete raw mask.
+            SubtitleBoxPresentation currentTracker;SubtitleBoxResult currentAccepted;
+            auto current=ReassociateThreeLineCue(currentTracker,currentPixels,currentAccepted,false,0,6);
+            if(scenario==3) {
+                ++current.current.identity.analysisDomainKey;
+                current.current.sharedPicture.identity=current.current.identity;
+            }
+            const auto& certificate=currentTracker.AcceptedCueSeedCertificate();
+            const bool certified=certificate.Matches(current,currentAccepted);
+            const bool remembered=guard.RememberAccepted(current,currentAccepted,Source(currentPixels),1000.0/60,250,
+                certified?&certificate:nullptr);
+            Assert::IsTrue(remembered,
+                L"A complete positive current scan may establish a fresh baseline after rearm is rejected.");
+            Assert::AreNotEqual("accepted-same-cue-current-scan-rearmed",guard.DecisionReason(),
+                L"Changed glyph, backing, raw ink or context cannot reuse the immutable seed through the rearm shortcut.");
+            Assert::IsTrue(guard.DecisionDiagnostics().seedBandSamplesChecked>0,
+                L"A rejected rearm must go through complete current-source seeding.");
+            Assert::AreEqual(current.current.identity.acceptedSequence,guard.AcceptedSeedIdentity().acceptedSequence);
+            Assert::AreNotEqual(oldIdentity.acceptedSequence,guard.AcceptedSeedIdentity().acceptedSequence);
+        }
+    }
     TEST_METHOD(PendingCurrentInkProofRejectsChangedGlyphAndNovelCompanion) {
         for(int scenario=0;scenario<6;++scenario) {
             auto pixels=PixelsWithCurrentBars();
@@ -3175,18 +3352,39 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         // immutable footprint topology. A black-to-nonblack change is not
         // silently incorporated into that baseline.
         auto movedPixels=pixels;movedPixels[80*160+42]=uint16_t(110<<6);
-        auto movedSeed=Ready(2);movedSeed.current=CompleteThreeLineScan(2,movedPixels);
+        auto movedSeed=Ready(4);movedSeed.current=CompleteThreeLineScan(4,movedPixels);
         movedSeed.current.analysisStride=1;movedSeed.text=movedSeed.current.text;
         auto movedSource=CadenceSource(movedPixels);
         Assert::IsTrue(footprint->RememberCurrentFootprint(movedSeed,movedSeed.text,movedSource,base,geometry));
         Assert::AreEqual("cadence-seed-rearmed",footprint->DecisionReason());
         Assert::AreEqual(0u,footprint->SampleCount(),L"Stride-1 rearm must reuse the immutable baseline, not rebuild it.");
-        auto verifyCurrent=CompleteThreeLineScan(3,movedPixels);
+        auto laterSeed=Ready(12);laterSeed.current=CompleteThreeLineScan(12,movedPixels);
+        laterSeed.current.analysisStride=1;laterSeed.text=laterSeed.current.text;
+        Assert::IsTrue(footprint->RememberCurrentFootprint(laterSeed,laterSeed.text,movedSource,base,geometry),
+            L"A fresh complete positive source may rearm after a multi-source gap without replacing the native baseline.");
+        Assert::AreEqual("cadence-seed-rearmed",footprint->DecisionReason());
+        Assert::AreEqual(0u,footprint->SampleCount());
+        auto verifyCurrent=CompleteThreeLineScan(13,movedPixels);
         const auto movedProof=footprint->VerifyCurrentFootprint(verifyCurrent,movedSource,
-            movedSeed.current,movedSeed.text,base);
+            laterSeed.current,laterSeed.text,base);
         Assert::IsFalse(movedProof.valid,
-            L"A changed old-black cleanup sample must still fail against the original seed after rearm.");
+            L"A changed old-black cleanup sample must still fail against the original seed after repeated gap re-arms.");
         Assert::AreEqual("cadence-current-cleanup-changed",movedProof.reason);
+
+        // Source sequence, transport frame and capture time must all advance.
+        for(int fault=0;fault<3;++fault) {
+            auto invalid=std::make_unique<SubtitleCadenceGuard>();
+            Assert::IsTrue(invalid->RememberCurrentFootprint(seed,accepted,source,base,geometry));
+            auto candidate=Ready(fault==0?1:2);candidate.current=CompleteThreeLineScan(fault==0?1:2,pixels);
+            candidate.current.analysisStride=1;candidate.text=candidate.current.text;
+            if(fault==1)candidate.current.identity.sourceFrameNumber=1;
+            if(fault==2)candidate.current.identity.captureTimestamp=seed.current.identity.captureTimestamp;
+            Assert::IsTrue(invalid->RememberCurrentFootprint(candidate,candidate.text,source,base,geometry));
+            Assert::AreNotEqual("cadence-seed-rearmed",invalid->DecisionReason(),
+                L"A duplicate/backward sequence, transport frame, or timestamp cannot use the retained baseline shortcut.");
+            Assert::IsTrue(invalid->SampleCount()>0,
+                L"A non-forward candidate must use the ordinary complete seed path.");
+        }
 
         // Changed owned masks and changed shader geometry cannot reuse the
         // old topology. A fresh independent accepted source can seed anew.

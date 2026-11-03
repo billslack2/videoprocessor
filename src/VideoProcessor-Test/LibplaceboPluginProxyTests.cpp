@@ -3254,7 +3254,7 @@ namespace VideoProcessorTest
 
         // Exercise the complete production tunnel/worker/render path. Every successful
         // output is inspected in sink order, including outputs between OSD publications.
-        void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputRepeat=false,bool nativePreflightOnly=false,bool alternatingPreflight=false)
+        void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputCurrentSource=false,bool nativePreflightOnly=false,bool alternatingPreflight=false)
         {
             const bool requireSpatial=SourceSpatialProductionEnabled();
             ScopedCadenceDiagnostics cadenceDiagnostics(!nativePreflightOnly&&SubtitlePreviewOverridesClassicHandling(static_cast<SubtitlePreviewMode>(requestedMode)));
@@ -3386,7 +3386,7 @@ namespace VideoProcessorTest
                     " rows="+std::to_string(geometry.generatedCleanupRowCount)+" moving_picture="+std::to_string(movingCleanup)).c_str());
                 Assert::IsTrue(geometry.valid&&movingCleanup,
                     L"Decoded-DV fixture lacks measured cleanup over changing picture pixels; benign bar-only coverage cannot qualify.");
-                if(requireUnknownInputRepeat) {
+                if(requireUnknownInputCurrentSource) {
                     // A genuinely inconclusive source, independent of worker timing:
                     // the real detector bounds noisy-frame work at 768 components.
                     for(int row=0;row<3;++row)for(int column=0;column<320;++column)
@@ -4217,8 +4217,7 @@ namespace VideoProcessorTest
                     const int classicShift=(classicRequested+1)&~1;
                     const double classicSettledTop=native[1]+classicShift;
                     const double classicSettledBottom=native[3]+classicShift;
-                    bool unknownSent=false,unknownRepeated=false,nextCleanFresh=false;
-                    uint64_t retiredAccepted=0;
+                    bool unknownSent=false,unknownCurrentSubmitted=false,nextCleanFresh=false;
                     auto cleanupMotionCoverage=[&](bool requireLegacyRejection) {
                         bool intersection=false,rejected=false;
                         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
@@ -4304,17 +4303,38 @@ namespace VideoProcessorTest
                             }
                             require(record.counters[3]==mode||(mode&&!ready&&!composed&&record.counters[3]==0),
                                 L"Actually submitted source used an invalid frozen subtitle profile after preparation.");
-                            if(requireUnknownInputRepeat&&pressureInput) {
+                            if(requireUnknownInputCurrentSource&&pressureInput) {
                                 if(consumedSource==pressureInput) {
-                                    require((record.flags&16384u)!=0&&displayedSource+1==consumedSource,
-                                        L"The single component-budget UNKNOWN input must repeat the complete immediately preceding successful image.");
-                                    retiredAccepted=record.counters[0];unknownRepeated=true;
+                                    const auto selectedInput=nativeInputs.find(record.counters[1]);
+                                    require(record.acceptedSequence==pressureInput&&record.counters[0]==pressureInput&&
+                                        record.counters[1]==pressureInput&&displayedSource==pressureInput&&
+                                        selectedInput!=nativeInputs.end()&&selectedInput->second.sourceFrameNumber==pressureInput&&
+                                        selectedInput->second.captureTimestamp==delivered.at(pressureInput)&&
+                                        !record.cadenceRepeat&&!(record.flags&(2u|16u|32u|64u|4096u|8192u|16384u))&&
+                                        record.counters[2]==0&&record.counters[4]!=0&&record.counters[5]==0&&record.counters[6]==0&&
+                                        verifiedUnprocessedSources.count(record.acceptedSequence)!=0,
+                                        L"The component-budget UNKNOWN must submit its exact current unprocessed source, preserving the accepted native model and current visible pixels without reusing or composing an older image.");
+                                    std::vector<AnalysisDiagnosticRecordV1> workerTrace;
+                                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);workerTrace=classicPoseRecords;}
+                                    const bool exactBudgetResult=std::any_of(workerTrace.begin(),workerTrace.end(),[&](const AnalysisDiagnosticRecordV1& worker) {
+                                        return !strcmp(worker.stage,"worker-complete")&&worker.acceptedSequence==pressureInput&&
+                                            worker.sourceFrameNumber==pressureInput&&worker.captureTimestamp==delivered.at(pressureInput)&&
+                                            worker.transportGeneration==record.transportGeneration&&
+                                            worker.sourceFormatGeneration==selectedInput->second.sourceFormatGeneration&&
+                                            worker.analysisDomainKey==selectedInput->second.analysisDomainKey&&
+                                            !strcmp(worker.reason,"component-budget")&&worker.recordSequence<record.recordSequence;
+                                    });
+                                    require(exactBudgetResult,
+                                        L"The actual submitted UNKNOWN source lacks its preceding exact-source component-budget worker result.");
+                                    unknownCurrentSubmitted=true;
                                 }
                                 if(consumedSource==pressureInput+1) {
-                                    require(unknownRepeated&&record.counters[0]==retiredAccepted+1&&
-                                        record.counters[0]==record.counters[1]&&!(record.flags&16384u)&&
-                                        displayedSource==consumedSource,
-                                        L"The clean input after one retired UNKNOWN must be a fresh adjacent source, without repeat renewal or a synthetic gap.");
+                                    require(unknownCurrentSubmitted&&record.acceptedSequence==pressureInput+1&&
+                                        record.counters[0]==pressureInput+1&&record.counters[1]==pressureInput+1&&
+                                        displayedSource==consumedSource&&!(record.flags&16384u)&&!record.cadenceRepeat&&
+                                        (record.flags&2u)&&record.counters[2]==record.counters[1]&&
+                                        record.counters[5]==record.counters[1]&&(record.flags&64u),
+                                        L"The clean input after one current-source UNKNOWN must be the fresh adjacent source with its own composed cue, without repeat renewal or a synthetic gap.");
                                     nextCleanFresh=true;
                                 }
                             }
@@ -4339,7 +4359,8 @@ namespace VideoProcessorTest
                                     Logger::WriteMessage(startupRepeat.str().c_str());
                                 }
                                 require(preparation.state!="failed",L"Shader preparation failed instead of completing bounded startup.");
-                                if(!composed&&!building)require(record.metrics[8]<=0&&record.metrics[10]>=width&&top<=pictureTop&&bottom>=captionBottom,
+                                const bool injectedUnknownCurrent=requireUnknownInputCurrentSource&&pressureInput&&consumedSource==pressureInput;
+                                if(!composed&&!building&&!injectedUnknownCurrent)require(record.metrics[8]<=0&&record.metrics[10]>=width&&top<=pictureTop&&bottom>=captionBottom,
                                     L"Unprepared output outside explicit shader building clipped the persistent raw caption or picture.");
                                 const auto admission=canvasAdmissionBefore(record);
                                 const bool admissionClaimsRawFallback=admission&&
@@ -4384,14 +4405,23 @@ namespace VideoProcessorTest
                                 if(ready){
                                     for(int edge=0;edge<4;++edge)require(record.published[edge]==native[edge],
                                         L"Persistent subtitle changed accepted native AR or black-bar boundaries.");
-                                    if(!composed&&overrideValue&&*overrideValue)
+                                    const bool injectedUnknownCurrent=requireUnknownInputCurrentSource&&pressureInput&&consumedSource==pressureInput;
+                                    if(!composed&&overrideValue&&*overrideValue&&!injectedUnknownCurrent)
                                         require(cleanupMotionCoverage(true),
                                             L"Old-renderer fixture did not prove sampled cleanup/picture-motion rejection; this is not valid cadence RED evidence.");
-                                    require(composed,L"Persistent caption composition flashed OFF on an actually submitted source.");
-                                    require(record.counters[2]==record.counters[1]&&record.counters[5]==record.counters[1]&&
-                                        (record.flags&64u)!=0,L"Composed caption/certificate must belong to the actual displayed source.");
-                                    for(int e=0;e<4;++e)require(std::abs(record.metrics[8+e]-pinned[e])<0.01,
-                                        L"Persistent caption caused frame-by-frame displayed AR/crop bounce.");}
+                                    if(injectedUnknownCurrent) {
+                                        require(unknownCurrentSubmitted&&verifiedUnprocessedSources.count(record.acceptedSequence)!=0&&
+                                            record.counters[0]==record.counters[1]&&record.counters[1]==pressureInput&&
+                                            !(record.flags&(2u|16u|32u|64u|4096u|8192u|16384u))&&
+                                            record.counters[2]==0&&record.counters[5]==0&&record.counters[6]==0,
+                                            L"The single UNKNOWN row must remain an exact-current raw source with no composed pixels, certificate, absence claim, repeat, or invented full-raster authority.");
+                                    } else {
+                                        require(composed,L"Persistent caption composition flashed OFF on an actually submitted source.");
+                                        require(record.counters[2]==record.counters[1]&&record.counters[5]==record.counters[1]&&
+                                            (record.flags&64u)!=0,L"Composed caption/certificate must belong to the actual displayed source.");
+                                        for(int e=0;e<4;++e)require(std::abs(record.metrics[8+e]-pinned[e])<0.01,
+                                            L"Persistent caption caused frame-by-frame displayed AR/crop bounce.");
+                                    }}
                             }else{
                                 for(int edge=0;edge<4;++edge)require(record.published[edge]==native[edge],
                                     L"Persistent Classic subtitle changed native AR or black-bar boundaries.");
@@ -4439,9 +4469,9 @@ namespace VideoProcessorTest
                     };
                     do {pump(true);inspectEverySubmittedOutput();
                         if(checked>=60&&distinct.size()>=60&&odd&&even) {
-                            if(!requireUnknownInputRepeat)break;
+                            if(!requireUnknownInputCurrentSource)break;
                             if(!unknownSent){pump(true,true);unknownSent=true;inspectEverySubmittedOutput();}
-                            if(unknownRepeated&&nextCleanFresh)break;
+                            if(unknownCurrentSubmitted&&nextCleanFresh)break;
                         }
                     }while(GetTickCount64()<(ready?steadyDeadline:startupDeadline));
                     // Stop drains in-flight rendering. Inspect that final tail before
@@ -4450,7 +4480,7 @@ namespace VideoProcessorTest
                     std::ostringstream coverage;coverage<<"Actual persistent decoded-DV cadence: input="<<inputHz<<" mode="<<mode
                         <<" inspected="<<checked<<" distinct_displayed="<<distinct.size()<<" consumed_odd="<<odd<<" consumed_even="<<even
                         <<" displayed_odd="<<displayedOdd<<" displayed_even="<<displayedEven
-                        <<" unknown_input="<<pressureInput<<" complete_repeat="<<unknownRepeated<<" next_clean_fresh="<<nextCleanFresh;
+                        <<" unknown_input="<<pressureInput<<" current_unprocessed_output="<<unknownCurrentSubmitted<<" next_clean_fresh="<<nextCleanFresh;
                     Logger::WriteMessage(coverage.str().c_str());
                     require(ready>0,mode?
                         L"Decoded-DV cold preparation did not produce its first valid composed output within180seconds; steady cadence was not exercised.":
@@ -4459,8 +4489,8 @@ namespace VideoProcessorTest
                         L"Actual persistent Dolby subtitle test did not inspect 60 distinct displayed sources and BOTH consumed input parities.");
                     if(mode)require(cleanupMotionCoverage(false),
                         L"Actual subtitle cleanup never intersected changing picture pixels; benign background motion is not cadence regression coverage.");
-                    if(requireUnknownInputRepeat)require(unknownSent&&unknownRepeated&&nextCleanFresh,
-                        L"Actual whole-output repeat and immediately fresh successor were not exercised; timing-only/unavailable coverage cannot pass.");
+                    if(requireUnknownInputCurrentSource)require(unknownSent&&unknownCurrentSubmitted&&nextCleanFresh,
+                        L"Actual exact-current unprocessed UNKNOWN output and immediately fresh composed successor were not exercised; timing-only/unavailable coverage cannot pass.");
                     reportProducerTiming(false);
                 }
             }
@@ -4484,9 +4514,9 @@ namespace VideoProcessorTest
         TEST_METHOD(BetaRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker)
         {VerifyPersistentDecodedDvCadence(true,unsigned(SubtitlePreviewMode::BlackBackground));}
 
-        TEST_METHOD(StandardRendererDecodedDvUnknownInputRepeatsOneCompleteOutput)
+        TEST_METHOD(StandardRendererDecodedDvUnknownInputKeepsCurrentSource)
         {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),true);}
-        TEST_METHOD(BetaRendererDecodedDvUnknownInputRepeatsOneCompleteOutput)
+        TEST_METHOD(BetaRendererDecodedDvUnknownInputKeepsCurrentSource)
         {VerifyPersistentDecodedDvCadence(true,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),true);}
 
         TEST_METHOD(StandardRendererClassicUhdBottomCaptionOutsideFillLimit)
@@ -5026,18 +5056,40 @@ namespace VideoProcessorTest
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));
             cleanup.renderer->Build();cleanup.renderer->Start();
             uint64_t sequence=1;std::set<uint64_t> witnessedNativeOwners;
-            auto exactCurrentMeasuredUnprocessedCrop=[&](const AnalysisDiagnosticRecordV1& output) {
+            auto exactCurrentMeasuredUnprocessedCrop=[&](const AnalysisDiagnosticRecordV1& output,std::string& failure) {
+                auto reject=[&](const char* reason) {
+                    std::ostringstream detail;detail<<reason;
+                    auto appendCandidates=[&](const char* stage,const std::vector<AnalysisDiagnosticRecordV1>& records) {
+                        detail<<' '<<stage<<'=';unsigned count=0;
+                        for(const auto& candidate:records) {
+                            if(strcmp(candidate.stage,stage) || candidate.acceptedSequence!=output.acceptedSequence)continue;
+                            if(count++)detail<<';';
+                            detail<<"ord:"<<candidate.recordSequence<<",flags:"<<candidate.flags
+                                <<",result:"<<candidate.resultCode<<",source:"<<candidate.sourceFrameNumber
+                                <<",capture:"<<candidate.captureTimestamp<<",mode:"<<candidate.counters[0]
+                                <<",format:"<<candidate.sourceFormatGeneration<<",domain:"<<candidate.analysisDomainKey;
+                            if(count>=6){detail<<";...";break;}
+                        }
+                        if(!count)detail<<"none";
+                    };
+                    appendCandidates("source-picture-active",spatialProduced);
+                    appendCandidates("accepted-picture-detector",spatialAccepted);
+                    appendCandidates("subtitle-canvas-admission",spatialCanvas);
+                    failure=detail.str();return false;
+                };
                 if(!processedMode || strcmp(output.stage,"submitted-presentation") || !(output.flags&1u) ||
                     output.counters[0]!=output.acceptedSequence || output.counters[1]!=output.acceptedSequence ||
-                    output.counters[2]!=0 || output.counters[3]!=processedMode ||
+                    output.counters[2]!=0 || (output.counters[3]!=0 && output.counters[3]!=processedMode) ||
                     output.counters[4]!=output.acceptedSequence || output.counters[5]!=0 || output.counters[6]!=0 || output.counters[7]!=0 ||
                     output.resultCode!=int(AlphaSourceCrop::DecisionOwner::TRUSTED_CROP) ||
                     ((output.flags>>24)&3u)!=unsigned(ActivePictureDetectorKind::SourceSpatialMeasured) ||
-                    (output.flags&(2u|4u|8u|16u|32u|64u|128u|256u|512u|1024u|4096u|8192u|16384u)))return false;
+                    (output.flags&(2u|4u|8u|16u|32u|64u|128u|256u|512u|1024u|4096u|8192u|16384u)))
+                    return reject("submitted-current-raw-output-contract");
                 const int expected[4]={0,scopeBar,width,height-scopeBar};
                 for(int edge=0;edge<4;++edge)
                     if(output.published[edge]!=expected[edge] || output.displayed[edge]!=expected[edge] ||
-                        !std::isfinite(output.metrics[8+edge]) || std::abs(output.metrics[8+edge]-expected[edge])>=0.01)return false;
+                        !std::isfinite(output.metrics[8+edge]) || std::abs(output.metrics[8+edge]-expected[edge])>=0.01)
+                        return reject("submitted-native-and-actual-geometry");
                 const auto expectedCanvasMode=processedMode==unsigned(SubtitlePreviewMode::BlackBackground)
                     ? AlphaSourceCrop::SubtitleCanvasMode::BLACK : AlphaSourceCrop::SubtitleCanvasMode::RECONSTRUCTION;
                 const AnalysisDiagnosticRecordV1* sourceMeasurement=nullptr;
@@ -5051,7 +5103,7 @@ namespace VideoProcessorTest
                     bool exact=true;for(int edge=0;edge<4;++edge)exact&=source.measured[edge]==expected[edge];
                     if(exact && source.recordSequence<output.recordSequence)sourceMeasurement=&source;
                 }
-                if(!sourceMeasurement)return false;
+                if(!sourceMeasurement)return reject("exact-current-source-picture-active-measurement");
                 const AnalysisDiagnosticRecordV1* acceptedModel=nullptr;
                 for(const auto& accepted:spatialAccepted)if(!strcmp(accepted.stage,"accepted-picture-detector") &&
                     accepted.acceptedSequence==output.acceptedSequence && accepted.counters[0]==output.acceptedSequence &&
@@ -5066,7 +5118,7 @@ namespace VideoProcessorTest
                     bool exact=true;for(int edge=0;edge<4;++edge)exact&=accepted.published[edge]==expected[edge];
                     if(exact)acceptedModel=&accepted;
                 }
-                if(!acceptedModel)return false;
+                if(!acceptedModel)return reject("exact-current-accepted-physical-model");
                 for(const auto& admission:spatialCanvas)if(!strcmp(admission.stage,"subtitle-canvas-admission") &&
                     admission.acceptedSequence==output.acceptedSequence && admission.rendererInstanceKey==output.rendererInstanceKey &&
                     admission.transportGeneration==output.transportGeneration && admission.rendererGeneration==output.rendererGeneration &&
@@ -5078,9 +5130,10 @@ namespace VideoProcessorTest
                     admission.counters[1]==static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) &&
                     (admission.flags&2u) && !(admission.flags&(1u|4u|8u|32u|64u)) &&
                     acceptedModel->recordSequence<admission.recordSequence && admission.recordSequence<output.recordSequence) {
+                    failure.clear();
                     return true;
                 }
-                return false;
+                return reject("exact-current-unknown-subtitle-admission-order-and-context");
             };
             auto pump=[&](std::vector<uint16_t>& pixels) {
                 MSG message;
@@ -5114,8 +5167,9 @@ namespace VideoProcessorTest
                                     return canvas.counters[0]==static_cast<unsigned>(expectedCanvasMode) &&
                                         IsCurrentRawSubtitleFallback(record,canvas,width,height);
                                 });
+                            std::string currentMeasuredUnprocessedCropFailure;
                             const bool currentMeasuredUnprocessedCrop=!wholeSource &&
-                                exactCurrentMeasuredUnprocessedCrop(record);
+                                exactCurrentMeasuredUnprocessedCrop(record,currentMeasuredUnprocessedCropFailure);
                             const bool retained=processedMode && !wholeSource && measured &&
                                 record.resultCode==int(AlphaSourceCrop::DecisionOwner::SUBMITTED_SCOPE_RETENTION) &&
                                 witnessedNativeOwners.count(record.counters[4]) && record.counters[4]<record.acceptedSequence &&
@@ -5143,7 +5197,8 @@ namespace VideoProcessorTest
                                     <<" actual="<<record.metrics[8]<<','<<record.metrics[9]<<'-'<<record.metrics[10]<<','<<record.metrics[11]
                                     <<" whole="<<wholeSource<<" measured="<<measured<<" certified="<<certified
                                     <<" current_physical_raw_crop="<<currentMeasuredUnprocessedCrop
-                                    <<" raw_current="<<exactCurrentRawFallback;
+                                    <<" raw_current="<<exactCurrentRawFallback
+                                    <<" raw_crop_subjoin="<<(currentMeasuredUnprocessedCropFailure.empty()?"none":currentMeasuredUnprocessedCropFailure);
                                 Logger::WriteMessage(summary.str().c_str());
                                 for(const auto& canvas:spatialCanvas)if(canvas.acceptedSequence==record.acceptedSequence &&
                                     canvas.rendererInstanceKey==record.rendererInstanceKey &&

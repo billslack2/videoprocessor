@@ -11,8 +11,11 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1068,
+  "minimumNativeTests": 1071,
   "requiredNativeMethods": [
+    "IndependentSameCueScansRearmOriginalPendingSeedWithoutBandResampling",
+    "ReadySameCueRearmFallsBackToFreshSeedOnChangedInkBackingOrContext",
+    "UhdFreshReadyCertificateRearmsWithBoundedCurrentPixelChecks",
     "CurrentFootprintRearmsStrideOneOnlyAndKeepsOriginalPixelBaseline",
     "CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk",
     "UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats",
@@ -385,8 +388,8 @@
     "BetaRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker",
     "StandardRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
     "BetaRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
-    "StandardRendererDecodedDvUnknownInputRepeatsOneCompleteOutput",
-    "BetaRendererDecodedDvUnknownInputRepeatsOneCompleteOutput",
+    "StandardRendererDecodedDvUnknownInputKeepsCurrentSource",
+    "BetaRendererDecodedDvUnknownInputKeepsCurrentSource",
     "StandardRendererRetainsUncertainPictureAndAcceptsRealTransitions",
     "BetaRendererRetainsUncertainPictureAndAcceptsRealTransitions",
     "StandardRendererPendingCaptionBurstKeepsCurrentVideoAdvancing",
