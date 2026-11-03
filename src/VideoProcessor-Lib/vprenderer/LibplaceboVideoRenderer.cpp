@@ -13782,7 +13782,7 @@ struct LibplaceboVideoRenderer::Impl
         // Construct each snapshot in place so initialization introduces no
         // temporary preview on the stack, and preserve this call's ownership.
         struct SubtitlePreviewWorkspace {
-            SubtitleBoxPreview early, current, rebound, live;
+            SubtitleBoxPreview early, current, rebound, live, proof;
         };
         const auto subtitlePreviews=std::make_unique<SubtitlePreviewWorkspace>();
         auto& earlySubtitlePreview=subtitlePreviews->early;
@@ -15064,7 +15064,7 @@ struct LibplaceboVideoRenderer::Impl
                             currentCueProofReceipt.CurrentInk()?currentCueProofReceipt.CurrentInk()->step:0,
                             &currentCueProofReceipt.VerifiedSemanticLineBounds());
                     SubtitleBoxResult currentCue;
-                    SubtitleBoxPreview proofPreview;
+                    auto& proofPreview=subtitlePreviews->proof;
                     if(cueStatus==SubtitleCurrentCueProofStatus::Ready && receiptCurrent &&
                         receiptMatchesCurrentPositive &&
                         subtitleBoxPresentation.ConsumeCurrentCueProof(currentCueProofReceipt,
