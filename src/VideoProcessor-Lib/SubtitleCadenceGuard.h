@@ -750,7 +750,14 @@ private:
         }
     }
     bool ComputeProtectedCleanupProjection(int& projectedLeft,int& projectedRight,
-        int& projectedTop,int& projectedBottom) const {
+        int& projectedTop,int& projectedBottom,int* conflictX=nullptr,int* conflictY=nullptr) const {
+        if(conflictX)*conflictX=-1;
+        if(conflictY)*conflictY=-1;
+        const auto reportConflict=[&](int x,int y) {
+            if(conflictX)*conflictX=x;
+            if(conflictY)*conflictY=y;
+            return false;
+        };
         const auto& cleanup=m_geometry.generatedCleanup;
         if(!cleanup.Valid() || m_geometry.generatedCleanupRowCount ||
             cleanup.left<m_base.left || cleanup.right>m_base.right ||
@@ -771,24 +778,35 @@ private:
         for(const auto& r:m_capture)include(r);
         include(m_geometry.content);
         if(hullLeft<cleanup.left || hullRight>cleanup.right || hullTop<cleanup.top || hullBottom>cleanup.bottom ||
-            hullLeft>=hullRight || hullTop>=hullBottom)return false;
+            hullLeft>=hullRight || hullTop>=hullBottom) {
+            if(!m_cleanupChangedIndices.empty() && m_cleanupChangedIndices.front()<m_native.size()) {
+                const auto& changed=m_native[m_cleanupChangedIndices.front()];
+                return reportConflict(changed.x,changed.y);
+            }
+            return false;
+        }
         projectedLeft=cleanup.left;projectedRight=cleanup.right;
         projectedTop=cleanup.top;projectedBottom=cleanup.bottom;
         for(const unsigned index:m_cleanupChangedIndices) {
             if(index>=m_native.size())return false;
             const auto& changed=m_native[index];
             if(!Inside(cleanup,changed.x,changed.y) || changed.x<m_base.left || changed.x>=m_base.right ||
-                changed.y<m_base.top || changed.y>=m_base.bottom)return false;
+                changed.y<m_base.top || changed.y>=m_base.bottom)return reportConflict(changed.x,changed.y);
             if(changed.x<hullLeft)projectedLeft=(std::max)(projectedLeft,changed.x+1);
             else if(changed.x>=hullRight)projectedRight=(std::min)(projectedRight,changed.x);
             else if(changed.y<hullTop)projectedTop=(std::max)(projectedTop,changed.y+1);
             else if(changed.y>=hullBottom)projectedBottom=(std::min)(projectedBottom,changed.y);
-            else return false;
+            else return reportConflict(changed.x,changed.y);
         }
         if(projectedLeft>=projectedRight || projectedTop>=projectedBottom ||
             projectedLeft>hullLeft || projectedRight<hullRight ||
-            projectedTop>hullTop || projectedBottom<hullBottom)
+            projectedTop>hullTop || projectedBottom<hullBottom) {
+            if(!m_cleanupChangedIndices.empty() && m_cleanupChangedIndices.back()<m_native.size()) {
+                const auto& changed=m_native[m_cleanupChangedIndices.back()];
+                return reportConflict(changed.x,changed.y);
+            }
             return false;
+        }
         return true;
     }
     static bool SameSample(const AnalysisLumaSample& a,const AnalysisLumaSample& b) {
@@ -1082,9 +1100,15 @@ private:
         int protectedBottom=m_geometry.generatedCleanup.Valid()?m_geometry.generatedCleanup.bottom:-1;
         const bool hasProtectedCleanup=allowProtectedCleanupProjection && !m_cleanupChangedIndices.empty();
         if(allowProtectedCleanupProjection) {
+            int projectionConflictX=-1,projectionConflictY=-1;
             if(hasProtectedCleanup && !ComputeProtectedCleanupProjection(
-                protectedLeft,protectedRight,protectedTop,protectedBottom))
+                protectedLeft,protectedRight,protectedTop,protectedBottom,
+                &projectionConflictX,&projectionConflictY)) {
+                if(projectionConflictX>=0) {
+                    mismatchX=projectionConflictX;mismatchY=projectionConflictY;
+                }
                 return fail(samples,"current-cleanup-edge-not-protectable");
+            }
         }
         const char* reason=hasProtectedCleanup?"current-cleanup-edge-protected":"cadence-current-pixels";
         return {true,samples,reason,mismatchX,mismatchY,protectedLeft,protectedRight,protectedTop,protectedBottom};
