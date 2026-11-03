@@ -1826,7 +1826,7 @@ namespace VideoProcessorTest
                 std::map<uint64_t,Geometry> submitted=preProbeSubmitted;
                 uint64_t firstUnknownSource=0;
                 const auto probeDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);
-                auto exactRawCurrent=[](const AnalysisDiagnosticRecordV1& record) {
+                auto exactRawCurrent=[width,height](const AnalysisDiagnosticRecordV1& record) {
                     const auto& m=record.metrics;
                     return record.counters[3]==record.acceptedSequence && record.counters[4]==record.acceptedSequence &&
                         record.counters[5]==1 && record.counters[6]==record.transportGeneration &&
