@@ -193,10 +193,12 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
     }
     struct CueScanKeyTraceSink {
         uint64_t sequence=0;
+        BlockingCueProofTraceSink* blockedProof=nullptr;
         std::atomic_uint starts{0},flags{0};
     };
     static void __cdecl CaptureCueScanKey(void* context,const AnalysisDiagnosticRecordV1* record) {
         auto* sink=static_cast<CueScanKeyTraceSink*>(context);
+        if(sink && sink->blockedProof)BlockCueProofTrace(sink->blockedProof,record);
         if(!sink || !record || std::strcmp(record->stage,"worker-start")!=0 ||
             record->acceptedSequence!=sink->sequence)return;
         sink->flags.store(record->flags,std::memory_order_release);
@@ -4946,28 +4948,25 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             // scan to the pending proof; the first two cases retain inspection
             // keys that deliberately differ from the private presentation key.
             if(ordinary)*raw=*key;
-            worker->AdvanceCurrentCueRenderWindow(raw->identity,8);
-            CueScanKeyTraceSink sink;sink.sequence=8;
-            struct ClearSink {~ClearSink(){AnalysisDiagnosticTrace::ClearExternalSinks();}} clearSink;
+            auto warmup=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(7,*pixels));
+            worker->AdvanceCurrentCueRenderWindow(ordinary?warmup->identity:raw->identity,8);
+            BlockingCueProofTraceSink proofGate;proofGate.sequence=7;proofGate.domain=raw->identity.analysisDomainKey;
+            CueScanKeyTraceSink sink;sink.sequence=8;sink.blockedProof=ordinary?&proofGate:nullptr;
+            ReleaseCueProofTraceSink sinkCleanup{proofGate};
             AnalysisDiagnosticTrace::SetExternalSinks(&sink,&CaptureCueScanKey,nullptr,nullptr);
-            auto entered=std::make_shared<std::atomic_uint>(0);
-            auto release=std::make_shared<std::atomic_bool>(false);
-            struct ReleaseGate {
-                std::shared_ptr<std::atomic_bool> flag;
-                ~ReleaseGate(){flag->store(true,std::memory_order_release);}
-            } releaseGate{release};
+            sinkCleanup.installed=true;
             if(ordinary) {
-                for(uint64_t sequence:{900u,901u}) {
-                    const auto blocker=WorkerKey(sequence,0xB10C);
-                    Assert::IsTrue(worker->Submit(blocker,[entered,release,blocker](SubtitleMeasurementSampler&,
-                        const SubtitleBarTrackingReference&) {
-                        entered->fetch_add(1,std::memory_order_release);
-                        while(!release->load(std::memory_order_acquire))
-                            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                        return blocker;
-                    }));
-                }
-                Assert::IsTrue(WaitForEntered(*entered,2),L"Both workers are held so ordinary Submit must attach to the queued proof.");
+                auto warmupKey=std::make_unique<SubtitleBoxObservation>();ActivePictureBounds warmupBase;uint64_t warmupRevision=0;
+                Assert::IsTrue(worker->MakeCurrentCueProofKey(*warmup,SubtitlePreviewMode::None,3,
+                    *warmupKey,warmupBase,warmupRevision));
+                SubtitleCurrentCueProofRequest request;request.currentKey=*warmupKey;
+                request.source=OwnedSource(pixels);request.physicalBase=warmupBase;request.templateRevision=warmupRevision;
+                request.sourceMode=SubtitlePreviewMode::None;request.backgroundMode=3;
+                request.eligibleRenderHead=warmup->identity;request.eligibleTailSequence=8;
+                Assert::IsTrue(worker->SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
+                std::unique_lock<std::mutex> lock(proofGate.mutex);
+                Assert::IsTrue(proofGate.changed.wait_for(lock,std::chrono::seconds(2),[&]{return proofGate.entered;}),
+                    L"The proof worker is held after publishing source7 so source8 remains queued for ordinary Submit attachment.");
             }
             auto scans=std::make_shared<std::atomic_uint>(0);
             auto scanResult=std::make_shared<SubtitleBoxObservation>(*raw);
@@ -4992,7 +4991,8 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                     auto result=*scanResult;result.analyzed=true;return result;
                 }));
                 Assert::AreEqual(0u,scans->load(std::memory_order_acquire));
-                release->store(true,std::memory_order_release);
+                {std::lock_guard<std::mutex> lock(proofGate.mutex);proofGate.release=true;}
+                proofGate.changed.notify_all();
             }
             auto receipt=std::make_unique<SubtitleCurrentCueProofReceipt>();
             auto status=SubtitleCurrentCueProofStatus::Queued;
