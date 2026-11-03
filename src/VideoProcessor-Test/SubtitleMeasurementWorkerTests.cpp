@@ -3186,7 +3186,7 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             movedSeed.current,movedSeed.text,base);
         Assert::IsFalse(movedProof.valid,
             L"A changed old-black cleanup sample must still fail against the original seed after rearm.");
-        Assert::AreEqual("current-black-backing-changed",movedProof.reason);
+        Assert::AreEqual("cadence-current-cleanup-changed",movedProof.reason);
 
         // Changed owned masks and changed shader geometry cannot reuse the
         // old topology. A fresh independent accepted source can seed anew.
