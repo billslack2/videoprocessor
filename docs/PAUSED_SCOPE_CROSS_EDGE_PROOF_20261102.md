@@ -55,7 +55,7 @@ suites remain deployment gates; active configuration is preserved.
 ## Returning Classic engage stability exposed during qualification
 
 The first full run passed all 1065 standard checks but failed one beta return-to-
-Classic case. Native picture bounds remained 250–1906. The routed controller
+Classic case. Native picture bounds remained 250ï¿½1906. The routed controller
 advanced 16 to 24 pixels, but a conservative pending caption extent projected a
 64-pixel pan before a fresh extent allowed 60, producing a four-pixel backslide.
 
@@ -64,6 +64,8 @@ an effective constraint until the configured controller reaches it. The pose mus
 match native owner, format, domain, epoch, dimensions and presentation certificate,
 and stay inside the current safe interval. Foreign or invalid poses do not constrain
 it; release clocks and actual native geometry are unchanged. `engage_retained` and
-flag 8 of `subtitle-canvas-admission` explain this presentation-only constraint.
+flag 16 of `subtitle-canvas-admission` explain this presentation-only constraint.
 A deterministic top/bottom regression first fails on the old behavior and checks
 all of those context guards. This is separate from the detector's current edge proof.
+
+Combined with VP-0225, candidate presence retains flag 8. The current raw occupied-side margin constrains Classic placement before engage-pose retention; the regression verifies both constraints without allowing a prior pose outside the current safe interval.

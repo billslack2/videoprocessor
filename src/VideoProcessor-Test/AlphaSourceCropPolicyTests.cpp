@@ -18397,7 +18397,8 @@ public:
                 const auto d=ResolveUncertainPicturePresentation(r,Evaluate(c)).presentation;
                 Assert::IsFalse(d.waitForSubtitleProcessing);
                 Assert::AreEqual(fault==-1,d.subtitleEngagePoseRetained);
-                Assert::AreEqual(sign*(fault==-1?64:40),d.verticalTranslationPixels,
+                // Current bottom occupancy reaches 56 pixels past native; the opposite-side raw margin cannot constrain a top caption.
+                Assert::AreEqual(fault==-1?sign*64:(sign>0?56:-40),d.verticalTranslationPixels,
                     L"Only a current matching legal submitted pose constrains engage against measurement backslide.");
                 Assert::AreEqual(native.bottom-native.top,d.sourceBounds.bottom-d.sourceBounds.top);
                 Assert::AreEqual(sign*16,c.verticalTranslationPixels,L"Projection must not advance the configured controller clock.");
