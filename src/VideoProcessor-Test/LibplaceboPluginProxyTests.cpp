@@ -1992,6 +1992,22 @@ namespace VideoProcessorTest
                             continue;
                         }
                         if(strcmp(record.stage,"submitted-presentation")||!(record.flags&1u))continue;
+                        if(record.sourceFrameNumber<firstInput) {
+                            std::ostringstream detail;detail<<"PENDING BURST SOURCE BOUNDARY: phase="<<phaseName
+                                <<" first_input="<<firstInput<<" first_record="<<firstRecord<<" ordinal="<<record.recordSequence
+                                <<" frame="<<record.sourceFrameNumber<<" accepted="<<record.acceptedSequence
+                                <<" consumed="<<record.counters[0]<<" selected="<<record.counters[1]
+                                <<" capture="<<record.captureTimestamp<<" transport="<<record.transportGeneration
+                                <<" renderer="<<record.rendererGeneration<<" viewport="<<record.viewportGeneration
+                                <<" format="<<record.sourceFormatGeneration<<" domain="<<record.analysisDomainKey
+                                <<" continuity="<<record.continuityGeneration;
+                            if(previousContext)detail<<" prior_frame="<<previousContext->sourceFrameNumber
+                                <<" prior_transport="<<previousContext->transportGeneration
+                                <<" prior_format="<<previousContext->sourceFormatGeneration
+                                <<" prior_domain="<<previousContext->analysisDomainKey
+                                <<" prior_continuity="<<previousContext->continuityGeneration;
+                            Logger::WriteMessage(detail.str().c_str());
+                        }
                         require(record.sourceFrameNumber>=firstInput,
                             L"A prior-source image was submitted after pending Classic inputs began.");
                         require(outputsByFrame.emplace(record.sourceFrameNumber,&record).second,
