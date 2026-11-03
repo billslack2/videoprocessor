@@ -2,6 +2,10 @@
 
 ## Status
 
+2026-11-03 latest actual-renderer follow-up (552ab22d, clean source, not deployed): all 1,082 Native tests pass, and the focused 11-test Native set passes; neither result is full qualification. The Standard/Beta actual long-pair run still fails. Standard source 15 has a successful exact-current proof and composition on the current crop (trace flags 16777315, cue/certificate source 15); worker-proof maxima are 13.690ms Standard and 12.997ms Beta, with receipt binding 0.073ms and 0.068ms. The next submitted source 16 loses the cue during cleanup plus normal semantic handoff: raw detection still reports three lines, but the tracker rejects with `glyph-proof-lost-or-changed` and the output becomes uncomposed. No failure was waived.
+
+A pushed `dbfbb200` output-only adapter is the next candidate; its focused Native validation was still pending at this update. Story status remains Review, runtime qualification remains open, and the last deployment remains `53058498`. See the [latest evidence summary](../assets/VP-0225/cue-timing-review-20261103/552ab22d-summary.md), [Native 1,082-test receipt](../assets/VP-0225/cue-timing-review-20261103/552ab22d-native-1082-standard.trx), [focused 11-test receipt](../assets/VP-0225/cue-timing-review-20261103/552ab22d-focused-11-standard.trx), and [failed actual long-pair receipt](../assets/VP-0225/cue-timing-review-20261103/552ab22d-longpair-standard.trx).
+
 Review
 
 2026-11-03 worker/cadence follow-up (clean source `9cd1fe9b6785106f2b3fe92f1aaaf2d5a1bbec6b`, not deployed): the Native TRX ran 1,081 tests, with 1,079 passing and two new semantic-refresh failures: `CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange` and `CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence`. Their verbatim TRX and run summary are retained in [the Native receipt](../assets/VP-0225/cue-timing-review-20261103/9cd1fe9b-native-1081-standard.trx) and [failed-run JSON](../assets/VP-0225/cue-timing-review-20261103/9cd1fe9b-native-1081-failed.json).
