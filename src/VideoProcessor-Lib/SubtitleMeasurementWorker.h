@@ -2220,7 +2220,10 @@ private:
             const size_t at=size_t(y)*fresh->width+x;
             if(!sampled[at]) {
                 if(count>=CurrentInkSampleBudget)return false;
-                if(!sampler.Sample(x*fresh->step,fresh->sourceRows[size_t(y)],pixels[at]))return false;
+                const int sourceX=x*fresh->step,sourceY=fresh->sourceRows[size_t(y)];
+                const bool reusedFootprintSample=m_currentFootprintRequired && currentFootprint &&
+                    currentFootprint->TryGetVerifiedCurrentSampleForBoundReceipt(sourceX,sourceY,pixels[at]);
+                if(!reusedFootprintSample && !sampler.Sample(sourceX,sourceY,pixels[at]))return false;
                 sampled[at]=1;++count;
                 m_diagnostics.currentBandSamplesChecked=count;
                 if(y<top || y>=bottom)++m_diagnostics.barVisibilitySamplesChecked;
@@ -2229,13 +2232,14 @@ private:
             }
             value=pixels[at];return true;
         };
-        for(int y=0;y<fresh->height;++y)if((y<topEnd || y>=bottomStart) &&
-            ((!m_currentFootprintRequired && !presentationTemplateProof) || y<top || y>=bottom))
-            for(int x=0;x<fresh->width;++x) {
-                AnalysisLumaSample unused;if(!read(x,y,unused)) {
-                    reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;
+        if(!m_currentFootprintRequired && !presentationTemplateProof) {
+            for(int y=0;y<fresh->height;++y)if(y<topEnd || y>=bottomStart)
+                for(int x=0;x<fresh->width;++x) {
+                    AnalysisLumaSample unused;if(!read(x,y,unused)) {
+                        reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;
+                    }
                 }
-            }
+        }
         for(const auto& backing:m_backingSamples) {
             if(m_currentFootprintRequired && currentFootprint &&
                 !currentFootprint->ContainsVerifiedFootprintSample(
@@ -2343,10 +2347,29 @@ private:
             fresh->ownedInk[at/64]|=uint64_t{1}<<(at%64);
         }
         if(m_currentFootprintRequired || presentationTemplateProof) {
-            if(HasNonblackEncodedBarPixels(*fresh,pixels,top,bottom,topEnd,bottomStart,
-                m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY)) {
+            if(!CurrentBandCellCount(fresh->width,fresh->height,topEnd,bottomStart)) {
                 reason="new-current-bar-ink";return false;
             }
+            // The earlier bar-only sampling pass is fused here with the
+            // nonblack-bar veto. Current owned bits are populated only after
+            // their exact YUV checks above, so the same old exception remains
+            // limited to pixels proven as current owned glyphs.
+            for(int y=0;y<fresh->height;++y)if(InCurrentBand(y,fresh->height,topEnd,bottomStart) &&
+                (y<top || y>=bottom))
+                for(int x=0;x<fresh->width;++x) {
+                    AnalysisLumaSample sample;
+                    if(!read(x,y,sample)) {
+                        reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;
+                    }
+                    if(fresh->Get(x,y,true))continue;
+                    const bool black=sample.luma<=fresh->blackLimit &&
+                        std::abs(int(sample.chromaU)-512)<=48 && std::abs(int(sample.chromaV)-512)<=48;
+                    if(!black) {
+                        m_diagnostics.glyphMismatchX=x*fresh->step;
+                        m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(y)];
+                        reason="new-current-bar-ink";return false;
+                    }
+                }
         } else if(HasNovelPotentialInk(*oldInk,m_paletteFringe,pixels,m_contrastSeedPixels,m_contrastSeedDirections,
             top,bottom,topEnd,bottomStart,
             m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY)) {
@@ -2354,26 +2377,6 @@ private:
         }
         currentInk=std::move(fresh);
         reason="current-owned-cue-verified";return true;
-    }
-    bool HasNonblackEncodedBarPixels(const SubtitleInkSnapshot& reference,
-        const std::vector<AnalysisLumaSample>& currentPixels,
-        int top,int bottom,int topEnd,int bottomStart,
-        int& mismatchX,int& mismatchY) const {
-        const int width=reference.width,height=reference.height;
-        const size_t bandCells=CurrentBandCellCount(width,height,topEnd,bottomStart);
-        if(currentPixels.size()!=size_t(width)*height || !bandCells)return true;
-        for(int y=0;y<height;++y)if(InCurrentBand(y,height,topEnd,bottomStart) && (y<top || y>=bottom))
-            for(int x=0;x<width;++x) {
-                // The only permitted nonblack sample is an old detector-owned
-                // glyph cell, whose exact current YUV was checked above.
-                if(reference.Get(x,y,true))continue;
-                const auto& sample=currentPixels[size_t(y)*width+x];
-                const bool black=sample.luma<=reference.blackLimit &&
-                    std::abs(int(sample.chromaU)-512)<=48 && std::abs(int(sample.chromaV)-512)<=48;
-                if(black)continue;
-                mismatchX=x*reference.step;mismatchY=reference.sourceRows[size_t(y)];return true;
-            }
-        return false;
     }
     static bool HasNovelPotentialInk(const SubtitleInkSnapshot& reference,
         const std::vector<uint64_t>& paletteFringe,

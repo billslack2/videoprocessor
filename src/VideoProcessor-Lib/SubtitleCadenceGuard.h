@@ -109,6 +109,33 @@ public:
                 m_currentFootprintReceiptRight,m_currentFootprintReceiptBottom},x,y))return false;
         return true;
     }
+    // Reuse only pixels already sampled from the exact current source during
+    // this successful footprint receipt. This is a read-cache optimization;
+    // it grants no additional geometry, cue, or crop authority.
+    bool TryGetVerifiedCurrentSample(const SubtitleBoxObservation& currentKey,
+        const ActivePictureBounds& base,int x,int y,AnalysisLumaSample& out) const {
+        if(!m_currentFootprintReceiptValid ||
+            !SameAnalysisFrameIdentity(m_currentFootprintReceiptIdentity,currentKey.identity) ||
+            m_currentFootprintReceiptPolicy!=currentKey.policyGeneration ||
+            m_currentFootprintReceiptContinuity!=currentKey.continuityGeneration ||
+            currentKey.width!=m_reference->current.width || currentKey.height!=m_reference->current.height ||
+            !currentKey.sharedPicture.AvailableFor(currentKey.identity,currentKey.width,currentKey.height) ||
+            !SamePhysicalBase(currentKey.sharedPicture.bounds,base) ||
+            !SamePhysicalBase(m_currentFootprintReceiptBase,base) ||
+            !SameGeometry(m_currentFootprintReceiptGeometry,m_geometry))return false;
+        const int footprintIndex=Index(x,y);
+        if(footprintIndex>=0 && ContainsVerifiedFootprintSample(x,y) &&
+            size_t(footprintIndex)<m_currentPixels.size()) {
+            out=m_currentPixels[size_t(footprintIndex)].pixel;
+            return true;
+        }
+        const size_t destinationIndex=DestinationIndex(x,y);
+        if(destinationIndex<m_destinationCurrentPixels.size()) {
+            out=m_destinationCurrentPixels[destinationIndex];
+            return true;
+        }
+        return false;
+    }
     void ClearCurrentFootprintProtectionReceipt() const {m_currentFootprintReceiptValid=false;}
     // Verify a later exact current source against the immutable accepted
     // extraction/erasure footprint. Caption continuity is intentionally left
@@ -165,7 +192,8 @@ public:
         }
         verified.samples+=destinationSamples;
         m_currentFootprintReceiptValid=true;m_currentFootprintReceiptIdentity=current.identity;
-        m_currentFootprintReceiptPolicy=current.policyGeneration;m_currentFootprintReceiptBase=base;
+        m_currentFootprintReceiptPolicy=current.policyGeneration;
+        m_currentFootprintReceiptContinuity=current.continuityGeneration;m_currentFootprintReceiptBase=base;
         m_currentFootprintReceiptGeometry=m_geometry;
         m_currentFootprintReceiptLeft=verified.protectedCleanupLeft;
         m_currentFootprintReceiptRight=verified.protectedCleanupRight;
@@ -228,6 +256,26 @@ public:
         return true;
     }
 private:
+    friend class SubtitlePendingMeasurementGuard;
+    // Fast sample access for the worker after VerifyCurrentFootprint has
+    // already validated and bound the receipt for this exact current key.
+    // The owning worker is single-threaded, so the receipt cannot be replaced
+    // during BuildCurrentInkProof's read loop.
+    bool TryGetVerifiedCurrentSampleForBoundReceipt(int x,int y,AnalysisLumaSample& out) const {
+        if(!m_currentFootprintReceiptValid)return false;
+        const int footprintIndex=Index(x,y);
+        if(footprintIndex>=0 && ContainsVerifiedFootprintSample(x,y) &&
+            size_t(footprintIndex)<m_currentPixels.size()) {
+            out=m_currentPixels[size_t(footprintIndex)].pixel;
+            return true;
+        }
+        const size_t destinationIndex=DestinationIndex(x,y);
+        if(destinationIndex<m_destinationCurrentPixels.size()) {
+            out=m_destinationCurrentPixels[destinationIndex];
+            return true;
+        }
+        return false;
+    }
     bool RememberAcceptedCore(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
         const AnalysisLumaSource& source,const ActivePictureBounds& base,
         const SubtitleCutPasteGeometry& geometry,double frameMs,int holdMs,int backgroundMode,
@@ -1003,11 +1051,11 @@ private:
         for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
                 const size_t at=DestinationIndex(x,y);const auto& point=m_destinationCurrentPixels[at];
-                if(IsProjectedProtectedPassThrough(x,y,verified))continue;
                 const bool mayBright=BrightDestinationPoint(point,*m_baseline);
                 const bool mayAlternate=AlternateDestinationPoint(point,*m_baseline);
                 const bool mayDark=DarkDestinationPoint(point,*m_baseline);
                 if(!mayBright && !mayAlternate && !mayDark)continue;
+                if(IsProjectedProtectedPassThrough(x,y,verified))continue;
                 for(int direction=0;direction<4;++direction) {
                     const size_t neighborAt=DestinationIndex(x+dx[direction],y+dy[direction]);
                     if(neighborAt==size_t(-1))continue;
@@ -1181,7 +1229,7 @@ private:
     std::shared_ptr<const SubtitleInkSnapshot> m_detectorReference;
     mutable bool m_currentFootprintReceiptValid=false;
     mutable ActivePictureFrameIdentity m_currentFootprintReceiptIdentity{};
-    mutable uint64_t m_currentFootprintReceiptPolicy=0;
+    mutable uint64_t m_currentFootprintReceiptPolicy=0,m_currentFootprintReceiptContinuity=0;
     mutable ActivePictureBounds m_currentFootprintReceiptBase{};
     mutable SubtitleCutPasteGeometry m_currentFootprintReceiptGeometry{};
     mutable int m_currentFootprintReceiptLeft=-1,m_currentFootprintReceiptRight=-1;

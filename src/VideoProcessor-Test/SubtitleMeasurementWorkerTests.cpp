@@ -503,6 +503,10 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     auto movingPixels=CurrentFootprintUhdPixels(1);
     preservePreparedBackground(movingPixels);
     auto movingSource=CurrentFootprintUhdSource(movingPixels);
+    AnalysisLumaSample unverifiedSample;
+    Assert::IsFalse(footprint->TryGetVerifiedCurrentSample(source93->current,base,
+        preparedContentProbeX,preparedContentProbeY,unverifiedSample),
+        L"The footprint cannot supply pixels before an exact current-source verification receipt exists.");
     const auto pureMotion=footprint->VerifyCurrentFootprint(source93->current,movingSource,
         preview->current,accepted,base);
     if(!pureMotion.valid)Logger::WriteMessage((std::string("Current footprint motion: ")+pureMotion.reason+" samples="+std::to_string(pureMotion.samples)+" mismatch="+std::to_string(pureMotion.mismatchX)+","+std::to_string(pureMotion.mismatchY)).c_str());
@@ -525,6 +529,41 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
         pureMotion.protectedCleanupRight<cleanup.right,
         L"The moving UHD fixture must exercise a horizontal cleanup-edge projection.");
 
+    int reusedSampleX=-1,reusedSampleY=-1;AnalysisLumaSample reusedCurrentSample,sourceCurrentSample,seedSample;
+    for(int y=(std::max)(geometry.content.top,kFootprintTop);y<(std::min)(geometry.content.bottom,kFootprintBottom)&&reusedSampleX<0;++y)
+        for(int x=(std::max)(geometry.content.left,0);x<(std::min)(geometry.content.right,kFootprintWidth);++x) {
+            if(!footprint->ContainsFootprintSample(x,y) ||
+                !seedSource.Sample(x,y,seedSample) || !movingSource.Sample(x,y,sourceCurrentSample) ||
+                (seedSample.luma==sourceCurrentSample.luma && seedSample.chromaU==sourceCurrentSample.chromaU &&
+                    seedSample.chromaV==sourceCurrentSample.chromaV))continue;
+            if(footprint->TryGetVerifiedCurrentSample(source93->current,base,x,y,reusedCurrentSample)) {
+                reusedSampleX=x;reusedSampleY=y;break;
+            }
+        }
+    Assert::IsTrue(reusedSampleX>=0&&reusedSampleY>=0,
+        L"A changed current source pixel inside the verified operation must be available for safe sample reuse.");
+    Assert::IsTrue(movingSource.Sample(reusedSampleX,reusedSampleY,sourceCurrentSample));
+    Assert::AreEqual(int(sourceCurrentSample.luma),int(reusedCurrentSample.luma));
+    Assert::AreEqual(int(sourceCurrentSample.chromaU),int(reusedCurrentSample.chromaU));
+    Assert::AreEqual(int(sourceCurrentSample.chromaV),int(reusedCurrentSample.chromaV));
+    Assert::IsTrue(seedSource.Sample(reusedSampleX,reusedSampleY,seedSample));
+    Assert::IsTrue(seedSample.luma!=reusedCurrentSample.luma || seedSample.chromaU!=reusedCurrentSample.chromaU ||
+        seedSample.chromaV!=reusedCurrentSample.chromaV,
+        L"The accessor returns the exact current YUV value, not the immutable seed sample.");
+    auto foreignSampleKey=std::make_unique<SubtitleBoxObservation>(source93->current);
+    ++foreignSampleKey->identity.acceptedSequence;++foreignSampleKey->identity.sourceFrameNumber;
+    foreignSampleKey->identity.captureTimestamp+=16683;
+    foreignSampleKey->sharedPicture.identity=foreignSampleKey->identity;
+    Assert::IsFalse(footprint->TryGetVerifiedCurrentSample(*foreignSampleKey,base,
+        reusedSampleX,reusedSampleY,unverifiedSample),L"The current sample receipt is exact-source bound.");
+    foreignSampleKey=std::make_unique<SubtitleBoxObservation>(source93->current);
+    ++foreignSampleKey->policyGeneration;
+    Assert::IsFalse(footprint->TryGetVerifiedCurrentSample(*foreignSampleKey,base,
+        reusedSampleX,reusedSampleY,unverifiedSample),L"The current sample receipt is policy bound.");
+    auto foreignSampleBase=base;++foreignSampleBase.top;
+    Assert::IsFalse(footprint->TryGetVerifiedCurrentSample(source93->current,foreignSampleBase,
+        reusedSampleX,reusedSampleY,unverifiedSample),L"The current sample receipt is bound to the verified native base.");
+
     auto changedInsidePixels=movingPixels;
     changedInsidePixels[size_t(preparedContentProbeY)*kFootprintWidth+preparedContentProbeX]=uint16_t(332<<6);
     auto changedInsideSource=CurrentFootprintUhdSource(changedInsidePixels);
@@ -533,6 +572,9 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     Assert::IsFalse(insideFailure.valid,
         L"The same nonblack change inside the actual content hull must still reject reuse.");
     Assert::AreEqual("current-cleanup-edge-not-protectable",insideFailure.reason);
+    Assert::IsFalse(footprint->TryGetVerifiedCurrentSample(source93->current,base,
+        reusedSampleX,reusedSampleY,unverifiedSample),
+        L"A failed subsequent verification invalidates the prior current-pixel receipt.");
 
     // The measured card limit must not turn a dim overlay into reusable
     // backing. Although 110 may be under the card limit, its 300-luma seed is
