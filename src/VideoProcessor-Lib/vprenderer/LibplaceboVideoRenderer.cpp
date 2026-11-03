@@ -15562,8 +15562,22 @@ struct LibplaceboVideoRenderer::Impl
                 trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
                 trace.nearBarDistance=activeSettings.subtitleNearBarDistance;trace.scriptHint=static_cast<uint32_t>(activeSettings.subtitleScriptHint);
                 AnalysisTraceRect(trace.subtitle,subtitleBoxResult.bounds);trace.resultCode=subtitleBoxResult.lineCount;
+                const auto& currentScan=subtitlePreview->current;
+                const bool completeIndependentCurrentScan=SameAnalysisFrameIdentity(currentScan.identity,subtitleIdentity) &&
+                    currentScan.policyGeneration==localBoundaryPolicyGeneration &&
+                    currentScan.continuityGeneration==localBoundaryContinuityGeneration && currentScan.analyzed &&
+                    (currentScan.analysisStride==1 || currentScan.analysisStride==2) && !currentScan.discontinuity &&
+                    !currentScan.pendingRefresh && !currentScan.analysisRefresh && !currentScan.cadenceSkipped &&
+                    !currentScan.glyphLocalTop && !currentScan.glyphLocalBottom &&
+                    currentScan.independentBarAnalysis && currentScan.barAuthority &&
+                    currentScan.ink && currentScan.ink->rawEvidenceComplete && currentScan.ink->paletteValid &&
+                    rawAnalysis.detected && !rawAnalysis.held && !rawAnalysis.confirmationPending && !rawAnalysis.workLimit &&
+                    rawAnalysis.topSearchComplete && rawAnalysis.bottomSearchComplete;
+                // Held tracker state can still be backed by a complete scan of
+                // this exact source. Partial worker receipts remain distinct.
                 trace.flags=(subtitleBoxResult.detected?1u:0u)|(subtitleBoxResult.held?2u:0u)|(subtitleCompositionSucceeded?4u:0u)|
-                    (barAuthority?8u:0u)|(subtitlePreview->current.analyzed?16u:0u)|(rawAnalysis.workLimit?32u:0u);
+                    (barAuthority?8u:0u)|(currentScan.analyzed?16u:0u)|(rawAnalysis.workLimit?32u:0u)|
+                    (completeIndependentCurrentScan?64u:0u);
                 trace.counters[0]=subtitlePreview->current.identity.acceptedSequence;trace.counters[1]=subtitlePreview->current.identity.analysisDomainKey;
                 trace.counters[2]=subtitleBoxResult.cue;trace.counters[3]=subtitlePreview->matchingFrames;
                 trace.counters[4]=rawAnalysis.lineCount;trace.counters[5]=rawAnalysis.diagnosticComponentCount;

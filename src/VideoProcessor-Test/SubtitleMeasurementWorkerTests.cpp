@@ -4270,12 +4270,29 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         (*currentPixels)[5*160+7]=uint16_t(700<<6);
         const auto current=CompleteThreeLineScan(2,*currentPixels);
         SubtitleMeasurementWorker worker;worker.AdvanceCurrentCueRenderWindow(current.identity,2);
-        SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=seed.text;
-        input.source=OwnedSource(seedPixels);input.physicalBase=seed.sharedPicture.bounds;
-        input.sourceMode=SubtitlePreviewMode::None;input.acceptedCurrentScan=true;
+        auto input=std::make_unique<SubtitleCurrentCueTemplateInput>();
+        input->observation=seed;input->acceptedCue=seed.text;
+        input->source=OwnedSource(seedPixels);input->physicalBase=seed.sharedPicture.bounds;
+        input->sourceMode=SubtitlePreviewMode::None;input->acceptedCurrentScan=true;
         uint64_t revision=0;
-        Assert::IsTrue(worker.SubmitCurrentCueTemplate(std::move(input),revision)==
+        Assert::IsTrue(worker.SubmitCurrentCueTemplate(*input,revision)==
             SubtitleCurrentCueProofStatus::Queued);
+        bool templateReady=false;
+        for(int attempt=0;attempt<1000;++attempt) {
+            uint64_t observedRevision=0;
+            if(worker.SubmitCurrentCueTemplate(*input,observedRevision)==SubtitleCurrentCueProofStatus::Ready) {
+                Assert::AreEqual(revision,observedRevision);templateReady=true;break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsTrue(templateReady,L"The original Classic template is installed before testing a mode transition.");
+        input.reset();
+
+        auto ordinaryKey=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(2,*seedPixels));
+        ordinaryKey->analysisStride=2;
+        Assert::IsFalse(worker.Submit(*ordinaryKey,[](SubtitleMeasurementSampler&,
+            const SubtitleBarTrackingReference&) {return SubtitleBoxObservation{};}),
+            L"A matching Classic template still rate-limits a non-due full scan.");
 
         SubtitleCurrentCueProofRequest request;request.currentKey=current;
         request.source=OwnedSource(currentPixels);request.physicalBase=current.sharedPicture.bounds;
@@ -4285,6 +4302,16 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         auto foreign=request;foreign.sourceMode=SubtitlePreviewMode::BlackBackground;
         Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(foreign))==SubtitleCurrentCueProofStatus::NotEligible,
             L"A cue template cannot cross presentation mode.");
+        std::atomic_uint transitionScans{0};
+        auto transitionResult=std::make_shared<SubtitleBoxObservation>(current);
+        Assert::IsTrue(worker.Submit(current,[transitionResult,&transitionScans](SubtitleMeasurementSampler&,
+            const SubtitleBarTrackingReference&) {
+            transitionScans.fetch_add(1,std::memory_order_acq_rel);return *transitionResult;
+        }),L"A rejected mode-mismatched proof releases ordinary full-scan acquisition.");
+        for(int attempt=0;attempt<1000 && transitionScans.load(std::memory_order_acquire)==0;++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Assert::AreEqual(1u,transitionScans.load(std::memory_order_acquire),
+            L"The current-mode full scan actually runs instead of being throttled by the old Classic template.");
         foreign=request;foreign.backgroundMode=5;
         Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(foreign))==SubtitleCurrentCueProofStatus::NotEligible,
             L"A cue template cannot cross compositor background mode.");

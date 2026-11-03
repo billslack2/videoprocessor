@@ -2521,6 +2521,10 @@ struct SubtitleCurrentCueWorkerState {
     SubtitleCurrentCueTemplateDescriptor descriptor;
     std::atomic_bool semanticRefreshInFlight{false};
     std::atomic_bool needsFullScanBurst{false};
+    // Ordinary scan admission has no presentation-mode fields in its key.
+    // Disable cadence suppression when a same-context proof request shows the
+    // current interpretation no longer matches this template.
+    bool cadenceRoutingEligible=true;
     uint64_t lastSemanticRefreshSequence=0,lastSemanticScanSequence=0;
     uint64_t semanticRefreshIntervalFrames=6;
 };
@@ -2675,6 +2679,15 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
     else lock.lock();
     if(m_stopping)return SubtitleCurrentCueFullScanRoute::Suppress;
 
+    const auto& state=m_currentCueState;
+    // A renderer mode/background transition is not represented in the ordinary
+    // analysis key. Once the typed proof path has observed such a transition,
+    // let complete current scans acquire the replacement template instead of
+    // applying the old template's semantic refresh throttle.
+    if(state && state->descriptor.valid && !state->cadenceRoutingEligible &&
+        SameContext(state->descriptor.context,key))
+        return SubtitleCurrentCueFullScanRoute::Enqueue;
+
     for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
         auto& entry=**i;
         if(entry.seedTask || !SameExactTaskKey(entry.key,key))continue;
@@ -2694,8 +2707,7 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
         break;
     }
 
-    const auto& state=m_currentCueState;
-    if(!state || !state->descriptor.valid || !SameContext(state->descriptor.context,key) ||
+    if(!state || !state->descriptor.valid || !state->cadenceRoutingEligible || !SameContext(state->descriptor.context,key) ||
         key.identity.acceptedSequence<=state->descriptor.context.identity.acceptedSequence ||
         key.discontinuity || key.cadenceSkipped || (key.analysisStride!=1 && key.analysisStride!=2) ||
         key.pendingRefresh || key.analysisRefresh || key.glyphLocalTop || key.glyphLocalBottom)
@@ -2888,19 +2900,24 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             if(!state)return m_currentCueState?SubtitleCurrentCueProofStatus::NotEligible:
                 SubtitleCurrentCueProofStatus::NoTemplate;
         }
-        if(!CurrentMatches(descriptor,request.currentKey,request.physicalBase,request.source,
-                request.sourceMode,request.backgroundMode) || !request.source.backingOwner ||
-            !request.currentKey.identity.acceptedSequence || !request.currentKey.identity.captureTimestamp ||
-            !std::isfinite(request.frameMs) || request.frameMs<=0)
+        const bool sameTemplateContext=SameContext(descriptor.context,request.currentKey);
+        const bool currentMatches=CurrentMatches(descriptor,request.currentKey,request.physicalBase,request.source,
+            request.sourceMode,request.backgroundMode);
+        const bool basicEligible=currentMatches && request.source.backingOwner &&
+            request.currentKey.identity.acceptedSequence && request.currentKey.identity.captureTimestamp &&
+            std::isfinite(request.frameMs) && request.frameMs>0;
+        if(sameTemplateContext)state->cadenceRoutingEligible=currentMatches;
+        if(!basicEligible)
             return SubtitleCurrentCueProofStatus::NotEligible;
         if(!m_currentCueWindowHead.transportGeneration) {
             m_currentCueWindowHead=request.eligibleRenderHead;
             m_currentCueWindowTail=request.eligibleTailSequence;
         }
-        if(request.eligibleTailSequence>m_currentCueWindowTail ||
-            !InWindow(m_currentCueWindowHead,m_currentCueWindowTail,request.eligibleRenderHead) ||
-            !InWindow(m_currentCueWindowHead,m_currentCueWindowTail,request.currentKey.identity) ||
-            !InWindow(request.eligibleRenderHead,request.eligibleTailSequence,request.currentKey.identity))
+        const bool inWindow=request.eligibleTailSequence<=m_currentCueWindowTail &&
+            InWindow(m_currentCueWindowHead,m_currentCueWindowTail,request.eligibleRenderHead) &&
+            InWindow(m_currentCueWindowHead,m_currentCueWindowTail,request.currentKey.identity) &&
+            InWindow(request.eligibleRenderHead,request.eligibleTailSequence,request.currentKey.identity);
+        if(!inWindow)
             return SubtitleCurrentCueProofStatus::NotEligible;
         for(const auto& old:m_currentCueTasks)
             if(!old->seedTask && old->revision==request.templateRevision && SameExactTaskKey(old->key,request.currentKey))

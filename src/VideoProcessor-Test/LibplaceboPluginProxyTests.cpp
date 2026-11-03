@@ -308,7 +308,7 @@ namespace
             r.counters[1]==input.analysisDomainKey && (!proof || r.recordSequence>proof->recordSequence))proof=&r;
         if(!proof || proof->resultCode!=3 || proof->counters[4]!=3 ||
             (proof->flags&(1u|4u|16u))!=(1u|4u|16u) || (proof->flags&32u))return false;
-        if(!(proof->flags&2u))return true; // Complete current independent scan.
+        if(!(proof->flags&2u) || (proof->flags&(8u|64u))==(8u|64u))return true; // Complete current independent scan.
         // Partial current pixels need their own worker-issued presentation
         // receipt. A pending preview's three-line count alone is not proof.
         const AnalysisDiagnosticRecordV1* receipt=nullptr;
@@ -506,6 +506,25 @@ namespace VideoProcessorTest
             raw.policyGeneration=11;raw.continuityGeneration=12;raw.counters[0]=50;raw.counters[1]=17;
             raw.flags=1u|4u|16u;raw.resultCode=3;raw.counters[4]=3;
             Assert::IsTrue(HasCompletePersistentThreeLineCaption({raw},output,input));
+            auto heldFullScan=raw;heldFullScan.flags|=2u|8u|64u;
+            Assert::IsTrue(HasCompletePersistentThreeLineCaption({heldFullScan},output,input),
+                L"Held tracker state may use a complete independent scan of this exact current source.");
+            for(int fault=0;fault<11;++fault) {
+                auto invalid=heldFullScan;
+                if(fault==0)invalid.flags&=~64u;
+                if(fault==1)invalid.flags&=~8u;
+                if(fault==2)invalid.flags&=~16u;
+                if(fault==3)invalid.flags|=32u;
+                if(fault==4)++invalid.acceptedSequence;
+                if(fault==5)++invalid.sourceFrameNumber;
+                if(fault==6)++invalid.captureTimestamp;
+                if(fault==7)++invalid.policyGeneration;
+                if(fault==8)++invalid.continuityGeneration;
+                if(fault==9)invalid.recordSequence=output.recordSequence+1;
+                if(fault==10)invalid.counters[4]=2;
+                Assert::IsFalse(HasCompletePersistentThreeLineCaption({invalid},output,input),
+                    L"Held full-scan evidence still requires independent authority, all three lines and the exact preceding source.");
+            }
             auto partialProof=raw;partialProof.flags|=2u;
             Assert::IsFalse(HasCompletePersistentThreeLineCaption({partialProof},output,input),
                 L"A partial preview cannot stand in for current worker pixel verification.");
