@@ -3807,9 +3807,15 @@ namespace VideoProcessorTest
                             other.continuityGeneration==output.continuityGeneration;
                     };
                     const auto witnessedNativeContextMatches=[&](const AnalysisDiagnosticRecordV1& other) {
-                        return exactRendererContextMatches(other)&&
-                            other.policyGeneration==output.policyGeneration&&
-                            other.continuityGeneration==output.continuityGeneration;
+                        // Subtitle queue generations can retire independently of
+                        // an accepted physical picture. Match physical context;
+                        // current admission/input checks remain generation-exact.
+                        return other.rendererInstanceKey==output.rendererInstanceKey&&
+                            other.transportGeneration==output.transportGeneration&&
+                            other.rendererGeneration==output.rendererGeneration&&
+                            other.viewportGeneration==output.viewportGeneration&&
+                            other.sourceFormatGeneration==output.sourceFormatGeneration&&
+                            other.analysisDomainKey==output.analysisDomainKey;
                     };
                     const auto close=[](double a,int32_t b){return std::isfinite(a)&&std::abs(a-double(b))<0.01;};
                     if(!exactRendererContextMatches(admission) || admission.acceptedSequence!=output.acceptedSequence ||
@@ -3884,26 +3890,35 @@ namespace VideoProcessorTest
                             bool same=true;for(int i=0;i<4;++i)same&=prior.published[i]==output.published[i];
                             priorPhysical|=same;
                         }
-                        // A first native model can be measured before any native-
-                        // sized output is submitted. Join that independent CURRENT
-                        // publication; fallback presentation grants no authority.
-                        bool currentPhysical=false;
-                        const auto model=acceptedPhysicalModels.find(key);
-                        if(output.counters[4]==output.acceptedSequence && model!=acceptedPhysicalModels.end()) {
+                        // A native model can be independently accepted before any
+                        // native-sized submission. Join its original source, even
+                        // when subsequent current raw frames retain that base.
+                        // Fallback presentation itself grants no authority.
+                        bool publishedPhysical=false;
+                        const auto owner=output.counters[4];
+                        const auto model=acceptedPhysicalModels.find(
+                            {output.rendererInstanceKey,output.transportGeneration,owner});
+                        const auto ownerInput=nativeInputs.find(owner);
+                        if(owner&&owner<=output.acceptedSequence&&model!=acceptedPhysicalModels.end()&&ownerInput!=nativeInputs.end()) {
                             const auto& measured=model->second;
-                            currentPhysical=witnessedNativeContextMatches(measured) &&
+                            const auto& original=ownerInput->second;
+                            publishedPhysical=witnessedNativeContextMatches(measured) &&
+                                witnessedNativeContextMatches(original) &&
                                 measured.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
-                                measured.acceptedSequence==output.acceptedSequence &&
-                                measured.counters[0]==output.acceptedSequence &&
-                                measured.sourceFrameNumber==output.sourceFrameNumber &&
-                                measured.captureTimestamp==output.captureTimestamp &&
+                                measured.acceptedSequence==owner && measured.counters[0]==owner &&
+                                original.acceptedSequence==owner &&
+                                measured.sourceFrameNumber==original.sourceFrameNumber &&
+                                measured.captureTimestamp==original.captureTimestamp &&
+                                measured.policyGeneration==original.policyGeneration &&
+                                measured.continuityGeneration==original.continuityGeneration &&
+                                original.recordSequence<output.recordSequence &&
                                 measured.recordSequence<admission.recordSequence &&
                                 admission.recordSequence<output.recordSequence;
-                            for(int i=0;i<4;++i)currentPhysical&=measured.published[i]==output.published[i] &&
+                            for(int i=0;i<4;++i)publishedPhysical&=measured.published[i]==output.published[i] &&
                                 measured.published[i]==admission.previous[i];
                         }
-                        if(!priorPhysical&&!currentPhysical){
-                            std::ostringstream why;why<<"cropped pending fallback lacks a prior native submission or exact-current independent physical publication"
+                        if(!priorPhysical&&!publishedPhysical){
+                            std::ostringstream why;why<<"cropped pending fallback lacks a prior native submission or source-bound independent physical publication"
                                 <<" model_found="<<(model!=acceptedPhysicalModels.end())
                                 <<" admission_ordinal="<<admission.recordSequence<<" output_ordinal="<<output.recordSequence;
                             if(model!=acceptedPhysicalModels.end())why<<" model_ordinal="<<model->second.recordSequence
@@ -4521,8 +4536,8 @@ namespace VideoProcessorTest
                 // Sparse raw marks stay below text-component size individually,
                 // while distributed recognized volume glyphs begin lower. This
                 // gives the current raw scan a real extent outside the narrower FIT.
-                for(int mark=0;mark<16;++mark)for(int y=rawMarkTop;y<rawMarkTop+4;++y)
-                    for(int x=158+mark*144;x<160+mark*144;++x)
+                for(int mark=0;mark<16;++mark)for(int y=rawMarkTop;y<rawMarkTop+8;++y)
+                    for(int x=160+mark*144;x<168+mark*144;++x)
                         pixels[size_t(y)*width+x]=uint16_t(892<<6);
                 for(int glyph=0;glyph<16;++glyph)for(int y=uiTop;y<uiBottom;++y)
                     for(int x=158+glyph*144;x<238+glyph*144;++x)
@@ -4542,7 +4557,7 @@ namespace VideoProcessorTest
                 return pixels;
             };
             auto quiet=makeOverlay(180);auto loud=makeOverlay(620);
-            Assert::AreEqual(892,int(quiet[size_t(134)*width+158]>>6));
+            Assert::AreEqual(892,int(quiet[size_t(134)*width+160]>>6));
             Assert::AreEqual(892,int(loud[size_t(190)*width+158]>>6));
             Assert::AreEqual(892,int(loud[size_t(1941)*width+1400]>>6));
             SnapshotTestCallback callback;NativeP210Buffer buffer;
@@ -4559,14 +4574,36 @@ namespace VideoProcessorTest
             Assert::IsTrue(runtime.Initialize(config,{},configError),std::wstring(configError.begin(),configError.end()).c_str());
             const auto initialSnapshot=runtime.GetSnapshot();
             Assert::IsTrue(initialSnapshot!=nullptr,L"Off fixture did not produce an initial profile snapshot.");
-            const auto subtitleSelection=initialSnapshot->effectiveSelections.find("subtitles");
-            Assert::IsTrue(subtitleSelection!=initialSnapshot->effectiveSelections.end()&&
-                subtitleSelection->second.size()==1&&subtitleSelection->second.front()=="off"&&
-                initialSnapshot->viewport.zoomProfile=="scope"&&initialSnapshot->viewport.automaticCrop&&
-                initialSnapshot->viewport.subtitleFit,
-                L"Off fixture must select subtitles:off and zoom:scope with subtitle_fit enabled.");
+            auto selectedName=[](const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,const char* group) {
+                if(!snapshot)return std::string("<no-snapshot>");
+                const auto found=snapshot->effectiveSelections.find(group);
+                return found==snapshot->effectiveSelections.end()||found->second.empty()?std::string("<unset>"):found->second.front();
+            };
+            Logger::WriteMessage((std::string("Off fixture runtime defaults: viewport=")+selectedName(initialSnapshot,"viewport")+
+                " zoom="+selectedName(initialSnapshot,"zoom")+" subtitles="+selectedName(initialSnapshot,"subtitles")+
+                " resolved_zoom="+initialSnapshot->viewport.zoomProfile+" subtitle_fit="+
+                (initialSnapshot->viewport.subtitleFit?"true":"false")).c_str());
+            bool configuredScopeSubtitleFit=false;
+            Assert::IsTrue(config.TryGetBool("vprenderer.zoom.scope","subtitle_fit",configuredScopeSubtitleFit)&&configuredScopeSubtitleFit,
+                L"Off fixture must retain the active scope profile's configured subtitle_fit:true value.");
+            UnifiedProfileRuntime::SelectionResult selection;
+            for(const auto& requested:std::vector<std::pair<const char*,const char*>>{{"viewport","scope"},{"zoom","scope"},{"subtitles","off"}}) {
+                Assert::IsTrue(runtime.SelectProfile(requested.first,requested.second,true,{},selection,configError),
+                    std::wstring(configError.begin(),configError.end()).c_str());
+                Assert::IsTrue(selection.snapshot!=nullptr,L"Explicit Off/scope profile selection returned no snapshot.");
+            }
+            const auto activeSnapshot=runtime.GetSnapshot();
+            Assert::IsTrue(selectedName(activeSnapshot,"viewport")=="scope"&&
+                selectedName(activeSnapshot,"zoom")=="scope"&&selectedName(activeSnapshot,"subtitles")=="off"&&
+                activeSnapshot->viewport.profile=="scope"&&activeSnapshot->viewport.zoomProfile=="scope"&&
+                activeSnapshot->viewport.automaticCrop&&!activeSnapshot->viewport.subtitleFit,
+                L"Explicit active profiles must be viewport:scope, zoom:scope, subtitles:off; Off resolves subtitle fitting off.");
+            Logger::WriteMessage((std::string("Off fixture selected profiles: viewport=")+selectedName(activeSnapshot,"viewport")+
+                " zoom="+selectedName(activeSnapshot,"zoom")+" subtitles="+selectedName(activeSnapshot,"subtitles")+
+                " configured_scope_subtitle_fit=true resolved_subtitle_fit="+
+                (activeSnapshot->viewport.subtitleFit?"true":"false")).c_str());
             CString active;bool restart=false,reset=false;
-            Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*initialSnapshot,active,restart,reset)&&!restart,
+            Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*activeSnapshot,active,restart,reset)&&!restart,
                 L"Renderer rejected the exact active Off/scope profile state.");
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));
             cleanup.renderer->Build();cleanup.renderer->Start();
