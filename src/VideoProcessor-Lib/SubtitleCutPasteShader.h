@@ -449,11 +449,11 @@ bool subtitleInGeneratedCleanup(vec2 p) {
     return p.x>=generated_clean_left && p.x<generated_clean_right &&
         p.y>=generated_clean_top && p.y<generated_clean_bottom;
 }
-bool subtitleProtectedCurrentRow(vec2 p) {
+bool subtitleProtectedCurrentRow(vec2 p,bool inCleanup) {
     if(pending_protected_cleanup_enabled<0.5 ||
         p.x<pending_protected_cleanup_left || p.x>=pending_protected_cleanup_right ||
         p.y<pending_protected_cleanup_top || p.y>=pending_protected_cleanup_bottom)return false;
-    return !subtitleInGeneratedCleanup(p);
+    return !inCleanup;
 }
 bool subtitleCleanupTouchesSample(vec2 p) {
     if(cleanup_row_count>0.5) {
@@ -855,7 +855,7 @@ vec4 hook() {
         bool inPanel=p.x>=destination_left-subtitlePanelSideExtension() && p.x<destination_right+subtitlePanelSideExtension() &&
             p.y>=subtitlePanelTop() && p.y<subtitlePanelBottom();
         bool inCleanup=subtitleInGeneratedCleanup(p);
-        bool protectedCurrentRow=subtitleProtectedCurrentRow(p);
+        bool protectedCurrentRow=subtitleProtectedCurrentRow(p,inCleanup);
         // One evaluation and one compiled call site, shared by composition
         // and source cleanup. The default also clears original bar glyphs.
         vec3 generatedBackdrop=vec3(0.0);
