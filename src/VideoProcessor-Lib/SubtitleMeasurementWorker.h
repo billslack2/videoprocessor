@@ -2671,7 +2671,7 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
     std::shared_ptr<SubtitleCurrentCueRefreshLease>& refreshLease) {
     using namespace SubtitleCurrentCueWorkerDetail;
     std::unique_lock<std::mutex> lock(m_mutex,std::defer_lock);
-    if(nonblocking) {if(!lock.try_lock())return SubtitleCurrentCueFullScanRoute::Enqueue;}
+    if(nonblocking) {if(!lock.try_lock())return SubtitleCurrentCueFullScanRoute::Suppress;}
     else lock.lock();
     if(m_stopping)return SubtitleCurrentCueFullScanRoute::Suppress;
 
