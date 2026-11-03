@@ -11,8 +11,9 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1063,
+  "minimumNativeTests": 1064,
   "requiredNativeMethods": [
+    "CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk",
     "UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats",
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
     "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",

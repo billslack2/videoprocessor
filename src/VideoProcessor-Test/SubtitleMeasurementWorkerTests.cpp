@@ -187,6 +187,332 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         return scan;
     }
 public:
+// Standalone native-test fragment for SubtitleMeasurementWorkerTests.cpp.
+// Put helper functions inside SubtitleMeasurementWorkerTests and the TEST_METHOD
+// blocks at class scope. This remains an artifact fragment; no build was run.
+
+static constexpr int kFootprintWidth=3840, kFootprintHeight=2160;
+static constexpr int kFootprintTop=250, kFootprintBottom=1906;
+
+static std::vector<uint16_t> CurrentFootprintUhdPixels(unsigned phase,bool caption=true) {
+    const size_t area=size_t(kFootprintWidth)*kFootprintHeight;
+    std::vector<uint16_t> pixels(area*3/2,uint16_t(512<<6)); // P010 Y + interleaved UV.
+    auto* yplane=pixels.data();
+    for(int y=0;y<kFootprintHeight;++y)for(int x=0;x<kFootprintWidth;++x) {
+        int value=64;
+        if(y>=kFootprintTop&&y<kFootprintBottom) {
+            const int patterned=300+40*((x/64+y/32+int(phase))&1);
+            const bool darkMovieStripe=(y>=1720&&x<640);
+            const bool darkBacking=(y>=1720&&x>=1000&&x<2800);
+            value=(darkMovieStripe||darkBacking)?48+16*((x/64+y/32+int(phase))&1):patterned;
+        }
+        yplane[size_t(y)*kFootprintWidth+x]=uint16_t(value<<6);
+    }
+    // Native two-line crossing-card fixture. Its actual placement is measured
+    // below; this code only creates source pixels, never a detector mask.
+    if(caption)for(int y:{kFootprintBottom-134,kFootprintBottom-52})
+        for(int glyph=0;glyph<26;++glyph) {
+            const int x=1210+glyph*52;
+            for(int yy=y-2;yy<y+58;++yy)for(int xx=x-2;xx<x+36;++xx)
+                if(xx>=0&&xx<kFootprintWidth&&yy>=0&&yy<kFootprintHeight)
+                    yplane[size_t(yy)*kFootprintWidth+xx]=uint16_t(64<<6);
+            for(int yy=y;yy<y+56;++yy)for(int xx=x;xx<x+34;++xx)
+                yplane[size_t(yy)*kFootprintWidth+xx]=uint16_t(800<<6);
+            for(int yy=y+10;yy<y+46;++yy)for(int xx=x+8;xx<x+26;++xx)
+                yplane[size_t(yy)*kFootprintWidth+xx]=uint16_t(64<<6);
+        }
+    return pixels;
+}
+static AnalysisLumaSource CurrentFootprintUhdSource(std::vector<uint16_t>& pixels) {
+    AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+    source.dataBytes=pixels.size()*sizeof(uint16_t);source.width=kFootprintWidth;source.height=kFootprintHeight;
+    source.rowBytes=source.chromaRowBytes=kFootprintWidth*2;source.generation=1;
+    source.format=AnalysisLumaFormat::P010;source.range=AnalysisLumaRange::Limited;return source;
+}
+static SubtitleBoxObservation CurrentFootprintUhdKey(uint64_t sequence,const ActivePictureBounds& base) {
+    SubtitleBoxObservation key;key.identity=Identity(sequence);
+    key.identity.captureTimestamp=sequence*16683;key.identity.analysisDomainKey=0xA11CE;
+    key.identity.sourceFormatGeneration=2;key.width=kFootprintWidth;key.height=kFootprintHeight;
+    key.analysisStride=1;key.policyGeneration=11;key.continuityGeneration=51;
+    key.nearBarDistance=20;key.scriptHint=SubtitleScriptHint::Latin;
+    key.sharedPicture.required=true;key.sharedPicture.identity=key.identity;key.sharedPicture.bounds=base;
+    return key;
+}
+static void AddU800BarH(std::vector<uint16_t>& pixels,int x,int y) {
+    const size_t area=size_t(kFootprintWidth)*kFootprintHeight;auto* yplane=pixels.data();
+    for(int yy=y;yy<y+18;++yy)for(int xx=x;xx<x+16;++xx)
+        if(xx<x+3||xx>=x+13||(yy>=y+7&&yy<y+10)) {
+            yplane[size_t(yy)*kFootprintWidth+xx]=uint16_t(64<<6);
+            const size_t uv=area+size_t(yy/2)*kFootprintWidth+(xx&~1);
+            pixels[uv]=uint16_t(800<<6); // chroma-only cue over <=blackLimit luma.
+        }
+}
+static std::unique_ptr<SubtitleBoxPreview> CurrentFootprintPendingPreview(
+    const SubtitleBoxPreview& seed,uint64_t sequence,uint64_t continuity) {
+    auto pending=std::make_unique<SubtitleBoxPreview>(seed);
+    pending->available=false;pending->futureAvailable=false;pending->text={};pending->followingCount=0;
+    auto& current=pending->current;current.identity.acceptedSequence=sequence;
+    current.identity.sourceFrameNumber=sequence;
+    current.identity.captureTimestamp=seed.current.identity.captureTimestamp+(sequence-seed.current.identity.acceptedSequence)*16683;
+    current.sharedPicture.identity=current.identity;current.analysisStride=1;
+    current.cadenceSkipped=false;current.analyzed=false;current.pendingRefresh=true;
+    current.continuityGeneration=continuity;current.text={};current.ink.reset();
+    pending->continuityGeneration=continuity;return pending;
+}
+
+TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
+    const ActivePictureBounds base{0,kFootprintTop,kFootprintWidth,kFootprintBottom,
+        kFootprintWidth,kFootprintHeight,double(kFootprintWidth)/(kFootprintBottom-kFootprintTop),
+        ActivePictureBounds::BarAxes::TOP_BOTTOM};
+    auto seedPixels=CurrentFootprintUhdPixels(0);auto seedSource=CurrentFootprintUhdSource(seedPixels);
+    Assert::IsTrue(seedSource.IsValid());
+
+    // Real UHD source scans establish accepted source 88. Frame analysisStride
+    // is 1; the detector's source-pixel grid is independently step 4.
+    auto sampler=std::make_unique<SubtitleMeasurementSampler>();
+    auto scans=std::make_unique<std::vector<SubtitleBoxObservation>>();scans->reserve(4);
+    SubtitleBarTrackingReference prior;
+    for(uint64_t sequence=88;sequence<=91;++sequence) {
+        auto key=CurrentFootprintUhdKey(sequence,base);
+        auto measured=sampler->Measure(seedSource,key,prior,60.0);
+        Assert::IsTrue(measured.analyzed&&measured.text.detected&&!measured.text.workLimit&&
+            measured.ink&&measured.ink->rawEvidenceComplete&&measured.ink->paletteValid,
+            L"Only genuine current UHD detector ink may seed the footprint.");
+        Assert::AreEqual(1u,measured.analysisStride);
+        Assert::AreEqual(4,measured.ink->step,
+            L"Observation cadence and ink-grid sampling step are independent.");
+        prior=SubtitleBoxLookahead::AdvanceBarTrackingReference(measured);
+        scans->push_back(std::move(measured));
+    }
+    auto preview=std::make_unique<SubtitleBoxPreview>(SubtitleBoxLookahead::Resolve(scans->data(),scans->size(),11,51));
+    Assert::AreEqual(uint64_t(88),preview->current.identity.acceptedSequence,
+        L"The accepted current source is exactly 88; later scans only confirm it.");
+    auto tracker=std::make_unique<SubtitleBoxPresentation>();tracker->RefreshReferencePixels(*preview,seedSource);
+    const auto accepted=tracker->Consume(*preview,250,1000.0/60);
+    Assert::IsTrue(accepted.detected&&!accepted.held&&!accepted.confirmationPending&&accepted.lineCount==2);
+    auto compositor=std::make_unique<SubtitleCutPastePresentation>();
+    const auto geometry=compositor->Consume(accepted,*preview,{},0);
+    Assert::IsTrue(geometry.valid&&geometry.pictureCapture.Valid());
+
+    auto footprint=std::make_unique<SubtitleCadenceGuard>();
+    Assert::IsTrue(footprint->RememberCurrentFootprint(*preview,accepted,seedSource,base,geometry,
+        1000.0/60,250,3));
+    Assert::IsTrue(footprint->MatchesAcceptedSeed(*preview,accepted,seedSource,base));
+
+    // A stride-1 verified presentation seed cannot become the previous frame
+    // for cadence's stride-2 skipped-source path. Pixels are valid and unchanged;
+    // eligibility must fail on the seed's observation stride itself.
+    auto skipped89=CurrentFootprintPendingPreview(*preview,89,51);
+    skipped89->current.analysisStride=2;skipped89->current.cadenceSkipped=true;
+    skipped89->current.analyzed=false;skipped89->current.pendingRefresh=false;
+    skipped89->current.analysisRefresh=false;skipped89->current.text={};skipped89->current.ink.reset();
+    const auto rejectedCadenceSeed=footprint->Prepare(*skipped89,seedSource,base,1000.0/60,250);
+    Assert::IsFalse(rejectedCadenceSeed.valid,
+        L"An analyzed stride-1 footprint seed cannot authorize stride-2 skipped-frame reuse.");
+    Assert::AreEqual("cadence-context-changed",rejectedCadenceSeed.reason);
+    Assert::IsTrue(footprint->RememberCurrentFootprint(*preview,accepted,seedSource,base,geometry,
+        1000.0/60,250,3),L"A rejected cadence probe must not prevent a fresh exact footprint seed.");
+    auto source93=CurrentFootprintPendingPreview(*preview,93,55);
+
+    // Source 88 -> 93 changes a picture-wide edge at x=4/y=1716 plus the
+    // 48/64 dark backing inside the measured cleanup. Both dark values remain
+    // black with neutral UV; the x=4 movie edge lies outside all mutation spans.
+    auto movingPixels=CurrentFootprintUhdPixels(1);auto movingSource=CurrentFootprintUhdSource(movingPixels);
+    const auto pureMotion=footprint->VerifyCurrentFootprint(source93->current,movingSource,
+        preview->current,accepted,base);
+    if(!pureMotion.valid)Logger::WriteMessage((std::string("Current footprint motion: ")+pureMotion.reason+" samples="+std::to_string(pureMotion.samples)+" mismatch="+std::to_string(pureMotion.mismatchX)+","+std::to_string(pureMotion.mismatchY)).c_str());
+    Assert::IsTrue(pureMotion.valid&&pureMotion.samples>0,
+        L"Current movie texture outside the footprint cannot veto this source; black backing may vary 48/64.");
+
+    auto cleanup=geometry.generatedCleanup;
+    if(!cleanup.Valid()&&geometry.generatedCleanupRowCount)for(unsigned i=0;i<geometry.generatedCleanupRowCount;++i) {
+        const auto& r=geometry.generatedCleanupRows[i];
+        if(!cleanup.Valid())cleanup=r;else cleanup={
+            (std::min)(cleanup.left,r.left),(std::min)(cleanup.top,r.top),
+            (std::max)(cleanup.right,r.right),(std::max)(cleanup.bottom,r.bottom)};
+    }
+    Assert::IsTrue(cleanup.Valid(),L"The source-derived fixture must provide a measured cleanup rectangle.");
+    Assert::IsTrue(pureMotion.protectedCleanupLeft>cleanup.left ||
+        pureMotion.protectedCleanupRight<cleanup.right ||
+        pureMotion.protectedCleanupTop>cleanup.top ||
+        pureMotion.protectedCleanupBottom<cleanup.bottom,
+        L"The positive case must exercise a verified cleanup-edge projection.");
+    Assert::IsTrue(pureMotion.protectedCleanupLeft>cleanup.left ||
+        pureMotion.protectedCleanupRight<cleanup.right,
+        L"The moving UHD fixture must exercise a horizontal cleanup-edge projection.");
+
+    // Put dim current pixels in the exact original-minus-inner rectangle.
+    // This is below the accepted ink floor, so it must remain current video
+    // without granting caption or absence authority.
+    const auto inProtectedBand=[&](int x,int y,int left,int right,int top,int bottom) {
+        return x>=cleanup.left&&x<cleanup.right&&y>=cleanup.top&&y<cleanup.bottom&&
+            !(x>=left&&x<right&&y>=top&&y<bottom);
+    };
+    const auto mapsIntoOldContent=[&](int x,int y) {
+        if(!geometry.content.Valid()||!geometry.destination.Valid()||!geometry.source.Valid())return true;
+        double sx=x+0.5+geometry.source.left-geometry.destination.left;
+        double sy=y+0.5+geometry.source.top-geometry.destination.top;
+        if(geometry.glyphScale<0.9999f||geometry.centeredGlyphMapping) {
+            if(geometry.glyphScale<=0.0f)return true;
+            sx=(x+0.5-geometry.glyphTranslateX)/geometry.glyphScale;
+            sy=(y+0.5-geometry.glyphTranslateY)/geometry.glyphScale;
+        }
+        constexpr double glyphFilterHalo=4.0;
+        return sx>=geometry.content.left-glyphFilterHalo&&sx<geometry.content.right+glyphFilterHalo&&
+            sy>=geometry.content.top-glyphFilterHalo&&sy<geometry.content.bottom+glyphFilterHalo;
+    };
+    auto dimProtectedPixels=CurrentFootprintUhdPixels(1);
+    int protectedX=-1,protectedY=-1;
+    for(int y=cleanup.top;y<cleanup.bottom&&protectedY<0;++y)
+        for(int x=cleanup.left;x<cleanup.right;++x) {
+            if(!inProtectedBand(x,y,pureMotion.protectedCleanupLeft,pureMotion.protectedCleanupRight,
+                pureMotion.protectedCleanupTop,pureMotion.protectedCleanupBottom))continue;
+            const bool horizontalStrip=x<pureMotion.protectedCleanupLeft||x>=pureMotion.protectedCleanupRight;
+            if(!horizontalStrip)continue;
+            AnalysisLumaSample oldPixel;
+            if(!seedSource.Sample(x,y,oldPixel)||oldPixel.luma<=preview->current.ink->blackLimit)continue;
+            bool inLine=false;
+            for(int line=0;line<accepted.lineCount;++line) {
+                const auto& r=accepted.lineBounds[line];
+                inLine|=x>=r.left&&x<r.right&&y>=r.top&&y<r.bottom;
+            }
+            if(inLine||mapsIntoOldContent(x,y))continue;
+            protectedX=x;protectedY=y;break;
+        }
+    Assert::IsTrue(protectedX>=0&&protectedY>=0,
+        L"The projected horizontal edge must contain a nonblack, non-glyph source sample.");
+    Assert::IsTrue(protectedX<pureMotion.protectedCleanupLeft||
+        protectedX>=pureMotion.protectedCleanupRight,
+        L"The preservation marker must exercise the horizontal strip, not only a vertical strip.");
+    Assert::IsTrue(footprint->ContainsFootprintSample(protectedX,protectedY),
+        L"The protected source sample must belong to the exact captured footprint.");
+    dimProtectedPixels[size_t(protectedY)*kFootprintWidth+protectedX]=uint16_t(110<<6);
+    auto dimProtectedSource=CurrentFootprintUhdSource(dimProtectedPixels);
+    auto positiveWorker=std::make_unique<SubtitlePendingMeasurementGuard>();
+    Assert::IsTrue(positiveWorker->RememberAccepted(*preview,accepted,seedSource,1000.0/60,250,
+        nullptr,nullptr,&base,footprint.get()));
+    auto positivePending=CurrentFootprintPendingPreview(*preview,93,55);
+    Assert::IsTrue(positiveWorker->Resolve(*positivePending,dimProtectedSource,1000.0/60,250,
+        &preview->current.identity,true,footprint.get()),L"Worker must retain the source-88 backlog token and validate source-93 current pixels.");
+    Assert::IsTrue(positivePending->available&&positivePending->current.ink&&!positivePending->current.ink->rawEvidenceComplete);
+    Assert::AreEqual(1u,positivePending->current.analysisStride);
+    Assert::IsFalse(positivePending->current.cadenceSkipped,
+        L"The source-93 frame is pending for the worker; it is not relabeled as cadence-skipped.");
+    Assert::AreEqual(uint64_t(88),positiveWorker->AcceptedSeedIdentity().acceptedSequence,
+        L"The original accepted source remains the seed.");
+    Assert::AreEqual(uint64_t(93),positiveWorker->LastVerifiedIdentity().acceptedSequence,
+        L"Only the current pixel-verified source advances the timeline.");
+    Assert::AreEqual(5.0*(1000.0/60),positiveWorker->PendingElapsedMilliseconds(),0.01,
+        L"Source 88→93 spends the complete five-frame gap against the original hold lease.");
+    Assert::IsFalse(positivePending->current.subtitleArProof.accepted,
+        L"A footprint continuation is not current subtitle-to-native authority.");
+    Assert::IsFalse(positivePending->current.independentBarAnalysis||positivePending->current.barAuthority||
+        positivePending->current.hasBarTrackingReference,
+        L"Protected-row continuation grants no current bar or caption-absence authority.");
+
+    auto wrongGeometry=geometry;
+    ++wrongGeometry.destination.top;
+    Assert::IsFalse(footprint->ApplyCurrentFootprintProtection(positivePending->current,base,wrongGeometry),
+        L"A protected-row receipt cannot be applied to modified placement geometry.");
+    Assert::IsTrue(footprint->VerifyCurrentFootprint(positivePending->current,dimProtectedSource,
+        preview->current,accepted,base).valid,
+        L"The exact current source may renew a one-use receipt after the mismatch check.");
+    auto appliedGeometry=geometry;
+    Assert::IsTrue(footprint->ApplyCurrentFootprintProtection(positivePending->current,base,appliedGeometry),
+        L"A successful worker receipt must apply to this exact source and original geometry before composition.");
+    Assert::IsTrue(appliedGeometry.pendingProtectedCleanup.Valid(),
+        L"The compositor must receive the one-frame protected interval.");
+    Assert::AreEqual(cleanup.left,appliedGeometry.pendingProtectedCleanup.left);
+    Assert::AreEqual(cleanup.top,appliedGeometry.pendingProtectedCleanup.top);
+    Assert::AreEqual(cleanup.right,appliedGeometry.pendingProtectedCleanup.right);
+    Assert::AreEqual(cleanup.bottom,appliedGeometry.pendingProtectedCleanup.bottom);
+    Assert::AreEqual(pureMotion.protectedCleanupLeft,appliedGeometry.generatedCleanup.left);
+    Assert::AreEqual(pureMotion.protectedCleanupTop,appliedGeometry.generatedCleanup.top);
+    Assert::AreEqual(pureMotion.protectedCleanupRight,appliedGeometry.generatedCleanup.right);
+    Assert::AreEqual(pureMotion.protectedCleanupBottom,appliedGeometry.generatedCleanup.bottom);
+    Assert::AreEqual(geometry.generatedCleanupExclusion.left,appliedGeometry.generatedCleanupExclusion.left);
+    Assert::AreEqual(geometry.generatedCleanupExclusion.top,appliedGeometry.generatedCleanupExclusion.top);
+    Assert::AreEqual(geometry.generatedCleanupExclusion.right,appliedGeometry.generatedCleanupExclusion.right);
+    Assert::AreEqual(geometry.generatedCleanupExclusion.bottom,appliedGeometry.generatedCleanupExclusion.bottom);
+    Assert::AreEqual(geometry.layoutCoverage.left,appliedGeometry.layoutCoverage.left);
+    Assert::AreEqual(geometry.layoutCoverage.top,appliedGeometry.layoutCoverage.top);
+    Assert::AreEqual(geometry.layoutCoverage.right,appliedGeometry.layoutCoverage.right);
+    Assert::AreEqual(geometry.layoutCoverage.bottom,appliedGeometry.layoutCoverage.bottom);
+    Assert::IsTrue(protectedX>=appliedGeometry.pendingProtectedCleanup.left&&
+        protectedX<appliedGeometry.pendingProtectedCleanup.right&&
+        protectedY>=appliedGeometry.pendingProtectedCleanup.top&&protectedY<appliedGeometry.pendingProtectedCleanup.bottom);
+    Assert::IsFalse(protectedX>=appliedGeometry.generatedCleanup.left&&
+        protectedX<appliedGeometry.generatedCleanup.right&&
+        protectedY>=appliedGeometry.generatedCleanup.top&&protectedY<appliedGeometry.generatedCleanup.bottom,
+        L"The dim current pixel must be outside the cleanup actually applied to the renderer.");
+
+    // Find an exact location in the REMAINING applied cleanup, outside the old
+    // line bounds, for independent low-luma and alternate-chroma negatives.
+    const auto insideErase=[&](int x,int y) {
+        if(appliedGeometry.generatedCleanupRowCount) {
+            for(unsigned i=0;i<appliedGeometry.generatedCleanupRowCount;++i) {
+                const auto& r=appliedGeometry.generatedCleanupRows[i];
+                if(y>=r.top&&y<r.bottom&&x>=r.left&&x<r.right)return true;
+            }
+            return false;
+        }
+        const auto& r=appliedGeometry.generatedCleanup;
+        return r.Valid()&&x>=r.left&&x<r.right&&y>=r.top&&y<r.bottom;
+    };
+    const auto inOldLine=[&](int x,int y) {
+        for(int line=0;line<accepted.lineCount;++line) {
+            const auto& r=accepted.lineBounds[line];
+            if(x>=r.left&&x<r.right&&y>=r.top&&y<r.bottom)return true;
+        }
+        return false;
+    };
+    int patchX=-1,patchY=-1;
+    for(int y=appliedGeometry.generatedCleanup.top;y<appliedGeometry.generatedCleanup.bottom-18&&patchY<0;++y)
+        for(int x=appliedGeometry.generatedCleanup.left;x<appliedGeometry.generatedCleanup.right-16;++x) {
+            bool usable=true;
+            for(int yy=y;yy<y+18&&usable;++yy)for(int xx=x;xx<x+16;++xx)
+                if(!insideErase(xx,yy)||inOldLine(xx,yy)){usable=false;break;}
+            if(usable){patchX=x;patchY=y;break;}
+        }
+    Assert::IsTrue(patchX>=0&&patchY>=0,L"Fixture needs a black non-glyph area inside the remaining applied cleanup.");
+    const auto drawH=[&](std::vector<uint16_t>& pixels,bool alternate) {
+        auto* yplane=pixels.data();const size_t area=size_t(kFootprintWidth)*kFootprintHeight;
+        for(int y=patchY;y<patchY+18;++y)for(int x=patchX;x<patchX+16;++x)
+            if(x<patchX+3||x>=patchX+13||(y>=patchY+7&&y<patchY+10)) {
+                yplane[size_t(y)*kFootprintWidth+x]=uint16_t((alternate?64:110)<<6);
+                if(alternate)pixels[area+size_t(y/2)*kFootprintWidth+(x&~1)]=uint16_t(800<<6);
+            }
+    };
+    for(bool alternate:{false,true}) {
+        auto changedPixels=CurrentFootprintUhdPixels(1);drawH(changedPixels,alternate);
+        auto changedSource=CurrentFootprintUhdSource(changedPixels);
+        const auto proof=footprint->VerifyCurrentFootprint(source93->current,changedSource,
+            preview->current,accepted,base);
+        Assert::IsFalse(proof.valid,L"Luma110 or U800 new text inside erased pixels cannot be reused as old backing.");
+        Assert::AreEqual("cadence-current-cleanup-changed",proof.reason);
+    }
+
+    // A U=800, luma=64 caption outside the exact mutation footprint is allowed
+    // by that pure footprint witness, but must be caught by the worker's full
+    // top/bottom search-band sample comparison (luma alone calls this black).
+    auto barPixels=CurrentFootprintUhdPixels(1);AddU800BarH(barPixels,600,kFootprintBottom+100);
+    auto barSource=CurrentFootprintUhdSource(barPixels);
+    Assert::IsFalse(footprint->ContainsFootprintSample(600,kFootprintBottom+100));
+    Assert::IsTrue(footprint->VerifyCurrentFootprint(source93->current,barSource,
+        preview->current,accepted,base).valid,
+        L"The changed bar caption is outside the exact erase footprint; the separate full-bar worker check owns this decision.");
+    auto barWorker=std::make_unique<SubtitlePendingMeasurementGuard>();
+    Assert::IsTrue(barWorker->RememberAccepted(*preview,accepted,seedSource,1000.0/60,250,
+        nullptr,nullptr,&base,footprint.get()));
+    auto barPending=CurrentFootprintPendingPreview(*preview,93,55);
+    Assert::IsFalse(barWorker->Resolve(*barPending,barSource,1000.0/60,250,
+        &preview->current.identity,true,footprint.get()));
+    Assert::AreEqual("new-current-bar-ink",barWorker->DecisionReason());
+}
+
+
+
+
 static constexpr int UhdWidth = 3840;
 static constexpr int UhdHeight = 2160;
 static constexpr uint64_t UhdPolicy = 11;

@@ -312,6 +312,10 @@ private:
 struct SubtitleCutPasteGeometry
 {
     SubtitleBoxRect source, destination, content, generatedCleanup, pictureCapture;
+    // Original measured cleanup footprint retained when pending-only current
+    // movie rows clip its leading/trailing edge. This carries no glyph or
+    // cleanup authority over the protected rows.
+    SubtitleBoxRect pendingProtectedCleanup;
     // Exact-current native row spans remove a rounded backing without erasing
     // the live corners of its bounding box. The legacy cleanup rectangle stays
     // the fully proved common intersection for existing ownership contracts.

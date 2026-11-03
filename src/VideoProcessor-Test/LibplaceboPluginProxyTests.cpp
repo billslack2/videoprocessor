@@ -4780,6 +4780,35 @@ namespace VideoProcessorTest
                 " fit_candidate_top="+std::to_string(boundaryFitTop)+" actual_presented_top="+std::to_string(boundaryPresentedTop)).c_str());
             Assert::IsTrue(overlayOutputs>=24&&exactCurrentSources.size()>=24,
                 L"The UHD Off burst did not deliver 24 distinct current source outputs.");
+            if(fitBoundarySources.empty()||rawContradictionSources.empty()) {
+                unsigned extentRows=0,admissionRows=0;
+                for(const auto& line:messages) {
+                    const bool isExtent=line.find("Alpha crop extent provenance:")==0;
+                    const bool isAdmission=line.find("Alpha crop admission:")==0;
+                    if(!isExtent&&!isAdmission)continue;
+                    uint64_t sequenceValue=0;
+                    if(!numberField(line,"sequence=",sequenceValue)||sequenceValue<onset)continue;
+                    if(isExtent&&extentRows<8) {
+                        Logger::WriteMessage((std::string("Off failure extent[")+std::to_string(++extentRows)+"] "+line).c_str());
+                    }else if(isAdmission&&admissionRows<8) {
+                        Logger::WriteMessage((std::string("Off failure admission[")+std::to_string(++admissionRows)+"] "+line).c_str());
+                    }
+                    if(extentRows>=8&&admissionRows>=8)break;
+                }
+                for(const auto& output:records) {
+                    if(strcmp(output.stage,"submitted-presentation")||!(output.flags&1u)||output.sourceFrameNumber<onset)continue;
+                    std::ostringstream detail;
+                    detail<<"Off failure first submitted: source="<<output.sourceFrameNumber
+                        <<" accepted="<<output.acceptedSequence<<" flags="<<output.flags
+                        <<" native_owner="<<output.counters[4]<<" native="<<output.published[0]<<','
+                        <<output.published[1]<<'-'<<output.published[2]<<','<<output.published[3]
+                        <<" crop="<<output.displayed[0]<<','<<output.displayed[1]<<'-'
+                        <<output.displayed[2]<<','<<output.displayed[3]<<" current_extent="
+                        <<output.metrics[8]<<','<<output.metrics[9]<<'-'<<output.metrics[10]<<','<<output.metrics[11];
+                    Logger::WriteMessage(detail.str().c_str());
+                    break;
+                }
+            }
             Assert::IsTrue(!fitBoundarySources.empty()&&!rawContradictionSources.empty(),
                 L"Natural Off input did not emit an exact-source current-raw witness that contradicted and safely widened a narrower confirmed FIT.");
             cleanup.renderer->Stop();destroy(cleanup.renderer);cleanup.renderer=nullptr;

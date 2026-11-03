@@ -4605,6 +4605,50 @@ struct LibplaceboVideoRenderer::Impl
     bool lastAnalysisBudgetSkippedBoundary=false;
     uint64_t analysisPerformanceLogTick=0;
     SubtitlePendingMeasurementGuard subtitlePendingGuard;
+    SubtitleCadenceGuard subtitlePendingFootprintGuard;
+    void ResetPendingSubtitleProof() {
+        subtitlePendingGuard.Reset();subtitlePendingFootprintGuard.Reset();
+    }
+    void RememberPendingCue(const ActivePictureFrameIdentity& identity,
+        const SubtitleBoxPreview& preview,const SubtitleBoxResult& cue,const AnalysisLumaSource& source,
+        double frameMs,int holdMs,const ActivePictureBounds* base,SubtitlePreviewMode mode,
+        const SubtitleCadenceGuard* currentFootprint=nullptr) {
+        const auto previousVerified=subtitlePendingGuard.LastVerifiedIdentity();
+        const auto previousContinuity=subtitlePendingGuard.ReferenceContinuity();
+        const auto previousElapsed=subtitlePendingGuard.PendingElapsedMilliseconds();
+        const bool seedCertificateMatches=subtitleBoxPresentation.AcceptedCueSeedCertificate().Matches(
+            preview,cue);
+        const auto seedStarted=SteadyClock::now();
+        const bool remembered=subtitlePendingGuard.RememberAccepted(preview,cue,
+            source,frameMs,holdMs,
+            &subtitleBoxPresentation.AcceptedCueSeedCertificate(),
+            &subtitleBoxPresentation.CurrentPreparedCueCertificate(),
+            base,currentFootprint);
+        // Computed-only disposition, once per real accepted-source seed
+        // attempt. No new pixel reads, history, DebugLog or lease action.
+        const auto& current=preview.current;
+        auto trace=AnalysisTraceRecord(identity,this,"subtitle-pending-seed",subtitlePendingGuard.DecisionReason());
+        trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+        trace.flags=(remembered?1u:0u)|(current.analyzed?2u:0u)|(current.pendingRefresh?4u:0u)|
+            (cue.held?8u:0u)|(cue.revised?16u:0u)|
+            (current.glyphLocalTop?32u:0u)|(current.glyphLocalBottom?64u:0u)|(current.barAuthority?128u:0u)|
+            (seedCertificateMatches?256u:0u)|(current.independentBarAnalysis?512u:0u)|
+            (current.analysisRefresh?1024u:0u)|(current.text.detected?2048u:0u)|
+            (cue.confirmationPending?4096u:0u)|(current.discontinuity?8192u:0u)|
+            (cue.workLimit?16384u:0u)|(current.text.workLimit?32768u:0u);
+        trace.counters[0]=current.text.lineCount;trace.counters[1]=preview.text.lineCount;
+        trace.counters[2]=cue.lineCount;trace.counters[3]=previousVerified.acceptedSequence;
+        trace.counters[4]=subtitlePendingGuard.LastVerifiedIdentity().acceptedSequence;
+        trace.counters[5]=current.identity.acceptedSequence;trace.counters[6]=previousContinuity;
+        trace.counters[7]=subtitlePendingGuard.ReferenceContinuity();
+        trace.metrics[0]=subtitlePendingGuard.PendingElapsedMilliseconds();trace.metrics[1]=previousElapsed;
+        trace.metrics[2]=static_cast<int>(mode);
+        trace.metrics[3]=std::chrono::duration<double,std::milli>(SteadyClock::now()-seedStarted).count();
+        trace.metrics[4]=subtitlePendingGuard.DecisionDiagnostics().seedBandSamplesChecked;
+        AnalysisTraceRect(trace.previous,preview.text.bounds);
+        AnalysisTraceRect(trace.measured,current.text.bounds);AnalysisTraceRect(trace.published,cue.bounds);
+        AnalysisDiagnosticTrace::Emit(trace);
+    }
     struct SubtitlePerfWindow {
         uint64_t frames=0,pending=0,recovered=0,compose[2]{},gpuSamples[2]{};
         double consumeMs=0,consumePeak=0,composeCpu[2]{},gpuMs[2]{},gpuPeak[2]{};
@@ -9830,7 +9874,7 @@ struct LibplaceboVideoRenderer::Impl
             {
                 ClearScopeSubtitleEvidence();
                 subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset();
-                subtitlePendingGuard.Reset();
+                ResetPendingSubtitleProof();
                 subtitlePaddingGuard.Reset();
                 subtitleCutPastePresentation.Reset();
                 subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset();
@@ -10580,7 +10624,7 @@ struct LibplaceboVideoRenderer::Impl
         activePictureAnalysisSourceGeneration = 0;
         sceneDetector.Reset(sceneDetectorGeneration);
         subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset();
-        subtitlePendingGuard.Reset();
+        ResetPendingSubtitleProof();
         subtitleStabilityTelemetry.Reset();
         subtitlePaddingGuard.Reset();
         subtitleCutPastePresentation.Reset();
@@ -13716,7 +13760,7 @@ struct LibplaceboVideoRenderer::Impl
             submittedNativeScopeAnchor = {};
             sceneDetector.Reset(sceneDetectorGeneration);
             subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset();
-            subtitlePendingGuard.Reset();
+            ResetPendingSubtitleProof();
             subtitleTemporalValid = false;
             subtitleTemporalCleanFrames = 0;
         }
@@ -15060,7 +15104,8 @@ struct LibplaceboVideoRenderer::Impl
                 pendingCurrentPixelsVerified=subtitlePendingGuard.Resolve(currentSubtitlePreview,
                     analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
                     subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
-                    subtitleBacklogRetirementOnly);
+                    subtitleBacklogRetirementOnly,
+                    SubtitlePreviewOverridesClassicHandling(sourceSubtitleMode)?&subtitlePendingFootprintGuard:nullptr);
                 {
                     const auto& detail=subtitlePendingGuard.DecisionDiagnostics();
                     auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-pending-pixels",subtitlePendingGuard.DecisionReason());
@@ -15260,43 +15305,11 @@ struct LibplaceboVideoRenderer::Impl
             }
             // Only an accepted cue may seed the late-worker fallback. An
             // unconfirmed detector candidate must never gain authority here.
-            if(!subtitleBoxResult.detected || subtitleBoxResult.confirmationPending) subtitlePendingGuard.Reset();
-            else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh) {
-                const auto previousVerified=subtitlePendingGuard.LastVerifiedIdentity();
-                const auto previousContinuity=subtitlePendingGuard.ReferenceContinuity();
-                const auto previousElapsed=subtitlePendingGuard.PendingElapsedMilliseconds();
-                const bool seedCertificateMatches=subtitleBoxPresentation.AcceptedCueSeedCertificate().Matches(
-                    currentSubtitlePreview,subtitleBoxResult);
-                const auto seedStarted=SteadyClock::now();
-                const bool remembered=subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
-                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
-                    &subtitleBoxPresentation.AcceptedCueSeedCertificate(),
-                    &subtitleBoxPresentation.CurrentPreparedCueCertificate(),
-                    nlsGeometryAvailable?&nlsGeometry:nullptr);
-                // Computed-only disposition, once per real accepted-source seed
-                // attempt. No new pixel reads, history, DebugLog or lease action.
-                const auto& current=currentSubtitlePreview.current;
-                auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-pending-seed",subtitlePendingGuard.DecisionReason());
-                trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
-                trace.flags=(remembered?1u:0u)|(current.analyzed?2u:0u)|(current.pendingRefresh?4u:0u)|
-                    (subtitleBoxResult.held?8u:0u)|(subtitleBoxResult.revised?16u:0u)|
-                    (current.glyphLocalTop?32u:0u)|(current.glyphLocalBottom?64u:0u)|(current.barAuthority?128u:0u)|
-                    (seedCertificateMatches?256u:0u)|(current.independentBarAnalysis?512u:0u)|
-                    (current.analysisRefresh?1024u:0u)|(current.text.detected?2048u:0u)|
-                    (subtitleBoxResult.confirmationPending?4096u:0u)|(current.discontinuity?8192u:0u)|
-                    (subtitleBoxResult.workLimit?16384u:0u)|(current.text.workLimit?32768u:0u);
-                trace.counters[0]=current.text.lineCount;trace.counters[1]=currentSubtitlePreview.text.lineCount;
-                trace.counters[2]=subtitleBoxResult.lineCount;trace.counters[3]=previousVerified.acceptedSequence;
-                trace.counters[4]=subtitlePendingGuard.LastVerifiedIdentity().acceptedSequence;
-                trace.counters[5]=current.identity.acceptedSequence;trace.counters[6]=previousContinuity;
-                trace.counters[7]=subtitlePendingGuard.ReferenceContinuity();
-                trace.metrics[0]=subtitlePendingGuard.PendingElapsedMilliseconds();trace.metrics[1]=previousElapsed;
-                trace.metrics[2]=static_cast<int>(sourceSubtitleMode);
-                trace.metrics[3]=std::chrono::duration<double,std::milli>(SteadyClock::now()-seedStarted).count();
-                trace.metrics[4]=subtitlePendingGuard.DecisionDiagnostics().seedBandSamplesChecked;
-                AnalysisTraceRect(trace.previous,currentSubtitlePreview.text.bounds);
-                AnalysisTraceRect(trace.measured,current.text.bounds);AnalysisTraceRect(trace.published,subtitleBoxResult.bounds);
-                AnalysisDiagnosticTrace::Emit(trace);
+            if(!subtitleBoxResult.detected || subtitleBoxResult.confirmationPending) ResetPendingSubtitleProof();
+            else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh &&
+                !SubtitlePreviewOverridesClassicHandling(sourceSubtitleMode)) {
+                RememberPendingCue(subtitleIdentity,currentSubtitlePreview,subtitleBoxResult,analysisSource,
+                    subtitleFrameMs,activeSettings.subtitleHoldMs,nlsGeometryAvailable?&nlsGeometry:nullptr,sourceSubtitleMode);
             }
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
@@ -15423,6 +15436,16 @@ struct LibplaceboVideoRenderer::Impl
                         subtitleLipLogCandidateRetained=lip.candidateRetained;
                     }
                 }
+                }
+                if(move.valid && pendingCurrentPixelsVerified &&
+                    SubtitlePreviewOverridesClassicHandling(sourceSubtitleMode) &&
+                    (!nlsGeometryAvailable || !subtitlePendingFootprintGuard.ApplyCurrentFootprintProtection(
+                        currentSubtitlePreview.current,nlsGeometry,move))) {
+                    // A pixel witness is usable only with the exact operation
+                    // whose protected rows will reach the compositor. Let the
+                    // current-source raw path handle any failed binding.
+                    move.valid=false;pendingCurrentPixelsVerified=false;
+                    currentSubtitleWorkIncomplete=true;
                 }
                 const auto& priorLayout=subtitleLoggedLayout;
                 auto equalRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
@@ -15709,7 +15732,7 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleAnalysisLogTick=analysisLogNow;
             }
         }
-        else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
+        else { ResetPendingSubtitleProof(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
 
         if(!reuseSubtitlePreparation) {
             subtitleSourcePreparation.nativePrepare={};
@@ -15844,6 +15867,25 @@ struct LibplaceboVideoRenderer::Impl
                     activeSettings.subtitleHoldMs,subtitleCutPasteBackground);
             else if(!currentSubtitleCadence.valid)
                 subtitleCadenceGuard.Reset();
+            // The pending path has its own source/lease guard. Seed its pixel
+            // footprint only from a real current composition, never from a
+            // pending or cadence-held result. Held ready cues preserve the
+            // original footprint and lease instead of becoming a new seed.
+            if(SubtitlePreviewOverridesClassicHandling(sourceSubtitleMode) &&
+                subtitleCompositionSucceeded && !currentSubtitleCadence.valid &&
+                currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh &&
+                configuredScreenActive && nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
+                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED) {
+                const double pendingFootprintFrameMs=state.displayMode && state.displayMode->TimeScale()>0
+                    ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0;
+                if(!subtitleBoxResult.held)
+                    subtitlePendingFootprintGuard.RememberCurrentFootprint(currentSubtitlePreview,subtitleBoxResult,
+                        analysisSource,nlsGeometry,relocatedSubtitle,pendingFootprintFrameMs,
+                        activeSettings.subtitleHoldMs,subtitleCutPasteBackground);
+                RememberPendingCue(subtitleIdentity,currentSubtitlePreview,subtitleBoxResult,analysisSource,
+                    pendingFootprintFrameMs,activeSettings.subtitleHoldMs,&nlsGeometry,sourceSubtitleMode,&subtitlePendingFootprintGuard);
+            }
             subtitleSourcePreparation.valid=true;
             subtitleSourcePreparation.generation=frameGeneration;
             subtitleSourcePreparation.sequence=sourceSequence;

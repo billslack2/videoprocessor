@@ -329,6 +329,159 @@ TEST_CLASS(MotionRendererTests){public:
             Assert::IsTrue(before==after,L"Live subtitle geometry/phase created an unprepared shader");
         }
     }
+    TEST_METHOD(ProtectedCleanupEdgeRowsKeepCurrentMovieAndMovedGlyph) {
+        GpuFixture g;
+        const auto* hook=CreateSubtitleCutPasteHook(g.device->gpu);
+        Assert::IsNotNull(hook);
+        auto uploadRgba8=[&](const std::vector<unsigned char>& pixels) {
+            Assert::AreEqual(size_t(64*64*4),pixels.size());
+            pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=pixels.data();
+            Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload),L"RGBA8 source upload failed");
+        };
+        auto makeFrame=[](std::array<unsigned char,3> base) {
+            std::vector<unsigned char> pixels(64*64*4);
+            for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+                const size_t o=(size_t(y)*64+x)*4;
+                pixels[o]=base[0];pixels[o+1]=base[1];pixels[o+2]=base[2];pixels[o+3]=255;
+            }
+            return pixels;
+        };
+        auto previous=makeFrame({180,24,22});
+        for(int y=32;y<36;++y)for(int x=20;x<38;++x) {
+            const size_t o=(size_t(y)*64+x)*4;
+            previous[o]=230;previous[o+1]=22;previous[o+2]=18;
+        }
+        const size_t previousGlyph=(size_t(42)*64+32)*4;
+        previous[previousGlyph]=255;previous[previousGlyph+1]=220;previous[previousGlyph+2]=24;
+
+        auto current=makeFrame({18,78,42});
+        // These changed, non-black movie pixels lie inside the source envelope
+        // and active picture, but before the clipped cleanup top and outside
+        // every glyph/capture rectangle.
+        const std::array<std::array<unsigned char,3>,4> marks{{
+            {{18,190,232}},{{24,50,92}},{{218,142,20}},{{166,28,214}}}};
+        for(int row=0;row<4;++row)for(int x=20+row*4;x<24+row*4;++x)for(int y=32+row;y<33+row;++y) {
+            const size_t o=(size_t(y)*64+x)*4;
+            current[o]=marks[size_t(row)][0];current[o+1]=marks[size_t(row)][1];current[o+2]=marks[size_t(row)][2];
+        }
+        // A current white glyph in the old source box must be copied to the
+        // new destination, while the source footprint is repaired from this
+        // frame's surrounding movie pixels.
+        for(int y=40;y<46;++y)for(int x=24;x<40;++x) {
+            const bool stroke=x==24||x==39||y==40||y==45||x==31||y==42;
+            if(!stroke)continue;
+            const size_t o=(size_t(y)*64+x)*4;
+            current[o]=current[o+1]=current[o+2]=246;
+        }
+
+        auto renderPrepared=[&](const pl_hook* boundHook,pl_tex* surface,bool independentAlpha=false) {
+            pl_frame composed{};
+            Assert::IsTrue(RenderSubtitleFullRaster(g.preparation,g.device->gpu,g.input,boundHook,
+                surface,composed,false,false,independentAlpha),L"RGBA8 source failed full-raster preparation/render.");
+            return composed;
+        };
+        auto drawPrepared=[&](pl_frame& composed) {
+            auto params=pl_render_fast_params;params.dither_params=nullptr;
+            params.deband_params=nullptr;params.peak_detect_params=nullptr;
+            Assert::IsTrue(pl_render_image(g.renderer,&composed,&g.output,&params),
+                L"Prepared subtitle frame failed final RGBA8 rendering.");
+            return g.ReadPixels();
+        };
+        uploadRgba8(previous);
+        auto previousFrame=renderPrepared(nullptr,&g.clean);
+        const auto previousOutput=drawPrepared(previousFrame);
+        uploadRgba8(current);
+        auto currentRawFrame=renderPrepared(nullptr,&g.clean);
+        const auto currentRawOutput=drawPrepared(currentRawFrame);
+
+        SubtitleCutPasteGeometry geometry{};
+        geometry.valid=true;geometry.glyphScale=1.0f;
+        geometry.roundedCorners=false;geometry.extendToBar=false;
+        geometry.pictureTop=8;geometry.pictureBottom=56;
+        geometry.displayPictureLeft=0;geometry.displayPictureTop=8;
+        geometry.displayPictureRight=64;geometry.displayPictureBottom=56;
+        geometry.source={16,30,48,48};geometry.destination={16,14,48,32};
+        geometry.content={24,40,40,46};geometry.pictureCapture=geometry.content;
+        geometry.glyphLines[0]=geometry.content;
+        geometry.generatedCleanup={16,36,48,48};
+        geometry.pendingProtectedCleanup={16,30,48,48};
+        Assert::IsTrue(geometry.pendingProtectedCleanup.Valid()&&
+            geometry.pendingProtectedCleanup.top<geometry.generatedCleanup.top&&
+            geometry.pendingProtectedCleanup.bottom==geometry.generatedCleanup.bottom,
+            L"The projected pending-only region must identify the original cleanup edge.");
+        Assert::IsTrue(geometry.generatedCleanup.top>35&&geometry.source.top<geometry.generatedCleanup.top&&
+            geometry.pictureTop<32&&geometry.pictureBottom>36,
+            L"The protected leading movie rows must be inside native and source, but above actual cleanup.");
+        SubtitleGeneratedGrayStyle style;style.opacity=0.0f;style.blurPixels=0.0f;
+        style.maxLuminance=1.0f;style.borderOpacity=0.0f;style.borderWidth=0.0f;
+        auto pixel=[](const std::vector<unsigned char>& image,int x,int y) {
+            const size_t o=(size_t(y)*64+x)*4;
+            return std::array<int,3>{image[o],image[o+1],image[o+2]};
+        };
+        auto distance=[](const std::array<int,3>& a,const std::array<int,3>& b) {
+            int difference=std::abs(a[0]-b[0]);
+            difference=(std::max)(difference,std::abs(a[1]-b[1]));
+            return (std::max)(difference,std::abs(a[2]-b[2]));
+        };
+        auto assertProtectedRows=[&](const std::vector<unsigned char>& output,const wchar_t* context) {
+            for(int row=0;row<4;++row) {
+                const int x=21+row*4,y=32+row;
+                const auto actual=pixel(output,x,y),currentPixel=pixel(currentRawOutput,x,y),oldPixel=pixel(previousOutput,x,y);
+                Assert::IsTrue(distance(actual,currentPixel)<=5,context);
+                Assert::IsTrue(distance(actual,oldPixel)>50,
+                    L"A previous frame's movie pixels leaked into a protected cleanup-edge row.");
+                const std::array<int,3> expectedMark={marks[size_t(row)][0],marks[size_t(row)][1],marks[size_t(row)][2]};
+                Assert::IsTrue(distance(actual,expectedMark)<=7,
+                    L"A dim or alternate-color current marker was lost from a protected leading row.");
+            }
+        };
+        for(const int background:{3,5})for(const auto& destination:{
+            SubtitleBoxRect{16,14,48,32},SubtitleBoxRect{16,22,48,40}}) {
+            geometry.destination=destination;
+            for(const auto phase:{SubtitleCompositionPhase::All,SubtitleCompositionPhase::CleanupOnly,
+                SubtitleCompositionPhase::LayerOnly}) {
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,background,PL_COLOR_TRC_SRGB,
+                    style,0,phase),L"Could not bind current-source protected cleanup geometry.");
+                const bool layerOnly=phase==SubtitleCompositionPhase::LayerOnly;
+                auto prepared=renderPrepared(hook,layerOnly?&g.layer:&g.clean,layerOnly);
+                std::vector<unsigned char> output;
+                if(layerOnly) {
+                    // Split production path: cleanup owns only measured source
+                    // pixels, then the independent-alpha layer adds verified
+                    // current glyphs over the cleaned current frame.
+                    Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,background,
+                        PL_COLOR_TRC_SRGB,style,0,SubtitleCompositionPhase::CleanupOnly));
+                    auto cleaned=renderPrepared(hook,&g.clean);
+                    pl_overlay_part part{};part.src={0,0,64,64};part.dst={0,0,64,64};
+                    pl_overlay overlay{};overlay.tex=prepared.planes[0].texture;
+                    overlay.mode=PL_OVERLAY_NORMAL;overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;
+                    overlay.repr=prepared.repr;overlay.color=prepared.color;
+                    overlay.parts=&part;overlay.num_parts=1;
+                    cleaned.overlays=&overlay;cleaned.num_overlays=1;
+                    output=drawPrepared(cleaned);
+                } else output=drawPrepared(prepared);
+                assertProtectedRows(output,L"A pending-only cleanup edge changed current raw movie pixels.");
+                if(phase!=SubtitleCompositionPhase::CleanupOnly) {
+                    if(destination.top==14) {
+                        const auto movedGlyph=pixel(output,32,26);
+                        Assert::IsTrue(distance(movedGlyph,pixel(currentRawOutput,32,42))<=8,
+                            L"The current source glyph was not retained at its disjoint moved destination.");
+                    } else {
+                        const auto movedGlyph=pixel(output,32,34);
+                        Assert::IsTrue(distance(movedGlyph,pixel(currentRawOutput,32,42))<=8,
+                            L"A verified current glyph overlapping a protected row was not rendered over raw current video.");
+                    }
+                }
+                const auto repairedSource=pixel(output,32,42);
+                Assert::IsTrue(distance(repairedSource,pixel(currentRawOutput,32,13))<=8,
+                    L"Generated cleanup did not reconstruct the current movie at the original glyph location.");
+                Assert::IsTrue(distance(repairedSource,pixel(currentRawOutput,32,42))>40&&
+                    distance(repairedSource,pixel(previousOutput,32,42))>40,
+                    L"The source cleanup retained a glyph or stale movie pixels instead of current-frame repair.");
+            }
+        }
+        pl_mpv_user_shader_destroy(&hook);
+    }
     TEST_METHOD(NlsPreparationUsesActualCompositionContract) {
         GpuFixture g;
         MotionConfig::Settings settings;

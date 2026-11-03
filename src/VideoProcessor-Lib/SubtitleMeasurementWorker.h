@@ -825,7 +825,7 @@ public:
         m_contrastSeedPixels.clear();m_contrastSeedDirections.clear();
         m_contrastSeedTopEnd=m_contrastSeedBottomStart=m_contrastSeedPictureTop=m_contrastSeedPictureBottom=0;
         m_contrastSeedWidth=m_contrastSeedHeight=0;
-        m_currentInkProofSeeded=false;m_sourceLayout={};m_elapsed=0;m_last={};m_diagnostics={};
+        m_currentInkProofSeeded=false;m_currentFootprintRequired=false;m_sourceLayout={};m_elapsed=0;m_last={};m_diagnostics={};
         m_certifiedSeed={};m_certifiedPolicy=m_certifiedContinuity=0;m_consumedCertificate={}; }
     const char* DecisionReason() const { return m_reason; }
     const Diagnostics& DecisionDiagnostics() const { return m_diagnostics; }
@@ -840,7 +840,8 @@ public:
         const AnalysisLumaSource& source,double frameMs,int holdMs,
         const SubtitleAcceptedCueSeedCertificate* existingCueCertificate=nullptr,
         const SubtitleCurrentPreparedCueCertificate* heldCurrentCue=nullptr,
-        const ActivePictureBounds* physicalBase=nullptr) {
+        const ActivePictureBounds* physicalBase=nullptr,
+        const SubtitleCadenceGuard* currentFootprint=nullptr) {
         const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
             return outer.Valid() && inner.Valid() && outer.left<=inner.left &&
                 outer.top<=inner.top && outer.right>=inner.right && outer.bottom>=inner.bottom;
@@ -955,7 +956,7 @@ public:
             m_reason="accepted-certificate-already-consumed";return false;
         }
         auto seed=preview;seed.current.text=accepted;seed.text=accepted;
-        Resolve(seed,source,frameMs,holdMs);
+        Resolve(seed,source,frameMs,holdMs,nullptr,false,currentFootprint);
         if(HasPixelSeed() && !resolvedCovers && certifiedExistingCue) {
             m_certifiedSeed=now;m_certifiedPolicy=preview.policyGeneration;
             m_certifiedContinuity=preview.continuityGeneration;
@@ -1013,7 +1014,14 @@ public:
     bool Resolve(SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
         double frameMs,int holdMs,
         const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,
-        bool backlogRetirementOnly=false) {
+        bool backlogRetirementOnly=false,
+        const SubtitleCadenceGuard* currentFootprint=nullptr) {
+        struct FootprintReceiptScope {
+            const SubtitleCadenceGuard* guard=nullptr;
+            bool keep=false;
+            ~FootprintReceiptScope(){if(guard && !keep)guard->ClearCurrentFootprintProtectionReceipt();}
+        } receiptScope{currentFootprint,false};
+        if(currentFootprint)currentFootprint->ClearCurrentFootprintProtectionReceipt();
         m_diagnostics={};
         const auto key=preview.current;
         m_diagnostics.lastVerifiedSource=m_last.acceptedSequence;
@@ -1025,15 +1033,22 @@ public:
             if(key.pendingRefresh)return false; // A repeated presentation cannot renew the budget.
             if(key.analyzed && !key.glyphLocalTop && !key.glyphLocalBottom &&
                 key.text.detected && key.barAuthority && !key.text.workLimit) {
+                const bool requireFootprint=currentFootprint!=nullptr;
+                if(requireFootprint && !currentFootprint->MatchesAcceptedSeed(
+                    preview,preview.text,source,key.sharedPicture.bounds))
+                    return Reject("accepted-current-footprint-seed-unavailable");
                 m_reference=preview;m_samples.clear();m_elapsed=0;m_last=key.identity;
                 m_ownedSamples.clear();m_backingSamples.clear();m_knownInkSamples.clear();m_paletteFringe.clear();
-                m_currentInkProofSeeded=false;
+                m_currentInkProofSeeded=false;m_currentFootprintRequired=false;
                 m_sourceLayout={};
-                const auto currentInkSeed=SeedCurrentInkProof(preview,source);
+                const auto currentInkSeed=SeedCurrentInkProof(preview,source,!requireFootprint,currentFootprint);
                 if(currentInkSeed==CurrentInkSeedState::Seeded) {
+                    m_currentFootprintRequired=requireFootprint;
                     m_reason="accepted-current-ink-seed";
                     return false;
                 }
+                if(requireFootprint)
+                    return Reject("accepted-current-footprint-seed-unavailable");
                 if(currentInkSeed==CurrentInkSeedState::Failed)
                     return Reject("accepted-current-ink-seed-unavailable");
                 const int step=SubtitleBoxDetector::SamplingStep(source.width,source.height);
@@ -1096,11 +1111,18 @@ public:
         if(context && !backlogReassociation)return Reject("pending-context-changed");
         if(m_currentInkProofSeeded) {
             const char* proofFailure="current-ink-proof-unavailable";
-            if(!BuildCurrentInkProof(source,key,currentInkForOutput,proofFailure))return Reject(proofFailure);
+            if(m_currentFootprintRequired!=static_cast<bool>(currentFootprint))
+                return Reject("current-footprint-mode-changed");
+            if(!BuildCurrentInkProof(source,key,currentInkForOutput,proofFailure,currentFootprint)) {
+                if(currentFootprint)currentFootprint->ClearCurrentFootprintProtectionReceipt();
+                return Reject(proofFailure);
+            }
             // This current-source continuation witness is not a detector pass.
             // Keep rawEvidenceComplete clear so it cannot mint current semantic,
             // acquisition, absence, or native authority.
         } else {
+            if(m_currentFootprintRequired || currentFootprint)
+                return Reject("current-footprint-required-unavailable");
             for(const auto& sample:m_samples) {
                 AnalysisLumaSample now;
                 ++m_diagnostics.glyphSamplesChecked;
@@ -1171,10 +1193,17 @@ public:
         preview.current.incomingBarTrackingReference={};
         preview.current.subtitleArProof={};preview.current.subtitleArDarkness={};
         preview.current.barStripClearance={};
+        if(m_currentFootprintRequired) {
+            // Current operation pixels are proved; no new physical boundary
+            // measurement or caption absence has been performed on this source.
+            preview.current.independentBarAnalysis=false;
+            preview.current.barAuthority=false;preview.current.barEvidence={};
+        }
         preview.futureAvailable=false;preview.following={};preview.followingCount=0;preview.matchingFrames=1;
         preview.currentLinesConfirmed=false;preview.newScanMs=0;preview.newScanFrames=0;
         m_diagnostics.backlogReassociated=backlogReassociation;
         m_reason=backlogReassociation ? "backlog-verified-current-pixels" : "verified-current-pixels";
+        receiptScope.keep=currentFootprint!=nullptr;
         return true;
     }
 private:
@@ -1241,12 +1270,15 @@ private:
         }
         return true;
     }
-    CurrentInkSeedState SeedCurrentInkProof(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source) {
+    CurrentInkSeedState SeedCurrentInkProof(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
+        bool seedDirectionalBaseline=true,const SubtitleCadenceGuard* currentFootprint=nullptr) {
         const auto& current=preview.current;const auto& text=current.text;const auto ink=current.ink;
         if(!preview.available || !current.analyzed || current.pendingRefresh || current.analysisRefresh ||
             current.discontinuity || !current.independentBarAnalysis || !current.barAuthority ||
             current.barTrackingAuthority || current.currentAnchorUsesTrackedEdge ||
-            current.analysisStride!=1 || current.cadenceSkipped || !current.barEvidence.available ||
+            (seedDirectionalBaseline?current.analysisStride!=1:
+                (current.analysisStride!=1 && current.analysisStride!=2)) || current.cadenceSkipped ||
+            (!seedDirectionalBaseline && !currentFootprint) || !current.barEvidence.available ||
             current.pictureTop!=current.barEvidence.top || current.pictureBottom!=current.barEvidence.bottom ||
             current.barEvidence.captionBackedTop || current.barEvidence.captionBackedBottom ||
             !text.detected || text.held || text.confirmationPending || text.revised || text.workLimit ||
@@ -1269,44 +1301,51 @@ private:
             (std::min)(ink->height-1,(current.pictureBottom+ink->step-1)/ink->step):ink->height;
         const size_t bandCells=CurrentBandCellCount(ink->width,ink->height,topEnd,bottomStart);
         if(!bandCells || bandCells>CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
-        m_contrastSeedPixels.assign(bandCells,AnalysisLumaSample{});
-        m_contrastSeedDirections.assign(bandCells,0);
-        m_contrastSeedTopEnd=topEnd;m_contrastSeedBottomStart=bottomStart;
-        m_contrastSeedPictureTop=top;m_contrastSeedPictureBottom=bottom;
-        m_contrastSeedWidth=ink->width;m_contrastSeedHeight=ink->height;
-        for(int y=0;y<ink->height;++y)if(InCurrentBand(y,ink->height,topEnd,bottomStart))
-            for(int x=0;x<ink->width;++x) {
-                const size_t at=CurrentBandIndex(x,y,ink->width,ink->height,topEnd,bottomStart);
-                if(at>=m_contrastSeedPixels.size() ||
-                    !sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],m_contrastSeedPixels[at]))
-                    return CurrentInkSeedState::Failed;
-                ++m_diagnostics.seedBandSamplesChecked;
-            }
-        constexpr int contrastX[4]={-1,1,0,0},contrastY[4]={0,0,-1,1};
-        for(int y=0;y<ink->height;++y)if(InCurrentBand(y,ink->height,topEnd,bottomStart))
-            for(int x=1;x<ink->width-1;++x) {
-                const size_t at=CurrentBandIndex(x,y,ink->width,ink->height,topEnd,bottomStart);
-                const auto& point=m_contrastSeedPixels[at];
-                const bool pointInPicture=y>=top && y<bottom;
-                for(int direction=0;direction<4;++direction) {
-                    const int nx=x+contrastX[direction],ny=y+contrastY[direction];
-                    if(!InCurrentBand(ny,ink->height,topEnd,bottomStart))continue;
-                    const bool neighborInPicture=ny>=top && ny<bottom;
-                    if(pointInPicture!=neighborInPicture)continue;
-                    const size_t neighborAt=CurrentBandIndex(nx,ny,ink->width,ink->height,topEnd,bottomStart);
-                    const auto& neighbor=m_contrastSeedPixels[neighborAt];
-                    if(int(point.luma)-int(neighbor.luma)>=48)
-                        m_contrastSeedDirections[at]|=uint8_t(1u<<direction);
-                    const bool alternatePalette=(std::abs(int(point.chromaU)-ink->inkU)>80 ||
-                        std::abs(int(point.chromaV)-ink->inkV)>80) &&
-                        (std::abs(int(point.chromaU)-int(neighbor.chromaU))>=64 ||
-                         std::abs(int(point.chromaV)-int(neighbor.chromaV))>=64);
-                    if(alternatePalette)m_contrastSeedDirections[at]|=uint8_t(1u<<(direction+4));
+        m_contrastSeedPixels.clear();m_contrastSeedDirections.clear();
+        m_contrastSeedTopEnd=m_contrastSeedBottomStart=m_contrastSeedPictureTop=m_contrastSeedPictureBottom=0;
+        m_contrastSeedWidth=m_contrastSeedHeight=0;
+        if(seedDirectionalBaseline) {
+            m_contrastSeedPixels.assign(bandCells,AnalysisLumaSample{});
+            m_contrastSeedDirections.assign(bandCells,0);
+            m_contrastSeedTopEnd=topEnd;m_contrastSeedBottomStart=bottomStart;
+            m_contrastSeedPictureTop=top;m_contrastSeedPictureBottom=bottom;
+            m_contrastSeedWidth=ink->width;m_contrastSeedHeight=ink->height;
+            for(int y=0;y<ink->height;++y)if(InCurrentBand(y,ink->height,topEnd,bottomStart))
+                for(int x=0;x<ink->width;++x) {
+                    const size_t at=CurrentBandIndex(x,y,ink->width,ink->height,topEnd,bottomStart);
+                    if(at>=m_contrastSeedPixels.size() ||
+                        !sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],m_contrastSeedPixels[at]))
+                        return CurrentInkSeedState::Failed;
+                    ++m_diagnostics.seedBandSamplesChecked;
                 }
-            }
+            constexpr int contrastX[4]={-1,1,0,0},contrastY[4]={0,0,-1,1};
+            for(int y=0;y<ink->height;++y)if(InCurrentBand(y,ink->height,topEnd,bottomStart))
+                for(int x=1;x<ink->width-1;++x) {
+                    const size_t at=CurrentBandIndex(x,y,ink->width,ink->height,topEnd,bottomStart);
+                    const auto& point=m_contrastSeedPixels[at];
+                    const bool pointInPicture=y>=top && y<bottom;
+                    for(int direction=0;direction<4;++direction) {
+                        const int nx=x+contrastX[direction],ny=y+contrastY[direction];
+                        if(!InCurrentBand(ny,ink->height,topEnd,bottomStart))continue;
+                        const bool neighborInPicture=ny>=top && ny<bottom;
+                        if(pointInPicture!=neighborInPicture)continue;
+                        const size_t neighborAt=CurrentBandIndex(nx,ny,ink->width,ink->height,topEnd,bottomStart);
+                        const auto& neighbor=m_contrastSeedPixels[neighborAt];
+                        if(int(point.luma)-int(neighbor.luma)>=48)
+                            m_contrastSeedDirections[at]|=uint8_t(1u<<direction);
+                        const bool alternatePalette=(std::abs(int(point.chromaU)-ink->inkU)>80 ||
+                            std::abs(int(point.chromaV)-ink->inkV)>80) &&
+                            (std::abs(int(point.chromaU)-int(neighbor.chromaU))>=64 ||
+                             std::abs(int(point.chromaV)-int(neighbor.chromaV))>=64);
+                        if(alternatePalette)m_contrastSeedDirections[at]|=uint8_t(1u<<(direction+4));
+                    }
+                }
+        }
+        else if(!currentFootprint->MatchesAcceptedSeed(preview,text,source,current.sharedPicture.bounds))
+            return CurrentInkSeedState::Failed;
         const auto sampleSeed=[&](int x,int y,AnalysisLumaSample& value) {
             if(x<0 || y<0 || x>=ink->width || y>=ink->height)return false;
-            if(InCurrentBand(y,ink->height,topEnd,bottomStart)) {
+            if(seedDirectionalBaseline && InCurrentBand(y,ink->height,topEnd,bottomStart)) {
                 const size_t at=CurrentBandIndex(x,y,ink->width,ink->height,topEnd,bottomStart);
                 if(at>=m_contrastSeedPixels.size())return false;
                 value=m_contrastSeedPixels[at];return true;
@@ -1314,7 +1353,8 @@ private:
             return sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],value);
         };
         std::vector<KnownInkSample> knownInk;knownInk.reserve(4096);
-        for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x)if(ink->Get(x,y)) {
+        for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x)if(ink->Get(x,y) &&
+            (!currentFootprint || currentFootprint->ContainsFootprintSample(x*ink->step,ink->sourceRows[size_t(y)]))) {
             if(knownInk.size()>=CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
             AnalysisLumaSample sample;
             if(!sampleSeed(x,y,sample))return CurrentInkSeedState::Failed;
@@ -1324,6 +1364,7 @@ private:
         size_t fringeSamples=0;
         for(int y=0;y<ink->height;++y)if(y<topEnd || y>=bottomStart)for(int x=1;x<ink->width-1;++x) {
             if(ink->Get(x,y))continue;
+            if(currentFootprint && !currentFootprint->ContainsFootprintSample(x*ink->step,ink->sourceRows[size_t(y)]))continue;
             bool nextToKnownRaw=false;
             for(int dy=-1;dy<=1 && !nextToKnownRaw;++dy)for(int dx=-1;dx<=1;++dx)
                 if((dx || dy) && ink->Get(x+dx,y+dy)){nextToKnownRaw=true;break;}
@@ -1352,7 +1393,9 @@ private:
                 for(int x=0;x<ink->width;++x) {
                     const int px=x*ink->step;
                     if(px<bounds.left || px>=bounds.right || !ink->Get(x,y,true))continue;
-                    if(!ink->Get(x,y) || owned.size()>=32768)return CurrentInkSeedState::Failed;
+                    if(!ink->Get(x,y) || owned.size()>=32768 ||
+                        (currentFootprint && !currentFootprint->ContainsFootprintSample(px,py)))
+                        return CurrentInkSeedState::Failed;
                     AnalysisLumaSample value;
                     if(!sampleSeed(x,y,value) || value.luma<ink->inkFloor ||
                         std::abs(int(value.chromaU)-ink->inkU)>80 ||
@@ -1384,7 +1427,8 @@ private:
                 !addSupport(text.lineCapturePanels[line]))return CurrentInkSeedState::Failed;
         std::vector<BackingSample> backing;backing.reserve(4096);
         for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x) {
-            if(!support[size_t(y)*ink->width+x])continue;
+            if(!support[size_t(y)*ink->width+x] ||
+                (currentFootprint && !currentFootprint->ContainsFootprintSample(x*ink->step,ink->sourceRows[size_t(y)])))continue;
             if(y<topEnd || y>=bottomStart)backing.push_back({x,y,ink->Black(x,y)});
             else {
                 AnalysisLumaSample value;
@@ -1400,12 +1444,21 @@ private:
         return CurrentInkSeedState::Seeded;
     }
     bool BuildCurrentInkProof(const AnalysisLumaSource& source,const SubtitleBoxObservation& current,
-        std::shared_ptr<SubtitleInkSnapshot>& currentInk,const char*& reason) {
+        std::shared_ptr<SubtitleInkSnapshot>& currentInk,const char*& reason,
+        const SubtitleCadenceGuard* currentFootprint) {
         const auto& old=m_reference.current;const auto oldInk=old.ink;
         if(!m_currentInkProofSeeded || !oldInk || !SameSourceLayout(source,m_sourceLayout) ||
             source.width!=old.width || source.height!=old.height ||
             current.width!=old.width || current.height!=old.height) {
             reason="current-source-layout-changed";return false;
+        }
+        if(m_currentFootprintRequired) {
+            if(!currentFootprint) {reason="current-footprint-required-unavailable";return false;}
+            const auto verified=currentFootprint->VerifyCurrentFootprint(
+                current,source,old,m_reference.text,old.sharedPicture.bounds);
+            if(!verified.valid) {reason=verified.reason;return false;}
+        } else if(currentFootprint) {
+            reason="current-footprint-mode-changed";return false;
         }
         int topEnd=0,bottomStart=0;
         if(!CurrentInkGeometry(old,*oldInk,topEnd,bottomStart)) {
@@ -1422,6 +1475,9 @@ private:
         fresh->inkU=oldInk->inkU;fresh->inkV=oldInk->inkV;fresh->blackLimit=oldInk->blackLimit;
         fresh->paletteValid=true;fresh->rawEvidenceComplete=false;
         fresh->rawInk.assign(words,0);fresh->ownedInk.assign(words,0);fresh->blackBacking.assign(words,0);
+        const int top=(old.pictureTop+fresh->step-1)/fresh->step;
+        const int bottom=old.pictureBottom<old.height?
+            (std::min)(fresh->height-1,(old.pictureBottom+fresh->step-1)/fresh->step):fresh->height;
         m_currentPixels.resize(area);m_currentSampled.resize(area);
         std::fill(m_currentSampled.begin(),m_currentSampled.end(),uint8_t(0));
         auto& pixels=m_currentPixels;auto& sampled=m_currentSampled;
@@ -1439,13 +1495,17 @@ private:
             }
             value=pixels[at];return true;
         };
-        for(int y=0;y<fresh->height;++y)if(y<topEnd || y>=bottomStart)
+        for(int y=0;y<fresh->height;++y)if((y<topEnd || y>=bottomStart) &&
+            (!m_currentFootprintRequired || y<top || y>=bottom))
             for(int x=0;x<fresh->width;++x) {
                 AnalysisLumaSample unused;if(!read(x,y,unused)) {
                     reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;
                 }
             }
         for(const auto& backing:m_backingSamples) {
+            if(m_currentFootprintRequired && currentFootprint &&
+                !currentFootprint->ContainsVerifiedFootprintSample(
+                    backing.x*fresh->step,fresh->sourceRows[size_t(backing.y)]))continue;
             AnalysisLumaSample value;
             if(!read(backing.x,backing.y,value)) {
                 reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-backing-sample-failed";return false;
@@ -1462,6 +1522,9 @@ private:
             else fresh->blackBacking[at/64]&=~(uint64_t{1}<<(at%64));
         }
         for(const auto& known:m_knownInkSamples) {
+            if(m_currentFootprintRequired && currentFootprint &&
+                !currentFootprint->ContainsVerifiedFootprintSample(
+                    known.x*fresh->step,fresh->sourceRows[size_t(known.y)]))continue;
             AnalysisLumaSample value;
             if(!read(known.x,known.y,value)) {
                 reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-known-ink-sample-failed";return false;
@@ -1474,18 +1537,18 @@ private:
                 reason="current-known-ink-changed";return false;
             }
         }
-        const int top=(old.pictureTop+fresh->step-1)/fresh->step;
-        const int bottom=old.pictureBottom<old.height?
-            (std::min)(fresh->height-1,(old.pictureBottom+fresh->step-1)/fresh->step):fresh->height;
         const size_t bandCells=CurrentBandCellCount(fresh->width,fresh->height,topEnd,bottomStart);
-        if(m_contrastSeedWidth!=fresh->width || m_contrastSeedHeight!=fresh->height ||
+        if(!m_currentFootprintRequired && (m_contrastSeedWidth!=fresh->width || m_contrastSeedHeight!=fresh->height ||
             m_contrastSeedTopEnd!=topEnd || m_contrastSeedBottomStart!=bottomStart ||
             m_contrastSeedPictureTop!=top || m_contrastSeedPictureBottom!=bottom ||
-            m_contrastSeedPixels.size()!=bandCells || m_contrastSeedDirections.size()!=bandCells) {
+            m_contrastSeedPixels.size()!=bandCells || m_contrastSeedDirections.size()!=bandCells)) {
             reason="current-contrast-coverage-changed";return false;
         }
         const int radius=(std::max)(3,fresh->height/180);
         for(int y=0;y<fresh->height;++y)if(y<topEnd || y>=bottomStart)for(int x=1;x<fresh->width-1;++x) {
+            const bool inNativeFootprint=m_currentFootprintRequired && currentFootprint &&
+                currentFootprint->ContainsVerifiedFootprintSample(x*fresh->step,fresh->sourceRows[size_t(y)]);
+            if(m_currentFootprintRequired && y>=top && y<bottom && !inNativeFootprint)continue;
             AnalysisLumaSample point;
             if(!read(x,y,point)) {reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;}
             if(point.luma<fresh->inkFloor || std::abs(int(point.chromaU)-fresh->inkU)>80 ||
@@ -1506,7 +1569,7 @@ private:
             }
             if(!raw)continue;
             const size_t at=size_t(y)*fresh->width+x;const uint64_t bit=uint64_t{1}<<(at%64);
-            if(!oldInk->Get(x,y)) {
+            if(!oldInk->Get(x,y) && (!m_currentFootprintRequired || inNativeFootprint)) {
                 m_diagnostics.glyphMismatchX=x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(y)];
                 reason="new-current-raw-ink";return false;
@@ -1514,6 +1577,11 @@ private:
             fresh->rawInk[at/64]|=bit;
         }
         for(const auto& sample:m_ownedSamples) {
+            if(m_currentFootprintRequired && currentFootprint &&
+                !currentFootprint->ContainsVerifiedFootprintSample(
+                    sample.x*fresh->step,fresh->sourceRows[size_t(sample.y)])) {
+                reason="current-owned-glyph-protected";return false;
+            }
             AnalysisLumaSample now;
             if(!read(sample.x,sample.y,now)) {
                 reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-glyph-sample-failed";return false;
@@ -1529,13 +1597,36 @@ private:
             const size_t at=size_t(sample.y)*fresh->width+sample.x;
             fresh->ownedInk[at/64]|=uint64_t{1}<<(at%64);
         }
-        if(HasNovelPotentialInk(*oldInk,m_paletteFringe,pixels,m_contrastSeedPixels,m_contrastSeedDirections,
+        if(m_currentFootprintRequired) {
+            if(HasNonblackEncodedBarPixels(*oldInk,pixels,currentFootprint,top,bottom,topEnd,bottomStart,
+                m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY)) {
+                reason="new-current-bar-ink";return false;
+            }
+        } else if(HasNovelPotentialInk(*oldInk,m_paletteFringe,pixels,m_contrastSeedPixels,m_contrastSeedDirections,
             top,bottom,topEnd,bottomStart,
             m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY)) {
             reason="new-current-contrast-ink";return false;
         }
         currentInk=std::move(fresh);
         reason="current-owned-cue-verified";return true;
+    }
+    bool HasNonblackEncodedBarPixels(const SubtitleInkSnapshot& reference,
+        const std::vector<AnalysisLumaSample>& currentPixels,const SubtitleCadenceGuard* currentFootprint,
+        int top,int bottom,int topEnd,int bottomStart,int& mismatchX,int& mismatchY) const {
+        const int width=reference.width,height=reference.height;
+        const size_t bandCells=CurrentBandCellCount(width,height,topEnd,bottomStart);
+        if(!currentFootprint || currentPixels.size()!=size_t(width)*height || !bandCells)return true;
+        for(int y=0;y<height;++y)if(InCurrentBand(y,height,topEnd,bottomStart) && (y<top || y>=bottom))
+            for(int x=0;x<width;++x) {
+                if(currentFootprint->ContainsFootprintSample(x*reference.step,reference.sourceRows[size_t(y)]))
+                    continue; // The pure native witness checked this exact sample.
+                const auto& sample=currentPixels[size_t(y)*width+x];
+                const bool black=sample.luma<=reference.blackLimit &&
+                    std::abs(int(sample.chromaU)-512)<=48 && std::abs(int(sample.chromaV)-512)<=48;
+                if(black)continue;
+                mismatchX=x*reference.step;mismatchY=reference.sourceRows[size_t(y)];return true;
+            }
+        return false;
     }
     static bool HasNovelPotentialInk(const SubtitleInkSnapshot& reference,
         const std::vector<uint64_t>& paletteFringe,
@@ -1640,7 +1731,7 @@ private:
     int m_contrastSeedPictureTop=0,m_contrastSeedPictureBottom=0;
     int m_contrastSeedWidth=0,m_contrastSeedHeight=0;
     SourceLayout m_sourceLayout{};
-    bool m_currentInkProofSeeded=false;
+    bool m_currentInkProofSeeded=false,m_currentFootprintRequired=false;
     SubtitleBoxPreview m_reference;
     SubtitleAcceptedCueSeedCertificate m_consumedCertificate;
     ActivePictureFrameIdentity m_last,m_certifiedSeed;

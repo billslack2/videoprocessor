@@ -103,3 +103,29 @@ must lead to current raw video, never waiting or reuse of older movie pixels. Un
 moving-background positives do not establish successful reuse over arbitrary movie
 texture. Report verifier time and rejection reasons with actual UHD detector seeds,
 and distinguish a safe rejected proof from successful static-cue reuse.
+## Current prepared-footprint runtime path
+
+Advanced modes seed pending reuse only after an actual current composition has
+established its extraction and cleanup geometry. A separate guard shares the
+existing native-pixel glyph/core/fringe and backing verifier with cadence logic;
+the cadence entry point retains its stride-two and single-skip rules. Pending
+ordering, backlog reassociation and lease accounting remain in the pending guard.
+
+Changed unowned nonblack movie pixels outside the foreground/content hull can
+restrict a rectangular cleanup on any of its four edges. A one-use receipt binds
+the current source, original geometry, policy and physical base. The compositor
+must consume that receipt before processing. The original rectangle minus the
+restricted inner rectangle is explicitly protected: cleanup and panel background
+cannot replace those current pixels; verified current glyph alpha may still draw.
+The original donor exclusion and placement/layout coverage remain unchanged.
+Interior changes, unsupported contours, changed glyphs/backing, or unbound geometry
+fail into current raw video. Nonblack or chroma-bearing encoded-bar pixels outside
+the verified operation also veto reuse, so native cropping cannot hide new bar ink.
+
+The pending result creates no new bar/native, caption-absence or full semantic
+measurement. It retains current source identity and does not renew its accepted
+seed from held/pending frames. No historical movie pixels enter rendered output.
+The earlier global picture-contrast verifier remains a generic path; the advanced
+renderer uses the prepared-footprint path so unrelated moving movie texture is not
+interpreted as cue novelty. The earlier 8.5-15.4ms full-band probe is exploratory
+work on that generic path, not a measurement of this runtime path.

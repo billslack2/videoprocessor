@@ -17,20 +17,168 @@ struct SubtitleCadenceProof {
 class SubtitleCadenceGuard {
 public:
     using Result=SubtitleCadenceProof;
+    struct CurrentFootprintVerification {
+        bool valid=false;
+        size_t samples=0;
+        const char* reason="no-current-footprint-seed";
+        int mismatchX=-1,mismatchY=-1;
+        int protectedCleanupLeft=-1,protectedCleanupRight=-1;
+        int protectedCleanupTop=-1,protectedCleanupBottom=-1;
+    };
     // Native pixels, counted once across the exact extraction/erasure union.
     static constexpr unsigned SampleBudget=1048576;
-    void Reset() { m_valid=false;m_used=false;ClearInPlace(*m_reference);m_source={};m_baseline.reset();m_detectorReference.reset();
-        m_native.clear();m_currentPixels.clear();m_index.clear();m_components.clear();ClearInPlace(*m_cached); }
+    void Reset() { m_valid=false;m_used=false;m_currentFootprintReceiptValid=false;m_cleanupChangedIndices.clear();ClearInPlace(*m_reference);m_source={};m_baseline.reset();m_detectorReference.reset();
+        m_native.clear();m_currentPixels.clear();m_changedComponents.clear();m_index.clear();m_components.clear();ClearInPlace(*m_cached); }
     bool HasReference() const {return m_valid;}
     const char* DecisionReason() const {return m_reason;}
     unsigned SampleCount() const {return m_samples;}
     bool RememberAccepted(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
         const AnalysisLumaSource& source,const ActivePictureBounds& base,
         const SubtitleCutPasteGeometry& geometry,double frameMs=1000.0/60.0,int holdMs=250,int backgroundMode=3) {
-        m_samples=0;
+        return RememberAcceptedCore(preview,accepted,source,base,geometry,frameMs,holdMs,backgroundMode,false);
+    }
+    // Seed the same exact source-pixel footprint for a pending-worker verifier.
+    // This is deliberately separate from cadence eligibility: no skipped or
+    // held observation is allowed to seed this reference.
+    bool RememberCurrentFootprint(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
+        const AnalysisLumaSource& source,const ActivePictureBounds& base,
+        const SubtitleCutPasteGeometry& geometry,double frameMs=1000.0/60.0,int holdMs=250,int backgroundMode=3) {
+        return RememberAcceptedCore(preview,accepted,source,base,geometry,frameMs,holdMs,backgroundMode,true);
+    }
+    bool MatchesAcceptedSeed(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
+        const AnalysisLumaSource& source,const ActivePictureBounds& base) const {
+        if(!m_valid || !m_reference || !m_baseline || !preview.available)return false;
+        const auto& seed=m_reference->current;const auto& current=preview.current;
+        return SameAnalysisFrameIdentity(seed.identity,current.identity) &&
+            seed.policyGeneration==current.policyGeneration && seed.continuityGeneration==current.continuityGeneration &&
+            m_reference->policyGeneration==preview.policyGeneration &&
+            m_reference->continuityGeneration==preview.continuityGeneration &&
+            SameCueResult(seed.text,accepted) && SameCueResult(m_reference->text,accepted) &&
+            SamePhysicalBase(m_base,base) && SamePhysicalBase(seed.sharedPicture.bounds,base) &&
+            ValidSource(seed,source) && source.format==m_source.format && source.encoding==m_source.encoding &&
+            source.range==m_source.range && source.colorspace==m_source.colorspace &&
+            source.generation==m_source.generation && source.rgbBitAlignment==m_source.rgbBitAlignment &&
+            source.rowBytes==m_source.rowBytes && source.chromaRowBytes==m_source.chromaRowBytes &&
+            source.width==seed.width && source.height==seed.height;
+    }
+    // Geometry membership only; this does not say that any later source pixel
+    // passed verification. Coordinates are native source pixels.
+    bool ContainsFootprintSample(int x,int y) const {
+        return m_valid && !m_index.empty() && Index(x,y)>=0;
+    }
+    bool ContainsVerifiedFootprintSample(int x,int y) const {
+        if(!m_currentFootprintReceiptValid || !ContainsFootprintSample(x,y))return false;
+        if(Inside(m_geometry.generatedCleanup,x,y) &&
+            !Inside({m_currentFootprintReceiptLeft,m_currentFootprintReceiptTop,
+                m_currentFootprintReceiptRight,m_currentFootprintReceiptBottom},x,y))return false;
+        return true;
+    }
+    void ClearCurrentFootprintProtectionReceipt() const {m_currentFootprintReceiptValid=false;}
+    // Verify a later exact current source against the immutable accepted
+    // extraction/erasure footprint. Caption continuity is intentionally left
+    // to the pending-measurement timeline guard; this witness has no cadence,
+    // hold-budget, output-composition, or source-sequence mutation semantics.
+    CurrentFootprintVerification VerifyCurrentFootprint(const SubtitleBoxObservation& current,
+        const AnalysisLumaSource& source,const SubtitleBoxObservation& acceptedSeed,
+        const SubtitleBoxResult& accepted,const ActivePictureBounds& base) const {
+        m_currentFootprintReceiptValid=false;
+        const auto fail=[](const char* reason){return CurrentFootprintVerification{false,0,reason};};
+        if(!m_valid || !m_reference || !m_baseline || m_native.empty())return fail("no-current-footprint-seed");
+        const auto& seed=m_reference->current;
+        if(!SameAnalysisFrameIdentity(seed.identity,acceptedSeed.identity) ||
+            seed.policyGeneration!=acceptedSeed.policyGeneration ||
+            seed.width!=acceptedSeed.width || seed.height!=acceptedSeed.height ||
+            seed.nearBarDistance!=acceptedSeed.nearBarDistance || seed.scriptHint!=acceptedSeed.scriptHint ||
+            seed.optimizationMode!=acceptedSeed.optimizationMode ||
+            !seed.sharedPicture.Matches(acceptedSeed.sharedPicture) ||
+            !SameCueResult(seed.text,accepted) || !SameCueResult(m_reference->text,accepted))
+            return fail("current-footprint-seed-identity-changed");
+        if(current.discontinuity || !ValidSource(current,source) ||
+            current.width!=seed.width || current.height!=seed.height ||
+            current.identity.transportGeneration!=seed.identity.transportGeneration ||
+            current.identity.sourceFormatGeneration!=seed.identity.sourceFormatGeneration ||
+            current.identity.analysisDomainKey!=seed.identity.analysisDomainKey ||
+            current.identity.viewportGeneration!=seed.identity.viewportGeneration ||
+            current.identity.rendererGeneration!=seed.identity.rendererGeneration ||
+            current.policyGeneration!=seed.policyGeneration ||
+            current.nearBarDistance!=seed.nearBarDistance || current.scriptHint!=seed.scriptHint ||
+            current.optimizationMode!=seed.optimizationMode ||
+            !current.sharedPicture.AvailableFor(current.identity,current.width,current.height) ||
+            current.sharedPicture.required!=seed.sharedPicture.required ||
+            !SamePhysicalBase(current.sharedPicture.bounds,seed.sharedPicture.bounds) ||
+            !SamePhysicalBase(base,m_base) ||
+            !SamePhysicalBase(base,seed.sharedPicture.bounds) ||
+            current.identity.acceptedSequence<=seed.identity.acceptedSequence ||
+            (seed.identity.sourceFrameNumber && (!current.identity.sourceFrameNumber ||
+                current.identity.sourceFrameNumber<=seed.identity.sourceFrameNumber)) ||
+            current.identity.captureTimestamp<=seed.identity.captureTimestamp ||
+            source.format!=m_source.format || source.encoding!=m_source.encoding ||
+            source.range!=m_source.range || source.colorspace!=m_source.colorspace ||
+            source.generation!=m_source.generation || source.rgbBitAlignment!=m_source.rgbBitAlignment ||
+            source.rowBytes!=m_source.rowBytes || source.chromaRowBytes!=m_source.chromaRowBytes)
+            return fail("current-footprint-context-changed");
+        auto verified=VerifyNativeFootprintPixels(source,true);
+        if(!verified.valid)return verified;
+        m_currentFootprintReceiptValid=true;m_currentFootprintReceiptIdentity=current.identity;
+        m_currentFootprintReceiptPolicy=current.policyGeneration;m_currentFootprintReceiptBase=base;
+        m_currentFootprintReceiptGeometry=m_geometry;
+        m_currentFootprintReceiptLeft=verified.protectedCleanupLeft;
+        m_currentFootprintReceiptRight=verified.protectedCleanupRight;
+        m_currentFootprintReceiptTop=verified.protectedCleanupTop;
+        m_currentFootprintReceiptBottom=verified.protectedCleanupBottom;
+        return verified;
+    }
+    // Apply a one-frame cleanup projection only after this exact current key
+    // passed pixel verification. The accepted native geometry and seed are not
+    // changed; the returned geometry merely leaves verified-edge rows live.
+    bool ApplyCurrentFootprintProtection(const SubtitleBoxObservation& currentKey,
+        const ActivePictureBounds& base,SubtitleCutPasteGeometry& currentGeometry) const {
+        const bool noCleanupProjection=m_currentFootprintReceiptTop==-1 &&
+            m_currentFootprintReceiptBottom==-1 && m_currentFootprintReceiptLeft==-1 &&
+            m_currentFootprintReceiptRight==-1 && !m_geometry.generatedCleanup.Valid();
+        const bool receipt=m_currentFootprintReceiptValid &&
+            SameAnalysisFrameIdentity(m_currentFootprintReceiptIdentity,currentKey.identity) &&
+            m_currentFootprintReceiptPolicy==currentKey.policyGeneration &&
+            SamePhysicalBase(m_currentFootprintReceiptBase,base) &&
+            SameGeometry(currentGeometry,m_currentFootprintReceiptGeometry) &&
+            SameGeometry(m_currentFootprintReceiptGeometry,m_geometry) &&
+            m_geometry.generatedCleanupRowCount==0 &&
+            (noCleanupProjection || (m_geometry.generatedCleanup.Valid() &&
+                m_currentFootprintReceiptLeft>=m_geometry.generatedCleanup.left &&
+                m_currentFootprintReceiptRight<=m_geometry.generatedCleanup.right &&
+                m_currentFootprintReceiptTop>=m_geometry.generatedCleanup.top &&
+                m_currentFootprintReceiptBottom<=m_geometry.generatedCleanup.bottom));
+        m_currentFootprintReceiptValid=false;
+        if(!receipt)return false;
+        if(noCleanupProjection) {
+            currentGeometry.pendingProtectedCleanup={};
+            return true;
+        }
+        auto projected=currentGeometry;
+        projected.generatedCleanup.left=m_currentFootprintReceiptLeft;
+        projected.generatedCleanup.right=m_currentFootprintReceiptRight;
+        projected.generatedCleanup.top=m_currentFootprintReceiptTop;
+        projected.generatedCleanup.bottom=m_currentFootprintReceiptBottom;
+        if(!projected.generatedCleanup.Valid())return false;
+        const bool changed=projected.generatedCleanup.left!=m_geometry.generatedCleanup.left ||
+            projected.generatedCleanup.right!=m_geometry.generatedCleanup.right ||
+            projected.generatedCleanup.top!=m_geometry.generatedCleanup.top ||
+            projected.generatedCleanup.bottom!=m_geometry.generatedCleanup.bottom;
+        projected.pendingProtectedCleanup=changed?m_geometry.generatedCleanup:SubtitleBoxRect{};
+        currentGeometry=projected;
+        return true;
+    }
+private:
+    bool RememberAcceptedCore(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
+        const AnalysisLumaSource& source,const ActivePictureBounds& base,
+        const SubtitleCutPasteGeometry& geometry,double frameMs,int holdMs,int backgroundMode,
+        bool allowAnalyzedStrideOne) {
+        m_samples=0;m_currentFootprintReceiptValid=false;m_cleanupChangedIndices.clear();
         const auto fail=[&](const char* reason){m_valid=false;m_used=false;m_reason=reason;return false;};
         const auto& c=preview.current;
-        if(!preview.available || !c.analyzed || c.analysisStride!=2 || c.cadenceSkipped ||
+        const bool validStride=allowAnalyzedStrideOne?
+            (c.analysisStride==1 || c.analysisStride==2):c.analysisStride==2;
+        if(!preview.available || !c.analyzed || !validStride || c.cadenceSkipped ||
             c.discontinuity || c.pendingRefresh || c.analysisRefresh || c.text.held ||
             !c.text.detected || c.text.confirmationPending || c.text.workLimit || !accepted.detected || accepted.held ||
             accepted.confirmationPending || accepted.workLimit || accepted.lineCount<1 ||
@@ -147,6 +295,7 @@ public:
                 }
             }
         }
+        m_cleanupChangedIndices.clear();m_cleanupChangedIndices.reserve(m_native.size());
         *m_reference=preview;m_reference->current.text=accepted;m_reference->text=accepted;
         m_geometry=geometry;m_base=base;m_source=source;m_source.backingOwner.reset();
         // Detector raw bits also require local picture contrast; native palette
@@ -170,6 +319,7 @@ public:
         BuildComponents(*c.ink);
         m_reference->current.ink=m_baseline;m_valid=true;m_reason="cadence-seeded";return true;
     }
+public:
     SubtitleCadenceProof Prepare(const SubtitleBoxPreview& key,const AnalysisLumaSource& source,
         const ActivePictureBounds& base,double frameMs,int holdMs) {
         return PrepareReference(key,source,base,frameMs,holdMs);
@@ -178,7 +328,7 @@ public:
     // its persistent heap result, avoiding a 64KB by-value return temporary.
     const SubtitleCadenceProof& PrepareReference(const SubtitleBoxPreview& key,const AnalysisLumaSource& source,
         const ActivePictureBounds& base,double frameMs,int holdMs) {
-        ClearInPlace(*m_work);auto& out=*m_work;m_samples=0;
+        m_currentFootprintReceiptValid=false;ClearInPlace(*m_work);auto& out=*m_work;m_samples=0;
         // Returning the heap workspace by reference from this local helper
         // avoids a second large by-value result in the caller's stack frame.
         const auto fail=[&](const char* reason)->SubtitleCadenceProof& {
@@ -186,7 +336,7 @@ public:
         };
         if(!m_valid)return fail("no-cadence-seed");
         const auto& c=key.current;const auto& old=m_reference->current;
-        if(!c.cadenceSkipped || c.analysisStride!=2 || c.analyzed || c.discontinuity ||
+        if(old.analysisStride!=2 || !c.cadenceSkipped || c.analysisStride!=2 || c.analyzed || c.discontinuity ||
             c.pendingRefresh || c.analysisRefresh || c.text.detected || c.text.workLimit ||
             !ValidSource(c,source) || !SameContext(c,old) || !SameBase(base,m_base) ||
             key.policyGeneration!=m_reference->policyGeneration ||
@@ -210,52 +360,10 @@ public:
         // Current samples need no copy of immutable component/coordinate data.
         // Reuse the compact buffer across source packets instead of allocating
         // and copying the full native proof map on every skipped input.
-        m_currentPixels.resize(m_native.size());
-        for(size_t i=0;i<m_native.size();++i) {
-            auto& pixel=m_currentPixels[i];const auto& location=m_native[i];
-            if(m_samples>=SampleBudget || !SampleValidated(source,location.x,location.y,pixel.pixel))
-                return fail("cadence-sample-budget-or-source");
-            ++m_samples;pixel.ink=Ink(pixel.pixel,*m_baseline);pixel.black=Black(pixel.pixel,*m_baseline);
-        }
+        const auto footprint=VerifyNativeFootprintPixels(source);
+        m_samples=static_cast<unsigned>(footprint.samples);
+        if(!footprint.valid)return fail(footprint.reason);
         const auto& currentPixels=m_currentPixels;
-        std::vector<unsigned> changed(m_components.size(),0);
-        std::array<unsigned,3> lineChanges{};
-        for(size_t i=0;i<m_native.size();++i) {
-            const auto& oldPixel=m_native[i];const auto& now=currentPixels[i];
-            bool fringe=false;
-            if(oldPixel.line>=0 && oldPixel.ink!=now.ink) {
-                const int owner=oldPixel.fringeComponent;
-                if(owner<0 || !NearFloor(oldPixel.pixel,*m_baseline) || !NearFloor(now.pixel,*m_baseline))
-                    return fail("cadence-current-glyph-changed");
-                const auto& component=m_components[owner];
-                if(component.area<16 || component.cores<4 ||
-                    ++changed[owner]>(std::min)(16u,(std::max)(2u,component.area/64)) ||
-                    ++lineChanges[oldPixel.line]>32)return fail("cadence-current-glyph-changed");
-                bool survivingCore=false;
-                for(const auto& d:Neighbours()) {
-                    const int at=Index(oldPixel.x+d.first,oldPixel.y+d.second);
-                    if(at>=0 && m_native[at].component==owner &&
-                        m_native[at].pixel.luma>=m_baseline->inkFloor+16 &&
-                        currentPixels[at].ink && currentPixels[at].pixel.luma>=m_baseline->inkFloor+16)
-                        survivingCore=true;
-                }
-                if(!survivingCore)return fail("cadence-current-glyph-changed");
-                fringe=true;
-            }
-            // Never tolerate a disappearing strong core, even if another edge
-            // happens to gain the same number of pixels on this frame.
-            if(oldPixel.core && (!now.ink || now.pixel.luma<m_baseline->inkFloor+16))
-                return fail("cadence-current-glyph-changed");
-            if(oldPixel.erase && !fringe) {
-                if(oldPixel.black && !now.black)return fail("cadence-current-cleanup-changed");
-                const bool owned=oldPixel.component>=0 && m_components[oldPixel.component].owned;
-                if(!oldPixel.black && !owned &&
-                    (std::abs(int(now.pixel.luma)-oldPixel.pixel.luma)>8 ||
-                     std::abs(int(now.pixel.chromaU)-oldPixel.pixel.chromaU)>8 ||
-                     std::abs(int(now.pixel.chromaV)-oldPixel.pixel.chromaV)>8))
-                    return fail("cadence-current-cleanup-changed");
-            }
-        }
         auto fresh=Snapshot(*m_baseline,currentPixels);
         for(size_t i=0;i<fresh->ownedInk.size();++i)
             fresh->ownedInk[i]=m_baseline->ownedInk[i]&fresh->rawInk[i];
@@ -295,6 +403,25 @@ private:
     static bool Contains(const SubtitleBoxRect& a,const SubtitleBoxRect& b){return SubtitleCueContinuation::Contains(a,b);}
     static bool InRaster(const SubtitleBoxRect& r,int w,int h){return r.Valid() && r.left>=0 && r.top>=0 && r.right<=w && r.bottom<=h;}
     static bool SameBase(const ActivePictureBounds& a,const ActivePictureBounds& b){return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom && a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;}
+    static bool SamePhysicalBase(const ActivePictureBounds& a,const ActivePictureBounds& b) {
+        // This witness binds source pixels, not derived ratio/authority tags.
+        return SameBase(a,b);
+    }
+    static bool SameCueResult(const SubtitleBoxResult& a,const SubtitleBoxResult& b) {
+        if(a.cue!=b.cue || a.lineCount!=b.lineCount || a.detected!=b.detected ||
+            a.held!=b.held || a.confirmationPending!=b.confirmationPending || a.revised!=b.revised ||
+            a.workLimit!=b.workLimit || a.signature!=b.signature || a.anchorSignature!=b.anchorSignature ||
+            a.lineSignatures!=b.lineSignatures ||
+            a.capturePanelMeasured!=b.capturePanelMeasured || !SameRect(a.bounds,b.bounds) ||
+            !SameRect(a.anchor,b.anchor) || !SameRect(a.sourcePanel,b.sourcePanel) ||
+            !SameRect(a.provenSourcePanel,b.provenSourcePanel) || !SameRect(a.capturePanel,b.capturePanel))return false;
+        for(int line=0;line<3;++line)
+            if(!SameRect(a.lineBounds[line],b.lineBounds[line]) ||
+                !SameRect(a.linePanels[line],b.linePanels[line]) ||
+                !SameRect(a.provenLinePanels[line],b.provenLinePanels[line]) ||
+                !SameRect(a.lineCapturePanels[line],b.lineCapturePanels[line]))return false;
+        return true;
+    }
     static bool ValidSource(const SubtitleBoxObservation& o,const AnalysisLumaSource& s){return s.IsValid() && s.width==o.width && s.height==o.height && s.generation==o.identity.transportGeneration;}
     static bool SameContext(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
         return a.identity.transportGeneration==b.identity.transportGeneration &&
@@ -341,6 +468,7 @@ private:
         if(!SameRect(a.source,b.source) || !SameRect(a.destination,b.destination) ||
             !SameRect(a.content,b.content) || !SameRect(a.generatedCleanup,b.generatedCleanup) ||
             !SameRect(a.pictureCapture,b.pictureCapture) ||
+            !SameRect(a.pendingProtectedCleanup,b.pendingProtectedCleanup) ||
             !SameRect(a.generatedCleanupExclusion,b.generatedCleanupExclusion) ||
             !SameRect(a.placementLimits,b.placementLimits) || !SameRect(a.layoutContent,b.layoutContent) ||
             !SameRect(a.layoutCoverage,b.layoutCoverage) || !SameRect(a.cleanupLimit,b.cleanupLimit) ||
@@ -498,6 +626,136 @@ private:
                 (!n.ink || n.component==owner))n.fringeComponent=owner;
         }
     }
+    bool ComputeProtectedCleanupProjection(int& projectedLeft,int& projectedRight,
+        int& projectedTop,int& projectedBottom) const {
+        const auto& cleanup=m_geometry.generatedCleanup;
+        if(!cleanup.Valid() || m_geometry.generatedCleanupRowCount ||
+            cleanup.left<m_base.left || cleanup.right>m_base.right ||
+            cleanup.top<m_base.top || cleanup.bottom>m_base.bottom ||
+            cleanup.top<m_geometry.pictureTop || cleanup.bottom>m_geometry.pictureBottom ||
+            m_cleanupChangedIndices.empty())return false;
+        int hullLeft=cleanup.right,hullRight=cleanup.left,hullTop=cleanup.bottom,hullBottom=cleanup.top;
+        const auto include=[&](const SubtitleBoxRect& r) {
+            if(!r.Valid())return;
+            const int left=(std::max)(cleanup.left,r.left),right=(std::min)(cleanup.right,r.right);
+            const int top=(std::max)(cleanup.top,r.top),bottom=(std::min)(cleanup.bottom,r.bottom);
+            if(left>=right || top>=bottom)return;
+            // Captured glyphs may extend into encoded bars beyond this native
+            // erase rectangle. Protect only the support intersecting erasure.
+            hullLeft=(std::min)(hullLeft,left);hullRight=(std::max)(hullRight,right);
+            hullTop=(std::min)(hullTop,top);hullBottom=(std::max)(hullBottom,bottom);
+        };
+        for(const auto& r:m_capture)include(r);
+        for(int line=0;line<m_reference->text.lineCount && line<3;++line)
+            include(m_reference->text.lineBounds[line]);
+        include(m_geometry.content);
+        if(hullLeft<cleanup.left || hullRight>cleanup.right || hullTop<cleanup.top || hullBottom>cleanup.bottom ||
+            hullLeft>=hullRight || hullTop>=hullBottom)return false;
+        projectedLeft=cleanup.left;projectedRight=cleanup.right;
+        projectedTop=cleanup.top;projectedBottom=cleanup.bottom;
+        for(const unsigned index:m_cleanupChangedIndices) {
+            if(index>=m_native.size())return false;
+            const auto& changed=m_native[index];
+            if(!Inside(cleanup,changed.x,changed.y) || changed.x<m_base.left || changed.x>=m_base.right ||
+                changed.y<m_base.top || changed.y>=m_base.bottom)return false;
+            if(changed.x<hullLeft)projectedLeft=(std::max)(projectedLeft,changed.x+1);
+            else if(changed.x>=hullRight)projectedRight=(std::min)(projectedRight,changed.x);
+            else if(changed.y<hullTop)projectedTop=(std::max)(projectedTop,changed.y+1);
+            else if(changed.y>=hullBottom)projectedBottom=(std::min)(projectedBottom,changed.y);
+            else return false;
+        }
+        if(projectedLeft>=projectedRight || projectedTop>=projectedBottom ||
+            projectedLeft>hullLeft || projectedRight<hullRight ||
+            projectedTop>hullTop || projectedBottom<hullBottom)
+            return false;
+        return true;
+    }
+    CurrentFootprintVerification VerifyNativeFootprintPixels(const AnalysisLumaSource& source,
+        bool allowProtectedCleanupProjection=false) const {
+        int mismatchX=-1,mismatchY=-1;
+        const auto fail=[&](size_t samples,const char* reason) {
+            return CurrentFootprintVerification{false,samples,reason,mismatchX,mismatchY};
+        };
+        if(m_native.empty() || !m_baseline || m_native.size()>SampleBudget)
+            return fail(0,"current-footprint-sample-budget-or-empty");
+        if(allowProtectedCleanupProjection) {
+            m_cleanupChangedIndices.clear();
+            m_currentFootprintReceiptValid=false;
+        }
+        m_currentPixels.resize(m_native.size());
+        size_t samples=0;
+        for(size_t i=0;i<m_native.size();++i) {
+            auto& pixel=m_currentPixels[i];const auto& location=m_native[i];
+            if(samples>=SampleBudget || !SampleValidated(source,location.x,location.y,pixel.pixel))
+                return fail(samples,"cadence-sample-budget-or-source");
+            ++samples;pixel.ink=Ink(pixel.pixel,*m_baseline);pixel.black=Black(pixel.pixel,*m_baseline);
+        }
+        const auto& currentPixels=m_currentPixels;
+        m_changedComponents.resize(m_components.size());
+        std::fill(m_changedComponents.begin(),m_changedComponents.end(),0);
+        std::array<unsigned,3> lineChanges{};
+        for(size_t i=0;i<m_native.size();++i) {
+            const auto& oldPixel=m_native[i];const auto& now=currentPixels[i];
+            bool fringe=false;
+            if(oldPixel.line>=0 && oldPixel.ink!=now.ink) {
+                const int owner=oldPixel.fringeComponent;
+                if(owner<0 || !NearFloor(oldPixel.pixel,*m_baseline) || !NearFloor(now.pixel,*m_baseline))
+                    return fail(samples,"cadence-current-glyph-changed");
+                const auto& component=m_components[owner];
+                if(component.area<16 || component.cores<4 ||
+                    ++m_changedComponents[owner]>(std::min)(16u,(std::max)(2u,component.area/64)) ||
+                    ++lineChanges[oldPixel.line]>32)return fail(samples,"cadence-current-glyph-changed");
+                bool survivingCore=false;
+                for(const auto& d:Neighbours()) {
+                    const int at=Index(oldPixel.x+d.first,oldPixel.y+d.second);
+                    if(at>=0 && m_native[at].component==owner &&
+                        m_native[at].pixel.luma>=m_baseline->inkFloor+16 &&
+                        currentPixels[at].ink && currentPixels[at].pixel.luma>=m_baseline->inkFloor+16)
+                        survivingCore=true;
+                }
+                if(!survivingCore)return fail(samples,"cadence-current-glyph-changed");
+                fringe=true;
+            }
+            // Never tolerate a disappearing strong core, even if another edge
+            // happens to gain the same number of pixels on this frame.
+            if(oldPixel.core && (!now.ink || now.pixel.luma<m_baseline->inkFloor+16))
+                return fail(samples,"cadence-current-glyph-changed");
+            if(oldPixel.erase && !fringe) {
+                if(oldPixel.black && !now.black) {
+                    mismatchX=oldPixel.x;mismatchY=oldPixel.y;
+                    return fail(samples,"cadence-current-cleanup-changed");
+                }
+                const bool owned=oldPixel.component>=0 && m_components[oldPixel.component].owned;
+                const bool changedUnownedBacking=!oldPixel.black && !owned &&
+                    (std::abs(int(now.pixel.luma)-oldPixel.pixel.luma)>8 ||
+                     std::abs(int(now.pixel.chromaU)-oldPixel.pixel.chromaU)>8 ||
+                     std::abs(int(now.pixel.chromaV)-oldPixel.pixel.chromaV)>8);
+                if(changedUnownedBacking) {
+                    mismatchX=oldPixel.x;mismatchY=oldPixel.y;
+                    if(!allowProtectedCleanupProjection || m_geometry.generatedCleanupRowCount ||
+                        !Inside(m_geometry.generatedCleanup,oldPixel.x,oldPixel.y) ||
+                        oldPixel.y<m_base.top || oldPixel.y>=m_base.bottom) {
+                        return fail(samples,"cadence-current-cleanup-changed");
+                    }
+                    if(m_cleanupChangedIndices.size()>=m_native.size())
+                        return fail(samples,"cadence-current-cleanup-changed");
+                    m_cleanupChangedIndices.push_back(static_cast<unsigned>(i));
+                }
+            }
+        }
+        int protectedLeft=m_geometry.generatedCleanup.Valid()?m_geometry.generatedCleanup.left:-1;
+        int protectedRight=m_geometry.generatedCleanup.Valid()?m_geometry.generatedCleanup.right:-1;
+        int protectedTop=m_geometry.generatedCleanup.Valid()?m_geometry.generatedCleanup.top:-1;
+        int protectedBottom=m_geometry.generatedCleanup.Valid()?m_geometry.generatedCleanup.bottom:-1;
+        const bool hasProtectedCleanup=allowProtectedCleanupProjection && !m_cleanupChangedIndices.empty();
+        if(allowProtectedCleanupProjection) {
+            if(hasProtectedCleanup && !ComputeProtectedCleanupProjection(
+                protectedLeft,protectedRight,protectedTop,protectedBottom))
+                return fail(samples,"current-cleanup-edge-not-protectable");
+        }
+        const char* reason=hasProtectedCleanup?"current-cleanup-edge-protected":"cadence-current-pixels";
+        return {true,samples,reason,mismatchX,mismatchY,protectedLeft,protectedRight,protectedTop,protectedBottom};
+    }
     template<class Pixel>
     std::shared_ptr<SubtitleInkSnapshot> Snapshot(const SubtitleInkSnapshot& p,
         const std::vector<Pixel>& pixels) const {
@@ -530,9 +788,18 @@ private:
     SubtitleCutPasteGeometry m_geometry;SubtitleBoxRect m_roi,m_cleanup;
     std::array<SubtitleBoxRect,3> m_capture{};
     std::vector<NativePixel> m_native;
-    std::vector<CurrentPixel> m_currentPixels;
+    mutable std::vector<CurrentPixel> m_currentPixels;
+    mutable std::vector<unsigned> m_changedComponents;
+    mutable std::vector<unsigned> m_cleanupChangedIndices;
     std::vector<int> m_index;
     std::vector<Component> m_components;
     std::shared_ptr<SubtitleInkSnapshot> m_baseline;
     std::shared_ptr<const SubtitleInkSnapshot> m_detectorReference;
+    mutable bool m_currentFootprintReceiptValid=false;
+    mutable ActivePictureFrameIdentity m_currentFootprintReceiptIdentity{};
+    mutable uint64_t m_currentFootprintReceiptPolicy=0;
+    mutable ActivePictureBounds m_currentFootprintReceiptBase{};
+    mutable SubtitleCutPasteGeometry m_currentFootprintReceiptGeometry{};
+    mutable int m_currentFootprintReceiptLeft=-1,m_currentFootprintReceiptRight=-1;
+    mutable int m_currentFootprintReceiptTop=-1,m_currentFootprintReceiptBottom=-1;
 };
