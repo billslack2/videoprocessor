@@ -158,7 +158,7 @@ public:
         size_t destinationSamples=0;int destinationMismatchX=-1,destinationMismatchY=-1;
         const char* destinationReason="current-destination-proof-unavailable";
         if(!VerifyDestinationNovelty(source,destinationSamples,destinationMismatchX,
-            destinationMismatchY,destinationReason)) {
+            destinationMismatchY,destinationReason,verified)) {
             m_currentFootprintReceiptValid=false;
             return {false,verified.samples+destinationSamples,destinationReason,
                 destinationMismatchX,destinationMismatchY};
@@ -880,8 +880,47 @@ private:
             std::abs(int(neighbor.chromaU)-512)<=48 && std::abs(int(neighbor.chromaV)-512)<=48 &&
             std::abs(int(seedNeighbor.chromaU)-512)<=48 && std::abs(int(seedNeighbor.chromaV)-512)<=48;
     }
+    bool IsProjectedProtectedPassThrough(int x,int y,
+        const CurrentFootprintVerification& verified) const {
+        const auto& cleanup=m_geometry.generatedCleanup;
+        if(!cleanup.Valid() || m_geometry.generatedCleanupRowCount ||
+            !Inside(cleanup,x,y))return false;
+        const SubtitleBoxRect inner{verified.protectedCleanupLeft,verified.protectedCleanupTop,
+            verified.protectedCleanupRight,verified.protectedCleanupBottom};
+        if(!inner.Valid() ||
+            (inner.left==cleanup.left && inner.top==cleanup.top &&
+                inner.right==cleanup.right && inner.bottom==cleanup.bottom) ||
+            Inside(inner,x,y))return false;
+        const auto& operation=m_geometry;
+        if(!operation.content.Valid() || !operation.destination.Valid() ||
+            !operation.source.Valid() || operation.glyphScale<=0.0f)return false;
+        const double px=x+0.5,py=y+0.5;
+        double sourceX=px+operation.source.left-operation.destination.left;
+        double sourceY=py+operation.source.top-operation.destination.top;
+        if(operation.glyphScale<0.9999f || operation.centeredGlyphMapping) {
+            sourceX=(px-operation.glyphTranslateX)/operation.glyphScale;
+            sourceY=(py-operation.glyphTranslateY)/operation.glyphScale;
+        }
+        // The shader’s reduced-glyph filter samples only within content and
+        // its owned line rectangles. Four source pixels is a conservative
+        // halo for its bilinear and downscale taps; outside it, a protected
+        // pixel takes the exact current-texture passthrough branch.
+        constexpr double glyphFilterHalo=4.0;
+        const auto insideExpanded=[&](const SubtitleBoxRect& rect) {
+            return rect.Valid() && sourceX>=rect.left-glyphFilterHalo &&
+                sourceX<rect.right+glyphFilterHalo && sourceY>=rect.top-glyphFilterHalo &&
+                sourceY<rect.bottom+glyphFilterHalo;
+        };
+        if(!insideExpanded(operation.content))return true;
+        bool haveGlyphLines=false,insideGlyphLine=false;
+        for(const auto& line:operation.glyphLines)if(line.Valid()) {
+            haveGlyphLines=true;insideGlyphLine|=insideExpanded(line);
+        }
+        return haveGlyphLines && !insideGlyphLine;
+    }
     bool VerifyDestinationNovelty(const AnalysisLumaSource& source,size_t& samples,
-        int& mismatchX,int& mismatchY,const char*& reason) const {
+        int& mismatchX,int& mismatchY,const char*& reason,
+        const CurrentFootprintVerification& verified) const {
         samples=0;mismatchX=mismatchY=-1;
         if(!m_destinationProbe.Valid())return true;
         const size_t area=size_t(m_destinationProbe.right-m_destinationProbe.left)*
@@ -902,6 +941,7 @@ private:
         for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
                 const size_t at=DestinationIndex(x,y);const auto& point=m_destinationCurrentPixels[at];
+                if(IsProjectedProtectedPassThrough(x,y,verified))continue;
                 const bool mayBright=BrightDestinationPoint(point,*m_baseline);
                 const bool mayAlternate=AlternateDestinationPoint(point,*m_baseline);
                 const bool mayDark=DarkDestinationPoint(point,*m_baseline);
@@ -918,7 +958,10 @@ private:
                     if(!bright && !alternate && !dark)continue;
                     const auto& seedPoint=m_destinationSeedPixels[at].pixel;
                     const auto& seedNeighbor=m_destinationSeedPixels[neighborAt].pixel;
-                    const bool samePair=SameSample(point,seedPoint) && SameSample(neighbor,seedNeighbor);
+                    const bool neighborPassThrough=IsProjectedProtectedPassThrough(
+                        x+dx[direction],y+dy[direction],verified);
+                    const bool samePair=SameSample(point,seedPoint) &&
+                        (neighborPassThrough || SameSample(neighbor,seedNeighbor));
                     const bool knownDarkBackground=KnownDarkBackgroundTransition(point,neighbor,
                         seedPoint,seedNeighbor,*m_baseline,m_destinationSeedDirections[at],darkBit);
                     if((bright && (!(m_destinationSeedDirections[at]&brightBit) || !samePair)) ||

@@ -320,12 +320,23 @@ inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
             !receipt.m_currentKey.sharedPicture.AvailableFor(receipt.m_currentKey.identity,
                 receipt.m_currentKey.width,receipt.m_currentKey.height)) ||
         (receipt.m_operation.valid && !receipt.m_operation.content.Valid()))return false;
+    const int currentPictureTop=receipt.m_sourceMode==SubtitlePreviewMode::None?
+        receipt.m_physicalBase.top:receipt.m_operation.pictureTop;
+    const int currentPictureBottom=receipt.m_sourceMode==SubtitlePreviewMode::None?
+        receipt.m_physicalBase.bottom:receipt.m_operation.pictureBottom;
+    if(currentPictureTop<0 || currentPictureBottom>receipt.m_currentKey.height ||
+        currentPictureTop>=currentPictureBottom)return false;
     bool expected=false;
     if(!receipt.m_consumed || !receipt.m_consumed->compare_exchange_strong(
             expected,true,std::memory_order_acq_rel))return false;
     auto cue=receipt.m_acceptedCue;cue.held=true;cue.revised=false;
     cue.confirmationPending=false;cue.workLimit=false;
     outPreview.current=receipt.m_currentKey;
+    // The worker request key is deliberately unmeasured (its picture edges are
+    // normally zero). For presentation only, expose the already verified
+    // physical extent bound to this receipt; this is not detector/bar authority.
+    outPreview.current.pictureTop=currentPictureTop;
+    outPreview.current.pictureBottom=currentPictureBottom;
     outPreview.current.analyzed=true;
     outPreview.current.pendingRefresh=true;
     outPreview.current.analysisRefresh=false;

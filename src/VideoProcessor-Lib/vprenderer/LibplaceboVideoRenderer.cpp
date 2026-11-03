@@ -16885,6 +16885,66 @@ struct LibplaceboVideoRenderer::Impl
                             ownershipInput.composition?ownershipInput.composition->generatedCleanup.right:0,
                             ownershipInput.composition?ownershipInput.composition->generatedCleanup.bottom:0);
                     }
+                    if(ownershipInput.pendingCurrentPixelsVerified &&
+                        std::strcmp(displayCaptionProof.reason,"physical-base-mismatch")==0) {
+                        const auto& observed=*ownershipInput.observation;
+                        const auto& raw=latestCropRetentionEvidence;
+                        const auto& base=ownershipInput.physicalBase;
+                        const auto& move=*ownershipInput.composition;
+                        const int pictureTop=ownershipInput.continuation?
+                            ownershipInput.continuation->pictureTop:observed.pictureTop;
+                        const int pictureBottom=ownershipInput.continuation?
+                            ownershipInput.continuation->pictureBottom:observed.pictureBottom;
+                        const int maxOutwardGuard=2*(std::max)(2,analysisSource.height/540)+
+                            SubtitlePhysicalEdgeReconciliationTolerance;
+                        const bool exactPicture=move.pictureTop==base.top && move.pictureBottom==base.bottom;
+                        const bool outwardGuardCoordinates=base.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+                            base.left==0 && base.right==analysisSource.width && base.top>0 &&
+                            base.bottom<analysisSource.height && move.pictureTop>=base.top &&
+                            move.pictureBottom<=base.bottom && move.pictureTop<move.pictureBottom &&
+                            move.pictureTop-base.top<=maxOutwardGuard && base.bottom-move.pictureBottom<=maxOutwardGuard;
+                        const bool displayAvailable=ownershipInput.currentDisplayPicture.AvailableFor(
+                            ownershipInput.currentIdentity,analysisSource.width,analysisSource.height);
+                        const bool displayIdentity=SameAnalysisFrameIdentity(
+                            ownershipInput.currentDisplayPicture.identity,ownershipInput.currentIdentity);
+                        const bool displayBounds=SameSubtitlePresentationBounds(
+                            ownershipInput.currentDisplayPicture.bounds,base);
+                        const bool sharedDisplay=observed.sharedPicture.Matches(ownershipInput.currentDisplayPicture);
+                        const int expectedTop=base.top;
+                        const int expectedBottom=analysisSource.height-base.bottom;
+                        const int expectedLeft=base.left;
+                        const int expectedRight=analysisSource.width-base.right;
+                        const bool sourceValid=analysisSource.IsValid();
+                        const bool sourceGenerationMatches=analysisSource.generation==ownershipInput.currentIdentity.transportGeneration;
+                        const bool observationSizeMatches=observed.width==analysisSource.width && observed.height==analysisSource.height;
+                        const bool baseRasterMatches=base.rasterWidth==analysisSource.width && base.rasterHeight==analysisSource.height;
+                        const bool baseCoordinatesValid=base.left>=0 && base.top>=0 && base.right<=analysisSource.width &&
+                            base.bottom<=analysisSource.height && base.left<base.right && base.top<base.bottom;
+                        const bool pictureValid=pictureTop>=0 && pictureBottom<=analysisSource.height && pictureTop<pictureBottom;
+                        const bool thresholdValid=raw.presentationBlackThreshold>0;
+                        const bool excludedTopMatches=raw.excludedTop.barPixels==expectedTop;
+                        const bool excludedBottomMatches=raw.excludedBottom.barPixels==expectedBottom;
+                        const bool excludedLeftMatches=raw.excludedLeft.barPixels==expectedLeft;
+                        const bool excludedRightMatches=raw.excludedRight.barPixels==expectedRight;
+                        const bool preparedOutwardGuard=outwardGuardCoordinates && displayAvailable && displayIdentity &&
+                            displayBounds && sharedDisplay;
+                        DebugLog::Log("Alpha prepared erasure physical-base mismatch: generation=%llu sequence=%llu source_valid=%d source_generation=%llu identity_generation=%llu source_generation_match=%d source_size=%dx%d observation_size=%dx%d observation_size_match=%d base=%d,%d-%d,%d raster=%dx%d base_raster_match=%d base_coordinates_valid=%d picture=%d-%d move_picture=%d-%d picture_valid=%d exact_picture=%d axes=%u guard_delta=%d,%d max_guard=%d guard_coordinates=%d prepared_outward_guard=%d raw_analysis=%d raw_presentation=%d black_threshold=%d threshold_valid=%d excluded_top=%d/%d top_ok=%d excluded_bottom=%d/%d bottom_ok=%d excluded_left=%d/%d left_ok=%d excluded_right=%d/%d right_ok=%d display_available=%d display_identity=%d display_bounds=%d shared_display=%d",
+                            frameGeneration,sourceSequence,sourceValid?1:0,analysisSource.generation,
+                            ownershipInput.currentIdentity.transportGeneration,sourceGenerationMatches?1:0,
+                            analysisSource.width,analysisSource.height,observed.width,observed.height,
+                            observationSizeMatches?1:0,base.left,base.top,base.right,base.bottom,
+                            base.rasterWidth,base.rasterHeight,baseRasterMatches?1:0,baseCoordinatesValid?1:0,
+                            pictureTop,pictureBottom,move.pictureTop,move.pictureBottom,pictureValid?1:0,
+                            exactPicture?1:0,static_cast<unsigned>(base.trustedBarAxes),
+                            move.pictureTop-base.top,base.bottom-move.pictureBottom,maxOutwardGuard,
+                            outwardGuardCoordinates?1:0,preparedOutwardGuard?1:0,raw.analysisValid?1:0,
+                            raw.presentationValid?1:0,raw.presentationBlackThreshold,thresholdValid?1:0,
+                            raw.excludedTop.barPixels,expectedTop,excludedTopMatches?1:0,
+                            raw.excludedBottom.barPixels,expectedBottom,excludedBottomMatches?1:0,
+                            raw.excludedLeft.barPixels,expectedLeft,excludedLeftMatches?1:0,
+                            raw.excludedRight.barPixels,expectedRight,excludedRightMatches?1:0,displayAvailable?1:0,
+                            displayIdentity?1:0,displayBounds?1:0,sharedDisplay?1:0);
+                    }
                     const auto& observed=subtitleSourcePreparation.ownershipObservation;
                     const auto& capture=relocatedSubtitle;
                     DebugLog::Log("Alpha relocated caption geometry: generation=%llu sequence=%llu prepared=%d observed_box=%d,%d-%d,%d capture=%d,%d-%d,%d source=%d,%d-%d,%d destination=%d,%d-%d,%d observed_picture=%d-%d composed_picture=%d-%d lines=%d",

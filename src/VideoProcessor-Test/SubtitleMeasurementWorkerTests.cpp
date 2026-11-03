@@ -3780,6 +3780,10 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         auto currentPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
         (*currentPixels)[30*160+5]=uint16_t(340<<6); // Moving picture background, outside cue glyphs.
         auto current=CompleteThreeLineScan(2,*currentPixels);
+        // Match the renderer's proof request: exact source/context plus the
+        // shared physical base, with no measured subtitle or picture edges.
+        current.pictureTop=0;current.pictureBottom=0;current.text={};current.ink.reset();
+        current.analyzed=false;current.barAuthority=false;current.independentBarAnalysis=false;
         SubtitleMeasurementWorker worker;worker.AdvanceCurrentCueRenderWindow(current.identity,2);
         uint64_t revision=0;
         Assert::IsTrue(worker.SubmitCurrentCueTemplate(std::move(templateInput),revision)==
@@ -3806,6 +3810,10 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         SubtitleBoxPresentation tracker;SubtitleBoxPreview preview;SubtitleBoxResult held;
         Assert::IsTrue(tracker.ConsumeCurrentCueProof(receipt,preview,held));
         Assert::IsTrue(preview.presentationOnlyCurrentCueProof && preview.current.pendingRefresh);
+        Assert::AreEqual(current.sharedPicture.bounds.top,preview.current.pictureTop,
+            L"Presentation-only Classic edges come from the verified physical base, not the unmeasured request key.");
+        Assert::AreEqual(current.sharedPicture.bounds.bottom,preview.current.pictureBottom,
+            L"The adapter restores only the verified current physical extent.");
         Assert::IsTrue(preview.current.text.held && preview.current.text.cue==seed.text.cue);
         Assert::IsFalse(preview.current.barAuthority || preview.current.independentBarAnalysis);
         Assert::IsFalse(preview.current.ink->rawEvidenceComplete);
@@ -3864,7 +3872,11 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 // luma edge; the lower-luma directional check must catch it.
                 (*currentPixels)[size_t(31)*160+61]=uint16_t(100<<6);
             }
-            const auto current=CompleteThreeLineScan(2,*currentPixels);
+            auto current=CompleteThreeLineScan(2,*currentPixels);
+            // The typed proof request is intentionally unmeasured; the adapter
+            // may expose only edges already bound to its accepted operation.
+            current.pictureTop=0;current.pictureBottom=0;current.text={};current.ink.reset();
+            current.analyzed=false;current.barAuthority=false;current.independentBarAnalysis=false;
             SubtitleMeasurementWorker worker;worker.AdvanceCurrentCueRenderWindow(current.identity,2);
             uint64_t revision=0;
             Assert::IsTrue(worker.SubmitCurrentCueTemplate(std::move(input),revision)==
@@ -3881,6 +3893,16 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 if(status==SubtitleCurrentCueProofStatus::Ready || status==SubtitleCurrentCueProofStatus::Failed ||
                     status==SubtitleCurrentCueProofStatus::Expired || status==SubtitleCurrentCueProofStatus::NotEligible)break;
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            if(mutation==0 && status==SubtitleCurrentCueProofStatus::Ready) {
+                SubtitleBoxPresentation tracker;SubtitleBoxPreview preview;SubtitleBoxResult held;
+                Assert::IsTrue(tracker.ConsumeCurrentCueProof(receipt,preview,held),
+                    L"A valid advanced proof adapts without a measured request key.");
+                Assert::AreEqual(receipt.Operation().pictureTop,preview.current.pictureTop,
+                    L"Advanced presentation edges come from the verified cut/paste operation.");
+                Assert::AreEqual(receipt.Operation().pictureBottom,preview.current.pictureBottom,
+                    L"Advanced presentation bottom is operation-bound without bar authority.");
+                Assert::IsFalse(preview.current.barAuthority || preview.current.independentBarAnalysis);
             }
             return status;
         };
