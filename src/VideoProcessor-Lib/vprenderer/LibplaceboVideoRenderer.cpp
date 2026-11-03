@@ -14701,6 +14701,7 @@ struct LibplaceboVideoRenderer::Impl
         const auto subtitleSourceProcessing=CaptureSubtitleSourceProcessingOptions(renderParams);
         const auto* subtitleSourceProcessingOptions=temporalSubtitleComposition?
             &subtitleSourceProcessing:nullptr;
+        const auto subtitleWorkStarted=SteadyClock::now();
         double currentSubtitlePreparationMs=0.0;
         const auto measureSubtitlePreparation=[&](auto&& prepare) {
             const auto before=subtitlePreparationRenderer.RenderCallCount();
@@ -15895,6 +15896,7 @@ struct LibplaceboVideoRenderer::Impl
             subtitleSourcePreparation.scanReason=currentSubtitleScanReason;
             subtitleSourcePreparation.padding=safeSubtitlePadding;
         }
+        const auto subtitleWorkFinished=SteadyClock::now();
         // Recovery can clear history during a repeated output. Recapture this
         // already prepared packet without consuming cue state again.
         if(reuseSubtitlePreparation && temporalSubtitleComposition && !temporalRenderer.HasCurrentFrame(sourceSequence)) {
@@ -22225,6 +22227,9 @@ releaseDriftBaseRetention =
 				work.metrics[3]=beforeRenderMs;work.metrics[4]=swapBlockMs;
 				work.metrics[5]=sourcePeriodMs;
                 work.metrics[6]=currentSubtitlePreparationMs;
+                work.metrics[7]=std::chrono::duration<double,std::milli>(subtitleWorkStarted-renderWorkStarted).count();
+                work.metrics[8]=std::chrono::duration<double,std::milli>(subtitleWorkFinished-subtitleWorkStarted).count();
+                work.metrics[9]=std::chrono::duration<double,std::milli>(renderStart-subtitleWorkFinished).count();
 				AnalysisDiagnosticTrace::Emit(work);
 			}
 			const double displayPeriodMs =
