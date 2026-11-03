@@ -11849,7 +11849,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
             latestActivePictureEvidenceWasStartupHypothesis = false;
             bool captionBackedStrictProofCurrent = false;
-            unsigned captionProofRoute = 0; // 1: reaffirm, 2: cold scan, 3: bridge, 4: independent worker.
+            unsigned captionProofRoute = 0; // 4: exact-current worker proof.
             double captionStandaloneMs = 0.0;
             if (automaticSourceCrop && configuredScreenActive &&
                 subtitleMeasurementEnabled && !nlsRequested &&
@@ -11867,127 +11867,9 @@ struct LibplaceboVideoRenderer::Impl
                 latestColdStrictEpoch = currentIdentity.viewportGeneration;
                 latestColdStrictDomain = currentIdentity.analysisDomainKey;
             }
-            if (!SourcePictureDetectorEnabled() && evidence.available && evidence.classification == ActivePictureClassification::PROVISIONAL)
-            {
-                ActivePictureEvidence hypothesis = hadCompatiblePresentation ? evidence :
-                    EvaluateSymmetricVerticalBarHypothesis(analysisSource, evidence);
-                // The caption may bias one raw edge. It explains the discrepancy;
-                // native bars and picture continuation still grant AR authority.
-                const bool captionRouteEligible =
-                    automaticSourceCrop && configuredScreenActive && scopeSubtitleFit &&
-                    SubtitlePreviewEnabled(activeSettings) && !nlsRequested &&
-                    !fixedCropAspectConfigured && globalNearBlack.evaluated &&
-                    !globalNearBlack.nearBlack;
-                if (!captionBackedStrictProofCurrent && captionRouteEligible && hadCurrentTrustedCropGeometry &&
-                    currentSubtitlePreview && currentSubtitlePreview->available)
-                {
-                    auto workerProof = EvaluateCurrentCaptionVerticalBarReaffirmation(
-                        analysisSource, evidence, presentationBeforeObservation,
-                        currentSubtitlePreview->current, currentIdentity,
-                        localBoundaryPolicyGeneration, localBoundaryContinuityGeneration,
-                        activeSettings.subtitleScriptHint);
-                    if (workerProof.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
-                    {
-                        hypothesis = workerProof;
-                        captionBackedStrictProofCurrent = true;
-                        captionProofRoute = 1;
-                    }
-                }
-                if (captionRouteEligible && !captionBackedStrictProofCurrent)
-                {
-                    // Initial publication needs adjacent confirmations, and queued
-                    // subtitle observations may still carry the old picture authority.
-                    // The bridge covers exactly that model plus lookahead horizon;
-                    // after it, an absent worker cannot trigger per-frame scans.
-                    const uint64_t bridgeFrames =
-                        ActivePictureTransitionModel::INITIAL_CONFIRMATIONS +
-                        SubtitleBoxLookahead::MaxFrames;
-                    const uint64_t coldProbeInterval = std::max<uint64_t>(1,
-                        static_cast<uint64_t>(std::llround(std::max(1.0, framesPerSecond))));
-                    AlphaSourceCrop::CaptionBootstrapScanInput scanInput;
-                    scanInput.sourceGeneration = analysisSource.generation;
-                    scanInput.analysisDomainKey = currentIdentity.analysisDomainKey;
-                    scanInput.acceptedSequence = frameNumber;
-                    scanInput.attemptGeneration = captionBootstrapSourceGeneration;
-                    scanInput.attemptDomainKey = captionBootstrapAnalysisDomainKey;
-                    scanInput.lastStandaloneSequence = captionBootstrapLastStandaloneSequence;
-                    scanInput.firstProofSequence = captionBootstrapFirstProofSequence;
-                    scanInput.bridgeFrames = bridgeFrames;
-                    scanInput.coldProbeIntervalFrames = coldProbeInterval;
-                    scanInput.hasEstablishedGeometry = hadCompatiblePresentation;
-                    scanInput.establishedMatchesProof = hadCurrentTrustedCropGeometry &&
-                        presentationBeforeObservation.left == captionBootstrapProofBounds.left &&
-                        presentationBeforeObservation.top == captionBootstrapProofBounds.top &&
-                        presentationBeforeObservation.right == captionBootstrapProofBounds.right &&
-                        presentationBeforeObservation.bottom == captionBootstrapProofBounds.bottom;
-                    const auto scanAction = AlphaSourceCrop::SelectCaptionBootstrapScan(scanInput);
-                    if (scanAction != AlphaSourceCrop::CaptionBootstrapScanAction::NONE)
-                    {
-                        // A new cold probe starts a new bounded sequence of
-                        // confirmations; it never extends an expired bridge.
-                        if (scanAction == AlphaSourceCrop::CaptionBootstrapScanAction::COLD_PROBE)
-                        {
-                            captionBootstrapFirstProofSequence = 0;
-                            captionBootstrapProofBounds = {};
-                        }
-                        const auto scanStart = SteadyClock::now();
-                        captionBootstrapSourceGeneration = analysisSource.generation;
-                        captionBootstrapAnalysisDomainKey = currentIdentity.analysisDomainKey;
-                        captionBootstrapLastStandaloneSequence = frameNumber;
-                        auto scanned = EvaluateSymmetricVerticalBarHypothesis(
-                            analysisSource, evidence, true);
-                        if (scanned.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
-                        {
-                            SubtitleBoxDetector captionScanner;
-                            captionScanner.SetScriptHint(activeSettings.subtitleScriptHint);
-                            const auto& bounds = scanned.trustedBounds;
-                            const auto caption = captionScanner.Analyze(analysisSource,
-                                bounds.top, bounds.bottom, frameNumber,
-                                currentIdentity.viewportGeneration);
-                            const int step = std::max(2, analysisSource.height / 540);
-                            const bool displacedTop = bounds.top > evidence.proposedBounds.top + step;
-                            const bool displacedBottom = bounds.bottom < evidence.proposedBounds.bottom - step;
-                            const bool actualInkCrosses = caption.detected && !caption.held &&
-                                !caption.workLimit && caption.anchor.Valid() &&
-                                caption.nearBarEligibilityMeasured && caption.nearBarEligible &&
-                                ((displacedTop && caption.anchor.top < bounds.top &&
-                                    caption.anchor.bottom > bounds.top) ||
-                                 (displacedBottom && caption.anchor.top < bounds.bottom &&
-                                    caption.anchor.bottom > bounds.bottom));
-                            if (!actualInkCrosses)
-                                scanned = evidence;
-                        }
-                        if (scanned.classification == ActivePictureClassification::PROVISIONAL)
-                            scanned = EvaluateCaptionBackedVerticalBarHypothesis(
-                                analysisSource, evidence, activeSettings.subtitleScriptHint, frameNumber);
-                        const bool exactEstablishedGeometry = !hadCompatiblePresentation ||
-                            (hadCurrentTrustedCropGeometry &&
-                             scanned.trustedBounds.left == presentationBeforeObservation.left &&
-                             scanned.trustedBounds.top == presentationBeforeObservation.top &&
-                             scanned.trustedBounds.right == presentationBeforeObservation.right &&
-                             scanned.trustedBounds.bottom == presentationBeforeObservation.bottom);
-                        if (scanned.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
-                            exactEstablishedGeometry)
-                        {
-                            hypothesis = scanned;
-                            captionBackedStrictProofCurrent = true;
-                            captionProofRoute = scanAction == AlphaSourceCrop::CaptionBootstrapScanAction::COLD_PROBE ? 2 : 3;
-                            if (!hadCompatiblePresentation && !captionBootstrapFirstProofSequence)
-                            {
-                                captionBootstrapFirstProofSequence = frameNumber;
-                                captionBootstrapProofBounds = scanned.trustedBounds;
-                            }
-                        }
-                        captionStandaloneMs = std::chrono::duration<double, std::milli>(
-                            SteadyClock::now() - scanStart).count();
-                    }
-                }
-                if (hypothesis.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
-                {
-                    evidence = hypothesis;
-                    latestActivePictureEvidenceWasStartupHypothesis = !hadCompatiblePresentation;
-                }
-            }
+            // Caption-backed AR may use only the exact-current worker proof above.
+            // If it is missing or late, leave provisional evidence unpromoted and
+            // present the current source; optional bootstrap scans never run here.
             if (currentSubtitlePreview && currentSubtitlePreview->current.analyzed &&
                 SameAnalysisFrameIdentity(currentSubtitlePreview->current.identity,currentIdentity) &&
                 frameNumber % 120 == 0) {
