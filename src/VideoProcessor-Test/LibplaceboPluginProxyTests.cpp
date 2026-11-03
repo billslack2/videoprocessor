@@ -5495,7 +5495,16 @@ namespace VideoProcessorTest
                     (admission.flags&2u) && !(admission.flags&(1u|4u|8u|32u|64u)) &&
                     admission.recordSequence<output.recordSequence)
                     admissionMatch=&admission;
-                if(!admissionMatch)return reject("exact-current-unknown-subtitle-admission-order-and-context");
+                if(!admissionMatch) {
+                    std::ostringstream detail;detail<<"exact-current-unknown-subtitle-admission-order-and-context output_ord="
+                        <<output.recordSequence<<" output_instance="<<output.rendererInstanceKey
+                        <<" output_policy="<<output.policyGeneration<<" expected_mode="<<unsigned(expectedCanvasMode);
+                    for(const auto& a:spatialCanvas)if(a.acceptedSequence==output.acceptedSequence)
+                        detail<<" candidate[ord="<<a.recordSequence<<",context="<<sameCurrentContext(a)
+                            <<",source="<<(a.sourceFrameNumber==output.sourceFrameNumber && a.captureTimestamp==output.captureTimestamp)
+                            <<",mode="<<a.counters[0]<<",caption_state="<<a.counters[1]<<",flags="<<a.flags<<']';
+                    return reject(detail.str().c_str());
+                }
                 const AnalysisDiagnosticRecordV1* sourceMeasurement=nullptr;
                 for(const auto& source:spatialProduced)if(!strcmp(source.stage,"source-picture-active") &&
                     source.acceptedSequence==output.acceptedSequence && source.sourceFrameNumber==output.sourceFrameNumber &&
