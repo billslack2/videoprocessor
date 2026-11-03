@@ -1,0 +1,9 @@
+{
+  "sourceCommit": "facc621217c2f69430e69e0dea5fc8504612e645",
+  "sourceDirty": false,
+  "scope": "Two focused current-raw GPU checks on the standard dependency; not runtime qualification",
+  "testExit": 0,
+  "binary": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\x64\\Release\\VideoProcessor-Test.dll",
+  "sha256": "7B7C83DDD01A90D14D1DE10631B366AAB1D14B9A4A37AE66BE423791A07F53D6",
+  "unchanged": true
+}

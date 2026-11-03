@@ -4,6 +4,39 @@
 
 Review
 
+2026-11-03 deep timing review: live HDMI throughput, bounded latency and independent
+current-frame presentation are now permanent personal/repository AGENTS.md rules.
+Static subtitle cues lasting seconds are explicit context: reuse verified layout
+with fresh current-pixel/novelty/backing checks, never old movie/cleanup pixels.
+
+The current-source fallback repair is still under validation and has NOT been
+deployed. Last deployment by this chat remains 53058498. Native contracts pass
+1,058/1,058 at d3f07cd8. At facc6212, Standard/Beta caption/UI bursts pass startup
+and real SDR-to-HDR input transition with 24 consecutive current-source outputs;
+worst steady submit gap is 48.9904ms at 23.976 input Hz, mean input-to-submit delay
+stays about 127ms without growth on the unchanged four-frame fixture queue. All
+four existing 4K V210 Classic/Black UI/return checks pass; two standard-dependency
+raw-current GPU/BOB checks pass. These are focused evidence, not full qualification.
+
+The strict persistent-cue tests at c01ba269 correctly block deployment: steady
+Standard Black source17 and Beta Reconstruction source20 drop current composition
+after the pending verifier samples moving background at (1548,1886), four pixels
+outside glyphs beginning x1552. The cue template survives backlog retirement,
+but the expanded-ROI exact-color check rejects it. A fresh full scan reassociates
+the identical cue on the next source. The fix in progress separates current owned
+glyph identity from movie background and adds current-band novelty/backing evidence;
+steady/composed/pinned viewport and pixel assertions remain strict. A separate
+Classic startup no-seed fallback is being distinguished from an acquired pose.
+
+Review also found that the older unprocessed native-canvas path can still select
+an older composed movie packet in temporal mode; a separate exact-current marker
+is implemented but untested. Shader-warmup handling is being checked for current
+outboard caption preservation. No queues/timeouts were increased, no user config
+was edited, and no passing release or live-scene acceptance is claimed.
+
+[Timing/lifetime findings and remote provenance](../assets/VP-0225/cue-timing-review-20261103/findings.md).
+Focused receipts and the failing persistent-cue receipt are in that evidence folder.
+
 Blocking playback regressions reported after deployment: Classic stops with a
 volume overlay and during dense subtitles; Off repeatedly changes framing.
 Current deployed source remains 53058498 and is not qualified. The partial full

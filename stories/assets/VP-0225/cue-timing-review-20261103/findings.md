@@ -1,0 +1,46 @@
+# Subtitle timing and cue reuse review
+
+Snapshot reviewed: `E:\\codex\\videoprocessor\\combined-ar-stutter-20261102`, HEAD `0571be385346b374ad1d75b68d350e0f581ef6a4`. The worktree contained the in-progress current-source fallback repair; this read-only timing review changed no source files and ran no builds or tests.
+
+## Findings
+
+A stable cue’s **accepted layout** is reusable as a hypothesis, but the current detector does not cache a measurement across different movie inputs. Current code deliberately binds detector output, ink, and certificates to the exact source identity. A safe speedup can retain cue geometry and glyph descriptors, then verify them against pixels from each current input. It cannot use a previous input’s ink, backing, cleanup, or picture pixels as if they belonged to the current input.
+
+| Concern | Current owner and lifetime |
+| --- | --- |
+| Text detection and raw/owned ink | `SubtitleBoxDetector::Analyze` produces `SubtitleBoxResult` and a new `SubtitleInkSnapshot` for an input. The snapshot contains sampled raw ink, owned ink, and black backing. These are current-source evidence, not a reusable movie-frame cache. |
+| Accepted cue and its layout | `SubtitleBoxPresentation` retains `m_result`, `m_reference`, and `m_inkReference` as a cue template. It compares new observations against that template, holds or changes layout, and separately confirms new extensions. Its cue-scoped bounds/signatures are usable for comparison; the saved ink remains the old reference, not current pixels. |
+| Current local glyph check | `RefreshReferencePixels` samples the current `AnalysisLumaSource` over accepted line neighborhoods (budget 65,536 samples), using the acquired palette, and makes a current comparison copy. `SubtitleCueContinuationGuard::Verify` also samples the current source in a bounded ROI (131,072 maximum), but only on edge-loss/local-evidence paths. It rejects changed glyphs, new sampled ink outside the cue, or changed backing. These are pixel rechecks, not full-scanner replacements. |
+| Held erasure certificate | `SubtitleCurrentPreparedCueCertificate` matches only the same analysis-frame identity and the same current ink object, plus the current full-search/result/context and physical base. It validates this source’s prepared erasure; it cannot certify the next movie input. |
+| Placement/layout geometry | `SubtitleLayoutAnchor` may retain a destination when fresh glyphs and current limits match. `SubtitleCutPastePresentation` caches geometry/card measurements, with current cue and policy checks. Its comment says “Geometry alone is cached. The renderer samples fresh pixels every frame.” |
+| Renderer preparation and repeated output | `SubtitleSourcePreparation` is keyed by frame generation, source sequence, viewport epoch, and preview mode. It can reuse a complete packet for a retry/repeated output of that source, not a different input sequence. |
+| Detector worker results | `SubtitleMeasurementWorker::SameKey`, READY admission, and `CanReuseMeasurement` require exact analysis-frame identity. Raw predecessor history can retain up to three independently scanned prior sources for confirmation; those observations are history, not current cue or pixel authority. |
+
+## Where repeated work occurs
+
+- `SubtitleBoxDetector::Analyze` returns its previous result only when the incoming sequence equals `m_sequence` (`SubtitleBoxDetector.cpp:2595–2610`). A new source sequence runs `Detect` again. The worker’s `SameKey` requires `SameAnalysisFrameIdentity` (`SubtitleMeasurementWorker.h:267–291`), which includes transport generation, accepted sequence, source frame number, capture timestamp, source-format generation, viewport generation, renderer generation, and analysis-domain key. Its completed-result matching also checks detector settings and dimensions.
+- `SubtitleBoxLookahead::Measure` can first measure current physical bars, then run a detector probe for an ambiguous edge, and then run the full current search. A no-shared-authority scan can also try a tracked-bottom hypothesis or an outer-third probe before the final scan. An optional near-bar pass calls `Detect` again after a miss. The bounded work is still source-specific.
+- At 3840×2160, `SamplingStep` is 4, giving a 960×540 detector grid. Each `Detect` samples the top and bottom search corridors; their depth is `max(24, gridHeight/7) + nearBarDistance/step`. It builds thresholds, raw/owned/black masks, components, and line groups from those current samples. The component cap is 768. Optimization mode 2 resets its sampled-row bitmap at the start of each `Analyze`; it shares current pixels between passes within that input, not between movie frames.
+- The renderer also calls `SubtitleBoxPresentation::RefreshReferencePixels` after obtaining the current preview. That extra bounded sample is an identifiable overlap with current detector data, although it intentionally uses the original cue palette to compare the acquired glyphs. The continuation guard’s larger sample budget applies only when its stricter edge/local conditions hold.
+- At ≤30 input Hz, `InputFrameAnalysisDue` makes every input due; above 30 Hz it alternates source sequences unless a complete presentation repeat is ready. Thus a 23.976-Hz source can run a full subtitle measurement for every new source frame while the cue remains static. Repeated renderer outputs do not create new measurements.
+
+This establishes recurring work from code, not its wall-clock cost. The renderer logs five-second full-scan count/rate, average and peak scan time, queue wait, and consume time in `SUBTITLE PERFORMANCE CPU` (`LibplaceboVideoRenderer.cpp:16052–16070`). Those metrics are not partitioned by “same accepted cue” versus changed/new cue, so no stable-cue savings estimate is supported without a measured playback window.
+
+## Safe reuse boundary
+
+A worthwhile design is a two-part path: keep the accepted cue’s layout and glyph signature as a cue-scoped template, and produce fresh current-source evidence each input. A current local verifier can avoid redoing expensive grouping when existing glyphs still match, but it must not stand alone: the current code’s own detector comment explains that checking only old glyph rectangles misses a new word or companion outside them. Keep a current novelty search over the eligible subtitle bands, and fall back to full grouping whenever it finds new ink, the cue changes, or current verification is ambiguous. Do not let this fast path claim that no caption exists.
+
+The fast path must fail closed on source sequence gaps, seek/discontinuity, changed transport/source-format/analysis-domain/viewport/renderer generation, dimensions or pixel interpretation, picture-edge movement, policy/continuity change, script/near-bar/optimization change, loss of the old glyph footprint, changed backing, work-limit, or newly sampled ink outside accepted lines. These match the context fields already used by the worker, continuation guard, and presentation tracker. In particular, do not reuse an old `SubtitleInkSnapshot`, cleanup mask, background, card, or captured source pixels for a new sequence. Recompute all pixel-dependent extraction, cleanup, and erasure from that sequence.
+
+For a timing experiment, log the full detector calls and milliseconds separately from cue-local samples and novelty checks, with source sequence and whether the accepted cue was unchanged. Test stable text over moving picture, a disappearing cue, a same-location replacement, a new second line/companion, brief glyph dropout, and picture-edge/profile changes. That separates scan savings from delayed caption-change decisions.
+
+## Remote history comparison
+
+- Pre-RC6 beta ref `origin/v1.4.01-beta` at `c71b44593cad5ba5dd8bd7ec369f0d3a5965ff72` (2026-10-14) already returned cached detector results only for the same sequence (`SubtitleBoxDetector.cpp:2384–2385`); it did not reuse detector output across new source frames. That ref has the sampler but no `SubtitleCueContinuation.h`.
+- Verified remote RC6 tag `1.4-beta-rc6` at `7af23836ae937353edb50a5b1b3f8e9176634480` adds the bounded current-pixel continuation guard; its detector still uses exact-sequence reuse. It did not contain `SubtitleCurrentPreparedCueCertificate.h`.
+- The current prepared-cue certificate was added after RC6 by `325a76c4` (“Verify current held-caption erasure without renewing semantic or analysis ownership”). It narrows held-erasure proof to the exact current source; it is not a cross-frame analysis cache.
+
+The history therefore shows a long-standing per-input scan policy, with later additions making cue continuity and held erasure safer. It does not show that a stable cue is already skipping full scans across movie frames.
+
+
+Provenance verification: GitHub confirms remote v1.4.01-beta is c71b44593cad5ba5dd8bd7ec369f0d3a5965ff72; git ls-remote confirms remote 1.4-beta-rc6 is 7af23836ae937353edb50a5b1b3f8e9176634480. The first local RC6 inspection used stale local tag e3a34b6c. A comparison of SubtitleBoxDetector.cpp, SubtitleBoxLookahead.h, SubtitleMeasurementWorker.h, SubtitleCueContinuation.h and SubtitleCurrentPreparedCueCertificate.h between those RC6 commits has no differences, so the timing conclusions are unchanged. The local tag is not release authority.
