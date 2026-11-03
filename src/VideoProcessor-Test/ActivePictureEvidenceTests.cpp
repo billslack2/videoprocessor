@@ -3115,12 +3115,21 @@ namespace VideoProcessorTest
             Assert::IsTrue(receipt.Matches(f.observation,f.accepted,f.base,input.currentDisplayPicture,
                 f.composition,input.mode,input.policyGeneration,input.continuityGeneration),
                 L"The fixture must satisfy every exact-current receipt binding before testing downstream ownership.");
+            const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+            Assert::IsFalse(semantic.qualified,
+                L"A pending prepared-erasure receipt cannot qualify native ownership or semantic subtitle evidence.");
             const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
             Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly,
                 L"An exact-current verified pending footprint may preserve its already-held cue composition without bar authority.");
             Assert::IsFalse(prepared.renewsHold);
-            Assert::IsFalse(prepared.retention.currentlyPixelSafe,
-                L"Prepared erasure cannot claim the remaining source bands are safe or acquire native authority.");
+            Assert::IsTrue(prepared.retention.excludedBandsPixelSafe,
+                L"The prepared output still requires current-source proof that every remaining excluded band is pixel safe.");
+            Assert::AreEqual(int(raw.activePicture.classification),int(prepared.retention.activePicture.classification));
+            Assert::AreEqual(int(raw.activePicture.authorityOrigin),int(prepared.retention.activePicture.authorityOrigin));
+            Assert::AreEqual(raw.activePicture.trustedBounds.top,prepared.retention.activePicture.trustedBounds.top);
+            Assert::AreEqual(raw.activePicture.trustedBounds.bottom,prepared.retention.activePicture.trustedBounds.bottom);
+            Assert::AreEqual(raw.activePicture.reason,prepared.retention.activePicture.reason,
+                L"Prepared erasure retains raw picture evidence instead of promoting its display-only receipt.");
             Assert::IsFalse(CommitQualifiedSubtitlePresentationHold({},prepared,f.observation.identity,f.base,
                 input.mode,7,9,1000,true,false,10000000).available,
                 L"A pending footprint receipt cannot seed a caption lease.");
