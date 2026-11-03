@@ -16400,7 +16400,7 @@ struct LibplaceboVideoRenderer::Impl
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
              coldStrictWorkerProof, coldStrictWorkerPicture,
-             subtitleIdentity, captureClockFrequency, sceneDetectorGeneration, &temporalPolicyCaptionProof, &temporalPolicyDecisionFacts, &currentSubtitlePreview,
+             subtitleIdentity, captureClockFrequency, sceneDetectorGeneration, &temporalPolicyCaptionProof, &temporalPolicyDecisionFacts, &rawSubtitleFallbackCurrent, &currentSubtitlePreview,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
              currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels, &qualifiedPendingFinalPixels, cadenceCacheDiagnostic,
@@ -20877,7 +20877,7 @@ releaseDriftBaseRetention =
                             return temporalRenderer.RenderCurrentRaw(renderer,source,destination,parameters,
                                 pictureProcessingEpoch,sourceSequence,frameGeneration,viewportRequestSerial,
                                 AlphaSourceFormatKey(state),queuedAnalysisDomainKey);
-                        if(temporalRenderer.interlaced)return false;
+                        if(temporalRenderer.Interlaced())return false;
                         const bool directRendered=pl_render_image(renderer,&source,&destination,&parameters);
                         return directRendered&&temporalRenderer.MarkCurrentRawDirectOutput(
                             sourceSequence,temporalRenderer.currentPts);

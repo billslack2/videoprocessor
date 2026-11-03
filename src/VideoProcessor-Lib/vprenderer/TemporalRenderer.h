@@ -350,6 +350,7 @@ public:
     void ResetHistoryAfterSourceGap(){ResetHistory(true);}
     void Bypass(const std::string& reason){Clear();mixing=false;interlaced=false;skipOutput=false;status=reason;}
     bool Active() const{return mixing||interlaced;}
+    bool Interlaced() const{return interlaced;}
     bool Mixing() const{return mixing;}
     static bool WillDeinterlace(const MotionConfig::Settings& requested,
         bool inputInterlaced,int inputOrder) {
