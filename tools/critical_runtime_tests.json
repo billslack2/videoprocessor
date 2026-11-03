@@ -879,6 +879,11 @@
     {
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
+      "method": "HeldCurrentPreparedCueAcceptsOnlyVerifiedSingleGridCellLineInset"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
       "method": "HeldPendingSeedPreservationRejectsUnprovenForeignChangedAndExpiredProof"
     },
     {
