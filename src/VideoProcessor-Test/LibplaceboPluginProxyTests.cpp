@@ -37,7 +37,7 @@ namespace
     bool IsCurrentRawSubtitleFallback(const AnalysisDiagnosticRecordV1& output,
         const AnalysisDiagnosticRecordV1& admission,int width,int height) {
         if(strcmp(output.stage,"submitted-presentation")||strcmp(admission.stage,"subtitle-canvas-admission")||
-            !(output.flags&1u)||(output.flags&(2u|16u|32u|64u|4096u|8192u|16384u))||
+            !(output.flags&1u)||(output.flags&(2u|16u|32u|64u|1024u|4096u|8192u|16384u))||
             !(admission.flags&32u)||!(admission.flags&2u)||(admission.flags&(1u|4u))||
             !output.acceptedSequence||output.counters[0]!=output.acceptedSequence||output.counters[1]!=output.acceptedSequence||
             admission.acceptedSequence!=output.acceptedSequence||admission.rendererInstanceKey!=output.rendererInstanceKey||
@@ -399,7 +399,7 @@ namespace VideoProcessorTest
             for(int i=0;i<4;++i)admission.previous[i]=output.published[i];
             admission.metrics[8]=0;admission.metrics[9]=20;admission.metrics[10]=640;admission.metrics[11]=316;
             Assert::IsTrue(IsCurrentRawSubtitleFallback(output,admission,640,360));
-            for(int fault=0;fault<21;++fault) {
+            for(int fault=0;fault<22;++fault) {
                 auto bad=output;auto witness=admission;
                 if(fault==0)--bad.counters[0];if(fault==1)--bad.counters[1];
                 if(fault==2)++bad.sourceFrameNumber;if(fault==3)++bad.captureTimestamp;
@@ -412,8 +412,9 @@ namespace VideoProcessorTest
                 if(fault==16)bad.flags|=32u|64u;if(fault==17)bad.flags|=8192u;
                 if(fault==18)bad.flags|=16384u;if(fault==19)witness.flags&=~64u;
                 if(fault==20)bad.metrics[8]=bad.displayed[0]+1.0;
+                if(fault==21)bad.flags|=1024u;
                 Assert::IsFalse(IsCurrentRawSubtitleFallback(bad,witness,640,360),
-                    L"Raw fallback must preserve exact source/context, all current pixels, and no processed/absence/native authority.");
+                    L"Raw fallback must preserve exact source/context and pixels without composition, pose, certificate, or absence authority.");
             }
             auto full=output;auto noWitness=admission;
             full.counters[4]=0;full.displayed[0]=full.displayed[1]=0;
@@ -4220,6 +4221,15 @@ namespace VideoProcessorTest
                                 require(preparation.state!="failed",L"Shader preparation failed instead of completing bounded startup.");
                                 if(!composed&&!building)require(record.metrics[8]<=0&&record.metrics[10]>=width&&top<=pictureTop&&bottom>=captionBottom,
                                     L"Unprepared output outside explicit shader building clipped the persistent raw caption or picture.");
+                                const auto admission=classicCanvasAdmissions.find(
+                                    {record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
+                                const bool admissionClaimsRawFallback=admission!=classicCanvasAdmissions.end()&&
+                                    (admission->second.flags&32u)!=0;
+                                const bool exactRawFallback=admissionClaimsRawFallback&&
+                                    IsCurrentRawSubtitleFallback(record,admission->second,width,height);
+                                if(admissionClaimsRawFallback)
+                                    require(exactRawFallback,
+                                        L"Explicit startup raw fallback lacks the exact current source, all-pixels, and no-authority join.");
                                 if(record.counters[4]>0) {
                                     require(record.published[0]==0&&record.published[2]==width&&
                                         record.published[1]>=pictureTop-8&&record.published[1]<=pictureTop&&
@@ -4235,9 +4245,14 @@ namespace VideoProcessorTest
                                             <<" requested="<<preparation.requested<<" effective="<<preparation.effective;
                                         Logger::WriteMessage(acquisition.str().c_str());
                                     }
-                                    for(int edge=0;edge<4;++edge)require(record.published[edge]==warmupNative[edge]&&
-                                        std::abs(record.metrics[8+edge]-record.published[edge])<0.01,
-                                        L"Shader preparation changed the fixed native picture viewport.");
+                                }
+                                if(warmupNativeKnown) {
+                                    for(int edge=0;edge<4;++edge) {
+                                        require(record.published[edge]==warmupNative[edge],
+                                            L"Shader preparation changed the fixed accepted native picture contract.");
+                                        if(!exactRawFallback)require(std::abs(record.metrics[8+edge]-record.published[edge])<0.01,
+                                            L"Non-fallback shader preparation changed the fixed native picture viewport.");
+                                    }
                                 }
                                 if(composed&&!ready){
                                     require(record.counters[4]>0&&record.published[0]==0&&record.published[2]==width&&
