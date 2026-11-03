@@ -3822,7 +3822,7 @@ namespace VideoProcessorTest
                 std::array<SubtitleStageTiming,8> subtitleStageTimings{};
                 std::vector<AnalysisDiagnosticRecordV1> cueBudgetEvents;
                 auto collectSubtitleStageTiming=[&](const AnalysisDiagnosticRecordV1& record) {
-                    if(!strcmp(record.stage,"worker-complete") || !strcmp(record.stage,"subtitle-cue-proof-consumed") ||
+                    if(!strcmp(record.stage,"worker-complete") || !strcmp(record.stage,"worker-cue-proof") || !strcmp(record.stage,"subtitle-cue-proof-consumed") ||
                         !strcmp(record.stage,"source-frame-work"))cueBudgetEvents.push_back(record);
                     size_t index=subtitleStageTimings.size();
                     if(!strcmp(record.stage,"subtitle-pending-pixels"))index=0;
@@ -4897,11 +4897,12 @@ namespace VideoProcessorTest
                     if(requireCurrentCueWorkerBudget) {
                         std::set<uint64_t> consumedProofSources,frameWorkSources;
                         size_t groupedScans=0,legacyForegroundCalls=0;bool workerThreadsValid=true;
-                        std::vector<double> bindMs,frameWorkMs,presentWaitMs;
+                        std::vector<double> bindMs,frameWorkMs,presentWaitMs,workerProofMs;
                         for(size_t stage=0;stage<4;++stage)legacyForegroundCalls+=subtitleStageTimings[stage].calls;
                         for(const auto& event:cueBudgetEvents) {
                             if(event.sourceFrameNumber<steadyStartSourceFrameNumber || event.sourceFrameNumber>lastInputSourceFrame)continue;
                             if(!strcmp(event.stage,"worker-complete")) {++groupedScans;continue;}
+                            if(!strcmp(event.stage,"worker-cue-proof") && std::isfinite(event.metrics[0]) && event.metrics[0]>=0)workerProofMs.push_back(event.metrics[0]);
                             if(!strcmp(event.stage,"subtitle-cue-proof-consumed") && (event.flags&1u)) {
                                 consumedProofSources.insert(event.sourceFrameNumber);
                                 workerThreadsValid&=event.counters[1]&&event.counters[2]&&event.counters[1]!=event.counters[2];
@@ -4925,20 +4926,23 @@ namespace VideoProcessorTest
                             <<" grouped_scans="<<groupedScans<<" legacy_foreground_calls="<<legacyForegroundCalls
                             <<" frame_work_samples="<<frameWorkMs.size()<<" frame_work_p50_ms="<<percentile(frameWorkMs,.50)
                             <<" frame_work_p95_ms="<<frameP95<<" frame_work_max_ms="<<percentile(frameWorkMs,1)
+                            <<" worker_proof_p95_ms="<<percentile(workerProofMs,.95)<<" worker_proof_max_ms="<<percentile(workerProofMs,1)
                             <<" render_bind_p95_ms="<<bindP95<<" render_bind_max_ms="<<percentile(bindMs,1)
                             <<" present_wait_p95_ms="<<percentile(presentWaitMs,.95)
                             <<" worker_thread_is_separate="<<workerThreadsValid;
                         Logger::WriteMessage(workerBudget.str().c_str());
                         require(consumedProofSources.size()*5>=timingDistinctSources.size()*4,
                             L"A five-second unchanged cue did not use current worker proofs for at least 80% of sources.");
-                        require(groupedScans*5<=timingDistinctSources.size(),
-                            L"An unchanged cue still launched full grouping for more than 20% of sources.");
+                        require(groupedScans*2<=timingDistinctSources.size() && groupedScans<=size_t(std::ceil(double(lastSubmitWallNs-firstSubmitWallNs)/1.0e9*12.0))+4,
+                            L"An unchanged cue exceeded the bounded semantic refresh grouping budget.");
                         require(legacyForegroundCalls==0,
                             L"Expensive legacy cue proof/template setup is still invoked synchronously from rendering.");
                         require(workerThreadsValid&&bindP95>=0&&bindP95<=sourcePeriodMs*.1,
                             L"Current cue receipt binding is not a separate-worker result with bounded render-thread cost.");
-                        require(frameWorkSources.size()*10>=timingDistinctSources.size()*9&&frameP95>=0&&frameP95<=sourcePeriodMs,
-                            L"Measured capture/render critical-path work does not fit the input frame budget.");
+                        require(frameWorkSources.size()*10>=timingDistinctSources.size()*9&&frameP95>=0&&percentile(frameWorkMs,1)<=sourcePeriodMs,
+                            L"Worst measured capture/render critical-path work does not fit the input frame budget.");
+                        require(!workerProofMs.empty()&&percentile(workerProofMs,1)<=sourcePeriodMs,
+                            L"Worst current-cue worker verification exceeds the input frame budget.");
                     }
                     if(mode)require(cleanupMotionCoverage(false),
                         L"Actual subtitle cleanup never intersected changing picture pixels; benign background motion is not cadence regression coverage.");

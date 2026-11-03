@@ -451,7 +451,7 @@ public:
     // The proof source window follows renderable queued frames, not capture's
     // newest sequence. Tail is bounded by the caller's existing queue window.
     void AdvanceCurrentCueRenderWindow(const ActivePictureFrameIdentity& head,
-        uint64_t tailSequence);
+        uint64_t tailSequence,bool advanceHead=true);
     // Input cadence owns analysis capacity. Display refresh/repeated outputs
     // cannot add workers or change source observations. A lower cadence parks
     // worker1 after its current independent job, without interrupting pixels.
@@ -743,6 +743,8 @@ public:
         for(auto& thread:m_threads)if(thread.joinable())thread.join();
     }
 private:
+    void ObserveCurrentCueSemanticScan(const SubtitleBoxObservation& key,
+        const SubtitleBoxObservation& result);
     struct RawVersion {
         SubtitleBoxObservation key;
         uint64_t revision=0;
@@ -980,6 +982,7 @@ private:
             const double waited=std::chrono::duration<double,std::milli>(workStart-job.queued).count();
             SubtitleBoxObservation result=job.key;
             try {result=job.work(scanner,previous);previous=SubtitleBoxLookahead::AdvanceBarTrackingReference(result);} catch(...) {result.analyzed=false;}
+            ObserveCurrentCueSemanticScan(job.key,result);
             Trace(result,"worker-complete",result.analyzed?result.text.diagnosticReason:"analysis-failed");
             {std::lock_guard<std::mutex> lock(m_mutex);
                 const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
@@ -2354,16 +2357,31 @@ struct SubtitleCurrentCueTaskEntry {
     SubtitleBoxObservation key;
     SubtitleCurrentCueTemplateDescriptor descriptor;
     std::shared_ptr<SubtitleCurrentCueWorkerState> workerState;
+    SubtitleMeasurementWork deferredFullScan;
+    OwnedScanBacklogWitness deferredWitness;
+    uint64_t deferredTimelinePolicy=0;
     SubtitleCurrentCueProofStatus status=SubtitleCurrentCueProofStatus::Queued;
     SubtitleCurrentCueProofReceipt receipt;
     uint64_t revision=0;
-    bool seedTask=false;
+    bool seedTask=false,fullScanDue=false,hasDeferredWitness=false;
+    bool scanDecisionMade=false,proofVerified=false,semanticRefreshDue=false;
+    bool fullScanQueued=false,fallbackQueued=false;
 };
 
 struct SubtitleCurrentCueWorkerState {
     SubtitlePendingMeasurementGuard pending;
     SubtitleCadenceGuard footprint;
     SubtitleCurrentCueTemplateDescriptor descriptor;
+    std::atomic_bool semanticRefreshInFlight{false};
+    std::atomic_bool needsFullScanBurst{false};
+    uint64_t lastSemanticRefreshSequence=0,lastSemanticScanSequence=0;
+};
+
+struct SubtitleCurrentCueRefreshLease {
+    std::shared_ptr<SubtitleCurrentCueWorkerState> state;
+    ~SubtitleCurrentCueRefreshLease() {
+        if(state)state->semanticRefreshInFlight.store(false,std::memory_order_release);
+    }
 };
 
 namespace SubtitleCurrentCueWorkerDetail {
@@ -2404,6 +2422,27 @@ inline bool SameCue(const SubtitleBoxResult& a,const SubtitleBoxResult& b) {
             !SameRect(a.provenLinePanels[i],b.provenLinePanels[i]) ||
             !SameRect(a.lineCapturePanels[i],b.lineCapturePanels[i]))return false;
     return true;
+}
+inline bool CompleteSemanticScanConfirmsCue(const SubtitleBoxObservation& result,
+    const SubtitleBoxObservation& key,const SubtitleBoxResult& accepted) {
+    const auto& bars=result.barEvidence;
+    if(!SameAnalysisFrameIdentity(result.identity,key.identity) ||
+        result.policyGeneration!=key.policyGeneration || result.continuityGeneration!=key.continuityGeneration ||
+        result.width!=key.width || result.height!=key.height || result.analysisStride!=key.analysisStride ||
+        !result.analyzed || result.discontinuity || result.pendingRefresh || result.analysisRefresh ||
+        result.cadenceSkipped || result.glyphLocalTop || result.glyphLocalBottom ||
+        !result.independentBarAnalysis || !result.barAuthority || result.barTrackingAuthority ||
+        result.currentAnchorUsesTrackedEdge || !bars.available || bars.captionBackedTop || bars.captionBackedBottom ||
+        result.pictureTop!=bars.top || result.pictureBottom!=bars.bottom ||
+        !result.text.detected || result.text.held || result.text.confirmationPending || result.text.workLimit ||
+        !result.text.topSearchComplete || !result.text.bottomSearchComplete ||
+        !result.ink || !result.ink->rawEvidenceComplete || !result.ink->paletteValid)return false;
+    auto candidate=result.text;
+    // Raw scans do not own tracker cue IDs. Compare current detected geometry
+    // and signatures against the accepted cue without deriving identity from
+    // an unconfirmed raw token.
+    candidate.cue=accepted.cue;
+    return SameCue(candidate,accepted);
 }
 inline bool SameOperation(const SubtitleCutPasteGeometry& a,const SubtitleCutPasteGeometry& b) {
     if(!SameRect(a.source,b.source) || !SameRect(a.destination,b.destination) ||
@@ -2469,6 +2508,7 @@ inline bool SameExactTaskKey(const SubtitleBoxObservation& a,const SubtitleBoxOb
         a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode &&
         a.scriptHint==b.scriptHint && a.sharedPicture.Matches(b.sharedPicture);
 }
+
 inline uint64_t ThreadId() {
 #ifdef _WIN32
     return static_cast<uint64_t>(::GetCurrentThreadId());
@@ -2476,6 +2516,32 @@ inline uint64_t ThreadId() {
     return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 #endif
 }
+}
+
+inline void SubtitleMeasurementWorker::ObserveCurrentCueSemanticScan(
+    const SubtitleBoxObservation& key,const SubtitleBoxObservation& result) {
+    using namespace SubtitleCurrentCueWorkerDetail;
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const auto& state=m_currentCueState;
+    if(!state || !state->descriptor.valid ||
+        !SameContext(state->descriptor.context,key) ||
+        key.identity.transportGeneration!=state->descriptor.context.identity.transportGeneration ||
+        key.identity.acceptedSequence<=state->descriptor.context.identity.acceptedSequence ||
+        key.identity.acceptedSequence<=state->lastSemanticScanSequence ||
+        !InWindow(m_currentCueWindowHead,m_currentCueWindowTail,key.identity) ||
+        !SameAnalysisFrameIdentity(result.identity,key.identity) ||
+        result.policyGeneration!=key.policyGeneration ||
+        result.continuityGeneration!=key.continuityGeneration)return;
+    // Observe ordinary scans too: a scan may already have been queued before
+    // this proof job attempted to submit its periodic refresh. If that exact
+    // source finds a changed or incomplete cue, keep scheduling the bounded
+    // due-source burst until the new cue is accepted and seeds a replacement.
+    // The monotonic sequence watermark prevents an older completion from
+    // clearing a burst reported by a newer result.
+    state->lastSemanticScanSequence=key.identity.acceptedSequence;
+    state->needsFullScanBurst.store(
+        !CompleteSemanticScanConfirmsCue(result,key,state->descriptor.cue),
+        std::memory_order_release);
 }
 
 inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCueTemplate(
@@ -2488,7 +2554,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         input.sourceMode==SubtitlePreviewMode::GeneratedGrayBackground;
     if((!classic && !advanced) || !input.acceptedCurrentScan || !o.analyzed || o.discontinuity ||
         o.pendingRefresh || o.analysisRefresh || o.cadenceSkipped || o.glyphLocalTop || o.glyphLocalBottom ||
-        o.analysisStride!=1 || !o.text.detected || o.text.workLimit || o.text.held ||
+        (o.analysisStride!=1 && o.analysisStride!=2) || !o.text.detected || o.text.workLimit || o.text.held ||
         o.text.confirmationPending || o.text.revised ||
         !o.independentBarAnalysis || !o.barAuthority || o.barTrackingAuthority || o.currentAnchorUsesTrackedEdge ||
         !o.barEvidence.available || o.barEvidence.captionBackedTop || o.barEvidence.captionBackedBottom ||
@@ -2545,9 +2611,11 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         if(footprintSeeded) {
             const auto* footprint=advanced?&state->footprint:nullptr;
             seeded=state->pending.RememberAccepted(preview,input.acceptedCue,input.source,input.frameMs,
-                input.holdMs,nullptr,nullptr,&input.physicalBase,footprint);
+                input.holdMs,nullptr,nullptr,&input.physicalBase,footprint,true);
             if(seeded) {
                 state->descriptor=descriptor;state->descriptor.revision=entry->revision;
+                state->lastSemanticRefreshSequence=descriptor.context.identity.acceptedSequence;
+                state->lastSemanticScanSequence=descriptor.context.identity.acceptedSequence;
                 reason=advanced?"current-cue-template-footprint-seeded":"current-cue-template-seeded";
             } else {seeded=false;reason=state->pending.DecisionReason();}
         } else reason=state->footprint.DecisionReason();
@@ -2590,7 +2658,9 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     using namespace SubtitleCurrentCueWorkerDetail;
     std::shared_ptr<SubtitleCurrentCueWorkerState> state;
     std::shared_ptr<SubtitleCurrentCueTaskEntry> entry;
+    std::shared_ptr<SubtitleCurrentCueTaskEntry> duplicate;
     SubtitleCurrentCueTemplateDescriptor descriptor;
+    SubtitleCurrentCueProofStatus duplicateStatus=SubtitleCurrentCueProofStatus::NoTask;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_stopping)return SubtitleCurrentCueProofStatus::Failed;
@@ -2615,19 +2685,97 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             m_currentCueWindowHead=request.eligibleRenderHead;
             m_currentCueWindowTail=request.eligibleTailSequence;
         }
-        if(!SameAnalysisFrameIdentity(m_currentCueWindowHead,request.eligibleRenderHead) ||
-            request.eligibleTailSequence>m_currentCueWindowTail ||
+        if(request.eligibleTailSequence>m_currentCueWindowTail ||
+            !InWindow(m_currentCueWindowHead,m_currentCueWindowTail,request.eligibleRenderHead) ||
             !InWindow(m_currentCueWindowHead,m_currentCueWindowTail,request.currentKey.identity) ||
             !InWindow(request.eligibleRenderHead,request.eligibleTailSequence,request.currentKey.identity))
             return SubtitleCurrentCueProofStatus::NotEligible;
         for(const auto& old:m_currentCueTasks)
             if(!old->seedTask && old->revision==request.templateRevision && SameExactTaskKey(old->key,request.currentKey))
-                return old->status;
-        if(m_currentCuePending.size()>=2)return SubtitleCurrentCueProofStatus::NotEligible;
-        entry=std::make_shared<SubtitleCurrentCueTaskEntry>();entry->key=request.currentKey;
-        entry->key.ink.reset();
-        entry->revision=request.templateRevision;entry->status=SubtitleCurrentCueProofStatus::Queued;
-        m_currentCueTasks.push_back(entry);
+                {duplicate=old;duplicateStatus=old->status;break;}
+        if(!duplicate) {
+            if(m_currentCuePending.size()>=2)return SubtitleCurrentCueProofStatus::NotEligible;
+            entry=std::make_shared<SubtitleCurrentCueTaskEntry>();entry->key=request.currentKey;
+            entry->key.ink.reset();
+            entry->revision=request.templateRevision;entry->status=SubtitleCurrentCueProofStatus::Queued;
+            if(request.fullScanDue && request.fullScanOnMiss) {
+                entry->deferredFullScan=std::move(request.fullScanOnMiss);entry->fullScanDue=true;
+                if(request.hasOwnedWitness) {
+                    entry->deferredWitness=request.ownedWitness;entry->hasDeferredWitness=true;
+                }
+                entry->deferredTimelinePolicy=request.ownedTimelinePolicy;
+            }
+            m_currentCueTasks.push_back(entry);
+        }
+    }
+    if(duplicate) {
+        Work lateScan;std::shared_ptr<SubtitleCurrentCueRefreshLease> lateLease;
+        bool lateFallback=false,advanceRefreshDeadline=false;uint64_t previousRefreshSequence=0;
+        OwnedScanBacklogWitness lateWitness;bool hasLateWitness=false;uint64_t lateTimelinePolicy=0;
+        if(request.fullScanDue && request.fullScanOnMiss) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if(!duplicate->scanDecisionMade) {
+                if(!duplicate->deferredFullScan) {
+                    duplicate->deferredFullScan=std::move(request.fullScanOnMiss);
+                    duplicate->fullScanDue=true;
+                    if(request.hasOwnedWitness) {
+                        duplicate->deferredWitness=request.ownedWitness;duplicate->hasDeferredWitness=true;
+                    }
+                    duplicate->deferredTimelinePolicy=request.ownedTimelinePolicy;
+                }
+            } else if(!duplicate->fullScanQueued) {
+                lateFallback=!duplicate->proofVerified;
+                bool due=lateFallback || duplicate->semanticRefreshDue ||
+                    state->needsFullScanBurst.load(std::memory_order_acquire);
+                const double intervalValue=std::ceil(100.0/request.frameMs);
+                const double boundedInterval=(std::min)(1000.0,
+                    (std::max)(1.0,std::isfinite(intervalValue)?intervalValue:1000.0));
+                const uint64_t interval=static_cast<uint64_t>(boundedInterval);
+                const uint64_t sequence=request.currentKey.identity.acceptedSequence;
+                if(!lateFallback && sequence>state->lastSemanticRefreshSequence &&
+                    sequence-state->lastSemanticRefreshSequence>=interval)due=true;
+                if(due) {
+                    if(!lateFallback) {
+                        bool expected=false;
+                        if(!state->semanticRefreshInFlight.compare_exchange_strong(
+                            expected,true,std::memory_order_acq_rel))due=false;
+                        else {
+                            lateLease=std::make_shared<SubtitleCurrentCueRefreshLease>();lateLease->state=state;
+                            previousRefreshSequence=state->lastSemanticRefreshSequence;
+                            state->lastSemanticRefreshSequence=sequence;advanceRefreshDeadline=true;
+                        }
+                    }
+                    if(due) {
+                        duplicate->fullScanQueued=true;
+                        lateScan=std::move(request.fullScanOnMiss);
+                        hasLateWitness=request.hasOwnedWitness;lateWitness=request.ownedWitness;
+                        lateTimelinePolicy=request.ownedTimelinePolicy;
+                    }
+                }
+            }
+        }
+        bool lateQueued=false;
+        if(lateScan) {
+            const auto fullScan=[](Work scan,std::shared_ptr<SubtitleCurrentCueRefreshLease> lease) {
+                return Work([scan=std::move(scan),lease=std::move(lease)](
+                    SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference& previous) mutable {
+                    (void)lease;return scan(sampler,previous);
+                });
+            };
+            lateQueued=Submit(request.currentKey,fullScan(std::move(lateScan),std::move(lateLease)),
+                hasLateWitness?&lateWitness:nullptr,lateTimelinePolicy,true,{});
+            if(!lateQueued) {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                duplicate->fullScanQueued=false;
+                if(advanceRefreshDeadline && state->lastSemanticRefreshSequence==request.currentKey.identity.acceptedSequence)
+                    state->lastSemanticRefreshSequence=previousRefreshSequence;
+            } else if(lateFallback) {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                duplicate->fallbackQueued=true;duplicate->status=SubtitleCurrentCueProofStatus::FallbackQueued;
+            }
+        }
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return duplicate->status==SubtitleCurrentCueProofStatus::NoTask?duplicateStatus:duplicate->status;
     }
     Job job;job.key=request.currentKey;job.cueEntry=entry;job.queued=std::chrono::steady_clock::now();
     job.currentCueTask=[this,state,entry,request=std::move(request)](size_t) mutable {
@@ -2675,11 +2823,83 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             receipt.m_reason="current-cue-pixels-verified";receipt.m_consumed=std::make_shared<std::atomic_bool>(false);
             reason=receipt.m_reason;
         } else verified=false;
-        bool fallbackQueued=false;
-        if(!verified && request.fullScanDue && request.fullScanOnMiss) {
-            fallbackQueued=Submit(key,std::move(request.fullScanOnMiss),
-                request.hasOwnedWitness?&request.ownedWitness:nullptr,request.ownedTimelinePolicy,
-                true,{});
+        bool fallbackQueued=false,semanticRefreshDue=false,semanticRefreshQueued=false;
+        const double intervalValue=std::ceil(100.0/request.frameMs);
+        const double boundedInterval=(std::min)(1000.0,
+            (std::max)(1.0,std::isfinite(intervalValue)?intervalValue:1000.0));
+        const uint64_t interval=static_cast<uint64_t>(boundedInterval);
+        const uint64_t sequence=key.identity.acceptedSequence;
+        uint64_t lastRefreshSequence=0;
+        {std::lock_guard<std::mutex> lock(m_mutex);lastRefreshSequence=state->lastSemanticRefreshSequence;}
+        if(verified) {
+            const bool burst=state->needsFullScanBurst.load(std::memory_order_acquire);
+            const bool intervalReached=sequence>lastRefreshSequence && sequence-lastRefreshSequence>=interval;
+            semanticRefreshDue=burst||intervalReached;
+        }
+        Work queuedScan;OwnedScanBacklogWitness queuedWitness;bool hasQueuedWitness=false;
+        uint64_t queuedTimelinePolicy=0;bool queuedAsFallback=false;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            entry->scanDecisionMade=true;entry->proofVerified=verified;
+            entry->semanticRefreshDue=semanticRefreshDue;
+            if(entry->fullScanDue && entry->deferredFullScan && !entry->fullScanQueued &&
+                (!verified || semanticRefreshDue)) {
+                queuedScan=std::move(entry->deferredFullScan);entry->fullScanDue=false;
+                queuedWitness=entry->deferredWitness;hasQueuedWitness=entry->hasDeferredWitness;
+                queuedTimelinePolicy=entry->deferredTimelinePolicy;entry->hasDeferredWitness=false;
+                entry->fullScanQueued=true;queuedAsFallback=!verified;
+            } else {
+                // A source-specific callback that was not due is discarded;
+                // a later same-key due upgrade supplies its own exact callback.
+                entry->deferredFullScan={};entry->fullScanDue=false;entry->hasDeferredWitness=false;
+            }
+        }
+        if(queuedScan) {
+            const auto fullScan=[](Work scan,std::shared_ptr<SubtitleCurrentCueRefreshLease> lease) {
+                return Work([scan=std::move(scan),lease=std::move(lease)](
+                    SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference& previous) mutable {
+                    (void)lease;return scan(sampler,previous);
+                });
+            };
+            std::shared_ptr<SubtitleCurrentCueRefreshLease> lease;
+            bool permitQueue=true;
+            if(!queuedAsFallback) {
+                bool expected=false;
+                permitQueue=state->semanticRefreshInFlight.compare_exchange_strong(
+                    expected,true,std::memory_order_acq_rel);
+                if(permitQueue) {
+                    lease=std::make_shared<SubtitleCurrentCueRefreshLease>();lease->state=state;
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    state->lastSemanticRefreshSequence=sequence;
+                }
+            }
+            if(permitQueue) {
+                fallbackQueued=queuedAsFallback;
+                const bool accepted=Submit(key,fullScan(std::move(queuedScan),std::move(lease)),
+                    hasQueuedWitness?&queuedWitness:nullptr,queuedTimelinePolicy,true,{});
+                if(queuedAsFallback)fallbackQueued=accepted;
+                else semanticRefreshQueued=accepted;
+                if(!accepted) {
+                    std::lock_guard<std::mutex> lock(m_mutex);entry->fullScanQueued=false;
+                    if(queuedAsFallback)entry->fallbackQueued=false;
+                } else if(queuedAsFallback) {
+                    std::lock_guard<std::mutex> lock(m_mutex);entry->fallbackQueued=true;
+                }
+            } else {
+                std::lock_guard<std::mutex> lock(m_mutex);entry->fullScanQueued=false;
+            }
+        }
+        if(semanticRefreshDue) {
+            auto refreshTrace=AnalysisTraceRecord(key.identity,this,"worker-cue-semantic-refresh",
+                semanticRefreshQueued?"queued":(state->semanticRefreshInFlight.load(std::memory_order_acquire)?
+                    "coalesced":"not-due-callback"));
+            refreshTrace.kind=AnalysisDiagnosticRecordKindV1::Worker;
+            refreshTrace.policyGeneration=key.policyGeneration;
+            refreshTrace.continuityGeneration=key.continuityGeneration;
+            refreshTrace.sourceWidth=key.width;refreshTrace.sourceHeight=key.height;
+            refreshTrace.counters[0]=entry->revision;refreshTrace.counters[1]=interval;
+            refreshTrace.counters[2]=sequence;refreshTrace.flags=semanticRefreshQueued?1u:0u;
+            refreshTrace.metrics[0]=request.frameMs;AnalysisDiagnosticTrace::Emit(refreshTrace);
         }
         auto trace=AnalysisTraceRecord(key.identity,this,"worker-cue-proof",reason);
         trace.kind=AnalysisDiagnosticRecordKindV1::Worker;trace.policyGeneration=key.policyGeneration;
@@ -2689,10 +2909,11 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         trace.counters[2]=diagnostics.currentFootprintSamplesChecked;
         trace.counters[3]=diagnostics.barVisibilitySamplesChecked;
         trace.counters[4]=verified?state->descriptor.cue.lineCount:0;
-        trace.metrics[0]=elapsed;trace.flags=verified?1u:0u;AnalysisDiagnosticTrace::Emit(trace);
+        trace.metrics[0]=elapsed;trace.flags=(verified?1u:0u)|(semanticRefreshDue?2u:0u)|
+            (semanticRefreshQueued?4u:0u);AnalysisDiagnosticTrace::Emit(trace);
         {std::lock_guard<std::mutex> lock(m_mutex);
             if(verified) {entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;}
-            else entry->status=fallbackQueued?SubtitleCurrentCueProofStatus::FallbackQueued:
+            else entry->status=(fallbackQueued || entry->fallbackQueued)?SubtitleCurrentCueProofStatus::FallbackQueued:
                 (stillCurrent?SubtitleCurrentCueProofStatus::Failed:SubtitleCurrentCueProofStatus::Expired);
             entry->key.ink.reset();request.source={};request.fullScanOnMiss={};
             while(m_currentCueTasks.size()>8)m_currentCueTasks.pop_front();
@@ -2735,22 +2956,49 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::TryTakeCurrentCu
 }
 
 inline void SubtitleMeasurementWorker::AdvanceCurrentCueRenderWindow(
-    const ActivePictureFrameIdentity& head,uint64_t tailSequence) {
+    const ActivePictureFrameIdentity& head,uint64_t tailSequence,bool advanceHead) {
     using namespace SubtitleCurrentCueWorkerDetail;
     std::vector<std::shared_ptr<AnalysisCompletionSignal>> completions;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if(!head.transportGeneration)return;
-        if(m_currentCueWindowHead.transportGeneration &&
-            (head.transportGeneration<m_currentCueWindowHead.transportGeneration ||
-                (head.transportGeneration==m_currentCueWindowHead.transportGeneration &&
-                    head.acceptedSequence<m_currentCueWindowHead.acceptedSequence)))return;
-        m_currentCueWindowHead=head;
         const uint64_t lookahead=ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES+2;
-        const uint64_t maxTail=head.acceptedSequence>UINT64_MAX-lookahead?UINT64_MAX:head.acceptedSequence+lookahead;
-        m_currentCueWindowTail=(std::max)(head.acceptedSequence,(std::min)(tailSequence,maxTail));
+        const bool haveHead=m_currentCueWindowHead.transportGeneration!=0;
+        const auto& old=m_currentCueWindowHead;
+        if(haveHead && head.transportGeneration<old.transportGeneration)return;
+        const bool sameContext=haveHead && head.transportGeneration==old.transportGeneration &&
+            head.sourceFormatGeneration==old.sourceFormatGeneration &&
+            head.viewportGeneration==old.viewportGeneration && head.rendererGeneration==old.rendererGeneration &&
+            (!head.analysisDomainKey || !old.analysisDomainKey || head.analysisDomainKey==old.analysisDomainKey);
+        const bool contextReset=!haveHead || head.transportGeneration>old.transportGeneration || !sameContext;
+        if(contextReset) {
+            // A context reset can replace the window, but an older frame from
+            // the same transport cannot roll it back unless a generation also
+            // advanced.
+            if(haveHead && head.transportGeneration==old.transportGeneration &&
+                head.acceptedSequence<old.acceptedSequence &&
+                head.sourceFormatGeneration<=old.sourceFormatGeneration &&
+                head.viewportGeneration<=old.viewportGeneration &&
+                head.rendererGeneration<=old.rendererGeneration)return;
+            m_currentCueWindowHead=head;
+            const uint64_t maxTail=head.acceptedSequence>UINT64_MAX-lookahead?UINT64_MAX:head.acceptedSequence+lookahead;
+            m_currentCueWindowTail=(std::max)(head.acceptedSequence,(std::min)(tailSequence,maxTail));
+        } else if(advanceHead) {
+            if(head.acceptedSequence<old.acceptedSequence)return;
+            m_currentCueWindowHead=head;
+            const uint64_t maxTail=head.acceptedSequence>UINT64_MAX-lookahead?UINT64_MAX:head.acceptedSequence+lookahead;
+            m_currentCueWindowTail=(std::max)(head.acceptedSequence,(std::min)(tailSequence,maxTail));
+        } else {
+            // Capture only announces future eligible sources. Keep the current
+            // render head so its in-flight proof stays valid, and extend the
+            // existing bounded tail without increasing its lookahead budget.
+            const uint64_t maxTail=old.acceptedSequence>UINT64_MAX-lookahead?UINT64_MAX:old.acceptedSequence+lookahead;
+            m_currentCueWindowTail=(std::max)(m_currentCueWindowTail,
+                (std::min)(tailSequence,maxTail));
+        }
+        const auto& effectiveHead=m_currentCueWindowHead;
         for(auto i=m_currentCuePending.begin();i!=m_currentCuePending.end();) {
-            if(!i->currentCueSeedTask && !InWindow(head,m_currentCueWindowTail,i->key.identity)) {
+            if(!i->currentCueSeedTask && !InWindow(effectiveHead,m_currentCueWindowTail,i->key.identity)) {
                 if(i->cueEntry)i->cueEntry->status=SubtitleCurrentCueProofStatus::Expired;
                 if(i->completion)completions.push_back(i->completion);
                 i=m_currentCuePending.erase(i);++m_diagnostics.expired;
@@ -2758,8 +3006,10 @@ inline void SubtitleMeasurementWorker::AdvanceCurrentCueRenderWindow(
         }
         for(auto& entry:m_currentCueTasks)if(!entry->seedTask &&
             entry->status!=SubtitleCurrentCueProofStatus::Consumed &&
-            !InWindow(head,m_currentCueWindowTail,entry->key.identity)) {
-            entry->status=SubtitleCurrentCueProofStatus::Expired;entry->receipt={};++m_diagnostics.expired;
+            !InWindow(effectiveHead,m_currentCueWindowTail,entry->key.identity)) {
+            entry->status=SubtitleCurrentCueProofStatus::Expired;entry->receipt={};
+            entry->deferredFullScan={};entry->fullScanDue=false;entry->hasDeferredWitness=false;
+            ++m_diagnostics.expired;
         }
         while(m_currentCueTasks.size()>8)m_currentCueTasks.pop_front();
     }

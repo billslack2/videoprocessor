@@ -9545,7 +9545,8 @@ struct LibplaceboVideoRenderer::Impl
                 policy,continuity,discontinuity,prior,scriptHint)) {
                 if(completedCurrentNoCaptionScan)*completedCurrentNoCaptionScan=ready.analyzed && !ready.discontinuity &&
                     !ready.analysisRefresh && !ready.pendingRefresh && !ready.cadenceSkipped &&
-                    ready.analysisStride==1 && !ready.text.detected && !ready.text.workLimit &&
+                    (ready.analysisStride==1 || ready.analysisStride==2) &&
+                    !ready.text.detected && !ready.text.workLimit &&
                     ready.independentBarAnalysis && ready.barAuthority &&
                     ready.text.topSearchComplete && ready.text.bottomSearchComplete;
                 return ready;
@@ -15000,22 +15001,49 @@ struct LibplaceboVideoRenderer::Impl
                 const auto& current=preview.current;
                 if(!SameAnalysisFrameIdentity(current.identity,subtitleIdentity) || !current.analyzed ||
                     current.pendingRefresh || current.analysisRefresh || current.cadenceSkipped ||
-                    current.analysisStride!=1 || current.discontinuity || current.text.workLimit)return false;
+                    (current.analysisStride!=1 && current.analysisStride!=2) ||
+                    current.discontinuity || current.text.workLimit)return false;
                 const bool cleanCurrentNegative=!current.text.detected && current.independentBarAnalysis &&
                     current.barAuthority && current.text.topSearchComplete && current.text.bottomSearchComplete;
                 const bool usableCurrentPositive=preview.available && current.text.detected &&
                     !current.text.held && !current.text.confirmationPending;
                 return cleanCurrentNegative || usableCurrentPositive;
             };
+            const auto hasExactCurrentNegativeScan=[&](const SubtitleBoxPreview& preview) {
+                const auto& current=preview.current;
+                return hasExactCurrentScan(preview) && !current.text.detected &&
+                    current.independentBarAnalysis && current.barAuthority &&
+                    current.text.topSearchComplete && current.text.bottomSearchComplete;
+            };
             const auto hasExactCurrentPositiveScan=[&](const SubtitleBoxPreview& preview) {
                 const auto& current=preview.current;
                 return hasExactCurrentScan(preview) && current.text.detected && !current.text.held &&
                     !current.text.confirmationPending;
             };
+            const auto sameSubtitleRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+                return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+            };
+            const auto sameCurrentCueShape=[&](const SubtitleBoxResult& current,const SubtitleBoxResult& accepted) {
+                if(!current.detected || current.held || current.confirmationPending || current.workLimit ||
+                    !accepted.detected || accepted.held || accepted.confirmationPending || accepted.workLimit ||
+                    current.lineCount<1 || current.lineCount>3 || current.lineCount!=accepted.lineCount ||
+                    !sameSubtitleRect(current.bounds,accepted.bounds) ||
+                    !sameSubtitleRect(current.anchor,accepted.anchor) ||
+                    !sameSubtitleRect(current.capturePanel,accepted.capturePanel) ||
+                    current.signature!=accepted.signature || current.anchorSignature!=accepted.anchorSignature)
+                    return false;
+                for(int line=0;line<current.lineCount;++line) {
+                    if(!sameSubtitleRect(current.lineBounds[line],accepted.lineBounds[line]) ||
+                        !sameSubtitleRect(current.lineCapturePanels[line],accepted.lineCapturePanels[line]) ||
+                        current.lineSignatures[line]!=accepted.lineSignatures[line])return false;
+                }
+                return true;
+            };
+            const bool currentHasFullPositiveScan=hasExactCurrentPositiveScan(currentSubtitlePreview);
             bool currentCueProofWorkerOwnsSource=false;
             bool currentCueProofNeedsOrdinaryFullScan=false;
             bool currentCueProofPending=false;
-            if(!renderCompleteNoCaptionScan && !hasExactCurrentScan(currentSubtitlePreview) &&
+            if(!renderCompleteNoCaptionScan && !hasExactCurrentNegativeScan(currentSubtitlePreview) &&
                 !repeatedTemporalOutput && !cadenceRepeat &&
                 SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,subtitleIdentity)) {
                 const auto exactKey=currentSubtitlePreview.current;
@@ -15024,7 +15052,7 @@ struct LibplaceboVideoRenderer::Impl
                     const auto bindStarted=SteadyClock::now();
                     auto cueStatus=subtitleMeasurementWorker.TryTakeCurrentCueProof(
                         exactKey,revision,currentCueProofReceipt);
-                    if(cueStatus!=SubtitleCurrentCueProofStatus::Ready) {
+                    if(cueStatus!=SubtitleCurrentCueProofStatus::Ready && !currentHasFullPositiveScan) {
                         const auto priorBar=subtitleBoxPresentation.BarTrackingReferenceFor(
                             subtitleIdentity,exactKey.width,exactKey.height,localBoundaryPolicyGeneration,
                             localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint);
@@ -15063,8 +15091,12 @@ struct LibplaceboVideoRenderer::Impl
                         currentCueProofReceipt.VerifiedLineCount()>0 &&
                         (!advancedCueMode || (currentCueProofReceipt.Operation().valid &&
                             currentCueProofReceipt.FootprintSamples()>0));
+                    const bool receiptMatchesCurrentPositive=!currentHasFullPositiveScan ||
+                        sameCurrentCueShape(currentSubtitlePreview.current.text,
+                            currentCueProofReceipt.AcceptedCue());
                     SubtitleBoxResult currentCue;
                     if(cueStatus==SubtitleCurrentCueProofStatus::Ready && receiptCurrent &&
+                        receiptMatchesCurrentPositive &&
                         subtitleBoxPresentation.ConsumeCurrentCueProof(currentCueProofReceipt,
                             currentSubtitlePreview,currentCue)) {
                         currentCueProofConsumed=true;
@@ -15096,13 +15128,13 @@ struct LibplaceboVideoRenderer::Impl
                         currentCueProofWorkerOwnsSource=cueStatus==SubtitleCurrentCueProofStatus::Queued ||
                             cueStatus==SubtitleCurrentCueProofStatus::Pending ||
                             cueStatus==SubtitleCurrentCueProofStatus::FallbackQueued;
-                        currentCueProofNeedsOrdinaryFullScan=
-                            cueStatus==SubtitleCurrentCueProofStatus::NoTemplate ||
-                            cueStatus==SubtitleCurrentCueProofStatus::NotEligible ||
-                            cueStatus==SubtitleCurrentCueProofStatus::Failed;
+                        currentCueProofNeedsOrdinaryFullScan=!currentHasFullPositiveScan &&
+                            (cueStatus==SubtitleCurrentCueProofStatus::NoTemplate ||
+                                cueStatus==SubtitleCurrentCueProofStatus::NotEligible ||
+                                cueStatus==SubtitleCurrentCueProofStatus::Failed);
                     }
                 } else {
-                    currentCueProofNeedsOrdinaryFullScan=true;
+                    currentCueProofNeedsOrdinaryFullScan=!currentHasFullPositiveScan;
                 }
                 if(!currentCueProofConsumed && currentCueProofNeedsOrdinaryFullScan) {
                     const auto priorBar=subtitleBoxPresentation.BarTrackingReferenceFor(
@@ -15119,7 +15151,8 @@ struct LibplaceboVideoRenderer::Impl
                     currentSubtitlePreview.newScanMs=0;currentSubtitlePreview.newScanFrames=0;
                 }
             }
-            if(!currentCueProofConsumed && currentCueProofWorkerOwnsSource) {
+            if(!currentCueProofConsumed && currentCueProofWorkerOwnsSource &&
+                !hasExactCurrentPositiveScan(currentSubtitlePreview)) {
                 currentCueProofPending=true;
                 currentSubtitlePreview.available=false;currentSubtitlePreview.futureAvailable=false;
                 currentSubtitlePreview.followingCount=0;currentSubtitlePreview.text={};
@@ -15154,15 +15187,31 @@ struct LibplaceboVideoRenderer::Impl
                     subtitleBacklogRetirementOnly,pendingCurrentPixelsVerified,cueContinuation);
             else if(!currentCueProofConsumed) subtitleBoxResult={};
             barAuthority=subtitlePreview->current.barAuthority;
+            const auto& preparedHeldObservation=currentSubtitlePreview.current;
+            const bool preparedHeldNativeBase=nlsGeometryAvailable &&
+                nlsGeometrySourceGeneration==frameGeneration &&
+                nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                preparedHeldObservation.sharedPicture.AvailableFor(preparedHeldObservation.identity,
+                    preparedHeldObservation.width,preparedHeldObservation.height) &&
+                SameSubtitlePresentationBounds(preparedHeldObservation.sharedPicture.bounds,nlsGeometry);
+            const bool currentPreparedHeldCue=!currentCueProofConsumed && currentSubtitlePreview.available &&
+                hasExactCurrentPositiveScan(currentSubtitlePreview) && preparedHeldNativeBase &&
+                subtitleBoxResult.detected && subtitleBoxResult.held &&
+                !subtitleBoxResult.confirmationPending && !subtitleBoxResult.workLimit &&
+                subtitleBoxPresentation.CurrentPreparedCueCertificate().Matches(
+                    preparedHeldObservation,subtitleBoxResult,nlsGeometry);
             const bool currentFullCuePresentation=!currentCueProofConsumed &&
-                hasExactCurrentPositiveScan(currentSubtitlePreview) && subtitleBoxResult.detected &&
-                !subtitleBoxResult.held && !subtitleBoxResult.confirmationPending &&
-                !subtitleBoxResult.workLimit;
+                ((hasExactCurrentPositiveScan(currentSubtitlePreview) && subtitleBoxResult.detected &&
+                    !subtitleBoxResult.held && !subtitleBoxResult.confirmationPending &&
+                    !subtitleBoxResult.workLimit) || currentPreparedHeldCue);
             const bool currentIndependentScan=!currentCueProofPending && currentSubtitlePreview.available &&
                 SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,subtitleIdentity) &&
                 currentSubtitlePreview.current.analyzed && !currentSubtitlePreview.current.pendingRefresh &&
                 !currentSubtitlePreview.current.analysisRefresh && !currentSubtitlePreview.current.cadenceSkipped &&
-                currentSubtitlePreview.current.analysisStride==1 && !currentSubtitlePreview.current.discontinuity &&
+                (currentSubtitlePreview.current.analysisStride==1 ||
+                    currentSubtitlePreview.current.analysisStride==2) &&
+                !currentSubtitlePreview.current.discontinuity &&
                 currentSubtitlePreview.current.independentBarAnalysis && currentSubtitlePreview.current.barAuthority;
 
             // State-only telemetry: no extra source scan or continuation attempt.
@@ -15818,7 +15867,8 @@ struct LibplaceboVideoRenderer::Impl
             const bool fullAcceptedCueScan=!currentCueProofConsumed && currentSubtitlePreview.available &&
                 SameAnalysisFrameIdentity(seedObservation.identity,subtitleIdentity) && seedObservation.analyzed &&
                 !seedObservation.pendingRefresh && !seedObservation.analysisRefresh && !seedObservation.cadenceSkipped &&
-                seedObservation.analysisStride==1 && !seedObservation.discontinuity &&
+                (seedObservation.analysisStride==1 || seedObservation.analysisStride==2) &&
+                !seedObservation.discontinuity &&
                 seedObservation.independentBarAnalysis && seedObservation.barAuthority &&
                 seedObservation.text.detected && !seedObservation.text.held &&
                 !seedObservation.text.confirmationPending && !seedObservation.text.workLimit &&
@@ -25531,7 +25581,7 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
                 eligibleTailSequence=i->activePictureIdentity.acceptedSequence;break;
             }
     }
-    m_impl->subtitleMeasurementWorker.AdvanceCurrentCueRenderWindow(renderHead,eligibleTailSequence);
+    m_impl->subtitleMeasurementWorker.AdvanceCurrentCueRenderWindow(renderHead,eligibleTailSequence,false);
     const auto prepared=Impl::PrepareFrameAnalysis(queued.frame,*queued.state,queued.converted,queued.analysis,
         AnalysisSourceProfile::QueuedCapture,queued.activePictureIdentity.sourceFormatGeneration,false,
         queued.state->dolbyVisionTunnel,true);
@@ -25579,7 +25629,6 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
         SourcePictureMeasurementWorkComplete(nativeReady->evidence);
     if(subtitleContextEligible && m_activePictureLookaheadFrames.load(std::memory_order_acquire)==0 &&
         !nativeDependencyReady) {
-        subtitleContextEligible=false;
         subtitleEligible=false;trace.subtitleReason="awaiting-native-dependency";
     }
     const double sourceFps=queued.state->displayMode->RefreshRateHz();
@@ -25590,7 +25639,7 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
     if(subtitleContextEligible)
         cueProofStatus=m_impl->SubmitCurrentCueProof(prepared,*key,key->sharedPicture.bounds,
             renderHead,eligibleTailSequence,sourceMode,backgroundMode,sourceFrameMs,sourceFps,
-            subtitleEligible,{},nativeReady?nativeReady->evidence:ActivePictureEvidence{},queued.analysis);
+            subtitleEligible,{},nativeDependencyReady?nativeReady->evidence:ActivePictureEvidence{},queued.analysis);
     const bool cueProofOwnsSource=cueProofStatus==SubtitleCurrentCueProofStatus::Queued ||
         cueProofStatus==SubtitleCurrentCueProofStatus::Pending || cueProofStatus==SubtitleCurrentCueProofStatus::Ready ||
         cueProofStatus==SubtitleCurrentCueProofStatus::FallbackQueued;
@@ -25609,57 +25658,13 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
 void LibplaceboVideoRenderer::PrepareCurrentSourceBeforePresentation(
     const std::vector<QueuedFrame>& frames,uint64_t policy,uint64_t continuity)
 {
-    if(frames.empty() || m_activePictureLookaheadFrames.load(std::memory_order_acquire)!=0)return;
-    const auto& head=frames.front();
-    if(head.cadenceRepeat || !head.analysis || !head.state || !head.state->displayMode)return;
-    const auto prepared=Impl::PrepareFrameAnalysis(head.frame,*head.state,head.converted,head.analysis,
-        AnalysisSourceProfile::QueuedCapture,head.activePictureIdentity.sourceFormatGeneration,false,
-        head.state->dolbyVisionTunnel,true);
-    if(!prepared.IsValid())return;
-    auto identity=head.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
-    const double fps=head.state->displayMode->RefreshRateHz();
-    LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);
-    // The absolute deadline starts at enqueue, never at a retry or a completion.
-    // The existing minimum render-stall bound also caps malformed/very slow rates.
-    const double intervalMs=(std::min)(AlphaQueuePolicy::MINIMUM_RENDER_STALL_MS,
-        1000.0/(std::isfinite(fps) && fps>0.0?fps:AlphaQueuePolicy::DEFAULT_FRAME_RATE_HZ));
-    const int64_t deadline=head.enqueueQpc+int64_t(intervalMs*frequency.QuadPart/1000.0);
-    // Subtitle work is dispatched independently by the accepted-source and
-    // prime paths. Presentation readiness waits only for native source data;
-    // a pending cue proof or full scan can never hold this frame at the head.
-    constexpr bool subtitleRequired=false;
-    bool nativeComplete=false,subtitleComplete=false,owned=false;
-    const auto started=PerformanceCounterNow();
-    const auto waitDeadline=SteadyClock::now()+std::chrono::duration_cast<SteadyClock::duration>(
-        std::chrono::duration<double>(double(deadline-PerformanceCounterNow())/frequency.QuadPart));
-    for(;;) {
-        const auto completionRevision=m_sourcePreparationChanged->Snapshot();
-        const auto raw=QueuedFrame::LookaheadWorker::Ready(head.analysis->lookahead);
-        nativeComplete=CurrentLookaheadMeasurement(prepared,identity,raw) && SourcePictureMeasurementWorkComplete(raw->evidence);
-        std::unique_lock<std::mutex> owner(m_queueMutex,std::try_to_lock);
-        if(!owner.owns_lock())break;
-        owned=!m_stopRequested && policy==m_activePictureTimeline.LookaheadPolicyGeneration() &&
-            continuity==m_activePictureTimeline.ContinuityGeneration() && !m_frameQueue.empty() &&
-            SameActivePictureFrameIdentity(m_frameQueue.front().activePictureIdentity,head.activePictureIdentity) &&
-            m_frameQueue.front().analysis==head.analysis && m_frameQueue.front().converted==head.converted &&
-            m_frameQueue.front().state==head.state && m_frameQueue.front().frame.GetData()==head.frame.GetData();
-        if(owned) {
-            const auto& observation=m_frameQueue.front().subtitleBoxObservation;
-            subtitleComplete=observation.analyzed && SameAnalysisFrameIdentity(observation.identity,identity) &&
-                observation.policyGeneration==policy && observation.continuityGeneration==continuity;
-        }
-        const auto now=PerformanceCounterNow();
-        if(!AlphaQueuePolicy::AwaitCurrentSourcePreparation(owned,nativeComplete,subtitleRequired,subtitleComplete,now,deadline))break;
-        owner.unlock();
-        // Notification follows publication. Revision tracking covers completion
-        // between the snapshot and wait; no timer polling or source mutex held.
-        m_sourcePreparationChanged->WaitUntil(completionRevision,waitDeadline);
-    }
-    if(identity.acceptedSequence<=8 || identity.acceptedSequence%120==0)
-        DebugLog::Log("VP source preparation stage: source=%llu owned=%d native_complete=%d subtitle_required=%d subtitle_complete=%d expired=%d elapsed_ms=%.3f interval_ms=%.3f deadline_qpc=%lld reason=%s",
-            identity.acceptedSequence,owned?1:0,nativeComplete?1:0,subtitleRequired?1:0,subtitleComplete?1:0,
-            PerformanceCounterNow()>=deadline?1:0,double(PerformanceCounterNow()-started)*1000.0/frequency.QuadPart,
-            intervalMs,deadline,!owned?"ownership-changed":nativeComplete && (!subtitleRequired || subtitleComplete)?"complete":"deadline");
+    // Native picture analysis is optional and is already dispatched asynchronously
+    // by the accepted-source/prime paths. Never hold the current source here while
+    // it finishes; render with exact current pixels and no native authority until
+    // a matching complete measurement is available.
+    (void)frames;
+    (void)policy;
+    (void)continuity;
 }
 
 void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(

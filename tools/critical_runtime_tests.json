@@ -11,7 +11,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1078,
+  "minimumNativeTests": 1081,
   "requiredNativeMethods": [
     "ReadyCertifiedExistingCueRearmsAcrossContinuityWithOriginalPixelSeed",
     "PendingFootprintReceiptAllowsOnlyExactCurrentPreparedErasureWithoutBarAuthority",
@@ -356,7 +356,10 @@
     "CurrentCueWorkerProofRejectsChangedOwnedGlyphPixels",
     "CurrentCueWorkerProofPersistsAcrossStaticCueAndRunsBesideBlockedGrouping",
     "CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase",
-    "CurrentCueWorkerPollingIsNonblockingAndDropsQueuedExpiredOwners"
+    "CurrentCueWorkerPollingIsNonblockingAndDropsQueuedExpiredOwners",
+    "CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence",
+    "CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange",
+    "CurrentCueWorkerTailOnlyCaptureExtensionPreservesProofAndAcceptsSubsetHead"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",

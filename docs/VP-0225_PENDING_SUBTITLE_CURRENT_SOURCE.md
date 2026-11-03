@@ -244,10 +244,11 @@ qualify 60 distinct source submissions per second.
 
 Bounded queue age and incoming-rate submissions do not finish this repair.
 Expensive template construction, current YUV/cleanup verification and grouping
-must leave the capture/render critical path. The current repair still calls
-`SubtitlePendingMeasurementGuard::Resolve`, `RefreshReferencePixels`,
-`RememberCurrentFootprint` and `RememberPendingCue` synchronously from rendering.
-The successful steady timing matrix does not qualify those calls as budgeted.
+must leave the capture/render critical path. The new worker implementation removes
+render-thread calls to `SubtitlePendingMeasurementGuard::Resolve`,
+`RefreshReferencePixels`, `RememberCurrentFootprint` and `RememberPendingCue`.
+Its renderer frame-budget qualification remains outstanding; the earlier successful
+steady timing matrix alone does not establish processing cost.
 
 Published RC6 is not one source revision. Receipts identify beta `7af23836`,
 republished `d5607e08` with application sources `c716bd8`, Magewell `5b8132b6`,
@@ -259,7 +260,7 @@ below 30 Hz a due scan may still run per input. Commit `477fdfb6` adds the later
 footprint cadence guard; it is in this repair history, not in either `a8f62855`
 or `a591ad3`. Do not confuse package labels with actual released application pins.
 
-The next implementation needs a bounded worker verification lane and an immutable
+The implementation now provides a bounded worker verification lane and an immutable
 accepted-cue template. Initial acquisition/grouping may cost more; the worker
 checks a cheap same-cue path before scheduling full grouping. A passing receipt
 is bound to the exact source, original template revision, policy, physical base
@@ -282,3 +283,16 @@ window, not merely older than the latest HDMI arrival.
 An isolated one-work-limit cue-hint prototype was not applied: its mask-only
 reattachment could miss an alternate-chroma pixel inside cleanup. It also would
 add render-thread comparison work rather than satisfy this worker requirement.
+Static-cue verification does not replace change detection. Passing proofs schedule
+a coalesced full semantic scan on due inputs at approximately 100 ms intervals.
+A changed or incomplete scan requests a bounded burst on subsequent due inputs
+until a complete matching scan or newly accepted cue resolves it. Current video
+and ready exact-source proofs continue independently. This backstop detects new
+text inside the preserved active picture; excluded bars and affected cleanup
+pixels require immediate current-source safety verification.
+
+Remaining safety review: advanced destination backing also overwrites current
+picture pixels. Source glyph and cleanup verification alone cannot prove that
+a newly added line in that destination is preserved. Add a destination-local
+current-pixel novelty check before qualifying worker receipts for composition;
+periodic semantic refresh alone does not close this first-frame write risk.
