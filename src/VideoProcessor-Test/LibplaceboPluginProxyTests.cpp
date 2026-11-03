@@ -4525,9 +4525,9 @@ namespace VideoProcessorTest
                 return pixels;
             };
             auto quiet=makeOverlay(180);auto loud=makeOverlay(620);
-            Assert::AreEqual(uint16_t(892),uint16_t(quiet[size_t(134)*width+158]>>6));
-            Assert::AreEqual(uint16_t(892),uint16_t(loud[size_t(190)*width+158]>>6));
-            Assert::AreEqual(uint16_t(892),uint16_t(loud[size_t(1941)*width+1400]>>6));
+            Assert::AreEqual(892,int(quiet[size_t(134)*width+158]>>6));
+            Assert::AreEqual(892,int(loud[size_t(190)*width+158]>>6));
+            Assert::AreEqual(892,int(loud[size_t(1941)*width+1400]>>6));
             SnapshotTestCallback callback;NativeP210Buffer buffer;
             struct Cleanup {HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;const char* config;bool stopped;
                 ~Cleanup(){if(renderer){if(!stopped)renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);if(config)DeleteFileA(config);}}
