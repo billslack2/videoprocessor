@@ -13853,11 +13853,16 @@ struct LibplaceboVideoRenderer::Impl
                     currentActivePictureIdentity,localBoundaryPolicyGeneration,
                     localBoundaryContinuityGeneration))) {
                 auto shared=subtitleSharedPicture;shared.required=true;
+                const bool deferFullSubtitleScanForCueProof=
+                    currentCueTemplateRevision.load(std::memory_order_acquire)!=0 &&
+                    !videoFrame.IsSourceDiscontinuity();
                 const auto observed=QueueSubtitleMeasurement(videoFrame,state,currentActivePictureIdentity,
                     videoFrame.IsSourceDiscontinuity(),{},localBoundaryPolicyGeneration,
                     localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                     activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
-                    shared,preparedQueued,{},false,!repeatedTemporalOutput,analysisCache,&ownedSubtitleScanWitness,ownedSubtitleTimelinePolicy);
+                    shared,preparedQueued,{},false,
+                    !repeatedTemporalOutput && !deferFullSubtitleScanForCueProof,
+                    analysisCache,&ownedSubtitleScanWitness,ownedSubtitleTimelinePolicy);
                 earlySubtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
                     localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                 if (earlySubtitlePreview.available) subtitlePreview=&earlySubtitlePreview;
@@ -15008,6 +15013,7 @@ struct LibplaceboVideoRenderer::Impl
                     !current.text.confirmationPending;
             };
             bool currentCueProofWorkerOwnsSource=false;
+            bool currentCueProofNeedsOrdinaryFullScan=false;
             bool currentCueProofPending=false;
             if(!renderCompleteNoCaptionScan && !hasExactCurrentScan(currentSubtitlePreview) &&
                 !repeatedTemporalOutput && !cadenceRepeat &&
@@ -15090,9 +15096,15 @@ struct LibplaceboVideoRenderer::Impl
                         currentCueProofWorkerOwnsSource=cueStatus==SubtitleCurrentCueProofStatus::Queued ||
                             cueStatus==SubtitleCurrentCueProofStatus::Pending ||
                             cueStatus==SubtitleCurrentCueProofStatus::FallbackQueued;
+                        currentCueProofNeedsOrdinaryFullScan=
+                            cueStatus==SubtitleCurrentCueProofStatus::NoTemplate ||
+                            cueStatus==SubtitleCurrentCueProofStatus::NotEligible ||
+                            cueStatus==SubtitleCurrentCueProofStatus::Failed;
                     }
+                } else {
+                    currentCueProofNeedsOrdinaryFullScan=true;
                 }
-                if(!currentCueProofConsumed && !currentCueProofWorkerOwnsSource) {
+                if(!currentCueProofConsumed && currentCueProofNeedsOrdinaryFullScan) {
                     const auto priorBar=subtitleBoxPresentation.BarTrackingReferenceFor(
                         subtitleIdentity,exactKey.width,exactKey.height,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint);

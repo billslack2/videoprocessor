@@ -375,29 +375,29 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     auto stalePixels=std::make_shared<std::vector<uint16_t>>(*typedSeedPixels);
     const std::weak_ptr<std::vector<uint16_t>> weakStale=stalePixels;
     auto staleSource=CurrentFootprintUhdSource(*stalePixels);staleSource.backingOwner=stalePixels;
-    auto staleKey=CurrentFootprintUhdKey(94,base);
-    staleKey.pictureTop=preview->current.pictureTop;staleKey.pictureBottom=preview->current.pictureBottom;
-    staleKey.barEvidence=preview->current.barEvidence;staleKey.independentBarAnalysis=true;
-    staleKey.barAuthority=true;typedWorker.AdvanceCurrentCueRenderWindow(staleKey.identity,94);
-    SubtitleCurrentCueProofRequest staleRequest;staleRequest.currentKey=staleKey;
+    auto typedStaleKey=CurrentFootprintUhdKey(94,base);
+    typedStaleKey.pictureTop=preview->current.pictureTop;typedStaleKey.pictureBottom=preview->current.pictureBottom;
+    typedStaleKey.barEvidence=preview->current.barEvidence;typedStaleKey.independentBarAnalysis=true;
+    typedStaleKey.barAuthority=true;typedWorker.AdvanceCurrentCueRenderWindow(typedStaleKey.identity,94);
+    SubtitleCurrentCueProofRequest staleRequest;staleRequest.currentKey=typedStaleKey;
     staleRequest.source=staleSource;staleRequest.physicalBase=base;
     staleRequest.sourceMode=SubtitlePreviewMode::BlackBackground;staleRequest.backgroundMode=3;
-    staleRequest.eligibleRenderHead=staleKey.identity;staleRequest.eligibleTailSequence=94;
+    staleRequest.eligibleRenderHead=typedStaleKey.identity;staleRequest.eligibleTailSequence=94;
     staleRequest.templateRevision=typedRevision;staleRequest.fullScanDue=false;
     Assert::IsTrue(typedWorker.SubmitCurrentCueProof(std::move(staleRequest))==
         SubtitleCurrentCueProofStatus::Queued);
     SubtitleCurrentCueProofReceipt staleReceipt;SubtitleCurrentCueProofStatus staleStatus=SubtitleCurrentCueProofStatus::Queued;
     for(int attempt=0;attempt<100000 && staleStatus==SubtitleCurrentCueProofStatus::Queued;++attempt) {
-        staleStatus=typedWorker.TryTakeCurrentCueProof(staleKey,typedRevision,staleReceipt);
+        staleStatus=typedWorker.TryTakeCurrentCueProof(typedStaleKey,typedRevision,staleReceipt);
         if(staleStatus==SubtitleCurrentCueProofStatus::Queued)std::this_thread::yield();
     }
     Assert::IsTrue(staleStatus==SubtitleCurrentCueProofStatus::Pending,
         L"The UHD verification must be observed running before the source window advances.");
-    auto newerHead=staleKey.identity;++newerHead.acceptedSequence;++newerHead.sourceFrameNumber;
+    auto newerHead=typedStaleKey.identity;++newerHead.acceptedSequence;++newerHead.sourceFrameNumber;
     newerHead.captureTimestamp+=16683;typedWorker.AdvanceCurrentCueRenderWindow(newerHead,newerHead.acceptedSequence);
     stalePixels.reset();
     for(int attempt=0;attempt<1000;++attempt) {
-        staleStatus=typedWorker.TryTakeCurrentCueProof(staleKey,typedRevision,staleReceipt);
+        staleStatus=typedWorker.TryTakeCurrentCueProof(typedStaleKey,typedRevision,staleReceipt);
         if(staleStatus==SubtitleCurrentCueProofStatus::Expired)break;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -3974,7 +3974,9 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             return blocker;
         }));
-        Assert::IsTrue(WaitForEntered(entered,1),L"The ordinary grouping lane is intentionally occupied.");
+        for(int attempt=0;attempt<1000 && !entered.load(std::memory_order_acquire);++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Assert::IsTrue(entered.load(std::memory_order_acquire),L"The ordinary grouping lane is intentionally occupied.");
 
         SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=seed.text;
         input.source=OwnedSource(seedPixels);input.physicalBase=seed.sharedPicture.bounds;

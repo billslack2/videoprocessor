@@ -2546,7 +2546,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             const auto* footprint=advanced?&state->footprint:nullptr;
             seeded=state->pending.RememberAccepted(preview,input.acceptedCue,input.source,input.frameMs,
                 input.holdMs,nullptr,nullptr,&input.physicalBase,footprint);
-            if(seeded && state->pending.HasPixelSeed()) {
+            if(seeded) {
                 state->descriptor=descriptor;state->descriptor.revision=entry->revision;
                 reason=advanced?"current-cue-template-footprint-seeded":"current-cue-template-seeded";
             } else {seeded=false;reason=state->pending.DecisionReason();}
@@ -2559,7 +2559,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             }
         }
         const double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
-        AnalysisTraceRecord trace=AnalysisTraceRecord(input.observation.identity,this,"worker-cue-template",reason);
+        auto trace=AnalysisTraceRecord(input.observation.identity,this,"worker-cue-template",reason);
         trace.kind=AnalysisDiagnosticRecordKindV1::Worker;trace.policyGeneration=input.observation.policyGeneration;
         trace.continuityGeneration=input.observation.continuityGeneration;trace.sourceWidth=input.observation.width;
         trace.sourceHeight=input.observation.height;trace.resultCode=input.acceptedCue.lineCount;
@@ -2680,7 +2680,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                 request.hasOwnedWitness?&request.ownedWitness:nullptr,request.ownedTimelinePolicy,
                 true,{});
         }
-        AnalysisTraceRecord trace=AnalysisTraceRecord(key.identity,this,"worker-cue-proof",reason);
+        auto trace=AnalysisTraceRecord(key.identity,this,"worker-cue-proof",reason);
         trace.kind=AnalysisDiagnosticRecordKindV1::Worker;trace.policyGeneration=key.policyGeneration;
         trace.continuityGeneration=key.continuityGeneration;trace.sourceWidth=key.width;trace.sourceHeight=key.height;
         trace.resultCode=verified?state->descriptor.cue.lineCount:0;
@@ -2712,7 +2712,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::TryTakeCurrentCu
     using namespace SubtitleCurrentCueWorkerDetail;
     receipt={};std::lock_guard<std::mutex> lock(m_mutex);
     for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
-        const auto& entry=**i;
+        auto& entry=**i;
         if(entry.seedTask || entry.revision!=templateRevision || !SameExactTaskKey(entry.key,exactKey))continue;
         if(entry.status==SubtitleCurrentCueProofStatus::Ready) {
             if(!m_currentCueState || m_currentCueState->descriptor.revision!=templateRevision ||
