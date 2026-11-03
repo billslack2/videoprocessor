@@ -1,0 +1,195 @@
+{
+  "incident": "VideoProcessor live playback and geometry investigation",
+  "date": "2026-11-02",
+  "timezone": "America/New_York (EST, UTC-05:00)",
+  "sources": {
+    "live_log": "C:\\Videoprocessor\\vp\\logs\\vp.log",
+    "snapshot_log": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\volume-freeze-20261102-222233\\vp-tail.log",
+    "snapshot_config": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\volume-freeze-20261102-222233\\VideoProcessor.cfg",
+    "snapshot_state": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\volume-freeze-20261102-222233\\VideoProcessor.state",
+    "live_read_method": "FileStream opened with FileShare.ReadWrite; parsed all VP presentation decision JSON event types, including state-change and correlation."
+  },
+  "volume_causality": {
+    "volume_or_mute_event_found_in_live_log_window_22_19_to_22_22": false,
+    "note": "Do not attribute the observed stall or crop changes to a volume action. OSD cadence lines are frame-rate telemetry; Alpha OSD placement lines describe VP overlays."
+  },
+  "g1": {
+    "instance": "{089D7884-C8BC-46E1-9717-FD12FB53A163}",
+    "generation": 1,
+    "output_rows": 3059,
+    "output_span": "O1/S1 through O3059/S3242",
+    "confirmed_submission_gaps": [
+      {
+        "previous_local": "22:19:58.672, O155, source 200",
+        "next_local": "22:20:04.468, O156, source 339",
+        "elapsed_ms": 5796.382,
+        "source_step": 139,
+        "output_step": 1
+      },
+      {
+        "previous_local": "22:19:56.249, O142, source 142",
+        "next_local": "22:19:58.169, O143, source 188",
+        "elapsed_ms": 1920.05,
+        "source_step": 46,
+        "output_step": 1
+      }
+    ],
+    "pending_admissions_sources_201_to_338": {
+      "count": 138,
+      "profile": 1,
+      "ready": 0,
+      "unprocessed": 0,
+      "engage_retained": 0,
+      "caption_state": 0,
+      "composed": 0,
+      "source201_to216_last_submitted": 200,
+      "source217_to338_last_submitted": 0,
+      "admission_native_and_candidate_fields": "0,272-3840,1886",
+      "caption_field": "0,0-0,0",
+      "note": "Those repeated admission native/candidate fields are retained fallback geometry, not a current per-source candidate or native proof."
+    },
+    "source201": {
+      "preview_stage": "candidate-untrusted",
+      "candidate_class": 3,
+      "valid": 0,
+      "selected_frames": 4,
+      "analyzed_frames": 3,
+      "proof_samples": 0,
+      "current_candidate": "0,296-3840,1884",
+      "base": "0,272-3840,1886",
+      "picture_decision_pending": 1,
+      "publication_admission": "not-evaluated",
+      "published": 0,
+      "evidence_reason": "native candidate has an unverified nominated crop axis",
+      "crop_retained_rect": "0,272-3840,1886",
+      "configured_fill_rect": "24,272-3816,1886",
+      "coarse_edges": "-T--",
+      "coarse_current": 1,
+      "observation_rect": "0,296-3840,1884",
+      "coarse_rect": "0,138-3840,1886",
+      "dense_scan": "forced and evaluated",
+      "authority": "current",
+      "subtitle_inspection": "new-vertical-content; horizontal_safe=1; vertical_safe=0; shift confirmation=1/3; target=-98 px",
+      "interpretation": "Current coarse occupancy and an untrusted candidate existed, but there was no publication or admission continuation."
+    },
+    "source217_after_reset": {
+      "local_time": "22:19:59",
+      "event": "Alpha native continuity reset cleared submitted anchor; retained geometry 0,272-3840,1886.",
+      "admission": "ready=0; unprocessed=0; caption_state=0; last_submitted_source=0; native/candidate fields repeat 0,272-3840,1886.",
+      "crop_state": "latest_trusted=0; retention_safe=0; coarse_edges=-T--; coarse_current=1; observation_rect=0,0-0,0; coarse_rect=0,138-3840,1886; dense_scan=skipped; authority=none.",
+      "interpretation": "The trace has no exact current observation rectangle or current authority at source 217."
+    },
+    "source338": {
+      "admission": "ready=0; unprocessed=0; caption_state=0; last_submitted_source=0; native=0,272-3840,1886; caption=0,0-0,0; candidate=0,272-3840,1886.",
+      "current_observation": "No source-338 Alpha crop or preview observation is logged; admission rectangle fields do not prove current raw occupancy."
+    },
+    "source339_recovery": {
+      "local_time": "22:20:04",
+      "published": 1,
+      "result": "Current verified spatial crop acquired immediately.",
+      "measured_native": "0,272-3840,1886",
+      "submitted_source": "24,272-3816,1886",
+      "accepted_native_source": 339,
+      "crop_recovery": "first_sequence=217; duration_ms=5094; applied_changes=0"
+    },
+    "off_window": {
+      "profile": "Off (profile 0)",
+      "sources": "1160-1270",
+      "outputs": "977-1087",
+      "local_time": "22:20:38.711-22:20:43.297",
+      "submitted_rows": 111,
+      "median_adjacent_qpc_ms": 41.4538,
+      "max_adjacent_qpc_ms": 55.4087,
+      "source_step": 1,
+      "output_step": 1,
+      "actual_rectangle_transitions": 31,
+      "actual_source_rect_counts": {
+        "0,138,3840,1886": 78,
+        "0,190,3840,1886": 16,
+        "24,272,3816,1886": 17
+      },
+      "measured_rect_counts": {
+        "0,296,3840,1884": 46,
+        "0,272,3840,1886": 65
+      },
+      "classification_counts": {
+        "2": 65,
+        "3_provisional": 46
+      },
+      "owner_counts": {
+        "fit": 94,
+        "trusted": 17
+      },
+      "accepted_native_source": 339,
+      "reason_counts": {
+        "bounded outward presentation expansion accepted": 16,
+        "current excluded-band contradiction preserves outward visibility without changing native AR": 30,
+        "generation-current shared crop authority accepted": 17,
+        "uncertain picture preserves submitted AR and measured outward pixels": 48
+      },
+      "full_raster_actual_source_rows": 0,
+      "interpretation": "Actual submitted geometry jitters at normal cadence. Measured geometry and classification do not follow every rectangle toggle, and the accepted native source remains 339."
+    },
+    "off_costs_local_222040": {
+      "analysis_window_ms": 2016,
+      "source_hz": 23.97645,
+      "display_hz": 23.97634,
+      "submissions": 48,
+      "preview_avg_ms": 0.096,
+      "preview_peak_ms": 0.202,
+      "active_avg_ms": 13.069,
+      "active_peak_ms": 22.443,
+      "source_period_exceeded": 0,
+      "display_period_exceeded": 0,
+      "spatial_detector_jobs": 48,
+      "spatial_detector_avg_ms": 13.008,
+      "spatial_detector_peak_ms": 17.385,
+      "gpu_frame_avg_ms": 4.35,
+      "gpu_frame_peak_ms": 7.1,
+      "gpu_overruns": 0
+    },
+    "actual_full_raster_rows": {
+      "count": 42,
+      "sources": "1-42",
+      "local_time": "22:19:50.400-22:19:52.081",
+      "reason": "Near-black title / initial unavailable geometry; none occurred in the sampled Off window."
+    }
+  },
+  "g2": {
+    "instance": "{9F977CFA-C744-4EA5-8A21-29BCEE982F6B}",
+    "process_id": 38028,
+    "generation": 2,
+    "profile": "Classic (profile 1)",
+    "parsed_through_local": "22:33:34.090",
+    "submitted_outputs": 40758,
+    "output_range": "O285-O41042",
+    "selected_sources": "301-41064",
+    "max_adjacent_qpc_ms": 54.569,
+    "output_step": 1,
+    "max_source_step": 3,
+    "repeats": 0,
+    "actual_source_rect": "0,0,3840,2160 for all 40758 outputs",
+    "interpretation": "Continuous full-raster output in the parsed interval; provisional/measured states were not applied as crop rectangles."
+  },
+  "sparse_event_parse_correction": {
+    "previous_summary_issue": "Filtering only event=correlation omitted intervening event=state-change output records.",
+    "example": "The apparent O2544/S2562 to O2673/S2691 2154.514 ms interval has submitted outputs O2545 through O2672 in the full event stream.",
+    "corrected_result": "All event types together show output step 1 and max adjacent QPC gap 54.569 ms through 22:33:34.090."
+  },
+  "separate_invalid_capture": {
+    "local_time": "22:22:04",
+    "capture_counter": 3217,
+    "invalid_state_sequence": 3,
+    "deferred_ms": 1500,
+    "applied_local_time": "22:22:05",
+    "effect": "Renderer rejected SDR/REC709 to UNKNOWN/UNKNOWN and later stopped/gated around 22:22:07.",
+    "relation": "Separate from the 22:19:59 native-continuity reset and sources 201-338."
+  },
+  "assessment": {
+    "confirmed_stall_mechanism": "Classic subtitle-canvas admission remained not-ready while inspection/current native anchoring was unresolved; source 339 acquired a current verified crop and output resumed.",
+    "detector_vs_gpu": "The sampled Off detector and GPU times are below the 41.7 ms frame period, with no period overruns; they do not explain the earlier multi-second admission stall.",
+    "volume_trigger": "Unconfirmed; no volume or mute event found.",
+    "limits": "Logs establish admission state, cadence, measured/actual rectangles, and detector timing; they do not prove exact source pixels or a volume-OSD cause."
+  },
+  "existing_file_note": "Do not overwrite live-output-gap-summary.json. Its G2 gap claim uses correlation-only records and is contradicted by the all-event parse."
+}

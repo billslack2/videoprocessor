@@ -4,6 +4,29 @@
 
 Review
 
+Blocking playback regressions reported after deployment: Classic stops with a
+volume overlay and during dense subtitles; Off repeatedly changes framing.
+Current deployed source remains 53058498 and is not qualified. The partial full
+run caught a returning-Classic controller-projection failure; GPU qualification
+was stopped after that failure to remove contention with user playback. No later
+source changes have been deployed.
+
+Logs establish a 5.796-second Classic source-submission gate (138 pending sources)
+and 31 Off presentation-rectangle changes while measured picture geometry remains
+unchanged. They do not identify a volume event; the later invalid input/capture
+transition is separate. Parse all presentation event types: correlation-only parsing
+falsely suggests additional G2 gaps. The complete G2 stream remains continuous.
+[Corrected incident evidence](../assets/VP-0225/combined-deployment-20261102/incident-playback-evidence.json).
+
+The controller correction ee4167bf passes all 1,054 native contracts. The Off FIT
+precedence repair 2057bb08 has a new counterexample; its first native run caught an
+incorrect unretained-result assertion in the new test, now corrected but not yet
+revalidated. The main repair now being implemented removes the terminal subtitle
+wait in favor of an explicit current-raw, pixel-preserving presentation fallback.
+It leaves physical/native AR independent, keeps ready processing, and must prevent
+old temporal subtitle packets from being replayed over current raw captions.
+New policy, temporal and actual-renderer regressions are required before deployment.
+
 2026-11-02: User explicitly requested combining the AR repair and stutter repair,
 then asked to deploy first while qualification continues. Clean, pushed source
 `53058498acf3462dd698c3b5b4ea1c0467025769` on
@@ -21,7 +44,7 @@ hashes match the combined build; both renderer modules load from the deployment
 directory. Restarted process 38028 produces current-source submissions. Settings
 were backed up and preserved byte-for-byte during copying; no configuration edits.
 Backup: `C:\Videoprocessor\vp\backups\combined-ar-stutter-53058498-20261102-221941`.
-Full combined qualification and both matching-binary motion suites remain pending.
+Full combined qualification failed; motion suites have not run for this source.
 This is not yet a fully qualified deployment or original-scene acceptance.
 
 The earlier stutter-only build `2a3af0c2` passed 1,050 native contracts, 18 standard

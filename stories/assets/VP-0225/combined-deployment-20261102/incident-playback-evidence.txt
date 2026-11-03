@@ -1,0 +1,44 @@
+VP incident playback evidence
+Date: 2026-11-02 (America/New_York, EST)
+
+Method
+- Read the live log using FileShare.ReadWrite.
+- Parsed all VP presentation-decision event types, including state-change and correlation.
+- Added reports only. No source, config, state, profile, or UI changes.
+
+Volume attribution
+- No volume or mute event was found in the live-log window 22:19-22:22.
+- OSD cadence lines are frame-rate telemetry; Alpha OSD placement lines describe VP overlays.
+- Do not attribute the confirmed stall or geometry changes to volume.
+
+Confirmed G1 submission stalls
+- 22:19:58.672, O155/S200 -> 22:20:04.468, O156/S339: 5796.382 ms, source step 139, output step 1.
+- 22:19:56.249, O142/S142 -> 22:19:58.169, O143/S188: 1920.050 ms, source step 46, output step 1.
+- Sources 201-338 emitted 138 pending Classic canvas admissions: ready=0, unprocessed=0, retained=0, caption_state=0, composed=0.
+- Source 201 had a current coarse top edge and untrusted candidate [0,296-3840,1884], base [0,272-3840,1886], but no publication. Submitted crop stayed [0,272-3840,1886]; configured fill was [24,272-3816,1886].
+- At source 217, a native-continuity reset cleared the submitted anchor. Crop trace had coarse_edges=-T-- but observation_rect empty, dense scan skipped, authority=none. Admission native/candidate rectangles are retained fallback values, not current observations.
+- Source 338 has only a pending admission record; no source-338 raw/coarse observation was logged.
+- Source 339 published a current verified crop and resumed output; crop recovery says first_sequence=217, duration_ms=5094, applied_changes=0.
+
+Off geometry jitter, not a freeze
+- Off profile, sources 1160-1270 / outputs 977-1087, 22:20:38.711-22:20:43.297.
+- 111 output rows, median spacing 41.454 ms, max 55.409 ms; source and output each advance by one.
+- 31 actual-source rectangle transitions. Counts: [0,138,3840,1886] 78; [0,190,3840,1886] 16; [24,272,3816,1886] 17. No full-raster actual-source rows in this Off sample.
+- Measured rectangles: [0,296,3840,1884] 46 rows and [0,272,3840,1886] 65. All rows report native_accepted_source=339; owner=fit for 94 and trusted for 17.
+- Nearby performance: 48 submissions; active avg/peak 13.069/22.443 ms; spatial detector avg/peak 13.008/17.385 ms; source/display period overruns 0; GPU frame avg/peak 4.350/7.100 ms; GPU overruns 0.
+
+Full-raster records and correction
+- G1 full-raster actual-source rows are only startup sources 1-42, 22:19:50.400-22:19:52.081, during the near-black title episode; none occur in the Off sample.
+- G2 Classic, 22:22:14.085-22:33:34.090: 40,758 outputs, O285-O41042 continuous, sources 301-41064, max adjacent QPC 54.569 ms, max source step 3, no repeats; every actual_source is [0,0,3840,2160].
+- The prior apparent G2 2.155-2.618 second gaps came from filtering only correlation records. State-change events carry the intervening outputs; O2545-O2672 exist between O2544 and O2673.
+
+Separate later incident
+- At 22:22:04 capture became invalid (sequence 3, counter 3217); deferred 1500 ms, applied 22:22:05, then renderer rejected SDR/REC709 to UNKNOWN/UNKNOWN and stopped/gated around 22:22:07. This is separate from the 22:19:59 reset and sources 201-338.
+
+Assessment
+- The verified multi-second G1 freeze is a presentation-admission stall while Classic subtitle inspection/current anchoring is unresolved. Sampled scan and GPU work do not explain it.
+- Off shows real submitted geometry jitter at normal cadence, not a multi-second freeze.
+- The later G2 Classic interval is continuous full-raster output. Logs do not prove exact source pixels or a volume-OSD trigger.
+
+Existing artifact
+- live-output-gap-summary.json was left unchanged. Its G2 max-gap claim is based on correlation-only rows and should not be used as an adjacent-output gap.
