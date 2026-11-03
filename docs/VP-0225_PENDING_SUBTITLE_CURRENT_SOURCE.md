@@ -309,3 +309,51 @@ At `cb8a95a6`, all 1,083 native contracts pass. The 60 Hz actual-renderer worker
 budget pair still fails: verified receipts cover nearly every current source, but
 full grouping runs near input cadence and worst worker proof time exceeds the
 60 Hz budget. This is not full runtime qualification and has not been deployed.
+
+## Live trial: paused held cue and shader cold-start evidence (2026-11-03)
+
+The user-authorized live trial is clean-source `d8ae4175`, deployed as matching
+x64 Release host and both renderers. It remains unqualified: synthetic 59.94 Hz
+caption/cadence/reuse and render-path budgets passed, but worker proof wall-time
+peaks remained 20–23 ms. The installed trial has not been replaced by later work.
+
+The user's paused capture at local 12:56:07 (source 6562) distinguishes detected
+picture from presentation: the measured/retained picture is about 2.39:1, while
+the displayed source includes the still-visible original bar caption and is
+about 2.19:1. Capture source 6842 reports cue 32 detected, held and complete,
+but uncomposed. This is not an empty detector result. Live logs show current
+source submissions continuing through this raw-pixel fallback.
+
+The diagnostic trace has 717 current independent full-scan subtitle records and
+718 failed cached-cue proofs (`cadence-current-glyph-changed`). The tracker calls
+the full-current cue held/strict-current-ink with matching glyphs. Raw observation
+`text.held` is false; the accepted tracker result is held. These fields must not
+be conflated when diagnosing refresh or certificate eligibility.
+
+A CPU control built from the captured V210 raster reproduced a separate held-cue
+certificate failure. Moving only an unrelated sampled bar-boundary row from 273
+to 274, while preserving current caption pixels, prevented the certificate.
+`NoNewOwnedInkOutsideReference` compared whole row maps instead of matching owned
+samples by physical source coordinates. Commit `35018ff5` joins by physical y;
+missing old rows still count as new ownership and are rejected outside accepted
+caption lines. It grants no new native/absence/seed authority. The exact control
+changes from certificate=false to true, and the new outside-caption ownership
+negative still rejects. At `3ea6335a`, the two focused contracts and all 1,083
+native contracts pass (`133146-f69b91b6`, `133614-d43641aa`). GPU/live acceptance
+of this fix remains outstanding.
+
+Paused HDMI input is not byte-constant: four captured phases repeat, with up to
+four 10-bit luma/chroma codes of variation; the caption's chroma stays constant.
+A separate CPU footprint replay at 70% text scale rejects neutral outline pixels
+80 -> 84 as `cadence-current-cleanup-changed`. No tolerance has been widened for
+this observation. Comparison tolerance must not become bar/absence authority.
+
+The live shader log records one 71.6-second cold preparation: background 3,
+blur off, All took 31.8 seconds; background 5, blur on, All took 39.5 seconds.
+Other passes were milliseconds. The existing aggregate prewarm readiness gate
+waits for all backgrounds/blur variants. Older actual RC6 pins already had that
+sweep; this trial changed shader source for protected cleanup and loaded the
+existing cache rather than purging it (1461 -> 1466 objects). Commit `243f1b47`
+removes a duplicated cleanup-row lookup without changing protection behavior;
+its cold-driver compile effect is not yet measured. Do not call that a verified
+startup speedup or remove current-picture protection to obtain one.
