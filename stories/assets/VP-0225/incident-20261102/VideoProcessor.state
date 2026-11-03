@@ -1,0 +1,10 @@
+# Managed by VideoProcessor.
+profile.motion: profile_1
+profile.display: standard_scope
+profile.color: bt2020
+profile.viewport: scope
+profile.zoom: scope
+profile.subtitles: classic
+profile.queue: madvr_queue
+profile.lldv: default
+profile.nls: profile_1

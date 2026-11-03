@@ -1,0 +1,10 @@
+{
+  "recording": "C:\\Users\\bslac\\Videos\\2026-11-02 18-55-54.mp4",
+  "recording_sha256": "02b426a4ab216321fa69c204b5cd96d93769b4a86213b3f515003f696ddf8b35",
+  "files": {
+    "findings.txt": "7b80e3c1f437d5bdb5413638a9735117cee5a6e229840fa3dd34dcaf0e8985a1",
+    "VideoProcessor.cfg": "26b5bacb253db172b0418aa51bd0a2f3cb29047e3934d099098d0ff16f31074c",
+    "VideoProcessor.state": "2cd6a80974e0aba4551c8403623f39e965dff227c825380aaf5fcbdfd9b264c0",
+    "vp-log-window.txt": "4ef2d31ead1efb79c02b5aeda6ba16895315f7e49c63869abb05db6dd9d678c4"
+  }
+}

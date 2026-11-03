@@ -1,0 +1,9 @@
+Recording: C:\Users\bslac\Videos\2026-11-02 18-55-54.mp4
+1199 frames, 60 fps, 2560x1440, duration 19.983 s.
+Alignment: recording 8 s shows 23:56:02.950Z A3E5EE18 G2 O2400 S5579.
+Main logged episode: 18:56:06.660 to 18:56:08.375 local, approximately recording 11.7 to 13.4 s.
+Submitted source sequence: 5668 -> 5673 -> 5677 -> 5681 -> 5685 -> 5689 -> 5693 -> 5697. Repeated intervals approximately 166.8 ms, with an initial 212.756 ms gap. Another earlier gap is 289.054 ms at 18:55:59.
+Missing sources 5670, 5671, 5672 explicitly report subtitle canvas admission ready=0, last_submitted_source=5668, reason=subtitle inspection pending; keep the last complete movie canvas.
+DeckLink delivery remains approximately 23.976 fps with skipped_input_frames=0 and total_missed=0 throughout the window.
+Presentation skips are logged as unclassified-no-submit, including 26 skips in the 3297 ms window ending 18:56:09. Renderer-drop counters remain zero in the recording.
+Conclusion: evidence implicates subtitle canvas readiness/submission gating in the severe stalls. Exact code path and a safe fallback need source verification; no fix or deployment was performed. Preserve picture and caption safety when resolving readiness; do not merely bypass checks.
