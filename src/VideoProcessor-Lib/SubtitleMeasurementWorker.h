@@ -2039,7 +2039,7 @@ private:
     SubtitleBoxPreview m_reference;
     SubtitleAcceptedCueSeedCertificate m_consumedCertificate;
     ActivePictureFrameIdentity m_last,m_certifiedSeed,m_pixelSeedIdentity;
-    std::shared_ptr<SubtitleInkSnapshot> m_pixelSeedInk;
+    std::shared_ptr<const SubtitleInkSnapshot> m_pixelSeedInk;
     uint64_t m_certifiedPolicy=0,m_certifiedContinuity=0;
     std::vector<Sample> m_samples;
     double m_elapsed=0;
