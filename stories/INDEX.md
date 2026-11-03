@@ -288,7 +288,7 @@ they must not contain requirements that are absent from this file.
 
 | VP-0224 | Review | Auto-align the active picture to visible screen edges with signed pixel trim |
 
-| VP-0225 | Backlog | Review and optimize subtitle processing to eliminate repeatable playback stalls |
+| VP-0225 | In Progress | Review and optimize subtitle processing to eliminate repeatable playback stalls |
 
 ## Codex story workflow
 

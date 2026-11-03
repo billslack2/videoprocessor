@@ -2,7 +2,34 @@
 
 ## Status
 
-Backlog
+In Progress
+
+2026-11-02: User authorized starting the review and optimization with multiple
+Luna extra-high reasoning subagents, including a dedicated pre-RC6 history
+review. Work is isolated on `codex/vp-0225-subtitle-cadence-20261102` in
+`E:\codex\videoprocessor\vp-0225-subtitle-cadence-20261102`, created from freshly
+queried/fetched current remote beta/default `v1.4.02-beta` at
+`a591ad3b532771911e85f8ef026958279f2065f0`.
+
+Readiness review: the incident is preserved with source/output IDs and timing;
+subtitle canvas admission and the final submission wait are identified code
+boundaries. Native policy plus actual renderer progression/pixel checks can
+validate the correction. Frame/cue/generation/format ownership and genuine
+picture expansion must remain safe. No configuration change is required.
+Architecture and regression analysis are the first implementation activities;
+no production patch or qualification has yet been claimed.
+
+Related AR repair `788554a100afe0af2352b904fe1870d80fb75bb7` is deployed from the
+separate `codex/reconstruction-admission-stall-20261102` branch. It fixes UNKNOWN
+inspection starvation for Black/Reconstruction while explicitly leaving Classic
+unchanged. The active AR chat is currently idle; its tree and deployment are
+preserved. That repair branch contains substantial unmerged work above beta,
+so inspect dependencies before importing any changes. This story will validate
+shared fixes and target remaining Classic/performance issues rather than make
+competing detector changes. Research lanes: pre-RC6 behavior/history, current
+admission/submission logic, and incident/reproduction evidence. Agents discuss
+findings before the patch design. No deployment is authorized by this start.
+
 
 2026-11-02: Created at the user's request after reviewing a recording and the
 matching deployed log. Scope is code review, optimization, coordination with the active AR work,
