@@ -275,8 +275,12 @@ class SubtitleCurrentCueProofReceipt {
     size_t m_footprintSamples=0,m_barVisibilitySamples=0;
     const char* m_reason="not-ready";
     std::shared_ptr<std::atomic_bool> m_consumed;
+    std::shared_ptr<const std::atomic_uint64_t> m_minimumRevision;
 public:
-    bool Valid() const {return m_valid;}
+    bool Valid() const {
+        return m_valid && m_minimumRevision &&
+            m_templateRevision>=m_minimumRevision->load(std::memory_order_acquire);
+    }
     SubtitleCurrentCueProofProvenance Provenance() const {return m_provenance;}
     uint64_t TemplateRevision() const {return m_templateRevision;}
     const ActivePictureFrameIdentity& SeedIdentity() const {return m_seedIdentity;}
@@ -303,7 +307,7 @@ inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
     const SubtitleCurrentCueProofReceipt& receipt,SubtitleBoxPreview& outPreview,
     SubtitleBoxResult& outCue) {
     outPreview={};outCue={};
-    if(!receipt.m_valid || receipt.m_provenance!=
+    if(!receipt.Valid() || receipt.m_provenance!=
             SubtitleCurrentCueProofProvenance::PresentationOnlyCurrentPixels ||
         !receipt.m_templateRevision || !receipt.m_currentInk ||
         receipt.m_currentInk->rawEvidenceComplete || !receipt.m_currentInk->paletteValid ||
@@ -334,6 +338,7 @@ inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
     bool expected=false;
     if(!receipt.m_consumed || !receipt.m_consumed->compare_exchange_strong(
             expected,true,std::memory_order_acq_rel))return false;
+    if(!receipt.Valid())return false;
     auto cue=receipt.m_acceptedCue;cue.held=true;cue.revised=false;
     cue.confirmationPending=false;cue.workLimit=false;
     outPreview.current=receipt.m_currentKey;
@@ -550,6 +555,9 @@ public:
     SubtitleCurrentCueProofStatus TryTakeCurrentCueProof(
         const SubtitleBoxObservation& exactKey,uint64_t templateRevision,
         SubtitleCurrentCueProofReceipt& receipt);
+    // Withdraw presentation context without freeing worker-owned pixels or
+    // waiting for pending work. Ordinary compatible cue rollover does not call this.
+    void InvalidateCurrentCueProofContext();
     // Presentation polls are non-destructive. The tracker commits the shared
     // one-use token only after current operation/context validation succeeds.
     SubtitleCurrentCueProofStatus TryPeekCurrentCueProof(
@@ -567,7 +575,7 @@ public:
     void SetInputRateHz(double inputHz) {
         {std::lock_guard<std::mutex> lock(m_mutex);
             if(m_stopping)return;
-            m_workerLimit=(std::isfinite(inputHz) && inputHz>30.0) || m_currentCueState?2u:1u;
+            m_workerLimit=(std::isfinite(inputHz) && inputHz>30.0) || HasCurrentCueProofContextLocked()?2u:1u;
             if(m_workerLimit>1 && !m_threads[1].joinable())m_threads[1]=std::thread([this]{Run(1);});
         }
         m_changed.notify_all();
@@ -893,6 +901,7 @@ public:
         for(auto& thread:m_threads)if(thread.joinable())thread.join();
     }
 private:
+    bool HasCurrentCueProofContextLocked() const;
     SubtitleCurrentCueFullScanRoute RouteCurrentCueFullScan(const SubtitleBoxObservation& key,
         Work& work,const OwnedScanBacklogWitness* ownedWitness,uint64_t timelinePolicy,bool nonblocking,
         std::shared_ptr<SubtitleCurrentCueRefreshLease>& refreshLease);
@@ -1103,7 +1112,7 @@ private:
                 m_changed.wait(lock,[this,workerIndex]{
                     if(m_stopping || workerIndex>=m_workerLimit)return m_stopping;
                     if(workerIndex==0)return !m_currentCuePending.empty() ||
-                        (!m_currentCueState && !m_pending.empty());
+                        (!HasCurrentCueProofContextLocked() && !m_pending.empty());
                     return !m_pending.empty();
                 });
                 if(m_stopping)return;
@@ -1172,6 +1181,8 @@ private:
     std::shared_ptr<SubtitleCurrentCueWorkerState> m_currentCueState;
     ActivePictureFrameIdentity m_currentCueWindowHead;
     uint64_t m_currentCueWindowTail=0,m_nextCurrentCueRevision=0;
+    std::shared_ptr<std::atomic_uint64_t> m_currentCueMinimumRevision=
+        std::make_shared<std::atomic_uint64_t>(1);
     std::deque<SubtitleBoxObservation> m_ready;
     std::deque<SubtitleBoxObservation> m_pastRaw;
     std::deque<RawVersion> m_rawVersions;
@@ -2752,6 +2763,21 @@ inline uint64_t ThreadId() {
 }
 }
 
+inline bool SubtitleMeasurementWorker::HasCurrentCueProofContextLocked() const {
+    return m_currentCueState && m_currentCueState->descriptor.revision>=
+        m_currentCueMinimumRevision->load(std::memory_order_acquire);
+}
+
+inline void SubtitleMeasurementWorker::InvalidateCurrentCueProofContext() {
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        // Do not release cached arrays/source owners on the caller's presentation
+        // path. Queued/running jobs retire themselves after checking this floor.
+        m_currentCueMinimumRevision->store(m_nextCurrentCueRevision+1,std::memory_order_release);
+    }
+    m_changed.notify_all();
+}
+
 inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCueFullScan(
     const SubtitleBoxObservation& key,Work& work,const OwnedScanBacklogWitness* ownedWitness,
     uint64_t timelinePolicy,bool nonblocking,
@@ -2763,17 +2789,18 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
     if(m_stopping)return SubtitleCurrentCueFullScanRoute::Suppress;
 
     const auto& state=m_currentCueState;
+    const auto minimumRevision=m_currentCueMinimumRevision->load(std::memory_order_acquire);
     // A renderer mode/background transition is not represented in the ordinary
     // analysis key. Once the typed proof path has observed such a transition,
     // let complete current scans acquire the replacement template instead of
     // applying the old template's semantic refresh throttle.
-    if(state && state->descriptor.valid && !state->cadenceRoutingEligible &&
+    if(HasCurrentCueProofContextLocked() && state->descriptor.valid && !state->cadenceRoutingEligible &&
         SameContext(state->descriptor.context,key))
         return SubtitleCurrentCueFullScanRoute::Enqueue;
 
     for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
         auto& entry=**i;
-        if(entry.seedTask || !SameExactTaskKey(entry.key,key))continue;
+        if(entry.seedTask || entry.revision<minimumRevision || !SameExactTaskKey(entry.key,key))continue;
         if(entry.status==SubtitleCurrentCueProofStatus::Failed ||
             entry.status==SubtitleCurrentCueProofStatus::Expired)
             return SubtitleCurrentCueFullScanRoute::Enqueue;
@@ -2791,7 +2818,7 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
         break;
     }
 
-    if(!state || !state->descriptor.valid || !state->cadenceRoutingEligible || !SameContext(state->descriptor.context,key) ||
+    if(!HasCurrentCueProofContextLocked() || !state->descriptor.valid || !state->cadenceRoutingEligible || !SameContext(state->descriptor.context,key) ||
         key.identity.acceptedSequence<=state->descriptor.context.identity.acceptedSequence ||
         key.discontinuity || key.cadenceSkipped || (key.analysisStride!=1 && key.analysisStride!=2) ||
         key.pendingRefresh || key.analysisRefresh || key.glyphLocalTop || key.glyphLocalBottom)
@@ -2825,7 +2852,7 @@ inline void SubtitleMeasurementWorker::ObserveCurrentCueSemanticScan(
     using namespace SubtitleCurrentCueWorkerDetail;
     std::lock_guard<std::mutex> lock(m_mutex);
     const auto& state=m_currentCueState;
-    if(!state || !state->descriptor.valid ||
+    if(!HasCurrentCueProofContextLocked() || !state->descriptor.valid ||
         !SameInterpretationContext(state->descriptor.context,key) ||
         key.identity.transportGeneration!=state->descriptor.context.identity.transportGeneration ||
         key.identity.acceptedSequence<=state->descriptor.context.identity.acceptedSequence ||
@@ -2888,13 +2915,13 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_stopping)return SubtitleCurrentCueProofStatus::Failed;
-        if(m_currentCueState && SameDescriptor(m_currentCueState->descriptor,descriptor)) {
+        if(HasCurrentCueProofContextLocked() && SameDescriptor(m_currentCueState->descriptor,descriptor)) {
             templateRevision=m_currentCueState->descriptor.revision;
             return SubtitleCurrentCueProofStatus::Ready;
         }
         for(const auto& pending:m_currentCueTasks)
             if(pending->seedTask && pending->status==SubtitleCurrentCueProofStatus::Queued &&
-                pending->revision && SameDescriptor(pending->descriptor,descriptor)) {
+                pending->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) && SameDescriptor(pending->descriptor,descriptor)) {
                 templateRevision=pending->revision;return SubtitleCurrentCueProofStatus::Queued;
             }
         if(m_currentCuePending.size()>=2)return SubtitleCurrentCueProofStatus::NotEligible;
@@ -2912,6 +2939,11 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     job.queued=std::chrono::steady_clock::now();
     job.currentCueTask=[this,entry,state,descriptor,input=std::move(input)](size_t) mutable {
         const auto started=std::chrono::steady_clock::now();
+        {std::lock_guard<std::mutex> lock(m_mutex);
+            if(m_stopping || entry->revision<m_currentCueMinimumRevision->load(std::memory_order_acquire)) {
+                entry->status=SubtitleCurrentCueProofStatus::Expired;return;
+            }
+        }
         bool seeded=false;const char* reason="current-cue-template-seed-failed";
         SubtitleBoxPreview preview;preview.current=input.observation;
         preview.current.text=input.observation.text;preview.text=input.acceptedCue;
@@ -2936,10 +2968,10 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         } else reason=state->footprint.DecisionReason();
         if(seeded) {
             std::lock_guard<std::mutex> lock(m_mutex);
-            if(!m_stopping) {
+            if(!m_stopping && entry->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire)) {
                 m_currentCueState=state;m_workerLimit=2;
                 if(!m_threads[1].joinable())m_threads[1]=std::thread([this]{Run(1);});
-            }
+            } else {seeded=false;reason="current-cue-template-context-invalidated";}
         }
         const double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         auto trace=AnalysisTraceRecord(input.observation.identity,this,"worker-cue-template",reason);
@@ -2954,7 +2986,9 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         trace.flags=seeded?1u:0u;AnalysisDiagnosticTrace::Emit(trace);
         std::vector<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredEntries;
         {std::lock_guard<std::mutex> lock(m_mutex);
-            entry->status=seeded?SubtitleCurrentCueProofStatus::Ready:SubtitleCurrentCueProofStatus::Failed;
+            entry->status=entry->revision<m_currentCueMinimumRevision->load(std::memory_order_acquire)?
+                SubtitleCurrentCueProofStatus::Expired:
+                (seeded?SubtitleCurrentCueProofStatus::Ready:SubtitleCurrentCueProofStatus::Failed);
             entry->key.ink.reset();entry->workerState.reset();
             while(m_currentCueTasks.size()>8) {
                 retiredEntries.push_back(std::move(m_currentCueTasks.front()));m_currentCueTasks.pop_front();
@@ -2963,7 +2997,9 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     };
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if(m_stopping) {entry->status=SubtitleCurrentCueProofStatus::Failed;return SubtitleCurrentCueProofStatus::Failed;}
+        if(m_stopping || entry->revision<m_currentCueMinimumRevision->load(std::memory_order_acquire)) {
+            entry->status=SubtitleCurrentCueProofStatus::Expired;return SubtitleCurrentCueProofStatus::Expired;
+        }
         m_currentCuePending.push_back(std::move(job));
         if(!m_threads[0].joinable())m_threads[0]=std::thread([this]{Run(0);});
     }
@@ -2983,6 +3019,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_stopping)return SubtitleCurrentCueProofStatus::Failed;
         if(!request.templateRevision)return SubtitleCurrentCueProofStatus::NoTemplate;
+        if(request.templateRevision<m_currentCueMinimumRevision->load(std::memory_order_acquire))
+            return SubtitleCurrentCueProofStatus::Expired;
         if(m_currentCueState && m_currentCueState->descriptor.revision==request.templateRevision) {
             state=m_currentCueState;descriptor=state->descriptor;
         } else {
@@ -3026,7 +3064,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             entry->revision=request.templateRevision;entry->status=SubtitleCurrentCueProofStatus::Queued;
             entry->descriptor=descriptor;
             for(const auto& old:m_currentCueTasks)
-                if(!old->seedTask && SameExactTaskKey(old->key,request.currentKey) && old->consumed) {
+                if(!old->seedTask && old->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
+                    SameExactTaskKey(old->key,request.currentKey) && old->consumed) {
                     entry->consumed=old->consumed;break;
                 }
             if(!entry->consumed)entry->consumed=std::make_shared<std::atomic_bool>(false);
@@ -3048,6 +3087,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         OwnedScanBacklogWitness lateWitness;bool hasLateWitness=false;uint64_t lateTimelinePolicy=0;
         if(request.fullScanDue && request.fullScanOnMiss) {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if(request.templateRevision<m_currentCueMinimumRevision->load(std::memory_order_acquire))
+                return SubtitleCurrentCueProofStatus::Expired;
             if(!duplicate->scanDecisionMade) {
                 if(!duplicate->deferredFullScan) {
                     duplicate->deferredFullScan=std::move(request.fullScanOnMiss);
@@ -3130,7 +3171,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         bool stillCurrent=false;
         std::array<SubtitleBoxRect,3> semanticLineBounds{};
         {std::lock_guard<std::mutex> lock(m_mutex);
-            stillCurrent=!m_stopping && m_currentCueState &&
+            stillCurrent=!m_stopping && HasCurrentCueProofContextLocked() &&
+                entry->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
                 SameProofInterpretation(state->descriptor,m_currentCueState->descriptor) &&
                 entry->revision==state->descriptor.revision &&
                 SubtitleCurrentCueWorkerDetail::InWindow(m_currentCueWindowHead,
@@ -3160,7 +3202,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         const auto& diagnostics=state->pending.DecisionDiagnostics();
         if(verified && currentInk && !currentInk->rawEvidenceComplete && currentInk->paletteValid) {
             receipt.m_valid=true;receipt.m_provenance=SubtitleCurrentCueProofProvenance::PresentationOnlyCurrentPixels;
-            receipt.m_templateRevision=entry->revision;receipt.m_seedIdentity=state->descriptor.context.identity;
+            receipt.m_templateRevision=entry->revision;receipt.m_minimumRevision=m_currentCueMinimumRevision;receipt.m_seedIdentity=state->descriptor.context.identity;
             receipt.m_acceptedCue=state->descriptor.cue;
             receipt.m_workerThreadId=threadId;receipt.m_workerMilliseconds=elapsed;
             receipt.m_verifiedLineCount=state->descriptor.cue.lineCount;
@@ -3194,9 +3236,14 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         uint64_t queuedTimelinePolicy=0;bool queuedAsFallback=false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if(entry->revision<m_currentCueMinimumRevision->load(std::memory_order_acquire)) {
+                verified=false;stillCurrent=false;semanticRefreshDue=false;
+                receipt={};reason="current-cue-proof-context-invalidated";
+            }
             entry->scanDecisionMade=true;entry->proofVerified=verified;
             entry->semanticRefreshDue=semanticRefreshDue;
-            if(entry->fullScanDue && entry->deferredFullScan && !entry->fullScanQueued &&
+            if(entry->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
+                entry->fullScanDue && entry->deferredFullScan && !entry->fullScanQueued &&
                 (!verified || semanticRefreshDue)) {
                 queuedScan=std::move(entry->deferredFullScan);queuedScanKey=entry->deferredFullScanKey;entry->fullScanDue=false;
                 queuedWitness=entry->deferredWitness;hasQueuedWitness=entry->hasDeferredWitness;
@@ -3248,6 +3295,9 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         // Trace transport must not postpone an otherwise ready video decision.
         std::vector<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredEntries;
         {std::lock_guard<std::mutex> lock(m_mutex);
+            if(entry->revision<m_currentCueMinimumRevision->load(std::memory_order_acquire)) {
+                verified=false;stillCurrent=false;receipt={};reason="current-cue-proof-context-invalidated";
+            }
             if(verified) {entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;}
             else entry->status=(fallbackQueued || entry->fallbackQueued)?SubtitleCurrentCueProofStatus::FallbackQueued:
                 (stillCurrent?SubtitleCurrentCueProofStatus::Failed:SubtitleCurrentCueProofStatus::Expired);
@@ -3298,7 +3348,9 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     };
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if(m_stopping) {entry->status=SubtitleCurrentCueProofStatus::Failed;return entry->status;}
+        if(m_stopping || entry->revision<m_currentCueMinimumRevision->load(std::memory_order_acquire)) {
+            entry->status=SubtitleCurrentCueProofStatus::Expired;return entry->status;
+        }
         m_currentCuePending.push_back(std::move(job));
         if(!m_threads[0].joinable())m_threads[0]=std::thread([this]{Run(0);});
     }
@@ -3310,6 +3362,9 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::TryTakeCurrentCu
     SubtitleCurrentCueProofReceipt& receipt) {
     using namespace SubtitleCurrentCueWorkerDetail;
     receipt={};std::lock_guard<std::mutex> lock(m_mutex);
+    if(!templateRevision)return SubtitleCurrentCueProofStatus::NoTemplate;
+    if(templateRevision<m_currentCueMinimumRevision->load(std::memory_order_acquire))
+        return SubtitleCurrentCueProofStatus::Expired;
     for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
         auto& entry=**i;
         if(entry.seedTask || entry.revision!=templateRevision || !SameExactTaskKey(entry.key,exactKey))continue;
@@ -3338,7 +3393,7 @@ inline bool SubtitleMeasurementWorker::MakeCurrentCueProofKey(
     using namespace SubtitleCurrentCueWorkerDetail;
     proofKey={};physicalBase={};templateRevision=0;
     std::lock_guard<std::mutex> lock(m_mutex);
-    if(m_stopping || !m_currentCueState || sourceKey.discontinuity)return false;
+    if(m_stopping || !HasCurrentCueProofContextLocked() || sourceKey.discontinuity)return false;
     const auto& descriptor=m_currentCueState->descriptor;
     if(!descriptor.valid || !SameInterpretationContext(descriptor.context,sourceKey) ||
         sourceMode!=descriptor.sourceMode || backgroundMode!=descriptor.backgroundMode ||
@@ -3355,13 +3410,14 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::TryPeekCurrentCu
     const SubtitleBoxObservation& exactKey,SubtitleCurrentCueProofReceipt& receipt) {
     using namespace SubtitleCurrentCueWorkerDetail;
     receipt={};std::lock_guard<std::mutex> lock(m_mutex);
-    if(!m_currentCueState)return SubtitleCurrentCueProofStatus::NoTemplate;
+    if(!HasCurrentCueProofContextLocked())return SubtitleCurrentCueProofStatus::NoTemplate;
     if(!InWindow(m_currentCueWindowHead,m_currentCueWindowTail,exactKey.identity))
         return SubtitleCurrentCueProofStatus::Expired;
     auto pending=SubtitleCurrentCueProofStatus::NoTask;
     for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
         const auto& entry=**i;
-        if(entry.seedTask || !SameExactTaskKey(entry.key,exactKey))continue;
+        if(entry.seedTask || entry.revision<m_currentCueMinimumRevision->load(std::memory_order_acquire) ||
+            !SameExactTaskKey(entry.key,exactKey))continue;
         if(entry.consumed && entry.consumed->load(std::memory_order_acquire))
             return SubtitleCurrentCueProofStatus::Consumed;
         if(!SameProofInterpretation(entry.descriptor,m_currentCueState->descriptor)) {

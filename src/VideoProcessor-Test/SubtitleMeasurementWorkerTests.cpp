@@ -4919,6 +4919,99 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             Assert::IsTrue(worker->TryPeekCurrentCueProof(*key,*repeated)==SubtitleCurrentCueProofStatus::Expired);
         }
     }
+    TEST_METHOD(CurrentCueWorkerContextInvalidationRevokesReadyAndQueuedRevisions) {
+        auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto seed=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(1,*pixels));
+        auto worker=std::make_unique<SubtitleMeasurementWorker>();
+        const auto makeTemplate=[&](const SubtitleBoxObservation& scan) {
+            SubtitleCurrentCueTemplateInput input;input.observation=scan;input.acceptedCue=scan.text;
+            input.source=OwnedSource(pixels);input.physicalBase=scan.sharedPicture.bounds;
+            input.sourceMode=SubtitlePreviewMode::None;input.acceptedCurrentScan=true;return input;
+        };
+        const auto waitTemplate=[&](uint64_t& revision) {
+            for(int attempt=0;attempt<1000;++attempt) {
+                if(worker->SubmitCurrentCueTemplate(makeTemplate(*seed),revision)==SubtitleCurrentCueProofStatus::Ready)
+                    return true;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return false;
+        };
+        uint64_t revision=0;Assert::IsTrue(waitTemplate(revision));
+        auto raw2=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(2,*pixels));
+        auto raw3=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(3,*pixels));
+        auto raw4=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(4,*pixels));
+        auto key2=std::make_unique<SubtitleBoxObservation>();auto key3=std::make_unique<SubtitleBoxObservation>();
+        auto key4=std::make_unique<SubtitleBoxObservation>();ActivePictureBounds base;uint64_t active=0;
+        Assert::IsTrue(worker->MakeCurrentCueProofKey(*raw2,SubtitlePreviewMode::None,3,*key2,base,active));
+        Assert::IsTrue(BuildSubtitleCurrentCueProofKey(*raw3,raw3->identity,base,true,*key3));
+        Assert::IsTrue(BuildSubtitleCurrentCueProofKey(*raw4,raw4->identity,base,true,*key4));
+        worker->AdvanceCurrentCueRenderWindow(raw2->identity,4);
+        const auto makeRequest=[&](const SubtitleBoxObservation& key,uint64_t requestRevision) {
+            SubtitleCurrentCueProofRequest request;request.currentKey=key;request.source=OwnedSource(pixels);
+            request.physicalBase=base;request.templateRevision=requestRevision;
+            request.sourceMode=SubtitlePreviewMode::None;request.backgroundMode=3;
+            request.eligibleRenderHead=raw2->identity;request.eligibleTailSequence=4;return request;
+        };
+        const auto waitProof=[&](const SubtitleBoxObservation& key,uint64_t expected,SubtitleCurrentCueProofReceipt& receipt) {
+            for(int attempt=0;attempt<1000;++attempt) {
+                if(worker->TryPeekCurrentCueProof(key,receipt)==SubtitleCurrentCueProofStatus::Ready &&
+                    receipt.TemplateRevision()==expected)return true;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return false;
+        };
+        Assert::IsTrue(worker->SubmitCurrentCueProof(makeRequest(*key2,revision))==SubtitleCurrentCueProofStatus::Queued);
+        auto consumed=std::make_unique<SubtitleCurrentCueProofReceipt>();Assert::IsTrue(waitProof(*key2,revision,*consumed));
+        auto tracker=std::make_unique<SubtitleBoxPresentation>();auto preview=std::make_unique<SubtitleBoxPreview>();
+        SubtitleBoxResult held;Assert::IsTrue(tracker->ConsumeCurrentCueProof(*consumed,*preview,held));
+
+        BlockingCueProofTraceSink gate;gate.sequence=3;gate.domain=raw3->identity.analysisDomainKey;
+        ReleaseCueProofTraceSink cleanup{gate};
+        AnalysisDiagnosticTrace::SetExternalSinks(&gate,&BlockCueProofTrace,nullptr,nullptr);cleanup.installed=true;
+        Assert::IsTrue(worker->SubmitCurrentCueProof(makeRequest(*key3,revision))==SubtitleCurrentCueProofStatus::Queued);
+        {std::unique_lock<std::mutex> lock(gate.mutex);
+            Assert::IsTrue(gate.changed.wait_for(lock,std::chrono::seconds(2),[&]{return gate.entered;}));
+        }
+        auto unconsumed=std::make_unique<SubtitleCurrentCueProofReceipt>();
+        Assert::IsTrue(worker->TryPeekCurrentCueProof(*key3,*unconsumed)==SubtitleCurrentCueProofStatus::Ready);
+        auto replacement=std::make_unique<SubtitleBoxObservation>(*seed);replacement->text.signature[0]^=1;
+        uint64_t queuedRevision=0;
+        Assert::IsTrue(worker->SubmitCurrentCueTemplate(makeTemplate(*replacement),queuedRevision)==
+            SubtitleCurrentCueProofStatus::Queued);
+        Assert::IsTrue(worker->SubmitCurrentCueProof(makeRequest(*key4,queuedRevision))==SubtitleCurrentCueProofStatus::Queued);
+        worker->InvalidateCurrentCueProofContext();
+        Assert::IsFalse(consumed->Valid());Assert::IsFalse(unconsumed->Valid());
+        Assert::IsFalse(tracker->ConsumeCurrentCueProof(*unconsumed,*preview,held),
+            L"A receipt copied before a same-context settings reset cannot bind afterward.");
+        auto scratch=std::make_unique<SubtitleCurrentCueProofReceipt>();
+        Assert::IsTrue(worker->TryTakeCurrentCueProof(*key4,queuedRevision,*scratch)==SubtitleCurrentCueProofStatus::Expired);
+        Assert::IsTrue(worker->TryPeekCurrentCueProof(*key3,*scratch)==SubtitleCurrentCueProofStatus::NoTemplate);
+        Assert::IsTrue(worker->SubmitCurrentCueProof(makeRequest(*key2,revision))==SubtitleCurrentCueProofStatus::Expired);
+        auto scratchKey=std::make_unique<SubtitleBoxObservation>();ActivePictureBounds scratchBase;uint64_t scratchRevision=0;
+        Assert::IsFalse(worker->MakeCurrentCueProofKey(*raw2,SubtitlePreviewMode::None,3,
+            *scratchKey,scratchBase,scratchRevision));
+        auto ordinaryCalls=std::make_shared<std::atomic_uint>(0);
+        auto ordinaryKey=std::make_shared<SubtitleBoxObservation>(*key4);
+        Assert::IsTrue(worker->Submit(*key4,[ordinaryCalls,ordinaryKey](SubtitleMeasurementSampler&,
+            const SubtitleBarTrackingReference&) {
+            ordinaryCalls->fetch_add(1,std::memory_order_release);return *ordinaryKey;
+        }));
+        Assert::IsTrue(WaitForEntered(*ordinaryCalls,1),L"Invalidated proof state cannot suppress ordinary source analysis.");
+        {std::lock_guard<std::mutex> lock(gate.mutex);gate.release=true;}gate.changed.notify_all();
+
+        uint64_t freshRevision=0;Assert::IsTrue(waitTemplate(freshRevision));
+        Assert::IsTrue(freshRevision>queuedRevision,
+            L"An identical descriptor after invalidation must seed a fresh revision; queued old seeds cannot resurrect it.");
+        Assert::IsTrue(worker->MakeCurrentCueProofKey(*raw2,SubtitlePreviewMode::None,3,*key2,base,active));
+        Assert::AreEqual(freshRevision,active);
+        Assert::IsTrue(worker->SubmitCurrentCueProof(makeRequest(*key2,freshRevision))==SubtitleCurrentCueProofStatus::Queued);
+        Assert::IsTrue(waitProof(*key2,freshRevision,*scratch));
+        Assert::IsTrue(tracker->ConsumeCurrentCueProof(*scratch,*preview,held),
+            L"A new context's same-source proof must not inherit the consumed token of a revoked revision.");
+        Assert::IsFalse(tracker->ConsumeCurrentCueProof(*scratch,*preview,held));
+        Assert::IsFalse(unconsumed->Valid());
+        worker.reset();
+    }
     TEST_METHOD(CurrentCueWorkerDeferredAndLateScansKeepOriginalInspectionKey) {
         for(int route=0;route<3;++route) {
             const bool late=route==1,ordinary=route==2;

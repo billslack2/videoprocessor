@@ -8725,7 +8725,7 @@ struct LibplaceboVideoRenderer::Impl
         const auto previousSubtitleMode=selectedSubtitleMode.exchange(
             settings.subtitleMode,std::memory_order_acq_rel);
         if(previousSubtitleMode!=settings.subtitleMode)
-            currentCueTemplateRevision.store(0,std::memory_order_release);
+            InvalidateCurrentCueProofContext();
         calibrationStatusAvailable = false;
 		PublishSettingsState(settings);
 		outputDiagnostics = settings.outputDiagnostics;
@@ -9605,6 +9605,16 @@ struct LibplaceboVideoRenderer::Impl
         return key;
     }
 
+    void InvalidateCurrentCueProofContext()
+    {
+        // Presentation-only settings may change while mode, viewport and native
+        // geometry remain identical. Revoke the worker's old interpretation as
+        // well as this advisory offer marker; ordinary template rollover does
+        // not cross this reset boundary.
+        subtitleMeasurementWorker.InvalidateCurrentCueProofContext();
+        currentCueTemplateRevision.store(0,std::memory_order_release);
+    }
+
     SubtitleCurrentCueProofStatus SubmitCurrentCueProof(
         const PreparedAnalysisFrame& prepared,const SubtitleBoxObservation& key,
         const ActivePictureBounds& offeredPhysicalBase,const ActivePictureFrameIdentity& renderHead,
@@ -9877,7 +9887,7 @@ struct LibplaceboVideoRenderer::Impl
         const auto previousSubtitleMode=selectedSubtitleMode.exchange(
             settings.subtitleMode,std::memory_order_acq_rel);
         if(previousSubtitleMode!=settings.subtitleMode)
-            currentCueTemplateRevision.store(0,std::memory_order_release);
+            InvalidateCurrentCueProofContext();
         calibrationStatusAvailable = false;
 		sdrTargetNits = settings.sdrTargetNits;
 		sdrBlackNits = settings.sdrBlackNits;
@@ -9945,7 +9955,7 @@ struct LibplaceboVideoRenderer::Impl
                 ClearScopeSubtitleEvidence();
                 subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset();
                 ResetPendingSubtitleProof();
-                currentCueTemplateRevision.store(0,std::memory_order_release);
+                InvalidateCurrentCueProofContext();
                 subtitlePaddingGuard.Reset();
                 subtitleCutPastePresentation.Reset();
                 subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset();
@@ -10696,7 +10706,7 @@ struct LibplaceboVideoRenderer::Impl
         sceneDetector.Reset(sceneDetectorGeneration);
         subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset();
         ResetPendingSubtitleProof();
-        currentCueTemplateRevision.store(0,std::memory_order_release);
+        InvalidateCurrentCueProofContext();
         subtitleStabilityTelemetry.Reset();
         subtitlePaddingGuard.Reset();
         subtitleCutPastePresentation.Reset();
@@ -10722,7 +10732,7 @@ struct LibplaceboVideoRenderer::Impl
             pending.detector = nlsGeometryDetector;
         }
         ClearActivePictureAuthorityForReacquisition();
-        currentCueTemplateRevision.store(0,std::memory_order_release);
+        InvalidateCurrentCueProofContext();
         pendingQueueNativeContinuity = std::move(pending);
 		// A renderer/refresh reset additionally breaks source/profile association.
 		activePictureAnalysisSourceGeneration = 0;
@@ -13625,14 +13635,14 @@ struct LibplaceboVideoRenderer::Impl
             sceneDetector.Reset(sceneDetectorGeneration);
             subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleCadenceGuard.Reset();
             ResetPendingSubtitleProof();
-            currentCueTemplateRevision.store(0,std::memory_order_release);
+            InvalidateCurrentCueProofContext();
             subtitleTemporalValid = false;
             subtitleTemporalCleanFrames = 0;
         }
 
 		if (!analysisSource.IsValid())
 		{
-			currentCueTemplateRevision.store(0,std::memory_order_release);
+			InvalidateCurrentCueProofContext();
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
 			nlsTransition.Reset();
@@ -14950,7 +14960,7 @@ struct LibplaceboVideoRenderer::Impl
             // typed, exact-source receipt from the worker; a miss stays on the
             // raw current source and may queue only the normal due scan.
             if(videoFrame.IsSourceDiscontinuity())
-                currentCueTemplateRevision.store(0,std::memory_order_release);
+                InvalidateCurrentCueProofContext();
             const auto hasExactCurrentScan=[&](const SubtitleBoxPreview& preview) {
                 const auto& current=preview.current;
                 if(!SameAnalysisFrameIdentity(current.identity,subtitleIdentity) || !current.analyzed ||

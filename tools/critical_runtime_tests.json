@@ -13,8 +13,9 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1097,
+  "minimumNativeTests": 1098,
   "requiredNativeMethods": [
+    "CurrentCueWorkerContextInvalidationRevokesReadyAndQueuedRevisions",
     "CurrentFootprintSemanticPaddingRequiresStableBlackActualErasure",
     "CurrentCueWorkerReadyReceiptsSurviveReplacementWithoutDestructivePolling",
     "CurrentCueWorkerDeferredAndLateScansKeepOriginalInspectionKey",
