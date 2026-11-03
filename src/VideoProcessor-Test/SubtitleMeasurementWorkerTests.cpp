@@ -1499,10 +1499,12 @@ public:
             const size_t unownedRaw=size_t(35)*160+20;
             if(scenario==3)pixels[50*160+49]=uint16_t(500<<6);
             auto scan=CompleteThreeLineScan(1,pixels);
-            if(scenario==3)scan.ink->rawInk[unownedRaw/64]|=uint64_t{1}<<(unownedRaw%64);
             if(scenario==3) {
+                auto seedInk=std::make_shared<SubtitleInkSnapshot>(*scan.ink);
+                seedInk->rawInk[unownedRaw/64]|=uint64_t{1}<<(unownedRaw%64);
                 const size_t fringeRaw=size_t(50)*160+49;
-                scan.ink->ownedInk[fringeRaw/64]&=~(uint64_t{1}<<(fringeRaw%64));
+                seedInk->ownedInk[fringeRaw/64]&=~(uint64_t{1}<<(fringeRaw%64));
+                scan.ink=std::move(seedInk);
             }
             auto ready=SubtitleBoxLookahead::Resolve(&scan,1,11,21);
             SubtitlePendingMeasurementGuard guard;
