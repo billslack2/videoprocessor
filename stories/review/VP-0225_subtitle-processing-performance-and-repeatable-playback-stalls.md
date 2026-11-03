@@ -4,36 +4,36 @@
 
 Review
 
-2026-11-03 continued review (source 6062850b, not deployed): the static-cue verifier
-now uses an accepted layout, fresh current glyph/backing samples and complete bounded
-current-band novelty checks. Existing non-glyph contrast edges require a directional
-seed witness plus tightly matching current point/neighbor values; changing picture
-margins are not exact-color glyph identity. No semantic/native/absence authority is
-created by a pending proof. All unprocessed temporal paths select current pixels.
+2026-11-03 current review (clean source fffc06f339a59b8577f714d8adf59be58ccda177,
+not deployed): advanced pending reuse now uses the actual successfully composed
+extraction/cleanup footprint. Current movie pixels in safe outer cleanup strips
+remain current; glyphs/backing and newly visible encoded-bar ink are checked on
+the exact current source. A source-bound one-use geometry receipt protects those
+strips in cleanup, panel and layer shaders. Pending proof adds no native/bar or
+caption-absence authority and does not renew the original pending lease.
 
-An authentic UHD detector probe passes 360 pending sources over P010, P210 and decoded
-DV, with changing picture pixels inside the subtitle search band. It checks 289,920
-current band samples per source. Pending p50 is 8.50–8.67ms, p95 9.24–9.87ms, and the
-worst observed DV call is 15.36ms. Seed p50 is about 10ms and max 13.26ms; seed work can
-repeat on ready accepted frames, so this is not a one-time cost. These are exploratory
-CPU probe results, not whole-pipeline qualification, proof of 60Hz headroom, or a
-measured speedup over older code. The same probe rejects newly added texture. The
-old 147k band estimate omitted physical bars and is corrected in source documentation.
+All six persistent-caption actual-renderer cases pass on Standard/Beta, each at
+59.94 and 60Hz: Classic, generated background and Black. The latest full x64
+Release qualifier built successfully but FAILED: standard TRX executes 1,084 tests,
+1,070 pass and 14 fail. Four older cue lifetime cases and ten actual-renderer
+cases remain under investigation. The beta full lane was not reached. No release
+qualification is claimed. Existing strict steady composition and frame identity
+checks remain requirements; failures must be resolved before qualified deployment.
 
-The four optimized cue safety/lifetime tests also pass in that exploratory run.
-Its source changed during concurrent test development, so no qualification receipt
-was issued. Clean full qualification first stopped at a new test-only lambda capture
-error, now fixed. The exact eight-case persistent-caption/Off renderer run is in
-progress at 6062850b. Four advanced startup cases previously exposed an overly narrow
-oracle requiring a prior submitted native frame; the replacement joins an independent
-same-source measured physical publication with exact context, geometry and event order,
-while preserving raw-pixel, no-authority and steady-composition checks. Classic passes.
+The five focused standard GPU tests pass at the same binaries, including protected
+cleanup pixels with moved glyphs, exact-current raw output, BOB, cached revision and
+old-complete-packet exclusion. This is partial evidence, not full GPU qualification.
+The new Off fixtures pass in the full standard run and had passed pixel/framing
+checks in both variants earlier. Their actual current-source preempted candidate
+route is distinguished from confirmed-FIT recovery; neither fixture is claimed to
+reproduce the original recorded live scene. The exact narrower-FIT/raw unit remains.
 
-New Standard/Beta Off UHD cases require an actual narrower confirmed FIT versus taller
-raw visibility conflict, joined to current submitted source pixels; they cannot pass
-by injecting policy evidence or merely testing Classic. Their actual result remains
-pending. Last deployed build is still 53058498. Story remains Review; no later deployment,
-passing release qualification, or live-scene acceptance is claimed.
+The earlier 289,920-sample generic UHD probe measured pending p50 8.50-8.67ms and
+max 15.36ms, with repeatable seed cost around 10ms. Those exploratory timings are
+NOT measurements of the new prepared-footprint runtime. Remaining ready-frame
+template setup and mandatory-thread work still need cost attribution; bounded
+sample counts alone do not establish 60Hz headroom or whole-pipeline latency.
+Last deployed build remains 53058498. No later deployment or live acceptance.
 
 2026-11-03 deep timing review: live HDMI throughput, bounded latency and independent
 current-frame presentation are now permanent personal/repository AGENTS.md rules.
