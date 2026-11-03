@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "69c51f18f516866912d89c0900c7da9478ab9bf5",
+  "sourceTreeClean": true,
+  "deploymentTime": "2026-11-03T13:55:10.1841391-05:00",
+  "deploymentStatus": "UserAuthorizedLiveTrial",
+  "fullQualification": false,
+  "evidenceFiles": [
+    {
+      "path": "deployment.json",
+      "bytes": 10479,
+      "sha256": "606810b134201a5ad55910e43290262c047668c7343a9d150205ebd6edf63751",
+      "copied": true
+    },
+    {
+      "path": "69c51f18-focused-cpu-build.json",
+      "bytes": 4774,
+      "sha256": "f5f1cacedc68e59e569599265c39d1e003b1702c9ae6577edeaae9a286c5b3bf",
+      "copied": true
+    },
+    {
+      "path": "69c51f18-gpu-failed.json",
+      "bytes": 3249,
+      "sha256": "0bb0c5630e3df6d8f62eb61bd88bc7b03f5aef7cd63c4173bb2c8f53a91d6a37",
+      "copied": true
+    },
+    {
+      "path": "summary.md",
+      "bytes": 2612,
+      "sha256": "09f7e54c333c7a924e7d5a21df28c7654d5b3aea87cbd035a9ba77d824e2c791",
+      "copied": true
+    }
+  ],
+  "excludedOrExternalArtifacts": [
+    {
+      "label": "trx",
+      "path": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-134859-dbbd0ddc\\standard.trx",
+      "bytes": 7010985,
+      "sha256": "a03cfb4806899a3cb69a4b6dfa6a77e20bc2ffec0b4da3139c9c8838f053a3f5",
+      "copied": false
+    },
+    {
+      "label": "cfg",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "bytes": 20981,
+      "sha256": "adb4e329196b4852dd27661013c93d59122f38ae48234af5b289e322fde619f3",
+      "copied": false
+    },
+    {
+      "label": "state",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "bytes": 262,
+      "sha256": "2cd6a80974e0aba4551c8403623f39e965dff227c825380aaf5fcbdfd9b264c0",
+      "copied": false
+    },
+    {
+      "label": "priorState",
+      "path": "C:\\Videoprocessor\\vp\\backups\\trial-69c51f18-20261103-135509\\VideoProcessor.state",
+      "bytes": 269,
+      "sha256": "99cf94a66291ac295858c9afd73dc880ee42f9496fd974d9cc44a9a1bf979222",
+      "copied": false
+    }
+  ],
+  "results": {
+    "focusedCpu": "3/3 passed; matching x64 Release builds passed; run 20261103-134055-25e3feb6",
+    "native": "1083/1083 passed on prior source 3ea6335ad5e772505e38878ad7baf91bace38300; not this trial source",
+    "gpu": "4/4 failed; run 20261103-134859-dbbd0ddc",
+    "workerProofWorstMs": [
+      21.0904,
+      18.4053
+    ],
+    "sourcePeriodMs": 16.683,
+    "mandatoryFrameWorkMs": [
+      12.67,
+      12.37
+    ],
+    "captionCompositionFailures": 2,
+    "shaderColdSeconds": [
+      64.79,
+      64.64
+    ],
+    "background3PassSeconds": 25.32,
+    "baselineComparison": "No matched baseline; cannot attribute as new or pre-existing."
+  },
+  "settings": {
+    "cfgBeforeAndCurrent": "ADB4E329196B4852DD27661013C93D59122F38AE48234AF5B289E322FDE619F3",
+    "stateBefore": "99CF94A66291AC295858C9AFD73DC880EE42F9496FD974D9CC44A9A1BF979222",
+    "stateAfter": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0",
+    "onlyStateFieldChanged": "profile.subtitles: reconstruction -> classic",
+    "changeTime": "2026-11-03T13:55:23",
+    "activeSubtitleProfile": "classic"
+  },
+  "processId": 63656
+}
