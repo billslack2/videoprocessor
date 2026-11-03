@@ -1,0 +1,53 @@
+{
+  "stage": 27,
+  "sourceCommit": "25900500a7951c0bfcbdcf54ca3a0d798553aa1a",
+  "deployedCommit": "788554a100afe0af2352b904fe1870d80fb75bb7",
+  "status": "Native controls and captured replay passed; full Release/renderer qualification running",
+  "capture": "analysis-20261102-204224-61148-1",
+  "nativeFrames": 41,
+  "baselineMeasuredFrameFailures": 41,
+  "baselineTrace": {
+    "observations": 1178,
+    "insufficientSupport": 1176,
+    "measured": 2,
+    "note": "Trace includes pre-roll; all 41 saved paused frames fail baseline replay"
+  },
+  "currentNativeEvidence": {
+    "top": {
+      "coordinate": 275,
+      "support": 71
+    },
+    "left": {
+      "coordinate": 0,
+      "support": 96
+    },
+    "right": {
+      "coordinate": 3840,
+      "support": 96
+    },
+    "bottom": {
+      "coordinate": 1884,
+      "support": 17,
+      "regions": [
+        7,
+        7,
+        0,
+        3
+      ]
+    }
+  },
+  "repair": "Exactly one sparse inset can be corroborated by both independently selected perpendicular contacts and its opposite. Preserve original votes, reject any supported continuation, require nearby contacts and keep competing insets unresolved. Existing topology and raw/masked crop verification remain.",
+  "nativeValidation": {
+    "existingContractsPassed": 1046,
+    "newControlsPassed": 2,
+    "newControls": "Four orientations, asymmetric bounds/phases, continued or missing contact, too few regions and detached glyphs",
+    "capturedFramesPassingMeasuredAndTrustedCrop": 41,
+    "workerBudgetMs": 24
+  },
+  "history": "Remembered ratios are inspection/continuity hypotheses, not current measurement. The expanded actual-renderer test establishes 16:9 and then 1.90 before sparse-edge scope, and requires same-source proof/submission. No new history bank added.",
+  "fullQualification": "running",
+  "motionSuites": "pending",
+  "configurationEdits": [],
+  "selectedSubtitleProfileBeforeQualification": "black",
+  "evidenceRoot": "E:\\codex\\videoprocessor\\evidence\\paused-scope-edge-votes-20261102-2042"
+}
