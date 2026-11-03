@@ -4564,7 +4564,7 @@ namespace VideoProcessorTest
                 DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);return value;
             };
             auto hasNative=[&] {
-                return std::any_of(records.begin(),records.end(),[](const AnalysisDiagnosticRecordV1& row) {
+                return std::any_of(records.begin(),records.end(),[=](const AnalysisDiagnosticRecordV1& row) {
                     if(strcmp(row.stage,"submitted-presentation")||!(row.flags&1u)||!row.counters[4])return false;
                     return std::abs(row.published[0])<0.01&&std::abs(row.published[1]-nativeTop)<0.01&&
                         std::abs(row.published[2]-width)<0.01&&std::abs(row.published[3]-nativeBottom)<0.01&&
