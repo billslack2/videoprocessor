@@ -335,7 +335,7 @@ struct QualifiedSubtitlePresentationInput
 class PendingPreparedSubtitleErasureReceipt
 {
 public:
-    void Record(const SubtitleBoxObservation& current,const SubtitleBoxResult& accepted,
+    bool Record(const SubtitleBoxObservation& current,const SubtitleBoxResult& accepted,
         const ActivePictureBounds& base,const SubtitlePictureAuthority& display,
         const SubtitleCutPasteGeometry& geometry,SubtitlePreviewMode mode,
         uint64_t policy,uint64_t continuity,bool pendingOperationApplied)
@@ -358,10 +358,11 @@ public:
             !SamePendingPreparedBounds(display.bounds,base) ||
             !current.sharedPicture.AvailableFor(current.identity,current.width,current.height) ||
             !SamePendingPreparedBounds(current.sharedPicture.bounds,base) ||
-            !current.sharedPicture.Matches(display))return;
+            !current.sharedPicture.Matches(display))return false;
         m_valid=true;m_identity=current.identity;m_policy=policy;m_continuity=continuity;
         m_width=current.width;m_height=current.height;m_base=base;m_display=display;
         m_cue=accepted;m_geometry=geometry;m_mode=mode;m_ink=current.ink.get();
+        return true;
     }
 
     void Clear()
@@ -375,23 +376,42 @@ public:
         const SubtitleCutPasteGeometry& geometry,SubtitlePreviewMode mode,
         uint64_t policy,uint64_t continuity) const
     {
-        return m_valid && mode==m_mode && policy==m_policy && continuity==m_continuity &&
-            SameAnalysisFrameIdentity(current.identity,m_identity) &&
-            current.policyGeneration==m_policy && current.continuityGeneration==m_continuity &&
-            current.width==m_width && current.height==m_height &&
-            SamePendingPreparedBounds(base,m_base) && SamePendingPreparedBounds(display.bounds,m_display.bounds) &&
-            SameAnalysisFrameIdentity(display.identity,m_identity) && display.Matches(m_display) &&
-            current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
-            SamePendingPreparedBounds(current.sharedPicture.bounds,m_base) &&
-            current.sharedPicture.Matches(display) && current.analyzed && !current.discontinuity &&
-            current.pendingRefresh && !current.analysisRefresh && !current.cadenceSkipped &&
-            (current.analysisStride==1 || current.analysisStride==2) &&
-            !current.barAuthority && !current.independentBarAnalysis &&
-            current.ink && current.ink.get()==m_ink && current.ink->paletteValid &&
-            !current.ink->rawEvidenceComplete && current.text.cue==m_cue.cue &&
-            accepted.detected && accepted.held && !accepted.confirmationPending &&
-            !accepted.workLimit && !accepted.revised && SamePendingPreparedCue(accepted,m_cue) &&
-            SamePendingPreparedGeometry(geometry,m_geometry);
+        return MatchFailure(current,accepted,base,display,geometry,mode,policy,continuity)==nullptr;
+    }
+
+    // Computed-only diagnostics for the pending ownership join. These are
+    // useful when a current-source pixel receipt was verified but its exact
+    // prepared geometry could not be carried through the compositor. They do
+    // not alter the receipt or grant any authority.
+    const char* MatchFailure(const SubtitleBoxObservation& current,const SubtitleBoxResult& accepted,
+        const ActivePictureBounds& base,const SubtitlePictureAuthority& display,
+        const SubtitleCutPasteGeometry& geometry,SubtitlePreviewMode mode,
+        uint64_t policy,uint64_t continuity) const
+    {
+        if(!m_valid)return "receipt-not-recorded";
+        if(mode!=m_mode)return "receipt-mode-mismatch";
+        if(policy!=m_policy || current.policyGeneration!=m_policy)return "receipt-policy-mismatch";
+        if(continuity!=m_continuity || current.continuityGeneration!=m_continuity)return "receipt-continuity-mismatch";
+        if(!SameAnalysisFrameIdentity(current.identity,m_identity))return "receipt-source-identity-mismatch";
+        if(current.width!=m_width || current.height!=m_height)return "receipt-raster-mismatch";
+        if(!SamePendingPreparedBounds(base,m_base))return "receipt-native-base-mismatch";
+        if(!SamePendingPreparedBounds(display.bounds,m_display.bounds) ||
+            !SameAnalysisFrameIdentity(display.identity,m_identity) || !display.Matches(m_display))
+            return "receipt-display-mismatch";
+        if(!current.sharedPicture.AvailableFor(current.identity,current.width,current.height) ||
+            !SamePendingPreparedBounds(current.sharedPicture.bounds,m_base) || !current.sharedPicture.Matches(display))
+            return "receipt-shared-picture-mismatch";
+        if(!current.analyzed || current.discontinuity || !current.pendingRefresh || current.analysisRefresh ||
+            current.cadenceSkipped || (current.analysisStride!=1 && current.analysisStride!=2) ||
+            current.barAuthority || current.independentBarAnalysis)
+            return "receipt-observation-state-mismatch";
+        if(!current.ink || current.ink.get()!=m_ink || !current.ink->paletteValid || current.ink->rawEvidenceComplete)
+            return "receipt-current-ink-mismatch";
+        if(current.text.cue!=m_cue.cue || !accepted.detected || !accepted.held || accepted.confirmationPending ||
+            accepted.workLimit || accepted.revised || !SamePendingPreparedCue(accepted,m_cue))
+            return "receipt-accepted-cue-mismatch";
+        if(!SamePendingPreparedGeometry(geometry,m_geometry))return "receipt-composition-mismatch";
+        return nullptr;
     }
 
 private:
@@ -596,6 +616,25 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         accepted.held && !accepted.confirmationPending && !accepted.workLimit &&
         input.pendingPreparedErasure->Matches(observation,accepted,base,input.currentDisplayPicture,
             move,input.mode,input.policyGeneration,input.continuityGeneration);
+    const char* pendingFootprintFailure=nullptr;
+    if(preparedErasureOnly && (input.pendingCurrentPixelsVerified || input.pendingPreparedErasure)) {
+        if(!input.pendingCurrentPixelsVerified)pendingFootprintFailure="prepared-footprint-pixels-not-verified";
+        else if(!input.pendingPreparedErasure)pendingFootprintFailure="prepared-footprint-receipt-missing";
+        else if(!observation.pendingRefresh)pendingFootprintFailure="prepared-footprint-not-pending";
+        else if(observation.analysisRefresh)pendingFootprintFailure="prepared-footprint-analysis-refresh";
+        else if(observation.cadenceSkipped || (observation.analysisStride!=1 && observation.analysisStride!=2))
+            pendingFootprintFailure="prepared-footprint-analysis-stride-mismatch";
+        else if(observation.barAuthority || observation.independentBarAnalysis)
+            pendingFootprintFailure="prepared-footprint-unexpected-bar-authority";
+        else if(!observation.ink)pendingFootprintFailure="prepared-footprint-current-ink-missing";
+        else if(!observation.ink->paletteValid)pendingFootprintFailure="prepared-footprint-current-palette-invalid";
+        else if(observation.ink->rawEvidenceComplete)pendingFootprintFailure="prepared-footprint-raw-evidence-complete";
+        else if(!accepted.held)pendingFootprintFailure="prepared-footprint-cue-not-held";
+        else if(accepted.confirmationPending)pendingFootprintFailure="prepared-footprint-cue-confirmation-pending";
+        else if(accepted.workLimit)pendingFootprintFailure="prepared-footprint-cue-work-limit";
+        else pendingFootprintFailure=input.pendingPreparedErasure->MatchFailure(observation,accepted,base,
+            input.currentDisplayPicture,move,input.mode,input.policyGeneration,input.continuityGeneration);
+    }
     if(!SameAnalysisFrameIdentity(observation.identity,input.currentIdentity) ||
         observation.policyGeneration!=input.policyGeneration || observation.continuityGeneration!=input.continuityGeneration ||
         observation.discontinuity || !observation.analyzed ||
@@ -606,7 +645,7 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         !accepted.detected || (accepted.held && !continuation && !currentHeldPreparedErasure &&
             !currentVerifiedPreparedFootprint) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
         text.lineCount<1 || text.lineCount>3 || !move.valid)
-        return reject("current-caption-proof-unavailable");
+        return reject(pendingFootprintFailure ? pendingFootprintFailure : "current-caption-proof-unavailable");
     const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
         return outer.Valid() && inner.Valid() && outer.left<=inner.left && outer.top<=inner.top &&
             outer.right>=inner.right && outer.bottom>=inner.bottom;

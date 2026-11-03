@@ -3612,9 +3612,50 @@ namespace VideoProcessorTest
                 ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);
                     std::lock_guard<std::mutex> lock(classicPoseLogMutex);
                     classicPoseCaptureSubmitTiming=false;classicPoseSubmitWallNs.clear();}} diagnosticCleanup{diagnostics};
-            for(const unsigned duration:{1001u,1000u}) {
-                // Source cadence is independent of the current output display.
-                constexpr unsigned scale=60000;
+            constexpr int outputWindowWidth=2000,outputWindowHeight=1125;
+            struct TestOutputMonitor final {HMONITOR handle=nullptr;MONITORINFOEXW info{};DEVMODEW mode{};};
+            std::vector<TestOutputMonitor> activeOutputMonitors;
+            const auto collectOutputMonitor=[](HMONITOR handle,HDC,LPRECT,LPARAM context)->BOOL {
+                auto& monitors=*reinterpret_cast<std::vector<TestOutputMonitor>*>(context);
+                TestOutputMonitor monitor;monitor.handle=handle;monitor.info.cbSize=sizeof(monitor.info);
+                monitor.mode.dmSize=sizeof(monitor.mode);
+                if(!GetMonitorInfoW(handle,reinterpret_cast<LPMONITORINFO>(&monitor.info))||
+                    !EnumDisplaySettingsW(monitor.info.szDevice,ENUM_CURRENT_SETTINGS,&monitor.mode))return TRUE;
+                monitors.push_back(monitor);return TRUE;
+            };
+            Assert::IsTrue(EnumDisplayMonitors(nullptr,nullptr,collectOutputMonitor,
+                reinterpret_cast<LPARAM>(&activeOutputMonitors))!=FALSE&&!activeOutputMonitors.empty(),
+                L"Decoded-DV cadence could not enumerate active output monitors.");
+            auto targetOutputMonitor=activeOutputMonitors.end();
+            for(auto monitor=activeOutputMonitors.begin();monitor!=activeOutputMonitors.end();++monitor) {
+                const auto& bounds=monitor->info.rcMonitor;
+                const bool fits=monitor->mode.dmPelsWidth>=outputWindowWidth&&
+                    monitor->mode.dmPelsHeight>=outputWindowHeight&&
+                    bounds.right-bounds.left>=outputWindowWidth&&bounds.bottom-bounds.top>=outputWindowHeight;
+                const bool targetRate=monitor->mode.dmDisplayFrequency>=59&&monitor->mode.dmDisplayFrequency<=61;
+                if(!fits||!targetRate)continue;
+                if(targetOutputMonitor==activeOutputMonitors.end()||
+                    uint64_t(monitor->mode.dmPelsWidth)*monitor->mode.dmPelsHeight<
+                    uint64_t(targetOutputMonitor->mode.dmPelsWidth)*targetOutputMonitor->mode.dmPelsHeight)
+                    targetOutputMonitor=monitor;
+            }
+            Assert::IsTrue(targetOutputMonitor!=activeOutputMonitors.end(),
+                L"Decoded-DV cadence needs an active approximately 60 Hz monitor large enough for its hidden test window.");
+            std::ostringstream monitorInventory;monitorInventory<<"Decoded-DV active output monitors:";
+            for(size_t index=0;index<activeOutputMonitors.size();++index) {
+                const auto& monitor=activeOutputMonitors[index];const auto& bounds=monitor.info.rcMonitor;
+                monitorInventory<<" [index="<<index<<" left="<<bounds.left<<" top="<<bounds.top
+                    <<" right="<<bounds.right<<" bottom="<<bounds.bottom
+                    <<" width="<<monitor.mode.dmPelsWidth<<" height="<<monitor.mode.dmPelsHeight
+                    <<" refresh_hz="<<monitor.mode.dmDisplayFrequency<<']';
+            }
+            Logger::WriteMessage(monitorInventory.str().c_str());
+            struct InputCadence final {unsigned scale,duration;};
+            constexpr InputCadence inputCadences[]={{60000,1001},{60000,1000},{24000,1001},{24000,1000}};
+            for(const auto& cadence:inputCadences) {
+                // Exercise 59.94/60 and 23.976/24 Hz sources independently of
+                // the actual output monitor's refresh cadence.
+                const unsigned scale=cadence.scale,duration=cadence.duration;
                 const double inputHz=double(scale)/duration;
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseMessages.clear();classicPoseSubmitWallNs.clear();classicPoseCaptureSubmitTiming=true;classicPoseAllRecordStages=true;}
                 diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
@@ -3633,12 +3674,30 @@ namespace VideoProcessorTest
                     "subtitle_engage_drift_ms: 500\nsubtitle_release_drift_ms: 2000\nsubtitle_hold_seconds: 2\nsubtitle_target_buffer_pixels: 10\n"
                     "subtitle_hold_ms: 250\nsubtitle_near_bar_px: 20\ncleanup_fill: stable_surround\nminimum_headroom_pixels: 30\n";
                 SnapshotTestCallback callback;NativeP210Buffer buffer;
+                const auto& targetBounds=targetOutputMonitor->info.rcMonitor;
+                const int outputWindowX=targetBounds.left+(targetBounds.right-targetBounds.left-outputWindowWidth)/2;
+                const int outputWindowY=targetBounds.top+(targetBounds.bottom-targetBounds.top-outputWindowHeight)/2;
                 struct Cleanup{HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;const char* path;
                     ~Cleanup(){if(renderer){renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);DeleteFileA(path);}}
-                    cleanup{CreateWindowExW(0,L"STATIC",L"Persistent native Dolby cadence",WS_POPUP,0,0,2000,1125,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
+                    cleanup{CreateWindowExW(0,L"STATIC",L"Persistent native Dolby cadence",WS_POPUP,
+                        outputWindowX,outputWindowY,outputWindowWidth,outputWindowHeight,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
                 Assert::IsNotNull(cleanup.window);
+                MONITORINFOEXW outputMonitor{};outputMonitor.cbSize=sizeof(outputMonitor);
+                const HMONITOR outputHandle=MonitorFromWindow(cleanup.window,MONITOR_DEFAULTTONEAREST);
+                DEVMODEW outputMode{};outputMode.dmSize=sizeof(outputMode);
+                const bool outputModeKnown=outputHandle&&GetMonitorInfoW(outputHandle,
+                    reinterpret_cast<LPMONITORINFO>(&outputMonitor))&&
+                    outputHandle==targetOutputMonitor->handle&&
+                    EnumDisplaySettingsW(outputMonitor.szDevice,ENUM_CURRENT_SETTINGS,&outputMode)&&
+                    outputMode.dmDisplayFrequency>1;
+                Assert::IsTrue(outputModeKnown,
+                    L"Decoded-DV cadence window did not land on its enumerated 60 Hz target monitor.");
+                const double outputHz=double(outputMode.dmDisplayFrequency);
                 cleanup.renderer=create(&callback,69,cleanup.window,&clock,true,16,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
                 Assert::IsNotNull(cleanup.renderer);
+                std::ostringstream outputTarget;outputTarget<<"Decoded-DV presentation target: width="<<outputMode.dmPelsWidth
+                    <<" height="<<outputMode.dmPelsHeight<<" refresh_hz="<<outputHz;
+                Logger::WriteMessage(outputTarget.str().c_str());
                 ConfigFile config;Assert::IsTrue(config.Load(configPath));UnifiedProfileRuntime::Runtime runtime;std::string error;
                 Assert::IsTrue(runtime.Initialize(config,{},error));CString active;bool restart=false,reset=false;
                 const auto initialSnapshot=runtime.GetSnapshot();
@@ -3650,7 +3709,8 @@ namespace VideoProcessorTest
                 Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*initialSnapshot,active,restart,reset)&&!restart);
                 cleanup.renderer->SetQueueFramePolicy(4,9,true);cleanup.renderer->SetActivePictureLookaheadFrames(4);
                 VideoStateComPtr state=new VideoState(*sourceState);state->displayMode=std::make_shared<DisplayMode>(width,height,false,scale,duration);
-                Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
+                Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();
+                cleanup.renderer->SetRenderLoadDisplayRefreshRate(outputHz);cleanup.renderer->Start();
                 uint64_t sequence=1;size_t cursor=0;std::map<uint64_t,timingclocktime_t> delivered;
                 std::map<uint64_t,uint64_t> inputWallNs;uint64_t lastInputSourceFrame=0;
                 const auto steadyWallNowNs=[] {return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -4708,21 +4768,24 @@ namespace VideoProcessorTest
                         for(size_t i=submissionLatenciesMs.size()-24;i<submissionLatenciesMs.size();++i)
                             last24MeanMs+=submissionLatenciesMs[i]/24.0;
                     }
-                    const double sourcePeriodMs=1000.0/inputHz,refreshMs=1000.0/60.0;
-                    const double maxSubmitGapLimitMs=2.0*sourcePeriodMs+refreshMs;
-                    const double maxLatencyLimitMs=9.0*sourcePeriodMs+refreshMs;
+                    const double expectedOutputHz=(std::min)(inputHz,outputHz);
+                    const double sourcePeriodMs=1000.0/inputHz,displayPeriodMs=1000.0/outputHz;
+                    const double maxSubmitGapLimitMs=2.0*sourcePeriodMs+displayPeriodMs;
+                    const double maxLatencyLimitMs=9.0*sourcePeriodMs+displayPeriodMs;
+                    const uint64_t maxSourceIdGapLimit=static_cast<uint64_t>(std::ceil(inputHz/expectedOutputHz))+1;
                     const double latencyGrowthMs=first24MeanMs>=0&&last24MeanMs>=0?
                         last24MeanMs-first24MeanMs:std::numeric_limits<double>::infinity();
                     std::ostringstream timingRow;timingRow.setf(std::ios::fixed);timingRow.precision(3);
                     timingRow<<"DV SUBMISSION TIMING: nominal_input_hz="<<inputHz<<" actual_input_hz="<<actualInputFps
+                        <<" target_display_hz="<<outputHz<<" expected_output_hz="<<expectedOutputHz
                         <<" distinct_source_fps="<<distinctSourceFps<<" successful_outputs="<<submissionTiming.size()
                         <<" joined_outputs="<<joinedSubmissionCount<<" distinct_sources="<<timingDistinctSources.size()
                         <<" max_submit_gap_ms="<<maxSubmitGapMs<<" max_input_to_submit_ms="<<maxInputToSubmitMs
                         <<" first24_mean_latency_ms="<<first24MeanMs<<" last24_mean_latency_ms="<<last24MeanMs
                         <<" latency_growth_ms="<<latencyGrowthMs<<" max_source_id_gap="<<maxSourceIdGap
-                        <<" source_fps_floor="<<(0.97*inputHz)<<" max_submit_gap_limit_ms="<<maxSubmitGapLimitMs
+                        <<" source_fps_floor="<<(0.97*expectedOutputHz)<<" max_submit_gap_limit_ms="<<maxSubmitGapLimitMs
                         <<" max_latency_limit_ms="<<maxLatencyLimitMs<<" latency_growth_limit_ms="<<sourcePeriodMs
-                        <<" source_id_gap_limit=2"
+                        <<" source_id_gap_limit="<<maxSourceIdGapLimit
                         <<" post_stop_outputs="<<postStopSubmissionCount<<" join_complete="<<(!submissionTimingJoinFailure)
                         <<" gap_series_complete="<<timingAdjacentGapsComplete;
                     if(submissionTimingJoinFailure&&!submissionTimingJoinFailureDetail.empty())
@@ -4744,10 +4807,10 @@ namespace VideoProcessorTest
                         L"Steady timing window did not include at least 60 distinct successful source submissions.");
                     require(actualInputFps>=0.97*inputHz,
                         L"Measured test input cadence fell below 97% of the nominal HDMI input rate.");
-                    require(distinctSourceFps>=0.97*inputHz,
-                        L"Distinct current-source submission rate fell below 97% of nominal HDMI input cadence.");
-                    require(maxSourceIdGap<=2,
-                        L"Successful steady submissions skipped more than two source IDs.");
+                    require(distinctSourceFps>=0.97*expectedOutputHz,
+                        L"Distinct current-source submission rate fell below 97% of the input/output cadence limit.");
+                    require(maxSourceIdGap<=double(maxSourceIdGapLimit),
+                        L"Successful steady submissions skipped more source IDs than the input/output cadence permits.");
                     require(maxSubmitGapMs<=maxSubmitGapLimitMs,
                         L"Successful steady submission callbacks exceeded the two-source-period plus one-refresh gap limit.");
                     require(maxInputToSubmitMs<=maxLatencyLimitMs,
@@ -5377,6 +5440,21 @@ namespace VideoProcessorTest
                         record.sourceFormatGeneration==output.sourceFormatGeneration &&
                         record.analysisDomainKey==output.analysisDomainKey;
                 };
+                // The source-pixel detector runs in the analysis worker and
+                // intentionally has no renderer instance or presentation
+                // policy/continuity identity. Join its records by the exact
+                // source/capture below and the shared physical input context;
+                // renderer admission and accepted native state still use the
+                // strict renderer identity checks above.
+                const auto sameWorkerPhysicalContext=[&](const AnalysisDiagnosticRecordV1& record) {
+                    return record.rendererInstanceKey==0 && record.policyGeneration==0 &&
+                        record.continuityGeneration==0 &&
+                        record.transportGeneration==output.transportGeneration &&
+                        record.rendererGeneration==output.rendererGeneration &&
+                        record.viewportGeneration==output.viewportGeneration &&
+                        record.sourceFormatGeneration==output.sourceFormatGeneration &&
+                        record.analysisDomainKey==output.analysisDomainKey;
+                };
                 const auto sameCurrentContext=[&](const AnalysisDiagnosticRecordV1& record) {
                     return samePhysicalContext(record) && record.policyGeneration==output.policyGeneration &&
                         record.continuityGeneration==output.continuityGeneration;
@@ -5385,8 +5463,7 @@ namespace VideoProcessorTest
                     for(const auto& verified:spatialVerified)if(!strcmp(verified.stage,"source-crop-verification") &&
                         verified.acceptedSequence==source.acceptedSequence &&
                         verified.sourceFrameNumber==source.sourceFrameNumber && verified.captureTimestamp==source.captureTimestamp &&
-                        samePhysicalContext(verified) && verified.policyGeneration==source.policyGeneration &&
-                        verified.continuityGeneration==source.continuityGeneration &&
+                        sameWorkerPhysicalContext(source) && sameWorkerPhysicalContext(verified) &&
                         (verified.flags&3u)==3u && verified.recordSequence<source.recordSequence) {
                         bool exact=true;for(int edge=0;edge<4;++edge)exact&=verified.published[edge]==bounds[edge];
                         if(exact)return true;
@@ -5406,7 +5483,7 @@ namespace VideoProcessorTest
                 const AnalysisDiagnosticRecordV1* sourceMeasurement=nullptr;
                 for(const auto& source:spatialProduced)if(!strcmp(source.stage,"source-picture-active") &&
                     source.acceptedSequence==output.acceptedSequence && source.sourceFrameNumber==output.sourceFrameNumber &&
-                    source.captureTimestamp==output.captureTimestamp && sameCurrentContext(source) &&
+                    source.captureTimestamp==output.captureTimestamp && sameWorkerPhysicalContext(source) &&
                     source.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
                     (source.flags&(1u|2u|4u|8u))==(1u|2u|4u|8u)) {
                     bool exactVerified=true;for(int edge=0;edge<4;++edge)exactVerified&=source.published[edge]==expected[edge];
@@ -5424,7 +5501,7 @@ namespace VideoProcessorTest
                             source.acceptedSequence!=output.acceptedSequence)continue;
                         const bool sameSource=source.sourceFrameNumber==output.sourceFrameNumber &&
                             source.captureTimestamp==output.captureTimestamp;
-                        const bool sameContext=sameCurrentContext(source);
+                        const bool sameContext=sameWorkerPhysicalContext(source);
                         const bool publishedExact=std::equal(std::begin(expected),std::end(expected),source.published);
                         const bool verifiedBounds=hasVerifiedCurrentBounds(source,expected);
                         const bool ordered=source.recordSequence<admissionMatch->recordSequence;
@@ -5459,9 +5536,7 @@ namespace VideoProcessorTest
                     if(!exactNative)continue;
                     for(const auto& source:spatialProduced)if(!strcmp(source.stage,"source-picture-active") &&
                         source.acceptedSequence==nativeOwner && source.sourceFrameNumber==accepted.sourceFrameNumber &&
-                        source.captureTimestamp==accepted.captureTimestamp && samePhysicalContext(source) &&
-                        source.policyGeneration==accepted.policyGeneration &&
-                        source.continuityGeneration==accepted.continuityGeneration &&
+                        source.captureTimestamp==accepted.captureTimestamp && sameWorkerPhysicalContext(source) &&
                         source.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
                         (source.flags&(1u|2u|4u|8u))==(1u|2u|4u|8u) &&
                         source.recordSequence<accepted.recordSequence) {

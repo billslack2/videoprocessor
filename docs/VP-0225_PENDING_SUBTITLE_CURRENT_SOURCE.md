@@ -226,3 +226,17 @@ bounds and final operation. It may qualify prepared erasure for this source with
 bar authority still absent; it cannot qualify semantic acquisition, native aspect,
 absence, lease renewal or an older packet. Rejection controls cover stale/changed
 identities, operation, mode, bounds, ink/cue and unapplied protection.
+
+The renderer no longer invokes the previous-complete-output input-cadence repeat
+as a response to optional subtitle readiness. A distinct input continues into
+current-source preparation and raw fallback even when its analysis is UNKNOWN.
+Explicit ingress cadence-repeat packets and display-refresh repeats retain their
+own timing rules; missing optional work cannot select an older movie frame.
+
+Runtime cadence tests enumerate their actual monitor, select an active 60 Hz
+target, and supply the same target-refresh metadata as the GUI. They cover
+59.94/60 and 23.976/24 Hz inputs. Every successful steady submission participates
+in exact-source and wall-time joins, including raw fallback, UNKNOWN, genuine
+repeats and stop-drained output. Bounds use source and actual display periods;
+queue depths and analysis deadlines are unchanged. A 24 Hz monitor alone cannot
+qualify 60 distinct source submissions per second.
