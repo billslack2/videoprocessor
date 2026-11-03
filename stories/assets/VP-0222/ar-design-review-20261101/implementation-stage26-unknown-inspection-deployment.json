@@ -1,0 +1,40 @@
+{
+  "stage": 26,
+  "status": "Qualified x64 Release deployed and running; Reconstruction selected",
+  "sourceCommit": "788554a100afe0af2352b904fe1870d80fb75bb7",
+  "process": 33916,
+  "backup": "C:\\Videoprocessor\\vp\\backups\\subtitle-stall-788554a1-20261102-192609",
+  "deployedFilesVerified": 28,
+  "bothDeployedRendererModulesLoaded": true,
+  "configurationEdits": [],
+  "configurationSha256": "26B5BACB253DB172B0418AA51BD0A2F3CB29047E3934D099098D0FF16F31074C",
+  "tests": {
+    "native": 1046,
+    "standardActual": 17,
+    "betaActual": 17,
+    "standardMotion": 220,
+    "betaMotion": 220,
+    "allPassed": true,
+    "total": 1520
+  },
+  "triggerRegression": "1,600 native UNKNOWN inspections plus actual Black/Reconstruction runs on both dependencies; more than 20 joined distinct current submissions at fixed native dimensions, then actual full-raster/scope transitions.",
+  "liveReconstruction": {
+    "distinctCurrentSubmissions": 695,
+    "firstSource": 1003,
+    "lastSource": 1697,
+    "effectiveProcessedModeOutputs": 687,
+    "initialShaderBuildRawOutputs": 8,
+    "canvasWaitsInSample": 0,
+    "nativeBounds": [
+      0,
+      270,
+      3840,
+      1888
+    ],
+    "captionDetected": false,
+    "unknownContinuationAdmissions": 0
+  },
+  "liveLimits": "Current live input has clear bars and no caption. The original UNKNOWN trigger is verified by actual-renderer regression, not reobserved in this live sample. No visual playback-smoothness claim; other stutters remain unverified.",
+  "originalProfileRestored": "reconstruction through one verified Ctrl+Shift+T profile shortcut; only live profile selection changed, no configuration edit",
+  "evidenceRoot": "E:\\codex\\videoprocessor\\evidence\\reconstruction-presentation-stall-20261102-1853"
+}

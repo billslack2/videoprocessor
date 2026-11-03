@@ -1,0 +1,167 @@
+{
+  "process": 33916,
+  "sourceCommit": "788554a100afe0af2352b904fe1870d80fb75bb7",
+  "records": 1694,
+  "exactCurrent": 1694,
+  "processedRecords": 695,
+  "steadyProcessed": 695,
+  "distinctSteadySelectedSources": 695,
+  "firstSteadySource": 1003,
+  "lastSteadySource": 1697,
+  "unprocessedAdmissionRecords": 0,
+  "waitingAdmissionRecords": 0,
+  "requested_mode": {
+    "3": 695
+  },
+  "mode": {
+    "0": 8,
+    "3": 687
+  },
+  "measurement_available": {
+    "true": 695
+  },
+  "actual_source": {
+    "[18,270,3822,1888]": 695
+  },
+  "native": {
+    "[0,270,3840,1888]": 695
+  },
+  "detected": {
+    "false": 695
+  },
+  "current_composition": {
+    "false": 695
+  },
+  "strong_prepared": {
+    "false": 695
+  },
+  "owner": {
+    "\"trusted\"": 695
+  },
+  "reason": {
+    "\"initial subtitle shader build preserves native movie size; caption processing pending\"": 8,
+    "\"current empty native bands preserve the fixed movie canvas without claiming caption absence\"": 687
+  },
+  "ownership_reason": {
+    "\"not-qualified\"": 695
+  },
+  "erasure_reason": {
+    "\"not-qualified\"": 695
+  },
+  "shader_failed": {
+    "false": 695
+  },
+  "prepare_failures": {
+    "1": 695
+  },
+  "last": {
+    "schema": 1,
+    "instance": "{F26169B3-D987-4063-B1EF-7D2663EF1540}",
+    "process": 33916,
+    "tick_ms": 255511109,
+    "qpc": 2555113476436,
+    "qpc_hz": 10000000,
+    "diagnostic_cpu_ms": 0.4038,
+    "utc_ms": 1793665651521,
+    "timecode": "00:27:31.521Z F26169B3 G2 O1694 S1697",
+    "timecode_drawn": true,
+    "output": 1694,
+    "generation": 2,
+    "input": 1697,
+    "selected": 1697,
+    "facts_source": 1697,
+    "facts_current": true,
+    "source_pts": 255511.2128,
+    "output_pts": 255511.2128,
+    "temporal": false,
+    "repeated": false,
+    "rendered": true,
+    "submitted": true,
+    "screen_aspect": 2.35,
+    "actual_source": [
+      18,
+      270,
+      3822,
+      1888
+    ],
+    "actual_target": [
+      0,
+      263.343811,
+      3840,
+      1896.656128
+    ],
+    "viewport": 5,
+    "format": 15805081878477807578,
+    "domain": 4768279117495752782,
+    "policy": 2,
+    "continuity": 9,
+    "raster": [
+      3840,
+      2160
+    ],
+    "measurement_source": 1697,
+    "measurement_available": true,
+    "measurement_reason": "supplied source candidate independently passes excluded-band verification",
+    "classification": 2,
+    "measured": [
+      0,
+      270,
+      3840,
+      1888
+    ],
+    "native_available": true,
+    "native_accepted_source": 177,
+    "native": [
+      0,
+      270,
+      3840,
+      1888
+    ],
+    "observation_supports_crop": false,
+    "retention_evaluated": true,
+    "retention_safe": false,
+    "visible_available": false,
+    "raw_visible": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "subtitle_processing_profile": 3,
+    "requested_mode": 3,
+    "preparation_state": 3,
+    "preparation_key": 13225675205051068346,
+    "shader_failed": false,
+    "mode": 3,
+    "caption_source": 1697,
+    "caption_current": true,
+    "cue": 0,
+    "detected": false,
+    "held": false,
+    "incomplete": false,
+    "caption": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "destination": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "composed": false,
+    "source_prepared": false,
+    "prepare_failures": 1,
+    "current_composition": false,
+    "strong_prepared": false,
+    "absence": true,
+    "scan_reason": "no-bright-ink",
+    "ownership_reason": "not-qualified",
+    "erasure_reason": "not-qualified",
+    "continuation_reason": "not-attempted",
+    "owner": "trusted",
+    "reason": "current empty native bands preserve the fixed movie canvas without claiming caption absence"
+  }
+}
