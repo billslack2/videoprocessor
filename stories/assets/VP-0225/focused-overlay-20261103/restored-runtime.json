@@ -1,0 +1,22 @@
+[
+  {
+    "process": 67248,
+    "utc_ms": 1793749841467,
+    "selected": 3507,
+    "submitted": true,
+    "requested_mode": 3,
+    "subtitle_processing_profile": 3,
+    "mode": 3,
+    "facts_current": true
+  },
+  {
+    "process": 67248,
+    "utc_ms": 1793749841512,
+    "selected": 3508,
+    "submitted": true,
+    "requested_mode": 3,
+    "subtitle_processing_profile": 3,
+    "mode": 3,
+    "facts_current": true
+  }
+]

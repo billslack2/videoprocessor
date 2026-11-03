@@ -1,0 +1,711 @@
+{
+  "case": "candidate94-visual",
+  "source": "94c4419ab03443a0ae4d48acdcad43b494da9748",
+  "dirty": [],
+  "method": "StandardRendererReconstructionTransportOverlayPreservesCurrentUi",
+  "pluginRoot": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release",
+  "visual": true,
+  "performanceQualified": false,
+  "gpuIsolated": true,
+  "started": "2026-11-03T18:46:33.069435-05:00",
+  "status": "completed",
+  "exit": 0,
+  "passed": true,
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "7AA7ECF0D0B52169CEB1541764DDD61915883BA29FB5F1ADC263A3F75235B571"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\TestPlatform\\vstest.console.exe",
+      "sha256": "304C669B715C7569C8F20B647EE5F6EECDA393906158EC881E07AA261E85003B"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "060865C9BD7E5CE5CD024B4E06386AA2D51D4761CCDB1CF91F6EE6A96211A34B"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    }
+  ],
+  "captures": [
+    {
+      "name": "VP-rendered-20261103-184729-492-frame-1318.json",
+      "sha256": "A22A976A9FDD769104C9FEB92C6463E9623C529B6FBCEF24976A015E4BFC46BB"
+    },
+    {
+      "name": "VP-rendered-20261103-184729-492-frame-1318.png",
+      "sha256": "5EA0321C677168649940FAB0B74848D545B6A63185B0A2FAAA2F4DCA79D12296"
+    },
+    {
+      "name": "VP-rendered-20261103-184730-323-frame-1338.json",
+      "sha256": "6F28B62C42288B264D5B742F87E1C81AA4B1D17C400C6BE623982912F48911CA"
+    },
+    {
+      "name": "VP-rendered-20261103-184730-323-frame-1338.png",
+      "sha256": "D47089407314E705C114246F6980DF8FBE7E068D682FF52B0EB5053F4882FEF6"
+    },
+    {
+      "name": "VP-rendered-20261103-184731-366-frame-1363.json",
+      "sha256": "4EA95645565DC84D3F8B3E5F49F989F885D59CEF8A246DEC279156ADEE47D106"
+    },
+    {
+      "name": "VP-rendered-20261103-184731-366-frame-1363.png",
+      "sha256": "B94BD146E3E913475F427DD18D1C920CF30D845A04C6B6E9C3B9AA3FE8B04467"
+    },
+    {
+      "name": "VP-rendered-20261103-184732-322-frame-1386.json",
+      "sha256": "807373C8BF2BD360C7281BAB9E5F12AD081638919C47736CA4702D5900ABB14C"
+    },
+    {
+      "name": "VP-rendered-20261103-184732-322-frame-1386.png",
+      "sha256": "D47089407314E705C114246F6980DF8FBE7E068D682FF52B0EB5053F4882FEF6"
+    },
+    {
+      "name": "VP-rendered-20261103-184735-833-frame-1470.json",
+      "sha256": "A2CDEEF8DCFA150008E74C397155F5746603FAD50532E03A3B8C8CC1A1E46973"
+    },
+    {
+      "name": "VP-rendered-20261103-184735-833-frame-1470.png",
+      "sha256": "5EA0321C677168649940FAB0B74848D545B6A63185B0A2FAAA2F4DCA79D12296"
+    }
+  ],
+  "results": [
+    {
+      "name": "StandardRendererReconstructionTransportOverlayPreservesCurrentUi",
+      "outcome": "Passed",
+      "error": "",
+      "summary": [
+        "TRANSPORT VISUAL ONLY: five actual output captures; synchronous readback perturbs frame work. This run does not qualify performance.",
+        "TRANSPORT VISUAL REQUEST: phase=settled-caption next_input=1321 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT VISUAL REQUEST: phase=ui-onset next_input=1341 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT VISUAL REQUEST: phase=ui-phase-one next_input=1366 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT VISUAL REQUEST: phase=ui-phase-two next_input=1389 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT VISUAL REQUEST: phase=recovered-caption next_input=1473 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT UI SUMMARY: ui_outputs=96 distinct=96 raw=96 composed=0 exact=1 native_stable=1 ui_visible=1 stable_envelope=1 max_source_gap=1 max_submit_gap_ms=79.6625 work_samples=96 max_frame_work_ms=12.8216 returned_composed=36"
+      ]
+    }
+  ],
+  "error": null,
+  "trxHash": "97227E8096645A94095EB57925A29EA66E819B7407576F5B1C7844C944F1C9A9",
+  "captureCount": 5,
+  "capturePairsVerified": true,
+  "captureSources": [
+    {
+      "image": "VP-rendered-20261103-184729-492-frame-1318.png",
+      "source": 1318,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{55DA55F4-3387-459F-8565-C894346C202D}",
+        "process": 38372,
+        "tick_ms": 339509062,
+        "qpc": 3395092992599,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749649473,
+        "timecode": "23:47:29.473Z 55DA55F4 G1 O1 S1318",
+        "timecode_drawn": false,
+        "output": 1,
+        "generation": 1,
+        "input": 1318,
+        "selected": 1318,
+        "facts_source": 1318,
+        "facts_current": true,
+        "source_pts": 339509.1639,
+        "output_pts": 339509.1639,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "actual_target": [
+          13.25936031,
+          136.9680786,
+          1986.740601,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 4,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1318,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 3,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": true,
+        "visible_available": false,
+        "raw_visible": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 6052057773743962502,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1318,
+        "caption_current": true,
+        "cue": 359,
+        "detected": true,
+        "held": true,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": true,
+        "absence": false,
+        "scan_reason": "presentation-only-current-pixel-proof",
+        "ownership_reason": "current-caption-proof-unavailable",
+        "erasure_reason": "current-prepared-caption-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "trusted",
+        "reason": "processed subtitle preserves the fixed native movie canvas"
+      }
+    },
+    {
+      "image": "VP-rendered-20261103-184730-323-frame-1338.png",
+      "source": 1338,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{55DA55F4-3387-459F-8565-C894346C202D}",
+        "process": 38372,
+        "tick_ms": 339509906,
+        "qpc": 3395101318412,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749650305,
+        "timecode": "23:47:30.305Z 55DA55F4 G1 O2 S1338",
+        "timecode_drawn": false,
+        "output": 2,
+        "generation": 1,
+        "input": 1338,
+        "selected": 1338,
+        "facts_source": 1338,
+        "facts_current": true,
+        "source_pts": 339509.9971,
+        "output_pts": 339509.9971,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          108,
+          3840,
+          2036
+        ],
+        "actual_target": [
+          152.4675598,
+          136.9680786,
+          1847.532471,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 4,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1338,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 3,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": false,
+        "visible_available": true,
+        "raw_visible": [
+          0,
+          108,
+          3840,
+          2035
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 6052057773743962502,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1338,
+        "caption_current": true,
+        "cue": 359,
+        "detected": true,
+        "held": false,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": false,
+        "absence": false,
+        "scan_reason": "detected",
+        "ownership_reason": "unowned-picture-outside-erasure",
+        "erasure_reason": "unowned-picture-outside-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "fit",
+        "reason": "raw subtitle fallback to current source: subtitle composition pending"
+      }
+    },
+    {
+      "image": "VP-rendered-20261103-184731-366-frame-1363.png",
+      "source": 1363,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{55DA55F4-3387-459F-8565-C894346C202D}",
+        "process": 38372,
+        "tick_ms": 339510937,
+        "qpc": 3395111764946,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749651350,
+        "timecode": "23:47:31.350Z 55DA55F4 G1 O3 S1363",
+        "timecode_drawn": false,
+        "output": 3,
+        "generation": 1,
+        "input": 1363,
+        "selected": 1363,
+        "facts_source": 1363,
+        "facts_current": true,
+        "source_pts": 339511.0392,
+        "output_pts": 339511.0392,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          108,
+          3840,
+          2036
+        ],
+        "actual_target": [
+          152.4675598,
+          136.9680786,
+          1847.532471,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 4,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1363,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 3,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": false,
+        "visible_available": true,
+        "raw_visible": [
+          0,
+          108,
+          3840,
+          2035
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 6052057773743962502,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1363,
+        "caption_current": true,
+        "cue": 359,
+        "detected": true,
+        "held": false,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": false,
+        "absence": false,
+        "scan_reason": "detected",
+        "ownership_reason": "unowned-picture-outside-erasure",
+        "erasure_reason": "unowned-picture-outside-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "fit",
+        "reason": "raw subtitle fallback to current source: subtitle composition pending"
+      }
+    },
+    {
+      "image": "VP-rendered-20261103-184732-322-frame-1386.png",
+      "source": 1386,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{55DA55F4-3387-459F-8565-C894346C202D}",
+        "process": 38372,
+        "tick_ms": 339511890,
+        "qpc": 3395121246049,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749652298,
+        "timecode": "23:47:32.298Z 55DA55F4 G1 O4 S1386",
+        "timecode_drawn": false,
+        "output": 4,
+        "generation": 1,
+        "input": 1386,
+        "selected": 1386,
+        "facts_source": 1386,
+        "facts_current": true,
+        "source_pts": 339512.005,
+        "output_pts": 339512.005,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          108,
+          3840,
+          2036
+        ],
+        "actual_target": [
+          152.4675598,
+          136.9680786,
+          1847.532471,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 4,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1386,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 3,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": false,
+        "visible_available": true,
+        "raw_visible": [
+          0,
+          108,
+          3840,
+          2035
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 6052057773743962502,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1386,
+        "caption_current": true,
+        "cue": 359,
+        "detected": true,
+        "held": false,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": false,
+        "absence": false,
+        "scan_reason": "detected",
+        "ownership_reason": "unowned-picture-outside-erasure",
+        "erasure_reason": "unowned-picture-outside-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "fit",
+        "reason": "raw subtitle fallback to current source: subtitle composition pending"
+      }
+    },
+    {
+      "image": "VP-rendered-20261103-184735-833-frame-1470.png",
+      "source": 1470,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{55DA55F4-3387-459F-8565-C894346C202D}",
+        "process": 38372,
+        "tick_ms": 339515406,
+        "qpc": 3395156311544,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749655804,
+        "timecode": "23:47:35.804Z 55DA55F4 G1 O5 S1470",
+        "timecode_drawn": false,
+        "output": 5,
+        "generation": 1,
+        "input": 1470,
+        "selected": 1470,
+        "facts_source": 1470,
+        "facts_current": true,
+        "source_pts": 339515.4997,
+        "output_pts": 339515.4997,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "actual_target": [
+          13.25936031,
+          136.9680786,
+          1986.740601,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 4,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1470,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 2,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": true,
+        "visible_available": false,
+        "raw_visible": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 6052057773743962502,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1470,
+        "caption_current": true,
+        "cue": 359,
+        "detected": true,
+        "held": true,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": true,
+        "absence": false,
+        "scan_reason": "presentation-only-current-pixel-proof",
+        "ownership_reason": "current-caption-proof-unavailable",
+        "erasure_reason": "current-prepared-caption-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "trusted",
+        "reason": "processed subtitle preserves the fixed native movie canvas"
+      }
+    }
+  ],
+  "binariesStable": true,
+  "sourceStable": true,
+  "finished": "2026-11-03T18:47:37.1801748-05:00"
+}

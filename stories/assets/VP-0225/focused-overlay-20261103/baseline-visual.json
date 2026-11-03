@@ -1,0 +1,711 @@
+{
+  "case": "baseline43-visual",
+  "source": "94c4419ab03443a0ae4d48acdcad43b494da9748",
+  "dirty": [],
+  "method": "StandardRendererReconstructionTransportOverlayPreservesCurrentUi",
+  "pluginRoot": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4",
+  "visual": true,
+  "performanceQualified": false,
+  "gpuIsolated": true,
+  "started": "2026-11-03T18:44:55.3835952-05:00",
+  "status": "completed",
+  "exit": 1,
+  "passed": false,
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "7AA7ECF0D0B52169CEB1541764DDD61915883BA29FB5F1ADC263A3F75235B571"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\TestPlatform\\vstest.console.exe",
+      "sha256": "304C669B715C7569C8F20B647EE5F6EECDA393906158EC881E07AA261E85003B"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "CD8DA82C854A22B4430A0C22ED8F6B2ED2591B707F2B225809AADB78B9485980"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\runtime-43ba61d4\\vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    }
+  ],
+  "captures": [
+    {
+      "name": "VP-rendered-20261103-184542-516-frame-1098.json",
+      "sha256": "F837FF8EE2CE9735CC3CD0AF38B34CCE5BC59067A2618A862291D1286D71E8EF"
+    },
+    {
+      "name": "VP-rendered-20261103-184542-516-frame-1098.png",
+      "sha256": "5EA0321C677168649940FAB0B74848D545B6A63185B0A2FAAA2F4DCA79D12296"
+    },
+    {
+      "name": "VP-rendered-20261103-184543-336-frame-1118.json",
+      "sha256": "C1705E8236D22EF82F8551DED949082B8610AAA0FE78E70978CF399AC4CC0686"
+    },
+    {
+      "name": "VP-rendered-20261103-184543-336-frame-1118.png",
+      "sha256": "4267EBA7BC548CD4884D933617A6B556E8DE8535D17D6B3FA34B5427A2773B37"
+    },
+    {
+      "name": "VP-rendered-20261103-184544-381-frame-1143.json",
+      "sha256": "F60767BAE9C766AFC8E88BA636CE867931D5A65F18B2BFE3B9C67AB6A9CD758E"
+    },
+    {
+      "name": "VP-rendered-20261103-184544-381-frame-1143.png",
+      "sha256": "E0C674C02180EF40031D678FBA7B37672B902A5AF9D467BF870CD2AB73B5D9A0"
+    },
+    {
+      "name": "VP-rendered-20261103-184545-346-frame-1166.json",
+      "sha256": "01250404A7E6328A13FA9B5F97BAFFAD5FA20382A4A88B85FC052447D67044CE"
+    },
+    {
+      "name": "VP-rendered-20261103-184545-346-frame-1166.png",
+      "sha256": "4267EBA7BC548CD4884D933617A6B556E8DE8535D17D6B3FA34B5427A2773B37"
+    },
+    {
+      "name": "VP-rendered-20261103-184548-850-frame-1250.json",
+      "sha256": "010C34A2C9FF27292EFC450823443B13E80AB1631A9393DDEC6DB0B45B8CDB48"
+    },
+    {
+      "name": "VP-rendered-20261103-184548-850-frame-1250.png",
+      "sha256": "5EA0321C677168649940FAB0B74848D545B6A63185B0A2FAAA2F4DCA79D12296"
+    }
+  ],
+  "results": [
+    {
+      "name": "StandardRendererReconstructionTransportOverlayPreservesCurrentUi",
+      "outcome": "Failed",
+      "error": "Assert failed. Subtitle reconstruction covered player UI or cropped current UI/movie pixels.",
+      "summary": [
+        "TRANSPORT VISUAL ONLY: five actual output captures; synchronous readback perturbs frame work. This run does not qualify performance.",
+        "TRANSPORT VISUAL REQUEST: phase=settled-caption next_input=1101 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT VISUAL REQUEST: phase=ui-onset next_input=1121 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT VISUAL REQUEST: phase=ui-phase-one next_input=1146 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT VISUAL REQUEST: phase=ui-phase-two next_input=1169 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT VISUAL REQUEST: phase=recovered-caption next_input=1253 queued=1; actual source is recorded in capture JSON",
+        "TRANSPORT UI SUMMARY: ui_outputs=96 distinct=96 raw=0 composed=96 exact=1 native_stable=1 ui_visible=0 stable_envelope=1 max_source_gap=1 max_submit_gap_ms=78.1096 work_samples=96 max_frame_work_ms=10.4628 returned_composed=36"
+      ]
+    }
+  ],
+  "error": null,
+  "trxHash": "FB1F076CF6D47A7BFA952BB43C3B157886B44A91B076E2A35DD96407A1838B46",
+  "captureCount": 5,
+  "capturePairsVerified": true,
+  "captureSources": [
+    {
+      "image": "VP-rendered-20261103-184542-516-frame-1098.png",
+      "source": 1098,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{820686B0-0EDD-4A28-BC6E-60DB5747EBE2}",
+        "process": 54204,
+        "tick_ms": 339402093,
+        "qpc": 3394023248476,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749542498,
+        "timecode": "23:45:42.498Z 820686B0 G1 O1 S1098",
+        "timecode_drawn": false,
+        "output": 1,
+        "generation": 1,
+        "input": 1098,
+        "selected": 1098,
+        "facts_source": 1098,
+        "facts_current": true,
+        "source_pts": 339402.1871,
+        "output_pts": 339402.1871,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "actual_target": [
+          13.25936031,
+          136.9680786,
+          1986.740601,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 3,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1098,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 3,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": true,
+        "visible_available": false,
+        "raw_visible": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 5269706150766183592,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1098,
+        "caption_current": true,
+        "cue": 295,
+        "detected": true,
+        "held": true,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": true,
+        "absence": false,
+        "scan_reason": "presentation-only-current-pixel-proof",
+        "ownership_reason": "current-caption-proof-unavailable",
+        "erasure_reason": "current-prepared-caption-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "trusted",
+        "reason": "processed subtitle preserves the fixed native movie canvas"
+      }
+    },
+    {
+      "image": "VP-rendered-20261103-184543-336-frame-1118.png",
+      "source": 1118,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{820686B0-0EDD-4A28-BC6E-60DB5747EBE2}",
+        "process": 54204,
+        "tick_ms": 339402921,
+        "qpc": 3394031450924,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749543318,
+        "timecode": "23:45:43.318Z 820686B0 G1 O2 S1118",
+        "timecode_drawn": false,
+        "output": 2,
+        "generation": 1,
+        "input": 1118,
+        "selected": 1118,
+        "facts_source": 1118,
+        "facts_current": true,
+        "source_pts": 339403.0141,
+        "output_pts": 339403.0141,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "actual_target": [
+          13.25936031,
+          136.9680786,
+          1986.740601,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 3,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1118,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 3,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": false,
+        "visible_available": true,
+        "raw_visible": [
+          0,
+          108,
+          3840,
+          2035
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 5269706150766183592,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1118,
+        "caption_current": true,
+        "cue": 295,
+        "detected": true,
+        "held": false,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": false,
+        "absence": false,
+        "scan_reason": "detected",
+        "ownership_reason": "unowned-picture-outside-erasure",
+        "erasure_reason": "unowned-picture-outside-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "trusted",
+        "reason": "processed subtitle preserves the fixed native movie canvas"
+      }
+    },
+    {
+      "image": "VP-rendered-20261103-184544-381-frame-1143.png",
+      "source": 1143,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{820686B0-0EDD-4A28-BC6E-60DB5747EBE2}",
+        "process": 54204,
+        "tick_ms": 339403953,
+        "qpc": 3394041855594,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749544359,
+        "timecode": "23:45:44.359Z 820686B0 G1 O3 S1143",
+        "timecode_drawn": false,
+        "output": 3,
+        "generation": 1,
+        "input": 1143,
+        "selected": 1143,
+        "facts_source": 1143,
+        "facts_current": true,
+        "source_pts": 339404.0523,
+        "output_pts": 339404.0523,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "actual_target": [
+          13.25936031,
+          136.9680786,
+          1986.740601,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 3,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1143,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 3,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": false,
+        "visible_available": true,
+        "raw_visible": [
+          0,
+          108,
+          3840,
+          2035
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 5269706150766183592,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1143,
+        "caption_current": true,
+        "cue": 295,
+        "detected": true,
+        "held": false,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": false,
+        "absence": false,
+        "scan_reason": "detected",
+        "ownership_reason": "unowned-picture-outside-erasure",
+        "erasure_reason": "unowned-picture-outside-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "trusted",
+        "reason": "processed subtitle preserves the fixed native movie canvas"
+      }
+    },
+    {
+      "image": "VP-rendered-20261103-184545-346-frame-1166.png",
+      "source": 1166,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{820686B0-0EDD-4A28-BC6E-60DB5747EBE2}",
+        "process": 54204,
+        "tick_ms": 339404921,
+        "qpc": 3394051553008,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749545329,
+        "timecode": "23:45:45.329Z 820686B0 G1 O4 S1166",
+        "timecode_drawn": false,
+        "output": 4,
+        "generation": 1,
+        "input": 1166,
+        "selected": 1166,
+        "facts_source": 1166,
+        "facts_current": true,
+        "source_pts": 339405.009,
+        "output_pts": 339405.009,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "actual_target": [
+          13.25936031,
+          136.9680786,
+          1986.740601,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 3,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1166,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 3,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": false,
+        "visible_available": true,
+        "raw_visible": [
+          0,
+          108,
+          3840,
+          2035
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 5269706150766183592,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1166,
+        "caption_current": true,
+        "cue": 295,
+        "detected": true,
+        "held": false,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": false,
+        "absence": false,
+        "scan_reason": "detected",
+        "ownership_reason": "unowned-picture-outside-erasure",
+        "erasure_reason": "unowned-picture-outside-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "trusted",
+        "reason": "processed subtitle preserves the fixed native movie canvas"
+      }
+    },
+    {
+      "image": "VP-rendered-20261103-184548-850-frame-1250.png",
+      "source": 1250,
+      "width": 2000,
+      "height": 1125,
+      "decision": {
+        "schema": 1,
+        "instance": "{820686B0-0EDD-4A28-BC6E-60DB5747EBE2}",
+        "process": 54204,
+        "tick_ms": 339408421,
+        "qpc": 3394086514231,
+        "qpc_hz": 10000000,
+        "diagnostic_cpu_ms": 0,
+        "utc_ms": 1793749548825,
+        "timecode": "23:45:48.825Z 820686B0 G1 O5 S1250",
+        "timecode_drawn": false,
+        "output": 5,
+        "generation": 1,
+        "input": 1250,
+        "selected": 1250,
+        "facts_source": 1250,
+        "facts_current": true,
+        "source_pts": 339408.5223,
+        "output_pts": 339408.5223,
+        "temporal": false,
+        "repeated": false,
+        "rendered": true,
+        "submitted": false,
+        "screen_aspect": 2.35,
+        "actual_source": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "actual_target": [
+          13.25936031,
+          136.9680786,
+          1986.740601,
+          988.0319214
+        ],
+        "viewport": 0,
+        "format": 15805081878477807578,
+        "domain": 4768279117495752782,
+        "policy": 2,
+        "continuity": 3,
+        "raster": [
+          3840,
+          2160
+        ],
+        "measurement_source": 1250,
+        "measurement_available": true,
+        "measurement_reason": "native candidate has an unverified nominated crop axis",
+        "classification": 2,
+        "measured": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "native_available": true,
+        "native_accepted_source": 1,
+        "native": [
+          0,
+          250,
+          3840,
+          1906
+        ],
+        "observation_supports_crop": false,
+        "retention_evaluated": true,
+        "retention_safe": true,
+        "visible_available": false,
+        "raw_visible": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "subtitle_processing_profile": 3,
+        "requested_mode": 3,
+        "preparation_state": 3,
+        "preparation_key": 5269706150766183592,
+        "shader_failed": false,
+        "mode": 3,
+        "caption_source": 1250,
+        "caption_current": true,
+        "cue": 295,
+        "detected": true,
+        "held": true,
+        "incomplete": false,
+        "caption": [
+          1390,
+          1910,
+          2146,
+          1950
+        ],
+        "destination": [
+          1378,
+          1818,
+          2155,
+          1896
+        ],
+        "composed": true,
+        "source_prepared": true,
+        "prepare_failures": 0,
+        "current_composition": true,
+        "strong_prepared": true,
+        "absence": false,
+        "scan_reason": "presentation-only-current-pixel-proof",
+        "ownership_reason": "current-caption-proof-unavailable",
+        "erasure_reason": "current-prepared-caption-erasure",
+        "continuation_reason": "not-attempted",
+        "owner": "trusted",
+        "reason": "processed subtitle preserves the fixed native movie canvas"
+      }
+    }
+  ],
+  "binariesStable": true,
+  "sourceStable": true,
+  "finished": "2026-11-03T18:45:53.0999281-05:00"
+}

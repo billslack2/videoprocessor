@@ -1,0 +1,51 @@
+{
+  "source": "94c4419ab03443a0ae4d48acdcad43b494da9748",
+  "deployed": false,
+  "fullQualification": false,
+  "installedSource": "43ba61d4c8cfd24b65003d4c887413bd7969d031",
+  "restoredProcess": 67248,
+  "restoredProfile": "reconstruction",
+  "configurationSha256": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E",
+  "files": [
+    {
+      "file": "incident.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\src\\VideoProcessor-Test\\fixtures\\subtitle-incident-20261103-181348.json",
+      "sha256": "b96c2617d6f0072372d5f440f61b78e62e396528b023c2b9092861116bcf5e6f"
+    },
+    {
+      "file": "native-three.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-183933-6f08d647\\iteration.json",
+      "sha256": "cbc61198f63b7ff57b1baa3f40fc66b6119244039e80a090583f765b8a48145c"
+    },
+    {
+      "file": "standard-focused.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-184142-b4d3a043\\iteration.json",
+      "sha256": "cf5b8f7a9701970c8ddac7aa0a0cf6d11bccbe178a91773be1ce14b7a72f9e0a"
+    },
+    {
+      "file": "baseline-visual.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\baseline43-visual-20261103-184455\\receipt.json",
+      "sha256": "afc0b6b08dacf7f00716afa62acd047b72dffad04697d1c92d0f20342c950c5d"
+    },
+    {
+      "file": "candidate-visual.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\candidate94-visual-20261103-184632\\receipt.json",
+      "sha256": "aa557eb7baae0425c04830013a6af98f9f08253716c2aa9cbc79c4efb4b34938"
+    },
+    {
+      "file": "comparison.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\comparison-43-to-94\\comparison.json",
+      "sha256": "561f12ca22dc649cd9107d4f04b65e186dfc811f42ccaa967d7543e0d0a54444"
+    },
+    {
+      "file": "run-transport.ps1",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\run-transport.ps1",
+      "sha256": "0b56ca99e2589a4ae964653f487a4a78c47660ec70b01ad7433d09e7ec7ea351"
+    },
+    {
+      "file": "build-comparison.py",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\build-comparison.py",
+      "sha256": "fd5531e76f5da5e4ff82c3cebf426f8ea63a4c88797f7dac623cde587e747895"
+    }
+  ]
+}

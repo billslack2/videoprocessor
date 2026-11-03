@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "incident": "20261103-181348",
+  "runtimeSource": "43ba61d4c8cfd24b65003d4c887413bd7969d031",
+  "evidence": {
+    "recording": "2026-11-03 18-13-48.mp4",
+    "recordingKind": "Rendered desktop output; not original HDMI pixels",
+    "durationSeconds": 69.2666666667,
+    "recordingFps": 60,
+    "input": {"width": 3840, "height": 2160, "encoding": "V210", "colorSpace": "REC709", "range": "limited", "fpsNumerator": 24000, "fpsDenominator": 1001},
+    "profile": "Reconstruction",
+    "instance": "CB048739-86A8-4443-A544-FE8C99A77340",
+    "generation": 2,
+    "originalSourcePixelsAvailable": false,
+    "privateEvidenceDirectory": "artifacts/incident-20261103-181348",
+    "provenanceRule": "Synthetic pixel tests isolate contracts; they do not establish the original detector's pixel-level cause. Private movie pixels are not committed."
+  },
+  "cases": [
+    {
+      "id": "transport-overlay-crosses-subtitle-destination",
+      "utc": "2026-11-03T23:14:52.373Z",
+      "selectedSources": [2598, 2599, 2600, 2601, 2623],
+      "native": [0, 274, 3840, 1886],
+      "caption": [1514, 1922, 2310, 2022],
+      "destination": [1461, 1758, 2361, 1876],
+      "observedRawAperture": [0, 148, 3840, 2026],
+      "observedComposedAperture": [26, 274, 3814, 1886],
+      "seekbarApproximateSourceY": 1827,
+      "topOverlayFirstVisibleSample": [187, 164],
+      "observed": "Same native picture alternates raw UI-preserving output and composed output which masks the seekbar and crops the top title.",
+      "expected": ["Every eligible current source advances", "Unsafe composition cannot override residual visibility", "Both readiness phases preserve current UI and caption pixels with the same aperture", "Fallback supplies no native aspect or caption absence authority", "Cue composition recovers after the overlay leaves"],
+      "actualRendererTests": ["StandardRendererReconstructionTransportOverlayPreservesCurrentUi", "BetaRendererReconstructionTransportOverlayPreservesCurrentUi"]
+    },
+    {
+      "id": "cleanup-erases-uncaptured-middle-word",
+      "utc": "2026-11-03T23:14:29.100Z",
+      "selectedSources": [2037, 2038, 2039, 2040],
+      "native": [0, 274, 3840, 1886],
+      "captureLines": [[1233, 1930, 2594, 2012], [1197, 1784, 1854, 1884], [2031, 1785, 2642, 1884]],
+      "glyphCaptureHull": [1197, 1784, 2642, 2012],
+      "pictureCleanupBounds": [1138, 1742, 2706, 1886],
+      "completeBackingCardProven": false,
+      "observed": "The rendered phrase lacks the middle word \"be\" while current prepared erasure is reported safe. The upper capture fragments omit a 177-pixel gap inside cleanup. A rewind-10 transport overlay appears during the same incident.",
+      "expected": ["Erasure cannot destroy current glyph content omitted by capture", "The complete capture/erase contract applies to first composition as well as reuse", "Unready optional work falls back to current source pixels without holding the movie"],
+      "reproducerScope": "Synthetic bright glyph pixels in the logged uncaptured cleanup gap are erased and not copied. This isolates a capture/erase contract failure; it does not reproduce or establish the original incoming pixels or detector failure.",
+      "overlayCorrelation": {
+        "kind": "rewind-10 transport overlay",
+        "relationship": "Observed during the missing-word incident; correlation does not establish whether the overlay obscured the word in the incoming source or changed detector grouping."
+      },
+      "unknownOriginalSourceCause": "No exact native source frame is available. The rendered output and logged geometry cannot establish whether incoming glyph pixels remained visible, were already obscured by the player overlay, or were rejected during palette/component/card recovery.",
+      "syntheticReproducer": {
+        "privateArtifactDirectory": "artifacts/incident-20261103-181348/capture-completeness-red",
+        "files": ["fixture.json", "reproduce.py", "result.json", "contract-audit.json"],
+        "expectedContract": "No erased, uncaptured, unprotected glyph pixels",
+        "observedSyntheticMiddlePixels": 4000,
+        "capturedSyntheticMiddlePixels": 0,
+        "erasedSyntheticMiddlePixels": 4000,
+        "expectedExitCode": 1,
+        "provenance": "Synthetic pixel locations and intensities; capture and cleanup rectangles copied from generation2/source2037 telemetry. No private movie pixels."
+      }
+    },
+    {
+      "id": "source-aspect-transition-reference",
+      "selectedSources": [1965, 2035, 2036],
+      "nativeBefore": [0, 272, 3840, 1888],
+      "nativeDuring": [0, 66, 3840, 2092],
+      "nativeAfter": [0, 274, 3840, 1886],
+      "classification": "Not established as a defect: the recording shows a different scene with visible expanded picture content.",
+      "expected": ["Derive native aspect from source picture boundaries", "Do not force a scope-screen ratio or preserve the prior aspect across a genuine source transition"]
+    }
+  ]
+}
