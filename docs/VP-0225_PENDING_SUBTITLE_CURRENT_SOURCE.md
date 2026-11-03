@@ -420,3 +420,39 @@ evidence that old movie pixels should be reused. A matched old/current timing
 run remains outstanding. Further safe targets are current-source sample sharing
 and immutable coordinate/projection precomputation, with fresh pixel receipts
 and no cross-source cleanup or native authority.
+
+
+## Repeating paused-cue composition flash: line-box quantization
+
+The subsequent live report is still a failure, despite the earlier short stable
+window. Recording `2026-11-03 14-21-21.mp4` joins G2 outputs O6720/O6721 to the
+same caption and retained native bounds `[0,274,3840,1888]`, but the target width
+changes from about 1842 to 2000 pixels as composition drops and resumes. A later
+60-second paused log window has 361 uncomposed outputs among 1,439 current-source
+submissions, recurring once per four input frames. This is not a native AR change.
+
+The user captured diagnostics with frames at local 14:24:57. The capture contains
+96 V210 rasters and 24,973 analysis records. CPU replay of four sampled raster
+phases reproduces the failing phase: current line 1 is `[1556,1788,2284,1864]`
+while the accepted line is `[1555,1788,2284,1868]`. At detector step 4 this is a
+one-pixel left inset and one-cell bottom inset. All independent current raw/bar
+flags are valid, glyph match is 99% with difference reported as zero, and there
+is no newly owned ink anywhere against the initial mask. Literal rectangle
+containment nevertheless withholds the held prepared-cue certificate. The
+renderer hides the composed layer and fits the wider current raw frame.
+
+The new allowance applies only to this current held composition. Each line must
+match a distinct current line/signature, each edge stays within one current ink
+step, current capture metadata is valid, and the existing full glyph/context/bar
+checks remain. Unlike the ordinary strict-containment path, this allowance also
+rejects any new current ownership even inside an accepted line. Accepted capture
+geometry and actual current-source erasure checks remain in use. History, seed,
+reassociation, native/absence evidence and hold lifetime keep strict containment.
+The replay repeats captured pixel phases on a synthetic consecutive timeline;
+it demonstrates the certificate condition, not capture timing or GPU qualification.
+
+The trace also exposes separate steady-proof work: 304 bar-veto rejections at
+`y=275`, inside retained native top 274 but outside the subtitle scan's top 276;
+291 cleanup rejections cluster near `y=1742/1743`. Those are not the line-box
+certificate condition and are not relaxed by this change. Current-source video
+submission and preserved pixels remain required while optional work is pending.

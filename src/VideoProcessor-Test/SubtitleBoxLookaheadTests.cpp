@@ -692,6 +692,87 @@ public:
                 L"Incomplete, changed, novel, or unmeasured current glyphs cannot borrow a held pose certificate");
         }
     }
+    TEST_METHOD(HeldCurrentPreparedCueAcceptsOnlyVerifiedSingleGridCellLineInset) {
+        struct Workspace {
+            SubtitleBoxPresentation tracker;
+            SubtitleBoxPreview seed,current;
+            SubtitleBoxResult acquired,held;
+        };
+        const auto run=[&](int fault,uint64_t sequence) {
+            Logger::WriteMessage((std::string("prepared line inset fault=")+std::to_string(fault)).c_str());
+            auto storage=std::make_unique<Workspace>();auto& w=*storage;
+            w.seed=RetiredThreeLineSparsePreview(sequence,false);
+            w.acquired=w.tracker.Consume(w.seed,250,16.683);
+            Assert::IsTrue(w.acquired.detected&&!w.acquired.held&&w.acquired.lineCount==3,
+                L"The full current three-line scan must establish the original cue first.");
+            w.current=RetiredThreeLineSparsePreview(sequence+1,false);
+            w.current.text.lineCount=2;w.current.text.lineBounds[2]={};
+            auto& raw=w.current.current;
+            if(fault==1) {
+                raw.text.lineBounds[1].left+=5;
+                raw.text.lineBounds[1].bottom-=5;
+            } else {
+                // The detector's raw line box contracts by one source pixel
+                // on the left and exactly one step-four cell at the bottom;
+                // current raw/owned ink and source pixels stay untouched in
+                // the positive case. Negative cases 2–7 retain this inset so
+                // they exercise the new certificate path as well.
+                ++raw.text.lineBounds[1].left;
+                raw.text.lineBounds[1].bottom-=4;
+                if(fault==7)raw.text.lineBounds[1].right+=5;
+            }
+            if(fault==2 || fault==3) {
+                auto ink=std::make_shared<SubtitleInkSnapshot>(*raw.ink);
+                const auto set=[&](int x,int y,bool value) {
+                    const size_t pixel=size_t(y)*size_t(ink->width)+size_t(x);
+                    const uint64_t bit=uint64_t{1}<<(pixel%64);
+                    if(value) {
+                        ink->rawInk[pixel/64]|=bit;ink->ownedInk[pixel/64]|=bit;
+                        if(ink->blackBacking.size()==ink->rawInk.size())ink->blackBacking[pixel/64]&=~bit;
+                    } else {
+                        ink->rawInk[pixel/64]&=~bit;ink->ownedInk[pixel/64]&=~bit;
+                        if(ink->blackBacking.size()==ink->rawInk.size())ink->blackBacking[pixel/64]|=bit;
+                    }
+                };
+                if(fault==2) {
+                    // Remove a whole non-fringe owned glyph component from
+                    // line 1 at source x=200..204, y=280..294.
+                    for(int y=70;y<74;++y)for(int x=50;x<52;++x)set(x,y,false);
+                } else {
+                    // Add a word-like block entirely inside the accepted line
+                    // box. No new owned sample lies outside accepted lines.
+                    for(int y=70;y<74;++y)for(int x=80;x<88;++x)set(x,y,true);
+                }
+                raw.ink=std::move(ink);
+            } else if(fault==4) {
+                raw.text.lineCapturePanels[1]={};
+            } else if(fault==5) {
+                raw.text.topSearchComplete=false;
+                raw.ink=std::make_shared<SubtitleInkSnapshot>(*raw.ink);
+                std::const_pointer_cast<SubtitleInkSnapshot>(raw.ink)->rawEvidenceComplete=false;
+            } else if(fault==6) {
+                ++raw.continuityGeneration;
+            }
+            w.held=w.tracker.Consume(w.current,250,16.683);
+            const auto& prepared=w.tracker.CurrentPreparedCueCertificate();
+            if(fault==0) {
+                Assert::IsTrue(w.held.detected&&w.held.held&&w.held.lineCount==3,
+                    L"The accepted three-line cue should remain the held pose after a one-cell raw-box inset.");
+                Assert::AreEqual(w.acquired.cue,w.held.cue);
+                Assert::AreEqual(w.acquired.observations,w.held.observations,
+                    L"A prepared held pose must not add semantic observations.");
+                Assert::IsTrue(prepared.Matches(w.current.current,w.held,w.current.current.sharedPicture.bounds),
+                    L"Only the fully verified current-source operation may certify this bounded detector-box inset.");
+                Assert::IsFalse(w.tracker.AcceptedCueSeedCertificate().Matches(w.current,w.held),
+                    L"A held prepared pose must not mint a new accepted-cue seed certificate.");
+            } else {
+                Assert::IsFalse(prepared.Matches(w.current.current,w.held,w.current.current.sharedPicture.bounds),
+                    L"Out-of-cell geometry, missing component, new in-line word, incomplete raw proof, or foreign context cannot mint a prepared certificate.");
+            }
+        };
+        run(0,101);
+        for(int fault=1;fault<=7;++fault)run(fault,201+uint64_t(fault)*10);
+    }
     TEST_METHOD(PictureGlyphConfirmationFollowsIndependentInputAnalysisCadence) {
         auto first=CompleteBackedCue(1),next=CompleteBackedCue(3);
         first.text.diagnosticPictureGlyphProofRequired=true;

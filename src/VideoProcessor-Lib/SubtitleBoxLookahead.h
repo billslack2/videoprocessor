@@ -3364,6 +3364,39 @@ public:
             }
             return true;
         }();
+        // Detector boxes are quantized independently from the fixed accepted
+        // glyph mask. A current line can contract by one sampled cell while
+        // the complete current glyph/component checks still prove that cue.
+        // This allowance is only for this source's prepared composition; the
+        // strict containment above still governs history/seed acquisition.
+        const bool currentPreparedLineCoverage=currentRawCoversAccepted || [&] {
+            const auto& raw=preview.current;
+            if(!result.held || !raw.ink || !raw.ink->rawEvidenceComplete ||
+                raw.ink->step<1 || raw.ink->step>8 || result.lineCount<1 || result.lineCount>3 ||
+                raw.text.lineCount!=result.lineCount || !raw.text.capturePanelMeasured ||
+                !raw.text.capturePanel.Valid())return false;
+            const int cell=raw.ink->step;unsigned matchedLines=0;
+            for(int line=0;line<result.lineCount;++line) {
+                const auto& accepted=result.lineBounds[line];bool covered=false;
+                if(!accepted.Valid())return false;
+                for(int candidate=0;candidate<raw.text.lineCount;++candidate) {
+                    if(matchedLines&(1u<<candidate))continue;
+                    const auto& current=raw.text.lineBounds[candidate];
+                    const auto& capture=raw.text.lineCapturePanels[candidate];
+                    if(current.Valid() && capture.Valid() &&
+                        std::abs(current.left-accepted.left)<=cell && std::abs(current.top-accepted.top)<=cell &&
+                        std::abs(current.right-accepted.right)<=cell && std::abs(current.bottom-accepted.bottom)<=cell &&
+                        capture.left<=current.left && capture.top<=current.top &&
+                        capture.right>=current.right && capture.bottom>=current.bottom &&
+                        SubtitleBoxLookahead::SimilarSignature(raw.text.lineSignatures[candidate],
+                            result.lineSignatures[line])) {
+                        matchedLines|=1u<<candidate;covered=true;break;
+                    }
+                }
+                if(!covered)return false;
+            }
+            return true;
+        }();
         const bool existingCueSeed=completedBacklogReassociation && currentTemplatePixelsMatch &&
             !weakTemplateEligible && !bridged && !templateHeld &&
             m_result.detected && result.detected && result.cue==m_result.cue &&
@@ -3406,8 +3439,8 @@ public:
             preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height) &&
             preview.current.pictureTop==preview.current.barEvidence.top && preview.current.pictureBottom==preview.current.barEvidence.bottom &&
             preview.current.policyGeneration==preview.policyGeneration && preview.current.continuityGeneration==preview.continuityGeneration &&
-            currentRawCoversAccepted && SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,preview.current) &&
-            NoNewOwnedInkOutsideReference(preview.current))
+            currentPreparedLineCoverage && SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,preview.current) &&
+            NoNewOwnedInkOutsideReference(preview.current,!currentRawCoversAccepted))
             m_currentPreparedCueCertificate.Record(preview.current,result);
         // Only ordinary strong acceptance starts a fresh handoff allowance.
         // Weak/held/unknown results cannot restart the original two-source cap.
@@ -3594,7 +3627,8 @@ private:
         }
         return extension.Valid();
     }
-    bool NoNewOwnedInkOutsideReference(const SubtitleBoxObservation& current) const
+    bool NoNewOwnedInkOutsideReference(const SubtitleBoxObservation& current,
+        bool requireReferenceOwnership=false) const
     {
         if(!m_inkReference.ink || !current.ink || !m_result.detected)return false;
         const auto& old=*m_inkReference.ink;
@@ -3633,6 +3667,9 @@ private:
                 int(prior-old.sourceRows.begin()) : -1;
             for(int x=0;x<now.width;++x) {
                 if(!now.Get(x,y,true) || (oldY>=0 && old.Get(x,oldY,true)))continue;
+                // The one-cell prepared-box allowance cannot admit any newly
+                // owned glyph, including a new word inside the old line box.
+                if(requireReferenceOwnership)return false;
                 const int px=x*now.step;
                 bool insideOld=false;
                 for(int line=0;line<m_result.lineCount && line<3;++line) {

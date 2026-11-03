@@ -12,7 +12,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1084,
+  "minimumNativeTests": 1085,
   "requiredNativeMethods": [
     "ReadyCertifiedExistingCueRearmsAcrossContinuityWithOriginalPixelSeed",
     "PendingFootprintReceiptAllowsOnlyExactCurrentPreparedErasureWithoutBarAuthority",
@@ -23,6 +23,7 @@
     "CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk",
     "UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats",
     "CurrentCueProofReceiptReadyWhileExternalTraceSinkBlocks",
+    "HeldCurrentPreparedCueAcceptsOnlyVerifiedSingleGridCellLineInset",
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
     "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",
     "SourcePictureQuantizedRaisedMattePrefixCannotBecomeTerminalPicture",
