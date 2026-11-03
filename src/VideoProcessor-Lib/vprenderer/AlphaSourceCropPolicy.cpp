@@ -7124,8 +7124,16 @@ namespace AlphaSourceCrop
                 if(!occupied)return wait("current occupied-side inspection pending; keep the last complete movie canvas");
                 minimum=(minimum+1)&~1;maximum&=~1;
                 if(minimum>maximum)return wait("current bar content needs relocation before the fixed canvas can be submitted");
-                const int requested=priorPan?pose.top-viewport.top:
-                    (c.verticalTranslationActive?c.verticalTranslationPixels:0);
+                int requested=c.verticalTranslationActive?c.verticalTranslationPixels:0;
+                if(priorPan) {
+                    const int previous=pose.top-viewport.top;
+                    // Keep an established same-side pose when the controller
+                    // backs toward zero during an UNKNOWN scan, but let a
+                    // current source advance it. The interval above still
+                    // clamps either value to this frame's raw/candidate bounds.
+                    if(previous>0 && requested>=0)requested=std::max(previous,requested);
+                    else if(previous<0 && requested<=0)requested=std::min(previous,requested);
+                }
                 const int shift=std::max(minimum,std::min(requested,maximum));
                 d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
                 d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;

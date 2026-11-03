@@ -17914,7 +17914,7 @@ public:
             m.measurementTick=100;m.leaseExpiryTick=6000;
             r.candidate=Evaluate(r.crop);return r;
         }
-        static SubmittedNativeScopeAnchor IncidentFilledClassicPanAnchor()
+        static SubmittedNativeScopeAnchor IncidentFilledClassicPanAnchor(int translationPixels=140)
         {
             auto c=LoggedNative(5668);
             c.geometry={0,270,3840,1890,3840,2160,3840.0/1620,
@@ -17923,7 +17923,7 @@ public:
             c.acceptedNativeCrop.acceptedSourceSequence=4213;
             c.verticalTranslationBase=c.geometry;
             c.verticalTranslationSourceGeneration=c.frameSourceGeneration;
-            c.verticalTranslationActive=true;c.verticalTranslationPixels=140;
+            c.verticalTranslationActive=true;c.verticalTranslationPixels=translationPixels;
             FinalAspectLimitFillInput route;route.crop=c;route.presentation=Evaluate(c);
             route.configuredScreenActive=true;route.configured.screenAspect=2.35;
             route.configured.cropWiderContentToFillScreen=route.configured.widerLimitConfigured=true;
@@ -17933,8 +17933,8 @@ public:
             Assert::IsTrue(fill.applied);
             Assert::AreEqual(16,fill.sourceBounds.left);
             Assert::AreEqual(3824,fill.sourceBounds.right);
-            Assert::AreEqual(410,fill.sourceBounds.top);
-            Assert::AreEqual(2030,fill.sourceBounds.bottom);
+            Assert::AreEqual(270+translationPixels,fill.sourceBounds.top);
+            Assert::AreEqual(1890+translationPixels,fill.sourceBounds.bottom);
             const auto qualified=QualifyTranslatedNativePresentation(admitted.state,route,fill);
             auto submission=Submission(c);submission.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
             submission.selectedAdmission=qualified;submission.selectedOwner=DecisionOwner::VERTICAL_TRANSLATION;
@@ -18346,6 +18346,71 @@ public:
             Assert::AreEqual(60,bottomCue.verticalTranslationPixels);
             Assert::IsTrue(bottomCue.nativePresentation.available);
             Assert::AreEqual(accepted,wrongSide.crop.acceptedNativeCrop.acceptedSourceSequence);
+        }
+        TEST_METHOD(ClassicUnknownPriorPanFollowsControllerWithinCurrentRawBounds)
+        {
+            const auto downAnchor=IncidentFilledClassicPanAnchor(140);
+            const auto upAnchor=IncidentFilledClassicPanAnchor(-140);
+            auto rawOnly=[&](const SubmittedNativeScopeAnchor& anchor,bool bottom,int requested) {
+                auto r=IncidentClassicUnknownCandidate(anchor);
+                r.currentTextCandidate={};
+                r.crop.verticalTranslationActive=true;
+                r.crop.verticalTranslationPixels=requested;
+                r.crop.currentVisibleBounds=bottom
+                    ? ActivePictureBounds{0,270,3840,2010,3840,2160,3840.0/1740,ActivePictureBounds::BarAxes::NONE}
+                    : ActivePictureBounds{0,150,3840,1890,3840,2160,3840.0/1740,ActivePictureBounds::BarAxes::NONE};
+                r.crop.currentVisibleBase=r.crop.geometry;
+                r.crop.currentVisibleSourceGeneration=r.crop.frameSourceGeneration;
+                r.crop.currentVisibleSourceSequence=r.crop.frameSourceSequence;
+                r.retentionBounds=r.crop.geometry;
+                r.retentionSourceGeneration=r.crop.frameSourceGeneration;
+                r.retentionSourceSequence=r.crop.frameSourceSequence;
+                r.measurementCurrent=r.retentionEvaluated=true;
+                r.excludedBandsPixelSafe=false;
+                r.candidate=Evaluate(r.crop);
+                return r;
+            };
+            auto checkUnprocessed=[&](const PresentationRecoveryInput& r,int expectedShift,int expectedTop,int expectedBottom) {
+                const auto accepted=r.crop.acceptedNativeCrop.acceptedSourceSequence;
+                const int controller=r.crop.verticalTranslationPixels;
+                const auto d=ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).presentation;
+                Assert::IsFalse(d.waitForSubtitleProcessing);
+                Assert::IsTrue(d.unprocessedSubtitleCanvas);
+                Assert::AreEqual(expectedShift,d.verticalTranslationPixels);
+                Assert::AreEqual(expectedTop,d.sourceBounds.top);
+                Assert::AreEqual(expectedBottom,d.sourceBounds.bottom);
+                Assert::IsFalse(d.nativePresentation.available,
+                    L"A retained prior pan and current raw extent do not certify the UNKNOWN source.");
+                Assert::IsFalse(d.confirmedFitOwnership.available);
+                Assert::AreEqual(accepted,r.crop.acceptedNativeCrop.acceptedSourceSequence);
+                Assert::AreEqual(controller,r.crop.verticalTranslationPixels,
+                    L"Source-specific projection cannot advance or rewrite the controller clock.");
+                Assert::AreEqual(int(CaptionObservationState::UNKNOWN),int(r.captionObservation.state));
+            };
+
+            // Current target advances farther down/up than the already submitted pose.
+            checkUnprocessed(rawOnly(downAnchor,true,144),144,414,2034);
+            checkUnprocessed(rawOnly(upAnchor,false,-144),-144,126,1746);
+
+            // A target backing toward zero cannot reverse a still-safe submitted pose.
+            checkUnprocessed(rawOnly(downAnchor,true,136),140,410,2030);
+            checkUnprocessed(rawOnly(upAnchor,false,-136),-140,130,1750);
+
+            // Controller requests beyond the raster are still clamped by this
+            // source's feasible same-size translation interval.
+            checkUnprocessed(rawOnly(downAnchor,true,400),270,540,2160);
+            checkUnprocessed(rawOnly(upAnchor,false,-400),-270,0,1620);
+
+            auto foreign=rawOnly(downAnchor,true,144);
+            ++foreign.submittedScopeAnchor.acceptedNativeCrop.sourceFormatKey;
+            const auto rejected=ResolveUncertainPicturePresentation(foreign,Evaluate(foreign.crop)).presentation;
+            Assert::IsTrue(rejected.waitForSubtitleProcessing);
+            Assert::IsFalse(rejected.unprocessedSubtitleCanvas);
+            Assert::AreEqual(foreign.crop.geometry.top,rejected.sourceBounds.top);
+            Assert::AreEqual(foreign.crop.geometry.bottom,rejected.sourceBounds.bottom);
+            Assert::IsFalse(rejected.nativePresentation.available);
+            Assert::AreEqual(144,foreign.crop.verticalTranslationPixels);
+            Assert::AreEqual(uint64_t(4213),foreign.crop.acceptedNativeCrop.acceptedSourceSequence);
         }
         TEST_METHOD(PreparedAdvancedCaptionKeepsNativeApertureAndNeedsNoWait)
         {
