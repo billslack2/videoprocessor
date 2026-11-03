@@ -5112,7 +5112,7 @@ namespace VideoProcessorTest
             ConfigFile config;Assert::IsTrue(config.Load(configPath));UnifiedProfileRuntime::Runtime runtime;std::string error;
             Assert::IsTrue(runtime.Initialize(config,{},error));CString active;bool restart=false,reset=false;
             Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*runtime.GetSnapshot(),active,restart,reset)&&!restart);
-            cleanup.renderer->SetQueueFramePolicy(4,10,true);cleanup.renderer->SetActivePictureLookaheadFrames(3);
+            cleanup.renderer->SetQueueFramePolicy(4,4,true);cleanup.renderer->SetActivePictureLookaheadFrames(3);
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);
                 for(auto it=classicPoseMessages.rbegin();it!=classicPoseMessages.rend();++it)
                     if(it->find("Alpha queue policy:")!=std::string::npos){Logger::WriteMessage(it->c_str());break;}}
