@@ -20,6 +20,30 @@
 - Verify the active checkout, branch, remote, and worktree status before Git
   writes. Feature branches start from the current remote beta tip.
 
+## Live HDMI video is the primary real-time contract
+
+- VideoProcessor processes continuously arriving live HDMI frames. Video must
+  keep advancing on its normal presentation schedule while subtitle, aspect,
+  crop, classification, shader-preparation, or other optional decisions are pending.
+- Never hold or replay the last whole video frame solely to wait for subtitle
+  inspection, caption confirmation/composition, crop approval, or analysis readiness.
+  UNKNOWN, delayed, missing, failed, or out-of-order optional results must not
+  starve otherwise eligible current-source video submissions.
+- Defer optional processing and select an explicit current-source, pixel-preserving
+  fallback. Preserve visible picture/caption pixels and original frame/timestamp
+  identity. Do not substitute an older composed subtitle frame, invent absence,
+  cleanup or crop proof, or turn fallback presentation into detected/native AR
+  authority. Keep physical detection independent of presentation fallback.
+- Keep live latency bounded. Do not conceal stalls by increasing queues, lookahead,
+  timeouts or confirmation delays. Preserve required cadence conversion,
+  deinterlacing and genuine input/device transition handling; distinguish those
+  from a whole-source veto caused by an unfinished optional decision.
+- Regressions must exercise dense/changing subtitles, volume/UI overlays,
+  slow/missing analysis, profile/format resets, and Off-mode framing stability.
+  Verify distinct current-source submissions and actual presentation/source gaps,
+  caption/picture preservation and bounded latency. Zero reported renderer drops
+  alone does not establish uninterrupted playback.
+
 ## Stories
 
 - Stories are tracked in `C:\Users\bslac\vp\story-tracker\stories`.
