@@ -31,8 +31,8 @@ TEST_CLASS(DecodedSubtitleCueWorkerTests) {
     }
 
     static uint16_t FixtureLuma(int x,int y,int phase) {
-        if(y<PictureTop || y>=PictureBottom)return 0;
         if(IsGlyph(x,y))return 892;
+        if(y<PictureTop || y>=PictureBottom)return 0;
         if(y>=1720)return uint16_t(48+16*((x/64+y/32+phase)&1));
         return uint16_t(300+40*((x/64+y/32+phase)&1));
     }
@@ -117,6 +117,9 @@ public:
         FillDecodedFrame(words,0);
         auto source=Source(words);
         Assert::IsTrue(source.IsValid(),L"Decoded-DV 4:2:2 frame layout must be valid.");
+        AnalysisLumaSample crossingGlyph;
+        Assert::IsTrue(source.Sample(1552,1930,crossingGlyph) && crossingGlyph.luma==892,
+            L"The genuine third subtitle line must remain present below the physical picture edge.");
 
         const auto measuredPicture=DetectSourcePictureForWorker(source);
         Assert::IsTrue(measuredPicture.evidence.physicalEdges.estimateAvailable &&

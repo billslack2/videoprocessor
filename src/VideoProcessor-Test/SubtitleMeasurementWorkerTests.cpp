@@ -3852,6 +3852,17 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         auto foreignTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
         auto outOfOrderTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
         auto resetTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
+        const auto assertFreshOrNone=[](const SubtitleBoxPresentation& candidate,
+            const SubtitleBoxResult& result,const SubtitleBoxObservation& source,const wchar_t* label) {
+            if(!result.detected) {
+                Assert::IsFalse(candidate.HasAcceptedSourceTemplate(),label);
+                return;
+            }
+            Assert::IsFalse(result.held,label);
+            const auto accepted=candidate.AcceptedTemplateIdentity();
+            Assert::AreEqual(source.identity.acceptedSequence,accepted.acceptedSequence,label);
+            Assert::AreEqual(source.identity.analysisDomainKey,accepted.analysisDomainKey,label);
+        };
         auto nextFullSource=CompleteThreeLineScan(16,*currentPixels);
         nextFullSource.analysisStride=2;
         auto nextFullPreview=SubtitleBoxLookahead::Resolve(&nextFullSource,1,11,21);
@@ -3877,22 +3888,21 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         foreignSource.sharedPicture.identity=foreignSource.identity;
         const auto foreignResult=foreignTracker->Consume(
             SubtitleBoxLookahead::Resolve(&foreignSource,1,11,21),250,1000.0/60.0);
-        Assert::IsTrue(foreignResult.detected && foreignResult.cue!=acquired.cue,
-            L"A foreign analysis domain cannot consume the proof adjacency witness.");
+        assertFreshOrNone(*foreignTracker,foreignResult,foreignSource,
+            L"A foreign context cannot borrow the held cue; any accepted cue must be newly bound to this full source.");
         auto outOfOrderSource=CompleteThreeLineScan(17,*currentPixels);
         outOfOrderSource.analysisStride=2;
         const auto outOfOrderResult=outOfOrderTracker->Consume(
             SubtitleBoxLookahead::Resolve(&outOfOrderSource,1,11,21),250,1000.0/60.0);
-        Assert::IsTrue(outOfOrderResult.detected && outOfOrderResult.cue!=acquired.cue,
-            L"A non-successor source cannot bridge from the typed proof.");
+        assertFreshOrNone(*outOfOrderTracker,outOfOrderResult,outOfOrderSource,
+            L"A non-successor source cannot borrow the held cue; any accepted cue must be newly bound to this full source.");
         resetTracker->Reset();
         Assert::IsFalse(resetTracker->HasAcceptedSourceTemplate(),
             L"Reset retires the one-use proof witness and independent comparison history.");
         const auto resetResult=resetTracker->Consume(
             SubtitleBoxLookahead::Resolve(&nextFullSource,1,11,21),250,1000.0/60.0);
-        Assert::IsTrue(resetResult.detected && resetResult.lineCount==3 &&
-            resetTracker->AcceptedTemplateIdentity().acceptedSequence==16,
-            L"A source after reset can only establish a fresh current template.");
+        assertFreshOrNone(*resetTracker,resetResult,nextFullSource,
+            L"A source after reset cannot borrow the old cue; any accepted cue must come from this current source.");
         SubtitleBoxPreview replayedPreview;SubtitleBoxResult replayedCue;
         Assert::IsFalse(tracker.ConsumeCurrentCueProof(receipt,replayedPreview,replayedCue),
             L"A sealed current proof receipt is single-use, including through the presentation adapter.");
