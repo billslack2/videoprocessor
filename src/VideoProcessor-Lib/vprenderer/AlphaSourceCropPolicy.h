@@ -1531,8 +1531,11 @@ namespace AlphaSourceCrop
 		std::string reason;
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
         NativePresentationCertificate nativePresentation;
-        // An unprocessed source is withheld as a whole; it cannot resize the movie or clip its caption.
+        // A positively identified pending caption can withhold its whole source.
+        // Unknown inspection alone is not pending composition.
         bool waitForSubtitleProcessing=false;
+        // Current raw frame at the retained aperture; no caption/native proof.
+        bool unprocessedSubtitleCanvas=false;
         bool subtitleCanvasApplied=false, subtitleTranslationRange=false;
         int subtitleMinimumTranslation=0, subtitleMaximumTranslation=0;
 	};

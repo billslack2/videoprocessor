@@ -7009,6 +7009,20 @@ namespace AlphaSourceCrop
         const bool bothBars=rawCurrent && c.currentVisibleBounds.top<n.top && c.currentVisibleBounds.bottom>n.bottom;
         if(advanced && composed) {
             d.reason="processed subtitle preserves the fixed native movie canvas";
+        } else if(advanced && o.state==CaptionObservationState::UNKNOWN &&
+            !ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight) &&
+            IsCurrentSubmittedNativeScopeAnchor(input.submittedScopeAnchor,c.frameSourceGeneration,c.frameSourceSequence,
+                input.presentationEpoch,c.rasterWidth,c.rasterHeight) &&
+            SameTrustedCropContract(input.submittedScopeAnchor.crop,n) &&
+            input.submittedScopeAnchor.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey &&
+            input.submittedScopeAnchor.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey) {
+            // Unknown inspection is not a queued caption job. Keep submitting
+            // THIS source with the accepted movie dimensions while acquisition
+            // continues. Do not synthesize absence, cleanup, native authority or
+            // a successful processed packet from an older displayed image.
+            d.unprocessedSubtitleCanvas=true;d.owner=DecisionOwner::SUBMITTED_SCOPE_RETENTION;
+            d.reason="unknown subtitle inspection continues current raw frame at retained movie size";
+            result.retained=true;return true;
         } else if(advanced && c.initialSubtitleShaderBuild) {
             // Preserve the existing initial-build exception: playback may show
             // the native canvas before subtitle shaders are ready. This grants

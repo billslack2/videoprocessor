@@ -17947,6 +17947,41 @@ public:
                 Assert::AreEqual(native.bottom,r.crop.geometry.bottom);
             }
         }
+        TEST_METHOD(UnknownAdvancedSubtitleInspectionKeepsFreshMovieCanvasWithoutInventingProof)
+        {
+            for(auto mode:{PreparedNativeMode::BLACK,PreparedNativeMode::RECONSTRUCTION}) {
+                auto r=CurrentClassicEngageVisibility(0);r.crop.subtitlePresentationMode=mode;
+                r.subtitleCanvasMode=mode==PreparedNativeMode::BLACK?SubtitleCanvasMode::BLACK:SubtitleCanvasMode::RECONSTRUCTION;
+                r.captionObservation={};r.currentTextCandidate={};r.measurementCurrent=false;
+                r.retentionEvaluated=false;r.crop.currentVisibleBoundsAvailable=false;
+                const auto accepted=r.crop.acceptedNativeCrop.acceptedSourceSequence;
+                for(unsigned frame=0;frame<1600;++frame) {
+                    ++r.crop.frameSourceSequence;
+                    const auto d=ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).presentation;
+                    Assert::IsFalse(d.waitForSubtitleProcessing,
+                        L"Missing subtitle/bar evidence cannot indefinitely suppress current input frames.");
+                    Assert::AreEqual(r.crop.geometry.top,d.sourceBounds.top);
+                    Assert::AreEqual(r.crop.geometry.bottom,d.sourceBounds.bottom);
+                    Assert::IsFalse(d.nativePresentation.available,
+                        L"An uncertain current-frame presentation cannot mint a native, absence or erasure certificate.");
+                    Assert::IsFalse(d.confirmedFitOwnership.available);
+                    Assert::AreEqual(accepted,r.crop.acceptedNativeCrop.acceptedSourceSequence);
+                }
+                const auto anchor=r.submittedScopeAnchor;r.submittedScopeAnchor={};
+                Assert::IsTrue(ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).presentation.waitForSubtitleProcessing,
+                    L"No existing submitted movie permits a newly invented continuation viewport.");
+                r.submittedScopeAnchor=anchor;
+                r.currentTextCandidate=r.currentCaptionTranslation.occupiedBounds;
+                Assert::IsTrue(ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).presentation.waitForSubtitleProcessing,
+                    L"A current candidate cannot be treated as an empty unknown scan.");
+                r.currentTextCandidate={};
+                r.captionObservation={CaptionObservationState::PRESENT,r.crop.frameSourceGeneration,r.crop.frameSourceSequence,
+                    r.presentationEpoch,r.crop.frameSourceFormatKey,r.crop.frameAnalysisDomainKey};
+                r.confirmedCaptionBounds=r.currentCaptionTranslation.occupiedBounds;
+                Assert::IsTrue(ResolveUncertainPicturePresentation(r,Evaluate(r.crop)).presentation.waitForSubtitleProcessing,
+                    L"A current positive cue still requires its source-bound composition.");
+            }
+        }
         TEST_METHOD(PreparedAdvancedCaptionKeepsNativeApertureAndNeedsNoWait)
         {
             for(auto mode:{PreparedNativeMode::BLACK,PreparedNativeMode::RECONSTRUCTION}) {

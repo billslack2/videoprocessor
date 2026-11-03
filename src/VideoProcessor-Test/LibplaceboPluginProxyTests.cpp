@@ -3644,7 +3644,17 @@ namespace VideoProcessorTest
         { VerifyClassicUhdBarOverlay(false,true,true,true,false,false,true); }
         TEST_METHOD(BetaRendererBlackUhdV210ResidualUiWithMovingPicture)
         { VerifyClassicUhdBarOverlay(true,true,true,true,false,false,true); }
-        void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false)
+        TEST_METHOD(StandardRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo)
+        {
+            for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+                VerifyNativeAspectTransitionSequence(false,false,unsigned(mode));
+        }
+        TEST_METHOD(BetaRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo)
+        {
+            for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
+                VerifyNativeAspectTransitionSequence(true,false,unsigned(mode));
+        }
+        void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false,unsigned processedMode=0)
         {
             const bool requireSpatial=SourceSpatialProductionEnabled();
             Logger::WriteMessage(requireSpatial?"AR transition fixture: detector=spatial":"AR transition fixture: detector=legacy");
@@ -3684,7 +3694,7 @@ namespace VideoProcessorTest
                 VideoProcessorLibplaceboConfigureDiagnosticFn callback;
                 ~DiagnosticCleanup(){if(callback)callback(nullptr,nullptr,nullptr,nullptr);}
             } diagnosticCleanup{diagnostics};
-            size_t spatialCursor=0;std::vector<AnalysisDiagnosticRecordV1> spatialOutputs,spatialAccepted,spatialProduced;
+            size_t spatialCursor=0;std::vector<AnalysisDiagnosticRecordV1> spatialOutputs,spatialAccepted,spatialProduced,spatialCanvas;
             if(requireSpatial) {
                 Assert::IsTrue(diagnostics!=nullptr);
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=true;}
@@ -3699,6 +3709,9 @@ namespace VideoProcessorTest
                 "[vprenderer.zoom.native]\nautomatic_crop: true\nsubtitle_fit: false\n"
                 "crop_narrower_content_to_fill_screen: false\ncrop_wider_content_to_fill_screen: "
                 <<(configuredFill?"true":"false")<<"\n";
+            if(processedMode)std::ofstream(configPath,std::ios::app)
+                <<"[vprenderer.subtitles.processed]\ntype: "<<(processedMode==unsigned(SubtitlePreviewMode::BlackBackground)?"black":"generated_gray")
+                <<"\nshortcut: F6\nsubtitle_hold_ms: 250\ncleanup_fill: stable_surround\n";
             constexpr int width=640,height=360;
             const int scopeBar=configuredFill?46:44;
             const double nativeScope=double(width)/(height-2*scopeBar);
@@ -3724,13 +3737,23 @@ namespace VideoProcessorTest
             cleanup.renderer=create(&callback,42,cleanup.window,nullptr,requireSpatial,requireSpatial?9:1,
                 VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,SnapshotTestLog);
             Assert::IsNotNull(cleanup.renderer);
+            if(processedMode) {
+                ConfigFile config;Assert::IsTrue(config.Load(configPath));
+                UnifiedProfileRuntime::Runtime runtime;std::string error;
+                Assert::IsTrue(runtime.Initialize(config,{},error));
+                UnifiedProfileRuntime::SelectionResult selected;
+                Assert::IsTrue(runtime.SelectKey("F6",{},selected,error));
+                CString active;bool restart=false,reset=false;
+                Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*runtime.GetSnapshot(),active,restart,reset));
+                Assert::IsFalse(restart);
+            }
             // This experiment requires prepared-source lead. Keep the legacy
             // zero-depth case, and exercise the active mode with the user's
             // queued playback contract rather than inventing a stale-frame vote.
             if(requireSpatial) { cleanup.renderer->SetQueueFramePolicy(4,9,true);cleanup.renderer->SetActivePictureLookaheadFrames(4); }
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));
             cleanup.renderer->Build();cleanup.renderer->Start();
-            uint64_t sequence=1;
+            uint64_t sequence=1;std::set<uint64_t> witnessedNativeOwners;
             auto pump=[&](std::vector<uint16_t>& pixels) {
                 MSG message;
                 while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE))
@@ -3744,6 +3767,7 @@ namespace VideoProcessorTest
                     std::vector<AnalysisDiagnosticRecordV1> tail;
                     {std::lock_guard<std::mutex> lock(classicPoseLogMutex);CopyUnreadCallbackTail(classicPoseRecords,spatialCursor,tail);}
                     for(const auto& record:tail) {
+                        if(!strcmp(record.stage,"subtitle-canvas-admission"))spatialCanvas.push_back(record);
                         if(!strcmp(record.stage,"accepted-picture-detector"))spatialAccepted.push_back(record);
                         if(!strcmp(record.stage,"source-picture-active"))spatialProduced.push_back(record);
                         if(strcmp(record.stage,"submitted-presentation") || !(record.flags&1u))continue;
@@ -3751,8 +3775,23 @@ namespace VideoProcessorTest
                             const bool wholeSource=std::abs(record.metrics[8])<0.01 && std::abs(record.metrics[9])<0.01 &&
                                 std::abs(record.metrics[10]-width)<0.01 && std::abs(record.metrics[11]-height)<0.01;
                             const bool measured=((record.flags>>24)&3u)==unsigned(ActivePictureDetectorKind::SourceSpatialMeasured);
-                            Assert::IsTrue(measured && (wholeSource ? (record.flags&4096u)!=0 : IsMeasuredSpatialNativeSubmission(record)),
-                                L"Cropped outputs need spatial native/crop proof; a whole-source output needs explicit current full-raster authority and no discard certificate.");
+                            const bool certified=IsMeasuredSpatialNativeSubmission(record);
+                            if(certified)witnessedNativeOwners.insert(record.counters[4]);
+                            const bool retained=processedMode && !wholeSource && measured &&
+                                record.resultCode==int(AlphaSourceCrop::DecisionOwner::SUBMITTED_SCOPE_RETENTION) &&
+                                witnessedNativeOwners.count(record.counters[4]) && record.counters[4]<record.acceptedSequence &&
+                                record.counters[0]==record.acceptedSequence && record.counters[1]==record.acceptedSequence &&
+                                !(record.flags&(2u|32u|64u|8192u|16384u)) &&
+                                std::abs(record.metrics[8]-record.published[0])<0.01 &&
+                                std::abs(record.metrics[9]-record.published[1])<0.01 &&
+                                std::abs(record.metrics[10]-record.published[2])<0.01 &&
+                                std::abs(record.metrics[11]-record.published[3])<0.01 &&
+                                std::any_of(spatialCanvas.begin(),spatialCanvas.end(),[&](const AnalysisDiagnosticRecordV1& canvas) {
+                                    return canvas.acceptedSequence==record.acceptedSequence &&
+                                        (canvas.flags&2u) && !(canvas.flags&(1u|4u));
+                                });
+                            Assert::IsTrue(measured && (wholeSource ? (record.flags&4096u)!=0 : (certified || retained)),
+                                L"A crop needs current native proof or an explicitly unprocessed current-source continuation of an already witnessed native owner; full raster needs current authority.");
                         }
                         if(((record.flags>>24)&3u)==unsigned(ActivePictureDetectorKind::SourceSpatialMeasured))spatialOutputs.push_back(record);
                     }
@@ -3810,18 +3849,29 @@ namespace VideoProcessorTest
             };
             const auto established=acquire(scope,nativeScope,configuredFill?2.35:nativeScope,L"Real renderer did not acquire initial native scope and selected presentation");
             const auto darkFirst=sequence;
-            unsigned checked=0;
+            unsigned checked=0;std::set<uint64_t> freshUnknownSources;
             // Longer than the legacy two-second ambiguity hold, with distinct input identities.
             const auto darkUntil=std::chrono::steady_clock::now()+std::chrono::milliseconds(3200);
             while(std::chrono::steady_clock::now()<darkUntil&&callback.state!=RENDERSTATE_FAILED) {
                 const auto value=pump(dark);
                 if(value.inUseAvailable&&value.presentedSequence>=darkFirst) {
-                    ++checked;
+                    ++checked;freshUnknownSources.insert(value.presentedSequence);
                     Assert::AreEqual(established.inUseRatio,value.inUseRatio,0.0005,
                         L"Uncertain source replaced successfully submitted scope geometry");
                 }
             }
             Assert::IsTrue(checked>20,L"Dark interval did not exercise enough actual submissions");
+            if(processedMode) {
+                std::set<uint64_t> continued,submitted;
+                for(const auto& row:spatialCanvas)if(row.acceptedSequence>=darkFirst && (row.flags&2u) && !(row.flags&1u))
+                    continued.insert(row.acceptedSequence);
+                for(const auto& row:spatialOutputs)if(row.acceptedSequence>=darkFirst &&
+                    row.counters[0]==row.acceptedSequence && row.counters[1]==row.acceptedSequence && !(row.flags&16384u))
+                    submitted.insert(row.acceptedSequence);
+                unsigned joined=0;for(auto source:submitted)joined+=continued.count(source)!=0;
+                Assert::IsTrue(freshUnknownSources.size()>20 && joined>20,
+                    L"Unknown inspection must produce distinct actually submitted current sources at fixed movie size, not frozen repeats or synthetic caption absence.");
+            }
             const double tallerAspect=requireSpatial?double(width)/height:640.0/336;
             acquire(taller,tallerAspect,tallerAspect,L"Real renderer retained old scope over verified taller/full-raster picture");
             acquire(scope,nativeScope,configuredFill?2.35:nativeScope,L"Real renderer did not return to verified scope and selected presentation");
