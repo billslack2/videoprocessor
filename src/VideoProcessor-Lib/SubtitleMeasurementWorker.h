@@ -2660,6 +2660,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         if(verified && currentInk && !currentInk->rawEvidenceComplete && currentInk->paletteValid) {
             receipt.m_valid=true;receipt.m_provenance=SubtitleCurrentCueProofProvenance::PresentationOnlyCurrentPixels;
             receipt.m_templateRevision=entry->revision;receipt.m_seedIdentity=state->descriptor.context.identity;
+            receipt.m_acceptedCue=state->descriptor.cue;
             receipt.m_workerThreadId=threadId;receipt.m_workerMilliseconds=elapsed;
             receipt.m_verifiedLineCount=state->descriptor.cue.lineCount;
             receipt.m_sourceMode=state->descriptor.sourceMode;
