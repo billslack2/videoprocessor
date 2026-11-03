@@ -3599,23 +3599,49 @@ private:
         if(!m_inkReference.ink || !current.ink || !m_result.detected)return false;
         const auto& old=*m_inkReference.ink;
         const auto& now=*current.ink;
-        if(old.width!=now.width || old.height!=now.height ||
+        if(m_inkReference.width!=current.width || m_inkReference.height!=current.height ||
+            old.width<=0 || old.height<=0 || old.width>960 || old.height>540 ||
+            old.width!=now.width || old.height!=now.height ||
             old.step<=0 || old.step!=now.step ||
-            old.sourceRows!=now.sourceRows ||
-            old.ownedInk.size()!=now.ownedInk.size())return false;
-        // A new owned component outside the submitted cue cannot silently
-        // inherit its identity. Inspect current owned pixels over the complete
-        // sampled subtitle search region, including potential new lines.
-        for(int y=0;y<now.height;++y)for(int x=0;x<now.width;++x) {
-            if(!now.Get(x,y,true) || old.Get(x,y,true))continue;
-            const int px=x*now.step,py=now.sourceRows[size_t(y)];
-            bool insideOld=false;
-            for(int line=0;line<m_result.lineCount && line<3;++line) {
-                const auto& box=m_result.lineBounds[line];
-                insideOld|=box.Valid() && px>=box.left && px<box.right &&
-                    py>=box.top && py<box.bottom;
+            old.width!=(m_inkReference.width+old.step-1)/old.step ||
+            now.width!=(current.width+now.step-1)/now.step ||
+            old.height!=(m_inkReference.height+old.step-1)/old.step ||
+            now.height!=(current.height+now.step-1)/now.step ||
+            old.sourceRows.size()!=size_t(old.height) || now.sourceRows.size()!=size_t(now.height))return false;
+        const size_t words=(size_t(old.width)*size_t(old.height)+63)/64;
+        if(old.rawInk.size()!=words || old.ownedInk.size()!=words ||
+            now.rawInk.size()!=words || now.ownedInk.size()!=words)return false;
+        auto validRows=[&](const std::vector<int>& rows,int rasterHeight) {
+            int previous=-1;
+            for(int row:rows) {
+                if(row<=previous || row<0 || row>=rasterHeight)return false;
+                previous=row;
             }
-            if(!insideOld)return false;
+            return true;
+        };
+        if(!validRows(old.sourceRows,m_inkReference.height) ||
+            !validRows(now.sourceRows,current.height))return false;
+        // A new owned component outside the submitted cue cannot silently
+        // inherit its identity. Join samples by physical source row rather
+        // than grid index: independently measured bar boundaries can move by
+        // one source pixel while the accepted glyph rows remain unchanged.
+        // A current owned pixel on a row absent from the old grid is new.
+        for(int y=0;y<now.height;++y) {
+            const int py=now.sourceRows[size_t(y)];
+            const auto prior=std::lower_bound(old.sourceRows.begin(),old.sourceRows.end(),py);
+            const int oldY=prior!=old.sourceRows.end() && *prior==py ?
+                int(prior-old.sourceRows.begin()) : -1;
+            for(int x=0;x<now.width;++x) {
+                if(!now.Get(x,y,true) || (oldY>=0 && old.Get(x,oldY,true)))continue;
+                const int px=x*now.step;
+                bool insideOld=false;
+                for(int line=0;line<m_result.lineCount && line<3;++line) {
+                    const auto& box=m_result.lineBounds[line];
+                    insideOld|=box.Valid() && px>=box.left && px<box.right &&
+                        py>=box.top && py<box.bottom;
+                }
+                if(!insideOld)return false;
+            }
         }
         return true;
     }

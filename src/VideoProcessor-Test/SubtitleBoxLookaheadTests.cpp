@@ -392,6 +392,42 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
         current.sharedPicture.bounds={0,45,640,315,640,360,640.0/270,ActivePictureBounds::BarAxes::TOP_BOTTOM};
         return current;
     }
+    static void UseSparseBoundaryRows(SubtitleBoxObservation& observation,bool shiftPictureBoundary) {
+        const auto full=observation.ink;
+        Assert::IsNotNull(full.get());
+        auto sampled=std::make_shared<SubtitleInkSnapshot>(*full);
+        sampled->step=4;sampled->width=(observation.width+3)/4;sampled->height=(observation.height+3)/4;
+        sampled->sourceRows.resize(size_t(sampled->height));
+        const size_t words=(size_t(sampled->width)*size_t(sampled->height)+63)/64;
+        sampled->rawInk.assign(words,0);sampled->ownedInk.assign(words,0);sampled->blackBacking.assign(words,0);
+        for(int y=0;y<sampled->height;++y) {
+            int sourceY=y*sampled->step+1;
+            // Move only the sampled upper picture boundary, away from all
+            // three accepted glyph rows. The physical row map stays ordered.
+            if(shiftPictureBoundary && y==11)++sourceY; // 45 -> 46
+            sampled->sourceRows[size_t(y)]=sourceY;
+            for(int x=0;x<sampled->width;++x) {
+                const int sourceX=x*sampled->step;
+                const size_t pixel=size_t(y)*size_t(sampled->width)+size_t(x);
+                const uint64_t bit=uint64_t{1}<<(pixel%64);
+                if(full->Get(sourceX,sourceY))sampled->rawInk[pixel/64]|=bit;
+                if(full->Get(sourceX,sourceY,true))sampled->ownedInk[pixel/64]|=bit;
+                if(full->Black(sourceX,sourceY))sampled->blackBacking[pixel/64]|=bit;
+            }
+        }
+        observation.ink=std::move(sampled);
+    }
+    static SubtitleBoxPreview RetiredThreeLineSparsePreview(uint64_t sequence,bool shiftPictureBoundary) {
+        auto scans=std::make_unique<std::array<SubtitleBoxObservation,4>>();
+        for(size_t i=0;i<scans->size();++i) {
+            (*scans)[i]=RetiredThreeLineCue(sequence+i);
+            UseSparseBoundaryRows((*scans)[i],shiftPictureBoundary);
+        }
+        auto preview=std::make_unique<SubtitleBoxPreview>();
+        SubtitleBoxLookahead::ResolveInto(*preview,scans->data(),scans->size(),7,9);
+        Assert::AreEqual(3,preview->current.text.lineCount);
+        return std::move(*preview);
+    }
     static SubtitleBoxPreview RetiredThreeLinePreview(uint64_t sequence,bool prune) {
         const SubtitleBoxObservation scans[4]={RetiredThreeLineCue(sequence),RetiredThreeLineCue(sequence+1),
             RetiredThreeLineCue(sequence+2),RetiredThreeLineCue(sequence+3)};
@@ -535,6 +571,38 @@ public:
         SubtitleBoxLookahead::ResolveInto(w.pending,&w.raw,1,7,9);
         Assert::IsFalse(w.guard.Resolve(w.pending,Source(pixels),50,250));
         Assert::AreEqual("pending-budget-expired",w.guard.DecisionReason(),L"Held22/23 cannot extend the original source21 lease.");
+
+        struct BoundaryWorkspace {SubtitleBoxPresentation tracker;SubtitleBoxPreview seed,current;
+            SubtitleBoxObservation raw;};
+        auto boundaryStorage=std::make_unique<BoundaryWorkspace>();auto& boundary=*boundaryStorage;
+        boundary.seed=RetiredThreeLineSparsePreview(41,false);
+        const auto boundaryAccepted=boundary.tracker.Consume(boundary.seed,250,50);
+        Assert::IsTrue(boundaryAccepted.detected&&!boundaryAccepted.held&&boundaryAccepted.lineCount==3);
+        boundary.raw=RetiredThreeLineCue(42);UseSparseBoundaryRows(boundary.raw,true);
+        SubtitleBoxLookahead::ResolveInto(boundary.current,&boundary.raw,1,7,9);
+        const auto boundaryHeld=boundary.tracker.Consume(boundary.current,250,50);
+        Assert::IsTrue(boundaryHeld.detected&&boundaryHeld.held&&boundaryHeld.lineCount==3,
+            L"A one-pixel shift in an unrelated sampled picture-boundary row must not break the physical-row join for unchanged glyphs.");
+        Assert::IsTrue(boundary.tracker.CurrentPreparedCueCertificate().Matches(boundary.current.current,
+            boundaryHeld,boundary.current.current.sharedPicture.bounds));
+
+        auto novelStorage=std::make_unique<BoundaryWorkspace>();auto& novel=*novelStorage;
+        novel.seed=RetiredThreeLineSparsePreview(51,false);
+        const auto novelAccepted=novel.tracker.Consume(novel.seed,250,50);
+        Assert::IsTrue(novelAccepted.detected&&!novelAccepted.held&&novelAccepted.lineCount==3);
+        novel.raw=RetiredThreeLineCue(52);UseSparseBoundaryRows(novel.raw,true);
+        auto novelInk=std::make_shared<SubtitleInkSnapshot>(*novel.raw.ink);
+        const size_t newOwnedPixel=size_t(11)*size_t(novelInk->width)+25; // source (100,46), outside every accepted line
+        const uint64_t newOwnedBit=uint64_t{1}<<(newOwnedPixel%64);
+        novelInk->rawInk[newOwnedPixel/64]|=newOwnedBit;
+        novelInk->ownedInk[newOwnedPixel/64]|=newOwnedBit;
+        novelInk->blackBacking[newOwnedPixel/64]&=~newOwnedBit;
+        novel.raw.ink=std::move(novelInk);
+        SubtitleBoxLookahead::ResolveInto(novel.current,&novel.raw,1,7,9);
+        const auto novelHeld=novel.tracker.Consume(novel.current,250,50);
+        Assert::IsFalse(novel.tracker.CurrentPreparedCueCertificate().Matches(novel.current.current,
+            novelHeld,novel.current.current.sharedPicture.bounds),
+            L"The physical-row join must still reject new current ownership outside all accepted glyph lines.");
     }
     TEST_METHOD(ChangedCurrentBackingWithdrawsHeldSeedDespiteAValidCurrentPreparedCertificate) {
         struct Workspace {SubtitleBoxPresentation tracker;SubtitlePendingMeasurementGuard guard;
