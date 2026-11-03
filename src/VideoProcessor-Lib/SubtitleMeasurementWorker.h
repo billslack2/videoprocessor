@@ -485,6 +485,11 @@ struct SubtitleCurrentCueProofRequest {
 
 struct SubtitleCurrentCueWorkerState;
 struct SubtitleCurrentCueTaskEntry;
+struct SubtitleCurrentCueRefreshLease;
+
+enum class SubtitleCurrentCueFullScanRoute : uint8_t {
+    Enqueue, Suppress, Deferred
+};
 
 // Bounded CPU-only work. Jobs own their source storage. Current-source preparation
 // may await completion within its enqueue-derived deadline; presentation never
@@ -756,6 +761,20 @@ public:
     bool Submit(const SubtitleBoxObservation& key,Work work,
         const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t timelinePolicy=0,bool nonblocking=false,
         std::shared_ptr<AnalysisCompletionSignal> completion={}) {
+        std::shared_ptr<SubtitleCurrentCueRefreshLease> refreshLease;
+        const auto route=RouteCurrentCueFullScan(key,work,ownedWitness,timelinePolicy,nonblocking,refreshLease);
+        if(route==SubtitleCurrentCueFullScanRoute::Suppress)return false;
+        if(route==SubtitleCurrentCueFullScanRoute::Deferred)return true;
+        return SubmitCore(key,std::move(work),ownedWitness,timelinePolicy,nonblocking,
+            std::move(completion),std::move(refreshLease));
+    }
+private:
+    // Proof-selected fallback/refresh scans bypass the ordinary admission
+    // throttle only through this private enqueue path.
+    bool SubmitCore(const SubtitleBoxObservation& key,Work work,
+        const OwnedScanBacklogWitness* ownedWitness,uint64_t timelinePolicy,bool nonblocking,
+        std::shared_ptr<AnalysisCompletionSignal> completion,
+        std::shared_ptr<SubtitleCurrentCueRefreshLease> refreshLease={}) {
         // Retired callbacks may own a prepared frame/COM source. Declare this
         // before the lock so its last release happens after the lock is gone.
         std::vector<Job> retiredJobs;
@@ -813,6 +832,14 @@ public:
             }
             ++m_diagnostics.dropped;
         }
+        if(refreshLease) {
+            auto scan=std::move(work);
+            work=[scan=std::move(scan),refreshLease](SubtitleMeasurementSampler& sampler,
+                const SubtitleBarTrackingReference& previous) mutable {
+                (void)refreshLease;
+                return scan(sampler,previous);
+            };
+        }
         Trace(requestKey,"worker-submit");
         // Execute newer transport generations first, then the nearest source
         // sequence. Equal-frame contexts keep submission order.
@@ -826,12 +853,14 @@ public:
             });
         const uint64_t rawRevision=RecordAcceptedRawJob(requestKey);
         m_pending.insert(place,{requestKey,std::move(work),rawRevision,std::move(completion)});
+        if(refreshLease)CommitCurrentCueRefreshReservation(refreshLease,requestKey.identity.acceptedSequence);
         ++m_diagnostics.submitted;
         for(size_t index=0;index<m_workerLimit;++index)
             if(!m_threads[index].joinable())m_threads[index]=std::thread([this,index]{ Run(index); });
         m_changed.notify_all();
         return true;
     }
+public:
     void Stop() {
         std::deque<Job> retiredPending,retiredCuePending;
         std::deque<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredCueTasks;
@@ -848,6 +877,11 @@ public:
         for(auto& thread:m_threads)if(thread.joinable())thread.join();
     }
 private:
+    SubtitleCurrentCueFullScanRoute RouteCurrentCueFullScan(const SubtitleBoxObservation& key,
+        Work& work,const OwnedScanBacklogWitness* ownedWitness,uint64_t timelinePolicy,bool nonblocking,
+        std::shared_ptr<SubtitleCurrentCueRefreshLease>& refreshLease);
+    void CommitCurrentCueRefreshReservation(
+        const std::shared_ptr<SubtitleCurrentCueRefreshLease>& refreshLease,uint64_t sequence);
     void ObserveCurrentCueSemanticScan(const SubtitleBoxObservation& key,
         const SubtitleBoxObservation& result);
     struct RawVersion {
@@ -2488,6 +2522,7 @@ struct SubtitleCurrentCueWorkerState {
     std::atomic_bool semanticRefreshInFlight{false};
     std::atomic_bool needsFullScanBurst{false};
     uint64_t lastSemanticRefreshSequence=0,lastSemanticScanSequence=0;
+    uint64_t semanticRefreshIntervalFrames=6;
 };
 
 struct SubtitleCurrentCueRefreshLease {
@@ -2544,8 +2579,7 @@ inline bool CompleteSemanticScanConfirmsCue(const SubtitleBoxObservation& result
         result.width!=key.width || result.height!=key.height || result.analysisStride!=key.analysisStride ||
         !result.analyzed || result.discontinuity || result.pendingRefresh || result.analysisRefresh ||
         result.cadenceSkipped || result.glyphLocalTop || result.glyphLocalBottom ||
-        !result.independentBarAnalysis || !result.barAuthority || result.barTrackingAuthority ||
-        result.currentAnchorUsesTrackedEdge || !bars.available || bars.captionBackedTop || bars.captionBackedBottom ||
+        !bars.available ||
         result.pictureTop!=bars.top || result.pictureBottom!=bars.bottom ||
         !result.text.detected || result.text.held || result.text.confirmationPending || result.text.workLimit ||
         !result.text.topSearchComplete || !result.text.bottomSearchComplete ||
@@ -2629,6 +2663,65 @@ inline uint64_t ThreadId() {
     return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 #endif
 }
+}
+
+inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCueFullScan(
+    const SubtitleBoxObservation& key,Work& work,const OwnedScanBacklogWitness* ownedWitness,
+    uint64_t timelinePolicy,bool nonblocking,
+    std::shared_ptr<SubtitleCurrentCueRefreshLease>& refreshLease) {
+    using namespace SubtitleCurrentCueWorkerDetail;
+    std::unique_lock<std::mutex> lock(m_mutex,std::defer_lock);
+    if(nonblocking) {if(!lock.try_lock())return SubtitleCurrentCueFullScanRoute::Enqueue;}
+    else lock.lock();
+    if(m_stopping)return SubtitleCurrentCueFullScanRoute::Suppress;
+
+    for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
+        auto& entry=**i;
+        if(entry.seedTask || !SameExactTaskKey(entry.key,key))continue;
+        if(entry.status==SubtitleCurrentCueProofStatus::Failed ||
+            entry.status==SubtitleCurrentCueProofStatus::Expired)
+            return SubtitleCurrentCueFullScanRoute::Enqueue;
+        if(entry.fullScanQueued)return SubtitleCurrentCueFullScanRoute::Suppress;
+        if(!entry.scanDecisionMade) {
+            if(work && !entry.deferredFullScan) {
+                entry.deferredFullScan=std::move(work);entry.fullScanDue=true;
+                if(ownedWitness) {entry.deferredWitness=*ownedWitness;entry.hasDeferredWitness=true;}
+                entry.deferredTimelinePolicy=timelinePolicy;
+            }
+            return SubtitleCurrentCueFullScanRoute::Deferred;
+        }
+        if(!entry.proofVerified)return SubtitleCurrentCueFullScanRoute::Enqueue;
+        break;
+    }
+
+    const auto& state=m_currentCueState;
+    if(!state || !state->descriptor.valid || !SameContext(state->descriptor.context,key) ||
+        key.identity.acceptedSequence<=state->descriptor.context.identity.acceptedSequence ||
+        key.discontinuity || key.cadenceSkipped || (key.analysisStride!=1 && key.analysisStride!=2) ||
+        key.pendingRefresh || key.analysisRefresh || key.glyphLocalTop || key.glyphLocalBottom)
+        return SubtitleCurrentCueFullScanRoute::Enqueue;
+
+    const uint64_t sequence=key.identity.acceptedSequence;
+    const bool burst=state->needsFullScanBurst.load(std::memory_order_acquire);
+    const uint64_t last=state->lastSemanticRefreshSequence;
+    const uint64_t interval=(std::max)(uint64_t(1),state->semanticRefreshIntervalFrames);
+    const bool intervalReached=sequence>last && sequence-last>=interval;
+    if(!burst && !intervalReached)return SubtitleCurrentCueFullScanRoute::Suppress;
+    bool expected=false;
+    if(!state->semanticRefreshInFlight.compare_exchange_strong(expected,true,std::memory_order_acq_rel))
+        return SubtitleCurrentCueFullScanRoute::Suppress;
+    refreshLease=std::make_shared<SubtitleCurrentCueRefreshLease>();
+    refreshLease->state=state;
+    return SubtitleCurrentCueFullScanRoute::Enqueue;
+}
+
+// SubmitCore calls this while holding m_mutex after inserting the refresh job.
+// A failed admission leaves the previous deadline untouched.
+inline void SubtitleMeasurementWorker::CommitCurrentCueRefreshReservation(
+    const std::shared_ptr<SubtitleCurrentCueRefreshLease>& refreshLease,uint64_t sequence) {
+    if(refreshLease && refreshLease->state && sequence>
+        refreshLease->state->lastSemanticRefreshSequence)
+        refreshLease->state->lastSemanticRefreshSequence=sequence;
 }
 
 inline void SubtitleMeasurementWorker::ObserveCurrentCueSemanticScan(
@@ -2729,6 +2822,9 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                 state->descriptor=descriptor;state->descriptor.revision=entry->revision;
                 state->lastSemanticRefreshSequence=descriptor.context.identity.acceptedSequence;
                 state->lastSemanticScanSequence=descriptor.context.identity.acceptedSequence;
+                const double intervalValue=std::ceil(100.0/input.frameMs);
+                state->semanticRefreshIntervalFrames=static_cast<uint64_t>((std::min)(1000.0,
+                    (std::max)(1.0,std::isfinite(intervalValue)?intervalValue:1000.0)));
                 reason=advanced?"current-cue-template-footprint-seeded":"current-cue-template-seeded";
             } else {seeded=false;reason=state->pending.DecisionReason();}
         } else reason=state->footprint.DecisionReason();
@@ -2878,7 +2974,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                     (void)lease;return scan(sampler,previous);
                 });
             };
-            lateQueued=Submit(request.currentKey,fullScan(std::move(lateScan),std::move(lateLease)),
+            lateQueued=SubmitCore(request.currentKey,fullScan(std::move(lateScan),std::move(lateLease)),
                 hasLateWitness?&lateWitness:nullptr,lateTimelinePolicy,true,{});
             if(!lateQueued) {
                 std::lock_guard<std::mutex> lock(m_mutex);
@@ -2992,7 +3088,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             }
             if(permitQueue) {
                 fallbackQueued=queuedAsFallback;
-                const bool accepted=Submit(key,fullScan(std::move(queuedScan),std::move(lease)),
+                const bool accepted=SubmitCore(key,fullScan(std::move(queuedScan),std::move(lease)),
                     hasQueuedWitness?&queuedWitness:nullptr,queuedTimelinePolicy,true,{});
                 if(queuedAsFallback)fallbackQueued=accepted;
                 else semanticRefreshQueued=accepted;

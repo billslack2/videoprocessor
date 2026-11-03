@@ -4075,6 +4075,25 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             acceptedFrames.data(),acceptedFrames.size(),11,21));
         Assert::IsTrue(acquired.detected && acquired.lineCount==3,
             L"The long proof sequence starts from a real accepted cue template.");
+        auto captionBackedScan=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(8,*seedPixels));
+        captionBackedScan->analysisStride=2;captionBackedScan->independentBarAnalysis=false;
+        captionBackedScan->barAuthority=false;captionBackedScan->barTrackingAuthority=true;
+        captionBackedScan->currentAnchorUsesTrackedEdge=true;
+        captionBackedScan->barEvidence.captionBackedTop=true;
+        captionBackedScan->barEvidence.captionBackedBottom=true;
+        Assert::IsTrue(SubtitleCurrentCueWorkerDetail::CompleteSemanticScanConfirmsCue(
+            *captionBackedScan,*captionBackedScan,acquired),
+            L"A complete unchanged current text scan clears semantic refresh even when caption pixels mask bar authority.");
+        auto changedCaptionScan=std::make_unique<SubtitleBoxObservation>(*captionBackedScan);
+        changedCaptionScan->text.lineBounds[0].right++;
+        Assert::IsFalse(SubtitleCurrentCueWorkerDetail::CompleteSemanticScanConfirmsCue(
+            *changedCaptionScan,*captionBackedScan,acquired),
+            L"A changed line geometry cannot clear the bounded semantic refresh burst.");
+        auto partialCaptionScan=std::make_unique<SubtitleBoxObservation>(*captionBackedScan);
+        partialCaptionScan->text.bottomSearchComplete=false;
+        Assert::IsFalse(SubtitleCurrentCueWorkerDetail::CompleteSemanticScanConfirmsCue(
+            *partialCaptionScan,*captionBackedScan,acquired),
+            L"An incomplete current search cannot clear the semantic refresh burst.");
         Assert::AreEqual(uint64_t(1),tracker.AcceptedTemplateIdentity().acceptedSequence);
         const auto makeTemplate=[&]() {
             SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=acquired;
@@ -4114,6 +4133,7 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         Assert::IsTrue(entered.load(std::memory_order_acquire),L"The ordinary full-grouping worker is blocked.");
 
+        std::atomic_uint semanticRefreshQueued{0},semanticRefreshExecuted{0};
         for(uint64_t sequence=2;sequence<302;++sequence) {
             auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
             (*pixels)[30*160+5]=uint16_t((sequence&1?300:340)<<6);
@@ -4122,13 +4142,36 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             current.analysisStride=2;current.cadenceSkipped=true;
             current.analyzed=false;current.barAuthority=false;current.independentBarAnalysis=false;
             const std::weak_ptr<std::vector<uint16_t>> weakCurrent=pixels;
+            worker.BeginSourceWindow(current.identity);
             worker.AdvanceCurrentCueRenderWindow(current.identity,sequence);
+            // The renderer has another ordinary QueueSubtitleMeasurement
+            // caller that can submit before the typed proof arrives. It must
+            // share the immutable cue's 100 ms semantic schedule, not launch
+            // a second full detector pass for every input source.
+            auto scanKey=std::make_unique<SubtitleBoxObservation>(current);
+            scanKey->analysisStride=1;scanKey->cadenceSkipped=false;
+            auto scanResult=std::make_shared<SubtitleBoxObservation>(CompleteThreeLineScan(sequence,*pixels));
+            scanResult->analysisStride=1;scanResult->independentBarAnalysis=false;
+            scanResult->barAuthority=false;scanResult->barTrackingAuthority=true;
+            scanResult->currentAnchorUsesTrackedEdge=true;
+            scanResult->barEvidence.captionBackedTop=true;
+            scanResult->barEvidence.captionBackedBottom=true;
+            if(worker.Submit(*scanKey,[scanResult,&semanticRefreshExecuted](SubtitleMeasurementSampler&,
+                const SubtitleBarTrackingReference&) {
+                semanticRefreshExecuted.fetch_add(1,std::memory_order_acq_rel);return *scanResult;
+            }))semanticRefreshQueued.fetch_add(1,std::memory_order_acq_rel);
             SubtitleCurrentCueProofRequest request;request.currentKey=current;
             request.source=OwnedSource(pixels);request.physicalBase=current.sharedPicture.bounds;
             request.sourceMode=SubtitlePreviewMode::None;request.backgroundMode=3;
             request.eligibleRenderHead=current.identity;request.eligibleTailSequence=sequence;
             request.templateRevision=revision;request.fullScanDue=false;
             Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
+            // A same-key ordinary submission after proof admission is either
+            // absorbed as its one deferred fallback callback or suppressed
+            // after the proof decides. It must never add a duplicate scanner.
+            auto duplicateScan=scanResult;
+            worker.Submit(*scanKey,[duplicateScan](SubtitleMeasurementSampler&,
+                const SubtitleBarTrackingReference&) {return *duplicateScan;});
             SubtitleCurrentCueProofReceipt receipt;SubtitleCurrentCueProofStatus status=SubtitleCurrentCueProofStatus::Queued;
             for(int attempt=0;attempt<1000;++attempt) {
                 status=worker.TryTakeCurrentCueProof(current,revision,receipt);
@@ -4156,6 +4199,61 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         }
         Assert::IsFalse(release.load(std::memory_order_acquire),
             L"The current-cue verifier completed its 300-source run while full grouping remained blocked.");
+        Assert::IsTrue(semanticRefreshQueued.load(std::memory_order_acquire)<=51,
+            L"Ordinary scan callers are rate-limited to the existing 100 ms semantic refresh cadence.");
+        Assert::IsTrue(semanticRefreshQueued.load(std::memory_order_acquire)>=49,
+            L"The worker still admits due semantic refreshes instead of disabling full analysis.");
+        release.store(true,std::memory_order_release);
+        for(int attempt=0;attempt<1000 && semanticRefreshExecuted.load(std::memory_order_acquire)==0;++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Assert::IsTrue(semanticRefreshExecuted.load(std::memory_order_acquire)>0,
+            L"A due semantic scan queued before a proof executes after the grouping worker is available.");
+        auto afterRefreshPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto afterRefreshKey=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(302,*afterRefreshPixels));
+        Assert::IsFalse(worker.Submit(*afterRefreshKey,[](SubtitleMeasurementSampler&,
+            const SubtitleBarTrackingReference&) {return SubtitleBoxObservation{};}),
+            L"A matching full scan with caption-backed edges clears burst mode and waits for the next cadence deadline.");
+
+        auto changedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        (*changedPixels)[50*160+50]=uint16_t(400<<6);
+        auto changedCurrent=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(303,*changedPixels));
+        changedCurrent->analysisStride=1;changedCurrent->cadenceSkipped=false;
+        const std::weak_ptr<std::vector<uint16_t>> weakChanged=changedPixels;
+        worker.AdvanceCurrentCueRenderWindow(changedCurrent->identity,303);
+        auto missRequest=std::make_unique<SubtitleCurrentCueProofRequest>();missRequest->currentKey=*changedCurrent;
+        missRequest->source=OwnedSource(changedPixels);missRequest->physicalBase=changedCurrent->sharedPicture.bounds;
+        missRequest->sourceMode=SubtitlePreviewMode::None;missRequest->backgroundMode=3;
+        missRequest->eligibleRenderHead=changedCurrent->identity;missRequest->eligibleTailSequence=303;
+        missRequest->templateRevision=revision;missRequest->frameMs=1000.0/60;missRequest->fullScanDue=true;
+        std::atomic_uint missFallbackExecutions{0};
+        auto missScan=std::make_shared<SubtitleBoxObservation>(*changedCurrent);
+        missRequest->fullScanOnMiss=[missScan,&missFallbackExecutions](SubtitleMeasurementSampler&,
+            const SubtitleBarTrackingReference&) {
+            missFallbackExecutions.fetch_add(1,std::memory_order_acq_rel);return *missScan;
+        };
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(*missRequest))==SubtitleCurrentCueProofStatus::Queued);
+        auto missReceipt=std::make_unique<SubtitleCurrentCueProofReceipt>();
+        SubtitleCurrentCueProofStatus missStatus=SubtitleCurrentCueProofStatus::Queued;
+        for(int attempt=0;attempt<1000;++attempt) {
+            missStatus=worker.TryTakeCurrentCueProof(*changedCurrent,revision,*missReceipt);
+            if(missStatus==SubtitleCurrentCueProofStatus::Failed ||
+                missStatus==SubtitleCurrentCueProofStatus::FallbackQueued ||
+                missStatus==SubtitleCurrentCueProofStatus::Ready ||
+                missStatus==SubtitleCurrentCueProofStatus::Expired)break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsTrue((missStatus==SubtitleCurrentCueProofStatus::Failed ||
+            missStatus==SubtitleCurrentCueProofStatus::FallbackQueued) && !missReceipt->Valid(),
+            L"A changed current glyph still fails the cue proof.");
+        for(int attempt=0;attempt<1000 && missFallbackExecutions.load(std::memory_order_acquire)==0;++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Assert::AreEqual(1u,missFallbackExecutions.load(std::memory_order_acquire),
+            L"A proof miss immediately runs its exact-source full-scan fallback even between semantic deadlines.");
+        changedPixels.reset();
+        for(int attempt=0;attempt<1000 && !weakChanged.expired();++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Assert::IsTrue(weakChanged.expired(),L"The proof miss releases its exact-source owner after fallback.");
+
         auto finalPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
         auto finalScan=CompleteThreeLineScan(302,*finalPixels);finalScan.analysisStride=2;
         const auto recovered=tracker.Consume(
