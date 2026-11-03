@@ -18392,7 +18392,7 @@ releaseDriftBaseRetention =
                     admissionDecision.state.nativePresentation={};
                     admissionDecision.state.confirmedFitOwnership={};
                 }
-                auto id=activePictureIdentity;id.transportGeneration=frameGeneration;id.rendererGeneration=frameGeneration;
+                auto id=subtitleIdentity;id.transportGeneration=frameGeneration;id.rendererGeneration=frameGeneration;
                 id.analysisDomainKey=queuedAnalysisDomainKey;id.viewportGeneration=viewportRequestSerial;
                 auto trace=AnalysisTraceRecord(id,this,"subtitle-canvas-admission",canvas.reason.c_str());
                 trace.flags=(canvas.waitForSubtitleProcessing?1u:0u)|(canvas.unprocessedSubtitleCanvas?2u:0u)|
@@ -21023,7 +21023,11 @@ releaseDriftBaseRetention =
                 const uint64_t cueSource=temporalRenderer.Active()
                     ? temporalRenderer.LastSubtitleSequence()
                     : (subtitleCompositionSucceeded?scopeAnchorCommit.sourceSequence:0);
-                ActivePictureFrameIdentity outputIdentity{};
+                // Keep the selected source's original capture identity. An empty
+                // identity loses frame/time joins; using the current frame for
+                // a delayed selected packet would invent a different producer.
+                ActivePictureFrameIdentity outputIdentity=selectedPresentationValid
+                    ? selectedPresentationForCommit.captionOwnershipIdentity : subtitleIdentity;
                 outputIdentity.acceptedSequence=scopeAnchorCommit.sourceSequence;
                 outputIdentity.transportGeneration=outputIdentity.rendererGeneration=scopeAnchorCommit.sourceGeneration;
                 outputIdentity.viewportGeneration=scopeAnchorCommit.presentationEpoch;
