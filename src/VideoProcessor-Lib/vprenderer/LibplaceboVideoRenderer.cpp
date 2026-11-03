@@ -20480,14 +20480,17 @@ releaseDriftBaseRetention =
             target=baseTarget;
             target.crop=selectedTargetCrop;
         } else {
+            configureViewport(renderImage,target,configuredScreenActive,
+                subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
+            // Viewport admission above chooses whether the current source must
+            // remain unprocessed. Consume its decision after that call, just as
+            // the temporal source snapshot path does after viewport admission.
             if(unprocessedCurrentSourceCurrent) {
                 const auto policyCrop=renderImage.crop;
                 renderImage=image;
                 renderImage.crop=policyCrop;
                 unprocessedCurrentSourceOutput=true;
             }
-            configureViewport(renderImage,target,configuredScreenActive,
-                subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
             rawSubtitleFallbackOutput=rawSubtitleFallbackCurrent;
         }
         rawSubtitleFallbackOutput=selectedPresentationValid
