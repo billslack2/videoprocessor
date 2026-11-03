@@ -4,6 +4,36 @@
 
 In Progress
 
+2026-11-02 repair progress: three Luna xhigh research lanes compared pre-RC6/RC6
+behavior, current admission, and exact incident source IDs, then discussed the
+patch safety. The whole-source canvas wait first appears in post-RC6 commit
+`01c1e13f`; public RC4/RC6 have no such gate. Classic also compares an actual
+configured-fill pose against unfilled native X bounds, rejecting the valid
+[16,410,3824,2030] pose against [0,270,3840,1890]. Source5669 has a current
+unconfirmed candidate extending to y2042; retaining the old pan would clip it.
+
+Existing AR/subtitle dependency `788554a1` was explicitly merged into the fresh
+beta-created worktree as `24ae1e2`, preserving the other agent's tree. Focused
+fix commit `443b6c3b` maps previous poses against the configured viewport and
+uses exact-current raw/candidate bounds to constrain same-size Classic placement.
+UNKNOWN stays UNKNOWN and continuation grants no new native/fit/caption proof.
+It adds no detector/text scans; guards preserve stale-context rejection,
+occupied-side continuity, bottom priority, and genuine picture expansion.
+
+The incident-native regression first failed against unchanged production at the
+expected pending-source admission assertion, with successful Release compilation.
+After the repair, all 1,049 native contracts passed. Review tightened horizontal
+expansion test coordinates and renderer progression assertions afterward; final
+full qualification at the exact clean `443b6c3b` source is now running. Host and
+both renderer x64 Release builds have passed; final test results remain pending.
+The new actual checks join eligible candidate and raw/no-candidate sources to
+actual submissions, require consecutive source IDs, and inspect authority flags.
+No live movie replay, deployment, beta merge, or public release is claimed.
+
+Evidence: [research](../assets/VP-0225/review-20261102/research.md),
+[pre-fix failing regression](../assets/VP-0225/review-20261102/native-before.trx),
+[native iteration](../assets/VP-0225/review-20261102/native-after-iteration.json).
+
 2026-11-02: User authorized starting the review and optimization with multiple
 Luna extra-high reasoning subagents, including a dedicated pre-RC6 history
 review. Work is isolated on `codex/vp-0225-subtitle-cadence-20261102` in
