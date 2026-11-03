@@ -4,6 +4,37 @@
 
 Review
 
+2026-11-03 continued review (source 6062850b, not deployed): the static-cue verifier
+now uses an accepted layout, fresh current glyph/backing samples and complete bounded
+current-band novelty checks. Existing non-glyph contrast edges require a directional
+seed witness plus tightly matching current point/neighbor values; changing picture
+margins are not exact-color glyph identity. No semantic/native/absence authority is
+created by a pending proof. All unprocessed temporal paths select current pixels.
+
+An authentic UHD detector probe passes 360 pending sources over P010, P210 and decoded
+DV, with changing picture pixels inside the subtitle search band. It checks 289,920
+current band samples per source. Pending p50 is 8.50–8.67ms, p95 9.24–9.87ms, and the
+worst observed DV call is 15.36ms. Seed p50 is about 10ms and max 13.26ms; seed work can
+repeat on ready accepted frames, so this is not a one-time cost. These are exploratory
+CPU probe results, not whole-pipeline qualification, proof of 60Hz headroom, or a
+measured speedup over older code. The same probe rejects newly added texture. The
+old 147k band estimate omitted physical bars and is corrected in source documentation.
+
+The four optimized cue safety/lifetime tests also pass in that exploratory run.
+Its source changed during concurrent test development, so no qualification receipt
+was issued. Clean full qualification first stopped at a new test-only lambda capture
+error, now fixed. The exact eight-case persistent-caption/Off renderer run is in
+progress at 6062850b. Four advanced startup cases previously exposed an overly narrow
+oracle requiring a prior submitted native frame; the replacement joins an independent
+same-source measured physical publication with exact context, geometry and event order,
+while preserving raw-pixel, no-authority and steady-composition checks. Classic passes.
+
+New Standard/Beta Off UHD cases require an actual narrower confirmed FIT versus taller
+raw visibility conflict, joined to current submitted source pixels; they cannot pass
+by injecting policy evidence or merely testing Classic. Their actual result remains
+pending. Last deployed build is still 53058498. Story remains Review; no later deployment,
+passing release qualification, or live-scene acceptance is claimed.
+
 2026-11-03 deep timing review: live HDMI throughput, bounded latency and independent
 current-frame presentation are now permanent personal/repository AGENTS.md rules.
 Static subtitle cues lasting seconds are explicit context: reuse verified layout
