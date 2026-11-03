@@ -2,7 +2,39 @@
 
 ## Status
 
-In Progress
+Review
+
+2026-11-02: Implementation and independent Luna xhigh review are complete at clean,
+pushed source `2a3af0c2d3a895d5c7ca9fead0dd437065f01d86` on
+`codex/vp-0225-subtitle-cadence-20261102`. Full x64 Release qualification passes
+1,050 native contracts plus all 18 standard and 18 beta actual-renderer scenarios.
+Both matching-binary motion suites pass 220/220. Total: 1,526 passing check
+executions, zero failures. Motion reused the exact qualified binaries and verified
+the qualification receipt before and after its runs.
+
+The repair recognizes configured-fill Classic poses, advances safe current UNKNOWN
+sources from existing raw/candidate occupancy without new caption/native/fit proof,
+preserves current raw margins at caption confirmation, and records selected-source
+frame/capture identity correctly. No extra detector/text scans or configuration edits.
+The existing AR dependency through `788554a1` is explicitly integrated; the other
+agent's branch/worktree and deployed player remain preserved. Review the focused delta:
+https://github.com/billslack2/videoprocessor/compare/788554a100afe0af2352b904fe1870d80fb75bb7...2a3af0c2d3a895d5c7ca9fead0dd437065f01d86
+No beta merge, deployment, or public release has been performed.
+
+Remaining acceptance: deploy only on explicit request, then repeatedly replay the
+original scene under matched settings, check caption preservation and surrounding
+scenes, and collect matched source-gap percentiles plus processing/queue costs on
+relevant physical input rates. The recording is desktop output; no exact native
+capture exists for sources5671/5672. The new 640px progression fixture observed one
+UNKNOWN candidate and no eligible raw/no-candidate rows; its pass is not an exact
+replay. Native raw-only cases and broader 4K/runtime coverage are separate evidence.
+Keep Review until live acceptance and the coordinated AR integration/merge decision.
+
+Final evidence: [validation](../assets/VP-0225/qualification-20261102/validation.json),
+[qualification](../assets/VP-0225/qualification-20261102/runtime-qualification.json),
+[motion](../assets/VP-0225/qualification-20261102/motion-renderer-tests.json).
+All four final TRX files are beside these receipts; full logs remain under the source
+worktree's ignored artifacts directory.
 
 Current source is clean and pushed at `2a3af0c2d3a895d5c7ca9fead0dd437065f01d86`
 on `codex/vp-0225-subtitle-cadence-20261102`. The first full runtime run caught

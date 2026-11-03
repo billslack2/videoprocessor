@@ -1,0 +1,61 @@
+{
+  "sourceCommit": "2a3af0c2d3a895d5c7ca9fead0dd437065f01d86",
+  "branch": "codex/vp-0225-subtitle-cadence-20261102",
+  "integrationBase": "a591ad3b532771911e85f8ef026958279f2065f0",
+  "dependency": "788554a100afe0af2352b904fe1870d80fb75bb7",
+  "configuration": "Release",
+  "architecture": "x64",
+  "sourceDirty": false,
+  "qualified": true,
+  "motionReusedQualifiedBinaries": true,
+  "passedExecutions": 1526,
+  "runs": [
+    {
+      "suite": "qualification",
+      "variant": "standard",
+      "passed": 1068,
+      "native": 1050,
+      "actual": 18,
+      "evidence": "qualification-standard.trx"
+    },
+    {
+      "suite": "qualification",
+      "variant": "beta",
+      "passed": 18,
+      "native": 0,
+      "actual": 18,
+      "evidence": "qualification-beta.trx"
+    },
+    {
+      "suite": "motion",
+      "variant": "standard",
+      "passed": 220,
+      "native": 0,
+      "actual": 0,
+      "evidence": "motion-standard.trx"
+    },
+    {
+      "suite": "motion",
+      "variant": "beta",
+      "passed": 220,
+      "native": 0,
+      "actual": 0,
+      "evidence": "motion-beta.trx"
+    }
+  ],
+  "deployed": false,
+  "liveOriginalSceneReplayed": false,
+  "limits": [
+    "Recording is desktop output, not original native HDMI pixels.",
+    "Original-scene live acceptance and matched gap/cost measurements remain pending.",
+    "The new 640px progression fixture observed one UNKNOWN candidate and zero eligible raw/no-candidate rows; raw-only policy and broader 4K/runtime coverage are separate evidence."
+  ],
+  "hashes": {
+    "motion-beta.trx": "ccd26e151f49aec25687ce3fa0a72917607a63485d87f68bad2b1fa4d8789b09",
+    "motion-renderer-tests.json": "d458e7ef1206f312f25b001a9cb017d4b99b235a516b1c8b24ce6b437488a57a",
+    "motion-standard.trx": "618315df8c3b929081b8ab746bea32ba8ffa82416e1fb5c5c88ce184385942a7",
+    "qualification-beta.trx": "0d375a9b3445ae5850e794009ac483756a97b8f7ea7da534f5fe5f701c6f323b",
+    "qualification-standard.trx": "6ee12cf1e167e9e1f849f5c0a27828e341d64309d0eefce726e0d85fe1a19294",
+    "runtime-qualification.json": "c0203e1c1e2b050fe73f93eade52f654576984f568e8ba8ad5a9ef6b8c62148b"
+  }
+}
