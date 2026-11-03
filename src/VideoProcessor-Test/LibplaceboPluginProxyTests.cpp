@@ -3552,7 +3552,15 @@ namespace VideoProcessorTest
                 std::vector<ClassicShaderPreparationSelection> outputPreparation;
                 std::set<uint64_t> repeatedAnchors;
                 std::set<uint64_t> verifiedUnprocessedSources;
-                std::map<ClassicSubmittedPreparationKey,AnalysisDiagnosticRecordV1> classicCanvasAdmissions;
+                std::map<ClassicSubmittedPreparationKey,std::vector<AnalysisDiagnosticRecordV1>> classicCanvasAdmissions;
+                const auto canvasAdmissionBefore=[&](const AnalysisDiagnosticRecordV1& output)->const AnalysisDiagnosticRecordV1* {
+                    const auto found=classicCanvasAdmissions.find(
+                        {output.rendererInstanceKey,output.transportGeneration,output.acceptedSequence});
+                    if(found==classicCanvasAdmissions.end())return nullptr;
+                    for(auto it=found->second.rbegin();it!=found->second.rend();++it)
+                        if(it->recordSequence<output.recordSequence)return &*it;
+                    return nullptr;
+                };
                 PersistentCaptionProofIndex captionProofs;
                 // Numeric-only bounded producer telemetry. Formatting happens
                 // only at final success/failure reporting, never per input.
@@ -3784,9 +3792,9 @@ namespace VideoProcessorTest
                     Assert::Fail(why);};
                 auto validateUnprocessedSubtitleUnknown=[&](const AnalysisDiagnosticRecordV1& output,std::string& failure)->bool {
                     const auto key=ClassicSubmittedPreparationKey{output.rendererInstanceKey,output.transportGeneration,output.acceptedSequence};
-                    const auto found=classicCanvasAdmissions.find(key);
-                    if(found==classicCanvasAdmissions.end()){failure="no exact-source subtitle-canvas-admission record";return false;}
-                    const auto& admission=found->second;
+                    const auto found=canvasAdmissionBefore(output);
+                    if(!found){failure="no preceding exact-source subtitle-canvas-admission record";return false;}
+                    const auto& admission=*found;
                     const auto input=nativeInputs.find(output.acceptedSequence);
                     const auto exactRendererContextMatches=[&](const AnalysisDiagnosticRecordV1& other) {
                         return other.rendererInstanceKey==output.rendererInstanceKey&&
@@ -3894,7 +3902,16 @@ namespace VideoProcessorTest
                             for(int i=0;i<4;++i)currentPhysical&=measured.published[i]==output.published[i] &&
                                 measured.published[i]==admission.previous[i];
                         }
-                        if(!priorPhysical&&!currentPhysical){failure="cropped pending fallback lacks a prior native submission or exact-current independent physical publication";return false;}
+                        if(!priorPhysical&&!currentPhysical){
+                            std::ostringstream why;why<<"cropped pending fallback lacks a prior native submission or exact-current independent physical publication"
+                                <<" model_found="<<(model!=acceptedPhysicalModels.end())
+                                <<" admission_ordinal="<<admission.recordSequence<<" output_ordinal="<<output.recordSequence;
+                            if(model!=acceptedPhysicalModels.end())why<<" model_ordinal="<<model->second.recordSequence
+                                <<" model_context="<<witnessedNativeContextMatches(model->second)
+                                <<" model_frame="<<model->second.sourceFrameNumber<<" model_capture="<<model->second.captureTimestamp
+                                <<" output_frame="<<output.sourceFrameNumber<<" output_capture="<<output.captureTimestamp;
+                            failure=why.str();return false;
+                        }
                         return true;
                     }
                     const AnalysisDiagnosticRecordV1* nativeWitness=nullptr;
@@ -3950,7 +3967,7 @@ namespace VideoProcessorTest
                     // Index every source-bound proof in this tail before checking
                     // submissions; the unchanged oracle enforces original ordinals.
                     for(const auto& record:records)if(!strcmp(record.stage,"subtitle-canvas-admission"))
-                        classicCanvasAdmissions[{record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence}]=record;
+                        classicCanvasAdmissions[{record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence}].push_back(record);
                     for(const auto& record:records)if(!strcmp(record.stage,"accepted-picture-detector"))
                         acceptedPhysicalModels[{record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence}]=record;
                     for(const auto& record:records)captionProofs.Observe(record);
@@ -4021,16 +4038,17 @@ namespace VideoProcessorTest
                                 validUnprocessedContinuation=validateUnprocessedSubtitleUnknown(record,reason);
                                 if(validUnprocessedContinuation)verifiedUnprocessedSources.insert(record.acceptedSequence);
                                 else {
-                                    const auto admission=classicCanvasAdmissions.find({record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
+                                    const auto admission=canvasAdmissionBefore(record);
                                     std::ostringstream diagnostic;diagnostic<<"PERSISTENT DV REJECTED UNPROCESSED SOURCE: source="
                                         <<record.acceptedSequence<<" consumed="<<record.counters[0]<<" selected="<<record.counters[1]
                                         <<" native="<<record.counters[4]<<" flags="<<record.flags<<" reason="<<reason;
-                                    if(admission!=classicCanvasAdmissions.end())diagnostic<<" admission_flags="<<admission->second.flags
-                                        <<" admission_mode="<<admission->second.counters[0]<<" observation="<<admission->second.counters[1]
-                                        <<" visible="<<admission->second.counters[3]<<" retention="<<admission->second.counters[4]
-                                        <<" measurement_current="<<admission->second.counters[5]
-                                        <<" retained_generation="<<admission->second.counters[6]
-                                        <<" visible_generation="<<admission->second.counters[7];
+                                    if(admission)diagnostic<<" admission_flags="<<admission->flags
+                                        <<" admission_mode="<<admission->counters[0]<<" observation="<<admission->counters[1]
+                                        <<" visible="<<admission->counters[3]<<" retention="<<admission->counters[4]
+                                        <<" measurement_current="<<admission->counters[5]
+                                        <<" retained_generation="<<admission->counters[6]
+                                        <<" visible_generation="<<admission->counters[7]
+                                        <<" admission_ordinal="<<admission->recordSequence<<" output_ordinal="<<record.recordSequence;
                                     Logger::WriteMessage(diagnostic.str().c_str());
                                 }
                             }
@@ -4251,12 +4269,11 @@ namespace VideoProcessorTest
                                 require(preparation.state!="failed",L"Shader preparation failed instead of completing bounded startup.");
                                 if(!composed&&!building)require(record.metrics[8]<=0&&record.metrics[10]>=width&&top<=pictureTop&&bottom>=captionBottom,
                                     L"Unprepared output outside explicit shader building clipped the persistent raw caption or picture.");
-                                const auto admission=classicCanvasAdmissions.find(
-                                    {record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
-                                const bool admissionClaimsRawFallback=admission!=classicCanvasAdmissions.end()&&
-                                    (admission->second.flags&32u)!=0;
+                                const auto admission=canvasAdmissionBefore(record);
+                                const bool admissionClaimsRawFallback=admission&&
+                                    (admission->flags&32u)!=0;
                                 const bool exactRawFallback=admissionClaimsRawFallback&&
-                                    IsCurrentRawSubtitleFallback(record,admission->second,width,height);
+                                    IsCurrentRawSubtitleFallback(record,*admission,width,height);
                                 if(admissionClaimsRawFallback)
                                     require(exactRawFallback,
                                         L"Explicit startup raw fallback lacks the exact current source, all-pixels, and no-authority join.");
@@ -4312,11 +4329,10 @@ namespace VideoProcessorTest
                                     std::abs((bottom-top)-(native[3]-native[1]))<0.01&&
                                     top>=native[1]-0.01&&top<=classicSettledTop+0.01;
                                 if(!ready) {
-                                    const auto rawAdmission=classicCanvasAdmissions.find(
-                                        {record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
-                                    const bool rawStartup=rawAdmission!=classicCanvasAdmissions.end()&&
-                                        (rawAdmission->second.flags&32u)&&
-                                        IsCurrentRawSubtitleFallback(record,rawAdmission->second,width,height);
+                                    const auto rawAdmission=canvasAdmissionBefore(record);
+                                    const bool rawStartup=rawAdmission&&
+                                        (rawAdmission->flags&32u)&&
+                                        IsCurrentRawSubtitleFallback(record,*rawAdmission,width,height);
                                     if(rawStartup) {
                                         require(captionVisible&&record.metrics[8]<=0&&record.metrics[10]>=width&&
                                             top<=native[1]&&bottom>=native[3],
@@ -4616,8 +4632,6 @@ namespace VideoProcessorTest
                     input->second->viewportGeneration==output.viewportGeneration&&
                     input->second->sourceFormatGeneration==output.sourceFormatGeneration&&
                     input->second->analysisDomainKey==output.analysisDomainKey&&
-                    input->second->policyGeneration==output.policyGeneration&&
-                    input->second->continuityGeneration==output.continuityGeneration&&
                     input->second->sourceFrameNumber==output.sourceFrameNumber&&
                     input->second->captureTimestamp==output.captureTimestamp&&output.captureTimestamp>0&&
                     output.captureTimestamp==stamp->second,

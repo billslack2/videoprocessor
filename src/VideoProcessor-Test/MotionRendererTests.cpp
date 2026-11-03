@@ -2795,7 +2795,8 @@ TEST_CLASS(TemporalCleanPacketGpuTests) { public:
         geometry.valid=true;geometry.familyBase={0,0,64,64};geometry.sourceCrop={0,0,64,64};
         geometry.verifiedVisible={0,0,64,64};geometry.viewportEpoch=7;
         geometry.owner=1;geometry.visibleSafe=true;geometry.cleaned=true;
-        std::vector<float> oldComplete(64*64*4),currentComplete(64*64*4),currentRaw(64*64*4);
+        std::vector<float> oldComplete(64*64*4),currentComplete(64*64*4);
+        std::vector<unsigned char> currentRaw(64*64*4);
         for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
             const size_t o=(y*64+x)*4;
             oldComplete[o]=oldComplete[o+1]=oldComplete[o+2]=1.0f;
@@ -2806,8 +2807,8 @@ TEST_CLASS(TemporalCleanPacketGpuTests) { public:
             currentComplete[o]=currentComplete[o+1]=currentComplete[o+2]=0.0f;
             currentComplete[o+3]=1.0f;
             currentRaw[o]=currentRaw[o+1]=currentRaw[o+2]=0.0f;
-            currentRaw[o+3]=1.0f;
-            if(x>=8&&x<16&&y>=40&&y<48)currentRaw[o+1]=1.0f;
+            currentRaw[o+3]=255;
+            if(x>=8&&x<16&&y>=40&&y<48)currentRaw[o+1]=255;
         }
         g.Upload(0);g.UploadFloatPixels(g.clean,oldComplete);
         g.temporal.Begin(settings,24,60,false,0,9,100,0.0,false,true);
@@ -2834,7 +2835,8 @@ TEST_CLASS(TemporalCleanPacketGpuTests) { public:
         Assert::IsTrue(g.temporal.SelectedPacketSequence()==101,
             L"Unprocessed-current selection must clear the older completed packet before rendering.");
 
-        g.UploadFloatPixels(g.source,currentRaw);
+        pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=currentRaw.data();
+        Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload));
         Assert::IsTrue(g.temporal.CaptureCurrentRawSource(g.device->gpu,g.input,101,9,7,77,88));
         Assert::IsTrue(g.temporal.RenderCurrentRaw(g.renderer,g.input,g.output,params,31,
             101,9,7,77,88),L"An unprocessed native-canvas continuation must render the current raw source.");
