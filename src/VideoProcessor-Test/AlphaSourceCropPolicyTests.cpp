@@ -20353,6 +20353,12 @@ public:
             for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
             for(int fault=0;fault<10;++fault) {
                 auto r=AdvancedLoggedFrame(3909,{},false,mode);
+                r.subtitleCanvasMode=mode==SubtitlePreviewMode::BlackBackground?
+                    SubtitleCanvasMode::BLACK:SubtitleCanvasMode::RECONSTRUCTION;
+                Assert::IsTrue(r.subtitleCanvasMode!=SubtitleCanvasMode::OFF);
+                Assert::IsTrue(mode==SubtitlePreviewMode::BlackBackground?
+                    r.subtitleCanvasMode==SubtitleCanvasMode::BLACK && r.crop.subtitlePresentationMode==PreparedNativeMode::BLACK:
+                    r.subtitleCanvasMode==SubtitleCanvasMode::RECONSTRUCTION && r.crop.subtitlePresentationMode==PreparedNativeMode::RECONSTRUCTION);
                 r.crop.currentVisibleBounds.top=126;r.crop.currentVisibleBounds.bottom=2050;
                 auto& proof=r.crop.currentSubtitleComposition;
                 proof.available=true;proof.nativeBase=r.crop.geometry;proof.mode=r.crop.subtitlePresentationMode;
@@ -20382,7 +20388,8 @@ public:
                 const auto resolved=ResolveUncertainPicturePresentation(r,evaluated);
                 const auto& actual=resolved.presentation;
                 Assert::IsFalse(actual.waitForSubtitleProcessing);
-                Assert::IsTrue(actual.rawSubtitleFallback);
+                const auto context=L"mode="+std::to_wstring(int(mode))+L" fault="+std::to_wstring(fault);
+                Assert::IsTrue(actual.rawSubtitleFallback,context.c_str());
                 Assert::AreEqual(expectedTop,actual.sourceBounds.top);
                 Assert::AreEqual(expectedBottom,actual.sourceBounds.bottom);
                 if(fault==0 || fault==9) {
