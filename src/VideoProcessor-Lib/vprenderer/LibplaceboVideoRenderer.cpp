@@ -9611,7 +9611,8 @@ struct LibplaceboVideoRenderer::Impl
         double frameMs,double fps,bool fullScanDue,const SubtitleBarTrackingReference& prior,
         const ActivePictureEvidence& nativeEvidence,
         const std::shared_ptr<QueuedFrame::AnalysisPayload>& analysisCache,
-        const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t ownedTimelinePolicy=0)
+        const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t ownedTimelinePolicy=0,
+        const char* offerOrigin="render")
     {
         const uint64_t revision=currentCueTemplateRevision.load(std::memory_order_acquire);
         const auto statusName=[](SubtitleCurrentCueProofStatus status)->const char* {
@@ -9632,8 +9633,11 @@ struct LibplaceboVideoRenderer::Impl
         const auto offerTrace=[&](SubtitleCurrentCueProofStatus status,const char* detail,
             uint64_t originalSourceGeneration,uint64_t proofSourceGeneration,double elapsedMs) {
             const uint64_t sequence=key.identity.acceptedSequence;
-            if(sequence>8 && sequence%60!=0)return;
+            if(sequence>128 && sequence%60!=0)return;
             auto trace=AnalysisTraceRecord(key.identity,this,"subtitle-cue-proof-offered",detail);
+            AnalysisTraceText(trace.detail,offerOrigin);
+            trace.timestampNs=static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                SteadyClock::now().time_since_epoch()).count());
             trace.policyGeneration=key.policyGeneration;
             trace.continuityGeneration=key.continuityGeneration;
             trace.flags=(status==SubtitleCurrentCueProofStatus::Queued ||
@@ -14996,6 +15000,16 @@ struct LibplaceboVideoRenderer::Impl
                     const auto bindStarted=SteadyClock::now();
                     auto cueStatus=subtitleMeasurementWorker.TryTakeCurrentCueProof(
                         exactKey,revision,currentCueProofReceipt);
+                    if(sourceSequence<=128 || sourceSequence%60==0) {
+                        auto poll=AnalysisTraceRecord(exactKey.identity,this,"subtitle-cue-proof-polled","render-current-source");
+                        poll.policyGeneration=exactKey.policyGeneration;
+                        poll.continuityGeneration=exactKey.continuityGeneration;
+                        poll.counters[0]=revision;poll.counters[1]=static_cast<uint64_t>(cueStatus);
+                        poll.flags=cueStatus==SubtitleCurrentCueProofStatus::Ready?1u:0u;
+                        poll.timestampNs=static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            SteadyClock::now().time_since_epoch()).count());
+                        AnalysisDiagnosticTrace::Emit(poll);
+                    }
                     if(cueStatus!=SubtitleCurrentCueProofStatus::Ready && !currentHasFullPositiveScan) {
                         const auto priorBar=subtitleBoxPresentation.BarTrackingReferenceFor(
                             subtitleIdentity,exactKey.width,exactKey.height,localBoundaryPolicyGeneration,
@@ -25714,7 +25728,8 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
     if(subtitleContextEligible)
         cueProofStatus=m_impl->SubmitCurrentCueProof(prepared,*key,key->sharedPicture.bounds,
             renderHead,eligibleTailSequence,sourceMode,backgroundMode,sourceFrameMs,sourceFps,
-            subtitleEligible,{},nativeDependencyReady?nativeReady->evidence:ActivePictureEvidence{},queued.analysis);
+            subtitleEligible,{},nativeDependencyReady?nativeReady->evidence:ActivePictureEvidence{},queued.analysis,
+            nullptr,0,"accepted-source");
     const bool cueProofOwnsSource=cueProofStatus==SubtitleCurrentCueProofStatus::Queued ||
         cueProofStatus==SubtitleCurrentCueProofStatus::Pending || cueProofStatus==SubtitleCurrentCueProofStatus::Ready ||
         cueProofStatus==SubtitleCurrentCueProofStatus::FallbackQueued;
@@ -25965,7 +25980,7 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
                 observations[i].sharedPicture.bounds,headIdentity,eligibleTailSequence,sourceMode,backgroundMode,
                 frameMs,fps,!observations[i].cadenceSkipped,tracking,
                 CurrentLookaheadMeasurement(prepared,identity,nativeReady)?nativeReady->evidence:ActivePictureEvidence{},
-                queued.analysis,witnessed?&ownedWitness:nullptr,ownerPolicy);
+                queued.analysis,witnessed?&ownedWitness:nullptr,ownerPolicy,"prime");
             currentCueProofOwnsSource=cueStatus==SubtitleCurrentCueProofStatus::Queued ||
                 cueStatus==SubtitleCurrentCueProofStatus::Pending || cueStatus==SubtitleCurrentCueProofStatus::Ready ||
                 cueStatus==SubtitleCurrentCueProofStatus::FallbackQueued;

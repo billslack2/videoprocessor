@@ -315,7 +315,7 @@ full grouping runs near input cadence and worst worker proof time exceeds the
 The user-authorized live trial is clean-source `d8ae4175`, deployed as matching
 x64 Release host and both renderers. It remains unqualified: synthetic 59.94 Hz
 caption/cadence/reuse and render-path budgets passed, but worker proof wall-time
-peaks remained 20–23 ms. The installed trial has not been replaced by later work.
+peaks remained 20–23 ms. It was replaced by the explicitly unqualified `69c51f18` trial at local 13:55; see the follow-up below.
 
 The user's paused capture at local 12:56:07 (source 6562) distinguishes detected
 picture from presentation: the measured/retained picture is about 2.39:1, while
@@ -357,3 +357,66 @@ existing cache rather than purging it (1461 -> 1466 objects). Commit `243f1b47`
 removes a duplicated cleanup-row lookup without changing protection behavior;
 its cold-driver compile effect is not yet measured. Do not call that a verified
 startup speedup or remove current-picture protection to obtain one.
+
+## 13:55 trial and current-source proof follow-up
+
+Clean-source `69c51f18` was deployed as the matching x64 Release host and both
+renderers after the user authorized isolated GPU checks and restart. The backup
+is `C:/Videoprocessor/vp/backups/trial-69c51f18-20261103-135509`. Deployment
+preserved cfg/state byte-for-byte before restart. The existing `renderer.ready`
+reset action then sent the configured Classic shortcut, changing only the saved
+subtitle selection from Reconstruction to Classic. The state subsequently selected Reconstruction at local 14:12:33; no agent app input
+was used. A bounded 14:14:39-49 telemetry window contains 240/240 current-source
+submissions composed and prepared, one stable native rectangle and one stable
+source rectangle, with selected-source increments of one. The largest interval
+between these log submissions is 49.61 ms at a 23.976 Hz source. This is evidence
+for the specific paused-cue reproduction, not visual acceptance or full playback
+qualification.
+
+This trial is not qualified. Its final focused CPU trio and Release builds pass
+(`134055-25e3feb6`); the complete 1,083 Native pass is on the preceding `3ea6335a`
+source. All four isolated GPU methods in `134859-dbbd0ddc` failed. The static-cue
+worker proof maxima were 21.0904 ms Standard and 18.4053 ms Beta, above the
+16.683 ms period. Mandatory frame-work maxima were separately 12.6709 and
+12.3743 ms; concurrent durations must not be added as a sequential critical
+path. Both decoded-DV unknown-input methods also found a composition-off
+submission on an ordinary ready static-cue source. Preserve that assertion:
+current raw pixel preservation is required but does not satisfy caption
+composition/framing continuity.
+
+For Standard source 16, the worker eventually verified the exact source in
+12.7147 ms after the renderer had already submitted source 16 uncomposed.
+Existing records do not timestamp that job's queue/start/ready sequence, so they
+do not establish why the result missed presentation. The current implementation
+publishes completed receipts before both optional diagnostic emits, preserving
+all existing proof and semantic-refresh decisions. Its existing worker record
+now uses counters 5/6/7 for steady-clock enqueue/start/published nanoseconds;
+metrics 7/8/9 report queue wait, enqueue-to-published and proof-end-to-published
+milliseconds. Bounded offer/poll events cover the first 128 sources and then
+one in 60; offer detail names accepted-source, prime or render origin.
+
+The isolated cold preparation took about 64.8 seconds Standard and 64.6 seconds
+Beta. The background-3 unblurred All pass took 25.3 seconds; this is one pass,
+not the whole preparation. The user accepts roughly 25 seconds temporarily for
+heavy background processing. The total preparation still needs improvement;
+there is no established 3x startup speedup.
+
+Commit `958c230d` shares one validated source view across each footprint seed or
+verification operation. V210 now uses the canonical prevalidated sampler rather
+than validating the full view for each pixel; planar byte decoding is unchanged.
+Destination loops reuse row offsets. An isolated captured-V210 CPU microbenchmark
+checked 152,620 coordinates per static proof, 32 repetitions in each of three
+runs. Static medians changed from 3.52-3.62 ms to 2.92-3.02 ms. All 96 static
+proofs passed; all 96 four-phase controls retained their exact previous cleanup
+rejections and coordinates. These wall-time measurements ran beside the live
+player and do not qualify total frame budgets or prove a GPU improvement.
+No classification threshold or bar/absence authority was relaxed.
+
+Actual released RC6 pins `a8f62855` and `c716bd8` share the earlier worker and
+continuation implementation. Their current glyph/reference checks have a
+65,536-sample bound and did not run today's full compositor footprint proof on
+every source. They still requested exact-source worker scans; this is not
+evidence that old movie pixels should be reused. A matched old/current timing
+run remains outstanding. Further safe targets are current-source sample sharing
+and immutable coordinate/projection precomputation, with fresh pixel receipts
+and no cross-source cleanup or native authority.

@@ -3033,7 +3033,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         return duplicate->status==SubtitleCurrentCueProofStatus::NoTask?duplicateStatus:duplicate->status;
     }
     Job job;job.key=request.currentKey;job.cueEntry=entry;job.queued=std::chrono::steady_clock::now();
-    job.currentCueTask=[this,state,entry,request=std::move(request)](size_t) mutable {
+    job.currentCueTask=[this,state,entry,queued=job.queued,request=std::move(request)](size_t) mutable {
         const auto started=std::chrono::steady_clock::now();
         uint64_t cycleDelta=0;
 #ifdef _WIN32
@@ -3062,7 +3062,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                 verified=false;currentInk.reset();reason="current-cue-cleanup-projection-unavailable";
             }
         } else reason="current-cue-template-context-or-window-changed";
-        const double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+        const auto proofFinished=std::chrono::steady_clock::now();
+        const double elapsed=std::chrono::duration<double,std::milli>(proofFinished-started).count();
 #ifdef _WIN32
         ULONG64 nativeEndCycles=0;
         if(haveStartCycles&&QueryThreadCycleTime(GetCurrentThread(),&nativeEndCycles)!=FALSE&&
@@ -3156,6 +3157,23 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                 std::lock_guard<std::mutex> lock(m_mutex);entry->fullScanQueued=false;
             }
         }
+        // Publish the exact-source result before optional diagnostic callbacks.
+        // Trace transport must not postpone an otherwise ready video decision.
+        std::vector<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredEntries;
+        {std::lock_guard<std::mutex> lock(m_mutex);
+            if(verified) {entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;}
+            else entry->status=(fallbackQueued || entry->fallbackQueued)?SubtitleCurrentCueProofStatus::FallbackQueued:
+                (stillCurrent?SubtitleCurrentCueProofStatus::Failed:SubtitleCurrentCueProofStatus::Expired);
+            entry->key.ink.reset();
+            while(m_currentCueTasks.size()>8) {
+                retiredEntries.push_back(std::move(m_currentCueTasks.front()));m_currentCueTasks.pop_front();
+            }
+        }
+        const auto published=std::chrono::steady_clock::now();
+        const auto timeNs=[](const std::chrono::steady_clock::time_point& value) {
+            return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                value.time_since_epoch()).count());
+        };
         if(semanticRefreshDue) {
             auto refreshTrace=AnalysisTraceRecord(key.identity,this,"worker-cue-semantic-refresh",
                 semanticRefreshQueued?"queued":(state->semanticRefreshInFlight.load(std::memory_order_acquire)?
@@ -3182,20 +3200,14 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         trace.metrics[4]=diagnostics.currentPixelValidationMs;
         trace.metrics[5]=diagnostics.encodedBarVetoMs;
         trace.metrics[6]=static_cast<double>(cycleDelta);
+        trace.metrics[7]=std::chrono::duration<double,std::milli>(started-queued).count();
+        trace.metrics[8]=std::chrono::duration<double,std::milli>(published-queued).count();
+        trace.metrics[9]=std::chrono::duration<double,std::milli>(published-proofFinished).count();
+        trace.counters[5]=timeNs(queued);trace.counters[6]=timeNs(started);trace.counters[7]=timeNs(published);
         trace.flags=(verified?1u:0u)|(semanticRefreshDue?2u:0u)|
             (semanticRefreshQueued?4u:0u);AnalysisDiagnosticTrace::Emit(trace);
         AnalysisLumaSource retiredSource=std::move(request.source);
         Work retiredRequestScan=std::move(request.fullScanOnMiss);
-        std::vector<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredEntries;
-        {std::lock_guard<std::mutex> lock(m_mutex);
-            if(verified) {entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;}
-            else entry->status=(fallbackQueued || entry->fallbackQueued)?SubtitleCurrentCueProofStatus::FallbackQueued:
-                (stillCurrent?SubtitleCurrentCueProofStatus::Failed:SubtitleCurrentCueProofStatus::Expired);
-            entry->key.ink.reset();
-            while(m_currentCueTasks.size()>8) {
-                retiredEntries.push_back(std::move(m_currentCueTasks.front()));m_currentCueTasks.pop_front();
-            }
-        }
     };
     {
         std::lock_guard<std::mutex> lock(m_mutex);

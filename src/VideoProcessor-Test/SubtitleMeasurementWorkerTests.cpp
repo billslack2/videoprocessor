@@ -5,6 +5,8 @@
 #include <vprenderer/SourceCadencePresentation.h>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <cstring>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -173,6 +175,33 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
     struct ReleaseBlockedWorkers {
         std::atomic_bool& release;
         ~ReleaseBlockedWorkers(){release.store(true,std::memory_order_release);}
+    };
+    struct BlockingCueProofTraceSink {
+        std::mutex mutex;
+        std::condition_variable changed;
+        uint64_t sequence=0,domain=0;
+        bool entered=false,release=false,returned=false;
+    };
+    static void __cdecl BlockCueProofTrace(void* context,const AnalysisDiagnosticRecordV1* record) {
+        auto* gate=static_cast<BlockingCueProofTraceSink*>(context);
+        if(!gate || !record || std::strcmp(record->stage,"worker-cue-proof")!=0 ||
+            record->acceptedSequence!=gate->sequence || record->analysisDomainKey!=gate->domain)return;
+        std::unique_lock<std::mutex> lock(gate->mutex);
+        gate->entered=true;gate->changed.notify_all();
+        gate->changed.wait_for(lock,std::chrono::seconds(8),[&]{return gate->release;});
+        gate->returned=true;gate->changed.notify_all();
+    }
+    struct ReleaseCueProofTraceSink {
+        BlockingCueProofTraceSink& gate;
+        bool installed=false;
+        void Release() noexcept {
+            if(installed)AnalysisDiagnosticTrace::ClearExternalSinks();
+            {
+                std::lock_guard<std::mutex> lock(gate.mutex);gate.release=true;
+            }
+            gate.changed.notify_all();installed=false;
+        }
+        ~ReleaseCueProofTraceSink(){Release();}
     };
     static bool WaitForEntered(const std::atomic_uint& entered,unsigned count) {
         const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(2);
@@ -4115,6 +4144,104 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Failed,
             L"A changed owned glyph is rejected by exact current-source YUV checks.");
         Assert::IsFalse(receipt.Valid());
+    }
+    TEST_METHOD(CurrentCueProofReceiptReadyWhileExternalTraceSinkBlocks) {
+        constexpr uint64_t domain=0xC0DEF00D1234ull;
+        constexpr uint64_t sequence=2;
+        auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto seed=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(1,*seedPixels));
+        seed->identity.analysisDomainKey=domain;seed->sharedPicture.identity=seed->identity;
+        auto seedInput=std::make_unique<SubtitleCurrentCueTemplateInput>();
+        seedInput->observation=*seed;seedInput->acceptedCue=seed->text;
+        seedInput->source=OwnedSource(seedPixels);seedInput->physicalBase=seed->sharedPicture.bounds;
+        seedInput->sourceMode=SubtitlePreviewMode::None;seedInput->acceptedCurrentScan=true;
+        seedInput->frameMs=1000.0/60;seedInput->holdMs=250;
+
+        // The gate outlives worker destruction even if allocation/assertion
+        // throws; sinkCleanup releases it before the worker joins.
+        BlockingCueProofTraceSink gate;gate.sequence=sequence;gate.domain=domain;
+        auto worker=std::make_unique<SubtitleMeasurementWorker>();
+        uint64_t revision=0;
+        worker->SubmitCurrentCueTemplate(*seedInput,revision);
+        bool seeded=false;
+        for(int attempt=0;attempt<2000;++attempt) {
+            uint64_t observedRevision=0;
+            const auto seedStatus=worker->SubmitCurrentCueTemplate(*seedInput,observedRevision);
+            if(seedStatus==SubtitleCurrentCueProofStatus::Ready) {
+                seeded=observedRevision==revision;break;
+            }
+            if(seedStatus!=SubtitleCurrentCueProofStatus::Queued)break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        auto currentPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto current=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(sequence,*currentPixels));
+        current->identity.analysisDomainKey=domain;current->sharedPicture.identity=current->identity;
+        current->pictureTop=0;current->pictureBottom=0;current->text={};current->ink.reset();
+        current->analyzed=false;current->barAuthority=false;current->independentBarAnalysis=false;
+        current->analysisStride=2;current->cadenceSkipped=true;
+        worker->AdvanceCurrentCueRenderWindow(current->identity,sequence);
+
+        ReleaseCueProofTraceSink sinkCleanup{gate};
+        AnalysisDiagnosticTrace::SetExternalSinks(&gate,&BlockCueProofTrace,nullptr,nullptr);
+        sinkCleanup.installed=true;
+        auto request=std::make_unique<SubtitleCurrentCueProofRequest>();
+        request->currentKey=*current;request->source=OwnedSource(currentPixels);
+        request->physicalBase=current->sharedPicture.bounds;
+        request->sourceMode=SubtitlePreviewMode::None;request->backgroundMode=3;
+        request->eligibleRenderHead=current->identity;request->eligibleTailSequence=sequence;
+        request->templateRevision=revision;request->fullScanDue=false;
+        const auto submitted=seeded?worker->SubmitCurrentCueProof(std::move(*request)):
+            SubtitleCurrentCueProofStatus::NotEligible;
+
+        bool callbackEntered=false;
+        {
+            std::unique_lock<std::mutex> lock(gate.mutex);
+            callbackEntered=gate.changed.wait_for(lock,std::chrono::seconds(2),[&]{return gate.entered;});
+        }
+        auto receipt=std::make_unique<SubtitleCurrentCueProofReceipt>();
+        auto preview=std::make_unique<SubtitleBoxPreview>();
+        auto held=std::make_unique<SubtitleBoxResult>();
+        auto presentation=std::make_unique<SubtitleBoxPresentation>();
+        auto proofStatus=SubtitleCurrentCueProofStatus::Queued;
+        if(callbackEntered)for(int attempt=0;attempt<2000;++attempt) {
+            proofStatus=worker->TryTakeCurrentCueProof(*current,revision,*receipt);
+            if(proofStatus!=SubtitleCurrentCueProofStatus::Pending &&
+                proofStatus!=SubtitleCurrentCueProofStatus::Queued)break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        const bool proofWasReadyWhileBlocked=callbackEntered &&
+            proofStatus==SubtitleCurrentCueProofStatus::Ready && receipt->Valid();
+        const bool consumedWhileBlocked=proofWasReadyWhileBlocked &&
+            presentation->ConsumeCurrentCueProof(*receipt,*preview,*held);
+        bool callbackStillBlocked=false;
+        {
+            std::lock_guard<std::mutex> lock(gate.mutex);
+            callbackStillBlocked=gate.entered && !gate.returned;
+        }
+
+        // Always release the external callback before assertions, and before
+        // the worker is destroyed/joined on any failing path.
+        sinkCleanup.Release();
+        bool callbackReturned=false;
+        {
+            std::unique_lock<std::mutex> lock(gate.mutex);
+            callbackReturned=gate.changed.wait_for(lock,std::chrono::seconds(2),[&]{return gate.returned;});
+        }
+        const bool idle=WaitForWorkerIdle(*worker);
+        worker.reset(); // Join while the callback gate and cleanup remain alive.
+
+        Assert::IsTrue(seeded,L"The initial complete current cue template is ready before installing the blocking sink.");
+        Assert::IsTrue(submitted==SubtitleCurrentCueProofStatus::Queued,
+            L"The exact source proof is admitted while the external trace sink is installed.");
+        Assert::IsTrue(callbackEntered && callbackStillBlocked,
+            L"The sink blocks specifically on the exact source's worker-cue-proof record.");
+        Assert::IsTrue(proofWasReadyWhileBlocked,
+            L"The exact current proof receipt becomes Ready before optional trace delivery returns.");
+        Assert::IsTrue(consumedWhileBlocked && held->detected && held->lineCount==3,
+            L"The ready exact-source receipt is consumable while its diagnostic callback is still blocked.");
+        Assert::IsTrue(callbackReturned && idle,
+            L"Releasing the sink lets the proof worker return and join cleanly.");
     }
     TEST_METHOD(CurrentCueWorkerProofPersistsAcrossStaticCueAndRunsBesideBlockedGrouping) {
         auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
