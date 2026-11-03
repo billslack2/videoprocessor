@@ -21,6 +21,7 @@ VideoState::VideoState(const VideoState& other)
 	colorspace = other.colorspace;
 	invertedVertical = other.invertedVertical;
 	dolbyVisionTunnel = other.dolbyVisionTunnel;
+	exactSignal = other.exactSignal;
 	rgbTunnelBytesPreserved = other.rgbTunnelBytesPreserved;
 	tunnelSdrRgbRange = other.tunnelSdrRgbRange;
 
