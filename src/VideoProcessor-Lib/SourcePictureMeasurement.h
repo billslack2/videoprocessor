@@ -14,6 +14,7 @@ struct SourcePictureEdgeCandidate {
     // Merging retains their union together with the coordinate uncertainty.
     std::array<uint64_t,2> supportingRays{};
     bool strong=false, contradicted=false, overlayLike=false;
+    bool perpendicularInsetProved=false; // Local native edge corroborated by both perpendicular contacts.
     bool rasterContactProved=false; // Independently corroborated current native contact.
 };
 struct SourcePictureComponent {
@@ -63,6 +64,13 @@ struct SourcePictureObservation {
         double lumaMargin=0,chromaMargin=0;
     };
     std::array<RelativeMatteContactProof,4> relativeMatteContacts;
+    struct PerpendicularInsetProof {
+        bool evaluated=false,accepted=false,ambiguous=false;
+        int side=-1,coordinate=0,minimum=0,maximum=0,probeSpacing=0;
+        unsigned support=0,regions=0,eligibleCandidates=0;
+        std::array<int,2> nearest{{-1,-1}};
+        std::array<unsigned,2> outside{};
+    } perpendicularInset;
     unsigned lumaQuantum=1; // Observed perimeter code spacing, capped at one 8-bit-equivalent step.
     size_t samples=0;
     const char* reason="not-measured";

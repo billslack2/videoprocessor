@@ -327,7 +327,7 @@ const SourcePictureEdgeCandidate* Select(const std::vector<SourcePictureEdgeCand
         // not. Retain the existing total-support requirement and all topology
         // reconciliation instead of inferring an edge from caption geometry.
         const bool pairedOuter=candidate.regionSupport[0]>=12 && candidate.regionSupport[3]>=12;
-        if(!candidate.overlayLike && (extent ||
+        if(!candidate.overlayLike && (extent || candidate.perpendicularInsetProved ||
             (candidate.support>=kEdgeProbes/4 && (regions>=3 || pairedOuter))))return &candidate;
     }
     return nullptr;
@@ -358,6 +358,64 @@ void CorroborateOpposedRasterContacts(SourcePictureObservation& out) {
         pair[0]->rasterContactProved=pair[1]->rasterContactProved=true;
         out.rasterContact.opposed=true;
     }
+}
+// Darkness inside the movie can leave fewer than 32 probes on one inset.
+// Keep the original votes. Two independently selected perpendicular edges
+// must reach that same coordinate, with no supported pixels beyond it. This
+// recovers a measured rectangle without mirroring an edge or guessing an AR.
+void CorroboratePerpendicularInset(SourcePictureObservation& out,const AnalysisEvaluationBudget* budget) {
+    const int terminals[4]={0,0,out.width,out.height};
+    const SourcePictureEdgeCandidate* selected[4]={};int missing=-1;
+    for(unsigned side=0;side<4;++side) {
+        selected[side]=Select(out.edges[side],terminals[side]);
+        if(!selected[side]) {if(missing>=0)return;missing=int(side);}
+    }
+    if(missing<0)return;
+    auto& proof=out.perpendicularInset;proof.evaluated=true;proof.side=missing;
+    const unsigned cross=(missing==0 || missing==2)?1:0;
+    const int axis=(missing==0 || missing==2)?out.width:out.height;
+    proof.probeSpacing=(axis+int(kEdgeProbes)-1)/int(kEdgeProbes);
+    const bool leading=missing<2;
+    SourcePictureEdgeCandidate* nominee=nullptr;
+    std::array<int,2> nomineeNearest{{-1,-1}};std::array<unsigned,2> nomineeOutside{};
+    for(auto& candidate:out.edges[unsigned(missing)]) {
+        CheckAnalysisEvaluationBudget(budget);
+        unsigned regions=0;for(auto count:candidate.regionSupport)if(count>=3)++regions;
+        if(candidate.coordinate==terminals[missing] || !candidate.strong || candidate.overlayLike ||
+            candidate.support<12 || regions<3 || candidate.maximum-candidate.minimum>2)continue;
+        // The opposite boundary must leave a nonempty measured picture span.
+        const auto* opposite=selected[(unsigned(missing)+2)%4];
+        if(leading?candidate.maximum>=opposite->minimum:candidate.minimum<=opposite->maximum)continue;
+        std::array<int,2> nearest{{-1,-1}};std::array<unsigned,2> outside{};
+        bool reached=true;
+        for(unsigned end=0;end<2;++end) {
+            const auto& edge=*selected[cross+2*end];int distance=axis;
+            for(unsigned ray=0;ray<kEdgeProbes;++ray) {
+                if(!(edge.supportingRays[ray/64]&(uint64_t(1)<<(ray%64))))continue;
+                const int position=int(uint64_t(2*ray+1)*axis/(2*kEdgeProbes));
+                const bool exterior=leading?position<candidate.minimum:position>=candidate.maximum;
+                if(exterior) {++outside[end];continue;}
+                const int inward=leading?position-candidate.maximum:candidate.minimum-1-position;
+                if(inward>=0 && inward<distance) {distance=inward;nearest[end]=position;}
+            }
+            reached=reached && !outside[end] && nearest[end]>=0 && distance<=proof.probeSpacing;
+        }
+        if(candidate.support>=proof.support) {
+            proof.coordinate=candidate.coordinate;proof.minimum=candidate.minimum;proof.maximum=candidate.maximum;
+            proof.support=candidate.support;proof.regions=regions;proof.nearest=nearest;proof.outside=outside;
+        }
+        if(!reached)continue;
+        ++proof.eligibleCandidates;nominee=&candidate;nomineeNearest=nearest;nomineeOutside=outside;
+    }
+    // Two distinct compatible insets remain unresolved; do not manufacture a
+    // precise physical rectangle by selecting a preferred standard ratio.
+    proof.ambiguous=proof.eligibleCandidates>1;
+    if(proof.eligibleCandidates!=1)return;
+    proof.accepted=true;nominee->perpendicularInsetProved=true;
+    proof.nearest=nomineeNearest;proof.outside=nomineeOutside;
+    proof.coordinate=nominee->coordinate;proof.minimum=nominee->minimum;proof.maximum=nominee->maximum;
+    proof.support=nominee->support;proof.regions=0;
+    for(auto count:nominee->regionSupport)if(count>=3)++proof.regions;
 }
 // A sparse starfield need not illuminate half an edge. Require a coherent
 // native patch touching the exact raster plus strong near-edge texture in
@@ -823,6 +881,7 @@ SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,c
             CorroborateOpposedRasterContacts(out);
             CompleteRelativeMatteContacts(reader,floor,out);
             darkTerminalCompleted=CompleteDarkTerminal(reader,floor,out);
+            CorroboratePerpendicularInset(out,budget);
         }
         out.complete=out.topologyComplete;out.outcome=SourcePictureOutcome::Partial;
         out.reason=out.topologyComplete?"insufficient-distributed-edge-support":"bounded-topology-component-limit";
@@ -847,7 +906,8 @@ SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,c
                     for(auto& side:out.edges)for(auto& candidate:side)candidate.contradicted=true;
                 } else {
                     out.measuredBounds=bounds;out.rectangleAvailable=true;out.outcome=SourcePictureOutcome::Measured;
-                    out.reason=sparseTerminalCompleted?"native-raster-contact-with-distributed-sparse-texture":
+                    out.reason=out.perpendicularInset.accepted?"distributed-source-boundaries-with-perpendicular-inset-contact":
+                        sparseTerminalCompleted?"native-raster-contact-with-distributed-sparse-texture":
                         !out.topologyComplete?"distributed-raster-contacts-with-bounded-topology":darkTerminalCompleted?
                         "distributed-source-boundaries-with-dark-terminal-continuity":"distributed-source-boundaries";
                 }

@@ -171,6 +171,18 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
         contact.metrics[9]=proof.lumaMargin;contact.metrics[10]=proof.chromaMargin;
         AnalysisDiagnosticTrace::Emit(contact);
     }
+    if(result.observation && result.observation->perpendicularInset.evaluated) {
+        const auto& proof=result.observation->perpendicularInset;
+        auto contact=AnalysisTraceRecord(identity,nullptr,"source-perpendicular-inset",
+            proof.accepted?"current-cross-edge-contact":proof.ambiguous?"ambiguous-cross-edge-insets":"insufficient-cross-edge-contact");
+        contact.flags=(proof.accepted?1u:0u)|(proof.ambiguous?2u:0u);
+        contact.counters[0]=proof.side;contact.counters[1]=proof.support;
+        contact.counters[2]=proof.regions;contact.counters[3]=proof.eligibleCandidates;
+        contact.metrics[0]=proof.coordinate;contact.metrics[1]=proof.minimum;contact.metrics[2]=proof.maximum;
+        contact.metrics[3]=proof.probeSpacing;
+        for(unsigned i=0;i<2;++i) {contact.metrics[4+i]=proof.nearest[i];contact.metrics[6+i]=proof.outside[i];}
+        AnalysisDiagnosticTrace::Emit(contact);
+    }
     if(result.observation && result.observation->rectangleAvailable) {
         const auto& bounds=result.observation->measuredBounds;
         if(bounds.left || bounds.top || bounds.right<source.width || bounds.bottom<source.height) {
