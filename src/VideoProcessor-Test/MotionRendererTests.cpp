@@ -333,7 +333,7 @@ TEST_CLASS(MotionRendererTests){public:
         GpuFixture g;
         const auto* hook=CreateSubtitleCutPasteHook(g.device->gpu);
         Assert::IsNotNull(hook);
-        auto uploadRgba8=[&](const std::vector<unsigned char>& pixels) {
+        auto uploadRgba8=[&](std::vector<unsigned char>& pixels) {
             Assert::AreEqual(size_t(64*64*4),pixels.size());
             pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=pixels.data();
             Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload),L"RGBA8 source upload failed");
