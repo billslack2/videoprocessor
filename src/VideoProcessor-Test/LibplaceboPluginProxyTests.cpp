@@ -4064,8 +4064,9 @@ namespace VideoProcessorTest
                                 <<" format="<<r.sourceFormatGeneration<<" domain="<<r.analysisDomainKey
                                 <<" viewport="<<r.viewportGeneration<<" policy="<<r.policyGeneration
                                 <<" continuity="<<r.continuityGeneration<<" flags="<<r.flags
-                                <<" mismatch="<<r.counters[0]<<" analysis_ms="<<r.metrics[0]
+                                <<" counter0="<<r.counters[0]<<" analysis_ms="<<r.metrics[0]
                                 <<" lines="<<r.resultCode<<" reason="<<r.reason;
+                            if(!strcmp(r.stage,"worker-cue-proof"))row<<" mismatch_x="<<r.metrics[1]<<" mismatch_y="<<r.metrics[2];
                             Logger::WriteMessage(row.str().c_str());
                         }
                         Logger::WriteMessage("DV FAILURE WORKER WINDOW END");

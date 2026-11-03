@@ -368,20 +368,9 @@ inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
     outPreview.presentationOnlyCurrentCueProof=true;
     outPreview.newScanMs=0;outPreview.newScanFrames=0;
     outCue=cue;
-    // This path reattaches only the old cue's presentation result. Old scan
-    // references/certificates are invalid after UNKNOWN and cannot be revived.
-    m_acceptedCueSeedCertificate={};m_currentPreparedCueCertificate={};
-    m_completeOutputRetirement={};m_queueContinuation={};
-    m_previous={};m_reference={};m_inkReference={};m_previousRawCrowded={};
-    m_result=cue;m_hasPrevious=false;m_bridgedFrames=0;
-    m_barTrackingReference={};m_pendingPictureGlyphAcquisition={};
-    m_hasPendingPictureGlyphAcquisition=false;m_expansionEvidence.clear();
-    m_handoffResult={};m_handoffSources=0;m_handoffActive=false;
-    m_handoffMilliseconds=0;m_handoffReason="current-template-pixel-proof";m_handoffProof={};
-    m_weakTemplateMilliseconds=0;m_weakTemplateExhausted=false;
-    m_refreshedReference={};m_referenceSamples=0;
-    m_referenceRefresh="presentation-only-current-pixel-proof";
-    m_diagnosticWeakMs=0;m_decisionReason="current-template-pixel-proof";
+    // This is an output adapter only. The exact-source receipt is one-use, but
+    // it must not replace, clear, or renew the independent tracker history.
+    // The renderer bypasses semantic Consume for this presentation-only view.
     return true;
 }
 
