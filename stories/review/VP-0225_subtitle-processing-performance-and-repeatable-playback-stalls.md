@@ -4,6 +4,23 @@
 
 Review
 
+2026-11-03 timing/decision follow-up (clean 4a40caf1, not deployed): the focused
+23-case run passes 13 and fails 10. Actual 59.94/60Hz DV stage instrumentation
+finds repeated prepared-footprint setup around 5.6-7.1ms p50 and pending-seed setup
+around 2.4-2.7ms p50, with individual seed calls exceeding a 16.7ms frame budget.
+These are per-call measurements, not additive percentiles or end-to-end latency.
+The existing footprint rearm expects a +2 source step even for stride-1 analyzed
+frames; a narrower +1 rearm for pending footprints is under review. Normal cadence
+must keep its existing stride-2/single-skip rule and immutable baseline.
+
+A confirmed handoff defect explains source304's one-frame composition/framing loss:
+exact current glyph and bar verification succeeds, then the footprint preview clears
+semantic bar authority; the tracker rejects that successful presentation proof as
+bar-evidence-lost. Repair must pass a presentation-only current proof to the tracker,
+without inventing bar/native/absence authority or renewing its seed. Source379 is a
+separate conservative new-bar-ink rejection and remains unresolved. No test waiver,
+full passing qualification, later deployment or live acceptance is claimed.
+
 2026-11-03 current review (clean source fffc06f339a59b8577f714d8adf59be58ccda177,
 not deployed): advanced pending reuse now uses the actual successfully composed
 extraction/cleanup footprint. Current movie pixels in safe outer cleanup strips
