@@ -1589,12 +1589,21 @@ private:
             ++m_diagnostics.glyphSamplesChecked;
             if(std::abs(int(now.luma)-sample.value.luma)>8 ||
                 std::abs(int(now.chromaU)-sample.value.chromaU)>8 ||
-                std::abs(int(now.chromaV)-sample.value.chromaV)>8 || !fresh->Get(sample.x,sample.y)) {
+                std::abs(int(now.chromaV)-sample.value.chromaV)>8 ||
+                now.luma<fresh->inkFloor ||
+                std::abs(int(now.chromaU)-fresh->inkU)>80 ||
+                std::abs(int(now.chromaV)-fresh->inkV)>80) {
                 m_diagnostics.glyphMismatchX=sample.x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(sample.y)];
                 reason="current-owned-glyph-changed";return false;
             }
             const size_t at=size_t(sample.y)*fresh->width+sample.x;
+            // Exact current pixels at previously detector-owned positions are
+            // valid composition inputs even when a crowded caption row falls
+            // outside this source's current subtitle search bands. This only
+            // refreshes partial output ink; rawEvidenceComplete stays false.
+            const uint64_t bit=uint64_t{1}<<(at%64);
+            fresh->rawInk[at/64]|=bit;
             fresh->ownedInk[at/64]|=uint64_t{1}<<(at%64);
         }
         if(m_currentFootprintRequired) {

@@ -15860,11 +15860,18 @@ struct LibplaceboVideoRenderer::Impl
                 configuredScreenActive && nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
                 nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
                 nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED)
-                subtitleCadenceGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
+            {
+                const auto seedStarted=SteadyClock::now();
+                const bool remembered=subtitleCadenceGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
                     analysisSource,nlsGeometry,relocatedSubtitle,
                     state.displayMode && state.displayMode->TimeScale()>0
                         ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0,
                     activeSettings.subtitleHoldMs,subtitleCutPasteBackground);
+                auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-cadence-seed",subtitleCadenceGuard.DecisionReason());
+                trace.flags=remembered?1u:0u;trace.counters[0]=subtitleCadenceGuard.SampleCount();
+                trace.metrics[0]=std::chrono::duration<double,std::milli>(SteadyClock::now()-seedStarted).count();
+                AnalysisDiagnosticTrace::Emit(trace);
+            }
             else if(!currentSubtitleCadence.valid)
                 subtitleCadenceGuard.Reset();
             // The pending path has its own source/lease guard. Seed its pixel
@@ -15879,10 +15886,16 @@ struct LibplaceboVideoRenderer::Impl
                 nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED) {
                 const double pendingFootprintFrameMs=state.displayMode && state.displayMode->TimeScale()>0
                     ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0;
-                if(!subtitleBoxResult.held)
-                    subtitlePendingFootprintGuard.RememberCurrentFootprint(currentSubtitlePreview,subtitleBoxResult,
+                if(!subtitleBoxResult.held) {
+                    const auto seedStarted=SteadyClock::now();
+                    const bool remembered=subtitlePendingFootprintGuard.RememberCurrentFootprint(currentSubtitlePreview,subtitleBoxResult,
                         analysisSource,nlsGeometry,relocatedSubtitle,pendingFootprintFrameMs,
                         activeSettings.subtitleHoldMs,subtitleCutPasteBackground);
+                    auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-footprint-seed",subtitlePendingFootprintGuard.DecisionReason());
+                    trace.flags=remembered?1u:0u;trace.counters[0]=subtitlePendingFootprintGuard.SampleCount();
+                    trace.metrics[0]=std::chrono::duration<double,std::milli>(SteadyClock::now()-seedStarted).count();
+                    AnalysisDiagnosticTrace::Emit(trace);
+                }
                 RememberPendingCue(subtitleIdentity,currentSubtitlePreview,subtitleBoxResult,analysisSource,
                     pendingFootprintFrameMs,activeSettings.subtitleHoldMs,&nlsGeometry,sourceSubtitleMode,&subtitlePendingFootprintGuard);
             }

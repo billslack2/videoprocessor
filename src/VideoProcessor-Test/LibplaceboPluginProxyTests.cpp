@@ -1936,7 +1936,7 @@ namespace VideoProcessorTest
             auto pump=[&](std::vector<uint16_t>& pixels) {
                 MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
                 if(callback.state==RENDERSTATE_RENDERING){
-                    const auto timestamp=pendingCaptionBurstRegression?clock.TimingClockNow():timingclocktime_t(0);
+                    const auto timestamp=clock.TimingClockNow();
                     if(pendingCaptionBurstRegression)pendingInputIdentities[sequence]={pendingPatternForNextSource,timestamp,
                         uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count())};
                     VideoFrame frame(pixels.data(),sequence++,timestamp,&buffer);cleanup.renderer->OnVideoFrame(frame);
@@ -3573,6 +3573,48 @@ namespace VideoProcessorTest
                 int64_t longestArrivalGap=0,longestOnFrame=0,longestPump=0;
                 const auto arrivalFrequency=clock.TimingClockTicksPerSecond();
                 const auto arrivalPeriod=static_cast<int64_t>(uint64_t(arrivalFrequency)*duration/scale);
+                struct SubtitleStageTiming {uint64_t calls=0,successes=0;std::vector<double> elapsedMs,leaseAgeMs;};
+                std::array<SubtitleStageTiming,4> subtitleStageTimings{};
+                auto collectSubtitleStageTiming=[&](const AnalysisDiagnosticRecordV1& record) {
+                    size_t index=subtitleStageTimings.size();
+                    if(!strcmp(record.stage,"subtitle-pending-pixels"))index=0;
+                    else if(!strcmp(record.stage,"subtitle-pending-seed"))index=1;
+                    else if(!strcmp(record.stage,"subtitle-footprint-seed"))index=2;
+                    else if(!strcmp(record.stage,"subtitle-cadence-seed"))index=3;
+                    if(index==subtitleStageTimings.size())return;
+                    auto& timing=subtitleStageTimings[index];++timing.calls;
+                    if(record.flags&1u)++timing.successes;
+                    const double elapsed=record.metrics[index==1?3:0];
+                    if(std::isfinite(elapsed)&&elapsed>=0)timing.elapsedMs.push_back(elapsed);
+                    if(index==1&&std::isfinite(record.metrics[0])&&record.metrics[0]>=0)
+                        timing.leaseAgeMs.push_back(record.metrics[0]);
+                };
+                auto reportSubtitleStageTiming=[&] {
+                    static const char* names[]={"pending-pixels","pending-seed","footprint-seed","cadence-seed"};
+                    for(size_t index=0;index<subtitleStageTimings.size();++index) {
+                        auto& timing=subtitleStageTimings[index];
+                        std::sort(timing.elapsedMs.begin(),timing.elapsedMs.end());
+                        const auto percentile=[](const std::vector<double>& values,double fraction) {
+                            if(values.empty())return -1.0;
+                            const size_t at=static_cast<size_t>(std::ceil(fraction*values.size()));
+                            return values[(std::max)(size_t(1),at)-1];
+                        };
+                        std::ostringstream row;row.setf(std::ios::fixed);row.precision(3);
+                        row<<"DV SUBTITLE STAGE TIMING: stage="<<names[index]<<" calls="<<timing.calls
+                            <<" successes="<<timing.successes<<" samples="<<timing.elapsedMs.size()
+                            <<" p50_ms="<<percentile(timing.elapsedMs,0.50)
+                            <<" p95_ms="<<percentile(timing.elapsedMs,0.95)
+                            <<" max_ms="<<(timing.elapsedMs.empty()?-1.0:timing.elapsedMs.back());
+                        if(index==1) {
+                            std::sort(timing.leaseAgeMs.begin(),timing.leaseAgeMs.end());
+                            row<<" lease_age_samples="<<timing.leaseAgeMs.size()
+                                <<" lease_age_p50_ms="<<percentile(timing.leaseAgeMs,0.50)
+                                <<" lease_age_p95_ms="<<percentile(timing.leaseAgeMs,0.95)
+                                <<" lease_age_max_ms="<<(timing.leaseAgeMs.empty()?-1.0:timing.leaseAgeMs.back());
+                        }
+                        Logger::WriteMessage(row.str().c_str());
+                    }
+                };
                 auto reportProducerTiming=[&](bool failure) {
                     const auto failureQpc=clock.TimingClockNow();
                     if(pressureInput) {
@@ -3610,6 +3652,7 @@ namespace VideoProcessorTest
                         <<" actual_elapsed_ms="<<milliseconds(firstArrival,lastArrival)
                         <<" nominal_elapsed_ms="<<milliseconds(firstCapture,lastCapture);
                     Logger::WriteMessage(timingSummary.str().c_str());
+                    reportSubtitleStageTiming();
                     if(!failure && pressureInput) {
                         std::vector<std::string> queueDiagnostics;
                         {std::lock_guard<std::mutex> guard(classicPoseLogMutex);
@@ -3979,6 +4022,7 @@ namespace VideoProcessorTest
                 auto drain=[&] {
                     std::vector<AnalysisDiagnosticRecordV1> records;
                     {std::lock_guard<std::mutex> lock(classicPoseLogMutex);CopyUnreadCallbackTail(classicPoseRecords,cursor,records);}
+                    for(const auto& record:records)collectSubtitleStageTiming(record);
                     // Index every source-bound proof in this tail before checking
                     // submissions; the unchanged oracle enforces original ordinals.
                     for(const auto& record:records)if(!strcmp(record.stage,"subtitle-canvas-admission"))
@@ -4937,7 +4981,14 @@ namespace VideoProcessorTest
             } cleanup{CreateWindowExW(0,L"STATIC",L"AR transition fixture",WS_POPUP,
                 0,0,640,360,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
             Assert::IsNotNull(cleanup.window);
-            cleanup.renderer=create(&callback,42,cleanup.window,nullptr,requireSpatial,requireSpatial?9:1,
+            struct ProbeClock final : ITimingClock {
+                LARGE_INTEGER frequency{};
+                ProbeClock(){Assert::IsTrue(QueryPerformanceFrequency(&frequency)!=FALSE && frequency.QuadPart>0);}
+                timingclocktime_t TimingClockNow() override {LARGE_INTEGER now{};QueryPerformanceCounter(&now);return now.QuadPart;}
+                timingclocktime_t TimingClockTicksPerSecond() const override {return frequency.QuadPart;}
+                const TCHAR* TimingClockDescription() override {return _T("Spatial transition fixture QPC");}
+            } clock;
+            cleanup.renderer=create(&callback,42,cleanup.window,&clock,requireSpatial,requireSpatial?9:1,
                 VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,SnapshotTestLog);
             Assert::IsNotNull(cleanup.renderer);
             if(processedMode) {
@@ -4945,9 +4996,14 @@ namespace VideoProcessorTest
                 UnifiedProfileRuntime::Runtime runtime;std::string error;
                 Assert::IsTrue(runtime.Initialize(config,{},error));
                 UnifiedProfileRuntime::SelectionResult selected;
-                Assert::IsTrue(runtime.SelectKey("F6",{},selected,error));
+                Assert::IsTrue(runtime.SelectKey("F6",{},selected,error),std::wstring(error.begin(),error.end()).c_str());
+                Assert::IsNotNull(selected.snapshot.get(),L"F6 fixture key did not publish a subtitle profile snapshot.");
+                const auto subtitles=selected.snapshot->effectiveSelections.find("subtitles");
+                Assert::IsTrue(subtitles!=selected.snapshot->effectiveSelections.end() &&
+                    subtitles->second.size()==1 && subtitles->second.front()=="processed",
+                    L"F6 fixture key did not select the requested processed subtitle profile.");
                 CString active;bool restart=false,reset=false;
-                Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*runtime.GetSnapshot(),active,restart,reset));
+                Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*selected.snapshot,active,restart,reset));
                 Assert::IsFalse(restart);
             }
             // This experiment requires prepared-source lead. Keep the legacy
@@ -4962,7 +5018,7 @@ namespace VideoProcessorTest
                 while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE))
                     {TranslateMessage(&message);DispatchMessageW(&message);}
                 if(callback.state==RENDERSTATE_RENDERING) {
-                    VideoFrame frame(pixels.data(),sequence++,0,&buffer);
+                    VideoFrame frame(pixels.data(),sequence++,clock.TimingClockNow(),&buffer);
                     cleanup.renderer->OnVideoFrame(frame);
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -4981,6 +5037,14 @@ namespace VideoProcessorTest
                             const bool measured=((record.flags>>24)&3u)==unsigned(ActivePictureDetectorKind::SourceSpatialMeasured);
                             const bool certified=IsMeasuredSpatialNativeSubmission(record);
                             if(certified)witnessedNativeOwners.insert(record.counters[4]);
+                            const auto expectedCanvasMode=processedMode==unsigned(SubtitlePreviewMode::BlackBackground)
+                                ? AlphaSourceCrop::SubtitleCanvasMode::BLACK
+                                : AlphaSourceCrop::SubtitleCanvasMode::RECONSTRUCTION;
+                            const bool exactCurrentRawFallback=processedMode && wholeSource &&
+                                std::any_of(spatialCanvas.begin(),spatialCanvas.end(),[&](const AnalysisDiagnosticRecordV1& canvas) {
+                                    return canvas.counters[0]==static_cast<unsigned>(expectedCanvasMode) &&
+                                        IsCurrentRawSubtitleFallback(record,canvas,width,height);
+                                });
                             const bool retained=processedMode && !wholeSource && measured &&
                                 record.resultCode==int(AlphaSourceCrop::DecisionOwner::SUBMITTED_SCOPE_RETENTION) &&
                                 witnessedNativeOwners.count(record.counters[4]) && record.counters[4]<record.acceptedSequence &&
@@ -4994,8 +5058,41 @@ namespace VideoProcessorTest
                                     return canvas.acceptedSequence==record.acceptedSequence &&
                                         (canvas.flags&2u) && !(canvas.flags&(1u|4u));
                                 });
-                            Assert::IsTrue(measured && (wholeSource ? (record.flags&4096u)!=0 : (certified || retained)),
-                                L"A crop needs current native proof or an explicitly unprocessed current-source continuation of an already witnessed native owner; full raster needs current authority.");
+                            const bool validFullRaster=wholeSource && ((record.flags&4096u)!=0 || exactCurrentRawFallback);
+                            const bool validCrop=!wholeSource && (certified || retained);
+                            if(!measured || (!validFullRaster && !validCrop)) {
+                                std::ostringstream summary;summary<<"AR TRANSITION REJECTED OUTPUT: sequence="<<record.acceptedSequence
+                                    <<" input="<<record.sourceFrameNumber<<" capture="<<record.captureTimestamp
+                                    <<" generation="<<record.transportGeneration<<" renderer="<<record.rendererGeneration
+                                    <<" viewport="<<record.viewportGeneration<<" format="<<record.sourceFormatGeneration
+                                    <<" domain="<<record.analysisDomainKey<<" continuity="<<record.continuityGeneration
+                                    <<" flags="<<record.flags<<" detector="<<((record.flags>>24)&3u)
+                                    <<" owner="<<record.resultCode<<" native_source="<<record.counters[4]
+                                    <<" native="<<record.published[0]<<','<<record.published[1]<<'-'<<record.published[2]<<','<<record.published[3]
+                                    <<" actual="<<record.metrics[8]<<','<<record.metrics[9]<<'-'<<record.metrics[10]<<','<<record.metrics[11]
+                                    <<" whole="<<wholeSource<<" measured="<<measured<<" certified="<<certified
+                                    <<" raw_current="<<exactCurrentRawFallback;
+                                Logger::WriteMessage(summary.str().c_str());
+                                for(const auto& canvas:spatialCanvas)if(canvas.acceptedSequence==record.acceptedSequence &&
+                                    canvas.rendererInstanceKey==record.rendererInstanceKey &&
+                                    canvas.transportGeneration==record.transportGeneration) {
+                                    std::ostringstream admission;admission<<"AR TRANSITION OUTPUT ADMISSION: sequence="<<canvas.acceptedSequence
+                                        <<" input="<<canvas.sourceFrameNumber<<" capture="<<canvas.captureTimestamp
+                                        <<" generation="<<canvas.transportGeneration<<" renderer="<<canvas.rendererGeneration
+                                        <<" viewport="<<canvas.viewportGeneration<<" format="<<canvas.sourceFormatGeneration
+                                        <<" domain="<<canvas.analysisDomainKey<<" continuity="<<canvas.continuityGeneration
+                                        <<" mode="<<canvas.counters[0]<<" flags="<<canvas.flags
+                                        <<" raw_join="<<canvas.counters[3]<<','<<canvas.counters[4]<<','<<canvas.counters[5]<<','
+                                        <<canvas.counters[6]<<','<<canvas.counters[7]
+                                        <<" visible="<<canvas.metrics[8]<<','<<canvas.metrics[9]<<'-'
+                                        <<canvas.metrics[10]<<','<<canvas.metrics[11]
+                                        <<" bounds="<<canvas.displayed[0]<<','<<canvas.displayed[1]<<'-'
+                                        <<canvas.displayed[2]<<','<<canvas.displayed[3]<<" reason="<<canvas.reason;
+                                    Logger::WriteMessage(admission.str().c_str());
+                                }
+                            }
+                            Assert::IsTrue(measured && (validFullRaster || validCrop),
+                                L"A crop needs current native proof or a same-source unprocessed continuation; full raster needs current authority or exact current raw visibility.");
                         }
                         if(((record.flags>>24)&3u)==unsigned(ActivePictureDetectorKind::SourceSpatialMeasured))spatialOutputs.push_back(record);
                     }

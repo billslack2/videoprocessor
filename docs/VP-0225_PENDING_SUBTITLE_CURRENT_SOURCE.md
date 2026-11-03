@@ -129,3 +129,33 @@ The earlier global picture-contrast verifier remains a generic path; the advance
 renderer uses the prepared-footprint path so unrelated moving movie texture is not
 interpreted as cue novelty. The earlier 8.5-15.4ms full-band probe is exploratory
 work on that generic path, not a measurement of this runtime path.
+## Ready-frame template work and band-edge correction
+
+A static cue is not a new semantic cue merely because a new source frame arrives.
+The pending guard spends the original elapsed lease and never renews it from its
+own output. Full current measurements may establish a new accepted source, while
+immutable footprint topology can be reused only with matching geometry, context,
+layout and detector masks. Every output still reads current movie/glyph pixels.
+
+The current ready path invokes both cadence and pending-footprint seed guards.
+Their lifetime rules differ, but their footprint construction overlaps. The new
+`subtitle-cadence-seed` and `subtitle-footprint-seed` records measure the complete
+calls, including setup; `subtitle-pending-seed` operation time is metrics[3], not
+metrics[0] (which is lease age). Timings must include rejected attempts and report
+call counts, successful reuse counts and source progression. A cheap pending
+branch does not establish a cheap pipeline if accepted frames repeatedly rebuild
+masks or duplicate footprint setup. Measure before sharing topology or changing
+scheduling; keep independent cadence/pending lifetime and reset fences.
+
+A generic current proof also needs accepted glyph samples that fall outside the
+current search bands. It now explicitly reads those exact accepted coordinates,
+checks original YUV and palette, and refreshes only partial output raw/owned bits.
+This cannot become a full detector scan or semantic/absence/physical proof.
+A paired test changes an out-of-band first-line sample and requires rejection.
+
+Full qualification at fffc06f3 failed; steady raw fallback can expand presentation
+while the accepted physical model stays fixed. Initial unknown-cue preservation
+and loss of an established composed cue are distinct cases. Do not waive steady
+viewport/composition assertions to call this fixed. A subtitle-specific bar probe
+is separate from physical AR detection; any substitute receipt must be an exact
+current independently measured physical model, not retained shared geometry.

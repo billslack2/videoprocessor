@@ -2106,7 +2106,9 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         const auto original=w.preview.current.identity;
         auto pending=Pending(original.acceptedSequence+6);
         pending.continuityGeneration=pending.current.continuityGeneration=26;
-        Assert::IsTrue(w.guard.Resolve(pending,Source(w.pixels),frameMs,250,&original,true),
+        const bool historyPendingResolved=w.guard.Resolve(pending,Source(w.pixels),frameMs,250,&original,true);
+        if(!historyPendingResolved)Logger::WriteMessage((std::string("history pending proof: ")+w.guard.DecisionReason()).c_str());
+        Assert::IsTrue(historyPendingResolved,
             L"Authorized queue-only retirement must verify unchanged current pixels from the original acquired three-line seed.");
         Assert::AreEqual(3,pending.current.text.lineCount);
         for(int line=0;line<3;++line) {
@@ -2245,7 +2247,21 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             &tracker.AcceptedCueSeedCertificate()));
         Assert::AreEqual("accepted-existing-cue-certified",guard.DecisionReason());
         auto pending=PendingAfterReassociation(6);
-        Assert::IsTrue(guard.Resolve(pending,Source(pixels),40,250));
+        const bool pendingResolved=guard.Resolve(pending,Source(pixels),40,250);
+        if(!pendingResolved)Logger::WriteMessage((std::string("certificate pending proof: ")+guard.DecisionReason()).c_str());
+        Assert::IsTrue(pendingResolved);
+        Assert::IsTrue(pending.current.ink && pending.current.ink->Get(50,52,true),
+            L"The exact current pixels for an accepted glyph outside the refreshed bar-search band remain available for composition.");
+        Assert::IsFalse(pending.current.ink->rawEvidenceComplete,
+            L"Those accepted source pixels do not become a fresh detector scan or current semantic proof.");
+        auto changedPixels=PixelsWithCurrentBars();changedPixels[52*160+50]=uint16_t(300<<6);
+        SubtitlePendingMeasurementGuard changedGuard;
+        Assert::IsTrue(changedGuard.RememberAccepted(preview,accepted,Source(pixels),40,250,
+            &tracker.AcceptedCueSeedCertificate()));
+        auto changedPending=PendingAfterReassociation(6);
+        Assert::IsFalse(changedGuard.Resolve(changedPending,Source(changedPixels),40,250),
+            L"A changed accepted glyph sample outside the current search band must still fail exact current-pixel verification.");
+        Assert::AreEqual("current-owned-glyph-changed",changedGuard.DecisionReason());
         const auto retained=tracker.Consume(pending,250,40);
         Assert::IsTrue(retained.detected);Assert::AreEqual(3,retained.lineCount);
         Assert::AreEqual(accepted.cue,retained.cue);
@@ -2327,7 +2343,9 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             &tracker.AcceptedCueSeedCertificate()),L"A repeated presentation must neither clear nor renew its seed.");
         for(uint64_t sequence=6;sequence<=11;++sequence) {
             auto pending=PendingAfterReassociation(sequence);
-            Assert::IsTrue(guard.Resolve(pending,Source(pixels),40,250));
+            const bool pendingResolved=guard.Resolve(pending,Source(pixels),40,250);
+            if(!pendingResolved)Logger::WriteMessage((std::string("renewal pending proof sequence ")+std::to_string(sequence)+": "+guard.DecisionReason()).c_str());
+            Assert::IsTrue(pendingResolved);
             Assert::IsFalse(guard.RememberAccepted(preview,accepted,Source(pixels),40,250,&certificate));
         }
         auto expired=PendingAfterReassociation(12);Assert::IsFalse(guard.Resolve(expired,Source(pixels),40,250));

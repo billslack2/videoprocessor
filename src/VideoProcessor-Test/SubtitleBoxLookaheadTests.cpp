@@ -382,7 +382,12 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
         current.independentBarAnalysis=true;current.barEvidence.available=true;
         current.barEvidence.top=current.pictureTop;current.barEvidence.bottom=current.pictureBottom;
         current.text.topSearchComplete=current.text.bottomSearchComplete=true;
-        auto ink=std::make_shared<SubtitleInkSnapshot>(*current.ink);ink->paletteValid=true;current.ink=ink;
+        auto ink=std::make_shared<SubtitleInkSnapshot>(*current.ink);ink->paletteValid=true;
+        // PendingThreeLineSeedPixels makes a 64-luma opaque card over a
+        // 300-luma picture and 700-luma glyphs. Keep this synthetic detector
+        // palette consistent with those source samples so its all-black card
+        // backing mask is not paired with the default blackLimit=0.
+        ink->inkFloor=500;ink->inkU=ink->inkV=512;ink->blackLimit=96;current.ink=ink;
         current.sharedPicture.required=true;current.sharedPicture.identity=current.identity;
         current.sharedPicture.bounds={0,45,640,315,640,360,640.0/270,ActivePictureBounds::BarAxes::TOP_BOTTOM};
         return current;
@@ -521,7 +526,9 @@ public:
         }
         w.raw=RetiredThreeLineCue(25);w.raw.analyzed=false;w.raw.text={};w.raw.ink.reset();
         SubtitleBoxLookahead::ResolveInto(w.pending,&w.raw,1,7,9);
-        Assert::IsTrue(w.guard.Resolve(w.pending,Source(pixels),50,250),L"Pending25 must reprove CURRENT pixels against the original, unrenewed seed21.");
+        const bool pending25Resolved=w.guard.Resolve(w.pending,Source(pixels),50,250);
+        if(!pending25Resolved)Logger::WriteMessage((std::string("pending25 proof: ")+w.guard.DecisionReason()).c_str());
+        Assert::IsTrue(pending25Resolved,L"Pending25 must reprove CURRENT pixels against the original, unrenewed seed21.");
         Assert::AreEqual(uint64_t(21),w.guard.AcceptedSeedIdentity().acceptedSequence);
         Assert::AreEqual(200.0,w.guard.PendingElapsedMilliseconds(),0.00001);
         w.raw=RetiredThreeLineCue(27);w.raw.analyzed=false;w.raw.text={};w.raw.ink.reset();
