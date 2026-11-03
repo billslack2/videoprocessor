@@ -1,0 +1,112 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="d25a0ce6-fa8a-4f66-a463-cc71e9add11b" name="bslac@DESKTOP-3G35SCJ 2026-11-03 11:33:43" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-03T11:33:43.6007548-05:00" queuing="2026-11-03T11:33:43.6007548-05:00" start="2026-11-03T11:33:42.0081707-05:00" finish="2026-11-03T11:33:53.6055416-05:00" />
+  <TestSettings name="default" id="1318bdaf-1165-4bd1-ab6a-35cb79e5913b">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-11-03_11_33_43" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="66c7c792-41c1-49a3-9f07-4863d3ab26c0" testId="86a9e2c0-efaf-d4e7-12bc-dde0f7c688f2" testName="DecodedDvUnchangedCleanupFootprintPassesCurrentPhaseOnePixels" computerName="DESKTOP-3G35SCJ" duration="00:00:00.1244346" startTime="2026-11-03T11:33:53.4689409-05:00" endTime="2026-11-03T11:33:53.5933755-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="66c7c792-41c1-49a3-9f07-4863d3ab26c0" />
+    <UnitTestResult executionId="839fc257-66cb-425e-b51c-ac0a63c5df4a" testId="e812bb1d-11b9-c497-53d0-7f734128c9cd" testName="CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk" computerName="DESKTOP-3G35SCJ" duration="00:00:00.3380055" startTime="2026-11-03T11:33:53.1307852-05:00" endTime="2026-11-03T11:33:53.4687907-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="839fc257-66cb-425e-b51c-ac0a63c5df4a">
+      <Output>
+        <StdOut>Padded raw line projection point=2546,1854 prepared_right=2546 raw_right=2814 cleanup_right=2806 projected_right=2546</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="e7991fe3-005a-481d-b4a6-b5339bbb629c" testId="75267af4-7625-90f8-2895-29ccfd8fa3ca" testName="CurrentCueWorkerRejectsNovelInkInsideAdvancedDestinationAndAllowsUniformMotion" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0620581" startTime="2026-11-03T11:33:53.0525748-05:00" endTime="2026-11-03T11:33:53.1146329-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e7991fe3-005a-481d-b4a6-b5339bbb629c" />
+    <UnitTestResult executionId="43ef46dc-3e4e-4045-9404-48bc8bd7e666" testId="a5009cd8-9b65-f957-839b-9cbb46b2d486" testName="CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence" computerName="DESKTOP-3G35SCJ" duration="00:00:01.0729430" startTime="2026-11-03T11:33:42.4112347-05:00" endTime="2026-11-03T11:33:43.4841777-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="43ef46dc-3e4e-4045-9404-48bc8bd7e666">
+      <Output>
+        <StdOut>Semantic refresh cadence rate=24.000000 expected=4 observed=4 interval=3 sources=4,7,10,13&#xD;
+Semantic refresh cadence rate=60.000000 expected=5 observed=5 interval=6 sources=7,13,19,25,31</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="2d40bfe1-3aef-4de8-ae24-c97c32703600" testId="4350fa9f-5eab-a6f1-5518-97c1d37c336e" testName="CurrentCueWorkerProofUsesFreshPixelsAndIgnoresMovingPictureOutsideCue" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0154875" startTime="2026-11-03T11:33:53.1147300-05:00" endTime="2026-11-03T11:33:53.1302175-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2d40bfe1-3aef-4de8-ae24-c97c32703600">
+      <Output>
+        <StdOut>post-proof full scan decision=strict-current-ink retained_seed_sequence=14 retained_continuity=21 current_sequence=16 current_domain=0 policy=11 lines=3</StdOut>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="7121df12-fa16-498e-9c1c-6aeddd396a7d" testId="808f00a3-e501-429e-430e-c57b9bcabed0" testName="CurrentCueWorkerPollingIsNonblockingAndDropsQueuedExpiredOwners" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0313151" startTime="2026-11-03T11:33:43.5642114-05:00" endTime="2026-11-03T11:33:43.5955265-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7121df12-fa16-498e-9c1c-6aeddd396a7d" />
+    <UnitTestResult executionId="d3b32e1a-a5a8-4ef7-9661-18d6189a7aaa" testId="68534c32-7986-421f-8f8a-15016e577d01" testName="CurrentCueWorkerTailOnlyCaptureExtensionPreservesProofAndAcceptsSubsetHead" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0796775" startTime="2026-11-03T11:33:43.4841353-05:00" endTime="2026-11-03T11:33:43.5638128-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d3b32e1a-a5a8-4ef7-9661-18d6189a7aaa" />
+    <UnitTestResult executionId="30b9a88f-9c0d-408c-966a-f6bdd3bac7d1" testId="ec525a29-aeb5-2553-d45d-3bbb2afd90a3" testName="CurrentCueWorkerProofRejectsChangedOwnedGlyphPixels" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0160146" startTime="2026-11-03T11:33:53.0367317-05:00" endTime="2026-11-03T11:33:53.0527463-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="30b9a88f-9c0d-408c-966a-f6bdd3bac7d1" />
+    <UnitTestResult executionId="402bf4e3-242c-47f0-be30-5861d9c707cf" testId="c4720429-c11c-d39f-c671-d52cc56de846" testName="CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0126004" startTime="2026-11-03T11:33:43.5987530-05:00" endTime="2026-11-03T11:33:43.6113534-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="402bf4e3-242c-47f0-be30-5861d9c707cf" />
+    <UnitTestResult executionId="d524d5c6-84ed-44f7-a871-67269e2d8402" testId="cb1c57a1-f455-3255-d539-cec28ddc6b20" testName="CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange" computerName="DESKTOP-3G35SCJ" duration="00:00:00.1721823" startTime="2026-11-03T11:33:42.2328917-05:00" endTime="2026-11-03T11:33:42.4050740-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d524d5c6-84ed-44f7-a871-67269e2d8402" />
+    <UnitTestResult executionId="d40d5b3f-efb9-4b1b-834f-3ea9ec3f6d54" testId="4bc11190-ff8b-ddcb-4a62-4f600206beba" testName="CurrentCueWorkerProofPersistsAcrossStaticCueAndRunsBesideBlockedGrouping" computerName="DESKTOP-3G35SCJ" duration="00:00:09.4248034" startTime="2026-11-03T11:33:43.6117648-05:00" endTime="2026-11-03T11:33:53.0365682-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d40d5b3f-efb9-4b1b-834f-3ea9ec3f6d54" />
+    <UnitTestResult executionId="958befa8-b884-41a8-8f49-a24b1671370b" testId="52d7db80-4f8f-1f98-9580-9f140a9476ae" testName="PersistentComposedCaptionRequiresAllThreeOriginalSourceLines" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0000588" startTime="2026-11-03T11:33:53.5930588-05:00" endTime="2026-11-03T11:33:53.5931176-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="958befa8-b884-41a8-8f49-a24b1671370b" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="DecodedDvUnchangedCleanupFootprintPassesCurrentPhaseOnePixels" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="86a9e2c0-efaf-d4e7-12bc-dde0f7c688f2">
+      <Execution id="66c7c792-41c1-49a3-9f07-4863d3ab26c0" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.DecodedSubtitleCueWorkerTests" name="Tests::DecodedSubtitleCueWorkerTests::DecodedDvUnchangedCleanupFootprintPassesCurrentPhaseOnePixels" />
+    </UnitTest>
+    <UnitTest name="CurrentCueWorkerProofUsesFreshPixelsAndIgnoresMovingPictureOutsideCue" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="4350fa9f-5eab-a6f1-5518-97c1d37c336e">
+      <Execution id="2d40bfe1-3aef-4de8-ae24-c97c32703600" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentCueWorkerProofUsesFreshPixelsAndIgnoresMovingPictureOutsideCue" />
+    </UnitTest>
+    <UnitTest name="CurrentCueWorkerProofRejectsChangedOwnedGlyphPixels" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="ec525a29-aeb5-2553-d45d-3bbb2afd90a3">
+      <Execution id="30b9a88f-9c0d-408c-966a-f6bdd3bac7d1" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentCueWorkerProofRejectsChangedOwnedGlyphPixels" />
+    </UnitTest>
+    <UnitTest name="PersistentComposedCaptionRequiresAllThreeOriginalSourceLines" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="52d7db80-4f8f-1f98-9580-9f140a9476ae">
+      <Execution id="958befa8-b884-41a8-8f49-a24b1671370b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.LibplaceboPluginProxyTests" name="VideoProcessorTest::LibplaceboPluginProxyTests::PersistentComposedCaptionRequiresAllThreeOriginalSourceLines" />
+    </UnitTest>
+    <UnitTest name="CurrentCueWorkerProofPersistsAcrossStaticCueAndRunsBesideBlockedGrouping" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="4bc11190-ff8b-ddcb-4a62-4f600206beba">
+      <Execution id="d40d5b3f-efb9-4b1b-834f-3ea9ec3f6d54" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentCueWorkerProofPersistsAcrossStaticCueAndRunsBesideBlockedGrouping" />
+    </UnitTest>
+    <UnitTest name="CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="e812bb1d-11b9-c497-53d0-7f734128c9cd">
+      <Execution id="839fc257-66cb-425e-b51c-ac0a63c5df4a" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk" />
+    </UnitTest>
+    <UnitTest name="CurrentCueWorkerPollingIsNonblockingAndDropsQueuedExpiredOwners" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="808f00a3-e501-429e-430e-c57b9bcabed0">
+      <Execution id="7121df12-fa16-498e-9c1c-6aeddd396a7d" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentCueWorkerPollingIsNonblockingAndDropsQueuedExpiredOwners" />
+    </UnitTest>
+    <UnitTest name="CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="a5009cd8-9b65-f957-839b-9cbb46b2d486">
+      <Execution id="43ef46dc-3e4e-4045-9404-48bc8bd7e666" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence" />
+    </UnitTest>
+    <UnitTest name="CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="c4720429-c11c-d39f-c671-d52cc56de846">
+      <Execution id="402bf4e3-242c-47f0-be30-5861d9c707cf" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase" />
+    </UnitTest>
+    <UnitTest name="CurrentCueWorkerRejectsNovelInkInsideAdvancedDestinationAndAllowsUniformMotion" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="75267af4-7625-90f8-2895-29ccfd8fa3ca">
+      <Execution id="e7991fe3-005a-481d-b4a6-b5339bbb629c" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentCueWorkerRejectsNovelInkInsideAdvancedDestinationAndAllowsUniformMotion" />
+    </UnitTest>
+    <UnitTest name="CurrentCueWorkerTailOnlyCaptureExtensionPreservesProofAndAcceptsSubsetHead" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="68534c32-7986-421f-8f8a-15016e577d01">
+      <Execution id="d3b32e1a-a5a8-4ef7-9661-18d6189a7aaa" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentCueWorkerTailOnlyCaptureExtensionPreservesProofAndAcceptsSubsetHead" />
+    </UnitTest>
+    <UnitTest name="CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange" storage="e:\codex\videoprocessor\combined-ar-stutter-20261102\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="cb1c57a1-f455-3255-d539-cec28ddc6b20">
+      <Execution id="d524d5c6-84ed-44f7-a871-67269e2d8402" />
+      <TestMethod codeBase="E:\codex\videoprocessor\combined-ar-stutter-20261102\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.SubtitleMeasurementWorkerTests" name="Tests::SubtitleMeasurementWorkerTests::CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="86a9e2c0-efaf-d4e7-12bc-dde0f7c688f2" executionId="66c7c792-41c1-49a3-9f07-4863d3ab26c0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e812bb1d-11b9-c497-53d0-7f734128c9cd" executionId="839fc257-66cb-425e-b51c-ac0a63c5df4a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="75267af4-7625-90f8-2895-29ccfd8fa3ca" executionId="e7991fe3-005a-481d-b4a6-b5339bbb629c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a5009cd8-9b65-f957-839b-9cbb46b2d486" executionId="43ef46dc-3e4e-4045-9404-48bc8bd7e666" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4350fa9f-5eab-a6f1-5518-97c1d37c336e" executionId="2d40bfe1-3aef-4de8-ae24-c97c32703600" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="808f00a3-e501-429e-430e-c57b9bcabed0" executionId="7121df12-fa16-498e-9c1c-6aeddd396a7d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="68534c32-7986-421f-8f8a-15016e577d01" executionId="d3b32e1a-a5a8-4ef7-9661-18d6189a7aaa" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ec525a29-aeb5-2553-d45d-3bbb2afd90a3" executionId="30b9a88f-9c0d-408c-966a-f6bdd3bac7d1" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c4720429-c11c-d39f-c671-d52cc56de846" executionId="402bf4e3-242c-47f0-be30-5861d9c707cf" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cb1c57a1-f455-3255-d539-cec28ddc6b20" executionId="d524d5c6-84ed-44f7-a871-67269e2d8402" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4bc11190-ff8b-ddcb-4a62-4f600206beba" executionId="d40d5b3f-efb9-4b1b-834f-3ea9ec3f6d54" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="52d7db80-4f8f-1f98-9580-9f140a9476ae" executionId="958befa8-b884-41a8-8f49-a24b1671370b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="12" executed="12" passed="12" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>Semantic refresh cadence rate=24.000000 expected=4 observed=4 interval=3 sources=4,7,10,13&#xD;
+Semantic refresh cadence rate=60.000000 expected=5 observed=5 interval=6 sources=7,13,19,25,31&#xD;
+post-proof full scan decision=strict-current-ink retained_seed_sequence=14 retained_continuity=21 current_sequence=16 current_domain=0 policy=11 lines=3&#xD;
+Padded raw line projection point=2546,1854 prepared_right=2546 raw_right=2814 cleanup_right=2806 projected_right=2546&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>
