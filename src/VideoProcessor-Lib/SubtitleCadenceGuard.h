@@ -1055,7 +1055,7 @@ private:
                 const bool mayAlternate=AlternateDestinationPoint(point,*m_baseline);
                 const bool mayDark=DarkDestinationPoint(point,*m_baseline);
                 if(!mayBright && !mayAlternate && !mayDark)continue;
-                if(IsProjectedProtectedPassThrough(x,y,verified))continue;
+                bool projectionChecked=false,protectedPassThrough=false;
                 for(int direction=0;direction<4;++direction) {
                     const size_t neighborAt=DestinationIndex(x+dx[direction],y+dy[direction]);
                     if(neighborAt==size_t(-1))continue;
@@ -1066,6 +1066,13 @@ private:
                     const bool alternate=mayAlternate && AlternateDestinationCandidate(point,neighbor,*m_baseline);
                     const bool dark=mayDark && DarkDestinationCandidate(point,neighbor,*m_baseline);
                     if(!bright && !alternate && !dark)continue;
+                    // Uniform low-luma points need no projection math. Evaluate
+                    // the same exemption once, only for an actual YUV edge.
+                    if(!projectionChecked) {
+                        protectedPassThrough=IsProjectedProtectedPassThrough(x,y,verified);
+                        projectionChecked=true;
+                    }
+                    if(protectedPassThrough)break;
                     const auto& seedPoint=m_destinationSeedPixels[at].pixel;
                     const auto& seedNeighbor=m_destinationSeedPixels[neighborAt].pixel;
                     const bool neighborPassThrough=IsProjectedProtectedPassThrough(
