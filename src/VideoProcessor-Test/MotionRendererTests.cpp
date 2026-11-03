@@ -24,6 +24,7 @@
 #include <array>
 #include <fstream>
 #include <cstdint>
+#include <sstream>
 #include <type_traits>
 #include "RendererProfileConfig.h"
 #include <vector>
@@ -360,10 +361,12 @@ TEST_CLASS(MotionRendererTests){public:
         // every glyph/capture rectangle.
         const std::array<std::array<unsigned char,3>,4> marks{{
             {{18,190,232}},{{24,50,92}},{{218,142,20}},{{166,28,214}}}};
-        for(int row=0;row<4;++row)for(int x=20+row*4;x<24+row*4;++x)for(int y=32+row;y<33+row;++y) {
+        for(int row=0;row<4;++row)for(int x=20;x<24;++x)for(int y=32+row;y<33+row;++y) {
             const size_t o=(size_t(y)*64+x)*4;
             current[o]=marks[size_t(row)][0];current[o+1]=marks[size_t(row)][1];current[o+2]=marks[size_t(row)][2];
         }
+        const std::array<unsigned char,3> rightEdgeMark={236,104,32};
+        for(int c=0;c<3;++c)current[(size_t(38)*64+44)*4+size_t(c)]=rightEdgeMark[size_t(c)];
         // A current white glyph in the old source box must be copied to the
         // new destination, while the source footprint is repaired from this
         // frame's surrounding movie pixels.
@@ -423,10 +426,37 @@ TEST_CLASS(MotionRendererTests){public:
             difference=(std::max)(difference,std::abs(a[1]-b[1]));
             return (std::max)(difference,std::abs(a[2]-b[2]));
         };
-        auto assertProtectedRows=[&](const std::vector<unsigned char>& output,const wchar_t* context) {
+        auto assertProtectedRows=[&](const std::vector<unsigned char>& output,int background,
+            const SubtitleBoxRect& destination,SubtitleCompositionPhase phase,const wchar_t* context) {
             for(int row=0;row<4;++row) {
-                const int x=21+row*4,y=32+row;
+                const int x=21,y=32+row;
                 const auto actual=pixel(output,x,y),currentPixel=pixel(currentRawOutput,x,y),oldPixel=pixel(previousOutput,x,y);
+                if(distance(actual,currentPixel)>5) {
+                    const int sourceX=x+geometry.source.left-destination.left;
+                    const int sourceY=y+geometry.source.top-destination.top;
+                    std::array<int,3> sourceRgb{};
+                    if(sourceX>=0&&sourceX<64&&sourceY>=0&&sourceY<64)
+                        sourceRgb=pixel(current,sourceX,sourceY);
+                    const float lo=float((std::min)(sourceRgb[0],(std::min)(sourceRgb[1],sourceRgb[2])))/255.0f;
+                    const float hi=float((std::max)(sourceRgb[0],(std::max)(sourceRgb[1],sourceRgb[2])))/255.0f;
+                    const auto smooth=[](float a,float b,float value) {
+                        const float t=(std::max)(0.0f,(std::min)(1.0f,(value-a)/(b-a)));
+                        return t*t*(3.0f-2.0f*t);
+                    };
+                    const float keyAlpha=smooth(0.15f,0.50f,lo)*(1.0f-smooth(0.10f,0.28f,hi-lo));
+                    std::ostringstream detail;
+                    detail<<"protected marker mismatch bg="<<background<<" destination="
+                        <<destination.left<<','<<destination.top<<'-'<<destination.right<<','<<destination.bottom
+                        <<" phase="<<static_cast<int>(phase)<<" row="<<row<<" output="<<x<<','<<y
+                        <<" actual="<<actual[0]<<','<<actual[1]<<','<<actual[2]
+                        <<" current="<<currentPixel[0]<<','<<currentPixel[1]<<','<<currentPixel[2]
+                        <<" prior="<<oldPixel[0]<<','<<oldPixel[1]<<','<<oldPixel[2]
+                        <<" source="<<sourceX<<','<<sourceY<<" source_rgb="
+                        <<sourceRgb[0]<<','<<sourceRgb[1]<<','<<sourceRgb[2]<<" mapSourceAlpha="<<keyAlpha
+                        <<" source_in_content="<<(sourceX>=geometry.content.left&&sourceX<geometry.content.right&&
+                            sourceY>=geometry.content.top&&sourceY<geometry.content.bottom);
+                    Logger::WriteMessage(detail.str().c_str());
+                }
                 Assert::IsTrue(distance(actual,currentPixel)<=5,context);
                 Assert::IsTrue(distance(actual,oldPixel)>50,
                     L"A previous frame's movie pixels leaked into a protected cleanup-edge row.");
@@ -436,8 +466,10 @@ TEST_CLASS(MotionRendererTests){public:
             }
         };
         for(const int background:{3,5})for(const auto& destination:{
-            SubtitleBoxRect{16,14,48,32},SubtitleBoxRect{16,22,48,40}}) {
+            SubtitleBoxRect{16,14,48,32},SubtitleBoxRect{16,22,48,40}})for(const bool clipRight:{false,true}) {
+            if(clipRight&&destination.top!=22)continue;
             geometry.destination=destination;
+            geometry.generatedCleanup=clipRight?SubtitleBoxRect{16,36,42,48}:SubtitleBoxRect{16,36,48,48};
             for(const auto phase:{SubtitleCompositionPhase::All,SubtitleCompositionPhase::CleanupOnly,
                 SubtitleCompositionPhase::LayerOnly}) {
                 Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,background,PL_COLOR_TRC_SRGB,
@@ -460,7 +492,18 @@ TEST_CLASS(MotionRendererTests){public:
                     cleaned.overlays=&overlay;cleaned.num_overlays=1;
                     output=drawPrepared(cleaned);
                 } else output=drawPrepared(prepared);
-                assertProtectedRows(output,L"A pending-only cleanup edge changed current raw movie pixels.");
+                assertProtectedRows(output,background,destination,phase,
+                    L"A pending-only cleanup edge changed current raw movie pixels.");
+                if(clipRight) {
+                    const auto actual=pixel(output,44,38);
+                    const auto currentPixel=pixel(currentRawOutput,44,38);
+                    const auto oldPixel=pixel(previousOutput,44,38);
+                    Assert::IsTrue(distance(actual,currentPixel)<=5&&distance(actual,oldPixel)>50,
+                        L"A current pixel in a protected right-edge strip overlapping the destination changed or came from the prior frame.");
+                    const std::array<int,3> expectedRightMark={rightEdgeMark[0],rightEdgeMark[1],rightEdgeMark[2]};
+                    Assert::IsTrue(distance(actual,expectedRightMark)<=7,
+                        L"A dim alternate-color movie mark in the right-edge protected strip was lost.");
+                }
                 if(phase!=SubtitleCompositionPhase::CleanupOnly) {
                     if(destination.top==14) {
                         const auto movedGlyph=pixel(output,32,26);

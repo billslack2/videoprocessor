@@ -4709,6 +4709,9 @@ namespace VideoProcessorTest
                 Assert::IsTrue(output.displayed[0]<=0.01&&output.displayed[1]<=rawMarkTop&&
                     output.displayed[2]>=width-0.01&&output.displayed[3]>=captionBottom,
                     L"The current Off source crop clipped a volume OSD pixel or the burned-in caption.");
+                Assert::IsFalse(output.displayed[0]<=0.01&&output.displayed[1]<=0.01&&
+                    output.displayed[2]>=width-0.01&&output.displayed[3]>=height-0.01,
+                    L"The current Off source crop must preserve current pixels without falling back to the whole input raster.");
                 for(int i=0;i<4;++i)Assert::AreEqual(output.displayed[i],output.metrics[8+i],0.01,
                     L"The reported submitted crop differs from the current source-space visibility envelope.");
                 if(!haveEnvelope){for(int i=0;i<4;++i)stableBounds[i]=output.displayed[i];haveEnvelope=true;}
@@ -4724,27 +4727,30 @@ namespace VideoProcessorTest
                 const auto at=line.find(key);return at!=std::string::npos&&
                     sscanf_s(line.c_str()+at+strlen(key),"%d,%d-%d,%d",&bounds[0],&bounds[1],&bounds[2],&bounds[3])==4;
             };
-            struct CurrentRawTrace {uint64_t generation=0,sequence=0;int bounds[4]={};bool available=false;};
+            struct CurrentRawTrace {uint64_t generation=0,sequence=0;int bounds[4]={};int confirmedOwner=-1;bool available=false;};
             std::map<uint64_t,CurrentRawTrace> currentRawTraces;
-            std::set<uint64_t> fitBoundarySources,rawContradictionSources;
-            uint64_t boundarySource=0;int boundaryRawVisibleTop=0,boundaryRawExtentTop=0,boundaryFitTop=0,boundaryPresentedTop=0;
+            std::set<uint64_t> fitBoundarySources,preemptedCandidateSources,rawContradictionSources;
+            uint64_t boundarySource=0,preemptedSource=0;
+            int boundaryRawVisibleTop=0,boundaryRawExtentTop=0,boundaryFitTop=0,boundaryPresentedTop=0;
+            int preemptedRawVisibleTop=0,preemptedRawExtentTop=0,preemptedCandidateTop=0,preemptedResolvedTop=0;
             for(const auto& line:messages) {
                 if(line.find("Alpha crop extent provenance:")!=0)continue;
                 CurrentRawTrace raw;uint64_t confirmed=0,rawAvailable=0;
                 raw.available=numberField(line,"generation=",raw.generation)&&
                     numberField(line,"sequence=",raw.sequence)&&numberField(line,"confirmed_owner=",confirmed)&&
                     numberField(line,"raw_available=",rawAvailable)&&rectField(line,"raw=",raw.bounds)&&
-                    confirmed==1&&rawAvailable==1&&line.find("candidate_owner=fit")!=std::string::npos;
+                    rawAvailable==1&&line.find("candidate_owner=fit")!=std::string::npos;
+                raw.confirmedOwner=int(confirmed);
                 if(raw.available)currentRawTraces[raw.sequence]=raw;
             }
             for(const auto& line:messages) {
                 if(line.find("Alpha crop admission:")!=0)continue;
                 uint64_t generation=0,sequenceValue=0,epoch=0,visibleAvailable=0,visibleGeneration=0,visibleSequence=0;
-                int visible[4]={},preRecovery[4]={},resolved[4]={};
+                int visible[4]={},preRecovery[4]={},resolved[4]={},candidate[4]={};
                 if(!numberField(line,"generation=",generation)||!numberField(line,"sequence=",sequenceValue)||
                     !numberField(line,"epoch=",epoch)||!numberField(line,"visible_available=",visibleAvailable)||
                     !numberField(line,"visible_generation=",visibleGeneration)||!numberField(line,"visible_sequence=",visibleSequence)||
-                    !rectField(line,"visible=",visible)||!rectField(line,"pre_recovery=",preRecovery)||
+                    !rectField(line,"candidate=",candidate)||!rectField(line,"visible=",visible)||!rectField(line,"pre_recovery=",preRecovery)||
                     !rectField(line,"resolved=",resolved)||visibleAvailable!=1||visibleGeneration!=generation||
                     visibleSequence!=sequenceValue||line.find("candidate_owner=fit")==std::string::npos)continue;
                 const auto raw=currentRawTraces.find(sequenceValue);
@@ -4756,12 +4762,32 @@ namespace VideoProcessorTest
                     submitted.counters[1]==sequenceValue;
                 const bool currentRawContained=resolved[0]<=visible[0]&&resolved[1]<=visible[1]&&
                     resolved[2]>=visible[2]&&resolved[3]>=visible[3]&&
+                    resolved[0]<=raw->second.bounds[0]&&resolved[1]<=raw->second.bounds[1]&&
+                    resolved[2]>=raw->second.bounds[2]&&resolved[3]>=raw->second.bounds[3]&&
                     submitted.displayed[0]<=visible[0]&&submitted.displayed[1]<=visible[1]&&
                     submitted.displayed[2]>=visible[2]&&submitted.displayed[3]>=visible[3]&&
                     submitted.displayed[0]<=raw->second.bounds[0]&&submitted.displayed[1]<=raw->second.bounds[1]&&
                     submitted.displayed[2]>=raw->second.bounds[2]&&submitted.displayed[3]>=raw->second.bounds[3];
-                if(exactSource&&raw->second.generation==generation&&raw->second.sequence==sequenceValue&&
-                    visible[1]<preRecovery[1]&&raw->second.bounds[1]<preRecovery[1]&&currentRawContained) {
+                const bool candidateWouldClipCurrent=candidate[1]>visible[1]&&
+                    candidate[1]>raw->second.bounds[1]&&candidate[3]<raw->second.bounds[3];
+                const bool preRecoveryContainsCurrent=preRecovery[0]<=visible[0]&&
+                    preRecovery[1]<=visible[1]&&preRecovery[2]>=visible[2]&&preRecovery[3]>=visible[3]&&
+                    preRecovery[0]<=raw->second.bounds[0]&&preRecovery[1]<=raw->second.bounds[1]&&
+                    preRecovery[2]>=raw->second.bounds[2]&&preRecovery[3]>=raw->second.bounds[3];
+                const bool rawTraceJoins=exactSource&&raw->second.generation==generation&&
+                    raw->second.sequence==sequenceValue;
+                if(rawTraceJoins&&candidateWouldClipCurrent&&preRecoveryContainsCurrent&&currentRawContained&&
+                    raw->second.confirmedOwner==0) {
+                    preemptedCandidateSources.insert(sequenceValue);
+                    if(!preemptedSource) {
+                        preemptedSource=sequenceValue;preemptedRawVisibleTop=visible[1];
+                        preemptedRawExtentTop=raw->second.bounds[1];preemptedCandidateTop=candidate[1];
+                        preemptedResolvedTop=resolved[1];
+                    }
+                }
+                if(rawTraceJoins&&candidateWouldClipCurrent&&
+                    visible[1]<preRecovery[1]&&raw->second.bounds[1]<preRecovery[1]&&
+                    currentRawContained&&raw->second.confirmedOwner==1) {
                     fitBoundarySources.insert(sequenceValue);
                     if(!boundarySource) {
                         boundarySource=sequenceValue;boundaryRawVisibleTop=visible[1];
@@ -4773,14 +4799,20 @@ namespace VideoProcessorTest
                 }
             }
             Logger::WriteMessage((std::string("UHD Off live routes: beta=")+std::to_string(beta)+
-                " sources="+std::to_string(exactCurrentSources.size())+" narrower_fit_raw="+std::to_string(fitBoundarySources.size())+
-                " contradiction="+std::to_string(rawContradictionSources.size())+" native_owner="+std::to_string(nativeOwner)).c_str());
+                " sources="+std::to_string(exactCurrentSources.size())+" confirmed_recovered="+
+                std::to_string(fitBoundarySources.size())+" preempted_candidate="+
+                std::to_string(preemptedCandidateSources.size())+" contradiction="+
+                std::to_string(rawContradictionSources.size())+" native_owner="+std::to_string(nativeOwner)).c_str());
             if(boundarySource)Logger::WriteMessage((std::string("UHD Off exact boundary witness: source=")+std::to_string(boundarySource)+
                 " raw_visible_top="+std::to_string(boundaryRawVisibleTop)+" raw_extent_top="+std::to_string(boundaryRawExtentTop)+
                 " fit_candidate_top="+std::to_string(boundaryFitTop)+" actual_presented_top="+std::to_string(boundaryPresentedTop)).c_str());
+            if(preemptedSource)Logger::WriteMessage((std::string("UHD Off preempted candidate witness: source=")+std::to_string(preemptedSource)+
+                " raw_visible_top="+std::to_string(preemptedRawVisibleTop)+" raw_extent_top="+std::to_string(preemptedRawExtentTop)+
+                " candidate_top="+std::to_string(preemptedCandidateTop)+" resolved_top="+
+                std::to_string(preemptedResolvedTop)).c_str());
             Assert::IsTrue(overlayOutputs>=24&&exactCurrentSources.size()>=24,
                 L"The UHD Off burst did not deliver 24 distinct current source outputs.");
-            if(fitBoundarySources.empty()||rawContradictionSources.empty()) {
+            if(fitBoundarySources.size()+preemptedCandidateSources.size()<2) {
                 unsigned extentRows=0,admissionRows=0;
                 for(const auto& line:messages) {
                     const bool isExtent=line.find("Alpha crop extent provenance:")==0;
@@ -4809,8 +4841,8 @@ namespace VideoProcessorTest
                     break;
                 }
             }
-            Assert::IsTrue(!fitBoundarySources.empty()&&!rawContradictionSources.empty(),
-                L"Natural Off input did not emit an exact-source current-raw witness that contradicted and safely widened a narrower confirmed FIT.");
+            Assert::IsTrue(fitBoundarySources.size()+preemptedCandidateSources.size()>=2,
+                L"Natural Off input must join at least two exact-source current-raw cases where a narrower FIT candidate was either safely recovered or preempted before confirmation.");
             cleanup.renderer->Stop();destroy(cleanup.renderer);cleanup.renderer=nullptr;
             if(cleanup.window){DestroyWindow(cleanup.window);cleanup.window=nullptr;}
             DeleteFileA(cleanup.config);cleanup.config=nullptr;
