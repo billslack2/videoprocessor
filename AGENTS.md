@@ -32,8 +32,20 @@
   off the mandatory video path and discard stale optional work instead of
   blocking current video. Functional output or screenshots alone do not meet
   this real-time requirement.
+- Bounded latency alone is insufficient. Mandatory capture/render/presentation
+  work must also fit the actual frame budget; measure the total critical path
+  and worst-case costs, not only average latency, queue age or drop counters.
+- Run expensive subtitle detection/grouping, template construction and current
+  pixel/cleanup verification on a separate bounded worker path. Initial cue
+  detection may cost more; unchanged cues must use a cheaper verified reuse path
+  before full grouping. Analysis cadence may be below display cadence when
+  necessary, but video cadence must continue independently without waiting.
+  Optional worker results must remain exact-source and context-bound; a cached
+  cue never supplies old movie/background pixels or crop/absence authority.
 - Use remote versions where subtitles previously worked well, before the latest
-  regressions (including pre-RC6), as architecture and performance references.
+  regressions, including earlier released RC6 builds and pre-RC6, as architecture
+  and performance references. Identify actual package source pins; a reused RC6
+  label or tag alone does not identify both the older and latest released builds.
   Compare scheduling, buffering, processing cost, caption behavior and current
   frame progression under matched conditions; learn from that working behavior
   while preserving independently verified fixes.
