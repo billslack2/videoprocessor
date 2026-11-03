@@ -3,6 +3,7 @@
 #include <SourcePictureDetector.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCadenceGuard.h>
+#include <SubtitleCurrentCuePresentation.h>
 #include <SubtitlePreviewMode.h>
 #include <AnalysisDiagnosticHooks.h>
 #include <DebugLog.h>
@@ -269,6 +270,7 @@ class SubtitleCurrentCueProofReceipt {
     std::shared_ptr<const SubtitleInkSnapshot> m_currentInk;
     ActivePictureBounds m_physicalBase;
     SubtitleCutPasteGeometry m_operation;
+    std::array<SubtitleBoxRect,3> m_verifiedSemanticLineBounds{};
     bool m_cropExcludedBarsVerified=false;
     size_t m_footprintSamples=0,m_barVisibilitySamples=0;
     const char* m_reason="not-ready";
@@ -288,6 +290,9 @@ public:
     const std::shared_ptr<const SubtitleInkSnapshot>& CurrentInk() const {return m_currentInk;}
     const ActivePictureBounds& PhysicalBase() const {return m_physicalBase;}
     const SubtitleCutPasteGeometry& Operation() const {return m_operation;}
+    const std::array<SubtitleBoxRect,3>& VerifiedSemanticLineBounds() const {
+        return m_verifiedSemanticLineBounds;
+    }
     bool CropExcludedBarsVerified() const {return m_cropExcludedBarsVerified;}
     size_t FootprintSamples() const {return m_footprintSamples;}
     size_t BarVisibilitySamples() const {return m_barVisibilitySamples;}
@@ -467,6 +472,10 @@ using SubtitleMeasurementWork = std::function<SubtitleBoxObservation(
 
 struct SubtitleCurrentCueProofRequest {
     SubtitleBoxObservation currentKey;
+    // The optional semantic scan keeps its original inspection/native key;
+    // presentation-only normalization must never become detection authority.
+    SubtitleBoxObservation fullScanKey;
+    bool hasFullScanKey=false;
     AnalysisLumaSource source;
     ActivePictureBounds physicalBase;
     SubtitlePreviewMode sourceMode=SubtitlePreviewMode::None;
@@ -541,6 +550,13 @@ public:
     SubtitleCurrentCueProofStatus TryTakeCurrentCueProof(
         const SubtitleBoxObservation& exactKey,uint64_t templateRevision,
         SubtitleCurrentCueProofReceipt& receipt);
+    // Presentation polls are non-destructive. The tracker commits the shared
+    // one-use token only after current operation/context validation succeeds.
+    SubtitleCurrentCueProofStatus TryPeekCurrentCueProof(
+        const SubtitleBoxObservation& exactKey,SubtitleCurrentCueProofReceipt& receipt);
+    bool MakeCurrentCueProofKey(const SubtitleBoxObservation& sourceKey,
+        SubtitlePreviewMode sourceMode,int backgroundMode,SubtitleBoxObservation& proofKey,
+        ActivePictureBounds& physicalBase,uint64_t& templateRevision);
     // The proof source window follows renderable queued frames, not capture's
     // newest sequence. Tail is bounded by the caller's existing queue window.
     void AdvanceCurrentCueRenderWindow(const ActivePictureFrameIdentity& head,
@@ -2557,10 +2573,13 @@ struct SubtitleCurrentCueTaskEntry {
     SubtitleCurrentCueTemplateDescriptor descriptor;
     std::shared_ptr<SubtitleCurrentCueWorkerState> workerState;
     SubtitleMeasurementWork deferredFullScan;
+    SubtitleBoxObservation deferredFullScanKey;
     OwnedScanBacklogWitness deferredWitness;
     uint64_t deferredTimelinePolicy=0;
     SubtitleCurrentCueProofStatus status=SubtitleCurrentCueProofStatus::Queued;
     SubtitleCurrentCueProofReceipt receipt;
+    // Revisions proving the same exact source share the final consumption token.
+    std::shared_ptr<std::atomic_bool> consumed;
     uint64_t revision=0;
     bool seedTask=false,fullScanDue=false,hasDeferredWitness=false;
     bool scanDecisionMade=false,proofVerified=false,semanticRefreshDue=false;
@@ -2596,7 +2615,7 @@ inline bool SameBounds(const ActivePictureBounds& a,const ActivePictureBounds& b
     return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
         a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;
 }
-inline bool SameContext(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+inline bool SameInterpretationContext(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
     return a.identity.transportGeneration==b.identity.transportGeneration &&
         a.identity.sourceFormatGeneration==b.identity.sourceFormatGeneration &&
         a.identity.analysisDomainKey==b.identity.analysisDomainKey &&
@@ -2604,8 +2623,10 @@ inline bool SameContext(const SubtitleBoxObservation& a,const SubtitleBoxObserva
         a.identity.rendererGeneration==b.identity.rendererGeneration &&
         a.width==b.width && a.height==b.height && a.nearBarDistance==b.nearBarDistance &&
         a.scriptHint==b.scriptHint && a.optimizationMode==b.optimizationMode &&
-        a.policyGeneration==b.policyGeneration && a.continuityGeneration==b.continuityGeneration &&
-        a.sharedPicture.Matches(b.sharedPicture);
+        a.policyGeneration==b.policyGeneration && a.continuityGeneration==b.continuityGeneration;
+}
+inline bool SameContext(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+    return SameInterpretationContext(a,b) && a.sharedPicture.Matches(b.sharedPicture);
 }
 inline bool SameSourceLayout(const AnalysisLumaSource& a,const AnalysisLumaSource& b) {
     return a.width==b.width && a.height==b.height && a.format==b.format &&
@@ -2686,6 +2707,16 @@ inline bool SameDescriptor(const SubtitleCurrentCueTemplateDescriptor& a,
         SameBounds(a.physicalBase,b.physicalBase) && SameOperation(a.operation,b.operation) &&
         SameSourceLayout(a.sourceLayout,b.sourceLayout) && a.sourceMode==b.sourceMode &&
         a.backgroundMode==b.backgroundMode;
+}
+// A later cue may replace the working template while an earlier exact source
+// is still renderable. Its completed current-pixel proof retains its own cue
+// and operation; only interpretation/base changes invalidate that proof here.
+// The presentation adapter separately validates current semantic compatibility.
+inline bool SameProofInterpretation(const SubtitleCurrentCueTemplateDescriptor& a,
+    const SubtitleCurrentCueTemplateDescriptor& b) {
+    return a.valid && b.valid && SameContext(a.context,b.context) &&
+        SameBounds(a.physicalBase,b.physicalBase) && SameSourceLayout(a.sourceLayout,b.sourceLayout) &&
+        a.sourceMode==b.sourceMode && a.backgroundMode==b.backgroundMode;
 }
 inline bool CurrentMatches(const SubtitleCurrentCueTemplateDescriptor& seed,
     const SubtitleBoxObservation& current,const ActivePictureBounds& base,
@@ -2794,7 +2825,7 @@ inline void SubtitleMeasurementWorker::ObserveCurrentCueSemanticScan(
     std::lock_guard<std::mutex> lock(m_mutex);
     const auto& state=m_currentCueState;
     if(!state || !state->descriptor.valid ||
-        !SameContext(state->descriptor.context,key) ||
+        !SameInterpretationContext(state->descriptor.context,key) ||
         key.identity.transportGeneration!=state->descriptor.context.identity.transportGeneration ||
         key.identity.acceptedSequence<=state->descriptor.context.identity.acceptedSequence ||
         key.identity.acceptedSequence<=state->lastSemanticScanSequence ||
@@ -2809,8 +2840,11 @@ inline void SubtitleMeasurementWorker::ObserveCurrentCueSemanticScan(
     // The monotonic sequence watermark prevents an older completion from
     // clearing a burst reported by a newer result.
     state->lastSemanticScanSequence=key.identity.acceptedSequence;
+    // An inspection-only result can report change/unknown, but cannot confirm
+    // the independent native template or borrow this proof request's authority.
     state->needsFullScanBurst.store(
-        !CompleteSemanticScanConfirmsCue(result,key,state->descriptor.cue),
+        !(SameContext(state->descriptor.context,key) &&
+          CompleteSemanticScanConfirmsCue(result,key,state->descriptor.cue)),
         std::memory_order_release);
 }
 
@@ -2840,6 +2874,13 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         (advanced && (!input.compositionSucceeded || !input.composedOperation.valid)) ||
         (advanced && input.backgroundMode!=3 && input.backgroundMode!=5))
         return SubtitleCurrentCueProofStatus::NotEligible;
+    // Canonicalize only this private presentation template's context. The
+    // accepted full scan and its physical authority are validated above; its
+    // RAW observation in the detector/tracker is never rewritten.
+    SubtitleBoxObservation presentationKey;
+    if(!BuildSubtitleCurrentCueProofKey(o,o.identity,input.physicalBase,true,presentationKey))
+        return SubtitleCurrentCueProofStatus::NotEligible;
+    input.observation.sharedPicture=presentationKey.sharedPicture;
     auto descriptor=Describe(input);
     std::shared_ptr<SubtitleCurrentCueWorkerState> state;
     std::shared_ptr<SubtitleCurrentCueTaskEntry> entry;
@@ -2955,7 +2996,10 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         const bool sameTemplateContext=SameContext(descriptor.context,request.currentKey);
         const bool currentMatches=CurrentMatches(descriptor,request.currentKey,request.physicalBase,request.source,
             request.sourceMode,request.backgroundMode);
-        const bool basicEligible=currentMatches && request.source.backingOwner &&
+        const bool scanKeyMatches=!request.hasFullScanKey ||
+            (SameAnalysisFrameIdentity(request.fullScanKey.identity,request.currentKey.identity) &&
+             SameInterpretationContext(request.fullScanKey,request.currentKey));
+        const bool basicEligible=currentMatches && scanKeyMatches && request.source.backingOwner &&
             request.currentKey.identity.acceptedSequence && request.currentKey.identity.captureTimestamp &&
             std::isfinite(request.frameMs) && request.frameMs>0;
         if(sameTemplateContext)state->cadenceRoutingEligible=currentMatches;
@@ -2979,8 +3023,16 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             entry=std::make_shared<SubtitleCurrentCueTaskEntry>();entry->key=request.currentKey;
             entry->key.ink.reset();
             entry->revision=request.templateRevision;entry->status=SubtitleCurrentCueProofStatus::Queued;
+            entry->descriptor=descriptor;
+            for(const auto& old:m_currentCueTasks)
+                if(!old->seedTask && SameExactTaskKey(old->key,request.currentKey) && old->consumed) {
+                    entry->consumed=old->consumed;break;
+                }
+            if(!entry->consumed)entry->consumed=std::make_shared<std::atomic_bool>(false);
             if(request.fullScanDue && request.fullScanOnMiss) {
                 entry->deferredFullScan=std::move(request.fullScanOnMiss);entry->fullScanDue=true;
+                entry->deferredFullScanKey=request.hasFullScanKey?request.fullScanKey:request.currentKey;
+                entry->deferredFullScanKey.ink.reset();
                 if(request.hasOwnedWitness) {
                     entry->deferredWitness=request.ownedWitness;entry->hasDeferredWitness=true;
                 }
@@ -2998,6 +3050,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             if(!duplicate->scanDecisionMade) {
                 if(!duplicate->deferredFullScan) {
                     duplicate->deferredFullScan=std::move(request.fullScanOnMiss);
+                    duplicate->deferredFullScanKey=request.hasFullScanKey?request.fullScanKey:request.currentKey;
+                    duplicate->deferredFullScanKey.ink.reset();
                     duplicate->fullScanDue=true;
                     if(request.hasOwnedWitness) {
                         duplicate->deferredWitness=request.ownedWitness;duplicate->hasDeferredWitness=true;
@@ -3043,7 +3097,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                     (void)lease;return scan(sampler,previous);
                 });
             };
-            lateQueued=SubmitCore(request.currentKey,fullScan(std::move(lateScan),std::move(lateLease)),
+            lateQueued=SubmitCore(request.hasFullScanKey?request.fullScanKey:request.currentKey,
+                fullScan(std::move(lateScan),std::move(lateLease)),
                 hasLateWitness?&lateWitness:nullptr,lateTimelinePolicy,true,{});
             if(!lateQueued) {
                 std::lock_guard<std::mutex> lock(m_mutex);
@@ -3073,7 +3128,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         const auto& key=request.currentKey;
         bool stillCurrent=false;
         {std::lock_guard<std::mutex> lock(m_mutex);
-            stillCurrent=!m_stopping && m_currentCueState==state &&
+            stillCurrent=!m_stopping && m_currentCueState &&
+                SameProofInterpretation(state->descriptor,m_currentCueState->descriptor) &&
                 entry->revision==state->descriptor.revision &&
                 SubtitleCurrentCueWorkerDetail::InWindow(m_currentCueWindowHead,
                     m_currentCueWindowTail,key.identity);
@@ -3088,6 +3144,9 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                 verified=false;currentInk.reset();reason="current-cue-cleanup-projection-unavailable";
             }
         } else reason="current-cue-template-context-or-window-changed";
+        std::array<SubtitleBoxRect,3> semanticLineBounds{};
+        if(verified && currentInk && request.sourceMode!=SubtitlePreviewMode::None)
+            semanticLineBounds=state->footprint.VerifiedSemanticLineBounds(currentInk->step);
         const auto proofFinished=std::chrono::steady_clock::now();
         const double elapsed=std::chrono::duration<double,std::milli>(proofFinished-started).count();
 #ifdef _WIN32
@@ -3111,9 +3170,10 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             receipt.m_currentKey.barTrackingAuthority=false;receipt.m_currentKey.currentAnchorUsesTrackedEdge=false;
             receipt.m_currentInk=std::move(currentInk);receipt.m_physicalBase=request.physicalBase;
             receipt.m_operation=operation;receipt.m_cropExcludedBarsVerified=true;
+            receipt.m_verifiedSemanticLineBounds=semanticLineBounds;
             receipt.m_footprintSamples=diagnostics.currentFootprintSamplesChecked;
             receipt.m_barVisibilitySamples=diagnostics.barVisibilitySamplesChecked;
-            receipt.m_reason="current-cue-pixels-verified";receipt.m_consumed=std::make_shared<std::atomic_bool>(false);
+            receipt.m_reason="current-cue-pixels-verified";receipt.m_consumed=entry->consumed;
             reason=receipt.m_reason;
         } else verified=false;
         bool fallbackQueued=false,semanticRefreshDue=false,semanticRefreshQueued=false;
@@ -3129,7 +3189,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             const bool intervalReached=sequence>lastRefreshSequence && sequence-lastRefreshSequence>=interval;
             semanticRefreshDue=burst||intervalReached;
         }
-        Work queuedScan,retiredDeferredScan;OwnedScanBacklogWitness queuedWitness;bool hasQueuedWitness=false;
+        Work queuedScan,retiredDeferredScan;SubtitleBoxObservation queuedScanKey;OwnedScanBacklogWitness queuedWitness;bool hasQueuedWitness=false;
         uint64_t queuedTimelinePolicy=0;bool queuedAsFallback=false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -3137,7 +3197,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             entry->semanticRefreshDue=semanticRefreshDue;
             if(entry->fullScanDue && entry->deferredFullScan && !entry->fullScanQueued &&
                 (!verified || semanticRefreshDue)) {
-                queuedScan=std::move(entry->deferredFullScan);entry->fullScanDue=false;
+                queuedScan=std::move(entry->deferredFullScan);queuedScanKey=entry->deferredFullScanKey;entry->fullScanDue=false;
                 queuedWitness=entry->deferredWitness;hasQueuedWitness=entry->hasDeferredWitness;
                 queuedTimelinePolicy=entry->deferredTimelinePolicy;entry->hasDeferredWitness=false;
                 entry->fullScanQueued=true;queuedAsFallback=!verified;
@@ -3169,7 +3229,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             }
             if(permitQueue) {
                 fallbackQueued=queuedAsFallback;
-                const bool accepted=SubmitCore(key,fullScan(std::move(queuedScan),std::move(lease)),
+                const bool accepted=SubmitCore(queuedScanKey,fullScan(std::move(queuedScan),std::move(lease)),
                     hasQueuedWitness?&queuedWitness:nullptr,queuedTimelinePolicy,true,{});
                 if(queuedAsFallback)fallbackQueued=accepted;
                 else semanticRefreshQueued=accepted;
@@ -3269,6 +3329,54 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::TryTakeCurrentCu
     }
     if(!templateRevision || !m_currentCueState)return SubtitleCurrentCueProofStatus::NoTemplate;
     return SubtitleCurrentCueProofStatus::NoTask;
+}
+
+inline bool SubtitleMeasurementWorker::MakeCurrentCueProofKey(
+    const SubtitleBoxObservation& sourceKey,SubtitlePreviewMode sourceMode,int backgroundMode,
+    SubtitleBoxObservation& proofKey,ActivePictureBounds& physicalBase,uint64_t& templateRevision) {
+    using namespace SubtitleCurrentCueWorkerDetail;
+    proofKey={};physicalBase={};templateRevision=0;
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if(m_stopping || !m_currentCueState || sourceKey.discontinuity)return false;
+    const auto& descriptor=m_currentCueState->descriptor;
+    if(!descriptor.valid || !SameInterpretationContext(descriptor.context,sourceKey) ||
+        sourceMode!=descriptor.sourceMode || backgroundMode!=descriptor.backgroundMode ||
+        !BuildSubtitleCurrentCueProofKey(sourceKey,sourceKey.identity,descriptor.physicalBase,true,proofKey))
+        return false;
+    // This is a request to inspect CURRENT pixels against an accepted template,
+    // not fresh physical detection or permission to crop. Render must match the
+    // returned proof's base to its independently accepted current native base.
+    physicalBase=descriptor.physicalBase;templateRevision=descriptor.revision;
+    return true;
+}
+
+inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::TryPeekCurrentCueProof(
+    const SubtitleBoxObservation& exactKey,SubtitleCurrentCueProofReceipt& receipt) {
+    using namespace SubtitleCurrentCueWorkerDetail;
+    receipt={};std::lock_guard<std::mutex> lock(m_mutex);
+    if(!m_currentCueState)return SubtitleCurrentCueProofStatus::NoTemplate;
+    if(!InWindow(m_currentCueWindowHead,m_currentCueWindowTail,exactKey.identity))
+        return SubtitleCurrentCueProofStatus::Expired;
+    auto pending=SubtitleCurrentCueProofStatus::NoTask;
+    for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
+        const auto& entry=**i;
+        if(entry.seedTask || !SameExactTaskKey(entry.key,exactKey))continue;
+        if(entry.consumed && entry.consumed->load(std::memory_order_acquire))
+            return SubtitleCurrentCueProofStatus::Consumed;
+        if(!SameProofInterpretation(entry.descriptor,m_currentCueState->descriptor)) {
+            if(pending==SubtitleCurrentCueProofStatus::NoTask)pending=SubtitleCurrentCueProofStatus::NotEligible;
+            continue;
+        }
+        if(entry.status==SubtitleCurrentCueProofStatus::Ready && entry.receipt.Valid() &&
+            entry.receipt.m_consumed) {
+            receipt=entry.receipt;
+            return SubtitleCurrentCueProofStatus::Ready;
+        }
+        // A newer queued proof must not hide an already completed proof of the
+        // same source from the preceding compatible template revision.
+        if(pending==SubtitleCurrentCueProofStatus::NoTask)pending=entry.status;
+    }
+    return pending;
 }
 
 inline void SubtitleMeasurementWorker::AdvanceCurrentCueRenderWindow(

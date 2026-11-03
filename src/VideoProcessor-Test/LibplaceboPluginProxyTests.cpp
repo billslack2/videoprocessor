@@ -5015,6 +5015,214 @@ namespace VideoProcessorTest
                 }
             }
         }
+
+        // Private recording regression. Deliberately excluded from the mandatory
+        // portable manifest: select explicitly with VP_SUBTITLE_CAPTURE_ROOT set.
+        // This runs the actual plugin, worker, queue, shader and submission path;
+        // no caller supplies picture or successful composition authority.
+        void VerifyCapturedV210CueCadence(bool beta)
+        {
+            char* captureValue=nullptr;size_t captureSize=0;
+            Assert::AreEqual(0,_dupenv_s(&captureValue,&captureSize,"VP_SUBTITLE_CAPTURE_ROOT"));
+            std::unique_ptr<char,decltype(&std::free)> captureOwner(captureValue,&std::free);
+            if(!captureValue||!*captureValue){Assert::Inconclusive(L"Private V210 recording requires VP_SUBTITLE_CAPTURE_ROOT.");return;}
+            constexpr int width=3840,height=2160,rowBytes=10240,pictureTop=272,pictureBottom=1886;
+            constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
+            std::array<std::vector<BYTE>,4> phases;
+            for(unsigned phase=0;phase<4;++phase) {
+                char stem[40];sprintf_s(stem,"\\frame-%06u",phase+1);
+                const std::string path=std::string(captureValue)+stem;
+                std::ifstream metadata(path+".txt");
+                int w=0,h=0,rb=0,crb=0,format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;
+                metadata>>w>>h>>rb>>crb>>format>>encoding>>color>>top>>bottom>>script>>range;
+                Assert::IsTrue(bool(metadata)&&w==width&&h==height&&rb==rowBytes&&crb==0&&format==3&&
+                    encoding==int(VideoFrameEncoding::V210)&&color==int(ColorSpace::REC_709)&&range==1&&
+                    top==pictureTop&&bottom==pictureBottom,L"This regression requires the 164841 limited-range V210 recording and measured native base.");
+                std::ifstream pixels(path+".bin",std::ios::binary|std::ios::ate);
+                Assert::IsTrue(bool(pixels)&&pixels.tellg()==std::streamoff(rowBytes)*height,L"Native capture length mismatch.");
+                phases[phase].resize(size_t(rowBytes)*height);pixels.seekg(0);
+                pixels.read(reinterpret_cast<char*>(phases[phase].data()),phases[phase].size());
+                Assert::IsTrue(bool(pixels));
+                for(unsigned previous=0;previous<phase;++previous)
+                    Assert::IsTrue(phases[previous]!=phases[phase],L"All four recorded quantization phases must be exercised.");
+            }
+            struct ProbeClock final : ITimingClock {
+                LARGE_INTEGER frequency{};
+                ProbeClock(){QueryPerformanceFrequency(&frequency);}
+                timingclocktime_t TimingClockNow() override {LARGE_INTEGER n{};QueryPerformanceCounter(&n);return n.QuadPart;}
+                timingclocktime_t TimingClockTicksPerSecond() const override{return frequency.QuadPart;}
+                const TCHAR* TimingClockDescription() override{return _T("Captured V210 live cadence QPC");}
+            } clock;
+            HMODULE self=nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&ClassicPoseTestLog),&self)!=FALSE);
+            wchar_t modulePath[MAX_PATH]={};GetModuleFileNameW(self,modulePath,MAX_PATH);
+            std::wstring root(modulePath);root.resize(root.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            root+=L"\\..";
+#endif
+            char* pluginValue=nullptr;size_t pluginSize=0;
+            Assert::AreEqual(0,_dupenv_s(&pluginValue,&pluginSize,"VP_RENDERER_REGRESSION_PLUGIN_ROOT"));
+            std::unique_ptr<char,decltype(&std::free)> pluginOwner(pluginValue,&std::free);
+            if(pluginValue&&*pluginValue){const std::string value(pluginValue);root.assign(value.begin(),value.end());}
+            const auto pluginPath=root+(beta?L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll":L"\\vprenderer\\VideoProcessorVPRenderer.dll");
+            HMODULE plugin=LoadLibraryExW(pluginPath.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct ModuleCleanup{HMODULE module;~ModuleCleanup(){FreeLibrary(module);}} moduleCleanup{plugin};
+            const auto create=reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_DESTROY_EXPORT));
+            const auto diagnostics=reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticFn>(GetProcAddress(plugin,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT));
+            Assert::IsTrue(create&&destroy&&diagnostics);
+            ScopedCadenceDiagnostics cadenceDiagnostics(true);
+            struct DiagnosticCleanup{VideoProcessorLibplaceboConfigureDiagnosticFn configure;
+                ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                    classicPoseAllRecordStages=false;classicPoseCaptureSubmitTiming=false;}} diagnosticCleanup{diagnostics};
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseMessages.clear();
+                ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);
+                classicPoseAllRecordStages=true;classicPoseCaptureSubmitTiming=true;classicPoseSubmitWallNs.clear();}
+            diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
+            char temp[MAX_PATH]={},configPath[MAX_PATH]={};
+            Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0&&GetTempFileNameA(temp,"vcc",0,configPath)!=0);
+            std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                "[vprenderer]\nquality: fast\n"
+                "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n"
+                "[vprenderer.zoom.scope]\nautomatic_crop: true\nsubtitle_fit: true\n"
+                "[vprenderer.subtitles.reconstruction]\ntype: generated_gray\nshortcut: F5\noffset_pixels: 10\n"
+                "subtitle_hold_ms: 250\nsubtitle_near_bar_px: 20\nsubtitle_script_hint: latin\n"
+                "cleanup_fill: stable_surround\nminimum_headroom_pixels: 30\ntext_reduction_percent: 30\n"
+                "background_edge: extend\nrounded_corners: true\nsubtitle_text_color: C9C9C9\n"
+                "subtitle_generated_gray_color: 000000\nsubtitle_generated_gray_max_luminance: .25\n"
+                "subtitle_generated_gray_opacity: .65\nsubtitle_generated_gray_border_color: 000000\n"
+                "subtitle_generated_gray_border_width: 1\nsubtitle_generated_gray_border_opacity: .4\nsubtitle_generated_gray_blur_px: 30\n";
+            SnapshotTestCallback callback;NativeP210Buffer buffer;
+            struct Cleanup{HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;const char* path;bool stopped=false;
+                ~Cleanup(){if(renderer){if(!stopped)renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);DeleteFileA(path);}}
+                cleanup{CreateWindowExW(0,L"STATIC",L"Captured V210 subtitle cadence",WS_POPUP,0,0,2000,1125,
+                    nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
+            Assert::IsNotNull(cleanup.window);
+            MONITORINFOEXW monitor{};monitor.cbSize=sizeof(monitor);DEVMODEW mode{};mode.dmSize=sizeof(mode);
+            Assert::IsTrue(GetMonitorInfoW(MonitorFromWindow(cleanup.window,MONITOR_DEFAULTTONEAREST),reinterpret_cast<LPMONITORINFO>(&monitor))!=FALSE&&
+                EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&mode)!=FALSE&&mode.dmDisplayFrequency>1);
+            const double outputHz=mode.dmDisplayFrequency;
+            cleanup.renderer=create(&callback,73,cleanup.window,&clock,true,10,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
+            Assert::IsNotNull(cleanup.renderer);
+            ConfigFile config;Assert::IsTrue(config.Load(configPath));UnifiedProfileRuntime::Runtime runtime;std::string error;
+            Assert::IsTrue(runtime.Initialize(config,{},error));CString active;bool restart=false,reset=false;
+            Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*runtime.GetSnapshot(),active,restart,reset)&&!restart);
+            cleanup.renderer->SetQueueFramePolicy(4,10,true);cleanup.renderer->SetActivePictureLookaheadFrames(3);
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                for(auto it=classicPoseMessages.rbegin();it!=classicPoseMessages.rend();++it)
+                    if(it->find("Alpha queue policy:")!=std::string::npos){Logger::WriteMessage(it->c_str());break;}}
+
+            VideoStateComPtr state=new VideoState();state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::V210;
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,24000,1001);
+            state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
+            Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();
+            cleanup.renderer->SetRenderLoadDisplayRefreshRate(outputHz);cleanup.renderer->Start();
+            const auto wallNs=[] {return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());};
+            std::map<uint64_t,std::pair<timingclocktime_t,uint64_t>> inputs;
+            uint64_t sequence=1,steadyStart=0;size_t cursor=0;bool acquired=false;
+            const auto captureOrigin=clock.TimingClockNow();auto next=std::chrono::steady_clock::now();
+            std::vector<double> ingressMs;std::vector<AnalysisDiagnosticRecordV1> observed;
+            const auto drain=[&] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                while(cursor<classicPoseRecords.size()){const auto& r=classicPoseRecords[cursor++];observed.push_back(r);
+                    if(!strcmp(r.stage,"submitted-presentation")&&(r.flags&3u)==3u&&r.counters[4]&&
+                        r.published[1]==pictureTop&&r.published[3]==pictureBottom)acquired=true;}};
+            const auto pump=[&] {
+                MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+                if(callback.state==RENDERSTATE_RENDERING) {
+                    const auto stamp=captureOrigin+timingclocktime_t((sequence-1)*uint64_t(clock.TimingClockTicksPerSecond())*1001/24000);
+                    const auto start=wallNs();inputs.emplace(sequence,std::make_pair(stamp,start));
+                    VideoFrame frame(phases[(sequence-1)%4].data(),sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);
+                    if(steadyStart)ingressMs.push_back(double(wallNs()-start)/1e6);
+                }
+                next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1/inputHz));
+                std::this_thread::sleep_until(next);drain();
+                Assert::IsTrue(callback.state!=RENDERSTATE_FAILED,L"Actual capture renderer failed.");
+            };
+            const auto warmupDeadline=GetTickCount64()+ColdShaderPreparationBudgetMs;
+            while(!acquired&&GetTickCount64()<warmupDeadline)pump();
+            Assert::IsTrue(acquired,L"Actual capture never produced a composed native-qualified source; no steady coverage claimed.");
+            // Bounded warmup only; once steady observation begins every output counts.
+            for(unsigned i=0;i<48;++i)pump();steadyStart=sequence;
+            const uint64_t steadyEnd=steadyStart+143;
+            while(sequence<=steadyEnd+10)pump();
+            cleanup.renderer->Stop();cleanup.stopped=true;drain();
+            unsigned outputs=0,composed=0,inspection=0,templates=0,proofs=0,consumed=0,scans=0;
+            bool exact=true,native=true,noFallback=true;std::set<uint64_t> distinct;std::set<unsigned> phaseCoverage;
+            uint64_t firstWall=0,lastWall=0,lastSource=0,maxSourceGap=0,maxProcessingSelectionLag=0;double maxGapMs=0,maxLatencyMs=0,maxWorkMs=0;
+            std::vector<double> latencies,workMs;
+            for(const auto& r:observed) {
+                if(r.sourceFrameNumber<steadyStart||r.sourceFrameNumber>steadyEnd)continue;
+                if(!strcmp(r.stage,"worker-submit")&&(r.flags&32u))++inspection;
+                if(!strcmp(r.stage,"worker-cue-template"))++templates;
+                if(!strcmp(r.stage,"worker-cue-proof")&&(r.flags&1u))++proofs;
+                if(!strcmp(r.stage,"subtitle-cue-proof-consumed")&&(r.flags&1u))++consumed;
+                if(!strcmp(r.stage,"worker-complete"))++scans;
+                if(!strcmp(r.stage,"source-frame-work")&&(r.flags&1u)&&std::isfinite(r.metrics[0]))workMs.push_back(r.metrics[0]);
+                if(strcmp(r.stage,"submitted-presentation")||!(r.flags&1u))continue;
+                ++outputs;if(r.flags&2u)++composed;
+                const auto input=inputs.find(r.sourceFrameNumber);
+                const bool temporal=(r.flags&(128u|256u))!=0;
+                const bool sourceOrder=r.counters[0]>=r.counters[1];
+                const auto selectionLag=sourceOrder?r.counters[0]-r.counters[1]:uint64_t(11);
+                maxProcessingSelectionLag=(std::max)(maxProcessingSelectionLag,selectionLag);
+                // The published identity belongs to the selected source. A
+                // genuine temporal path may process a newer source concurrently.
+                exact&=input!=inputs.end()&&r.captureTimestamp==uint64_t(input->second.first)&&
+                    r.acceptedSequence==r.counters[1]&&sourceOrder&&
+                    (temporal?selectionLag<=10:selectionLag==0)&&
+                    (!(r.flags&4u)||((r.flags&8u)&&r.counters[7]==r.counters[1]));
+                native&=r.counters[4]!=0&&r.published[0]==0&&r.published[1]==pictureTop&&r.published[2]==width&&r.published[3]==pictureBottom;
+                noFallback&=r.metrics[9]>=pictureTop-.01&&r.metrics[11]<=pictureBottom+.01&&!(r.flags&(4096u|8192u|16384u));
+                const auto time=classicPoseSubmitWallNs.find(r.recordSequence);
+                if(distinct.insert(r.sourceFrameNumber).second&&time!=classicPoseSubmitWallNs.end()) {
+                    phaseCoverage.insert(unsigned((r.sourceFrameNumber-1)%4));
+                    if(lastWall)maxGapMs=(std::max)(maxGapMs,double(time->second-lastWall)/1e6);
+                    if(lastSource)maxSourceGap=(std::max)(maxSourceGap,r.sourceFrameNumber>lastSource?r.sourceFrameNumber-lastSource:uint64_t(144));
+                    if(!firstWall)firstWall=time->second;lastWall=time->second;lastSource=r.sourceFrameNumber;
+                    if(input!=inputs.end()){const double latency=double(time->second-input->second.second)/1e6;latencies.push_back(latency);maxLatencyMs=(std::max)(maxLatencyMs,latency);}
+                }
+            }
+            if(!workMs.empty())maxWorkMs=*std::max_element(workMs.begin(),workMs.end());
+            const double maxIngress=ingressMs.empty()?0:*std::max_element(ingressMs.begin(),ingressMs.end());
+            double early=0,late=0;if(latencies.size()>=48)for(size_t i=0;i<24;++i){early+=latencies[i]/24;late+=latencies[latencies.size()-24+i]/24;}
+            const double sourceFps=lastWall>firstWall?double(distinct.size()-1)*1e9/double(lastWall-firstWall):0;
+            std::ostringstream summary;summary<<"CAPTURED V210: input_hz="<<inputHz<<" output_hz="<<outputHz
+                <<" steady_sources=144 submitted="<<outputs<<" distinct="<<distinct.size()<<" composed="<<composed
+                <<" phases="<<phaseCoverage.size()<<" inspection_requests="<<inspection<<" templates="<<templates
+                <<" proofs="<<proofs<<" consumed="<<consumed<<" scans="<<scans<<" current_exact="<<exact
+                <<" native_stable="<<native<<" no_fallback="<<noFallback<<" source_fps="<<sourceFps
+                <<" max_source_gap="<<maxSourceGap<<" max_processing_selection_lag="<<maxProcessingSelectionLag<<" max_submit_gap_ms="<<maxGapMs<<" max_latency_ms="<<maxLatencyMs
+                <<" early_latency_ms="<<early<<" late_latency_ms="<<late<<" work_samples="<<workMs.size()
+                <<" max_frame_work_ms="<<maxWorkMs<<" max_ingress_ms="<<maxIngress;
+            Logger::WriteMessage(summary.str().c_str());
+            for(const auto& r:observed)if(r.sourceFrameNumber>=steadyStart&&r.sourceFrameNumber<=steadyEnd&&
+                ((!strcmp(r.stage,"submitted-presentation")&&(!(r.flags&2u)||r.metrics[11]>pictureBottom+.01))||
+                 !strcmp(r.stage,"subtitle-canvas-admission"))) {
+                std::ostringstream row;row<<"CAPTURED V210 DECISION: source="<<r.sourceFrameNumber<<" stage="<<r.stage
+                    <<" flags="<<r.flags<<" reason="<<r.reason<<" detail="<<r.detail<<" selected="<<r.counters[1]
+                    <<" published="<<r.published[1]<<'-'<<r.published[3]<<" actual="<<r.metrics[9]<<'-'<<r.metrics[11];
+                Logger::WriteMessage(row.str().c_str());
+            }
+            Assert::IsTrue(outputs>=136&&distinct.size()>=136&&phaseCoverage.size()==4,L"Missing steady current-source coverage.");
+            Assert::IsTrue(exact,L"Subtitle readiness held/replayed or mismatched an otherwise eligible current source.");
+            Assert::IsTrue(native,L"Measured native geometry changed or fallback gained native authority.");
+            Assert::IsTrue(composed==outputs&&noFallback,L"Captured unchanged cue still alternates composed and expanded raw fallback output.");
+            Assert::IsTrue(inspection>0&&proofs>0&&consumed>0,L"Live inspection-only/worker reuse path was not exercised.");
+            Assert::IsTrue(sourceFps>=.97*(std::min)(inputHz,outputHz)&&maxSourceGap<=2&&maxGapMs<=2*periodMs+1000/outputHz,
+                L"Current-source presentation gaps exceeded the live input/output cadence allowance.");
+            Assert::IsTrue(maxLatencyMs<=10*periodMs+1000/outputHz&&latencies.size()>=48&&late<=early+periodMs,
+                L"Live source latency exceeded capacity or grew during unchanged-cue playback.");
+            Assert::IsTrue(workMs.size()>=distinct.size()*.9&&maxWorkMs<=periodMs&&maxIngress<=periodMs,
+                L"Measured mandatory frame work exceeded the incoming frame budget.");
+        }
+        TEST_METHOD(StandardRendererCapturedV210CueHasNoCadenceFlicker)
+        {VerifyCapturedV210CueCadence(false);}
+        TEST_METHOD(BetaRendererCapturedV210CueHasNoCadenceFlicker)
+        {VerifyCapturedV210CueCadence(true);}
+
         TEST_METHOD(AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed)
         {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),false,true,true);}
         TEST_METHOD(DecodedDvCrossEdgeFixtureNativePreflight)

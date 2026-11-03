@@ -83,6 +83,7 @@
 #include <SubtitleBackingLip.h>
 #include <SubtitleBackingPresentation.h>
 #include <SubtitleMeasurementWorker.h>
+#include <SubtitleCurrentCuePresentation.h>
 #include <SubtitleCadenceGuard.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
 #include <SubtitleCutPasteShader.h>
@@ -9606,7 +9607,7 @@ struct LibplaceboVideoRenderer::Impl
 
     SubtitleCurrentCueProofStatus SubmitCurrentCueProof(
         const PreparedAnalysisFrame& prepared,const SubtitleBoxObservation& key,
-        const ActivePictureBounds& physicalBase,const ActivePictureFrameIdentity& renderHead,
+        const ActivePictureBounds& offeredPhysicalBase,const ActivePictureFrameIdentity& renderHead,
         uint64_t eligibleTailSequence,SubtitlePreviewMode sourceMode,int backgroundMode,
         double frameMs,double fps,bool fullScanDue,const SubtitleBarTrackingReference& prior,
         const ActivePictureEvidence& nativeEvidence,
@@ -9614,7 +9615,11 @@ struct LibplaceboVideoRenderer::Impl
         const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t ownedTimelinePolicy=0,
         const char* offerOrigin="render")
     {
-        const uint64_t revision=currentCueTemplateRevision.load(std::memory_order_acquire);
+        SubtitleBoxObservation proofKey;
+        ActivePictureBounds proofBase;
+        uint64_t revision=0;
+        const bool haveReadyTemplate=subtitleMeasurementWorker.MakeCurrentCueProofKey(
+            key,sourceMode,backgroundMode,proofKey,proofBase,revision);
         const auto statusName=[](SubtitleCurrentCueProofStatus status)->const char* {
             switch(status) {
             case SubtitleCurrentCueProofStatus::NoTemplate:return "no-template";
@@ -9653,11 +9658,11 @@ struct LibplaceboVideoRenderer::Impl
             trace.counters[6]=eligibleTailSequence;
             trace.counters[7]=key.sharedPicture.AvailableFor(key.identity,key.width,key.height)?1u:0u;
             trace.metrics[0]=elapsedMs;
-            AnalysisTraceRect(trace.previous,physicalBase);
+            AnalysisTraceRect(trace.previous,offeredPhysicalBase);
             AnalysisTraceRect(trace.published,key.sharedPicture.bounds);
             AnalysisDiagnosticTrace::Emit(trace);
         };
-        if(!revision) {
+        if(!haveReadyTemplate || !revision) {
             offerTrace(SubtitleCurrentCueProofStatus::NoTemplate,"no-template",prepared.source.generation,
                 prepared.source.generation,0.0);
             return SubtitleCurrentCueProofStatus::NoTemplate;
@@ -9672,20 +9677,21 @@ struct LibplaceboVideoRenderer::Impl
         if(!prepared.IsValid() || !prepared.source.backingOwner ||
             key.discontinuity ||
             key.identity.analysisDomainKey!=prepared.domainKey ||
-            !key.sharedPicture.AvailableFor(key.identity,key.width,key.height) ||
-            physicalBase.rasterWidth!=key.width || physicalBase.rasterHeight!=key.height ||
-            physicalBase.left<0 || physicalBase.top<0 || physicalBase.right>key.width ||
-            physicalBase.bottom>key.height || physicalBase.left>=physicalBase.right ||
-            physicalBase.top>=physicalBase.bottom) {
+            !proofKey.sharedPicture.AvailableFor(key.identity,key.width,key.height) ||
+            proofBase.rasterWidth!=key.width || proofBase.rasterHeight!=key.height ||
+            proofBase.left<0 || proofBase.top<0 || proofBase.right>key.width ||
+            proofBase.bottom>key.height || proofBase.left>=proofBase.right ||
+            proofBase.top>=proofBase.bottom) {
             offerTrace(SubtitleCurrentCueProofStatus::NotEligible,"precondition-rejected",
                 originalSourceGeneration,proofSource.generation,0.0);
             return SubtitleCurrentCueProofStatus::NotEligible;
         }
 
         SubtitleCurrentCueProofRequest request;
-        request.currentKey=key;
+        request.currentKey=proofKey;
+        request.fullScanKey=key;request.hasFullScanKey=true;
         request.source=std::move(proofSource);
-        request.physicalBase=physicalBase;
+        request.physicalBase=proofBase;
         request.sourceMode=sourceMode;
         request.backgroundMode=backgroundMode;
         request.eligibleRenderHead=renderHead;
@@ -14968,25 +14974,6 @@ struct LibplaceboVideoRenderer::Impl
                 return hasExactCurrentScan(preview) && current.text.detected && !current.text.held &&
                     !current.text.confirmationPending;
             };
-            const auto sameSubtitleRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
-                return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
-            };
-            const auto sameCurrentCueShape=[&](const SubtitleBoxResult& current,const SubtitleBoxResult& accepted) {
-                if(!current.detected || current.held || current.confirmationPending || current.workLimit ||
-                    !accepted.detected || accepted.held || accepted.confirmationPending || accepted.workLimit ||
-                    current.lineCount<1 || current.lineCount>3 || current.lineCount!=accepted.lineCount ||
-                    !sameSubtitleRect(current.bounds,accepted.bounds) ||
-                    !sameSubtitleRect(current.anchor,accepted.anchor) ||
-                    !sameSubtitleRect(current.capturePanel,accepted.capturePanel) ||
-                    current.signature!=accepted.signature || current.anchorSignature!=accepted.anchorSignature)
-                    return false;
-                for(int line=0;line<current.lineCount;++line) {
-                    if(!sameSubtitleRect(current.lineBounds[line],accepted.lineBounds[line]) ||
-                        !sameSubtitleRect(current.lineCapturePanels[line],accepted.lineCapturePanels[line]) ||
-                        current.lineSignatures[line]!=accepted.lineSignatures[line])return false;
-                }
-                return true;
-            };
             const bool currentHasFullPositiveScan=hasExactCurrentPositiveScan(currentSubtitlePreview);
             bool currentCueProofWorkerOwnsSource=false;
             bool currentCueProofNeedsOrdinaryFullScan=false;
@@ -14994,17 +14981,30 @@ struct LibplaceboVideoRenderer::Impl
             if(!renderCompleteNoCaptionScan && !hasExactCurrentNegativeScan(currentSubtitlePreview) &&
                 !repeatedTemporalOutput && !cadenceRepeat &&
                 SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,subtitleIdentity)) {
-                const auto exactKey=currentSubtitlePreview.current;
-                const auto revision=currentCueTemplateRevision.load(std::memory_order_acquire);
-                if(revision && exactKey.sharedPicture.AvailableFor(exactKey.identity,exactKey.width,exactKey.height)) {
+                const auto rawCurrentKey=currentSubtitlePreview.current;
+                SubtitleBoxObservation exactKey;
+                const bool currentFullRasterProofContext=(fullRasterPresentationAuthorityAvailable &&
+                    fullRasterPresentationAuthoritySourceGeneration==frameGeneration) ||
+                    latestActivePictureEvidenceClassification==ActivePictureClassification::FULL_RASTER_TRUSTED;
+                const bool currentPictureRejectsProof=latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
+                    latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
+                    CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry);
+                const bool nativeProofContext=!inwardCaptionProtected && !inspectionRecoveryBlocked &&
+                    !currentFullRasterProofContext && !currentPictureRejectsProof && nlsGeometryAvailable &&
+                    nlsGeometrySourceGeneration==frameGeneration &&
+                    nlsGeometrySourceFormatKey==subtitleIdentity.sourceFormatGeneration &&
+                    nlsGeometryOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+                    nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED;
+                if(BuildSubtitleCurrentCueProofKey(rawCurrentKey,subtitleIdentity,nlsGeometry,
+                        nativeProofContext,exactKey)) {
                     const auto bindStarted=SteadyClock::now();
-                    auto cueStatus=subtitleMeasurementWorker.TryTakeCurrentCueProof(
-                        exactKey,revision,currentCueProofReceipt);
+                    auto cueStatus=subtitleMeasurementWorker.TryPeekCurrentCueProof(
+                        exactKey,currentCueProofReceipt);
                     if(sourceSequence<=128 || sourceSequence%60==0) {
                         auto poll=AnalysisTraceRecord(exactKey.identity,this,"subtitle-cue-proof-polled","render-current-source");
                         poll.policyGeneration=exactKey.policyGeneration;
                         poll.continuityGeneration=exactKey.continuityGeneration;
-                        poll.counters[0]=revision;poll.counters[1]=static_cast<uint64_t>(cueStatus);
+                        poll.counters[0]=currentCueProofReceipt.TemplateRevision();poll.counters[1]=static_cast<uint64_t>(cueStatus);
                         poll.flags=cueStatus==SubtitleCurrentCueProofStatus::Ready?1u:0u;
                         poll.timestampNs=static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                             SteadyClock::now().time_since_epoch()).count());
@@ -15020,19 +15020,18 @@ struct LibplaceboVideoRenderer::Impl
                         const double proofFps=state.displayMode?state.displayMode->RefreshRateHz():60.0;
                         const double proofFrameMs=state.displayMode && state.displayMode->TimeScale()>0?
                             1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale():1000.0/60.0;
-                        cueStatus=SubmitCurrentCueProof(preparedQueued,exactKey,
+                        cueStatus=SubmitCurrentCueProof(preparedQueued,rawCurrentKey,
                             exactKey.sharedPicture.bounds,activePictureIdentity,sourceSequence,
                             sourceSubtitleMode,subtitleCutPasteBackground,proofFrameMs,proofFps,
                             !exactKey.cadenceSkipped,priorBar,nativeEvidence,analysisCache);
                         if(cueStatus==SubtitleCurrentCueProofStatus::Ready)
-                            cueStatus=subtitleMeasurementWorker.TryTakeCurrentCueProof(
-                                exactKey,revision,currentCueProofReceipt);
+                            cueStatus=subtitleMeasurementWorker.TryPeekCurrentCueProof(
+                                exactKey,currentCueProofReceipt);
                     }
                     const bool advancedCueMode=SubtitlePreviewOverridesClassicHandling(sourceSubtitleMode);
                     const auto& receiptKey=currentCueProofReceipt.CurrentKey();
                     const bool receiptCurrent=currentCueProofReceipt.Valid() &&
                         currentCueProofReceipt.Provenance()==SubtitleCurrentCueProofProvenance::PresentationOnlyCurrentPixels &&
-                        currentCueProofReceipt.TemplateRevision()==revision &&
                         SameAnalysisFrameIdentity(receiptKey.identity,subtitleIdentity) &&
                         SubtitleMeasurementWorker::SameKey(receiptKey,exactKey) &&
                         SameSubtitlePresentationBounds(currentCueProofReceipt.PhysicalBase(),exactKey.sharedPicture.bounds) &&
@@ -15050,13 +15049,17 @@ struct LibplaceboVideoRenderer::Impl
                         (!advancedCueMode || (currentCueProofReceipt.Operation().valid &&
                             currentCueProofReceipt.FootprintSamples()>0));
                     const bool receiptMatchesCurrentPositive=!currentHasFullPositiveScan ||
-                        sameCurrentCueShape(currentSubtitlePreview.current.text,
-                            currentCueProofReceipt.AcceptedCue());
+                        CurrentSubtitleCueFitsVerifiedOperation(rawCurrentKey.text,
+                            currentCueProofReceipt.AcceptedCue(),currentCueProofReceipt.Operation(),
+                            currentCueProofReceipt.CurrentInk()?currentCueProofReceipt.CurrentInk()->step:0,
+                            &currentCueProofReceipt.VerifiedSemanticLineBounds());
                     SubtitleBoxResult currentCue;
+                    SubtitleBoxPreview proofPreview;
                     if(cueStatus==SubtitleCurrentCueProofStatus::Ready && receiptCurrent &&
                         receiptMatchesCurrentPositive &&
                         subtitleBoxPresentation.ConsumeCurrentCueProof(currentCueProofReceipt,
-                            currentSubtitlePreview,currentCue)) {
+                            proofPreview,currentCue)) {
+                        currentSubtitlePreview=std::move(proofPreview);
                         currentCueProofConsumed=true;
                         currentSubtitlePendingPixelsVerified=true;
                         subtitleBoxResult=currentCue;
@@ -15081,6 +15084,20 @@ struct LibplaceboVideoRenderer::Impl
                         proofTrace.metrics[1]=currentCueProofPollBindMs;
                         AnalysisDiagnosticTrace::Emit(proofTrace);
                     } else {
+                        if(sourceSequence<=128 || sourceSequence%60==0) {
+                            const char* reason=cueStatus!=SubtitleCurrentCueProofStatus::Ready?"proof-not-ready":
+                                !receiptCurrent?"proof-current-context-rejected":
+                                !receiptMatchesCurrentPositive?"proof-current-semantic-shape-rejected":
+                                "proof-consumption-rejected";
+                            auto rejected=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-cue-proof-bind-rejected",reason);
+                            rejected.policyGeneration=localBoundaryPolicyGeneration;
+                            rejected.continuityGeneration=localBoundaryContinuityGeneration;
+                            rejected.counters[0]=currentCueProofReceipt.TemplateRevision();
+                            rejected.counters[1]=static_cast<uint64_t>(cueStatus);
+                            rejected.flags=(receiptCurrent?1u:0u)|(receiptMatchesCurrentPositive?2u:0u)|
+                                (currentHasFullPositiveScan?4u:0u);
+                            AnalysisDiagnosticTrace::Emit(rejected);
+                        }
                         currentCueProofPollBindMs=std::chrono::duration<double,std::milli>(
                             SteadyClock::now()-bindStarted).count();
                         currentCueProofWorkerOwnsSource=cueStatus==SubtitleCurrentCueProofStatus::Queued ||
@@ -15092,11 +15109,25 @@ struct LibplaceboVideoRenderer::Impl
                                 cueStatus==SubtitleCurrentCueProofStatus::Failed);
                     }
                 } else {
+                    if(sourceSequence<=128 || sourceSequence%60==0) {
+                        auto rejected=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-cue-proof-bind-rejected",
+                            nativeProofContext?"proof-source-key-rejected":"native-proof-context-rejected");
+                        rejected.policyGeneration=localBoundaryPolicyGeneration;
+                        rejected.continuityGeneration=localBoundaryContinuityGeneration;
+                        rejected.flags=(inwardCaptionProtected?1u:0u)|(inspectionRecoveryBlocked?2u:0u)|
+                            (currentFullRasterProofContext?4u:0u)|(currentPictureRejectsProof?8u:0u)|
+                            (!nlsGeometryAvailable?16u:0u)|(nlsGeometrySourceGeneration!=frameGeneration?32u:0u)|
+                            (nlsGeometrySourceFormatKey!=subtitleIdentity.sourceFormatGeneration?64u:0u)|
+                            (nlsGeometryOrigin!=ActivePictureAuthorityOrigin::NATIVE?128u:0u)|
+                            (nlsGeometryClassification!=ActivePictureClassification::BAR_CROP_TRUSTED?256u:0u);
+                        AnalysisTraceRect(rejected.previous,nlsGeometry);
+                        AnalysisDiagnosticTrace::Emit(rejected);
+                    }
                     currentCueProofNeedsOrdinaryFullScan=!currentHasFullPositiveScan;
                 }
                 if(!currentCueProofConsumed && currentCueProofNeedsOrdinaryFullScan) {
                     const auto priorBar=subtitleBoxPresentation.BarTrackingReferenceFor(
-                        subtitleIdentity,exactKey.width,exactKey.height,localBoundaryPolicyGeneration,
+                        subtitleIdentity,rawCurrentKey.width,rawCurrentKey.height,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint);
                     const auto observed=QueueSubtitleMeasurement(videoFrame,state,subtitleIdentity,
                         videoFrame.IsSourceDiscontinuity(),priorBar,localBoundaryPolicyGeneration,

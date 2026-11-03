@@ -127,6 +127,50 @@ public:
         return at>=0 && size_t(at)<m_currentPixels.size() && (!requireErasure || m_native[size_t(at)].erase) &&
             EncodingEquivalent(m_native[size_t(at)].pixel,m_currentPixels[size_t(at)].pixel);
     }
+    // This is only a semantic grouping allowance around the original glyph
+    // captures. It never enlarges capture, erasure, destination, or ownership.
+    // Every added native pixel was already erased by the accepted operation,
+    // was BLACK in its immutable seed, and has passed current-source verification
+    // within the encoding envelope. Bright omitted glyphs cannot acquire this seal.
+    std::array<SubtitleBoxRect,3> VerifiedSemanticLineBounds(int sampleStep) const {
+        std::array<SubtitleBoxRect,3> bounds{};
+        if(!m_currentFootprintReceiptValid || sampleStep<1 || sampleStep>8)return bounds;
+        bounds=m_capture;
+        const auto paddingPixel=[&](int x,int y) {
+            if(!VerifiedFootprintSampleIsEncodingEquivalent(x,y,true))return false;
+            const int at=Index(x,y);
+            return at>=0 && m_native[size_t(at)].black;
+        };
+        const auto row=[&](int left,int right,int y) {
+            for(int x=left;x<right;++x)if(!paddingPixel(x,y))return false;
+            return true;
+        };
+        const auto column=[&](int x,int top,int bottom) {
+            for(int y=top;y<bottom;++y)if(!paddingPixel(x,y))return false;
+            return true;
+        };
+        for(auto& line:bounds)if(line.Valid()) {
+            // Check sides independently; later strips include any newly added
+            // orthogonal span so all corners are covered too. No source reads.
+            for(int n=0;n<sampleStep && line.top>0;++n) {
+                if(!row(line.left,line.right,line.top-1))break;
+                --line.top;
+            }
+            for(int n=0;n<sampleStep && line.bottom<m_source.height;++n) {
+                if(!row(line.left,line.right,line.bottom))break;
+                ++line.bottom;
+            }
+            for(int n=0;n<sampleStep && line.left>0;++n) {
+                if(!column(line.left-1,line.top,line.bottom))break;
+                --line.left;
+            }
+            for(int n=0;n<sampleStep && line.right<m_source.width;++n) {
+                if(!column(line.right,line.top,line.bottom))break;
+                ++line.right;
+            }
+        }
+        return bounds;
+    }
     // Reuse only pixels already sampled from the exact current source during
     // this successful footprint receipt. This is a read-cache optimization;
     // it grants no additional geometry, cue, or crop authority.

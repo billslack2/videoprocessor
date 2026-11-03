@@ -4,6 +4,7 @@
     "src/VideoProcessor-Test/AlphaSourceCropPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp",
     "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp",
+    "src/VideoProcessor-Test/SubtitleCurrentCuePresentationTests.cpp",
     "src/VideoProcessor-Test/DecodedSubtitleCueWorkerTests.cpp",
     "src/VideoProcessor-Test/AnalysisDiagnosticTraceTests.cpp",
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
@@ -12,8 +13,14 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1091,
+  "minimumNativeTests": 1097,
   "requiredNativeMethods": [
+    "CurrentFootprintSemanticPaddingRequiresStableBlackActualErasure",
+    "CurrentCueWorkerReadyReceiptsSurviveReplacementWithoutDestructivePolling",
+    "CurrentCueWorkerDeferredAndLateScansKeepOriginalInspectionKey",
+    "InspectionScanUsesNativeProofRequestWithoutChangingMeasurement",
+    "ProofRequestRejectsStaleSourceAndUnavailableNativeContext",
+    "CurrentCueMetadataRequiresVerifiedCaptureAndSimilarLines",
     "CurrentFootprintGlyphAndDestinationNoiseRemainsSeedBounded",
     "PendingCueBelowFloorGlyphNoiseKeepsHonestMasksAndBarWitness",
     "CurrentCueStableUnownedBarContentNeverBecomesRemovalProof",
