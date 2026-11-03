@@ -7260,6 +7260,12 @@ namespace AlphaSourceCrop
             crop.currentVisibleSourceSequence==crop.frameSourceSequence &&
             SameTrustedCropContract(crop.currentVisibleBase,crop.geometry) &&
             ValidBounds(crop.currentVisibleBounds,crop.rasterWidth,crop.rasterHeight);
+        // When exact current raw visibility contradicts the native base, a
+        // separately confirmed FIT cannot mask that contradiction by clipping
+        // pixels the same source has just exposed.
+        const bool proposedClipsCurrentRaw=currentExactVisible &&
+            !ContainedBounds(proposed.sourceBounds,crop.currentVisibleBounds);
+        const bool confirmedPresentationCandidate=HasConfirmedPresentationCandidate(input,proposed);
         const bool currentContradiction=crop.automaticCropEnabled && HasAcceptedNativeCrop(crop) &&
             !crop.fullRasterPresentationAuthoritative && !committedFull &&
             input.measurementCurrent && input.retentionEvaluated && !input.excludedBandsPixelSafe &&
@@ -7269,7 +7275,7 @@ namespace AlphaSourceCrop
             SameTrustedCropContract(input.retentionBounds,crop.geometry) &&
             ((currentNomination && !ContainedBounds(crop.geometry,input.observation)) ||
              (currentExactVisible && !ContainedBounds(crop.geometry,crop.currentVisibleBounds))) &&
-            !HasConfirmedPresentationCandidate(input,proposed);
+            (!confirmedPresentationCandidate || proposedClipsCurrentRaw);
         CaptionTranslationMeasurement captionLease;
         const bool captionLifetime=CurrentCaptionOwnsTranslationLifetime(input,proposed,&captionLease);
         const bool continuingTranslation=SubmittedTranslationCoversCurrentBarVisibility(input,proposed);

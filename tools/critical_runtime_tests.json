@@ -11,7 +11,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1054,
+  "minimumNativeTests": 1055,
   "requiredNativeMethods": [
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
     "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",
@@ -22,6 +22,7 @@
     "ProcessedCaptionIdentityAndFillAreRequiredBeforeSubmittingTheFixedCanvas",
     "ClassicEngageKeepsLegalSubmittedPoseWhenCurrentCaptionExtentRelaxes",
     "ClassicUnknownPriorPanFollowsControllerWithinCurrentRawBounds",
+    "OffConfirmedFitCannotClipExactCurrentRawPixelsOrChangeNativeGeometry",
     "ProcessedEmptyBandsNeedCurrentPixelProofButDoNotInventCaptionAbsence",
     "IncidentCaptureProfileSwitchCancelsOldFollowupAndRearmsCooldown",
     "ConfirmedProcessedCaptionsCannotResizeTheNativeMovieAperture",

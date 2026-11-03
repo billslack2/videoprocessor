@@ -18134,6 +18134,127 @@ public:
                 L"The raw current occupied extent remains native at the top for this UNKNOWN-path case.");
             Assert::AreEqual(int(CaptionObservationState::UNKNOWN),int(bothCandidateEdges.captionObservation.state));
         }
+        TEST_METHOD(OffConfirmedFitCannotClipExactCurrentRawPixelsOrChangeNativeGeometry)
+        {
+            const auto frame=[](uint64_t sequence) {
+                auto c=LoggedNative(sequence);
+                c.geometry={0,274,3840,1886,3840,2160,3840.0/1612,
+                    ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                c.acceptedNativeCrop.bounds=c.geometry;
+                c.acceptedNativeCrop.acceptedSourceSequence=10700;
+                c.subtitlePresentationMode=PreparedNativeMode::NONE;
+                c.currentVisibleBoundsAvailable=true;
+                c.currentVisibleBase=c.geometry;
+                c.currentVisibleBounds={0,139,3840,1886,3840,2160,3840.0/1747,
+                    ActivePictureBounds::BarAxes::NONE};
+                c.currentVisibleSourceGeneration=c.frameSourceGeneration;
+                c.currentVisibleSourceSequence=sequence;
+
+                PresentationRecoveryInput r;
+                r.crop=c;r.subtitleCanvasMode=SubtitleCanvasMode::OFF;
+                r.presentationEpoch=c.framePresentationEpoch;
+                r.measurementCurrent=r.retentionEvaluated=true;
+                r.excludedBandsPixelSafe=false;
+                r.retentionBounds=c.geometry;
+                r.retentionSourceGeneration=c.frameSourceGeneration;
+                r.retentionSourceSequence=sequence;
+                return r;
+            };
+            const auto fit=[](PresentationRecoveryInput& r,int top) {
+                ConfirmedFitOwnershipInput q;
+                q.origin=ConfirmedFitOwnershipOrigin::CURRENT_BAR_CONTENT;
+                q.current=q.confirmed=true;q.upperContent=true;
+                q.nativeBase=r.crop.geometry;q.approvedBounds=r.crop.geometry;
+                q.approvedBounds.top=top;
+                q.approvedBounds.aspectRatio=3840.0/(q.approvedBounds.bottom-top);
+                q.evidenceBounds={0,top+24,3840,r.crop.geometry.top-2,
+                    3840,2160,0.0,ActivePictureBounds::BarAxes::NONE};
+                q.verticalPadding=24;
+                q.sourceGeneration=r.crop.frameSourceGeneration;
+                q.sourceSequence=r.crop.frameSourceSequence;
+                q.presentationEpoch=r.presentationEpoch;
+                const auto proof=QualifyConfirmedFitOwnership(q);
+                Assert::IsTrue(proof.available,
+                    L"The test fit is independently qualified current bar-content presentation evidence.");
+                Decision d=Evaluate(r.crop);
+                d.sourceBounds=proof.approvedBounds;
+                d.applyCrop=true;d.outwardExpanded=true;d.owner=DecisionOwner::OUTWARD_FIT;
+                d.reason="confirmed current bar-content fit";
+                d.confirmedFitOwnership=proof;
+                r.candidate=d;r.confirmedFitOwnership=proof;
+                return d;
+            };
+
+            auto fitFrame=frame(10807);
+            const auto native=fitFrame.crop.geometry;
+            const auto acceptedSequence=fitFrame.crop.acceptedNativeCrop.acceptedSourceSequence;
+            const auto narrowFit=fit(fitFrame,190);
+            Assert::AreEqual(int(SubtitleCanvasMode::OFF),int(fitFrame.subtitleCanvasMode));
+            Assert::AreEqual(int(CaptionObservationState::UNKNOWN),int(fitFrame.captionObservation.state));
+            Assert::AreEqual(0,fitFrame.currentTextCandidate.left);
+            Assert::AreEqual(0,fitFrame.currentTextCandidate.top);
+            Assert::AreEqual(0,fitFrame.currentTextCandidate.right);
+            Assert::AreEqual(0,fitFrame.currentTextCandidate.bottom);
+            const auto protectedFit=ResolveUncertainPicturePresentation(fitFrame,narrowFit);
+            Assert::IsTrue(protectedFit.currentPixelExtent,
+                L"An exact current raw extent that contradicts native bounds must outrank a narrower FIT.");
+            Assert::AreEqual(138,protectedFit.presentation.sourceBounds.top);
+            Assert::IsTrue(protectedFit.presentation.sourceBounds.left<=fitFrame.crop.currentVisibleBounds.left &&
+                protectedFit.presentation.sourceBounds.top<=fitFrame.crop.currentVisibleBounds.top &&
+                protectedFit.presentation.sourceBounds.right>=fitFrame.crop.currentVisibleBounds.right &&
+                protectedFit.presentation.sourceBounds.bottom>=fitFrame.crop.currentVisibleBounds.bottom,
+                L"The admitted presentation contains every exact current raw pixel.");
+            Assert::AreEqual(native.left,protectedFit.nativeCrop.left);
+            Assert::AreEqual(native.top,protectedFit.nativeCrop.top);
+            Assert::AreEqual(native.right,protectedFit.nativeCrop.right);
+            Assert::AreEqual(native.bottom,protectedFit.nativeCrop.bottom);
+            Assert::AreEqual(native.left,fitFrame.crop.geometry.left);
+            Assert::AreEqual(native.top,fitFrame.crop.geometry.top);
+            Assert::AreEqual(native.right,fitFrame.crop.geometry.right);
+            Assert::AreEqual(native.bottom,fitFrame.crop.geometry.bottom);
+            Assert::AreEqual(acceptedSequence,fitFrame.crop.acceptedNativeCrop.acceptedSourceSequence);
+
+            auto rawOnlyFrame=frame(10807);
+            const auto rawOnly=ResolveUncertainPicturePresentation(
+                rawOnlyFrame,Evaluate(rawOnlyFrame.crop));
+            Assert::AreEqual(protectedFit.presentation.sourceBounds.top,rawOnly.presentation.sourceBounds.top,
+                L"Alternating a confirmed FIT and raw-only route over unchanged current pixels is stable.");
+            Assert::AreEqual(protectedFit.presentation.sourceBounds.bottom,rawOnly.presentation.sourceBounds.bottom);
+
+            auto coveredFrame=frame(10807);
+            const auto coveringFit=fit(coveredFrame,130);
+            const auto unchanged=ResolveUncertainPicturePresentation(coveredFrame,coveringFit);
+            Assert::IsFalse(unchanged.currentPixelExtent,
+                L"A qualified presentation candidate that already covers raw pixels keeps its own pose.");
+            Assert::AreEqual(130,unchanged.presentation.sourceBounds.top);
+
+            for(int fault=0;fault<3;++fault) {
+                auto staleFrame=frame(10807);
+                const auto staleFit=fit(staleFrame,190);
+                if(fault==0)--staleFrame.crop.currentVisibleSourceSequence;
+                if(fault==1)++staleFrame.crop.currentVisibleSourceGeneration;
+                if(fault==2)staleFrame.crop.currentVisibleBase.top+=2;
+                const auto stale=ResolveUncertainPicturePresentation(staleFrame,staleFit);
+                Assert::IsFalse(stale.currentPixelExtent,
+                    L"A foreign or base-mismatched raw witness cannot displace a current confirmed FIT.");
+                Assert::AreEqual(190,stale.presentation.sourceBounds.top);
+                Assert::AreEqual(native.left,stale.nativeCrop.left);
+                Assert::AreEqual(native.top,stale.nativeCrop.top);
+                Assert::AreEqual(native.right,stale.nativeCrop.right);
+                Assert::AreEqual(native.bottom,stale.nativeCrop.bottom);
+            }
+
+            auto nominationOnly=frame(10807);
+            const auto nominationFit=fit(nominationOnly,190);
+            --nominationOnly.crop.currentVisibleSourceSequence;
+            nominationOnly.observationAvailable=true;
+            nominationOnly.observationClassification=ActivePictureClassification::PROVISIONAL;
+            nominationOnly.observation=nominationOnly.crop.currentVisibleBounds;
+            const auto nominated=ResolveUncertainPicturePresentation(nominationOnly,nominationFit);
+            Assert::IsFalse(nominated.currentPixelExtent,
+                L"A coarse current nomination without an exact raw witness cannot invoke the raw-visibility override.");
+            Assert::AreEqual(190,nominated.presentation.sourceBounds.top);
+        }
         TEST_METHOD(ClassicUnknownRawExtentProgressesAcrossFilledPoseAndVerticalFillOffset)
         {
             const auto horizontalAnchor=IncidentFilledClassicPanAnchor();
