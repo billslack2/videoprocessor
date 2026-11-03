@@ -190,9 +190,7 @@ then consumes the existing one-use cleanup-protection receipt before hook bindin
 This closes the later compositor bar-authority veto without populating bar fields.
 A failed source/base/operation binding still routes current raw pixels.
 
-Classic has a separate generic ready-source optimization: only a fresh complete
-independent scan with an exact accepted-cue certificate can rearm the same cue
-without rebuilding full-band directional arrays. It compares complete current raw
+Classic has a separate generic ready-source optimization. A fresh complete independent positive scan whose resolved result covers the accepted cue, or an exact current accepted-cue certificate for a pruned result, can rearm the same cue without rebuilding full-band directional arrays. It compares complete current raw
 and owned masks, cue/layout/source/physical context, current glyph/fringe YUV and
 backing state. The original pixel/contrast seed remains immutable; latest verified
 source advances and pending age resets only for this new full positive. Duplicate,

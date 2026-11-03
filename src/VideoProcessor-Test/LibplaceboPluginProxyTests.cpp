@@ -1889,6 +1889,9 @@ namespace VideoProcessorTest
             cleanup.renderer->SetActivePictureLookaheadFrames(4);
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
             uint64_t sequence=1;size_t finalRecordCursor=0;
+            uint64_t acceptedNativeSequence=0;
+            struct UhdDeliveredSource {const std::vector<uint16_t>* pixels=nullptr;timingclocktime_t timestamp=0;};
+            std::map<uint64_t,UhdDeliveredSource> uhdDeliveredSources;
             auto messages=[] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);return classicPoseMessages;};
             auto dump=[&] {for(const auto& line:messages())Logger::WriteMessage(line.c_str());};
             auto require=[&](bool valid,const wchar_t* message) {if(!valid){dump();Assert::Fail(message);}};
@@ -2751,6 +2754,9 @@ namespace VideoProcessorTest
             cleanup.renderer->SetActivePictureLookaheadFrames(4);
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
             uint64_t sequence=1;size_t finalRecordCursor=0;
+            uint64_t acceptedNativeSequence=0;
+            struct UhdDeliveredSource {const std::vector<uint16_t>* pixels=nullptr;timingclocktime_t timestamp=0;};
+            std::map<uint64_t,UhdDeliveredSource> uhdDeliveredSources;
             auto messages=[] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);return classicPoseMessages;};
             auto dump=[&] {
                 std::vector<AnalysisDiagnosticRecordV1> trace;
@@ -2764,7 +2770,7 @@ namespace VideoProcessorTest
             };
 
             AnalysisDiagnosticRecordV1 previousSuccessfulOutput{};bool havePreviousSuccessfulOutput=false;
-            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,sourceBoundCaption=false,shaderBuilding=false,poseEligible=false;int routedTranslation=0;double poseDelta=0,minimumTop=0,maximumTop=0;};
+            struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,sourceBoundCaption=false,shaderBuilding=false,poseEligible=false,currentRawFallback=false;int routedTranslation=0;double poseDelta=0,minimumTop=0,maximumTop=0;};
             auto geometries=[&] {
                 std::vector<Geometry> result;std::vector<AnalysisDiagnosticRecordV1> trace;
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
@@ -2776,6 +2782,20 @@ namespace VideoProcessorTest
                     Geometry g;g.sequence=record.counters[1];g.pts=record.metrics[0];g.mode=unsigned(record.counters[3]);
                     g.left=record.metrics[8];g.top=record.metrics[9];g.right=record.metrics[10];g.bottom=record.metrics[11];
                     g.composed=(record.flags&2u)!=0;g.poseEligible=(record.flags&1024u)!=0;
+                    const auto delivered=uhdDeliveredSources.find(record.sourceFrameNumber);
+                    const bool rawCaptionSource=delivered!=uhdDeliveredSources.end() &&
+                        delivered->second.pixels==&caption && delivered->second.timestamp==record.captureTimestamp;
+                    const bool rawNativeMatches=acceptedNativeSequence && record.counters[4]==acceptedNativeSequence &&
+                        record.published[0]==physical.left && record.published[1]==physical.top &&
+                        record.published[2]==physical.right && record.published[3]==physical.bottom;
+                    g.currentRawFallback=rawCaptionSource && rawNativeMatches &&
+                        record.counters[2]==0 && record.counters[5]==0 && record.counters[6]==0 && record.counters[7]==0 &&
+                        !(record.flags&(4u|8u|128u|256u|512u)) &&
+                        g.left<=physical.left && g.top<=physical.top && g.right>=physical.right && g.bottom>=captionBottom &&
+                        std::any_of(trace.begin(),trace.end(),[&](const AnalysisDiagnosticRecordV1& admission) {
+                            return admission.recordSequence<record.recordSequence &&
+                                IsCurrentRawSubtitleFallback(record,admission,width,height);
+                        });
                     g.sourceBoundCaption=IsSourceBoundComposedCaption(record,
                         havePreviousSuccessfulOutput?&previousSuccessfulOutput:nullptr,1,advancedMode,
                         1001.0/(narrower?24000.0:60000.0));
@@ -2808,7 +2828,7 @@ namespace VideoProcessorTest
             auto nextSource=std::chrono::steady_clock::now();
             auto pump=[&](std::vector<uint16_t>& pixels) {
                 MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
-                if(callback.state==RENDERSTATE_RENDERING){const void* data=nativeV210?static_cast<const void*>(packedFrames.at(pixels.data()).data()):static_cast<const void*>(pixels.data());VideoFrame frame(data,sequence++,clock.TimingClockNow(),&buffer);cleanup.renderer->OnVideoFrame(frame);}
+                if(callback.state==RENDERSTATE_RENDERING){const void* data=nativeV210?static_cast<const void*>(packedFrames.at(pixels.data()).data()):static_cast<const void*>(pixels.data());const auto source=sequence++;const auto stamp=clock.TimingClockNow();uhdDeliveredSources[source]={&pixels,stamp};VideoFrame frame(data,source,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);}
                 nextSource+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(sourcePeriod);
                 std::this_thread::sleep_until(nextSource);
                 DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);UseCompletedSubmittedPresentation(value);return value;
@@ -2831,7 +2851,6 @@ namespace VideoProcessorTest
                 require(false,L"Normal-drift fixture failed independent native-plane acquisition or exact configured fill.");
             };
             acquireNative();
-            uint64_t acceptedNativeSequence=0;
             auto nativeMatches=[&](const std::string& line) {
                 Geometry g;const auto at=line.find(" native_rect=");
                 return at!=std::string::npos && sscanf_s(line.c_str()+at+13,"%lf,%lf-%lf,%lf",
@@ -2863,8 +2882,12 @@ namespace VideoProcessorTest
                         settledSources.insert(g.sequence);
                         continue;
                     }
-                    // Every submitted Classic frame keeps the native dimensions
-                    // and contains the complete caption, including initial entry.
+                    // Before acquisition, optional analysis cannot hold video or
+                    // clip current caption/picture pixels. An exact source-bound
+                    // raw envelope may bridge this initial entry only.
+                    if(!safeNativePanSeen && g.currentRawFallback)continue;
+                    // Once the pose is acquired, keep native dimensions and
+                    // the complete caption on every established Classic output.
                     const bool nativePan=sameSize(g) && g.top>=initial.top-0.01 &&
                         g.top<=settled.top+0.01 && g.bottom>=captionBottom-0.01;
                     require(nativePan,
@@ -2899,6 +2922,10 @@ namespace VideoProcessorTest
                     const auto value=pump(caption);
                     for(const auto& g:geometries())if(g.sequence>=requested) {
                         lastMode=g.mode;
+                        // Shader preparation has no right to replay an older
+                        // frame. Current raw pixels are allowed only before the
+                        // first actual composition; steady checks stay strict.
+                        if(!ready && g.currentRawFallback)continue;
                         if(ready)require(g.mode==advancedMode && g.sourceBoundCaption && same(g,initial),
                             L"Ready UHD output lost its current caption or changed the native viewport.");
                         if(g.shaderBuilding && !ready) {

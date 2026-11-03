@@ -931,10 +931,14 @@ public:
             current.pictureTop==current.barEvidence.top && current.pictureBottom==current.barEvidence.bottom &&
             current.ink && current.ink->rawEvidenceComplete &&
             !current.text.held && !accepted.held && !accepted.revised;
+        const bool resolvedCovers=covers(preview.text);
         const bool certifiedExistingCue=independentCurrentCue && existingCueCertificate &&
             existingCueCertificate->Matches(preview,accepted);
+        // A complete current grouping already met the normal seed eligibility;
+        // the tracker certificate is needed only when pruning omitted that cue.
+        const bool currentCompletePositive=independentCurrentCue && resolvedCovers;
+        const bool eligibleSameCueRearm=certifiedExistingCue || currentCompletePositive;
         const bool consumedCertificate=independentCurrentCue && m_consumedCertificate.Matches(preview,accepted);
-        const bool resolvedCovers=covers(preview.text);
         if(!preview.available || !preview.current.analyzed || preview.current.pendingRefresh ||
             preview.current.discontinuity || preview.current.glyphLocalTop || preview.current.glyphLocalBottom ||
             !preview.current.barAuthority ||
@@ -957,12 +961,13 @@ public:
             // Replaying the same exported certificate cannot renew the lease.
             m_reason="accepted-certificate-already-consumed";return false;
         }
-        if(HasPixelSeed() && certifiedExistingCue && now.acceptedSequence<=m_last.acceptedSequence) {
-            m_reason=SameAnalysisFrameIdentity(now,m_last) ? "accepted-certificate-already-consumed" :
-                "accepted-certificate-not-forward";
+        if(HasPixelSeed() && eligibleSameCueRearm && now.acceptedSequence<=m_last.acceptedSequence) {
+            const bool sameSource=SameAnalysisFrameIdentity(now,m_last);
+            m_reason=sameSource ? (certifiedExistingCue ? "accepted-certificate-already-consumed" :
+                "accepted-current-positive-already-consumed") : "accepted-current-positive-not-forward";
             return false;
         }
-        if(certifiedExistingCue &&
+        if(eligibleSameCueRearm &&
             TryRearmAcceptedSameCue(preview,accepted,source,frameMs,currentFootprint))return true;
         auto seed=preview;seed.current.text=accepted;seed.text=accepted;
         Resolve(seed,source,frameMs,holdMs,nullptr,false,currentFootprint);

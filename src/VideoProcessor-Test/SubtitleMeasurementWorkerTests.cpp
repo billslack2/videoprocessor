@@ -722,7 +722,7 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
 
 
 
-    TEST_METHOD(UhdFreshReadyCertificateRearmsWithBoundedCurrentPixelChecks) {
+    TEST_METHOD(UhdFreshReadyRearmsWithBoundedCurrentPixelChecks) {
         constexpr auto format=AnalysisLumaFormat::P010;
         constexpr double frameMs=1000.0/23.976;
         auto pixels=UhdCaption(format);auto source=UhdSource(pixels,format);
@@ -757,25 +757,29 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         SubtitleBoxLookahead::ResolveInto(*current,currentScans->data(),currentScans->size(),UhdPolicy,UhdContinuity);
         const auto currentAccepted=tracker.Consume(*current,1000,frameMs);
         const auto& certificate=tracker.AcceptedCueSeedCertificate();
-        if(!certificate.Matches(*current,currentAccepted)) {
-            Logger::WriteMessage((std::string("UHD ready certificate absent: reason=")+tracker.DecisionReason()+
-                " accepted="+std::to_string(currentAccepted.detected)+
-                " held="+std::to_string(currentAccepted.held)+
-                " pending="+std::to_string(currentAccepted.confirmationPending)+
-                " lines="+std::to_string(currentAccepted.lineCount)+
-                " currentLinesConfirmed="+std::to_string(current->currentLinesConfirmed)+
-                " future="+std::to_string(current->followingCount)).c_str());
-        }
-        Assert::IsTrue(certificate.Matches(*current,currentAccepted),
-            L"A fresh full current lookahead must export a source-bound positive cue certificate.");
+        const bool certificatePresent=certificate.Matches(*current,currentAccepted);
+        Logger::WriteMessage((std::string("UHD ready tracker reason=")+tracker.DecisionReason()+
+            " certificate_present="+std::to_string(certificatePresent)+
+            " accepted="+std::to_string(currentAccepted.detected)+
+            " held="+std::to_string(currentAccepted.held)+
+            " pending="+std::to_string(currentAccepted.confirmationPending)+
+            " lines="+std::to_string(currentAccepted.lineCount)+
+            " currentLinesConfirmed="+std::to_string(current->currentLinesConfirmed)+
+            " future="+std::to_string(current->followingCount)).c_str());
+        Assert::IsTrue(currentAccepted.detected && !currentAccepted.held && !currentAccepted.confirmationPending);
+        Assert::AreEqual(1,currentAccepted.lineCount,
+            L"This UHD fixture is one accepted line, so ordinary full-positive coverage must suffice.");
         const auto started=std::chrono::steady_clock::now();
-        const bool rearmed=guard->RememberAccepted(*current,currentAccepted,source,frameMs,1000,&certificate);
+        // Exercise the ordinary full-positive path even if the tracker also
+        // happens to expose a certificate for this current source.
+        const bool rearmed=guard->RememberAccepted(*current,currentAccepted,source,frameMs,1000,nullptr);
         const double elapsed=std::chrono::duration<double,std::milli>(
             std::chrono::steady_clock::now()-started).count();
         Logger::WriteMessage((std::string("UHD ready rearm ms=")+std::to_string(elapsed)+
             " source="+std::to_string(current->current.identity.acceptedSequence)+
             " raw_cue="+std::to_string(current->current.text.cue)+
             " accepted_cue="+std::to_string(currentAccepted.cue)+
+            " certificate_present="+std::to_string(certificatePresent)+
             " mask_words="+std::to_string(guard->DecisionDiagnostics().readyRearmMaskWordsChecked)+
             " glyph_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmGlyphSamplesChecked)+
             " backing_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmBackingSamplesChecked)+
@@ -789,6 +793,11 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::IsTrue(guard->DecisionDiagnostics().readyRearmKnownSamplesChecked>0);
         Assert::AreEqual(original.acceptedSequence,guard->AcceptedSeedIdentity().acceptedSequence,
             L"The original UHD pixel reference remains immutable.");
+        Assert::IsFalse(guard->RememberAccepted(*current,currentAccepted,source,frameMs,1000,nullptr),
+            L"Replaying the same full-positive source cannot renew the pending lease twice.");
+        Assert::AreEqual("accepted-current-positive-already-consumed",guard->DecisionReason());
+        Assert::AreEqual(current->current.identity.acceptedSequence,guard->LastVerifiedIdentity().acceptedSequence);
+        Assert::AreEqual(0.0,guard->PendingElapsedMilliseconds(),0.001);
     }
 
     TEST_METHOD(SubtitleCompletionSignalFollowsReadyCachePublication) {
