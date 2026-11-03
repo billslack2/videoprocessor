@@ -1,2 +1,2 @@
-*.json -text
-*.trx -text
+*.json -text -diff
+*.trx -text -diff
