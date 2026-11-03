@@ -180,11 +180,13 @@ public:
             source.generation!=m_source.generation || source.rgbBitAlignment!=m_source.rgbBitAlignment ||
             source.rowBytes!=m_source.rowBytes || source.chromaRowBytes!=m_source.chromaRowBytes)
             return fail("current-footprint-context-changed");
-        auto verified=VerifyNativeFootprintPixels(source,true);
+        const ValidatedAnalysisLumaSampler sampler(source);
+        if(!sampler.IsValid())return fail("current-footprint-sample-budget-or-empty");
+        auto verified=VerifyNativeFootprintPixels(source,sampler,true);
         if(!verified.valid)return verified;
         size_t destinationSamples=0;int destinationMismatchX=-1,destinationMismatchY=-1;
         const char* destinationReason="current-destination-proof-unavailable";
-        if(!VerifyDestinationNovelty(source,destinationSamples,destinationMismatchX,
+        if(!VerifyDestinationNovelty(source,sampler,destinationSamples,destinationMismatchX,
             destinationMismatchY,destinationReason,verified)) {
             m_currentFootprintReceiptValid=false;
             return {false,verified.samples+destinationSamples,destinationReason,
@@ -294,6 +296,8 @@ private:
             !c.sharedPicture.AvailableFor(c.identity,c.width,c.height) ||
             !SameBase(c.sharedPicture.bounds,base) || !c.ink || !ValidGrid(*c.ink,source))
             return fail("cadence-seed-incomplete");
+        const ValidatedAnalysisLumaSampler sampler(source);
+        if(!sampler.IsValid())return fail("cadence-cleanup-source-unavailable");
         if(!std::isfinite(frameMs) || frameMs<=0 || frameMs>(std::max)(0,(std::min)(250,holdMs)))
             return fail("cadence-lease-expired");
         if(geometry.generatedCleanupRowCount>geometry.generatedCleanupRows.size())
@@ -399,7 +403,7 @@ private:
                     NativePixel n;n.x=x;n.y=y;
                     for(int line=0;line<3;++line)if(Inside(rowCaptures[line],x,y))n.line=line;
                     for(const auto& r:eraseSpans)if(x>=r.first && x<r.second)n.erase=true;
-                    if(!SampleValidated(source,x,y,n.pixel))return fail("cadence-cleanup-source-unavailable");
+                    if(!SampleValidated(source,sampler,x,y,n.pixel))return fail("cadence-cleanup-source-unavailable");
                     ++m_samples;n.ink=Ink(n.pixel,*c.ink);n.black=Black(n.pixel,*c.ink);
                     m_index[size_t(y-m_roi.top)*(m_roi.right-m_roi.left)+x-m_roi.left]=int(m_native.size());
                     m_native.push_back(n);
@@ -415,7 +419,7 @@ private:
         // rearm checks, never for skipped-source native pixel authority.
         m_detectorReference=c.ink;
         m_baseline=Snapshot(*c.ink,m_native);
-        if(allowAnalyzedStrideOne && !SeedDestinationNovelty(source))
+        if(allowAnalyzedStrideOne && !SeedDestinationNovelty(source,sampler))
             return fail("cadence-destination-seed-unavailable");
         for(int line=0;line<accepted.lineCount;++line) {
             unsigned owned=0;
@@ -473,7 +477,9 @@ public:
         // Current samples need no copy of immutable component/coordinate data.
         // Reuse the compact buffer across source packets instead of allocating
         // and copying the full native proof map on every skipped input.
-        const auto footprint=VerifyNativeFootprintPixels(source);
+        const ValidatedAnalysisLumaSampler sampler(source);
+        if(!sampler.IsValid())return fail("cadence-context-changed");
+        const auto footprint=VerifyNativeFootprintPixels(source,sampler);
         m_samples=static_cast<unsigned>(footprint.samples);
         if(!footprint.valid)return fail(footprint.reason);
         const auto& currentPixels=m_currentPixels;
@@ -562,21 +568,23 @@ private:
             std::adjacent_find(p.sourceRows.begin(),p.sourceRows.end())==p.sourceRows.end() &&
             p.sourceRows.front()>=0 && p.sourceRows.back()<source.height;
     }
-    // Call only after ValidSource() validated the complete allocation and the
-    // immutable footprint proved x/y in raster. Match Sample() exactly: decoded
-    // DV and P010/P210 all expose the high ten bits, never rounded 12-bit codes.
-    // Byte loads preserve padded/odd strides and unaligned frame backing.
     static uint16_t ReadPlanar10(const uint8_t* p) {
         return uint16_t((uint16_t(p[0])|(uint16_t(p[1])<<8))>>6);
     }
-    static bool SampleValidated(const AnalysisLumaSource& source,int x,int y,AnalysisLumaSample& pixel) {
-        if(source.format!=AnalysisLumaFormat::P010 && source.format!=AnalysisLumaFormat::P210 &&
-            source.format!=AnalysisLumaFormat::DecodedDolbyVision422)return source.Sample(x,y,pixel);
-        const auto* luma=source.data+size_t(y)*source.rowBytes+size_t(x)*2;
-        const size_t row=source.format==AnalysisLumaFormat::P010?size_t(y/2):size_t(y);
-        const auto* chroma=source.data+source.rowBytes*size_t(source.height)+row*source.chromaRowBytes+size_t(x/2)*4;
-        pixel.luma=ReadPlanar10(luma);pixel.chromaU=ReadPlanar10(chroma);pixel.chromaV=ReadPlanar10(chroma+2);
-        return true;
+    static bool SampleValidated(const AnalysisLumaSource& source,
+        const ValidatedAnalysisLumaSampler& sampler,int x,int y,AnalysisLumaSample& pixel) {
+        // Preserve the direct planar path. Other formats use one validated
+        // view per bounded operation, including V210, avoiding per-pixel
+        // source.IsValid() while keeping the canonical sample decoder.
+        if(source.format==AnalysisLumaFormat::P010 || source.format==AnalysisLumaFormat::P210 ||
+            source.format==AnalysisLumaFormat::DecodedDolbyVision422) {
+            const auto* luma=source.data+size_t(y)*source.rowBytes+size_t(x)*2;
+            const size_t row=source.format==AnalysisLumaFormat::P010?size_t(y/2):size_t(y);
+            const auto* chroma=source.data+source.rowBytes*size_t(source.height)+row*source.chromaRowBytes+size_t(x/2)*4;
+            pixel.luma=ReadPlanar10(luma);pixel.chromaU=ReadPlanar10(chroma);pixel.chromaV=ReadPlanar10(chroma+2);
+            return true;
+        }
+        return sampler.Sample(x,y,pixel);
     }
     static bool SameRect(const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
         return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
@@ -900,7 +908,7 @@ private:
         return size_t(y-m_destinationProbe.top)*size_t(m_destinationProbe.right-m_destinationProbe.left)+
             size_t(x-m_destinationProbe.left);
     }
-    bool SeedDestinationNovelty(const AnalysisLumaSource& source) {
+    bool SeedDestinationNovelty(const AnalysisLumaSource& source,const ValidatedAnalysisLumaSampler& sampler) {
         if(!InRaster(m_geometry.destination,m_reference->current.width,m_reference->current.height))return false;
         m_destinationProbe=DestinationProbeBounds();
         if(!m_destinationProbe.Valid()) {
@@ -918,16 +926,20 @@ private:
         m_destinationSeedPixels.assign(area,DestinationSeedPixel{});
         m_destinationSeedDirections.assign(area,0);
         m_destinationCurrentPixels.resize(area);
-        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
+        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y) {
+            const size_t rowBase=size_t(y-m_destinationProbe.top)*width;
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
-                const size_t at=DestinationIndex(x,y);
-                if(at>=area || !SampleValidated(source,x,y,m_destinationSeedPixels[at].pixel))return false;
+                const size_t at=rowBase+size_t(x-m_destinationProbe.left);
+                if(at>=area || !SampleValidated(source,sampler,x,y,m_destinationSeedPixels[at].pixel))return false;
                 ++m_samples;
             }
+        }
         constexpr int dx[4]={-1,1,0,0},dy[4]={0,0,-1,1};
-        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
+        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y) {
+            const size_t rowBase=size_t(y-m_destinationProbe.top)*width;
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
-                const size_t at=DestinationIndex(x,y);const auto& point=m_destinationSeedPixels[at].pixel;
+                const size_t at=rowBase+size_t(x-m_destinationProbe.left);
+                const auto& point=m_destinationSeedPixels[at].pixel;
                 const bool mayBright=BrightDestinationPoint(point,*m_baseline);
                 const bool mayAlternate=AlternateDestinationPoint(point,*m_baseline);
                 const bool mayDark=DarkDestinationPoint(point,*m_baseline);
@@ -944,6 +956,7 @@ private:
                         m_destinationSeedDirections[at]|=uint16_t(1u<<(direction+8));
                 }
             }
+        }
         return true;
     }
     static bool BrightDestinationPoint(const AnalysisLumaSample& point,const SubtitleInkSnapshot& palette) {
@@ -1028,7 +1041,8 @@ private:
         }
         return haveGlyphLines && !insideGlyphLine;
     }
-    bool VerifyDestinationNovelty(const AnalysisLumaSource& source,size_t& samples,
+    bool VerifyDestinationNovelty(const AnalysisLumaSource& source,
+        const ValidatedAnalysisLumaSampler& sampler,size_t& samples,
         int& mismatchX,int& mismatchY,const char*& reason,
         const CurrentFootprintVerification& verified) const {
         samples=0;mismatchX=mismatchY=-1;
@@ -1039,18 +1053,23 @@ private:
             area!=m_destinationCurrentPixels.size() || m_native.size()>SampleBudget-area) {
             reason="current-destination-proof-unavailable";return false;
         }
-        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
+        const size_t width=size_t(m_destinationProbe.right-m_destinationProbe.left);
+        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y) {
+            const size_t rowBase=size_t(y-m_destinationProbe.top)*width;
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
-                const size_t at=DestinationIndex(x,y);
-                if(at>=area || !SampleValidated(source,x,y,m_destinationCurrentPixels[at])) {
+                const size_t at=rowBase+size_t(x-m_destinationProbe.left);
+                if(at>=area || !SampleValidated(source,sampler,x,y,m_destinationCurrentPixels[at])) {
                     mismatchX=x;mismatchY=y;reason="current-destination-source-unavailable";return false;
                 }
                 ++samples;
             }
+        }
         constexpr int dx[4]={-1,1,0,0},dy[4]={0,0,-1,1};
-        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
+        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y) {
+            const size_t rowBase=size_t(y-m_destinationProbe.top)*width;
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
-                const size_t at=DestinationIndex(x,y);const auto& point=m_destinationCurrentPixels[at];
+                const size_t at=rowBase+size_t(x-m_destinationProbe.left);
+                const auto& point=m_destinationCurrentPixels[at];
                 const bool mayBright=BrightDestinationPoint(point,*m_baseline);
                 const bool mayAlternate=AlternateDestinationPoint(point,*m_baseline);
                 const bool mayDark=DarkDestinationPoint(point,*m_baseline);
@@ -1092,9 +1111,11 @@ private:
                     }
                 }
             }
+        }
         return true;
     }
     CurrentFootprintVerification VerifyNativeFootprintPixels(const AnalysisLumaSource& source,
+        const ValidatedAnalysisLumaSampler& sampler,
         bool allowProtectedCleanupProjection=false) const {
         int mismatchX=-1,mismatchY=-1;
         const auto fail=[&](size_t samples,const char* reason) {
@@ -1110,7 +1131,7 @@ private:
         size_t samples=0;
         for(size_t i=0;i<m_native.size();++i) {
             auto& pixel=m_currentPixels[i];const auto& location=m_native[i];
-            if(samples>=SampleBudget || !SampleValidated(source,location.x,location.y,pixel.pixel))
+            if(samples>=SampleBudget || !SampleValidated(source,sampler,location.x,location.y,pixel.pixel))
                 return fail(samples,"cadence-sample-budget-or-source");
             ++samples;pixel.ink=Ink(pixel.pixel,*m_baseline);pixel.black=Black(pixel.pixel,*m_baseline);
         }
