@@ -12,6 +12,8 @@
 #include <iomanip>
 #include <chrono>
 #include <map>
+#include <mutex>
+#include <cstring>
 #include <vector>
 #include <memory>
 #include <algorithm>
@@ -96,7 +98,7 @@ SubtitleCutPasteGeometry Geometry(SubtitleCutPastePresentation& compositor,Subti
     return ApplySubtitleTextReduction(geo,30,safe,true,false);
 }
 void Matrix(const std::vector<Frame>& frames,unsigned phases,bool enforce,unsigned& failures) {
-    Cost seedCost,proofCost;unsigned tested=0,passed=0,seeded=0;
+    Cost seedCost,proofCost,samePhaseCost,crossPhaseCost,validCost,invalidCost;unsigned tested=0,passed=0,seeded=0;
     for(unsigned phase=0;phase<phases;++phase) {
         auto found=std::find_if(frames.begin(),frames.end(),[&](const Frame& f){return f.phase==phase;});
         const auto& seed=*found;auto sampler=std::make_unique<SubtitleMeasurementSampler>();
@@ -123,15 +125,20 @@ void Matrix(const std::vector<Frame>& frames,unsigned phases,bool enforce,unsign
         for(const auto& current:frames) {
             if(current.key.identity.acceptedSequence<=seed.key.identity.acceptedSequence)continue;
             started=Clock::now();const auto proof=guard->VerifyCurrentFootprint(current.key,current.source,
-                preview->current,cue,seed.base);proofCost.Add(started);++tested;passed+=proof.valid;
+                preview->current,cue,seed.base);proofCost.Add(started);
+            const double elapsed=proofCost.values.back();
+            (current.phase==phase?samePhaseCost:crossPhaseCost).values.push_back(elapsed);
+            (proof.valid?validCost:invalidCost).values.push_back(elapsed);++tested;passed+=proof.valid;
             std::cout<<"{\"kind\":\"sampled_footprint\",\"seed_phase\":"<<phase<<",\"phase\":"<<current.phase
                 <<",\"captured_sequence\":"<<current.key.identity.acceptedSequence<<",\"valid\":"<<proof.valid
-                <<",\"samples\":"<<proof.samples<<",\"reason\":\""<<proof.reason<<"\",\"mismatch\":["
+                <<",\"samples\":"<<proof.samples<<",\"elapsed_ms\":"<<elapsed<<",\"reason\":\""<<proof.reason<<"\",\"mismatch\":["
                 <<proof.mismatchX<<','<<proof.mismatchY<<"]}\n";
         }
     }
     if(enforce)failures+=tested-passed;
     seedCost.Print("footprint_seed");proofCost.Print("footprint_current_pixels");
+    samePhaseCost.Print("footprint_same_phase");crossPhaseCost.Print("footprint_cross_phase");
+    validCost.Print("footprint_valid");invalidCost.Print("footprint_invalid");
     std::cout<<"{\"kind\":\"matrix_summary\",\"seeds\":"<<seeded<<",\"checked\":"<<tested
         <<",\"passed\":"<<passed<<",\"seed_acquisition\":\"synthetic_three_source_same_phase\",\"proof_sources\":\"captured_sidecar_identities\"}\n";
 }
@@ -177,6 +184,124 @@ void Timeline(const std::vector<Frame>& frames,bool enforce,unsigned& failures) 
         <<",\"held\":"<<held<<",\"composition_verified\":"<<composition<<",\"strong_prepared\":"<<strong
         <<",\"sourcePrepared\":\"modeled_success_no_GPU\",\"timing\":\"synthetic_consecutive_unpaced\"}\n";
 }
+struct WorkerTraceCapture {
+    std::mutex mutex;
+    std::vector<AnalysisDiagnosticRecordV1> rows;
+    static void __cdecl Record(void* context,const AnalysisDiagnosticRecordV1* row) {
+        if(!row || std::strcmp(row->stage,"worker-cue-proof"))return;
+        auto& self=*static_cast<WorkerTraceCapture*>(context);std::lock_guard<std::mutex> lock(self.mutex);
+        if(self.rows.size()<512)self.rows.push_back(*row);
+    }
+};
+void WorkerPath(const std::vector<Frame>& frames,unsigned phases,bool enforce,unsigned& failures) {
+    Cost proofCost;unsigned total=0,ready=0,consumed=0,strong=0;uint64_t fullScans=0;
+    for(unsigned phase=0;phase<phases;++phase) {
+        const auto& seed=*std::find_if(frames.begin(),frames.end(),[&](const Frame& f){return f.phase==phase;});
+        auto scanner=std::make_unique<SubtitleMeasurementSampler>();SubtitleBarTrackingReference prior;
+        const auto native=DetectSourcePictureForWorker(seed.source).evidence;
+        std::vector<SubtitleBoxObservation> scans(3);
+        for(unsigned i=0;i<3;++i) {
+            scans[i]=scanner->Measure(seed.source,SyntheticKey(seed,i),prior,1e7/double(seed.duration),native);
+            prior=SubtitleBoxLookahead::AdvanceBarTrackingReference(scans[i]);
+        }
+        auto preview=std::make_unique<SubtitleBoxPreview>();
+        SubtitleBoxLookahead::ResolveInto(*preview,scans.data(),scans.size(),seed.key.policyGeneration,seed.key.continuityGeneration);
+        auto tracker=std::make_unique<SubtitleBoxPresentation>();
+        const auto accepted=tracker->Consume(*preview,250,double(seed.duration)/10000.0);
+        auto compositor=std::make_unique<SubtitleCutPastePresentation>();auto pad=std::make_unique<SubtitlePaddingGuard>();
+        const auto operation=Geometry(*compositor,*pad,accepted,*preview,seed.base);
+        QualifiedSubtitlePresentationInput seedAdmission;seedAdmission.mode=SubtitlePreviewMode::GeneratedGrayBackground;
+        seedAdmission.currentIdentity=preview->current.identity;seedAdmission.observation=&preview->current;
+        seedAdmission.accepted=&accepted;seedAdmission.composition=&operation;seedAdmission.physicalBase=seed.base;
+        seedAdmission.currentDisplayPicture=preview->current.sharedPicture;seedAdmission.sourcePrepared=operation.valid;
+        seedAdmission.policyGeneration=seed.key.policyGeneration;seedAdmission.continuityGeneration=seed.key.continuityGeneration;
+        seedAdmission.currentPreparedCue=&tracker->CurrentPreparedCueCertificate();
+        const auto seedRetention=EvaluateActivePicturePresentationRetention(seed.source,seed.base);
+        const auto seedEvidence=EvaluatePreparedSubtitlePresentationEvidence(seed.source,seedRetention,seedAdmission);
+        const bool seedQualified=QualifyPreparedSubtitleCropPresentation(seedEvidence,seedAdmission.currentIdentity,seed.base).available;
+        std::cout<<"{\"kind\":\"worker_seed_admission\",\"phase\":"<<phase<<",\"strong_prepared\":"<<seedQualified
+            <<",\"reason\":\""<<seedEvidence.reason<<"\"}\n";
+        if(!seedQualified){++failures;continue;}
+        SubtitleCurrentCueTemplateInput input;input.observation=preview->current;input.acceptedCue=accepted;
+        input.source=seed.source;input.physicalBase=seed.base;input.composedOperation=operation;
+        input.sourceMode=SubtitlePreviewMode::GeneratedGrayBackground;input.compositionSucceeded=operation.valid;
+        input.acceptedCurrentScan=true;input.backgroundMode=5;input.frameMs=double(seed.duration)/10000.0;input.holdMs=250;
+        WorkerTraceCapture traces;
+        AnalysisDiagnosticTrace::SetExternalSinks(&traces,&WorkerTraceCapture::Record,nullptr,nullptr);
+        auto worker=std::make_unique<SubtitleMeasurementWorker>();worker->SetInputRateHz(1e7/double(seed.duration));
+        uint64_t revision=0;auto seedStatus=worker->SubmitCurrentCueTemplate(input,revision);
+        const auto seedDeadline=Clock::now()+std::chrono::seconds(3);
+        while(seedStatus==SubtitleCurrentCueProofStatus::Queued || seedStatus==SubtitleCurrentCueProofStatus::Pending) {
+            if(Clock::now()>=seedDeadline)break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            seedStatus=worker->SubmitCurrentCueTemplate(input,revision);
+        }
+        std::cout<<"{\"kind\":\"worker_seed\",\"phase\":"<<phase<<",\"status\":"<<int(seedStatus)<<",\"revision\":"<<revision<<"}\n";
+        if(seedStatus!=SubtitleCurrentCueProofStatus::Ready){++failures;worker->Stop();AnalysisDiagnosticTrace::ClearExternalSinks();continue;}
+        for(size_t i=1;i<=frames.size();++i) {
+            const auto& f=frames[(i+phase)%frames.size()];const auto key=SyntheticKey(seed,i);
+            const auto currentNative=DetectSourcePictureForWorker(f.source).evidence;
+            worker->AdvanceCurrentCueRenderWindow(key.identity,key.identity.acceptedSequence);
+            SubtitleCurrentCueProofRequest request;request.currentKey=key;request.source=f.source;
+            request.physicalBase=seed.base;request.sourceMode=SubtitlePreviewMode::GeneratedGrayBackground;
+            request.backgroundMode=5;request.eligibleRenderHead=key.identity;request.eligibleTailSequence=key.identity.acceptedSequence;
+            request.templateRevision=revision;request.frameMs=double(seed.duration)/10000.0;
+            // Always offer the real semantic fallback. The production worker
+            // decides its bounded refresh cadence; this harness does not suppress it.
+            request.fullScanDue=true;const auto currentSource=f.source;const double sourceRate=1e7/double(seed.duration);
+            request.fullScanOnMiss=[currentSource,key,currentNative,sourceRate](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference& previous) {
+                return sampler.Measure(currentSource,key,previous,sourceRate,currentNative);
+            };
+            const auto offered=worker->SubmitCurrentCueProof(std::move(request));
+            SubtitleCurrentCueProofReceipt receipt;auto status=offered;const auto deadline=Clock::now()+std::chrono::seconds(3);
+            while(status==SubtitleCurrentCueProofStatus::Queued || status==SubtitleCurrentCueProofStatus::Pending ||
+                status==SubtitleCurrentCueProofStatus::NoTask) {
+                status=worker->TryTakeCurrentCueProof(key,revision,receipt);
+                if(Clock::now()>=deadline)break;
+                if(status==SubtitleCurrentCueProofStatus::Queued || status==SubtitleCurrentCueProofStatus::Pending || status==SubtitleCurrentCueProofStatus::NoTask)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            ++total;bool adopted=false,recorded=false,preparedAvailable=false;const char* reason="worker-not-ready";
+            if(status==SubtitleCurrentCueProofStatus::Ready) {
+                ++ready;proofCost.values.push_back(receipt.WorkerMilliseconds());
+                auto currentPreview=std::make_unique<SubtitleBoxPreview>();SubtitleBoxResult held;
+                adopted=tracker->ConsumeCurrentCueProof(receipt,*currentPreview,held);consumed+=adopted;
+                if(adopted) {
+                    const auto geo=receipt.Operation();PendingPreparedSubtitleErasureReceipt erasure;
+                    recorded=erasure.Record(currentPreview->current,held,seed.base,currentPreview->current.sharedPicture,
+                        geo,receipt.SourceMode(),key.policyGeneration,key.continuityGeneration,true);
+                    QualifiedSubtitlePresentationInput ownership;ownership.mode=receipt.SourceMode();ownership.currentIdentity=key.identity;
+                    ownership.observation=&currentPreview->current;ownership.accepted=&held;ownership.composition=&geo;
+                    ownership.physicalBase=seed.base;ownership.currentDisplayPicture=currentPreview->current.sharedPicture;
+                    ownership.policyGeneration=key.policyGeneration;ownership.continuityGeneration=key.continuityGeneration;
+                    ownership.sourcePrepared=geo.valid;ownership.pendingCurrentPixelsVerified=true;ownership.pendingPreparedErasure=&erasure;
+                    const auto retention=EvaluateActivePicturePresentationRetention(f.source,seed.base);
+                    const auto evidence=EvaluatePreparedSubtitlePresentationEvidence(f.source,retention,ownership);
+                    preparedAvailable=QualifyPreparedSubtitleCropPresentation(evidence,key.identity,seed.base).available;reason=evidence.reason;
+                    Require(SameAnalysisFrameIdentity(receipt.SeedIdentity(),preview->current.identity),"Worker proof replaced immutable acquisition baseline");
+                }
+            }
+            strong+=preparedAvailable;
+            std::cout<<"{\"kind\":\"worker_proof\",\"seed_phase\":"<<phase<<",\"phase\":"<<f.phase
+                <<",\"index\":"<<i<<",\"synthetic_sequence\":"<<key.identity.acceptedSequence<<",\"status\":"<<int(status)
+                <<",\"consumed\":"<<adopted<<",\"erasure_receipt\":"<<recorded<<",\"strong_prepared\":"<<preparedAvailable
+                <<",\"worker_ms\":"<<receipt.WorkerMilliseconds()<<",\"reason\":\""<<reason<<"\"}\n";
+        }
+        worker->Stop();AnalysisDiagnosticTrace::ClearExternalSinks();
+        for(const auto& row:traces.rows)std::cout<<"{\"kind\":\"worker_trace\",\"seed_phase\":"<<phase
+            <<",\"synthetic_sequence\":"<<row.acceptedSequence<<",\"reason\":\""<<row.reason
+            <<"\",\"mismatch\":["<<row.metrics[1]<<','<<row.metrics[2]<<"],\"worker_ms\":"<<row.metrics[0]
+            <<",\"queue_ms\":"<<row.metrics[7]<<",\"enqueue_to_publish_ms\":"<<row.metrics[8]<<"}\n";
+        const auto diagnostic=worker->TakeDiagnostics();fullScans+=diagnostic.fullScans;
+        std::cout<<"{\"kind\":\"worker_seed_summary\",\"phase\":"<<phase<<",\"full_scans\":"<<diagnostic.fullScans
+            <<",\"current_cue_tasks\":"<<diagnostic.currentCueTasks<<",\"worker_peak_ms\":"<<diagnostic.currentCuePeakMs<<"}\n";
+    }
+    if(enforce)failures+=total-strong;
+    proofCost.Print("worker_proof_ready");
+    std::cout<<"{\"kind\":\"worker_summary\",\"count\":"<<total<<",\"ready\":"<<ready<<",\"consumed\":"<<consumed
+        <<",\"strong_prepared\":"<<strong<<",\"full_scans\":"<<fullScans
+        <<",\"sourcePrepared\":\"modeled_success_no_GPU\",\"scheduling\":\"unpaced_serial_poll_no_deadline_claim\"}\n";
+}
 }
 int main(int argc,char** argv) {
     SetPriorityClass(GetCurrentProcess(),BELOW_NORMAL_PRIORITY_CLASS);
@@ -201,7 +326,7 @@ int main(int argc,char** argv) {
             <<",\"base\":["<<frames[0].base.left<<','<<frames[0].base.top<<','<<frames[0].base.right<<','<<frames[0].base.bottom
             <<"],\"frame_duration_100ns\":"<<frames[0].duration<<",\"source_steps\":[";
         bool first=true;for(auto gap:gaps){if(!first)std::cout<<',';first=false;std::cout<<'['<<gap.first<<','<<gap.second<<']';}std::cout<<"]}\n";
-        unsigned failures=0;Matrix(frames,unsigned(unique.size()),enforce,failures);Timeline(frames,enforce,failures);
+        unsigned failures=0;Matrix(frames,unsigned(unique.size()),enforce,failures);Timeline(frames,enforce,failures);WorkerPath(frames,unsigned(unique.size()),enforce,failures);
         std::cout<<"{\"kind\":\"result\",\"failures\":"<<failures<<",\"enforced\":"<<enforce<<",\"gpu_test\":false}\n";
         return failures?1:0;
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 2;}

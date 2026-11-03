@@ -1893,10 +1893,7 @@ private:
             if(!sampler.Sample(glyph.x*ink->step,ink->sourceRows[size_t(glyph.y)],now))
                 return reject(ReadyRearmRejectCode::GlyphPixels);
             ++m_diagnostics.readyRearmGlyphSamplesChecked;
-            if(std::abs(int(now.luma)-glyph.value.luma)>8 ||
-                std::abs(int(now.chromaU)-glyph.value.chromaU)>8 ||
-                std::abs(int(now.chromaV)-glyph.value.chromaV)>8 || now.luma<ink->inkFloor ||
-                std::abs(int(now.chromaU)-ink->inkU)>80 || std::abs(int(now.chromaV)-ink->inkV)>80)
+            if(!SubtitleCadenceGuard::EncodingEquivalent(glyph.value,now))
                 return reject(ReadyRearmRejectCode::GlyphPixels);
         }
         for(const auto& known:m_knownInkSamples) {
@@ -1920,8 +1917,8 @@ private:
             const bool inEncodedBar=backing.y<m_contrastSeedTopEnd || backing.y>=m_contrastSeedBottomStart;
             const bool black=now.luma<=ink->blackLimit && (!inEncodedBar ||
                 (std::abs(int(now.chromaU)-512)<=48 && std::abs(int(now.chromaV)-512)<=48));
-            if(black!=backing.black && !SubtitleCadenceGuard::StableNearBlackEncodingVariation(
-                backing.value,now,*ink))return reject(ReadyRearmRejectCode::BackingPixels);
+            if(black!=backing.black && !SubtitleCadenceGuard::EncodingEquivalent(
+                backing.value,now))return reject(ReadyRearmRejectCode::BackingPixels);
         }
         // Adopt only the actual fresh complete measurement wrapper. The native
         // ink/pixel reference and its identity remain immutable across this
@@ -2247,6 +2244,7 @@ private:
         m_currentPixels.resize(area);m_currentSampled.resize(area);
         std::fill(m_currentSampled.begin(),m_currentSampled.end(),uint8_t(0));
         auto& pixels=m_currentPixels;auto& sampled=m_currentSampled;
+        constexpr uint8_t CurrentSampleRead=1,CurrentAcceptedGlyphVerified=2;
         size_t count=0;
         const auto read=[&](int x,int y,AnalysisLumaSample& value)->bool {
             if(x<0 || y<0 || x>=fresh->width || y>=fresh->height)return false;
@@ -2257,7 +2255,7 @@ private:
                 const bool reusedFootprintSample=m_currentFootprintRequired && currentFootprint &&
                     currentFootprint->TryGetVerifiedCurrentSampleForBoundReceipt(sourceX,sourceY,pixels[at]);
                 if(!reusedFootprintSample && !sampler.Sample(sourceX,sourceY,pixels[at]))return false;
-                sampled[at]=1;++count;
+                sampled[at]=CurrentSampleRead;++count;
                 m_diagnostics.currentBandSamplesChecked=count;
                 if(encodedBar(y))++m_diagnostics.barVisibilitySamplesChecked;
                 if(pixels[at].luma<=fresh->blackLimit)
@@ -2284,8 +2282,8 @@ private:
             ++m_diagnostics.backingSamplesChecked;
             const size_t at=size_t(backing.y)*fresh->width+backing.x;
             const bool black=value.luma<=fresh->blackLimit;
-            if(black!=backing.black && !SubtitleCadenceGuard::StableNearBlackEncodingVariation(
-                backing.value,value,*fresh)) {
+            if(black!=backing.black && !SubtitleCadenceGuard::EncodingEquivalent(
+                backing.value,value)) {
                 m_diagnostics.glyphMismatchX=backing.x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(backing.y)];
                 reason="current-black-backing-changed";return false;
@@ -2343,7 +2341,9 @@ private:
             }
             if(!raw)continue;
             const size_t at=size_t(y)*fresh->width+x;const uint64_t bit=uint64_t{1}<<(at%64);
-            if(!oldInk->Get(x,y) && (!m_currentFootprintRequired || inNativeFootprint)) {
+            const bool equivalentFootprintSample=m_currentFootprintRequired && inNativeFootprint &&
+                currentFootprint->VerifiedFootprintSampleIsEncodingEquivalent(x*fresh->step,fresh->sourceRows[size_t(y)]);
+            if(!oldInk->Get(x,y) && (!m_currentFootprintRequired || inNativeFootprint) && !equivalentFootprintSample) {
                 m_diagnostics.glyphMismatchX=x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(y)];
                 reason="new-current-raw-ink";return false;
@@ -2361,24 +2361,27 @@ private:
                 reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-glyph-sample-failed";return false;
             }
             ++m_diagnostics.glyphSamplesChecked;
-            if(std::abs(int(now.luma)-sample.value.luma)>8 ||
-                std::abs(int(now.chromaU)-sample.value.chromaU)>8 ||
-                std::abs(int(now.chromaV)-sample.value.chromaV)>8 ||
-                now.luma<fresh->inkFloor ||
-                std::abs(int(now.chromaU)-fresh->inkU)>80 ||
-                std::abs(int(now.chromaV)-fresh->inkV)>80) {
+            if(!SubtitleCadenceGuard::EncodingEquivalent(sample.value,now)) {
                 m_diagnostics.glyphMismatchX=sample.x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(sample.y)];
                 reason="current-owned-glyph-changed";return false;
             }
             const size_t at=size_t(sample.y)*fresh->width+sample.x;
+            sampled[at]|=CurrentAcceptedGlyphVerified;
             // Exact current pixels at previously detector-owned positions are
             // valid composition inputs even when a crowded caption row falls
             // outside this source's current subtitle search bands. This only
             // refreshes partial output ink; rawEvidenceComplete stays false.
-            const uint64_t bit=uint64_t{1}<<(at%64);
-            fresh->rawInk[at/64]|=bit;
-            fresh->ownedInk[at/64]|=uint64_t{1}<<(at%64);
+            // The current-source receipt proves this old glyph location,
+            // but threshold noise must not invent current palette bits. The
+            // immutable prepared operation still uses the current texture.
+            const bool currentPalette=now.luma>=fresh->inkFloor &&
+                std::abs(int(now.chromaU)-fresh->inkU)<=80 && std::abs(int(now.chromaV)-fresh->inkV)<=80;
+            if(currentPalette) {
+                const uint64_t bit=uint64_t{1}<<(at%64);
+                fresh->rawInk[at/64]|=bit;
+                fresh->ownedInk[at/64]|=bit;
+            }
         }
         if(m_currentFootprintRequired || presentationTemplateProof) {
             currentPixelPhase.Stop();
@@ -2397,10 +2400,19 @@ private:
                     if(!read(x,y,sample)) {
                         reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;
                     }
-                    if(fresh->Get(x,y,true))continue;
+                    const size_t at=size_t(y)*fresh->width+x;
+                    // A verified old glyph can cross the palette threshold.
+                    // Its current mask stays honest; this separate witness is
+                    // set only after checking its actual current source value.
+                    if(fresh->Get(x,y,true) || (sampled[at]&CurrentAcceptedGlyphVerified))continue;
                     const bool black=sample.luma<=fresh->blackLimit &&
                         std::abs(int(sample.chromaU)-512)<=48 && std::abs(int(sample.chromaV)-512)<=48;
-                    if(!black) {
+                    // Only an already-proved erased sample may excuse bar
+                    // residue; capture-only membership is not removal proof.
+                    const bool equivalentFootprintSample=!black && m_currentFootprintRequired && currentFootprint &&
+                        currentFootprint->VerifiedFootprintSampleIsEncodingEquivalent(
+                            x*fresh->step,fresh->sourceRows[size_t(y)],true);
+                    if(!black && !equivalentFootprintSample) {
                         m_diagnostics.glyphMismatchX=x*fresh->step;
                         m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(y)];
                         reason="new-current-bar-ink";return false;

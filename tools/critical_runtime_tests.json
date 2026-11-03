@@ -12,8 +12,11 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1088,
+  "minimumNativeTests": 1091,
   "requiredNativeMethods": [
+    "CurrentFootprintGlyphAndDestinationNoiseRemainsSeedBounded",
+    "PendingCueBelowFloorGlyphNoiseKeepsHonestMasksAndBarWitness",
+    "CurrentCueStableUnownedBarContentNeverBecomesRemovalProof",
     "CurrentFootprintNearBlackNoisePreservesCurrentPixelsAndRejectsDrift",
     "PendingCueNearBlackSupportNoiseRemainsBoundedToSeed",
     "CurrentCueBarVetoUsesPhysicalSourceRowsAndStillRejectsNewBarContent",

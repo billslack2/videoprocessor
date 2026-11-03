@@ -17,22 +17,14 @@ struct SubtitleCadenceProof {
 class SubtitleCadenceGuard {
 public:
     using Result=SubtitleCadenceProof;
-    // This is stability of an already accepted sample, never a new black/ink
-    // classification. Compare every source with the immutable seed so small
-    // codec/dither changes cannot accumulate into an unchecked scene change.
-    static bool StableNearBlackEncodingVariation(const AnalysisLumaSample& seed,
-        const AnalysisLumaSample& current,const SubtitleInkSnapshot& palette) {
-        constexpr int noise=8;
-        const int ceiling=(std::min)(1023,palette.blackLimit+noise);
-        return seed.luma<=ceiling && current.luma<=ceiling &&
-            seed.luma<palette.inkFloor && current.luma<palette.inkFloor &&
-            std::abs(int(current.luma)-int(seed.luma))<=noise &&
+    // Numeric equivalence of a previously verified source sample. This does
+    // not classify black/ink or grant new ownership. Every comparison stays
+    // anchored to the immutable seed; accepted noise cannot accumulate drift.
+    static bool EncodingEquivalent(const AnalysisLumaSample& seed,const AnalysisLumaSample& current) {
+        constexpr int noise=8; // Existing normalized 10-bit current-glyph YUV budget.
+        return std::abs(int(current.luma)-int(seed.luma))<=noise &&
             std::abs(int(current.chromaU)-int(seed.chromaU))<=noise &&
-            std::abs(int(current.chromaV)-int(seed.chromaV))<=noise &&
-            std::abs(int(seed.chromaU)-512)<=48+noise &&
-            std::abs(int(seed.chromaV)-512)<=48+noise &&
-            std::abs(int(current.chromaU)-512)<=48+noise &&
-            std::abs(int(current.chromaV)-512)<=48+noise;
+            std::abs(int(current.chromaV)-int(seed.chromaV))<=noise;
     }
     enum class RearmRejectCode : uint8_t {
         NotAttempted, Passed, NoEligibleFreshSeed, SeedUnavailable, Geometry,
@@ -125,6 +117,15 @@ public:
             !Inside({m_currentFootprintReceiptLeft,m_currentFootprintReceiptTop,
                 m_currentFootprintReceiptRight,m_currentFootprintReceiptBottom},x,y))return false;
         return true;
+    }
+    // The caller has already bound this receipt to its current source. This
+    // admits a classification threshold crossing only at a sampled immutable
+    // footprint location; it never widens that footprint or its owned mask.
+    bool VerifiedFootprintSampleIsEncodingEquivalent(int x,int y,bool requireErasure=false) const {
+        if(!ContainsVerifiedFootprintSample(x,y))return false;
+        const int at=Index(x,y);
+        return at>=0 && size_t(at)<m_currentPixels.size() && (!requireErasure || m_native[size_t(at)].erase) &&
+            EncodingEquivalent(m_native[size_t(at)].pixel,m_currentPixels[size_t(at)].pixel);
     }
     // Reuse only pixels already sampled from the exact current source during
     // this successful footprint receipt. This is a read-cache optimization;
@@ -898,9 +899,7 @@ private:
         return true;
     }
     static bool SameSample(const AnalysisLumaSample& a,const AnalysisLumaSample& b) {
-        return std::abs(int(a.luma)-int(b.luma))<=8 &&
-            std::abs(int(a.chromaU)-int(b.chromaU))<=8 &&
-            std::abs(int(a.chromaV)-int(b.chromaV))<=8;
+        return EncodingEquivalent(a,b);
     }
     SubtitleBoxRect DestinationProbeBounds() const {
         const auto& g=m_geometry;
@@ -1102,6 +1101,12 @@ private:
                     const bool alternate=mayAlternate && AlternateDestinationCandidate(point,neighbor,*m_baseline);
                     const bool dark=mayDark && DarkDestinationCandidate(point,neighbor,*m_baseline);
                     if(!bright && !alternate && !dark)continue;
+                    const auto& seedPoint=m_destinationSeedPixels[at].pixel;
+                    const auto& seedNeighbor=m_destinationSeedPixels[neighborAt].pixel;
+                    // An edge category can change at a hard contrast/palette
+                    // threshold even when both actual endpoint pixels retain
+                    // the accepted image within its encoding-noise envelope.
+                    if(EncodingEquivalent(point,seedPoint) && EncodingEquivalent(neighbor,seedNeighbor))continue;
                     // Uniform low-luma points need no projection math. Evaluate
                     // the same exemption once, only for an actual YUV edge.
                     if(!projectionChecked) {
@@ -1109,8 +1114,6 @@ private:
                         projectionChecked=true;
                     }
                     if(protectedPassThrough)break;
-                    const auto& seedPoint=m_destinationSeedPixels[at].pixel;
-                    const auto& seedNeighbor=m_destinationSeedPixels[neighborAt].pixel;
                     const bool neighborPassThrough=IsProjectedProtectedPassThrough(
                         x+dx[direction],y+dy[direction],verified);
                     const bool stableBackingNeighbor=InAcceptedCaptionBackingFootprint(
@@ -1158,6 +1161,10 @@ private:
         std::array<unsigned,3> lineChanges{};
         for(size_t i=0;i<m_native.size();++i) {
             const auto& oldPixel=m_native[i];const auto& now=currentPixels[i];
+            // Retain the honestly computed current ink/black bits. Numeric
+            // equivalence is stronger evidence of the same accepted pixels
+            // than a categorical flip at ink, core, or cleanup thresholds.
+            if(EncodingEquivalent(oldPixel.pixel,now.pixel))continue;
             bool fringe=false;
             if(oldPixel.line>=0 && oldPixel.ink!=now.ink) {
                 const int owner=oldPixel.fringeComponent;
@@ -1186,15 +1193,14 @@ private:
                 }
                 fringe=true;
             }
-            // Never tolerate a disappearing strong core, even if another edge
-            // happens to gain the same number of pixels on this frame.
+            // Beyond the encoding envelope, never tolerate a disappearing strong
+            // core even if another edge gains the same number of pixels.
             if(oldPixel.core && (!now.ink || now.pixel.luma<m_baseline->inkFloor+16)) {
                 mismatchX=oldPixel.x;mismatchY=oldPixel.y;
                 return fail(samples,"cadence-current-glyph-changed");
             }
             if(oldPixel.erase && !fringe) {
-                if(oldPixel.black && !now.black &&
-                    !StableNearBlackEncodingVariation(oldPixel.pixel,now.pixel,*m_baseline)) {
+                if(oldPixel.black && !now.black) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
                     return fail(samples,"cadence-current-cleanup-changed");
                 }

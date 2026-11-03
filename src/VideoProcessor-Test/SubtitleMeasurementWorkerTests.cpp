@@ -3756,6 +3756,83 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             }
         }
     }
+    TEST_METHOD(CurrentFootprintGlyphAndDestinationNoiseRemainsSeedBounded) {
+        auto pixels=PixelsWithCurrentBars();
+        pixels[51*160+54]=uint16_t(496<<6); // Near-floor unowned anti-alias sample.
+        pixels[52*160+50]=uint16_t(516<<6); // Accepted interior core at floor+16.
+        pixels[30*160+60]=uint16_t(344<<6); // Destination contrast 44 against its300 neighbors.
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,pixels);seed.text=seed.current.text;
+        seed.current.analysisStride=1;
+        SubtitleCutPasteGeometry geometry;geometry.valid=true;geometry.content=seed.text.bounds;
+        geometry.glyphLines=seed.text.lineBounds;geometry.pictureCapture=seed.text.capturePanel;
+        geometry.generatedCleanup=seed.text.sourcePanel;geometry.source=geometry.content;
+        geometry.destination={50,20,110,50};geometry.pictureTop=12;geometry.pictureBottom=78;
+        const auto base=seed.current.sharedPicture.bounds;
+        auto guard=std::make_unique<SubtitleCadenceGuard>();
+        Assert::IsTrue(guard->RememberCurrentFootprint(seed,seed.text,CadenceSource(pixels),base,geometry));
+        for(int scenario=0;scenario<9;++scenario) {
+            auto currentPixels=pixels;
+            if(scenario==0)currentPixels[51*160+54]=uint16_t(500<<6);
+            if(scenario==1)currentPixels[52*160+50]=uint16_t(512<<6);
+            if(scenario==2 || scenario==3 || scenario==8)currentPixels[30*160+60]=uint16_t(348<<6);
+            if(scenario==3)currentPixels[30*160+61]=uint16_t(296<<6);
+            if(scenario==4)currentPixels[51*160+54]=uint16_t(505<<6);
+            if(scenario==5)currentPixels[52*160+50]=uint16_t(64<<6);
+            if(scenario==6)currentPixels[30*160+60]=uint16_t(353<<6);
+            if(scenario==7)currentPixels[30*160+61]=uint16_t(291<<6);
+            if(scenario==8)currentPixels[160*90+(30/2)*160+60]=uint16_t(521<<6);
+            const auto current=CompleteThreeLineScan(uint64_t(scenario+2),currentPixels);
+            const auto proof=guard->VerifyCurrentFootprint(current,CadenceSource(currentPixels),
+                seed.current,seed.text,base);
+            if(proof.valid!=(scenario<4))Logger::WriteMessage((std::string("noise scenario=")+
+                std::to_string(scenario)+" reason="+proof.reason).c_str());
+            Assert::AreEqual(scenario<4,proof.valid,
+                L"Only seed-bounded pixel noise may cross ink/core or destination contrast thresholds; both edge endpoints must match.");
+        }
+    }
+    TEST_METHOD(PendingCueBelowFloorGlyphNoiseKeepsHonestMasksAndBarWitness) {
+        auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        (*pixels)[78*160+50]=uint16_t(500<<6);
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,*pixels);seed.text=seed.current.text;
+        auto guard=std::make_unique<SubtitlePendingMeasurementGuard>();
+        Assert::IsTrue(guard->RememberAccepted(seed,seed.text,OwnedSource(pixels),40,250,
+            nullptr,nullptr,&seed.current.sharedPicture.bounds,nullptr,true));
+        for(int value:{496,492,491,64}) {
+            auto changed=std::make_shared<std::vector<uint16_t>>(*pixels);
+            (*changed)[78*160+50]=uint16_t(value<<6);
+            const auto current=CompleteThreeLineScan(uint64_t(502-value),*changed);
+            std::shared_ptr<SubtitleInkSnapshot> ink;const char* reason=nullptr;
+            const bool verified=guard->VerifyCurrentCuePixels(current,OwnedSource(changed),nullptr,ink,reason,true);
+            if(verified!=(value>=492))Logger::WriteMessage(reason?reason:"no reason");
+            Assert::AreEqual(value>=492,verified);
+            if(verified) {
+                Assert::IsFalse(ink->Get(50,78));Assert::IsFalse(ink->Get(50,78,true));
+                Assert::IsFalse(ink->Black(50,78));Assert::IsFalse(ink->rawEvidenceComplete);
+            }
+        }
+    }
+    TEST_METHOD(CurrentCueStableUnownedBarContentNeverBecomesRemovalProof) {
+        auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        (*pixels)[5*160+7]=uint16_t(110<<6); // Existing low-contrast UI, outside the accepted operation.
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,*pixels);seed.text=seed.current.text;
+        seed.current.analysisStride=1;
+        SubtitleCutPasteGeometry geometry;geometry.valid=true;geometry.content=seed.text.bounds;
+        geometry.glyphLines=seed.text.lineBounds;geometry.pictureCapture=seed.text.capturePanel;
+        geometry.generatedCleanup=seed.text.sourcePanel;geometry.source=geometry.destination=geometry.content;
+        geometry.pictureTop=12;geometry.pictureBottom=78;
+        auto footprint=std::make_unique<SubtitleCadenceGuard>();
+        Assert::IsTrue(footprint->RememberCurrentFootprint(seed,seed.text,OwnedCadenceSource(pixels),
+            seed.current.sharedPicture.bounds,geometry));
+        auto guard=std::make_unique<SubtitlePendingMeasurementGuard>();
+        Assert::IsTrue(guard->RememberAccepted(seed,seed.text,OwnedCadenceSource(pixels),40,250,
+            nullptr,nullptr,&seed.current.sharedPicture.bounds,footprint.get(),true));
+        const auto current=CompleteThreeLineScan(2,*pixels);
+        std::shared_ptr<SubtitleInkSnapshot> ink;const char* reason=nullptr;
+        Assert::IsFalse(guard->VerifyCurrentCuePixels(current,OwnedCadenceSource(pixels),footprint.get(),ink,reason,true),
+            L"Identical unrelated bar content is not owned or erased by the accepted subtitle operation.");
+        Assert::AreEqual("new-current-bar-ink",reason);
+        Assert::IsFalse(footprint->VerifiedFootprintSampleIsEncodingEquivalent(7,5,true));
+    }
     TEST_METHOD(CurrentFootprintNearBlackNoisePreservesCurrentPixelsAndRejectsDrift) {
         auto pixels=PixelsWithCurrentBars();pixels[80*160+42]=uint16_t(96<<6);
         auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,pixels);seed.text=seed.current.text;

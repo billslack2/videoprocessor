@@ -19,8 +19,10 @@ if(-not (Test-Path -LiteralPath $Library -PathType Leaf)){throw 'Build the nativ
 if(-not (Test-Path -LiteralPath $CaptureDirectory -PathType Container)){throw 'Native capture directory is unavailable.'}
 $null=New-Item -ItemType Directory -Force -Path $OutputDirectory
 $sourcePin=(& git -C $Root rev-parse HEAD).Trim()
+$sourceDirtyBefore=@(& git -C $Root status --porcelain)
 $headerReceipt=Join-Path $HeaderRoot 'source.json'
-$headerPin=if(Test-Path -LiteralPath $headerReceipt){(Get-Content -LiteralPath $headerReceipt -Raw|ConvertFrom-Json).sourceCommit}else{$sourcePin}
+$headerSnapshot=if(Test-Path -LiteralPath $headerReceipt){Get-Content -LiteralPath $headerReceipt -Raw|ConvertFrom-Json}else{$null}
+$headerPin=if($headerSnapshot){$headerSnapshot.sourceCommit}else{$sourcePin}
 $headers=@(Get-ChildItem -LiteralPath (Join-Path $HeaderRoot 'src\VideoProcessor-Lib') -Recurse -File|Where-Object Extension -In '.h','.cpp'|Sort-Object FullName|ForEach-Object {
     [ordered]@{path=$_.FullName.Substring($HeaderRoot.Length+1);sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}
 })
@@ -37,22 +39,25 @@ $output=Join-Path $OutputDirectory 'replay.jsonl'
 $argsForReplay=@($CaptureDirectory);if($RequirePass){$argsForReplay+='--require-pass'}
 & $exe @argsForReplay > $output
 $replayExit=$LASTEXITCODE
+$sourcePinAfter=(& git -C $Root rev-parse HEAD).Trim()
+if($sourcePinAfter -ne $sourcePin){throw 'Source commit changed during replay; discard this run and repeat after the source freeze.'}
 $headerChanges=@($headers|Where-Object {(Get-FileHash -LiteralPath (Join-Path $HeaderRoot $_.path)).Hash -ne $_.sha256})
 $harnessChanges=@($harness|Where-Object {(Get-FileHash -LiteralPath (Join-Path $Root $_.path)).Hash -ne $_.sha256})
 if($headerChanges.Count -or $harnessChanges.Count -or (Get-FileHash -LiteralPath $Library).Hash -ne $libraryHash){throw 'Replay source or library changed during the experiment; discard this run.'}
 $captures=@(Get-ChildItem -LiteralPath $CaptureDirectory -File|Where-Object Name -Match '^frame-\d+\.(bin|txt)$'|Sort-Object Name|ForEach-Object {
     [ordered]@{name=$_.Name;bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}
 })
-$summary=@(Get-Content -LiteralPath $output|ForEach-Object {$_|ConvertFrom-Json}|Where-Object {$_.kind -In 'capture','cost','matrix_summary','timeline_summary','result'})
+$summary=@(Get-Content -LiteralPath $output|ForEach-Object {$_|ConvertFrom-Json}|Where-Object {$_.kind -In 'capture','cost','matrix_summary','timeline_summary','worker_summary','result'})
 [ordered]@{
     schema=1;sourceCommit=$sourcePin;headersCommit=$headerPin;headerRoot=$HeaderRoot;
-    sourceDirty=@(& git -C $Root status --porcelain);harness=$harness;headers=$headers;
+    sourceDirty=$sourceDirtyBefore;sourceCommitAfter=$sourcePinAfter;headerSnapshot=$headerSnapshot;harness=$harness;headers=$headers;
     library=[ordered]@{path=$Library;sha256=$libraryHash};binarySha256=(Get-FileHash -LiteralPath $exe).Hash;
     captureDirectory=$CaptureDirectory;captures=$captures;summary=$summary;replayExit=$replayExit;
     requirePass=[bool]$RequirePass;configuration='Release';architecture='x64';cpuOnly=$true;gpuQualified=$false;
     limitations=@('Seed acquisition uses synthetic three-source copies of each captured phase.',
         'Footprint matrix preserves later captured identities and original immutable seed pixels.',
-        'Tracker timeline uses explicitly synthetic consecutive identities over captured pixels.',
+        'Tracker and worker timelines use explicitly synthetic consecutive identities over captured pixels.',
+        'Worker requests offer real full scans; source preparation/composition success is modeled only.',
         'Prepared admission models successful composition; it does not render GPU pixels or establish live presentation cadence.',
         'Operation wall times exclude source IO and must not be interpreted as end-to-end frame deadlines.');
     finishedUtc=[DateTime]::UtcNow.ToString('o')
