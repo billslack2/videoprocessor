@@ -15056,10 +15056,25 @@ struct LibplaceboVideoRenderer::Impl
             pendingCurrentPixelsVerified=false;
             if(!currentSubtitlePreview.available) {
                 ++subtitlePerf.pending;
+                const auto pendingPixelsStarted=SteadyClock::now();
                 pendingCurrentPixelsVerified=subtitlePendingGuard.Resolve(currentSubtitlePreview,
                     analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
                     subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
                     subtitleBacklogRetirementOnly);
+                {
+                    const auto& detail=subtitlePendingGuard.DecisionDiagnostics();
+                    auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-pending-pixels",subtitlePendingGuard.DecisionReason());
+                    trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+                    trace.flags=pendingCurrentPixelsVerified?1u:0u;
+                    trace.counters[0]=detail.currentBandSamplesChecked;trace.counters[1]=detail.glyphSamplesChecked;
+                    trace.counters[2]=detail.backingSamplesChecked;trace.counters[3]=detail.contextMismatch;
+                    trace.counters[4]=subtitlePendingGuard.LastVerifiedIdentity().acceptedSequence;
+                    trace.counters[5]=subtitlePendingGuard.AcceptedSeedIdentity().acceptedSequence;
+                    trace.metrics[0]=std::chrono::duration<double,std::milli>(SteadyClock::now()-pendingPixelsStarted).count();
+                    trace.metrics[1]=subtitlePendingGuard.PendingElapsedMilliseconds();
+                    trace.measured[0]=detail.glyphMismatchX;trace.measured[1]=detail.glyphMismatchY;
+                    AnalysisDiagnosticTrace::Emit(trace);
+                }
                 if(pendingCurrentPixelsVerified) {
                     ++subtitlePerf.recovered;
                     if(subtitlePendingGuard.DecisionDiagnostics().backlogReassociated)
@@ -15252,6 +15267,7 @@ struct LibplaceboVideoRenderer::Impl
                 const auto previousElapsed=subtitlePendingGuard.PendingElapsedMilliseconds();
                 const bool seedCertificateMatches=subtitleBoxPresentation.AcceptedCueSeedCertificate().Matches(
                     currentSubtitlePreview,subtitleBoxResult);
+                const auto seedStarted=SteadyClock::now();
                 const bool remembered=subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
                     analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs,
                     &subtitleBoxPresentation.AcceptedCueSeedCertificate(),
@@ -15276,6 +15292,8 @@ struct LibplaceboVideoRenderer::Impl
                 trace.counters[7]=subtitlePendingGuard.ReferenceContinuity();
                 trace.metrics[0]=subtitlePendingGuard.PendingElapsedMilliseconds();trace.metrics[1]=previousElapsed;
                 trace.metrics[2]=static_cast<int>(sourceSubtitleMode);
+                trace.metrics[3]=std::chrono::duration<double,std::milli>(SteadyClock::now()-seedStarted).count();
+                trace.metrics[4]=subtitlePendingGuard.DecisionDiagnostics().seedBandSamplesChecked;
                 AnalysisTraceRect(trace.previous,currentSubtitlePreview.text.bounds);
                 AnalysisTraceRect(trace.measured,current.text.bounds);AnalysisTraceRect(trace.published,subtitleBoxResult.bounds);
                 AnalysisDiagnosticTrace::Emit(trace);
@@ -18486,6 +18504,8 @@ releaseDriftBaseRetention =
                 auto id=subtitleIdentity;id.transportGeneration=frameGeneration;id.rendererGeneration=frameGeneration;
                 id.analysisDomainKey=queuedAnalysisDomainKey;id.viewportGeneration=viewportRequestSerial;
                 auto trace=AnalysisTraceRecord(id,this,"subtitle-canvas-admission",canvas.reason.c_str());
+                trace.policyGeneration=localBoundaryPolicyGeneration;
+                trace.continuityGeneration=localBoundaryContinuityGeneration;
                 trace.flags=(canvas.waitForSubtitleProcessing?1u:0u)|(canvas.unprocessedSubtitleCanvas?2u:0u)|
                     (subtitleCompositionSucceeded?4u:0u)|(canvas.subtitleEngagePoseRetained?16u:0u)|
                     (canvas.rawSubtitleFallback?32u:0u)|
@@ -21354,6 +21374,12 @@ releaseDriftBaseRetention =
                     ? (selectedPresentationValid?selectedPresentationForCommit.captionOwnershipIdentity.sourceFormatGeneration:
                         subtitleIdentity.sourceFormatGeneration) : native.sourceFormatKey;
                 auto outputTrace=AnalysisTraceRecord(outputIdentity,this,"submitted-presentation","rendered-and-submitted");
+                // Use the selected source's frozen context for delayed temporal
+                // output; current context is valid only on the direct path.
+                outputTrace.policyGeneration=selectedPresentationValid
+                    ? selectedPresentationForCommit.captionOwnershipPolicy:localBoundaryPolicyGeneration;
+                outputTrace.continuityGeneration=selectedPresentationValid
+                    ? selectedPresentationForCommit.captionOwnershipContinuity:localBoundaryContinuityGeneration;
                 AnalysisTraceRect(outputTrace.displayed,scopeAnchorCommit.submittedBounds);
                 AnalysisTraceRect(outputTrace.published,native.bounds);
                 AnalysisTraceRect(outputTrace.candidate,certificate.approvedBounds);

@@ -4506,10 +4506,11 @@ namespace VideoProcessorTest
             std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
                 "[vprenderer]\nquality: fast\n"
                 "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n"
-                "[vprenderer.zoom.native]\nautomatic_crop: true\nsubtitle_fit: false\n"
-                "crop_narrower_content_to_fill_screen: false\ncrop_wider_content_to_fill_screen: false\n";
+                "[vprenderer.zoom.scope]\nautomatic_crop: true\nsubtitle_fit: true\n"
+                "crop_narrower_content_to_fill_screen: false\ncrop_wider_content_to_fill_screen: false\n"
+                "[vprenderer.subtitles.off]\ntype: off\nshortcut: F5\n";
             VideoStateComPtr state=new VideoState();state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::P210;
-            state->displayMode=std::make_shared<DisplayMode>(width,height,false,60000,1001);
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,24000,1001);
             state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
             const size_t pixelCount=size_t(width)*height;
             std::vector<uint16_t> native(pixelCount*2,uint16_t(512<<6));
@@ -4552,7 +4553,22 @@ namespace VideoProcessorTest
             Assert::IsNotNull(cleanup.window);
             cleanup.renderer=create(&callback,76,cleanup.window,nullptr,requireSpatial,requireSpatial?9:1,
                 VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,OffUhdVolumeTestLog);
-            Assert::IsNotNull(cleanup.renderer);Assert::IsTrue(cleanup.renderer->OnVideoState(state));
+            Assert::IsNotNull(cleanup.renderer);
+            ConfigFile config;Assert::IsTrue(config.Load(configPath));
+            UnifiedProfileRuntime::Runtime runtime;std::string configError;
+            Assert::IsTrue(runtime.Initialize(config,{},configError),std::wstring(configError.begin(),configError.end()).c_str());
+            const auto initialSnapshot=runtime.GetSnapshot();
+            Assert::IsTrue(initialSnapshot!=nullptr,L"Off fixture did not produce an initial profile snapshot.");
+            const auto subtitleSelection=initialSnapshot->effectiveSelections.find("subtitles");
+            Assert::IsTrue(subtitleSelection!=initialSnapshot->effectiveSelections.end()&&
+                subtitleSelection->second.size()==1&&subtitleSelection->second.front()=="off"&&
+                initialSnapshot->viewport.zoomProfile=="scope"&&initialSnapshot->viewport.automaticCrop&&
+                initialSnapshot->viewport.subtitleFit,
+                L"Off fixture must select subtitles:off and zoom:scope with subtitle_fit enabled.");
+            CString active;bool restart=false,reset=false;
+            Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*initialSnapshot,active,restart,reset)&&!restart,
+                L"Renderer rejected the exact active Off/scope profile state.");
+            Assert::IsTrue(cleanup.renderer->OnVideoState(state));
             cleanup.renderer->Build();cleanup.renderer->Start();
             uint64_t sequence=1;std::vector<AnalysisDiagnosticRecordV1> records;std::vector<std::string> messages;
             std::map<uint64_t,timingclocktime_t> delivered;
@@ -4565,7 +4581,7 @@ namespace VideoProcessorTest
                     const auto source=sequence++;delivered[source]=now.QuadPart;
                     VideoFrame frame(pixels.data(),source,now.QuadPart,&buffer);cleanup.renderer->OnVideoFrame(frame);
                 }
-                next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1001.0/60000.0));
+                next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1001.0/24000.0));
                 std::this_thread::sleep_until(next);
                 {
                     std::lock_guard<std::mutex> lock(classicPoseLogMutex);
