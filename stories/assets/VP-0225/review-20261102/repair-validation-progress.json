@@ -1,0 +1,96 @@
+{
+  "sourceCommit": "2a3af0c2d3a895d5c7ca9fead0dd437065f01d86",
+  "historicalRemoteTags": {
+    "1.4-beta-rc4": "6d5f8ad4241c24b750b96d2e3f54abb458bc7986",
+    "1.4-beta-rc6": "7af23836ae937353edb50a5b1b3f8e9176634480"
+  },
+  "incidentSource": "ad9e7701e05393c1d79fb5f9b11b5a884c3a35",
+  "fullRuntimeAttempts": [
+    {
+      "run": "20261102-201950-6016fe9c",
+      "path": "E:\\codex\\videoprocessor\\vp-0225-subtitle-cadence-20261102\\artifacts\\qualification\\runs\\20261102-201950-6016fe9c\\standard.trx",
+      "executed": 1067,
+      "passed": 1058,
+      "failures": [
+        {
+          "test": "StandardRendererReconstructionUhdV210CrossEdgeMovingCleanup",
+          "outcome": "Failed",
+          "message": "Assert failed. UHD Classic caption-safe native pan reversed its measured translation."
+        },
+        {
+          "test": "StandardRendererReconstructionUhdV210ResidualUiWithMovingPicture",
+          "outcome": "Failed",
+          "message": "Assert failed. UHD Classic caption-safe native pan reversed its measured translation."
+        },
+        {
+          "test": "StandardRendererClassicUhdBottomCaptionOutsideFillLimit",
+          "outcome": "Failed",
+          "message": "Assert failed. UHD Classic caption-safe native pan reversed its measured translation."
+        },
+        {
+          "test": "StandardRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
+          "outcome": "Failed",
+          "message": "Assert failed. ACTIVE native authority and successfully submitted certificate must originate in source-spatial measurement (flags24..25), not legacy or unavailable evidence."
+        },
+        {
+          "test": "StandardRendererBlackUhdV210ResidualUiWithMovingPicture",
+          "outcome": "Failed",
+          "message": "Assert failed. UHD Classic caption-safe native pan reversed its measured translation."
+        },
+        {
+          "test": "StandardRendererReconstructionUhdResidualUiWithMovingPicture",
+          "outcome": "Failed",
+          "message": "Assert failed. UHD Classic caption-safe native pan reversed its measured translation."
+        },
+        {
+          "test": "StandardRendererClassicPersistentDecodedDvCaptionHasNoCadenceFlicker",
+          "outcome": "Failed",
+          "message": "Assert failed. ACTIVE native authority and successfully submitted certificate must originate in source-spatial measurement (flags24..25), not legacy or unavailable evidence."
+        },
+        {
+          "test": "StandardRendererClassicUhdV210BothBarUiOutsideFillLimit",
+          "outcome": "Failed",
+          "message": "Assert failed. UHD Classic caption-safe native pan reversed its measured translation."
+        },
+        {
+          "test": "StandardRendererClassicUhdBothBarUiOutsideFillLimit",
+          "outcome": "Failed",
+          "message": "Assert failed. UHD Classic caption-safe native pan reversed its measured translation."
+        }
+      ]
+    },
+    {
+      "run": "20261102-204121-9abad790",
+      "path": "E:\\codex\\videoprocessor\\vp-0225-subtitle-cadence-20261102\\artifacts\\qualification\\runs\\20261102-204121-9abad790\\standard.trx",
+      "executed": 1068,
+      "passed": 1067,
+      "failures": [
+        {
+          "test": "StandardRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker",
+          "outcome": "Failed",
+          "message": "Assert failed. ACTIVE native authority requires a measured-source certificate except for a joined exact-source unprocessed Classic UNKNOWN continuation with unchanged, previously witnessed native geometry and no fabricated certificate/caption authority."
+        }
+      ]
+    }
+  ],
+  "focusedRuns": [
+    {
+      "run": "20261102-203145-db0a7511",
+      "executed": 7,
+      "passed": 5,
+      "path": "E:\\codex\\videoprocessor\\vp-0225-subtitle-cadence-20261102\\artifacts\\qualification\\runs\\20261102-203145-db0a7511\\standard.trx"
+    },
+    {
+      "run": "20261102-203830-3b103835",
+      "executed": 2,
+      "passed": 2,
+      "path": "E:\\codex\\videoprocessor\\vp-0225-subtitle-cadence-20261102\\artifacts\\qualification\\runs\\20261102-203830-3b103835\\standard.trx"
+    },
+    {
+      "run": "20261102-204943-cb8a9ee9",
+      "executed": 4,
+      "passed": 4,
+      "path": "E:\\codex\\videoprocessor\\vp-0225-subtitle-cadence-20261102\\artifacts\\qualification\\runs\\20261102-204943-cb8a9ee9\\standard.trx"
+    }
+  ]
+}

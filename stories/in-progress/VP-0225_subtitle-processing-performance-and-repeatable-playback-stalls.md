@@ -4,6 +4,39 @@
 
 In Progress
 
+Current source is clean and pushed at `2a3af0c2d3a895d5c7ca9fead0dd437065f01d86`
+on `codex/vp-0225-subtitle-cadence-20261102`. The first full runtime run caught
+an actual UNKNOWN-to-PRESENT 4px reversal: the confirmed branch discarded the
+still-current raw occupied-side margin. That is repaired and has a dedicated
+native counterexample. The focused handoff, 4K pan and current-source progression
+checks pass on both dependencies. Final strict decoded-DV checks also pass for
+Classic and Reconstruction; the oracle joins documented unprocessed UNKNOWN
+continuations to original input/admission/native context without inventing a
+certificate. Existing per-output glyph coverage, fixed native size, monotonic
+pan, shader readiness and complete-image repeat checks remain mandatory.
+
+A diagnostic defect exposed by the stronger joins is corrected: successful
+output records used to omit original source-frame/capture IDs. They now carry
+the selected snapshot's frozen identity rather than borrowing current-frame
+metadata. Final full Release qualification plus matching-binary motion suites
+are running; no deployment, merge, live-scene acceptance or Done claim yet.
+
+The incident host identity is resolved to `ad9e7701e05393c1d79fb5f9b11b5a884c3a35`:
+the originally observed runtime sidecar SHA256 `B0C8B8FEBB0DF03C6574BAC19226A483D952F2E4DEFA9F695FEEA6CB769AAD8C`
+matches the canonical VP-0222 deployment record, and process36456/instance
+A3E5EE18 agree with that investigation. `788554a1` is the subsequent related
+repair, not the recording's binary.
+
+Historical provenance was independently checked against GitHub: remote RC4 is
+`6d5f8ad4` and remote RC6 is `7af23836`. The initially inspected local RC6 tag at
+`e3a34b6c` was stale; that is a release ancestor of remote RC6. The remote RC6
+crop policy is identical and its seven renderer-line differences add no canvas
+wait, so the post-RC6 regression finding stands. The linked research is corrected.
+The 640-pixel new progression fixture observed one UNKNOWN candidate and zero
+eligible raw/no-candidate rows; its pass is not claimed as an exact native replay
+of sources5671/5672. Native raw-only cases and the broader 4K/runtime matrix are
+separate evidence; original-scene live replay remains acceptance.
+
 2026-11-02 repair progress: three Luna xhigh research lanes compared pre-RC6/RC6
 behavior, current admission, and exact incident source IDs, then discussed the
 patch safety. The whole-source canvas wait first appears in post-RC6 commit
