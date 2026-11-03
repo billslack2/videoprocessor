@@ -25,6 +25,18 @@
 - VideoProcessor processes continuously arriving live HDMI frames. Video must
   keep advancing on its normal presentation schedule while subtitle, aspect,
   crop, classification, shader-preparation, or other optional decisions are pending.
+- Real-time processing is fundamental across the entire capture-to-display
+  pipeline, including analysis, subtitle preparation, rendering and presentation.
+  Sustain the incoming HDMI frame rate with bounded end-to-end latency and no
+  growing backlog. Design around live frame deadlines; budget expensive work
+  off the mandatory video path and discard stale optional work instead of
+  blocking current video. Functional output or screenshots alone do not meet
+  this real-time requirement.
+- Use remote versions where subtitles previously worked well, before the latest
+  regressions (including pre-RC6), as architecture and performance references.
+  Compare scheduling, buffering, processing cost, caption behavior and current
+  frame progression under matched conditions; learn from that working behavior
+  while preserving independently verified fixes.
 - Never hold or replay the last whole video frame solely to wait for subtitle
   inspection, caption confirmation/composition, crop approval, or analysis readiness.
   UNKNOWN, delayed, missing, failed, or out-of-order optional results must not
