@@ -744,41 +744,51 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             L"The first independent UHD positive scan establishes the immutable reference.");
         const auto original=guard->AcceptedSeedIdentity();
 
-        SubtitleBoxResult currentAccepted;SubtitleBoxPreview current;
-        bool foundFreshCertificate=false;
-        for(uint64_t sequence=2;sequence<=4;++sequence) {
-            const auto scan=MeasureUhd(detector,source,UhdIdentity(sequence,format));
-            current=SubtitleBoxLookahead::Resolve(&scan,1,UhdPolicy,UhdContinuity);
-            currentAccepted=tracker.Consume(current,1000,frameMs);
-            const auto& certificate=tracker.AcceptedCueSeedCertificate();
-            if(certificate.Matches(current,currentAccepted)) {
-                foundFreshCertificate=true;
-                const auto started=std::chrono::steady_clock::now();
-                const bool rearmed=guard->RememberAccepted(current,currentAccepted,source,frameMs,1000,&certificate);
-                const double elapsed=std::chrono::duration<double,std::milli>(
-                    std::chrono::steady_clock::now()-started).count();
-                Logger::WriteMessage((std::string("UHD ready rearm ms=")+std::to_string(elapsed)+
-                    " source="+std::to_string(sequence)+
-                    " raw_cue="+std::to_string(current.current.text.cue)+
-                    " accepted_cue="+std::to_string(currentAccepted.cue)+
-                    " mask_words="+std::to_string(guard->DecisionDiagnostics().readyRearmMaskWordsChecked)+
-                    " glyph_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmGlyphSamplesChecked)+
-                " backing_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmBackingSamplesChecked)+
-                " known_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmKnownSamplesChecked)).c_str());
-                Assert::IsTrue(rearmed);
-                Assert::AreEqual("accepted-same-cue-current-scan-rearmed",guard->DecisionReason());
-                Assert::AreEqual(uint64_t(0),guard->DecisionDiagnostics().seedBandSamplesChecked,
-                    L"Ready rearm must not reread the entire UHD search bands.");
-                Assert::IsTrue(guard->DecisionDiagnostics().readyRearmGlyphSamplesChecked>0);
-                Assert::IsTrue(guard->DecisionDiagnostics().readyRearmBackingSamplesChecked>0);
-            Assert::IsTrue(guard->DecisionDiagnostics().readyRearmKnownSamplesChecked>0);
-                Assert::AreEqual(original.acceptedSequence,guard->AcceptedSeedIdentity().acceptedSequence,
-                    L"The original UHD pixel reference remains immutable.");
-                break;
-            }
+        // The actual renderer supplies a complete four-source lookahead window
+        // for a fresh ready result. A single raw detector frame can preserve
+        // current pixels but is not itself a new accepted cue certificate.
+        auto currentScans=std::make_unique<std::array<SubtitleBoxObservation,4>>();
+        for(size_t i=0;i<currentScans->size();++i) {
+            (*currentScans)[i]=MeasureUhd(detector,source,UhdIdentity(i+2,format));
+            Assert::IsTrue((*currentScans)[i].analyzed && (*currentScans)[i].text.detected &&
+                (*currentScans)[i].ink && (*currentScans)[i].ink->rawEvidenceComplete);
         }
-        Assert::IsTrue(foundFreshCertificate,
-            L"A later complete independent UHD scan should produce a source-bound accepted-cue certificate.");
+        auto current=std::make_unique<SubtitleBoxPreview>();
+        SubtitleBoxLookahead::ResolveInto(*current,currentScans->data(),currentScans->size(),UhdPolicy,UhdContinuity);
+        const auto currentAccepted=tracker.Consume(*current,1000,frameMs);
+        const auto& certificate=tracker.AcceptedCueSeedCertificate();
+        if(!certificate.Matches(*current,currentAccepted)) {
+            Logger::WriteMessage((std::string("UHD ready certificate absent: reason=")+tracker.DecisionReason()+
+                " accepted="+std::to_string(currentAccepted.detected)+
+                " held="+std::to_string(currentAccepted.held)+
+                " pending="+std::to_string(currentAccepted.confirmationPending)+
+                " lines="+std::to_string(currentAccepted.lineCount)+
+                " currentLinesConfirmed="+std::to_string(current->currentLinesConfirmed)+
+                " future="+std::to_string(current->followingCount)).c_str());
+        }
+        Assert::IsTrue(certificate.Matches(*current,currentAccepted),
+            L"A fresh full current lookahead must export a source-bound positive cue certificate.");
+        const auto started=std::chrono::steady_clock::now();
+        const bool rearmed=guard->RememberAccepted(*current,currentAccepted,source,frameMs,1000,&certificate);
+        const double elapsed=std::chrono::duration<double,std::milli>(
+            std::chrono::steady_clock::now()-started).count();
+        Logger::WriteMessage((std::string("UHD ready rearm ms=")+std::to_string(elapsed)+
+            " source="+std::to_string(current->current.identity.acceptedSequence)+
+            " raw_cue="+std::to_string(current->current.text.cue)+
+            " accepted_cue="+std::to_string(currentAccepted.cue)+
+            " mask_words="+std::to_string(guard->DecisionDiagnostics().readyRearmMaskWordsChecked)+
+            " glyph_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmGlyphSamplesChecked)+
+            " backing_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmBackingSamplesChecked)+
+            " known_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmKnownSamplesChecked)).c_str());
+        Assert::IsTrue(rearmed);
+        Assert::AreEqual("accepted-same-cue-current-scan-rearmed",guard->DecisionReason());
+        Assert::AreEqual(uint64_t(0),guard->DecisionDiagnostics().seedBandSamplesChecked,
+            L"Ready rearm must not reread the entire UHD search bands.");
+        Assert::IsTrue(guard->DecisionDiagnostics().readyRearmGlyphSamplesChecked>0);
+        Assert::IsTrue(guard->DecisionDiagnostics().readyRearmBackingSamplesChecked>0);
+        Assert::IsTrue(guard->DecisionDiagnostics().readyRearmKnownSamplesChecked>0);
+        Assert::AreEqual(original.acceptedSequence,guard->AcceptedSeedIdentity().acceptedSequence,
+            L"The original UHD pixel reference remains immutable.");
     }
 
     TEST_METHOD(SubtitleCompletionSignalFollowsReadyCachePublication) {
