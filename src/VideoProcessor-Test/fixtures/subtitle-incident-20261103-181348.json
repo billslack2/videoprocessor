@@ -40,9 +40,24 @@
       "glyphCaptureHull": [1197, 1784, 2642, 2012],
       "pictureCleanupBounds": [1138, 1742, 2706, 1886],
       "completeBackingCardProven": false,
-      "observed": "A middle word disappears while current prepared erasure is reported safe. The upper capture fragments omit a 177-pixel gap inside cleanup.",
+      "observed": "The rendered phrase lacks the middle word \"be\" while current prepared erasure is reported safe. The upper capture fragments omit a 177-pixel gap inside cleanup. A rewind-10 transport overlay appears during the same incident.",
       "expected": ["Erasure cannot destroy current glyph content omitted by capture", "The complete capture/erase contract applies to first composition as well as reuse", "Unready optional work falls back to current source pixels without holding the movie"],
-      "reproducerScope": "Synthetic glyph pixels using logged geometry; original component grouping remains unproven without the native source frame."
+      "reproducerScope": "Synthetic bright glyph pixels in the logged uncaptured cleanup gap are erased and not copied. This isolates a capture/erase contract failure; it does not reproduce or establish the original incoming pixels or detector failure.",
+      "overlayCorrelation": {
+        "kind": "rewind-10 transport overlay",
+        "relationship": "Observed during the missing-word incident; correlation does not establish whether the overlay obscured the word in the incoming source or changed detector grouping."
+      },
+      "unknownOriginalSourceCause": "No exact native source frame is available. The rendered output and logged geometry cannot establish whether incoming glyph pixels remained visible, were already obscured by the player overlay, or were rejected during palette/component/card recovery.",
+      "syntheticReproducer": {
+        "privateArtifactDirectory": "artifacts/incident-20261103-181348/capture-completeness-red",
+        "files": ["fixture.json", "reproduce.py", "result.json", "contract-audit.json"],
+        "expectedContract": "No erased, uncaptured, unprotected glyph pixels",
+        "observedSyntheticMiddlePixels": 4000,
+        "capturedSyntheticMiddlePixels": 0,
+        "erasedSyntheticMiddlePixels": 4000,
+        "expectedExitCode": 1,
+        "provenance": "Synthetic pixel locations and intensities; capture and cleanup rectangles copied from generation2/source2037 telemetry. No private movie pixels."
+      }
     },
     {
       "id": "source-aspect-transition-reference",

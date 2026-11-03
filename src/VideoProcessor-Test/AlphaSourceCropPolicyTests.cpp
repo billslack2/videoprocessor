@@ -20360,6 +20360,9 @@ public:
                     r.subtitleCanvasMode==SubtitleCanvasMode::BLACK && r.crop.subtitlePresentationMode==PreparedNativeMode::BLACK:
                     r.subtitleCanvasMode==SubtitleCanvasMode::RECONSTRUCTION && r.crop.subtitlePresentationMode==PreparedNativeMode::RECONSTRUCTION);
                 r.crop.currentVisibleBounds.top=126;r.crop.currentVisibleBounds.bottom=2050;
+                // The actual raw renderer requires the separate direct-current
+                // witness; general crop visibility alone cannot authorize it.
+                SetCurrentSourceVisibility(r,r.crop.currentVisibleBounds);
                 auto& proof=r.crop.currentSubtitleComposition;
                 proof.available=true;proof.nativeBase=r.crop.geometry;proof.mode=r.crop.subtitlePresentationMode;
                 proof.identity.transportGeneration=r.crop.frameSourceGeneration;
@@ -20377,7 +20380,10 @@ public:
                 if(fault==8)proof.mode=PreparedNativeMode::NONE;
                 // Exact current composition may coexist with an unrelated top-bar
                 // badge and bottom seekbar. Neither may be clipped or reconstructed.
-                if(fault==9)r.crop.currentVisibleBoundsAvailable=false;
+                if(fault==9) {
+                    r.crop.currentVisibleBoundsAvailable=false;
+                    r.currentSourceVisibility={};
+                }
                 const int expectedTop=fault==9?0:126;
                 const int expectedBottom=fault==9?2160:2050;
                 Assert::AreEqual(fault==0 || fault==9,HasCurrentSubtitleCompositionPresentation(r.crop));
@@ -20400,10 +20406,13 @@ public:
                     Assert::AreEqual(raw.sourceBounds.bottom,actual.sourceBounds.bottom,
                         L"Residual UI must keep the same raw aperture whether caption composition succeeded or not.");
                 }
-                Assert::AreEqual(250,actual.nativePresentation.nativeBase.top);
-                Assert::AreEqual(1906,actual.nativePresentation.nativeBase.bottom);
-                Assert::IsTrue(actual.nativePresentation.preparedNativeMode==PreparedNativeMode::NONE);
+                Assert::IsFalse(actual.nativePresentation.available,
+                    L"Raw fallback does not mint native detection or prepared-caption authority.");
+                Assert::IsFalse(actual.confirmedFitOwnership.available);
                 Assert::IsFalse(actual.nativePresentation.captionPreservation.available);
+                Assert::AreEqual(250,r.crop.geometry.top);Assert::AreEqual(1906,r.crop.geometry.bottom);
+                Assert::AreEqual(250,r.crop.acceptedNativeCrop.bounds.top);
+                Assert::AreEqual(1906,r.crop.acceptedNativeCrop.bounds.bottom);
                 Assert::IsFalse(r.crop.frameLocalPresentationRetentionSafe);
                 Assert::AreEqual(fault!=9,r.crop.currentVisibleBoundsAvailable);
                 Assert::AreEqual(uint64_t(694),r.crop.acceptedNativeCrop.acceptedSourceSequence);
@@ -20412,18 +20421,16 @@ public:
                     // is the single permission for a native prepared canvas.
                     auto safe=r;safe.crop.currentVisibleBoundsAvailable=false;
                     safe.crop.frameLocalPresentationRetentionSafe=true;
+                    safe.excludedBandsPixelSafe=true;safe.observation=safe.crop.geometry;
+                    SetCurrentSourceVisibility(safe,safe.crop.geometry);
                     safe.crop.preparedSubtitle={true,safe.crop.geometry,safe.crop.frameSourceGeneration,
                         safe.crop.frameSourceSequence,safe.crop.framePresentationEpoch};
                     Assert::IsTrue(HasCurrentPreparedSubtitlePresentation(safe.crop));
                     const auto prepared=ResolveUncertainPicturePresentation(safe,Evaluate(safe.crop)).presentation;
                     Assert::IsFalse(prepared.rawSubtitleFallback);
                     Assert::AreEqual(250,prepared.sourceBounds.top);Assert::AreEqual(1906,prepared.sourceBounds.bottom);
-                    const auto admission=AdmitCropPresentation({},r.crop,actual,r.presentationEpoch);
-                    auto output=Submission(r.crop);output.selectedAdmission=admission.state;
-                    output.selectedOwner=actual.owner;output.submittedBounds=actual.sourceBounds;
-                    const auto committed=CommitSubmittedNativeScopeAnchor(output);
-                    Assert::IsTrue(committed.available);
-                    Assert::AreEqual(uint64_t(0),committed.preparedNativeInitializedSourceSequence);
+                    Assert::IsTrue(prepared.nativePresentation.available);
+                    Assert::AreEqual(uint64_t(694),safe.crop.acceptedNativeCrop.acceptedSourceSequence);
                 }
             }
         }
