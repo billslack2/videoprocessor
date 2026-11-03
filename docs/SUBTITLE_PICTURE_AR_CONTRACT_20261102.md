@@ -27,10 +27,15 @@ Those fallbacks preserve glyphs by shrinking the movie and violate subtitle proc
   exception: native-sized playback can continue while subtitle shaders prepare,
   with no caption completion or cleanup claim. Initial clipping was already allowed
   by the operator; shader warmup is never permission to widen the movie.
-- An unfinished source is withheld as a whole. Neither its pixels nor geometry,
-  subtitle completion or crop permission may be published as completed output.
-  Shader preparation and source acquisition must continue while presentation waits.
-  An acquired library target must be released without presenting partial output.
+- A positively identified caption awaiting required processing can withhold its
+  source as a whole; it cannot publish partial composition or cleanup. UNKNOWN
+  inspection alone is not proof of an unfinished caption. Classic can advance
+  the current raw source when exact-current occupancy constrains a compatible
+  fixed-size viewport, including configured fill. This continuation grants no
+  caption completion/absence, native picture, FIT, erasure or composition proof.
+  Stale or infeasible evidence cannot authorize a new pan. Shader preparation
+  and source acquisition continue while an actual processing requirement waits;
+  an acquired library target is released without presenting partial output.
 - Current empty-band evidence can permit the fixed canvas without inventing a
   semantic caption-absence observation. A current text candidate remains a pixel
   preservation constraint even before semantic confirmation.

@@ -7051,9 +7051,9 @@ namespace AlphaSourceCrop
             if(IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,input.presentationEpoch,
                 c.rasterWidth,c.rasterHeight) && SameTrustedCropContract(a.crop,n) &&
                 a.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey && a.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey &&
-                a.submittedPresentationAvailable && prior.left==n.left && prior.right==n.right &&
-                prior.bottom-prior.top==n.bottom-n.top && prior.top>n.top)
-                requested=std::max(requested,prior.top-n.top);
+                a.submittedPresentationAvailable && prior.left==viewport.left && prior.right==viewport.right &&
+                prior.bottom-prior.top==viewport.bottom-viewport.top && prior.top>viewport.top)
+                requested=std::max(requested,prior.top-viewport.top);
             const int shift=std::max(minimum,std::min(requested,maximum));
             d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
             d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
@@ -7075,37 +7075,68 @@ namespace AlphaSourceCrop
             d.reason="current empty native bands preserve the fixed movie canvas without claiming caption absence";
         } else {
             if(!current || o.state==CaptionObservationState::UNKNOWN) {
-                // Opposite, unclassified bar UI is not permission to resize the
-                // movie. Continue an established Classic pan using CURRENT raw
-                // extent on its occupied side; this is not a caption observation
-                // or permission to hide independently proved picture expansion.
+                // Pixel occupancy and semantic caption confirmation have different
+                // lifetimes. A skipped confirmation must not stop source time.
+                // Use only this source's raw extent/candidate to constrain the
+                // configured-size window; never borrow an old caption or crop proof.
+                const auto viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)?input.fixedNativeViewport:n;
                 const auto& a=input.submittedScopeAnchor;const auto& pose=a.submittedPresentation;
                 const bool priorPan=!advanced && IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,
                     input.presentationEpoch,c.rasterWidth,c.rasterHeight) && SameTrustedCropContract(a.crop,n) &&
                     a.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey && a.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey &&
-                    a.submittedPresentationAvailable && pose.left==n.left && pose.right==n.right &&
-                    pose.bottom-pose.top==n.bottom-n.top && pose.top!=n.top;
-                if(!rawCurrent || !priorPan)return wait("subtitle inspection pending; keep the last complete movie canvas");
-                const auto viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)?input.fixedNativeViewport:n;
+                    a.submittedPresentationAvailable && pose.left==viewport.left && pose.right==viewport.right &&
+                    pose.bottom-pose.top==viewport.bottom-viewport.top && pose.top!=viewport.top;
+                const bool candidateCurrent=!advanced && current &&
+                    ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight);
+                if(!rawCurrent || !ContainedBounds(n,viewport) || (!priorPan && !candidateCurrent))
+                    return wait("subtitle inspection pending; keep the last complete movie canvas");
+                if(c.currentVisibleBounds.left<n.left || c.currentVisibleBounds.right>n.right)
+                    return wait("current horizontal content requires independent picture preservation before Classic continuation");
+                // Raw continuity alone cannot reverse the established occupied
+                // side or treat an unobserved caption as semantically absent.
+                if(!candidateCurrent &&
+                    !((pose.top>viewport.top && c.currentVisibleBounds.bottom>n.bottom) ||
+                      (pose.top<viewport.top && c.currentVisibleBounds.top<n.top)))
+                    return wait("current occupied-side inspection pending; keep the last complete movie canvas");
                 const int margin=std::max(0,input.captionEdgeMarginPixels);
                 int minimum=-n.top,maximum=c.rasterHeight-n.bottom;
-                if(pose.top>n.top && c.currentVisibleBounds.bottom>n.bottom)
+                const bool bottomPriority=candidateCurrent && input.currentTextCandidate.top<n.top &&
+                    input.currentTextCandidate.bottom>n.bottom;
+                bool occupied=false;
+                if(c.currentVisibleBounds.bottom>n.bottom) {
                     minimum=std::max(minimum,c.currentVisibleBounds.bottom+margin-viewport.bottom);
-                else if(pose.top<n.top && c.currentVisibleBounds.top<n.top)
+                    occupied=true;
+                }
+                if(c.currentVisibleBounds.top<n.top && !bottomPriority) {
                     maximum=std::min(maximum,c.currentVisibleBounds.top-margin-viewport.top);
-                else return wait("current occupied-side inspection pending; keep the last complete movie canvas");
+                    occupied=true;
+                }
+                if(candidateCurrent) {
+                    const auto& caption=input.currentTextCandidate;
+                    if(caption.left<viewport.left || caption.right>viewport.right)
+                        return wait("current text needs relocation before the fixed canvas can be submitted");
+                    minimum=std::max(minimum,caption.bottom+margin-viewport.bottom);
+                    // A measured union across both bars retains Classic's
+                    // bottom priority; the top union cannot force a resize.
+                    if(!bottomPriority)maximum=std::min(maximum,caption.top-margin-viewport.top);
+                    occupied=true;
+                }
+                if(!occupied)return wait("current occupied-side inspection pending; keep the last complete movie canvas");
                 minimum=(minimum+1)&~1;maximum&=~1;
                 if(minimum>maximum)return wait("current bar content needs relocation before the fixed canvas can be submitted");
-                const int shift=std::max(minimum,std::min(pose.top-n.top,maximum));
-                auto actualViewport=viewport;actualViewport.top+=shift;actualViewport.bottom+=shift;
-                if(ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight) &&
-                    !ContainedBounds(actualViewport,input.currentTextCandidate))
-                    return wait("current text needs relocation before the fixed canvas can be submitted");
+                const int requested=priorPan?pose.top-viewport.top:
+                    (c.verticalTranslationActive?c.verticalTranslationPixels:0);
+                const int shift=std::max(minimum,std::min(requested,maximum));
                 d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
                 d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
                 d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
                 d.subtitleTranslationRange=true;d.subtitleMinimumTranslation=minimum;d.subtitleMaximumTranslation=maximum;
-                d.reason="current occupied-side pixels retain the fixed Classic canvas; opposite unclassified UI is not picture aspect";
+                d.unprocessedSubtitleCanvas=true;
+                d.reason="current source occupancy continues the fixed Classic canvas without caption confirmation";
+                result.retained=true;
+                // Presentation-only continuity: no new native, caption absence,
+                // FIT, erasure or composition authority is certified below.
+                return true;
             } else
             if(o.state==CaptionObservationState::PRESENT) {
                 const auto& caption=input.confirmedCaptionBounds;

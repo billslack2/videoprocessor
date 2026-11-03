@@ -11,7 +11,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1046,
+  "minimumNativeTests": 1049,
   "requiredNativeMethods": [
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
     "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",
@@ -25,6 +25,9 @@
     "ConfirmedProcessedCaptionsCannotResizeTheNativeMovieAperture",
     "PreparedAdvancedCaptionKeepsNativeApertureAndNeedsNoWait",
     "UnknownAdvancedSubtitleInspectionKeepsFreshMovieCanvasWithoutInventingProof",
+    "ClassicUnknownCurrentCandidateUsesIncidentFilledPanWithoutMintingProof",
+    "ClassicUnknownRawExtentProgressesAcrossFilledPoseAndVerticalFillOffset",
+    "ClassicUnknownCandidateRejectsStaleRawAndInfeasibleContexts",
     "OffModeMayPreserveTheLargerRawCaptionAperture",
     "PendingClassicRetargetKeepsSubmittedTranslationThroughDenseScanGap",
     "PendingClassicRetargetStillYieldsToUncoveredPixelsAndCompetingOwners",
@@ -334,6 +337,8 @@
   "actualMethods": [
     "StandardRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",
     "BetaRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",
+    "StandardRendererClassicUnknownCandidateSubmitsItsCurrentSource",
+    "BetaRendererClassicUnknownCandidateSubmitsItsCurrentSource",
     "StandardRendererVerboseTelemetryMatchesSubmittedNativeOutput",
     "BetaRendererVerboseTelemetryMatchesSubmittedNativeOutput",
     "StandardRendererClassicLifecycleWithNormalDriftAndWiderFill",
@@ -374,7 +379,7 @@
     "VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY"
   ],
   "minimumOriginalNativeTests": 663,
-  "minimumActualTests": 28,
+  "minimumActualTests": 30,
   "explicitNativeMethods": [
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",

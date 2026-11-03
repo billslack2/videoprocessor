@@ -18400,6 +18400,22 @@ releaseDriftBaseRetention =
                 trace.counters[0]=static_cast<unsigned>(recoveryInput.subtitleCanvasMode);
                 trace.counters[1]=static_cast<unsigned>(recoveryInput.captionObservation.state);
                 trace.counters[2]=submittedNativeScopeAnchor.lastSubmittedPresentationSourceSequence;
+                trace.counters[3]=cropInput.currentVisibleBoundsAvailable?cropInput.currentVisibleSourceSequence:0;
+                trace.counters[4]=recoveryInput.retentionEvaluated?recoveryInput.retentionSourceSequence:0;
+                const auto& viewport=recoveryInput.fixedNativeViewport;
+                const auto& candidate=recoveryInput.currentTextCandidate;
+                const bool candidateCurrent=candidate.right>candidate.left && candidate.bottom>candidate.top;
+                trace.flags|=candidateCurrent?8u:0u;
+                trace.metrics[0]=viewport.left;trace.metrics[1]=viewport.top;
+                trace.metrics[2]=viewport.right;trace.metrics[3]=viewport.bottom;
+                trace.metrics[4]=candidate.left;trace.metrics[5]=candidate.top;
+                trace.metrics[6]=candidate.right;trace.metrics[7]=candidate.bottom;
+                const auto& visible=cropInput.currentVisibleBounds;
+                trace.metrics[8]=visible.left;trace.metrics[9]=visible.top;
+                trace.metrics[10]=visible.right;trace.metrics[11]=visible.bottom;
+                trace.counters[5]=recoveryInput.measurementCurrent?1:0;
+                trace.counters[6]=recoveryInput.retentionSourceGeneration;
+                trace.counters[7]=cropInput.currentVisibleSourceGeneration;
                 AnalysisTraceRect(trace.measured,cropInput.geometry);AnalysisTraceRect(trace.displayed,canvas.sourceBounds);
                 AnalysisDiagnosticTrace::Emit(trace);
             }

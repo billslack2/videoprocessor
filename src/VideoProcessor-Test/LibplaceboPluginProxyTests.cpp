@@ -138,6 +138,7 @@ namespace
     };
     std::vector<AnalysisDiagnosticRecordV1> classicPoseRecords;
     bool classicPoseAllRecordStages=false;
+    std::atomic<bool> classicPoseCaptureSubtitleAdmissions{false};
     void StoreCallbackOrderedRecord(std::vector<AnalysisDiagnosticRecordV1>& records,const AnalysisDiagnosticRecordV1& record)
     {
         // Emit forwards recordSequence==0 before the optional recorder assigns
@@ -150,8 +151,10 @@ namespace
     {
         if(!record || record->structSize!=sizeof(*record))return;
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
+        const bool captureSubtitleAdmission=classicPoseCaptureSubtitleAdmissions.load(std::memory_order_relaxed) &&
+            !strcmp(record->stage,"subtitle-canvas-admission");
         if(!classicPoseAllRecordStages && strcmp(record->stage,"submitted-presentation") && strcmp(record->stage,"presentation") && strcmp(record->stage,"ar-decision") &&
-            strcmp(record->stage,"subtitle-output"))return;
+            strcmp(record->stage,"subtitle-output") && !captureSubtitleAdmission)return;
         RecordSubmittedShaderPreparation(classicSubmittedShaderPreparation,*record,classicCurrentShaderPreparation);
         StoreCallbackOrderedRecord(classicPoseRecords,*record);
     }
@@ -1633,8 +1636,12 @@ namespace VideoProcessorTest
         { VerifyClassicLifecycleMatrix(true,false); }
         TEST_METHOD(BetaRendererClassicLifecycleWithNormalDriftAndNarrowerFill)
         { VerifyClassicLifecycleMatrix(true,true); }
+        TEST_METHOD(StandardRendererClassicUnknownCandidateSubmitsItsCurrentSource)
+        { VerifyClassicLifecycleMatrix(false,false,true); }
+        TEST_METHOD(BetaRendererClassicUnknownCandidateSubmitsItsCurrentSource)
+        { VerifyClassicLifecycleMatrix(true,false,true); }
 
-        void VerifyClassicLifecycleMatrix(bool beta,bool narrower)
+        void VerifyClassicLifecycleMatrix(bool beta,bool narrower,bool unknownAdmissionRegression=false)
         {
             struct ProbeClock final : ITimingClock {
                 LARGE_INTEGER frequency{};
@@ -1661,9 +1668,15 @@ namespace VideoProcessorTest
             const auto diagnostics=reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticFn>(
                 GetProcAddress(plugin,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT));
             Assert::IsNotNull(reinterpret_cast<void*>(diagnostics));
-            struct DiagnosticCleanup {VideoProcessorLibplaceboConfigureDiagnosticFn configure;
-                ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);}} diagnosticCleanup{diagnostics};
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=false;}
+            struct DiagnosticCleanup {VideoProcessorLibplaceboConfigureDiagnosticFn configure;bool captureAdmissions;
+                ~DiagnosticCleanup(){
+                    configure(nullptr,nullptr,nullptr,nullptr);
+                    if(captureAdmissions) {
+                        std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                        classicPoseCaptureSubtitleAdmissions.store(false,std::memory_order_relaxed);
+                    }
+                }} diagnosticCleanup{diagnostics,unknownAdmissionRegression};
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=false;classicPoseCaptureSubtitleAdmissions.store(unknownAdmissionRegression,std::memory_order_relaxed);}
             diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);}
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
@@ -1683,7 +1696,7 @@ namespace VideoProcessorTest
             const int bar=narrower?64:68,pictureBottom=height-bar;
             const int captionBottom=pictureBottom+20,captionTop=captionBottom-captionHeight;
             VideoStateComPtr state=new VideoState();state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::P210;
-            state->displayMode=std::make_shared<DisplayMode>(width,height,false,narrower?24000:60000,1001);
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,(narrower||unknownAdmissionRegression)?24000:60000,1001);
             state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
             std::vector<uint16_t> native(state->BytesPerFrame()/2,uint16_t(512<<6));
             auto paintPicture=[&](std::vector<uint16_t>& pixels,int top,int bottom) {
@@ -1768,7 +1781,7 @@ namespace VideoProcessorTest
                 return std::abs(g.right-g.left-(settled.right-settled.left))<0.01&&
                     std::abs(g.bottom-g.top-(settled.bottom-settled.top))<0.01;
             };
-            const auto sourcePeriod=std::chrono::duration<double>(1001.0/(narrower?24000.0:60000.0));
+            const auto sourcePeriod=std::chrono::duration<double>(1001.0/((narrower||unknownAdmissionRegression)?24000.0:60000.0));
             auto nextSource=std::chrono::steady_clock::now();
             auto pump=[&](std::vector<uint16_t>& pixels) {
                 MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
@@ -1784,17 +1797,197 @@ namespace VideoProcessorTest
                 }
                 return scheduled&&(narrower||skipped);
             };
+            uint64_t acceptedNativeSource=0;std::map<uint64_t,Geometry> preProbeSubmitted;
             auto acquireNative=[&] {
                 const auto first=sequence,deadlineMs=GetTickCount64()+15000;bool gotActual=false,gotNative=false;
                 do {
                     const auto value=pump(native);
                     gotNative=value.available&&!value.provisional&&value.detectedSequence>=first&&std::abs(value.ratio-physical.aspectRatio)<0.005;
-                    for(const auto& g:geometries())if(g.sequence>=first&&same(g,initial))gotActual=true;
+                    for(const auto& g:geometries()) {
+                        if(unknownAdmissionRegression)preProbeSubmitted.emplace(g.sequence,g);
+                        if(g.sequence>=first&&same(g,initial)) {
+                            gotActual=true;
+                            if(unknownAdmissionRegression&&g.nativeSource)acceptedNativeSource=g.nativeSource;
+                        }
+                    }
                     if(gotNative&&gotActual)return;
                 }while(GetTickCount64()<deadlineMs&&callback.state!=RENDERSTATE_FAILED);
                 require(false,L"Normal-drift fixture failed independent native-plane acquisition or exact configured fill.");
             };
             acquireNative();
+            if(unknownAdmissionRegression) {
+                require(acceptedNativeSource>0,
+                    L"Classic fixture did not establish an accepted native source before the cue stimulus.");
+                Logger::WriteMessage("Classic unknown-candidate regression: inspect exact-current UNKNOWN admissions and submitted sources\n");
+                const uint64_t onset=sequence;
+                std::map<uint64_t,AnalysisDiagnosticRecordV1> unknownCandidates;
+                std::map<uint64_t,AnalysisDiagnosticRecordV1> currentRawUnknownWithoutCandidate;
+                std::set<uint64_t> establishedPanRawSources;
+                std::map<uint64_t,Geometry> submitted=preProbeSubmitted;
+                uint64_t firstUnknownSource=0;
+                const auto probeDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(10);
+                auto exactRawCurrent=[](const AnalysisDiagnosticRecordV1& record) {
+                    const auto& m=record.metrics;
+                    return record.counters[3]==record.acceptedSequence && record.counters[4]==record.acceptedSequence &&
+                        record.counters[5]==1 && record.counters[6]==record.transportGeneration &&
+                        record.counters[7]==record.transportGeneration &&
+                        std::isfinite(m[8]) && std::isfinite(m[9]) && std::isfinite(m[10]) && std::isfinite(m[11]) &&
+                        m[8]>=0 && m[9]>=0 && m[10]<=width && m[11]<=height && m[8]<m[10] && m[9]<m[11];
+                };
+                auto validateNoAuthority=[&](const Geometry& geometry,const wchar_t* message) {
+                    require(geometry.native[0]==physical.left && geometry.native[1]==physical.top &&
+                        geometry.native[2]==physical.right && geometry.native[3]==physical.bottom &&
+                        geometry.nativeSource==acceptedNativeSource &&
+                        !(geometry.flags&(32u|64u|8192u)),message);
+                };
+                auto joinAndValidate=[&] {
+                    for(const auto& g:geometries())submitted.emplace(g.sequence,g);
+                    std::vector<AnalysisDiagnosticRecordV1> trace;
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);trace=classicPoseRecords;}
+                    for(const auto& record:trace) {
+                        if(strcmp(record.stage,"subtitle-canvas-admission") || record.acceptedSequence<onset ||
+                            record.counters[0]!=static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::CLASSIC) ||
+                            record.counters[1]!=static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) ||
+                            !exactRawCurrent(record))continue;
+                        const auto source=record.acceptedSequence;
+                        const auto& m=record.metrics;
+                        if(record.flags&8u) {
+                            if(!std::isfinite(m[4]) || !std::isfinite(m[5]) || !std::isfinite(m[6]) || !std::isfinite(m[7]) ||
+                                m[4]<0 || m[5]<0 || m[6]>width || m[7]>height || m[4]>=m[6] || m[5]>=m[7])continue;
+                            unknownCandidates.emplace(source,record);
+                            if(!firstUnknownSource || source<firstUnknownSource)firstUnknownSource=source;
+                        } else {
+                            currentRawUnknownWithoutCandidate.emplace(source,record);
+                        }
+                    }
+                    for(const auto& item:unknownCandidates) {
+                        const auto output=submitted.find(item.first);
+                        if(output==submitted.end())continue;
+                        const auto& admission=item.second;
+                        const auto& geometry=output->second;
+                        const auto& m=admission.metrics;
+                        require(!(admission.flags&1u) && (admission.flags&2u) && !(admission.flags&4u),
+                            L"A current UNKNOWN candidate must submit as an unprocessed Classic canvas without waiting or composing.");
+                        require(admission.counters[2]<item.first,
+                            L"The UNKNOWN candidate was not preceded by a submitted Classic source.");
+                        require(geometry.mode==0 && !geometry.composed,
+                            L"The UNKNOWN source changed out of Classic mode or claimed caption composition.");
+                        require(m[7]>initial.bottom,
+                            L"The fixture candidate does not challenge the previously submitted configured-fill viewport.");
+                        bool candidateContainsFixtureInk=false;
+                        for(int y=(std::max)(0,static_cast<int>(std::floor(m[5])));
+                            y<(std::min)(height,static_cast<int>(std::ceil(m[7]))) && !candidateContainsFixtureInk;++y)
+                            for(int x=(std::max)(0,static_cast<int>(std::floor(m[4])));
+                                x<(std::min)(width,static_cast<int>(std::ceil(m[6])));++x)
+                                if(caption[size_t(y)*width+x]==uint16_t(700<<6)){candidateContainsFixtureInk=true;break;}
+                        require(candidateContainsFixtureInk,
+                            L"The exact-current text candidate does not cover the fixture's actual caption pixels.");
+                        require(geometry.left<=m[4] && geometry.top<=m[5] &&
+                            geometry.right>=m[6] && geometry.bottom>=m[7],
+                            L"The actual submitted source window clipped exact-current candidate pixels.");
+                        require(std::abs((geometry.right-geometry.left)-(initial.right-initial.left))<0.01 &&
+                            std::abs((geometry.bottom-geometry.top)-(initial.bottom-initial.top))<0.01 &&
+                            std::abs(geometry.left-initial.left)<0.01 && std::abs(geometry.right-initial.right)<0.01 &&
+                            geometry.top>=initial.top-0.01 && geometry.top<=settled.top+0.01 &&
+                            geometry.bottom<=height+0.01,
+                            L"Classic UNKNOWN continuation changed the configured same-size fill viewport.");
+                        validateNoAuthority(geometry,
+                            L"Classic UNKNOWN candidate output changed accepted native geometry/source or carried certificate/no-caption authority.");
+                    }
+                    for(const auto& item:currentRawUnknownWithoutCandidate) {
+                        const auto& admission=item.second;const auto& m=admission.metrics;
+                        const auto prior=submitted.find(admission.counters[2]);
+                        const bool priorPan=prior!=submitted.end() &&
+                            std::abs(prior->second.left-m[0])<0.01 && std::abs(prior->second.right-m[2])<0.01 &&
+                            std::abs((prior->second.bottom-prior->second.top)-(m[3]-m[1]))<0.01 &&
+                            std::abs(prior->second.top-m[1])>0.01;
+                        const bool horizontalCurrent=admission.measured[0]<=m[8] && admission.measured[2]>=m[10];
+                        const bool extendsBelow=m[11]>admission.measured[3];
+                        const bool extendsAbove=m[9]<admission.measured[1];
+                        const bool bottomPan=priorPan && prior->second.top>m[1]+0.01 && extendsBelow && !extendsAbove;
+                        const bool topPan=priorPan && prior->second.top<m[1]-0.01 && extendsAbove && !extendsBelow;
+                        if(!(horizontalCurrent && (bottomPan||topPan))) {
+                            const bool newlyUnanchoredRaw=horizontalCurrent && !priorPan &&
+                                ((extendsBelow&&!extendsAbove)||(extendsAbove&&!extendsBelow));
+                            if(newlyUnanchoredRaw)
+                                require((admission.flags&1u) && !(admission.flags&2u) && !(admission.flags&4u) &&
+                                    submitted.find(item.first)==submitted.end(),
+                                    L"Raw UNKNOWN occupancy without an established same-size pan was submitted as a continued subtitle canvas.");
+                            continue;
+                        }
+                        establishedPanRawSources.insert(item.first);
+                        require(!(admission.flags&1u) && (admission.flags&2u) && !(admission.flags&4u),
+                            L"Exact-current raw occupancy during an established Classic pan must continue unprocessed without waiting or composing.");
+                        const auto output=submitted.find(item.first);
+                        if(output==submitted.end())continue;
+                        const auto& geometry=output->second;
+                        require(geometry.mode==0 && !geometry.composed &&
+                            std::abs(geometry.left-m[0])<0.01 && std::abs(geometry.right-m[2])<0.01 &&
+                            std::abs((geometry.bottom-geometry.top)-(m[3]-m[1]))<0.01 &&
+                            (bottomPan?geometry.bottom>=m[11]-0.01:geometry.top<=m[9]+0.01),
+                            L"Classic failed to submit the exact current raw-occupancy source through its established occupied-side pan.");
+                        validateNoAuthority(geometry,
+                            L"Raw UNKNOWN continuation changed accepted native geometry/source or carried certificate/no-caption authority.");
+                    }
+                };
+                auto allKnownSourcesJoined=[&] {
+                    for(const auto& item:unknownCandidates)if(submitted.find(item.first)==submitted.end())return false;
+                    for(const auto source:establishedPanRawSources)if(submitted.find(source)==submitted.end())return false;
+                    return true;
+                };
+                unsigned laterSources=0;const uint64_t minimumProbeEnd=onset+24;
+                do {
+                    pump(caption);
+                    joinAndValidate();
+                    if(firstUnknownSource) {
+                        const auto output=submitted.find(firstUnknownSource);
+                        if(output!=submitted.end()) {
+                            laterSources=0;uint64_t previousSource=firstUnknownSource;
+                            for(auto it=std::next(output);it!=submitted.end() && laterSources<2;++it) {
+                                require(it->first==previousSource+1,
+                                    L"Classic renderer left a source-sequence gap after an UNKNOWN caption candidate.");
+                                require(it->second.pts>submitted.at(previousSource).pts,
+                                    L"Classic submitted source timestamps failed to advance after an UNKNOWN caption candidate.");
+                                require(std::abs((it->second.right-it->second.left)-(initial.right-initial.left))<0.01 &&
+                                    std::abs((it->second.bottom-it->second.top)-(initial.bottom-initial.top))<0.01 &&
+                                    std::abs(it->second.left-initial.left)<0.01 && std::abs(it->second.right-initial.right)<0.01,
+                                    L"A following Classic source changed the configured same-size fill viewport.");
+                                previousSource=it->first;++laterSources;
+                            }
+                        }
+                        if(laterSources>=2 && sequence>=minimumProbeEnd && allKnownSourcesJoined())break;
+                    }
+                }while(std::chrono::steady_clock::now()<probeDeadline && callback.state!=RENDERSTATE_FAILED);
+                size_t previousAdmissionCount=(std::numeric_limits<size_t>::max)();unsigned stableDrains=0;
+                for(unsigned drain=0;drain<8 && std::chrono::steady_clock::now()<probeDeadline;++drain) {
+                    std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::steady_clock::duration>(sourcePeriod));
+                    joinAndValidate();
+                    const size_t admissionCount=unknownCandidates.size()+currentRawUnknownWithoutCandidate.size();
+                    if(allKnownSourcesJoined() && admissionCount==previousAdmissionCount)++stableDrains;
+                    else stableDrains=0;
+                    previousAdmissionCount=admissionCount;
+                    if(stableDrains>=2)break;
+                }
+                joinAndValidate();
+                require(firstUnknownSource>0,
+                    L"The real Classic renderer fixture never exposed an exact-current UNKNOWN text candidate.");
+                require(unknownCandidates.find(firstUnknownSource)!=unknownCandidates.end(),
+                    L"The UNKNOWN candidate did not carry exact-current visible and retention source identities.");
+                require(submitted.find(firstUnknownSource)!=submitted.end(),
+                    L"Classic withheld the exact source carrying the current UNKNOWN caption candidate.");
+                for(const auto& item:unknownCandidates)
+                    require(submitted.find(item.first)!=submitted.end(),
+                        L"A later exact-current UNKNOWN candidate source was withheld by Classic.");
+                for(const auto source:establishedPanRawSources)
+                    require(submitted.find(source)!=submitted.end(),
+                        L"An exact-current UNKNOWN raw-occupancy source was withheld during an established Classic pan.");
+                require(laterSources>=2,
+                    L"Classic did not submit two advancing sources after the UNKNOWN candidate.");
+                Logger::WriteMessage((std::string("Classic UNKNOWN renderer regression: candidates=")+std::to_string(unknownCandidates.size())+
+                    " established_pan_raw_no_candidate="+std::to_string(establishedPanRawSources.size())+
+                    " actual_source_ids=consecutive native_geometry=unchanged certificates=none\n").c_str());
+                return;
+            }
             Logger::WriteMessage("Classic lifecycle: caption onset with 500 ms engage drift\n");
             uint64_t onset=sequence,finalSequence=0;double previousTop=initial.top;std::set<int> intermediate;
             std::set<uint64_t> settledSources;const auto engageDeadline=GetTickCount64()+5000;
