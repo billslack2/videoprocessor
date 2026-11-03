@@ -697,6 +697,13 @@ namespace AlphaSourceCrop
 		const bool repeatedSourceSample = continues && sourceSequence != 0 &&
 			previous.lastObservedSourceSequence == sourceSequence;
 		decision.state.candidate = candidate;
+        // Broad new picture outside the old crop does not prove that the
+        // candidate's remaining excluded bands are matte. Derive discard
+        // permission afresh from this source's independently verified guard.
+        decision.state.candidateCropVerified = native.available &&
+            native.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            native.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            SameTrustedCropContract(native.trustedBounds,candidate);
 		decision.state.base = trustedGeometry;
 		decision.state.referenceCandidate = continues ? reference : candidate;
 		decision.state.firstPictureSourceSequence = sameEpisode
@@ -1011,7 +1018,18 @@ namespace AlphaSourceCrop
 		TransitionAdmissionDecision decision;
 		decision.pillarboxContradiction = ConfirmPillarboxContradiction(input);
 		decision.observation = MakeActivePictureObservation(input.evidence,
-			input.sourceSequence, input.framesPerSecond);
+			input.sourceSequence, input.framesPerSecond, &input.currentIdentity);
+        const auto& target=decision.observation.bounds;
+        const auto& base=input.trustedGeometry;
+        decision.currentSpatialOutward=input.compatiblePresentation && input.trustedGeometryAvailable &&
+            input.sourceGeneration && input.sourceGeneration==input.trustedGeneration &&
+            input.sourceGeneration==input.currentIdentity.transportGeneration &&
+            input.sourceSequence==input.currentIdentity.acceptedSequence &&
+            decision.observation.currentSpatialCropProof.Matches(decision.observation) &&
+            ValidBounds(base,target.rasterWidth,target.rasterHeight) &&
+            SameTrustedCropContract(target,input.outwardCandidate) &&
+            target.left<=base.left && target.top<=base.top && target.right>=base.right && target.bottom>=base.bottom &&
+            (target.left<base.left || target.top<base.top || target.right>base.right || target.bottom>base.bottom);
 		decision.deferPresentation = input.evidence.available &&
 			input.trustedGeometryAvailable && input.trustedGeneration == input.sourceGeneration &&
 			ShouldDeferVerticalGeometryTransition(input.trustedGeometry,
@@ -1022,6 +1040,16 @@ namespace AlphaSourceCrop
 			? ConfirmOutwardPictureTransition(input.previousOutward, input.presentationBeforeObservation,
 				input.outwardCandidate, input.retention, input.sourceGeneration, input.sourceSequence)
 			: OutwardPictureConfirmationDecision{};
+        // Caption-qualified spatial verification is a separate exact-current
+        // certificate. It may verify this existing occupancy witness even when
+        // the intentionally unmodified raw retention observation is provisional.
+        // Neither a hint nor a previous sample can transfer this permission.
+        if(decision.currentSpatialOutward && decision.outward.state.confirmations &&
+            decision.outward.state.proofRoute != OutwardPictureProofRoute::NONE &&
+            decision.outward.state.sourceGeneration == input.sourceGeneration &&
+            decision.outward.state.lastObservedSourceSequence == input.sourceSequence &&
+            SameTrustedCropContract(decision.outward.state.candidate,target))
+            decision.outward.state.candidateCropVerified=true;
 		const bool continuingEpisode = decision.outward.state.confirmations != 0 &&
 			input.previousOutward.confirmations != 0 &&
 			input.previousOutward.sourceGeneration == input.sourceGeneration &&
@@ -1036,6 +1064,12 @@ namespace AlphaSourceCrop
 		// Broad current picture on the expanding edges can supersede an old
 		// subtitle action; a subtitle must not pin a genuinely obsolete aspect.
 		decision.deferPresentation = decision.deferPresentation && !decision.outward.authoritative;
+        // The spatial route already measured the new picture and verified every
+        // discarded band on this exact source. Do not require legacy brightness
+        // or three-source occupancy votes before the model's own confirmation.
+        if(decision.currentSpatialOutward) {
+            decision.deferPresentation=false;decision.deferOutward=false;
+        }
 		decision.observation.transitionDeferred = decision.deferPresentation || decision.deferOutward;
 		if (input.evidence.available)
 		{
@@ -2518,8 +2552,16 @@ namespace AlphaSourceCrop
 			}
 			const int removedRows = height - filledHeight;
 			const int topInset = (removedRows / 2) & ~1;
-			decision.sourceBounds.top += topInset;
-			decision.sourceBounds.bottom = decision.sourceBounds.top + filledHeight;
+            if (topInset == 0)
+            {
+                decision.reason = "centered fill is below the symmetric chroma quantum";
+                return decision;
+            }
+            // Round the two insets together. Rounding only the first inset
+            // shifts the picture and can discard a real row at the other edge.
+            filledHeight = height - 2 * topInset;
+            decision.sourceBounds.top += topInset;
+            decision.sourceBounds.bottom -= topInset;
 			decision.sourceBounds.aspectRatio = static_cast<double>(width) / filledHeight;
 			decision.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 			decision.applied = true;
@@ -2551,8 +2593,14 @@ namespace AlphaSourceCrop
 			}
 			const int removedColumns = width - filledWidth;
 			const int leftInset = (removedColumns / 2) & ~1;
-			decision.sourceBounds.left += leftInset;
-			decision.sourceBounds.right = decision.sourceBounds.left + filledWidth;
+            if (leftInset == 0)
+            {
+                decision.reason = "centered fill is below the symmetric chroma quantum";
+                return decision;
+            }
+            filledWidth = width - 2 * leftInset;
+            decision.sourceBounds.left += leftInset;
+            decision.sourceBounds.right -= leftInset;
 			decision.sourceBounds.aspectRatio = static_cast<double>(filledWidth) / height;
 			decision.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 			decision.applied = true;
@@ -3467,6 +3515,58 @@ namespace AlphaSourceCrop
 			}
 		}
 
+        // A current independently verified native entry is already sufficient
+        // evidence. The episode must not wait for consecutive transport IDs or
+        // a model association whose acquisition it is itself suppressing.
+        // This releases only the retained presentation veto: no new geometry,
+        // subtitle ownership, crop authority or measurement lease is created.
+        const auto& entry = decision.state.entryTrustedCrop;
+        const bool verifiedCurrentEntry =
+            decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
+            decision.state.entryTrustedCropAvailable &&
+            decision.state.entryTrustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            input.sourceGeneration != 0 && input.sourceSequence != 0 &&
+            decision.state.sourceGeneration == input.sourceGeneration &&
+            decision.state.presentationEpoch == input.presentationEpoch &&
+            input.sourceSequence > decision.state.startedSourceSequence &&
+            input.sourceSequence > decision.state.lastEvaluatedSourceSequence &&
+            input.measurementCurrent && !input.cadenceRepeat &&
+            input.nearBlackEvaluated && !input.globalNearBlack &&
+            !input.sceneBoundary && !input.fullRasterAuthorityAvailable &&
+            !input.boundedVisibleContentOutsideCrop && !input.currentVisibleBoundsAvailable &&
+            !pendingSubmittedEnvelope &&
+            input.trustedCropAvailable &&
+            input.trustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            ValidBounds(entry, entry.rasterWidth, entry.rasterHeight) &&
+            HasAuthorityForCroppedAxes(entry, entry.rasterWidth, entry.rasterHeight) &&
+            SameTrustedCropContract(input.trustedCrop, entry) &&
+            input.currentObservationAvailable &&
+            input.currentObservationOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            input.currentObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            SameBounds(input.currentObservation, entry) &&
+            input.currentNativeObservationAvailable &&
+            SameTrustedCropContract(input.currentNativeObservation, entry) &&
+            input.currentNativeProposedAvailable &&
+            SameBounds(input.currentNativeProposedBounds, entry) &&
+            input.retentionEvaluated && input.retentionSafe && input.retentionExcludedBandsPixelSafe &&
+            input.retentionSourceGeneration == input.sourceGeneration &&
+            input.retentionSourceSequence == input.sourceSequence &&
+            SameTrustedCropContract(input.retentionBounds, entry);
+        if (verifiedCurrentEntry)
+        {
+            auto& release = decision.currentNativeEntryRelease;
+            release.available = true;
+            release.nativeEntry = entry;
+            release.sourceGeneration = input.sourceGeneration;
+            release.sourceSequence = input.sourceSequence;
+            release.presentationEpoch = input.presentationEpoch;
+            decision.state = {};
+            decision.releasedToTrustedCrop = true;
+            decision.ended = true;
+            decision.revalidationSamplesRequired = 0;
+            decision.reason = "current verified native entry released retained episode without frame-count dwell";
+        }
+
 		// A retained-crop episode must also end after fresh bright frames prove
 		// its exact entry crop safe. Otherwise a long-finished fade keeps owning
 		// presentation and a later bounded menu/subtitle intrusion takes the title
@@ -4014,6 +4114,7 @@ namespace AlphaSourceCrop
         result.sourceGeneration = input.sourceGeneration;
         result.sourceSequence = input.sourceSequence;
         result.presentationEpoch = input.presentationEpoch;
+        result.evidenceBounds = input.evidenceBounds;
         return result;
     }
 
@@ -4057,9 +4158,247 @@ namespace AlphaSourceCrop
             ValidBounds(proof.approvedBounds,width,height) && SameBounds(proof.approvedBounds,actual);
     }
 
+    static bool HasAcceptedNativeCrop(const Input& input)
+    {
+        const auto& contract = input.acceptedNativeCrop;
+        return contract.available && input.frameSourceGeneration && input.frameSourceSequence &&
+            contract.sourceGeneration == input.frameSourceGeneration && contract.acceptedSourceSequence &&
+            contract.acceptedSourceSequence <= input.frameSourceSequence &&
+            contract.sourceFormatKey == input.frameSourceFormatKey &&
+            contract.analysisDomainKey == input.frameAnalysisDomainKey &&
+            input.sharedGeometryAvailable && input.geometrySourceGeneration == input.frameSourceGeneration &&
+            input.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            input.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            SameTrustedCropContract(contract.bounds,input.geometry) &&
+            ValidBounds(contract.bounds,input.rasterWidth,input.rasterHeight) &&
+            HasAuthorityForCroppedAxes(contract.bounds,input.rasterWidth,input.rasterHeight) &&
+            CropEdgesAreChromaAligned(contract.bounds,input.rasterWidth,input.rasterHeight);
+    }
+
+    static bool UsesAdvancedNativePicturePolicy(const Input& input)
+    {
+        return input.automaticCropEnabled &&
+            (input.subtitlePresentationMode==PreparedNativeMode::BLACK ||
+             input.subtitlePresentationMode==PreparedNativeMode::RECONSTRUCTION) &&
+            HasAcceptedNativeCrop(input) && !input.fullRasterPresentationAuthoritative &&
+            input.latestObservationClassification!=ActivePictureClassification::FULL_RASTER_TRUSTED;
+    }
+
+    static bool HasCurrentAdvancedRawVisibility(const Input& crop)
+    {
+        return crop.currentVisibleBoundsAvailable && crop.frameSourceGeneration && crop.frameSourceSequence &&
+            crop.currentVisibleSourceGeneration==crop.frameSourceGeneration &&
+            crop.currentVisibleSourceSequence==crop.frameSourceSequence &&
+            SameTrustedCropContract(crop.currentVisibleBase,crop.geometry) &&
+            ValidBounds(crop.currentVisibleBounds,crop.rasterWidth,crop.rasterHeight) &&
+            ContainedBounds(crop.currentVisibleBounds,crop.geometry);
+    }
+
+    static Decision AdvancedNativePictureDecision(const Input& crop,
+        const ActivePictureBounds* currentPicture=nullptr)
+    {
+        Decision result;
+        const bool rawVisibilityContradictsAbsence=HasCurrentAdvancedRawVisibility(crop) &&
+            !SameBounds(crop.currentVisibleBounds,crop.geometry);
+        if(!HasCurrentPreparedSubtitlePresentation(crop) && !HasCurrentSubtitleCompositionPresentation(crop) &&
+            !(crop.currentCaptionAbsenceConfirmed && !rawVisibilityContradictsAbsence) &&
+            !crop.initialSubtitleShaderBuild) {
+            // Requested advanced mode does not erase raw caption pixels. Missing
+            // current composition needs current visibility evidence, independently
+            // of the immutable accepted picture rectangle.
+            const bool visible=HasCurrentAdvancedRawVisibility(crop);
+            result.sourceBounds=visible?crop.currentVisibleBounds:FullRaster(crop.rasterWidth,crop.rasterHeight);
+            if(currentPicture) {
+                result.sourceBounds.left=std::min(result.sourceBounds.left,currentPicture->left);
+                result.sourceBounds.top=std::min(result.sourceBounds.top,currentPicture->top);
+                result.sourceBounds.right=std::max(result.sourceBounds.right,currentPicture->right);
+                result.sourceBounds.bottom=std::max(result.sourceBounds.bottom,currentPicture->bottom);
+            }
+            // A visibility aperture may only align outward to chroma footprints.
+            result.sourceBounds.left&=~1;result.sourceBounds.top&=~1;
+            result.sourceBounds.right=std::min(crop.rasterWidth,(result.sourceBounds.right+1)&~1);
+            result.sourceBounds.bottom=std::min(crop.rasterHeight,(result.sourceBounds.bottom+1)&~1);
+            result.sourceBounds.aspectRatio=double(result.sourceBounds.right-result.sourceBounds.left)/
+                std::max(1,result.sourceBounds.bottom-result.sourceBounds.top);
+            result.applyCrop=!SameBounds(result.sourceBounds,FullRaster(crop.rasterWidth,crop.rasterHeight));
+            result.outwardExpanded=!SameBounds(result.sourceBounds,crop.geometry);
+            result.owner=DecisionOwner::OUTWARD_FIT;
+            result.reason=visible?"unprepared advanced output preserves current raw visibility":
+                "unprepared advanced output preserves full raster without current visibility proof";
+            auto& proof=result.nativePresentation;
+            proof.available=true;proof.origin=NativePresentationOrigin::VISIBILITY_FALLBACK;
+            proof.nativeBase=crop.geometry;proof.approvedBounds=result.sourceBounds;
+            proof.sourceGeneration=crop.frameSourceGeneration;proof.sourceSequence=crop.frameSourceSequence;
+            proof.presentationEpoch=crop.framePresentationEpoch;
+            return result;
+        }
+        result.sourceBounds=currentPicture?*currentPicture:crop.geometry;
+        result.applyCrop=!SameBounds(result.sourceBounds,FullRaster(crop.rasterWidth,crop.rasterHeight));
+        result.outwardExpanded=currentPicture && !SameBounds(*currentPicture,crop.geometry);
+        result.owner=result.outwardExpanded?DecisionOwner::OUTWARD_FIT:DecisionOwner::TRUSTED_CROP;
+        result.reason=currentPicture?"current independently proved native picture extent":
+            "advanced subtitle layout does not change the accepted native picture";
+        auto& proof=result.nativePresentation;
+        proof.available=true;proof.origin=currentPicture?NativePresentationOrigin::CONFIRMED_PICTURE:NativePresentationOrigin::EXACT_NATIVE;
+        proof.nativeBase=crop.geometry;proof.approvedBounds=result.sourceBounds;
+        proof.sourceGeneration=crop.frameSourceGeneration;proof.sourceSequence=crop.frameSourceSequence;
+        proof.presentationEpoch=crop.framePresentationEpoch;
+        if(!currentPicture && HasCurrentPreparedSubtitlePresentation(crop)) {
+            proof.preparedNativeMode=crop.subtitlePresentationMode;
+            proof.preparedNativeSourceSequence=crop.frameSourceSequence;
+        }
+        return result;
+    }
+
+    static bool MatchesTranslatedConfiguredFill(const NativePresentationCertificate& proof,
+        const ActivePictureBounds& native, const ActivePictureBounds& actual)
+    {
+        const auto& shifted=proof.unfilledTranslation;
+        if (!ValidBounds(shifted,native.rasterWidth,native.rasterHeight) ||
+            !CropEdgesAreChromaAligned(shifted,native.rasterWidth,native.rasterHeight) ||
+            shifted.left!=native.left || shifted.right!=native.right ||
+            shifted.bottom-shifted.top!=native.bottom-native.top || shifted.top==native.top ||
+            !std::isfinite(proof.translatedFillScreenAspect) || proof.translatedFillScreenAspect<=0.0)
+            return false;
+        auto fill=proof.translatedFillPolicy;
+        if(fill.screenAspect!=proof.translatedFillScreenAspect)return false;
+        fill.sourceBounds=shifted;fill.contentReferenceAvailable=true;
+        fill.contentReferenceBounds=native;fill.trustedContentAuthorityAccepted=true;
+        const auto expected=EvaluateAspectLimitFill(fill);
+        return expected.applied && SameBounds(expected.sourceBounds,actual) &&
+            ContainedBounds(shifted,actual);
+    }
+
+    static bool MatchesNativePresentation(const NativePresentationCertificate& proof,
+        const ActivePictureBounds& native, const ActivePictureBounds& actual,
+        uint64_t generation, uint64_t sequence, uint64_t epoch)
+    {
+        const bool authorizedShape = proof.origin == NativePresentationOrigin::EXACT_NATIVE
+            ? SameBounds(native,actual)
+            : proof.origin == NativePresentationOrigin::CONFIRMED_FIT || proof.origin == NativePresentationOrigin::CONFIRMED_PICTURE ||
+                proof.origin == NativePresentationOrigin::CAPTION_CONTINUITY
+            ? ContainedBounds(actual,native)
+            : proof.origin == NativePresentationOrigin::CONFIGURED_FILL
+            ? ContainedBounds(native,actual)
+            : proof.origin == NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL
+            ? MatchesTranslatedConfiguredFill(proof,native,actual)
+            : proof.origin == NativePresentationOrigin::VISIBILITY_FALLBACK
+            ? ContainedBounds(actual,native)
+            : proof.origin == NativePresentationOrigin::CONFIRMED_TRANSLATION
+            ? actual.right-actual.left == native.right-native.left && actual.bottom-actual.top == native.bottom-native.top
+            : false;
+        return proof.available && authorizedShape && generation && sequence &&
+            proof.sourceGeneration == generation && proof.sourceSequence == sequence &&
+            proof.presentationEpoch == epoch && SameTrustedCropContract(proof.nativeBase,native) &&
+            SameBounds(proof.approvedBounds,actual) &&
+            ValidBounds(actual,native.rasterWidth,native.rasterHeight) &&
+            CropEdgesAreChromaAligned(actual,native.rasterWidth,native.rasterHeight);
+    }
+
+    static bool HasCurrentNativePicturePreservation(const PresentationRecoveryInput& input);
+    static bool HasCurrentCaptionFit(const PresentationRecoveryInput& input);
+    static bool CurrentCaptionReplacesHeldExtent(const PresentationRecoveryInput& input)
+    {
+        const auto& c=input.captionObservation;const auto& crop=input.crop;
+        if (HasCurrentCaptionFit(input))
+            return true;
+        return c.state==CaptionObservationState::ABSENT &&
+            c.sourceGeneration==crop.frameSourceGeneration && c.sourceSequence==crop.frameSourceSequence &&
+            c.presentationEpoch==input.presentationEpoch &&
+            c.sourceFormatKey==crop.frameSourceFormatKey && c.analysisDomainKey==crop.frameAnalysisDomainKey;
+    }
+    static bool HasCurrentCaptionFit(const PresentationRecoveryInput& input)
+    {
+        const auto& fit=input.confirmedFitOwnership;const auto& crop=input.crop;
+        return crop.sharedGeometryAvailable && crop.geometrySourceGeneration==crop.frameSourceGeneration &&
+            crop.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+            crop.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+            crop.framePresentationEpoch==input.presentationEpoch &&
+            (SameBounds(input.candidate.sourceBounds,fit.approvedBounds) || HasCurrentNativePicturePreservation(input)) &&
+            fit.origin==ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
+            MatchesConfirmedFitOwnership(fit,crop.geometry,fit.approvedBounds,
+                crop.frameSourceGeneration,crop.frameSourceSequence,input.presentationEpoch);
+    }
+    static bool CompatibleCaptionExtent(const CaptionPreservationEvidence& c,const Input& crop,uint64_t epoch)
+    {
+        return c.available && c.sourceGeneration && c.sourceSequence &&
+            c.sourceGeneration==crop.frameSourceGeneration && c.sourceSequence<=crop.frameSourceSequence &&
+            c.presentationEpoch==epoch && c.sourceFormatKey==crop.frameSourceFormatKey &&
+            c.analysisDomainKey==crop.frameAnalysisDomainKey &&
+            ValidBounds(c.extent,crop.rasterWidth,crop.rasterHeight);
+    }
+    static CaptionPreservationEvidence HeldCaptionExtent(const PresentationRecoveryInput& input)
+    {
+        const auto& anchor=input.submittedScopeAnchor;const auto& crop=input.crop;
+        if (!HasAcceptedNativeCrop(crop) || CurrentCaptionReplacesHeldExtent(input) ||
+            !IsCurrentSubmittedNativeScopeAnchor(anchor,crop.frameSourceGeneration,crop.frameSourceSequence,
+                input.presentationEpoch,crop.rasterWidth,crop.rasterHeight) ||
+            !CompatibleCaptionExtent(anchor.captionPreservation,crop,input.presentationEpoch) ||
+            anchor.captionPreservation.sourceSequence>anchor.lastSubmittedPresentationSourceSequence)
+            return {};
+        return anchor.captionPreservation;
+    }
+    static void IncludeCaptionExtent(ActivePictureBounds& bounds,const CaptionPreservationEvidence& caption)
+    {
+        if (!caption.available) return;
+        bounds.left=std::min(bounds.left,caption.extent.left)&~1;
+        bounds.top=std::min(bounds.top,caption.extent.top)&~1;
+        bounds.right=std::min(bounds.rasterWidth,(std::max(bounds.right,caption.extent.right)+1)&~1);
+        bounds.bottom=std::min(bounds.rasterHeight,(std::max(bounds.bottom,caption.extent.bottom)+1)&~1);
+        bounds.aspectRatio=double(bounds.right-bounds.left)/std::max(1,bounds.bottom-bounds.top);
+    }
+
+    static bool HasCurrentNativePicturePreservation(const PresentationRecoveryInput& input)
+    {
+        const auto& crop = input.crop;
+        const auto& proof = input.nativeOutwardPictureProof;
+        return HasAcceptedNativeCrop(crop) &&
+            input.nativeOutwardPictureProofPresentationEpoch == input.presentationEpoch &&
+            input.presentationEpoch == crop.framePresentationEpoch &&
+            proof.sourceGeneration == crop.frameSourceGeneration &&
+            proof.lastObservedSourceSequence == crop.frameSourceSequence &&
+            proof.firstPictureSourceSequence && proof.firstPictureSourceSequence <= crop.frameSourceSequence &&
+            // One independently qualified spatial witness preserves pixels now;
+            // the transition model still requires three votes to publish AR.
+            proof.confirmations != 0 &&
+            proof.proofRoute != OutwardPictureProofRoute::NONE &&
+            // Retaining the entire source discards nothing. Any cropped target
+            // additionally needs its producer's CURRENT verified-band proof;
+            // positive outward occupancy alone cannot nominate a new crop.
+            (SameBounds(proof.candidate,FullRaster(crop.rasterWidth,crop.rasterHeight)) ||
+                proof.candidateCropVerified) &&
+            SameTrustedCropContract(proof.base,crop.geometry) &&
+            ValidBounds(proof.candidate,crop.rasterWidth,crop.rasterHeight) &&
+            CropEdgesAreChromaAligned(proof.candidate,crop.rasterWidth,crop.rasterHeight) &&
+            ContainedBounds(proof.candidate,crop.geometry) && !SameBounds(proof.candidate,crop.geometry) &&
+            (SamePictureWithinDetectorStep(proof.referenceCandidate,proof.candidate) ||
+             (SameBounds(proof.candidate,FullRaster(crop.rasterWidth,crop.rasterHeight)) &&
+              SameBounds(proof.referenceCandidate,proof.candidate)));
+    }
+
+    static bool MatchesNativePicturePreservationPresentation(const PresentationRecoveryInput& input,const Decision& proposed)
+    {
+        if (!HasCurrentNativePicturePreservation(input)) return false;
+        auto expected=input.nativeOutwardPictureProof.candidate;
+        const auto held=HeldCaptionExtent(input);IncludeCaptionExtent(expected,held);
+        if (HasCurrentCaptionFit(input)) {
+            CaptionPreservationEvidence current;current.available=true;current.extent=input.confirmedFitOwnership.approvedBounds;
+            IncludeCaptionExtent(expected,current);
+        }
+        return SameBounds(proposed.sourceBounds,expected) &&
+            (SameBounds(expected,input.nativeOutwardPictureProof.candidate) ||
+             (proposed.nativePresentation.origin==NativePresentationOrigin::CONFIRMED_PICTURE &&
+              MatchesNativePresentation(proposed.nativePresentation,input.crop.geometry,expected,
+                input.crop.frameSourceGeneration,input.crop.frameSourceSequence,input.presentationEpoch)));
+    }
+
     static bool HasCurrentConfirmedOutwardCandidate(const PresentationRecoveryInput& input,
         const Decision& proposed)
     {
+        if (HasCurrentCaptionFit(input) && SameBounds(proposed.sourceBounds,input.confirmedFitOwnership.approvedBounds))
+            return true;
+        if (MatchesNativePicturePreservationPresentation(input,proposed))
+            return true;
         const auto& accepted=input.candidate;
         const auto& crop=input.crop;
         // Native refinement and presentation expansion are independent. A label
@@ -4075,9 +4414,64 @@ namespace AlphaSourceCrop
                 crop.frameSourceGeneration,crop.frameSourceSequence,input.presentationEpoch);
     }
 
+    // Controller confirmation owns a motion request, not unseen source pixels.
+    // Preserve every CURRENT extent outside the measured native picture. Classic
+    // may still trade the opposite edge INSIDE that picture for its caption bar.
+    static bool TranslationCoversCurrentOutsideNativeVisibility(
+        const PresentationRecoveryInput& input,const Decision& proposed)
+    {
+        const auto& crop=input.crop;const auto& native=crop.geometry;const auto& pose=proposed.sourceBounds;
+        if(!crop.frameSourceGeneration || !crop.frameSourceSequence ||
+            input.presentationEpoch!=crop.framePresentationEpoch ||
+            !proposed.verticallyTranslated || proposed.owner!=DecisionOwner::VERTICAL_TRANSLATION ||
+            !ValidBounds(native,crop.rasterWidth,crop.rasterHeight) ||
+            !ValidBounds(pose,crop.rasterWidth,crop.rasterHeight) ||
+            !CropEdgesAreChromaAligned(pose,crop.rasterWidth,crop.rasterHeight))return false;
+        const auto& safety=input.currentNativeBandSafety;
+        const bool exactSafety=safety.available &&
+            safety.sourceGeneration==crop.frameSourceGeneration && safety.sourceSequence==crop.frameSourceSequence &&
+            safety.presentationEpoch==input.presentationEpoch && input.presentationEpoch==crop.framePresentationEpoch &&
+            safety.sourceFormatKey==crop.frameSourceFormatKey && safety.analysisDomainKey==crop.frameAnalysisDomainKey &&
+            SameTrustedCropContract(safety.nativeBase,native);
+        // The supplied witness may name a finer step, never a larger allowance
+        // than the actual detector nomination grid for this source raster.
+        const int horizontalStep=exactSafety?std::min(std::max(0,safety.coarseHorizontalStep),std::max(2,crop.rasterWidth/960)):0;
+        const int verticalStep=exactSafety?std::min(std::max(0,safety.coarseVerticalStep),std::max(2,crop.rasterHeight/540)):0;
+        const auto covered=[&](const ActivePictureBounds& visible,bool coarse) {
+            if(!ValidBounds(visible,crop.rasterWidth,crop.rasterHeight))return false;
+            return (visible.left>=native.left || visible.left>=pose.left ||
+                    (coarse && exactSafety && safety.left && native.left-visible.left<=horizontalStep)) &&
+                (visible.right<=native.right || visible.right<=pose.right ||
+                    (coarse && exactSafety && safety.right && visible.right-native.right<=horizontalStep)) &&
+                (visible.top>=native.top || visible.top>=pose.top ||
+                    (coarse && exactSafety && safety.top && native.top-visible.top<=verticalStep)) &&
+                (visible.bottom<=native.bottom || visible.bottom<=pose.bottom ||
+                    (coarse && exactSafety && safety.bottom && visible.bottom-native.bottom<=verticalStep));
+        };
+        if(input.observationAvailable && input.observationClassification!=ActivePictureClassification::UNAVAILABLE &&
+            (!SameBounds(input.observation,FullRaster(crop.rasterWidth,crop.rasterHeight)) ||
+             input.observationClassification==ActivePictureClassification::FULL_RASTER_TRUSTED) &&
+            (!input.measurementCurrent || !input.retentionEvaluated ||
+             input.retentionSourceGeneration!=crop.frameSourceGeneration || input.retentionSourceSequence!=crop.frameSourceSequence ||
+             !SameTrustedCropContract(input.retentionBounds,native) || !covered(input.observation,true)))return false;
+        if(crop.currentVisibleBoundsAvailable &&
+            (crop.currentVisibleSourceGeneration!=crop.frameSourceGeneration || crop.currentVisibleSourceSequence!=crop.frameSourceSequence ||
+             !SameTrustedCropContract(crop.currentVisibleBase,native) || !covered(crop.currentVisibleBounds,false)))return false;
+        return true;
+    }
+
     static bool HasConfirmedPresentationCandidate(const PresentationRecoveryInput& input,
         const Decision& proposed)
     {
+        // Even a separately owned fit cannot bless an unsafe translated pose.
+        // Check this before all confirmed-origin shortcuts, including combined
+        // outward-fit/translation proposals.
+        if((proposed.verticallyTranslated || proposed.owner==DecisionOwner::VERTICAL_TRANSLATION) &&
+            !TranslationCoversCurrentOutsideNativeVisibility(input,proposed))return false;
+        if (HasCurrentCaptionFit(input) && SameBounds(proposed.sourceBounds,input.confirmedFitOwnership.approvedBounds))
+            return true;
+        if (MatchesNativePicturePreservationPresentation(input,proposed))
+            return true;
         // Recovery/inspection resolution is not caption ownership. In
         // particular, a dense FIT label cannot authorize a full-raster flash.
         const auto& accepted=input.candidate;
@@ -4108,6 +4502,7 @@ namespace AlphaSourceCrop
 		result.state = previous;
 		result.presentation = input.candidate;
 		const auto& crop = input.crop;
+
 		const bool fullRasterEpisode =
 			previous.mode == NearBlackPresentationMode::FULL_RASTER &&
 			crop.nearBlackEpisodeFullRaster && !input.candidate.applyCrop;
@@ -4508,11 +4903,61 @@ namespace AlphaSourceCrop
             result.presentation.confirmedFitOwnership=input.confirmedFitOwnership;
 		result.required = NearBlackCropRevalidationSamples(input.framesPerSecond);
 		const auto& crop = input.crop;
+        if(UsesAdvancedNativePicturePolicy(crop)) {
+            result.ended=result.released=result.state.active;result.state={};
+            result.presentation=AdvancedNativePictureDecision(crop,HasCurrentNativePicturePreservation(input)?
+                &input.nativeOutwardPictureProof.candidate:nullptr);
+            return result;
+        }
+        // Native outside-picture proof owns visibility itself. It does not need
+        // a caption owner or a second recovery dwell, and does not publish AR.
+        const bool nativePicturePreservation=HasCurrentNativePicturePreservation(input);
+        const bool currentCaptionFit=HasCurrentCaptionFit(input);
+        if (crop.automaticCropEnabled && nativePicturePreservation &&
+            !crop.fullRasterPresentationAuthoritative)
+        {
+            result.ended = result.released = result.state.active;
+            result.state = {};
+            result.presentation = {};
+            result.presentation.sourceBounds = input.nativeOutwardPictureProof.candidate;
+            const auto heldCaption=HeldCaptionExtent(input);
+            IncludeCaptionExtent(result.presentation.sourceBounds,heldCaption);
+            if(currentCaptionFit) {
+                CaptionPreservationEvidence current;current.available=true;current.extent=input.confirmedFitOwnership.approvedBounds;
+                IncludeCaptionExtent(result.presentation.sourceBounds,current);
+                result.presentation.confirmedFitOwnership=input.confirmedFitOwnership;
+            }
+            result.presentation.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+            result.presentation.applyCrop = !SameBounds(result.presentation.sourceBounds,
+                FullRaster(crop.rasterWidth,crop.rasterHeight));
+            result.presentation.outwardExpanded = true;
+            result.presentation.owner = DecisionOwner::OUTWARD_FIT;
+            result.presentation.reason = "confirmed native outside picture preserved without presentation-owner wait";
+            auto& certificate = result.presentation.nativePresentation;
+            certificate.available = true;
+            certificate.origin = NativePresentationOrigin::CONFIRMED_PICTURE;
+            certificate.nativeBase = crop.geometry;
+            certificate.approvedBounds = result.presentation.sourceBounds;
+            certificate.sourceGeneration = crop.frameSourceGeneration;
+            certificate.sourceSequence = crop.frameSourceSequence;
+            certificate.presentationEpoch = input.presentationEpoch;
+            certificate.captionPreservation = heldCaption;
+            return result;
+        }
 		const bool currentContract = crop.sharedGeometryAvailable &&
 			crop.geometrySourceGeneration == crop.frameSourceGeneration &&
 			crop.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
 			ValidBounds(crop.geometry, crop.rasterWidth, crop.rasterHeight) &&
 			HasAuthorityForCroppedAxes(crop.geometry, crop.rasterWidth, crop.rasterHeight);
+        if (HasAcceptedNativeCrop(crop) && !crop.fullRasterPresentationAuthoritative &&
+            crop.latestObservationClassification != ActivePictureClassification::FULL_RASTER_TRUSTED &&
+            !crop.currentVisibleBoundsAvailable && input.candidate.applyCrop &&
+            SameBounds(input.candidate.sourceBounds,crop.geometry))
+        {
+            result.ended = result.released = result.state.active;
+            result.state = {};
+            return result;
+        }
 		const bool contextChanged = result.state.active &&
 			(result.state.sourceGeneration != crop.frameSourceGeneration ||
 			 result.state.presentationEpoch != input.presentationEpoch ||
@@ -4531,7 +4976,7 @@ namespace AlphaSourceCrop
         // The raw observation can still contain the subtitle which this exact
         // source packet already erased. It cannot deadlock recovery behind the
         // caption. Keep every independent full-raster/transition/fail-open veto.
-        if (HasCurrentPreparedSubtitlePresentation(crop) &&
+        if (HasCurrentPreparedSubtitlePresentation(crop) && !HasCurrentNativePicturePreservation(input) &&
             input.presentationEpoch==crop.framePresentationEpoch &&
             ValidBounds(crop.geometry,crop.rasterWidth,crop.rasterHeight) &&
             !crop.nearBlackEpisodeFullRaster && !crop.movingPictureTransition &&
@@ -5219,6 +5664,25 @@ namespace AlphaSourceCrop
             result.reason = "bounded crop excludes current visible witness";
             return result;
         }
+        // This producer has already checked the exact strict native capsule,
+        // caption and source identities. Carry its current caption authority
+        // into the first admission rather than qualifying after admission (which
+        // would require the very first-FIT certificate that is missing).
+        ConfirmedFitOwnershipInput ownership;
+        ownership.origin = ConfirmedFitOwnershipOrigin::CURRENT_CAPTION;
+        ownership.current = ownership.confirmed = true;
+        ownership.nativeBase = crop.geometry;
+        ownership.approvedBounds = envelope;
+        ownership.evidenceBounds = caption;
+        ownership.sourceGeneration = generation;
+        ownership.sourceSequence = sequence;
+        ownership.presentationEpoch = crop.framePresentationEpoch;
+        result.presentation.confirmedFitOwnership = QualifyConfirmedFitOwnership(ownership);
+        if (!result.presentation.confirmedFitOwnership.available)
+        {
+            result.reason = "current caption cannot authorize the bounded presentation";
+            return result;
+        }
         result.available = true;
         result.rebasedFromRetainedCrop =
             input.episode.mode == NearBlackPresentationMode::RETAIN_CROP;
@@ -5641,6 +6105,22 @@ namespace AlphaSourceCrop
 			SameTrustedCropContract(previous.trustedCrop, input.geometry);
 	}
 
+    bool HasCurrentSubtitleCompositionPresentation(const Input& input)
+    {
+        const auto& proof=input.currentSubtitleComposition;
+        return proof.available && UsesAdvancedNativePicturePolicy(input) &&
+            input.geometrySourceGeneration==input.frameSourceGeneration &&
+            input.frameSourceGeneration && input.frameSourceSequence &&
+            input.frameSourceFormatKey && input.frameAnalysisDomainKey &&
+            proof.identity.transportGeneration==input.frameSourceGeneration &&
+            proof.identity.acceptedSequence==input.frameSourceSequence &&
+            proof.identity.sourceFormatGeneration==input.frameSourceFormatKey &&
+            proof.identity.analysisDomainKey==input.frameAnalysisDomainKey &&
+            proof.identity.viewportGeneration==input.framePresentationEpoch &&
+            proof.mode==input.subtitlePresentationMode &&
+            SameTrustedCropContract(proof.nativeBase,input.geometry);
+    }
+
     bool HasCurrentPreparedSubtitlePresentation(const Input& input)
     {
         const auto& proof=input.preparedSubtitle;
@@ -5678,10 +6158,33 @@ namespace AlphaSourceCrop
         // Logical admission survives temporary withdrawal; the last displayed
         // fit does not. Clear it on every attempt, including blocked/no-crop.
         result.state.confirmedFitOwnership={};
+        result.state.nativePresentation={};
+        result.state.subtitlePresentationMode=input.subtitlePresentationMode;
+        result.state.acceptedNativeCrop = HasAcceptedNativeCrop(input)
+            ? input.acceptedNativeCrop : AcceptedNativeCropContract{};
         result.state.outwardPresentationAvailable = false;
         result.state.outwardPresentation = {};
         result.state.presentationSourceSequence = 0;
-		if (!candidate.applyCrop) return result;
+        if (!candidate.applyCrop)
+        {
+            if (HasAcceptedNativeCrop(input) &&
+                (candidate.nativePresentation.origin == NativePresentationOrigin::CONFIRMED_PICTURE ||
+                 (candidate.nativePresentation.origin == NativePresentationOrigin::CONFIRMED_FIT &&
+                  MatchesConfirmedFitOwnership(candidate.confirmedFitOwnership,input.geometry,candidate.sourceBounds,
+                      input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))) &&
+                MatchesNativePresentation(candidate.nativePresentation,input.geometry,candidate.sourceBounds,
+                    input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))
+            {
+                result.state.available = true;
+                result.state.trustedCrop = input.geometry;
+                result.state.authorityOrigin = input.authorityOrigin;
+                result.state.sourceGeneration = input.frameSourceGeneration;
+                result.state.presentationEpoch = presentationEpoch;
+                result.state.nativePresentation = candidate.nativePresentation;
+                result.state.confirmedFitOwnership = candidate.confirmedFitOwnership;
+            }
+            return result;
+        }
 
 		// Evaluate (and then recovery) already validated this candidate. A
 		// retention owner is permission to reuse an admitted picture contract,
@@ -5689,6 +6192,7 @@ namespace AlphaSourceCrop
 		// must wait for picture authority instead of manufacturing it.
 		const bool previouslyPresented = HasCurrentCropPresentationAdmission(
 			result.state, input, presentationEpoch);
+        const bool nativeContinuityAvailable = previouslyPresented || HasAcceptedNativeCrop(input);
 		// Only resolved picture/fit/translation owners may introduce a new
 		// presentation. A freshly published detector rectangle does not turn
 		// a pending retention owner into acquisition proof.
@@ -5699,7 +6203,7 @@ namespace AlphaSourceCrop
              !(HasCurrentPreparedSubtitlePresentation(input) &&
                input.preparedSubtitle.presentationEpoch==presentationEpoch &&
                candidate.owner==DecisionOwner::TRUSTED_CROP &&
-               SameBounds(candidate.sourceBounds,input.geometry))) && !previouslyPresented)
+                SameBounds(candidate.sourceBounds,input.geometry))) && !nativeContinuityAvailable)
 		{
 			result.blocked = true;
 			result.presentation = {};
@@ -5718,7 +6222,12 @@ namespace AlphaSourceCrop
 			SameTrustedCropContract(input.currentVisibleBase, input.geometry) &&
 			ValidBounds(input.currentVisibleBounds, input.rasterWidth, input.rasterHeight) &&
 			ContainedBounds(input.currentVisibleBounds, input.geometry);
-		if (!previouslyPresented && currentVisibleWitness &&
+        const bool advancedPictureAuthorized=UsesAdvancedNativePicturePolicy(input) &&
+            (SameBounds(candidate.sourceBounds,input.geometry) ||
+             (candidate.nativePresentation.origin==NativePresentationOrigin::CONFIRMED_PICTURE &&
+              MatchesNativePresentation(candidate.nativePresentation,input.geometry,candidate.sourceBounds,
+                  input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch)));
+		if (!previouslyPresented && !advancedPictureAuthorized && currentVisibleWitness &&
 			!ContainedBounds(candidate.sourceBounds, input.currentVisibleBounds))
 		{
 			result.blocked = true;
@@ -5732,9 +6241,65 @@ namespace AlphaSourceCrop
 		result.state.authorityOrigin = input.authorityOrigin;
 		result.state.sourceGeneration = input.frameSourceGeneration;
 		result.state.presentationEpoch = presentationEpoch;
+        if (HasAcceptedNativeCrop(input) && input.framePresentationEpoch == presentationEpoch)
+        {
+            auto& proof = result.state.nativePresentation;
+            proof.available = true;
+            proof.nativeBase = input.geometry;
+            proof.approvedBounds = candidate.sourceBounds;
+            proof.sourceGeneration = input.frameSourceGeneration;
+            proof.sourceSequence = input.frameSourceSequence;
+            proof.presentationEpoch = presentationEpoch;
+            if (SameBounds(candidate.sourceBounds,input.geometry))
+                proof.origin = NativePresentationOrigin::EXACT_NATIVE;
+            else if (MatchesConfirmedFitOwnership(candidate.confirmedFitOwnership,input.geometry,candidate.sourceBounds,
+                input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))
+                proof.origin = NativePresentationOrigin::CONFIRMED_FIT;
+            else if (candidate.owner == DecisionOwner::VERTICAL_TRANSLATION && candidate.verticallyTranslated &&
+                input.verticalTranslationActive && SameTrustedCropContract(input.verticalTranslationBase,input.geometry) &&
+                input.verticalTranslationSourceGeneration == input.frameSourceGeneration &&
+                candidate.sourceBounds.left == input.geometry.left && candidate.sourceBounds.right == input.geometry.right &&
+                candidate.sourceBounds.top - input.geometry.top == candidate.verticalTranslationPixels &&
+                candidate.sourceBounds.bottom - input.geometry.bottom == candidate.verticalTranslationPixels)
+                proof.origin = NativePresentationOrigin::CONFIRMED_TRANSLATION;
+            else if ((candidate.nativePresentation.origin == NativePresentationOrigin::CONFIRMED_PICTURE ||
+                candidate.nativePresentation.origin == NativePresentationOrigin::CAPTION_CONTINUITY) &&
+                MatchesNativePresentation(candidate.nativePresentation,input.geometry,candidate.sourceBounds,
+                    input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))
+                proof = candidate.nativePresentation;
+            else proof = {};
+            if(proof.available && (proof.origin==NativePresentationOrigin::EXACT_NATIVE ||
+                proof.origin==NativePresentationOrigin::CONFIRMED_TRANSLATION))
+                proof.captionTranslationMeasurement=candidate.nativePresentation.captionTranslationMeasurement;
+            if(proof.origin==NativePresentationOrigin::EXACT_NATIVE &&
+                candidate.owner==DecisionOwner::TRUSTED_CROP && !candidate.verticallyTranslated &&
+                HasCurrentPreparedSubtitlePresentation(input) && input.frameSourceFormatKey && input.frameAnalysisDomainKey &&
+                (input.subtitlePresentationMode==PreparedNativeMode::BLACK ||
+                 input.subtitlePresentationMode==PreparedNativeMode::RECONSTRUCTION)) {
+                proof.preparedNativeMode=input.subtitlePresentationMode;
+                proof.preparedNativeSourceSequence=input.frameSourceSequence;
+            }
+        }
+        if (!previouslyPresented && HasAcceptedNativeCrop(input) &&
+            !SameBounds(candidate.sourceBounds,input.geometry) &&
+            !result.state.nativePresentation.available)
+        {
+            result.blocked = true;
+            result.presentation = {};
+            result.presentation.sourceBounds = FullRaster(input.rasterWidth,input.rasterHeight);
+            result.presentation.reason = "first transformed presentation requires exact independent authorization";
+            result.state.available = false;
+            return result;
+        }
         if(input.framePresentationEpoch==presentationEpoch &&
             MatchesConfirmedFitOwnership(candidate.confirmedFitOwnership,input.geometry,candidate.sourceBounds,
                 input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch))
+            result.state.confirmedFitOwnership=candidate.confirmedFitOwnership;
+        else if (candidate.nativePresentation.origin==NativePresentationOrigin::CONFIRMED_PICTURE &&
+            candidate.confirmedFitOwnership.origin==ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
+            MatchesConfirmedFitOwnership(candidate.confirmedFitOwnership,input.geometry,
+                candidate.confirmedFitOwnership.approvedBounds,input.frameSourceGeneration,input.frameSourceSequence,presentationEpoch) &&
+            ContainedBounds(candidate.sourceBounds,candidate.confirmedFitOwnership.approvedBounds))
             result.state.confirmedFitOwnership=candidate.confirmedFitOwnership;
         result.state.outwardPresentationAvailable = candidate.outwardExpanded &&
             (candidate.owner == DecisionOwner::OUTWARD_FIT || result.state.confirmedFitOwnership.available);
@@ -5887,6 +6452,21 @@ namespace AlphaSourceCrop
         anchor.submittedOptionalFillScreenAspect = input.selectedAdmission.optionalFillScreenAspect;
     }
 
+    static bool SamePreparedNativeContext(const SubmittedNativeScopeAnchor& anchor,
+        const AcceptedNativeCropContract& native,PreparedNativeMode mode,
+        uint64_t generation,uint64_t epoch,const ActivePictureBounds& bounds)
+    {
+        return (mode==PreparedNativeMode::BLACK || mode==PreparedNativeMode::RECONSTRUCTION) &&
+            anchor.available && anchor.preparedNativeMode==mode &&
+            anchor.preparedNativeInitializedSourceSequence<=anchor.lastSubmittedPresentationSourceSequence &&
+            anchor.sourceGeneration==generation && anchor.presentationEpoch==epoch &&
+            anchor.acceptedNativeCrop.available && native.available && native.sourceFormatKey && native.analysisDomainKey &&
+            anchor.acceptedNativeCrop.sourceGeneration==native.sourceGeneration &&
+            anchor.acceptedNativeCrop.acceptedSourceSequence==native.acceptedSourceSequence &&
+            anchor.acceptedNativeCrop.sourceFormatKey==native.sourceFormatKey &&
+            anchor.acceptedNativeCrop.analysisDomainKey==native.analysisDomainKey &&
+            SameTrustedCropContract(anchor.crop,bounds) && SameTrustedCropContract(native.bounds,bounds);
+    }
 	SubmittedNativeScopeAnchor CommitSubmittedNativeScopeAnchor(
 		const SubmittedNativeScopeAnchorUpdateInput& input, const char** outcomeReason)
 	{
@@ -5906,6 +6486,112 @@ namespace AlphaSourceCrop
             result={};
             return finish("full-authority-cleared");
         }
+        const auto& nativeContract = input.selectedAdmission.acceptedNativeCrop;
+        const auto& presentation = input.selectedAdmission.nativePresentation;
+        const auto mode=input.selectedAdmission.subtitlePresentationMode;
+        const bool samePreparedContext=SamePreparedNativeContext(result,nativeContract,mode,
+            input.sourceGeneration,input.presentationEpoch,input.nativeCrop);
+        if(!samePreparedContext)ResetPreparedNativeInitialization(result);
+        const bool selectedAcceptedNative = input.nativeCropAvailable && nativeContract.available &&
+            input.sourceGeneration && input.sourceSequence &&
+            nativeContract.sourceGeneration == input.sourceGeneration && nativeContract.acceptedSourceSequence &&
+            nativeContract.acceptedSourceSequence <= input.sourceSequence &&
+            input.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            input.selectedAdmission.available &&
+            input.selectedAdmission.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            input.selectedAdmission.sourceGeneration == input.sourceGeneration &&
+            input.selectedAdmission.presentationEpoch == input.presentationEpoch &&
+            SameTrustedCropContract(input.selectedAdmission.trustedCrop,input.nativeCrop) &&
+            SameTrustedCropContract(nativeContract.bounds,input.nativeCrop) &&
+            ValidBounds(input.nativeCrop,input.nativeCrop.rasterWidth,input.nativeCrop.rasterHeight) &&
+            HasAuthorityForCroppedAxes(input.nativeCrop,input.nativeCrop.rasterWidth,input.nativeCrop.rasterHeight) &&
+            CropEdgesAreChromaAligned(input.nativeCrop,input.nativeCrop.rasterWidth,input.nativeCrop.rasterHeight);
+        if (selectedAcceptedNative &&
+            (presentation.origin!=NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL ||
+             input.selectedOwner==DecisionOwner::VERTICAL_TRANSLATION) &&
+            MatchesNativePresentation(presentation,input.nativeCrop,input.submittedBounds,
+                input.sourceGeneration,input.sourceSequence,input.presentationEpoch))
+        {
+            // The exact source contract and its independently authorized actual
+            // output commit together, including first FIT/refinement/translation.
+            // No earlier exact-native display is required and actual output is
+            // never assigned to crop (the native detector contract).
+            if (result.available && result.sourceGeneration == input.sourceGeneration &&
+                result.presentationEpoch == input.presentationEpoch &&
+                input.sourceSequence <= result.lastSubmittedPresentationSourceSequence)
+                return finish("nonmonotonic-source");
+            CaptionPreservationEvidence caption;
+            const auto& currentCaption=input.selectedAdmission.confirmedFitOwnership;
+            if (currentCaption.origin==ConfirmedFitOwnershipOrigin::CURRENT_CAPTION &&
+                MatchesConfirmedFitOwnership(currentCaption,input.nativeCrop,currentCaption.approvedBounds,
+                    input.sourceGeneration,input.sourceSequence,input.presentationEpoch) &&
+                ContainedBounds(input.submittedBounds,currentCaption.approvedBounds) &&
+                ValidBounds(currentCaption.evidenceBounds,input.nativeCrop.rasterWidth,input.nativeCrop.rasterHeight) &&
+                ContainedBounds(input.submittedBounds,currentCaption.evidenceBounds))
+            {
+                caption.available=true;caption.extent=currentCaption.evidenceBounds;
+                // Preserve only caption pixels plus the actual authorized padding
+                // on expanding edges. Old native picture coordinates are not a
+                // caption witness and cannot stall a later native contraction.
+                if(currentCaption.approvedBounds.left<input.nativeCrop.left)caption.extent.left=currentCaption.approvedBounds.left;
+                if(currentCaption.approvedBounds.top<input.nativeCrop.top)caption.extent.top=currentCaption.approvedBounds.top;
+                if(currentCaption.approvedBounds.right>input.nativeCrop.right)caption.extent.right=currentCaption.approvedBounds.right;
+                if(currentCaption.approvedBounds.bottom>input.nativeCrop.bottom)caption.extent.bottom=currentCaption.approvedBounds.bottom;
+                caption.sourceGeneration=input.sourceGeneration;caption.sourceSequence=input.sourceSequence;
+                caption.presentationEpoch=input.presentationEpoch;caption.sourceFormatKey=nativeContract.sourceFormatKey;
+                caption.analysisDomainKey=nativeContract.analysisDomainKey;
+            }
+            else if (presentation.captionPreservation.available && result.available && result.captionPreservation.available &&
+                result.sourceGeneration==input.sourceGeneration && result.presentationEpoch==input.presentationEpoch &&
+                result.captionPreservation.sourceGeneration==input.sourceGeneration &&
+                result.captionPreservation.presentationEpoch==input.presentationEpoch &&
+                result.captionPreservation.sourceFormatKey==nativeContract.sourceFormatKey &&
+                result.captionPreservation.analysisDomainKey==nativeContract.analysisDomainKey &&
+                presentation.captionPreservation.sourceGeneration==input.sourceGeneration &&
+                presentation.captionPreservation.presentationEpoch==input.presentationEpoch &&
+                presentation.captionPreservation.sourceFormatKey==nativeContract.sourceFormatKey &&
+                presentation.captionPreservation.analysisDomainKey==nativeContract.analysisDomainKey &&
+                presentation.captionPreservation.sourceSequence==result.captionPreservation.sourceSequence &&
+                SameBounds(presentation.captionPreservation.extent,result.captionPreservation.extent) &&
+                presentation.captionPreservation.sourceSequence<=result.lastSubmittedPresentationSourceSequence &&
+                ContainedBounds(input.submittedBounds,presentation.captionPreservation.extent))
+                caption=presentation.captionPreservation;
+            const uint64_t initialized=samePreparedContext?result.preparedNativeInitializedSourceSequence:0;
+            result = {};
+            result.available = true;
+            result.crop = input.nativeCrop;
+            result.acceptedNativeCrop = nativeContract;
+            result.captionPreservation = caption;
+            result.sourceGeneration = input.sourceGeneration;
+            result.presentationEpoch = input.presentationEpoch;
+            result.lastSubmittedSourceSequence = input.sourceSequence;
+            result.lastSubmittedPresentationSourceSequence = input.sourceSequence;
+            result.submittedPresentationAvailable = true;
+            result.submittedPresentation = input.submittedBounds;
+            result.submittedPresentationOrigin = presentation.origin;
+            result.submittedPresentationProof = presentation;
+            result.preparedNativeMode=mode;
+            result.preparedNativeInitializedSourceSequence=initialized;
+            if(!initialized && nativeContract.sourceFormatKey && nativeContract.analysisDomainKey &&
+                (mode==PreparedNativeMode::BLACK || mode==PreparedNativeMode::RECONSTRUCTION) &&
+                presentation.preparedNativeMode==mode &&
+                presentation.preparedNativeSourceSequence==input.sourceSequence &&
+                input.selectedOwner==DecisionOwner::TRUSTED_CROP &&
+                (presentation.origin==NativePresentationOrigin::EXACT_NATIVE ||
+                 presentation.origin==NativePresentationOrigin::CONFIGURED_FILL))
+                result.preparedNativeInitializedSourceSequence=input.sourceSequence;
+            if (ContainedBounds(input.submittedBounds,input.nativeCrop) &&
+                !SameBounds(input.submittedBounds,input.nativeCrop))
+            {
+                result.submittedEnvelopeAvailable = true;
+                result.submittedEnvelope = input.submittedBounds;
+                result.submittedEnvelopeSourceSequence = input.sourceSequence;
+            }
+            if (HasSelectedNativeOptionalFill(input)) StoreSubmittedOptionalFill(result,input);
+            return finish("accepted-native-and-presentation-committed");
+        }
+        if (nativeContract.available)
+            return finish("selected-native-presentation-not-qualified");
 		const bool previousSameContext = result.available &&
 			result.sourceGeneration == input.sourceGeneration &&
 			result.presentationEpoch == input.presentationEpoch &&
@@ -6046,19 +6732,703 @@ namespace AlphaSourceCrop
 		return finish("native-anchor-committed");
 	}
 
+    static bool SubmittedTranslationCoversCurrentBarVisibility(
+        const PresentationRecoveryInput& input, const Decision& proposed)
+    {
+        // Confirmation belongs to a replacement target. It cannot revoke an
+        // already submitted live translation during a dense-scan gap. Continue
+        // only the controller's current pose, with the same native contract and
+        // current outside-native visibility checks below; no target is admitted.
+        const auto& crop=input.crop;const auto& anchor=input.submittedScopeAnchor;
+        if(!input.classicTranslationEnabled || !HasAcceptedNativeCrop(crop) || input.presentationEpoch!=crop.framePresentationEpoch ||
+            !crop.verticalTranslationActive || crop.verticalTranslationPixels==0 ||
+            crop.verticalTranslationSourceGeneration!=crop.frameSourceGeneration ||
+            !SameTrustedCropContract(crop.verticalTranslationBase,crop.geometry) ||
+            crop.verticalFitConfirmationPending ||
+            crop.verticalTranslationBaseRetentionActive || crop.verticalTranslationEngageBaseRetentionActive ||
+            crop.outwardPresentationActive || crop.outwardExpansionAvailable ||
+            crop.movingPictureTransition || HasCurrentPictureTransitionHandoff(crop) ||
+            crop.movingPictureHold.competingPresentation ||
+            proposed.owner==DecisionOwner::OUTWARD_FIT || proposed.owner==DecisionOwner::FIT_CONFIRMATION ||
+            proposed.owner==DecisionOwner::MOVING_PICTURE_HOLD ||
+            HasCurrentNativePicturePreservation(input) || CurrentCaptionReplacesHeldExtent(input) ||
+            !IsCurrentSubmittedNativeScopeAnchor(anchor,crop.frameSourceGeneration,crop.frameSourceSequence,
+                input.presentationEpoch,crop.rasterWidth,crop.rasterHeight) ||
+            !SameTrustedCropContract(anchor.crop,crop.geometry) ||
+            !anchor.acceptedNativeCrop.available ||
+            anchor.acceptedNativeCrop.sourceGeneration!=crop.acceptedNativeCrop.sourceGeneration ||
+            anchor.acceptedNativeCrop.acceptedSourceSequence!=crop.acceptedNativeCrop.acceptedSourceSequence ||
+            anchor.acceptedNativeCrop.sourceFormatKey!=crop.frameSourceFormatKey ||
+            anchor.acceptedNativeCrop.analysisDomainKey!=crop.frameAnalysisDomainKey ||
+            !anchor.submittedPresentationAvailable ||
+            (anchor.submittedPresentationOrigin!=NativePresentationOrigin::CONFIRMED_TRANSLATION &&
+             anchor.submittedPresentationOrigin!=NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL))return false;
+        // A pending replacement may use this exception only with current band
+        // inspection. Unknown work cannot dismiss the pending-target veto.
+        if(crop.verticalTranslationConfirmationPending &&
+            (!input.measurementCurrent || !input.retentionEvaluated ||
+             input.retentionSourceGeneration!=crop.frameSourceGeneration ||
+             input.retentionSourceSequence!=crop.frameSourceSequence ||
+             !SameTrustedCropContract(input.retentionBounds,crop.geometry) ||
+             (!input.excludedBandsPixelSafe && !crop.currentVisibleBoundsAvailable)))return false;
+        const auto& native=crop.geometry;
+        const auto& prior=anchor.submittedPresentationProof;
+        if(prior.origin!=anchor.submittedPresentationOrigin ||
+            !MatchesNativePresentation(prior,native,anchor.submittedPresentation,
+            anchor.sourceGeneration,anchor.lastSubmittedPresentationSourceSequence,anchor.presentationEpoch))return false;
+        // The controller owns the current drift step. The historical submitted
+        // pose proves continuity, never an old offset or a native-sized output.
+        const auto& pose=proposed.sourceBounds;
+        if(proposed.owner!=DecisionOwner::VERTICAL_TRANSLATION || !proposed.verticallyTranslated ||
+            proposed.verticalTranslationPixels!=crop.verticalTranslationPixels ||
+            !ValidBounds(pose,crop.rasterWidth,crop.rasterHeight) ||
+            !CropEdgesAreChromaAligned(pose,crop.rasterWidth,crop.rasterHeight) ||
+            pose.left!=native.left || pose.right!=native.right ||
+            pose.top-native.top!=crop.verticalTranslationPixels ||
+            pose.bottom-native.bottom!=crop.verticalTranslationPixels)return false;
+        return TranslationCoversCurrentOutsideNativeVisibility(input,proposed);
+    }
+
+    static bool CurrentCaptionOwnsTranslationLifetime(
+        const PresentationRecoveryInput& input,const Decision& proposed,CaptionTranslationMeasurement* owned)
+    {
+        const auto& c=input.crop;const auto& a=input.submittedScopeAnchor;
+        if(!input.classicTranslationEnabled || !HasAcceptedNativeCrop(c) || c.framePresentationEpoch!=input.presentationEpoch ||
+            HasCurrentNativePicturePreservation(input) || HasCurrentCaptionFit(input) ||
+            c.verticalFitConfirmationPending || c.outwardPresentationActive || c.outwardExpansionAvailable ||
+            c.movingPictureTransition || HasCurrentPictureTransitionHandoff(c) || c.movingPictureHold.competingPresentation ||
+            !SameTrustedCropContract(c.verticalTranslationBase,c.geometry) ||
+            c.verticalTranslationSourceGeneration!=c.frameSourceGeneration ||
+            !IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,
+                input.presentationEpoch,c.rasterWidth,c.rasterHeight) ||
+            !SameTrustedCropContract(a.crop,c.geometry) || !a.acceptedNativeCrop.available ||
+            a.acceptedNativeCrop.acceptedSourceSequence!=c.acceptedNativeCrop.acceptedSourceSequence ||
+            a.acceptedNativeCrop.sourceFormatKey!=c.frameSourceFormatKey ||
+            a.acceptedNativeCrop.analysisDomainKey!=c.frameAnalysisDomainKey ||
+            !a.submittedPresentationAvailable ||
+            !MatchesNativePresentation(a.submittedPresentationProof,c.geometry,a.submittedPresentation,
+                a.sourceGeneration,a.lastSubmittedPresentationSourceSequence,a.presentationEpoch))return false;
+        const bool active=c.verticalTranslationActive && proposed.owner==DecisionOwner::VERTICAL_TRANSLATION &&
+            proposed.verticallyTranslated && proposed.verticalTranslationPixels==c.verticalTranslationPixels &&
+            proposed.sourceBounds.left==c.geometry.left && proposed.sourceBounds.right==c.geometry.right &&
+            proposed.sourceBounds.top-c.geometry.top==c.verticalTranslationPixels &&
+            proposed.sourceBounds.bottom-c.geometry.bottom==c.verticalTranslationPixels;
+        const bool base=SameBounds(proposed.sourceBounds,c.geometry) &&
+            ((c.verticalTranslationConfirmationPending && proposed.owner==DecisionOwner::TRANSLATION_CONFIRMATION) ||
+             (c.verticalTranslationEngageBaseRetentionActive && proposed.owner==DecisionOwner::ENGAGE_BASE) ||
+             (c.verticalTranslationBaseRetentionActive && proposed.owner==DecisionOwner::RELEASE_BASE));
+        // Evaluate labels a completed zero-offset release TRUSTED_CROP when
+        // current pixels were inspected. The controller's settle bridge and
+        // exact empty-band proof still distinguish it from generic retention.
+        const bool settledNative=c.verticalTranslationBaseRetentionActive && !c.verticalTranslationActive &&
+            c.verticalTranslationPixels==0 && SameBounds(proposed.sourceBounds,c.geometry) &&
+            (proposed.owner==DecisionOwner::TRUSTED_CROP || proposed.owner==DecisionOwner::PIXEL_SAFE_RETENTION);
+        // A trusted observation uses the same native owner at the zero-offset
+        // engage origin. This phase still needs the measured caption lifetime
+        // below; its controller flag alone never overrides occupied bands.
+        const bool engagingNative=c.verticalTranslationEngageBaseRetentionActive && !c.verticalTranslationActive &&
+            c.verticalTranslationPixels==0 && SameBounds(proposed.sourceBounds,c.geometry) &&
+            (proposed.owner==DecisionOwner::TRUSTED_CROP || proposed.owner==DecisionOwner::PIXEL_SAFE_RETENTION);
+        if((!active && !base && !settledNative && !engagingNative) || !proposed.applyCrop ||
+            !CropEdgesAreChromaAligned(proposed.sourceBounds,c.rasterWidth,c.rasterHeight))return false;
+        // Empty current native bands permit a source-owned release/hold step,
+        // even after caption disappearance. No old caption pixels are inferred.
+        const bool safe=input.retentionEvaluated && input.excludedBandsPixelSafe &&
+            input.retentionSourceGeneration==c.frameSourceGeneration &&
+            input.retentionSourceSequence==c.frameSourceSequence &&
+            SameTrustedCropContract(input.retentionBounds,c.geometry) &&
+            !(c.currentVisibleBoundsAvailable && c.currentVisibleSourceGeneration==c.frameSourceGeneration &&
+              c.currentVisibleSourceSequence==c.frameSourceSequence && SameTrustedCropContract(c.currentVisibleBase,c.geometry));
+        if(safe && !c.verticalTranslationEngageBaseRetentionActive &&
+            (a.submittedPresentationOrigin==NativePresentationOrigin::CONFIRMED_TRANSLATION ||
+            a.submittedPresentationOrigin==NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL))return true;
+        if(settledNative)return false;
+        const bool measuredNow=input.currentCaptionTranslation.available;
+        const auto& m=measuredNow?input.currentCaptionTranslation:a.submittedPresentationProof.captionTranslationMeasurement;
+        if(!input.retentionEvaluated || input.retentionSourceGeneration!=c.frameSourceGeneration ||
+            input.retentionSourceSequence!=c.frameSourceSequence || !SameTrustedCropContract(input.retentionBounds,c.geometry) ||
+            !m.available || !m.sourceSequence || m.sourceGeneration!=c.frameSourceGeneration ||
+            (measuredNow ? m.sourceSequence!=c.frameSourceSequence :
+                m.sourceSequence>a.lastSubmittedPresentationSourceSequence || m.sourceSequence>c.frameSourceSequence) ||
+            !m.measurementTick || m.leaseExpiryTick<m.measurementTick ||
+            input.currentTick<m.measurementTick || input.currentTick>m.leaseExpiryTick ||
+            m.presentationEpoch!=input.presentationEpoch || m.sourceFormatKey!=c.frameSourceFormatKey ||
+            m.analysisDomainKey!=c.frameAnalysisDomainKey ||
+            m.acceptedNativeSourceSequence!=c.acceptedNativeCrop.acceptedSourceSequence ||
+            !SameTrustedCropContract(m.nativeBase,c.geometry) ||
+            !ValidBounds(m.occupiedBounds,c.rasterWidth,c.rasterHeight) ||
+            m.occupiedBounds.left<c.geometry.left || m.occupiedBounds.right>c.geometry.right ||
+            !std::isfinite(m.targetTranslationPixels) || std::abs(m.targetTranslationPixels)<0.5)return false;
+        const auto dense=EvaluateVerticalBarContent(m.denseContent);
+        if(!m.measuredCaption && (!m.denseOverlayMeasured || dense.action!=VerticalBarPresentationAction::TRANSLATE ||
+            (dense.translationPixels<0)!=(m.targetTranslationPixels<0)))return false;
+        const bool top=m.occupiedBounds.top<c.geometry.top,bottom=m.occupiedBounds.bottom>c.geometry.bottom;
+        if(top==bottom || top!=(m.targetTranslationPixels<0) ||
+            c.geometry.top+m.targetTranslationPixels<0 || c.geometry.bottom+m.targetTranslationPixels>c.rasterHeight ||
+            (active && (c.verticalTranslationPixels<0)!=(m.targetTranslationPixels<0)))return false;
+        auto envelope=c.geometry;
+        envelope.top=std::min(envelope.top,m.occupiedBounds.top);
+        envelope.bottom=std::max(envelope.bottom,m.occupiedBounds.bottom);
+        if(envelope.top<c.geometry.top+std::min(0.0,m.targetTranslationPixels) ||
+            envelope.bottom>c.geometry.bottom+std::max(0.0,m.targetTranslationPixels))return false;
+        if(m.visibleExtentMarginPixels<0 || m.visibleExtentMarginPixels>
+            std::max(2,c.rasterHeight/540)+std::max(2,c.rasterHeight/180))return false;
+        if(top)envelope.top=std::max(static_cast<int>(c.geometry.top+m.targetTranslationPixels),
+            envelope.top-m.visibleExtentMarginPixels);
+        else envelope.bottom=std::min(static_cast<int>(c.geometry.bottom+m.targetTranslationPixels),
+            envelope.bottom+m.visibleExtentMarginPixels);
+        // Current measured pixels, rather than a pending flag, bound ownership.
+        // A coarse nomination is separately checked by the exact raw-band proof.
+        const bool currentExtent=c.currentVisibleBoundsAvailable && c.currentVisibleSourceGeneration==c.frameSourceGeneration &&
+            c.currentVisibleSourceSequence==c.frameSourceSequence && SameTrustedCropContract(c.currentVisibleBase,c.geometry) &&
+            ValidBounds(c.currentVisibleBounds,c.rasterWidth,c.rasterHeight);
+        if((!safe && !currentExtent) || (currentExtent && !ContainedBounds(envelope,c.currentVisibleBounds)))return false;
+        if(input.observationAvailable) {
+            if(!ValidBounds(input.observation,c.rasterWidth,c.rasterHeight))return false;
+            auto allowed=c.geometry;
+            allowed.top+=static_cast<int>(std::min(0.0,m.targetTranslationPixels));
+            allowed.bottom+=static_cast<int>(std::max(0.0,m.targetTranslationPixels));
+            const auto& p=input.currentNativeBandSafety;
+            const bool exact=p.available && p.sourceGeneration==c.frameSourceGeneration && p.sourceSequence==c.frameSourceSequence &&
+                p.presentationEpoch==input.presentationEpoch && p.sourceFormatKey==c.frameSourceFormatKey &&
+                p.analysisDomainKey==c.frameAnalysisDomainKey && SameTrustedCropContract(p.nativeBase,c.geometry);
+            if(exact) {
+                if(p.left)allowed.left-=std::max(0,p.coarseHorizontalStep);
+                if(p.right)allowed.right+=std::max(0,p.coarseHorizontalStep);
+                if(top && p.bottom)allowed.bottom+=std::max(0,p.coarseVerticalStep);
+                if(bottom && p.top)allowed.top-=std::max(0,p.coarseVerticalStep);
+            }
+            // Allowed may extend one nominated scan-step past the raster; only
+            // the valid observation is tested, never used as crop authority.
+            if(input.observation.left<allowed.left || input.observation.right>allowed.right ||
+                input.observation.top<allowed.top || input.observation.bottom>allowed.bottom)return false;
+        }
+        if(owned)*owned=m;
+        return true;
+    }
+
+    static bool CurrentRawBandSafetyMatches(const PresentationRecoveryInput& input)
+    {
+        const auto& c=input.crop;const auto& b=input.currentNativeBandSafety;
+        return b.available && c.frameSourceGeneration && c.frameSourceSequence &&
+            input.presentationEpoch==c.framePresentationEpoch &&
+            b.sourceGeneration==c.frameSourceGeneration && b.sourceSequence==c.frameSourceSequence &&
+            b.presentationEpoch==input.presentationEpoch && b.sourceFormatKey==c.frameSourceFormatKey &&
+            b.analysisDomainKey==c.frameAnalysisDomainKey && SameTrustedCropContract(b.nativeBase,c.geometry);
+    }
+    static ActivePictureBounds TrimSubmittedViewportToCurrentRawBands(
+        const PresentationRecoveryInput& input,ActivePictureBounds bounds)
+    {
+        if(!CurrentRawBandSafetyMatches(input))return bounds;
+        const auto& n=input.crop.geometry;const auto& b=input.currentNativeBandSafety;
+        if(b.left)bounds.left=std::max(bounds.left,n.left);
+        if(b.top)bounds.top=std::max(bounds.top,n.top);
+        if(b.right)bounds.right=std::min(bounds.right,n.right);
+        if(b.bottom)bounds.bottom=std::min(bounds.bottom,n.bottom);
+        bounds.aspectRatio=double(bounds.right-bounds.left)/std::max(1,bounds.bottom-bounds.top);
+        return bounds;
+    }
+    static bool RetainInitializedPreparedViewport(const PresentationRecoveryInput& input,
+        const Decision& proposed,UncertainPicturePresentationDecision& result)
+    {
+        const auto& c=input.crop;const auto& a=input.submittedScopeAnchor;
+        if(!HasCurrentPreparedSubtitlePresentation(c) || !HasAcceptedNativeCrop(c) ||
+            HasCurrentNativePicturePreservation(input) || HasCurrentCaptionFit(input) ||
+            !proposed.applyCrop || proposed.verticallyTranslated || proposed.outwardExpanded ||
+            proposed.owner!=DecisionOwner::TRUSTED_CROP || !SameBounds(proposed.sourceBounds,c.geometry) ||
+            !CurrentRawBandSafetyMatches(input) || !input.retentionEvaluated || !input.excludedBandsPixelSafe ||
+            input.retentionSourceGeneration!=c.frameSourceGeneration || input.retentionSourceSequence!=c.frameSourceSequence ||
+            !SameTrustedCropContract(input.retentionBounds,c.geometry) ||
+            !SamePreparedNativeContext(a,c.acceptedNativeCrop,c.subtitlePresentationMode,
+                c.frameSourceGeneration,input.presentationEpoch,c.geometry) ||
+            !a.preparedNativeInitializedSourceSequence ||
+            a.preparedNativeInitializedSourceSequence>a.lastSubmittedPresentationSourceSequence ||
+            !IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,
+                input.presentationEpoch,c.rasterWidth,c.rasterHeight) ||
+            !a.submittedPresentationAvailable ||
+            (a.submittedPresentationOrigin!=NativePresentationOrigin::VISIBILITY_FALLBACK &&
+             a.submittedPresentationOrigin!=NativePresentationOrigin::CONFIRMED_FIT) ||
+            a.submittedPresentationProof.origin!=a.submittedPresentationOrigin ||
+            !MatchesNativePresentation(a.submittedPresentationProof,c.geometry,a.submittedPresentation,
+                a.sourceGeneration,a.lastSubmittedPresentationSourceSequence,a.presentationEpoch))return false;
+        const auto& b=input.currentNativeBandSafety;
+        if(b.left && b.top && b.right && b.bottom)return false;
+        const auto bounds=TrimSubmittedViewportToCurrentRawBands(input,a.submittedPresentation);
+        if(!ValidBounds(bounds,c.rasterWidth,c.rasterHeight) || !ContainedBounds(bounds,c.geometry) ||
+            SameBounds(bounds,c.geometry))return false;
+        result.retained=true;result.expanded=true;result.nativeCrop=c.geometry;
+        result.presentation={};result.presentation.applyCrop=!SameBounds(bounds,FullRaster(c.rasterWidth,c.rasterHeight));
+        result.presentation.sourceBounds=bounds;result.presentation.outwardExpanded=true;
+        result.presentation.owner=DecisionOwner::OUTWARD_FIT;
+        result.presentation.reason="initialized prepared presentation retains current raw occupied viewport";
+        // Preserve only the actually displayed envelope. Historical FIT/caption
+        // ownership is not current authority and is deliberately not copied.
+        auto& p=result.presentation.nativePresentation;p.available=true;p.origin=NativePresentationOrigin::VISIBILITY_FALLBACK;
+        p.nativeBase=c.geometry;p.approvedBounds=bounds;p.sourceGeneration=c.frameSourceGeneration;
+        p.sourceSequence=c.frameSourceSequence;p.presentationEpoch=input.presentationEpoch;
+        return true;
+    }
+
+    static bool ResolveProcessedSubtitleCanvas(const PresentationRecoveryInput& input,
+        UncertainPicturePresentationDecision& result)
+    {
+        const auto& c=input.crop;const auto& contract=c.acceptedNativeCrop;const auto& n=contract.bounds;
+        if(input.subtitleCanvasMode==SubtitleCanvasMode::OFF || !c.automaticCropEnabled ||
+            !contract.available || contract.sourceGeneration!=c.frameSourceGeneration || !contract.acceptedSourceSequence ||
+            contract.acceptedSourceSequence>c.frameSourceSequence || contract.sourceFormatKey!=c.frameSourceFormatKey ||
+            contract.analysisDomainKey!=c.frameAnalysisDomainKey || !ValidBounds(n,c.rasterWidth,c.rasterHeight) ||
+            c.fullRasterPresentationAuthoritative || HasCurrentNativePicturePreservation(input))return false;
+        result.nativeCrop=n;result.presentation={};result.presentation.sourceBounds=n;
+        result.presentation.applyCrop=true;result.presentation.owner=DecisionOwner::TRUSTED_CROP;
+        result.presentation.subtitleCanvasApplied=true;
+        auto& d=result.presentation;
+        const auto wait=[&](const char* reason) {
+            d.waitForSubtitleProcessing=true;d.reason=reason;return true;
+        };
+        if(!HasAcceptedNativeCrop(c))return wait("native canvas context pending; keep the last complete movie canvas");
+        const auto& o=input.captionObservation;
+        const bool emptyBands=input.measurementCurrent && input.retentionEvaluated && input.excludedBandsPixelSafe &&
+            input.retentionSourceGeneration==c.frameSourceGeneration && input.retentionSourceSequence==c.frameSourceSequence &&
+            SameTrustedCropContract(input.retentionBounds,n) &&
+            (!c.currentVisibleBoundsAvailable || (c.currentVisibleSourceGeneration==c.frameSourceGeneration &&
+             c.currentVisibleSourceSequence==c.frameSourceSequence && SameTrustedCropContract(c.currentVisibleBase,n) &&
+             ValidBounds(c.currentVisibleBounds,c.rasterWidth,c.rasterHeight) && ContainedBounds(n,c.currentVisibleBounds)));
+        const bool current=o.sourceGeneration==c.frameSourceGeneration && o.sourceSequence==c.frameSourceSequence &&
+            o.presentationEpoch==input.presentationEpoch && input.presentationEpoch==c.framePresentationEpoch &&
+            o.sourceFormatKey==c.frameSourceFormatKey && o.analysisDomainKey==c.frameAnalysisDomainKey;
+        const bool advanced=input.subtitleCanvasMode!=SubtitleCanvasMode::CLASSIC;
+        const auto expected=input.subtitleCanvasMode==SubtitleCanvasMode::BLACK?PreparedNativeMode::BLACK:
+            input.subtitleCanvasMode==SubtitleCanvasMode::RECONSTRUCTION?PreparedNativeMode::RECONSTRUCTION:PreparedNativeMode::NONE;
+        if(c.subtitlePresentationMode!=expected)return wait("subtitle profile context changed; keep the last complete movie canvas");
+        const bool composed=HasCurrentSubtitleCompositionPresentation(c) || HasCurrentPreparedSubtitlePresentation(c);
+        const bool rawCurrent=c.currentVisibleBoundsAvailable && input.measurementCurrent && input.retentionEvaluated &&
+            input.retentionSourceGeneration==c.frameSourceGeneration && input.retentionSourceSequence==c.frameSourceSequence &&
+            SameTrustedCropContract(input.retentionBounds,n) && c.currentVisibleSourceGeneration==c.frameSourceGeneration &&
+            c.currentVisibleSourceSequence==c.frameSourceSequence && SameTrustedCropContract(c.currentVisibleBase,n) &&
+            ValidBounds(c.currentVisibleBounds,c.rasterWidth,c.rasterHeight);
+        const bool bothBars=rawCurrent && c.currentVisibleBounds.top<n.top && c.currentVisibleBounds.bottom>n.bottom;
+        if(advanced && composed) {
+            d.reason="processed subtitle preserves the fixed native movie canvas";
+        } else if(advanced && o.state==CaptionObservationState::UNKNOWN &&
+            !ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight) &&
+            IsCurrentSubmittedNativeScopeAnchor(input.submittedScopeAnchor,c.frameSourceGeneration,c.frameSourceSequence,
+                input.presentationEpoch,c.rasterWidth,c.rasterHeight) &&
+            SameTrustedCropContract(input.submittedScopeAnchor.crop,n) &&
+            input.submittedScopeAnchor.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey &&
+            input.submittedScopeAnchor.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey) {
+            // Unknown inspection is not a queued caption job. Keep submitting
+            // THIS source with the accepted movie dimensions while acquisition
+            // continues. Do not synthesize absence, cleanup, native authority or
+            // a successful processed packet from an older displayed image.
+            d.unprocessedSubtitleCanvas=true;d.owner=DecisionOwner::SUBMITTED_SCOPE_RETENTION;
+            d.reason="unknown subtitle inspection continues current raw frame at retained movie size";
+            result.retained=true;return true;
+        } else if(advanced && c.initialSubtitleShaderBuild) {
+            // Preserve the existing initial-build exception: playback may show
+            // the native canvas before subtitle shaders are ready. This grants
+            // neither caption completion nor erasure/cleanup ownership.
+            d.reason="initial subtitle shader build preserves native movie size; caption processing pending";
+        } else if(!advanced && bothBars) {
+            // Classic cannot preserve both bars in one native-size window.
+            // Bottom content wins explicitly; top content never widens it.
+            const auto viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)?input.fixedNativeViewport:n;
+            const int margin=std::max(0,input.captionEdgeMarginPixels);
+            int minimum=std::max(-n.top,c.currentVisibleBounds.bottom+margin-viewport.bottom);
+            int maximum=c.rasterHeight-n.bottom;
+            auto bottom=input.currentTextCandidate;
+            if(current && o.state==CaptionObservationState::PRESENT)bottom=input.confirmedCaptionBounds;
+            if(ValidBounds(bottom,c.rasterWidth,c.rasterHeight) && bottom.bottom>n.bottom) {
+                if(bottom.left<viewport.left || bottom.right>viewport.right)
+                    return wait("bottom content requires relocation; no same-size Classic window is available");
+                minimum=std::max(minimum,bottom.bottom+margin-viewport.bottom);
+                // A union spanning both bars must not constrain the top edge.
+                if(bottom.top>=n.top)maximum=std::min(maximum,bottom.top-margin-viewport.top);
+            }
+            minimum=(minimum+1)&~1;maximum&=~1;
+            if(minimum>maximum)return wait("bottom content requires relocation before the fixed Classic canvas can be submitted");
+            int requested=c.verticalTranslationActive?c.verticalTranslationPixels:0;
+            const auto& a=input.submittedScopeAnchor;const auto& prior=a.submittedPresentation;
+            if(IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,input.presentationEpoch,
+                c.rasterWidth,c.rasterHeight) && SameTrustedCropContract(a.crop,n) &&
+                a.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey && a.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey &&
+                a.submittedPresentationAvailable && prior.left==viewport.left && prior.right==viewport.right &&
+                prior.bottom-prior.top==viewport.bottom-viewport.top && prior.top>viewport.top)
+                requested=std::max(requested,prior.top-viewport.top);
+            const int shift=std::max(minimum,std::min(requested,maximum));
+            d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+            d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+            d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+            d.subtitleTranslationRange=true;d.subtitleMinimumTranslation=minimum;d.subtitleMaximumTranslation=maximum;
+            d.reason="Classic bottom content wins when both bars are occupied; movie canvas size is unchanged";
+        } else if(emptyBands && (!current || o.state!=CaptionObservationState::PRESENT)) {
+            const int shift=!advanced && c.verticalTranslationActive?c.verticalTranslationPixels:0;
+            auto viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)?input.fixedNativeViewport:n;
+            viewport.top+=shift;viewport.bottom+=shift;
+            if(ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight) &&
+                !ContainedBounds(viewport,input.currentTextCandidate))
+                return wait("current text needs processing before the fixed movie canvas can be submitted");
+            if(n.top+shift<0 || n.bottom+shift>c.rasterHeight)
+                return wait("Classic release pose unavailable; keep the last complete movie canvas");
+            d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+            d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+            d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+            d.reason="current empty native bands preserve the fixed movie canvas without claiming caption absence";
+        } else {
+            if(!current || o.state==CaptionObservationState::UNKNOWN) {
+                // Pixel occupancy and semantic caption confirmation have different
+                // lifetimes. A skipped confirmation must not stop source time.
+                // Use only this source's raw extent/candidate to constrain the
+                // configured-size window; never borrow an old caption or crop proof.
+                const auto viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)?input.fixedNativeViewport:n;
+                const auto& a=input.submittedScopeAnchor;const auto& pose=a.submittedPresentation;
+                const bool priorPan=!advanced && IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,
+                    input.presentationEpoch,c.rasterWidth,c.rasterHeight) && SameTrustedCropContract(a.crop,n) &&
+                    a.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey && a.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey &&
+                    a.submittedPresentationAvailable && pose.left==viewport.left && pose.right==viewport.right &&
+                    pose.bottom-pose.top==viewport.bottom-viewport.top && pose.top!=viewport.top;
+                const bool candidateCurrent=!advanced && current &&
+                    ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight);
+                if(!rawCurrent || !ContainedBounds(n,viewport) || (!priorPan && !candidateCurrent))
+                    return wait("subtitle inspection pending; keep the last complete movie canvas");
+                if(c.currentVisibleBounds.left<n.left || c.currentVisibleBounds.right>n.right)
+                    return wait("current horizontal content requires independent picture preservation before Classic continuation");
+                // Raw continuity alone cannot reverse the established occupied
+                // side or treat an unobserved caption as semantically absent.
+                if(!candidateCurrent &&
+                    !((pose.top>viewport.top && c.currentVisibleBounds.bottom>n.bottom) ||
+                      (pose.top<viewport.top && c.currentVisibleBounds.top<n.top)))
+                    return wait("current occupied-side inspection pending; keep the last complete movie canvas");
+                const int margin=std::max(0,input.captionEdgeMarginPixels);
+                int minimum=-n.top,maximum=c.rasterHeight-n.bottom;
+                const bool bottomPriority=candidateCurrent && input.currentTextCandidate.top<n.top &&
+                    input.currentTextCandidate.bottom>n.bottom;
+                bool occupied=false;
+                if(c.currentVisibleBounds.bottom>n.bottom) {
+                    minimum=std::max(minimum,c.currentVisibleBounds.bottom+margin-viewport.bottom);
+                    occupied=true;
+                }
+                if(c.currentVisibleBounds.top<n.top && !bottomPriority) {
+                    maximum=std::min(maximum,c.currentVisibleBounds.top-margin-viewport.top);
+                    occupied=true;
+                }
+                if(candidateCurrent) {
+                    const auto& caption=input.currentTextCandidate;
+                    if(caption.left<viewport.left || caption.right>viewport.right)
+                        return wait("current text needs relocation before the fixed canvas can be submitted");
+                    minimum=std::max(minimum,caption.bottom+margin-viewport.bottom);
+                    // A measured union across both bars retains Classic's
+                    // bottom priority; the top union cannot force a resize.
+                    if(!bottomPriority)maximum=std::min(maximum,caption.top-margin-viewport.top);
+                    occupied=true;
+                }
+                if(!occupied)return wait("current occupied-side inspection pending; keep the last complete movie canvas");
+                minimum=(minimum+1)&~1;maximum&=~1;
+                if(minimum>maximum)return wait("current bar content needs relocation before the fixed canvas can be submitted");
+                const int requested=priorPan?pose.top-viewport.top:
+                    (c.verticalTranslationActive?c.verticalTranslationPixels:0);
+                const int shift=std::max(minimum,std::min(requested,maximum));
+                d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+                d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+                d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+                d.subtitleTranslationRange=true;d.subtitleMinimumTranslation=minimum;d.subtitleMaximumTranslation=maximum;
+                d.unprocessedSubtitleCanvas=true;
+                d.reason="current source occupancy continues the fixed Classic canvas without caption confirmation";
+                result.retained=true;
+                // Presentation-only continuity: no new native, caption absence,
+                // FIT, erasure or composition authority is certified below.
+                return true;
+            } else
+            if(o.state==CaptionObservationState::PRESENT) {
+                const auto& caption=input.confirmedCaptionBounds;
+                if(!ValidBounds(caption,c.rasterWidth,c.rasterHeight))
+                    return wait("confirmed caption extent unavailable; keep the last complete movie canvas");
+                if(advanced)return wait("subtitle composition pending; keep the last complete movie canvas");
+                // Classic can move its window; a caption cannot change its size.
+                // Use the ordinary configured canvas to account for fixed fill,
+                // then constrain only translation so every caption pixel remains.
+                const auto& viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)
+                    ? input.fixedNativeViewport:n;
+                if(!ContainedBounds(n,viewport) || caption.left<viewport.left || caption.right>viewport.right)
+                    return wait("caption requires relocation; no same-size Classic window is available");
+                const int margin=std::max(0,input.captionEdgeMarginPixels);
+                int minimum=std::max(-n.top,caption.bottom+margin-viewport.bottom);
+                int maximum=std::min(c.rasterHeight-n.bottom,caption.top-margin-viewport.top);
+                // Confirmation changes semantic ownership, not the current raw
+                // occupied-side margin. Dropping that bound can reverse the pan
+                // immediately after a safe unconfirmed source was displayed.
+                if(rawCurrent) {
+                    if(caption.bottom>n.bottom && c.currentVisibleBounds.bottom>n.bottom)
+                        minimum=std::max(minimum,c.currentVisibleBounds.bottom+margin-viewport.bottom);
+                    else if(caption.top<n.top && c.currentVisibleBounds.top<n.top)
+                        maximum=std::min(maximum,c.currentVisibleBounds.top-margin-viewport.top);
+                }
+                // Round the admissible interval INWARD to chroma-aligned poses.
+                minimum=(minimum+1)&~1;maximum&=~1;
+                if(minimum>maximum)return wait("caption requires relocation; no same-size Classic window is available");
+                const int requested=c.verticalTranslationActive?c.verticalTranslationPixels:0;
+                const int shift=std::max(minimum,std::min(requested,maximum));
+                d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+                d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+                d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+                d.subtitleTranslationRange=true;d.subtitleMinimumTranslation=minimum;d.subtitleMaximumTranslation=maximum;
+                d.reason="confirmed Classic subtitle uses a same-size native movie canvas";
+            } else {
+                // Absence retires the caption constraint, not the live release clock.
+                const int shift=!advanced && c.verticalTranslationActive?c.verticalTranslationPixels:0;
+                if(n.top+shift<0 || n.bottom+shift>c.rasterHeight)
+                    return wait("Classic release pose unavailable; keep the last complete movie canvas");
+                d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
+                d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
+                d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
+                d.reason="current caption absence preserves the fixed native movie canvas";
+            }
+        }
+        auto& p=d.nativePresentation;p.available=true;
+        p.origin=d.verticallyTranslated?NativePresentationOrigin::CONFIRMED_TRANSLATION:NativePresentationOrigin::EXACT_NATIVE;
+        p.nativeBase=n;p.approvedBounds=d.sourceBounds;p.sourceGeneration=c.frameSourceGeneration;
+        p.sourceSequence=c.frameSourceSequence;p.presentationEpoch=input.presentationEpoch;
+        return true;
+    }
     UncertainPicturePresentationDecision ResolveUncertainPicturePresentation(
         const PresentationRecoveryInput& input, const Decision& proposed)
     {
         UncertainPicturePresentationDecision result;
         result.presentation = proposed;
+        if(ResolveProcessedSubtitleCanvas(input,result))return result;
         const auto& crop = input.crop;
         const auto& anchor = input.submittedScopeAnchor;
         const auto raster = FullRaster(crop.rasterWidth, crop.rasterHeight);
+        if(UsesAdvancedNativePicturePolicy(crop)) {
+            const bool currentPicture=HasCurrentNativePicturePreservation(input);
+            result.presentation=AdvancedNativePictureDecision(crop,currentPicture?
+                &input.nativeOutwardPictureProof.candidate:nullptr);
+            result.retained=true;result.nativeCrop=crop.geometry;
+            result.expanded=result.presentation.outwardExpanded;
+            result.currentPixelExtent=currentPicture || (result.expanded && HasCurrentAdvancedRawVisibility(crop));
+            return result;
+        }
         const bool committedFull = crop.sharedGeometryAvailable &&
             crop.geometrySourceGeneration == crop.frameSourceGeneration &&
             crop.frameSourceGeneration != 0 &&
             crop.classification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
             SameBounds(crop.geometry, raster);
+        // An exact current contradiction is affirmative visibility evidence,
+        // not an unknown scan. Keep its outward-safe envelope separate from the
+        // accepted native boundary; a later skipped scan must not resurrect the
+        // old crop that these pixels have just disproved as a safe presentation.
+        const bool currentNomination=input.observationAvailable &&
+            input.observationClassification!=ActivePictureClassification::UNAVAILABLE &&
+            ValidBounds(input.observation,crop.rasterWidth,crop.rasterHeight) &&
+            // A provisional full raster can be unresolved-axis placeholders.
+            // Exact current pixels below can independently establish that extent.
+            (!SameBounds(input.observation,raster) ||
+             input.observationClassification==ActivePictureClassification::FULL_RASTER_TRUSTED);
+        const bool currentExactVisible=crop.currentVisibleBoundsAvailable &&
+            crop.currentVisibleSourceGeneration==crop.frameSourceGeneration &&
+            crop.currentVisibleSourceSequence==crop.frameSourceSequence &&
+            SameTrustedCropContract(crop.currentVisibleBase,crop.geometry) &&
+            ValidBounds(crop.currentVisibleBounds,crop.rasterWidth,crop.rasterHeight);
+        const bool currentContradiction=crop.automaticCropEnabled && HasAcceptedNativeCrop(crop) &&
+            !crop.fullRasterPresentationAuthoritative && !committedFull &&
+            input.measurementCurrent && input.retentionEvaluated && !input.excludedBandsPixelSafe &&
+            input.retentionSourceGeneration==crop.frameSourceGeneration &&
+            input.retentionSourceSequence==crop.frameSourceSequence &&
+            input.presentationEpoch==crop.framePresentationEpoch &&
+            SameTrustedCropContract(input.retentionBounds,crop.geometry) &&
+            ((currentNomination && !ContainedBounds(crop.geometry,input.observation)) ||
+             (currentExactVisible && !ContainedBounds(crop.geometry,crop.currentVisibleBounds))) &&
+            !HasConfirmedPresentationCandidate(input,proposed);
+        CaptionTranslationMeasurement captionLease;
+        const bool captionLifetime=CurrentCaptionOwnsTranslationLifetime(input,proposed,&captionLease);
+        const bool continuingTranslation=SubmittedTranslationCoversCurrentBarVisibility(input,proposed);
+        // A confirmed target owns the controller lifetime, not visibility of a
+        // smaller timed-engage pose. Keep CURRENT caption/occupied pixels until
+        // that actual pose covers them; physical/native admission stays intact.
+        // Before the three-source target confirmation, the same validated
+        // controller lifetime already exists. Its pending native-sized proposal
+        // must not clip the independently sampled CURRENT caption extent.
+        // A carried lease identifies that controller across dense-scan gaps;
+        // it does not nominate old pixels or extend its original expiry.
+        const bool pendingCaptionTarget=crop.verticalTranslationConfirmationPending &&
+            proposed.owner==DecisionOwner::TRANSLATION_CONFIRMATION;
+        const bool currentEngageCaption=(input.classicTranslationEngaging || pendingCaptionTarget) && captionLifetime &&
+            crop.automaticCropEnabled && !crop.fullRasterPresentationAuthoritative && !committedFull &&
+            currentExactVisible && input.measurementCurrent;
+        if(currentEngageCaption) {
+            auto outside=crop.currentVisibleBounds;
+            if(captionLease.targetTranslationPixels<0)outside.bottom=std::min(outside.bottom,crop.geometry.top);
+            else outside.top=std::max(outside.top,crop.geometry.bottom);
+            const bool outsideValid=ValidBounds(outside,crop.rasterWidth,crop.rasterHeight);
+            // An earlier lease identifies the controller only. Its old caption
+            // rectangle cannot nominate pixels for the current envelope.
+            const auto& measured=input.currentCaptionTranslation;
+            const bool currentCaption=measured.available && measured.measuredCaption &&
+                measured.sourceGeneration==crop.frameSourceGeneration && measured.sourceSequence==crop.frameSourceSequence;
+            const bool clipped=(currentCaption && !ContainedBounds(proposed.sourceBounds,measured.occupiedBounds)) ||
+                (outsideValid && !ContainedBounds(proposed.sourceBounds,outside));
+            if(clipped) {
+                auto bounds=crop.geometry;
+                const auto include=[&](const ActivePictureBounds& visible) {
+                    bounds.left=std::max(0,std::min(bounds.left,visible.left)&~1);
+                    bounds.top=std::max(0,std::min(bounds.top,visible.top)&~1);
+                    bounds.right=std::min(crop.rasterWidth,(std::max(bounds.right,visible.right)+1)&~1);
+                    bounds.bottom=std::min(crop.rasterHeight,(std::max(bounds.bottom,visible.bottom)+1)&~1);
+                };
+                if(currentCaption)include(measured.occupiedBounds);
+                include(crop.currentVisibleBounds);
+                bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                bounds.aspectRatio=double(bounds.right-bounds.left)/std::max(1,bounds.bottom-bounds.top);
+                result.retained=result.expanded=result.currentPixelExtent=true;result.nativeCrop=crop.geometry;
+                result.presentation={};result.presentation.sourceBounds=bounds;
+                result.presentation.applyCrop=!SameBounds(bounds,raster);result.presentation.outwardExpanded=true;
+                result.presentation.owner=DecisionOwner::OUTWARD_FIT;
+                result.presentation.reason="current caption remains visible until timed engage pose covers its pixels";
+                auto& proof=result.presentation.nativePresentation;
+                proof.available=true;proof.origin=NativePresentationOrigin::VISIBILITY_FALLBACK;
+                proof.nativeBase=crop.geometry;proof.approvedBounds=bounds;
+                proof.sourceGeneration=crop.frameSourceGeneration;proof.sourceSequence=crop.frameSourceSequence;
+                proof.presentationEpoch=input.presentationEpoch;
+                // Retain the original controller witness verbatim. Only the
+                // separately sampled CURRENT extent authorizes this viewport.
+                proof.captionTranslationMeasurement=captionLease;
+                return result;
+            }
+        }
+        if(currentContradiction && !continuingTranslation && !captionLifetime) {
+            auto bounds=crop.geometry;
+            const auto include=[&](const ActivePictureBounds& visible) {
+                bounds.left=(std::min(bounds.left,visible.left))&~1;
+                bounds.top=(std::min(bounds.top,visible.top))&~1;
+                bounds.right=std::min(crop.rasterWidth,(std::max(bounds.right,visible.right)+1)&~1);
+                bounds.bottom=std::min(crop.rasterHeight,(std::max(bounds.bottom,visible.bottom)+1)&~1);
+            };
+            // Unknown nominations and fail-open proposal rectangles carry no
+            // spatial authority. Only current measured source extents may grow
+            // this bounded envelope; actual submitted geometry retains its
+            // separate continuity contract below.
+            if(currentNomination)include(input.observation);
+            if(currentExactVisible)include(crop.currentVisibleBounds);
+            if(IsCurrentSubmittedNativeScopeAnchor(anchor,crop.frameSourceGeneration,crop.frameSourceSequence,
+                input.presentationEpoch,crop.rasterWidth,crop.rasterHeight) &&
+                SameTrustedCropContract(anchor.crop,crop.geometry) && anchor.submittedPresentationAvailable &&
+                anchor.acceptedNativeCrop.available &&
+                anchor.acceptedNativeCrop.sourceFormatKey==crop.frameSourceFormatKey &&
+                anchor.acceptedNativeCrop.analysisDomainKey==crop.frameAnalysisDomainKey &&
+                anchor.acceptedNativeCrop.acceptedSourceSequence==crop.acceptedNativeCrop.acceptedSourceSequence &&
+                ValidBounds(anchor.submittedPresentation,crop.rasterWidth,crop.rasterHeight))
+                include(TrimSubmittedViewportToCurrentRawBands(input,anchor.submittedPresentation));
+            bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+            bounds.aspectRatio=double(bounds.right-bounds.left)/std::max(1,bounds.bottom-bounds.top);
+            result.retained=true;result.expanded=true;result.currentPixelExtent=true;result.nativeCrop=crop.geometry;
+            result.presentation={};result.presentation.sourceBounds=bounds;
+            result.presentation.applyCrop=!SameBounds(bounds,raster);result.presentation.outwardExpanded=true;
+            result.presentation.owner=DecisionOwner::OUTWARD_FIT;
+            result.presentation.reason="current excluded-band contradiction preserves outward visibility without changing native AR";
+            auto& proof=result.presentation.nativePresentation;
+            proof.available=true;proof.origin=NativePresentationOrigin::VISIBILITY_FALLBACK;
+            proof.nativeBase=crop.geometry;proof.approvedBounds=bounds;
+            proof.sourceGeneration=crop.frameSourceGeneration;proof.sourceSequence=crop.frameSourceSequence;
+            proof.presentationEpoch=input.presentationEpoch;
+            return result;
+        }
+        if(RetainInitializedPreparedViewport(input,proposed,result))return result;
+        // Keep the current authorized controller pose through scan gaps. Final
+        // fill and exact submission certify this source independently below;
+        // retaining yesterday's filled rectangle would cancel a valid drift.
+        const auto& submittedProof=anchor.submittedPresentationProof;
+        const auto& previousTranslation=submittedProof.origin==NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL
+            ? submittedProof.unfilledTranslation : submittedProof.approvedBounds;
+        if(captionLifetime) {
+            result.presentation.nativePresentation.captionTranslationMeasurement=captionLease;
+            return result;
+        }
+        if(continuingTranslation && !SameBounds(previousTranslation,proposed.sourceBounds))return result;
+        const auto heldCaption=HeldCaptionExtent(input);
+        if (HasCurrentPreparedSubtitlePresentation(crop) && !HasCurrentNativePicturePreservation(input) && proposed.applyCrop &&
+            proposed.owner==DecisionOwner::TRUSTED_CROP && !proposed.outwardExpanded && !proposed.verticallyTranslated &&
+            SameBounds(proposed.sourceBounds,crop.geometry))
+            return result;
+        if (crop.automaticCropEnabled && HasAcceptedNativeCrop(crop) &&
+            !crop.fullRasterPresentationAuthoritative && !committedFull &&
+            crop.latestObservationClassification!=ActivePictureClassification::FULL_RASTER_TRUSTED &&
+            heldCaption.available)
+        {
+            // The native reference may already have changed. Only the caption's
+            // measured pixels survive that change, never its old picture base.
+            auto bounds=HasCurrentNativePicturePreservation(input)
+                ? input.nativeOutwardPictureProof.candidate : crop.geometry;
+            IncludeCaptionExtent(bounds,heldCaption);
+            result.retained=true;result.nativeCrop=crop.geometry;
+            result.expanded=!SameBounds(bounds,crop.geometry);
+            result.presentation={};result.presentation.sourceBounds=bounds;
+            result.presentation.applyCrop=!SameBounds(bounds,raster);
+            result.presentation.outwardExpanded=result.expanded;
+            result.presentation.owner=DecisionOwner::OUTWARD_FIT;
+            result.presentation.reason="current native picture preserves successfully submitted caption extent while inspection is unknown";
+            auto& certificate=result.presentation.nativePresentation;
+            certificate.available=true;certificate.origin=NativePresentationOrigin::CAPTION_CONTINUITY;
+            certificate.nativeBase=crop.geometry;certificate.approvedBounds=bounds;
+            certificate.sourceGeneration=crop.frameSourceGeneration;certificate.sourceSequence=crop.frameSourceSequence;
+            certificate.presentationEpoch=input.presentationEpoch;certificate.captionPreservation=heldCaption;
+            return result;
+        }
+        // Analysis may have suppressed this source before its exact native
+        // entry verification released the episode. That CURRENT proof defeats
+        // unknown-only retention of the old displayed envelope, not caption or
+        // visibility ownership, which has already been checked above.
+        const auto& release = input.currentNativeEntryRelease;
+        const bool currentNativeEntryReleased = release.available &&
+            crop.automaticCropEnabled && HasAcceptedNativeCrop(crop) &&
+            release.sourceGeneration == crop.frameSourceGeneration &&
+            release.sourceSequence == crop.frameSourceSequence &&
+            release.presentationEpoch == input.presentationEpoch &&
+            input.presentationEpoch == crop.framePresentationEpoch &&
+            SameTrustedCropContract(release.nativeEntry,crop.geometry) &&
+            input.measurementCurrent && input.retentionEvaluated && input.excludedBandsPixelSafe &&
+            input.retentionSourceGeneration == crop.frameSourceGeneration &&
+            input.retentionSourceSequence == crop.frameSourceSequence &&
+            SameTrustedCropContract(input.retentionBounds,crop.geometry) &&
+            !input.globalNearBlack && input.nearBlackEvaluated &&
+            !crop.fullRasterPresentationAuthoritative && !crop.currentVisibleBoundsAvailable &&
+            input.observationAvailable && input.observationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            SameBounds(input.observation,crop.geometry) &&
+            proposed.applyCrop && !proposed.verticallyTranslated && !proposed.outwardExpanded &&
+            SameBounds(proposed.sourceBounds,crop.geometry);
+        if (currentNativeEntryReleased) return result;
+        if (crop.automaticCropEnabled && HasAcceptedNativeCrop(crop) &&
+            !crop.fullRasterPresentationAuthoritative &&
+            crop.latestObservationClassification != ActivePictureClassification::FULL_RASTER_TRUSTED &&
+            !crop.latestObservationSupportsCrop && !HasConfirmedPresentationCandidate(input,proposed))
+        {
+            // An accepted source contract does not depend on having displayed
+            // its exact native rectangle first. Unknown evidence cannot erase
+            // it, nor the separately authorized output that actually reached
+            // the display. A qualified native/overlay change takes the path above.
+            auto bounds = crop.geometry;
+            const bool compatibleSubmitted = IsCurrentSubmittedNativeScopeAnchor(anchor,
+                crop.frameSourceGeneration,crop.frameSourceSequence,input.presentationEpoch,
+                crop.rasterWidth,crop.rasterHeight) &&
+                SameTrustedCropContract(anchor.crop,crop.geometry) &&
+                anchor.acceptedNativeCrop.available &&
+                anchor.acceptedNativeCrop.sourceGeneration==crop.acceptedNativeCrop.sourceGeneration &&
+                anchor.acceptedNativeCrop.sourceFormatKey==crop.frameSourceFormatKey &&
+                anchor.acceptedNativeCrop.analysisDomainKey==crop.frameAnalysisDomainKey &&
+                anchor.acceptedNativeCrop.acceptedSourceSequence == crop.acceptedNativeCrop.acceptedSourceSequence;
+            if (compatibleSubmitted && anchor.submittedPresentationAvailable &&
+                !(anchor.captionPreservation.available && CurrentCaptionReplacesHeldExtent(input)) &&
+                ValidBounds(anchor.submittedPresentation,crop.rasterWidth,crop.rasterHeight))
+                bounds = anchor.submittedPresentation;
+            result.retained = true;
+            result.nativeCrop = crop.geometry;
+            result.expanded = ContainedBounds(bounds,crop.geometry) && !SameBounds(bounds,crop.geometry);
+            result.presentation = {};
+            result.presentation.sourceBounds = bounds;
+            result.presentation.applyCrop = !SameBounds(bounds,raster);
+            result.presentation.outwardExpanded = result.expanded;
+            result.presentation.owner = result.expanded ? DecisionOwner::OUTWARD_FIT : DecisionOwner::SUBMITTED_SCOPE_RETENTION;
+            result.presentation.reason = "unknown evidence preserves accepted native contract and successfully submitted presentation";
+            return result;
+        }
         if (!crop.automaticCropEnabled || crop.fullRasterPresentationAuthoritative ||
             committedFull || !IsCurrentSubmittedNativeScopeAnchor(anchor, crop.frameSourceGeneration,
                 crop.frameSourceSequence, input.presentationEpoch,
@@ -6317,6 +7687,44 @@ namespace AlphaSourceCrop
         return true;
     }
 
+    CropPresentationAdmissionState QualifyTranslatedNativePresentation(
+        const CropPresentationAdmissionState& admission, const FinalAspectLimitFillInput& input,
+        const AspectLimitFillDecision& actual)
+    {
+        auto result=admission;const auto& crop=input.crop;const auto& pose=admission.nativePresentation;
+        if(!HasAcceptedNativeCrop(crop) || !admission.available ||
+            admission.sourceGeneration!=crop.frameSourceGeneration ||
+            admission.presentationEpoch!=crop.framePresentationEpoch ||
+            admission.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+            !SameTrustedCropContract(admission.trustedCrop,crop.geometry) ||
+            !admission.acceptedNativeCrop.available ||
+            admission.acceptedNativeCrop.acceptedSourceSequence!=crop.acceptedNativeCrop.acceptedSourceSequence ||
+            !SameTrustedCropContract(admission.acceptedNativeCrop.bounds,crop.geometry) ||
+            admission.acceptedNativeCrop.sourceGeneration!=crop.frameSourceGeneration ||
+            admission.acceptedNativeCrop.sourceFormatKey!=crop.frameSourceFormatKey ||
+            admission.acceptedNativeCrop.analysisDomainKey!=crop.frameAnalysisDomainKey ||
+            pose.origin!=NativePresentationOrigin::CONFIRMED_TRANSLATION ||
+            !MatchesNativePresentation(pose,crop.geometry,input.presentation.sourceBounds,
+                crop.frameSourceGeneration,crop.frameSourceSequence,crop.framePresentationEpoch) ||
+            input.presentation.owner!=DecisionOwner::VERTICAL_TRANSLATION ||
+            !input.presentation.verticallyTranslated || !crop.verticalTranslationActive ||
+            crop.verticalTranslationSourceGeneration!=crop.frameSourceGeneration ||
+            !SameTrustedCropContract(crop.verticalTranslationBase,crop.geometry) ||
+            input.presentation.verticalTranslationPixels!=crop.verticalTranslationPixels ||
+            input.fixedCropAspectConfigured ||
+            !actual.applied || actual.retainedSubmittedFill || !input.configuredScreenActive)
+            return result;
+        const auto expected=EvaluateFinalAspectLimitFill(input);
+        if(!expected.applied || !SameBounds(expected.sourceBounds,actual.sourceBounds) ||
+            !ContainedBounds(pose.approvedBounds,actual.sourceBounds))
+            return result;
+        auto& proof=result.nativePresentation;proof.origin=NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL;
+        proof.unfilledTranslation=pose.approvedBounds;proof.translatedFillScreenAspect=input.configured.screenAspect;
+        proof.translatedFillPolicy=input.configured;
+        proof.approvedBounds=actual.sourceBounds;
+        return result;
+    }
+
     AspectLimitFillDecision EvaluateFinalAspectLimitFill(const FinalAspectLimitFillInput& input)
     {
         AspectLimitFillDecision result;
@@ -6327,6 +7735,16 @@ namespace AlphaSourceCrop
             fixed.fixedAspect = input.fixedCropAspect;
             fixed.sourceBounds = input.presentation.sourceBounds;
             return EvaluateFixedAspectCrop(fixed);
+        }
+        if(input.presentation.nativePresentation.origin==NativePresentationOrigin::VISIBILITY_FALLBACK ||
+            (input.uncertainPicture.retained &&
+             input.evidence.submittedScopeAnchor.submittedPresentationOrigin==NativePresentationOrigin::VISIBILITY_FALLBACK)) {
+            result.reason="outward visibility fallback cannot be trimmed by optional fill";return result;
+        }
+        if (input.presentation.nativePresentation.captionPreservation.available)
+        {
+            result.reason="submitted caption extent remains protected while current inspection is unknown";
+            return result;
         }
         const auto& submittedFillAnchor = input.evidence.submittedScopeAnchor;
         if (input.currentConfirmedPresentationConflict && input.presentation.applyCrop &&
@@ -6390,7 +7808,11 @@ namespace AlphaSourceCrop
 	{
 		Decision decision;
 		decision.sourceBounds = FullRaster(input.rasterWidth, input.rasterHeight);
-		if (input.presentationFailOpen)
+        if(UsesAdvancedNativePicturePolicy(input))return AdvancedNativePictureDecision(input);
+        const bool acceptedUncertainNative = HasAcceptedNativeCrop(input) &&
+            input.latestObservationClassification != ActivePictureClassification::FULL_RASTER_TRUSTED &&
+            !input.fullRasterPresentationAuthoritative && !input.currentVisibleBoundsAvailable;
+		if (input.presentationFailOpen && !acceptedUncertainNative)
 		{
 			decision.reason = "presentation evidence requested fail-open";
 			return decision;
@@ -6403,7 +7825,7 @@ namespace AlphaSourceCrop
 		// Current safe Scope evidence may outlive an ambiguous near-black latch.
 		// Explicit full-raster authority still wins below.
 		if (input.nearBlackEpisodeFullRaster &&
-			!input.submittedScopeContinuityRetention)
+			!input.submittedScopeContinuityRetention && !acceptedUncertainNative)
 		{
 			decision.reason =
 				"near-black title episode latched full-raster presentation";
@@ -6437,7 +7859,7 @@ namespace AlphaSourceCrop
 		}
         // Current excluded-band pixel proof is stronger than a transition-state pause.
         if (input.movingPictureTransition &&
-            !input.submittedScopeContinuityRetention)
+            !input.submittedScopeContinuityRetention && !acceptedUncertainNative)
         {
             if (HasCurrentMovingPictureHold(input))
             {
@@ -6498,7 +7920,7 @@ namespace AlphaSourceCrop
 		const bool horizontalExpansionPixelBounded = input.barCropRefinementHorizontalConflict &&
 			horizontalObservationEligible && horizontalPixelsCurrent &&
 			horizontalCandidateCurrent && horizontalPixelsCovered;
-		if (input.barCropRefinementHorizontalConflict && !horizontalExpansionPixelBounded)
+		if (input.barCropRefinementHorizontalConflict && !horizontalExpansionPixelBounded && !acceptedUncertainNative)
 		{
 			decision.reason = !horizontalObservationEligible
 				? "horizontal fit rejected: observation unavailable or full-raster"
@@ -6590,6 +8012,7 @@ namespace AlphaSourceCrop
 			input.verticalTranslationSourceGeneration ==
 				input.frameSourceGeneration;
 		if (!input.latestObservationSupportsCrop &&
+            !acceptedUncertainNative &&
             !HasCurrentPreparedSubtitlePresentation(input) &&
 			!boundedSceneVerificationRetention &&
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
@@ -6779,11 +8202,12 @@ namespace AlphaSourceCrop
 			decision.reason =
 				"bounded outward presentation expansion accepted";
 		}
-		else if (input.latestObservationSupportsCrop)
+		else if (input.latestObservationSupportsCrop || acceptedUncertainNative)
 		{
 			decision.owner = DecisionOwner::TRUSTED_CROP;
-			decision.reason =
-				"generation-current shared crop authority accepted";
+			decision.reason = acceptedUncertainNative && !input.latestObservationSupportsCrop
+                ? "accepted native geometry retained through unknown current evidence"
+                : "generation-current shared crop authority accepted";
 		}
 		else if (pixelSafeAmbiguousRetention)
 		{

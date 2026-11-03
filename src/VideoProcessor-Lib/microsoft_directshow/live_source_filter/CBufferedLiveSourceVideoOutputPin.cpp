@@ -4873,7 +4873,7 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 		framesPerSecond = static_cast<double>(m_timeScale) / m_frameDurationTicks;
 	const ActivePictureAnalyzerResult analysis = m_frameProcessor.AnalyzeActivePicture({
 		{ bytes, static_cast<size_t>(std::max<LONG>(0, sample->GetActualDataLength())),
-			static_cast<int>(width), height, pitch, pitch }, frameNumber, framesPerSecond });
+			static_cast<int>(width), height, pitch, pitch }, frameNumber, framesPerSecond, detectorGeneration });
 	if (!analysis.analyzed)
 		return;
 

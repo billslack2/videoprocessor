@@ -14,6 +14,29 @@ namespace Tests
 	TEST_CLASS(AlphaQueuePolicyTests)
 	{
 	public:
+        TEST_METHOD(CurrentSourcePreparationCompletesOrExpiresWithoutFutureVotes)
+        {
+            using AlphaQueuePolicy::AwaitCurrentSourcePreparation;
+            Assert::IsTrue(AwaitCurrentSourcePreparation(true,false,true,false,101,116));
+            Assert::IsTrue(AwaitCurrentSourcePreparation(true,true,true,false,108,116));
+            Assert::IsFalse(AwaitCurrentSourcePreparation(true,true,true,true,108,116));
+            Assert::IsFalse(AwaitCurrentSourcePreparation(true,true,false,false,108,116));
+            Assert::IsFalse(AwaitCurrentSourcePreparation(false,false,true,false,108,116));
+            Assert::IsFalse(AwaitCurrentSourcePreparation(true,false,true,false,116,116));
+            Assert::IsFalse(AwaitCurrentSourcePreparation(true,false,true,false,130,116));
+            Assert::IsFalse(AwaitCurrentSourcePreparation(true,false,true,false,100,0));
+        }
+        TEST_METHOD(SourcePreparationIncludesUnqueuedHeadWhenArLookaheadIsDisabled)
+        {
+            struct Entry {bool cadenceRepeat=false;};
+            std::deque<Entry> owned(1);
+            Assert::IsTrue(AlphaQueuePolicy::SelectActivePicturePreview(owned,0,8).indices.empty());
+            const auto preparation=AlphaQueuePolicy::SelectSourceMeasurementPreparation(owned,0,8,3);
+            Assert::IsTrue(preparation==std::vector<size_t>{0});
+            Assert::AreEqual(size_t(1),owned.size());
+            owned.front().cadenceRepeat=true;
+            Assert::IsTrue(AlphaQueuePolicy::SelectSourceMeasurementPreparation(owned,0,8,3).empty());
+        }
 		TEST_METHOD(ConversionTimingWindowReportsWorkerCostAndExpiresOldFrames)
 		{
 			AlphaConversionTimingWindow timing;

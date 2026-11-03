@@ -2,10 +2,17 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [Parameter(Mandatory=$true)][string]$MagewellSdkRoot,
     [string]$VsInstallPath='C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional',
-    [ValidateSet('standard','beta')][string[]]$Variants=@('standard','beta')
+    [ValidateSet('standard','beta')][string[]]$Variants=@('standard','beta'),
+    [switch]$UseQualifiedBuild
 )
 $ErrorActionPreference='Stop'
 $vpRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$vpReusedQualifiedBuild=$false
+if($UseQualifiedBuild) {
+    . (Join-Path $PSScriptRoot 'runtime_qualification.ps1')
+    $null=Assert-VpRuntimeQualification $vpRoot
+    $vpReusedQualifiedBuild=$true
+}
 $vpOutput=[IO.Path]::GetFullPath($OutputDirectory)
 $vpMsbuild=Join-Path $VsInstallPath 'MSBuild\Current\Bin\MSBuild.exe'
 $vpVstest=Join-Path $VsInstallPath 'Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe'
@@ -28,11 +35,18 @@ try {
         $vpBuildArgs=@((Join-Path $vpRoot 'src\VideoProcessor-Test\VideoProcessor-Test.vcxproj.vcxproj'),
             '/t:Build','/m:4','/p:Configuration=Release','/p:Platform=x64',
             "/p:SolutionDir=$vpRoot\", "/p:MagewellSdkRoot=$MagewellSdkRoot", "/p:VPTestLibplacebo=$vpVariant",'/v:minimal','/nologo')
-        & $vpMsbuild @vpBuildArgs *> (Join-Path $vpOutput "$vpVariant-build.log")
-        $vpBuildExit=$LASTEXITCODE
-        $vpRun=[ordered]@{variant=$vpVariant;buildExit=$vpBuildExit;testExit=$null;binary=$null;sha256=$null;dependencySha256=$null}
+        $vpBuildExit=$null
+        $vpBuildMode='rebuilt'
+        if($vpReusedQualifiedBuild) {
+            $vpBuildMode='reused-qualified-build'
+        } else {
+            & $vpMsbuild @vpBuildArgs *> (Join-Path $vpOutput "$vpVariant-build.log")
+            $vpBuildExit=$LASTEXITCODE
+        }
+        $vpRun=[ordered]@{variant=$vpVariant;buildMode=$vpBuildMode;reusedQualifiedBuild=$vpReusedQualifiedBuild;
+            buildExit=$vpBuildExit;testExit=$null;binary=$null;sha256=$null;dependencySha256=$null}
         $vpRuns+=,$vpRun
-        if($vpBuildExit -ne 0){throw "$vpVariant build failed: $vpBuildExit"}
+        if(!$vpReusedQualifiedBuild -and $vpBuildExit -ne 0){throw "$vpVariant build failed: $vpBuildExit"}
         $vpBin=Join-Path $vpRoot 'x64\Release'
         $vpName='VideoProcessor-Test.dll';$vpDependency='libplacebo-360.dll'
         if($vpVariant -eq 'beta'){$vpBin=Join-Path $vpBin 'tests-beta';$vpName='VideoProcessor-TestBeta.dll';$vpDependency='libplacebo-388.dll'}
@@ -68,9 +82,10 @@ try {
         }
         $vpRun['passed']=$vpResults.Count
     }
+    if($vpReusedQualifiedBuild){$null=Assert-VpRuntimeQualification $vpRoot}
 } finally {
     [pscustomobject]@{schemaVersion=1;sourceCommit=$vpCommit;sourceDirty=$vpDirty;configuration='Release';architecture='x64';
-        classes=$vpClasses;runs=$vpRuns;finished=(Get-Date).ToString('o');
+        reusedQualifiedBuild=$vpReusedQualifiedBuild;classes=$vpClasses;runs=$vpRuns;finished=(Get-Date).ToString('o');
         scope='Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate.'} |
         ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $vpOutput 'motion-renderer-tests.json')
 }

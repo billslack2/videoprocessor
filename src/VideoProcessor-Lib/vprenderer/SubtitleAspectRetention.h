@@ -2,8 +2,29 @@
 #include <SubtitlePreviewMode.h>
 #include <SubtitleCutPaste.h>
 #include <SubtitleBoxLookahead.h>
+#include <SubtitleCurrentPreparedCueCertificate.h>
 #include <cstring>
 #include <vprenderer/AlphaSourceCropPolicy.h>
+
+// Black/Reconstruction use the unshifted native presentation. Apply this mode
+// choice BEFORE evaluation, recovery and admission so the exact submitted pose
+// and its certificate agree. Raw content/FIT/picture evidence remains intact.
+inline AlphaSourceCrop::Input CanonicalSubtitleModeCropInput(
+    AlphaSourceCrop::Input input,SubtitlePreviewMode mode)
+{
+    input.subtitlePresentationMode=mode==SubtitlePreviewMode::BlackBackground
+        ? AlphaSourceCrop::PreparedNativeMode::BLACK
+        : mode==SubtitlePreviewMode::GeneratedGrayBackground
+            ? AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION : AlphaSourceCrop::PreparedNativeMode::NONE;
+    if(SubtitlePreviewOverridesClassicHandling(mode)) {
+        input.verticalTranslationActive=false;
+        input.verticalTranslationPixels=0;
+        input.verticalTranslationConfirmationPending=false;
+        input.verticalTranslationBaseRetentionActive=false;
+        input.verticalTranslationEngageBaseRetentionActive=false;
+    }
+    return input;
+}
 
 // Crop evidence, admission and recovery always run through the shared policy.
 // Moved styles always undo Classic's final same-size picture translation.
@@ -42,7 +63,14 @@ inline bool CanRecordSubtitleOptionalAspectFill(const AlphaSourceCrop::Input& cr
     // Advanced styles have already undone the shared Classic translation.
     // The exact-native check below forbids certifying any remaining shift or
     // expanded viewport; mode alone is never evidence of a native presentation.
-    return (!captionPresentationHeld || fill.retainedSubmittedFill) && fill.applied && presentation.applyCrop &&
+    // The requested advanced policy owns the unshifted native picture even
+    // while its effective shader mode is None. A caption lease still protects
+    // glyph/erasure continuity, but cannot veto recording that actual fill.
+    // Exact native bounds and every normal fill/owner gate remain mandatory.
+    const bool advancedNativePicture=exactNativeBounds &&
+        (crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::BLACK ||
+         crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION);
+    return (!captionPresentationHeld || advancedNativePicture || fill.retainedSubmittedFill) && fill.applied && presentation.applyCrop &&
         !fixedCropAspectConfigured && !nlsRequested && !protectedCaptionFit &&
         !presentation.outwardExpanded &&
         (!presentation.verticallyTranslated ||
@@ -50,6 +78,59 @@ inline bool CanRecordSubtitleOptionalAspectFill(const AlphaSourceCrop::Input& cr
              presentation.owner==AlphaSourceCrop::DecisionOwner::VERTICAL_TRANSLATION)) &&
         !crop.movingPictureTransition && (!recoveryActive || fill.retainedSubmittedFill) &&
         origin==ActivePictureAuthorityOrigin::NATIVE && exactNativeBounds;
+}
+
+// Carry the final optional fill with the exact selected native source. This
+// qualifies presentation only; retained-fill selection is still checked again
+// against the live successful-submission witness before it can be displayed.
+inline AlphaSourceCrop::CropPresentationAdmissionState QualifySubtitleConfiguredNativeFill(
+    AlphaSourceCrop::CropPresentationAdmissionState admission,const AlphaSourceCrop::Input& crop,
+    const AlphaSourceCrop::Decision& presentation,const AlphaSourceCrop::AspectLimitFillDecision& fill,
+    bool captionPresentationHeld,bool unknownCaptionHeld)
+{
+    const bool advanced=crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::BLACK ||
+        crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION;
+    const auto same=[](const ActivePictureBounds& a,const ActivePictureBounds& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+            a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;
+    };
+    // Reusing an already submitted optional fill still selects CURRENT native
+    // pixels. Advanced picture policy has just issued a fresh exact-native
+    // certificate, so qualify the current retained fill as well. No old source
+    // identity, transformed pose or unrecorded rectangle can use this bridge.
+    const bool retainedAdvancedNative=advanced && fill.applied && admission.optionalFillRetained &&
+        admission.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+        admission.sourceGeneration==crop.frameSourceGeneration &&
+        admission.presentationEpoch==crop.framePresentationEpoch &&
+        admission.optionalFillSourceSequence==crop.frameSourceSequence &&
+        same(admission.optionalFillSourceBounds,fill.sourceBounds) &&
+        presentation.owner==AlphaSourceCrop::DecisionOwner::TRUSTED_CROP &&
+        !presentation.verticallyTranslated && !presentation.outwardExpanded &&
+        same(presentation.sourceBounds,crop.geometry) && same(admission.trustedCrop,crop.geometry) &&
+        admission.nativePresentation.available &&
+        admission.nativePresentation.origin==AlphaSourceCrop::NativePresentationOrigin::EXACT_NATIVE &&
+        admission.nativePresentation.sourceGeneration==crop.frameSourceGeneration &&
+        admission.nativePresentation.sourceSequence==crop.frameSourceSequence &&
+        admission.nativePresentation.presentationEpoch==crop.framePresentationEpoch &&
+        same(admission.nativePresentation.nativeBase,crop.geometry) &&
+        same(admission.nativePresentation.approvedBounds,crop.geometry);
+    if(admission.available && admission.acceptedNativeCrop.available &&
+        admission.optionalFillApplied && (!fill.retainedSubmittedFill || retainedAdvancedNative) &&
+        admission.nativePresentation.origin!=AlphaSourceCrop::NativePresentationOrigin::CONFIRMED_TRANSLATION &&
+        admission.nativePresentation.origin!=AlphaSourceCrop::NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL &&
+        !presentation.nativePresentation.captionPreservation.available && !captionPresentationHeld &&
+        (!unknownCaptionHeld || advanced) && same(admission.acceptedNativeCrop.bounds,crop.geometry)) {
+        const auto lease=admission.nativePresentation.captionTranslationMeasurement;
+        const auto mode=admission.nativePresentation.preparedNativeMode;
+        const auto source=admission.nativePresentation.preparedNativeSourceSequence;
+        admission.nativePresentation={true,AlphaSourceCrop::NativePresentationOrigin::CONFIGURED_FILL,
+            admission.acceptedNativeCrop.bounds,fill.applied?fill.sourceBounds:presentation.sourceBounds,
+            crop.frameSourceGeneration,crop.frameSourceSequence,crop.framePresentationEpoch};
+        admission.nativePresentation.captionTranslationMeasurement=lease;
+        admission.nativePresentation.preparedNativeMode=mode;
+        admission.nativePresentation.preparedNativeSourceSequence=source;
+    }
+    return admission;
 }
 
 // Missing analysis does not revoke an already displayed fill. Only a fresh,
@@ -231,6 +312,7 @@ struct QualifiedSubtitlePresentationInput
     const SubtitleBoxResult* accepted = nullptr;
     const SubtitleCutPasteGeometry* composition = nullptr;
     const SubtitleCueContinuation* continuation = nullptr;
+    const SubtitleCurrentPreparedCueCertificate* currentPreparedCue = nullptr;
     ActivePictureBounds physicalBase;
     // Current renderer-owned output authority. A queued worker's geometry hint
     // may predate this source packet even when its measured pixels are current.
@@ -247,6 +329,10 @@ struct QualifiedSubtitlePresentationEvidence
     ActivePictureBounds erasedSourceBounds;
     QualifiedSubtitlePresentationStatus status=QualifiedSubtitlePresentationStatus::Unknown;
     bool qualified = false;
+    // Successful current caption composition is a narrower fact than clean
+    // remaining source bands. It permits only the requested native viewport.
+    bool currentCompositionVerified=false;
+    SubtitlePreviewMode currentCompositionMode=SubtitlePreviewMode::None;
     bool renewsHold=false;
     // Current compositor output only; never native ownership or a renewable lease.
     bool preparedErasureOnly=false;
@@ -319,12 +405,44 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     const int pictureBottom=continuation ? continuation->pictureBottom : observation.pictureBottom;
     if(raw.activePicture.available && raw.activePicture.classification==ActivePictureClassification::FULL_RASTER_TRUSTED)
         return reject("independent-full-raster-picture",QualifiedSubtitlePresentationStatus::Conflict);
+    // Cadence verifies this source's glyphs and actual cleanup rows, then
+    // deliberately strips independent bar/AR authority. An actually prepared
+    // packet may certify only its current erasure output through that proof;
+    // it cannot acquire semantic glyph ownership or renew a submitted lease.
+    const bool currentVerifiedNonlocalCadence=[&] {
+        if(!preparedErasureOnly || !continuation || continuation->localGlyphsOnly || glyphLocal ||
+            !observation.cadenceSkipped || observation.analysisStride!=2 || !observation.pendingRefresh ||
+            observation.analysisRefresh || observation.independentBarAnalysis || observation.barAuthority ||
+            observation.text.workLimit || accepted.workLimit || !continuation->samples ||
+            !std::isfinite(continuation->elapsedMs) || continuation->elapsedMs<=0 || continuation->elapsedMs>250 ||
+            !observation.ink || observation.ink!=continuation->ink ||
+            !continuation->ink->paletteValid || continuation->ink->rawEvidenceComplete)
+            return false;
+        auto previous=continuation->templateIdentity;
+        const auto& current=input.currentIdentity;
+        if(!SameAnalysisFrameIdentity(continuation->previousIdentity,previous) ||
+            !previous.acceptedSequence || current.acceptedSequence<=previous.acceptedSequence ||
+            current.acceptedSequence-previous.acceptedSequence!=1 ||
+            current.sourceFrameNumber<=previous.sourceFrameNumber || current.captureTimestamp<=previous.captureTimestamp)
+            return false;
+        previous.acceptedSequence=current.acceptedSequence;
+        previous.sourceFrameNumber=current.sourceFrameNumber;previous.captureTimestamp=current.captureTimestamp;
+        const auto& display=input.currentDisplayPicture;
+        return SameAnalysisFrameIdentity(previous,current) &&
+            display.AvailableFor(current,source.width,source.height) &&
+            SameAnalysisFrameIdentity(display.identity,current) && SameSubtitlePresentationBounds(display.bounds,base) &&
+            observation.sharedPicture.AvailableFor(current,source.width,source.height) &&
+            SameAnalysisFrameIdentity(observation.sharedPicture.identity,current) &&
+            observation.sharedPicture.Matches(display);
+    }();
+    const bool currentHeldPreparedErasure=preparedErasureOnly && input.currentPreparedCue &&
+        input.currentPreparedCue->Matches(observation,accepted,base);
     if(!SameAnalysisFrameIdentity(observation.identity,input.currentIdentity) ||
         observation.policyGeneration!=input.policyGeneration || observation.continuityGeneration!=input.continuityGeneration ||
-        observation.discontinuity || !observation.analyzed || !observation.barAuthority ||
-        (observation.pendingRefresh && !input.pendingCurrentPixelsVerified) || text.workLimit ||
+        observation.discontinuity || !observation.analyzed || (!observation.barAuthority && !currentVerifiedNonlocalCadence) ||
+        (observation.pendingRefresh && !input.pendingCurrentPixelsVerified && !currentVerifiedNonlocalCadence) || text.workLimit ||
         !text.detected || !text.nearBarEligibilityMeasured || !text.nearBarEligible ||
-        !accepted.detected || (accepted.held && !continuation) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
+        !accepted.detected || (accepted.held && !continuation && !currentHeldPreparedErasure) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
         text.lineCount<1 || text.lineCount>3 || !move.valid)
         return reject("current-caption-proof-unavailable");
     const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
@@ -539,6 +657,10 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     }
     const ActivePictureBounds erased{box.left,box.top,box.right,box.bottom,source.width,source.height,
         double(bw)/(box.bottom-box.top),ActivePictureBounds::BarAxes::NONE};
+    // All current-source/cue/capture/geometry and owned-erasure checks above
+    // passed. Residual UI can still veto cleanup/retention below, independently
+    // of this exact successful caption composition's native viewport permission.
+    result.currentCompositionVerified=true;result.currentCompositionMode=input.mode;
     const auto projected=EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(source,base,raw,erased,0);
     if(!projected.relocatedOverlayExclusionEvaluated)return reject("outside-proof-unavailable");
     if(!projected.excludedBandsPixelSafe)
@@ -571,6 +693,21 @@ inline QualifiedSubtitlePresentationEvidence EvaluatePreparedSubtitlePresentatio
     const QualifiedSubtitlePresentationInput& input)
 {
     return EvaluateSubtitlePresentationEvidence(source,raw,input,true);
+}
+inline AlphaSourceCrop::CurrentSubtitleComposition QualifyCurrentSubtitleCompositionPresentation(
+    const QualifiedSubtitlePresentationEvidence& proof,
+    const ActivePictureFrameIdentity& selectedIdentity,const ActivePictureBounds& nativeBase,
+    SubtitlePreviewMode mode)
+{
+    AlphaSourceCrop::CurrentSubtitleComposition result;
+    if(!proof.currentCompositionVerified || proof.currentCompositionMode!=mode ||
+        !SubtitlePreviewOverridesClassicHandling(mode) ||
+        !SameAnalysisFrameIdentity(proof.identity,selectedIdentity) ||
+        !SameSubtitlePresentationBounds(proof.physicalBase,nativeBase))return result;
+    result.available=true;result.identity=selectedIdentity;result.nativeBase=nativeBase;
+    result.mode=mode==SubtitlePreviewMode::BlackBackground?AlphaSourceCrop::PreparedNativeMode::BLACK:
+        AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION;
+    return result;
 }
 inline AlphaSourceCrop::PreparedSubtitlePresentation QualifyPreparedSubtitleCropPresentation(
     const QualifiedSubtitlePresentationEvidence& proof,
@@ -704,6 +841,16 @@ inline QualifiedSubtitleUnknownHoldDecision EvaluateQualifiedSubtitleUnknownHold
         (raw.activePicture.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
          !SameSubtitlePresentationBounds(raw.activePicture.trustedBounds,input.physicalBase))))
         return fail("unknown-hold-independent-picture-change");
+    // This source has no current qualified erasure. An earlier erased footprint
+    // can test independent contradictions, but cannot make its current raw
+    // pixels disappear from the output. Only completed native-band inspection
+    // of this exact current base may retain the old native viewport.
+    if(!raw.rawBandSafetyEvaluated ||
+        !SameSubtitlePresentationBounds(raw.rawBandSafetyBase,input.physicalBase))
+        return fail("unknown-hold-current-raw-output-unavailable");
+    if(!raw.rawBandLeftSafe || !raw.rawBandTopSafe ||
+        !raw.rawBandRightSafe || !raw.rawBandBottomSafe)
+        return fail("unknown-hold-current-raw-output-occupied");
     // The old footprint is used only to test for independent contradictions.
     // Neither this temporary result nor the old footprint is published as
     // current pixel safety, capture coverage, or cleanup authority.

@@ -37,16 +37,21 @@ public:
         OutputOsdTelemetryCache cache;
         std::mutex render;
         BusyRenderer busy(render);
-        DetectedPictureAspect aspect;
-        aspect.sourceGeneration=9; aspect.ratio=1.66; aspect.available=true;
-        aspect.inUseRatio=2.39; aspect.inUseAvailable=true; aspect.inUseState=PictureAspectUse::HELD;
+        PictureAspectTelemetry telemetry;
+        telemetry.Observe(9,10,1.66,true,false);
+        telemetry.Submitted(9,10,2.39,16.0/9.0,true,true);
+        telemetry.Observe(9,11,1.67,true,false);
+        const auto aspect=telemetry.Read();
         cache.PublishAspect(aspect);
         cache.InvalidateOutput();
         const auto read=cache.ReadAspect();
         Assert::AreEqual(2.39,read.inUseRatio);
-        Assert::AreEqual(1.66,read.ratio);
+        Assert::AreEqual(1.67,read.ratio);
+        Assert::AreEqual(1.66,read.stableDetection.ratio);
+        Assert::AreEqual(uint64_t(10),read.stableDetection.acceptedSequence);
+        Assert::IsTrue(read.stableDetection.available && read.stableDetection.held);
         cache.Retire(); cache.PublishAspect(aspect);
-        Assert::IsFalse(cache.ReadAspect().available || cache.ReadAspect().inUseAvailable);
+        Assert::IsFalse(cache.ReadAspect().available || cache.ReadAspect().inUseAvailable || cache.ReadAspect().stableDetection.available);
     }
     TEST_METHOD(ColdCacheIsAuthoritativeEmptyUnderRenderContention)
     {

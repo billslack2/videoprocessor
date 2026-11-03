@@ -1,4 +1,5 @@
 #pragma once
+#include <AnalysisCompletionSignal.h>
 #include <atomic>
 #include <chrono>
 #include <Windows.h>
@@ -10,14 +11,16 @@
 #include <mutex>
 #include <thread>
 
-// Optional immutable measurements only. The presentation thread never waits for
-// a job or for this worker's mutex. Each slot belongs to one captured frame.
+// Immutable measurements. A bounded current-source preparation stage may await
+// completion notifications; it never waits on this worker's mutex. Each slot
+// belongs to one captured frame.
 template<class Result, size_t Capacity = 8>
 class OptionalAnalysisWorker {
     static_assert(Capacity>0,"Optional work queue must be bounded and nonempty");
 public:
     struct Slot {
         std::shared_ptr<const Result> ready;
+        std::shared_ptr<AnalysisCompletionSignal> completion;
         std::atomic<bool> pending{false};
     };
     struct Metrics {
@@ -40,7 +43,8 @@ public:
     }
     ~OptionalAnalysisWorker() { Stop(); }
     bool Submit(const std::shared_ptr<Slot>& slot, uint64_t generation,
-        uint64_t sequence, uint64_t minimumSequence, std::function<Result()> measure) {
+        uint64_t sequence, uint64_t minimumSequence, std::function<Result()> measure,
+        std::function<void(std::shared_ptr<const Result>)> publish = {}) {
         if (!slot || !generation || sequence < minimumSequence) return false;
         if(slot->pending.exchange(true)){++duplicate;return false;}
         std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);
@@ -62,7 +66,7 @@ public:
             // already outside this queue and is never interrupted/replaced.
             auto where=jobs.begin();
             while (where!=jobs.end() && where->sequence<=sequence) ++where;
-            jobs.insert(where,{slot,generation,sequence,std::move(measure),NowUs()});
+            jobs.insert(where,{slot,generation,sequence,std::move(measure),NowUs(),std::move(publish)});
             if (replaceFurthest) {
                 // Insert successfully before discarding existing work. A nearer
                 // source must not be rejected merely because future work is full.
@@ -89,7 +93,7 @@ public:
         if (worker.joinable()) worker.join();
     }
 private:
-    struct Job { std::shared_ptr<Slot> slot; uint64_t generation,sequence; std::function<Result()> measure; uint64_t enqueuedUs=0; };
+    struct Job { std::shared_ptr<Slot> slot; uint64_t generation,sequence; std::function<Result()> measure; uint64_t enqueuedUs=0; std::function<void(std::shared_ptr<const Result>)> publish; };
     std::atomic<uint64_t> submitted{0},completed{0},failed{0},duplicate{0},contended{0},full{0},cancelled{0};
     std::atomic<uint64_t> queueUs{0},wallUs{0},cpuUs{0},cpuSamples{0},queuePeakUs{0},wallPeakUs{0};
     std::atomic<uint64_t> queued{0},queueHighWater{0},activeStartUs{0};
@@ -129,7 +133,8 @@ private:
             uint64_t cpuStart=0,cpuEnd=0;const bool cpuValid=CpuUs(cpuStart);
             try {
                 std::shared_ptr<const Result> result = std::make_shared<Result>(job.measure());
-                std::atomic_store(&job.slot->ready,std::move(result));
+                if(job.publish)job.publish(std::move(result));
+                else std::atomic_store(&job.slot->ready,std::move(result));
             } catch (...) { ++failed; /* Unavailable optional evidence never fails playback. */ }
             const uint64_t elapsed=NowUs()-start;
             queueUs.fetch_add(wait,std::memory_order_relaxed);Peak(queuePeakUs,wait);
@@ -139,6 +144,7 @@ private:
             }
             activeStartUs.store(0,std::memory_order_relaxed);++completed;
             job.slot->pending.store(false);
+            if(job.slot->completion)job.slot->completion->Notify();
         }
     }
 };

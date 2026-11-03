@@ -1,16 +1,22 @@
 #include <pch.h>
 
 #include <ActivePictureAnalyzer.h>
+#include <SourcePictureDetector.h>
 
 void ActivePictureAnalyzer::Reset()
 {
 	m_transition.Reset();
+	m_sourceGeneration = 0;
 }
 
 ActivePictureAnalyzerResult ActivePictureAnalyzer::Analyze(
 	const ActivePictureAnalyzerInput& input)
 {
 	ActivePictureAnalyzerResult result;
+	if (m_sourceGeneration != input.sourceGeneration) {
+		Reset();
+		m_sourceGeneration = input.sourceGeneration;
+	}
 	m_transition.SetStableGeometryDeadbandPercent(
 		ActivePictureTransitionModel::GetRuntimeStableGeometryDeadbandPercent());
 	if (input.frame.width <= 0 || input.frame.height <= 0 ||
@@ -18,27 +24,29 @@ ActivePictureAnalyzerResult ActivePictureAnalyzer::Analyze(
 		return result;
 
 	result.analyzed = true;
+    AnalysisLumaSource source{input.frame.data,input.frame.dataBytes,input.frame.width,input.frame.height,
+        input.frame.lumaPitchBytes,input.frame.chromaPitchBytes,AnalysisLumaFormat::P010,
+        VideoFrameEncoding::UNKNOWN,ColorSpace::UNKNOWN,input.sourceGeneration};
+
 	if (!input.frame.data)
 	{
-		result.evidence.reason = "P010 sample pointer is unavailable";
-		result.decision = m_transition.Observe(
-			{ {}, input.frameNumber, false,
-			ActivePictureClassification::UNAVAILABLE, input.framesPerSecond });
+        result.evidence=MissingSourcePictureEvidence(source,"P010 sample pointer is unavailable");
+        result.decision=m_transition.Observe(MakeActivePictureObservation(
+            result.evidence,input.frameNumber,input.framesPerSecond));
 		return result;
 	}
 
-	result.evidence = ExtractP010ActivePictureEvidence(input.frame);
-	ActivePictureObservation observation;
-	observation.frameNumber = input.frameNumber;
-	observation.available = result.evidence.available;
-	observation.framesPerSecond = input.framesPerSecond;
-	if (result.evidence.available)
-	{
-		observation.bounds = result.evidence.classification ==
-			ActivePictureClassification::BAR_CROP_TRUSTED ?
-			result.evidence.trustedBounds : result.evidence.proposedBounds;
-		observation.classification = result.evidence.classification;
-	}
-	result.decision = m_transition.Observe(observation);
+    ActivePictureFrameIdentity identity;
+    identity.transportGeneration=identity.sourceFormatGeneration=input.sourceGeneration;
+    identity.acceptedSequence=identity.sourceFrameNumber=input.frameNumber;
+    // This adapter always consumes converted P010, before subtitle relocation.
+    identity.analysisDomainKey=1;
+    // The conversion worker owns the live sample during this synchronous call.
+    // Do not retain it in the immutable cache: relocation may mutate it afterward.
+    result.evidence=DetectPreparedSourcePictureBounded(source,identity).evidence;
+    result.evidence.currentSourceIdentity=identity;
+    result.evidence.currentSourceIdentityAvailable=true;
+    result.decision=m_transition.Observe(MakeActivePictureObservation(
+        result.evidence,input.frameNumber,input.framesPerSecond,&identity));
 	return result;
 }

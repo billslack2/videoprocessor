@@ -1,0 +1,418 @@
+# Source-boundary review, 2026-10-31
+
+Five independent Luna xhigh research passes reviewed spatial detection, lookahead,
+known/remembered ratios, adversarial scenes, and integration with the existing
+source-evidence pipeline. This document records the design decision, not a claim
+that a new runtime has passed full qualification or manual playback.
+
+## Decision
+
+Evolve the existing source-pixel measurement and immutable source-evidence packet.
+Use spatial shape and contrast relative to a locally measured matte. A small
+amount of noise, chroma variation, a raised black floor, or localized subtitle/UI
+pixels must not invalidate an otherwise well-supported border. Apply the same
+principle to SDR, HDR and decoded Dolby Vision; no DV-only exemption is warranted.
+
+The working observer fits each column's reference from three source rows and
+checks two additional rows. It masks contaminated columns and reuses the mask
+through coarse nomination, refinement and inward continuity checks. Acceptance
+requires broad separated support. A raster-sized nomination remains a search
+hint: it must not prevent finding encoded bars inside the input raster.
+
+A brighter interior gradient is not the picture boundary. The first sustained
+source departure must be preserved; a faint coherent collar or competing border
+can require uncertainty. Short detached bar graphics must not become boundaries.
+The measured physical rectangle and conservative pixel-preservation envelope
+remain distinct. An observer estimate does not independently authorize a crop.
+The optional physical observer retains its existing two-millisecond budget.
+
+## Dynamic transitions and useful priors
+
+Already available lookahead can corroborate a change without another scan timer
+or fixed real-time wait. Existing queued depths are three frames through 30 Hz
+and five above 30 Hz; these are capacity limits, not a three-of-five vote or a
+mandatory delay. Current exact source identities, generation and continuity must
+match. Rewind, seek and source replacement invalidate incompatible evidence.
+The 24 distinct displayed frames in renderer tests are an observation window,
+never a runtime transition requirement.
+
+Known ratios and remembered exact rectangles should rank candidate boundaries
+and focus pixel work. They do not replace source evidence or round a measurement
+to a screen/standard ratio. A current visible edge can anchor a candidate for an
+occluded opposite edge; current pixel checks must still validate its proposed
+extent and reject contradictions. Broad real picture outside the old crop can
+withdraw old authority promptly even before every new boundary is exact.
+
+Existing remembered-family code retains exact measured representatives, learns
+from qualified native geometry across scenes, and checks current pixels on recall.
+Its three-family capacity and common-ratio learning eligibility are limitations
+identified by the review. Expanding those is a follow-up experiment with explicit
+nonstandard-ratio, stale-history and competing-edge tests, not part of this
+observer patch. Caption geometry must never train picture history.
+
+Above 30 Hz, an unavailable analysis input may retain one previously submitted
+whole image, with the original displayed identity, geometry, caption and expiry.
+It cannot manufacture new measurement votes or renew a cue. Shader warmup is a
+separate startup state: the operator permits caption clipping while compilation
+is pending. Any warmup-image reuse must preserve that original Pending provenance
+and must not weaken post-composition checks.
+
+## External comparisons
+
+[FFmpeg cropdetect](https://ffmpeg.org/doxygen/8.0/vf__cropdetect_8c_source.html)
+provides scanline aggregation, outlier handling and an alternative edge/motion
+mode. These are useful comparison points; HDMI captures do not provide decoder
+motion-vector side data. Its output rounding or temporal defaults are not VP
+requirements.
+
+[Hyperion's detector](https://raw.githubusercontent.com/hyperion-project/hyperion.ng/master/include/blackborder/BlackBorderDetector.h)
+uses multiple scanlines and includes an OSD-oriented mode. Distributed sampling
+is relevant, but a lighting-oriented symmetric border result cannot substitute
+for VP's independently measured source coordinates and picture-preservation proof.
+
+Our inference from these comparisons and the existing VP architecture is that a
+bounded spatial estimator with robust reference strips, explicit occlusion masks,
+source-bound lookahead and verified candidate priors is a better fit than importing
+a generic crop filter or adding a long temporal majority gate.
+
+## Required evidence
+
+Keep failing-first tests for noisy/raised/tinted matte across native formats and
+ranges; localized captions/UI; raster-hint bar acquisition; faint picture collars;
+short detached graphics; asymmetric, pillarbox and windowbox geometry; exact
+nonstandard ratios; source resets; and bounded cancellation. Replay supplied
+native captures separately from synthetic controls and report actual frame counts.
+
+Actual renderer checks must cover both shipped dependencies, 23.976/24 and
+59.94/60 input cadence where applicable, source ownership, original whole-image
+repeat and fresh successor, native-boundary independence from captions, and
+transition output geometry. Warm-cache iteration does not replace cold shader
+coverage. Partial evidence cannot issue a full runtime qualification receipt.
+
+## Native validation checkpoint, 2026-11-01
+
+All 837 mandatory native methods pass in run 20261031-235938-d9be7b97,
+including all 64 earlier native captured frames. That set measures source rows
+263..1897 at 3840x2160 (2.3500611995:1), retaining the distinct 254..1906 guard.
+All 56 newer paused-capture frames also pass in 20261101-000123-67b138bc:
+275..1884 (2.3865755127:1), retaining their recorded 274..1884 guard. No standard
+ratio, screen aspect or symmetric rounding supplied either measurement.
+
+Observer-only replay cost, excluding file I/O, averaged 0.3431 ms (peak 0.5358)
+for the 64-frame set and 0.3096 ms (peak 0.5288) for the 56-frame set. These are
+controlled replay measurements, not a guarantee of live scheduling latency.
+The optional two-millisecond cancellation budget remains unchanged.
+
+The supplied 95-frame V210 full-raster set has a separate dim-edge uncertainty.
+Its left-edge profile is spatially structured but does not meet the current
+terminal brightness margin. A texture/coherence fallback needs adversarial
+raised and asymmetric matte tests before implementation; this patch does not
+claim that case resolved. The source capture also postdates the screenshot and
+must not be used as pixel proof of that earlier instant.
+
+Actual renderer qualification, cold shader preparation and dual-dependency GPU
+checks remain separate from this native checkpoint. No new live playback or
+full qualification is claimed by these results.
+
+## Owned lookahead and runtime validation follow-up
+
+The full a2326513 run built all six matched Release projects, then passed
+848/851 Standard tests; Beta was not reached. One failure was fixture provenance
+leaking across reused renderer addresses. Two exposed startup gaps where queue
+retirement or picture-snapshot rebinding discarded useful exact-source subtitle
+scans and future confirmation before the first cue existed.
+
+The repair retains only producer-owned prepared scans and recomputes confirmation
+from current and following pixels. A typed timeline witness allows complete exact
+scans across verified retirement of older queue entries; it clears obsolete AR
+proof and never renews caption expiry or restores native crop authority. All843
+native methods passed before the storage refactor, including64/64 captured frames.
+
+The first six-case renderer run aborted with stack-overflow exit0xC00000FD and
+noTRX. New nested buffers have been moved to heap-owned workspaces and an explicit
+output-reference resolver. Measured object sizes are6992bytes per observation,
+60512bytes per preview and55936bytes per eight-observation array. No matching
+crash dump exists, so the exact faulting call remains unconfirmed. Five focused
+native controls pass after this refactor, including the production heap path.
+
+A new mandatory test also proves that a composed-output flag alone can admit a
+partial two-line caption. Persistent three-line renderer fixtures now require a
+matching preceding subtitle-output record with all three raw and accepted lines.
+Repeated images must use their original selected source's proof. The manifest now
+requires844native methods. Actual renderer, full cold-cache and dual GPU/cue
+validation are still pending for this candidate; no deployment is claimed here.
+
+The separate dim-full-raster experiment measured three of95V210 frames. The
+proposed local texture continuation supplied zero extra votes, and its broad
+inward-departure veto fired on real picture detail. That heuristic was rejected
+without implementation; the95-frame uncertainty and visual transition flash
+remain open.
+
+## Completed-result harvest checkpoint
+
+All845mandatory native methods pass in20261101-011054-8bc2db41. The new worker/
+resolver control reproduces an early two-observation prefix, then reads a third
+completed source and combines it with the actual raw predecessor to preserve all
+three cue lines. It submits no new work, retires no source and keeps the existing
+short-window false-positive checks. Missing, partial, foreign and changed-context
+futures cannot manufacture confirmation; a shorter late read cannot erase a
+stronger still-owned prefix.
+
+The renderer now performs this completed-results-only harvest after native
+lookahead and before dequeue, while the original source snapshots remain owned.
+It uses the same producer and final ownership checks, without an extra wait,
+conversion, pixel scan, timer or cue-expiry extension.
+
+The corrected actual oracle uses harness callback order and the selected input's
+timeline context, matching fields that the diagnostic producer actually emits.
+Against the unchanged42ce1661 runtime it passes3/6 focused cases and reproduces
+one partial-caption output plus two startup gaps. Actual validation of the late
+harvest remains next; no new deployment or full qualification is claimed.
+
+## Bounded raw subtitle history checkpoint
+
+The completed-result harvest at d4e08b4c passes four of six focused actual
+renderer cases (20261101-011239-342375d3). The two remaining failures expose
+complete current raw scans with an insufficient ready future horizon. Older
+independently scanned sources already existed, but only one predecessor was
+retained for crowded three-line confirmation.
+
+The presentation now retains at most three original raw predecessors and combines
+them with current and already-ready future scans. The existing four-distinct-source
+pixel, glyph and backing checks remain mandatory. Only current geometry is
+promoted; history never supplies output bounds, native AR authority or a renewed
+cue lease. This adds no runtime wait or analysis submission. Unknown inputs,
+pending work, gaps, context changes and changed same-source interpretations clear
+the chain; repeated images and duplicate calls add no votes.
+
+Both short-horizon regressions failed before implementation. All 848 native
+methods then passed in 20261101-012259-b10277a7. Independent review found an
+omitted duplicate-backing comparison; expanded controls reproduced that failure
+in 20261101-012857-8fdf0069 and pass after repair in
+20261101-012938-d81cd4af. The duplicate test covers 17 lifecycle cases, including
+backing-edge coordinates/support and measured/proven panel metadata. Actual
+renderer and full cold-cache validation of this final candidate remain next.
+
+## Worker scheduling and changed-plane retry checkpoint
+
+The ceb7e211 matched Release run passes five of six actual renderer cases
+(20261101-013042-c237da79). The remaining Beta Generated failure follows queue
+recovery into an unfinished source. Its trace also shows two concurrent scans of
+the same source after native geometry becomes available, consuming both worker
+slots. Changing queue recovery or extending subtitle expiry is not justified.
+
+Pending and active raw scans now coalesce an exact source/settings/policy/
+continuity request when its picture plane becomes available. The original job
+key and closure stay immutable. A completed raw result may satisfy that new plane
+only with conclusive independent bars, complete searches and immutable ink.
+Complete caption absence is valid evidence; incomplete, work-limited or dependent
+results cause a miss so the canonical scan can run. Same-key partial observations
+remain observable. No new wait, source vote or AR authority is introduced.
+
+Valid-domain dispatch regressions fail with the old two-job behavior in
+20261101-014136-4cbd3872. The wider run then exposed incomplete-result retry
+suppression, reproduced in 20261101-014225-a818df00. All 850 mandatory native
+methods pass after both repairs in 20261101-014730-4c362151, including 27 work-key
+mismatch controls and a 15-case complete/incomplete-result matrix. The legacy
+stale-plane test still rejects dependent results and verifies that distinct
+available planes execute separately. Actual renderer and cold qualification of
+this final worker change remain pending at this checkpoint.
+
+## Cold first-Ready acquisition and test-iteration checkpoint
+
+The clean d57a5ec9 candidate passed all six actual renderer repair cases and
+217 GPU/cue tests on each dependency. Full fresh-cache qualification then passed
+863/864 Standard methods; the Unknown-input case exposed a distinct first-Ready
+failure: source 29 had a complete raw three-line scan but lacked four-source cue
+acquisition. Raw analysis completion was incorrectly treated as display readiness.
+
+The existing single-input warmup bridge now tests cue acquisition on a heap copy
+of the tracker before mutating live presentation. It retains an independently
+measured consumed input in RAW history only after successful original-image
+repeat; the repeated image grants no vote, cue renewal or native AR authority.
+An exact-current proven native AR change vetoes this new fallback. No warmup
+lease extension, four-source threshold relaxation or new runtime wait is added.
+
+The acquisition and handoff regressions fail before implementation in
+20261101-015559-298f571d. All 854 native contracts pass after implementation in
+20261101-015836-746d5486. Actual renderer/cold qualification remains pending.
+
+The broad GPU baseline took approximately 24 minutes per dependency. Correctness
+fixtures now share bounded compiled-program bytes across otherwise fresh devices,
+renderers and resources. Dedicated cold-cache MotionRendererTests remain isolated.
+A new GPU regression checks program reuse and actual composition pixels. This
+speed change is implemented but not yet built or benchmarked at this checkpoint.
+
+## Long cold-run capture-fidelity correction
+
+Candidate47ea8de3 full qualification passed865/868 Standard methods, with three
+advanced first-Ready failures; the same binaries passed those three in a short
+warm diagnostic. Failure-only QPC telemetry then exposed a separate harness
+problem during a long cold Unknown-input run. Its producer delivered4219 inputs
+over110963ms while their nominal timestamps covered70370ms. Whole-history copies
+in drain and caption-proof checks grew to36–49ms per pump, slowing declared59.94Hz
+input to approximately38Hz. The late injected Unknown correctly failed the
+renderer age limit (58.606ms versus41.708ms); extending that limit is unjustified.
+
+The harness now consumes only unread callback records and indexes caption proof
+records by original renderer/generation/source. The strict source, three-line,
+original-repeat-cutoff and latest-proof oracle is unchanged. Full diagnostic
+history remains available on failure. A native regression compares indexed and
+full-history results, including noise, foreign sources and later partial attempts.
+Compact success/failure summaries expose actual arrival rate. This repairs test
+fidelity without changing runtime pacing or granting additional warmup grace.
+A speculative prefetch gate was archived without production implementation.
+
+The shared compiled-program cache's fresh-device composition-pixel test passed
+on both pinned dependencies (approximately45seconds per cold isolated probe).
+Broad-suite speed and final cold runtime qualification remain unmeasured at this
+checkpoint. No deployment beyondced983fd is claimed.
+
+The corrected observer passes all855 native contracts in
+20261101-022240-3d9f9eb5. Its cold actual Unknown-input test passes at measured
+59.9417Hz across5719inputs (95392.8ms actual versus95395.3ms nominal), and the
+60Hz phase also passes. This confirms the prior long-run age failure was caused
+by instrumentation overhead. Black and Generated first-Ready cases still fail
+at measured59.97/60.68Hz; these remain runtime failures requiring investigation.
+The diagnostic is recorded under incremental-harness-cold-three with exact
+unchanged Release renderer and new harness hashes. No full qualification claimed.
+
+## Late raw-source evidence loss reproduced
+
+Faithfully paced failures establish complete measured predecessor chains before
+current consumption. Black sources 23/24/25 complete at callback ordinals
+627/635/701 before current 26 completes at 704 and is read at 706. Generated
+sources 15/16/17 complete at 444/479/483 before current 18 completes at 521;
+15 and 16 are excluded from current-ready storage after expiry. Those exclusions
+are correct for current display, but their genuine raw observations were lost to
+four-source confirmation. Repeating source 16 or 24 adds no measurement vote.
+
+Four new regressions fail before repair in 20261101-023636-2ae75ea2. They cover
+late completion after current-ready expiry, a newer incomplete interpretation
+followed by older out-of-order completion, current acquisition from real measured
+predecessors, and withdrawal from both raw-history caches. The repair under test
+uses a bounded raw-only archive and a worker-issued current-source snapshot;
+current-ready expiry, native authority, cue leases and the existing current-pixel
+four-source proof remain separate. No further wait or timing grace is proposed.
+
+The isolated Standard subtitle shader class now passes all 24 cases in 209.63
+seconds, including the new fresh-device program-reuse/pixel assertion. The prior
+23-case method sum was 1026.68 seconds: approximately 4.9 times faster for this
+class. This is not a full-suite timing claim. Dedicated cold Motion fixtures keep
+their private caches, and full dual-dependency qualification remains pending.
+
+All 859 mandatory native contracts pass after implementation in
+20261101-024510-29ee90a7. The worker retains at most three expired raw observations,
+with 16 MiB per-entry and 48 MiB aggregate limits, alongside existing ready facts.
+Accepted-job revisions and tombstones prevent a newer incomplete interpretation
+from being superseded by an older completion. Querying history never makes an
+expired result current-ready. Copied shared-picture rebinding requires the
+original independent physical border measurement to agree; original source
+coordinates and ink remain intact. Context changes preserve already dispatched
+work in the matching new context while withdrawing incompatible history.
+
+The worker-issued snapshot is bound to the actual current ink owner and context.
+Import atomically replaces both raw-history paths and does not acquire a cue,
+renew expiry or publish native geometry. Renderer harvest runs before the warmup
+trial and immediately before actual consumption, using the existing four-source
+pixel proof. Independent review confirmed serialized Submit/Harvest wiring and
+found no additional blocker. Matched actual renderer and full qualification are
+next; the installed runtime remains unchanged at this checkpoint.
+
+
+## Queue-only duplicate work and held-seed loss
+
+The a1a71892 cold six-case run (20261101-024708-83f08457) passed five cases.
+Standard Black passed its long 59.94 Hz phase, then failed at 60 Hz after
+successful three-line composition. Queue retirement moved continuity 6 to 7.
+Original source 21/22/23 scans were readable through typed ownership, yet new
+continuity jobs scanned those same sources again, consuming about 82 ms of CPU
+work and starving later current measurements. Held sources 22/23 also cleared
+the genuine source 21 pending seed when future grouping was incomplete.
+
+The new worker path suppresses duplicate work only for exact-source jobs whose
+queue owner supplies the existing backlog witness. Original closures, keys and
+READY admission remain unchanged. A completion race coalesces only if the strict
+copied-result read path can return a complete independent scan; incomplete
+results still permit a canonical retry. Held-current proof may preserve the
+original seed and samples, but cannot advance its source or renew its expiry.
+
+Both positive regressions fail before implementation in
+20261101-030420-33678f75; negative ownership/proof controls already pass. All
+863 mandatory native contracts pass after the initial implementation in
+20261101-031111-100e44fa. Independent review additionally requested an expanded
+caption-backing negative case before freezing the candidate for renderer tests.
+The installed runtime remains unchanged; this is not full qualification.
+
+The additional backing case fails as predicted in
+20261101-031424-c352073e: an authentic current glyph certificate can coexist with
+a larger current caption card, whose new outer area was absent from the original
+seed samples. Preserving that seed would retain obsolete capture geometry. The
+repair therefore requires original accepted backing to match current raw backing
+before a held cue can preserve pending authority. This is independent of native
+AR tolerance and does not change border detection thresholds.
+
+All 864 mandatory native contracts pass with the final backing guard in
+20261101-031602-3df6ee2f. Stable held 22/23 retains original seed 21, current
+pending pixels at 25 are reverified, and 27 expires against the original budget.
+Changed backing, missing or foreign proof, partial current rows and changed
+native/source context withdraw the seed. Matched cold actual-renderer validation
+and the required dual-dependency GPU/full qualification remain pending.
+
+
+## Clear native scope and full-raster menu observations (2026-11-01)
+
+The installed 58ecfb58 runtime completed full qualification (878/878 Standard
+and 878/878 Beta) and both broad subtitle GPU suites (220/220 each). The new
+user captures nevertheless exposed physical-boundary observation failures;
+held presentation geometry did not establish correct current detection.
+
+The paused scope capture analysis-20261101-070120-48576-1 contains 64 decoded
+DV frames with physical picture [0,263,3840,1897], exactly 3840/1634 or
+2.3500611995:1. Its independent current terminal contacts already passed. A
+smooth gradient on the right-hand scene was fitted as hypothetical matte, and
+a coarse weak departure vetoed the whole observation before fine validation.
+None of the 64 frames had a qualifying abrupt edge at that false nomination.
+The observer now distinguishes a real faint first-picture collar from a smooth
+interior gradient before vetoing independently proved raster contact. Real
+faint collars retain their original protection, including sharp and smooth
+interiors, all four directions, raised levels and patterned matte.
+
+The moving Netflix menu capture analysis-20261101-071454-48576-2 contains 92
+native V210 frames. The source black floor is 76; the discard threshold is 100.
+Physical terminal presence previously added its 16-code contrast to the discard
+threshold (116), suppressing legitimate dark picture and footer-card pixels.
+It now measures that contrast from the actual source floor (92), consistently
+with independently measured paired matte. The 12-vote/three-region terminal
+support requirement remains unchanged. No platform, title, display size, or
+standard aspect ratio supplies the measurement.
+
+Two menu frames also admitted the bright navigation panel as the whole picture.
+Independent broad sustained picture in the proposed exterior now contradicts
+that false matte. A weak card edge may be reinterpreted only with distributed
+stable structure AND independent persistent source-floor picture evidence,
+full-source search bounds, no previously measured internal edge and no
+qualified/unresolved matte conflict. Structure alone is insufficient: the added
+patterned-matte regression reproduced an incorrect 80-to-84 pixel edge before
+this independent-evidence guard. All 32 combinations now preserve the true
+first edge or remain unknown, without promoting the stronger interior edge.
+
+The five added mandatory regressions raise the native minimum to 869. All
+869 pass in run 20261101-075616-02c51e0b, including 92/92 current native menu
+frames. The remaining frozen-binary replays pass 64/64 current scope, 64/64
+original DV, 56/56 earlier paused DV and 95/95 full-raster sun/star frames:
+371/371 captured frames in total. Expected rectangles are independently
+measured source coordinates; private movie pixels remain outside Git.
+Evidence is in E:/codex/diagnostics/netflix-basic-detection-20261101, including
+RED runs, native measurements and guarded-replays. Observer-only menu timing
+was 30.4184 ms across 92 frames, peak 1.1587 ms; this is not an end-to-end live
+latency guarantee or a claim about every possible scene.
+
+Production changes are confined to the CPU physical-boundary observer. They do
+not change subtitle ink, backing, retention, temporal ownership, shaders,
+source uploads, crop authority or downstream fitting, and add no temporal
+confirmation delay. Full matched x64 Release host/Standard/Beta qualification
+and live presentation verification are pending at this source checkpoint.
+The broad GPU suite above describes the prior installed commit, not this new
+candidate; its unchanged paths are covered again by the mandatory actual
+presentation matrix during new qualification.

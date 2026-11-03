@@ -54,6 +54,7 @@ bool SameLookaheadObservation(
 	return left.frameNumber == right.frameNumber &&
 		left.available == right.available &&
 		left.classification == right.classification &&
+        left.detector == right.detector &&
 		left.axisEvidence == right.axisEvidence &&
 		left.transitionDeferred == right.transitionDeferred &&
 		SameTrustedBounds(left.bounds, right.bounds);
@@ -223,6 +224,7 @@ bool IsExactInwardActivePictureAssociationGeometry(
 
 void ActivePictureDecisionTimeline::AdvanceContinuityGeneration()
 {
+    m_verificationBaseline.reset();
 	++m_continuityGeneration;
 	if (m_continuityGeneration == 0)
 		++m_continuityGeneration;
@@ -231,7 +233,7 @@ void ActivePictureDecisionTimeline::AdvanceContinuityGeneration()
 
 void ActivePictureDecisionTimeline::Reset(uint64_t transportGeneration)
 {
-	m_transition.Reset();
+	m_verificationBaseline.reset();m_transition.Reset();
 	m_observed.clear();
 	m_lookaheadEvidence.clear();
 	m_accepted.clear();
@@ -262,7 +264,7 @@ bool ActivePictureDecisionTimeline::TrackAcceptedFrame(
 		if (identity.sourceFormatGeneration !=
 			m_lastAcceptedIdentity.sourceFormatGeneration)
 		{
-			m_transition.Reset();
+			m_verificationBaseline.reset();m_transition.Reset();
 			m_observed.clear();
 			m_lookaheadEvidence.clear();
 			RecordContinuityBoundary(identity.acceptedSequence);
@@ -292,6 +294,8 @@ void ActivePictureDecisionTimeline::MarkConsumed(
 {
 	if (identity.transportGeneration != m_transportGeneration)
 		return;
+    if(m_verificationBaseline && identity.acceptedSequence>=m_verificationIdentity.acceptedSequence)
+        m_verificationBaseline.reset();
 	m_lastConsumedSequence = std::max(
 		m_lastConsumedSequence, identity.acceptedSequence);
 	if (identity.acceptedSequence &&
@@ -403,6 +407,67 @@ bool ActivePictureDecisionTimeline::OnlyBacklogRetirementBetween(
     return false;
 }
 
+OwnedScanBacklogWitness ActivePictureDecisionTimeline::QualifyOwnedScanBacklogWitness(
+    const ActivePictureFrameIdentity& current,uint64_t beforeContinuity,
+    uint64_t afterContinuity) const
+{
+    OwnedScanBacklogWitness proof;
+    if(!beforeContinuity || !afterContinuity || beforeContinuity>=afterContinuity ||
+        afterContinuity!=m_continuityGeneration || !m_lookaheadPolicyGeneration ||
+        current.transportGeneration!=m_transportGeneration || !current.acceptedSequence ||
+        !current.sourceFrameNumber || !current.captureTimestamp || !current.sourceFormatGeneration ||
+        !current.rendererGeneration || !current.analysisDomainKey)
+        return proof;
+    const auto compatibleDomain=[&current](const ActivePictureFrameIdentity& recorded) {
+        // Queue identities may precede construction of the decoded CPU view.
+        // The issued token binds the full supplied view; consumers must also
+        // verify exact immutable scan ownership and interpretation.
+        return !recorded.analysisDomainKey || recorded.analysisDomainKey==current.analysisDomainKey;
+    };
+    bool owned=false;
+    if(current.acceptedSequence>m_lastConsumedSequence) {
+        AcceptedIdentity accepted;
+        owned=FindAcceptedIdentity(current,accepted) && compatibleDomain(accepted.identity);
+    } else if(current.acceptedSequence==m_lastConsumedSequence && !m_consumed.empty()) {
+        owned=SameActivePictureFrameIdentity(m_consumed.back().identity,current) &&
+            compatibleDomain(m_consumed.back().identity);
+    }
+    if(!owned)return proof;
+    uint64_t expected=beforeContinuity,previousSequence=0,previousTimestamp=0;
+    for(const auto& boundary:m_continuityBoundaries) {
+        if(boundary.beforeGeneration!=expected)continue;
+        const auto& retired=boundary.discardedIdentity;
+        if((boundary.discardReason!=ActivePictureDiscardReason::BacklogRecovery &&
+            boundary.discardReason!=ActivePictureDiscardReason::QueueCapacityOverflow) ||
+            !boundary.acceptedIdentityVerified ||
+            boundary.lookaheadPolicyGeneration!=m_lookaheadPolicyGeneration ||
+            !boundary.acceptedSequence || boundary.acceptedSequence>=current.acceptedSequence ||
+            boundary.acceptedSequence<=previousSequence ||
+            retired.acceptedSequence!=boundary.acceptedSequence ||
+            !SameTransportDecisionContext(retired,current) || !compatibleDomain(retired) ||
+            !retired.sourceFrameNumber || retired.sourceFrameNumber>=current.sourceFrameNumber ||
+            current.sourceFrameNumber-retired.sourceFrameNumber!=current.acceptedSequence-retired.acceptedSequence ||
+            !retired.captureTimestamp || retired.captureTimestamp<=previousTimestamp ||
+            retired.captureTimestamp>=current.captureTimestamp)
+            return proof;
+        const auto known=std::find_if(m_consumed.begin(),m_consumed.end(),
+            [&boundary](const ConsumedIdentity& item) {
+                return item.identity.acceptedSequence==boundary.acceptedSequence;
+            });
+        if(known==m_consumed.end() || !SameActivePictureFrameIdentity(known->identity,retired) ||
+            !compatibleDomain(known->identity))return proof;
+        previousSequence=retired.acceptedSequence;previousTimestamp=retired.captureTimestamp;
+        expected=boundary.afterGeneration;
+        if(expected==afterContinuity) {
+            proof.m_available=true;proof.m_current=current;
+            proof.m_policy=m_lookaheadPolicyGeneration;
+            proof.m_before=beforeContinuity;proof.m_after=afterContinuity;
+            return proof;
+        }
+    }
+    return proof;
+}
+
 void ActivePictureDecisionTimeline::BreakContinuity(
 	uint64_t /* detectorFrameNumber */)
 {
@@ -420,7 +485,7 @@ void ActivePictureDecisionTimeline::BreakContinuityAtSequence(
 	// A continuity break invalidates partial proof but is not itself a decoded
 	// source observation. Resetting candidate evidence lets the current real
 	// frame contribute once while retaining the last affirmative geometry.
-	m_transition.ResetCandidateEvidence();
+	m_verificationBaseline.reset();m_transition.ResetCandidateEvidence();
 	m_observed.clear();
 	m_lookaheadEvidence.clear();
 	RecordContinuityBoundary(acceptedSequence, reason, discarded);
@@ -431,11 +496,15 @@ void ActivePictureDecisionTimeline::RecordContinuityBoundary(
 	uint64_t acceptedSequence, ActivePictureDiscardReason reason,
 	const ActivePictureFrameIdentity* discarded)
 {
+    AcceptedIdentity accepted;
+    const bool verified=discarded && FindAcceptedIdentity(*discarded,accepted) &&
+        (!accepted.identity.analysisDomainKey || !discarded->analysisDomainKey ||
+         accepted.identity.analysisDomainKey==discarded->analysisDomainKey);
 	const uint64_t beforeGeneration = m_continuityGeneration;
 	AdvanceContinuityGeneration();
 	m_continuityBoundaries.push_back(
 		{ beforeGeneration, m_continuityGeneration, acceptedSequence, reason,
-		  discarded ? *discarded : ActivePictureFrameIdentity{} });
+		  discarded ? *discarded : ActivePictureFrameIdentity{},m_lookaheadPolicyGeneration,verified });
 	while (m_continuityBoundaries.size() > MAX_RETAINED_IDENTITIES)
 		m_continuityBoundaries.pop_front();
 }
@@ -450,10 +519,11 @@ void ActivePictureDecisionTimeline::InvalidateLookaheadPolicy(
 	// the disabled interval.
 	if (resetPartialEvidence)
 	{
-		m_transition.ResetCandidateEvidence();
+		m_verificationBaseline.reset();m_transition.ResetCandidateEvidence();
 		m_observed.clear();
 		m_lookaheadEvidence.clear();
 	}
+    m_verificationBaseline.reset();
 	++m_lookaheadPolicyGeneration;
 	if (m_lookaheadPolicyGeneration == 0)
 		++m_lookaheadPolicyGeneration;
@@ -462,7 +532,7 @@ void ActivePictureDecisionTimeline::InvalidateLookaheadPolicy(
 
 void ActivePictureDecisionTimeline::InvalidateGeometryForReacquisition()
 {
-	m_transition.Reset();
+	m_verificationBaseline.reset();m_transition.Reset();
 	InvalidateLookaheadPolicy(true);
 	// Accepted identities, FIFO position, and transport continuity remain valid.
 	// Only decisions derived from the withdrawn geometry must be regenerated.
@@ -487,7 +557,7 @@ bool ActivePictureDecisionTimeline::TrackLookaheadEvidence(
     {
         // A new decoded/source interpretation cannot inherit transition votes
         // or same-frame evidence from the old one. Accepted transport IDs stay.
-        m_transition.Reset();
+        m_verificationBaseline.reset();m_transition.Reset();
         m_observed.clear();
         m_lookaheadEvidence.clear();
         m_lastAnalysisDomainKey = identity.analysisDomainKey;
@@ -502,12 +572,48 @@ bool ActivePictureDecisionTimeline::TrackLookaheadEvidence(
 			existing.nearBlack == nearBlack;
 	}
 	m_lookaheadEvidence.push_back(
-		{ identity, observation, nearBlackEvaluated, nearBlack });
+		{ identity, observation, nearBlackEvaluated, nearBlack,m_lookaheadPolicyGeneration,m_continuityGeneration });
 	while (m_lookaheadEvidence.size() > MAX_RETAINED_IDENTITIES)
 		m_lookaheadEvidence.pop_front();
 	return true;
 }
 
+
+bool ActivePictureDecisionTimeline::CompleteLookaheadSpatialVerification(
+    const ActivePictureFrameIdentity& identity,const ActivePictureObservation& observation,
+    bool nearBlackEvaluated,bool nearBlack,uint8_t configuredLookahead,uint8_t availableLookahead,
+    ActivePictureFrameDecision& published)
+{
+    published={};AcceptedIdentity accepted;
+    const auto& proof=observation.currentSpatialCropProof;
+    if(identity.transportGeneration!=m_transportGeneration || identity.acceptedSequence<=m_lastConsumedSequence ||
+        !FindAcceptedIdentity(identity,accepted) || accepted.continuityGeneration!=m_continuityGeneration ||
+        !nearBlackEvaluated || nearBlack || !proof.Matches(observation) ||
+        proof.sequence!=identity.acceptedSequence || proof.transport!=identity.transportGeneration ||
+        proof.format!=identity.sourceFormatGeneration || proof.domain!=identity.analysisDomainKey)return false;
+    for(auto& existing:m_lookaheadEvidence) {
+        if(existing.identity.acceptedSequence!=identity.acceptedSequence)continue;
+        const auto& old=existing.observation;const auto& a=old.bounds;const auto& b=proof.measured;
+        if(existing.policyGeneration!=m_lookaheadPolicyGeneration || existing.continuityGeneration!=m_continuityGeneration ||
+            !SameAnalysisFrameIdentity(existing.identity,identity) || !old.available || old.transitionDeferred ||
+            old.detector!=ActivePictureDetectorKind::SourceSpatialMeasured ||
+            old.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+            old.classification!=ActivePictureClassification::PROVISIONAL ||
+            a.left!=b.left || a.top!=b.top || a.right!=b.right || a.bottom!=b.bottom ||
+            a.rasterWidth!=b.rasterWidth || a.rasterHeight!=b.rasterHeight)return false;
+        existing.observation=observation;existing.nearBlackEvaluated=nearBlackEvaluated;existing.nearBlack=nearBlack;
+        if(m_verificationBaseline && SameAnalysisFrameIdentity(m_verificationIdentity,identity) &&
+            m_verificationContinuity==m_continuityGeneration && m_verificationPolicy==m_lookaheadPolicyGeneration &&
+            !m_observed.empty() && SameAnalysisFrameIdentity(m_observed.back().identity,identity)) {
+            // Replace exactly one latest evaluation from its pre-source state.
+            // This is not another confirmation and cannot replay a newer source.
+            m_transition=*m_verificationBaseline;m_verificationBaseline.reset();m_observed.pop_back();
+            SubmitScheduledObservation(identity,observation,configuredLookahead,availableLookahead,published,m_verificationPresentation);
+        }
+        return true;
+    }
+    return false;
+}
 
 bool ActivePictureDecisionTimeline::IsDecisionCurrent(
 	const ActivePictureFrameDecision& decision) const
@@ -731,12 +837,20 @@ bool ActivePictureDecisionTimeline::SubmitScheduledObservation(
 	if (HasObservedSequence(identity.acceptedSequence))
 		return false;
 
+    m_verificationBaseline.reset();
+    if(observation.available && observation.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+        observation.classification==ActivePictureClassification::PROVISIONAL && !observation.transitionDeferred) {
+        m_verificationBaseline=std::make_shared<const ActivePictureTransitionModel>(m_transition);
+        m_verificationIdentity=identity;m_verificationContinuity=m_continuityGeneration;
+        m_verificationPolicy=m_lookaheadPolicyGeneration;m_verificationPresentation=presentation;
+    }
 	RetainIdentity(identity, observation.frameNumber);
 
 	const ActivePictureTransitionDecision transition =
 		m_transition.Observe(observation);
 	if (!transition.publish)
 		return false;
+    m_verificationBaseline.reset(); // Never replace an already published decision.
 
 	published = {};
 	published.observationIdentity = identity;

@@ -2,6 +2,7 @@
 
 #include <vprenderer/NlsPipelinePreparation.h>
 #include <SubtitleCutPasteShader.h>
+#include <chrono>
 
 // Reuses the generation-aware worker and CPU-only frame snapshot. Subtitle
 // hooks are private to this device; live nativePrepare callbacks never cross
@@ -36,7 +37,23 @@ struct SubtitlePipelinePreparationRequest {
     SubtitlePipelinePreparationRequest(const SubtitlePipelinePreparationRequest&) = delete;
     SubtitlePipelinePreparationRequest& operator=(const SubtitlePipelinePreparationRequest&) = delete;
 
-    bool Compile(pl_cache cache) {
+    using Progress=std::function<void(const std::string&,double,int)>;
+    bool Compile(pl_cache cache,const Progress& progress={}) {
+        const auto report=[&](const std::string& stage,double elapsedMs,int result) noexcept {
+            if(progress)try {progress(stage,elapsedMs,result);}catch(...){}
+        };
+        const auto timed=[&](const std::string& stage,const auto& work) {
+            const auto started=std::chrono::steady_clock::now();
+            report(stage,0,-1);
+            try {
+                const bool result=work();
+                report(stage,std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count(),result?1:0);
+                return result;
+            }catch(...) {
+                report(stage,std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count(),0);
+                throw;
+            }
+        };
         struct Resources {
             pl_d3d11 device = nullptr;
             SubtitlePreparationRenderer renderer;
@@ -60,13 +77,15 @@ struct SubtitlePipelinePreparationRequest {
         deviceParams.adapter_luid = adapter;
         deviceParams.min_feature_level = deviceParams.max_feature_level = featureLevel;
         deviceParams.no_compute = noCompute;
-        owned.device = pl_d3d11_create(nullptr, &deviceParams);
-        if (!owned.device) return false;
+        if(!timed("device-create",[&] {
+            owned.device=pl_d3d11_create(nullptr,&deviceParams);return owned.device!=nullptr;
+        }))return false;
         const auto gpu = owned.device->gpu;
         pl_gpu_set_cache(gpu, cache);
 
-        owned.hook = CreateSubtitleCutPasteHook(gpu);
-        if (!owned.renderer.Get(gpu) || !owned.hook || !source.Create(gpu)) return false;
+        if(!timed("hook-create",[&] {owned.hook=CreateSubtitleCutPasteHook(gpu);return owned.hook!=nullptr;}))return false;
+        if(!timed("renderer-create",[&] {return owned.renderer.Get(gpu)!=nullptr;}))return false;
+        if(!timed("source-create",[&] {return source.Create(gpu);}))return false;
 
         const int w = source.textures[0].w, h = source.textures[0].h;
         SubtitleCutPasteGeometry geometry{};
@@ -97,45 +116,57 @@ struct SubtitlePipelinePreparationRequest {
                 if (algorithm) deinterlace.algo = PL_DEINTERLACE_BOB; // Missing-neighbor fallback.
                 const auto* deinterlacePtr = fields ? &deinterlace : nullptr;
                 pl_frame composed{};
-                if (!RenderSubtitleFullRaster(owned.renderer, gpu, source.value, nullptr,
-                    &owned.surface, composed, temporal, false, false, deinterlacePtr, processingPtr)) return false;
+                const auto prefix=std::string("field-")+std::to_string(field)+"/algorithm-"+std::to_string(algorithm);
+                if(!timed(prefix+"/normalization",[&] {
+                    return RenderSubtitleFullRaster(owned.renderer,gpu,source.value,nullptr,
+                        &owned.surface,composed,temporal,false,false,deinterlacePtr,processingPtr);
+                }))return false;
                 for (int background : {3, 5}) for (bool blur : {false, true}) {
                     auto generated = style;
                     generated.blurPixels = blur ? (std::max)(1.0f, style.blurPixels) : 0.0f;
                     for (auto phase : {SubtitleCompositionPhase::All, SubtitleCompositionPhase::CleanupOnly}) {
-                        if (!BindSubtitleCutPasteHook(owned.hook, geometry, background,
-                            source.value.color.transfer, generated, spatialFill, phase) ||
-                            !RenderSubtitleFullRaster(owned.renderer, gpu, source.value, owned.hook,
-                                &owned.surface, composed, temporal, background == 5, false,
-                                deinterlacePtr, processingPtr)) return false;
-                        pl_gpu_finish(gpu);
+                        const auto stage=prefix+"/background-"+std::to_string(background)+
+                            "/blur-"+std::to_string(blur?1:0)+"/phase-"+std::to_string(int(phase));
+                        if(!timed(stage,[&] {
+                            if(!BindSubtitleCutPasteHook(owned.hook,geometry,background,
+                                source.value.color.transfer,generated,spatialFill,phase) ||
+                                !RenderSubtitleFullRaster(owned.renderer,gpu,source.value,owned.hook,
+                                    &owned.surface,composed,temporal,background==5,false,deinterlacePtr,processingPtr))return false;
+                            pl_gpu_finish(gpu);return true;
+                        }))return false;
                     }
                     auto glyphs = source.value;
                     glyphs.field = glyphs.first_field = PL_FIELD_NONE;
                     glyphs.prev = glyphs.next = nullptr;
-                    if (!BindSubtitleCutPasteHook(owned.hook, geometry, background,
-                        glyphs.color.transfer, generated, spatialFill, SubtitleCompositionPhase::LayerOnly) ||
-                        !ComposeSubtitleLayerBeforeCrop(owned.renderer, gpu, glyphs, owned.hook,
-                            &owned.layer, composed, nullptr, processingPtr)) return false;
-                    pl_gpu_finish(gpu);
+                    const auto layerStage=prefix+"/background-"+std::to_string(background)+
+                        "/blur-"+std::to_string(blur?1:0)+"/layer-only";
+                    if(!timed(layerStage,[&] {
+                        if(!BindSubtitleCutPasteHook(owned.hook,geometry,background,
+                            glyphs.color.transfer,generated,spatialFill,SubtitleCompositionPhase::LayerOnly) ||
+                            !ComposeSubtitleLayerBeforeCrop(owned.renderer,gpu,glyphs,owned.hook,
+                                &owned.layer,composed,nullptr,processingPtr))return false;
+                        pl_gpu_finish(gpu);return true;
+                    }))return false;
                 }
             }
         }
         if (warmPresentation) {
-            if (!target.Create(gpu)) return false;
+            if(!timed("target-create",[&] {return target.Create(gpu);}))return false;
             pl_frame normalized{};
             auto input = source.value;
             input.field = input.first_field = PL_FIELD_NONE;
             input.prev = input.next = nullptr;
-            if (!RenderSubtitleFullRaster(owned.renderer, gpu, input, nullptr,
-                &owned.surface, normalized, temporal, false, false, nullptr, processingPtr)) return false;
+            if(!timed("final-normalization",[&] {
+                return RenderSubtitleFullRaster(owned.renderer,gpu,input,nullptr,
+                    &owned.surface,normalized,temporal,false,false,nullptr,processingPtr);
+            }))return false;
             auto finalParams = options->params;
             finalParams.deinterlace_params = nullptr; finalParams.frame_mixer = nullptr;
             if (temporal) finalParams.deband_params = nullptr;
             NlsPipelinePreparation::Request final(normalized, target.value, finalParams, "");
             final.adapter = adapter; final.featureLevel = featureLevel; final.noCompute = noCompute;
             final.processedSource = temporal; final.subtitleOverlay = temporal;
-            if (!final.Compile(cache)) return false;
+            if(!timed("final-viewport",[&] {return final.Compile(cache);}))return false;
         }
         return true;
     }

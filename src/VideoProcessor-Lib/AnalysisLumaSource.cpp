@@ -408,6 +408,11 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 {
 	if (!IsValid() || x < 0 || y < 0 || x >= width || y >= height)
 		return false;
+    return SampleValidated(x,y,result);
+}
+
+bool AnalysisLumaSource::SampleValidated(int x,int y,AnalysisLumaSample& result) const
+{
 	if (format != AnalysisLumaFormat::NativeRgb &&
 		format != AnalysisLumaFormat::SdrTunnelRgb)
 	{

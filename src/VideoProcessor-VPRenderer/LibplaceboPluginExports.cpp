@@ -109,3 +109,7 @@ VideoProcessorLibplaceboGetStartupPresentationReadinessV1(
     *snapshot = current;
     return static_cast<uint32_t>(QueryStatus::Available);
 }
+
+extern "C" __declspec(dllexport) void __cdecl
+VideoProcessorLibplaceboConfigureLoggingV1(bool enhanced)
+{ DebugLog::SetExternalEnhancedLoggingEnabled(enhanced); }

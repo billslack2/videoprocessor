@@ -65,6 +65,36 @@ namespace VideoProcessorTest
     TEST_CLASS(OptionalAnalysisWorkerTests)
     {
     public:
+        TEST_METHOD(CompletionSignalKeepsEarlyNotificationAndAbsoluteExpiry)
+        {
+            AnalysisCompletionSignal signal;
+            const auto before=signal.Snapshot();
+            signal.Notify();
+            // Already-published work is observed even with an expired deadline.
+            const auto expired=std::chrono::steady_clock::now();
+            Assert::IsTrue(signal.WaitUntil(before,expired));
+            const auto current=signal.Snapshot();
+            Assert::IsFalse(signal.WaitUntil(current,expired));
+            Assert::IsFalse(signal.WaitUntil(current,expired));
+        }
+        TEST_METHOD(WorkerCompletionWakesOnlyAfterImmutablePublication)
+        {
+            HeldWorker<2> held;
+            auto signal=std::make_shared<AnalysisCompletionSignal>();
+            held.active->completion=signal;
+            const auto revision=signal->Snapshot();
+            Assert::IsTrue(held.Start());
+            Assert::IsTrue(held.Entered());
+            auto waiter=std::async(std::launch::async,[signal,revision] {
+                return signal->WaitUntil(revision,std::chrono::steady_clock::now()+std::chrono::seconds(5));
+            });
+            held.Open();
+            Assert::IsTrue(waiter.get());
+            const auto ready=held.worker.Ready(held.active);
+            Assert::IsNotNull(ready.get());
+            Assert::AreEqual(1,*ready);
+            Assert::IsFalse(held.active->pending.load());
+        }
         TEST_METHOD(ReversedArrivalsRunNearestQueuedSourceFirstWhileActiveJobContinues)
         {
             HeldWorker<3> held;

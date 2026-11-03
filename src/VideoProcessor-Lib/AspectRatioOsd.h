@@ -1,11 +1,28 @@
 #pragma once
 
+#include <ActivePictureTransitionModel.h>
 #include <cmath>
 #include <cstdint>
 #include <cwchar>
 #include <string>
+#include <limits>
+
+enum class PhysicalAspectConfidence : uint32_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT, SOURCE_CANVAS_ESTIMATE };
 
 enum class PictureAspectUse : uint32_t { UNAVAILABLE, STARTUP_FALLBACK, DETECTED, HELD, PRESENTATION };
+
+// Presentation-independent detection history. This is an anchored measured
+// estimate, never current raw evidence or permission to crop/render a frame.
+struct StabilizedPictureAspect
+{
+    bool available = false, held = false;
+    double ratio = 0.0;
+    uint64_t sourceGeneration = 0, acceptedSequence = 0;
+    bool physicalBoundsAvailable = false;
+    int physicalBounds[4] = {};
+    PhysicalAspectConfidence confidence = PhysicalAspectConfidence::UNKNOWN;
+    ActivePictureDetectorKind detectorKind = ActivePictureDetectorKind::Legacy;
+};
 
 struct DetectedPictureAspect
 {
@@ -18,6 +35,12 @@ struct DetectedPictureAspect
     bool inUseAvailable = false;
     PictureAspectUse inUseState = PictureAspectUse::UNAVAILABLE;
     uint64_t detectedSequence = 0, presentedSequence = 0;
+    bool physicalEvaluated = false;
+    PhysicalAspectConfidence physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
+    int physicalBounds[4] = {};
+    bool physicalBoundsAvailable = false;
+    ActivePictureDetectorKind detectorKind = ActivePictureDetectorKind::Legacy;
+    StabilizedPictureAspect stableDetection;
 };
 
 // Presentation-only labels for the VP Renderer Ctrl+I OSD.
@@ -31,28 +54,10 @@ public:
 		int target = -1;
 	};
 
-    struct Rows { std::wstring inUse, detected; };
-    // UI-only deadband, anchored to the last displayed measurement so a slow
-    // cumulative drift cannot remain hidden. Raw and submitted telemetry stay exact.
-    Rows Update(const DetectedPictureAspect& reading)
-    {
-        if (m_sourceGeneration != reading.sourceGeneration) {
-            Reset();
-            m_sourceGeneration = reading.sourceGeneration;
-        }
-        auto displayed = reading;
-        if (!reading.available || !std::isfinite(reading.ratio) || reading.ratio <= 0.0) {
-            m_displayedDetection = 0.0;
-            displayed.available = false;
-        } else {
-            if (m_displayedDetection <= 0.0 ||
-                std::abs(reading.ratio - m_displayedDetection) + 1e-12 >= 0.01 * m_displayedDetection)
-                m_displayedDetection = reading.ratio;
-            displayed.ratio = m_displayedDetection;
-        }
-        return Format(displayed);
-    }
-    void Reset() { m_sourceGeneration = 0; m_displayedDetection = 0.0; }
+    struct Rows { std::wstring inUse, detected, retained = L"Unavailable"; };
+    // Raw observations remain exact; the separate detection estimate has its own anchored history.
+    Rows Update(const DetectedPictureAspect& reading) { return Format(reading); }
+    void Reset() {}
 
     static std::wstring Named(double ratio, const wchar_t* status = nullptr)
     {
@@ -70,8 +75,54 @@ public:
             else if (reading.inUseState == PictureAspectUse::PRESENTATION) status = L"presentation";
             rows.inUse = Named(reading.inUseRatio, status);
         }
-        if (reading.available)
-            rows.detected = Named(reading.ratio, reading.provisional ? L"provisional" : nullptr);
+        const bool spatial = reading.detectorKind != ActivePictureDetectorKind::Legacy;
+        if (reading.physicalEvaluated &&
+            reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE) {
+            rows.detected = L"Canvas estimate (blank margins unresolved; source spatial)";
+        } else if (reading.available && !reading.provisional) {
+            wchar_t numeric[64] = {};
+            swprintf_s(numeric, L"%.2f:1", reading.ratio);
+            rows.detected = numeric;
+            if (reading.physicalBoundsAvailable) {
+                wchar_t geometry[128] = {};
+                swprintf_s(geometry, L" [%d,%d..%d,%d; %ls]",
+                    reading.physicalBounds[0], reading.physicalBounds[1],
+                    reading.physicalBounds[2], reading.physicalBounds[3],
+                    reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT ? L"source extent" : L"strong edge");
+                rows.detected += geometry;
+            }
+            if (spatial) rows.detected += L" (source spatial)";
+        } else if (reading.physicalEvaluated)
+            rows.detected = L"Unknown (boundaries unresolved)";
+        else if (reading.provisional)
+            rows.detected = L"Unknown (awaiting physical measurement)";
+        if (spatial && !reading.available &&
+            reading.physicalConfidence != PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE)
+            rows.detected = reading.physicalEvaluated ?
+                L"Unknown (boundaries unresolved; source spatial)" :
+                L"Pending (source spatial)";
+        // The producing mode belongs to the current observation, not to its
+        // retained predecessor. Missing current evidence stays visible.
+        if (!spatial && (reading.physicalEvaluated || reading.provisional))
+            rows.detected += L" (legacy)";
+        const auto& stable = reading.stableDetection;
+        if (stable.available && std::isfinite(stable.ratio) && stable.ratio > 0.0) {
+            wchar_t numeric[64] = {};
+            swprintf_s(numeric, L"%.2f:1", stable.ratio);
+            rows.retained = numeric;
+            if (stable.physicalBoundsAvailable) {
+                wchar_t geometry[128] = {};
+                swprintf_s(geometry, L" [%d,%d..%d,%d; stable]", stable.physicalBounds[0],
+                    stable.physicalBounds[1], stable.physicalBounds[2], stable.physicalBounds[3]);
+                rows.retained += geometry;
+            } else rows.retained += L" [stable]";
+            if (stable.detectorKind != ActivePictureDetectorKind::Legacy)
+                rows.retained += L" (source spatial)";
+            // Observe() also supports legacy non-physical consumers.
+            if (!spatial && !reading.physicalEvaluated && !reading.provisional)
+                rows.detected += L" (legacy)";
+            rows.detected = L"Current: " + rows.detected + L"; retained: " + rows.retained;
+        }
         return rows;
     }
 
@@ -103,8 +154,6 @@ public:
 	}
 
 private:
-    uint64_t m_sourceGeneration = 0;
-    double m_displayedDetection = 0.0;
 	struct Target
 	{
 		double value;
@@ -135,7 +184,7 @@ private:
 };
 
 // Telemetry only: this never selects or holds a renderer crop. Used geometry is
-// updated solely after successful submission; live evidence has no UI dwell.
+// updated solely after successful submission. Stable detection never feeds geometry.
 class PictureAspectTelemetry
 {
 public:
@@ -145,19 +194,64 @@ public:
             m_value = {};
             m_value.sourceGeneration = generation;
             m_seenDetection = false;
+            m_stableLastObservedSequence = 0;
+            m_stableLastQualifiedSequence = 0;
         }
     }
+    // Legacy qualified observation. Provisional nominations are not physical measurements.
     void Observe(uint64_t generation, uint64_t sequence, double ratio,
         bool available, bool provisional)
     {
         Source(generation);
+        if (!CanPublishCurrent(sequence)) return;
         m_value.detectedSequence = sequence;
-        m_value.available = available && std::isfinite(ratio) && ratio > 0.0;
+        m_value.available = available && !provisional && std::isfinite(ratio) && ratio > 0.0;
         m_value.ratio = m_value.available ? ratio : 0.0;
-        m_value.provisional = m_value.available && provisional;
+        m_value.provisional = provisional;
+        m_value.physicalEvaluated = false;
+        m_value.physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
+        m_value.physicalBoundsAvailable = false;
+        m_value.detectorKind = ActivePictureDetectorKind::Legacy;
+        for (auto& coordinate : m_value.physicalBounds) coordinate = 0;
+        ObserveStableDetection(sequence);
+    }
+    void ObservePhysical(uint64_t generation, uint64_t sequence,
+        bool evaluated, bool estimateAvailable, PhysicalAspectConfidence confidence,
+        int left, int top, int right, int bottom,
+        ActivePictureDetectorKind detectorKind = ActivePictureDetectorKind::Legacy)
+    {
+        Source(generation);
+        if (!CanPublishCurrent(sequence)) return;
+        m_value.detectedSequence = sequence;
+        m_value.physicalEvaluated = evaluated;
+        m_value.detectorKind = detectorKind;
+        m_value.physicalConfidence = confidence;
+        m_value.available = evaluated && estimateAvailable &&
+            (confidence == PhysicalAspectConfidence::STRONG_ABRUPT_EDGE ||
+             confidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT) &&
+            left >= 0 && top >= 0 && right > left && bottom > top;
+        m_value.provisional = false;
+        m_value.ratio = m_value.available ? double(right-left) / double(bottom-top) : 0.0;
+        m_value.physicalBoundsAvailable = m_value.available;
+        m_value.physicalBounds[0] = m_value.available ? left : 0;
+        m_value.physicalBounds[1] = m_value.available ? top : 0;
+        m_value.physicalBounds[2] = m_value.available ? right : 0;
+        m_value.physicalBounds[3] = m_value.available ? bottom : 0;
+        if (!m_value.available && !(evaluated && confidence == PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE))
+            m_value.physicalConfidence = PhysicalAspectConfidence::UNKNOWN;
+        ObserveStableDetection(sequence);
     }
     void ClearDetection()
-    { m_value.available = m_value.provisional = false; m_value.ratio = 0.0; }
+    {
+        // Explicit invalidation resets current ordering while preserving the
+        // independently submitted presentation state.
+        m_value.available=false;
+        m_value.detectedSequence=0;
+        Observe(m_value.sourceGeneration, 0, 0.0, false, false);
+        m_value.stableDetection={};
+        m_stableLastObservedSequence=0;
+        m_stableLastQualifiedSequence=0;
+    }
     void Submitted(uint64_t generation, uint64_t sequence, double ratio,
         double nativeRatio, bool acceptedPicture, bool succeeded)
     {
@@ -178,7 +272,42 @@ public:
     void ClearPresentation() { m_value.inUseAvailable = false; m_value.inUseState = PictureAspectUse::UNAVAILABLE; }
     const DetectedPictureAspect& Read() const { return m_value; }
 private:
+    bool CanPublishCurrent(uint64_t sequence) const
+    {
+        // A queued completion cannot roll reporting back to an older source.
+        // Once this immutable source has a qualified result, a pending duplicate
+        // or competing second interpretation cannot replace it. Newer sources
+        // still publish missing/inconclusive work, and the current source may
+        // upgrade to its first qualified completion without a new frame.
+        return sequence>=m_value.detectedSequence &&
+            !(sequence && sequence==m_value.detectedSequence && m_value.available);
+    }
+    void ObserveStableDetection(uint64_t sequence)
+    {
+        auto& stable=m_value.stableDetection;
+        if(stable.available)stable.held=true;
+        const bool newest=sequence && sequence>=m_stableLastObservedSequence;
+        if(sequence>m_stableLastObservedSequence)m_stableLastObservedSequence=sequence;
+        // The renderer can publish UNKNOWN before completing this same source's
+        // physical measurement. Permit its first qualifying completion, while
+        // rejecting older sources and every second qualified interpretation.
+        // Unknown duplicates never reopen a previously consumed qualification.
+        if(!newest || sequence==m_stableLastQualifiedSequence || !m_value.sourceGeneration ||
+            !m_value.available || m_value.provisional || !std::isfinite(m_value.ratio) || m_value.ratio<=0.0)return;
+        m_stableLastQualifiedSequence=sequence; // Consume even an in-band hold.
+        constexpr double deadband=0.03;
+        const double tolerance=8*std::numeric_limits<double>::epsilon();
+        if(stable.available && std::abs(m_value.ratio-stable.ratio)/stable.ratio<=deadband+tolerance)
+            return; // Always compare to the accepted anchor; never walk/average.
+        stable={};stable.available=true;stable.ratio=m_value.ratio;
+        stable.sourceGeneration=m_value.sourceGeneration;stable.acceptedSequence=sequence;
+        stable.physicalBoundsAvailable=m_value.physicalBoundsAvailable;
+        for(unsigned i=0;i<4;++i)stable.physicalBounds[i]=m_value.physicalBounds[i];
+        stable.confidence=m_value.physicalConfidence;stable.detectorKind=m_value.detectorKind;
+    }
     static bool Same(double a, double b) { return std::abs(a-b) <= 0.0005; }
     DetectedPictureAspect m_value;
     bool m_seenDetection = false;
+    uint64_t m_stableLastObservedSequence = 0;
+    uint64_t m_stableLastQualifiedSequence = 0;
 };

@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxDetector.h>
+#include <SubtitleOpaqueCardRefinement.h>
 #include <algorithm>
 #include <cstdlib>
 
@@ -14,7 +15,8 @@ struct SubtitleLocalGlyphProof
 
 inline SubtitleLocalGlyphProof ProveLocalSubtitleGlyphBacking(
     const AnalysisLumaSource& source, const SubtitleBoxResult& text,
-    const SubtitleInkSnapshot* ink, int plane, bool bottom)
+    const SubtitleInkSnapshot* ink, int plane, bool bottom,
+    const SubtitleBoxRect* currentFiniteCard = nullptr)
 {
     SubtitleLocalGlyphProof result;
     if (!source.IsValid() || !text.detected || text.held || text.workLimit ||
@@ -49,10 +51,29 @@ inline SubtitleLocalGlyphProof ProveLocalSubtitleGlyphBacking(
     }
     // Match only the native extraction fringe (sample leading pixels and two
     // antialias pixels), then prove every sampled part of that full rectangle.
-    const SubtitleBoxRect verified{
+    SubtitleBoxRect verified{
         (std::max)(0,box.left-step-1),
         (std::max)(0,box.top-step+1),
         (std::min)(source.width,box.right+2),box.bottom};
+    // Only a freshly remeasured finite card may widen the local probe. Every
+    // added native pixel is still sampled below with the original density,
+    // neutral-backing and intrusion limits. No inferred/cleanup rectangle enters.
+    if(currentFiniteCard) {
+        const auto& card=*currentFiniteCard;
+        const int pictureTop=bottom?verified.top:plane;
+        const int pictureBottom=bottom?plane:verified.bottom;
+        if(!card.Valid() || card.left<0 || card.top<0 || card.right>source.width ||
+            card.bottom>source.height || card.left>verified.left ||
+            card.right<verified.right || card.top>pictureTop || card.bottom<pictureBottom) {
+            result.reason="finite-card-does-not-cover-capture";return result;
+        }
+        verified.left=card.left;verified.right=card.right;
+        if(bottom)verified.top=card.top;else verified.bottom=card.bottom;
+        if(verified.right-verified.left>source.width*4/5 ||
+            verified.bottom-verified.top>source.height/3) {
+            result.reason="unbounded-finite-card";return result;
+        }
+    }
     const int firstX=(verified.left+step-1)/step,lastX=(verified.right-1)/step;
     const int columns=lastX-firstX+1;
     if(columns<9 || uint64_t(columns)*uint64_t((verified.bottom-verified.top+step-1)/step+2)>64000) {
@@ -140,5 +161,30 @@ inline SubtitleLocalGlyphProof ProveLocalSubtitleGlyphBacking(
     result.accepted=true;
     result.reason="current-glyph-local-backing";
     result.verifiedBounds=verified; // The full returned rectangle was just sampled.
+    return result;
+}
+
+// A dense crossing caption can leave too little whitespace in its tight glyph
+// envelope. Seek genuinely witnessed CURRENT card backing, then repeat the same
+// local native proof on that wider footprint. Remembered panels never enter.
+inline SubtitleLocalGlyphProof ProveFiniteCardLocalSubtitleGlyphBacking(
+    const AnalysisLumaSource& source,const SubtitleBoxResult& text,
+    const SubtitleInkSnapshot* ink,int pictureTop,int pictureBottom,bool bottom)
+{
+    SubtitleLocalGlyphProof rejected;
+    rejected.reason="finite-card-unavailable";
+    if(!source.IsValid() || !text.detected || text.held || text.workLimit ||
+        !text.anchor.Valid() || !ink || !ink->rawEvidenceComplete || !ink->paletteValid ||
+        pictureTop<=0 || pictureBottom>=source.height || pictureTop>=pictureBottom)
+        return rejected;
+    const int plane=bottom?pictureBottom:pictureTop;
+    if(!(text.anchor.top<plane && text.anchor.bottom>plane))return rejected;
+    const int darkLimit=(std::min)(96,(std::max)(32,ink->blackLimit+12));
+    SubtitleOpaqueCardRefinement card;
+    if(!RefineSubtitleOpaqueCard(source,text.anchor,text.anchor.bottom-text.anchor.top,
+        pictureTop,pictureBottom,darkLimit,ink->inkFloor,ink->inkU,ink->inkV,card) ||
+        !card.interior.Valid())return rejected;
+    auto result=ProveLocalSubtitleGlyphBacking(source,text,ink,plane,bottom,&card.interior);
+    if(result.accepted)result.reason="current-finite-card-local-backing";
     return result;
 }

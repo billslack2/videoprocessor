@@ -106,7 +106,7 @@ void SubtitleBoxDetector::Reset()
 {
     m_sampledRows.clear();m_sharedSampleCount=0;
     m_inkSnapshot.reset();
-    m_result = {}; m_currentBarAnchor = {}; m_currentSourcePanel = {}; m_currentProvenSourcePanel = {}; m_currentLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {}; m_signature = {}; m_currentAnchorSignature = {};
+    m_result = {}; m_currentBarAnchor = {}; m_currentSourcePanel = {}; m_currentProvenSourcePanel = {}; m_currentLinePanels = {}; m_currentProvenLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {}; m_signature = {}; m_currentAnchorSignature = {};
     m_currentLineBounds = {}; m_currentLineSignatures = {}; m_currentPanelTopEdges = {};
     m_generation = m_viewport = m_sequence = 0;
     m_width = m_height = m_top = m_bottom = m_misses = 0;
@@ -129,7 +129,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     m_diagnosticBaselineSupportBasisPoints=0;m_diagnosticGlyphTopology="not-required";
     m_nearBarEligibilityMeasured=false;m_nearBarEligible=false;
     m_currentBarAnchor = {};
-    m_currentSourcePanel = {}; m_currentProvenSourcePanel = {}; m_currentLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {};
+    m_currentSourcePanel = {}; m_currentProvenSourcePanel = {}; m_currentLinePanels = {}; m_currentProvenLinePanels = {}; m_currentCapturePanel = {}; m_currentLineCapturePanels = {};
     m_inkSnapshot.reset();
     m_currentAnchorSignature = {};
     m_currentLineBounds = {}; m_currentLineSignatures = {}; m_currentPanelTopEdges = {};
@@ -2351,6 +2351,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             if(now.left==previous.left && now.top==previous.top && now.right==previous.right && now.bottom==previous.bottom)break;
         }
     }
+    m_currentProvenLinePanels=boundedCards;
     // Feed recovered glyphs through signatures, temporal proof and display
     // bounds as well as native capture. Otherwise a later mask can clip a
     // component that this pass has already accepted.
@@ -2677,6 +2678,7 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
     m_result.sourcePanel=m_currentSourcePanel;
     m_result.provenSourcePanel=m_currentProvenSourcePanel;
     m_result.linePanels=m_currentLinePanels;
+    m_result.provenLinePanels=m_currentProvenLinePanels;
     m_result.capturePanel=m_currentCapturePanel;
     m_result.lineCapturePanels=m_currentLineCapturePanels;
     m_result.capturePanelMeasured=true;

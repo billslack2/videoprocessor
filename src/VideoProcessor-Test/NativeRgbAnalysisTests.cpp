@@ -137,6 +137,77 @@ namespace Tests
 	TEST_CLASS(NativeRgbAnalysisTests)
 	{
 	public:
+        TEST_METHOD(ValidatedSamplerMatchesCanonicalCodesAcrossFormatsRangesAndCoordinates)
+        {
+            struct Layout {AnalysisLumaFormat format;VideoFrameEncoding encoding;uint8_t alignment;};
+            const Layout layouts[]={
+                {AnalysisLumaFormat::P010,VideoFrameEncoding::V210,0},
+                {AnalysisLumaFormat::P210,VideoFrameEncoding::V210,0},
+                {AnalysisLumaFormat::DecodedDolbyVision422,VideoFrameEncoding::V210,0},
+                {AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::UYVY,0},
+                {AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::HDYC,0},
+                {AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::V210,0},
+                {AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::BGRA_8BIT,0},
+                {AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::ARGB_8BIT,0},
+                {AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::R210,0},
+                {AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::R10b,0},
+                {AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::R10l,0},
+                {AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::R12B,0},
+                {AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::R12L,0},
+                {AnalysisLumaFormat::SdrTunnelRgb,VideoFrameEncoding::R210,1},
+                {AnalysisLumaFormat::SdrTunnelRgb,VideoFrameEncoding::R210,2},
+                {AnalysisLumaFormat::SdrTunnelRgb,VideoFrameEncoding::R10b,2},
+                {AnalysisLumaFormat::SdrTunnelRgb,VideoFrameEncoding::R10l,2},
+                {AnalysisLumaFormat::SdrTunnelRgb,VideoFrameEncoding::BGRA_8BIT,2},
+                {AnalysisLumaFormat::SdrTunnelRgb,VideoFrameEncoding::ARGB_8BIT,2}};
+            std::vector<uint8_t> bytes(4096);
+            for(size_t i=0;i<bytes.size();++i)bytes[i]=uint8_t((i*73+(i>>3)*19+41)&255);
+            for(const auto& layout:layouts)for(auto range:{AnalysisLumaRange::Unknown,AnalysisLumaRange::Limited,AnalysisLumaRange::Full})
+                for(auto colorspace:{ColorSpace::REC_709,ColorSpace::BT_2020}) {
+                    AnalysisLumaSource source{bytes.data(),bytes.size(),24,8,128,128,layout.format,layout.encoding,colorspace,17};
+                    source.range=range;source.rgbBitAlignment=layout.alignment;
+                    ValidatedAnalysisLumaSampler sampler(source);
+                    Assert::AreEqual(source.IsValid(),sampler.IsValid());
+                    for(int y=-1;y<=8;++y)for(int x=-1;x<=24;++x) {
+                        AnalysisLumaSample expected,actual;
+                        const bool canonical=source.Sample(x,y,expected),fast=sampler.Sample(x,y,actual);
+                        Assert::AreEqual(canonical,fast);
+                        if(canonical) {
+                            Assert::AreEqual(int(expected.luma),int(actual.luma));
+                            Assert::AreEqual(int(expected.chromaU),int(actual.chromaU));
+                            Assert::AreEqual(int(expected.chromaV),int(actual.chromaV));
+                        }
+                    }
+                }
+        }
+        TEST_METHOD(ValidatedSamplerRejectsInvalidViewsAndRetainsImmutableOwnedMetadata)
+        {
+            auto owner=std::make_shared<std::vector<uint8_t>>(4096,127);
+            std::weak_ptr<const void> lifetime=owner;
+            AnalysisLumaSource source{owner->data(),owner->size(),24,8,128,128,
+                AnalysisLumaFormat::P210,VideoFrameEncoding::V210,ColorSpace::REC_709,17};
+            source.backingOwner=owner;
+            AnalysisLumaSample expected;Assert::IsTrue(source.Sample(23,7,expected));
+            ValidatedAnalysisLumaSampler sampler(source);
+            source={};owner.reset();Assert::IsFalse(lifetime.expired());
+            AnalysisLumaSample actual;Assert::IsTrue(sampler.Sample(23,7,actual));
+            Assert::AreEqual(int(expected.luma),int(actual.luma));
+            Assert::IsFalse(sampler.Sample(24,7,actual));Assert::IsFalse(sampler.Sample(23,8,actual));
+            for(int fault=0;fault<5;++fault) {
+                std::vector<uint8_t> bytes(4096);
+                AnalysisLumaSource invalid{bytes.data(),bytes.size(),24,8,128,128,
+                    AnalysisLumaFormat::P010,VideoFrameEncoding::V210,ColorSpace::REC_709,17};
+                switch(fault) {
+                case 0: invalid.data=nullptr;break;
+                case 1: invalid.width=23;break;
+                case 2: invalid.height=7;break;
+                case 3: invalid.dataBytes=8;break;
+                case 4: invalid.chromaRowBytes=2;break;
+                }
+                ValidatedAnalysisLumaSampler rejected(invalid);
+                Assert::IsFalse(rejected.IsValid());Assert::IsFalse(rejected.Sample(0,0,actual));
+            }
+        }
 		TEST_METHOD(BgraBarsProduceTrustedSourceCoordinateEvidence)
 		{
 			BgraFrame frame(320, 180);

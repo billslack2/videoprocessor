@@ -66,6 +66,8 @@ const char* ActivePictureBlackReferenceModeName(ActivePictureBlackReferenceMode 
 
 struct ActivePictureEdgeEvidence
 {
+    // Actual sampled matte codes, independent of the coarse range threshold.
+    ActivePictureMatteReference measuredMatteReference;
     ActivePictureMatteReference matteReference;
 	int barPixels = 0;
 	// For each of four equal along-edge quartiles, the low six bits identify
@@ -120,9 +122,49 @@ struct ActivePictureVerticalBarProfile
 	const char* reason = "not-required";
 };
 
+enum class ActivePictureCandidateVerificationState : uint8_t
+{
+    NOT_EVALUATED, VERIFIED, UNKNOWN, CONTRADICTED
+};
+struct ActivePictureCandidateVerification
+{
+    ActivePictureBounds nomination;
+    ActivePictureBounds bounds;
+    uint64_t sourceGeneration = 0;
+    ActivePictureCandidateVerificationState vertical = ActivePictureCandidateVerificationState::NOT_EVALUATED;
+    ActivePictureCandidateVerificationState horizontal = ActivePictureCandidateVerificationState::NOT_EVALUATED;
+    size_t samples = 0;
+    int firstMismatchX = -1, firstMismatchY = -1;
+};
+
+// Source-pixel edge observation only. Does not authorize discarding pixels,
+// acquiring native AR, or changing the conservative retention rectangle.
+enum class PhysicalPictureEdgeConfidence : uint8_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT, SOURCE_CANVAS_ESTIMATE };
+struct PhysicalPictureEdgeObservation
+{
+    bool evaluated=false, estimateAvailable=false;
+    PhysicalPictureEdgeConfidence confidence=PhysicalPictureEdgeConfidence::UNKNOWN;
+    // Conservative bounds are the uncertainty envelope; estimate never discards it.
+    ActivePictureBounds estimate, conservativeBounds;
+    uint64_t sourceGeneration=0;
+    size_t samples=0;
+    const char* reason="not-evaluated";
+};
+PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
+    const AnalysisLumaSource& source,const ActivePictureBounds& conservativeBounds,
+    const AnalysisEvaluationBudget* budget=nullptr,
+    const ActivePictureBlackReference* blackReference=nullptr);
+
 struct ActivePictureEvidence
 {
+    // Exact-current native candidate certificate; not transferable to other bounds.
+    ActivePictureCandidateVerification candidateVerification;
+    // Scheduling disposition only: completed negative verification is complete too.
+    // This flag never authorizes crop, retention or reuse on another source.
+    bool sourceCandidateVerificationComplete = false;
+    PhysicalPictureEdgeObservation physicalEdges;
     ActivePictureBlackReference blackReference;
+    ActivePictureDetectorKind detector=ActivePictureDetectorKind::Legacy;
 	bool available = false;
 	ActivePictureClassification classification =
 		ActivePictureClassification::UNAVAILABLE;
@@ -145,6 +187,10 @@ struct ActivePictureEvidence
 	ActivePictureAuthorityOrigin authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
 	SparseBoundaryTransitionProof sparseTransitionProof;
 	RememberedEdgeReturnProof rememberedEdgeReturnProof;
+    // Bound only by an exact owned-source adapter or successful current masked
+    // verification. Raw source-only measurements intentionally remain unbound.
+    bool currentSourceIdentityAvailable=false;
+    ActivePictureFrameIdentity currentSourceIdentity;
 };
 
 
@@ -183,7 +229,8 @@ ActivePictureOpposingBoundaryDiagnostics MeasureActivePictureOpposingBoundaryDia
 
 // Shared conversion keeps live and queued observations tied to the same measurement.
 ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidence& evidence,
-	uint64_t frameNumber, double framesPerSecond);
+	uint64_t frameNumber, double framesPerSecond,
+    const ActivePictureFrameIdentity* expectedCurrentIdentity=nullptr);
 
 // Frame-global darkness is presentation-independent. In particular, startup
 // title cards must be classifiable before any trusted crop exists; "false" and
@@ -280,6 +327,13 @@ struct ActivePicturePresentationRetentionEvidence
 	int presentationBlackThreshold = 0;
 	bool relocatedOverlayExclusionEvaluated = false;
 	bool relocatedOverlayResidualsExcluded = false;
+	// Completed raw native-band inspection, kept separate from overlay-erased
+	// presentation evidence. These bounded scans can retain an existing base;
+	// they never nominate a boundary or create crop authority.
+	bool rawBandSafetyEvaluated = false;
+	ActivePictureBounds rawBandSafetyBase;
+	bool rawBandLeftSafe = false, rawBandTopSafe = false;
+	bool rawBandRightSafe = false, rawBandBottomSafe = false;
 	bool excludedBandsPixelSafe = false;
 	bool excludedHorizontalBandsPixelSafe = false;
 	bool excludedVerticalBandsPixelSafe = false;
@@ -329,6 +383,13 @@ ActivePictureEvidence ExtractP010ActivePictureEvidence(
 // this bounded source sampler and retain source-raster coordinates.
 ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source,
+    const AnalysisEvaluationBudget* budget = nullptr);
+
+// Verify only the caller's independently measured source nomination. No coarse
+// detector, symmetry prior or inherited crop certificate participates. Proposed
+// bounds remain unrounded; trusted bounds may retain outward alignment/collar.
+ActivePictureEvidence VerifySuppliedActivePictureCandidate(
+    const AnalysisLumaSource& source, const ActivePictureBounds& measuredBounds,
     const AnalysisEvaluationBudget* budget = nullptr);
 
 ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
@@ -407,6 +468,8 @@ struct SubtitleAssistedVerticalBarProof
     int topFlankSupport = 0, bottomFlankSupport = 0;
     size_t unknownSamples = 0, lumaSamples = 0;
     bool usedMeasuredBacking = false;
+    // Diagnostic sampled residuals, including failed verification. No authority.
+    ActivePictureVerticalBarProfile maskedProfile;
     const char* reason = "not-evaluated";
 
     bool IsCurrentFor(const AnalysisLumaSource& source,
@@ -414,6 +477,13 @@ struct SubtitleAssistedVerticalBarProof
         uint64_t currentPolicyGeneration, uint64_t currentContinuityGeneration,
         SubtitleScriptHint currentScriptHint) const;
 };
+
+// Verify only the supplied spatial nominee, masking exact-current owned ink.
+// Failure preserves measured evidence and supplies no crop permission.
+SubtitleAssistedVerticalBarProof VerifySuppliedActivePictureCandidateWithSubtitle(
+    const AnalysisLumaSource& source, const ActivePictureEvidence& measured,
+    const SubtitleBoxObservation& current, const ActivePictureFrameIdentity& currentIdentity,
+    uint64_t policyGeneration, uint64_t continuityGeneration, SubtitleScriptHint scriptHint);
 
 SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
     const AnalysisLumaSource& source,
