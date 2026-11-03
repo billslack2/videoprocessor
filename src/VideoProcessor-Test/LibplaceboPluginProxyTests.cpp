@@ -5491,7 +5491,11 @@ namespace VideoProcessorTest
                     admission.acceptedSequence==output.acceptedSequence && sameCurrentContext(admission) &&
                     admission.sourceFrameNumber==output.sourceFrameNumber && admission.captureTimestamp==output.captureTimestamp &&
                     admission.counters[0]==static_cast<unsigned>(expectedCanvasMode) &&
-                    admission.counters[1]==static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) &&
+                    // A fresh completed absence scan can arrive during shader
+                    // startup. Both it and UNKNOWN use the same exact-current
+                    // unprocessed output proof below; neither grants a crop.
+                    (admission.counters[1]==static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) ||
+                     admission.counters[1]==static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::ABSENT)) &&
                     (admission.flags&2u) && !(admission.flags&(1u|4u|8u|32u|64u)) &&
                     admission.recordSequence<output.recordSequence)
                     admissionMatch=&admission;
@@ -5740,10 +5744,11 @@ namespace VideoProcessorTest
             Assert::IsTrue(checked>20,L"Dark interval did not exercise enough actual submissions");
             if(processedMode) {
                 std::set<uint64_t> continued,submitted;
-                for(const auto& row:spatialCanvas)if(row.acceptedSequence>=darkFirst && (row.flags&2u) && !(row.flags&1u))
+                for(const auto& row:spatialCanvas)if(row.acceptedSequence>=darkFirst && (row.flags&2u) && !(row.flags&1u) &&
+                    row.counters[1]==static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN))
                     continued.insert(row.acceptedSequence);
                 for(const auto& row:spatialOutputs)if(row.acceptedSequence>=darkFirst &&
-                    row.counters[0]==row.acceptedSequence && row.counters[1]==row.acceptedSequence && !(row.flags&16384u))
+                    row.counters[0]==row.acceptedSequence && row.counters[1]==row.acceptedSequence && !(row.flags&(8192u|16384u)))
                     submitted.insert(row.acceptedSequence);
                 unsigned joined=0;for(auto source:submitted)joined+=continued.count(source)!=0;
                 Assert::IsTrue(freshUnknownSources.size()>20 && joined>20,

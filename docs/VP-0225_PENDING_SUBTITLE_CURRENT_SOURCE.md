@@ -240,3 +240,45 @@ in exact-source and wall-time joins, including raw fallback, UNKNOWN, genuine
 repeats and stop-drained output. Bounds use source and actual display periods;
 queue depths and analysis deadlines are unchanged. A 24 Hz monitor alone cannot
 qualify 60 distinct source submissions per second.
+## Frame-budget review and worker requirement
+
+Bounded queue age and incoming-rate submissions do not finish this repair.
+Expensive template construction, current YUV/cleanup verification and grouping
+must leave the capture/render critical path. The current repair still calls
+`SubtitlePendingMeasurementGuard::Resolve`, `RefreshReferencePixels`,
+`RememberCurrentFootprint` and `RememberPendingCue` synchronously from rendering.
+The successful steady timing matrix does not qualify those calls as budgeted.
+
+Published RC6 is not one source revision. Receipts identify beta `7af23836`,
+republished `d5607e08` with application sources `c716bd8`, Magewell `5b8132b6`,
+and Stable DeckLink initially `605ec4af` then replaced by `a8f62855` under the
+same tag. The beta baseline `a591ad3` descends from `a8f62855`. Those shipped
+sources already use nonblocking exact-source worker analysis and a glyph-local
+pending bridge capped at 32,768 samples. Above 30 Hz analysis uses stride two;
+below 30 Hz a due scan may still run per input. Commit `477fdfb6` adds the later
+footprint cadence guard; it is in this repair history, not in either `a8f62855`
+or `a591ad3`. Do not confuse package labels with actual released application pins.
+
+The next implementation needs a bounded worker verification lane and an immutable
+accepted-cue template. Initial acquisition/grouping may cost more; the worker
+checks a cheap same-cue path before scheduling full grouping. A passing receipt
+is bound to the exact source, original template revision, policy, physical base
+and operation; the renderer consumes only an already-ready receipt. A missing,
+stale or failed result selects current raw pixels without waiting. Continuously
+verified current sources can sustain a seconds-long cue without reseeding or
+using the weak pending timeout as a reason to drop it. Changes, absence and native
+AR remain separate decisions; a template cannot supply old movie pixels.
+
+Verification includes every current pixel affected by extraction, cleanup and
+presentation crop. A new bar caption outside the old compositor rectangle can
+still be clipped by downstream native cropping; untouched compositor pixels are
+not automatically preserved. Keep current visibility/novelty checks over excluded
+bars. Only movie texture that remains visible and is not overwritten can be
+omitted. Luma-only `blackBacking` bits do not prove chroma safety; actual current
+YUV evidence is required for erased regions. Worker scratch/guards must not be
+shared mutably with rendering, and stale means outside the eligible render-source
+window, not merely older than the latest HDMI arrival.
+
+An isolated one-work-limit cue-hint prototype was not applied: its mask-only
+reattachment could miss an alternate-chroma pixel inside cleanup. It also would
+add render-thread comparison work rather than satisfy this worker requirement.
