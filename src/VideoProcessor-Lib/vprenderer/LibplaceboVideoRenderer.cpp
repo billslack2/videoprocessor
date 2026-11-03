@@ -9614,7 +9614,57 @@ struct LibplaceboVideoRenderer::Impl
         const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t ownedTimelinePolicy=0)
     {
         const uint64_t revision=currentCueTemplateRevision.load(std::memory_order_acquire);
-        if(!revision)return SubtitleCurrentCueProofStatus::NoTemplate;
+        const auto statusName=[](SubtitleCurrentCueProofStatus status)->const char* {
+            switch(status) {
+            case SubtitleCurrentCueProofStatus::NoTemplate:return "no-template";
+            case SubtitleCurrentCueProofStatus::NoTask:return "no-task";
+            case SubtitleCurrentCueProofStatus::NotEligible:return "not-eligible";
+            case SubtitleCurrentCueProofStatus::Queued:return "queued";
+            case SubtitleCurrentCueProofStatus::Pending:return "pending";
+            case SubtitleCurrentCueProofStatus::Ready:return "ready";
+            case SubtitleCurrentCueProofStatus::FallbackQueued:return "fallback-queued";
+            case SubtitleCurrentCueProofStatus::Failed:return "failed";
+            case SubtitleCurrentCueProofStatus::Expired:return "expired";
+            case SubtitleCurrentCueProofStatus::Consumed:return "consumed";
+            }
+            return "unknown-status";
+        };
+        const auto offerTrace=[&](SubtitleCurrentCueProofStatus status,const char* detail,
+            uint64_t originalSourceGeneration,uint64_t proofSourceGeneration,double elapsedMs) {
+            const uint64_t sequence=key.identity.acceptedSequence;
+            if(sequence>8 && sequence%60!=0)return;
+            auto trace=AnalysisTraceRecord(key.identity,this,"subtitle-cue-proof-offered",detail);
+            trace.policyGeneration=key.policyGeneration;
+            trace.continuityGeneration=key.continuityGeneration;
+            trace.flags=(status==SubtitleCurrentCueProofStatus::Queued ||
+                status==SubtitleCurrentCueProofStatus::Pending ||
+                status==SubtitleCurrentCueProofStatus::Ready ||
+                status==SubtitleCurrentCueProofStatus::FallbackQueued)?1u:0u;
+            trace.counters[0]=revision;
+            trace.counters[1]=static_cast<uint64_t>(status);
+            trace.counters[2]=key.identity.transportGeneration;
+            trace.counters[3]=originalSourceGeneration;
+            trace.counters[4]=proofSourceGeneration;
+            trace.counters[5]=renderHead.acceptedSequence;
+            trace.counters[6]=eligibleTailSequence;
+            trace.counters[7]=key.sharedPicture.AvailableFor(key.identity,key.width,key.height)?1u:0u;
+            trace.metrics[0]=elapsedMs;
+            AnalysisTraceRect(trace.previous,physicalBase);
+            AnalysisTraceRect(trace.published,key.sharedPicture.bounds);
+            AnalysisDiagnosticTrace::Emit(trace);
+        };
+        if(!revision) {
+            offerTrace(SubtitleCurrentCueProofStatus::NoTemplate,"no-template",prepared.source.generation,
+                prepared.source.generation,0.0);
+            return SubtitleCurrentCueProofStatus::NoTemplate;
+        }
+        auto proofSource=prepared.source;
+        const auto originalSourceGeneration=proofSource.generation;
+        // The queued analysis view owns the exact pixels used for both the
+        // accepted scan and this proof. Normalize only its source-generation
+        // label to the exact current transport identity; do not change bytes,
+        // interpretation, or backing ownership.
+        proofSource.generation=key.identity.transportGeneration;
         if(!prepared.IsValid() || !prepared.source.backingOwner ||
             key.discontinuity ||
             key.identity.analysisDomainKey!=prepared.domainKey ||
@@ -9622,12 +9672,15 @@ struct LibplaceboVideoRenderer::Impl
             physicalBase.rasterWidth!=key.width || physicalBase.rasterHeight!=key.height ||
             physicalBase.left<0 || physicalBase.top<0 || physicalBase.right>key.width ||
             physicalBase.bottom>key.height || physicalBase.left>=physicalBase.right ||
-            physicalBase.top>=physicalBase.bottom)
+            physicalBase.top>=physicalBase.bottom) {
+            offerTrace(SubtitleCurrentCueProofStatus::NotEligible,"precondition-rejected",
+                originalSourceGeneration,proofSource.generation,0.0);
             return SubtitleCurrentCueProofStatus::NotEligible;
+        }
 
         SubtitleCurrentCueProofRequest request;
         request.currentKey=key;
-        request.source=prepared.source;
+        request.source=std::move(proofSource);
         request.physicalBase=physicalBase;
         request.sourceMode=sourceMode;
         request.backgroundMode=backgroundMode;
@@ -9643,7 +9696,11 @@ struct LibplaceboVideoRenderer::Impl
             request.ownedTimelinePolicy=ownedTimelinePolicy;
         }
         request.completion=analysisCache?analysisCache->lookahead->completion:nullptr;
-        return subtitleMeasurementWorker.SubmitCurrentCueProof(std::move(request));
+        const auto started=SteadyClock::now();
+        const auto status=subtitleMeasurementWorker.SubmitCurrentCueProof(std::move(request));
+        offerTrace(status,statusName(status),originalSourceGeneration,key.identity.transportGeneration,
+            std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
+        return status;
     }
 
 	bool SubtitleBoxTestEnabled(const RendererSettings&) const
@@ -15884,7 +15941,9 @@ struct LibplaceboVideoRenderer::Impl
             if(fullAcceptedComposition) {
                 SubtitleCurrentCueTemplateInput seed;
                 seed.observation=seedObservation;seed.acceptedCue=subtitleBoxResult;
-                seed.source=analysisSource;seed.physicalBase=nlsGeometry;
+                seed.source=preparedQueued.source;
+                seed.source.generation=seedObservation.identity.transportGeneration;
+                seed.physicalBase=nlsGeometry;
                 seed.composedOperation=relocatedSubtitle;seed.sourceMode=sourceSubtitleMode;
                 seed.compositionSucceeded=subtitleCompositionSucceeded;seed.acceptedCurrentScan=true;
                 seed.backgroundMode=subtitleCutPasteBackground;

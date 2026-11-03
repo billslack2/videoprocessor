@@ -3819,7 +3819,7 @@ namespace VideoProcessorTest
                 struct SubtitleStageTiming {uint64_t calls=0,successes=0;std::vector<double> elapsedMs,leaseAgeMs;
                     std::map<std::string,uint64_t> reasons;
                     std::map<std::pair<uint32_t,uint32_t>,uint64_t> rearmDispositions;};
-                std::array<SubtitleStageTiming,8> subtitleStageTimings{};
+                std::array<SubtitleStageTiming,9> subtitleStageTimings{};
                 std::vector<AnalysisDiagnosticRecordV1> cueBudgetEvents;
                 auto collectSubtitleStageTiming=[&](const AnalysisDiagnosticRecordV1& record) {
                     if(!strcmp(record.stage,"worker-complete") || !strcmp(record.stage,"worker-cue-proof") || !strcmp(record.stage,"subtitle-cue-proof-consumed") ||
@@ -3833,6 +3833,7 @@ namespace VideoProcessorTest
                     else if(!strcmp(record.stage,"worker-cue-proof"))index=5;
                     else if(!strcmp(record.stage,"subtitle-cue-proof-consumed"))index=6;
                     else if(!strcmp(record.stage,"source-frame-work"))index=7;
+                    else if(!strcmp(record.stage,"subtitle-cue-proof-offered"))index=8;
                     if(index==subtitleStageTimings.size())return;
                     auto& timing=subtitleStageTimings[index];++timing.calls;
                     if(record.flags&1u)++timing.successes;
@@ -3855,7 +3856,7 @@ namespace VideoProcessorTest
                 };
                 auto reportSubtitleStageTiming=[&] {
                     static const char* names[]={"pending-pixels","pending-seed","footprint-seed","cadence-seed",
-                        "worker-template","worker-proof","render-receipt-bind","source-frame-work"};
+                        "worker-template","worker-proof","render-receipt-bind","source-frame-work","worker-proof-offered"};
                     for(size_t index=0;index<subtitleStageTimings.size();++index) {
                         auto& timing=subtitleStageTimings[index];
                         std::sort(timing.elapsedMs.begin(),timing.elapsedMs.end());
@@ -3897,7 +3898,22 @@ namespace VideoProcessorTest
                         }
                     }
                 };
+                auto reportCriticalWorkTail=[&] {
+                    std::vector<const AnalysisDiagnosticRecordV1*> work;
+                    for(const auto& event:cueBudgetEvents)
+                        if(!strcmp(event.stage,"source-frame-work") && std::isfinite(event.metrics[0]))work.push_back(&event);
+                    std::sort(work.begin(),work.end(),[](const auto* a,const auto* b){return a->metrics[0]>b->metrics[0];});
+                    for(size_t i=0;i<(std::min)(size_t(3),work.size());++i) {
+                        const auto& event=*work[i];std::ostringstream row;
+                        row<<"DV CRITICAL WORK TAIL: source="<<event.sourceFrameNumber<<" total_ms="<<event.metrics[0]
+                            <<" live_preparation_ms="<<event.metrics[1]<<" render_ms="<<event.metrics[2]
+                            <<" before_render_ms="<<event.metrics[3]<<" present_wait_ms="<<event.metrics[4]
+                            <<" source_period_ms="<<event.metrics[5];
+                        Logger::WriteMessage(row.str().c_str());
+                    }
+                };
                 auto reportProducerTiming=[&](bool failure) {
+                    reportCriticalWorkTail();
                     const auto failureQpc=clock.TimingClockNow();
                     if(pressureInput) {
                         for(const auto& a:pressureArrivals)if(a.source) {

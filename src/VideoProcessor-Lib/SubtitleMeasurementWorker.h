@@ -524,6 +524,7 @@ public:
     // The head has advanced; queued scans for older transport frames cannot
     // become current. The active worker is left alone and remains nonblocking.
     void BeginSourceWindow(const ActivePictureFrameIdentity& head) {
+        std::vector<Job> retiredJobs;
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_windowHead.transportGeneration>head.transportGeneration ||
             (m_windowHead.transportGeneration==head.transportGeneration &&
@@ -536,6 +537,7 @@ public:
                 (identity.transportGeneration==head.transportGeneration &&
                     identity.acceptedSequence<head.acceptedSequence)) {
                 Trace(i->key,"worker-drop","source-window-expired");
+                retiredJobs.push_back(std::move(*i));
                 i=m_pending.erase(i);
                 ++m_diagnostics.expired;
             } else ++i;
@@ -666,6 +668,9 @@ public:
     bool Submit(const SubtitleBoxObservation& key,Work work,
         const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t timelinePolicy=0,bool nonblocking=false,
         std::shared_ptr<AnalysisCompletionSignal> completion={}) {
+        // Retired callbacks may own a prepared frame/COM source. Declare this
+        // before the lock so its last release happens after the lock is gone.
+        std::vector<Job> retiredJobs;
         auto requestKey=key;
         // QueueSubtitleMeasurement submits only valid prepared sources. Mark
         // the request's scan path here so active and pending jobs can coalesce
@@ -710,6 +715,7 @@ public:
                 (incoming.transportGeneration==worst.transportGeneration &&
                     incoming.acceptedSequence<worst.acceptedSequence)) {
                 Trace(leastUseful->key,"worker-drop","lower-priority-replaced");
+                retiredJobs.push_back(std::move(*leastUseful));
                 m_pending.erase(leastUseful);
             } else {
                 Trace(requestKey,"worker-drop","future-capacity");
@@ -738,7 +744,17 @@ public:
         return true;
     }
     void Stop() {
-        {std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;m_pending.clear();m_currentCuePending.clear();m_currentCueTasks.clear();m_pastRaw.clear();m_rawVersions.clear();}
+        std::deque<Job> retiredPending,retiredCuePending;
+        std::deque<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredCueTasks;
+        std::deque<SubtitleBoxObservation> retiredPastRaw;
+        std::deque<RawVersion> retiredRawVersions;
+        std::shared_ptr<SubtitleCurrentCueWorkerState> retiredCueState;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;
+            retiredPending.swap(m_pending);retiredCuePending.swap(m_currentCuePending);
+            retiredCueTasks.swap(m_currentCueTasks);retiredPastRaw.swap(m_pastRaw);
+            retiredRawVersions.swap(m_rawVersions);retiredCueState=std::move(m_currentCueState);
+        }
         m_changed.notify_all();
         for(auto& thread:m_threads)if(thread.joinable())thread.join();
     }
@@ -2637,10 +2653,13 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             seedDiagnostics.seedKnownSamplesChecked+seedDiagnostics.seedBackingSamplesChecked;
         trace.counters[3]=0;trace.counters[4]=0;trace.metrics[0]=elapsed;
         trace.flags=seeded?1u:0u;AnalysisDiagnosticTrace::Emit(trace);
+        std::vector<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredEntries;
         {std::lock_guard<std::mutex> lock(m_mutex);
             entry->status=seeded?SubtitleCurrentCueProofStatus::Ready:SubtitleCurrentCueProofStatus::Failed;
             entry->key.ink.reset();entry->workerState.reset();
-            while(m_currentCueTasks.size()>8)m_currentCueTasks.pop_front();
+            while(m_currentCueTasks.size()>8) {
+                retiredEntries.push_back(std::move(m_currentCueTasks.front()));m_currentCueTasks.pop_front();
+            }
         }
     };
     {
@@ -2836,7 +2855,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             const bool intervalReached=sequence>lastRefreshSequence && sequence-lastRefreshSequence>=interval;
             semanticRefreshDue=burst||intervalReached;
         }
-        Work queuedScan;OwnedScanBacklogWitness queuedWitness;bool hasQueuedWitness=false;
+        Work queuedScan,retiredDeferredScan;OwnedScanBacklogWitness queuedWitness;bool hasQueuedWitness=false;
         uint64_t queuedTimelinePolicy=0;bool queuedAsFallback=false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -2851,7 +2870,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             } else {
                 // A source-specific callback that was not due is discarded;
                 // a later same-key due upgrade supplies its own exact callback.
-                entry->deferredFullScan={};entry->fullScanDue=false;entry->hasDeferredWitness=false;
+                retiredDeferredScan=std::move(entry->deferredFullScan);
+                entry->fullScanDue=false;entry->hasDeferredWitness=false;
             }
         }
         if(queuedScan) {
@@ -2911,12 +2931,17 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         trace.counters[4]=verified?state->descriptor.cue.lineCount:0;
         trace.metrics[0]=elapsed;trace.flags=(verified?1u:0u)|(semanticRefreshDue?2u:0u)|
             (semanticRefreshQueued?4u:0u);AnalysisDiagnosticTrace::Emit(trace);
+        AnalysisLumaSource retiredSource=std::move(request.source);
+        Work retiredRequestScan=std::move(request.fullScanOnMiss);
+        std::vector<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredEntries;
         {std::lock_guard<std::mutex> lock(m_mutex);
             if(verified) {entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;}
             else entry->status=(fallbackQueued || entry->fallbackQueued)?SubtitleCurrentCueProofStatus::FallbackQueued:
                 (stillCurrent?SubtitleCurrentCueProofStatus::Failed:SubtitleCurrentCueProofStatus::Expired);
-            entry->key.ink.reset();request.source={};request.fullScanOnMiss={};
-            while(m_currentCueTasks.size()>8)m_currentCueTasks.pop_front();
+            entry->key.ink.reset();
+            while(m_currentCueTasks.size()>8) {
+                retiredEntries.push_back(std::move(m_currentCueTasks.front()));m_currentCueTasks.pop_front();
+            }
         }
     };
     {
@@ -2959,6 +2984,10 @@ inline void SubtitleMeasurementWorker::AdvanceCurrentCueRenderWindow(
     const ActivePictureFrameIdentity& head,uint64_t tailSequence,bool advanceHead) {
     using namespace SubtitleCurrentCueWorkerDetail;
     std::vector<std::shared_ptr<AnalysisCompletionSignal>> completions;
+    std::vector<Job> retiredJobs;
+    std::vector<Work> retiredScans;
+    std::vector<SubtitleCurrentCueProofReceipt> retiredReceipts;
+    std::vector<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredEntries;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if(!head.transportGeneration)return;
@@ -3001,17 +3030,22 @@ inline void SubtitleMeasurementWorker::AdvanceCurrentCueRenderWindow(
             if(!i->currentCueSeedTask && !InWindow(effectiveHead,m_currentCueWindowTail,i->key.identity)) {
                 if(i->cueEntry)i->cueEntry->status=SubtitleCurrentCueProofStatus::Expired;
                 if(i->completion)completions.push_back(i->completion);
+                retiredJobs.push_back(std::move(*i));
                 i=m_currentCuePending.erase(i);++m_diagnostics.expired;
             } else ++i;
         }
         for(auto& entry:m_currentCueTasks)if(!entry->seedTask &&
             entry->status!=SubtitleCurrentCueProofStatus::Consumed &&
             !InWindow(effectiveHead,m_currentCueWindowTail,entry->key.identity)) {
-            entry->status=SubtitleCurrentCueProofStatus::Expired;entry->receipt={};
-            entry->deferredFullScan={};entry->fullScanDue=false;entry->hasDeferredWitness=false;
+            entry->status=SubtitleCurrentCueProofStatus::Expired;
+            retiredReceipts.push_back(std::move(entry->receipt));
+            retiredScans.push_back(std::move(entry->deferredFullScan));
+            entry->fullScanDue=false;entry->hasDeferredWitness=false;
             ++m_diagnostics.expired;
         }
-        while(m_currentCueTasks.size()>8)m_currentCueTasks.pop_front();
+        while(m_currentCueTasks.size()>8) {
+            retiredEntries.push_back(std::move(m_currentCueTasks.front()));m_currentCueTasks.pop_front();
+        }
     }
     m_changed.notify_all();
     for(const auto& completion:completions)completion->Notify();

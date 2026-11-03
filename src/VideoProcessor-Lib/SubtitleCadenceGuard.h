@@ -62,7 +62,9 @@ public:
     void Reset() { m_valid=false;m_used=false;m_currentFootprintReceiptValid=false;m_cleanupChangedIndices.clear();
         m_lastRearmRejectCode=RearmRejectCode::NotAttempted;m_lastGeometryMismatchBits=0;
         ClearInPlace(*m_reference);m_source={};m_baseline.reset();m_detectorReference.reset();
-        m_native.clear();m_currentPixels.clear();m_changedComponents.clear();m_index.clear();m_components.clear();ClearInPlace(*m_cached); }
+        m_native.clear();m_currentPixels.clear();m_changedComponents.clear();m_index.clear();m_components.clear();
+        m_destinationProbe={};m_destinationSeedPixels.clear();m_destinationSeedDirections.clear();
+        m_destinationCurrentPixels.clear();ClearInPlace(*m_cached); }
     bool HasReference() const {return m_valid;}
     const char* DecisionReason() const {return m_reason;}
     unsigned SampleCount() const {return m_samples;}
@@ -153,6 +155,15 @@ public:
             return fail("current-footprint-context-changed");
         auto verified=VerifyNativeFootprintPixels(source,true);
         if(!verified.valid)return verified;
+        size_t destinationSamples=0;int destinationMismatchX=-1,destinationMismatchY=-1;
+        const char* destinationReason="current-destination-proof-unavailable";
+        if(!VerifyDestinationNovelty(source,destinationSamples,destinationMismatchX,
+            destinationMismatchY,destinationReason)) {
+            m_currentFootprintReceiptValid=false;
+            return {false,verified.samples+destinationSamples,destinationReason,
+                destinationMismatchX,destinationMismatchY};
+        }
+        verified.samples+=destinationSamples;
         m_currentFootprintReceiptValid=true;m_currentFootprintReceiptIdentity=current.identity;
         m_currentFootprintReceiptPolicy=current.policyGeneration;m_currentFootprintReceiptBase=base;
         m_currentFootprintReceiptGeometry=m_geometry;
@@ -356,6 +367,8 @@ private:
         // rearm checks, never for skipped-source native pixel authority.
         m_detectorReference=c.ink;
         m_baseline=Snapshot(*c.ink,m_native);
+        if(allowAnalyzedStrideOne && !SeedDestinationNovelty(source))
+            return fail("cadence-destination-seed-unavailable");
         for(int line=0;line<accepted.lineCount;++line) {
             unsigned owned=0;
             const auto& bounds=accepted.lineBounds[line];
@@ -609,6 +622,7 @@ private:
         return true;
     }
     struct CurrentPixel {AnalysisLumaSample pixel;bool ink=false,black=false;};
+    struct DestinationSeedPixel {AnalysisLumaSample pixel;};
     struct NativePixel {
         int x=0,y=0,line=-1,component=-1,fringeComponent=-1;
         AnalysisLumaSample pixel;
@@ -755,6 +769,137 @@ private:
             return false;
         return true;
     }
+    static bool SameSample(const AnalysisLumaSample& a,const AnalysisLumaSample& b) {
+        return std::abs(int(a.luma)-int(b.luma))<=8 &&
+            std::abs(int(a.chromaU)-int(b.chromaU))<=8 &&
+            std::abs(int(a.chromaV)-int(b.chromaV))<=8;
+    }
+    SubtitleBoxRect DestinationProbeBounds() const {
+        const auto& g=m_geometry;
+        if(!g.destination.Valid())return {};
+        const bool selectedPicture=g.displayPictureRight>g.displayPictureLeft &&
+            g.displayPictureBottom>g.displayPictureTop;
+        const int displayTop=selectedPicture?g.displayPictureTop:g.pictureTop;
+        const int displayBottom=selectedPicture?g.displayPictureBottom:g.pictureBottom;
+        const int top=g.extendToBar && g.fromTopBar?(std::min)(g.destination.top,displayTop):g.destination.top;
+        const int bottom=g.extendToBar && !g.fromTopBar?(std::max)(g.destination.bottom,displayBottom):g.destination.bottom;
+        // Match ComputeSubtitleLayerBounds: eight horizontal pixels for panel
+        // side extension/AA and two vertical pixels at the bar-facing edges.
+        SubtitleBoxRect bounds={(std::max)(0,g.destination.left-8),(std::max)(0,top-2),
+            (std::min)(m_reference->current.width,g.destination.right+8),
+            (std::min)(m_reference->current.height,bottom+2)};
+        bounds.left=(std::max)(bounds.left,m_base.left);bounds.top=(std::max)(bounds.top,m_base.top);
+        bounds.right=(std::min)(bounds.right,m_base.right);bounds.bottom=(std::min)(bounds.bottom,m_base.bottom);
+        return bounds.Valid()?bounds:SubtitleBoxRect{};
+    }
+    size_t DestinationIndex(int x,int y) const {
+        if(!Inside(m_destinationProbe,x,y))return size_t(-1);
+        return size_t(y-m_destinationProbe.top)*size_t(m_destinationProbe.right-m_destinationProbe.left)+
+            size_t(x-m_destinationProbe.left);
+    }
+    bool SeedDestinationNovelty(const AnalysisLumaSource& source) {
+        if(!InRaster(m_geometry.destination,m_reference->current.width,m_reference->current.height))return false;
+        m_destinationProbe=DestinationProbeBounds();
+        if(!m_destinationProbe.Valid()) {
+            // A valid panel wholly outside the independently accepted active
+            // picture has no picture-local write area; its encoded-bar pixels
+            // remain covered by the separate exact current bar proof.
+            m_destinationSeedPixels.clear();m_destinationSeedDirections.clear();
+            m_destinationCurrentPixels.clear();return true;
+        }
+        const size_t width=size_t(m_destinationProbe.right-m_destinationProbe.left);
+        const size_t height=size_t(m_destinationProbe.bottom-m_destinationProbe.top);
+        if(!width || height>SampleBudget/width)return false;
+        const size_t area=width*height;
+        if(area>SampleBudget || m_native.size()>SampleBudget-area)return false;
+        m_destinationSeedPixels.assign(area,DestinationSeedPixel{});
+        m_destinationSeedDirections.assign(area,0);
+        m_destinationCurrentPixels.resize(area);
+        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
+            for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
+                const size_t at=DestinationIndex(x,y);
+                if(at>=area || !SampleValidated(source,x,y,m_destinationSeedPixels[at].pixel))return false;
+                ++m_samples;
+            }
+        constexpr int dx[4]={-1,1,0,0},dy[4]={0,0,-1,1};
+        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
+            for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
+                const size_t at=DestinationIndex(x,y);const auto& point=m_destinationSeedPixels[at].pixel;
+                for(int direction=0;direction<4;++direction) {
+                    const size_t neighborAt=DestinationIndex(x+dx[direction],y+dy[direction]);
+                    if(neighborAt==size_t(-1))continue;
+                    const auto& neighbor=m_destinationSeedPixels[neighborAt].pixel;
+                    if(BrightDestinationCandidate(point,neighbor,*m_baseline))
+                        m_destinationSeedDirections[at]|=uint8_t(1u<<direction);
+                    if(AlternateDestinationCandidate(point,neighbor,*m_baseline))
+                        m_destinationSeedDirections[at]|=uint8_t(1u<<(direction+4));
+                    if(DarkDestinationCandidate(point,neighbor,*m_baseline))
+                        m_destinationSeedDirections[at]|=uint16_t(1u<<(direction+8));
+                }
+            }
+        return true;
+    }
+    static bool BrightDestinationCandidate(const AnalysisLumaSample& point,
+        const AnalysisLumaSample& neighbor,const SubtitleInkSnapshot& palette) {
+        const int floor=(std::max)(96,palette.inkFloor-160);
+        return point.luma>=floor && int(point.luma)-int(neighbor.luma)>=48 &&
+            std::abs(int(point.chromaU)-palette.inkU)<=80 &&
+            std::abs(int(point.chromaV)-palette.inkV)<=80;
+    }
+    static bool AlternateDestinationCandidate(const AnalysisLumaSample& point,
+        const AnalysisLumaSample& neighbor,const SubtitleInkSnapshot& palette) {
+        return (std::abs(int(point.chromaU)-palette.inkU)>80 ||
+                std::abs(int(point.chromaV)-palette.inkV)>80) &&
+            (std::abs(int(point.chromaU)-int(neighbor.chromaU))>=64 ||
+                std::abs(int(point.chromaV)-int(neighbor.chromaV))>=64);
+    }
+    static bool DarkDestinationCandidate(const AnalysisLumaSample& point,
+        const AnalysisLumaSample& neighbor,const SubtitleInkSnapshot& palette) {
+        return point.luma<=palette.inkFloor-80 && int(neighbor.luma)-int(point.luma)>=48;
+    }
+    bool VerifyDestinationNovelty(const AnalysisLumaSource& source,size_t& samples,
+        int& mismatchX,int& mismatchY,const char*& reason) const {
+        samples=0;mismatchX=mismatchY=-1;
+        if(!m_destinationProbe.Valid())return true;
+        const size_t area=size_t(m_destinationProbe.right-m_destinationProbe.left)*
+            size_t(m_destinationProbe.bottom-m_destinationProbe.top);
+        if(area!=m_destinationSeedPixels.size() || area!=m_destinationSeedDirections.size() ||
+            area!=m_destinationCurrentPixels.size() || m_native.size()>SampleBudget-area) {
+            reason="current-destination-proof-unavailable";return false;
+        }
+        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
+            for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
+                const size_t at=DestinationIndex(x,y);
+                if(at>=area || !SampleValidated(source,x,y,m_destinationCurrentPixels[at])) {
+                    mismatchX=x;mismatchY=y;reason="current-destination-source-unavailable";return false;
+                }
+                ++samples;
+            }
+        constexpr int dx[4]={-1,1,0,0},dy[4]={0,0,-1,1};
+        for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
+            for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
+                const size_t at=DestinationIndex(x,y);const auto& point=m_destinationCurrentPixels[at];
+                for(int direction=0;direction<4;++direction) {
+                    const size_t neighborAt=DestinationIndex(x+dx[direction],y+dy[direction]);
+                    if(neighborAt==size_t(-1))continue;
+                    const auto& neighbor=m_destinationCurrentPixels[neighborAt];
+                    const uint16_t brightBit=uint16_t(1u<<direction),alternateBit=uint16_t(1u<<(direction+4));
+                    const uint16_t darkBit=uint16_t(1u<<(direction+8));
+                    const bool bright=BrightDestinationCandidate(point,neighbor,*m_baseline);
+                    const bool alternate=AlternateDestinationCandidate(point,neighbor,*m_baseline);
+                    const auto& seedPoint=m_destinationSeedPixels[at].pixel;
+                    const auto& seedNeighbor=m_destinationSeedPixels[neighborAt].pixel;
+                    const bool samePair=SameSample(point,seedPoint) && SameSample(neighbor,seedNeighbor);
+                    const bool dark=DarkDestinationCandidate(point,neighbor,*m_baseline);
+                    if((bright && (!(m_destinationSeedDirections[at]&brightBit) || !samePair)) ||
+                        (alternate && (!(m_destinationSeedDirections[at]&alternateBit) || !samePair)) ||
+                        (dark && (!(m_destinationSeedDirections[at]&darkBit) || !samePair))) {
+                        mismatchX=x;mismatchY=y;reason="current-destination-new-ink";return false;
+                    }
+                }
+            }
+        return true;
+    }
     CurrentFootprintVerification VerifyNativeFootprintPixels(const AnalysisLumaSource& source,
         bool allowProtectedCleanupProjection=false) const {
         int mismatchX=-1,mismatchY=-1;
@@ -872,12 +1017,15 @@ private:
     std::unique_ptr<SubtitleCadenceProof> m_cached=std::make_unique<SubtitleCadenceProof>();
     std::unique_ptr<SubtitleCadenceProof> m_work=std::make_unique<SubtitleCadenceProof>();
     ActivePictureBounds m_base;AnalysisLumaSource m_source;
-    SubtitleCutPasteGeometry m_geometry;SubtitleBoxRect m_roi,m_cleanup;
+    SubtitleCutPasteGeometry m_geometry;SubtitleBoxRect m_roi,m_cleanup,m_destinationProbe;
     std::array<SubtitleBoxRect,3> m_capture{};
     std::vector<NativePixel> m_native;
     mutable std::vector<CurrentPixel> m_currentPixels;
     mutable std::vector<unsigned> m_changedComponents;
     mutable std::vector<unsigned> m_cleanupChangedIndices;
+    std::vector<DestinationSeedPixel> m_destinationSeedPixels;
+    std::vector<uint16_t> m_destinationSeedDirections;
+    mutable std::vector<AnalysisLumaSample> m_destinationCurrentPixels;
     std::vector<int> m_index;
     std::vector<Component> m_components;
     std::shared_ptr<SubtitleInkSnapshot> m_baseline;

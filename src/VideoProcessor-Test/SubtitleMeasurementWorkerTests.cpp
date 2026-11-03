@@ -67,6 +67,9 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
     static AnalysisLumaSource OwnedSource(const std::shared_ptr<std::vector<uint16_t>>& pixels) {
         auto source=Source(*pixels);source.backingOwner=pixels;return source;
     }
+    static AnalysisLumaSource OwnedCadenceSource(const std::shared_ptr<std::vector<uint16_t>>& pixels) {
+        auto source=CadenceSource(*pixels);source.backingOwner=pixels;return source;
+    }
     static SubtitleBoxPreview Pending(uint64_t sequence) {
         auto preview=Ready(sequence);preview.available=false;preview.text={};
         preview.current.analyzed=false;preview.current.text={};return preview;
@@ -3803,6 +3806,84 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::IsTrue(worker.TryTakeCurrentCueProof(current,revision,receipt)==
             SubtitleCurrentCueProofStatus::Consumed);
     }
+    TEST_METHOD(CurrentCueWorkerRejectsNovelInkInsideAdvancedDestinationAndAllowsUniformMotion) {
+        const auto operationFor=[](const SubtitleBoxResult& cue) {
+            SubtitleCutPasteGeometry operation;operation.valid=true;
+            operation.content=cue.bounds;operation.glyphLines=cue.lineBounds;
+            operation.pictureCapture=cue.capturePanel;
+            operation.source=cue.sourcePanel;operation.destination={0,12,80,47};
+            operation.generatedCleanup=cue.sourcePanel;operation.pictureTop=12;operation.pictureBottom=78;
+            operation.extendToBar=false;return operation;
+        };
+        const auto run=[&](int mutation) {
+            auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+            const auto fillTexturedDestination=[](std::vector<uint16_t>& pixels,int offset) {
+                for(int y=12;y<47;++y)for(int x=0;x<80;++x) {
+                    const int value=280+(((x/4+y/4)&1)?60:0)+offset;
+                    pixels[size_t(y)*160+x]=uint16_t(value<<6);
+                }
+            };
+            if(mutation==0)fillTexturedDestination(*seedPixels,0);
+            const auto seed=CompleteThreeLineScan(1,*seedPixels);
+            const auto operation=operationFor(seed.text);
+            SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=seed.text;
+            input.source=OwnedCadenceSource(seedPixels);input.physicalBase=seed.sharedPicture.bounds;
+            input.sourceMode=SubtitlePreviewMode::BlackBackground;input.backgroundMode=3;
+            input.compositionSucceeded=true;input.composedOperation=operation;
+            input.acceptedCurrentScan=true;input.frameMs=1000.0/60;input.holdMs=250;
+
+            auto currentPixels=std::make_shared<std::vector<uint16_t>>(*seedPixels);
+            if(mutation==0) {
+                // Textured movie pixels move four luma codes while retaining
+                // their seeded local edge pairs. This is allowed by the exact
+                // current-point/current-neighbor tolerance, not by a broad ROI
+                // exemption.
+                fillTexturedDestination(*currentPixels,4);
+            } else if(mutation==1) {
+                // Odd-coordinate glyph pixels must be checked individually,
+                // even when the detector's larger source image uses a grid.
+                for(int y=31;y<33;++y)for(int x=61;x<63;++x)
+                    (*currentPixels)[size_t(y)*160+x]=uint16_t(700<<6);
+            } else if(mutation==2) {
+                // Single-pixel UV-cell marker: chroma-only caption color is
+                // still a possible new glyph inside the overwritten panel.
+                constexpr size_t lumaWords=160u*90u;
+                const size_t uv=lumaWords+size_t(31/2)*160u+size_t(61/2)*2u;
+                (*currentPixels)[uv]=uint16_t(800<<6);
+            } else {
+                // Dark neutral text on the bright destination has no positive
+                // luma edge; the lower-luma directional check must catch it.
+                (*currentPixels)[size_t(31)*160+61]=uint16_t(100<<6);
+            }
+            const auto current=CompleteThreeLineScan(2,*currentPixels);
+            SubtitleMeasurementWorker worker;worker.AdvanceCurrentCueRenderWindow(current.identity,2);
+            uint64_t revision=0;
+            Assert::IsTrue(worker.SubmitCurrentCueTemplate(std::move(input),revision)==
+                SubtitleCurrentCueProofStatus::Queued);
+            SubtitleCurrentCueProofRequest request;request.currentKey=current;
+            request.source=OwnedCadenceSource(currentPixels);request.physicalBase=current.sharedPicture.bounds;
+            request.sourceMode=SubtitlePreviewMode::BlackBackground;request.backgroundMode=3;
+            request.eligibleRenderHead=current.identity;request.eligibleTailSequence=2;
+            request.templateRevision=revision;request.fullScanDue=false;
+            Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
+            SubtitleCurrentCueProofReceipt receipt;auto status=SubtitleCurrentCueProofStatus::Queued;
+            for(int attempt=0;attempt<1000;++attempt) {
+                status=worker.TryTakeCurrentCueProof(current,revision,receipt);
+                if(status==SubtitleCurrentCueProofStatus::Ready || status==SubtitleCurrentCueProofStatus::Failed ||
+                    status==SubtitleCurrentCueProofStatus::Expired || status==SubtitleCurrentCueProofStatus::NotEligible)break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return status;
+        };
+        Assert::IsTrue(run(0)==SubtitleCurrentCueProofStatus::Ready,
+            L"Uniform low-contrast motion in the destination does not compare all movie pixels byte-for-byte.");
+        Assert::IsTrue(run(1)==SubtitleCurrentCueProofStatus::Failed,
+            L"A newly added odd-coordinate bright glyph inside the shader destination rejects reuse.");
+        Assert::IsTrue(run(2)==SubtitleCurrentCueProofStatus::Failed,
+            L"A one-cell alternate-chroma glyph inside the shader destination rejects reuse.");
+        Assert::IsTrue(run(3)==SubtitleCurrentCueProofStatus::Failed,
+            L"A dark neutral glyph inside the shader destination rejects reuse.");
+    }
     TEST_METHOD(CurrentCueWorkerProofRejectsChangedOwnedGlyphPixels) {
         auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
         auto seed=CompleteThreeLineScan(1,*seedPixels);
@@ -4140,7 +4221,16 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             Assert::IsTrue(seeded,L"A current full accepted scan seeds before refresh cadence begins.");
 
             std::atomic_uint semanticScans{0};
-            for(uint64_t sequence=2;sequence<=13;++sequence) {
+            std::mutex semanticScanMutex;std::vector<uint64_t> semanticScanSequences;
+            const uint64_t interval=static_cast<uint64_t>(std::ceil(100.0/frameMs));
+            const uint64_t frameCount=static_cast<uint64_t>(std::ceil(500.0/frameMs));
+            const uint64_t finalSequence=1+frameCount;
+            const auto frameDuration=std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::duration<double,std::milli>(frameMs));
+            auto nextFrame=std::chrono::steady_clock::now();
+            for(uint64_t sequence=2;sequence<=finalSequence;++sequence) {
+                nextFrame+=frameDuration;
+                std::this_thread::sleep_until(nextFrame);
                 auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
                 auto current=CompleteThreeLineScan(sequence,*pixels);
                 if(rate>30.0)current.analysisStride=2;
@@ -4151,9 +4241,12 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 request.eligibleRenderHead=current.identity;request.eligibleTailSequence=sequence;
                 request.templateRevision=revision;request.frameMs=frameMs;
                 request.fullScanDue=rate<=30.0 || sequence%2==1;
-                request.fullScanOnMiss=[current,&semanticScans](SubtitleMeasurementSampler&,
-                    const SubtitleBarTrackingReference&) mutable {
-                    ++semanticScans;return current;
+                request.fullScanOnMiss=[current,&semanticScans,&semanticScanMutex,&semanticScanSequences](
+                    SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) mutable {
+                    ++semanticScans;
+                    {std::lock_guard<std::mutex> lock(semanticScanMutex);
+                        semanticScanSequences.push_back(current.identity.acceptedSequence);}
+                    return current;
                 };
                 Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(request))==
                     SubtitleCurrentCueProofStatus::Queued);
@@ -4169,12 +4262,18 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 Assert::AreEqual(uint64_t(1),receipt.SeedIdentity().acceptedSequence,
                     L"Periodic full scans do not replace or renew the immutable cue seed.");
             }
-            const unsigned expected=rate<=30.0?4u:2u;
-            for(int attempt=0;attempt<1000 && semanticScans.load(std::memory_order_acquire)<expected-1;++attempt)
+            const unsigned expected=static_cast<unsigned>(frameCount/interval);
+            for(int attempt=0;attempt<1000 && semanticScans.load(std::memory_order_acquire)<expected;++attempt)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             const auto scans=semanticScans.load(std::memory_order_acquire);
             Assert::IsTrue(scans>=expected-1 && scans<=expected,
-                L"Semantic refresh runs about every 100–125 ms, below input cadence and coalesced.");
+                L"A wall-clock-paced source stream receives bounded semantic refreshes near the configured 100 ms interval.");
+            {
+                std::lock_guard<std::mutex> lock(semanticScanMutex);
+                for(size_t i=1;i<semanticScanSequences.size();++i)
+                    Assert::IsTrue(semanticScanSequences[i]-semanticScanSequences[i-1]>=interval,
+                        L"Semantic refresh scans remain below the source cadence and are not queued every frame.");
+            }
         }
     }
     TEST_METHOD(CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange) {
@@ -4212,13 +4311,13 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         for(uint64_t sequence=2;sequence<=7;++sequence) {
             auto pixels=std::make_shared<std::vector<uint16_t>>(*seedPixels);
             const std::weak_ptr<std::vector<uint16_t>> weakPixels=pixels;
-            for(int y=32;y<38;++y)for(int x=50;x<110;++x)if(x%7<3)
+            for(int y=40;y<46;++y)for(int x=50;x<110;++x)if(x%7<3)
                 (*pixels)[size_t(y)*160+x]=uint16_t(700<<6);
             auto current=CompleteThreeLineScan(sequence,*pixels);
-            current.text.lineCount=3;current.text.bounds={50,32,110,68};
-            current.text.lineBounds[0]={50,32,110,38};current.text.lineBounds[1]={50,50,110,56};
+            current.text.lineCount=3;current.text.bounds={50,40,110,68};
+            current.text.lineBounds[0]={50,40,110,46};current.text.lineBounds[1]={50,50,110,56};
             current.text.lineBounds[2]={50,62,110,68};
-            current.text.capturePanel=current.text.sourcePanel={40,29,120,70};
+            current.text.capturePanel=current.text.sourcePanel={40,37,120,70};
             for(int line=0;line<3;++line) {
                 current.text.linePanels[line]=current.text.sourcePanel;
                 current.text.provenLinePanels[line]=current.text.sourcePanel;
