@@ -21,7 +21,7 @@ the selected snapshot's frozen identity rather than borrowing current-frame
 metadata. Final full Release qualification plus matching-binary motion suites
 are running; no deployment, merge, live-scene acceptance or Done claim yet.
 
-The incident host identity is resolved to `ad9e7701e05393c1d79fb5f9b11b5a884c3a35`:
+The incident host identity is resolved to `ad9e7701e05393c1d79fb5f9b11b5a88484c3a35`:
 the originally observed runtime sidecar SHA256 `B0C8B8FEBB0DF03C6574BAC19226A483D952F2E4DEFA9F695FEEA6CB769AAD8C`
 matches the canonical VP-0222 deployment record, and process36456/instance
 A3E5EE18 agree with that investigation. `788554a1` is the subsequent related
