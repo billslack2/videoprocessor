@@ -1,0 +1,287 @@
+{
+  "source": "a4858d7c3c19071e955c80952d5d4a4a21d76191",
+  "userAcceptance": "FAILED: user reports zero visible improvement; live logs confirm recurring fallback",
+  "nativeTests": 1091,
+  "runtimeBuild": "x64 Release host and both renderers; FocusedPassed, not fully qualified",
+  "captures": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\subtitle-tolerance\\final-a4858d7c-161016\\receipt.json",
+      "summary": [
+        {
+          "kind": "capture",
+          "frames": 96,
+          "unique_rasters": 4,
+          "base": [
+            0,
+            274,
+            3840,
+            1884
+          ],
+          "frame_duration_100ns": 417083,
+          "source_steps": [
+            [
+              5,
+              95
+            ]
+          ]
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_seed",
+          "count": 4,
+          "p50_ms": 35.7693,
+          "p95_ms": 43.7327,
+          "max_ms": 51.3517
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_current_pixels",
+          "count": 374,
+          "p50_ms": 15.2267,
+          "p95_ms": 21.7287,
+          "max_ms": 25.9329
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_same_phase",
+          "count": 92,
+          "p50_ms": 15.1991,
+          "p95_ms": 21.2354,
+          "max_ms": 23.2186
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_cross_phase",
+          "count": 282,
+          "p50_ms": 15.2267,
+          "p95_ms": 21.6904,
+          "max_ms": 25.9329
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_valid",
+          "count": 374,
+          "p50_ms": 15.2267,
+          "p95_ms": 21.7287,
+          "max_ms": 25.9329
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_invalid",
+          "count": 0,
+          "p50_ms": 0,
+          "p95_ms": 0,
+          "max_ms": 0
+        },
+        {
+          "kind": "matrix_summary",
+          "seeds": 4,
+          "checked": 374,
+          "passed": 374,
+          "seed_acquisition": "synthetic_three_source_same_phase",
+          "proof_sources": "captured_sidecar_identities"
+        },
+        {
+          "kind": "cost",
+          "operation": "full_grouping",
+          "count": 98,
+          "p50_ms": 20.7603,
+          "p95_ms": 26.9962,
+          "max_ms": 32.0778
+        },
+        {
+          "kind": "cost",
+          "operation": "cpu_prepared_admission",
+          "count": 96,
+          "p50_ms": 2.6354,
+          "p95_ms": 4.0822,
+          "max_ms": 7.5646
+        },
+        {
+          "kind": "timeline_summary",
+          "count": 96,
+          "detected": 96,
+          "held": 48,
+          "composition_verified": 96,
+          "strong_prepared": 96,
+          "sourcePrepared": "modeled_success_no_GPU",
+          "timing": "synthetic_consecutive_unpaced"
+        },
+        {
+          "kind": "cost",
+          "operation": "worker_proof_ready",
+          "count": 384,
+          "p50_ms": 23.3918,
+          "p95_ms": 56.205,
+          "max_ms": 103.0511
+        },
+        {
+          "kind": "worker_summary",
+          "count": 384,
+          "ready": 384,
+          "consumed": 384,
+          "strong_prepared": 384,
+          "full_scans": 189,
+          "sourcePrepared": "modeled_success_no_GPU",
+          "scheduling": "unpaced_serial_poll_no_deadline_claim"
+        },
+        {
+          "kind": "result",
+          "failures": 0,
+          "enforced": 1,
+          "gpu_test": false
+        }
+      ],
+      "cpuOnly": true,
+      "modeledComposition": true
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\subtitle-tolerance\\final-a4858d7c-142457\\receipt.json",
+      "summary": [
+        {
+          "kind": "capture",
+          "frames": 96,
+          "unique_rasters": 4,
+          "base": [
+            0,
+            274,
+            3840,
+            1888
+          ],
+          "frame_duration_100ns": 417083,
+          "source_steps": [
+            [
+              5,
+              95
+            ]
+          ]
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_seed",
+          "count": 4,
+          "p50_ms": 36.3123,
+          "p95_ms": 39.3171,
+          "max_ms": 41.7722
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_current_pixels",
+          "count": 374,
+          "p50_ms": 15.7233,
+          "p95_ms": 22.0845,
+          "max_ms": 25.5648
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_same_phase",
+          "count": 92,
+          "p50_ms": 15.7886,
+          "p95_ms": 21.2218,
+          "max_ms": 22.9837
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_cross_phase",
+          "count": 282,
+          "p50_ms": 15.5549,
+          "p95_ms": 22.4625,
+          "max_ms": 25.5648
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_valid",
+          "count": 374,
+          "p50_ms": 15.7233,
+          "p95_ms": 22.0845,
+          "max_ms": 25.5648
+        },
+        {
+          "kind": "cost",
+          "operation": "footprint_invalid",
+          "count": 0,
+          "p50_ms": 0,
+          "p95_ms": 0,
+          "max_ms": 0
+        },
+        {
+          "kind": "matrix_summary",
+          "seeds": 4,
+          "checked": 374,
+          "passed": 374,
+          "seed_acquisition": "synthetic_three_source_same_phase",
+          "proof_sources": "captured_sidecar_identities"
+        },
+        {
+          "kind": "cost",
+          "operation": "full_grouping",
+          "count": 98,
+          "p50_ms": 20.9696,
+          "p95_ms": 25.7355,
+          "max_ms": 27.9982
+        },
+        {
+          "kind": "cost",
+          "operation": "cpu_prepared_admission",
+          "count": 96,
+          "p50_ms": 1.8526,
+          "p95_ms": 3.8688,
+          "max_ms": 5.5008
+        },
+        {
+          "kind": "timeline_summary",
+          "count": 96,
+          "detected": 96,
+          "held": 24,
+          "composition_verified": 96,
+          "strong_prepared": 96,
+          "sourcePrepared": "modeled_success_no_GPU",
+          "timing": "synthetic_consecutive_unpaced"
+        },
+        {
+          "kind": "cost",
+          "operation": "worker_proof_ready",
+          "count": 384,
+          "p50_ms": 23.5269,
+          "p95_ms": 67.6555,
+          "max_ms": 121.6167
+        },
+        {
+          "kind": "worker_summary",
+          "count": 384,
+          "ready": 384,
+          "consumed": 384,
+          "strong_prepared": 384,
+          "full_scans": 202,
+          "sourcePrepared": "modeled_success_no_GPU",
+          "scheduling": "unpaced_serial_poll_no_deadline_claim"
+        },
+        {
+          "kind": "result",
+          "failures": 0,
+          "enforced": 1,
+          "gpu_test": false
+        }
+      ],
+      "cpuOnly": true,
+      "modeledComposition": true
+    }
+  ],
+  "liveFollowup": {
+    "capture": "analysis-20261103-164841-56444-1",
+    "reconstructionGeneration": 2,
+    "workerProofsPassed": 492,
+    "workerProofsAttempted": 492,
+    "subtitleOutputs": 520,
+    "templateSeeds": 189,
+    "rawFallbackOutputs": 316,
+    "finding": "Ready current-source proof consumption and template revision churn remain broken; earlier harness fabricated available shared picture authority and omitted renderer selection/reseeding.",
+    "nativeBounds": [
+      0,
+      272,
+      3840,
+      1886
+    ]
+  },
+  "configurationEdits": []
+}
