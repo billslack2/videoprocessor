@@ -3756,6 +3756,99 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             }
         }
     }
+    TEST_METHOD(CurrentFootprintNearBlackNoisePreservesCurrentPixelsAndRejectsDrift) {
+        auto pixels=PixelsWithCurrentBars();pixels[80*160+42]=uint16_t(96<<6);
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,pixels);seed.text=seed.current.text;
+        seed.current.analysisStride=1;
+        SubtitleCutPasteGeometry geometry;geometry.valid=true;geometry.content=seed.text.bounds;
+        geometry.glyphLines=seed.text.lineBounds;geometry.pictureCapture=seed.text.capturePanel;
+        geometry.generatedCleanup=seed.text.sourcePanel;geometry.source=geometry.destination=geometry.content;
+        geometry.pictureTop=12;geometry.pictureBottom=78;
+        const auto base=seed.current.sharedPicture.bounds;
+        auto guard=std::make_unique<SubtitleCadenceGuard>();
+        Assert::IsTrue(guard->RememberCurrentFootprint(seed,seed.text,CadenceSource(pixels),base,geometry));
+        for(int delta:{4,8,9,12}) {
+            auto currentPixels=pixels;currentPixels[80*160+42]=uint16_t((96+delta)<<6);
+            auto current=CompleteThreeLineScan(uint64_t(2+delta),currentPixels);
+            const auto proof=guard->VerifyCurrentFootprint(current,CadenceSource(currentPixels),
+                seed.current,seed.text,base);
+            Assert::AreEqual(delta<=8,proof.valid,
+                L"Near-black threshold crossings stay bounded to the immutable seed, not the previous successful phase.");
+            if(proof.valid) {
+                AnalysisLumaSample actual;
+                Assert::IsTrue(guard->TryGetVerifiedCurrentSample(current,base,42,80,actual));
+                Assert::AreEqual(96+delta,int(actual.luma),L"The receipt contains current pixels, never seed pixels.");
+            }
+        }
+        auto colored=pixels;colored[80*160+42]=uint16_t(100<<6);
+        colored[160*90+(80/2)*160+42]=uint16_t(521<<6);
+        const auto coloredKey=CompleteThreeLineScan(20,colored);
+        Assert::IsFalse(guard->VerifyCurrentFootprint(coloredKey,CadenceSource(colored),
+            seed.current,seed.text,base).valid,L"The brightness allowance cannot admit a chroma change beyond the seed envelope.");
+        auto missing=pixels;missing[50*160+50]=uint16_t(64<<6);
+        const auto missingKey=CompleteThreeLineScan(21,missing);
+        Assert::IsFalse(guard->VerifyCurrentFootprint(missingKey,CadenceSource(missing),
+            seed.current,seed.text,base).valid,L"Tolerance does not preserve a missing strong glyph core.");
+
+        // The cadence export must keep its actual classification as well as its
+        // actual source value: accepting noise does not invent black backing.
+        seed.current.analysisStride=2;
+        auto cadence=std::make_unique<SubtitleCadenceGuard>();
+        Assert::IsTrue(cadence->RememberAccepted(seed,seed.text,CadenceSource(pixels),base,geometry));
+        auto changed=pixels;changed[80*160+42]=uint16_t(100<<6);
+        auto pending=Pending(2);pending.current.analysisStride=2;pending.current.cadenceSkipped=true;
+        const auto& prepared=cadence->PrepareReference(pending,CadenceSource(changed),base,1000.0/60,250);
+        Assert::IsTrue(prepared.valid);
+        Assert::IsFalse(prepared.preview.current.ink->Black(42,80));
+        Assert::IsFalse(prepared.preview.current.ink->rawEvidenceComplete);
+    }
+    TEST_METHOD(PendingCueNearBlackSupportNoiseRemainsBoundedToSeed) {
+        auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        (*pixels)[60*160+42]=uint16_t(96<<6);
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,*pixels);seed.text=seed.current.text;
+        auto guard=std::make_unique<SubtitlePendingMeasurementGuard>();
+        Assert::IsTrue(guard->RememberAccepted(seed,seed.text,OwnedSource(pixels),40,250));
+        for(int delta:{4,8,9,12}) {
+            auto changed=std::make_shared<std::vector<uint16_t>>(*pixels);
+            (*changed)[60*160+42]=uint16_t((96+delta)<<6);
+            const auto key=CompleteThreeLineScan(uint64_t(2+delta),*changed);
+            std::shared_ptr<SubtitleInkSnapshot> currentInk;const char* reason=nullptr;
+            const bool verified=guard->VerifyCurrentCuePixels(key,OwnedSource(changed),nullptr,currentInk,reason);
+            if(verified!=(delta<=8))Logger::WriteMessage(reason?reason:"no proof reason");
+            Assert::AreEqual(delta<=8,verified);
+            if(verified) {
+                Assert::IsFalse(currentInk->Black(42,60));
+                Assert::IsFalse(currentInk->rawEvidenceComplete);
+            }
+        }
+    }
+    TEST_METHOD(CurrentCueBarVetoUsesPhysicalSourceRowsAndStillRejectsNewBarContent) {
+        auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,*pixels);
+        // The detector's analysis border is two source rows inside the already
+        // accepted picture. Those retained picture rows must not become bars.
+        seed.current.pictureTop=seed.current.barEvidence.top=14;seed.text=seed.current.text;
+        Assert::AreEqual(12,seed.current.sharedPicture.bounds.top);
+        auto guard=std::make_unique<SubtitlePendingMeasurementGuard>();
+        Assert::IsTrue(guard->RememberAccepted(seed,seed.text,OwnedSource(pixels),40,250,
+            nullptr,nullptr,&seed.current.sharedPicture.bounds,nullptr,true));
+        const auto verify=[&](std::shared_ptr<std::vector<uint16_t>> currentPixels,bool foreignBase,
+            const char*& reason) {
+            auto key=CompleteThreeLineScan(2,*currentPixels);key.pictureTop=key.barEvidence.top=14;
+            if(foreignBase)++key.sharedPicture.bounds.top;
+            std::shared_ptr<SubtitleInkSnapshot> currentInk;
+            return guard->VerifyCurrentCuePixels(key,OwnedSource(currentPixels),nullptr,currentInk,reason,true);
+        };
+        const char* reason=nullptr;
+        Assert::IsTrue(verify(pixels,false,reason),L"Retained current movie rows cannot trigger the encoded-bar veto.");
+        for(int row:{5,78})for(int newLuma:{110,700}) {
+            auto changed=std::make_shared<std::vector<uint16_t>>(*pixels);
+            (*changed)[row*160+7]=uint16_t(newLuma<<6);
+            Assert::IsFalse(verify(changed,false,reason),
+                L"Dim and subtitle-bright new content above the physical top and at its half-open bottom remain vetoes.");
+        }
+        Assert::IsFalse(verify(pixels,true,reason),L"Physical geometry cannot be borrowed across a changed context.");
+    }
     TEST_METHOD(CurrentFootprintRearmsStrideOneOnlyAndKeepsOriginalPixelBaseline) {
         auto makeGeometry=[](const SubtitleBoxResult& accepted,int top,int bottom) {
             SubtitleCutPasteGeometry g;g.valid=true;g.content=accepted.bounds;

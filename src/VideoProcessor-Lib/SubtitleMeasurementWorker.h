@@ -1920,7 +1920,8 @@ private:
             const bool inEncodedBar=backing.y<m_contrastSeedTopEnd || backing.y>=m_contrastSeedBottomStart;
             const bool black=now.luma<=ink->blackLimit && (!inEncodedBar ||
                 (std::abs(int(now.chromaU)-512)<=48 && std::abs(int(now.chromaV)-512)<=48));
-            if(black!=backing.black)return reject(ReadyRearmRejectCode::BackingPixels);
+            if(black!=backing.black && !SubtitleCadenceGuard::StableNearBlackEncodingVariation(
+                backing.value,now,*ink))return reject(ReadyRearmRejectCode::BackingPixels);
         }
         // Adopt only the actual fresh complete measurement wrapper. The native
         // ink/pixel reference and its identity remain immutable across this
@@ -1932,7 +1933,7 @@ private:
         return true;
     }
     struct OwnedSample { int x=0,y=0;AnalysisLumaSample value{}; };
-    struct BackingSample { int x=0,y=0;bool black=false; };
+    struct BackingSample { int x=0,y=0;bool black=false;AnalysisLumaSample value{}; };
     struct KnownInkSample { int x=0,y=0;AnalysisLumaSample value{}; };
     enum class CurrentInkSeedState { NotApplicable, Seeded, Failed };
     struct SourceLayout {
@@ -2166,12 +2167,10 @@ private:
             if(presentationTemplateProof && !currentFootprint)continue;
             if(!support[size_t(y)*ink->width+x] ||
                 (currentFootprint && !currentFootprint->ContainsFootprintSample(x*ink->step,ink->sourceRows[size_t(y)])))continue;
-            if(y<topEnd || y>=bottomStart)backing.push_back({x,y,ink->Black(x,y)});
-            else {
-                AnalysisLumaSample value;
-                if(!sampleSeed(x,y,value))return CurrentInkSeedState::Failed;
-                backing.push_back({x,y,value.luma<=ink->blackLimit});
-            }
+            AnalysisLumaSample value;
+            if(!sampleSeed(x,y,value))return CurrentInkSeedState::Failed;
+            backing.push_back({x,y,(y<topEnd || y>=bottomStart)?ink->Black(x,y):
+                value.luma<=ink->blackLimit,value});
             if(backing.size()>CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
         }
         m_ownedSamples=std::move(owned);m_backingSamples=std::move(backing);
@@ -2231,6 +2230,20 @@ private:
         const int top=(old.pictureTop+fresh->step-1)/fresh->step;
         const int bottom=old.pictureBottom<old.height?
             (std::min)(fresh->height-1,(old.pictureBottom+fresh->step-1)/fresh->step):fresh->height;
+        // Search rows belong to the subtitle scan, whose snapped edge can lie
+        // a few pixels inside the accepted picture. Only source coordinates
+        // outside the separately verified physical base are encoded bars.
+        const bool physicalBarPolicy=m_currentFootprintRequired || presentationTemplateProof;
+        if(physicalBarPolicy && (!old.sharedPicture.AvailableFor(old.identity,old.width,old.height) ||
+            !current.sharedPicture.AvailableFor(current.identity,current.width,current.height) ||
+            !old.sharedPicture.Matches(current.sharedPicture))) {
+            reason="current-physical-bar-context-changed";return false;
+        }
+        const auto encodedBar=[&](int y) {
+            const int sourceY=fresh->sourceRows[size_t(y)];
+            return physicalBarPolicy?(sourceY<current.sharedPicture.bounds.top ||
+                sourceY>=current.sharedPicture.bounds.bottom):(y<top || y>=bottom);
+        };
         m_currentPixels.resize(area);m_currentSampled.resize(area);
         std::fill(m_currentSampled.begin(),m_currentSampled.end(),uint8_t(0));
         auto& pixels=m_currentPixels;auto& sampled=m_currentSampled;
@@ -2246,7 +2259,7 @@ private:
                 if(!reusedFootprintSample && !sampler.Sample(sourceX,sourceY,pixels[at]))return false;
                 sampled[at]=1;++count;
                 m_diagnostics.currentBandSamplesChecked=count;
-                if(y<top || y>=bottom)++m_diagnostics.barVisibilitySamplesChecked;
+                if(encodedBar(y))++m_diagnostics.barVisibilitySamplesChecked;
                 if(pixels[at].luma<=fresh->blackLimit)
                     fresh->blackBacking[at/64]|=uint64_t{1}<<(at%64);
             }
@@ -2271,7 +2284,8 @@ private:
             ++m_diagnostics.backingSamplesChecked;
             const size_t at=size_t(backing.y)*fresh->width+backing.x;
             const bool black=value.luma<=fresh->blackLimit;
-            if(black!=backing.black) {
+            if(black!=backing.black && !SubtitleCadenceGuard::StableNearBlackEncodingVariation(
+                backing.value,value,*fresh)) {
                 m_diagnostics.glyphMismatchX=backing.x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(backing.y)];
                 reason="current-black-backing-changed";return false;
@@ -2305,15 +2319,15 @@ private:
         }
         const int radius=(std::max)(3,fresh->height/180);
         for(int y=0;y<fresh->height;++y)if(y<topEnd || y>=bottomStart)for(int x=1;x<fresh->width-1;++x) {
-            if(presentationTemplateProof && !m_currentFootprintRequired && y>=top && y<bottom)continue;
+            if(presentationTemplateProof && !m_currentFootprintRequired && !encodedBar(y))continue;
             const bool inNativeFootprint=m_currentFootprintRequired && currentFootprint &&
                 currentFootprint->ContainsVerifiedFootprintSample(x*fresh->step,fresh->sourceRows[size_t(y)]);
-            if(m_currentFootprintRequired && y>=top && y<bottom && !inNativeFootprint)continue;
+            if(m_currentFootprintRequired && !encodedBar(y) && !inNativeFootprint)continue;
             AnalysisLumaSample point;
             if(!read(x,y,point)) {reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;}
             if(point.luma<fresh->inkFloor || std::abs(int(point.chromaU)-fresh->inkU)>80 ||
                 std::abs(int(point.chromaV)-fresh->inkV)>80)continue;
-            bool raw=y<top || y>=bottom;
+            bool raw=encodedBar(y);
             if(!raw) {
                 const int x0=(std::max)(0,x-radius),x1=(std::min)(fresh->width-1,x+radius);
                 const int y0=(std::max)(y<topEnd?0:bottomStart,y-radius);
@@ -2377,7 +2391,7 @@ private:
             // their exact YUV checks above, so the same old exception remains
             // limited to pixels proven as current owned glyphs.
             for(int y=0;y<fresh->height;++y)if(InCurrentBand(y,fresh->height,topEnd,bottomStart) &&
-                (y<top || y>=bottom))
+                encodedBar(y))
                 for(int x=0;x<fresh->width;++x) {
                     AnalysisLumaSample sample;
                     if(!read(x,y,sample)) {

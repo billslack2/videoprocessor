@@ -3373,8 +3373,8 @@ public:
             const auto& raw=preview.current;
             if(!result.held || !raw.ink || !raw.ink->rawEvidenceComplete ||
                 raw.ink->step<1 || raw.ink->step>8 || result.lineCount<1 || result.lineCount>3 ||
-                raw.text.lineCount!=result.lineCount || !raw.text.capturePanelMeasured ||
-                !raw.text.capturePanel.Valid())return false;
+                raw.text.lineCount!=result.lineCount ||
+                (raw.text.capturePanelMeasured && !raw.text.capturePanel.Valid()))return false;
             const int cell=raw.ink->step;unsigned matchedLines=0;
             for(int line=0;line<result.lineCount;++line) {
                 const auto& accepted=result.lineBounds[line];bool covered=false;
@@ -3383,11 +3383,16 @@ public:
                     if(matchedLines&(1u<<candidate))continue;
                     const auto& current=raw.text.lineBounds[candidate];
                     const auto& capture=raw.text.lineCapturePanels[candidate];
-                    if(current.Valid() && capture.Valid() &&
+                    // A line in an encoded bar need not have a finite opaque
+                    // backing card. Empty card metadata is optional, not a
+                    // missing current glyph scan or padded extraction area.
+                    const bool noCard=capture.left==0 && capture.top==0 &&
+                        capture.right==0 && capture.bottom==0;
+                    const bool validCard=capture.Valid() && capture.left<=current.left &&
+                        capture.top<=current.top && capture.right>=current.right && capture.bottom>=current.bottom;
+                    if(current.Valid() && (noCard || validCard) &&
                         std::abs(current.left-accepted.left)<=cell && std::abs(current.top-accepted.top)<=cell &&
                         std::abs(current.right-accepted.right)<=cell && std::abs(current.bottom-accepted.bottom)<=cell &&
-                        capture.left<=current.left && capture.top<=current.top &&
-                        capture.right>=current.right && capture.bottom>=current.bottom &&
                         SubtitleBoxLookahead::SimilarSignature(raw.text.lineSignatures[candidate],
                             result.lineSignatures[line])) {
                         matchedLines|=1u<<candidate;covered=true;break;

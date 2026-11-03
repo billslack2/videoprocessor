@@ -698,14 +698,34 @@ public:
             SubtitleBoxPreview seed,current;
             SubtitleBoxResult acquired,held;
         };
+        const auto clearLineCapture=[](SubtitleBoxPreview& preview,int line) {
+            preview.current.text.lineCapturePanels[line]={};
+            preview.text.lineCapturePanels[line]={};
+            for(unsigned i=0;i<preview.followingCount;++i)
+                preview.following[i].text.lineCapturePanels[line]={};
+        };
+        const auto clearOpaqueCard=[](SubtitleBoxPreview& preview) {
+            const auto clear=[](SubtitleBoxResult& text) {
+                text.sourcePanel={};text.provenSourcePanel={};
+                text.linePanels={};text.provenLinePanels={};
+                text.capturePanel={};text.lineCapturePanels={};
+                text.capturePanelMeasured=false;text.panelTopEdges={};
+            };
+            clear(preview.current.text);clear(preview.text);
+            for(unsigned i=0;i<preview.followingCount;++i)clear(preview.following[i].text);
+        };
         const auto run=[&](int fault,uint64_t sequence) {
             Logger::WriteMessage((std::string("prepared line inset fault=")+std::to_string(fault)).c_str());
             auto storage=std::make_unique<Workspace>();auto& w=*storage;
             w.seed=RetiredThreeLineSparsePreview(sequence,false);
+            if(fault==8)clearLineCapture(w.seed,0);
+            if(fault==9)clearOpaqueCard(w.seed);
             w.acquired=w.tracker.Consume(w.seed,250,16.683);
             Assert::IsTrue(w.acquired.detected&&!w.acquired.held&&w.acquired.lineCount==3,
                 L"The full current three-line scan must establish the original cue first.");
             w.current=RetiredThreeLineSparsePreview(sequence+1,false);
+            if(fault==8)clearLineCapture(w.current,0);
+            if(fault==9)clearOpaqueCard(w.current);
             w.current.text.lineCount=2;w.current.text.lineBounds[2]={};
             auto& raw=w.current.current;
             if(fault==1) {
@@ -745,17 +765,26 @@ public:
                 }
                 raw.ink=std::move(ink);
             } else if(fault==4) {
-                raw.text.lineCapturePanels[1]={};
+                raw.text.lineCapturePanels[1]={10,10,5,20};
             } else if(fault==5) {
                 raw.text.topSearchComplete=false;
                 raw.ink=std::make_shared<SubtitleInkSnapshot>(*raw.ink);
                 std::const_pointer_cast<SubtitleInkSnapshot>(raw.ink)->rawEvidenceComplete=false;
             } else if(fault==6) {
                 ++raw.continuityGeneration;
+            } else if(fault==10) {
+                raw.text.capturePanelMeasured=true;raw.text.capturePanel={};
+            } else if(fault==11) {
+                // A present card must actually contain its current line; a
+                // valid but unrelated rectangle is not an optional absence.
+                raw.text.lineCapturePanels[1]={1,1,2,2};
+            } else if(fault==12) {
+                // Only the all-zero sentinel means no measured card.
+                raw.text.lineCapturePanels[1]={4,4,4,4};
             }
             w.held=w.tracker.Consume(w.current,250,16.683);
             const auto& prepared=w.tracker.CurrentPreparedCueCertificate();
-            if(fault==0) {
+            if(fault==0 || fault==8 || fault==9) {
                 Assert::IsTrue(w.held.detected&&w.held.held&&w.held.lineCount==3,
                     L"The accepted three-line cue should remain the held pose after a one-cell raw-box inset.");
                 Assert::AreEqual(w.acquired.cue,w.held.cue);
@@ -765,6 +794,16 @@ public:
                     L"Only the fully verified current-source operation may certify this bounded detector-box inset.");
                 Assert::IsFalse(w.tracker.AcceptedCueSeedCertificate().Matches(w.current,w.held),
                     L"A held prepared pose must not mint a new accepted-cue seed certificate.");
+                // Tolerance belongs to historical cue verification. Once this
+                // exact source is certified, neither source identity nor its
+                // approved extraction geometry may be changed under the token.
+                auto altered=std::make_unique<SubtitleBoxObservation>(w.current.current);
+                ++altered->identity.acceptedSequence;
+                Assert::IsFalse(prepared.Matches(*altered,w.held,w.current.current.sharedPicture.bounds));
+                *altered=w.current.current;++altered->text.lineBounds[1].left;
+                Assert::IsFalse(prepared.Matches(*altered,w.held,w.current.current.sharedPicture.bounds));
+                auto alteredAccepted=w.held;++alteredAccepted.lineBounds[1].left;
+                Assert::IsFalse(prepared.Matches(w.current.current,alteredAccepted,w.current.current.sharedPicture.bounds));
             } else {
                 Assert::IsFalse(prepared.Matches(w.current.current,w.held,w.current.current.sharedPicture.bounds),
                     L"Out-of-cell geometry, missing component, new in-line word, incomplete raw proof, or foreign context cannot mint a prepared certificate.");
@@ -772,6 +811,9 @@ public:
         };
         run(0,101);
         for(int fault=1;fault<=7;++fault)run(fault,201+uint64_t(fault)*10);
+        run(8,301);
+        run(9,311);
+        for(int fault=10;fault<=12;++fault)run(fault,321+uint64_t(fault-10)*10);
     }
     TEST_METHOD(PictureGlyphConfirmationFollowsIndependentInputAnalysisCadence) {
         auto first=CompleteBackedCue(1),next=CompleteBackedCue(3);

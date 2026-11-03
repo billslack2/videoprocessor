@@ -17,6 +17,23 @@ struct SubtitleCadenceProof {
 class SubtitleCadenceGuard {
 public:
     using Result=SubtitleCadenceProof;
+    // This is stability of an already accepted sample, never a new black/ink
+    // classification. Compare every source with the immutable seed so small
+    // codec/dither changes cannot accumulate into an unchecked scene change.
+    static bool StableNearBlackEncodingVariation(const AnalysisLumaSample& seed,
+        const AnalysisLumaSample& current,const SubtitleInkSnapshot& palette) {
+        constexpr int noise=8;
+        const int ceiling=(std::min)(1023,palette.blackLimit+noise);
+        return seed.luma<=ceiling && current.luma<=ceiling &&
+            seed.luma<palette.inkFloor && current.luma<palette.inkFloor &&
+            std::abs(int(current.luma)-int(seed.luma))<=noise &&
+            std::abs(int(current.chromaU)-int(seed.chromaU))<=noise &&
+            std::abs(int(current.chromaV)-int(seed.chromaV))<=noise &&
+            std::abs(int(seed.chromaU)-512)<=48+noise &&
+            std::abs(int(seed.chromaV)-512)<=48+noise &&
+            std::abs(int(current.chromaU)-512)<=48+noise &&
+            std::abs(int(current.chromaV)-512)<=48+noise;
+    }
     enum class RearmRejectCode : uint8_t {
         NotAttempted, Passed, NoEligibleFreshSeed, SeedUnavailable, Geometry,
         PhysicalBase, Context, PolicyGeneration, ContinuityGeneration,
@@ -1176,7 +1193,8 @@ private:
                 return fail(samples,"cadence-current-glyph-changed");
             }
             if(oldPixel.erase && !fringe) {
-                if(oldPixel.black && !now.black) {
+                if(oldPixel.black && !now.black &&
+                    !StableNearBlackEncodingVariation(oldPixel.pixel,now.pixel,*m_baseline)) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
                     return fail(samples,"cadence-current-cleanup-changed");
                 }
