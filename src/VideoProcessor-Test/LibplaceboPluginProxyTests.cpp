@@ -3836,6 +3836,7 @@ namespace VideoProcessorTest
                 const auto arrivalFrequency=clock.TimingClockTicksPerSecond();
                 const auto arrivalPeriod=static_cast<int64_t>(uint64_t(arrivalFrequency)*duration/scale);
                 struct SubtitleStageTiming {uint64_t calls=0,successes=0;std::vector<double> elapsedMs,leaseAgeMs;
+                    std::array<std::vector<double>,3> proofPhaseMs;
                     std::map<std::string,uint64_t> reasons;
                     std::map<std::pair<uint32_t,uint32_t>,uint64_t> rearmDispositions;};
                 std::array<SubtitleStageTiming,9> subtitleStageTimings{};
@@ -3859,6 +3860,9 @@ namespace VideoProcessorTest
                     ++timing.reasons[record.reason[0]?record.reason:"<empty>"];
                     const double elapsed=record.metrics[index==1?3:index==6?1:0];
                     if(std::isfinite(elapsed)&&elapsed>=0)timing.elapsedMs.push_back(elapsed);
+                    if(index==5)for(size_t phase=0;phase<timing.proofPhaseMs.size();++phase)
+                        if(std::isfinite(record.metrics[3+phase])&&record.metrics[3+phase]>=0)
+                            timing.proofPhaseMs[phase].push_back(record.metrics[3+phase]);
                     if(index==1&&std::isfinite(record.metrics[0])&&record.metrics[0]>=0)
                         timing.leaseAgeMs.push_back(record.metrics[0]);
                     if(index==1) {
@@ -3898,6 +3902,16 @@ namespace VideoProcessorTest
                                 <<" lease_age_max_ms="<<(timing.leaseAgeMs.empty()?-1.0:timing.leaseAgeMs.back());
                         }
                         Logger::WriteMessage(row.str().c_str());
+                        if(index==5) {
+                            static const char* phases[]={"footprint","glyph-backing","bar-visibility"};
+                            for(size_t phase=0;phase<timing.proofPhaseMs.size();++phase) {
+                                auto& values=timing.proofPhaseMs[phase];std::sort(values.begin(),values.end());
+                                std::ostringstream phaseRow;phaseRow<<"DV WORKER PHASE: phase="<<phases[phase]
+                                    <<" samples="<<values.size()<<" p50_ms="<<percentile(values,.50)
+                                    <<" p95_ms="<<percentile(values,.95)<<" max_ms="<<percentile(values,1);
+                                Logger::WriteMessage(phaseRow.str().c_str());
+                            }
+                        }
                         for(const auto& reason:timing.reasons) {
                             std::ostringstream reasonRow;reasonRow<<"DV SUBTITLE STAGE REASON: stage="<<names[index]
                                 <<" count="<<reason.second<<" reason="<<reason.first;
@@ -3921,6 +3935,17 @@ namespace VideoProcessorTest
                     std::vector<const AnalysisDiagnosticRecordV1*> work;
                     for(const auto& event:cueBudgetEvents)
                         if(!strcmp(event.stage,"source-frame-work") && std::isfinite(event.metrics[0]))work.push_back(&event);
+                    std::vector<const AnalysisDiagnosticRecordV1*> proofs;
+                    for(const auto& event:cueBudgetEvents)
+                        if(!strcmp(event.stage,"worker-cue-proof") && std::isfinite(event.metrics[0]))proofs.push_back(&event);
+                    std::sort(proofs.begin(),proofs.end(),[](const auto* a,const auto* b){return a->metrics[0]>b->metrics[0];});
+                    for(size_t i=0;i<(std::min)(size_t(3),proofs.size());++i) {
+                        const auto& event=*proofs[i];std::ostringstream row;
+                        row<<"DV WORKER PROOF TAIL: source="<<event.sourceFrameNumber<<" total_ms="<<event.metrics[0]
+                            <<" footprint_ms="<<event.metrics[3]<<" glyph_backing_ms="<<event.metrics[4]
+                            <<" bar_visibility_ms="<<event.metrics[5]<<" active_thread_cycles="<<event.metrics[6];
+                        Logger::WriteMessage(row.str().c_str());
+                    }
                     std::sort(work.begin(),work.end(),[](const auto* a,const auto* b){return a->metrics[0]>b->metrics[0];});
                     for(size_t i=0;i<(std::min)(size_t(3),work.size());++i) {
                         const auto& event=*work[i];std::ostringstream row;

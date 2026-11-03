@@ -1238,12 +1238,26 @@ public:
         size_t readyRearmMaskWordsChecked=0,readyRearmGlyphSamplesChecked=0;
         size_t readyRearmBackingSamplesChecked=0,readyRearmKnownSamplesChecked=0;
         int glyphMismatchX=-1, glyphMismatchY=-1;
+        double footprintVerifyMs=0.0,currentPixelValidationMs=0.0,encodedBarVetoMs=0.0;
         bool sharedPictureMatches=false, sharedPictureCurrent=false;
         bool barsAvailable=false, topRevalidated=false, bottomRevalidated=false;
         bool backlogReassociated=false;
         uint64_t lastVerifiedSource=0,tokenSource=0,referenceContinuity=0,currentContinuity=0;
         bool backlogTokenAvailable=false;
         int expectedTop=0, expectedBottom=0, measuredTop=0, measuredBottom=0;
+    };
+    struct PhaseWallClock {
+        double& targetMs;
+        std::chrono::steady_clock::time_point started=std::chrono::steady_clock::now();
+        bool active=true;
+        explicit PhaseWallClock(double& target):targetMs(target) { targetMs=0.0; }
+        void Stop() {
+            if(!active)return;
+            targetMs=std::chrono::duration<double,std::milli>(
+                std::chrono::steady_clock::now()-started).count();
+            active=false;
+        }
+        ~PhaseWallClock(){Stop();}
     };
     void Reset() { m_reference={};m_samples.clear();m_ownedSamples.clear();m_backingSamples.clear();
         m_knownInkSamples.clear();m_paletteFringe.clear();
@@ -2172,6 +2186,9 @@ private:
     bool BuildCurrentInkProof(const AnalysisLumaSource& source,const SubtitleBoxObservation& current,
         std::shared_ptr<SubtitleInkSnapshot>& currentInk,const char*& reason,
         const SubtitleCadenceGuard* currentFootprint,bool presentationTemplateProof=false) {
+        m_diagnostics.footprintVerifyMs=0.0;
+        m_diagnostics.currentPixelValidationMs=0.0;
+        m_diagnostics.encodedBarVetoMs=0.0;
         const auto& old=m_reference.current;const auto oldInk=m_pixelSeedInk;
         if(!m_currentInkProofSeeded || !oldInk || !SameSourceLayout(source,m_sourceLayout) ||
             source.width!=old.width || source.height!=old.height ||
@@ -2180,8 +2197,10 @@ private:
         }
         if(m_currentFootprintRequired) {
             if(!currentFootprint) {reason="current-footprint-required-unavailable";return false;}
+            PhaseWallClock footprintPhase(m_diagnostics.footprintVerifyMs);
             const auto verified=currentFootprint->VerifyCurrentFootprint(
                 current,source,old,m_reference.text,old.sharedPicture.bounds);
+            footprintPhase.Stop();
             if(!verified.valid) {
                 m_diagnostics.glyphMismatchX=verified.mismatchX;
                 m_diagnostics.glyphMismatchY=verified.mismatchY;
@@ -2192,6 +2211,7 @@ private:
         } else if(currentFootprint) {
             reason="current-footprint-mode-changed";return false;
         }
+        PhaseWallClock currentPixelPhase(m_diagnostics.currentPixelValidationMs);
         int topEnd=0,bottomStart=0;
         if(!CurrentInkGeometry(old,*oldInk,topEnd,bottomStart)) {
             reason="current-search-coverage-unavailable";return false;
@@ -2347,6 +2367,8 @@ private:
             fresh->ownedInk[at/64]|=uint64_t{1}<<(at%64);
         }
         if(m_currentFootprintRequired || presentationTemplateProof) {
+            currentPixelPhase.Stop();
+            PhaseWallClock encodedBarPhase(m_diagnostics.encodedBarVetoMs);
             if(!CurrentBandCellCount(fresh->width,fresh->height,topEnd,bottomStart)) {
                 reason="new-current-bar-ink";return false;
             }
@@ -2370,6 +2392,7 @@ private:
                         reason="new-current-bar-ink";return false;
                     }
                 }
+            encodedBarPhase.Stop();
         } else if(HasNovelPotentialInk(*oldInk,m_paletteFringe,pixels,m_contrastSeedPixels,m_contrastSeedDirections,
             top,bottom,topEnd,bottomStart,
             m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY)) {
@@ -3012,6 +3035,11 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     Job job;job.key=request.currentKey;job.cueEntry=entry;job.queued=std::chrono::steady_clock::now();
     job.currentCueTask=[this,state,entry,request=std::move(request)](size_t) mutable {
         const auto started=std::chrono::steady_clock::now();
+        uint64_t cycleDelta=0;
+#ifdef _WIN32
+        ULONG64 startCycles=0;
+        const bool haveStartCycles=QueryThreadCycleTime(GetCurrentThread(),&startCycles)!=FALSE;
+#endif
         {std::lock_guard<std::mutex> lock(m_mutex);entry->status=SubtitleCurrentCueProofStatus::Pending;}
         SubtitleCurrentCueProofReceipt receipt;const char* reason="current-cue-template-miss";
         std::shared_ptr<SubtitleInkSnapshot> currentInk;bool verified=false;
@@ -3035,6 +3063,12 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             }
         } else reason="current-cue-template-context-or-window-changed";
         const double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+#ifdef _WIN32
+        ULONG64 nativeEndCycles=0;
+        if(haveStartCycles&&QueryThreadCycleTime(GetCurrentThread(),&nativeEndCycles)!=FALSE&&
+            nativeEndCycles>=startCycles)
+            cycleDelta=static_cast<uint64_t>(nativeEndCycles-startCycles);
+#endif
         const uint64_t threadId=SubtitleCurrentCueWorkerDetail::ThreadId();
         const auto& diagnostics=state->pending.DecisionDiagnostics();
         if(verified && currentInk && !currentInk->rawEvidenceComplete && currentInk->paletteValid) {
@@ -3144,6 +3178,10 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         trace.counters[4]=verified?state->descriptor.cue.lineCount:0;
         trace.metrics[0]=elapsed;
         trace.metrics[1]=diagnostics.glyphMismatchX;trace.metrics[2]=diagnostics.glyphMismatchY;
+        trace.metrics[3]=diagnostics.footprintVerifyMs;
+        trace.metrics[4]=diagnostics.currentPixelValidationMs;
+        trace.metrics[5]=diagnostics.encodedBarVetoMs;
+        trace.metrics[6]=static_cast<double>(cycleDelta);
         trace.flags=(verified?1u:0u)|(semanticRefreshDue?2u:0u)|
             (semanticRefreshQueued?4u:0u);AnalysisDiagnosticTrace::Emit(trace);
         AnalysisLumaSource retiredSource=std::move(request.source);

@@ -798,9 +798,22 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     Assert::IsTrue(barWorker->RememberAccepted(*preview,accepted,seedSource,1000.0/60,250,
         nullptr,nullptr,&base,footprint.get()));
     auto barPending=CurrentFootprintPendingPreview(*preview,93,55);
+    const auto barProofStarted=std::chrono::steady_clock::now();
     Assert::IsFalse(barWorker->Resolve(*barPending,barSource,1000.0/60,250,
         &preview->current.identity,true,footprint.get()));
+    const double barProofElapsed=std::chrono::duration<double,std::milli>(
+        std::chrono::steady_clock::now()-barProofStarted).count();
     Assert::AreEqual("new-current-bar-ink",barWorker->DecisionReason());
+    const auto& phaseTimings=barWorker->DecisionDiagnostics();
+    Assert::IsTrue(std::isfinite(phaseTimings.footprintVerifyMs)&&phaseTimings.footprintVerifyMs>0.0,
+        L"The UHD profile records the native-footprint verification wall time.");
+    Assert::IsTrue(std::isfinite(phaseTimings.currentPixelValidationMs)&&phaseTimings.currentPixelValidationMs>0.0,
+        L"The UHD profile records current glyph/backing validation wall time.");
+    Assert::IsTrue(std::isfinite(phaseTimings.encodedBarVetoMs)&&phaseTimings.encodedBarVetoMs>0.0,
+        L"The UHD profile records encoded-bar validation wall time.");
+    Assert::IsTrue(phaseTimings.footprintVerifyMs+phaseTimings.currentPixelValidationMs+
+        phaseTimings.encodedBarVetoMs<=barProofElapsed+1.0,
+        L"Measured proof phases must fit within the enclosing proof call, allowing small clock granularity.");
 }
 
 
