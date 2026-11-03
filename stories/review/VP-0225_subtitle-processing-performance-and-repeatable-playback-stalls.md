@@ -21,6 +21,12 @@ agent's branch/worktree and deployed player remain preserved. Review the focused
 https://github.com/billslack2/videoprocessor/compare/788554a100afe0af2352b904fe1870d80fb75bb7...2a3af0c2d3a895d5c7ca9fead0dd437065f01d86
 No beta merge, deployment, or public release has been performed.
 
+Coordination check at completion: VP-0222 now has a newer detector-only candidate
+`25900500` under its own qualification; `788554a1` remains deployed. This VP-0225
+qualified build does not include that newer candidate. Coordinate the combined
+integration/deployment with the AR work and qualify the actual combined source;
+do not represent either separate receipt as combined-build qualification.
+
 Remaining acceptance: deploy only on explicit request, then repeatedly replay the
 original scene under matched settings, check caption preservation and surrounding
 scenes, and collect matched source-gap percentiles plus processing/queue costs on
