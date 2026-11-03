@@ -4918,7 +4918,8 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         }
     }
     TEST_METHOD(CurrentCueWorkerDeferredAndLateScansKeepOriginalInspectionKey) {
-        for(const bool late:{false,true}) {
+        for(int route=0;route<3;++route) {
+            const bool late=route==1,ordinary=route==2;
             auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
             auto seed=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(1,*pixels));
             auto worker=std::make_unique<SubtitleMeasurementWorker>();
@@ -4941,10 +4942,33 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             raw->barAuthority=false;raw->independentBarAnalysis=false;raw->text={};raw->ink.reset();
             auto key=std::make_unique<SubtitleBoxObservation>();ActivePictureBounds base;
             Assert::IsTrue(worker->MakeCurrentCueProofKey(*raw,SubtitlePreviewMode::None,3,*key,base,revision));
+            // The ordinary Submit route attaches an already canonical native
+            // scan to the pending proof; the first two cases retain inspection
+            // keys that deliberately differ from the private presentation key.
+            if(ordinary)*raw=*key;
             worker->AdvanceCurrentCueRenderWindow(raw->identity,8);
             CueScanKeyTraceSink sink;sink.sequence=8;
             struct ClearSink {~ClearSink(){AnalysisDiagnosticTrace::ClearExternalSinks();}} clearSink;
             AnalysisDiagnosticTrace::SetExternalSinks(&sink,&CaptureCueScanKey,nullptr,nullptr);
+            auto entered=std::make_shared<std::atomic_uint>(0);
+            auto release=std::make_shared<std::atomic_bool>(false);
+            struct ReleaseGate {
+                std::shared_ptr<std::atomic_bool> flag;
+                ~ReleaseGate(){flag->store(true,std::memory_order_release);}
+            } releaseGate{release};
+            if(ordinary) {
+                for(uint64_t sequence:{900u,901u}) {
+                    const auto blocker=WorkerKey(sequence,0xB10C);
+                    Assert::IsTrue(worker->Submit(blocker,[entered,release,blocker](SubtitleMeasurementSampler&,
+                        const SubtitleBarTrackingReference&) {
+                        entered->fetch_add(1,std::memory_order_release);
+                        while(!release->load(std::memory_order_acquire))
+                            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        return blocker;
+                    }));
+                }
+                Assert::IsTrue(WaitForEntered(*entered,2),L"Both workers are held so ordinary Submit must attach to the queued proof.");
+            }
             auto scans=std::make_shared<std::atomic_uint>(0);
             auto scanResult=std::make_shared<SubtitleBoxObservation>(*raw);
             const auto makeRequest=[&](bool due) {
@@ -4960,7 +4984,16 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 };
                 return request;
             };
-            Assert::IsTrue(worker->SubmitCurrentCueProof(makeRequest(!late))==SubtitleCurrentCueProofStatus::Queued);
+            Assert::IsTrue(worker->SubmitCurrentCueProof(makeRequest(route==0))==SubtitleCurrentCueProofStatus::Queued);
+            if(ordinary) {
+                Assert::IsTrue(worker->Submit(*raw,[scans,scanResult](SubtitleMeasurementSampler&,
+                    const SubtitleBarTrackingReference&) {
+                    scans->fetch_add(1,std::memory_order_release);
+                    auto result=*scanResult;result.analyzed=true;return result;
+                }));
+                Assert::AreEqual(0u,scans->load(std::memory_order_acquire));
+                release->store(true,std::memory_order_release);
+            }
             auto receipt=std::make_unique<SubtitleCurrentCueProofReceipt>();
             auto status=SubtitleCurrentCueProofStatus::Queued;
             for(int attempt=0;attempt<1000;++attempt) {
@@ -4973,11 +5006,14 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             Assert::IsTrue(WaitForEntered(*scans,1));
             Assert::AreEqual(1u,sink.starts.load(std::memory_order_acquire));
             const auto flags=sink.flags.load(std::memory_order_acquire);
-            Assert::IsTrue((flags&4u)!=0 && (flags&16u)!=0 && (flags&8u)==0,
+            if(ordinary)Assert::IsTrue((flags&4u)!=0 && (flags&8u)!=0 && (flags&16u)==0,
+                L"Ordinary Submit deferral preserves its exact source and canonical native scan key.");
+            else Assert::IsTrue((flags&4u)!=0 && (flags&16u)!=0 && (flags&8u)==0,
                 L"Both deferred and late semantic jobs retain the original unavailable-native inspection key.");
             auto observed=std::make_unique<SubtitleBoxObservation>();
             Assert::IsTrue(WaitForRead(*worker,*raw,*observed));
-            Assert::IsFalse(observed->barAuthority || observed->independentBarAnalysis ||
+            Assert::IsFalse(observed->barAuthority || observed->independentBarAnalysis);
+            Assert::AreEqual(ordinary,
                 observed->sharedPicture.AvailableFor(observed->identity,observed->width,observed->height));
             // Join before callback captures and trace storage go out of scope.
             worker.reset();

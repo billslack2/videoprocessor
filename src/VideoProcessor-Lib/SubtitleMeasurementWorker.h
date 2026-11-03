@@ -2781,6 +2781,7 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
         if(!entry.scanDecisionMade) {
             if(work && !entry.deferredFullScan) {
                 entry.deferredFullScan=std::move(work);entry.fullScanDue=true;
+                entry.deferredFullScanKey=key;entry.deferredFullScanKey.ink.reset();
                 if(ownedWitness) {entry.deferredWitness=*ownedWitness;entry.hasDeferredWitness=true;}
                 entry.deferredTimelinePolicy=timelinePolicy;
             }

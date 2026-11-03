@@ -5146,6 +5146,27 @@ namespace VideoProcessorTest
             };
             const auto warmupDeadline=GetTickCount64()+ColdShaderPreparationBudgetMs;
             while(!acquired&&GetTickCount64()<warmupDeadline)pump();
+            if(!acquired) {
+                unsigned warmOutputs=0,warmComposed=0,warmNative=0;
+                const AnalysisDiagnosticRecordV1* lastOutput=nullptr;
+                for(const auto& r:observed)if(!strcmp(r.stage,"submitted-presentation")&&(r.flags&1u)) {
+                    ++warmOutputs;if(r.flags&2u)++warmComposed;if(r.counters[4])++warmNative;lastOutput=&r;
+                }
+                std::ostringstream row;row<<"CAPTURED V210 ACQUISITION: sources="<<sequence-1
+                    <<" outputs="<<warmOutputs<<" composed="<<warmComposed<<" native="<<warmNative;
+                if(lastOutput)row<<" last_native="<<lastOutput->published[1]<<'-'<<lastOutput->published[3]
+                    <<" last_actual="<<lastOutput->metrics[9]<<'-'<<lastOutput->metrics[11]
+                    <<" last_mode="<<lastOutput->counters[3]<<" flags="<<lastOutput->flags;
+                Logger::WriteMessage(row.str().c_str());
+                size_t emitted=0;
+                for(auto i=observed.rbegin();i!=observed.rend()&&emitted<12;++i)
+                    if(!strcmp(i->stage,"subtitle-canvas-admission")||!strcmp(i->stage,"worker-cue-template")||
+                        !strcmp(i->stage,"subtitle-cue-proof-bind-rejected")||!strcmp(i->stage,"subtitle-cue-proof-key-rejected")) {
+                        std::ostringstream detail;detail<<"CAPTURED V210 ACQUISITION DETAIL: source="<<i->sourceFrameNumber
+                            <<" stage="<<i->stage<<" reason="<<i->reason<<" flags="<<i->flags;
+                        Logger::WriteMessage(detail.str().c_str());++emitted;
+                    }
+            }
             Assert::IsTrue(acquired,L"Actual capture never produced a composed native-qualified source; no steady coverage claimed.");
             // Bounded warmup only; once steady observation begins every output counts.
             for(unsigned i=0;i<48;++i)pump();steadyStart=sequence;
