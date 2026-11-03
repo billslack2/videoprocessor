@@ -170,6 +170,8 @@ namespace
     };
     std::vector<AnalysisDiagnosticRecordV1> classicPoseRecords;
     bool classicPoseAllRecordStages=false;
+    bool classicPoseCaptureSubmitTiming=false;
+    std::map<uint64_t,uint64_t> classicPoseSubmitWallNs;
     std::atomic<bool> classicPoseCaptureSubtitleAdmissions{false};
     void StoreCallbackOrderedRecord(std::vector<AnalysisDiagnosticRecordV1>& records,const AnalysisDiagnosticRecordV1& record)
     {
@@ -189,6 +191,9 @@ namespace
             strcmp(record->stage,"subtitle-output") && !captureSubtitleAdmission)return;
         RecordSubmittedShaderPreparation(classicSubmittedShaderPreparation,*record,classicCurrentShaderPreparation);
         StoreCallbackOrderedRecord(classicPoseRecords,*record);
+        if(classicPoseCaptureSubmitTiming && !strcmp(record->stage,"submitted-presentation") && (record->flags&1u))
+            classicPoseSubmitWallNs[classicPoseRecords.back().recordSequence]=uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
     }
     bool TrySubmittedSubtitleCleanup(const std::string& line,const AnalysisDiagnosticRecordV1& output,
         uint64_t sourceGeneration,SubtitleBoxRect& cleanup)
@@ -1756,9 +1761,10 @@ namespace VideoProcessorTest
                         std::lock_guard<std::mutex> lock(classicPoseLogMutex);
                         classicPoseCaptureSubtitleAdmissions.store(false,std::memory_order_relaxed);
                         classicPoseAllRecordStages=false;
+                        classicPoseCaptureSubmitTiming=false;classicPoseSubmitWallNs.clear();
                     }
                 }} diagnosticCleanup{diagnostics,unknownAdmissionRegression||pendingCaptionBurstRegression};
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=pendingCaptionBurstRegression;classicPoseCaptureSubtitleAdmissions.store(unknownAdmissionRegression||pendingCaptionBurstRegression,std::memory_order_relaxed);}
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=pendingCaptionBurstRegression;classicPoseCaptureSubmitTiming=pendingCaptionBurstRegression;classicPoseSubmitWallNs.clear();classicPoseCaptureSubtitleAdmissions.store(unknownAdmissionRegression||pendingCaptionBurstRegression,std::memory_order_relaxed);}
             diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);}
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
@@ -1914,14 +1920,15 @@ namespace VideoProcessorTest
             };
             const auto sourcePeriod=std::chrono::duration<double>(1001.0/((narrower||unknownAdmissionRegression||pendingCaptionBurstRegression)?24000.0:60000.0));
             auto nextSource=std::chrono::steady_clock::now();
-            struct PendingInputIdentity {size_t pattern=0;timingclocktime_t timestamp=0;};
+            struct PendingInputIdentity {size_t pattern=0;timingclocktime_t timestamp=0;uint64_t arrivalNs=0;};
             std::map<uint64_t,PendingInputIdentity> pendingInputIdentities;
             size_t pendingPatternForNextSource=0;
             auto pump=[&](std::vector<uint16_t>& pixels) {
                 MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
                 if(callback.state==RENDERSTATE_RENDERING){
                     const auto timestamp=pendingCaptionBurstRegression?clock.TimingClockNow():timingclocktime_t(0);
-                    if(pendingCaptionBurstRegression)pendingInputIdentities[sequence]={pendingPatternForNextSource,timestamp};
+                    if(pendingCaptionBurstRegression)pendingInputIdentities[sequence]={pendingPatternForNextSource,timestamp,
+                        uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count())};
                     VideoFrame frame(pixels.data(),sequence++,timestamp,&buffer);cleanup.renderer->OnVideoFrame(frame);
                 }
                 nextSource+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(sourcePeriod);
@@ -1978,11 +1985,14 @@ namespace VideoProcessorTest
                 auto verifyBurstPhase=[&](uint64_t firstInput,size_t firstRecord,
                     const AnalysisDiagnosticRecordV1* previousContext,const char* phaseName) {
                     std::vector<AnalysisDiagnosticRecordV1> records;
-                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);records=classicPoseRecords;}
+                    std::map<uint64_t,uint64_t> submitWallNs;
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);records=classicPoseRecords;submitWallNs=classicPoseSubmitWallNs;}
                     std::map<uint64_t,const AnalysisDiagnosticRecordV1*> outputsByFrame;
                     std::map<uint64_t,std::vector<const AnalysisDiagnosticRecordV1*>> admissionsByFrame;
                     std::vector<const AnalysisDiagnosticRecordV1*> phaseOutputs;
                     bool contextChanged=previousContext==nullptr;
+                    bool newInputStarted=previousContext==nullptr;unsigned oldQueuedDrain=0;
+                    uint64_t lastDrained=previousContext?previousContext->sourceFrameNumber:0;
                     for(const auto& record:records) {
                         if(record.recordSequence<firstRecord)continue;
                         if(!strcmp(record.stage,"subtitle-canvas-admission")) {
@@ -1992,6 +2002,19 @@ namespace VideoProcessorTest
                             continue;
                         }
                         if(strcmp(record.stage,"submitted-presentation")||!(record.flags&1u))continue;
+                        if(record.sourceFrameNumber<firstInput && previousContext && !newInputStarted &&
+                            record.sourceFrameNumber>lastDrained && record.transportGeneration==previousContext->transportGeneration &&
+                            record.rendererGeneration==previousContext->rendererGeneration &&
+                            record.sourceFormatGeneration==previousContext->sourceFormatGeneration &&
+                            record.analysisDomainKey==previousContext->analysisDomainKey &&
+                            record.continuityGeneration==previousContext->continuityGeneration) {
+                            const auto oldInput=pendingInputIdentities.find(record.sourceFrameNumber);
+                            require(oldInput!=pendingInputIdentities.end()&&oldInput->second.timestamp==record.captureTimestamp&&
+                                record.counters[0]==record.acceptedSequence&&record.counters[1]==record.acceptedSequence&&
+                                !(record.flags&16384u),L"Queued old-context drain lost its original source identity.");
+                            require(++oldQueuedDrain<=4,L"Old-context output exceeded the fixture's original four-frame queue target.");
+                            lastDrained=record.sourceFrameNumber;continue;
+                        }
                         if(record.sourceFrameNumber<firstInput) {
                             std::ostringstream detail;detail<<"PENDING BURST SOURCE BOUNDARY: phase="<<phaseName
                                 <<" first_input="<<firstInput<<" first_record="<<firstRecord<<" ordinal="<<record.recordSequence
@@ -2010,6 +2033,10 @@ namespace VideoProcessorTest
                         }
                         require(record.sourceFrameNumber>=firstInput,
                             L"A prior-source image was submitted after pending Classic inputs began.");
+                        if(previousContext)require(record.sourceFormatGeneration!=previousContext->sourceFormatGeneration&&
+                            record.analysisDomainKey!=previousContext->analysisDomainKey,
+                            L"A new-format input retained the old analysis context after format cutover.");
+                        newInputStarted=true;
                         require(outputsByFrame.emplace(record.sourceFrameNumber,&record).second,
                             L"Renderer submitted the same source identity more than once instead of advancing the actual source.");
                         phaseOutputs.push_back(&record);
@@ -2035,6 +2062,36 @@ namespace VideoProcessorTest
                     BurstPhaseResult result;result.outputCount=phaseOutputs.size();
                     require(!phaseOutputs.empty(),L"Pending Classic phase produced no current submitted outputs.");
                     result.formatGeneration=phaseOutputs.front()->sourceFormatGeneration;
+                    // Measure callback wall time independently from source/output
+                    // PTS: monotonic source IDs alone cannot expose growing delay.
+                    require(phaseOutputs.size()>=48,L"Too few outputs to establish sustained real-time behavior.");
+                    const double periodMs=sourcePeriod.count()*1000.0;
+                    double maxGapMs=0,maxLatencyMs=0,firstLatency=0,lastLatency=0;
+                    uint64_t priorWall=0;
+                    for(size_t i=0;i<phaseOutputs.size();++i) {
+                        const auto& output=*phaseOutputs[i];
+                        const auto tick=submitWallNs.find(output.recordSequence);
+                        const auto input=pendingInputIdentities.find(output.sourceFrameNumber);
+                        require(tick!=submitWallNs.end()&&input!=pendingInputIdentities.end()&&
+                            tick->second>=input->second.arrivalNs,L"Real-time output lacks its independent callback/input clock join.");
+                        const double latencyMs=double(tick->second-input->second.arrivalNs)/1e6;
+                        maxLatencyMs=(std::max)(maxLatencyMs,latencyMs);
+                        if(i<24)firstLatency+=latencyMs/24;
+                        if(i>=phaseOutputs.size()-24)lastLatency+=latencyMs/24;
+                        if(i>=4&&priorWall)maxGapMs=(std::max)(maxGapMs,double(tick->second-priorWall)/1e6);
+                        priorWall=tick->second;
+                    }
+                    std::ostringstream timing;timing<<"PENDING BURST REAL TIME: phase="<<phaseName
+                        <<" outputs="<<phaseOutputs.size()<<" old_context_drain="<<oldQueuedDrain
+                        <<" max_steady_submit_gap_ms="<<maxGapMs<<" max_input_to_submit_ms="<<maxLatencyMs
+                        <<" first24_mean_latency_ms="<<firstLatency<<" last24_mean_latency_ms="<<lastLatency;
+                    Logger::WriteMessage(timing.str().c_str());
+                    require(maxGapMs<=2*periodMs+1000.0/60,
+                        L"Pending subtitles stalled steady current-source submission beyond two source intervals plus a display refresh.");
+                    require(maxLatencyMs<=12*periodMs+1000.0/60,
+                        L"Input-to-submit delay exceeded the unchanged fixture hard queue bound.");
+                    require(lastLatency<=firstLatency+periodMs,
+                        L"Subtitle burst accumulated source latency instead of sustaining the incoming frame rate.");
                     std::set<uint64_t> rawFallbackSources;
                     for(const auto& admissionGroup:admissionsByFrame) {
                         const auto source=admissionGroup.first;
