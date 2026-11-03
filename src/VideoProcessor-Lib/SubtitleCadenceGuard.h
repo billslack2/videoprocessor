@@ -825,37 +825,60 @@ private:
         for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
                 const size_t at=DestinationIndex(x,y);const auto& point=m_destinationSeedPixels[at].pixel;
+                const bool mayBright=BrightDestinationPoint(point,*m_baseline);
+                const bool mayAlternate=AlternateDestinationPoint(point,*m_baseline);
+                const bool mayDark=DarkDestinationPoint(point,*m_baseline);
+                if(!mayBright && !mayAlternate && !mayDark)continue;
                 for(int direction=0;direction<4;++direction) {
                     const size_t neighborAt=DestinationIndex(x+dx[direction],y+dy[direction]);
                     if(neighborAt==size_t(-1))continue;
                     const auto& neighbor=m_destinationSeedPixels[neighborAt].pixel;
-                    if(BrightDestinationCandidate(point,neighbor,*m_baseline))
+                    if(mayBright && BrightDestinationCandidate(point,neighbor,*m_baseline))
                         m_destinationSeedDirections[at]|=uint8_t(1u<<direction);
-                    if(AlternateDestinationCandidate(point,neighbor,*m_baseline))
+                    if(mayAlternate && AlternateDestinationCandidate(point,neighbor,*m_baseline))
                         m_destinationSeedDirections[at]|=uint8_t(1u<<(direction+4));
-                    if(DarkDestinationCandidate(point,neighbor,*m_baseline))
+                    if(mayDark && DarkDestinationCandidate(point,neighbor,*m_baseline))
                         m_destinationSeedDirections[at]|=uint16_t(1u<<(direction+8));
                 }
             }
         return true;
     }
+    static bool BrightDestinationPoint(const AnalysisLumaSample& point,const SubtitleInkSnapshot& palette) {
+        const int floor=(std::max)(96,palette.inkFloor-160);
+        return point.luma>=floor && std::abs(int(point.chromaU)-palette.inkU)<=80 &&
+            std::abs(int(point.chromaV)-palette.inkV)<=80;
+    }
+    static bool AlternateDestinationPoint(const AnalysisLumaSample& point,const SubtitleInkSnapshot& palette) {
+        return std::abs(int(point.chromaU)-palette.inkU)>80 ||
+            std::abs(int(point.chromaV)-palette.inkV)>80;
+    }
+    static bool DarkDestinationPoint(const AnalysisLumaSample& point,const SubtitleInkSnapshot& palette) {
+        return point.luma<=palette.inkFloor-80;
+    }
     static bool BrightDestinationCandidate(const AnalysisLumaSample& point,
         const AnalysisLumaSample& neighbor,const SubtitleInkSnapshot& palette) {
-        const int floor=(std::max)(96,palette.inkFloor-160);
-        return point.luma>=floor && int(point.luma)-int(neighbor.luma)>=48 &&
-            std::abs(int(point.chromaU)-palette.inkU)<=80 &&
-            std::abs(int(point.chromaV)-palette.inkV)<=80;
+        return BrightDestinationPoint(point,palette) && int(point.luma)-int(neighbor.luma)>=48;
     }
     static bool AlternateDestinationCandidate(const AnalysisLumaSample& point,
         const AnalysisLumaSample& neighbor,const SubtitleInkSnapshot& palette) {
-        return (std::abs(int(point.chromaU)-palette.inkU)>80 ||
-                std::abs(int(point.chromaV)-palette.inkV)>80) &&
+        return AlternateDestinationPoint(point,palette) &&
             (std::abs(int(point.chromaU)-int(neighbor.chromaU))>=64 ||
                 std::abs(int(point.chromaV)-int(neighbor.chromaV))>=64);
     }
     static bool DarkDestinationCandidate(const AnalysisLumaSample& point,
         const AnalysisLumaSample& neighbor,const SubtitleInkSnapshot& palette) {
-        return point.luma<=palette.inkFloor-80 && int(neighbor.luma)-int(point.luma)>=48;
+        return DarkDestinationPoint(point,palette) && int(neighbor.luma)-int(point.luma)>=48;
+    }
+    static bool KnownDarkBackgroundTransition(const AnalysisLumaSample& point,
+        const AnalysisLumaSample& neighbor,const AnalysisLumaSample& seedPoint,
+        const AnalysisLumaSample& seedNeighbor,const SubtitleInkSnapshot& palette,
+        uint16_t seededDirections,uint16_t directionBit) {
+        const int candidateFloor=(std::max)(96,palette.inkFloor-160);
+        return (seededDirections&directionBit) && Black(point,palette) && Black(seedPoint,palette) &&
+            !Ink(neighbor,palette) && !Ink(seedNeighbor,palette) &&
+            neighbor.luma<candidateFloor && seedNeighbor.luma<candidateFloor &&
+            std::abs(int(neighbor.chromaU)-512)<=48 && std::abs(int(neighbor.chromaV)-512)<=48 &&
+            std::abs(int(seedNeighbor.chromaU)-512)<=48 && std::abs(int(seedNeighbor.chromaV)-512)<=48;
     }
     bool VerifyDestinationNovelty(const AnalysisLumaSource& source,size_t& samples,
         int& mismatchX,int& mismatchY,const char*& reason) const {
@@ -879,21 +902,29 @@ private:
         for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y)
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
                 const size_t at=DestinationIndex(x,y);const auto& point=m_destinationCurrentPixels[at];
+                const bool mayBright=BrightDestinationPoint(point,*m_baseline);
+                const bool mayAlternate=AlternateDestinationPoint(point,*m_baseline);
+                const bool mayDark=DarkDestinationPoint(point,*m_baseline);
+                if(!mayBright && !mayAlternate && !mayDark)continue;
                 for(int direction=0;direction<4;++direction) {
                     const size_t neighborAt=DestinationIndex(x+dx[direction],y+dy[direction]);
                     if(neighborAt==size_t(-1))continue;
                     const auto& neighbor=m_destinationCurrentPixels[neighborAt];
                     const uint16_t brightBit=uint16_t(1u<<direction),alternateBit=uint16_t(1u<<(direction+4));
                     const uint16_t darkBit=uint16_t(1u<<(direction+8));
-                    const bool bright=BrightDestinationCandidate(point,neighbor,*m_baseline);
-                    const bool alternate=AlternateDestinationCandidate(point,neighbor,*m_baseline);
+                    const bool bright=mayBright && BrightDestinationCandidate(point,neighbor,*m_baseline);
+                    const bool alternate=mayAlternate && AlternateDestinationCandidate(point,neighbor,*m_baseline);
+                    const bool dark=mayDark && DarkDestinationCandidate(point,neighbor,*m_baseline);
+                    if(!bright && !alternate && !dark)continue;
                     const auto& seedPoint=m_destinationSeedPixels[at].pixel;
                     const auto& seedNeighbor=m_destinationSeedPixels[neighborAt].pixel;
                     const bool samePair=SameSample(point,seedPoint) && SameSample(neighbor,seedNeighbor);
-                    const bool dark=DarkDestinationCandidate(point,neighbor,*m_baseline);
+                    const bool knownDarkBackground=KnownDarkBackgroundTransition(point,neighbor,
+                        seedPoint,seedNeighbor,*m_baseline,m_destinationSeedDirections[at],darkBit);
                     if((bright && (!(m_destinationSeedDirections[at]&brightBit) || !samePair)) ||
                         (alternate && (!(m_destinationSeedDirections[at]&alternateBit) || !samePair)) ||
-                        (dark && (!(m_destinationSeedDirections[at]&darkBit) || !samePair))) {
+                        (dark && (!(m_destinationSeedDirections[at]&darkBit) ||
+                            (!samePair && !knownDarkBackground)))) {
                         mismatchX=x;mismatchY=y;reason="current-destination-new-ink";return false;
                     }
                 }

@@ -4266,6 +4266,17 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             for(int attempt=0;attempt<1000 && semanticScans.load(std::memory_order_acquire)<expected;++attempt)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             const auto scans=semanticScans.load(std::memory_order_acquire);
+            {
+                std::string sequenceList;
+                std::lock_guard<std::mutex> lock(semanticScanMutex);
+                for(const uint64_t sequence:semanticScanSequences) {
+                    if(!sequenceList.empty())sequenceList+=",";
+                    sequenceList+=std::to_string(sequence);
+                }
+                Logger::WriteMessage((std::string("Semantic refresh cadence rate=")+std::to_string(rate)+
+                    " expected="+std::to_string(expected)+" observed="+std::to_string(scans)+
+                    " interval="+std::to_string(interval)+" sources="+sequenceList).c_str());
+            }
             Assert::IsTrue(scans>=expected-1 && scans<=expected,
                 L"A wall-clock-paced source stream receives bounded semantic refreshes near the configured 100 ms interval.");
             {
@@ -4281,8 +4292,8 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         // The accepted template has two lines. A later third line is inserted
         // inside the active picture, outside the old cue ROI, while both old
         // glyphs stay byte-for-byte unchanged.
-        for(int y=74;y<78;++y)for(int x=50;x<110;++x)if(x%7<3)
-            (*seedPixels)[size_t(y)*160+x]=uint16_t(300<<6);
+        for(int y=74;y<80;++y)for(int x=50;x<110;++x)if(x%7<3)
+            (*seedPixels)[size_t(y)*160+x]=uint16_t((y<78?300:64)<<6);
         auto seed=CompleteThreeLineScan(1,*seedPixels);
         seed.text.lineCount=2;seed.text.bounds={50,50,110,68};seed.text.lineBounds[2]={};
         seed.text.linePanels[2]={};seed.text.provenLinePanels[2]={};seed.text.lineCapturePanels[2]={};
