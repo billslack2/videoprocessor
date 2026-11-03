@@ -1,0 +1,51 @@
+{
+  "stage": 28,
+  "sourceCommit": "03d6c37c14e8f6dbcc61f62cef57c64b2024f190",
+  "status": "Combined cross-edge detection and legal Classic pose repair under full qualification",
+  "detectorRepair": "Retains 25900500 cross-edge corroboration and 41/41 native trusted-crop replay; no new remembered-ratio bank or ratio forcing.",
+  "firstFullRun": {
+    "run": "20261102-211426-347b5f76",
+    "standardPassed": 1065,
+    "betaPassed": 16,
+    "betaFailed": 1,
+    "failure": "BetaRendererBlackUhdV210ResidualUiWithMovingPicture returning Classic pan projection",
+    "notIgnored": true
+  },
+  "panEvidence": {
+    "nativeBoundsUnchanged": [
+      0,
+      250,
+      3840,
+      1906
+    ],
+    "pendingPanPixels": 64,
+    "freshPanPixels": 60,
+    "routedControllerPixels": [
+      16,
+      24
+    ],
+    "sources": [
+      6566,
+      6568
+    ]
+  },
+  "panRepair": "During same-side engage only, retain a previously submitted matching pose while still inside the current safe range. Match native owner, generation, epoch, format, domain, dimensions and certificate; do not advance the drift clock or change native detection.",
+  "nativeProjectionRegression": {
+    "oldBehaviorFailed": true,
+    "newBehaviorPassed": true,
+    "directions": [
+      "top",
+      "bottom"
+    ],
+    "contextMismatchControls": 7,
+    "relatedNativeControlsPassed": 5
+  },
+  "newTelemetry": "engage_retained text field and flag8 of subtitle-canvas-admission distinguish a legal historical pose constraint from current physical evidence.",
+  "fullQualification": "running",
+  "priorCorpora": "pending",
+  "motionSuites": "pending",
+  "deployedCommit": "788554a100afe0af2352b904fe1870d80fb75bb7",
+  "configurationEdits": [],
+  "profileToRestore": "black",
+  "evidenceRoot": "E:\\codex\\videoprocessor\\evidence\\paused-scope-edge-votes-20261102-2042"
+}
