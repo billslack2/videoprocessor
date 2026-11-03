@@ -291,8 +291,21 @@ and ready exact-source proofs continue independently. This backstop detects new
 text inside the preserved active picture; excluded bars and affected cleanup
 pixels require immediate current-source safety verification.
 
-Remaining safety review: advanced destination backing also overwrites current
-picture pixels. Source glyph and cleanup verification alone cannot prove that
-a newly added line in that destination is preserved. Add a destination-local
-current-pixel novelty check before qualifying worker receipts for composition;
-periodic semantic refresh alone does not close this first-frame write risk.
+The expanded picture-local destination write area now participates in the
+current-source footprint receipt. Seeding stores exact YUV samples and directional
+evidence; each proof rereads current pixels and rejects newly appearing or changed
+bright, alternate-chroma or dark-edge structure. The probe is clipped to accepted
+native picture bounds and shares the existing sample budget. Encoded bars remain
+covered by separate current-bar checks. This is local write-safety evidence, not
+a semantic cue certificate or native-picture authority.
+
+The detector publishes its existing component-card threshold as the composition-only
+`captionBackingLimit`. Within accepted caption backing, both samples must remain
+under that limit with neutral chroma, luma change below 48 codes, chroma changes at
+most 8 codes and no newly introduced strong local contrast. Strict black-bar and
+glyph evidence remain independent. This does not establish cue presence or absence.
+
+At `cb8a95a6`, all 1,083 native contracts pass. The 60 Hz actual-renderer worker
+budget pair still fails: verified receipts cover nearly every current source, but
+full grouping runs near input cadence and worst worker proof time exceeds the
+60 Hz budget. This is not full runtime qualification and has not been deployed.
