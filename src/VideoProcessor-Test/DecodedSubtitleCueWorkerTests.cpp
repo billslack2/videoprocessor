@@ -184,6 +184,11 @@ public:
             L"The measured backing transition is an inter-line support pixel, not a glyph pixel.");
         Assert::AreEqual(48,int(FixtureLuma(interlineX,interlineY,0)));
         Assert::AreEqual(64,int(FixtureLuma(interlineX,interlineY,1)));
+        constexpr int nearGlyphX=1552,nearGlyphY=1769;
+        Assert::AreEqual(64,int(FixtureLuma(nearGlyphX,nearGlyphY,0)));
+        Assert::AreEqual(48,int(FixtureLuma(nearGlyphX,nearGlyphY,1)));
+        Assert::AreEqual(892,int(FixtureLuma(nearGlyphX,nearGlyphY+1,0)));
+        Assert::AreEqual(892,int(FixtureLuma(nearGlyphX,nearGlyphY+1,1)));
 
         FillDecodedFrame(words,1);
         source=Source(words);
@@ -192,6 +197,10 @@ public:
         Assert::IsTrue(source.Sample(interlineX,interlineY,currentInterline) && currentInterline.luma==64 &&
             currentInterline.chromaU==512 && currentInterline.chromaV==512,
             L"The source-derived inter-line backing changes only from neutral 48 to neutral 64.");
+        AnalysisLumaSample currentNearGlyph,currentGlyph;
+        Assert::IsTrue(source.Sample(nearGlyphX,nearGlyphY,currentNearGlyph) && currentNearGlyph.luma==48 &&
+            source.Sample(nearGlyphX,nearGlyphY+1,currentGlyph) && currentGlyph.luma==892,
+            L"A second neutral 64-to-48 transition is adjacent to an exactly unchanged glyph sample.");
         auto proof=guard->VerifyCurrentFootprint(current,source,preview->current,cue,base);
         if(!proof.valid) {
             const auto detail=FailureDetail(proof,*preview,cue,geometry,source);

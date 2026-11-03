@@ -929,15 +929,18 @@ private:
         const AnalysisLumaSample& seedNeighbor,const SubtitleInkSnapshot& palette,
         uint16_t seededDirections,uint16_t directionBit) {
         const int candidateFloor=(std::max)(96,palette.inkFloor-160);
-        return (seededDirections&directionBit) &&
-            StableCaptionBackingTransition(point,seedPoint,palette) &&
-            !Ink(neighbor,palette) && !Ink(seedNeighbor,palette) &&
+        const bool stablePoint=palette.captionBackingLimit>0?
+            StableCaptionBackingTransition(point,seedPoint,palette):
+            (Black(point,palette)&&Black(seedPoint,palette));
+        const bool unchangedNeighbor=SameSample(neighbor,seedNeighbor);
+        const bool boundedNeutralNeighbor=!Ink(neighbor,palette) && !Ink(seedNeighbor,palette) &&
             neighbor.luma<candidateFloor && seedNeighbor.luma<candidateFloor &&
             std::abs(int(neighbor.luma)-int(seedNeighbor.luma))<48 &&
             std::abs(int(neighbor.chromaU)-int(seedNeighbor.chromaU))<=8 &&
             std::abs(int(neighbor.chromaV)-int(seedNeighbor.chromaV))<=8 &&
-            std::abs(int(neighbor.chromaU)-512)<=48 && std::abs(int(neighbor.chromaV)-512)<=48 &&
-            std::abs(int(seedNeighbor.chromaU)-512)<=48 && std::abs(int(seedNeighbor.chromaV)-512)<=48;
+            NeutralChroma(neighbor) && NeutralChroma(seedNeighbor);
+        return (seededDirections&directionBit) &&
+            stablePoint && (unchangedNeighbor || boundedNeutralNeighbor);
     }
     bool IsProjectedProtectedPassThrough(int x,int y,
         const CurrentFootprintVerification& verified) const {
@@ -1019,8 +1022,11 @@ private:
                     const auto& seedNeighbor=m_destinationSeedPixels[neighborAt].pixel;
                     const bool neighborPassThrough=IsProjectedProtectedPassThrough(
                         x+dx[direction],y+dy[direction],verified);
+                    const bool stableBackingNeighbor=InAcceptedCaptionBackingFootprint(
+                        x+dx[direction],y+dy[direction]) &&
+                        StableCaptionBackingTransition(neighbor,seedNeighbor,*m_baseline);
                     const bool samePair=SameSample(point,seedPoint) &&
-                        (neighborPassThrough || SameSample(neighbor,seedNeighbor));
+                        (neighborPassThrough || SameSample(neighbor,seedNeighbor) || stableBackingNeighbor);
                     const bool knownDarkBackground=KnownDarkBackgroundTransition(point,neighbor,
                         seedPoint,seedNeighbor,*m_baseline,m_destinationSeedDirections[at],darkBit);
                     if((bright && (!(m_destinationSeedDirections[at]&brightBit) || !samePair)) ||
