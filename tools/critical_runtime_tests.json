@@ -4,6 +4,7 @@
     "src/VideoProcessor-Test/AlphaSourceCropPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp",
     "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp",
+    "src/VideoProcessor-Test/DecodedSubtitleCueWorkerTests.cpp",
     "src/VideoProcessor-Test/AnalysisDiagnosticTraceTests.cpp",
     "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp",
@@ -11,7 +12,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1082,
+  "minimumNativeTests": 1083,
   "requiredNativeMethods": [
     "ReadyCertifiedExistingCueRearmsAcrossContinuityWithOriginalPixelSeed",
     "PendingFootprintReceiptAllowsOnlyExactCurrentPreparedErasureWithoutBarAuthority",
@@ -360,7 +361,8 @@
     "CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence",
     "CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange",
     "CurrentCueWorkerTailOnlyCaptureExtensionPreservesProofAndAcceptsSubsetHead",
-    "CurrentCueWorkerRejectsNovelInkInsideAdvancedDestinationAndAllowsUniformMotion"
+    "CurrentCueWorkerRejectsNovelInkInsideAdvancedDestinationAndAllowsUniformMotion",
+    "DecodedDvUnchangedCleanupFootprintPassesCurrentPhaseOnePixels"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",

@@ -14,6 +14,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <sstream>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace Tests {
@@ -3770,8 +3771,10 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
     TEST_METHOD(CurrentCueWorkerProofUsesFreshPixelsAndIgnoresMovingPictureOutsideCue) {
         auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
         std::array<SubtitleBoxObservation,4> acceptedFrames;
-        for(size_t i=0;i<acceptedFrames.size();++i)
-            acceptedFrames[i]=CompleteThreeLineScan(4+i,*seedPixels);
+        for(size_t i=0;i<acceptedFrames.size();++i) {
+            acceptedFrames[i]=CompleteThreeLineScan(13+i*2,*seedPixels);
+            acceptedFrames[i].analysisStride=2;
+        }
         auto seed=acceptedFrames.front();
         SubtitleBoxPresentation tracker;
         const auto seedPreview=SubtitleBoxLookahead::Resolve(
@@ -3779,7 +3782,19 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         const auto acquired=tracker.Consume(seedPreview);
         Assert::IsTrue(acquired.detected && acquired.lineCount==3,
             L"The comparison tracker starts with an independently accepted three-line cue.");
-        Assert::AreEqual(uint64_t(4),tracker.AcceptedTemplateIdentity().acceptedSequence);
+        Assert::AreEqual(uint64_t(13),tracker.AcceptedTemplateIdentity().acceptedSequence);
+        auto independentAnchor=CompleteThreeLineScan(14,*seedPixels);
+        independentAnchor.analysisStride=2;
+        auto anchorPreview=SubtitleBoxLookahead::Resolve(&independentAnchor,1,11,21);
+        // Model a pruned lookahead grouping on top of the complete current
+        // scan. The tracker must keep its already accepted three-line cue as
+        // held presentation state while preserving source 14's full raw proof.
+        anchorPreview.text.lineCount=2;
+        const auto anchorDecision=tracker.Consume(anchorPreview,250,1000.0/60.0);
+        Assert::IsTrue(anchorDecision.detected && anchorDecision.held && anchorDecision.lineCount==3,
+            L"A complete independent source may retain its cue as a held result after grouping prunes a row.");
+        Assert::AreEqual(uint64_t(14),tracker.AcceptedTemplateIdentity().acceptedSequence,
+            L"The tracker reports the latest independently scanned anchor while the worker keeps seed 13.");
         SubtitleCurrentCueTemplateInput templateInput;templateInput.observation=seed;
         templateInput.acceptedCue=acquired;templateInput.source=OwnedSource(seedPixels);
         templateInput.physicalBase=seed.sharedPicture.bounds;
@@ -3789,12 +3804,13 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
 
         auto currentPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
         (*currentPixels)[30*160+5]=uint16_t(340<<6); // Moving picture background, outside cue glyphs.
-        auto current=CompleteThreeLineScan(5,*currentPixels);
+        auto current=CompleteThreeLineScan(15,*currentPixels);
         // Match the renderer's proof request: exact source/context plus the
         // shared physical base, with no measured subtitle or picture edges.
         current.pictureTop=0;current.pictureBottom=0;current.text={};current.ink.reset();
+        current.analysisStride=2;current.cadenceSkipped=true;
         current.analyzed=false;current.barAuthority=false;current.independentBarAnalysis=false;
-        SubtitleMeasurementWorker worker;worker.AdvanceCurrentCueRenderWindow(current.identity,5);
+        SubtitleMeasurementWorker worker;worker.AdvanceCurrentCueRenderWindow(current.identity,15);
         uint64_t revision=0;
         Assert::IsTrue(worker.SubmitCurrentCueTemplate(std::move(templateInput),revision)==
             SubtitleCurrentCueProofStatus::Queued);
@@ -3802,7 +3818,7 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         SubtitleCurrentCueProofRequest request;request.currentKey=current;
         request.source=OwnedSource(currentPixels);request.physicalBase=current.sharedPicture.bounds;
         request.sourceMode=SubtitlePreviewMode::None;request.backgroundMode=3;
-        request.eligibleRenderHead=current.identity;request.eligibleTailSequence=5;
+        request.eligibleRenderHead=current.identity;request.eligibleTailSequence=15;
         request.templateRevision=revision;request.fullScanDue=false;
         Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
 
@@ -3815,7 +3831,7 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         }
         Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Ready,
             L"The worker proves the current glyphs and excluded bars without comparing unrelated movie background.");
-        Assert::AreEqual(uint64_t(4),receipt.SeedIdentity().acceptedSequence);
+        Assert::AreEqual(uint64_t(13),receipt.SeedIdentity().acceptedSequence);
         Assert::IsTrue(receipt.SourceMode()==SubtitlePreviewMode::None);
         SubtitleBoxPreview preview;SubtitleBoxResult held;
         Assert::IsTrue(tracker.ConsumeCurrentCueProof(receipt,preview,held));
@@ -3829,13 +3845,54 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::IsFalse(preview.current.ink->rawEvidenceComplete);
         Assert::IsTrue(tracker.HasAcceptedSourceTemplate(),
             L"A presentation-only proof does not clear the tracker's independent comparison history.");
-        Assert::AreEqual(uint64_t(4),tracker.AcceptedTemplateIdentity().acceptedSequence,
-            L"The proof cannot advance or renew the independent seed identity.");
-        auto nextFullSource=CompleteThreeLineScan(6,*currentPixels);
+        Assert::AreEqual(uint64_t(14),tracker.AcceptedTemplateIdentity().acceptedSequence,
+            L"The proof cannot advance or renew the independent tracker anchor.");
+        const auto retainedTemplateIdentity=tracker.AcceptedTemplateIdentity();
+        const auto retainedContinuity=tracker.AcceptedTemplateContinuity();
+        auto foreignTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
+        auto outOfOrderTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
+        auto resetTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
+        auto nextFullSource=CompleteThreeLineScan(16,*currentPixels);
+        nextFullSource.analysisStride=2;
         auto nextFullPreview=SubtitleBoxLookahead::Resolve(&nextFullSource,1,11,21);
         const auto afterProof=tracker.Consume(nextFullPreview,250,1000.0/60.0);
+        std::wostringstream recoveryDiagnostic;
+        recoveryDiagnostic<<L"post-proof full scan decision=";
+        if(const char* reason=tracker.DecisionReason())for(;*reason;++reason)
+            recoveryDiagnostic<<wchar_t(static_cast<unsigned char>(*reason));
+        recoveryDiagnostic
+            <<L" retained_seed_sequence="<<retainedTemplateIdentity.acceptedSequence
+            <<L" retained_continuity="<<retainedContinuity
+            <<L" current_sequence="<<nextFullPreview.current.identity.acceptedSequence
+            <<L" current_domain="<<nextFullPreview.current.identity.analysisDomainKey
+            <<L" policy="<<nextFullPreview.policyGeneration
+            <<L" lines="<<afterProof.lineCount;
+        Logger::WriteMessage(recoveryDiagnostic.str().c_str());
         Assert::IsTrue(afterProof.detected && afterProof.lineCount==3,
             L"The next complete current source still passes through normal semantic Consume after proof presentation.");
+        Assert::AreEqual(acquired.cue,afterProof.cue,
+            L"An exact current positive scan reattaches the accepted cue only through the sealed one-step comparison witness.");
+        auto foreignSource=CompleteThreeLineScan(16,*currentPixels);
+        foreignSource.analysisStride=2;foreignSource.identity.analysisDomainKey+=99;
+        foreignSource.sharedPicture.identity=foreignSource.identity;
+        const auto foreignResult=foreignTracker->Consume(
+            SubtitleBoxLookahead::Resolve(&foreignSource,1,11,21),250,1000.0/60.0);
+        Assert::IsTrue(foreignResult.detected && foreignResult.cue!=acquired.cue,
+            L"A foreign analysis domain cannot consume the proof adjacency witness.");
+        auto outOfOrderSource=CompleteThreeLineScan(17,*currentPixels);
+        outOfOrderSource.analysisStride=2;
+        const auto outOfOrderResult=outOfOrderTracker->Consume(
+            SubtitleBoxLookahead::Resolve(&outOfOrderSource,1,11,21),250,1000.0/60.0);
+        Assert::IsTrue(outOfOrderResult.detected && outOfOrderResult.cue!=acquired.cue,
+            L"A non-successor source cannot bridge from the typed proof.");
+        resetTracker->Reset();
+        Assert::IsFalse(resetTracker->HasAcceptedSourceTemplate(),
+            L"Reset retires the one-use proof witness and independent comparison history.");
+        const auto resetResult=resetTracker->Consume(
+            SubtitleBoxLookahead::Resolve(&nextFullSource,1,11,21),250,1000.0/60.0);
+        Assert::IsTrue(resetResult.detected && resetResult.lineCount==3 &&
+            resetTracker->AcceptedTemplateIdentity().acceptedSequence==16,
+            L"A source after reset can only establish a fresh current template.");
         SubtitleBoxPreview replayedPreview;SubtitleBoxResult replayedCue;
         Assert::IsFalse(tracker.ConsumeCurrentCueProof(receipt,replayedPreview,replayedCue),
             L"A sealed current proof receipt is single-use, including through the presentation adapter.");
@@ -3965,9 +4022,20 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
     TEST_METHOD(CurrentCueWorkerProofPersistsAcrossStaticCueAndRunsBesideBlockedGrouping) {
         auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
         const std::weak_ptr<std::vector<uint16_t>> weakSeed=seedPixels;
-        const auto seed=CompleteThreeLineScan(1,*seedPixels);
+        std::array<SubtitleBoxObservation,4> acceptedFrames;
+        for(size_t i=0;i<acceptedFrames.size();++i) {
+            acceptedFrames[i]=CompleteThreeLineScan(1+i*2,*seedPixels);
+            acceptedFrames[i].analysisStride=2;
+        }
+        const auto seed=acceptedFrames.front();
+        SubtitleBoxPresentation tracker;
+        const auto acquired=tracker.Consume(SubtitleBoxLookahead::Resolve(
+            acceptedFrames.data(),acceptedFrames.size(),11,21));
+        Assert::IsTrue(acquired.detected && acquired.lineCount==3,
+            L"The long proof sequence starts from a real accepted cue template.");
+        Assert::AreEqual(uint64_t(1),tracker.AcceptedTemplateIdentity().acceptedSequence);
         const auto makeTemplate=[&]() {
-            SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=seed.text;
+            SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=acquired;
             input.source=OwnedSource(seedPixels);input.physicalBase=seed.sharedPicture.bounds;
             input.sourceMode=SubtitlePreviewMode::None;input.acceptedCurrentScan=true;
             input.frameMs=1000.0/60;input.holdMs=250;return input;
@@ -4007,7 +4075,10 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         for(uint64_t sequence=2;sequence<302;++sequence) {
             auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
             (*pixels)[30*160+5]=uint16_t((sequence&1?300:340)<<6);
-            const auto current=CompleteThreeLineScan(sequence,*pixels);
+            auto current=CompleteThreeLineScan(sequence,*pixels);
+            current.pictureTop=0;current.pictureBottom=0;current.text={};current.ink.reset();
+            current.analysisStride=2;current.cadenceSkipped=true;
+            current.analyzed=false;current.barAuthority=false;current.independentBarAnalysis=false;
             const std::weak_ptr<std::vector<uint16_t>> weakCurrent=pixels;
             worker.AdvanceCurrentCueRenderWindow(current.identity,sequence);
             SubtitleCurrentCueProofRequest request;request.currentKey=current;
@@ -4029,6 +4100,12 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 L"Successful current proofs never replace the immutable acquisition baseline.");
             Assert::IsTrue(receipt.WorkerThreadId()!=groupingThread.load(std::memory_order_acquire),
                 L"Current pixel proofs run on the reserved worker while ordinary grouping is blocked.");
+            SubtitleBoxPreview heldPreview;SubtitleBoxResult heldCue;
+            Assert::IsTrue(tracker.ConsumeCurrentCueProof(receipt,heldPreview,heldCue),
+                L"Every single-use receipt extends only the comparison witness through its exact next source.");
+            Assert::AreEqual(acquired.cue,heldCue.cue);
+            Assert::AreEqual(uint64_t(1),tracker.AcceptedTemplateIdentity().acceptedSequence,
+                L"A proof chain never advances the independent acquisition baseline.");
             pixels.reset();
             for(int attempt=0;attempt<1000 && !weakCurrent.expired();++attempt)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -4037,6 +4114,12 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         }
         Assert::IsFalse(release.load(std::memory_order_acquire),
             L"The current-cue verifier completed its 300-source run while full grouping remained blocked.");
+        auto finalPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto finalScan=CompleteThreeLineScan(302,*finalPixels);finalScan.analysisStride=2;
+        const auto recovered=tracker.Consume(
+            SubtitleBoxLookahead::Resolve(&finalScan,1,11,21),250,1000.0/60.0);
+        Assert::IsTrue(recovered.detected && recovered.lineCount==3 && recovered.cue==acquired.cue,
+            L"A complete scan immediately after a long proof chain reattaches only the unchanged cue.");
     }
     TEST_METHOD(CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase) {
         auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());

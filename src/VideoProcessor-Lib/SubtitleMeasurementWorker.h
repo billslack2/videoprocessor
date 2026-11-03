@@ -368,6 +368,94 @@ inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
     outPreview.presentationOnlyCurrentCueProof=true;
     outPreview.newScanMs=0;outPreview.newScanFrames=0;
     outCue=cue;
+    // Seal one adjacency witness only when the typed proof follows the
+    // tracker’s latest independent full source. The worker seed and immutable
+    // comparison snapshots may be older, but they must remain ordered in the
+    // same context and describe this exact accepted cue/base.
+    const auto& anchor=m_previous.current;
+    const bool independentAnchor=HasAcceptedSourceTemplate() && m_result.detected &&
+        !m_result.revised && !m_result.confirmationPending && !m_result.workLimit &&
+        anchor.analyzed && !anchor.pendingRefresh && !anchor.analysisRefresh && !anchor.cadenceSkipped &&
+        !anchor.discontinuity && !anchor.inspectionCandidateUsed && !anchor.glyphLocalTop && !anchor.glyphLocalBottom &&
+        (anchor.analysisStride==1 || anchor.analysisStride==2) &&
+        anchor.independentBarAnalysis && anchor.barAuthority && !anchor.barTrackingAuthority &&
+        !anchor.currentAnchorUsesTrackedEdge && anchor.barEvidence.available &&
+        anchor.sharedPicture.AvailableFor(anchor.identity,anchor.width,anchor.height) &&
+        anchor.pictureTop==anchor.barEvidence.top && anchor.pictureBottom==anchor.barEvidence.bottom &&
+        !anchor.barEvidence.topRevalidatedAtReference && !anchor.barEvidence.topRevalidatedNearby &&
+        !anchor.barEvidence.bottomRevalidatedAtReference && !anchor.barEvidence.bottomRevalidatedNearby &&
+        !anchor.barEvidence.captionBackedTop && !anchor.barEvidence.captionBackedBottom &&
+        anchor.text.detected && !anchor.text.revised &&
+        !anchor.text.confirmationPending && !anchor.text.workLimit &&
+        anchor.text.topSearchComplete && anchor.text.bottomSearchComplete &&
+        anchor.ink && anchor.ink->rawEvidenceComplete && anchor.ink->paletteValid &&
+        m_reference.ink && m_inkReference.ink &&
+        SubtitleBoxLookahead::SameContext(m_inkReference,anchor) &&
+        SubtitleBoxLookahead::SameCue(m_inkReference,anchor) &&
+        SubtitleBoxPresentation::SameAcceptedCueLayout(m_result,receipt.m_acceptedCue) &&
+        SubtitleBoxPresentation::SameAcceptedCueLayout(anchor.text,m_result,false) &&
+        SubtitleBoxPresentation::SameAcceptedCueLayout(m_reference.text,m_result,false) &&
+        SubtitleBoxPresentation::SameAcceptedCueLayout(m_inkReference.text,m_result,false) &&
+        SubtitleBoxPresentation::SameTransportContext(anchor.identity,receipt.m_seedIdentity) &&
+        SubtitleBoxPresentation::SameTransportContext(anchor.identity,receipt.m_currentKey.identity) &&
+        SubtitleBoxPresentation::NotAfterTransport(receipt.m_seedIdentity,anchor.identity) &&
+        SubtitleBoxPresentation::NotAfterTransport(m_reference.identity,anchor.identity) &&
+        SubtitleBoxPresentation::NotAfterTransport(m_inkReference.identity,anchor.identity) &&
+        m_previous.policyGeneration==receipt.m_currentKey.policyGeneration &&
+        m_reference.policyGeneration==receipt.m_currentKey.policyGeneration &&
+        m_inkReference.policyGeneration==receipt.m_currentKey.policyGeneration &&
+        m_previous.continuityGeneration==receipt.m_currentKey.continuityGeneration &&
+        m_reference.continuityGeneration==receipt.m_currentKey.continuityGeneration &&
+        m_inkReference.continuityGeneration==receipt.m_currentKey.continuityGeneration &&
+        m_previous.current.width==receipt.m_currentKey.width &&
+        m_previous.current.height==receipt.m_currentKey.height &&
+        m_reference.width==receipt.m_currentKey.width && m_reference.height==receipt.m_currentKey.height &&
+        m_inkReference.width==receipt.m_currentKey.width && m_inkReference.height==receipt.m_currentKey.height &&
+        m_previous.current.nearBarDistance==receipt.m_currentKey.nearBarDistance &&
+        m_reference.nearBarDistance==receipt.m_currentKey.nearBarDistance &&
+        m_inkReference.nearBarDistance==receipt.m_currentKey.nearBarDistance &&
+        m_previous.current.optimizationMode==receipt.m_currentKey.optimizationMode &&
+        m_reference.optimizationMode==receipt.m_currentKey.optimizationMode &&
+        m_inkReference.optimizationMode==receipt.m_currentKey.optimizationMode &&
+        m_previous.current.scriptHint==receipt.m_currentKey.scriptHint &&
+        m_reference.scriptHint==receipt.m_currentKey.scriptHint &&
+        m_inkReference.scriptHint==receipt.m_currentKey.scriptHint &&
+        SubtitleBoxPresentation::SamePhysicalBase(m_previous.current.sharedPicture.bounds,receipt.m_physicalBase) &&
+        SubtitleBoxPresentation::SamePhysicalBase(m_reference.sharedPicture.bounds,receipt.m_physicalBase) &&
+        SubtitleBoxPresentation::SamePhysicalBase(m_inkReference.sharedPicture.bounds,receipt.m_physicalBase);
+    auto& witness=m_currentCueProofComparison;
+    if(!witness.valid && independentAnchor &&
+        SubtitleBoxPresentation::ImmediatelyFollowsTransport(anchor.identity,receipt.m_currentKey.identity)) {
+        witness.valid=true;witness.templateRevision=receipt.m_templateRevision;
+        witness.seedIdentity=receipt.m_seedIdentity;witness.anchorIdentity=anchor.identity;
+        witness.proofIdentity=receipt.m_currentKey.identity;
+        witness.policy=receipt.m_currentKey.policyGeneration;
+        witness.continuity=receipt.m_currentKey.continuityGeneration;
+        witness.cue=m_result.cue;witness.lineCount=m_result.lineCount;
+        witness.width=receipt.m_currentKey.width;witness.height=receipt.m_currentKey.height;
+        witness.nearBarDistance=receipt.m_currentKey.nearBarDistance;
+        witness.optimizationMode=receipt.m_currentKey.optimizationMode;
+        witness.base=receipt.m_physicalBase;
+    } else if(witness.valid) {
+        // A chain of exact, one-use current-pixel proofs may bridge the gap
+        // until the next full scan. Keep the original independent anchor and
+        // seed fixed; only advance the latest verified source identity.
+        const bool continuesSameWitness=independentAnchor &&
+            receipt.m_templateRevision==witness.templateRevision &&
+            SameAnalysisFrameIdentity(receipt.m_seedIdentity,witness.seedIdentity) &&
+            SameAnalysisFrameIdentity(anchor.identity,witness.anchorIdentity) &&
+            SubtitleBoxPresentation::ImmediatelyFollowsTransport(witness.proofIdentity,
+                receipt.m_currentKey.identity) &&
+            witness.policy==receipt.m_currentKey.policyGeneration &&
+            witness.continuity==receipt.m_currentKey.continuityGeneration &&
+            witness.cue==m_result.cue && witness.lineCount==m_result.lineCount &&
+            witness.width==receipt.m_currentKey.width && witness.height==receipt.m_currentKey.height &&
+            witness.nearBarDistance==receipt.m_currentKey.nearBarDistance &&
+            witness.optimizationMode==receipt.m_currentKey.optimizationMode &&
+            SubtitleBoxPresentation::SamePhysicalBase(witness.base,receipt.m_physicalBase);
+        if(continuesSameWitness)witness.proofIdentity=receipt.m_currentKey.identity;
+        else witness={};
+    }
     // This is an output adapter only. The exact-source receipt is one-use, but
     // it must not replace, clear, or renew the independent tracker history.
     // The renderer bypasses semantic Consume for this presentation-only view.
