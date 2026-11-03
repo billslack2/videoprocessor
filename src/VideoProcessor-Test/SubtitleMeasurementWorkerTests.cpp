@@ -8,6 +8,12 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <limits>
+#include <memory>
+#include <string>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace Tests {
@@ -181,6 +187,189 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         return scan;
     }
 public:
+static constexpr int UhdWidth = 3840;
+static constexpr int UhdHeight = 2160;
+static constexpr uint64_t UhdPolicy = 11;
+static constexpr uint64_t UhdContinuity = 21;
+static constexpr uint64_t UhdDomain = 0xA11CE;
+
+static ActivePictureFrameIdentity UhdIdentity(uint64_t sequence, AnalysisLumaFormat format) {
+    ActivePictureFrameIdentity id;
+    id.transportGeneration=1; id.acceptedSequence=sequence; id.sourceFrameNumber=sequence;
+    id.captureTimestamp=sequence*1000; id.sourceFormatGeneration=100+static_cast<uint64_t>(format);
+    id.viewportGeneration=4; id.rendererGeneration=5; id.analysisDomainKey=UhdDomain;
+    return id;
+}
+static std::vector<uint16_t> UhdCaption(AnalysisLumaFormat format) {
+    const size_t raster=size_t(UhdWidth)*UhdHeight;
+    const size_t planes=format==AnalysisLumaFormat::P010?3:4;
+    std::vector<uint16_t> p(raster*planes/2,uint16_t(512<<6));
+    auto fill=[&](int l,int t,int r,int b,int value) {
+        for(int y=t;y<b;++y) for(int x=l;x<r;++x) p[size_t(y)*UhdWidth+x]=uint16_t(value<<6);
+    };
+    fill(0,0,UhdWidth,UhdHeight,64); fill(0,276,UhdWidth,1884,200);
+    fill(1250,1790,2580,1880,64);
+    const int top=1808;
+    for(int n=0;n<30;++n) {
+        const int left=1320+n*40;
+        fill(left,top,left+28,top+64,700); fill(left+8,top+8,left+20,top+56,64);
+    }
+    const int open=1270,close=2534;
+    fill(open,top,open+3,top+64,700); fill(open,top,open+24,top+3,700);
+    fill(open,top+61,open+24,top+64,700); fill(close+21,top,close+24,top+64,700);
+    fill(close,top,close+24,top+3,700); fill(close,top+61,close+24,top+64,700);
+    return p;
+}
+static AnalysisLumaSource UhdSource(std::vector<uint16_t>& pixels,AnalysisLumaFormat format) {
+    AnalysisLumaSource s; s.data=reinterpret_cast<const uint8_t*>(pixels.data());
+    s.dataBytes=pixels.size()*sizeof(uint16_t); s.width=UhdWidth; s.height=UhdHeight;
+    s.rowBytes=s.chromaRowBytes=size_t(UhdWidth)*2; s.format=format; s.generation=1; return s;
+}
+static SubtitlePictureAuthority UhdPicture(const ActivePictureFrameIdentity& id) {
+    SubtitlePictureAuthority p; p.required=true; p.identity=id;
+    p.bounds={0,276,UhdWidth,1884,UhdWidth,UhdHeight}; return p;
+}
+static SubtitleBoxObservation MeasureUhd(SubtitleBoxDetector& detector,
+    const AnalysisLumaSource& source,const ActivePictureFrameIdentity& id) {
+    const auto raw=ExtractActivePictureEvidence(source);
+    return SubtitleBoxLookahead::Measure(detector,source,raw,id,false,{},UhdPolicy,
+        UhdContinuity,UhdPicture(id));
+}
+static std::unique_ptr<SubtitleBoxPreview> UhdPending(const SubtitleBoxPreview& ready,
+    const ActivePictureFrameIdentity& id) {
+    auto p=std::make_unique<SubtitleBoxPreview>();
+    p->available=false; p->policyGeneration=UhdPolicy; p->continuityGeneration=UhdContinuity;
+    p->current=ready.current; p->current.identity=id; p->current.sharedPicture.identity=id;
+    p->current.analyzed=false; p->current.text={}; p->current.ink.reset(); p->text={}; return p;
+}
+static double Pct(std::vector<double> v,double p) {
+    std::sort(v.begin(),v.end());
+    return v.at(static_cast<size_t>(std::ceil(p*(v.size()-1))));
+}
+
+TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
+    constexpr double frameMs=1000.0/23.976;
+    for(const auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,
+            AnalysisLumaFormat::DecodedDolbyVision422}) {
+        auto pixels=UhdCaption(format); auto source=UhdSource(pixels,format);
+        Assert::IsTrue(source.IsValid());
+        std::vector<double> analyzeMs,seedMs,pendingMs;
+        size_t minBand=std::numeric_limits<size_t>::max(),maxBand=0,maxBacking=0,maxGlyph=0,maxSeedBand=0;
+        uint64_t next=1;
+        // Six exact detector acquisitions x twenty UNKNOWN frames = 120
+        // pending frames/format. Each 20-frame lease is about 834ms.
+        for(int cycle=0;cycle<6;++cycle) {
+            SubtitleBoxDetector detector; detector.SetNearBarDistance(20);
+            auto scans=std::make_unique<std::array<SubtitleBoxObservation,4>>();
+            for(size_t i=0;i<scans->size();++i) {
+                const auto id=UhdIdentity(next+i,format);
+                const auto start=std::chrono::steady_clock::now();
+                (*scans)[i]=MeasureUhd(detector,source,id);
+                analyzeMs.push_back(std::chrono::duration<double,std::milli>(
+                    std::chrono::steady_clock::now()-start).count());
+                Assert::IsTrue((*scans)[i].text.detected && (*scans)[i].ink &&
+                    (*scans)[i].ink->rawEvidenceComplete && (*scans)[i].independentBarAnalysis,
+                    L"Seed must be a complete actual UHD detector pass.");
+            }
+            auto ready=std::make_unique<SubtitleBoxPreview>();
+            SubtitleBoxLookahead::ResolveInto(*ready,scans->data(),scans->size(),UhdPolicy,UhdContinuity);
+            Assert::IsTrue(ready->available && ready->current.text.detected);
+            auto tracker=std::make_unique<SubtitleBoxPresentation>();
+            const auto accepted=tracker->Consume(*ready,1000,frameMs);
+            Assert::IsTrue(accepted.detected && !accepted.held && !accepted.confirmationPending);
+            auto guard=std::make_unique<SubtitlePendingMeasurementGuard>();
+            const auto start=std::chrono::steady_clock::now();
+            const bool seeded=guard->RememberAccepted(*ready,accepted,source,frameMs,1000,
+                &tracker->AcceptedCueSeedCertificate());
+            seedMs.push_back(std::chrono::duration<double,std::milli>(
+                std::chrono::steady_clock::now()-start).count());
+            if(!seeded) Logger::WriteMessage((std::string("UHD seed failure: ")+guard->DecisionReason()).c_str());
+            Assert::IsTrue(seeded,L"The actual detector observation must seed the current verifier.");
+            maxSeedBand=(std::max)(maxSeedBand,guard->DecisionDiagnostics().seedBandSamplesChecked);
+            Assert::IsTrue(guard->DecisionDiagnostics().seedBandSamplesChecked>0);
+
+            for(uint64_t offset=4;offset<24;++offset) {
+                const uint16_t shifted=uint16_t((offset&1)?220:200)<<6;
+                for(int y=1600;y<1700;++y) for(int x=0;x<UhdWidth;++x) pixels[size_t(y)*UhdWidth+x]=shifted;
+                const auto id=UhdIdentity(next+offset,format);
+                auto pending=UhdPending(*ready,id);
+                const auto t=std::chrono::steady_clock::now();
+                const bool resolved=guard->Resolve(*pending,source,frameMs,1000);
+                pendingMs.push_back(std::chrono::duration<double,std::milli>(
+                    std::chrono::steady_clock::now()-t).count());
+                const auto& d=guard->DecisionDiagnostics();
+                minBand=(std::min)(minBand,d.currentBandSamplesChecked);
+                maxBand=(std::max)(maxBand,d.currentBandSamplesChecked);
+                maxBacking=(std::max)(maxBacking,d.backingSamplesChecked);
+                maxGlyph=(std::max)(maxGlyph,d.glyphSamplesChecked);
+                if(!resolved) Logger::WriteMessage((std::string("UHD pending failure: ")+guard->DecisionReason()+
+                    " mismatch="+std::to_string(d.glyphMismatchX)+","+std::to_string(d.glyphMismatchY)).c_str());
+                Assert::IsTrue(resolved,L"Current source must pass the exact static-cue verifier.");
+                Assert::IsTrue(pending->available && pending->current.pendingRefresh);
+                Assert::IsTrue(pending->current.ink && pending->current.ink!=ready->current.ink);
+                Assert::IsFalse(pending->current.ink->rawEvidenceComplete);
+                Assert::IsFalse(pending->current.subtitleArProof.accepted);
+                Assert::IsTrue(d.currentBandSamplesChecked>0 && d.glyphSamplesChecked>0);
+            }
+            next+=24;
+        }
+
+        // This deliberately records the conservative texture false-positive
+        // risk outside the accepted subtitle/card without asking to relax it.
+        auto texture=UhdCaption(format); auto textureSource=UhdSource(texture,format);
+        SubtitleBoxDetector detector; detector.SetNearBarDistance(20);
+        auto scans=std::make_unique<std::array<SubtitleBoxObservation,4>>();
+        for(size_t i=0;i<scans->size();++i)
+            (*scans)[i]=MeasureUhd(detector,textureSource,UhdIdentity(next+i,format));
+        auto ready=std::make_unique<SubtitleBoxPreview>();
+            SubtitleBoxLookahead::ResolveInto(*ready,scans->data(),scans->size(),UhdPolicy,UhdContinuity);
+        auto tracker=std::make_unique<SubtitleBoxPresentation>(); const auto accepted=tracker->Consume(*ready,1000,frameMs);
+        auto guard=std::make_unique<SubtitlePendingMeasurementGuard>();
+        Assert::IsTrue(guard->RememberAccepted(*ready,accepted,textureSource,frameMs,1000,
+            &tracker->AcceptedCueSeedCertificate()));
+        auto unchanged=UhdPending(*ready,UhdIdentity(next+4,format));
+        Assert::IsTrue(guard->Resolve(*unchanged,textureSource,frameMs,1000),
+            L"An unchanged existing card edge must pass before testing newly added texture.");
+        for(int y=1600;y<1632;y+=4) for(int x=800;x<832;x+=4)
+            if(((x+y)/4)&1) for(int dy=0;dy<4;++dy) for(int dx=0;dx<4;++dx)
+                texture[size_t(y+dy)*UhdWidth+x+dx]=uint16_t(350<<6);
+        auto pending=UhdPending(*ready,UhdIdentity(next+5,format));
+        const bool texturedAccepted=guard->Resolve(*pending,textureSource,frameMs,1000);
+        const auto d=guard->DecisionDiagnostics();
+        Logger::WriteMessage((std::string("UHD texture format=")+
+            std::to_string(static_cast<int>(format))+" accepted="+
+            std::to_string(texturedAccepted)+" reason="+guard->DecisionReason()+
+            " band="+std::to_string(d.currentBandSamplesChecked)+
+            " backing="+std::to_string(d.backingSamplesChecked)+
+            " glyph="+std::to_string(d.glyphSamplesChecked)+
+            " mismatch="+std::to_string(d.glyphMismatchX)+","+std::to_string(d.glyphMismatchY)+"\n").c_str());
+        Assert::IsFalse(texturedAccepted,
+            L"Novel picture-side contrast outside the cue remains a fail-closed veto.");
+
+        const auto stat=[](const std::vector<double>& v) {
+            return std::string("p50=")+std::to_string(Pct(v,.50))+
+                " p95="+std::to_string(Pct(v,.95))+
+                " max="+std::to_string(*std::max_element(v.begin(),v.end()));
+        };
+        Logger::WriteMessage((std::string("UHD verifier format=")+
+            std::to_string(static_cast<int>(format))+" pending=120 frame_ms="+
+            std::to_string(frameMs)+" analyze_ms["+stat(analyzeMs)+"] seed_ms["+
+            stat(seedMs)+"] pending_ms["+stat(pendingMs)+"] band_samples[min="+
+            std::to_string(minBand)+" max="+std::to_string(maxBand)+
+            "] seed_band_max="+std::to_string(maxSeedBand)+" backing_max="+std::to_string(maxBacking)+" glyph_max="+
+            std::to_string(maxGlyph)+" max_samples_per_sec="+
+            std::to_string(double(maxBand)*1000.0/frameMs)+"\n").c_str());
+    }
+}
+
+
+
+
+
+
+
+
+
     TEST_METHOD(SubtitleCompletionSignalFollowsReadyCachePublication) {
         SubtitleMeasurementWorker worker;
         auto signal=std::make_shared<AnalysisCompletionSignal>();

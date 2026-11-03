@@ -810,6 +810,7 @@ public:
         uint32_t contextMismatch=0;
         size_t glyphSamplesChecked=0;
         size_t currentBandSamplesChecked=0,backingSamplesChecked=0;
+        size_t seedBandSamplesChecked=0;
         int glyphMismatchX=-1, glyphMismatchY=-1;
         bool sharedPictureMatches=false, sharedPictureCurrent=false;
         bool barsAvailable=false, topRevalidated=false, bottomRevalidated=false;
@@ -821,6 +822,9 @@ public:
     void Reset() { m_reference={};m_samples.clear();m_ownedSamples.clear();m_backingSamples.clear();
         m_knownInkSamples.clear();m_paletteFringe.clear();
         m_currentPixels.clear();m_currentSampled.clear();
+        m_contrastSeedPixels.clear();m_contrastSeedDirections.clear();
+        m_contrastSeedTopEnd=m_contrastSeedBottomStart=m_contrastSeedPictureTop=m_contrastSeedPictureBottom=0;
+        m_contrastSeedWidth=m_contrastSeedHeight=0;
         m_currentInkProofSeeded=false;m_sourceLayout={};m_elapsed=0;m_last={};m_diagnostics={};
         m_certifiedSeed={};m_certifiedPolicy=m_certifiedContinuity=0;m_consumedCertificate={}; }
     const char* DecisionReason() const { return m_reason; }
@@ -1201,6 +1205,18 @@ private:
         layout.chromaRowBytes=source.chromaRowBytes;layout.generation=source.generation;
         layout.rgbBitAlignment=source.rgbBitAlignment;return layout;
     }
+    static bool InCurrentBand(int y,int height,int topEnd,int bottomStart) {
+        return y>=0 && y<height && (y<topEnd || y>=bottomStart);
+    }
+    static size_t CurrentBandCellCount(int width,int height,int topEnd,int bottomStart) {
+        const size_t rows=topEnd>=bottomStart?size_t(height):size_t(topEnd)+size_t(height-bottomStart);
+        return rows*size_t(width);
+    }
+    static size_t CurrentBandIndex(int x,int y,int width,int height,int topEnd,int bottomStart) {
+        if(topEnd>=bottomStart)return size_t(y)*size_t(width)+size_t(x);
+        const size_t row=y<topEnd?size_t(y):size_t(topEnd+y-bottomStart);
+        return row*size_t(width)+size_t(x);
+    }
     bool CurrentInkGeometry(const SubtitleBoxObservation& observation,
         const SubtitleInkSnapshot& ink,int& topEnd,int& bottomStart) const {
         const int width=observation.width,height=observation.height,step=ink.step;
@@ -1248,11 +1264,60 @@ private:
             return CurrentInkSeedState::Failed;
         const ValidatedAnalysisLumaSampler sampler(source);
         if(!sampler.IsValid())return CurrentInkSeedState::Failed;
+        const int top=(current.pictureTop+ink->step-1)/ink->step;
+        const int bottom=current.pictureBottom<current.height?
+            (std::min)(ink->height-1,(current.pictureBottom+ink->step-1)/ink->step):ink->height;
+        const size_t bandCells=CurrentBandCellCount(ink->width,ink->height,topEnd,bottomStart);
+        if(!bandCells || bandCells>CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
+        m_contrastSeedPixels.assign(bandCells,AnalysisLumaSample{});
+        m_contrastSeedDirections.assign(bandCells,0);
+        m_contrastSeedTopEnd=topEnd;m_contrastSeedBottomStart=bottomStart;
+        m_contrastSeedPictureTop=top;m_contrastSeedPictureBottom=bottom;
+        m_contrastSeedWidth=ink->width;m_contrastSeedHeight=ink->height;
+        for(int y=0;y<ink->height;++y)if(InCurrentBand(y,ink->height,topEnd,bottomStart))
+            for(int x=0;x<ink->width;++x) {
+                const size_t at=CurrentBandIndex(x,y,ink->width,ink->height,topEnd,bottomStart);
+                if(at>=m_contrastSeedPixels.size() ||
+                    !sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],m_contrastSeedPixels[at]))
+                    return CurrentInkSeedState::Failed;
+                ++m_diagnostics.seedBandSamplesChecked;
+            }
+        constexpr int contrastX[4]={-1,1,0,0},contrastY[4]={0,0,-1,1};
+        for(int y=0;y<ink->height;++y)if(InCurrentBand(y,ink->height,topEnd,bottomStart))
+            for(int x=1;x<ink->width-1;++x) {
+                const size_t at=CurrentBandIndex(x,y,ink->width,ink->height,topEnd,bottomStart);
+                const auto& point=m_contrastSeedPixels[at];
+                const bool pointInPicture=y>=top && y<bottom;
+                for(int direction=0;direction<4;++direction) {
+                    const int nx=x+contrastX[direction],ny=y+contrastY[direction];
+                    if(!InCurrentBand(ny,ink->height,topEnd,bottomStart))continue;
+                    const bool neighborInPicture=ny>=top && ny<bottom;
+                    if(pointInPicture!=neighborInPicture)continue;
+                    const size_t neighborAt=CurrentBandIndex(nx,ny,ink->width,ink->height,topEnd,bottomStart);
+                    const auto& neighbor=m_contrastSeedPixels[neighborAt];
+                    if(int(point.luma)-int(neighbor.luma)>=48)
+                        m_contrastSeedDirections[at]|=uint8_t(1u<<direction);
+                    const bool alternatePalette=(std::abs(int(point.chromaU)-ink->inkU)>80 ||
+                        std::abs(int(point.chromaV)-ink->inkV)>80) &&
+                        (std::abs(int(point.chromaU)-int(neighbor.chromaU))>=64 ||
+                         std::abs(int(point.chromaV)-int(neighbor.chromaV))>=64);
+                    if(alternatePalette)m_contrastSeedDirections[at]|=uint8_t(1u<<(direction+4));
+                }
+            }
+        const auto sampleSeed=[&](int x,int y,AnalysisLumaSample& value) {
+            if(x<0 || y<0 || x>=ink->width || y>=ink->height)return false;
+            if(InCurrentBand(y,ink->height,topEnd,bottomStart)) {
+                const size_t at=CurrentBandIndex(x,y,ink->width,ink->height,topEnd,bottomStart);
+                if(at>=m_contrastSeedPixels.size())return false;
+                value=m_contrastSeedPixels[at];return true;
+            }
+            return sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],value);
+        };
         std::vector<KnownInkSample> knownInk;knownInk.reserve(4096);
         for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x)if(ink->Get(x,y)) {
             if(knownInk.size()>=CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
             AnalysisLumaSample sample;
-            if(!sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],sample))return CurrentInkSeedState::Failed;
+            if(!sampleSeed(x,y,sample))return CurrentInkSeedState::Failed;
             knownInk.push_back({x,y,sample});
         }
         std::vector<uint64_t> paletteFringe(words,0);
@@ -1265,7 +1330,7 @@ private:
             if(!nextToKnownRaw)continue;
             if(++fringeSamples>CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
             AnalysisLumaSample sample;
-            if(!sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],sample))return CurrentInkSeedState::Failed;
+            if(!sampleSeed(x,y,sample))return CurrentInkSeedState::Failed;
             if(sample.luma>=ink->inkFloor-80 &&
                 std::abs(int(sample.chromaU)-ink->inkU)<=80 &&
                 std::abs(int(sample.chromaV)-ink->inkV)<=80) {
@@ -1289,7 +1354,7 @@ private:
                     if(px<bounds.left || px>=bounds.right || !ink->Get(x,y,true))continue;
                     if(!ink->Get(x,y) || owned.size()>=32768)return CurrentInkSeedState::Failed;
                     AnalysisLumaSample value;
-                    if(!sampler.Sample(px,py,value) || value.luma<ink->inkFloor ||
+                    if(!sampleSeed(x,y,value) || value.luma<ink->inkFloor ||
                         std::abs(int(value.chromaU)-ink->inkU)>80 ||
                         std::abs(int(value.chromaV)-ink->inkV)>80)return CurrentInkSeedState::Failed;
                     owned.push_back({x,y,value});++ownedPerLine[size_t(line)];
@@ -1323,7 +1388,7 @@ private:
             if(y<topEnd || y>=bottomStart)backing.push_back({x,y,ink->Black(x,y)});
             else {
                 AnalysisLumaSample value;
-                if(!sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],value))return CurrentInkSeedState::Failed;
+                if(!sampleSeed(x,y,value))return CurrentInkSeedState::Failed;
                 backing.push_back({x,y,value.luma<=ink->blackLimit});
             }
             if(backing.size()>CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
@@ -1412,6 +1477,13 @@ private:
         const int top=(old.pictureTop+fresh->step-1)/fresh->step;
         const int bottom=old.pictureBottom<old.height?
             (std::min)(fresh->height-1,(old.pictureBottom+fresh->step-1)/fresh->step):fresh->height;
+        const size_t bandCells=CurrentBandCellCount(fresh->width,fresh->height,topEnd,bottomStart);
+        if(m_contrastSeedWidth!=fresh->width || m_contrastSeedHeight!=fresh->height ||
+            m_contrastSeedTopEnd!=topEnd || m_contrastSeedBottomStart!=bottomStart ||
+            m_contrastSeedPictureTop!=top || m_contrastSeedPictureBottom!=bottom ||
+            m_contrastSeedPixels.size()!=bandCells || m_contrastSeedDirections.size()!=bandCells) {
+            reason="current-contrast-coverage-changed";return false;
+        }
         const int radius=(std::max)(3,fresh->height/180);
         for(int y=0;y<fresh->height;++y)if(y<topEnd || y>=bottomStart)for(int x=1;x<fresh->width-1;++x) {
             AnalysisLumaSample point;
@@ -1457,7 +1529,8 @@ private:
             const size_t at=size_t(sample.y)*fresh->width+sample.x;
             fresh->ownedInk[at/64]|=uint64_t{1}<<(at%64);
         }
-        if(HasNovelPotentialInk(*oldInk,m_paletteFringe,pixels,top,bottom,topEnd,bottomStart,
+        if(HasNovelPotentialInk(*oldInk,m_paletteFringe,pixels,m_contrastSeedPixels,m_contrastSeedDirections,
+            top,bottom,topEnd,bottomStart,
             m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY)) {
             reason="new-current-contrast-ink";return false;
         }
@@ -1466,12 +1539,20 @@ private:
     }
     static bool HasNovelPotentialInk(const SubtitleInkSnapshot& reference,
         const std::vector<uint64_t>& paletteFringe,
-        const std::vector<AnalysisLumaSample>& pixels,int top,int bottom,int topEnd,int bottomStart,
+        const std::vector<AnalysisLumaSample>& pixels,
+        const std::vector<AnalysisLumaSample>& seedPixels,const std::vector<uint8_t>& seedDirections,
+        int top,int bottom,int topEnd,int bottomStart,
         int& mismatchX,int& mismatchY) {
         const int width=reference.width,height=reference.height;
         const size_t area=size_t(width)*size_t(height);
-        if(pixels.size()!=area)return true;
-        const auto inBand=[&](int y){return y>=0 && y<height && (y<topEnd || y>=bottomStart);};
+        const size_t bandCells=CurrentBandCellCount(width,height,topEnd,bottomStart);
+        if(pixels.size()!=area || seedPixels.size()!=bandCells || seedDirections.size()!=bandCells)return true;
+        const auto inBand=[&](int y){return InCurrentBand(y,height,topEnd,bottomStart);};
+        const auto sameSample=[](const AnalysisLumaSample& a,const AnalysisLumaSample& b) {
+            return std::abs(int(a.luma)-int(b.luma))<=8 &&
+                std::abs(int(a.chromaU)-int(b.chromaU))<=8 &&
+                std::abs(int(a.chromaV)-int(b.chromaV))<=8;
+        };
         const auto knownPaletteFringe=[&](int x,int y) {
             if(reference.Get(x,y))return true;
             const size_t at=size_t(y)*width+x;
@@ -1484,6 +1565,10 @@ private:
         };
         constexpr int neighborX[4]={-1,1,0,0},neighborY[4]={0,0,-1,1};
         for(int y=0;y<height;++y)if(inBand(y))for(int x=1;x<width-1;++x) {
+            // Existing raw and accepted-palette fringe cells have their own
+            // exact current-source YUV checks. Do not let their changed
+            // non-owned neighbors turn a legitimate moving margin into a new
+            // subtitle; newly changed neighbors are still tested as centers.
             if(knownPaletteFringe(x,y))continue;
             const auto& point=pixels[size_t(y)*width+x];
             // In encoded bars, any newly observed nonblack sample outside the
@@ -1504,7 +1589,20 @@ private:
                     std::abs(int(point.chromaV)-reference.inkV)>80) &&
                     (std::abs(int(point.chromaU)-int(neighbor.chromaU))>=64 ||
                      std::abs(int(point.chromaV)-int(neighbor.chromaV))>=64);
-                if(brightLocalInk || alternatePalette) {
+                if(!brightLocalInk && !alternatePalette)continue;
+                const size_t pointAt=CurrentBandIndex(x,y,width,height,topEnd,bottomStart);
+                const size_t neighborAt=CurrentBandIndex(nx,ny,width,height,topEnd,bottomStart);
+                if(pointAt>=seedPixels.size() || neighborAt>=seedPixels.size() || pointAt>=seedDirections.size()) {
+                    mismatchX=x*reference.step;mismatchY=reference.sourceRows[size_t(y)];return true;
+                }
+                const uint8_t baseline=seedDirections[pointAt];
+                const bool sameSamples=sameSample(point,seedPixels[pointAt]) &&
+                    sameSample(neighbor,seedPixels[neighborAt]);
+                const bool existingBright=!brightLocalInk ||
+                    ((baseline&(uint8_t(1u<<direction))) && sameSamples);
+                const bool existingAlternate=!alternatePalette ||
+                    ((baseline&(uint8_t(1u<<(direction+4)))) && sameSamples);
+                if(!existingBright || !existingAlternate) {
                     mismatchX=x*reference.step;mismatchY=reference.sourceRows[size_t(y)];return true;
                 }
             }
@@ -1533,6 +1631,14 @@ private:
     // pixel values are read only after the corresponding mark is set current.
     std::vector<AnalysisLumaSample> m_currentPixels;
     std::vector<uint8_t> m_currentSampled;
+    // Compact immutable seed snapshot of every sampled search-band pixel and
+    // its four directional baseline contrast classifications. High nibbles
+    // store alternate-chroma directions; low nibbles store bright-edge ones.
+    std::vector<AnalysisLumaSample> m_contrastSeedPixels;
+    std::vector<uint8_t> m_contrastSeedDirections;
+    int m_contrastSeedTopEnd=0,m_contrastSeedBottomStart=0;
+    int m_contrastSeedPictureTop=0,m_contrastSeedPictureBottom=0;
+    int m_contrastSeedWidth=0,m_contrastSeedHeight=0;
     SourceLayout m_sourceLayout{};
     bool m_currentInkProofSeeded=false;
     SubtitleBoxPreview m_reference;

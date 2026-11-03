@@ -80,6 +80,15 @@ namespace
         if(strstr(message,"VP presentation decision:"))decisionTestMessages.emplace_back(message);
         if (snapshotTestLog) snapshotTestLog << message << std::endl;
     }
+    std::mutex offUhdVolumeLogMutex;
+    std::vector<std::string> offUhdVolumeLogMessages;
+    void __cdecl OffUhdVolumeTestLog(const char* message)
+    {
+        if(!message || (!strstr(message,"Alpha crop admission:") &&
+            !strstr(message,"Alpha crop extent provenance:") && !strstr(message,"Alpha source crop:")))return;
+        std::lock_guard<std::mutex> guard(offUhdVolumeLogMutex);
+        offUhdVolumeLogMessages.emplace_back(message);
+    }
     std::mutex classicPoseLogMutex;
     std::vector<std::string> classicPoseMessages;
     struct ClassicShaderPreparationSelection {
@@ -3538,6 +3547,7 @@ namespace VideoProcessorTest
                 Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
                 uint64_t sequence=1;size_t cursor=0;std::map<uint64_t,timingclocktime_t> delivered;
                 std::map<uint64_t,AnalysisDiagnosticRecordV1> nativeInputs;
+                std::map<ClassicSubmittedPreparationKey,AnalysisDiagnosticRecordV1> acceptedPhysicalModels;
                 std::vector<AnalysisDiagnosticRecordV1> outputs;
                 std::vector<ClassicShaderPreparationSelection> outputPreparation;
                 std::set<uint64_t> repeatedAnchors;
@@ -3866,7 +3876,25 @@ namespace VideoProcessorTest
                             bool same=true;for(int i=0;i<4;++i)same&=prior.published[i]==output.published[i];
                             priorPhysical|=same;
                         }
-                        if(!priorPhysical){failure="cropped pending fallback lacks its previously measured native-source witness";return false;}
+                        // A first native model can be measured before any native-
+                        // sized output is submitted. Join that independent CURRENT
+                        // publication; fallback presentation grants no authority.
+                        bool currentPhysical=false;
+                        const auto model=acceptedPhysicalModels.find(key);
+                        if(output.counters[4]==output.acceptedSequence && model!=acceptedPhysicalModels.end()) {
+                            const auto& measured=model->second;
+                            currentPhysical=witnessedNativeContextMatches(measured) &&
+                                measured.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
+                                measured.acceptedSequence==output.acceptedSequence &&
+                                measured.counters[0]==output.acceptedSequence &&
+                                measured.sourceFrameNumber==output.sourceFrameNumber &&
+                                measured.captureTimestamp==output.captureTimestamp &&
+                                measured.recordSequence<admission.recordSequence &&
+                                admission.recordSequence<output.recordSequence;
+                            for(int i=0;i<4;++i)currentPhysical&=measured.published[i]==output.published[i] &&
+                                measured.published[i]==admission.previous[i];
+                        }
+                        if(!priorPhysical&&!currentPhysical){failure="cropped pending fallback lacks a prior native submission or exact-current independent physical publication";return false;}
                         return true;
                     }
                     const AnalysisDiagnosticRecordV1* nativeWitness=nullptr;
@@ -3923,6 +3951,8 @@ namespace VideoProcessorTest
                     // submissions; the unchanged oracle enforces original ordinals.
                     for(const auto& record:records)if(!strcmp(record.stage,"subtitle-canvas-admission"))
                         classicCanvasAdmissions[{record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence}]=record;
+                    for(const auto& record:records)if(!strcmp(record.stage,"accepted-picture-detector"))
+                        acceptedPhysicalModels[{record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence}]=record;
                     for(const auto& record:records)captionProofs.Observe(record);
                     for(const auto& record:records){
                         if(!strcmp(record.stage,"analysis-input")) {
@@ -4413,6 +4443,282 @@ namespace VideoProcessorTest
         {
             for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
                 VerifyNativeAspectTransitionSequence(true,false,unsigned(mode));
+        }
+        TEST_METHOD(StandardRendererOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry)
+        { VerifyOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry(false); }
+        TEST_METHOD(BetaRendererOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry)
+        { VerifyOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry(true); }
+        void VerifyOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry(bool beta)
+        {
+            constexpr int width=3840,height=2160,nativeTop=250,nativeBottom=1906;
+            constexpr int rawMarkTop=134,uiTop=190,uiBottom=262,captionTop=1920,captionBottom=1942;
+            const bool requireSpatial=SourceSpatialProductionEnabled();
+            HMODULE self=nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&ClassicPoseTestLog),&self)!=FALSE);
+            wchar_t modulePath[MAX_PATH]={};GetModuleFileNameW(self,modulePath,MAX_PATH);
+            std::wstring pluginPath(modulePath);pluginPath.resize(pluginPath.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            pluginPath+=L"\\..";
+#endif
+            pluginPath+=beta?L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll":L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+            HMODULE plugin=LoadLibraryExW(pluginPath.c_str(),nullptr,
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct ModuleCleanup {HMODULE value;~ModuleCleanup(){FreeLibrary(value);}} moduleCleanup{plugin};
+            const auto create=reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(GetProcAddress(plugin,VP_LIBPLACEBO_DESTROY_EXPORT));
+            const auto diagnostics=reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticFn>(
+                GetProcAddress(plugin,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT));
+            Assert::IsTrue(create&&destroy&&diagnostics);
+            struct DiagnosticCleanup {
+                VideoProcessorLibplaceboConfigureDiagnosticFn callback;
+                ~DiagnosticCleanup(){if(callback)callback(nullptr,nullptr,nullptr,nullptr);
+                    std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseAllRecordStages=false;}
+            } diagnosticCleanup{diagnostics};
+            {
+                std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                classicPoseRecords.clear();classicPoseMessages.clear();
+                ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);
+                classicPoseAllRecordStages=true;
+            }
+            {std::lock_guard<std::mutex> lock(offUhdVolumeLogMutex);offUhdVolumeLogMessages.clear();}
+            diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
+            char temp[MAX_PATH]={},configPath[MAX_PATH]={};
+            Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0&&GetTempFileNameA(temp,"off",0,configPath)!=0);
+            std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                "[vprenderer]\nquality: fast\n"
+                "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n"
+                "[vprenderer.zoom.native]\nautomatic_crop: true\nsubtitle_fit: false\n"
+                "crop_narrower_content_to_fill_screen: false\ncrop_wider_content_to_fill_screen: false\n";
+            VideoStateComPtr state=new VideoState();state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::P210;
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,60000,1001);
+            state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
+            const size_t pixelCount=size_t(width)*height;
+            std::vector<uint16_t> native(pixelCount*2,uint16_t(512<<6));
+            for(int y=0;y<height;++y)for(int x=0;x<width;++x)
+                native[size_t(y)*width+x]=uint16_t((y>=nativeTop&&y<nativeBottom?300:64)<<6);
+            auto makeOverlay=[&](int level) {
+                auto pixels=native;
+                // Sparse raw marks stay below text-component size individually,
+                // while distributed recognized volume glyphs begin lower. This
+                // gives the current raw scan a real extent outside the narrower FIT.
+                for(int mark=0;mark<16;++mark)for(int y=rawMarkTop;y<rawMarkTop+4;++y)
+                    for(int x=158+mark*144;x<160+mark*144;++x)
+                        pixels[size_t(y)*width+x]=uint16_t(892<<6);
+                for(int glyph=0;glyph<16;++glyph)for(int y=uiTop;y<uiBottom;++y)
+                    for(int x=158+glyph*144;x<238+glyph*144;++x)
+                        if(x<174+glyph*144||x>=222+glyph*144||(y>=190&&y<206))
+                            pixels[size_t(y)*width+x]=uint16_t(892<<6);
+                for(int x=1000;x<1800;++x) {
+                    const bool edge=x<1008||x>=1792;
+                    const bool filled=x<1000+level;
+                    for(int y=228;y<238;++y)if(edge||filled&&(y<230||y>=236))
+                        pixels[size_t(y)*width+x]=uint16_t((filled?892:300)<<6);
+                }
+                for(int glyph=0;glyph<12;++glyph)for(int y=captionTop;y<captionBottom;++y)
+                    for(int x=1400+glyph*64;x<1432+glyph*64;++x)
+                        if(x<1406+glyph*64||x>=1426+glyph*64||
+                            (y>=captionTop+(captionBottom-captionTop)/2-2&&y<captionTop+(captionBottom-captionTop)/2+2))
+                            pixels[size_t(y)*width+x]=uint16_t(892<<6);
+                return pixels;
+            };
+            auto quiet=makeOverlay(180);auto loud=makeOverlay(620);
+            Assert::AreEqual(uint16_t(892),uint16_t(quiet[size_t(134)*width+158]>>6));
+            Assert::AreEqual(uint16_t(892),uint16_t(loud[size_t(190)*width+158]>>6));
+            Assert::AreEqual(uint16_t(892),uint16_t(loud[size_t(1941)*width+1400]>>6));
+            SnapshotTestCallback callback;NativeP210Buffer buffer;
+            struct Cleanup {HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;const char* config;bool stopped;
+                ~Cleanup(){if(renderer){if(!stopped)renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);if(config)DeleteFileA(config);}}
+                cleanup{CreateWindowExW(0,L"STATIC",L"UHD Off volume overlay stability",WS_POPUP,0,0,2000,1125,
+                    nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath,false};
+            Assert::IsNotNull(cleanup.window);
+            cleanup.renderer=create(&callback,76,cleanup.window,nullptr,requireSpatial,requireSpatial?9:1,
+                VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,OffUhdVolumeTestLog);
+            Assert::IsNotNull(cleanup.renderer);Assert::IsTrue(cleanup.renderer->OnVideoState(state));
+            cleanup.renderer->Build();cleanup.renderer->Start();
+            uint64_t sequence=1;std::vector<AnalysisDiagnosticRecordV1> records;std::vector<std::string> messages;
+            std::map<uint64_t,timingclocktime_t> delivered;
+            auto next=std::chrono::steady_clock::now();
+            auto pump=[&](const std::vector<uint16_t>& pixels) {
+                MSG message;while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE))
+                    {TranslateMessage(&message);DispatchMessageW(&message);}
+                if(callback.state==RENDERSTATE_RENDERING) {
+                    LARGE_INTEGER now{};Assert::IsTrue(QueryPerformanceCounter(&now)!=FALSE);
+                    const auto source=sequence++;delivered[source]=now.QuadPart;
+                    VideoFrame frame(pixels.data(),source,now.QuadPart,&buffer);cleanup.renderer->OnVideoFrame(frame);
+                }
+                next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1001.0/60000.0));
+                std::this_thread::sleep_until(next);
+                {
+                    std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                    records.insert(records.end(),classicPoseRecords.begin(),classicPoseRecords.end());
+                    classicPoseRecords.clear();
+                }
+                {
+                    std::lock_guard<std::mutex> lock(offUhdVolumeLogMutex);
+                    messages.insert(messages.end(),offUhdVolumeLogMessages.begin(),offUhdVolumeLogMessages.end());
+                    offUhdVolumeLogMessages.clear();
+                }
+                DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);return value;
+            };
+            auto hasNative=[&] {
+                return std::any_of(records.begin(),records.end(),[](const AnalysisDiagnosticRecordV1& row) {
+                    if(strcmp(row.stage,"submitted-presentation")||!(row.flags&1u)||!row.counters[4])return false;
+                    return std::abs(row.published[0])<0.01&&std::abs(row.published[1]-nativeTop)<0.01&&
+                        std::abs(row.published[2]-width)<0.01&&std::abs(row.published[3]-nativeBottom)<0.01&&
+                        row.counters[0]==row.acceptedSequence&&row.counters[1]==row.acceptedSequence&&
+                        !(row.flags&16384u);
+                });
+            };
+            const auto nativeDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(20);
+            while(!hasNative()&&std::chrono::steady_clock::now()<nativeDeadline&&callback.state!=RENDERSTATE_FAILED)
+                pump(native);
+            Assert::IsTrue(hasNative(),L"Off fixture did not first acquire the source-defined native UHD bar geometry.");
+            uint64_t onset=sequence;
+            const auto burstDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(9);
+            unsigned phase=0;
+            while(std::chrono::steady_clock::now()<burstDeadline&&callback.state!=RENDERSTATE_FAILED)
+                pump((phase++&1u)?loud:quiet);
+            Assert::IsFalse(callback.state.load()==RENDERSTATE_FAILED,L"UHD Off fixture renderer failed during the live volume burst.");
+            cleanup.renderer->Stop();cleanup.stopped=true;
+            {
+                std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                records.insert(records.end(),classicPoseRecords.begin(),classicPoseRecords.end());
+                classicPoseRecords.clear();
+            }
+            {
+                std::lock_guard<std::mutex> lock(offUhdVolumeLogMutex);
+                messages.insert(messages.end(),offUhdVolumeLogMessages.begin(),offUhdVolumeLogMessages.end());
+                offUhdVolumeLogMessages.clear();
+            }
+
+            std::map<std::pair<uint64_t,uint64_t>,const AnalysisDiagnosticRecordV1*> inputs;
+            for(const auto& row:records) {
+                if(!strcmp(row.stage,"analysis-input"))inputs[{row.transportGeneration,row.acceptedSequence}]=&row;
+                if(!strcmp(row.stage,"subtitle-canvas-admission"))
+                    Assert::AreEqual(uint64_t(0),row.counters[0],L"The actual renderer entered a subtitle-processing canvas profile in Off mode.");
+            }
+            std::set<uint64_t> exactCurrentSources,exactOutputSequences;
+            std::map<uint64_t,const AnalysisDiagnosticRecordV1*> outputsBySequence;
+            bool haveEnvelope=false;double stableBounds[4]={};uint64_t nativeOwner=0;unsigned overlayOutputs=0;
+            for(const auto& output:records) {
+                if(strcmp(output.stage,"submitted-presentation")||!(output.flags&1u)||
+                    output.sourceFrameNumber<onset)continue;
+                const auto input=inputs.find({output.transportGeneration,output.counters[1]});
+                const auto stamp=delivered.find(output.sourceFrameNumber);
+                Assert::IsTrue(input!=inputs.end()&&stamp!=delivered.end()&&output.counters[0]==output.acceptedSequence&&
+                    output.counters[1]==output.acceptedSequence&&
+                    input->second->rendererInstanceKey==output.rendererInstanceKey&&
+                    input->second->transportGeneration==output.transportGeneration&&
+                    input->second->rendererGeneration==output.rendererGeneration&&
+                    input->second->viewportGeneration==output.viewportGeneration&&
+                    input->second->sourceFormatGeneration==output.sourceFormatGeneration&&
+                    input->second->analysisDomainKey==output.analysisDomainKey&&
+                    input->second->policyGeneration==output.policyGeneration&&
+                    input->second->continuityGeneration==output.continuityGeneration&&
+                    input->second->sourceFrameNumber==output.sourceFrameNumber&&
+                    input->second->captureTimestamp==output.captureTimestamp&&output.captureTimestamp>0&&
+                    output.captureTimestamp==stamp->second,
+                    L"Off output must join the exact distinct current input frame and capture timestamp.");
+                Assert::IsTrue(exactCurrentSources.insert(output.sourceFrameNumber).second,
+                    L"The Off overlay output repeated an earlier source frame.");
+                exactOutputSequences.insert(output.acceptedSequence);
+                outputsBySequence[output.acceptedSequence]=&output;
+                Assert::IsFalse(output.cadenceRepeat||(output.flags&16384u),L"The Off overlay route replayed a previous output.");
+                Assert::IsTrue(output.counters[2]==0||output.counters[2]==output.acceptedSequence,
+                    L"Off output carried caption ownership from a different source frame.");
+                Assert::AreEqual(uint64_t(0),output.counters[3],L"The actual submitted output is not in subtitle Off mode.");
+                Assert::AreEqual(uint32_t(0),output.flags&(2u|4u|16u|8192u),
+                    L"Off presentation composed, cleaned, or asserted subtitle absence for the raw pixels.");
+                if(output.flags&8u)Assert::AreEqual(output.acceptedSequence,output.counters[7],
+                    L"Off output matched a subtitle packet from another source frame.");
+                Assert::IsTrue(std::abs(output.published[0])<0.01&&std::abs(output.published[1]-nativeTop)<0.01&&
+                    std::abs(output.published[2]-width)<0.01&&std::abs(output.published[3]-nativeBottom)<0.01,
+                    L"Changing volume UI altered the independently accepted native picture geometry.");
+                Assert::IsTrue(output.counters[4]!=0,L"UHD Off output lost the accepted native geometry owner.");
+                nativeOwner=output.counters[4];
+                Assert::IsTrue(output.displayed[0]<=0.01&&output.displayed[1]<=rawMarkTop&&
+                    output.displayed[2]>=width-0.01&&output.displayed[3]>=captionBottom,
+                    L"The current Off source crop clipped a volume OSD pixel or the burned-in caption.");
+                for(int i=0;i<4;++i)Assert::AreEqual(output.displayed[i],output.metrics[8+i],0.01,
+                    L"The reported submitted crop differs from the current source-space visibility envelope.");
+                if(!haveEnvelope){for(int i=0;i<4;++i)stableBounds[i]=output.displayed[i];haveEnvelope=true;}
+                else for(int i=0;i<4;++i)Assert::AreEqual(stableBounds[i],output.displayed[i],0.01,
+                    L"Alternating actual Off FIT/raw decisions changed the stable UI-visible presentation envelope.");
+                ++overlayOutputs;
+            }
+            auto numberField=[](const std::string& line,const char* key,uint64_t& value) {
+                const auto at=line.find(key);if(at==std::string::npos)return false;
+                value=uint64_t(std::strtoull(line.c_str()+at+strlen(key),nullptr,10));return true;
+            };
+            auto rectField=[](const std::string& line,const char* key,int* bounds) {
+                const auto at=line.find(key);return at!=std::string::npos&&
+                    sscanf_s(line.c_str()+at+strlen(key),"%d,%d-%d,%d",&bounds[0],&bounds[1],&bounds[2],&bounds[3])==4;
+            };
+            struct CurrentRawTrace {uint64_t generation=0,sequence=0;int bounds[4]={};bool available=false;};
+            std::map<uint64_t,CurrentRawTrace> currentRawTraces;
+            std::set<uint64_t> fitBoundarySources,rawContradictionSources;
+            uint64_t boundarySource=0;int boundaryRawVisibleTop=0,boundaryRawExtentTop=0,boundaryFitTop=0,boundaryPresentedTop=0;
+            for(const auto& line:messages) {
+                if(line.find("Alpha crop extent provenance:")!=0)continue;
+                CurrentRawTrace raw;uint64_t confirmed=0,rawAvailable=0;
+                raw.available=numberField(line,"generation=",raw.generation)&&
+                    numberField(line,"sequence=",raw.sequence)&&numberField(line,"confirmed_owner=",confirmed)&&
+                    numberField(line,"raw_available=",rawAvailable)&&rectField(line,"raw=",raw.bounds)&&
+                    confirmed==1&&rawAvailable==1&&line.find("candidate_owner=fit")!=std::string::npos;
+                if(raw.available)currentRawTraces[raw.sequence]=raw;
+            }
+            for(const auto& line:messages) {
+                if(line.find("Alpha crop admission:")!=0)continue;
+                uint64_t generation=0,sequenceValue=0,epoch=0,visibleAvailable=0,visibleGeneration=0,visibleSequence=0;
+                int visible[4]={},preRecovery[4]={},resolved[4]={};
+                if(!numberField(line,"generation=",generation)||!numberField(line,"sequence=",sequenceValue)||
+                    !numberField(line,"epoch=",epoch)||!numberField(line,"visible_available=",visibleAvailable)||
+                    !numberField(line,"visible_generation=",visibleGeneration)||!numberField(line,"visible_sequence=",visibleSequence)||
+                    !rectField(line,"visible=",visible)||!rectField(line,"pre_recovery=",preRecovery)||
+                    !rectField(line,"resolved=",resolved)||visibleAvailable!=1||visibleGeneration!=generation||
+                    visibleSequence!=sequenceValue||line.find("candidate_owner=fit")==std::string::npos)continue;
+                const auto raw=currentRawTraces.find(sequenceValue);
+                const auto output=outputsBySequence.find(sequenceValue);
+                if(raw==currentRawTraces.end()||output==outputsBySequence.end())continue;
+                const auto& submitted=*output->second;
+                const bool exactSource=submitted.transportGeneration==generation&&submitted.viewportGeneration==epoch&&
+                    submitted.acceptedSequence==sequenceValue&&submitted.counters[0]==sequenceValue&&
+                    submitted.counters[1]==sequenceValue;
+                const bool currentRawContained=resolved[0]<=visible[0]&&resolved[1]<=visible[1]&&
+                    resolved[2]>=visible[2]&&resolved[3]>=visible[3]&&
+                    submitted.displayed[0]<=visible[0]&&submitted.displayed[1]<=visible[1]&&
+                    submitted.displayed[2]>=visible[2]&&submitted.displayed[3]>=visible[3]&&
+                    submitted.displayed[0]<=raw->second.bounds[0]&&submitted.displayed[1]<=raw->second.bounds[1]&&
+                    submitted.displayed[2]>=raw->second.bounds[2]&&submitted.displayed[3]>=raw->second.bounds[3];
+                if(exactSource&&raw->second.generation==generation&&raw->second.sequence==sequenceValue&&
+                    visible[1]<preRecovery[1]&&raw->second.bounds[1]<preRecovery[1]&&currentRawContained) {
+                    fitBoundarySources.insert(sequenceValue);
+                    if(!boundarySource) {
+                        boundarySource=sequenceValue;boundaryRawVisibleTop=visible[1];
+                        boundaryRawExtentTop=raw->second.bounds[1];boundaryFitTop=preRecovery[1];
+                        boundaryPresentedTop=int(std::lround(submitted.displayed[1]));
+                    }
+                    if(line.find("current excluded-band contradiction preserves outward visibility without changing native AR")!=std::string::npos)
+                        rawContradictionSources.insert(sequenceValue);
+                }
+            }
+            Logger::WriteMessage((std::string("UHD Off live routes: beta=")+std::to_string(beta)+
+                " sources="+std::to_string(exactCurrentSources.size())+" narrower_fit_raw="+std::to_string(fitBoundarySources.size())+
+                " contradiction="+std::to_string(rawContradictionSources.size())+" native_owner="+std::to_string(nativeOwner)).c_str());
+            if(boundarySource)Logger::WriteMessage((std::string("UHD Off exact boundary witness: source=")+std::to_string(boundarySource)+
+                " raw_visible_top="+std::to_string(boundaryRawVisibleTop)+" raw_extent_top="+std::to_string(boundaryRawExtentTop)+
+                " fit_candidate_top="+std::to_string(boundaryFitTop)+" actual_presented_top="+std::to_string(boundaryPresentedTop)).c_str());
+            Assert::IsTrue(overlayOutputs>=24&&exactCurrentSources.size()>=24,
+                L"The UHD Off burst did not deliver 24 distinct current source outputs.");
+            Assert::IsTrue(!fitBoundarySources.empty()&&!rawContradictionSources.empty(),
+                L"Natural Off input did not emit an exact-source current-raw witness that contradicted and safely widened a narrower confirmed FIT.");
+            cleanup.renderer->Stop();destroy(cleanup.renderer);cleanup.renderer=nullptr;
+            if(cleanup.window){DestroyWindow(cleanup.window);cleanup.window=nullptr;}
+            DeleteFileA(cleanup.config);cleanup.config=nullptr;
+            Assert::IsTrue(buffer.references.load()==0,L"Renderer retained a capture buffer after shutdown.");
         }
         void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false,unsigned processedMode=0)
         {

@@ -88,8 +88,10 @@ or settled cue is acquired, existing steady viewport/cadence/pixel checks stay s
 ## Timing review boundaries
 
 The 327,680 ceiling bounds unique source reads, not elapsed render-thread time.
-At UHD the grid is 960 by 540; both search bands contain about 147,840 points at
-zero near-bar distance and about 205,440 at 120 source pixels. Seed creation also
+At UHD the grid is 960 by 540; both search bands include encoded bars as well as picture-side search depth. For
+a 276/1884 UHD picture they contain about 280,320 points at
+zero near-bar distance and 289,920 at 20 source pixels. Wider searches may exceed
+the existing sample cap and safely decline reuse. Seed creation also
 walks masks/support, and current proofs inspect cached neighbors. Accepted current
 measurements can recreate the seed, so seed cost must be measured as well as the
 late-worker branch. The earlier guard capped expanded line-window reads at 32,768.

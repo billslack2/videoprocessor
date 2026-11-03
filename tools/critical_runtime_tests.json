@@ -11,8 +11,9 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1062,
+  "minimumNativeTests": 1063,
   "requiredNativeMethods": [
+    "UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats",
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
     "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",
     "SourcePictureQuantizedRaisedMattePrefixCannotBecomeTerminalPicture",
@@ -348,6 +349,8 @@
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
   "actualMethods": [
+    "StandardRendererOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry",
+    "BetaRendererOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry",
     "StandardRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",
     "BetaRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",
     "StandardRendererClassicUnknownCandidateSubmitsItsCurrentSource",
@@ -394,7 +397,7 @@
     "VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY"
   ],
   "minimumOriginalNativeTests": 663,
-  "minimumActualTests": 38,
+  "minimumActualTests": 40,
   "explicitNativeMethods": [
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
