@@ -69,11 +69,12 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         preview.current.analyzed=false;preview.current.text={};return preview;
     }
     static SubtitleBoxObservation CompleteThreeLineScan(uint64_t sequence,
-        const std::vector<uint16_t>& pixels,uint64_t continuity=21,int nearBarDistance=0) {
+        const std::vector<uint16_t>& pixels,uint64_t continuity=21,int nearBarDistance=0,uint64_t rawCue=1) {
         auto scan=Ready(sequence).current;scan.continuityGeneration=continuity;
         scan.nearBarDistance=nearBarDistance;
         scan.independentBarAnalysis=true;scan.barEvidence.available=true;
         scan.barEvidence.top=scan.pictureTop;scan.barEvidence.bottom=scan.pictureBottom;
+        scan.text.cue=rawCue;
         scan.text.topSearchComplete=scan.text.bottomSearchComplete=true;
         scan.text.signature.fill(0x55);
         for(auto& signature:scan.text.lineSignatures)signature.fill(0x55);
@@ -92,7 +93,7 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
     }
     static SubtitleBoxPreview ReassociateThreeLineCue(SubtitleBoxPresentation& tracker,
         const std::vector<uint16_t>& pixels,SubtitleBoxResult& accepted,bool addUnownedRaw=false,
-        int nearBarDistance=0,uint64_t firstSequence=1) {
+        int nearBarDistance=0,uint64_t firstSequence=1,uint64_t rawCue=1) {
         const auto addUnownedRawBit=[&](SubtitleBoxObservation& observation) {
             if(!addUnownedRaw)return;
             auto ink=std::make_shared<SubtitleInkSnapshot>(*observation.ink);
@@ -103,11 +104,11 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         };
         std::array<SubtitleBoxObservation,4> initial;
         for(size_t i=0;i<initial.size();++i) {
-            initial[i]=CompleteThreeLineScan(firstSequence+i,pixels,21,nearBarDistance);addUnownedRawBit(initial[i]);
+            initial[i]=CompleteThreeLineScan(firstSequence+i,pixels,21,nearBarDistance,rawCue);addUnownedRawBit(initial[i]);
         }
         const auto acquired=tracker.Consume(SubtitleBoxLookahead::Resolve(initial.data(),initial.size(),11,21));
         Assert::IsTrue(acquired.detected);Assert::AreEqual(3,acquired.lineCount);
-        auto current=CompleteThreeLineScan(firstSequence+4,pixels,22,nearBarDistance);addUnownedRawBit(current);
+        auto current=CompleteThreeLineScan(firstSequence+4,pixels,22,nearBarDistance,rawCue);addUnownedRawBit(current);
         auto preview=SubtitleBoxLookahead::Resolve(&current,1,11,22);
         Assert::IsFalse(preview.text.detected,L"One ready frame cannot freshly acquire a crowded cue.");
         accepted=tracker.Consume(preview,250,40,&initial[0].identity,true);
@@ -735,8 +736,6 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         }
         auto seed=std::make_unique<SubtitleBoxPreview>();
         SubtitleBoxLookahead::ResolveInto(*seed,scans->data(),scans->size(),UhdPolicy,UhdContinuity);
-        Assert::AreEqual(uint64_t(0),seed->current.text.cue,
-            L"The UHD detector supplies raw current geometry without a tracker cue identity.");
         SubtitleBoxPresentation tracker;const auto acquired=tracker.Consume(*seed,1000,frameMs);
         Assert::IsTrue(acquired.detected && !acquired.held && !acquired.confirmationPending);
         Assert::AreNotEqual(uint64_t(0),acquired.cue);
@@ -753,9 +752,6 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             currentAccepted=tracker.Consume(current,1000,frameMs);
             const auto& certificate=tracker.AcceptedCueSeedCertificate();
             if(certificate.Matches(current,currentAccepted)) {
-                Assert::AreEqual(uint64_t(0),current.current.text.cue);
-                Assert::AreNotEqual(uint64_t(0),currentAccepted.cue,
-                    L"The rearm compares current raw geometry with a distinct accepted tracker cue.");
                 foundFreshCertificate=true;
                 const auto started=std::chrono::steady_clock::now();
                 const bool rearmed=guard->RememberAccepted(current,currentAccepted,source,frameMs,1000,&certificate);
@@ -763,6 +759,8 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                     std::chrono::steady_clock::now()-started).count();
                 Logger::WriteMessage((std::string("UHD ready rearm ms=")+std::to_string(elapsed)+
                     " source="+std::to_string(sequence)+
+                    " raw_cue="+std::to_string(current.current.text.cue)+
+                    " accepted_cue="+std::to_string(currentAccepted.cue)+
                     " mask_words="+std::to_string(guard->DecisionDiagnostics().readyRearmMaskWordsChecked)+
                     " glyph_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmGlyphSamplesChecked)+
                 " backing_samples="+std::to_string(guard->DecisionDiagnostics().readyRearmBackingSamplesChecked)+
@@ -2069,8 +2067,11 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
     }
     TEST_METHOD(IndependentSameCueScansRearmOriginalPendingSeedWithoutBandResampling) {
         auto pixels=PixelsWithCurrentBars();SubtitleBoxPresentation firstTracker;SubtitleBoxResult firstAccepted;
-        auto first=ReassociateThreeLineCue(firstTracker,pixels,firstAccepted,false,0,1);
+        auto first=ReassociateThreeLineCue(firstTracker,pixels,firstAccepted,false,0,1,0);
         const auto firstCertificate=firstTracker.AcceptedCueSeedCertificate();
+        Assert::AreEqual(uint64_t(0),first.current.text.cue);
+        Assert::AreNotEqual(uint64_t(0),firstAccepted.cue,
+            L"The synthetic raw detector source intentionally has no tracker cue ID.");
         SubtitlePendingMeasurementGuard guard;
         Assert::IsTrue(guard.RememberAccepted(first,firstAccepted,Source(pixels),1000.0/60,250,&firstCertificate));
         const auto originalSeed=guard.AcceptedSeedIdentity();
@@ -2082,8 +2083,10 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         pixels[50*160+111]=uint16_t(270<<6);
         for(uint64_t firstSequence:{uint64_t(6),uint64_t(11),uint64_t(16)}) {
             SubtitleBoxPresentation currentTracker;SubtitleBoxResult currentAccepted;
-            auto current=ReassociateThreeLineCue(currentTracker,pixels,currentAccepted,false,0,firstSequence);
+            auto current=ReassociateThreeLineCue(currentTracker,pixels,currentAccepted,false,0,firstSequence,0);
             const auto& certificate=currentTracker.AcceptedCueSeedCertificate();
+            Assert::AreEqual(uint64_t(0),current.current.text.cue);
+            Assert::AreNotEqual(uint64_t(0),currentAccepted.cue);
             Assert::IsTrue(certificate.Matches(current,currentAccepted),
                 L"Each rearm needs a fresh tracker certificate for this exact complete current scan.");
             const auto started=std::chrono::steady_clock::now();
@@ -2147,6 +2150,20 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             const bool certified=certificate.Matches(current,currentAccepted);
             const bool remembered=guard.RememberAccepted(current,currentAccepted,Source(currentPixels),1000.0/60,250,
                 certified?&certificate:nullptr);
+            const char* scenarioName=scenario==0?"glyph-changed":scenario==1?"backing-changed":
+                scenario==2?"new-raw-line":"foreign-domain";
+            if(!remembered)Logger::WriteMessage((std::string("ready rearm fallback scenario=")+scenarioName+
+                " certified="+std::to_string(certified)+" reason="+guard.DecisionReason()).c_str());
+            if(scenario==3) {
+                Assert::IsFalse(remembered,
+                    L"An incomplete grouping from a foreign physical-analysis domain cannot create a seed or rearm.");
+                Assert::AreNotEqual("accepted-same-cue-current-scan-rearmed",guard.DecisionReason());
+                Assert::AreEqual(uint64_t(0),guard.AcceptedSeedIdentity().acceptedSequence,
+                    L"The rejected foreign context leaves no stale or false current seed.");
+                Assert::AreEqual(uint64_t(0),guard.LastVerifiedIdentity().acceptedSequence);
+                Assert::AreEqual(0.0,guard.PendingElapsedMilliseconds(),0.001);
+                continue;
+            }
             Assert::IsTrue(remembered,
                 L"A complete positive current scan may establish a fresh baseline after rearm is rejected.");
             Assert::AreNotEqual("accepted-same-cue-current-scan-rearmed",guard.DecisionReason(),

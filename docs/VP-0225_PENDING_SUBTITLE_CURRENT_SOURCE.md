@@ -170,8 +170,7 @@ accepted cue/ink reference and lease. It advances only a queue identity after
 exact context, text, current ink and forward-source checks. Missing current proof,
 changed ink, stale context or an unproved continuity gap still fails closed.
 
-Footprint topology rearm now supports consecutive independently analyzed stride-1
-sources as well as the existing stride-2 pattern. This is limited to the pending
+Footprint topology rearm supports fresh independently analyzed sources whose composition completed successfully, including sources after pending gaps. This is limited to the pending
 footprint guard; ordinary cadence still requires stride 2 and its original spacing.
 Rearm keeps the original native pixel baseline. A changed cleanup sample cannot
 be absorbed as a new baseline simply because another semantic scan succeeded.
@@ -184,3 +183,18 @@ native iteration evidence, not full runtime qualification or a measured renderer
 speedup. The actual renderer run must count footprint rearm hits and repeated
 builds, report costs including failures, and preserve strict established-cue
 composition/frame-progression/framing checks before deployment is qualified.
+
+The pending renderer now takes the exact previously completed final operation from
+its current-source footprint receipt. It skips fresh layout/backing acquisition,
+then consumes the existing one-use cleanup-protection receipt before hook binding.
+This closes the later compositor bar-authority veto without populating bar fields.
+A failed source/base/operation binding still routes current raw pixels.
+
+Classic has a separate generic ready-source optimization: only a fresh complete
+independent scan with an exact accepted-cue certificate can rearm the same cue
+without rebuilding full-band directional arrays. It compares complete current raw
+and owned masks, cue/layout/source/physical context, current glyph/fringe YUV and
+backing state. The original pixel/contrast seed remains immutable; latest verified
+source advances and pending age resets only for this new full positive. Duplicate,
+held, pending, partial or context-changed results cannot take that shortcut.
+These newer changes still require native and actual-renderer qualification.
