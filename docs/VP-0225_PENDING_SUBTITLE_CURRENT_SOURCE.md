@@ -159,3 +159,28 @@ and loss of an established composed cue are distinct cases. Do not waive steady
 viewport/composition assertions to call this fixed. A subtitle-specific bar probe
 is separate from physical AR detection; any substitute receipt must be an exact
 current independently measured physical model, not retained shared geometry.
+
+## Presentation handoff and consecutive analyzed-source reuse
+
+The pending footprint verifier already rechecks current glyphs, backing/cleanup,
+novel bar ink and bar planes. Its returned preview intentionally has no new bar
+or detector authority. The tracker now accepts that per-call verified current
+presentation through a separate held continuation path, retaining the original
+accepted cue/ink reference and lease. It advances only a queue identity after
+exact context, text, current ink and forward-source checks. Missing current proof,
+changed ink, stale context or an unproved continuity gap still fails closed.
+
+Footprint topology rearm now supports consecutive independently analyzed stride-1
+sources as well as the existing stride-2 pattern. This is limited to the pending
+footprint guard; ordinary cadence still requires stride 2 and its original spacing.
+Rearm keeps the original native pixel baseline. A changed cleanup sample cannot
+be absorbed as a new baseline simply because another semantic scan succeeded.
+Changed glyph ownership or geometry must rebuild or reject. The native contracts
+include a black-to-nonblack cleanup change followed by a pending rejection against
+the original baseline, plus ordinary and queue-retired held continuation checks.
+
+All 1,068 native contracts pass at clean 3d7fb6a8 (run035012-eed9d9c5). This is
+native iteration evidence, not full runtime qualification or a measured renderer
+speedup. The actual renderer run must count footprint rearm hits and repeated
+builds, report costs including failures, and preserve strict established-cue
+composition/frame-progression/framing checks before deployment is qualified.
