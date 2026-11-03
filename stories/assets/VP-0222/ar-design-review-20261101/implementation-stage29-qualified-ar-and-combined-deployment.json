@@ -1,0 +1,57 @@
+{
+  "stage": 29,
+  "date": "2026-11-02",
+  "repairSource": "03d6c37c14e8f6dbcc61f62cef57c64b2024f190",
+  "status": "AR repair qualified and deployed, then superseded by combined AR and stutter build; user testing",
+  "qualification": {
+    "native": 1049,
+    "standardActualRenderer": 17,
+    "betaActualRenderer": 17,
+    "standardMotion": 220,
+    "betaMotion": 220,
+    "total": 1523,
+    "passed": true
+  },
+  "nativeReplay": {
+    "currentPausedFrames": 41,
+    "priorFrames": 338,
+    "total": 379,
+    "currentExpectedEdges": [
+      0,
+      275,
+      3840,
+      1884
+    ],
+    "currentRequireTrustedCrop": true,
+    "currentBoundedWorker": true
+  },
+  "deployment": {
+    "source": "03d6c37c",
+    "verifiedFiles": 28,
+    "backup": "C:\\Videoprocessor\\vp\\backups\\cross-edge-03d6c37c-20261102-220750",
+    "configurationEdits": []
+  },
+  "currentCombined": {
+    "source": "53058498acf3462dd698c3b5b4ea1c0467025769",
+    "includesArAncestor": "03d6c37c",
+    "includesStutterAncestor": "2a3af0c2",
+    "verifiedFiles": 28,
+    "hashMismatches": 0,
+    "release": "x64 Release",
+    "ownerChat": "Investigate recurring scene stutters",
+    "fullCombinedQualification": "running in owner chat; separate receipts do not qualify combined source",
+    "receipt": "../../VP-0225/combined-deployment-20261102/deployment-combined.json"
+  },
+  "limits": [
+    "Original 41-frame scene passes bounded native replay; subsequent live source differed (0 matching captured frames).",
+    "User is actively testing; leave runtime, playback, profiles and configuration alone.",
+    "No claim that all stutters or all unknown measurements are fixed.",
+    "No beta merge or public release."
+  ],
+  "receipts": [
+    "qualification-03d6c37c.json",
+    "motion-03d6c37c.json",
+    "private-replays-03d6c37c.json",
+    "deployment-03d6c37c.json"
+  ]
+}
