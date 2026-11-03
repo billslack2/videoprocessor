@@ -1536,6 +1536,7 @@ namespace AlphaSourceCrop
         bool waitForSubtitleProcessing=false;
         // Current raw frame at the retained aperture; no caption/native proof.
         bool unprocessedSubtitleCanvas=false;
+        bool subtitleEngagePoseRetained=false;
         bool subtitleCanvasApplied=false, subtitleTranslationRange=false;
         int subtitleMinimumTranslation=0, subtitleMaximumTranslation=0;
 	};

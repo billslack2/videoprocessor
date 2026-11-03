@@ -18006,6 +18006,38 @@ public:
                 Assert::AreEqual(r.crop.geometry.bottom,resolved.presentation.sourceBounds.bottom);
             }
         }
+        TEST_METHOD(ClassicEngageKeepsLegalSubmittedPoseWhenCurrentCaptionExtentRelaxes)
+        {
+            for(int sign:{-1,1})for(int fault=-1;fault<7;++fault) {
+                auto r=CurrentClassicEngageVisibility(sign*16);r.subtitleCanvasMode=SubtitleCanvasMode::CLASSIC;
+                auto& c=r.crop;const auto native=c.geometry;
+                r.captionObservation={CaptionObservationState::PRESENT,c.frameSourceGeneration,c.frameSourceSequence,
+                    r.presentationEpoch,c.frameSourceFormatKey,c.frameAnalysisDomainKey};
+                r.confirmedCaptionBounds={100,sign>0?native.bottom+10:native.top-40,1000,
+                    sign>0?native.bottom+40:native.top-10,3840,2160};
+                r.captionEdgeMarginPixels=0;
+                auto& anchor=r.submittedScopeAnchor;anchor.submittedPresentationAvailable=true;
+                anchor.submittedPresentation=native;anchor.submittedPresentation.top+=sign*64;anchor.submittedPresentation.bottom+=sign*64;
+                auto& proof=anchor.submittedPresentationProof;proof.available=true;
+                proof.origin=NativePresentationOrigin::CONFIRMED_TRANSLATION;proof.nativeBase=native;
+                proof.approvedBounds=anchor.submittedPresentation;proof.sourceGeneration=c.frameSourceGeneration;
+                proof.sourceSequence=anchor.lastSubmittedPresentationSourceSequence;proof.presentationEpoch=r.presentationEpoch;
+                if(fault==0)r.classicTranslationEngaging=false;
+                if(fault==1)anchor.acceptedNativeCrop.analysisDomainKey++;
+                if(fault==2)anchor.acceptedNativeCrop.sourceFormatKey++;
+                if(fault==3)anchor.acceptedNativeCrop.acceptedSourceSequence++;
+                if(fault==4)anchor.presentationEpoch++;
+                if(fault==5)proof.approvedBounds.bottom++;
+                if(fault==6)anchor.available=false;
+                const auto d=ResolveUncertainPicturePresentation(r,Evaluate(c)).presentation;
+                Assert::IsFalse(d.waitForSubtitleProcessing);
+                Assert::AreEqual(fault==-1,d.subtitleEngagePoseRetained);
+                Assert::AreEqual(sign*(fault==-1?64:40),d.verticalTranslationPixels,
+                    L"Only a current matching legal submitted pose constrains engage against measurement backslide.");
+                Assert::AreEqual(native.bottom-native.top,d.sourceBounds.bottom-d.sourceBounds.top);
+                Assert::AreEqual(sign*16,c.verticalTranslationPixels,L"Projection must not advance the configured controller clock.");
+            }
+        }
         TEST_METHOD(ProcessedCaptionIdentityAndFillAreRequiredBeforeSubmittingTheFixedCanvas)
         {
             for(int fault=-1;fault<8;++fault) {

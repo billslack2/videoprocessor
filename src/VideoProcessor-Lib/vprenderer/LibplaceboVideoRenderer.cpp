@@ -18363,9 +18363,9 @@ releaseDriftBaseRetention =
             if(uncertainPicture.presentation.subtitleCanvasApplied) {
                 const auto& canvas=uncertainPicture.presentation;
                 if(DebugLog::IsEnhancedLoggingEnabled() || (canvas.waitForSubtitleProcessing && sourceSequence%120==0))
-                    DebugLog::Log("VP subtitle canvas admission: instance=%s generation=%llu source=%llu profile=%u ready=%d unprocessed=%d caption_state=%u composed=%d last_submitted_source=%llu native=%d,%d-%d,%d caption=%d,%d-%d,%d candidate=%d,%d-%d,%d min_shift=%d max_shift=%d reason=\"%s\"",
+                    DebugLog::Log("VP subtitle canvas admission: instance=%s generation=%llu source=%llu profile=%u ready=%d unprocessed=%d engage_retained=%d caption_state=%u composed=%d last_submitted_source=%llu native=%d,%d-%d,%d caption=%d,%d-%d,%d candidate=%d,%d-%d,%d min_shift=%d max_shift=%d reason=\"%s\"",
                         diagnosticInstanceId.c_str(),frameGeneration,sourceSequence,static_cast<unsigned>(recoveryInput.subtitleCanvasMode),
-                        canvas.waitForSubtitleProcessing?0:1,canvas.unprocessedSubtitleCanvas?1:0,static_cast<unsigned>(recoveryInput.captionObservation.state),subtitleCompositionSucceeded?1:0,
+                        canvas.waitForSubtitleProcessing?0:1,canvas.unprocessedSubtitleCanvas?1:0,canvas.subtitleEngagePoseRetained?1:0,static_cast<unsigned>(recoveryInput.captionObservation.state),subtitleCompositionSucceeded?1:0,
                         submittedNativeScopeAnchor.lastSubmittedPresentationSourceSequence,cropInput.geometry.left,cropInput.geometry.top,
                         cropInput.geometry.right,cropInput.geometry.bottom,currentConfirmedCaptionBounds.left,currentConfirmedCaptionBounds.top,
                         currentConfirmedCaptionBounds.right,currentConfirmedCaptionBounds.bottom,canvas.sourceBounds.left,canvas.sourceBounds.top,
@@ -18396,7 +18396,7 @@ releaseDriftBaseRetention =
                 id.analysisDomainKey=queuedAnalysisDomainKey;id.viewportGeneration=viewportRequestSerial;
                 auto trace=AnalysisTraceRecord(id,this,"subtitle-canvas-admission",canvas.reason.c_str());
                 trace.flags=(canvas.waitForSubtitleProcessing?1u:0u)|(canvas.unprocessedSubtitleCanvas?2u:0u)|
-                    (subtitleCompositionSucceeded?4u:0u);
+                    (subtitleCompositionSucceeded?4u:0u)|(canvas.subtitleEngagePoseRetained?8u:0u);
                 trace.counters[0]=static_cast<unsigned>(recoveryInput.subtitleCanvasMode);
                 trace.counters[1]=static_cast<unsigned>(recoveryInput.captionObservation.state);
                 trace.counters[2]=submittedNativeScopeAnchor.lastSubmittedPresentationSourceSequence;
