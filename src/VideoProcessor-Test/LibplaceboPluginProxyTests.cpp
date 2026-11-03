@@ -4018,7 +4018,7 @@ namespace VideoProcessorTest
                 VideoProcessorLibplaceboConfigureDiagnosticFn callback;
                 ~DiagnosticCleanup(){if(callback)callback(nullptr,nullptr,nullptr,nullptr);}
             } diagnosticCleanup{diagnostics};
-            size_t spatialCursor=0;std::vector<AnalysisDiagnosticRecordV1> spatialOutputs,spatialAccepted,spatialProduced,spatialCanvas;
+            size_t spatialCursor=0;std::vector<AnalysisDiagnosticRecordV1> spatialOutputs,spatialAccepted,spatialProduced,spatialCanvas,spatialInset;
             if(requireSpatial) {
                 Assert::IsTrue(diagnostics!=nullptr);
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=true;}
@@ -4049,6 +4049,15 @@ namespace VideoProcessorTest
                 scope[y*width+x]=uint16_t(((y>=scopeBar&&y<height-scopeBar)?300:64)<<6);
                 taller[y*width+x]=uint16_t(((requireSpatial || (y>=12&&y<348))?300:64)<<6);
                 dark[y*width+x]=uint16_t(64<<6);
+            }
+            auto imax=scope,sparseScope=scope;
+            if(requireSpatial)for(int y=0;y<height;++y)for(int x=0;x<width;++x) {
+                imax[y*width+x]=uint16_t((y>=12 && y<height-12?300:64)<<6);
+                if(y>=scopeBar && y<height-scopeBar) {
+                    const int inward=height-scopeBar-1-y;
+                    const bool lit=x<7*width/128 || (x>=40*width/128 && x<47*width/128) || x>=125*width/128;
+                    sparseScope[y*width+x]=uint16_t((lit?300:64+(std::min)(236,(std::max)(0,inward-16)*2))<<6);
+                }
             }
             SnapshotTestCallback callback;NativeP210Buffer buffer;
             struct Cleanup {
@@ -4091,6 +4100,7 @@ namespace VideoProcessorTest
                     std::vector<AnalysisDiagnosticRecordV1> tail;
                     {std::lock_guard<std::mutex> lock(classicPoseLogMutex);CopyUnreadCallbackTail(classicPoseRecords,spatialCursor,tail);}
                     for(const auto& record:tail) {
+                        if(!strcmp(record.stage,"source-perpendicular-inset"))spatialInset.push_back(record);
                         if(!strcmp(record.stage,"subtitle-canvas-admission"))spatialCanvas.push_back(record);
                         if(!strcmp(record.stage,"accepted-picture-detector"))spatialAccepted.push_back(record);
                         if(!strcmp(record.stage,"source-picture-active"))spatialProduced.push_back(record);
@@ -4198,6 +4208,18 @@ namespace VideoProcessorTest
             }
             const double tallerAspect=requireSpatial?double(width)/height:640.0/336;
             acquire(taller,tallerAspect,tallerAspect,L"Real renderer retained old scope over verified taller/full-raster picture");
+            if(requireSpatial) {
+                acquire(imax,640.0/336,640.0/336,L"The current 1.90 picture did not replace remembered full-raster geometry");
+                const auto sparseFirst=sequence;
+                acquire(sparseScope,nativeScope,configuredFill?2.35:nativeScope,
+                    L"Remembered 16:9/1.90 geometry vetoed a currently corroborated weak-bottom scope picture");
+                bool joined=false;
+                for(const auto& proof:spatialInset)if(proof.acceptedSequence>=sparseFirst && (proof.flags&1u))
+                    for(const auto& output:spatialOutputs)if(output.acceptedSequence==proof.acceptedSequence &&
+                        output.published[1]==scopeBar && output.published[3]==height-scopeBar)
+                        joined=true;
+                Assert::IsTrue(joined,L"The weak-bottom transition needs actual same-source cross-edge proof and submitted native scope bounds");
+            }
             acquire(scope,nativeScope,configuredFill?2.35:nativeScope,L"Real renderer did not return to verified scope and selected presentation");
         }
 		TEST_METHOD(ActivePictureLookaheadHasExplicitProxyOverride)

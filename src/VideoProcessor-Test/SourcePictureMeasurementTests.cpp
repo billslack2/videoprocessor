@@ -83,6 +83,23 @@ namespace VideoProcessorTest
             Assert::AreEqual(expected.bottom,measured.measuredBounds.bottom);
             Assert::AreEqual(expected.aspectRatio,measured.measuredBounds.aspectRatio,1e-9);
         }
+        static SourcePictureFrame SparseInsetFrame(unsigned side,int phase,ActivePictureBounds& bounds,int fault=-1)
+        {
+            const bool horizontal=side==1 || side==3;const int along=horizontal?960:540;
+            bounds=horizontal?Bounds(960,540,0,67+phase,960,463+2*phase):Bounds(960,540,67+phase,0,887+2*phase,540);
+            SourcePictureFrame frame(960,540);
+            const int edge=side==0?bounds.left:side==1?bounds.top:side==2?bounds.right:bounds.bottom;
+            for(int y=bounds.top;y<bounds.bottom;++y)for(int x=bounds.left;x<bounds.right;++x) {
+                const int a=horizontal?x:y;
+                const int inward=side==0?x-edge:side==1?y-edge:side==2?edge-1-x:edge-1-y;
+                const bool first=a<7*along/128,middle=fault!=2 && a>=40*along/128 && a<47*along/128;
+                const bool last=fault==1?(a>=120*along/128 && a<123*along/128):a>=(fault==0?123:125)*along/128;
+                const int value=first || middle || last?300:64+std::min(236,std::max(0,inward-16)*2);
+                frame.Fill(x,y,x+1,y+1,value);
+            }
+            if(fault==0) {frame.Fill(0,edge,8,edge+30,300);frame.Fill(952,edge,960,edge+30,300);}
+            return frame;
+        }
     public:
         TEST_METHOD(SourcePictureQuantizedFourPhaseEdgeKeepsBoundedNativeGeometry)
         {
@@ -560,6 +577,35 @@ namespace VideoProcessorTest
             Assert::IsTrue(assessment.canvasScaffoldSupported);
             Assert::IsTrue(observed.canvasSupported);
             Assert::IsTrue(observed.blankMarginsUnresolved);
+        }
+        TEST_METHOD(SourcePictureSparseInsetUsesBothPerpendicularContactsWithoutInventingVotes)
+        {
+            for(unsigned side=0;side<4;++side)for(int phase=0;phase<3;++phase)for(bool caption:{false,true}) {
+                const bool horizontal=side==1 || side==3;
+                if(!horizontal && caption)continue;
+                ActivePictureBounds bounds;auto frame=SparseInsetFrame(side,phase,bounds);
+                if(caption)frame.Caption(1,500);
+                const auto measured=MeasureSourcePicture(frame.Source());Exact(measured,bounds);
+                const auto& proof=measured.perpendicularInset;
+                Assert::IsTrue(proof.accepted);Assert::AreEqual(int(side),proof.side);
+                Assert::AreEqual(17u,proof.support,L"Independent contacts must not fabricate local ray votes.");
+                Assert::AreEqual(3u,proof.regions);
+            }
+        }
+        TEST_METHOD(SourcePictureSparseInsetRejectsContinuingOrMissingPerpendicularContact)
+        {
+            for(int fault=0;fault<3;++fault) {
+                ActivePictureBounds bounds;auto frame=SparseInsetFrame(3,0,bounds,fault);
+                const auto measured=MeasureSourcePicture(frame.Source());
+                Assert::IsTrue(measured.perpendicularInset.evaluated);
+                if(fault==0)Assert::IsTrue(measured.perpendicularInset.outside[0]>0 && measured.perpendicularInset.outside[1]>0,
+                    L"The continued-picture control must exercise both current outside-contact vetoes.");
+                Assert::IsFalse(measured.perpendicularInset.accepted,
+                    L"A continuing side, a side ending short, or support in only two regions cannot corroborate an inset.");
+                Assert::IsFalse(measured.rectangleAvailable && measured.measuredBounds.bottom==bounds.bottom);
+            }
+            SourcePictureFrame caption(960,540);caption.Fill(0,70,960,438,300);caption.Caption(1,500);
+            Exact(MeasureSourcePicture(caption.Source()),Bounds(960,540,0,70,960,438));
         }
         TEST_METHOD(SourcePictureRelativeMatteContactRecoversDarkSideWithoutChangingCaptionAr)
         {

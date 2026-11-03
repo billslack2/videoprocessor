@@ -7166,6 +7166,30 @@ namespace AlphaSourceCrop
                 minimum=(minimum+1)&~1;maximum&=~1;
                 if(minimum>maximum)return wait("caption requires relocation; no same-size Classic window is available");
                 const int requested=c.verticalTranslationActive?c.verticalTranslationPixels:0;
+                const auto& a=input.submittedScopeAnchor;const auto& prior=a.submittedPresentation;
+                if(input.classicTranslationEngaging &&
+                    IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,
+                        input.presentationEpoch,c.rasterWidth,c.rasterHeight) &&
+                    SameTrustedCropContract(a.crop,n) && a.acceptedNativeCrop.available &&
+                    a.acceptedNativeCrop.acceptedSourceSequence==contract.acceptedSourceSequence &&
+                    a.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey &&
+                    a.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey &&
+                    a.submittedPresentationAvailable && prior.left==viewport.left && prior.right==viewport.right &&
+                    prior.bottom-prior.top==viewport.bottom-viewport.top &&
+                    MatchesNativePresentation(a.submittedPresentationProof,n,prior,c.frameSourceGeneration,
+                        a.lastSubmittedPresentationSourceSequence,input.presentationEpoch)) {
+                    const int previous=prior.top-viewport.top;
+                    // A conservative pending extent can relax by a few pixels
+                    // while the controller still moves forward. Keep an already
+                    // submitted legal same-side pose until that clock catches up.
+                    if(previous>=minimum && previous<=maximum) {
+                        if(previous>0 && requested>=0 && previous>minimum) {
+                            minimum=previous;d.subtitleEngagePoseRetained=true;
+                        } else if(previous<0 && requested<=0 && previous<maximum) {
+                            maximum=previous;d.subtitleEngagePoseRetained=true;
+                        }
+                    }
+                }
                 const int shift=std::max(minimum,std::min(requested,maximum));
                 d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
                 d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
