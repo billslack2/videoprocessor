@@ -4,6 +4,17 @@
 
 Review
 
+2026-11-03 native follow-up: clean source 3d7fb6a8 passes all 1,068 native
+contracts (run035012-eed9d9c5). The tracker now consumes verified current pixel
+continuation without recreating bar authority; it retains original cue/reference
+and lease and advances only queue identity. Ordinary and retired-input tests check
+that no new accepted-source/cue/bar certificate is exported. The pending footprint
+can rearm from a consecutive independently analyzed stride-1 source while retaining
+its original pixel baseline; normal stride-2 cadence rules are unchanged. A changed
+cleanup sample still rejects after rearm. Independent read-only review found no
+critical stale-pixel, authority or lease-renewal leak. Actual runtime costs and
+renderer continuity after these changes remain to be measured. No later deployment.
+
 2026-11-03 timing/decision follow-up (clean 4a40caf1, not deployed): the focused
 23-case run passes 13 and fails 10. Actual 59.94/60Hz DV stage instrumentation
 finds repeated prepared-footprint setup around 5.6-7.1ms p50 and pending-seed setup
