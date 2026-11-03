@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "CppUnitTest.h"
+#include "GpuFixtureProgramCache.h"
 #include <SubtitleCurrentCue.h>
 #include <SubtitleCutPaste.h>
 #include <SubtitleBackingLip.h>
@@ -117,6 +118,7 @@ struct MeasuredReconstructionCue {
     }
 };
 struct ReconstructionMotionGpu {
+    std::shared_ptr<Tests::SubtitleFixtureProgramCache> programs;
     pl_d3d11 device=nullptr;
     pl_renderer renderer=nullptr;
     pl_options options=nullptr;
@@ -134,6 +136,8 @@ struct ReconstructionMotionGpu {
     ReconstructionMotionGpu() {
         pl_d3d11_params d{};d.allow_software=true;device=pl_d3d11_create(nullptr,&d);
         Assert::IsTrue(device!=nullptr,L"D3D11 required for the joined reconstruction/motion regression");
+        programs=Tests::SubtitleFixtureProgramCache::For(device);
+        pl_gpu_set_cache(device->gpu,programs->value);
         renderer=pl_renderer_create(nullptr,device->gpu);hook=CreateSubtitleCutPasteHook(device->gpu);
         options=pl_options_alloc(nullptr);Assert::IsTrue(options!=nullptr);
         Assert::IsTrue(pl_options_load(options,"upscaler=ewa_lanczossharp,downscaler=mitchell,plane_upscaler=ewa_lanczos,deband=yes,sigmoid=yes,peak_detect=yes,peak_percentile=99.99500274658203,contrast_recovery=0.10000000149011612,error_diffusion=sierra-3,dynamic_constants=yes"),

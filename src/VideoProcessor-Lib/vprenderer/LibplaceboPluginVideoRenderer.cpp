@@ -190,6 +190,11 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	else if (!rendererConfig.GetWarnings().empty())
 		throw std::runtime_error(rendererConfig.GetWarnings().front());
 
+    const auto configureLogging=reinterpret_cast<VideoProcessorLibplaceboConfigureLoggingFn>(
+        GetProcAddress(plugin.module,VP_LIBPLACEBO_LOGGING_EXPORT));
+    if(configureLogging)configureLogging(DebugLog::IsEnhancedLoggingEnabled());
+    DebugLog::Log("VP presentation decision telemetry: enhanced=%d plugin_support=%d schema=1 changes=immediate heartbeat_ms=1000 pixels=none",
+        DebugLog::IsEnhancedLoggingEnabled()?1:0,configureLogging?1:0);
 	TraceLifecycle("renderer-create; detector state will initialize");
 	m_renderer = plugin.createRenderer(
 		&callback,

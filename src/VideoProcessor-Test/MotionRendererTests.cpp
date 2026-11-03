@@ -5,8 +5,11 @@
 #include <vprenderer/DisplayFrameCache.h>
 #include <vprenderer/DisplayVsyncClock.h>
 #include <vprenderer/InputAnalysisCadence.h>
+#include <vprenderer/SourceCadencePresentation.h>
+#include <vprenderer/SourceCadenceNativeHandoff.h>
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
+#include <vprenderer/PreparedPictureWindow.h>
 #include <vprenderer/AnalysisPerformanceWindow.h>
 #include <vprenderer/OptionalAnalysisWorker.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
@@ -21,6 +24,7 @@
 #include <array>
 #include <fstream>
 #include <cstdint>
+#include <sstream>
 #include <type_traits>
 #include "RendererProfileConfig.h"
 #include <vector>
@@ -237,9 +241,13 @@ struct SubtitlePacketHoldFixture {
 }
 TEST_CLASS(MotionRendererTests){public:
     TEST_METHOD(SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases) {
+        // One private, initially empty cache per test/dependency. The worker
+        // must prepare every new scenario; compiled programs common to RGB,
+        // temporal RGB and P010 need not be compiled three times. Keep every
+        // geometry/phase assertion and the no-live-compilation signature check.
+        struct Cache { pl_cache value=pl_cache_create(nullptr); ~Cache(){pl_cache_destroy(&value);} } cache;
         for (int scenario : {0, 1, 2}) {
             GpuFixture g;
-            struct Cache { pl_cache value=pl_cache_create(nullptr); ~Cache(){pl_cache_destroy(&value);} } cache;
             pl_gpu_set_cache(g.device->gpu,cache.value);
             g.Upload(100);
             if (scenario==2) g.CreateP010AlternatingChroma();
@@ -321,6 +329,201 @@ TEST_CLASS(MotionRendererTests){public:
             pl_gpu_set_cache(g.device->gpu,nullptr);
             Assert::IsTrue(before==after,L"Live subtitle geometry/phase created an unprepared shader");
         }
+    }
+    TEST_METHOD(ProtectedCleanupEdgeRowsKeepCurrentMovieAndMovedGlyph) {
+        GpuFixture g;
+        const auto* hook=CreateSubtitleCutPasteHook(g.device->gpu);
+        Assert::IsNotNull(hook);
+        auto uploadRgba8=[&](std::vector<unsigned char>& pixels) {
+            Assert::AreEqual(size_t(64*64*4),pixels.size());
+            pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=pixels.data();
+            Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload),L"RGBA8 source upload failed");
+        };
+        auto makeFrame=[](std::array<unsigned char,3> base) {
+            std::vector<unsigned char> pixels(64*64*4);
+            for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+                const size_t o=(size_t(y)*64+x)*4;
+                pixels[o]=base[0];pixels[o+1]=base[1];pixels[o+2]=base[2];pixels[o+3]=255;
+            }
+            return pixels;
+        };
+        auto previous=makeFrame({180,24,22});
+        for(int y=32;y<36;++y)for(int x=20;x<38;++x) {
+            const size_t o=(size_t(y)*64+x)*4;
+            previous[o]=230;previous[o+1]=22;previous[o+2]=18;
+        }
+        const size_t previousGlyph=(size_t(42)*64+32)*4;
+        previous[previousGlyph]=255;previous[previousGlyph+1]=220;previous[previousGlyph+2]=24;
+
+        auto current=makeFrame({18,78,42});
+        // These changed, non-black movie pixels lie inside the source envelope
+        // and active picture, but before the clipped cleanup top and outside
+        // every glyph/capture rectangle.
+        const std::array<std::array<unsigned char,3>,4> marks{{
+            {{18,190,232}},{{24,50,92}},{{218,142,20}},{{166,28,214}}}};
+        for(int row=0;row<4;++row)for(int x=20;x<24;++x)for(int y=32+row;y<33+row;++y) {
+            const size_t o=(size_t(y)*64+x)*4;
+            current[o]=marks[size_t(row)][0];current[o+1]=marks[size_t(row)][1];current[o+2]=marks[size_t(row)][2];
+        }
+        const std::array<unsigned char,3> rightEdgeMark={236,104,32};
+        for(int c=0;c<3;++c)current[(size_t(38)*64+44)*4+size_t(c)]=rightEdgeMark[size_t(c)];
+        // A current white glyph in the old source box must be copied to the
+        // new destination, while the source footprint is repaired from this
+        // frame's surrounding movie pixels.
+        for(int y=40;y<46;++y)for(int x=24;x<40;++x) {
+            const bool stroke=x==24||x==39||y==40||y==45||x==31||y==42;
+            if(!stroke)continue;
+            const size_t o=(size_t(y)*64+x)*4;
+            current[o]=current[o+1]=current[o+2]=246;
+        }
+
+        auto renderPrepared=[&](const pl_hook* boundHook,pl_tex* surface,bool independentAlpha=false) {
+            pl_frame composed{};
+            Assert::IsTrue(RenderSubtitleFullRaster(g.preparation,g.device->gpu,g.input,boundHook,
+                surface,composed,false,false,independentAlpha),L"RGBA8 source failed full-raster preparation/render.");
+            return composed;
+        };
+        auto drawPrepared=[&](pl_frame& composed) {
+            auto params=pl_render_fast_params;params.dither_params=nullptr;
+            params.deband_params=nullptr;params.peak_detect_params=nullptr;
+            Assert::IsTrue(pl_render_image(g.renderer,&composed,&g.output,&params),
+                L"Prepared subtitle frame failed final RGBA8 rendering.");
+            return g.ReadPixels();
+        };
+        uploadRgba8(previous);
+        auto previousFrame=renderPrepared(nullptr,&g.clean);
+        const auto previousOutput=drawPrepared(previousFrame);
+        uploadRgba8(current);
+        auto currentRawFrame=renderPrepared(nullptr,&g.clean);
+        const auto currentRawOutput=drawPrepared(currentRawFrame);
+
+        SubtitleCutPasteGeometry geometry{};
+        geometry.valid=true;geometry.glyphScale=1.0f;
+        geometry.roundedCorners=false;geometry.extendToBar=false;
+        geometry.pictureTop=8;geometry.pictureBottom=56;
+        geometry.displayPictureLeft=0;geometry.displayPictureTop=8;
+        geometry.displayPictureRight=64;geometry.displayPictureBottom=56;
+        geometry.source={16,30,48,48};geometry.destination={16,14,48,32};
+        geometry.content={24,40,40,46};geometry.pictureCapture=geometry.content;
+        geometry.glyphLines[0]=geometry.content;
+        geometry.generatedCleanup={16,36,48,48};
+        geometry.pendingProtectedCleanup={16,30,48,48};
+        Assert::IsTrue(geometry.pendingProtectedCleanup.Valid()&&
+            geometry.pendingProtectedCleanup.top<geometry.generatedCleanup.top&&
+            geometry.pendingProtectedCleanup.bottom==geometry.generatedCleanup.bottom,
+            L"The projected pending-only region must identify the original cleanup edge.");
+        Assert::IsTrue(geometry.generatedCleanup.top>35&&geometry.source.top<geometry.generatedCleanup.top&&
+            geometry.pictureTop<32&&geometry.pictureBottom>36,
+            L"The protected leading movie rows must be inside native and source, but above actual cleanup.");
+        SubtitleGeneratedGrayStyle style;style.opacity=0.0f;style.blurPixels=0.0f;
+        style.maxLuminance=1.0f;style.borderOpacity=0.0f;style.borderWidth=0.0f;
+        auto pixel=[](const std::vector<unsigned char>& image,int x,int y) {
+            const size_t o=(size_t(y)*64+x)*4;
+            return std::array<int,3>{image[o],image[o+1],image[o+2]};
+        };
+        auto distance=[](const std::array<int,3>& a,const std::array<int,3>& b) {
+            int difference=std::abs(a[0]-b[0]);
+            difference=(std::max)(difference,std::abs(a[1]-b[1]));
+            return (std::max)(difference,std::abs(a[2]-b[2]));
+        };
+        auto assertProtectedRows=[&](const std::vector<unsigned char>& output,int background,
+            const SubtitleBoxRect& destination,SubtitleCompositionPhase phase,const wchar_t* context) {
+            for(int row=0;row<4;++row) {
+                const int x=21,y=32+row;
+                const auto actual=pixel(output,x,y),currentPixel=pixel(currentRawOutput,x,y),oldPixel=pixel(previousOutput,x,y);
+                if(distance(actual,currentPixel)>5) {
+                    const int sourceX=x+geometry.source.left-destination.left;
+                    const int sourceY=y+geometry.source.top-destination.top;
+                    std::array<int,3> sourceRgb{};
+                    if(sourceX>=0&&sourceX<64&&sourceY>=0&&sourceY<64)
+                        sourceRgb=pixel(current,sourceX,sourceY);
+                    const float lo=float((std::min)(sourceRgb[0],(std::min)(sourceRgb[1],sourceRgb[2])))/255.0f;
+                    const float hi=float((std::max)(sourceRgb[0],(std::max)(sourceRgb[1],sourceRgb[2])))/255.0f;
+                    const auto smooth=[](float a,float b,float value) {
+                        const float t=(std::max)(0.0f,(std::min)(1.0f,(value-a)/(b-a)));
+                        return t*t*(3.0f-2.0f*t);
+                    };
+                    const float keyAlpha=smooth(0.15f,0.50f,lo)*(1.0f-smooth(0.10f,0.28f,hi-lo));
+                    std::ostringstream detail;
+                    detail<<"protected marker mismatch bg="<<background<<" destination="
+                        <<destination.left<<','<<destination.top<<'-'<<destination.right<<','<<destination.bottom
+                        <<" phase="<<static_cast<int>(phase)<<" row="<<row<<" output="<<x<<','<<y
+                        <<" actual="<<actual[0]<<','<<actual[1]<<','<<actual[2]
+                        <<" current="<<currentPixel[0]<<','<<currentPixel[1]<<','<<currentPixel[2]
+                        <<" prior="<<oldPixel[0]<<','<<oldPixel[1]<<','<<oldPixel[2]
+                        <<" source="<<sourceX<<','<<sourceY<<" source_rgb="
+                        <<sourceRgb[0]<<','<<sourceRgb[1]<<','<<sourceRgb[2]<<" mapSourceAlpha="<<keyAlpha
+                        <<" source_in_content="<<(sourceX>=geometry.content.left&&sourceX<geometry.content.right&&
+                            sourceY>=geometry.content.top&&sourceY<geometry.content.bottom);
+                    Logger::WriteMessage(detail.str().c_str());
+                }
+                Assert::IsTrue(distance(actual,currentPixel)<=5,context);
+                Assert::IsTrue(distance(actual,oldPixel)>50,
+                    L"A previous frame's movie pixels leaked into a protected cleanup-edge row.");
+                const std::array<int,3> expectedMark={marks[size_t(row)][0],marks[size_t(row)][1],marks[size_t(row)][2]};
+                Assert::IsTrue(distance(actual,expectedMark)<=7,
+                    L"A dim or alternate-color current marker was lost from a protected leading row.");
+            }
+        };
+        for(const int background:{3,5})for(const auto& destination:{
+            SubtitleBoxRect{16,14,48,32},SubtitleBoxRect{16,22,48,40}})for(const bool clipRight:{false,true}) {
+            if(clipRight&&destination.top!=22)continue;
+            geometry.destination=destination;
+            geometry.generatedCleanup=clipRight?SubtitleBoxRect{16,36,42,48}:SubtitleBoxRect{16,36,48,48};
+            for(const auto phase:{SubtitleCompositionPhase::All,SubtitleCompositionPhase::CleanupOnly,
+                SubtitleCompositionPhase::LayerOnly}) {
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,background,PL_COLOR_TRC_SRGB,
+                    style,0,phase),L"Could not bind current-source protected cleanup geometry.");
+                const bool layerOnly=phase==SubtitleCompositionPhase::LayerOnly;
+                auto prepared=renderPrepared(hook,layerOnly?&g.layer:&g.clean,layerOnly);
+                std::vector<unsigned char> output;
+                if(layerOnly) {
+                    // Split production path: cleanup owns only measured source
+                    // pixels, then the independent-alpha layer adds verified
+                    // current glyphs over the cleaned current frame.
+                    Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,background,
+                        PL_COLOR_TRC_SRGB,style,0,SubtitleCompositionPhase::CleanupOnly));
+                    auto cleaned=renderPrepared(hook,&g.clean);
+                    pl_overlay_part part{};part.src={0,0,64,64};part.dst={0,0,64,64};
+                    pl_overlay overlay{};overlay.tex=prepared.planes[0].texture;
+                    overlay.mode=PL_OVERLAY_NORMAL;overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;
+                    overlay.repr=prepared.repr;overlay.color=prepared.color;
+                    overlay.parts=&part;overlay.num_parts=1;
+                    cleaned.overlays=&overlay;cleaned.num_overlays=1;
+                    output=drawPrepared(cleaned);
+                } else output=drawPrepared(prepared);
+                assertProtectedRows(output,background,destination,phase,
+                    L"A pending-only cleanup edge changed current raw movie pixels.");
+                if(clipRight) {
+                    const auto actual=pixel(output,44,38);
+                    const auto currentPixel=pixel(currentRawOutput,44,38);
+                    const auto oldPixel=pixel(previousOutput,44,38);
+                    Assert::IsTrue(distance(actual,currentPixel)<=5&&distance(actual,oldPixel)>50,
+                        L"A current pixel in a protected right-edge strip overlapping the destination changed or came from the prior frame.");
+                    const std::array<int,3> expectedRightMark={rightEdgeMark[0],rightEdgeMark[1],rightEdgeMark[2]};
+                    Assert::IsTrue(distance(actual,expectedRightMark)<=7,
+                        L"A dim alternate-color movie mark in the right-edge protected strip was lost.");
+                }
+                if(phase!=SubtitleCompositionPhase::CleanupOnly) {
+                    if(destination.top==14) {
+                        const auto movedGlyph=pixel(output,32,26);
+                        Assert::IsTrue(distance(movedGlyph,pixel(currentRawOutput,32,42))<=8,
+                            L"The current source glyph was not retained at its disjoint moved destination.");
+                    } else {
+                        const auto movedGlyph=pixel(output,32,34);
+                        Assert::IsTrue(distance(movedGlyph,pixel(currentRawOutput,32,42))<=8,
+                            L"A verified current glyph overlapping a protected row was not rendered over raw current video.");
+                    }
+                }
+                const auto repairedSource=pixel(output,32,42);
+                Assert::IsTrue(distance(repairedSource,pixel(currentRawOutput,32,13))<=8,
+                    L"Generated cleanup did not reconstruct the current movie at the original glyph location.");
+                Assert::IsTrue(distance(repairedSource,pixel(currentRawOutput,32,42))>40&&
+                    distance(repairedSource,pixel(previousOutput,32,42))>40,
+                    L"The source cleanup retained a glyph or stale movie pixels instead of current-frame repair.");
+            }
+        }
+        pl_mpv_user_shader_destroy(&hook);
     }
     TEST_METHOD(NlsPreparationUsesActualCompositionContract) {
         GpuFixture g;
@@ -626,14 +829,350 @@ TEST_CLASS(MotionRendererTests){public:
         // Presentation repeats final pixels between these field outputs rather
         // than generating 18 expensive temporal outputs and hitting its cap.
     }
-    TEST_METHOD(AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty) {
+    TEST_METHOD(WarmupCadenceRepeatYieldsToExactCurrentNativeAspectHandoffs) {
+        ActivePictureFrameIdentity current{1,29,29,2900,2,3,1};current.analysisDomainKey=4;
+        const ActivePictureBounds scope{0,262,3840,1898,3840,2160};
+        const ActivePictureBounds imax{0,120,3840,2040,3840,2160};
+        ActivePictureFrameDecision decision;decision.effectiveIdentity=decision.observationIdentity=current;
+        decision.continuityGeneration=7;decision.lookaheadPolicyGeneration=2;decision.proofFrameCount=1;
+        decision.transition.state=ActivePictureTransitionState::STABLE;
+        decision.transition.publish=decision.transition.stable=true;
+        decision.transition.authoritativeClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        decision.transition.bounds=imax;decision.transition.stableBounds=scope;
+        AlphaSourceCrop::BufferedPictureExpansionProof buffered;buffered.valid=true;buffered.decision=decision;
+        buffered.decision.transition.diagnostic=true;
+        GuardedRememberedEdgeReturnCertificate remembered;remembered.available=true;
+        remembered.policyGeneration=2;remembered.continuityGeneration=7;remembered.frameCount=2;
+        remembered.identities[0]=current;remembered.identities[1]=current;
+        ++remembered.identities[1].acceptedSequence;++remembered.identities[1].sourceFrameNumber;
+        ++remembered.identities[1].captureTimestamp;
+        remembered.decision=decision.transition;remembered.decision.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
+        remembered.nomination.available=remembered.nomination.guarded=true;
+        remembered.nomination.establishedBase=scope;remembered.nomination.rememberedBounds=imax;
+        remembered.nomination.sourceGeneration=current.transportGeneration;remembered.nomination.sourceSequence=current.acceptedSequence;
+        remembered.nomination.rendererGeneration=current.rendererGeneration;remembered.nomination.viewportGeneration=current.viewportGeneration;
+        remembered.nomination.sourceFormatGeneration=current.sourceFormatGeneration;remembered.nomination.policyGeneration=2;
+        remembered.configuredFuture=remembered.actualFuture=1;
+        remembered.diagnostic.allPass=true;remembered.diagnostic.expectedFrames=remembered.diagnostic.passedFrames=2;
+        remembered.currentEvidence.available=true;
+        remembered.currentEvidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        remembered.currentEvidence.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
+        remembered.currentEvidence.trustedBounds=imax;remembered.diagnostic.presentation=imax;
+        const unsigned routes=unsigned(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,&decision,nullptr,nullptr))+
+            unsigned(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,&buffered,nullptr))+
+            unsigned(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,nullptr,&remembered));
+        Assert::AreEqual(3u,routes,L"Every exact-current proven changed native geometry must render immediately instead of spending the warmup repeat.");
+        decision.transition.bounds={0,0,3840,2160,3840,2160};
+        decision.transition.authoritativeClassification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+        Assert::IsTrue(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,&decision,nullptr,nullptr));
+        Assert::AreEqual(262,scope.top);Assert::AreEqual(1898,scope.bottom);
+        for(unsigned fault=0;fault<18;++fault) {
+            auto bad=remembered;
+            switch(fault) {
+            case 0:bad.available=false;break;
+            case 1:bad.diagnostic.allPass=false;break;
+            case 2:++bad.policyGeneration;break;
+            case 3:++bad.continuityGeneration;break;
+            case 4:++bad.identities[0].acceptedSequence;break;
+            case 5:++bad.identities[0].analysisDomainKey;break;
+            case 6:bad.frameCount=1;break;
+            case 7:bad.nomination.shadowOnly=true;break;
+            case 8:bad.nomination.guarded=false;break;
+            case 9:++bad.nomination.sourceSequence;break;
+            case 10:bad.nomination.establishedBase=imax;break;
+            case 11:bad.currentEvidence.available=false;break;
+            case 12:bad.currentEvidence.trustedBounds=scope;break;
+            case 13:bad.decision.bounds=scope;bad.currentEvidence.trustedBounds=scope;bad.diagnostic.presentation=scope;break;
+            case 14:bad.decision.publish=false;break;
+            case 15:++bad.identities[1].sourceFrameNumber;break;
+            case 16:bad.identities[1].captureTimestamp=current.captureTimestamp;break;
+            case 17:++bad.identities[1].viewportGeneration;break;
+            }
+            Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,nullptr,&bad));
+        }
+    }
+    TEST_METHOD(WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry) {
+        ActivePictureFrameIdentity current{1,29,29,2900,2,3,1};current.analysisDomainKey=4;
+        const ActivePictureBounds scope{0,262,3840,1898,3840,2160};
+        ActivePictureFrameDecision good;good.effectiveIdentity=good.observationIdentity=current;
+        good.continuityGeneration=7;good.lookaheadPolicyGeneration=2;good.proofFrameCount=1;
+        good.transition.state=ActivePictureTransitionState::STABLE;good.transition.publish=good.transition.stable=true;
+        good.transition.authoritativeClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        good.transition.bounds={0,120,3840,2040,3840,2160};good.transition.stableBounds=scope;
+        Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,nullptr,nullptr));
+        for(unsigned fault=0;fault<18;++fault) {
+            auto bad=good;
+            switch(fault) {
+            case 0:bad.transition.bounds=scope;break;
+            case 1:++bad.effectiveIdentity.acceptedSequence;break;
+            case 2:--bad.effectiveIdentity.acceptedSequence;break;
+            case 3:++bad.effectiveIdentity.analysisDomainKey;break;
+            case 4:++bad.effectiveIdentity.viewportGeneration;break;
+            case 5:++bad.effectiveIdentity.sourceFormatGeneration;break;
+            case 6:++bad.effectiveIdentity.rendererGeneration;break;
+            case 7:++bad.continuityGeneration;break;
+            case 8:++bad.lookaheadPolicyGeneration;break;
+            case 9:bad.proofFrameCount=0;break;
+            case 10:bad.transition.publish=false;break;
+            case 11:bad.transition.stable=false;break;
+            case 12:bad.transition.authoritativeClassification=ActivePictureClassification::PROVISIONAL;break;
+            case 13:bad.transition.bounds={};break;
+            case 14:bad.transition.bounds.bottom=2200;break;
+            case 15:++bad.observationIdentity.transportGeneration;break;
+            case 16:--bad.observationIdentity.acceptedSequence;break;
+            case 17:bad.transition.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;break;
+            }
+            Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,&bad,nullptr,nullptr),
+                L"A pending, unknown, stale or unchanged nominee cannot manufacture a native transition veto.");
+            AlphaSourceCrop::BufferedPictureExpansionProof buffered;buffered.valid=true;buffered.decision=bad;
+            Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,&buffered,nullptr));
+        }
+    }
+    TEST_METHOD(SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence) {
+        ActivePictureFrameIdentity identity;identity.transportGeneration=1;identity.acceptedSequence=7;
+        identity.sourceFrameNumber=7;identity.captureTimestamp=700;identity.sourceFormatGeneration=2;
+        identity.viewportGeneration=3;identity.rendererGeneration=1;identity.analysisDomainKey=4;
+        SubtitleBoxObservation observation;observation.identity=identity;observation.analyzed=true;
+        observation.width=1920;observation.height=1080;
+        Assert::IsFalse(SourceCadenceObservationComplete(observation,identity),
+            L"An analyzed job with unavailable bars and no text search is not ready current evidence.");
+        observation.barAuthority=true;
+        observation.text.topSearchComplete=observation.text.bottomSearchComplete=true;
+        observation.text.diagnosticReason="no-bright-ink";
+        Assert::IsTrue(SourceCadenceObservationComplete(observation,identity));
+        for(int missing=0;missing<3;++missing) {
+            auto partial=observation;
+            if(missing==0)partial.text.topSearchComplete=false;
+            if(missing==1)partial.text.bottomSearchComplete=false;
+            if(missing==2)partial.barAuthority=false;
+            Assert::IsFalse(SourceCadenceObservationComplete(partial,identity),
+                L"A partial or unqualified negative scan cannot make current absence conclusive.");
+        }
+        auto rejected=observation;rejected.text.diagnosticReason="no-complete-line";
+        Assert::IsFalse(SourceCadenceObservationComplete(rejected,identity),
+            L"Rejected bright components are not confirmed subtitle absence.");
+        observation.text.detected=true;observation.text.bounds={200,900,1720,1040};
+        observation.text.diagnosticReason="detected";
+        Assert::IsTrue(SourceCadenceObservationComplete(observation,identity));
+        for(int defect=0;defect<9;++defect) {
+            auto bad=observation;
+            if(defect==0)bad.text.bounds={};if(defect==1)bad.text.workLimit=true;
+            if(defect==2)bad.text.held=true;if(defect==3)bad.pendingRefresh=true;
+            if(defect==4)bad.analysisRefresh=true;if(defect==5)bad.analyzed=false;
+            if(defect==6)++bad.identity.acceptedSequence;if(defect==7)++bad.identity.analysisDomainKey;
+            if(defect==8)bad.inspectionCandidateUsed=true,bad.text.detected=false;
+            Assert::IsFalse(SourceCadenceObservationComplete(bad,identity));
+        }
+    }
+    TEST_METHOD(SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate) {
+        int gpu;
+        for(const auto rate:{60.0,60000.0/1001.0}) {
+            SourceCadencePresentationContext c;c.gpu=&gpu;c.generation=1;c.sourceFormat=2;
+            c.analysisDomain=3;c.outputContract=4;c.frameDuration=rate==60.0?1:1001;c.timeScale=rate==60.0?60:60000;
+            SourceCadencePresentation repeat;repeat.Candidate(c,82,82.0/rate,true,true);repeat.Submitted(true);
+            for(const double measured:{0.0,23.976,rate*1.0002}) {
+                const auto inputRate=SourceCadenceInputRate(measured,c.frameDuration,c.timeScale);
+                Assert::AreEqual(rate,inputRate,0.0000001,
+                    L"A complete input before the five-second estimator publication still has an exact declared source period.");
+                Assert::IsTrue(repeat.CanRepeat(c,inputRate,83,83.0/rate));
+            }
+            auto changed=c;changed.frameDuration=1001;changed.timeScale=24000;
+            Assert::IsFalse(repeat.CanRepeat(changed,SourceCadenceInputRate(60,1001,24000),83,83.0/rate));
+        }
+        SourceCadencePresentationContext low;low.gpu=&gpu;low.generation=1;low.sourceFormat=2;
+        low.analysisDomain=3;low.outputContract=4;low.frameDuration=1001;low.timeScale=24000;
+        SourceCadencePresentation lowRepeat;lowRepeat.Candidate(low,82,82.0*1001/24000,true,true);lowRepeat.Submitted(true);
+        Assert::IsFalse(lowRepeat.CanRepeat(low,SourceCadenceInputRate(60,1001,24000),83,83.0*1001/24000),
+            L"A stale measured60 estimate cannot enable high-input-cadence reuse on a declared23.976 source.");
+        Assert::AreEqual(24000.0/1001.0,SourceCadenceInputRate(60,1001,24000),0.0000001);
+        Assert::AreEqual(0.0,SourceCadenceInputRate(60,0,60000));
+        Assert::AreEqual(0.0,SourceCadenceInputRate(60,1001,0));
+    }
+    TEST_METHOD(SourceCadenceWarmupImageRepeatsAcrossFirstReadyWithoutRenewingCaptionCompleteness) {
+        int gpu;SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+        pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+        pending.frameDuration=1;pending.timeScale=60;pending.preparationKey=17;pending.requestedSubtitleMode=2;
+        pending.preparationState=SourceCadencePreparationState::Pending;pending.subtitleMode=0;
+        auto ready=pending;ready.preparationState=SourceCadencePreparationState::Ready;ready.subtitleMode=2;
+        SourceCadencePresentation repeat;repeat.WarmupCandidate(pending,34,34.0/60,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(ready,60,35,35.0/60),
+            L"First Ready UNKNOWN input must retain the exact successful prior Pending whole image for one input");
+        Assert::AreEqual(uint64_t(34),repeat.DisplayedSource());
+        Assert::IsTrue(repeat.DisplayedIsWarmup());
+        Assert::IsFalse(repeat.CanRepeat(pending,60,35,35.0/60),L"A warmup bridge is reserved for first Ready; still-building outputs remain fresh");
+        repeat.RepeatSubmitted(true);
+        Assert::IsFalse(repeat.CanRepeat(ready,60,35,35.0/60));
+        Assert::IsFalse(repeat.CanRepeat(ready,60,36,36.0/60));
+        ready.preparedCaptionPresented=true;
+        repeat.Candidate(ready,36,36.0/60,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(ready,60,37,37.0/60));
+        Assert::IsFalse(repeat.DisplayedIsWarmup());
+        auto wrongMode=ready;wrongMode.subtitleMode=0;
+        Assert::IsFalse(repeat.CanRepeat(wrongMode,60,37,37.0/60),L"Regular complete anchors retain exact effective-mode matching");
+    }
+    TEST_METHOD(SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput) {
+        int gpu;
+        for(bool fractional:{false,true})for(uint64_t initial:{uint64_t(33),uint64_t(34)}) {
+            SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+            pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+            pending.frameDuration=fractional?1001:1;pending.timeScale=fractional?60000:60;
+            const double rate=double(pending.timeScale)/pending.frameDuration;
+            pending.preparationKey=17;pending.requestedSubtitleMode=2;
+            pending.preparationState=SourceCadencePreparationState::Pending;
+            SourceCadencePresentation repeat;repeat.WarmupCandidate(pending,initial,double(initial)/rate,true,true);
+            repeat.Submitted(true);
+            Assert::IsFalse(repeat.CanRepeat(pending,rate,initial+1,double(initial+1)/rate),
+                L"Pending UNKNOWN must render and cache its allowed fresh raw image instead of spending the only first-Ready bridge");
+            repeat.WarmupCandidate(pending,initial+1,double(initial+1)/rate,true,true);repeat.Submitted(true);
+            auto ready=pending;ready.subtitleMode=2;ready.preparationState=SourceCadencePreparationState::Ready;
+            Assert::IsTrue(repeat.CanRepeat(ready,rate,initial+2,double(initial+2)/rate));
+            Assert::AreEqual(initial+1,repeat.DisplayedSource());repeat.RepeatSubmitted(true);
+            Assert::IsFalse(repeat.CanRepeat(ready,rate,initial+3,double(initial+3)/rate));
+            ready.preparedCaptionPresented=true;
+            repeat.Candidate(ready,initial+3,double(initial+3)/rate,true,true);repeat.Submitted(true);
+            Assert::IsTrue(repeat.CanRepeat(ready,rate,initial+4,double(initial+4)/rate));
+            Assert::IsFalse(repeat.DisplayedIsWarmup());
+        }
+    }
+    TEST_METHOD(SourceCadenceWarmupImageRejectsForeignContextFailureAndPostComposedReuse) {
+        int gpu;SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+        pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+        pending.frameDuration=1;pending.timeScale=60;pending.preparationKey=17;pending.requestedSubtitleMode=3;
+        pending.preparationState=SourceCadencePreparationState::Pending;
+        for(int fault=-1;fault<15;++fault) {
+            auto source=pending;auto current=pending;current.subtitleMode=3;current.preparationState=SourceCadencePreparationState::Ready;
+            bool native=true,captured=true,submitted=true;uint64_t next=35;double pts=35.0/60;
+            if(fault==0)++current.preparationKey;
+            if(fault==1)current.requestedSubtitleMode=2;
+            if(fault==2)native=false;
+            if(fault==3)captured=false;
+            if(fault==4)submitted=false;
+            if(fault==5)next=36;
+            if(fault==6)pts=37.0/60;
+            if(fault==7)source.preparedCaptionPresented=true;
+            if(fault==8)current.preparedCaptionPresented=true;
+            if(fault==9)source.preparationState=SourceCadencePreparationState::Failed;
+            if(fault==10)current.preparationState=SourceCadencePreparationState::Failed;
+            if(fault==11)source.preparationKey=0;
+            if(fault==12)++current.viewport;
+            if(fault==13)++current.policy;
+            if(fault==14)source.subtitleMode=3;
+            SourceCadencePresentation repeat;repeat.WarmupCandidate(source,34,34.0/60,native,captured);repeat.Submitted(submitted);
+            Assert::AreEqual(fault==-1,repeat.CanRepeat(current,60,next,pts));
+        }
+    }
+    TEST_METHOD(SourceCadenceRepeatRequiresSubmittedCompletePixelsAndNeverRenewsAnchor) {
+        int gpu;
+        SourceCadencePresentationContext c;c.gpu=&gpu;c.generation=3;c.sourceFormat=4;
+        c.analysisDomain=5;c.outputContract=6;c.outputEpoch=7;c.startupRevision=8;
+        c.frameDuration=100;c.timeScale=5994;
+        SourceCadencePresentation repeat;
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,1.0/59.94));
+        for(bool complete:{false,true})for(bool captured:{false,true})for(bool submitted:{false,true}) {
+            repeat.Candidate(c,1,0,complete,captured);repeat.Submitted(submitted);
+            Assert::AreEqual(complete&&captured&&submitted,
+                repeat.CanRepeat(c,59.94,2,1.0/59.94),
+                L"Only a successful complete submitted presentation can replace current-source analysis.");
+        }
+        auto noOutput=c;noOutput.outputContract=0;
+        repeat.Candidate(noOutput,1,0,true,true);repeat.Submitted(true);
+        Assert::IsFalse(repeat.CanRepeat(noOutput,59.94,2,1.0/59.94),
+            L"An absent output contract cannot authorize reuse on either presenter.");
+        repeat.Candidate(c,1,0,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,2,1.0/59.94));
+        Assert::IsFalse(repeat.CanRepeat(c,23.976,2,1.0/23.976));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,3,2.0/59.94));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,3.0/59.94));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,0));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,1.0/59.94,true));
+        for(int fault=0;fault<23;++fault) {
+            auto bad=c;
+            switch(fault) {
+            case 0:bad.gpu=nullptr;break;case 1:++bad.generation;break;case 2:++bad.sourceFormat;break;
+            case 3:++bad.analysisDomain;break;case 4:++bad.viewport;break;case 5:++bad.renderer;break;
+            case 6:++bad.processing;break;case 7:++bad.policy;break;case 8:++bad.continuity;break;
+            case 9:++bad.reset;break;case 10:++bad.scene;break;case 11:++bad.outputContract;break;
+            case 12:++bad.outputEpoch;break;case 13:++bad.startupRevision;break;case 14:++bad.subtitleMode;break;
+            case 15:++bad.transfer;break;case 16:++bad.colorspace;break;case 17:bad.configuredScreen=true;break;
+            case 18:bad.interlaced=true;break;case 19:bad.temporal=true;break;case 20:bad.deferredReset=true;break;
+            case 21:++bad.frameDuration;break;case 22:++bad.timeScale;break;
+            }
+            Assert::IsFalse(repeat.CanRepeat(bad,59.94,2,1.0/59.94));
+        }
+        for(double invalid:{(std::numeric_limits<double>::quiet_NaN)(),
+            (std::numeric_limits<double>::infinity)(),-1.0}) {
+            Assert::IsFalse(repeat.CanRepeat(c,invalid,2,1.0/59.94));
+            Assert::IsFalse(repeat.CanRepeat(c,59.94,2,invalid));
+        }
+        Assert::IsFalse(repeat.CanRepeat(c,60.0,2,1.0/60.0),L"An input cadence change invalidates a previous-rate anchor.");
+        repeat.RepeatSubmitted(true);
+        Assert::AreEqual(uint64_t(1),repeat.DisplayedSource());
+        Assert::AreEqual(0.0,repeat.DisplayedPts());
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,1.0/59.94),L"A repeated output cannot renew its source lease.");
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,3,2.0/59.94));
+        repeat.Candidate(c,3,2.0/59.94,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,4,3.0/59.94));
+        repeat.RepeatSubmitted(false);
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,4,3.0/59.94));
+        repeat.Candidate(c,2,1.0/59.94,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,3,2.0/59.94),
+            L"An unavailable odd input may repeat an analyzed even source; parity is not evidence.");
+        repeat.RepeatSubmitted(true);
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,4,3.0/59.94));
+    }
+    TEST_METHOD(SourceCadenceRepeatKeepsEntireFinalImageThenShowsNewSceneOnNextAnalyzedSource) {
+        GpuFixture g;DisplayFrameCache pixels;SourceCadencePresentation repeat;
+        SourceCadencePresentationContext c;c.gpu=g.device->gpu;c.generation=1;
+        c.sourceFormat=1;c.analysisDomain=1;c.outputContract=1;c.frameDuration=100;c.timeScale=5994;
+        auto params=pl_render_default_params;params.dither_params=nullptr;
+        // Includes picture, bar and caption pixels; all must be repeated together.
+        std::vector<unsigned char> source(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            const unsigned char v=y<8||y>=48?0:static_cast<unsigned char>(40+x+y);
+            for(int channel=0;channel<3;++channel)source[o+channel]=
+                y>=52&&y<58&&x>=18&&x<46?255:v;
+        }
+        pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=source.data();
+        Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload));
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        const auto complete=g.ReadPixels();
+        repeat.Candidate(c,1,0,true,pixels.Capture(g.device->gpu,g.target));repeat.Submitted(true);
+        // A scene/AR cut arrives on the intentionally skipped input. The user
+        // permits one-source latency, never old caption cleanup on new pixels.
+        g.Upload(220);g.input.crop={0,8,64,56};
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        const auto nextScene=g.ReadPixels();Assert::IsTrue(complete!=nextScene);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,2,1.0/59.94));
+        Assert::IsTrue(pixels.CopyTo(g.target));Assert::IsTrue(complete==g.ReadPixels());
+        repeat.RepeatSubmitted(true);
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,3,2.0/59.94));
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        Assert::IsTrue(nextScene==g.ReadPixels(),L"A new scene must appear on the next analyzed source, with no multi-source hold.");
+        Assert::AreEqual(uint64_t(1),repeat.DisplayedSource());
+        Assert::AreEqual(0.0,repeat.DisplayedPts());
+    }
+    TEST_METHOD(SkippedInputWithoutCompletePresentationPermissionMustAnalyze) {
+        // Input frequency/parity alone cannot authorize losing current captions.
+        // No successful submitted-image repeat has been supplied to this API.
+        for(double inputHz:{30.001,50.0,59.0,59.94,60.0,120.0})
+            for(uint64_t sequence:{2ULL,4ULL,100ULL})
+                Assert::IsTrue(InputFrameAnalysisDue(inputHz,sequence),
+                    L"A skipped source without an exact complete-presentation repeat must receive fresh analysis.");
+        Assert::IsTrue(InputFrameAnalysisDue(23.976,2),
+            L"A 60 Hz display cannot change the 23.976 Hz input analysis decision.");
+    }
+    TEST_METHOD(OnlyExplicitCompletePresentationPermissionAllowsInputCadenceSkip) {
         for(double hz:{23.976,24.0,25.0,29.97,30.0,50.0,59.94,60.0,120.0}) {
             unsigned analyses=0;
             for(uint64_t sequence=1;sequence<=120;++sequence) {
-                const bool due=InputFrameAnalysisDue(hz,sequence);
+                // This permission belongs to an exact committed presentation,
+                // not merely to input frequency or a prior subtitle observation.
+                const bool due=InputFrameAnalysisDue(hz,sequence,true);
                 Assert::IsTrue(due==(hz<=30.0 || (sequence&1)!=0));
+                Assert::IsTrue(InputFrameAnalysisDue(hz,sequence,false));
                 for(int output=0;output<4;++output)
-                    Assert::IsTrue(due==InputFrameAnalysisDue(hz,sequence));
+                    Assert::IsTrue(due==InputFrameAnalysisDue(hz,sequence,true));
                 if(due)++analyses;
             }
             Assert::AreEqual(hz<=30.0?120u:60u,analyses);
@@ -1383,10 +1922,28 @@ TEST_CLASS(MotionRendererTests){public:
         PresentationAnalysisBudget budget;
         const auto skipped=budget.Begin(2,1000000,1000000,true,false);
         Assert::AreEqual(int64_t(0),skipped.deadlineQpc);
-        OptionalAnalysisPrefix expiredBudget;
-        if(skipped.deadlineQpc>0) expiredBudget.Admit(0,headResult!=nullptr);
-        Assert::AreEqual(size_t(0),expiredBudget.Size(),
-            L"A skipped optional budget cannot publish a ready lookahead certificate");
+        OptionalAnalysisPrefix repeatedPrefix;
+        PreparedPictureWindowSource repeatedSource;repeatedSource.available=true;repeatedSource.repeat=true;
+        const auto repeated=RunPreparedPictureWindowPhases(
+            MakePreparedPictureWindowAdmission(repeatedSource,skipped.deadlineQpc),skipped.deadlineQpc,
+            []{return int64_t(1000000);},[&](int64_t,bool) {
+                repeatedPrefix.Admit(0,headResult!=nullptr);return true;
+            });
+        Assert::IsFalse(repeated.completed);
+        Assert::AreEqual(size_t(0),repeatedPrefix.Size(),
+            L"A repeated presentation cannot contribute another source observation");
+        OptionalAnalysisPrefix freshPrefix;
+        PreparedPictureWindowSource freshSource;freshSource.available=true;
+        const auto fresh=RunPreparedPictureWindowPhases(
+            MakePreparedPictureWindowAdmission(freshSource,skipped.deadlineQpc),skipped.deadlineQpc,
+            []{return int64_t(1000000);},[&](int64_t deadline,bool) {
+                Assert::AreEqual(int64_t(0),deadline);
+                return freshPrefix.Admit(0,headResult->domain==7) &&
+                    freshPrefix.Admit(1,futureResult->domain==7);
+            });
+        Assert::IsTrue(fresh.completed);
+        Assert::AreEqual(size_t(2),freshPrefix.Size(),
+            L"Zero optional scan budget on a fresh source does not invalidate ready evidence");
         worker.Stop();
         Assert::IsTrue(lifetime.expired());
         Assert::AreEqual(73,headResult->pixel,
@@ -2369,6 +2926,219 @@ TEST_CLASS(TemporalCleanPacketGpuTests) { public:
         Assert::IsTrue(g.temporal.AnnotatePresentation(3,geometry));
         const auto mixed=g.Draw();
         Assert::IsTrue(mixed[0]<isolated[0]-30,L"Compatible cleaned picture should retain smooth motion.");
+    }
+
+    TEST_METHOD(PendingSubtitleRawOutputUsesCurrentPixelsInsteadOfOlderCompletedPacket) {
+        GpuFixture g;MotionConfig::Settings settings;
+        settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+        std::vector<float> oldCompleted(64*64*4);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            oldCompleted[o]=oldCompleted[o+1]=oldCompleted[o+2]=1.0f;
+            oldCompleted[o+3]=1.0f;
+            if(x>=24&&x<40&&y>=24&&y<40) {
+                oldCompleted[o]=1.0f;oldCompleted[o+1]=oldCompleted[o+2]=0.0f;
+            }
+        }
+        g.UploadFloatPixels(g.clean,oldCompleted);
+        g.temporal.Begin(settings,24,60,false,0,9,100,0.0,false,true);
+        g.temporal.outputPts=0.0;
+        Assert::IsTrue(g.temporal.CaptureCompleteComposition(g.device->gpu,g.cleanInput,100,true));
+        auto params=pl_render_default_params;
+        params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+        Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,params,31));
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==100);
+        const auto oldGlyph=g.Read(32,32);
+        Assert::IsTrue(oldGlyph[0]>220&&oldGlyph[1]<20&&oldGlyph[2]<20,
+            L"Fixture did not produce the older completed red subtitle packet.");
+        g.temporal.MarkSubmitted();
+
+        g.temporal.Begin(settings,24,60,false,0,9,101,1.0/24.0,false,true);
+        g.temporal.outputPts=1.0/24.0;
+        std::vector<unsigned char> raw(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            raw[o]=raw[o+1]=raw[o+2]=0;raw[o+3]=255;
+            if(x>=8&&x<16&&y>=40&&y<48)raw[o+1]=255; // Current burned-in source marker.
+        }
+        pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=raw.data();
+        Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload));
+        Assert::IsTrue(g.temporal.CaptureCurrentRawSource(g.device->gpu,g.input,101,9,7,77,88));
+        Assert::IsFalse(g.temporal.RenderCurrentRaw(g.renderer,g.input,g.output,params,31,
+            101,9,7,78,88),L"A current raw packet must reject a mismatched source-format identity.");
+        Assert::IsTrue(g.temporal.RenderCurrentRaw(g.renderer,g.input,g.output,params,31,
+            101,9,7,77,88),L"Current uncomposed picture should render while subtitle preparation is pending.");
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==101,
+            L"Raw fallback selected the older completed subtitle source.");
+        Assert::IsTrue(g.temporal.SelectedPacketPts()==1.0/24.0,
+            L"Raw fallback PTS must belong to the current source.");
+        Assert::IsTrue(g.temporal.SelectedSubtitleSequence()==0&&g.temporal.LastSubtitleSequence()==0,
+            L"Raw current output must not claim an older subtitle packet.");
+        Assert::IsFalse(g.temporal.SubtitleFallbackActive(),
+            L"Raw current output must bypass subtitle packet replay.");
+        const auto currentMarker=g.Read(12,44),oldGlyphLocation=g.Read(32,32),currentBackground=g.Read(4,4);
+        Assert::IsTrue(currentMarker[1]>220&&currentMarker[0]<20&&currentMarker[2]<20,
+            L"The current burned-in source marker was not preserved.");
+        for(int c=0;c<3;++c)
+            Assert::IsTrue(oldGlyphLocation[c]<20&&currentBackground[c]<20,
+                L"Older completed picture/subtitle pixels leaked into raw current output.");
+    }
+
+    TEST_METHOD(UnprocessedNativeCanvasContinuationUsesCurrentRawDespiteEligibleOlderCompletePacket) {
+        GpuFixture g;MotionConfig::Settings settings;
+        settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+        TemporalRenderer::PresentationGeometry geometry{};
+        geometry.valid=true;geometry.familyBase={0,0,64,64};geometry.sourceCrop={0,0,64,64};
+        geometry.verifiedVisible={0,0,64,64};geometry.viewportEpoch=7;
+        geometry.owner=1;geometry.visibleSafe=true;geometry.cleaned=true;
+        std::vector<float> oldComplete(64*64*4),currentComplete(64*64*4);
+        std::vector<unsigned char> currentRaw(64*64*4);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            oldComplete[o]=oldComplete[o+1]=oldComplete[o+2]=1.0f;
+            oldComplete[o+3]=1.0f;
+            if(x>=24&&x<40&&y>=24&&y<40) {
+                oldComplete[o]=1.0f;oldComplete[o+1]=oldComplete[o+2]=0.0f;
+            }
+            currentComplete[o]=currentComplete[o+1]=currentComplete[o+2]=0.0f;
+            currentComplete[o+3]=1.0f;
+            currentRaw[o]=currentRaw[o+1]=currentRaw[o+2]=0.0f;
+            currentRaw[o+3]=255;
+            if(x>=8&&x<16&&y>=40&&y<48)currentRaw[o+1]=255;
+        }
+        g.Upload(0);g.UploadFloatPixels(g.clean,oldComplete);
+        g.temporal.Begin(settings,24,60,false,0,9,100,0.0,false,true);
+        g.temporal.outputPts=0.0;
+        Assert::IsTrue(g.temporal.CaptureCompleteComposition(g.device->gpu,g.cleanInput,100,true));
+        Assert::IsTrue(g.temporal.AnnotatePresentation(100,geometry));
+        auto params=pl_render_default_params;
+        params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+        Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,params,31));
+        g.temporal.MarkSubmitted();
+
+        g.UploadFloatPixels(g.clean,currentComplete);
+        g.temporal.Begin(settings,24,60,false,0,9,101,1.0/24.0,false,true);
+        g.temporal.outputPts=1.0/24.0;
+        Assert::IsTrue(g.temporal.CaptureCompleteComposition(g.device->gpu,g.cleanInput,101,false));
+        auto pending=geometry;pending.cleaned=false;
+        Assert::IsTrue(g.temporal.AnnotatePresentation(101,pending));
+        Assert::IsTrue(g.temporal.SelectSubtitleFallback(31,7,g.input,g.output,params,64,64),
+            L"The fixture must prove the older complete subtitle packet would otherwise be eligible.");
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==100,
+            L"The eligible fallback fixture did not select the older completed picture.");
+        Assert::IsTrue(g.temporal.SelectUnprocessedCurrentSource(101),
+            L"The unprocessed current source should be present in temporal history.");
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==101,
+            L"Unprocessed-current selection must clear the older completed packet before rendering.");
+
+        pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=currentRaw.data();
+        Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload));
+        Assert::IsTrue(g.temporal.CaptureCurrentRawSource(g.device->gpu,g.input,101,9,7,77,88));
+        Assert::IsTrue(g.temporal.RenderCurrentRaw(g.renderer,g.input,g.output,params,31,
+            101,9,7,77,88),L"An unprocessed native-canvas continuation must render the current raw source.");
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==101,
+            L"The unprocessed output must identify the current source, not the older complete packet.");
+        Assert::IsFalse(g.temporal.SubtitleFallbackActive(),
+            L"The current raw render must retire the older subtitle fallback selection.");
+        const auto currentMarker=g.Read(12,44),oldGlyphLocation=g.Read(32,32),currentBackground=g.Read(4,4);
+        Assert::IsTrue(currentMarker[1]>220&&currentMarker[0]<20&&currentMarker[2]<20,
+            L"Current raw source marker was not preserved.");
+        for(int c=0;c<3;++c)
+            Assert::IsTrue(oldGlyphLocation[c]<20&&currentBackground[c]<20,
+                L"Older complete movie/subtitle pixels leaked into the unprocessed current output.");
+    }
+
+    TEST_METHOD(PendingSubtitleRawOutputRetainsInterlacedBobProcessingAndCurrentIdentity) {
+        MotionConfig::Settings settings;settings.smoothMotion="off";
+        settings.deinterlace="force";settings.algorithm="bwdif";
+        settings.fieldOrder="top";settings.cadence="frame";
+        auto render=[&settings](bool rawFallback) {
+            GpuFixture g;g.Upload(0,true);
+            g.temporal.Begin(settings,30,30,true,1,12,45,0.0,false,false);
+            if(rawFallback) {
+                Assert::IsTrue(g.temporal.CaptureCurrentRawSource(g.device->gpu,g.input,45,12,19,77,88));
+                g.temporal.outputPts=0.0;
+                auto params=pl_render_default_params;
+                params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+                Assert::IsTrue(g.temporal.RenderCurrentRaw(g.renderer,g.input,g.output,params,31,
+                    45,12,19,77,88),L"Interlaced current raw packet should use source deinterlacing.");
+            } else {
+                Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,45));
+                g.temporal.outputPts=0.0;
+                g.Draw();
+            }
+            Assert::IsTrue(g.temporal.SelectedPacketSequence()==45,
+                L"Interlaced output identity must name the current raw source.");
+            Assert::IsTrue(g.temporal.SelectedSubtitleSequence()==0&&g.temporal.LastSubtitleSequence()==0,
+                L"Interlaced raw output must not identify a subtitle packet.");
+            Assert::IsTrue(g.temporal.lastSubmittedField==PL_FIELD_TOP,
+                L"Interlaced raw output lost the configured top-field selection.");
+            return g.ReadPixels();
+        };
+        const auto direct=render(false),raw=render(true);
+        Assert::AreEqual(direct.size(),raw.size());
+        int maxError=0;
+        for(size_t i=0;i<direct.size();++i)
+            maxError=(std::max)(maxError,std::abs(int(direct[i])-int(raw[i])));
+        Assert::IsTrue(maxError<=2,
+            (std::wstring(L"Raw subtitle fallback diverged from current-source deinterlacing; max error=")+
+                std::to_wstring(maxError)).c_str());
+    }
+
+    TEST_METHOD(CachedPendingSourceRevisesToExactRawFallbackBeforeMappingReuse) {
+        struct Snapshot {
+            uint64_t generation=0,sequence=0,viewport=0,contract=0;
+            bool subtitleCanvasWait=false,rawFallback=false,composed=false;
+        };
+        TemporalSourceEvidenceLedger<Snapshot,4> sourceEvidence;
+        TemporalPresentationLedger<Snapshot,4,TemporalPresentationKey> mappings;
+        const TemporalSourceEvidenceKey sourceKey{9,101};
+        const TemporalPresentationKey mappingKey{9,101,19,31};
+        Assert::IsTrue(sourceEvidence.Ensure(sourceKey,[&](Snapshot& snapshot) {
+            snapshot.generation=9;snapshot.sequence=101;snapshot.viewport=19;snapshot.contract=31;
+            snapshot.subtitleCanvasWait=true;snapshot.composed=false;
+            return true;
+        }));
+        Assert::IsTrue(mappings.Ensure(mappingKey,[&](Snapshot& snapshot) {
+            snapshot.generation=9;snapshot.sequence=101;snapshot.viewport=19;snapshot.contract=31;
+            snapshot.composed=true; // This is the stale complete-composition mapping.
+            return true;
+        }));
+        Assert::IsTrue(sourceEvidence.CanReviseSucceeded(sourceKey));
+        Assert::IsFalse(sourceEvidence.ReviseSucceeded(sourceKey,[&](Snapshot& snapshot) {
+            snapshot.generation=9;snapshot.sequence=101;snapshot.viewport=20;snapshot.contract=31;
+            snapshot.rawFallback=true;return false; // Wrong viewport cannot replace the pending source.
+        }));
+        Assert::IsTrue(sourceEvidence.Find(sourceKey)->subtitleCanvasWait,
+            L"Failed context join must leave the pending source fact intact.");
+        Assert::IsTrue(mappings.Find(mappingKey)->composed,
+            L"Failed source revision must not invalidate or replace the prior mapping.");
+
+        const bool revised=sourceEvidence.ReviseSucceeded(sourceKey,[&](Snapshot& snapshot) {
+            snapshot.generation=9;snapshot.sequence=101;snapshot.viewport=19;snapshot.contract=31;
+            snapshot.rawFallback=true;snapshot.subtitleCanvasWait=false;snapshot.composed=false;
+            return snapshot.generation==sourceKey.sourceGeneration &&
+                snapshot.sequence==sourceKey.sourceSequence && snapshot.viewport==mappingKey.viewportEpoch &&
+                snapshot.contract==mappingKey.outputContractSerial && snapshot.rawFallback;
+        });
+        Assert::IsTrue(revised,L"Exact current raw fallback should revise the pending same-source fact.");
+        const auto* rawSource=sourceEvidence.Find(sourceKey);
+        Assert::IsTrue(rawSource&&rawSource->rawFallback&&!rawSource->subtitleCanvasWait&&!rawSource->composed,
+            L"The revised source must name current raw pixels without claiming composition.");
+        mappings.InvalidateSuccessfulSource(sourceKey.sourceGeneration,sourceKey.sourceSequence);
+        Assert::IsNull(mappings.Find(mappingKey),
+            L"A successful raw-source revision must retire the prior composed mapping.");
+        Assert::IsTrue(mappings.Ensure(mappingKey,[&](Snapshot& snapshot) {
+            const auto* source=sourceEvidence.Find(sourceKey);
+            if(!source||source->generation!=mappingKey.sourceGeneration||
+                source->sequence!=mappingKey.sourceSequence||source->viewport!=mappingKey.viewportEpoch||
+                source->contract!=mappingKey.outputContractSerial||!source->rawFallback||
+                source->subtitleCanvasWait||source->composed)return false;
+            snapshot=*source;return true;
+        }));
+        const auto* currentMapping=mappings.Find(mappingKey);
+        Assert::IsTrue(currentMapping&&currentMapping->rawFallback&&!currentMapping->composed,
+            L"Mapping rebuild must follow the current raw snapshot, never the old composed one.");
     }
 };
 }

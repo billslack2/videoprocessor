@@ -15,6 +15,8 @@ struct ActivePictureAnalyzerInput
 	P010PlaneView frame;
 	uint64_t frameNumber = 0;
 	double framesPerSecond = 60.0;
+	// Conversion/publication generation; the borrowed sample is read synchronously.
+	uint64_t sourceGeneration = 1;
 };
 
 struct ActivePictureAnalyzerResult
@@ -32,4 +34,5 @@ public:
 
 private:
 	ActivePictureTransitionModel m_transition;
+	uint64_t m_sourceGeneration = 0;
 };

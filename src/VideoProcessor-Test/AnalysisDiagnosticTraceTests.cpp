@@ -421,6 +421,74 @@ namespace Tests
 				"417083 1 0 2") != std::string::npos);
 		}
 
+        TEST_METHOD(BoundaryChainSeparatesUnknownPhysicalFromGuardAndCaptionNomination)
+        {
+            AnalysisDiagnosticRecordV1 current;
+            current.acceptedSequence = 34939; current.transportGeneration = 3;
+            AnalysisBoundaryChainFacts facts;
+            facts.physicalEvaluated = true;
+            facts.physicalAvailable = true;
+            facts.physicalConfidence = 0;
+            facts.physicalSource = 34939;
+            facts.physical[2] = 3840; facts.physical[1] = 262; facts.physical[3] = 1976;
+            facts.nomination[2] = 3840; facts.nomination[1] = 262; facts.nomination[3] = 1976;
+            facts.guard[2] = 3840; facts.guard[1] = 254; facts.guard[3] = 1906;
+            auto record = AnalysisDiagnosticTrace::BoundaryChain(current, facts);
+            Assert::AreEqual(uint64_t(34939), record.acceptedSequence);
+            Assert::AreEqual(0, record.measured[3]);
+            Assert::AreEqual(1976, record.previous[3]);
+            Assert::AreEqual(1906, record.candidate[3]);
+            Assert::AreEqual(0.0, record.metrics[0]);
+            facts.physicalConfidence = 1;
+            facts.physical[1] = 263; facts.physical[3] = 1897;
+            record = AnalysisDiagnosticTrace::BoundaryChain(current, facts);
+            Assert::AreEqual(3840.0 / 1634.0, record.metrics[0]);
+            facts.physicalConfidence = 2;
+            facts.physical[1] = 0; facts.physical[3] = 2160;
+            record = AnalysisDiagnosticTrace::BoundaryChain(current, facts);
+            Assert::AreEqual(3840.0 / 2160.0, record.metrics[0]);
+            facts.physicalSource = 34938;
+            record = AnalysisDiagnosticTrace::BoundaryChain(current, facts);
+            Assert::AreEqual(0.0, record.metrics[0], L"Previous physical proof is not a current-source measurement.");
+        }
+
+        TEST_METHOD(NativeCaptureSamplesWholeDurationAndBothInputParitiesWithinBudget)
+        {
+            TraceFixture fixture(true, 2000);
+            Assert::AreEqual(static_cast<uint32_t>(AnalysisDiagnosticCaptureResult::Started),
+                static_cast<uint32_t>(fixture.trace->StartCapture(true)));
+            OwnerCounters counters;
+            OwnerSource owner;
+            owner.bytes = std::make_shared<const std::vector<uint8_t>>(
+                std::vector<uint8_t>{1, 2, 3, 4});
+            owner.counters = &counters;
+            AnalysisDiagnosticFramePacketV1 frame;
+            frame.data = owner.bytes->data(); frame.dataBytes = owner.bytes->size();
+            frame.ownerContext = &owner; frame.retainOwner = RetainOwner;
+            frame.releaseOwner = ReleaseOwner;
+            frame.frameDuration100ns = 166833;
+            for (uint64_t sequence = 1; sequence <= 110; ++sequence) {
+                frame.acceptedSequence = frame.sourceFrameNumber = sequence;
+                fixture.trace->SubmitFrame(frame);
+                Sleep(2);
+            }
+            fixture.trace->StopCapture();
+            Assert::IsTrue(WaitForWriter(*fixture.trace));
+            const auto status = fixture.trace->Status();
+            Assert::IsTrue(status.frameBytesWritten <= 32);
+            std::ifstream input((CapturePath(*fixture.trace) + "\\frames.jsonl").c_str());
+            std::string line; uint64_t last = 0; bool odd = false, even = false;
+            while (std::getline(input, line)) {
+                const std::string key = "\"sourceFrameNumber\":";
+                const auto at = line.find(key);
+                if (at == std::string::npos) continue;
+                const auto id = std::strtoull(line.c_str() + at + key.size(), nullptr, 10);
+                last = id; odd = odd || (id % 2 != 0); even = even || (id % 2 == 0);
+            }
+            Assert::IsTrue(last >= 90, L"Capture budget must cover late source frames, not only its first burst.");
+            Assert::IsTrue(odd && even, L"A >30 Hz capture must observe both analysis cadence parities.");
+        }
+
 		TEST_METHOD(FrameSizeCapRejectsBeforeRetainingOwner)
 		{
 			TraceFixture fixture(true);

@@ -6,6 +6,7 @@
 
 #include "ActivePictureTransitionModel.h"
 #include "ActivePictureEvidence.h"
+#include "ActivePictureDecisionTimeline.h"
 #include "SceneDetector.h"
 
 
@@ -49,6 +50,10 @@ namespace AlphaSourceCrop
 		OutwardPictureProofRoute proofRoute = OutwardPictureProofRoute::NONE;
 		uint64_t sourceGeneration = 0;
 		uint64_t lastObservedSourceSequence = 0;
+        // Current-source permission for the candidate's remaining discarded
+        // bands, independent of occupancy outside the old accepted picture.
+        // Recomputed by the producer; never inherited across observations.
+        bool candidateCropVerified = false;
 	};
 
 	struct OutwardPictureConfirmationDecision
@@ -386,6 +391,8 @@ namespace AlphaSourceCrop
 	struct TransitionAdmissionInput
 	{
 		ActivePictureEvidence evidence;
+        // Exact source context validated by the caller, never a retained-picture hint.
+        ActivePictureFrameIdentity currentIdentity;
 		ActivePictureBounds outwardCandidate;
 		ActivePictureBounds presentationBeforeObservation;
 		ActivePictureBounds trustedGeometry;
@@ -409,6 +416,9 @@ namespace AlphaSourceCrop
 		OutwardPictureConfirmationDecision outward;
 		// Withdraws obsolete side-bar authority; never certifies replacement bounds.
 		OutwardPictureConfirmationDecision pillarboxContradiction;
+        // Exact-current spatial crop proof supplies pixel authority directly;
+        // the transition model alone owns temporal confirmation on this route.
+        bool currentSpatialOutward = false;
 		bool deferPresentation = false;
 		bool deferOutward = false;
 		// Unresolved margins defer composition changes unless the exact vertical
@@ -1166,8 +1176,17 @@ namespace AlphaSourceCrop
 		uint64_t sourceSequence = 0;
 	};
 
+    // Exact-current independently verified return to an existing native entry.
+    // Presentation-only; never creates a native contract or caption ownership.
+    struct NativeEntryReleaseProof
+    {
+        bool available = false;
+        ActivePictureBounds nativeEntry;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+    };
 	struct NearBlackPresentationEpisodeDecision
 	{
+        NativeEntryReleaseProof currentNativeEntryRelease;
 		NearBlackPresentationEpisodeState state;
 		bool started = false;
 		bool changedToFullRaster = false;
@@ -1194,7 +1213,9 @@ namespace AlphaSourceCrop
 	// two weak source rows with a current, previously applied optional-fill certificate. A
 	// full-raster episode may restore only its exact entry crop after a bounded,
 	// current-frame pixel-safe revalidation dwell. The same proof ends retained
-	// crop episodes once bright scope returns. Neither path grants authority to
+	// crop episodes with incomplete evidence. Independently verified current native
+	// entry bars release a retained-crop episode immediately, without a dwell or
+	// consecutive-frame requirement. Neither path grants authority to
 	// startup or unrelated recent geometry. An independently safe sampling-sized
 	// outward correction may instead withdraw the undersized trusted contract
 	// and reopen ordinary acquisition; it never restores that unsafe old crop.
@@ -1269,6 +1290,73 @@ namespace AlphaSourceCrop
 
     // Successful composition is an exact-frame presentation fact. It may use
     // an independently trusted native base; it never votes for detector geometry.
+    // Source-derived acceptance is independent of both current observations and
+    // the transformed window actually submitted. Only the native publication
+    // adapter creates this record; FIT/caption evidence cannot create one.
+    struct AcceptedNativeCropContract
+    {
+        bool available = false;
+        ActivePictureBounds bounds;
+        uint64_t sourceGeneration = 0, acceptedSourceSequence = 0;
+        uint64_t sourceFormatKey = 0, analysisDomainKey = 0;
+        // Producing detector only; never grants crop or caption authority.
+        ActivePictureDetectorKind detector = ActivePictureDetectorKind::Legacy;
+    };
+
+    enum class NativePresentationOrigin : uint8_t
+    {
+        NONE, EXACT_NATIVE, CONFIRMED_FIT, CONFIRMED_TRANSLATION, CONFIGURED_FILL, CONFIRMED_PICTURE, CAPTION_CONTINUITY,
+        TRANSLATED_CONFIGURED_FILL, VISIBILITY_FALLBACK
+    };
+    // Only independently measured caption pixels (and their authorized outer
+    // padding) survive native format changes. Never retain the old native crop.
+    struct CaptionPreservationEvidence
+    {
+        bool available = false;
+        ActivePictureBounds extent;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        uint64_t sourceFormatKey = 0, analysisDomainKey = 0;
+    };
+    struct CaptionTranslationMeasurement
+    {
+        bool available=false, measuredCaption=false, denseOverlayMeasured=false;
+        VerticalBarContentInput denseContent;
+        ActivePictureBounds nativeBase,occupiedBounds;
+        double targetTranslationPixels=0.0;
+        int visibleExtentMarginPixels=0;
+        uint64_t sourceGeneration=0,sourceSequence=0,presentationEpoch=0;
+        uint64_t sourceFormatKey=0,analysisDomainKey=0,acceptedNativeSourceSequence=0;
+        // Original measured source lifetime; copying/submission never renews it.
+        uint64_t measurementTick=0,leaseExpiryTick=0;
+    };
+    enum class PreparedNativeMode : uint8_t { NONE, BLACK, RECONSTRUCTION };
+    // Exact authorized output, distinct from the source-derived native contract.
+    struct NativePresentationCertificate
+    {
+        bool available = false;
+        NativePresentationOrigin origin = NativePresentationOrigin::NONE;
+        ActivePictureBounds nativeBase, approvedBounds;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        CaptionPreservationEvidence captionPreservation;
+        // Composition of an independently qualified translation with either fill axis.
+        ActivePictureBounds unfilledTranslation;
+        double translatedFillScreenAspect = 0.0;
+        // Exact final fill policy, replayed at submission against the unfilled pose.
+        AspectLimitFillInput translatedFillPolicy;
+        CaptionTranslationMeasurement captionTranslationMeasurement;
+        PreparedNativeMode preparedNativeMode=PreparedNativeMode::NONE;
+        uint64_t preparedNativeSourceSequence=0;
+    };
+
+    // Exact selected-source composition only. This does not certify that
+    // unrelated residual bands are empty, nor grant erasure or caption leases.
+    struct CurrentSubtitleComposition
+    {
+        bool available=false;
+        ActivePictureFrameIdentity identity;
+        ActivePictureBounds nativeBase;
+        PreparedNativeMode mode=PreparedNativeMode::NONE;
+    };
     struct PreparedSubtitlePresentation
     {
         bool available=false;
@@ -1277,7 +1365,15 @@ namespace AlphaSourceCrop
     };
 	struct Input
 	{
+        AcceptedNativeCropContract acceptedNativeCrop;
+        uint64_t frameSourceFormatKey = 0, frameAnalysisDomainKey = 0;
         PreparedSubtitlePresentation preparedSubtitle;
+        CurrentSubtitleComposition currentSubtitleComposition;
+        PreparedNativeMode subtitlePresentationMode=PreparedNativeMode::NONE;
+        // Exact selected-source adapter facts, never inferred from an absent cue
+        // or a requested mode. Build permission ends after initial preparation.
+        bool currentCaptionAbsenceConfirmed=false;
+        bool initialSubtitleShaderBuild=false;
         MovingPicturePresentationHold movingPictureHold;
 		PictureTransitionHandoff pictureTransitionHandoff;
 		uint64_t framePresentationEpoch = 0;
@@ -1420,6 +1516,7 @@ namespace AlphaSourceCrop
         ConfirmedFitOwnershipOrigin origin = ConfirmedFitOwnershipOrigin::NONE;
         ActivePictureBounds nativeBase, approvedBounds;
         uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        ActivePictureBounds evidenceBounds;
     };
 	struct Decision
 	{
@@ -1433,6 +1530,20 @@ namespace AlphaSourceCrop
 		WithdrawalCause withdrawalCause = WithdrawalCause::NONE;
 		std::string reason;
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
+        NativePresentationCertificate nativePresentation;
+        // Legacy snapshot veto retained for validation; normal pending subtitle
+        // resolution now selects current raw pixels instead of withholding video.
+        bool waitForSubtitleProcessing=false;
+        // Current raw frame selected without processed-subtitle/caption proof.
+        bool unprocessedSubtitleCanvas=false;
+        // The processed subtitle canvas could not be admitted. This decision
+        // presents only the current source's raw pixels (or full input when
+        // exact visibility/base identity is unavailable); it carries no crop,
+        // caption, native-picture, or physical full-raster authority.
+        bool rawSubtitleFallback=false;
+        bool subtitleEngagePoseRetained=false;
+        bool subtitleCanvasApplied=false, subtitleTranslationRange=false;
+        int subtitleMinimumTranslation=0, subtitleMaximumTranslation=0;
 	};
 
 
@@ -1440,6 +1551,9 @@ namespace AlphaSourceCrop
 	// temporary full-raster withdrawals and of diagnostic logging.
 	struct CropPresentationAdmissionState
 	{
+        AcceptedNativeCropContract acceptedNativeCrop;
+        NativePresentationCertificate nativePresentation;
+        PreparedNativeMode subtitlePresentationMode=PreparedNativeMode::NONE;
         // Copied with the selected packet; submission validates identity and actual bounds again.
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
         // A separate presentation-only certificate for an approved side fill of
@@ -1471,6 +1585,14 @@ namespace AlphaSourceCrop
 	// alone is not evidence that the viewer actually saw the crop.
 	struct SubmittedNativeScopeAnchor
 	{
+        AcceptedNativeCropContract acceptedNativeCrop;
+        CaptionPreservationEvidence captionPreservation;
+        bool submittedPresentationAvailable = false;
+        ActivePictureBounds submittedPresentation;
+        NativePresentationOrigin submittedPresentationOrigin = NativePresentationOrigin::NONE;
+        NativePresentationCertificate submittedPresentationProof;
+        PreparedNativeMode preparedNativeMode=PreparedNativeMode::NONE;
+        uint64_t preparedNativeInitializedSourceSequence=0;
 		bool available = false;
 		ActivePictureBounds crop;
 		uint64_t sourceGeneration = 0;
@@ -1490,6 +1612,11 @@ namespace AlphaSourceCrop
         uint64_t submittedOptionalFillSourceSequence = 0;
         double submittedOptionalFillScreenAspect = 0.0;
 	};
+    inline void ResetPreparedNativeInitialization(SubmittedNativeScopeAnchor& anchor)
+    {
+        anchor.preparedNativeMode=PreparedNativeMode::NONE;
+        anchor.preparedNativeInitializedSourceSequence=0;
+    }
 	struct SubmittedNativeScopeAnchorUpdateInput
 	{
 		SubmittedNativeScopeAnchor previous;
@@ -1825,8 +1952,59 @@ namespace AlphaSourceCrop
     ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
         const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding);
 
+    enum class SubtitleCanvasMode : uint8_t { OFF, CLASSIC, BLACK, RECONSTRUCTION };
+    enum class CaptionObservationState : uint8_t { UNKNOWN, PRESENT, ABSENT };
+    struct CurrentCaptionObservation
+    {
+        CaptionObservationState state = CaptionObservationState::UNKNOWN;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
+        uint64_t sourceFormatKey = 0, analysisDomainKey = 0;
+    };
+
+    // Exact current-source occupied extent used only to keep its raw pixels
+    // visible while processed subtitle admission is pending. This is not
+    // detector, caption, or native-crop authority.
+    struct CurrentSourceVisibilityWitness
+    {
+        bool available=false, directCurrentSample=false;
+        ActivePictureBounds nativeBase, bounds;
+        uint64_t sourceGeneration=0,sourceSequence=0,presentationEpoch=0;
+        uint64_t sourceFormatKey=0,analysisDomainKey=0;
+    };
+
 	struct PresentationRecoveryInput
 	{
+        CurrentSourceVisibilityWitness currentSourceVisibility;
+        NativeEntryReleaseProof currentNativeEntryRelease;
+        // Completed current native-pixel inspection of individual excluded bands.
+        // Coarse edge nominations may disagree; only this exact identity may
+        // show that an opposite-edge nomination contains no visible pixels.
+        struct NativeBandSafety
+        {
+            bool available=false, left=false, top=false, right=false, bottom=false;
+            ActivePictureBounds nativeBase;
+            uint64_t sourceGeneration=0,sourceSequence=0,presentationEpoch=0;
+            uint64_t sourceFormatKey=0,analysisDomainKey=0;
+            int coarseHorizontalStep=0,coarseVerticalStep=0;
+        } currentNativeBandSafety;
+        CaptionTranslationMeasurement currentCaptionTranslation;
+        // Current live profile, never inferred from an old controller/lease.
+        bool classicTranslationEnabled=false;
+        // Live timed engage state; presentation safety does not change its clock or target.
+        bool classicTranslationEngaging=false;
+        CurrentCaptionObservation captionObservation;
+        // Live processing profile and exact current confirmed caption, distinct
+        // from native measurement and the historical movement-controller lease.
+        SubtitleCanvasMode subtitleCanvasMode=SubtitleCanvasMode::OFF;
+        ActivePictureBounds confirmedCaptionBounds;
+        // Exact current raw candidate is preservation-only, never confirmation.
+        ActivePictureBounds currentTextCandidate;
+        ActivePictureBounds fixedNativeViewport;
+        int captionEdgeMarginPixels=0;
+        // An exact current independently confirmed native expansion can own
+        // preservation without acquiring caption/UI presentation authority.
+        OutwardPictureConfirmationState nativeOutwardPictureProof;
+        uint64_t nativeOutwardPictureProofPresentationEpoch = 0;
 		PresentationRecoveryState previous;
 		CropPresentationAdmissionState previousAdmission;
 		SubmittedNativeScopeAnchor submittedScopeAnchor;
@@ -2046,10 +2224,16 @@ namespace AlphaSourceCrop
     };
     AspectLimitFillDecision EvaluateFinalAspectLimitFill(
         const FinalAspectLimitFillInput& input);
+    // Certify the exact final filled pose, without acquiring native boundaries.
+    CropPresentationAdmissionState QualifyTranslatedNativePresentation(
+        const CropPresentationAdmissionState& admission,
+        const FinalAspectLimitFillInput& input, const AspectLimitFillDecision& actual);
+
 
     // Exact current composition can resolve presentation-only inspection and
     // recovery of this independently trusted native base, without detector votes.
     bool HasCurrentPreparedSubtitlePresentation(const Input& input);
+    bool HasCurrentSubtitleCompositionPresentation(const Input& input);
 	Decision Evaluate(const Input& input);
 
 	// A scene boundary resets candidate proof, but presentation is atomic:

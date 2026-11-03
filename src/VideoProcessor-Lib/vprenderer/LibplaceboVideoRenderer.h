@@ -30,6 +30,7 @@
 
 
 class ConfigFile;
+struct SourcePictureObservation;
 
 // In-process D3D11 renderer. HDR input is color-managed and tone-mapped to
 // an SDR Rec.709 swapchain; this backend deliberately does not emit HDR.
@@ -163,6 +164,9 @@ private:
             uint64_t domainKey=0;
             ActivePictureEvidence evidence;
             ActivePictureArDarknessEvidence darkness;
+            // Immutable spatial facts owned by this exact source packet.
+            // Active mode verifies these independently before granting crop authority.
+            std::shared_ptr<const SourcePictureObservation> sourcePictureObservation;
         };
         using LookaheadWorker = OptionalAnalysisWorker<LookaheadMeasurement>;
         using OutwardWindowResult = PreparedOutwardWindowResult;
@@ -218,8 +222,10 @@ private:
 	bool HasConversionWorkLocked() const;
 	std::shared_ptr<QueuedFrame::ConvertedPayload> AcquireConversionPayload();
 	void StopInternal(const std::function<void()>& drainAfterGraphStop);
+    void PrepareCurrentSourceBeforePresentation(const std::vector<QueuedFrame>& frames,uint64_t policy,uint64_t continuity);
+    void DispatchAcceptedSourcePreparation(const QueuedFrame& frame,uint64_t policy,uint64_t continuity);
     void PrimeSubtitleMeasurements(const std::vector<QueuedFrame>& frames,
-        uint64_t policyGeneration, uint64_t continuityGeneration);
+        uint64_t policyGeneration, uint64_t continuityGeneration,bool harvestOnly=false);
     void PrimePictureProofMeasurements(const std::vector<QueuedFrame>& frames,
         uint64_t policyGeneration, uint64_t continuityGeneration);
     void PrimeActivePictureMeasurements(const std::vector<QueuedFrame>& frames,
@@ -230,7 +236,7 @@ private:
 		std::vector<QueuedFrame>& previewFrames,
 		size_t queuedFutureFrames,
 		uint64_t lookaheadPolicyGeneration,
-		uint64_t continuityGeneration, int64_t deadlineQpc);
+		uint64_t continuityGeneration, int64_t deadlineQpc, bool allowBackgroundDispatch);
 	void ClearQueue(const char* reason = "queue clear");
 	void BeginQueueGeneration(const char* reason, bool clearStopRequest = false);
 	void ClearQueueLocked(const char* reason);
@@ -266,6 +272,7 @@ private:
 
 	mutable std::mutex m_queueMutex;
 	std::condition_variable m_queueChanged;
+    std::shared_ptr<AnalysisCompletionSignal> m_sourcePreparationChanged=std::make_shared<AnalysisCompletionSignal>();
 	std::deque<QueuedFrame> m_frameQueue;
 	ActivePictureDecisionTimeline m_activePictureTimeline;
 	size_t m_frameQueueDesiredDepth = 1;

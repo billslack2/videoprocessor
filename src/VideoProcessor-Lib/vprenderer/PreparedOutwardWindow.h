@@ -1,6 +1,7 @@
 #pragma once
 #include "AsyncOutwardWindow.h"
 #include "PreparedPictureEvidence.h"
+#include <SourcePictureDetector.h>
 #include <array>
 #include <limits>
 
@@ -37,11 +38,40 @@ template<class RawMeasurement>
 inline bool PreparedOutwardRawMeasurementCurrent(const PreparedAnalysisFrame& frame,
     const ActivePictureFrameIdentity& identity, const std::shared_ptr<const RawMeasurement>& raw)
 {
-    if (!raw || raw->domainKey != frame.domainKey || !SameAnalysisFrameIdentity(raw->identity, identity))
+    if (!raw || !PreparedSourceDetectorCurrent(raw->evidence) || raw->domainKey != frame.domainKey || !SameAnalysisFrameIdentity(raw->identity, identity))
         return false;
     auto imported = frame;
     imported.source = raw->source;
     return SamePreparedPictureFrame(imported, frame);
+}
+
+// A cold computation can race an independent producer completing the same
+// immutable source. Publication must not erase a newer physical observation.
+template<class RawMeasurement>
+std::shared_ptr<const RawMeasurement> PublishPreparedOutwardRaw(
+    const PreparedAnalysisFrame& frame,const ActivePictureFrameIdentity& identity,
+    const std::shared_ptr<typename OptionalAnalysisWorker<RawMeasurement>::Slot>& slot,
+    const std::shared_ptr<const RawMeasurement>& initiallyReady,
+    std::shared_ptr<const RawMeasurement> computed)
+{
+    auto expected=std::atomic_load(&slot->ready);
+    if(!PreparedOutwardRawMeasurementCurrent(frame,identity,computed))
+        return PreparedOutwardRawMeasurementCurrent(frame,identity,expected)?expected:computed;
+    for(;;) {
+        if(PreparedOutwardRawMeasurementCurrent(frame,identity,expected)) {
+            if(!SourcePictureMeasurementCanComplete(expected->evidence,computed->evidence))return expected;
+        } else if(expected!=initiallyReady) {
+            // An old producer cannot overwrite a newer source/context owner.
+            return computed;
+        }
+        if(std::atomic_compare_exchange_weak(&slot->ready,&expected,computed)) {
+            // Outward computation can complete this raw slot while its normal
+            // worker is still running. Wake preparation at the common immutable
+            // publication point, not only when that normal worker exits.
+            if(slot->completion)slot->completion->Notify();
+            return computed;
+        }
+    }
 }
 
 template<class RawMeasurement>
@@ -87,7 +117,8 @@ PreparedOutwardWindowResult EvaluatePreparedOutwardWindow(
         const auto& frame = request.frames[i];
         const auto& identity = request.identities[i];
         auto raw = RawWorker::Ready(request.rawSlots[i]);
-        if (PreparedOutwardRawMeasurementCurrent(frame, identity, raw))
+        if (PreparedOutwardRawMeasurementCurrent(frame, identity, raw) &&
+            SourcePictureMeasurementWorkComplete(raw->evidence))
             ++result.rawReused;
         else
         {
@@ -95,13 +126,18 @@ PreparedOutwardWindowResult EvaluatePreparedOutwardWindow(
             measured->source = frame.source;
             measured->identity = identity;
             measured->domainKey = frame.domainKey;
-            measured->evidence = ExtractActivePictureEvidence(frame.source);
+            measured->evidence = DetectPreparedSourcePictureBounded(frame.source,identity).evidence;
             measured->darkness = EvaluateActivePictureArDarkness(frame.source, measured->evidence);
-            raw = std::move(measured);
-            std::atomic_store(&request.rawSlots[i]->ready, raw);
+            std::shared_ptr<const RawMeasurement> computed=std::move(measured);
+            raw=PublishPreparedOutwardRaw<RawMeasurement>(frame,identity,
+                request.rawSlots[i],raw,std::move(computed));
             ++result.rawComputed;
         }
-        const auto& key = request.retentionKeys[i];
+        // Incomplete bounded work is neither a negative proof nor a completed
+        // window. Keep its raw facts, but let a later authorized job finish it.
+        if(!SourcePictureMeasurementWorkComplete(raw->evidence))throw AnalysisEvaluationCancelled{};
+        auto key = request.retentionKeys[i];
+        key.rawRevision=raw;
         auto retention = PreparedPictureEvidenceWorker::Ready(request.retentionSlots[i]);
         if (retention && SamePreparedPictureEvidenceKey(retention->key, key))
             ++result.retentionReused;

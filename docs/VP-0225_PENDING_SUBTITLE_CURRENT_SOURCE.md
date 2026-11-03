@@ -1,0 +1,458 @@
+# Current video during pending subtitle processing
+
+VP-0225 and VP-0222 integration, 2026-11-02.
+
+## Failure being repaired
+
+The deployed combined source 53058498 retains a post-RC6 whole-source subtitle
+canvas gate introduced by 01c1e13f. Pending inspection, a positive caption whose
+processed output is not ready, or an infeasible fixed-size placement can consume
+fresh input while holding the last submitted whole picture. The live incident
+contains a 5.796-second Classic wait across sources 201 through 338. An intervening
+configuration/native-context reset is recorded; volume causality is not established
+by the logs. The user also reports recurring stalls with dense subtitle activity.
+
+A separate Off-mode defect alternates FIT top 190 with raw-safe top 138 while the
+physical measurement remains unchanged. A narrower confirmed FIT was suppressing
+current raw visibility. That precedence is corrected without changing detection.
+The integrated UNKNOWN pan path also now follows an advancing current controller
+instead of pinning a prior pose; current raw bounds still clamp it.
+
+## Pending processing is not a video submission veto
+
+Ready processed subtitle canvases keep their existing behavior. A pending canvas
+instead requests an explicitly unprocessed, output-only presentation of the current
+source. It does not borrow an older complete subtitle frame, invent absence, erase
+raw captions, or acquire new detected/native/full-raster authority.
+
+An independently source-bound raw visibility witness carries direct-sample status,
+source generation/sequence, viewport epoch, format, analysis domain, native base and
+visible bounds. When it matches a valid accepted native base, the raw presentation
+contains the union of that base and current visible pixels, aligned outward and
+bounded by the input raster. This reuses completed retention evidence; it adds no
+new detector or text scan. If the witness/base is unavailable or stale, complete
+current input pixels are the conservative presentation. This is not evidence of a
+full-raster active picture and must not update accepted native aspect or boundaries.
+
+Ordinary optional aspect fill must not trim those protected pixels. Explicit user
+fixed-aspect cropping remains an explicit presentation setting. Caption observation
+state remains as observed; raw fallback has no processed/native/FIT ownership proof.
+
+Temporal output must select the exact current raw source, bypass previous subtitle
+packet repeats and mixing, and preserve required source conversion/deinterlacing.
+Raw processing must not reuse a cleaned/composed cache entry. Geometry/admission
+handling must distinguish this output-only state from native picture acquisition.
+
+## Evidence and tests
+
+Native tests cover identity/base faults, current raw coverage, full-input fallback,
+no authority mutation, ready/OFF/fixed-setting controls, Off FIT precedence, and
+controller progression. Actual renderer checks must join fallback admission to the
+submitted original source and verify caption/source pixels, current source progress,
+and no stale composition or repeated whole picture under caption/overlay load.
+Both shipped dependencies and motion paths remain required. No passing qualification
+or live-scene acceptance is claimed by this design note.
+
+Trace flag 32 identifies raw subtitle fallback; flag 64 identifies an exact independent
+raw visibility witness. On those rows only, counters 3..7 are witness source sequence,
+source generation, viewport epoch, source format key and analysis domain. Metrics
+8..11 contain raw bounds and previous[] contains its native base. Candidate presence
+retains flag 8 and engage-pose retention flag 16. Ordinary row meanings are unchanged.
+
+## Static cue reuse and all unprocessed source selection
+
+The persistent-caption counterexample is a remembered-pixel check at (1548,1886),
+four pixels outside glyphs beginning x1552. Exact background equality over an
+expanded line rectangle is not cue identity. The pending guard now supports a
+bounded current-source ink verifier seeded from an accepted owned-glyph template.
+It samples the configured subtitle bands, verifies current known glyphs and black
+support, and vetoes new ink, alternate-color/local-contrast marks, and tiny adjacent
+changes. Raw/fringe exemptions require tightly matching seed YUV. Incomplete or
+over-budget live palette proofs cannot fall through to a smaller legacy ROI check.
+The sample cap is 327,680; no connected-component recognition is added to this
+current-source verification path. Source masks are rebuilt from current pixels,
+remain pending/non-semantic, and preserve the original hold budget and seed age.
+
+Every unprocessed canvas decision, including the older native-size continuation,
+now carries a separate exact-current source marker into temporal selection. It
+cannot select an older complete movie/subtitle packet. This marker is distinct
+from diagnostic bit32, which still identifies only the explicit union/full-input
+geometry fallback. Current color/deinterlace processing and policy geometry remain.
+
+Initial shader preparation must also preserve a known positive outboard caption;
+only proven-contained current raw pixels may remain in the native aperture while
+processing is pending. Before the first Classic pose, explicit source-joined raw
+fallback may preserve picture plus caption at a larger envelope. Once a processed
+or settled cue is acquired, existing steady viewport/cadence/pixel checks stay strict.
+
+## Timing review boundaries
+
+The 327,680 ceiling bounds unique source reads, not elapsed render-thread time.
+At UHD the grid is 960 by 540; both search bands include encoded bars as well as picture-side search depth. For
+a 276/1884 UHD picture they contain about 280,320 points at
+zero near-bar distance and 289,920 at 20 source pixels. Wider searches may exceed
+the existing sample cap and safely decline reuse. Seed creation also
+walks masks/support, and current proofs inspect cached neighbors. Accepted current
+measurements can recreate the seed, so seed cost must be measured as well as the
+late-worker branch. The earlier guard capped expanded line-window reads at 32,768.
+Do not claim this broader verification is faster solely because work is bounded.
+
+The independent local-contrast veto is conservative. Textured movie pixels in the
+search bands can reject continuation even when the cue is unchanged. Such rejection
+must lead to current raw video, never waiting or reuse of older movie pixels. Uniform
+moving-background positives do not establish successful reuse over arbitrary movie
+texture. Report verifier time and rejection reasons with actual UHD detector seeds,
+and distinguish a safe rejected proof from successful static-cue reuse.
+## Current prepared-footprint runtime path
+
+Advanced modes seed pending reuse only after an actual current composition has
+established its extraction and cleanup geometry. A separate guard shares the
+existing native-pixel glyph/core/fringe and backing verifier with cadence logic;
+the cadence entry point retains its stride-two and single-skip rules. Pending
+ordering, backlog reassociation and lease accounting remain in the pending guard.
+
+Changed unowned nonblack movie pixels outside the foreground/content hull can
+restrict a rectangular cleanup on any of its four edges. A one-use receipt binds
+the current source, original geometry, policy and physical base. The compositor
+must consume that receipt before processing. The original rectangle minus the
+restricted inner rectangle is explicitly protected: cleanup and panel background
+cannot replace those current pixels; verified current glyph alpha may still draw.
+The original donor exclusion and placement/layout coverage remain unchanged.
+Interior changes, unsupported contours, changed glyphs/backing, or unbound geometry
+fail into current raw video. Nonblack or chroma-bearing encoded-bar pixels outside
+the verified operation also veto reuse, so native cropping cannot hide new bar ink.
+
+The pending result creates no new bar/native, caption-absence or full semantic
+measurement. It retains current source identity and does not renew its accepted
+seed from held/pending frames. No historical movie pixels enter rendered output.
+The earlier global picture-contrast verifier remains a generic path; the advanced
+renderer uses the prepared-footprint path so unrelated moving movie texture is not
+interpreted as cue novelty. The earlier 8.5-15.4ms full-band probe is exploratory
+work on that generic path, not a measurement of this runtime path.
+## Ready-frame template work and band-edge correction
+
+A static cue is not a new semantic cue merely because a new source frame arrives.
+The pending guard spends the original elapsed lease and never renews it from its
+own output. Full current measurements may establish a new accepted source, while
+immutable footprint topology can be reused only with matching geometry, context,
+layout and detector masks. Every output still reads current movie/glyph pixels.
+
+The current ready path invokes both cadence and pending-footprint seed guards.
+Their lifetime rules differ, but their footprint construction overlaps. The new
+`subtitle-cadence-seed` and `subtitle-footprint-seed` records measure the complete
+calls, including setup; `subtitle-pending-seed` operation time is metrics[3], not
+metrics[0] (which is lease age). Timings must include rejected attempts and report
+call counts, successful reuse counts and source progression. A cheap pending
+branch does not establish a cheap pipeline if accepted frames repeatedly rebuild
+masks or duplicate footprint setup. Measure before sharing topology or changing
+scheduling; keep independent cadence/pending lifetime and reset fences.
+
+A generic current proof also needs accepted glyph samples that fall outside the
+current search bands. It now explicitly reads those exact accepted coordinates,
+checks original YUV and palette, and refreshes only partial output raw/owned bits.
+This cannot become a full detector scan or semantic/absence/physical proof.
+A paired test changes an out-of-band first-line sample and requires rejection.
+
+Full qualification at fffc06f3 failed; steady raw fallback can expand presentation
+while the accepted physical model stays fixed. Initial unknown-cue preservation
+and loss of an established composed cue are distinct cases. Do not waive steady
+viewport/composition assertions to call this fixed. A subtitle-specific bar probe
+is separate from physical AR detection; any substitute receipt must be an exact
+current independently measured physical model, not retained shared geometry.
+
+## Presentation handoff and consecutive analyzed-source reuse
+
+The pending footprint verifier already rechecks current glyphs, backing/cleanup,
+novel bar ink and bar planes. Its returned preview intentionally has no new bar
+or detector authority. The tracker now accepts that per-call verified current
+presentation through a separate held continuation path, retaining the original
+accepted cue/ink reference and lease. It advances only a queue identity after
+exact context, text, current ink and forward-source checks. Missing current proof,
+changed ink, stale context or an unproved continuity gap still fails closed.
+
+Footprint topology rearm supports fresh independently analyzed sources whose composition completed successfully, including sources after pending gaps. This is limited to the pending
+footprint guard; ordinary cadence still requires stride 2 and its original spacing.
+Rearm keeps the original native pixel baseline. A changed cleanup sample cannot
+be absorbed as a new baseline simply because another semantic scan succeeded.
+Changed glyph ownership or geometry must rebuild or reject. The native contracts
+include a black-to-nonblack cleanup change followed by a pending rejection against
+the original baseline, plus ordinary and queue-retired held continuation checks.
+
+All 1,068 native contracts pass at clean 3d7fb6a8 (run035012-eed9d9c5). This is
+native iteration evidence, not full runtime qualification or a measured renderer
+speedup. The actual renderer run must count footprint rearm hits and repeated
+builds, report costs including failures, and preserve strict established-cue
+composition/frame-progression/framing checks before deployment is qualified.
+
+The pending renderer now takes the exact previously completed final operation from
+its current-source footprint receipt. It skips fresh layout/backing acquisition,
+then consumes the existing one-use cleanup-protection receipt before hook binding.
+This closes the later compositor bar-authority veto without populating bar fields.
+A failed source/base/operation binding still routes current raw pixels.
+
+Classic has a separate generic ready-source optimization. A fresh complete independent positive scan whose resolved result covers the accepted cue, or an exact current accepted-cue certificate for a pruned result, can rearm the same cue without rebuilding full-band directional arrays. It compares complete current raw
+and owned masks, cue/layout/source/physical context, current glyph/fringe YUV and
+backing state. The original pixel/contrast seed remains immutable; latest verified
+source advances and pending age resets only for this new full positive. Duplicate,
+held, pending, partial or context-changed results cannot take that shortcut.
+These newer changes still require native and actual-renderer qualification.
+
+The cleanup-projection hull uses only the prepared capture/content envelope. Raw
+detector/result line boxes include analysis padding and are not shader sampling
+support; including them wrongly treated changing current movie margins as glyph
+changes. The UHD regression keeps those raw boxes wider than prepared capture,
+requires the actual margin pixel to stay protected, and still rejects a change
+inside the prepared operation. Glyph/core/fringe, backing and new bar-ink checks
+remain unchanged. Ready-rearm first-rejection codes and layout/geometry submasks
+are now recorded so any remaining expensive rebuild can be attributed before
+changing an eligibility condition.
+
+Tracking continuity is not itself a pixel-template change. After a genuinely new
+complete independent positive source (including an exact current existing-cue
+certificate when grouping prunes rows), the generic guard adopts the actual
+current preview wrapper while keeping the original pixel seed identity, masks,
+samples and contrast baseline separate. It rechecks all other physical/source,
+policy, layout, mask and current glyph/backing conditions. Held, pending, duplicate
+or foreign-context inputs cannot perform this rebase or renew its age. The
+analyzed footprint cache likewise allows a continuity-only rearm only from a
+successfully composed current source; ordinary cadence remains strict.
+
+A separate PendingPreparedSubtitleErasureReceipt carries current display-only
+composition proof through the final ownership stage. The renderer records it only
+when current footprint verification passed, the exact operation's one-use cleanup
+protection was applied, and this source's composition preparation succeeded. It
+binds the source identity, ink, accepted cue, policy/continuity, physical/display
+bounds and final operation. It may qualify prepared erasure for this source with
+bar authority still absent; it cannot qualify semantic acquisition, native aspect,
+absence, lease renewal or an older packet. Rejection controls cover stale/changed
+identities, operation, mode, bounds, ink/cue and unapplied protection.
+
+The renderer no longer invokes the previous-complete-output input-cadence repeat
+as a response to optional subtitle readiness. A distinct input continues into
+current-source preparation and raw fallback even when its analysis is UNKNOWN.
+Explicit ingress cadence-repeat packets and display-refresh repeats retain their
+own timing rules; missing optional work cannot select an older movie frame.
+
+Runtime cadence tests enumerate their actual monitor, select an active 60 Hz
+target, and supply the same target-refresh metadata as the GUI. They cover
+59.94/60 and 23.976/24 Hz inputs. Every successful steady submission participates
+in exact-source and wall-time joins, including raw fallback, UNKNOWN, genuine
+repeats and stop-drained output. Bounds use source and actual display periods;
+queue depths and analysis deadlines are unchanged. A 24 Hz monitor alone cannot
+qualify 60 distinct source submissions per second.
+## Frame-budget review and worker requirement
+
+Bounded queue age and incoming-rate submissions do not finish this repair.
+Expensive template construction, current YUV/cleanup verification and grouping
+must leave the capture/render critical path. The new worker implementation removes
+render-thread calls to `SubtitlePendingMeasurementGuard::Resolve`,
+`RefreshReferencePixels`, `RememberCurrentFootprint` and `RememberPendingCue`.
+Its renderer frame-budget qualification remains outstanding; the earlier successful
+steady timing matrix alone does not establish processing cost.
+
+Published RC6 is not one source revision. Receipts identify beta `7af23836`,
+republished `d5607e08` with application sources `c716bd8`, Magewell `5b8132b6`,
+and Stable DeckLink initially `605ec4af` then replaced by `a8f62855` under the
+same tag. The beta baseline `a591ad3` descends from `a8f62855`. Those shipped
+sources already use nonblocking exact-source worker analysis and a glyph-local
+pending bridge capped at 32,768 samples. Above 30 Hz analysis uses stride two;
+below 30 Hz a due scan may still run per input. Commit `477fdfb6` adds the later
+footprint cadence guard; it is in this repair history, not in either `a8f62855`
+or `a591ad3`. Do not confuse package labels with actual released application pins.
+
+The implementation now provides a bounded worker verification lane and an immutable
+accepted-cue template. Initial acquisition/grouping may cost more; the worker
+checks a cheap same-cue path before scheduling full grouping. A passing receipt
+is bound to the exact source, original template revision, policy, physical base
+and operation; the renderer consumes only an already-ready receipt. A missing,
+stale or failed result selects current raw pixels without waiting. Continuously
+verified current sources can sustain a seconds-long cue without reseeding or
+using the weak pending timeout as a reason to drop it. Changes, absence and native
+AR remain separate decisions; a template cannot supply old movie pixels.
+
+Verification includes every current pixel affected by extraction, cleanup and
+presentation crop. A new bar caption outside the old compositor rectangle can
+still be clipped by downstream native cropping; untouched compositor pixels are
+not automatically preserved. Keep current visibility/novelty checks over excluded
+bars. Only movie texture that remains visible and is not overwritten can be
+omitted. Luma-only `blackBacking` bits do not prove chroma safety; actual current
+YUV evidence is required for erased regions. Worker scratch/guards must not be
+shared mutably with rendering, and stale means outside the eligible render-source
+window, not merely older than the latest HDMI arrival.
+
+An isolated one-work-limit cue-hint prototype was not applied: its mask-only
+reattachment could miss an alternate-chroma pixel inside cleanup. It also would
+add render-thread comparison work rather than satisfy this worker requirement.
+Static-cue verification does not replace change detection. Passing proofs schedule
+a coalesced full semantic scan on due inputs at approximately 100 ms intervals.
+A changed or incomplete scan requests a bounded burst on subsequent due inputs
+until a complete matching scan or newly accepted cue resolves it. Current video
+and ready exact-source proofs continue independently. This backstop detects new
+text inside the preserved active picture; excluded bars and affected cleanup
+pixels require immediate current-source safety verification.
+
+The expanded picture-local destination write area now participates in the
+current-source footprint receipt. Seeding stores exact YUV samples and directional
+evidence; each proof rereads current pixels and rejects newly appearing or changed
+bright, alternate-chroma or dark-edge structure. The probe is clipped to accepted
+native picture bounds and shares the existing sample budget. Encoded bars remain
+covered by separate current-bar checks. This is local write-safety evidence, not
+a semantic cue certificate or native-picture authority.
+
+The detector publishes its existing component-card threshold as the composition-only
+`captionBackingLimit`. Within accepted caption backing, both samples must remain
+under that limit with neutral chroma, luma change below 48 codes, chroma changes at
+most 8 codes and no newly introduced strong local contrast. Strict black-bar and
+glyph evidence remain independent. This does not establish cue presence or absence.
+
+At `cb8a95a6`, all 1,083 native contracts pass. The 60 Hz actual-renderer worker
+budget pair still fails: verified receipts cover nearly every current source, but
+full grouping runs near input cadence and worst worker proof time exceeds the
+60 Hz budget. This is not full runtime qualification and has not been deployed.
+
+## Live trial: paused held cue and shader cold-start evidence (2026-11-03)
+
+The user-authorized live trial is clean-source `d8ae4175`, deployed as matching
+x64 Release host and both renderers. It remains unqualified: synthetic 59.94 Hz
+caption/cadence/reuse and render-path budgets passed, but worker proof wall-time
+peaks remained 20–23 ms. It was replaced by the explicitly unqualified `69c51f18` trial at local 13:55; see the follow-up below.
+
+The user's paused capture at local 12:56:07 (source 6562) distinguishes detected
+picture from presentation: the measured/retained picture is about 2.39:1, while
+the displayed source includes the still-visible original bar caption and is
+about 2.19:1. Capture source 6842 reports cue 32 detected, held and complete,
+but uncomposed. This is not an empty detector result. Live logs show current
+source submissions continuing through this raw-pixel fallback.
+
+The diagnostic trace has 717 current independent full-scan subtitle records and
+718 failed cached-cue proofs (`cadence-current-glyph-changed`). The tracker calls
+the full-current cue held/strict-current-ink with matching glyphs. Raw observation
+`text.held` is false; the accepted tracker result is held. These fields must not
+be conflated when diagnosing refresh or certificate eligibility.
+
+A CPU control built from the captured V210 raster reproduced a separate held-cue
+certificate failure. Moving only an unrelated sampled bar-boundary row from 273
+to 274, while preserving current caption pixels, prevented the certificate.
+`NoNewOwnedInkOutsideReference` compared whole row maps instead of matching owned
+samples by physical source coordinates. Commit `35018ff5` joins by physical y;
+missing old rows still count as new ownership and are rejected outside accepted
+caption lines. It grants no new native/absence/seed authority. The exact control
+changes from certificate=false to true, and the new outside-caption ownership
+negative still rejects. At `3ea6335a`, the two focused contracts and all 1,083
+native contracts pass (`133146-f69b91b6`, `133614-d43641aa`). GPU/live acceptance
+of this fix remains outstanding.
+
+Paused HDMI input is not byte-constant: four captured phases repeat, with up to
+four 10-bit luma/chroma codes of variation; the caption's chroma stays constant.
+A separate CPU footprint replay at 70% text scale rejects neutral outline pixels
+80 -> 84 as `cadence-current-cleanup-changed`. No tolerance has been widened for
+this observation. Comparison tolerance must not become bar/absence authority.
+
+The live shader log records one 71.6-second cold preparation: background 3,
+blur off, All took 31.8 seconds; background 5, blur on, All took 39.5 seconds.
+Other passes were milliseconds. The existing aggregate prewarm readiness gate
+waits for all backgrounds/blur variants. Older actual RC6 pins already had that
+sweep; this trial changed shader source for protected cleanup and loaded the
+existing cache rather than purging it (1461 -> 1466 objects). Commit `243f1b47`
+removes a duplicated cleanup-row lookup without changing protection behavior;
+its cold-driver compile effect is not yet measured. Do not call that a verified
+startup speedup or remove current-picture protection to obtain one.
+
+## 13:55 trial and current-source proof follow-up
+
+Clean-source `69c51f18` was deployed as the matching x64 Release host and both
+renderers after the user authorized isolated GPU checks and restart. The backup
+is `C:/Videoprocessor/vp/backups/trial-69c51f18-20261103-135509`. Deployment
+preserved cfg/state byte-for-byte before restart. The existing `renderer.ready`
+reset action then sent the configured Classic shortcut, changing only the saved
+subtitle selection from Reconstruction to Classic. The state subsequently selected Reconstruction at local 14:12:33; no agent app input
+was used. A bounded 14:14:39-49 telemetry window contains 240/240 current-source
+submissions composed and prepared, one stable native rectangle and one stable
+source rectangle, with selected-source increments of one. The largest interval
+between these log submissions is 49.61 ms at a 23.976 Hz source. This is evidence
+for the specific paused-cue reproduction, not visual acceptance or full playback
+qualification.
+
+This trial is not qualified. Its final focused CPU trio and Release builds pass
+(`134055-25e3feb6`); the complete 1,083 Native pass is on the preceding `3ea6335a`
+source. All four isolated GPU methods in `134859-dbbd0ddc` failed. The static-cue
+worker proof maxima were 21.0904 ms Standard and 18.4053 ms Beta, above the
+16.683 ms period. Mandatory frame-work maxima were separately 12.6709 and
+12.3743 ms; concurrent durations must not be added as a sequential critical
+path. Both decoded-DV unknown-input methods also found a composition-off
+submission on an ordinary ready static-cue source. Preserve that assertion:
+current raw pixel preservation is required but does not satisfy caption
+composition/framing continuity.
+
+For Standard source 16, the worker eventually verified the exact source in
+12.7147 ms after the renderer had already submitted source 16 uncomposed.
+Existing records do not timestamp that job's queue/start/ready sequence, so they
+do not establish why the result missed presentation. The current implementation
+publishes completed receipts before both optional diagnostic emits, preserving
+all existing proof and semantic-refresh decisions. Its existing worker record
+now uses counters 5/6/7 for steady-clock enqueue/start/published nanoseconds;
+metrics 7/8/9 report queue wait, enqueue-to-published and proof-end-to-published
+milliseconds. Bounded offer/poll events cover the first 128 sources and then
+one in 60; offer detail names accepted-source, prime or render origin.
+
+The isolated cold preparation took about 64.8 seconds Standard and 64.6 seconds
+Beta. The background-3 unblurred All pass took 25.3 seconds; this is one pass,
+not the whole preparation. The user accepts roughly 25 seconds temporarily for
+heavy background processing. The total preparation still needs improvement;
+there is no established 3x startup speedup.
+
+Commit `958c230d` shares one validated source view across each footprint seed or
+verification operation. V210 now uses the canonical prevalidated sampler rather
+than validating the full view for each pixel; planar byte decoding is unchanged.
+Destination loops reuse row offsets. An isolated captured-V210 CPU microbenchmark
+checked 152,620 coordinates per static proof, 32 repetitions in each of three
+runs. Static medians changed from 3.52-3.62 ms to 2.92-3.02 ms. All 96 static
+proofs passed; all 96 four-phase controls retained their exact previous cleanup
+rejections and coordinates. These wall-time measurements ran beside the live
+player and do not qualify total frame budgets or prove a GPU improvement.
+No classification threshold or bar/absence authority was relaxed.
+
+Actual released RC6 pins `a8f62855` and `c716bd8` share the earlier worker and
+continuation implementation. Their current glyph/reference checks have a
+65,536-sample bound and did not run today's full compositor footprint proof on
+every source. They still requested exact-source worker scans; this is not
+evidence that old movie pixels should be reused. A matched old/current timing
+run remains outstanding. Further safe targets are current-source sample sharing
+and immutable coordinate/projection precomputation, with fresh pixel receipts
+and no cross-source cleanup or native authority.
+
+
+## Repeating paused-cue composition flash: line-box quantization
+
+The subsequent live report is still a failure, despite the earlier short stable
+window. Recording `2026-11-03 14-21-21.mp4` joins G2 outputs O6720/O6721 to the
+same caption and retained native bounds `[0,274,3840,1888]`, but the target width
+changes from about 1842 to 2000 pixels as composition drops and resumes. A later
+60-second paused log window has 361 uncomposed outputs among 1,439 current-source
+submissions, recurring once per four input frames. This is not a native AR change.
+
+The user captured diagnostics with frames at local 14:24:57. The capture contains
+96 V210 rasters and 24,973 analysis records. CPU replay of four sampled raster
+phases reproduces the failing phase: current line 1 is `[1556,1788,2284,1864]`
+while the accepted line is `[1555,1788,2284,1868]`. At detector step 4 this is a
+one-pixel left inset and one-cell bottom inset. All independent current raw/bar
+flags are valid, glyph match is 99% with difference reported as zero, and there
+is no newly owned ink anywhere against the initial mask. Literal rectangle
+containment nevertheless withholds the held prepared-cue certificate. The
+renderer hides the composed layer and fits the wider current raw frame.
+
+The new allowance applies only to this current held composition. Each line must
+match a distinct current line/signature, each edge stays within one current ink
+step, current capture metadata is valid, and the existing full glyph/context/bar
+checks remain. Unlike the ordinary strict-containment path, this allowance also
+rejects any new current ownership even inside an accepted line. Accepted capture
+geometry and actual current-source erasure checks remain in use. History, seed,
+reassociation, native/absence evidence and hold lifetime keep strict containment.
+The replay repeats captured pixel phases on a synthetic consecutive timeline;
+it demonstrates the certificate condition, not capture timing or GPU qualification.
+
+The trace also exposes separate steady-proof work: 304 bar-veto rejections at
+`y=275`, inside retained native top 274 but outside the subtitle scan's top 276;
+291 cleanup rejections cluster near `y=1742/1743`. Those are not the line-box
+certificate condition and are not relaxed by this change. Current-source video
+submission and preserved pixels remain required while optional work is pending.

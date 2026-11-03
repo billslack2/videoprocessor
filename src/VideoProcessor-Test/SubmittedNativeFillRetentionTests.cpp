@@ -392,6 +392,108 @@ public:
             Assert::IsTrue(ConfirmedSubtitleConflictsWithHorizontalFill(true,true,mode,true,nearTrim,moved,filled));
         }
     }
+    TEST_METHOD(AdvancedRetainedFillCarriesTheCurrentSelectedNativePresentationCertificate)
+    {
+        for(const auto mode:{PreparedNativeMode::BLACK,PreparedNativeMode::RECONSTRUCTION}) {
+            Fixture fixture;
+            auto initial=fixture.Frame(100);
+            initial.crop.frameSourceFormatKey=31;initial.crop.frameAnalysisDomainKey=41;
+            initial.crop.acceptedNativeCrop={true,NativeScope(),7,100,31,41};
+            initial.presentation=Evaluate(initial.crop);
+            const auto initialFill=EvaluateFinalAspectLimitFill(initial);AssertLoggedFill(initialFill);
+            auto first=fixture.Selected(initial,initialFill);
+            first.selectedAdmission=QualifySubtitleConfiguredNativeFill(first.selectedAdmission,
+                initial.crop,initial.presentation,initialFill,false,false);
+            fixture.anchor=CommitSubmittedNativeScopeAnchor(first);fixture.admission=first.selectedAdmission;
+            Assert::IsTrue(fixture.anchor.available&&fixture.anchor.acceptedNativeCrop.available&&
+                fixture.anchor.submittedOptionalFillAvailable,
+                L"Seed must own a successfully submitted typed native contract and its actual configured fill");
+            auto input=fixture.Frame(101);
+            input.crop.subtitlePresentationMode=mode;
+            input.crop.frameSourceFormatKey=31;input.crop.frameAnalysisDomainKey=41;
+            input.crop.acceptedNativeCrop=fixture.anchor.acceptedNativeCrop;
+            input.crop.nearBlackEpisodeRetainCrop=false;
+            input.crop.frameLocalPresentationRetentionEvaluated=true;
+            input.crop.frameLocalPresentationRetentionSafe=true;
+            input.crop.currentVisibleBoundsAvailable=false;
+            input.crop.preparedSubtitle={true,input.crop.geometry,input.crop.frameSourceGeneration,
+                input.crop.frameSourceSequence,input.crop.framePresentationEpoch};
+            Assert::IsTrue(HasCurrentPreparedSubtitlePresentation(input.crop));
+            input.presentation=Evaluate(input.crop);
+            input.evidence.crop=input.crop;
+            input.uncertainPicture.retained=true;
+            const auto fill=EvaluateFinalAspectLimitFill(input);AssertLoggedFill(fill);
+            Assert::IsTrue(fill.retainedSubmittedFill);
+            auto selected=fixture.Selected(input,fill,true,SubtitlePreviewMode::None,true);
+            Assert::IsTrue(selected.selectedAdmission.acceptedNativeCrop.available);
+            auto& before=selected.selectedAdmission.nativePresentation;
+            Assert::IsTrue(before.available);
+            Assert::AreEqual(int(NativePresentationOrigin::EXACT_NATIVE),int(before.origin));
+            before.preparedNativeMode=mode;before.preparedNativeSourceSequence=input.crop.frameSourceSequence;
+            before.captionTranslationMeasurement.available=true;
+            before.captionTranslationMeasurement.sourceSequence=100;
+            before.captionTranslationMeasurement.measurementTick=7;before.captionTranslationMeasurement.leaseExpiryTick=257;
+            for(int fault=0;fault<12;++fault) {
+                auto invalid=selected.selectedAdmission;auto wrong=input;
+                if(fault==0)--invalid.optionalFillSourceSequence;
+                if(fault==1)++invalid.sourceGeneration;
+                if(fault==2)++invalid.presentationEpoch;
+                if(fault==3)invalid.optionalFillSourceBounds.left+=2;
+                if(fault==4){wrong.presentation.sourceBounds.top+=2;wrong.presentation.sourceBounds.bottom+=2;}
+                if(fault==5)wrong.crop.subtitlePresentationMode=PreparedNativeMode::NONE;
+                if(fault==6)--invalid.nativePresentation.sourceSequence;
+                if(fault==7)invalid.nativePresentation.approvedBounds.left+=2;
+                if(fault==8)invalid.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
+                if(fault==9)wrong.presentation.outwardExpanded=true;
+                if(fault==10)invalid.nativePresentation.available=false;
+                if(fault==11)invalid.trustedCrop.top+=2;
+                const auto rejected=QualifySubtitleConfiguredNativeFill(invalid,wrong.crop,
+                    wrong.presentation,fill,false,true);
+                Assert::AreEqual(int(NativePresentationOrigin::EXACT_NATIVE),int(rejected.nativePresentation.origin),
+                    L"Retained fill cannot borrow stale context, source identity, transformed picture or unrecorded geometry");
+            }
+            selected.selectedAdmission=QualifySubtitleConfiguredNativeFill(selected.selectedAdmission,input.crop,
+                input.presentation,fill,false,true);
+            const auto& proof=selected.selectedAdmission.nativePresentation;
+            Assert::AreEqual(int(NativePresentationOrigin::CONFIGURED_FILL),int(proof.origin),
+                L"Retaining an actual side fill must not leave an exact-native full-width certificate on the selected output");
+            AssertSameBounds(fill.sourceBounds,proof.approvedBounds);
+            Assert::AreEqual(input.crop.frameSourceSequence,proof.sourceSequence);
+            Assert::AreEqual(int(mode),int(proof.preparedNativeMode));
+            Assert::AreEqual(uint64_t(100),proof.captionTranslationMeasurement.sourceSequence);
+            Assert::AreEqual(uint64_t(257),proof.captionTranslationMeasurement.leaseExpiryTick);
+            const auto committed=CommitSubmittedNativeScopeAnchor(selected);
+            Assert::IsTrue(committed.submittedPresentationAvailable&&committed.submittedOptionalFillAvailable);
+            AssertSameBounds(fill.sourceBounds,committed.submittedPresentation);
+        }
+    }
+    TEST_METHOD(AdvancedNativeFillIgnoresCaptionLeaseWhileShadersBuildAndAfterPreparation)
+    {
+        for(const auto requested:{PreparedNativeMode::BLACK,PreparedNativeMode::RECONSTRUCTION})
+        for(bool building:{true,false})for(int fault=-1;fault<10;++fault) {
+            Fixture fixture;fixture.Seed();auto input=fixture.Frame(101);
+            input.crop.subtitlePresentationMode=requested;
+            const auto effective=building?SubtitlePreviewMode::None:
+                requested==PreparedNativeMode::BLACK?SubtitlePreviewMode::BlackBackground:SubtitlePreviewMode::GeneratedGrayBackground;
+            auto fill=EvaluateFinalAspectLimitFill(input);AssertLoggedFill(fill);
+            bool fixed=false,nls=false,protectedCaption=false,recovery=false;
+            auto origin=ActivePictureAuthorityOrigin::NATIVE;
+            if(fault==0)input.crop.subtitlePresentationMode=PreparedNativeMode::NONE;
+            if(fault==1){input.presentation.sourceBounds.top+=2;input.presentation.sourceBounds.bottom+=2;}
+            if(fault==2){input.presentation.outwardExpanded=true;input.presentation.sourceBounds.bottom+=2;}
+            if(fault==3)input.crop.movingPictureTransition=true;
+            if(fault==4)fixed=true;
+            if(fault==5)nls=true;
+            if(fault==6)origin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;
+            if(fault==7)protectedCaption=true;
+            if(fault==8)recovery=true;
+            if(fault==9)fill.applied=false;
+            const bool recorded=CanRecordSubtitleOptionalAspectFill(input.crop,input.presentation,fill,
+                effective,true,fixed,nls,protectedCaption,recovery,origin);
+            Assert::AreEqual(fault==-1,recorded,
+                L"A caption lease cannot block the certificate for an actually applied exact advanced native fill; all physical-owner gates remain mandatory");
+        }
+    }
     TEST_METHOD(AdvancedLogicalTranslationWithNativeActualBoundsRetainsFillButRealShiftDoesNot)
     {
         for(const auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})

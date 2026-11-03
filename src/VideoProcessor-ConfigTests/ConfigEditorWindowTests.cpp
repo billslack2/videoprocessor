@@ -1199,6 +1199,28 @@ void testInvalidAuditedValuesRemainActionable()
     }
 }
 
+void testRecordingDiagnosticsLoggingControlsRoundTrip()
+{
+    QTemporaryDir directory;const QString path=copyFixture(directory);
+    {
+        ConfigEditorWindow window(path,0,true);
+        auto* enhanced=requireControl<QCheckBox>(window,QStringLiteral("config.logging.debug"));
+        auto* timecode=requireControl<QCheckBox>(window,QStringLiteral("config.logging.video_timecode"));
+        auto* screenshots=requireControl<QCheckBox>(window,QStringLiteral("config.logging.incident_screenshots"));
+        enhanced->setChecked(false);
+        require(!timecode->isChecked() && !screenshots->isChecked(),"Recording diagnostics must default off");
+        require(!timecode->isEnabled() && !screenshots->isEnabled(),"Recording diagnostics require enhanced logging");
+        enhanced->setChecked(true);
+        require(timecode->isEnabled() && screenshots->isEnabled(),"Enhanced logging did not enable recording options");
+        timecode->setChecked(true);screenshots->setChecked(true);save(window);
+        const auto bytes=readBytes(path);
+        require(bytes.contains("video_timecode: true") && bytes.contains("incident_screenshots: true"),"Recording options did not persist");
+    }
+    ConfigEditorWindow restored(path,0,true);
+    require(requireControl<QCheckBox>(restored,QStringLiteral("config.logging.video_timecode"))->isChecked(),"Timecode option did not reopen");
+    require(requireControl<QCheckBox>(restored,QStringLiteral("config.logging.incident_screenshots"))->isChecked(),"Screenshot option did not reopen");
+}
+
 void testDiagnosticPresetDescribesFlagsAndRetentionUsesDefault()
 {
     QTemporaryDir dir; const QString path=dir.filePath("VideoProcessor.cfg");
@@ -8680,6 +8702,7 @@ int main(int argc, char** argv)
     failures += run("Inherited HDR target luminance validation", testInheritedHdrTargetLuminanceValidation);
     failures += run("HDR target luminance validation retains saved value",
         testHdrTargetLuminanceValidationRetainsSavedValue);
+    failures += run("recording diagnostics logging controls",testRecordingDiagnosticsLoggingControlsRoundTrip);
     failures += run("every page round trips", testEveryPageRoundTrips);
     failures += run("OSD screen geometry scaling round trips", testOsdScreenGeometryScalingRoundTrips);
     failures += run("Stats OSD size defaults and opt-in state", testStatsOsdSizeDefaultsAndOptInState);

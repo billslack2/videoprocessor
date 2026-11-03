@@ -212,6 +212,31 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!MINIMUM 0.0
 //!MAXIMUM 65536.0
 0.0
+//!PARAM pending_protected_cleanup_enabled
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 1.0
+0.0
+//!PARAM pending_protected_cleanup_left
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 65536.0
+0.0
+//!PARAM pending_protected_cleanup_top
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 65536.0
+0.0
+//!PARAM pending_protected_cleanup_right
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 65536.0
+0.0
+//!PARAM pending_protected_cleanup_bottom
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 65536.0
+0.0
 //!PARAM text_color_r
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
@@ -423,6 +448,12 @@ bool subtitleInGeneratedCleanup(vec2 p) {
     }
     return p.x>=generated_clean_left && p.x<generated_clean_right &&
         p.y>=generated_clean_top && p.y<generated_clean_bottom;
+}
+bool subtitleProtectedCurrentRow(vec2 p,bool inCleanup) {
+    if(pending_protected_cleanup_enabled<0.5 ||
+        p.x<pending_protected_cleanup_left || p.x>=pending_protected_cleanup_right ||
+        p.y<pending_protected_cleanup_top || p.y>=pending_protected_cleanup_bottom)return false;
+    return !inCleanup;
 }
 bool subtitleCleanupTouchesSample(vec2 p) {
     if(cleanup_row_count>0.5) {
@@ -824,14 +855,15 @@ vec4 hook() {
         bool inPanel=p.x>=destination_left-subtitlePanelSideExtension() && p.x<destination_right+subtitlePanelSideExtension() &&
             p.y>=subtitlePanelTop() && p.y<subtitlePanelBottom();
         bool inCleanup=subtitleInGeneratedCleanup(p);
+        bool protectedCurrentRow=subtitleProtectedCurrentRow(p,inCleanup);
         // One evaluation and one compiled call site, shared by composition
         // and source cleanup. The default also clears original bar glyphs.
         vec3 generatedBackdrop=vec3(0.0);
         // Black uses the unblurred pass. Its cleanup coordinate is inside the
         // mask, so the common clean sampler reaches the same raw fill. Share
         // that call site instead of compiling another complete spatial kernel.
-        if((background_mode>4.5 && (inPanel || inCleanup)) ||
-            (background_mode>2.5 && background_mode<3.5 && inCleanup && !layerOnly))
+        if(!protectedCurrentRow && ((background_mode>4.5 && (inPanel || inCleanup)) ||
+            (background_mode>2.5 && background_mode<3.5 && inCleanup && !layerOnly)))
             generatedBackdrop=subtitleGeneratedFill(p);
         if(layerOnly && !inPanel)return vec4(0.0);
         if(inPanel && !cleanupOnly) {
@@ -844,9 +876,9 @@ vec4 hook() {
                  abs(glyph_translate_y-floor(glyph_translate_y+0.5))>0.0001));
             vec4 source=vec4(0.0);
             if(!filterGlyph || background_mode<0.5)source=HOOKED_tex(sourcePos);
-            if(background_mode<0.5) return source;
+            if(background_mode<0.5 && !protectedCurrentRow) return source;
             vec3 original=subtitleLinear(HOOKED_tex(HOOKED_pos).rgb);
-            if(inCleanup && (background_mode>4.5 ||
+            if(!protectedCurrentRow && inCleanup && (background_mode>4.5 ||
                 (background_mode>2.5 && background_mode<3.5 && !layerOnly)))
                 original=generatedBackdrop;
             // Cleanup precedes rounded destination composition, so its
@@ -854,14 +886,14 @@ vec4 hook() {
             vec3 backing=original;
             // Use the same smooth current-frame cleanup in overlap and vacated
             // source pixels, avoiding a black seam through the moved line.
-            if(p.x>=content_left && p.x<content_right &&
+            if(!protectedCurrentRow && p.x>=content_left && p.x<content_right &&
                p.y>=content_top && p.y<content_bottom &&
                background_mode<=4.5)
                 backing=subtitleSourceFill(p);
             // Cleanup pixels already have the filtered reconstructed backdrop.
             // Elsewhere filter real picture too, using the same clean sampler
             // across the boundary. The final panel mask confines the blur.
-            if(background_mode>4.5)
+            if(background_mode>4.5 && !protectedCurrentRow)
                 backing=generatedBackdrop;
             if(background_mode>1.5 && background_mode<2.5)
                 backing*=0.50;
@@ -889,17 +921,23 @@ vec4 hook() {
                     (!inPicture || onSourceCard || (subtitleGlyphAlpha(source.rgb)>0.01 && subtitleConnectedBoundaryStroke(sourcePixel))) && subtitleOwnedLine(sourcePixel)) ? subtitleGlyphAlpha(source.rgb) : 0.0;
                 glyphColor=subtitleLinear(source.rgb);
             }
+            // Preserve a protected movie pixel byte-for-byte unless a current,
+            // owned glyph actually covers it. LayerOnly must stay transparent
+            // here because its base is the independently cleaned current frame.
+            if(protectedCurrentRow && !layerOnly && alpha<=0.0)
+                return HOOKED_tex(HOOKED_pos);
             // Tint only the extracted glyph, after ownership/alpha and area filtering.
             // Identity white preserves source values; linear multiplication keeps
             // dimming relative to the original SDR/HDR text brightness.
             glyphColor*=vec3(text_color_r,text_color_g,text_color_b);
             // Generated blend/solid panels follow a rounded rectangle. The
             // antialiased edge reveals the live destination pixels beneath it.
-            float panelMask=background_mode>1.5 ? subtitleRoundedPanelMask(p) : 1.0;
+            float panelMask=protectedCurrentRow ? 0.0 :
+                (background_mode>1.5 ? subtitleRoundedPanelMask(p) : 1.0);
             vec3 canvas=mix(original,backing,panelMask);
             float borderAlpha=0.0;
             vec3 borderColor=vec3(generated_border_r,generated_border_g,generated_border_b);
-            if((background_mode>4.5 || (background_mode>2.5 && background_mode<3.5)) && generated_border_width>0.0) {
+            if(!protectedCurrentRow && (background_mode>4.5 || (background_mode>2.5 && background_mode<3.5)) && generated_border_width>0.0) {
                 float inner=1.0-smoothstep(-0.75,0.75,
                     subtitleRoundedPanelDistance(p)+generated_border_width);
                 borderAlpha=max(panelMask-inner,0.0)*generated_border_opacity;
@@ -931,6 +969,7 @@ vec4 hook() {
             return vec4(subtitleSignal(mix(canvas,glyphColor,alpha)),1.0);
         }
         if(layerOnly)return vec4(0.0);
+        if(protectedCurrentRow)return HOOKED_tex(HOOKED_pos);
         // The original card can extend beyond display padding and beyond the
         // copied glyph rectangle. Remove it before testing the sampling extent.
         if(background_mode>4.5 && subtitleInGeneratedCleanup(p)) {
@@ -1064,6 +1103,8 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         "transfer_mode","picture_top","picture_bottom","display_picture_top","display_picture_bottom","transfer_gamma",
         "content_left","content_top","content_right","content_bottom",
         "cleanup_fill_mode","generated_clean_left","generated_clean_top","generated_clean_right","generated_clean_bottom",
+        "pending_protected_cleanup_enabled","pending_protected_cleanup_left","pending_protected_cleanup_top",
+        "pending_protected_cleanup_right","pending_protected_cleanup_bottom",
         "text_color_r","text_color_g","text_color_b",
         "generated_color_r","generated_color_g","generated_color_b","generated_opacity",
         "generated_max_luminance","generated_blur_px","blur_active","blur_roi_left","blur_roi_top","blur_roi_w","blur_roi_h","blur_step",
@@ -1124,6 +1165,9 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         float(geometry.content.left),float(geometry.content.top),float(geometry.content.right),float(geometry.content.bottom),
         float((std::max)(0,(std::min)(3,spatialFill))),float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
         float(geometry.generatedCleanup.right),float(geometry.generatedCleanup.bottom),
+        geometry.pendingProtectedCleanup.Valid()?1.0f:0.0f,
+        float(geometry.pendingProtectedCleanup.left),float(geometry.pendingProtectedCleanup.top),
+        float(geometry.pendingProtectedCleanup.right),float(geometry.pendingProtectedCleanup.bottom),
         generated.textColor[0],generated.textColor[1],generated.textColor[2],
         generated.color[0],generated.color[1],generated.color[2],generated.opacity,
         generated.maxLuminance,generated.blurPixels,roi.active?1.0f:0.0f,roi.left,roi.top,roi.width,roi.height,roi.step,

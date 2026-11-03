@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- An iteration binary only: never a full runtime qualification artifact. -->
+  <PropertyGroup>
+    <VPTestLibplacebo>standard</VPTestLibplacebo>
+    <TargetName>VideoProcessor-CriticalNativeTests</TargetName>
+    <OutDir>$(MSBuildThisFileDirectory)..\..\x64\Release\tests-critical-native\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)..\..\x64\Release\obj-tests-critical-native\</IntDir>
+  </PropertyGroup>
+  <Import Project="VideoProcessor-Test.vcxproj.vcxproj" />
+  <Import Project="$(VPCriticalNativeSourcesFile)" Condition="Exists('$(VPCriticalNativeSourcesFile)')" />
+  <Target Name="SelectCriticalNativeCompileSources" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(Configuration)|$(Platform)'!='Release|x64'" Text="Critical Native iteration supports Release|x64 only." />
+    <Error Condition="'$(VPCriticalNativeCompileFiles)'==''" Text="Generate the Critical Native compile whitelist from the required regression manifest." />
+    <ItemGroup>
+      <!-- Item-to-item copying preserves every per-source compiler setting. -->
+      <_CriticalNativeCompile Include="@(ClCompile)" Condition="$([System.String]::Copy(';$(VPCriticalNativeCompileFiles);').Contains(';%(ClCompile.Identity);'))" />
+    </ItemGroup>
+    <Error Condition="'@(_CriticalNativeCompile->Count())'!='$(VPCriticalNativeCompileCount)'" Text="Critical Native compile sources do not exactly match the manifest whitelist." />
+    <ItemGroup>
+      <ClCompile Remove="@(ClCompile)" />
+      <ClCompile Include="@(_CriticalNativeCompile)" />
+    </ItemGroup>
+  </Target>
+</Project>

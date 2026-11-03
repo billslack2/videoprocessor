@@ -1,10 +1,12 @@
 #include "pch.h"
 
 #include "ActivePictureEvidence.h"
+#include "SourcePictureDetector.h"
 #include "SubtitleBarEvidence.h"
 #include "SubtitleBoxLookahead.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numeric>
 #include <vector>
@@ -13,6 +15,20 @@
 namespace
 {
 bool CurrentOwnedInkAt(const SubtitleInkSnapshot& ink, int x, int y);
+
+// Canonical ten-bit black can acquire sub-two-code (eight-bit equivalent)
+// chroma variation through decoding/resampling while luma stays at black.
+// Use one policy for native crop, collar repair and subtitle-masked bars.
+// Unknown encoding keeps the original strict comparison. Independent
+// connected-picture checks remain more sensitive and still veto real content.
+bool MatchesMeasuredMatte(const AnalysisLumaSample& value,int y,int u,int v,
+    AnalysisLumaRange range)
+{
+    const int dy=std::abs(int(value.luma)-y);
+    const int dc=std::max(std::abs(int(value.chromaU)-u),std::abs(int(value.chromaV)-v));
+    return dy<=4 && dc<=(range==AnalysisLumaRange::Unknown?4:8);
+}
+
 
 constexpr int kLineSamples = 48;
 constexpr int kEdgeDepthSamples = 6;
@@ -344,6 +360,7 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 		rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
 		for (int y : rows) {
             int known=0,leftKnown=0,rightKnown=0;
+            std::array<int,4> rounded{},coverage{},firstRounded{{-1,-1,-1,-1}};
 			for (int i = 0; i < columns; ++i)
 			{
 				AnalysisLumaSample value;
@@ -358,7 +375,11 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 					std::abs(static_cast<int>(value.chromaV) - vMedian));
 				result.maxLumaDelta = std::max(result.maxLumaDelta, dy);
 				result.maxChromaDelta = std::max(result.maxChromaDelta, duv);
-				if (dy > tolerance || duv > tolerance)
+                ++coverage[i/24];
+                if(dy<=4 && duv>4 && MatchesMeasuredMatte(value,yMedian,uMedian,vMedian,source.range)) {
+                    ++rounded[i/24];if(firstRounded[i/24]<0)firstRounded[i/24]=x;
+                }
+				if (!MatchesMeasuredMatte(value,yMedian,uMedian,vMedian,source.range))
 				{
 					++result.mismatchSamples;
 					const int boundaryRows = std::max(2, source.height / 540);
@@ -376,6 +397,17 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 					}
 				}
 			}
+            for(unsigned q=0;q<4;++q)if(coverage[q] && rounded[q]*2>=coverage[q]) {
+                // A coherent colored row cannot be dismissed as sparse noise.
+                result.mismatchSamples+=rounded[q];
+                const int boundaryRows=std::max(2,source.height/540);
+                const bool adjacent=upper?y>=top-boundaryRows:y<bottom+boundaryRows;
+                if(adjacent)result.boundaryMismatchSamples+=rounded[q];else result.deepMismatchSamples+=rounded[q];
+                auto& firstY=upper?result.topFirstMismatchY:result.bottomFirstMismatchY;
+                auto& lastY=upper?result.topLastMismatchY:result.bottomLastMismatchY;
+                if(firstY<0)firstY=y;lastY=y;
+                if(result.firstMismatchY<0){result.firstMismatchX=firstRounded[q];result.firstMismatchY=y;}
+            }
             if(known<columns/3 || leftKnown<4 || rightKnown<4) {
                 result.reason="excluded-band-support-insufficient";return result;
             }
@@ -385,6 +417,299 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 	result.clean = result.firstMismatchY < 0;
 	result.reason = result.clean ? "excluded-bands-clean" : "excluded-band-profile-mismatch";
 	return result;
+}
+
+// References come from actual outer pixels, not the range-aware scan floor.
+// This deliberately abstains on noisy/tinted/uneven outer regions. Such a
+// region is not positive picture evidence and cannot authorize a new crop.
+ActivePictureMatteReference MeasureOuterMatte(SampleContext& samples,
+    bool rows, bool leading, int band)
+{
+    ActivePictureMatteReference result;
+    result.state = ActivePictureMatteReferenceState::UNRESOLVED;
+    if (band <= 0) return result;
+    const auto& source = samples.source;
+    const int extent = rows ? source.height : source.width;
+    const int across = rows ? source.width : source.height;
+    const int depth = std::max(1, std::min(8, band / 4));
+    std::vector<int> ys, us, vs;
+    std::vector<uint8_t> quartiles;
+    std::array<size_t,9> rowStarts{};
+    for (int d = 0; d < depth; ++d) {
+        rowStarts[d]=ys.size();
+        int previousPosition=-1;
+        for (int i = 0; i < 48; ++i) {
+            const int position = (2*i+1)*across/96;
+            if (position==previousPosition) continue;
+            previousPosition=position;
+            const int coordinate = leading ? d : extent-1-d;
+            AnalysisLumaSample pixel;
+            samples.Checkpoint();
+            if (!source.Sample(rows ? position : coordinate, rows ? coordinate : position, pixel)) return result;
+            ++samples.lumaSamples; ++samples.chromaSamples;
+            ys.push_back(pixel.luma); us.push_back(pixel.chromaU); vs.push_back(pixel.chromaV);
+            quartiles.push_back(static_cast<uint8_t>(i/12));
+        }
+    }
+    rowStarts[depth]=ys.size();
+    result.y = int(Percentile(ys,.5)); result.u = int(Percentile(us,.5)); result.v = int(Percentile(vs,.5));
+    if (result.y > 80 || std::abs(result.u-512) > 8 || std::abs(result.v-512) > 8) return result;
+    for (int d=0; d<depth; ++d) {
+        size_t outliers=0;
+        size_t coverage[4]={},bad[4]={};
+        for (size_t i=rowStarts[d]; i<rowStarts[d+1]; ++i) {
+            ++coverage[quartiles[i]];
+            const bool differs=std::abs(ys[i]-result.y)>4 || std::abs(us[i]-result.u)>4 || std::abs(vs[i]-result.v)>4;
+            outliers+=differs; bad[quartiles[i]]+=differs;
+        }
+        // A sparse source-baked mark does not redefine the native matte.
+        // Native geometry and downstream permission to remove its pixels are
+        // separate contracts; retention still inspects the occupied pixels.
+        if (outliers>std::max(size_t{1},(rowStarts[d+1]-rowStarts[d])/24)) return result;
+        for (int q=0; q<4; ++q)
+            if (!coverage[q] || bad[q]>std::max(size_t{1},coverage[q]/12) || bad[q]*2>=coverage[q]) return result;
+    }
+    result.state = ActivePictureMatteReferenceState::QUALIFIED;
+    return result;
+}
+
+bool HasMatteRelativeContinuation(SampleContext& samples, bool rows, bool leading,
+    int boundary, const ActivePictureMatteReference& reference,
+    ActivePictureCandidateVerification& certificate)
+{
+    const auto& source=samples.source;
+    const int extent=rows?source.height:source.width;
+    const int across=rows?source.width:source.height;
+    const int step=std::max(2,extent/(rows?540:960));
+    const int inside=leading?boundary+step:boundary-1-step;
+    const int outside=leading?boundary-1-step:boundary+step;
+    const int farther=leading?boundary-1-2*step:boundary+2*step;
+    if (inside<0 || inside>=extent || outside<0 || outside>=extent || farther<0 || farther>=extent) return false;
+    const auto differs=[&](int position,int coordinate) {
+        AnalysisLumaSample pixel;
+        samples.Checkpoint();
+        if (!source.Sample(rows?position:coordinate,rows?coordinate:position,pixel)) return false;
+        ++samples.lumaSamples; ++samples.chromaSamples;
+        return std::abs(int(pixel.luma)-reference.y)>=8 ||
+            std::abs(int(pixel.chromaU)-reference.u)>4 || std::abs(int(pixel.chromaV)-reference.v)>4;
+    };
+    const int positions=std::min(256,across);
+    bool previous=false;
+    int previousPosition=-1;
+    for (int i=0; i<positions; ++i) {
+        const int position=(2*i+1)*across/(2*positions);
+        if (position==previousPosition) continue;
+        previousPosition=position;
+        // Exterior-first short circuit costs one read per clean bar position.
+        // All three depths must differ: one-step fringe and disconnected UI
+        // are not connected native picture, even when locally bright.
+        const bool connected=differs(position,outside) && differs(position,farther) && differs(position,inside);
+        if (connected && previous) {
+            certificate.firstMismatchX=rows?position:outside;
+            certificate.firstMismatchY=rows?outside:position;
+            return true;
+        }
+        previous=connected;
+    }
+    return false;
+}
+
+ActivePictureCandidateVerificationState VerifyNativeAxisBands(SampleContext& samples,
+    const ActivePictureBounds& bounds, bool rows, ActivePictureEdgeEvidence& firstEdge,
+    ActivePictureEdgeEvidence& lastEdge, ActivePictureAxisEvidence& axis,
+    ActivePictureCandidateVerification& certificate)
+{
+    // VERIFIED certifies a native picture boundary with bounded sparse overlay
+    // outliers, not permission to discard every sampled pixel. Presentation
+    // retention/overlay handling must still preserve those occupied pixels.
+    using State = ActivePictureCandidateVerificationState;
+    const auto& source = samples.source;
+    const int extent = rows ? source.height : source.width;
+    const int across = rows ? source.width : source.height;
+    const int first = rows ? bounds.top : bounds.left;
+    const int last = rows ? bounds.bottom : bounds.right;
+    bool mismatch = false, contradicted = false;
+    for (bool leading : {true,false}) {
+        const int band = leading ? first : extent-last;
+        if (band <= 0) continue;
+        auto& edge = leading ? firstEdge : lastEdge;
+        edge.measuredMatteReference = MeasureOuterMatte(samples,rows,leading,band);
+        const auto& reference = edge.measuredMatteReference;
+        if (reference.state != ActivePictureMatteReferenceState::QUALIFIED) return State::UNKNOWN;
+        if (HasMatteRelativeContinuation(samples,rows,leading,leading?first:last,reference,certificate)) {
+            axis.reason=ActivePictureAxisReason::BAR_PICTURE_CONTINUATION;
+            return State::CONTRADICTED;
+        }
+        std::vector<int> depths;
+        for (int d=0; d<band; d+=std::max(1,extent/540)) depths.push_back(d);
+        for (int d=0; d<std::min(8,band); ++d) {
+            depths.push_back(d); depths.push_back(band-1-d);
+        }
+        std::sort(depths.begin(),depths.end());
+        depths.erase(std::unique(depths.begin(),depths.end()),depths.end());
+        for (int depth : depths) {
+            int broad[4] = {}, coverage[4] = {}, bad[4]={};
+            int outliers=0,distinct=0,previousPosition=-1;
+            for (int i=0; i<96; ++i) {
+                const int position = i*(across-1)/95;
+                if (position==previousPosition) continue;
+                previousPosition=position;
+                ++distinct; ++coverage[i/24];
+                const int coordinate = leading ? depth : extent-1-depth;
+                const int x=rows?position:coordinate, y=rows?coordinate:position;
+                AnalysisLumaSample pixel;
+                samples.Checkpoint();
+                if (!source.Sample(x,y,pixel)) return State::UNKNOWN;
+                ++samples.lumaSamples; ++samples.chromaSamples;
+                const int dy=std::abs(int(pixel.luma)-reference.y);
+                const int dc=std::max(std::abs(int(pixel.chromaU)-reference.u),std::abs(int(pixel.chromaV)-reference.v));
+                if (!MatchesMeasuredMatte(pixel,reference.y,reference.u,reference.v,source.range)) {
+                    ++outliers;
+                    ++bad[i/24];
+                    if (certificate.firstMismatchX<0) { certificate.firstMismatchX=x; certificate.firstMismatchY=y; }
+                }
+                broad[i/24] += dy>=8 || dc>4;
+            }
+            // Do not turn one column, a disconnected small UI mark, or local
+            // filtering fringe into a new native picture boundary. Existing
+            // connected-picture checks still veto actual narrow continuation.
+            // There is no depth/fringe exemption for broadly occupied picture.
+            mismatch = mismatch || outliers>std::max(1,distinct/24);
+            bool distributed=true;
+            for (int q=0; q<4; ++q) {
+                mismatch=mismatch || !coverage[q] || bad[q]>std::max(1,coverage[q]/12) || bad[q]*2>=coverage[q];
+                distributed=distributed && coverage[q]>0 && broad[q]*2>=coverage[q];
+            }
+            contradicted = contradicted || distributed;
+        }
+    }
+    return contradicted ? State::CONTRADICTED : mismatch ? State::UNKNOWN : State::VERIFIED;
+}
+
+// A coarse bright-edge nomination can leave a few resampling/chroma rows in
+// its excluded bars. Measure those CURRENT rows and retain them; never relabel
+// their original crop clean or relax the strict matte checks. This is limited
+// to an already nominated vertical-only crop, with a total two-step collar
+// including any uncertainty rows retained by the original profile guard.
+bool RepairNativeVerticalBoundaryCollar(SampleContext& samples,
+    ActivePictureEvidence& evidence, ActivePictureCandidateVerification& certificate)
+{
+    using State=ActivePictureCandidateVerificationState;
+    const auto& source=samples.source;
+    const auto original=evidence.trustedBounds;
+    auto& vertical=evidence.axisEvidence.vertical;
+    if (source.width<320 || source.height<180 ||
+        original.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+        original.left!=0 || original.right!=source.width ||
+        vertical.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION ||
+        evidence.top.measuredMatteReference.state!=ActivePictureMatteReferenceState::QUALIFIED ||
+        evidence.bottom.measuredMatteReference.state!=ActivePictureMatteReferenceState::QUALIFIED)
+        return false;
+    const int collar=2*std::max(2,source.height/540);
+    const int topAllowance=std::max(0,collar-evidence.axisEvidence.verticalCropGuardTop);
+    const int bottomAllowance=std::max(0,collar-evidence.axisEvidence.verticalCropGuardBottom);
+    const int earliest=(std::max(1,original.top-topAllowance)+1)&~1;
+    const int latest=std::min(source.height-1,original.bottom+bottomAllowance)&~1;
+    if (earliest>original.top || latest<original.bottom) return false;
+    int top=original.top,bottom=original.bottom;
+    const auto differs=[&](int x,int y,const ActivePictureMatteReference& reference,bool& different) {
+        samples.Checkpoint();AnalysisLumaSample pixel;
+        if (!source.Sample(x,y,pixel)) return false;
+        ++samples.lumaSamples;++samples.chromaSamples;
+        // Retention remains conservative even for a rounding-tolerant bar.
+        different=std::abs(int(pixel.luma)-reference.y)>4 ||
+            std::abs(int(pixel.chromaU)-reference.u)>4 || std::abs(int(pixel.chromaV)-reference.v)>4;
+        return true;
+    };
+    for (bool leading:{true,false}) {
+        const auto& reference=leading?evidence.top.measuredMatteReference:evidence.bottom.measuredMatteReference;
+        const int first=leading?earliest:original.bottom;
+        const int end=leading?original.top:latest;
+        for (int y=first;y<end;++y) for (int i=0;i<96;++i) {
+            bool different=false;
+            if (!differs(i*(source.width-1)/95,y,reference,different)) return false;
+            if (different) {
+                if (leading) top=std::min(top,y&~1);
+                else bottom=std::max(bottom,(y+2)&~1);
+            }
+        }
+    }
+    if ((top==original.top && bottom==original.bottom) || top<earliest || bottom>latest) return false;
+    auto repaired=original;repaired.top=top;repaired.bottom=bottom;
+    repaired.aspectRatio=double(repaired.right-repaired.left)/(bottom-top);
+    auto topEdge=evidence.top,bottomEdge=evidence.bottom;
+    auto axis=vertical;auto checked=certificate;checked.bounds=repaired;
+    // This is exactly the same complete discarded-band verifier used for the
+    // original nomination, including deep rows and connected-picture vetoes.
+    if (VerifyNativeAxisBands(samples,repaired,true,topEdge,bottomEdge,axis,checked)!=State::VERIFIED)
+        return false;
+    auto profile=evidence.verticalBarGuardProfile;
+    if (evidence.lowContrastBoundaryProof || evidence.axisEvidence.verticalCropProfileClean) {
+        profile=InspectVerticalCropBarProfile(samples,top,bottom);
+        if (!profile.completed || !profile.clean) return false;
+    }
+    topEdge.barPixels=top;bottomEdge.barPixels=source.height-bottom;
+    topEdge.trusted=bottomEdge.trusted=true;
+    axis.state=ActivePictureAxisState::TRUSTED_BARS;axis.reason=ActivePictureAxisReason::BAR_CONFIRMED;
+    evidence.top=topEdge;evidence.bottom=bottomEdge;vertical=axis;
+    evidence.axisEvidence.verticalCropGuardTop+=original.top-top;
+    evidence.axisEvidence.verticalCropGuardBottom+=bottom-original.bottom;
+    evidence.trustedBounds=repaired;evidence.verticalBarGuardProfile=profile;
+    certificate.bounds=repaired;
+    evidence.reason="native boundary collar retained; remaining discarded bars independently verified";
+    return true;
+}
+
+void VerifyNativeCandidate(const AnalysisLumaSource& source, ActivePictureEvidence& evidence,
+    const AnalysisEvaluationBudget* budget)
+{
+    if (evidence.classification != ActivePictureClassification::BAR_CROP_TRUSTED) return;
+    using State = ActivePictureCandidateVerificationState;
+    SampleContext samples{source}; samples.budget=budget;
+    auto& certificate=evidence.candidateVerification;
+    certificate={}; certificate.nomination=certificate.bounds=evidence.trustedBounds;
+    certificate.sourceGeneration=source.generation;
+    auto axes=static_cast<uint8_t>(evidence.trustedBounds.trustedBarAxes);
+    const auto nominatedAxes=axes;
+    const auto reject = [](ActivePictureAxisEvidence& axis) {
+        axis.state=ActivePictureAxisState::UNKNOWN;
+        if (axis.reason!=ActivePictureAxisReason::BAR_PICTURE_CONTINUATION)
+            axis.reason=ActivePictureAxisReason::BAR_EDGE_REJECTED;
+    };
+    if (axes & 1) {
+        certificate.vertical=VerifyNativeAxisBands(samples,certificate.bounds,true,evidence.top,evidence.bottom,evidence.axisEvidence.vertical,certificate);
+        if (certificate.vertical!=State::VERIFIED && RepairNativeVerticalBoundaryCollar(samples,evidence,certificate))
+            certificate.vertical=State::VERIFIED;
+        if (certificate.vertical!=State::VERIFIED) {
+            axes &= ~1; reject(evidence.axisEvidence.vertical);
+            evidence.top.trusted=evidence.bottom.trusted=false;
+            evidence.trustedBounds.top=0; evidence.trustedBounds.bottom=source.height;
+            evidence.lowContrastBoundaryProof=false;
+        }
+    }
+    if (axes & 2) {
+        certificate.horizontal=VerifyNativeAxisBands(samples,certificate.bounds,false,evidence.left,evidence.right,evidence.axisEvidence.horizontal,certificate);
+        if (certificate.horizontal!=State::VERIFIED) {
+            axes &= ~2; reject(evidence.axisEvidence.horizontal);
+            evidence.left.trusted=evidence.right.trusted=false;
+            evidence.trustedBounds.left=0; evidence.trustedBounds.right=source.width;
+        }
+    }
+    certificate.samples=samples.lumaSamples;
+    evidence.lumaSamples+=samples.lumaSamples; evidence.chromaSamples+=samples.chromaSamples;
+    evidence.trustedBounds.trustedBarAxes=static_cast<ActivePictureBounds::BarAxes>(axes);
+    evidence.trustedBounds.aspectRatio=double(evidence.trustedBounds.right-evidence.trustedBounds.left)/
+        (evidence.trustedBounds.bottom-evidence.trustedBounds.top);
+    // Each axis was inspected over the entire raster along its boundary, so
+    // rejecting the other axis cannot invalidate the surviving axis proof.
+    certificate.bounds=evidence.trustedBounds;
+    if (axes!=nominatedAxes || !axes) {
+        // A surviving axis proves only its own boundaries. Expanding an
+        // unknown axis to safe raster coordinates cannot certify the aspect
+        // of the whole picture that originally nominated both cropped axes.
+        evidence.classification=ActivePictureClassification::PROVISIONAL;
+        evidence.reason="native candidate has an unverified nominated crop axis";
+    }
 }
 
 ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
@@ -898,20 +1223,166 @@ const char* ActivePictureAxisReasonName(ActivePictureAxisReason reason)
 	}
 }
 ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidence& evidence,
-	uint64_t frameNumber, double framesPerSecond)
+	uint64_t frameNumber, double framesPerSecond, const ActivePictureFrameIdentity* expectedCurrentIdentity)
 {
 	ActivePictureObservation observation;
 	observation.frameNumber = frameNumber;
 	observation.framesPerSecond = framesPerSecond;
+    if(SourcePictureDetectorEnabled() && evidence.detector==ActivePictureDetectorKind::Legacy) {
+        observation.detector=ActivePictureDetectorKind::SourceSpatialUnavailable;
+        return observation; // Retention may inspect legacy pixels, but cannot nominate geometry.
+    }
 	observation.available = evidence.available;
 	observation.classification = evidence.classification;
 	observation.bounds = evidence.classification == ActivePictureClassification::PROVISIONAL
 		? evidence.proposedBounds : evidence.trustedBounds;
 	observation.axisEvidence = evidence.axisEvidence;
 	observation.authorityOrigin = evidence.authorityOrigin;
+    observation.detector=evidence.detector;
 	observation.sparseTransitionProof = evidence.sparseTransitionProof;
 	observation.rememberedEdgeReturnProof = evidence.rememberedEdgeReturnProof;
+    const auto sameRect=[](const ActivePictureBounds& a,const ActivePictureBounds& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+            a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;
+    };
+    if(expectedCurrentIdentity && evidence.currentSourceIdentityAvailable &&
+        SameAnalysisFrameIdentity(evidence.currentSourceIdentity,*expectedCurrentIdentity)) {
+        const auto& id=*expectedCurrentIdentity;
+        const auto& physical=evidence.physicalEdges;const auto& certificate=evidence.candidateVerification;
+        const auto& measured=physical.estimate;const auto& retained=evidence.trustedBounds;
+        const bool vertical=retained.top>0 || retained.bottom<retained.rasterHeight;
+        const bool horizontal=retained.left>0 || retained.right<retained.rasterWidth;
+        const auto knownGeneration=[&](uint64_t value) {
+            return value && (value==id.transportGeneration || value==id.sourceFormatGeneration);
+        };
+        if(id.acceptedSequence==frameNumber && id.acceptedSequence && id.transportGeneration &&
+            id.sourceFormatGeneration && id.analysisDomainKey && evidence.available &&
+            evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+            evidence.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+            evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+            physical.evaluated && physical.estimateAvailable &&
+            physical.confidence==PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE &&
+            knownGeneration(physical.sourceGeneration) && knownGeneration(certificate.sourceGeneration) &&
+            certificate.samples && sameRect(certificate.nomination,measured) && sameRect(certificate.bounds,retained) &&
+            ActivePictureCurrentSpatialCropProof::ValidRectangle(measured) &&
+            ActivePictureCurrentSpatialCropProof::ValidRectangle(retained) &&
+            sameRect(observation.bounds,retained) && measured.rasterWidth==retained.rasterWidth &&
+            measured.rasterHeight==retained.rasterHeight && retained.left<=measured.left && retained.top<=measured.top &&
+            retained.right>=measured.right && retained.bottom>=measured.bottom &&
+            (!vertical || certificate.vertical==ActivePictureCandidateVerificationState::VERIFIED) &&
+            (!horizontal || certificate.horizontal==ActivePictureCandidateVerificationState::VERIFIED)) {
+            auto& proof=observation.currentSpatialCropProof;
+            proof.available=true;proof.sequence=frameNumber;proof.transport=id.transportGeneration;
+            proof.format=id.sourceFormatGeneration;proof.domain=id.analysisDomainKey;
+            proof.measured=measured;proof.retained=retained;
+        }
+    }
 	return observation;
+}
+
+ActivePictureEvidence VerifySuppliedActivePictureCandidate(const AnalysisLumaSource& source,
+    const ActivePictureBounds& measuredBounds, const AnalysisEvaluationBudget* budget)
+{
+    ActivePictureEvidence result;
+    const auto unavailable=[](const char* reason) {
+        ActivePictureEvidence empty;empty.reason=reason;return empty;
+    };
+    if(!source.IsValid() || !IsValidBoundsForSource(measuredBounds,source))
+        return unavailable("invalid supplied source candidate");
+    try {
+        CheckAnalysisEvaluationBudget(budget);
+        result.proposedBounds=measuredBounds;
+        result.proposedBounds.aspectRatio=double(measuredBounds.right-measuredBounds.left)/
+            (measuredBounds.bottom-measuredBounds.top);
+        result.trustedBounds=result.proposedBounds;
+        auto& guard=result.trustedBounds;
+        // Retain the adjacent chroma footprint; never move an odd measured
+        // edge inward. The caller's unrounded physical measurement is intact.
+        guard.left&=~1;guard.top&=~1;
+        if(guard.right<source.width)guard.right+=guard.right&1;
+        if(guard.bottom<source.height)guard.bottom+=guard.bottom&1;
+        guard.aspectRatio=double(guard.right-guard.left)/(guard.bottom-guard.top);
+        const bool vertical=guard.top>0 || guard.bottom<source.height;
+        const bool horizontal=guard.left>0 || guard.right<source.width;
+        const unsigned axes=(vertical?1u:0u)|(horizontal?2u:0u);
+        guard.trustedBarAxes=static_cast<ActivePictureBounds::BarAxes>(axes);
+        result.proposedBounds.trustedBarAxes=static_cast<ActivePictureBounds::BarAxes>(
+            (measuredBounds.top>0 || measuredBounds.bottom<source.height?1u:0u)|
+            (measuredBounds.left>0 || measuredBounds.right<source.width?2u:0u));
+        const auto axis=[](bool cropped) {
+            ActivePictureAxisEvidence value;value.scanComplete=true;value.barCandidate=cropped;
+            value.state=cropped?ActivePictureAxisState::TRUSTED_BARS:ActivePictureAxisState::FULL_EXTENT_SUPPORTED;
+            value.reason=cropped?ActivePictureAxisReason::BAR_CONFIRMED:ActivePictureAxisReason::FULL_EXTENT_SUPPORTED;
+            return value;
+        };
+        result.axisEvidence.vertical=axis(vertical);result.axisEvidence.horizontal=axis(horizontal);
+        result.axisEvidence.verticalCropGuardTop=measuredBounds.top-guard.top;
+        result.axisEvidence.verticalCropGuardBottom=guard.bottom-measuredBounds.bottom;
+        result.available=true;
+        if(!axes) {
+            // The supplied positive extent owns geometry. There is no excluded
+            // band to verify and no new physical measurement is manufactured.
+            result.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            result.reason="supplied source extent retains the entire raster";
+            result.sourceCandidateVerificationComplete=true;
+            return result;
+        }
+        SampleContext samples{source};samples.budget=budget;
+        std::vector<int> perimeter;perimeter.reserve(256);
+        for(int i=0;i<64;++i) {
+            const int x=(2*i+1)*source.width/128,y=(2*i+1)*source.height/128;
+            const int positions[4][2]={{x,0},{x,source.height-1},{0,y},{source.width-1,y}};
+            for(const auto& position:positions) {
+                samples.Checkpoint();AnalysisLumaSample pixel;
+                if(!source.Sample(position[0],position[1],pixel))return unavailable("supplied candidate source sampling failed");
+                ++samples.lumaSamples;++samples.chromaSamples;perimeter.push_back(pixel.luma);
+            }
+        }
+        const int observedLow=int(Percentile(perimeter,.10));
+        const bool fullRange=source.range==AnalysisLumaRange::Full;
+        const int floor=observedLow<32?0:fullRange?std::min(observedLow,80):Bounded(observedLow,48,80);
+        const int threshold=std::min(104,floor+24);
+        auto& reference=result.blackReference;
+        reference.evaluated=true;reference.observedFloor=reference.floor=floor;
+        reference.observedThreshold=reference.threshold=threshold;
+        reference.mode=!fullRange?ActivePictureBlackReferenceMode::LEGACY:
+            floor?ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED:ActivePictureBlackReferenceMode::FULL_NOMINAL;
+        // These are diagnostic measurements only. Their legacy positive-edge
+        // contrast/trust decisions do NOT admit this independently supplied
+        // nomination. Only the existing excluded-band verifier below does.
+        if(guard.top>0)result.top=InspectHorizontalEdge(samples,true,guard.top,guard.top,floor,threshold);
+        if(guard.bottom<source.height)result.bottom=InspectHorizontalEdge(samples,false,source.height-guard.bottom,guard.bottom,floor,threshold);
+        if(guard.left>0)result.left=InspectVerticalEdge(samples,true,guard.left,guard.left,floor,threshold);
+        if(guard.right<source.width)result.right=InspectVerticalEdge(samples,false,source.width-guard.right,guard.right,floor,threshold);
+        result.lumaSamples=samples.lumaSamples;result.chromaSamples=samples.chromaSamples;
+        result.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        VerifyNativeCandidate(source,result,budget);
+        // This wrapper was supplied the unrounded source-pixel nominee. The
+        // shared verifier certifies the outward-aligned retained rectangle;
+        // keep those two meanings distinct without changing its result.
+        result.candidateVerification.nomination=result.proposedBounds;
+        if(result.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED)
+            result.top.trusted=result.bottom.trusted=true;
+        if(result.candidateVerification.horizontal==ActivePictureCandidateVerificationState::VERIFIED)
+            result.left.trusted=result.right.trusted=true;
+        if(result.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED) {
+            result.axisEvidence.verticalCropGuardTop=measuredBounds.top-result.trustedBounds.top;
+            result.axisEvidence.verticalCropGuardBottom=result.trustedBounds.bottom-measuredBounds.bottom;
+        }
+        if(result.classification==ActivePictureClassification::BAR_CROP_TRUSTED) {
+            result.reason="supplied source candidate independently passes excluded-band verification";
+            if(fullRange && floor>0) {
+                reference.mode=ActivePictureBlackReferenceMode::FULL_QUALIFIED_RAISED;
+                reference.qualifiedAxes=static_cast<uint8_t>(axes);
+                reference.qualifiedEdgeMask=uint8_t((guard.left>0?1:0)|(guard.top>0?2:0)|
+                    (guard.right<source.width?4:0)|(guard.bottom<source.height?8:0));
+            }
+        }
+        result.sourceCandidateVerificationComplete=true;
+        return result;
+    } catch(const AnalysisEvaluationCancelled&) {
+        return unavailable("supplied candidate verification budget exhausted");
+    }
 }
 
 // A clean outer bar can be shorter than an over-detected opposite bar when
@@ -1054,14 +1525,8 @@ static bool RecoverFlatBarLowContrastPicture(const AnalysisLumaSource& source,
     auto& axes = evidence.axisEvidence;
     if (evidence.classification != ActivePictureClassification::PROVISIONAL ||
         !axes.vertical.scanComplete || !axes.horizontal.scanComplete ||
-        source.width < 320 || source.height < 180 ||
-        (!evidence.top.trusted && !evidence.bottom.trusted)) return false;
-    const auto& anchor = evidence.top.trusted ? evidence.top : evidence.bottom;
-    if (anchor.lumaFloor < 0 || anchor.lumaFloor > 80 ||
-        anchor.lumaP90 > anchor.lumaFloor + 4 || anchor.lumaDispersion > 4 ||
-        anchor.texture > 2 || anchor.blackFraction < .99 ||
-        anchor.neutralChromaFraction < .98 || anchor.continuity < .99 ||
-        anchor.innerBoundaryContrast < 24) return false;
+        !axes.vertical.barCandidate || source.width < 320 || source.height < 180 ||
+        axes.horizontal.state == ActivePictureAxisState::TRUSTED_BARS) return false;
     SampleContext samples{source};
     samples.budget = budget;
     struct Counts {
@@ -1069,22 +1534,26 @@ static bool RecoverFlatBarLowContrastPicture(const AnalysisLumaSource& source,
         ~Counts() { evidence.lumaSamples += samples.lumaSamples;
             evidence.chromaSamples += samples.chromaSamples; }
     } counts{evidence, samples};
-    const int floor = static_cast<int>(anchor.lumaFloor);
+    const auto topReference=MeasureOuterMatte(samples,true,true,evidence.proposedBounds.top);
+    const auto bottomReference=MeasureOuterMatte(samples,true,false,source.height-evidence.proposedBounds.bottom);
+    if (topReference.state!=ActivePictureMatteReferenceState::QUALIFIED ||
+        bottomReference.state!=ActivePictureMatteReferenceState::QUALIFIED) return false;
     auto read = [&](int x, int y, AnalysisLumaSample& pixel) {
         samples.Checkpoint();
         if (!source.Sample(x, y, pixel)) return false;
         ++samples.lumaSamples; ++samples.chromaSamples; return true;
     };
     auto boundary = [&](bool upper) {
+        const auto& reference=upper?topReference:bottomReference;
         for (int depth = 0; depth < source.height / 4; ++depth) {
             const int y = upper ? depth : source.height - 1 - depth;
             bool flat = true;
             for (int i = 0; i < 48; ++i) {
                 AnalysisLumaSample pixel;
                 if (!read((2*i+1)*source.width/96, y, pixel)) return -1;
-                if (std::abs(int(pixel.luma)-floor) > 4 ||
-                    std::abs(int(pixel.chromaU)-512) > 4 ||
-                    std::abs(int(pixel.chromaV)-512) > 4) { flat = false; break; }
+                if (std::abs(int(pixel.luma)-reference.y) > 4 ||
+                    std::abs(int(pixel.chromaU)-reference.u) > 4 ||
+                    std::abs(int(pixel.chromaV)-reference.v) > 4) { flat = false; break; }
             }
             if (!flat) return upper ? y : y+1;
         }
@@ -1092,8 +1561,7 @@ static bool RecoverFlatBarLowContrastPicture(const AnalysisLumaSource& source,
     };
     const int top = boundary(true), bottom = boundary(false);
     const int step = std::max(2, source.height/540);
-    if (top <= 2*step || bottom <= top || bottom >= source.height-2*step ||
-        std::abs(top-(source.height-bottom)) > std::max(2*step,source.height/360)) return false;
+    if (top <= 2*step || bottom <= top || bottom >= source.height-2*step) return false;
     // This fallback repairs a materially swallowed dark-picture band. Preserve
     // the existing sampling-jitter contract; a one-step line in a bar cannot
     // acquire a new crop or turn retention evidence into measurement authority.
@@ -1103,6 +1571,7 @@ static bool RecoverFlatBarLowContrastPicture(const AnalysisLumaSource& source,
     // and at several interior depths. A title, local highlight, or smooth ramp
     // cannot turn a flat outer region into an accepted pair of bars.
     for (bool upper : {true, false}) {
+        const auto& reference=upper?topReference:bottomReference;
         const int edge = upper ? top : bottom-1;
         const int direction = upper ? 1 : -1;
         int totalAbrupt = 0;
@@ -1113,9 +1582,9 @@ static bool RecoverFlatBarLowContrastPicture(const AnalysisLumaSource& source,
                 for (int d = 0; d < 4; ++d) {
                     AnalysisLumaSample pixel;
                     if (!read(x,edge+direction*(2*step+4*d),pixel)) return false;
-                    support[d] += int(pixel.luma)-floor >= 8 ||
-                        std::abs(int(pixel.chromaU)-512) >= 8 ||
-                        std::abs(int(pixel.chromaV)-512) >= 8;
+                    // Chroma alone remains diagnostic until its acquisition
+                    // thresholds have native negative-control calibration.
+                    support[d] += int(pixel.luma)-reference.y >= 8;
                 }
                 int previous = -1, largestStep = 0;
                 for (int d = -2; d <= 2*step; ++d) {
@@ -1145,8 +1614,8 @@ static bool RecoverFlatBarLowContrastPicture(const AnalysisLumaSource& source,
     axes.verticalCropProfileEvaluated = axes.verticalCropProfileClean = true;
     axes.verticalCropGuardTop = top-guardedTop;
     axes.verticalCropGuardBottom = guardedBottom-bottom;
-    evidence.top = InspectHorizontalEdge(samples,true,guardedTop,guardedTop,floor,std::min(104,floor+24));
-    evidence.bottom = InspectHorizontalEdge(samples,false,source.height-guardedBottom,guardedBottom,floor,std::min(104,floor+24));
+    evidence.top = InspectHorizontalEdge(samples,true,guardedTop,guardedTop,topReference.y,std::min(104,topReference.y+24));
+    evidence.bottom = InspectHorizontalEdge(samples,false,source.height-guardedBottom,guardedBottom,bottomReference.y,std::min(104,bottomReference.y+24));
     evidence.top.trusted = evidence.bottom.trusted = true;
     evidence.trustedBounds = {0,guardedTop,source.width,guardedBottom,source.width,source.height,
         double(source.width)/(guardedBottom-guardedTop),ActivePictureBounds::BarAxes::TOP_BOTTOM};
@@ -1326,6 +1795,46 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 		ActivePictureBounds::BarAxes::NONE };
     reference.adaptiveCandidate = result.proposedBounds;
     auto completeNominalFull = [&]() {
+        // A rejected pooled reference may contain dim picture swallowed by
+        // an actual raised matte. Independently measured physical boundaries
+        // take precedence over nominal absolute-code full-extent support.
+        auto measured=result;
+        measured.lumaSamples=samples.lumaSamples;
+        measured.chromaSamples=samples.chromaSamples;
+        measured.classification=ActivePictureClassification::PROVISIONAL;
+        if (result.axisEvidence.horizontal.barCandidate && result.axisEvidence.vertical.barCandidate &&
+            result.left.trusted && result.right.trusted && result.top.trusted && result.bottom.trusted) {
+            const auto& proposed=result.proposedBounds;
+            const auto& paired=result.trustedBounds;
+            if (proposed.left<=0 || proposed.right>=source.width || proposed.top<=0 || proposed.bottom>=source.height ||
+                paired.left!=proposed.left || paired.right!=proposed.right ||
+                paired.top!=proposed.top || paired.bottom!=proposed.bottom) {
+                // Individual edge statistics do not establish a paired axis.
+                // An asymmetric/unassigned pair still contains raster fallback
+                // coordinates, which must never receive a BOTH certificate.
+                measured.reason="incomplete or asymmetric Full-range windowbox pairs cannot establish whole-picture authority";
+                return measured;
+            }
+            // This Full-range shortcut precedes ordinary axis finalization.
+            // Validate its complete windowbox nomination here; a full-width
+            // recovery or absolute nominal cutoff cannot replace its failed
+            // side axis with invented full-picture extent.
+            measured.trustedBounds.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+            measured.trustedBounds.aspectRatio=double(measured.trustedBounds.right-measured.trustedBounds.left)/
+                (measured.trustedBounds.bottom-measured.trustedBounds.top);
+            measured.axisEvidence.horizontal.state=measured.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+            measured.axisEvidence.horizontal.reason=measured.axisEvidence.vertical.reason=ActivePictureAxisReason::BAR_CONFIRMED;
+            measured.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            VerifyNativeCandidate(source,measured,budget);
+            return measured;
+        }
+        if (RecoverFlatBarLowContrastPicture(source,measured,budget)) {
+            VerifyNativeCandidate(source,measured,budget);
+            if (measured.classification==ActivePictureClassification::BAR_CROP_TRUSTED)
+                return measured;
+        }
+        samples.lumaSamples=measured.lumaSamples;
+        samples.chromaSamples=measured.chromaSamples;
         reference.floor = 0; reference.threshold = 24;
         reference.nominalReclassified = blackFloor > 0;
         reference.mode = blackFloor > 0 ? ActivePictureBlackReferenceMode::FULL_REJECTED_RAISED :
@@ -1559,8 +2068,23 @@ ActivePictureEvidence ExtractActivePictureEvidence(
         rejectRaisedBars(result.axisEvidence.vertical);
         result.reason = "raised Full-range matte reference is unresolved; no new crop or full-raster authority";
     }
-    else if (!RecoverLowContrastOpposingBoundary(source,result,budget))
-        RecoverFlatBarLowContrastPicture(source,result,budget);
+    // Ordinary bright-edge nominations are subject to the same discarded-band
+    // proof as recovery. Otherwise symmetric dim picture can already be called
+    // trusted and bypass every recovery path.
+    VerifyNativeCandidate(source,result,budget);
+    const auto& certificate=result.candidateVerification;
+    const bool rejectedWindowbox=certificate.nomination.trustedBarAxes==ActivePictureBounds::BarAxes::BOTH &&
+        (certificate.vertical!=ActivePictureCandidateVerificationState::VERIFIED ||
+         certificate.horizontal!=ActivePictureCandidateVerificationState::VERIFIED);
+    bool recovered=false;
+    if (!rejectedWindowbox && !unresolvedFullReference)
+        recovered=RecoverLowContrastOpposingBoundary(source,result,budget);
+    // Recovery may repair a vertical-only nomination from measured pixels. It
+    // cannot erase a rejected side of a windowbox and relabel full raster width
+    // as measured picture width. Preserve that failed nomination's diagnostics.
+    if (!recovered && !rejectedWindowbox)
+        recovered=RecoverFlatBarLowContrastPicture(source,result,budget);
+    if (recovered) VerifyNativeCandidate(source,result,budget);
     CheckAnalysisEvaluationBudget(budget);
 	return result;
 }
@@ -1894,7 +2418,8 @@ std::array<SubtitleBoxRect, 3> MeasuredBoundaryPanels(
 OccludedBarInspection InspectSubtitleOccludedBar(
     const AnalysisLumaSource& source, bool top, int boundary, int floor,
     const SubtitleBoxObservation& current,
-    const std::array<SubtitleBoxRect, 3>& measuredPanels)
+    const std::array<SubtitleBoxRect, 3>& measuredPanels,
+    bool independentlyMeasuredBoundary = false)
 {
     OccludedBarInspection out;
     const int barPixels = top ? boundary : source.height - boundary;
@@ -1975,7 +2500,11 @@ OccludedBarInspection InspectSubtitleOccludedBar(
         out.edge.lumaP90 <= threshold &&
         out.edge.lumaDispersion <= 24.0 && out.edge.texture <= 8.0 &&
         out.edge.neutralChromaFraction >= 0.90 &&
-        out.edge.innerBoundaryContrast >= requiredContrast &&
+        // A supplied exact-current spatial boundary already has distributed
+        // positive edge evidence. Its dark picture flanks need not also pass
+        // this legacy single-row mean-contrast nomination test. Bar purity
+        // and the connected-picture veto below remain mandatory in both paths.
+        (independentlyMeasuredBoundary || out.edge.innerBoundaryContrast >= requiredContrast) &&
         out.edge.continuity >= 0.99;
     if (!out.edge.trusted) return out;
     // Never allow masking to explain an actual picture continuation. It is
@@ -2025,6 +2554,136 @@ bool SubtitleAssistedVerticalBarProof::IsCurrentFor(
         policyGeneration == currentPolicyGeneration &&
         continuityGeneration == currentContinuityGeneration &&
         scriptHint == currentScriptHint;
+}
+
+SubtitleAssistedVerticalBarProof VerifySuppliedActivePictureCandidateWithSubtitle(
+    const AnalysisLumaSource& source, const ActivePictureEvidence& measured,
+    const SubtitleBoxObservation& current, const ActivePictureFrameIdentity& currentIdentity,
+    uint64_t policyGeneration, uint64_t continuityGeneration, SubtitleScriptHint scriptHint)
+{
+    SubtitleAssistedVerticalBarProof proof;
+    proof.evidence=measured;
+    proof.reason="supplied-current-caption-proof-unavailable";
+    const auto& bounds=measured.proposedBounds;
+    const auto& physical=measured.physicalEdges;
+    if(!source.IsValid() || !source.generation || source.generation!=currentIdentity.transportGeneration ||
+        !currentIdentity.acceptedSequence || !measured.available ||
+        (measured.currentSourceIdentityAvailable && !SameAnalysisFrameIdentity(measured.currentSourceIdentity,currentIdentity)) ||
+        measured.detector!=ActivePictureDetectorKind::SourceSpatialMeasured ||
+        measured.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+        !physical.evaluated || !physical.estimateAvailable ||
+        (physical.sourceGeneration!=currentIdentity.sourceFormatGeneration &&
+         physical.sourceGeneration!=source.generation) ||
+        !IsValidBoundsForSource(bounds,source) || bounds.left!=0 || bounds.right!=source.width ||
+        bounds.top<=0 || bounds.bottom>=source.height ||
+        physical.estimate.left!=bounds.left || physical.estimate.top!=bounds.top ||
+        physical.estimate.right!=bounds.right || physical.estimate.bottom!=bounds.bottom ||
+        physical.estimate.rasterWidth!=source.width || physical.estimate.rasterHeight!=source.height ||
+        !measured.blackReference.evaluated || measured.blackReference.floor<0 || measured.blackReference.floor>80 ||
+        !current.analyzed || current.analysisRefresh || current.pendingRefresh || current.discontinuity ||
+        current.glyphLocalTop || current.glyphLocalBottom ||
+        (current.inspectionCandidateUsed && !SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(current)) ||
+        current.policyGeneration!=policyGeneration || current.continuityGeneration!=continuityGeneration ||
+        current.scriptHint!=scriptHint || current.width!=source.width || current.height!=source.height ||
+        !SameAnalysisFrameIdentity(current.identity,currentIdentity) ||
+        !current.text.detected || current.text.held || current.text.confirmationPending || current.text.workLimit ||
+        current.text.lineCount<=0 || current.text.lineCount>3 || !current.text.bounds.Valid() ||
+        !current.text.anchor.Valid() || !current.ink || !current.ink->rawEvidenceComplete || !current.ink->paletteValid)
+        return proof;
+    const auto& ink=*current.ink;
+    if(ink.width<=0 || ink.height<=0 || ink.step<=0 || ink.sourceRows.size()!=size_t(ink.height))return proof;
+    const size_t words=(size_t(ink.width)*size_t(ink.height)+63)/64;
+    if(ink.rawInk.size()!=words || ink.ownedInk.size()!=words || ink.blackBacking.size()!=words)return proof;
+    bool hasOwned=false;
+    for(size_t i=0;i<words;++i) {
+        if(ink.ownedInk[i]&~ink.rawInk[i])return proof;
+        hasOwned=hasOwned || ink.ownedInk[i]!=0;
+    }
+    if(!hasOwned)return proof;
+    int previous=-1;
+    for(int row:ink.sourceRows) {
+        if(row<=previous || row<0 || row>=source.height)return proof;
+        previous=row;
+    }
+    auto guard=bounds;
+    guard.top&=~1;guard.bottom=std::min(source.height,(guard.bottom+1)&~1);
+    guard.aspectRatio=double(source.width)/(guard.bottom-guard.top);
+    guard.trustedBarAxes=ActivePictureBounds::BarAxes::TOP_BOTTOM;
+    const auto panels=MeasuredBoundaryPanels(current,guard);
+    const int floor=measured.blackReference.floor;
+    const auto top=InspectSubtitleOccludedBar(source,true,guard.top,floor,current,panels,true);
+    const auto bottom=InspectSubtitleOccludedBar(source,false,guard.bottom,floor,current,panels,true);
+    proof.topFlankSupport=top.flankSupport;proof.bottomFlankSupport=bottom.flankSupport;
+    proof.unknownSamples=top.unknown+bottom.unknown;proof.lumaSamples=top.samples+bottom.samples;
+    proof.usedMeasuredBacking=top.backingExcluded || bottom.backingExcluded;
+    if(!top.edge.trusted || !bottom.edge.trusted || top.connectedPicture || bottom.connectedPicture) {
+        proof.reason=top.connectedPicture || bottom.connectedPicture?"supplied-caption-connected-picture":"supplied-caption-unoccluded-bar-unproved";
+        return proof;
+    }
+    SampleContext samples{source};
+    auto profile=InspectVerticalCropBarProfile(samples,guard.top,guard.bottom,current.ink.get());
+    if(profile.completed && !profile.clean) {
+        // Filtering can leave faint current-source pixels outside an exact
+        // physical edge. Retain only the same bounded outward collar as the
+        // native verifier; never move the measured edge or mask a whole card.
+        // The original boundary's flank/connected-picture proof above remains
+        // mandatory, and every remaining excluded band is checked again below.
+        const int collar=2*std::max(2,source.height/540);
+        auto retained=guard;
+        if(profile.topFirstMismatchY>=0)
+            retained.top=std::min(retained.top,profile.topFirstMismatchY&~1);
+        if(profile.bottomLastMismatchY>=0)
+            retained.bottom=std::max(retained.bottom,(profile.bottomLastMismatchY+2)&~1);
+        // Bound the actual mismatching source rows before chroma alignment.
+        // An exclusive lower aperture and outward even alignment can retain
+        // one more row than the sampled fringe itself; that is not evidence
+        // of a deeper fringe or a change to the physical measurement.
+        const bool rowsBounded=
+            (profile.topFirstMismatchY<0 || profile.topFirstMismatchY>=bounds.top-collar) &&
+            (profile.bottomLastMismatchY<0 || profile.bottomLastMismatchY<=bounds.bottom+collar);
+        const bool bounded=rowsBounded && retained.top>0 && retained.bottom<source.height &&
+            (retained.top!=guard.top || retained.bottom!=guard.bottom);
+        if(bounded) {
+            retained.aspectRatio=double(source.width)/(retained.bottom-retained.top);
+            auto remaining=InspectVerticalCropBarProfile(samples,retained.top,retained.bottom,current.ink.get());
+            if(remaining.completed && remaining.clean) {
+                guard=retained;profile=remaining;
+            }
+        }
+    }
+    proof.lumaSamples+=samples.lumaSamples;
+    proof.maskedProfile=profile;
+    if(!profile.completed || !profile.clean) {
+        proof.reason="supplied-caption-excluded-band-profile-failed";return proof;
+    }
+    auto& evidence=proof.evidence;
+    evidence.trustedBounds=guard;evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+    evidence.top=top.edge;evidence.bottom=bottom.edge;
+    evidence.top.barPixels=guard.top;evidence.bottom.barPixels=source.height-guard.bottom;
+    auto& axes=evidence.axisEvidence;
+    axes.horizontal.state=ActivePictureAxisState::FULL_EXTENT_SUPPORTED;
+    axes.horizontal.reason=ActivePictureAxisReason::FULL_EXTENT_SUPPORTED;
+    axes.horizontal.scanComplete=true;axes.horizontal.barCandidate=false;
+    axes.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+    axes.vertical.reason=ActivePictureAxisReason::BAR_CONFIRMED;
+    axes.vertical.scanComplete=true;axes.vertical.barCandidate=true;
+    axes.sidePictureWidth=source.width;axes.sidePictureHeight=source.height;
+    axes.sidePictureTop=bounds.top;axes.sidePictureBottom=bounds.bottom;
+    axes.verticalCropProfileEvaluated=true;axes.verticalCropProfileClean=true;
+    axes.verticalCropGlyphExclusions=true;
+    axes.verticalCropGuardTop=bounds.top-guard.top;axes.verticalCropGuardBottom=guard.bottom-bounds.bottom;
+    evidence.verticalBarGuardProfile=profile;
+    auto& certificate=evidence.candidateVerification;certificate={};
+    certificate.nomination=bounds;certificate.bounds=guard;certificate.sourceGeneration=source.generation;
+    certificate.vertical=ActivePictureCandidateVerificationState::VERIFIED;certificate.samples=proof.lumaSamples;
+    evidence.lumaSamples+=proof.lumaSamples;
+    evidence.currentSourceIdentity=currentIdentity;evidence.currentSourceIdentityAvailable=true;
+    evidence.reason="supplied spatial nominee verified with exact-current owned caption mask";
+    proof.candidate=guard;proof.identity=currentIdentity;proof.policyGeneration=policyGeneration;
+    proof.continuityGeneration=continuityGeneration;proof.scriptHint=scriptHint;
+    proof.width=source.width;proof.height=source.height;proof.accepted=true;
+    proof.reason="supplied-caption-masked-bars-verified";
+    return proof;
 }
 
 SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
@@ -2603,6 +3262,12 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		leftExtent.available;
 	const bool unsafeRight = !ExcludedBandPixelsAreSafe(result.excludedRight) ||
 		rightExtent.available;
+	result.rawBandSafetyEvaluated = true;
+	result.rawBandSafetyBase = trustedPresentation;
+	result.rawBandLeftSafe = !unsafeLeft;
+	result.rawBandTopSafe = !unsafeTop;
+	result.rawBandRightSafe = !unsafeRight;
+	result.rawBandBottomSafe = !unsafeBottom;
 	result.excludedHorizontalBandsPixelSafe = !unsafeLeft && !unsafeRight;
 	result.excludedVerticalBandsPixelSafe = !unsafeTop && !unsafeBottom;
 	result.excludedBandsPixelSafe =
@@ -3449,5 +4114,516 @@ RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource&
     result.valid = true;
     result.reason = "relative-bars-and-picture-confirmed";
     CheckAnalysisEvaluationBudget(budget);
+    return result;
+}
+
+PhysicalPictureEdgeObservation MeasurePhysicalPictureEdges(
+    const AnalysisLumaSource& source,const ActivePictureBounds& bounds,
+    const AnalysisEvaluationBudget* budget,const ActivePictureBlackReference* blackReference)
+{
+    PhysicalPictureEdgeObservation result;
+    result.evaluated=true;result.conservativeBounds=bounds;
+    result.sourceGeneration=source.generation;
+    const auto unknown=[&](const char* reason) {
+        result.reason=reason;result.estimateAvailable=false;
+        result.confidence=PhysicalPictureEdgeConfidence::UNKNOWN;return result;
+    };
+    if(!source.IsValid() || source.width<320 || source.height<180 ||
+        bounds.rasterWidth!=source.width || bounds.rasterHeight!=source.height ||
+        bounds.left<0 || bounds.right>source.width || bounds.top<0 ||
+        bounds.bottom>source.height || bounds.top>=bounds.bottom || bounds.left>=bounds.right)
+        return unknown("physical-edge-domain-unavailable");
+    // An observation of the broad abrupt edge, NOT a matte discard verifier.
+    // The full conservative interval is retained as uncertainty: a genuinely
+    // dim picture collar and a filtering halo can be indistinguishable.
+    constexpr int positions=32;
+    const auto broadSupport=[](const int* support) {
+        // Either two broad separated outer regions, or a strong distributed
+        // majority with real support at both outer sides. The latter tolerates
+        // dark scene detail in part of one outer region without lowering any
+        // individual sample's contrast/halo/sustain requirements.
+        return (support[0]>=4 && support[3]>=4) ||
+            (support[0]>=3 && support[3]>=3 &&
+                support[0]+support[1]+support[2]+support[3]>=24);
+    };
+    // Axis0 is vertical depth; axis1 is horizontal depth. Project coordinates
+    // when sampling rather than transposing or rescaling source storage.
+    int edges[2][2]={{bounds.top,bounds.bottom},{bounds.left,bounds.right}};
+    int matteMask[2]={},matteMax[2]={};
+    int internalEdges=0;
+    try {
+        for(int axis=0;axis<2;++axis) {
+        const bool vertical=axis==0;
+        const int depth=vertical?source.height:source.width;
+        const int depthStart=vertical?bounds.top:bounds.left,depthEnd=vertical?bounds.bottom:bounds.right;
+        // The orthogonal search must sample the already measured current
+        // picture interval, not count top/bottom matte as horizontal content.
+        if(!vertical && (edges[0][0]<bounds.top || edges[0][1]>bounds.bottom || edges[0][0]>=edges[0][1]))
+            return unknown("physical-edge-outside-conservative-interval");
+        const int alongStart=vertical?bounds.left:edges[0][0],alongEnd=vertical?bounds.right:edges[0][1];
+        const int margin=2*std::max(2,depth/540)+4;
+        if(margin>36)return unknown("physical-edge-work-limit");
+        for(int side=0;side<2;++side) {
+            const bool leading=side==0;const int hint=leading?depthStart:depthEnd;
+            // A raster terminal is proved separately from current edge pixels,
+            // after the other axis has supplied its measured picture interval.
+            const bool terminalHint=(leading && hint==0) || (!leading && hint==depth);
+
+            const auto sampleRow=[&](int y,std::array<AnalysisLumaSample,positions>& row) {
+                CheckAnalysisEvaluationBudget(budget);
+                for(int i=0;i<positions;++i) {
+                    const int x=alongStart+i*(alongEnd-alongStart-1)/(positions-1);
+                    if(!source.Sample(vertical?x:y,vertical?y:x,row[i]))return false;
+                    ++result.samples;
+                }
+                return true;
+            };
+            // A raw nomination may include a caption far below the picture.
+            // Establish a source matte reference outside its uncertainty guard,
+            // then nominate from current outer pixels rather than assuming the
+            // physical boundary lies within a few rows of the raw nomination.
+            std::array<AnalysisLumaSample,positions> matte;
+            const int reference=leading?std::max(0,hint-margin-3):std::min(depth-1,hint+margin+2);
+            const int referenceDirection=terminalHint?(leading?1:-1):(leading?-1:1);
+            std::array<std::array<AnalysisLumaSample,positions>,5> strip;
+            int terminalPrefix=0;
+            const bool subsampledDepth=vertical?source.format==AnalysisLumaFormat::P010:
+                (source.format==AnalysisLumaFormat::P010 || source.format==AnalysisLumaFormat::P210 ||
+                 source.format==AnalysisLumaFormat::NativeYuv422 || source.format==AnalysisLumaFormat::DecodedDolbyVision422);
+            const auto exteriorChromaDepth=[&](int prefix) {
+                const int coordinate=leading?prefix:depth-prefix;
+                return prefix-(subsampledDepth && (coordinate&1)?1:0);
+            };
+            std::array<std::array<AnalysisLumaSample,positions>,12> terminalRows;
+            if(terminalHint) {
+                // Fit references outside the candidate, rather than reaching
+                // through a small encoded margin into current picture pixels.
+                for(int offset=0;offset<12;++offset)
+                    if(!sampleRow(leading?offset:depth-1-offset,terminalRows[offset]))
+                        return unknown("physical-edge-source-unavailable");
+                for(int boundary=1;boundary<=9 && !terminalPrefix;++boundary) {
+                    int support[4]={},weakSupport[4]={};
+                    for(int i=0;i<positions;++i) {
+                        int low[3]={1023,1023,1023},high[3]={};
+                        for(int offset=0;offset<boundary;++offset) {
+                            const auto& pixel=terminalRows[offset][i];
+                            const int code[3]={pixel.luma,pixel.chromaU,pixel.chromaV};
+                            for(int channel=0;channel<3;++channel) {
+                                if(channel && offset>=exteriorChromaDepth(boundary))continue;
+                                low[channel]=std::min(low[channel],code[channel]);
+                                high[channel]=std::max(high[channel],code[channel]);
+                            }
+                        }
+                        bool matte=high[0]<=104;
+                        // A subsampled-chroma footprint may cross
+                        // the edge. Luma locates shallow candidates; the ordinary
+                        // color-reference and continuation proof still follows.
+                        for(int channel=0;channel<(exteriorChromaDepth(boundary)?3:1);++channel)
+                            matte=matte && high[channel]-low[channel]<=12;
+                        const int out=terminalRows[boundary-1][i].luma;
+                        const int jump=int(terminalRows[boundary][i].luma)-out;
+                        const int next=int(terminalRows[boundary+1][i].luma)-out;
+                        const int after=int(terminalRows[boundary+2][i].luma)-out;
+                        if(matte && jump>4 && jump<16 && next>4 && next<16 && after>4 && after<16)
+                            ++weakSupport[i/8];
+                        if(matte && jump>=std::max(16,4*(high[0]-low[0])+4) &&
+                            next>=jump/2 && after>=jump/2)++support[i/8];
+                    }
+                    // Do not fit a real faint picture collar into the matte.
+                    if(broadSupport(weakSupport))return unknown("physical-edge-earlier-low-contrast-picture");
+                    if(broadSupport(support))terminalPrefix=boundary;
+                }
+            }
+            for(int r=0;r<5;++r) {
+                if(terminalPrefix) {
+                    strip[r]=terminalRows[r*(terminalPrefix-1)/4];
+                    if(exteriorChromaDepth(terminalPrefix)>0) {
+                        // Leave the boundary-adjacent chroma pair out of the
+                        // reference because it may include an inside pixel.
+                        const auto& color=terminalRows[r*(exteriorChromaDepth(terminalPrefix)-1)/4];
+                        for(int i=0;i<positions;++i) {
+                            strip[r][i].chromaU=color[i].chromaU;
+                            strip[r][i].chromaV=color[i].chromaV;
+                        }
+                    }
+                }
+                else if(!sampleRow(std::max(0,std::min(depth-1,reference+referenceDirection*2*r)),strip[r]))
+                    return unknown("physical-edge-source-unavailable");
+            }
+            std::array<std::array<int,3>,positions> spread{};
+            std::array<std::array<int,16>,3> centers{},noiseSamples{};
+            int referenceCount=0;
+            for(int i=0;i<positions;++i) {
+                int values[3][3]={{strip[0][i].luma,strip[1][i].luma,strip[2][i].luma},
+                    {strip[0][i].chromaU,strip[1][i].chromaU,strip[2][i].chromaU},
+                    {strip[0][i].chromaV,strip[1][i].chromaV,strip[2][i].chromaV}};
+                for(int channel=0;channel<3;++channel) {
+                    std::sort(values[channel],values[channel]+3);
+                    // Three-row median absolute deviation ignores one corrupted
+                    // fit row; exterior holdouts must still agree. A shallow
+                    // prefix instead uses its complete measured color spread.
+                    spread[i][channel]=std::min(values[channel][1]-values[channel][0],
+                        values[channel][2]-values[channel][1]);
+                    if(terminalPrefix) {
+                        int low=1023,high=0;
+                        for(int offset=0;offset<(channel?exteriorChromaDepth(terminalPrefix):terminalPrefix);++offset) {
+                            const auto& pixel=terminalRows[offset][i];
+                            const int code=channel==0?pixel.luma:channel==1?pixel.chromaU:pixel.chromaV;
+                            low=std::min(low,code);high=std::max(high,code);
+                        }
+                        spread[i][channel]=std::max(0,high-low);
+                    }
+                }
+                matte[i]=strip[1][i];matte[i].luma=values[0][1];
+                matte[i].chromaU=values[1][1];matte[i].chromaV=values[2][1];
+                // Reference color need not be nominal black or neutral chroma.
+                // Retain the existing normalized dark-matte ceiling, excluding
+                // arbitrary bright movie regions from border nominations.
+                if((i<8 || i>=24) && matte[i].luma<=104) {
+                    centers[0][referenceCount]=matte[i].luma;
+                    centers[1][referenceCount]=matte[i].chromaU;
+                    centers[2][referenceCount]=matte[i].chromaV;
+                    for(int channel=0;channel<3;++channel)
+                        noiseSamples[channel][referenceCount]=spread[i][channel];
+                    ++referenceCount;
+                }
+            }
+            if(referenceCount<8) {
+                if(terminalHint)continue;
+                return unknown("physical-edge-outer-reference-ambiguous");
+            }
+            int center[3]{},noise[3]{};
+            for(int channel=0;channel<3;++channel) {
+                std::sort(centers[channel].begin(),centers[channel].begin()+referenceCount);
+                std::sort(noiseSamples[channel].begin(),noiseSamples[channel].begin()+referenceCount);
+                center[channel]=centers[channel][referenceCount/2];
+                noise[channel]=std::max(4,std::min(12,2*noiseSamples[channel][referenceCount/2]+2));
+            }
+            // Distributed dark gaps can suggest card/scene structure, but a
+            // patterned real matte has them too. Reinterpret its weak interior
+            // edge only when independent current source-floor evidence proves
+            // that picture reaches this terminal, with no known matte conflict.
+            int darkStructure[4]={};
+            for(int i=0;i<positions;++i) {
+                bool stable=int(matte[i].luma)<center[0]-2*noise[0] && spread[i][0]<=noise[0];
+                for(int holdout=3;holdout<5;++holdout)
+                    stable=stable && std::abs(int(strip[holdout][i].luma)-int(matte[i].luma))<=noise[0];
+                if(stable)++darkStructure[i/8];
+            }
+            int darkCount=0,darkQuarters=0;
+            for(int count:darkStructure){darkCount+=count;if(count)++darkQuarters;}
+            bool structuredReference=false;
+            if(terminalHint && darkCount>=4 && darkQuarters>=3 && internalEdges==0 &&
+                bounds.left==0 && bounds.top==0 && bounds.right==source.width && bounds.bottom==source.height &&
+                blackReference && blackReference->evaluated && blackReference->qualifiedEdgeMask==0 &&
+                blackReference->unresolvedEdgeMask==0 &&
+                blackReference->mode!=ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED &&
+                blackReference->mode!=ActivePictureBlackReferenceMode::FULL_REJECTED_RAISED &&
+                blackReference->floor>=0 && blackReference->floor<=1007 &&
+                blackReference->threshold>=0 && blackReference->threshold<=1007) {
+                int contact[4]={};
+                for(int i=0;i<positions;++i) {
+                    bool persistent=true;
+                    for(const auto& row:strip)
+                        persistent=persistent && int(row[i].luma)>=blackReference->floor+16;
+                    if(persistent)++contact[i/8];
+                }
+                int total=0,quarters=0;
+                for(int count:contact){total+=count;if(count>=2)++quarters;}
+                structuredReference=total>=12 && quarters>=3;
+            }
+            std::array<bool,positions> matteColumn{};
+            int matteSupport[4]={};
+            int maxY=0;
+            for(int i=0;i<positions;++i) {
+                const int sample[3]={matte[i].luma,matte[i].chromaU,matte[i].chromaV};
+                bool qualified=sample[0]<=104;
+                const int referenceChannels=terminalPrefix && !exteriorChromaDepth(terminalPrefix)?1:3;
+                for(int channel=0;channel<referenceChannels;++channel) {
+                    qualified=qualified && spread[i][channel]<=noise[channel] &&
+                        std::abs(sample[channel]-center[channel])<=2*noise[channel];
+                    // Exterior reference checks; shallow prefixes can reuse
+                    // rows and rely on independent spatial support.
+                    for(int holdout=3;holdout<5;++holdout) {
+                        const auto& p=strip[holdout][i];
+                        const int value=channel==0?p.luma:channel==1?p.chromaU:p.chromaV;
+                        qualified=qualified && std::abs(value-sample[channel])<=noise[channel];
+                    }
+                }
+                if(!qualified)continue;
+                matteColumn[i]=true;++matteSupport[i/8];
+                maxY=std::max(maxY,sample[0]);
+            }
+            if(!broadSupport(matteSupport)) {
+                if(terminalHint)continue;
+                return unknown("physical-edge-outer-reference-ambiguous");
+            }
+            int nominal=-1,firstWeakNominal=-1;
+            bool earlierLowContrastDeparture=false;
+            const int direction=leading?1:-1;
+            // Eight source rows per coarse step; the existing bounded fine scan
+            // resolves the exact row. No screen ratio, centering, or temporal
+            // confirmation supplies the nomination. The optional budget covers
+            // this entire search and fails to unknown without changing pixels.
+            for(int y=leading?depthStart:depthEnd-1;
+                y>=depthStart && y<depthEnd;y+=8*direction) {
+                const int nextY=y+direction;
+                if(nextY<depthStart || nextY>=depthEnd)break;
+                std::array<AnalysisLumaSample,positions> row,nextRow;
+                if(!sampleRow(y,row) || !sampleRow(nextY,nextRow))
+                    return unknown("physical-edge-source-unavailable");
+                int support[4]={},weakSupport[4]={};
+                for(int i=0;i<positions;++i) {
+                    const int departure=int(row[i].luma)-int(matte[i].luma);
+                    const int nextDeparture=int(nextRow[i].luma)-int(matte[i].luma);
+                    if(matteColumn[i] && departure>noise[0] && departure<16 &&
+                        nextDeparture>noise[0] && nextDeparture<16)++weakSupport[i/8];
+                    if(matteColumn[i] && int(row[i].luma)-int(matte[i].luma)>=16 &&
+                        int(nextRow[i].luma)-int(matte[i].luma)>=16)
+                        ++support[i/8];
+                }
+                if(broadSupport(weakSupport)) {
+                    earlierLowContrastDeparture=true;
+                    if(firstWeakNominal<0)firstWeakNominal=leading?y:y+1;
+                }
+                if(!broadSupport(support))continue;
+                // A short, detached broad graphic can have a sharp edge too.
+                // Require current source support farther inward; a detected
+                // gap leaves this observation ambiguous rather than making the
+                // graphic an apparent picture boundary.
+                bool continuous=true;
+                for(int step=1;step<=3;++step) {
+                    const int inward=y+8*step*direction;
+                    if(inward<depthStart || inward>=depthEnd) {continuous=false;break;}
+                    std::array<AnalysisLumaSample,positions> continuation;
+                    if(!sampleRow(inward,continuation))return unknown("physical-edge-source-unavailable");
+                    int inwardSupport[4]={};
+                    for(int i=0;i<positions;++i)
+                        if(matteColumn[i] && int(continuation[i].luma)-int(matte[i].luma)>=16)++inwardSupport[i/8];
+                    if(!broadSupport(inwardSupport)) {continuous=false;break;}
+                }
+                if(!continuous)continue;
+                nominal=leading?y:y+1;break;
+            }
+            if(nominal<0) {
+                if(terminalHint)continue;
+                return unknown("physical-edge-no-broad-source-nomination");
+            }
+            if(earlierLowContrastDeparture && !terminalHint)
+                return unknown("physical-edge-earlier-low-contrast-picture");
+            // A raster-edge picture strip can resemble a matte over a few
+            // columns. A smooth gradient away from that speculative reference
+            // is not a second boundary. Preserve the faint-collar veto only
+            // when its first weak departure contains an actual local edge.
+            bool verifiedWeakBoundary=false;
+            if(terminalHint && firstWeakNominal>=0) {
+                const int weakLow=std::max(1,firstWeakNominal-8);
+                const int weakHigh=std::min(depth-2,firstWeakNominal+8);
+                const int weakFirst=std::max(0,weakLow-3),weakLast=std::min(depth-1,weakHigh+2);
+                std::vector<std::array<AnalysisLumaSample,positions>> weakRows(size_t(weakLast-weakFirst+1));
+                for(int y=weakFirst;y<=weakLast;++y)
+                    if(!sampleRow(y,weakRows[size_t(y-weakFirst)]))return unknown("physical-edge-source-unavailable");
+                for(int boundary=weakLow;boundary<=weakHigh && !verifiedWeakBoundary;++boundary) {
+                    const int outside=leading?boundary-1:boundary,inside=leading?boundary:boundary-1;
+                    const int next=leading?boundary+1:boundary-2,after=leading?boundary+2:boundary-3;
+                    if(next<weakFirst || after<weakFirst || next>weakLast || after>weakLast)continue;
+                    int support[4]={};
+                    for(int i=0;i<positions;++i) {
+                        if(!matteColumn[i])continue;
+                        const int out=weakRows[size_t(outside-weakFirst)][i].luma;
+                        const int jump=int(weakRows[size_t(inside-weakFirst)][i].luma)-out;
+                        const int nextDeparture=int(weakRows[size_t(next-weakFirst)][i].luma)-int(matte[i].luma);
+                        const int afterDeparture=int(weakRows[size_t(after-weakFirst)][i].luma)-int(matte[i].luma);
+                        if(std::abs(out-int(matte[i].luma))<=noise[0] && jump>noise[0] && jump<16 &&
+                            nextDeparture>noise[0] && nextDeparture<16 && afterDeparture>noise[0] && afterDeparture<16)
+                            ++support[i/8];
+                    }
+                    verifiedWeakBoundary=broadSupport(support);
+                }
+                if(verifiedWeakBoundary && !structuredReference)return unknown("physical-edge-earlier-low-contrast-picture");
+            }
+            const int low=std::max(leading?1:3,nominal-margin),high=std::min(leading?depth-3:depth-1,nominal+margin);
+            // Share these source samples across fine candidates and gap checks.
+            // A short bright graphic can lie inside the fine search interval.
+            const int first=std::max(0,leading?low-3:low-25);
+            const int last=std::min(depth-1,leading?high+24:high+2);
+            std::vector<std::array<AnalysisLumaSample,positions>> rows(size_t(last-first+1));
+            for(int y=first;y<=last;++y)
+                if(!sampleRow(y,rows[size_t(y-first)]))
+                    return unknown("physical-edge-source-unavailable");
+            double best=0,second=0;int bestRow=-1;
+            for(int index=0;index<=high-low;++index) {
+                const int boundary=leading?low+index:high-index;
+                const int outside=leading?boundary-1:boundary;
+                const int inside=leading?boundary:boundary-1;
+                const int next=leading?boundary+1:boundary-2;
+                const int after=leading?boundary+2:boundary-3;
+                int support[4]={},weakSupport[4]={};double score=0;
+                for(int i=0;i<positions;++i) {
+                    if(!matteColumn[i])continue;
+                    const int out=rows[size_t(outside-first)][i].luma;
+                    const int in=rows[size_t(inside-first)][i].luma;
+                    const int jump=in-out;
+                    const int halo=std::abs(out-int(matte[i].luma));
+                    const int nextDeparture=int(rows[size_t(next-first)][i].luma)-int(matte[i].luma);
+                    const int afterDeparture=int(rows[size_t(after-first)][i].luma)-int(matte[i].luma);
+                    if(bestRow<0 && halo<=noise[0] && jump>noise[0] && jump<16 &&
+                        nextDeparture>noise[0] && nextDeparture<16 &&
+                        afterDeparture>noise[0] && afterDeparture<16)++weakSupport[i/8];
+                    if(jump>=std::max(16,4*halo+4) &&
+                        int(rows[size_t(next-first)][i].luma)-out>=jump/2 &&
+                        int(rows[size_t(after-first)][i].luma)-out>=jump/2) {
+                        ++support[i/8];score+=jump;
+                    }
+                }
+                // Require broad agreement in two separated outer regions.
+                // A dark scene feature or overlay in the center must not veto
+                // independently visible edges on both sides; a central panel,
+                // one-sided feature, or narrow side marks cannot establish them.
+                // Keep the same per-sample contrast/halo/sustain requirements.
+                if(bestRow<0 && broadSupport(weakSupport)) {
+                    if(!terminalHint)return unknown("physical-edge-earlier-low-contrast-picture");
+                    verifiedWeakBoundary=true;
+                }
+                if(!broadSupport(support))continue;
+                bool matteGap=false;
+                for(int offset=3;offset<=24 && !matteGap;++offset) {
+                    const int inward=leading?boundary+offset:boundary-1-offset;
+                    if(inward<first || inward>last){matteGap=true;break;}
+                    int returnedMatte[4]={};
+                    for(int i=0;i<positions;++i)
+                        if(matteColumn[i] && std::abs(int(rows[size_t(inward-first)][i].luma)-
+                            int(matte[i].luma))<=noise[0])++returnedMatte[i/8];
+                    matteGap=broadSupport(returnedMatte);
+                }
+                if(matteGap)continue;
+                // Select the first sustained matte-to-picture departure. A
+                // stronger gradient farther inside an already visible picture
+                // cannot replace its earlier source boundary.
+                if(bestRow<0){best=score;bestRow=boundary;}
+                else second=std::max(second,score);
+            }
+            if(bestRow<0) {
+                // An optional interior nomination is not evidence against
+                // independent current pixels reaching this raster terminal.
+                // Preserve every positive ambiguity/weak-prefix veto above.
+                if(terminalHint && (!verifiedWeakBoundary || structuredReference))continue;
+                return unknown(verifiedWeakBoundary?"physical-edge-earlier-low-contrast-picture":
+                    "physical-edge-no-broad-abrupt-boundary");
+            }
+            if((earlierLowContrastDeparture || verifiedWeakBoundary) && !structuredReference)
+                return unknown("physical-edge-earlier-low-contrast-picture");
+            if(second>0 && second*1.5>=best)return unknown("physical-edge-multiple-boundaries");
+            // An interior UI/scene edge is not a picture boundary merely
+            // because one outer strip resembles matte. Check independent,
+            // separated exterior bands for broad sustained picture evidence.
+            // Narrow captions and short progress graphics cannot provide this
+            // two-dimensional contradiction to the proposed exterior matte.
+            const int exteriorDepth=leading?bestRow:depth-bestRow;
+            int firstExteriorContact=-1,consecutivePictureBands=0;bool exteriorPicture=false;
+            if(exteriorDepth>32)for(int probe=1;probe<=8 && !exteriorPicture;++probe) {
+                const int distance=1+(exteriorDepth-26)*probe/9;
+                std::array<std::array<AnalysisLumaSample,positions>,3> exterior;
+                for(int row=0;row<3;++row) {
+                    const int offset=row==0?0:row==1?8:24;
+                    const int coordinate=leading?bestRow-1-distance-offset:bestRow+distance+offset;
+                    if(!sampleRow(coordinate,exterior[row]))return unknown("physical-edge-source-unavailable");
+                }
+                int contact[4]={};
+                for(int i=0;i<positions;++i) {
+                    if(!matteColumn[i])continue;
+                    bool present=true;
+                    for(int row=0;row<3;++row)
+                        present=present && int(exterior[row][i].luma)-int(matte[i].luma)>=16;
+                    if(present)++contact[i/8];
+                }
+                if(broadSupport(contact)) {
+                    if(firstExteriorContact<0)firstExteriorContact=distance;
+                    else exteriorPicture=distance-firstExteriorContact>=std::max(24,exteriorDepth/4);
+                }
+                // Contradicting an exterior matte does not require both outer
+                // corners of a picture to be bright. Three consecutive broad,
+                // sustained bands provide independent two-dimensional support
+                // even when one outer region is dark scene content.
+                int total=0,quarters=0;
+                for(int count:contact){total+=count;if(count>=2)++quarters;}
+                consecutivePictureBands=(total>=12 && quarters>=3)?consecutivePictureBands+1:0;
+                exteriorPicture=exteriorPicture || consecutivePictureBands>=3;
+            }
+            if(exteriorPicture) {
+                if(terminalHint)continue; // Independent current terminal proof is still required.
+                return unknown("physical-edge-exterior-picture-contradiction");
+            }
+            edges[axis][side]=bestRow;
+            // Only an actually measured matte-to-picture border supplies the
+            // common matte reference for independent raster-terminal proof.
+            matteMask[axis]|=1<<side;
+            matteMax[axis]=std::max(matteMax[axis],maxY);
+            ++internalEdges;
+        }
+        }
+        // Use independently qualified current paired matte where available.
+        // Entire-raster content has no matte and therefore needs an explicit
+        // evaluated source black reference; a full-raster classification alone
+        // never authorizes a physical extent claim.
+        int extentCutoff=-1;
+        for(int axis=0;axis<2;++axis)
+            if(matteMask[axis]==3)
+                extentCutoff=std::max(extentCutoff,matteMax[axis]+16);
+        if(extentCutoff<0 && blackReference && blackReference->evaluated &&
+            blackReference->mode!=ActivePictureBlackReferenceMode::FULL_UNRESOLVED_RAISED &&
+            blackReference->mode!=ActivePictureBlackReferenceMode::FULL_REJECTED_RAISED &&
+            blackReference->unresolvedEdgeMask==0 && blackReference->floor>=0 && blackReference->floor<=1007 &&
+            blackReference->threshold>=0 && blackReference->threshold<=1007)
+            // threshold already includes the matte-discard tolerance. Physical
+            // picture contrast is relative to the measured source floor, as it
+            // is for a paired matte above; adding tolerance again suppresses
+            // legitimate dark picture/card detail at the raster terminals.
+            extentCutoff=blackReference->floor+16;
+        for(int axis=0;axis<2;++axis) {
+            const bool vertical=axis==0;const int depth=vertical?source.height:source.width;
+            const int alongStart=edges[1-axis][0],alongEnd=edges[1-axis][1];
+            for(int side=0;side<2;++side) {
+                if(edges[axis][side]!=(side==0?0:depth))continue;
+                if(extentCutoff<0)return unknown("physical-raster-black-reference-unavailable");
+                int support[4]={};
+                CheckAnalysisEvaluationBudget(budget);
+                for(int i=0;i<positions;++i) {
+                    const int along=alongStart+i*(alongEnd-alongStart-1)/(positions-1);
+                    bool persistent=true;
+                    for(int offset:{0,1,8}) {
+                        const int across=side==0?offset:depth-1-offset;
+                        AnalysisLumaSample pixel;
+                        if(!source.Sample(vertical?along:across,vertical?across:along,pixel))
+                            return unknown("physical-edge-source-unavailable");
+                        ++result.samples;
+                        persistent=persistent && int(pixel.luma)>=extentCutoff;
+                    }
+                    if(persistent)++support[i/8];
+                }
+                int total=0,quarters=0;
+                for(int count:support){total+=count;if(count>=2)++quarters;}
+                // Raster extent asks whether distributed current picture reaches
+                // the terminal, not where a matte transition occurs. Preserve
+                // source detail that darkens one region without trusting a
+                // localized edge caption or an interior panel.
+                if(total<12 || quarters<3)return unknown("physical-raster-current-edge-unresolved");
+            }
+        }
+    } catch(const AnalysisEvaluationCancelled&) {
+        return unknown("physical-edge-optional-budget-exhausted");
+    }
+    if(edges[0][0]<bounds.top || edges[0][1]>bounds.bottom || edges[0][0]>=edges[0][1] ||
+        edges[1][0]<bounds.left || edges[1][1]>bounds.right || edges[1][0]>=edges[1][1])
+        return unknown("physical-edge-outside-conservative-interval");
+    const auto axes=static_cast<ActivePictureBounds::BarAxes>(
+        ((edges[0][0]>0 || edges[0][1]<source.height)?1:0) |
+        ((edges[1][0]>0 || edges[1][1]<source.width)?2:0));
+    result.estimate={edges[1][0],edges[0][0],edges[1][1],edges[0][1],source.width,source.height,
+        double(edges[1][1]-edges[1][0])/(edges[0][1]-edges[0][0]),axes};
+    result.estimateAvailable=true;result.confidence=internalEdges?
+        PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE:PhysicalPictureEdgeConfidence::SOURCE_RASTER_EXTENT;
+    result.reason=internalEdges?"broad-abrupt-source-edge-estimate-retention-unchanged":
+        "four-current-source-raster-edges-retention-unchanged";
     return result;
 }

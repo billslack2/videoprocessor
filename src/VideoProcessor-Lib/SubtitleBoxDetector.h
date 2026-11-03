@@ -30,6 +30,9 @@ struct SubtitleInkSnapshot {
     // Raw evidence covers sampled search regions, not the entire raster.
     bool paletteValid=false;
     int inkFloor=0, inkU=512, inkV=512, blackLimit=0;
+    // Composition-only measured caption-card/background classification
+    // threshold. This is not raw-ink, bar, native-AR, or crop authority.
+    int captionBackingLimit=0;
     int width=0,height=0,step=0;
     std::vector<int> sourceRows;
     std::vector<uint64_t> rawInk,ownedInk;
@@ -57,6 +60,9 @@ struct SubtitleBoxResult
     // Never grants glyph ownership or inherits destination padding.
     SubtitleBoxRect provenSourcePanel;
     std::array<SubtitleBoxRect, 3> linePanels{};
+    // Finite per-row backing witnessed on every side in this exact scan.
+    // Inferred/search-limit edges never populate this certificate.
+    std::array<SubtitleBoxRect, 3> provenLinePanels{};
     // True measured opaque interior, excluding the outside cleanup fringe.
     // Live detection always marks this measured, including an empty interior
     // for cues wholly in the letterbox. Legacy geometry fixtures may omit it.
@@ -157,7 +163,7 @@ private:
     std::shared_ptr<SubtitleInkSnapshot> m_inkSnapshot;
     SubtitleBoxResult m_result;
     SubtitleBoxRect m_currentBarAnchor, m_currentSourcePanel, m_currentProvenSourcePanel;
-    std::array<SubtitleBoxRect, 3> m_currentLinePanels{};
+    std::array<SubtitleBoxRect, 3> m_currentLinePanels{}, m_currentProvenLinePanels{};
     SubtitleBoxRect m_currentCapturePanel;
     std::array<SubtitleBoxRect, 3> m_currentLineCapturePanels{};
     std::array<uint64_t, 16> m_signature{};

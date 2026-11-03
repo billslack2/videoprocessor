@@ -1,0 +1,975 @@
+{
+  "schemaVersion": 1,
+  "nativeSources": [
+    "src/VideoProcessor-Test/AlphaSourceCropPolicyTests.cpp",
+    "src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp",
+    "src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp",
+    "src/VideoProcessor-Test/DecodedSubtitleCueWorkerTests.cpp",
+    "src/VideoProcessor-Test/AnalysisDiagnosticTraceTests.cpp",
+    "src/VideoProcessor-Test/ActivePictureMeasurementCacheTests.cpp",
+    "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp",
+    "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
+    "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
+    "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
+  ],
+  "minimumNativeTests": 1085,
+  "requiredNativeMethods": [
+    "ReadyCertifiedExistingCueRearmsAcrossContinuityWithOriginalPixelSeed",
+    "PendingFootprintReceiptAllowsOnlyExactCurrentPreparedErasureWithoutBarAuthority",
+    "IndependentSameCueScansRearmOriginalPendingSeedWithoutBandResampling",
+    "ReadySameCueRearmFallsBackToFreshSeedOnChangedInkBackingOrContext",
+    "UhdFreshReadyRearmsWithBoundedCurrentPixelChecks",
+    "CurrentFootprintRearmsStrideOneOnlyAndKeepsOriginalPixelBaseline",
+    "CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk",
+    "UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats",
+    "CurrentCueProofReceiptReadyWhileExternalTraceSinkBlocks",
+    "HeldCurrentPreparedCueAcceptsOnlyVerifiedSingleGridCellLineInset",
+    "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
+    "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",
+    "SourcePictureQuantizedRaisedMattePrefixCannotBecomeTerminalPicture",
+    "SourcePictureNoisyRaisedMattePrefixCannotBorrowLaterPictureTrend",
+    "InitialSubtitleShaderBuildKeepsNativeSizeWithoutClaimingCaptionCompletion",
+    "ClassicBothBarContentPrefersBottomWithoutResizingOrBorrowingCaptionProof",
+    "ProcessedCaptionIdentityAndFillAreRequiredBeforeSubmittingTheFixedCanvas",
+    "ClassicEngageKeepsLegalSubmittedPoseWhenCurrentCaptionExtentRelaxes",
+    "ClassicUnknownPriorPanFollowsControllerWithinCurrentRawBounds",
+    "OffConfirmedFitCannotClipExactCurrentRawPixelsOrChangeNativeGeometry",
+    "ProcessedEmptyBandsNeedCurrentPixelProofButDoNotInventCaptionAbsence",
+    "IncidentCaptureProfileSwitchCancelsOldFollowupAndRearmsCooldown",
+    "ConfirmedProcessedCaptionsCannotResizeTheNativeMovieAperture",
+    "PreparedAdvancedCaptionKeepsNativeApertureAndNeedsNoWait",
+    "UnknownAdvancedSubtitleInspectionKeepsFreshMovieCanvasWithoutInventingProof",
+    "ClassicUnknownCurrentCandidateUsesIncidentFilledPanWithoutMintingProof",
+    "ClassicUnknownRawExtentProgressesAcrossFilledPoseAndVerticalFillOffset",
+    "ClassicUnknownCandidateRejectsStaleRawAndInfeasibleContexts",
+    "ClassicCurrentRawOccupiedExtentSurvivesCaptionConfirmationHandoff",
+    "OffModeMayPreserveTheLargerRawCaptionAperture",
+    "PendingClassicRetargetKeepsSubmittedTranslationThroughDenseScanGap",
+    "PendingClassicRetargetStillYieldsToUncoveredPixelsAndCompetingOwners",
+    "IncidentCaptureRecordsEffectiveModeLossWithoutTreatingUserProfileChangeAsFailure",
+    "RecordingTimecodeHasExactUtcAndDisplayedOutputIdentity",
+    "IncidentCaptureBoundsFailuresAndIncludesAfterContext",
+    "IncidentCaptureRejectsWrongSourceAndProfileTransition",
+    "PresentationTelemetryExplainsShrinkAndRestorationWithoutPixels",
+    "PresentationTelemetryNeverJoinsLatestInputToAnotherDisplayedSource",
+    "PresentationTelemetryBoundsEscapedRecordsBelowAsyncTransportLimit",
+    "CurrentComposedCaptionViewportFactDoesNotCertifyResidualUiErasure",
+    "UnpreparedAdvancedOutputPreservesCurrentRawPixelsWithoutChangingNativeGeometry",
+    "AdvancedNativePresentationRequiresCurrentCompositionAbsenceOrInitialBuild",
+    "CurrentAdvancedCompositionPermitsNativeViewportWithoutResidualCleanupAuthority",
+    "OutwardRawCompletionWakesPreparationBeforeNormalWorkerFinishes",
+    "SubtitleCompletionSignalFollowsReadyCachePublication",
+    "WorkerCompletionWakesOnlyAfterImmutablePublication",
+    "CompletionSignalKeepsEarlyNotificationAndAbsoluteExpiry",
+    "CurrentSourcePreparationCompletesOrExpiresWithoutFutureVotes",
+    "SourcePreparationIncludesUnqueuedHeadWhenArLookaheadIsDisabled",
+    "BoundedWorkerBindsOnlyValidCurrentSourceIdentity",
+    "LateCurrentCaptionVerificationReplacesOneProvisionalEvaluationOnly",
+    "SourceCompletionRevisionInvalidatesOnlyDerivedPendingFacts",
+    "UnfinishedRawRetriesButCompletedNegativeIsReusable",
+    "NormalAndOutwardRawPublishersNeverDowngradeEitherCompletionOrder",
+    "ConvertedP010AnalyzerNewGenerationCannotPublishOldOrIncompleteGeometry",
+    "ConvertedP010AnalyzerUsesCommonFactsAndDoesNotCacheMutableSample",
+    "OwnedPictureFactsUhdEqualityCostIsRecordedWithoutInventingGeometry",
+    "OwnedPictureFactsCacheRejectsMissingWorkAndBoundsRetainedStorage",
+    "OwnedPictureFactsRequireExactPixelsAndCompatibleInterpretation",
+    "SourcePicturePausedPixelsRemainDeterministicAcrossCancelledWorkAndSourceIds",
+    "SourcePicturePerpendicularDarkBoundaryFactsPreventFalseInsetGeometry",
+    "SourcePictureOuterContradictionDominatesCompetingInnerEdges",
+    "AspectCurrentMeasurementRejectsLateAndDuplicatePublications",
+    "OptionalObserverCannotRescanOrOverwriteReadySourceFacts",
+    "VerificationCompletionPublishesNegativeAndFullRasterWithoutGrantingCrop",
+    "CompletedVerificationUpgradesOnlyTheSameMeasuredGeometry",
+    "CompletedExactSourceReplacesPendingFactsWithoutMissingDowngrade",
+    "NewCapturedFrameMeasuresItsOwnPixels",
+    "PublishedGeometryHandoffRechecksBandsWithoutReplacingWorkerFacts",
+    "VerifiedSingleAxisPermissionDoesNotAuthorizeOtherAxisRemoval",
+    "VerifiedVerticalCropPreservesSideLogosBordersAndDimMargins",
+    "UhdVerifiedScopeHasSameExactApertureAtStartupLiveAndQueuedTransition",
+    "StartupUsesMeasuredAsymmetricBarsAndPreservesUnownedCaptionPixels",
+    "VerifiedReturningScopeReleasesRetainedEpisodeOnFirstCurrentSource",
+    "ImmediateScopeEpisodeReleaseRejectsUnverifiedOrContradictoryPixels",
+    "VerifiedReturningScopeClearsSavedTallerPresentationOnSameSource",
+    "DetectedAspectSameSourceCompletionAcquiresWithoutWaitingForNextFrame",
+    "AspectSnapshotIsIndependentOfBusyRenderLockAndOutputInvalidation",
+    "DetectedAspectDeadbandRetainsAnchorAcross60HzJitterAndUnknowns",
+    "DetectedAspectDeadbandIsAnchoredAndLargeChangesAreImmediate",
+    "DetectedAspectStableHistoryRejectsStaleInvalidAndCanvasThenResets",
+    "AspectDisplayRoundingKeepsPresentationLabels",
+    "AspectDisplayResetsForUnavailableNewSourceAndRenderer",
+    "AspectTelemetryUsesNativeStartupWithoutClaimingDetection",
+    "AspectTelemetryKeepsSubmittedScopeWhileMenuCandidateIsLive",
+    "AspectTelemetryDoesNotHideARealSubmittedAspectChange",
+    "AspectTelemetryPreservesPresentedPacketAndRejectsFailedSubmission",
+    "AspectTelemetryResetsAcrossRealSourceChangeAndUsesNonWideRaster",
+    "LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload",
+    "BroadOutsideOccupancyCannotTrimUnverifiedOuterRows",
+    "StaleOutsideOccupancyAndVisiblePixelsCannotManufactureCurrentAuthority",
+    "CurrentOutwardCropVerificationNeverSurvivesProvisionalOrForeignEvidence",
+    "VerifiedCurrentOutwardGuardPreservesPictureOnFirstSourceWithoutChangingPhysicalEdge",
+    "FullRasterOutsideOccupancyRequiresNoDiscardedMarginVerification",
+    "SourcePictureQualifiedRasterContactsKeepMeasurementWorkBounded",
+    "SourcePictureFlatRaisedPrefixBeforeFaintRampCannotProveFullRaster",
+    "SourcePictureDarkStructuredTerminalDoesNotEraseFullRasterPicture",
+    "SourcePictureRaisedTexturedMatteAndSparseWidgetsDoNotProveTerminalPicture",
+    "VerifiedSpatialOutwardQueuedHandoffUsesCurrentPixelAuthorityWithoutLegacyVotes",
+    "SourcePictureQuantizedContinuingRampCannotInventAnInsetBoundary",
+    "VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources",
+    "VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof",
+    "VerifiedSpatialTransitionStillResetsOnGenuineOldGeometryContradiction",
+    "SourcePictureQuantizedFourPhaseEdgeKeepsBoundedNativeGeometry",
+    "SourcePictureNearbyCoherentEdgeVotesRetainTheirNativeInterval",
+    "FreshConfirmedCueOutranksRedundantLocalContinuation",
+    "GenuineMissingEdgeStillRequiresLocalContinuationCompositionSafety",
+    "ImmediateSpatialAcquisitionRejectsUnboundChangedOrStaleProofAndKeepsTransitionConfirmation",
+    "CurrentVerifiedSpatialCropAcquiresImmediatelyWithoutLegacyStartupVotes",
+    "CurrentCrossingCaptionSpatialVerificationAcquiresWithoutExtraDisplayedFrames",
+    "ProductionForegroundCannotSelectLegacyOrPublishMissingAsMeasured",
+    "InspectedPlaneWorkRejectsChangedSourceSettingsGeometryAndIncompleteInk",
+    "SuppliedSpatialDimFlanksWithOpaqueCaptionKeepIndependentEdgeProof",
+    "SuppliedSpatialCaptionCollarCannotHideDeepOrUnownedPicture",
+    "SuppliedSpatialCaptionCollarRetainsFaintRowsWithoutChangingPhysicalMeasurement",
+    "CurrentInspectedGlyphScanCanVerifyOnlyTheIndependentSpatialNominee",
+    "CompletedInspectionScanSurvivesIdenticalCanonicalPlaneWithoutRescan",
+    "SourcePicturePairedNarrowWidgetsCannotImpersonateBroadOuterPictureSupport",
+    "SourcePictureOppositeOuterEdgesSurviveAnOpaqueCentralCaptionPanel",
+    "ValidatedSamplerRejectsInvalidViewsAndRetainsImmutableOwnedMetadata",
+    "ValidatedSamplerMatchesCanonicalCodesAcrossFormatsRangesAndCoordinates",
+    "V210SparseSamplingDecodesAllSixPixels",
+    "P210SamplingPreservesEachChromaRow",
+    "DecodedDolbyVisionKeepsTwelveBitStorageAndLegacyUpperTenEvidence",
+    "InvalidMetadataFormatStrideAndDepthCannotCreateDvEvidence",
+    "SameSourceSharesCanonicalKeysAcrossProfilesAndOutputPaths",
+    "NativeP210MatchesV210PictureAndCaptionEvidenceForLiveAndQueuedConsumers",
+    "PreparedSourcesCarryAuthoritativeRangeWithoutChangingSamples",
+    "NativeP210RejectsShortPlanesAndRetainsSourceThroughAnalysisCopies",
+    "P010AndP210UploadChoicesKeepOneNativeAnalysisDomain",
+    "CV210toP210VideoFrameFormatterPreservesPaddedEdgeSamples",
+    "CV210toP210AVX2MatchesScalarBitExactly",
+    "AllTwelveBitCodesSurviveScalarAndAvx2WithPaddingAndTails",
+    "ThreadedRowsAndUnevenTailPreserveEverySample",
+    "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines",
+    "GenericSpatialMatteReferenceToleratesNoiseAndLocalizedUi",
+    "FullRasterHintCanNominateCurrentEncodedBarsWithoutRememberedAspect",
+    "SpatialMatteCannotReplaceTheFirstDimPictureEdgeWithAStrongerInteriorGradient",
+    "UnqualifiedDarkTerminalNominationFallsBackToCurrentExtentProof",
+    "QualifiedRaisedSidebarStillMeasuresItsCurrentSpatialBorder",
+    "SingleRowWeakFringeDoesNotHideItsSustainedPictureBoundary",
+    "SubThresholdPictureCollarCannotBeReplacedByAnInteriorMovieEdge",
+    "NearbyBrightThreeRowGraphicCannotReplaceTheRealPictureBorder",
+    "BrightFullWidthNativeCollarRepairKeepsMeasuredLumaAndChromaAcrossFormats",
+    "NativeCollarRepairCannotHideDeepIntrusionOrUnboundedContinuation",
+    "IndependentNativeRemeasurementPreservesPictureBeyondTheCollarLimit",
+    "VerticalCollarRepairCannotPromoteAFailedWindowboxAxis",
+    "ClassicTranslatedConfiguredFillCommitsFinalPoseAcrossSkippedScans",
+    "ClassicFinalPoseComposesBothFillAxesAndCurrentControllerDrift",
+    "ClassicCoarseOppositeEdgeRequiresCompleteCurrentBandPixelProof",
+    "RawPerEdgeSafetyKeepsCaptionSideUnsafeThroughOverlayProjection",
+    "CurrentDenseCaptionOwnsPendingEngageAndDriftButNeverPictureExpansion",
+    "RawVisibilityFirstCueConfirmationKeepsCurrentMeasuredCaptionVisible",
+    "CurrentEmptyNativeBandsPermitControllerReleaseWithoutFreshCaption",
+    "VerifiedCadenceAdvancesPendingAnchorAcrossDeterministicQueueRetirement",
+    "UhdScheduledTranslationCannotPromoteUnownedOppositeBarPixels",
+    "UhdSkippedTranslationPreservesTheSameUnownedOppositeBarPixels",
+    "UhdSingleBarCurrentCoverageKeepsIntentionalControllerTranslationAcrossCadence",
+    "PreparedAdvancedFinalNativePoseCommitsItsExactSubmittedGeometry",
+    "FreshPreparedAdvancedFrameRetiresPriorVisibilityFallback",
+    "UhdExactCurrentVisibilitySurvivesMissingOrUnavailableCoarseNomination",
+    "UhdMissingNominationCannotPromoteForeignOrAbsentCurrentVisibility",
+    "PreparedAdvancedRecoveryRequiresExactCurrentContextAndClearRemainingBands",
+    "PreparedAdvancedPresentationCannotHideFirstCurrentNativePictureProof",
+    "AdvancedCuePreservesRawVisibilityAndRestoresPreparedNativePresentation",
+    "AdvancedColdFallbackAllowsFirstPreparedNativeInitialization",
+    "PreparedNativeInitializationRequiresExactCurrentSuccessfulSubmission",
+    "PreparedNativeInitializationAcceptsBothAuthorizedNativeFillAxes",
+    "PreparedViewportHoldRequiresExactRawEvidenceAndTrimsOnlyClearSides",
+    "PreparedViewportLineageDoesNotCrossModeOrNativeContext",
+    "AdvancedConfirmedFitPreservesRawVisibilityUntilCurrentComposition",
+    "AdvancedFullRasterVisibilityUsesActualRendererBridgeAndKeepsNativeLineage",
+    "BlackCuePreservesRawVisibilityAndRestoresPreparedNativePresentation",
+    "QualifiedUnknownHoldCannotCropUnprocessedCurrentCaptionInsideOldErasure",
+    "QualifiedUnknownHoldMayRetainNativeWhenCurrentRawBarsAreActuallyClear",
+    "RealNativeCadencePreparedErasureDoesNotAcquireBarAuthority",
+    "RealNativeCadencePreparedErasureRejectsForeignProofAndChangedCurrentPixels",
+    "NativeCaptureSamplesWholeDurationAndBothInputParitiesWithinBudget",
+    "BoundaryChainSeparatesUnknownPhysicalFromGuardAndCaptionNomination",
+    "CaptionEnvelopeCannotRelabelPhysicalAspect2_24",
+    "AspectDisplayRoundsNativeMeasurementWithoutChangingIt",
+    "AspectPhysicalUnknownCannotReusePreviousCurrentMeasurement",
+    "PhysicalSourceEdgeDoesNotBecomeItsDecodedHaloRetentionEnvelope",
+    "SeparatedOuterPictureEdgesSurviveAnOccludedCenter",
+    "SeparatedOuterEvidenceRequiresBroadAgreementAtTheSameRow",
+    "AmbiguousDimPhysicalEdgeNeverDiscardsItsConservativePixels",
+    "SkippedInputWithoutCompletePresentationPermissionMustAnalyze",
+    "CenteredFillCannotTradeOneRealPictureEdgeForAlignment",
+    "CenteredFillQuantizationIsSymmetricAndIdempotentOnBothAxes",
+    "CentralBarCaptionCannotContaminateSeparatedOuterMatteReferences",
+    "QueuedPhysicalObservationRebindsOnlyAnExactCurrentSource",
+    "ForeignPhysicalGenerationCannotBecomeCurrentThroughAValidNativeSeed",
+    "SourceCadenceRepeatRequiresSubmittedCompletePixelsAndNeverRenewsAnchor",
+    "CaptionExpandedNominationCannotHideTheIndependentOuterPictureEdge",
+    "DistributedPictureEdgeSupportCanCompensateForADarkOuterSceneRegion",
+    "DetachedBroadBarGraphicCannotBecomeThePhysicalPictureBoundary",
+    "PhysicalRasterExtentRequiresFourCurrentPixelEdges",
+    "PillarboxPhysicalEdgesRemainUnroundedAndIndependentOfRasterExtent",
+    "WindowboxPhysicalObservationMeasuresBothAxesFromSourcePixels",
+    "AspectPhysicalFullRasterRequiresExplicitCurrentExtentProof",
+    "SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence",
+    "DecodedDvCrossEdgeFixtureNativePreflight",
+    "DecodedDvUnknownInputFixtureNativePreflight",
+    "CompletedOutwardRawIncludesPhysicalObservationWithoutCompetingRescan",
+    "ColdOutwardPublicationCannotEraseARacingCurrentPhysicalObservation",
+    "HighInputCadenceRunsTwoIndependentSamplersAndDeduplicatesBothActiveKeys",
+    "UnavailablePlaneWorkCoalescesCanonicalRequestWithoutDuplicatingActiveOrPendingScan",
+    "CoalescedUnavailableWorkPreservesReadyEvidenceAndAllowsCanonicalRetry",
+    "LowInputCadenceRetainsOneSerialSampler",
+    "ParallelSourceCompletionOutOfOrderRemainsBoundToItsExactIdentity",
+    "NonAdjacentOrNewGenerationSourceCannotBorrowWorkerTrackingReference",
+    "StopJoinsBothActiveSamplersAndCancelsPendingWithoutPublication",
+    "LateOldGenerationCompletionCannotReplaceTheCurrentReadySource",
+    "AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed",
+    "ParallelSamplersShareOneDiagnosticCaptureClaimForEveryCaptureMode",
+    "CurrentOwnedHeldCueQualifiesOnlyItsPreparedErasureAcrossConsecutiveSources",
+    "CurrentHeldErasureCertificateCannotBypassIdentityCompositionOrPictureSafety",
+    "CurrentCompleteRawCueCertifiesConsecutiveHeldPosesWithoutRenewingAcceptance",
+    "CurrentHeldPreparedCertificateRejectsPartialChangedAndNovelOwnedGlyphs",
+    "CurrentHeldFinalPixelsNeverSealReusableSourceAnalysis",
+    "CurrentPendingFinalPixelsCanAnchorWithoutCompletingSourceAnalysis",
+    "CurrentPendingFinalPixelsRequireExactPreparedProof",
+    "RawVisibilityTimedEngageKeepsCurrentCaptionVisibleUntilActualPanCoversIt",
+    "RawVisibilityEngageCannotBorrowStaleCaptionOrMaskPicturePriority",
+    "RawVisibilityEngageUsesCurrentVisiblePixelsAcrossDenseScanGapsAndUiOnlyContent",
+    "RawVisibilityUnscannedEngageSubmissionsPreserveOriginalControllerLeaseWithoutRenewal",
+    "OneCompleteOutputRetirementPreservesFreshThreeLineOwnershipWithoutRenewal",
+    "CompleteOutputRetirementNeverAuthorizesOtherGapsOrUnprovenCurrentPixels",
+    "ShaderCacheOverridePreservesDefaultsSeparatesVariantsAndRejectsRelativePaths",
+    "PreparedReadyNativeWindowChangesAtFirstPendingSourceWithoutScanThrottle",
+    "PreparedReadyWindowStillRejectsAlternatingUnprovedAndConsumedInwardFrames",
+    "AdvancedSubtitleUncertaintyPreservesRawVisibilityAndNativeGeometry",
+    "AdvancedPictureGrowthUsesTheFirstCurrentNativeWitnessWithoutCaptionInflation",
+    "CompleteNativeExpansionSupersedesReleaseDriftAndFitOnFirstPendingSource",
+    "IndependentOwnerBypassRejectsProvisionalAndForeignCurrentPixelProofs",
+    "ExactQueuedInwardProofCannotWaitForOldSubtitlePresentationTimers",
+    "InwardOwnerBypassRetainsExactSourceAndMovingPictureVetoes",
+    "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey",
+    "ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource",
+    "SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate",
+    "ComposedCaptionRequiresFreshSourceOrOneIdenticalCompletedImageRepeat",
+    "SourceCadenceWarmupImageRepeatsAcrossFirstReadyWithoutRenewingCaptionCompleteness",
+    "SourceCadenceWarmupImageRejectsForeignContextFailureAndPostComposedReuse",
+    "RepeatedWarmupImageKeepsItsOriginalShaderPreparationProvenance",
+    "SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput",
+    "OwnedIndependentWindowRebindPreservesEveryQualifiedFutureSource",
+    "ReusedRendererAddressCannotReuseAnotherFixtureShaderPreparation",
+    "OwnedScanBacklogWitnessKeepsExactPendingOrLatestDequeuedSourceWithoutRestoringAr",
+    "OwnedScanBacklogWitnessRejectsUnknownRetirementsAndEveryCurrentContextMismatch",
+    "OwnedScanBacklogWitnessRejectsEvictedBoundaryHistory",
+    "OwnedStartupScanReusesOnlyItsExactRetiredQueueContextWithoutAnAcquiredCue",
+    "LateOwnedReadinessHarvestCompletesCrowdedCueWithoutNewWork",
+    "CrowdedCurrentAcquiresFromThreeExactRawPredecessorsWithoutReadyFutures",
+    "CrowdedCurrentAcquiresFromTwoRawPredecessorsAndOneReadyFuture",
+    "CrowdedRawHistoryRejectsChangedDuplicatesWithoutCountingRepeatedInputs",
+    "WarmupReadyInputNeedsCurrentCueAcquisitionBeforeSpendingPreviousImage",
+    "MeasuredWarmupRepeatRetainsOnlyAuthenticRawEvidenceForNextFreshCue",
+    "WarmupCadenceRepeatYieldsToExactCurrentNativeAspectHandoffs",
+    "WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry",
+    "IncrementalCaptionProofIndexPreservesOriginalOrdinalsAndRepeatCutoff",
+    "LateMeasuredPredecessorsConfirmCurrentPixelsWithoutAcquiringHistoricalCue",
+    "WithdrawnMeasuredPredecessorsCannotReuseEitherTrackerRawCache",
+    "LateCompletedRawPredecessorsSurviveReadyExpiryWithoutBecomingCurrentEvidence",
+    "RawPredecessorHistoryCannotResurrectAnOlderCompletionAfterAChangedDuplicate",
+    "HeldCurrentPreparedCuePreservesOriginalPendingSeedWithoutRenewingItsAge",
+    "HeldPendingSeedPreservationRejectsUnprovenForeignChangedAndExpiredProof",
+    "TypedBacklogWitnessCoalescesOwnedActivePendingAndCompletedSourceWork",
+    "TypedBacklogWorkCoalescingRejectsMissingOwnershipAndIncompleteCompletedResults",
+    "ChangedCurrentBackingWithdrawsHeldSeedDespiteAValidCurrentPreparedCertificate",
+    "SlowInteriorSceneGradientsCannotVetoProvenRasterTerminalContacts",
+    "RaisedSideMatteAndFaintPictureCollarCannotBecomeFullRasterExtent",
+    "DarkStructuredFullRasterCannotBecomeItsBrightNavigationPanel",
+    "UniformOrRaisedExteriorWithLocalizedCueCannotImplyFullRasterPicture",
+    "PatternedTrueMatteCannotHideItsFaintFirstPictureCollar",
+    "SourcePictureMeasuresUnevenlyLitScopeFromDistributedNativeEdges",
+    "SourcePictureKeepsSparseHeaderOutsideItsDominantChildRectangle",
+    "SourcePictureIgnoresLocalCaptionsLogoAndProgressWhenMeasuringRealBars",
+    "SourcePicturePreservesAsymmetricOddNonstandardCoordinates",
+    "SourcePictureRetainsFaintCollarUncertaintyWithPatternedMatte",
+    "SourcePictureInvalidInputsCannotBecomeMeasuredBlackFrames",
+    "SourcePictureBudgetCancellationPreservesMissingWorkSemantics",
+    "SourcePictureOptionalNativeCaptureReplay",
+    "ReadyNativeProofSurvivesZeroAndExpiredOptionalWorkBudget",
+    "ReadyNativeHarvestAfterOptionalExpiryDoesNotRestartWorkOrCountRepeats",
+    "SourcePictureSmoothRasterGradientCannotBecomeAnInsetMeasuredBorder",
+    "SourcePictureOverviewPreservesSupportedComponentsAcrossSamplingPhases",
+    "SourcePictureLongCenteredGlyphRowsDoNotExpandRealPicture",
+    "SourcePictureKeepsCompetingEdgesBeyondTheFirstHitOnEveryRay",
+    "SourcePictureSparseOverviewCannotClaimDenseAbsenceCoverage",
+    "SourcePictureCanvasEstimateRequiresIndependentPanelScaffold",
+    "SourcePictureClippedExteriorRetainsHeaderConnectedToBody",
+    "SourcePictureSparseInsetUsesBothPerpendicularContactsWithoutInventingVotes",
+    "SourcePictureSparseInsetRejectsContinuingOrMissingPerpendicularContact",
+    "SourcePictureRelativeMatteContactRecoversDarkSideWithoutChangingCaptionAr",
+    "SourcePictureRelativeMatteContactRejectsFlatMatteAndUnmatchedReferences",
+    "SourcePictureChromaRoundingCannotEraseCoherentBoundaryCollar",
+    "SourcePictureNearBlackChromaRoundingKeepsIndependentCrop",
+    "SourcePictureNearBlackChromaAllowancePreservesConnectedPicture",
+    "SourcePictureChromaAllowanceCannotHideLumaOrUnknownEncoding",
+    "SourcePictureInteriorComplexityCannotHideRasterCaption",
+    "SourcePictureOpposedSunContactsAndSparseStarsProveNativeRaster",
+    "SourcePictureOpposedSunCannotInventWidthThroughFlatMatteOrLoneLogo",
+    "SourcePictureEdgeMarksCannotBorrowBodyBehindThinMatte",
+    "SourcePictureComplexInteriorCannotInvalidateProvedRasterContacts",
+    "SourcePictureComplexInteriorCannotBypassInsetReconciliation",
+    "SourcePictureAdversarialTopologyStopsWithoutClaimingCompleteGeometry",
+    "DisabledShadowNeverStartsDiagnosticWork",
+    "ShadowAdmitsFirstValidSourceAndExactHalfSecondBoundary",
+    "ShadowInvalidOrBackwardClockCannotSpendOrRenewAdmission",
+    "CancelledShadowWorkCannotRefundItsRateSlot",
+    "ShadowLongIdleDoesNotCreateCatchupBurst",
+    "ShadowOddAndExtremeFrequenciesRoundSafely",
+    "ZeroForegroundBudgetPreservesBoundedDispatchAfterPrimeMiss",
+    "BacklogConsumesExactReadyNativeWindowWithoutDispatchOrRepeatVotes",
+    "HistoryConfirmedThreeLineCueExportsPendingSeedWithoutBorrowedFutureGeometry",
+    "HistoryConfirmedPendingSeedRejectsForeignPartialHeldAndReusedProof",
+    "SuppliedCandidateVerifiesUnevenAsymmetricOddGeometryWithoutLegacyNomination",
+    "SuppliedCandidateRejectsExcludedConnectedPictureWithoutInventingAnotherMeasurement",
+    "SuppliedCandidateKeepsSparseOverlayGeometrySeparateFromOccupiedPixelRetention",
+    "SuppliedCandidateInvalidOrCancelledVerificationCannotCarryAuthority",
+    "SpatialDetectorTagCannotGrantCropAuthorityOrRenewUnknownFrames",
+    "ExactCurrentGeometryCanAcceptNewDetectorButProvisionalCannotRelabelIt",
+    "ReacquiredHistoryAndQueuedAdoptionKeepTheirActualDetector",
+    "SpatialCanvasEstimateNeverClaimsMeasuredBoundsOrChangesSubmittedAspect",
+    "SpatialMeasuredAndUnavailableReadingsExposeTheirRealProducingMode",
+    "LegacyPhysicalObservationKeepsExistingLabelAndSourceResetClearsSpatialProvenance",
+    "SourcePictureActiveAdapterSeparatesOddMeasurementFromOutwardGuard",
+    "SourcePictureActiveNomineeDoesNotRequireLegacySymmetryAcquisition",
+    "SourcePictureActiveCanvasRetainsSourceWithoutInventingPhysicalRatio",
+    "SourcePictureMissingOrCancelledActiveFactsNeverBecomeLegacyVotes",
+    "SourcePictureActiveAdapterPreservesPortraitAndCaptionMeasurement",
+    "SuppliedSpatialCaptionProofUsesExactNomineeAndCurrentInkWithoutLegacyBars",
+    "SuppliedSpatialCaptionMaskCannotExplainUnownedConnectedPictureOrMenu",
+    "SourcePictureMissingGeometryPreservesBlackReferenceWithoutNativeVotes",
+    "PendingSubtitleUsesOnlyExactCurrentRawVisibilityAndOtherwisePresentsFullInput",
+    "RawSubtitleFallbackRequiresCurrentSourceAndAllVisiblePixels",
+    "CachedPendingSourceRevisesToExactRawFallbackBeforeMappingReuse",
+    "PendingCurrentInkProofIgnoresMovingMarginsAndRefreshesCurrentSnapshot",
+    "PendingCurrentInkProofRejectsChangedGlyphAndNovelCompanion",
+    "PendingCurrentInkProofRejectsChangedBackingSourceContextAndUnavailablePixels",
+    "CurrentInkSeedSurvivesAuthorizedHeldAndCadenceContinuationsWithoutRenewal",
+    "CurrentCueWorkerProofUsesFreshPixelsAndIgnoresMovingPictureOutsideCue",
+    "CurrentCueWorkerProofRejectsChangedOwnedGlyphPixels",
+    "CurrentCueWorkerProofPersistsAcrossStaticCueAndRunsBesideBlockedGrouping",
+    "CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase",
+    "CurrentCueWorkerPollingIsNonblockingAndDropsQueuedExpiredOwners",
+    "CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence",
+    "CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange",
+    "CurrentCueWorkerTailOnlyCaptureExtensionPreservesProofAndAcceptsSubsetHead",
+    "CurrentCueWorkerRejectsNovelInkInsideAdvancedDestinationAndAllowsUniformMotion",
+    "DecodedDvUnchangedCleanupFootprintPassesCurrentPhaseOnePixels"
+  ],
+  "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+  "actualClass": "LibplaceboPluginProxyTests",
+  "actualMethods": [
+    "StandardRendererOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry",
+    "BetaRendererOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry",
+    "StandardRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",
+    "BetaRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",
+    "StandardRendererClassicUnknownCandidateSubmitsItsCurrentSource",
+    "BetaRendererClassicUnknownCandidateSubmitsItsCurrentSource",
+    "StandardRendererVerboseTelemetryMatchesSubmittedNativeOutput",
+    "BetaRendererVerboseTelemetryMatchesSubmittedNativeOutput",
+    "StandardRendererClassicLifecycleWithNormalDriftAndWiderFill",
+    "StandardRendererClassicLifecycleWithNormalDriftAndNarrowerFill",
+    "BetaRendererClassicLifecycleWithNormalDriftAndWiderFill",
+    "BetaRendererClassicLifecycleWithNormalDriftAndNarrowerFill",
+    "StandardRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans",
+    "BetaRendererKeepsClassicTranslatedFilledPoseAcrossNaturalSkippedScans",
+    "StandardRendererClassicUhdBottomCaptionOutsideFillLimit",
+    "BetaRendererClassicUhdBottomCaptionOutsideFillLimit",
+    "StandardRendererClassicUhdBothBarUiOutsideFillLimit",
+    "BetaRendererClassicUhdBothBarUiOutsideFillLimit",
+    "StandardRendererReconstructionUhdResidualUiWithMovingPicture",
+    "BetaRendererReconstructionUhdResidualUiWithMovingPicture",
+    "StandardRendererClassicUhdV210BothBarUiOutsideFillLimit",
+    "BetaRendererClassicUhdV210BothBarUiOutsideFillLimit",
+    "StandardRendererReconstructionUhdV210ResidualUiWithMovingPicture",
+    "BetaRendererReconstructionUhdV210ResidualUiWithMovingPicture",
+    "StandardRendererReconstructionUhdV210CrossEdgeMovingCleanup",
+    "BetaRendererReconstructionUhdV210CrossEdgeMovingCleanup",
+    "StandardRendererBlackUhdV210ResidualUiWithMovingPicture",
+    "BetaRendererBlackUhdV210ResidualUiWithMovingPicture",
+    "StandardRendererClassicPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "BetaRendererClassicPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "StandardRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "BetaRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "StandardRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "BetaRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
+    "StandardRendererDecodedDvUnknownInputKeepsCurrentSource",
+    "BetaRendererDecodedDvUnknownInputKeepsCurrentSource",
+    "StandardRendererRetainsUncertainPictureAndAcceptsRealTransitions",
+    "BetaRendererRetainsUncertainPictureAndAcceptsRealTransitions",
+    "StandardRendererPendingCaptionBurstKeepsCurrentVideoAdvancing",
+    "BetaRendererPendingCaptionBurstKeepsCurrentVideoAdvancing",
+    "StandardRendererStaticCueWorkerFitsLiveFrameBudget",
+    "BetaRendererStaticCueWorkerFitsLiveFrameBudget"
+  ],
+  "optionalPrivateFixtures": [
+    "VP_AR_COLLAR_CAPTURE_FRAME",
+    "VP_DARK_AR_ANALYSIS_FRAME",
+    "VP_PHYSICAL_EDGE_CAPTURE_FRAME",
+    "VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY"
+  ],
+  "minimumOriginalNativeTests": 663,
+  "minimumActualTests": 42,
+  "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "PendingCurrentPixelProofKeepsCueWithoutBarAuthorityOrLeaseRenewal"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "ActualQueueRetirementPendingPixelsPreserveCueThenExpireWithoutWorkerRenewal"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "PendingPresentationReassociationRequiresExactTokenAndSuccessfulCurrentProof"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectCurrentMeasurementRejectsLateAndDuplicatePublications"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectOsdSeparatesCurrentMeasurementRetainedEstimateAndAppliedAspect"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DetectedAspectSameSourceCompletionAcquiresWithoutWaitingForNextFrame"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OutputOsdTelemetryCacheTests.cpp",
+      "class": "OutputOsdTelemetryCacheTests",
+      "method": "AspectSnapshotIsIndependentOfBusyRenderLockAndOutputInvalidation"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DetectedAspectDeadbandRetainsAnchorAcross60HzJitterAndUnknowns"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DetectedAspectDeadbandIsAnchoredAndLargeChangesAreImmediate"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DetectedAspectStableHistoryRejectsStaleInvalidAndCanvasThenResets"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectDisplayRoundingKeepsPresentationLabels"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectDisplayResetsForUnavailableNewSourceAndRenderer"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryUsesNativeStartupWithoutClaimingDetection"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryKeepsSubmittedScopeWhileMenuCandidateIsLive"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryDoesNotHideARealSubmittedAspectChange"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryPreservesPresentedPacketAndRejectsFailedSubmission"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectTelemetryResetsAcrossRealSourceChangeAndUsesNonWideRaster"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ConfigFileTests.cpp",
+      "class": "ConfigFileTests",
+      "method": "LibplaceboPluginApiVersionCoversSnapshotsDiagnosticsAndExplicitLutReload"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "VerifiedSpatialOutwardQueuedHandoffUsesCurrentPixelAuthorityWithoutLegacyVotes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "VerifiedSpatialTransitionStillResetsOnGenuineOldGeometryContradiction"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "FreshConfirmedCueOutranksRedundantLocalContinuation"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "GenuineMissingEdgeStillRequiresLocalContinuationCompositionSafety"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "ImmediateSpatialAcquisitionRejectsUnboundChangedOrStaleProofAndKeepsTransitionConfirmation"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "CurrentVerifiedSpatialCropAcquiresImmediatelyWithoutLegacyStartupVotes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "CurrentCrossingCaptionSpatialVerificationAcquiresWithoutExtraDisplayedFrames"
+    },
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "ValidatedSamplerRejectsInvalidViewsAndRetainsImmutableOwnedMetadata"
+    },
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "ValidatedSamplerMatchesCanonicalCodesAcrossFormatsRangesAndCoordinates"
+    },
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "V210SparseSamplingDecodesAllSixPixels"
+    },
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "P210SamplingPreservesEachChromaRow"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryDvTests.cpp",
+      "class": "AnalysisRecoveryDvTests",
+      "method": "DecodedDolbyVisionKeepsTwelveBitStorageAndLegacyUpperTenEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryDvTests.cpp",
+      "class": "AnalysisRecoveryDvTests",
+      "method": "InvalidMetadataFormatStrideAndDepthCannotCreateDvEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryDvTests.cpp",
+      "class": "AnalysisRecoveryDvTests",
+      "method": "SameSourceSharesCanonicalKeysAcrossProfilesAndOutputPaths"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryParityTests.cpp",
+      "class": "AnalysisRecoveryParityTests",
+      "method": "NativeP210MatchesV210PictureAndCaptionEvidenceForLiveAndQueuedConsumers"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryParityTests.cpp",
+      "class": "AnalysisRecoveryParityTests",
+      "method": "PreparedSourcesCarryAuthoritativeRangeWithoutChangingSamples"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryParityTests.cpp",
+      "class": "AnalysisRecoveryParityTests",
+      "method": "NativeP210RejectsShortPlanesAndRetainsSourceThroughAnalysisCopies"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AnalysisRecoveryParityTests.cpp",
+      "class": "AnalysisRecoveryParityTests",
+      "method": "P010AndP210UploadChoicesKeepOneNativeAnalysisDomain"
+    },
+    {
+      "source": "src/VideoProcessor-Test/VideoFrameFormatterTests.cpp",
+      "class": "VideoFrameFormatterTests",
+      "method": "CV210toP210VideoFrameFormatterPreservesPaddedEdgeSamples"
+    },
+    {
+      "source": "src/VideoProcessor-Test/VideoFrameFormatterTests.cpp",
+      "class": "VideoFrameFormatterTests",
+      "method": "CV210toP210AVX2MatchesScalarBitExactly"
+    },
+    {
+      "source": "src/VideoProcessor-Test/DolbyVisionTunnelFormatterTests.cpp",
+      "class": "DolbyVisionTunnelFormatterTests",
+      "method": "AllTwelveBitCodesSurviveScalarAndAvx2WithPaddingAndTails"
+    },
+    {
+      "source": "src/VideoProcessor-Test/DolbyVisionTunnelFormatterTests.cpp",
+      "class": "DolbyVisionTunnelFormatterTests",
+      "method": "ThreadedRowsAndUnevenTailPreserveEverySample"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubmittedNativeFillRetentionTests.cpp",
+      "class": "SubmittedNativeFillRetentionTests",
+      "method": "AdvancedRetainedFillCarriesTheCurrentSelectedNativePresentationCertificate"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubmittedNativeFillRetentionTests.cpp",
+      "class": "SubmittedNativeFillRetentionTests",
+      "method": "AdvancedNativeFillIgnoresCaptionLeaseWhileShadersBuildAndAfterPreparation"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "CaptionEnvelopeCannotRelabelPhysicalAspect2_24"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectDisplayRoundsNativeMeasurementWithoutChangingIt"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectPhysicalUnknownCannotReusePreviousCurrentMeasurement"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SkippedInputWithoutCompletePresentationPermissionMustAnalyze"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceRepeatRequiresSubmittedCompletePixelsAndNeverRenewsAnchor"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AspectPhysicalFullRasterRequiresExplicitCurrentExtentProof"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DecodedDvCrossEdgeFixtureNativePreflight"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "DecodedDvUnknownInputFixtureNativePreflight"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentCompleteRawCueCertifiesConsecutiveHeldPosesWithoutRenewingAcceptance"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentHeldPreparedCertificateRejectsPartialChangedAndNovelOwnedGlyphs"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "OneCompleteOutputRetirementPreservesFreshThreeLineOwnershipWithoutRenewal"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CompleteOutputRetirementNeverAuthorizesOtherGapsOrUnprovenCurrentPixels"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ShaderCacheOverridePreservesDefaultsSeparatesVariantsAndRejectsRelativePaths"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "PreparedReadyNativeWindowChangesAtFirstPendingSourceWithoutScanThrottle"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "PreparedReadyWindowStillRejectsAlternatingUnprovedAndConsumedInwardFrames"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LookaheadOutwardProofTests.cpp",
+      "class": "LookaheadOutwardProofTests",
+      "method": "CompleteNativeExpansionSupersedesReleaseDriftAndFitOnFirstPendingSource"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LookaheadOutwardProofTests.cpp",
+      "class": "LookaheadOutwardProofTests",
+      "method": "IndependentOwnerBypassRejectsProvisionalAndForeignCurrentPixelProofs"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LookaheadOutwardProofTests.cpp",
+      "class": "LookaheadOutwardProofTests",
+      "method": "ExactQueuedInwardProofCannotWaitForOldSubtitlePresentationTimers"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LookaheadOutwardProofTests.cpp",
+      "class": "LookaheadOutwardProofTests",
+      "method": "InwardOwnerBypassRetainsExactSourceAndMovingPictureVetoes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ShaderBuildingCaptionExceptionRequiresExactInitialPipelineKey"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ActualCleanupCoverageRequiresAnExactSuccessfullyComposedSource"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ComposedCaptionRequiresFreshSourceOrOneIdenticalCompletedImageRepeat"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceWarmupImageRepeatsAcrossFirstReadyWithoutRenewingCaptionCompleteness"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceWarmupImageRejectsForeignContextFailureAndPostComposedReuse"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "RepeatedWarmupImageKeepsItsOriginalShaderPreparationProvenance"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "OwnedIndependentWindowRebindPreservesEveryQualifiedFutureSource"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "ReusedRendererAddressCannotReuseAnotherFixtureShaderPreparation"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "OwnedScanBacklogWitnessKeepsExactPendingOrLatestDequeuedSourceWithoutRestoringAr"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "OwnedScanBacklogWitnessRejectsUnknownRetirementsAndEveryCurrentContextMismatch"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "OwnedScanBacklogWitnessRejectsEvictedBoundaryHistory"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "PersistentComposedCaptionRequiresAllThreeOriginalSourceLines"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "LateOwnedReadinessHarvestCompletesCrowdedCueWithoutNewWork"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CrowdedCurrentAcquiresFromThreeExactRawPredecessorsWithoutReadyFutures"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CrowdedCurrentAcquiresFromTwoRawPredecessorsAndOneReadyFuture"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CrowdedRawHistoryRejectsChangedDuplicatesWithoutCountingRepeatedInputs"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "WarmupReadyInputNeedsCurrentCueAcquisitionBeforeSpendingPreviousImage"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "MeasuredWarmupRepeatRetainsOnlyAuthenticRawEvidenceForNextFreshCue"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "WarmupCadenceRepeatYieldsToExactCurrentNativeAspectHandoffs"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "MotionRendererTests",
+      "method": "WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "IncrementalCaptionProofIndexPreservesOriginalOrdinalsAndRepeatCutoff"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "LateMeasuredPredecessorsConfirmCurrentPixelsWithoutAcquiringHistoricalCue"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "WithdrawnMeasuredPredecessorsCannotReuseEitherTrackerRawCache"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "HeldCurrentPreparedCuePreservesOriginalPendingSeedWithoutRenewingItsAge"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "HeldCurrentPreparedCueAcceptsOnlyVerifiedSingleGridCellLineInset"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "HeldPendingSeedPreservationRejectsUnprovenForeignChangedAndExpiredProof"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "ChangedCurrentBackingWithdrawsHeldSeedDespiteAValidCurrentPreparedCertificate"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "ReadyNativeProofSurvivesZeroAndExpiredOptionalWorkBudget"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "ReadyNativeHarvestAfterOptionalExpiryDoesNotRestartWorkOrCountRepeats"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "ZeroForegroundBudgetPreservesBoundedDispatchAfterPrimeMiss"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureDecisionTimelineTests.cpp",
+      "class": "ActivePictureDecisionTimelineTests",
+      "method": "BacklogConsumesExactReadyNativeWindowWithoutDispatchOrRepeatVotes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "SpatialDetectorTagCannotGrantCropAuthorityOrRenewUnknownFrames"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "ExactCurrentGeometryCanAcceptNewDetectorButProvisionalCannotRelabelIt"
+    },
+    {
+      "source": "src/VideoProcessor-Test/ActivePictureTransitionModelTests.cpp",
+      "class": "ActivePictureTransitionModelTests",
+      "method": "ReacquiredHistoryAndQueuedAdoptionKeepTheirActualDetector"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "SpatialCanvasEstimateNeverClaimsMeasuredBoundsOrChangesSubmittedAspect"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "SpatialMeasuredAndUnavailableReadingsExposeTheirRealProducingMode"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "LegacyPhysicalObservationKeepsExistingLabelAndSourceResetClearsSpatialProvenance"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AlphaQueuePolicyTests.cpp",
+      "class": "AlphaQueuePolicyTests",
+      "method": "SourcePreparationIncludesUnqueuedHeadWhenArLookaheadIsDisabled"
+    },
+    {
+      "source": "src/VideoProcessor-Test/AlphaQueuePolicyTests.cpp",
+      "class": "AlphaQueuePolicyTests",
+      "method": "CurrentSourcePreparationCompletesOrExpiresWithoutFutureVotes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "CompletionSignalKeepsEarlyNotificationAndAbsoluteExpiry"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "WorkerCompletionWakesOnlyAfterImmutablePublication"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "RawSubtitleFallbackRequiresCurrentSourceAndAllVisiblePixels"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "TemporalCleanPacketGpuTests",
+      "method": "CachedPendingSourceRevisesToExactRawFallbackBeforeMappingReuse"
+    }
+  ]
+}

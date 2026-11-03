@@ -81,6 +81,7 @@ private:
             RendererHdrStatus hdrStatus{};
             pl_tex texture=nullptr;
             uint64_t inputSignature=0,signature=0,prevSignature=0,nextSignature=0;
+            bool subtitleIncluded=true;
         };
         // Records an actual successful output of this complete packet. It is
         // not a processed texture or a claim about libplacebo's internal cache.
@@ -114,6 +115,7 @@ private:
         return CompatiblePresentationGeometry(selected.presentation,candidate.presentation,outputCrop);
     }
     std::deque<std::unique_ptr<Stored>> history;
+    std::unique_ptr<Stored> currentRawSource;
     pl_gpu gpu=nullptr;
     pl_renderer sourceRenderer=nullptr;
     uint64_t sourceRendererEpoch=0;
@@ -123,6 +125,9 @@ private:
     double previousPts=0,nextOutput=0,sourceDuration=0,displayDuration=0,measuredDisplayHz=0;
     double submittedOutputPts=0;
     bool submittedOutputAvailable=false;
+    uint64_t rawOutputSequence=0;
+    double rawOutputPts=0.0;
+    uint64_t rawSourceGeneration=0,rawSourceViewportEpoch=0,rawSourceFormatKey=0,rawSourceAnalysisDomainKey=0;
     uint64_t subtitleFallbackSequence=0;
     const char* subtitleFallbackReason="not-selected";
     bool initialized=false,interlaced=false,topFirst=true,mixing=false,composition=false,nativeMode=false;
@@ -145,7 +150,8 @@ private:
     bool lastHdrStatusAvailable=false;
     void ResetHistory(bool keepProcessingRenderer) {
         lastHdrStatusAvailable=false;lastHdrStatus={};
-        submittedOutputAvailable=false;subtitleFallbackSequence=0;subtitleFallbackReason="history-reset";history.clear();
+        submittedOutputAvailable=false;rawOutputSequence=0;rawOutputPts=0.0;rawSourceGeneration=rawSourceViewportEpoch=rawSourceFormatKey=rawSourceAnalysisDomainKey=0;
+        currentRawSource.reset();subtitleFallbackSequence=0;subtitleFallbackReason="history-reset";history.clear();
         if(keepProcessingRenderer && sourceRenderer) {
             // Discard all temporal/peak evidence, retaining only the renderer's
             // reusable GPU programs. A queue gap grants no old-pixel authority.
@@ -171,10 +177,17 @@ public:
     }
     bool AnnotateHdrSource(uint64_t sequence,const pl_frame& frame,
         const DolbyVisionLuminanceStatus& dv={}) {
-        if(history.empty()||history.back()->sequence!=sequence)return false;
-        auto& packet=*history.back();
-        packet.hdrSource=FrameHdrStatus::Source(frame,sequence,dv);
-        packet.hdrSourceAvailable=true;return true;
+        bool annotated=false;
+        if(!history.empty()&&history.back()->sequence==sequence) {
+            auto& packet=*history.back();
+            packet.hdrSource=FrameHdrStatus::Source(frame,sequence,dv);
+            packet.hdrSourceAvailable=true;annotated=true;
+        }
+        if(currentRawSource&&currentRawSource->sequence==sequence) {
+            currentRawSource->hdrSource=FrameHdrStatus::Source(frame,sequence,dv);
+            currentRawSource->hdrSourceAvailable=true;annotated=true;
+        }
+        return annotated;
     }
     bool NativeCompositionRequired() const { return composition&&interlaced&&Active(); }
     bool CompositionOutputReady() const {
@@ -185,6 +198,7 @@ public:
     }
     uint64_t LastSubtitleSequence() const { return lastSubtitleSequence; }
     uint64_t SelectedPacketSequence() const {
+        if(rawOutputSequence)return rawOutputSequence;
         if(subtitleFallbackSequence)return subtitleFallbackSequence;
         uint64_t selected=0;
         for(const auto& packet:history)
@@ -192,6 +206,7 @@ public:
         return selected;
     }
     double SelectedPacketPts() const {
+        if(rawOutputSequence)return rawOutputPts;
         if(subtitleFallbackSequence)for(const auto& packet:history)
             if(packet->sequence==subtitleFallbackSequence)return packet->pts;
         double selected=0.0;
@@ -201,6 +216,7 @@ public:
     }
     double SourceDurationSeconds() const { return sourceDuration; }
     uint64_t SelectedSubtitleSequence() const {
+        if(rawOutputSequence)return 0;
         if(subtitleFallbackSequence)return subtitleFallbackSequence;
         uint64_t selected=0;
         for(const auto& packet:history)
@@ -218,10 +234,10 @@ public:
         history.back()->presentation=geometry;
         return true;
     }
-    bool SubtitleFallbackActive() const { return subtitleFallbackSequence!=0; }
+    bool SubtitleFallbackActive() const { return !rawOutputSequence&&subtitleFallbackSequence!=0; }
     const char* SubtitleFallbackReason() const { return subtitleFallbackReason; }
     bool CompleteCompositionSelected() const {
-        if(!mixing||!composition||interlaced)return false;
+        if(rawOutputSequence||!mixing||!composition||interlaced)return false;
         const auto selected=SelectedPacketSequence();
         for(const auto& packet:history)
             if(packet->sequence==selected)return packet->completeComposition;
@@ -270,10 +286,72 @@ public:
         }
         return false;
     }
+    // Unprocessed current pixels cannot inherit a previous complete movie
+    // packet. This only clears temporal subtitle selection; it adds no
+    // presentation, crop, or caption authority.
+    bool SelectUnprocessedCurrentSource(uint64_t sequence) {
+        rawOutputSequence=0;rawOutputPts=0.0;
+        subtitleFallbackSequence=0;subtitleFallbackReason="unprocessed-current-source";
+        return Active()&&!history.empty()&&history.back()->sequence==sequence&&
+            history.back()->pts==currentPts;
+    }
+    bool RenderCurrentRaw(pl_renderer renderer,const pl_frame& source,
+        const pl_frame& target,pl_render_params& params,uint64_t epoch,
+        uint64_t sourceSequence,uint64_t sourceGeneration,uint64_t viewportEpoch,
+        uint64_t sourceFormatKey,uint64_t analysisDomainKey) {
+        lastSubmittedField=PL_FIELD_NONE;lastHdrStatusAvailable=false;lastHdrStatus={};
+        rawOutputSequence=0;
+        rawOutputPts=0.0;
+        lastSubtitleSequence=0;subtitleFallbackSequence=0;subtitleFallbackReason="raw-current-source";
+        if(!Active()||!currentRawSource||!sourceSequence||
+            currentRawSource->sequence!=sourceSequence||currentRawSource->pts!=currentPts||
+            rawSourceGeneration!=sourceGeneration||rawSourceViewportEpoch!=viewportEpoch||
+            rawSourceFormatKey!=sourceFormatKey||rawSourceAnalysisDomainKey!=analysisDomainKey) {
+            status="Motion: current raw source unavailable";
+            return false;
+        }
+        const bool fieldCadence=interlaced&&settings.cadence=="field";
+        const double unit=sourceDuration/(fieldCadence?2.0:1.0);
+        const int fieldIndex=fieldCadence&&outputPts>=currentRawSource->pts+unit-1e-8?1:0;
+        Stored::Processed* processed=nullptr;
+        if(!ProcessSource(renderer,0,fieldIndex,source,target,params,epoch,processed,false,currentRawSource.get()))
+            return false;
+        pl_frame destination=target;
+        destination.lut=nullptr;destination.icc=nullptr;destination.profile={};
+        auto presentation=pl_render_fast_params;
+        presentation.dither_params=params.dither_params;
+        presentation.error_diffusion=params.error_diffusion;
+        presentation.blend_params=params.blend_params;
+        presentation.dynamic_constants=true;
+        presentation.info_callback=params.info_callback;
+        presentation.info_priv=params.info_priv;
+        if(!pl_render_image(renderer,&processed->frame,&destination,&presentation))return false;
+        ++processingStatistics.outputRenders;
+        lastHdrStatus=processed->hdrStatus;lastHdrStatusAvailable=true;
+        lastSubtitleSequence=0;
+        if(interlaced)lastSubmittedField=fieldIndex?
+            pl_field_other(topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM):
+            (topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM);
+        rawOutputSequence=sourceSequence;
+        rawOutputPts=currentRawSource->pts;
+        return true;
+    }
+    bool MarkCurrentRawDirectOutput(uint64_t sourceSequence,double sourcePts) {
+        if(!Active()||!sourceSequence||sourceSequence!=lastSequence||sourcePts!=currentPts)
+            return false;
+        rawOutputSequence=sourceSequence;rawOutputPts=sourcePts;
+        lastSubtitleSequence=0;subtitleFallbackSequence=0;
+        subtitleFallbackReason="raw-current-direct";
+        return true;
+    }
     const pl_deinterlace_params& DeinterlaceParameters() const { return deinterlace; }
     const pl_filter_config* MixerParameters() const { return mixer; }
     std::string status="Motion: Off";
-    void MarkSubmitted(){if(Active() && SelectedPacketSequence()){submittedOutputPts=outputPts;submittedOutputAvailable=true;}}
+    void MarkSubmitted(){
+        if(Active()&&(rawOutputSequence||SelectedPacketSequence())) {
+            submittedOutputPts=outputPts;submittedOutputAvailable=true;
+        }
+    }
     // Full resource release remains mandatory for renderer/device teardown.
     void Clear(){ResetHistory(false);}
     // Same-device queue recovery drops every packet and HDR/mix observation.
@@ -281,6 +359,7 @@ public:
     void ResetHistoryAfterSourceGap(){ResetHistory(true);}
     void Bypass(const std::string& reason){Clear();mixing=false;interlaced=false;skipOutput=false;status=reason;}
     bool Active() const{return mixing||interlaced;}
+    bool Interlaced() const{return interlaced;}
     bool Mixing() const{return mixing;}
     static bool WillDeinterlace(const MotionConfig::Settings& requested,
         bool inputInterlaced,int inputOrder) {
@@ -335,7 +414,7 @@ public:
     void Begin(const MotionConfig::Settings& requested,double sourceHz,double displayHz,
         bool inputInterlaced,int inputOrder,uint64_t epoch,uint64_t sequence,double pts,bool discontinuity,
         bool sourceSubtitleComposition=false,bool cadenceRepeat=false) {
-        outputs.clear();skipOutput=false;currentPts=pts;subtitleFallbackSequence=0;
+        outputs.clear();skipOutput=false;currentPts=pts;rawOutputSequence=0;rawOutputPts=0.0;subtitleFallbackSequence=0;
         if(!std::isfinite(sourceHz)||sourceHz<=0||!std::isfinite(pts)) {
             Bypass("Motion: source cadence unavailable");outputs.push_back(pts);outputPts=pts;return;
         }
@@ -479,6 +558,52 @@ public:
         history.push_back(std::move(stored));
         while(history.size()>8)history.pop_front();
         if(capturedNew)*capturedNew=true;
+        return true;
+    }
+    // Retain one independent copy of the current uncomposed source before any
+    // subtitle cleanup/preparation can replace the normal temporal packet.
+    bool CaptureCurrentRawSource(pl_gpu device,const pl_frame& source,uint64_t sequence,
+        uint64_t sourceGeneration,uint64_t viewportEpoch,uint64_t sourceFormatKey,
+        uint64_t analysisDomainKey) {
+        if(gpu&&gpu!=device)Clear();
+        gpu=device;
+        if(!Active())return true;
+        if(!device||!sequence||source.num_planes<1||source.num_planes>PL_MAX_PLANES) {
+            status="Motion: current raw source metadata unavailable";return false;
+        }
+        if(currentRawSource&&currentRawSource->sequence==sequence&&
+            currentRawSource->pts==currentPts&&rawSourceGeneration==sourceGeneration&&
+            rawSourceViewportEpoch==viewportEpoch&&rawSourceFormatKey==sourceFormatKey&&
+            rawSourceAnalysisDomainKey==analysisDomainKey)return true;
+        auto stored=std::make_unique<Stored>();
+        stored->gpu=device;stored->pts=currentPts;stored->sequence=sequence;
+        stored->signature=nextSignature++;stored->frame=source;
+        stored->frame.overlays=nullptr;stored->frame.num_overlays=0;
+        stored->frame.acquire=nullptr;stored->frame.release=nullptr;
+        stored->frame.prev=nullptr;stored->frame.next=nullptr;
+        if(source.repr.dovi) {
+            stored->dovi=*source.repr.dovi;stored->frame.repr.dovi=&stored->dovi;
+        } else stored->frame.repr.dovi=nullptr;
+        for(int p=0;p<source.num_planes;++p)stored->frame.planes[p].texture=nullptr;
+        for(int p=0;p<source.num_planes;++p) {
+            const pl_tex original=source.planes[p].texture;
+            if(!original||!original->params.blit_src) {
+                status="Motion: current raw source texture unavailable";return false;
+            }
+            auto params=original->params;params.initial_data=nullptr;params.user_data=nullptr;
+            params.import_handle=static_cast<pl_handle_type>(0);
+            params.export_handle=static_cast<pl_handle_type>(0);
+            params.blit_src=true;params.blit_dst=true;params.sampleable=true;
+            if(!pl_tex_recreate(device,&stored->textures[p],&params)) {
+                status="Motion: current raw source allocation failed";return false;
+            }
+            stored->frame.planes[p].texture=stored->textures[p];
+            pl_tex_blit_params copy{};copy.src=original;copy.dst=stored->textures[p];
+            pl_tex_blit(device,&copy);
+        }
+        currentRawSource=std::move(stored);
+        rawSourceGeneration=sourceGeneration;rawSourceViewportEpoch=viewportEpoch;
+        rawSourceFormatKey=sourceFormatKey;rawSourceAnalysisDomainKey=analysisDomainKey;
         return true;
     }
     bool CaptureComposition(pl_gpu device,const pl_frame& cleanRgbFullRaster,
@@ -814,8 +939,8 @@ public:
     }
     // Source peak-detection history must not be reset by the inexpensive
     // output passes (which deliberately have peak detection disabled).
-    pl_renderer ProcessingRenderer(pl_renderer fallback) {
-        if(!Active()||!gpu||history.empty())return fallback;
+    pl_renderer ProcessingRenderer(pl_renderer fallback,bool allowCurrentRawWithoutHistory=false) {
+        if(!Active()||!gpu||(!allowCurrentRawWithoutHistory&&history.empty()))return fallback;
         if(!sourceRenderer) {
             sourceRenderer=pl_renderer_create(nullptr,gpu);
             if(sourceRenderer)++processingStatistics.sourceRendererCreations;
@@ -859,23 +984,24 @@ public:
     }
     bool ProcessSource(pl_renderer renderer,size_t index,int fieldIndex,
         const pl_frame& source,const pl_frame& target,pl_render_params& params,
-        uint64_t epoch,Stored::Processed*& result) {
-        auto& packet=*history[index];
-        if(nativeMode&&!PrepareNativeField(index,fieldIndex))return false;
-        pl_frame input=nativeMode?packet.prepared[fieldIndex].frame:packet.frame;
+        uint64_t epoch,Stored::Processed*& result,bool includeSubtitle=true,
+        Stored* sourcePacket=nullptr) {
+        auto& packet=sourcePacket?*sourcePacket:*history[index];
+        if(nativeMode&&includeSubtitle&&!PrepareNativeField(index,fieldIndex))return false;
+        pl_frame input=nativeMode&&includeSubtitle?packet.prepared[fieldIndex].frame:packet.frame;
         input.crop=source.crop;input.rotation=source.rotation;
         uint64_t prevSignature=0,nextSignature=0;
         pl_deinterlace_params algorithm=deinterlace;
-        if(interlaced&&!nativeMode) {
+        if(interlaced&&(!nativeMode||!includeSubtitle)) {
             input.first_field=topFirst?PL_FIELD_TOP:PL_FIELD_BOTTOM;
             input.field=fieldIndex?pl_field_other(input.first_field):input.first_field;
-            input.prev=index&&CompatiblePresentation(packet,*history[index-1],source.crop)?&history[index-1]->frame:nullptr;
-            input.next=index+1<history.size()&&CompatiblePresentation(packet,*history[index+1],source.crop)?&history[index+1]->frame:nullptr;
+            input.prev=!sourcePacket&&index&&CompatiblePresentation(packet,*history[index-1],source.crop)?&history[index-1]->frame:nullptr;
+            input.next=!sourcePacket&&index+1<history.size()&&CompatiblePresentation(packet,*history[index+1],source.crop)?&history[index+1]->frame:nullptr;
             prevSignature=input.prev?history[index-1]->signature:0;
             nextSignature=input.next?history[index+1]->signature:0;
             if(!input.prev||!input.next)algorithm.algo=PL_DEINTERLACE_BOB;
         }
-        const uint64_t inputSignature=nativeMode?packet.prepared[fieldIndex].signature:packet.signature;
+        const uint64_t inputSignature=nativeMode&&includeSubtitle?packet.prepared[fieldIndex].signature:packet.signature;
         auto& cached=packet.processed[fieldIndex];
         std::vector<uint64_t> hookSignatures;
         for(int h=0;h<params.num_hooks;++h)hookSignatures.push_back(params.hooks[h]->signature);
@@ -884,6 +1010,7 @@ public:
         if(!output)return false;
         if(cached.valid&&cached.epoch==epoch&&cached.inputSignature==inputSignature&&
             cached.prevSignature==prevSignature&&cached.nextSignature==nextSignature&&
+            cached.subtitleIncluded==includeSubtitle&&
             cached.width==output->params.w&&cached.height==output->params.h&&
             cached.sourceRotation==source.rotation&&cached.targetRotation==target.rotation&&
             SameCrop(cached.sourceCrop,source.crop)&&SameCrop(cached.targetCrop,target.crop)&&
@@ -905,7 +1032,8 @@ public:
         // Compose each packet's own subtitle before scaling and tone mapping.
         // Smooth motion blends complete processed source pictures afterward.
         pl_overlay overlay{};pl_overlay_part part{};
-        const pl_tex layer=composition?(nativeMode?packet.prepared[fieldIndex].subtitle:packet.subtitle):nullptr;
+        const pl_tex layer=composition&&includeSubtitle?
+            (nativeMode?packet.prepared[fieldIndex].subtitle:packet.subtitle):nullptr;
         if(layer) {
             const auto bounds=nativeMode?packet.prepared[fieldIndex].subtitleBounds:packet.subtitleBounds;
             part.src={0,0,float(layer->params.w),float(layer->params.h)};
@@ -928,7 +1056,7 @@ public:
         destination.field=PL_FIELD_NONE;destination.first_field=PL_FIELD_NONE;
         // The target transfer, gamut and calibration LUT are applied here.
         // Float storage defers only output-depth dithering to presentation.
-        ProcessingRenderer(renderer);
+        ProcessingRenderer(renderer,sourcePacket!=nullptr);
         if(!sourceRenderer)return false;
         if(sourceRendererCompleteMode) {
             pl_renderer_flush_cache(sourceRenderer);
@@ -948,8 +1076,8 @@ public:
         pl_frame_clear(gpu,&destination,black);
         auto processing=params;
         processing.frame_mixer=nullptr;
-        processing.deinterlace_params=interlaced&&!nativeMode?&algorithm:nullptr;
-        if(composition)processing.deband_params=nullptr; // Already done during normalization.
+        processing.deinterlace_params=interlaced&&(!nativeMode||!includeSubtitle)?&algorithm:nullptr;
+        if(composition&&includeSubtitle)processing.deband_params=nullptr; // Already done during normalization.
         processing.dither_params=nullptr;processing.error_diffusion=nullptr;
         processing.blend_params=nullptr;
         if(!pl_render_image(sourceRenderer,&input,&destination,&processing))return false;
@@ -968,6 +1096,7 @@ public:
         cached.epoch=epoch;cached.inputSignature=inputSignature;
         cached.prevSignature=prevSignature;cached.nextSignature=nextSignature;
         cached.hooks=std::move(hookSignatures);cached.signature=this->nextSignature++;
+        cached.subtitleIncluded=includeSubtitle;
         cached.valid=true;++processingStatistics.sourceRenders;result=&cached;return true;
     }
     static void RecordOutputContract(Stored::OutputContract& receipt,

@@ -79,6 +79,42 @@ inline ActivePictureBounds RecoverSubtitleInspectionBarsFromWorkerProof(
         return {};
 
     const auto& axes = proof.evidence.axisEvidence;
+    if (proof.evidence.detector != ActivePictureDetectorKind::Legacy)
+    {
+        const auto& evidence = proof.evidence;
+        const auto& physical = evidence.physicalEdges;
+        const auto& certificate = evidence.candidateVerification;
+        const auto sameRectangle = [](const ActivePictureBounds& a, const ActivePictureBounds& b) {
+            return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+                a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;
+        };
+        // Spatial proof retains the worker's measured rectangle and separately
+        // certifies the current glyph-masked discard bands. Its outward collar
+        // need not equal the legacy observer's fixed two-step guard.
+        if (evidence.detector != ActivePictureDetectorKind::SourceSpatialMeasured ||
+            !evidence.available || !evidence.currentSourceIdentityAvailable ||
+            !SameAnalysisFrameIdentity(evidence.currentSourceIdentity, identity) ||
+            !physical.evaluated || !physical.estimateAvailable ||
+            (physical.sourceGeneration != source.generation &&
+             physical.sourceGeneration != identity.sourceFormatGeneration) ||
+            certificate.sourceGeneration != source.generation ||
+            certificate.vertical != ActivePictureCandidateVerificationState::VERIFIED ||
+            !sameRectangle(certificate.nomination, physical.estimate) ||
+            !sameRectangle(certificate.nomination, evidence.proposedBounds) ||
+            !sameBounds(certificate.bounds, trusted) ||
+            certificate.nomination.left != 0 || certificate.nomination.right != source.width ||
+            certificate.nomination.top < trusted.top || certificate.nomination.bottom > trusted.bottom ||
+            !axes.verticalCropProfileEvaluated || !axes.verticalCropProfileClean ||
+            !axes.verticalCropGlyphExclusions || !evidence.verticalBarGuardProfile.completed ||
+            !evidence.verticalBarGuardProfile.clean ||
+            axes.sidePictureWidth != source.width || axes.sidePictureHeight != source.height ||
+            axes.sidePictureTop != certificate.nomination.top ||
+            axes.sidePictureBottom != certificate.nomination.bottom ||
+            axes.verticalCropGuardTop != certificate.nomination.top-trusted.top ||
+            axes.verticalCropGuardBottom != trusted.bottom-certificate.nomination.bottom)
+            return {};
+        return trusted;
+    }
     if (axes.verticalCropProfileEvaluated)
     {
         if (!axes.verticalCropProfileClean || !axes.verticalCropGlyphExclusions ||

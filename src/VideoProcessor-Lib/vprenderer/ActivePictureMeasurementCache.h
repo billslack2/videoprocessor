@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ActivePictureEvidence.h>
+#include <SourcePictureDetector.h>
 #include <algorithm>
 #include <chrono>
 
@@ -65,7 +66,8 @@ public:
     {
         auto rebound = queuedSource;
         rebound.generation = m_source.generation;
-        if (!m_cacheable || !SameAnalysisFrameIdentity(identity, m_identity) ||
+        if ((picture.currentSourceIdentityAvailable && !SameAnalysisFrameIdentity(picture.currentSourceIdentity,identity)) ||
+            !PreparedSourceDetectorCurrent(picture) || !m_cacheable || !SameAnalysisFrameIdentity(identity, m_identity) ||
             queuedSource.generation != identity.sourceFormatGeneration ||
             m_source.generation != identity.transportGeneration ||
             !SameSource(rebound, m_source))
@@ -75,7 +77,30 @@ public:
         }
         // A later Begin for another policy/continuity invalidates the import
         // just as it invalidates locally computed measurements.
-        if (!m_pictureValid) { m_picture = picture; m_pictureValid = true; }
+        // The same monotonic completion contract is used by both publishers
+        // and this adapter. Normalize only after exact source ownership passed.
+        auto prior=m_picture;
+        prior.physicalEdges.sourceGeneration=queuedSource.generation;
+        const bool completesSource=m_pictureValid &&
+            (!m_picture.physicalEdges.evaluated || m_picture.physicalEdges.sourceGeneration==m_source.generation) &&
+            picture.physicalEdges.sourceGeneration==queuedSource.generation &&
+            SourcePictureMeasurementCanComplete(prior,picture);
+        if (!m_pictureValid || completesSource) {
+            if(completesSource) {m_darknessValid=false;m_retentionValid=false;}
+            m_picture = picture;
+            // The full source/owner/domain identity was checked above. Only
+            // now rebind the queued adapter generation to this live adapter.
+            if(m_picture.physicalEdges.sourceGeneration==queuedSource.generation)
+                m_picture.physicalEdges.sourceGeneration=m_source.generation;
+            else m_picture.physicalEdges={};
+            if(m_picture.candidateVerification.sourceGeneration==queuedSource.generation)
+                m_picture.candidateVerification.sourceGeneration=m_source.generation;
+            else if(m_picture.candidateVerification.sourceGeneration!=m_source.generation)
+                m_picture.candidateVerification={};
+            // All full source/domain/storage/owner checks above precede binding.
+            m_picture.currentSourceIdentity=identity;m_picture.currentSourceIdentityAvailable=true;
+            m_pictureValid = true;
+        }
         if (!m_globalValid) { m_global = darkness.global; m_globalValid = true; }
         if (!m_darknessValid) { m_darkness = darkness; m_darknessValid = true; }
         ++m_statistics.workerImports;
@@ -94,6 +119,35 @@ public:
         ++m_statistics.pictureRequests;
         if (m_cacheable && m_pictureValid) ++m_statistics.pictureHits;
         return Native();
+    }
+
+    // Measurement is produced once by the source worker. Reading an optional
+    // view cannot rerun a competing detector or convert a missed deadline into
+    // new negative geometry. Exact-source import owns completion/publication.
+    static PhysicalPictureEdgeObservation MeasurePhysicalEdgesOptional(
+        const AnalysisLumaSource& /*source*/,const ActivePictureEvidence& evidence)
+    {
+        return evidence.physicalEdges;
+    }
+    static bool CompletePhysicalObservationIfMissing(const AnalysisLumaSource& /*source*/,
+        ActivePictureEvidence& /*evidence*/,const AnalysisEvaluationBudget* /*optionalBudget*/ = nullptr)
+    {
+        return false;
+    }
+    PhysicalPictureEdgeObservation PhysicalEdges()
+    {
+        if(!m_cacheable || !m_pictureValid) {
+            PhysicalPictureEdgeObservation unknown;
+            unknown.reason="physical-native-observation-not-ready";
+            return unknown;
+        }
+        if(!m_picture.physicalEdges.evaluated ||
+            m_picture.physicalEdges.sourceGeneration!=m_source.generation) {
+            PhysicalPictureEdgeObservation unknown;
+            unknown.reason="physical-worker-observation-not-ready";
+            return unknown;
+        }
+        return m_picture.physicalEdges;
     }
 
     ActivePictureArDarknessEvidence ArDarkness()
@@ -135,6 +189,16 @@ public:
         m_presentation = presentation;
         m_retentionValid = m_cacheable;
         return m_retention; // Callers may refine their copy with current worker evidence.
+    }
+
+    ActivePictureRetentionHandoff RetentionHandoff(const ActivePictureBounds& measuredBounds,
+        const ActivePicturePresentationRetentionEvidence& measured,const ActivePictureBounds& presentationBounds)
+    {
+        if(m_source.IsValid() && measured.analysisValid && measured.presentationValid &&
+            SameBounds(measuredBounds,presentationBounds))return {measured,measuredBounds,false};
+        // A new presentation base needs its own excluded-band scan, while the
+        // source geometry still comes from the one exact-source worker result.
+        return {Retention(presentationBounds),presentationBounds,true};
     }
 
     VerticalBarContent SubtitleContent(const ActivePictureBounds& presentation, int blackCode)
@@ -221,13 +285,8 @@ private:
 
     ActivePictureEvidence Native()
     {
-        if (m_cacheable && m_pictureValid) return m_picture;
-        const auto started = std::chrono::steady_clock::now();
-        ++m_statistics.pictureScans;
-        const auto value = ExtractActivePictureEvidence(m_source);
-        RecordTime(started);
-        if (m_cacheable) { m_picture = value; m_pictureValid = true; }
-        return value;
+        if (m_cacheable && m_pictureValid && PreparedSourceDetectorCurrent(m_picture)) return m_picture;
+        return MissingSourcePictureEvidence(m_source,"source-picture-native-worker-not-ready");
     }
 
     ActivePictureArDarknessEvidence Darkness()

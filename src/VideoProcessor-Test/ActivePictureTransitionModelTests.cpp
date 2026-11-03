@@ -1,6 +1,11 @@
 #include "pch.h"
 
 #include <ActivePictureTransitionModel.h>
+#include <SourcePictureDetector.h>
+#include <limits>
+#include <SubtitleBoxLookahead.h>
+#include <vprenderer/ActivePictureMeasurementCache.h>
+#include <vprenderer/BufferedPictureExpansion.h>
 #include "CppUnitTest.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -68,11 +73,525 @@ namespace VideoProcessorTest
 				Observe(model, bounds, frame);
 			return frame;
 		}
+        // Test-only overload fallback records RED on the old three-argument
+        // adapter; no synthetic proof flag is ever manufactured by this test.
+        template<class Evidence>
+        auto CurrentSpatialObservation(const Evidence& evidence,const ActivePictureFrameIdentity& identity,double fps,int)
+            -> decltype(MakeActivePictureObservation(evidence,identity.acceptedSequence,fps,&identity)) {
+            return MakeActivePictureObservation(evidence,identity.acceptedSequence,fps,&identity);
+        }
+        template<class Evidence>
+        ActivePictureObservation CurrentSpatialObservation(const Evidence& evidence,const ActivePictureFrameIdentity& identity,double fps,long) {
+            return MakeActivePictureObservation(evidence,identity.acceptedSequence,fps);
+        }
+        ActivePictureFrameIdentity SpatialStartupIdentity(uint64_t sequence=1) {
+            ActivePictureFrameIdentity id;
+            id.transportGeneration=17;id.sourceFormatGeneration=3;id.analysisDomainKey=13;
+            id.viewportGeneration=7;id.rendererGeneration=11;id.acceptedSequence=sequence;
+            id.sourceFrameNumber=1000+sequence;id.captureTimestamp=1000000+sequence*1000;
+            return id;
+        }
+        struct SpatialStartupPixels {
+            std::shared_ptr<std::vector<uint16_t>> pixels;
+            AnalysisLumaSource source;
+            SpatialStartupPixels(int width,int height,int top,int bottom,bool p010=false)
+                :pixels(std::make_shared<std::vector<uint16_t>>(size_t(width)*height*(p010?3:4)/2,uint16_t(512<<6))) {
+                source.data=reinterpret_cast<const uint8_t*>(pixels->data());source.dataBytes=pixels->size()*2;
+                source.width=width;source.height=height;source.rowBytes=source.chromaRowBytes=size_t(width)*2;
+                source.format=p010?AnalysisLumaFormat::P010:AnalysisLumaFormat::P210;
+                source.encoding=VideoFrameEncoding::V210;source.colorspace=ColorSpace::REC_709;
+                source.range=AnalysisLumaRange::Limited;source.generation=3;source.backingOwner=pixels;
+                for(int y=0;y<height;++y)for(int x=0;x<width;++x)
+                    (*pixels)[size_t(y)*width+x]=uint16_t((y>=top&&y<bottom?300:64)<<6);
+            }
+            void Fill(int left,int top,int right,int bottom,int code) {
+                for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)
+                    (*pixels)[size_t(y)*source.width+x]=uint16_t(code<<6);
+            }
+        };
 	}
 
 	TEST_CLASS(ActivePictureTransitionModelTests)
 	{
 	public:
+        TEST_METHOD(VerifiedSpatialOutwardAdmissionHasOneTemporalOwnerDespitePeriodicMissingSources)
+        {
+            const ActivePictureBounds scope{0,66,960,474,960,540,960.0/408,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            SpatialStartupPixels pixels(960,540,17,523);pixels.Fill(0,17,960,523,80);
+            const auto measured=DetectSourcePictureForWorker(pixels.source);
+            SpatialStartupPixels nearbyPixels(960,540,17,521);nearbyPixels.Fill(0,17,960,521,80);
+            const auto nearby=DetectSourcePictureForWorker(nearbyPixels.source);
+            Assert::IsTrue(measured.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            for(double fps:{23.976,60.0})for(auto action:{AlphaSourceCrop::VerticalBarPresentationAction::NONE,
+                AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE,AlphaSourceCrop::VerticalBarPresentationAction::FIT}) {
+                ActivePictureTransitionModel model;const auto first=Establish(model,scope);
+                AlphaSourceCrop::OutwardPictureConfirmationState previous;
+                bool published=false;uint64_t publication=0;
+                for(unsigned offset=0;offset<8;++offset) {
+                    const auto& currentPixels=offset%4==1?nearbyPixels:pixels;
+                    const auto& currentMeasured=offset%4==1?nearby:measured;
+                    const auto id=SpatialStartupIdentity(first+offset);auto live=currentPixels.source;live.generation=id.transportGeneration;
+                    AlphaSourceCrop::TransitionAdmissionInput input;
+                    input.currentIdentity=id;input.sourceGeneration=input.trustedGeneration=id.transportGeneration;
+                    input.sourceSequence=id.acceptedSequence;input.framesPerSecond=fps;
+                    input.trustedGeometryAvailable=input.compatiblePresentation=true;
+                    input.trustedGeometry=input.presentationBeforeObservation=scope;
+                    input.presentation.action=action;input.presentationEvidenceGeneration=id.transportGeneration;
+                    input.translationDriftActive=action==AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
+                    input.previousOutward=previous;
+                    if(offset%4!=3) {
+                        ActivePictureMeasurementCache cache;cache.Begin(live,id,47,23);
+                        Assert::IsTrue(cache.SeedQueued(currentPixels.source,id,currentMeasured.evidence,
+                            EvaluateActivePictureArDarkness(currentPixels.source,currentMeasured.evidence)));
+                        input.evidence=cache.Picture();
+                        // Current guards may differ by a retained sampling row;
+                        // geometry is measured, never forced to a standard ratio.
+                        input.outwardCandidate=input.evidence.trustedBounds;
+                        input.retention=EvaluateActivePicturePresentationRetention(live,scope,input.evidence,
+                            EvaluateActivePictureGlobalNearBlack(live),EvaluateActivePictureArDarkness(live,input.evidence));
+                        Assert::IsTrue(CurrentSpatialObservation(input.evidence,id,fps,0).currentSpatialCropProof.Matches(
+                            CurrentSpatialObservation(input.evidence,id,fps,0)));
+                    } else input.evidence=MissingSourcePictureEvidence(live);
+                    const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);previous=admission.outward.state;
+                    if(offset%4!=3) {
+                        Assert::IsTrue(admission.currentSpatialOutward);
+                        Assert::IsFalse(admission.outward.authoritative,
+                            L"The spatial route must not invent legacy broad-occupancy votes or three-source confirmation.");
+                        Assert::IsFalse(admission.observation.transitionDeferred,
+                            L"A fully verified current spatial rectangle must reach the single transition owner without a second legacy brightness/three-source gate.");
+                    }
+                    const auto decision=model.Observe(admission.observation);
+                    if(decision.publish) {published=true;if(!publication)publication=id.acceptedSequence;}
+                }
+                Assert::IsTrue(published);
+                Assert::IsTrue(publication<=first+1,
+                    L"Existing two-source transition confirmation must finish before each fourth unavailable input; stacked three-plus-two gates must not pin old scope forever.");
+            }
+        }
+        TEST_METHOD(VerifiedSpatialOutwardAdmissionRejectsUnboundOrContradictedCropProof)
+        {
+            const ActivePictureBounds scope{0,66,960,474,960,540,960.0/408,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            SpatialStartupPixels pixels(960,540,17,523);pixels.Fill(0,17,960,523,80);
+            const auto raw=DetectSourcePictureForWorker(pixels.source);const auto id=SpatialStartupIdentity(5);
+            auto live=pixels.source;live.generation=id.transportGeneration;
+            ActivePictureMeasurementCache cache;cache.Begin(live,id,47,23);
+            Assert::IsTrue(cache.SeedQueued(pixels.source,id,raw.evidence,EvaluateActivePictureArDarkness(pixels.source,raw.evidence)));
+            const auto bound=cache.Picture();
+            Assert::IsTrue(CurrentSpatialObservation(bound,id,60,0).currentSpatialCropProof.Matches(CurrentSpatialObservation(bound,id,60,0)));
+            for(int fault=0;fault<8;++fault) {
+                AlphaSourceCrop::TransitionAdmissionInput input;input.evidence=bound;input.currentIdentity=id;
+                input.sourceGeneration=input.trustedGeneration=id.transportGeneration;input.sourceSequence=id.acceptedSequence;
+                input.trustedGeometryAvailable=input.compatiblePresentation=true;
+                input.trustedGeometry=input.presentationBeforeObservation=scope;input.outwardCandidate=bound.trustedBounds;
+                input.retention=EvaluateActivePicturePresentationRetention(live,scope,bound,
+                    EvaluateActivePictureGlobalNearBlack(live),EvaluateActivePictureArDarkness(live,bound));
+                switch(fault) {
+                case 0:input.evidence.currentSourceIdentityAvailable=false;break;
+                case 1:++input.currentIdentity.analysisDomainKey;break;
+                case 2:++input.currentIdentity.sourceFormatGeneration;break;
+                case 3:++input.currentIdentity.acceptedSequence;break;
+                case 4:input.evidence.candidateVerification.vertical=ActivePictureCandidateVerificationState::CONTRADICTED;break;
+                case 5:input.evidence.physicalEdges.estimateAvailable=false;break;
+                case 6:input.evidence.detector=ActivePictureDetectorKind::Legacy;break;
+                case 7:input.evidence.classification=ActivePictureClassification::PROVISIONAL;break;
+                }
+                const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+                Assert::IsFalse(admission.currentSpatialOutward);
+                Assert::IsTrue(admission.observation.transitionDeferred,
+                    L"Missing, foreign or contradicted source proof cannot bypass the legacy conservative outward admission path.");
+            }
+        }
+        TEST_METHOD(VerifiedSpatialOutwardQueuedHandoffUsesCurrentPixelAuthorityWithoutLegacyVotes)
+        {
+            const ActivePictureBounds queuedBase{0,66,960,474,960,540,960.0/408,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            const ActivePictureBounds liveBase{0,68,960,474,960,540,960.0/406,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            SpatialStartupPixels pixels(960,540,17,523);pixels.Fill(0,17,960,523,80);
+            const auto raw=DetectSourcePictureForWorker(pixels.source);
+            ActivePictureTransitionModel queued,live;const auto first=Establish(queued,queuedBase);Establish(live,liveBase);
+            AlphaSourceCrop::TransitionAdmissionDecision last;
+            ActivePictureTransitionDecision published;
+            for(uint64_t sequence=first;sequence<=first+1;++sequence) {
+                const auto id=SpatialStartupIdentity(sequence);auto current=pixels.source;current.generation=id.transportGeneration;
+                ActivePictureMeasurementCache cache;cache.Begin(current,id,47,23);
+                Assert::IsTrue(cache.SeedQueued(pixels.source,id,raw.evidence,EvaluateActivePictureArDarkness(pixels.source,raw.evidence)));
+                AlphaSourceCrop::TransitionAdmissionInput input;input.evidence=cache.Picture();input.currentIdentity=id;
+                input.sourceSequence=sequence;input.sourceGeneration=input.trustedGeneration=id.transportGeneration;
+                input.trustedGeometryAvailable=input.compatiblePresentation=true;
+                input.trustedGeometry=input.presentationBeforeObservation=queuedBase;input.outwardCandidate=input.evidence.trustedBounds;
+                last=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+                Assert::IsTrue(last.currentSpatialOutward);Assert::IsFalse(last.outward.authoritative);
+                published=queued.Observe(last.observation);
+            }
+            Assert::IsTrue(published.publish);
+            ActivePicturePublicationAdmission reason;
+            Assert::IsFalse(live.AdoptPublishedDecision(published,last.observation.classification,
+                last.observation.transitionDeferred,&reason,&last.observation.axisEvidence,false));
+            Assert::IsTrue(reason==ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
+            ActivePictureTransitionModel excessiveReference;
+            const ActivePictureBounds opposingErrors{0,68,960,472,960,540,960.0/404,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            Establish(excessiveReference,opposingErrors);
+            Assert::IsFalse(excessiveReference.AdoptPublishedDecision(published,last.observation.classification,
+                last.observation.transitionDeferred,&reason,&last.observation.axisEvidence,last.currentSpatialOutward),
+                L"Moving both reference edges a scan step cannot double the permitted total size error.");
+            Assert::IsTrue(reason==ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
+            Assert::IsTrue(live.AdoptPublishedDecision(published,last.observation.classification,
+                last.observation.transitionDeferred,&reason,&last.observation.axisEvidence,last.currentSpatialOutward),
+                L"The exact current spatial proof can authorize the existing one-scan-step reference handoff without fabricating legacy confirmation or strip brightness.");
+        }
+
+        TEST_METHOD(VerifiedSpatialTransitionStillResetsOnGenuineOldGeometryContradiction)
+        {
+            const ActivePictureBounds scope{0,66,960,474,960,540,960.0/408,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            SpatialStartupPixels pixels(960,540,17,523);pixels.Fill(0,17,960,523,80);
+            const auto raw=DetectSourcePictureForWorker(pixels.source);
+            ActivePictureTransitionModel model;const auto first=Establish(model,scope);
+            const auto current=[&](uint64_t sequence) {
+                const auto id=SpatialStartupIdentity(sequence);auto live=pixels.source;live.generation=id.transportGeneration;
+                ActivePictureMeasurementCache cache;cache.Begin(live,id,47,23);
+                Assert::IsTrue(cache.SeedQueued(pixels.source,id,raw.evidence,EvaluateActivePictureArDarkness(pixels.source,raw.evidence)));
+                return CurrentSpatialObservation(cache.Picture(),id,23.976,0);
+            };
+            Assert::IsFalse(model.Observe(current(first)).publish);
+            const auto old=Observe(model,scope,first+1);Assert::IsFalse(old.publish);
+            Assert::IsFalse(model.Observe(current(first+2)).publish,
+                L"A real return to the old picture must discard the prior outward vote.");
+            Assert::IsTrue(model.Observe(current(first+3)).publish);
+        }
+
+        TEST_METHOD(CurrentVerifiedSpatialCropAcquiresImmediatelyWithoutLegacyStartupVotes)
+        {
+            for (const bool odd : {false,true}) {
+            const int width=odd?3840:960,height=odd?2160:540;
+            const int top=odd?263:66,bottom=odd?1897:474;
+            SpatialStartupPixels frame(width,height,top,bottom);
+            const auto identity=SpatialStartupIdentity();
+            const auto detected=DetectSourcePictureForWorker(frame.source);
+            Assert::IsTrue(detected.evidence.available &&
+                detected.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+                detected.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                L"Real unmasked source pixels must independently verify the supplied spatial crop");
+            auto live=frame.source;live.generation=identity.transportGeneration;
+            ActivePictureMeasurementCache cache;cache.Begin(live,identity,47,23);
+            const auto darkness=EvaluateActivePictureArDarkness(frame.source,detected.evidence);
+            Assert::IsTrue(cache.SeedQueued(frame.source,identity,detected.evidence,darkness));
+            const auto imported=cache.Picture();
+            Assert::AreEqual(identity.transportGeneration,imported.physicalEdges.sourceGeneration);
+            const auto observation=CurrentSpatialObservation(imported,identity,23.976,0);
+            Assert::IsTrue(observation.currentSpatialCropProof.Matches(observation));
+            AlphaSourceCrop::TransitionAdmissionInput input;
+            input.evidence=imported;input.currentIdentity=identity;
+            input.sourceGeneration=identity.transportGeneration;input.sourceSequence=identity.acceptedSequence;
+            input.framesPerSecond=23.976;
+            const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+            Assert::IsTrue(admission.observation.currentSpatialCropProof.Matches(admission.observation),
+                L"The real live policy adapter must preserve the exact current proof through admission");
+            const auto queued=AlphaSourceCrop::MakeBufferedPictureSample(identity,imported,23.976,true,false);
+            Assert::IsTrue(queued.observation.currentSpatialCropProof.Matches(queued.observation),
+                L"The actual owned queued observation adapter must preserve the same source proof");
+            ActivePictureTransitionModel queuedModel;
+            Assert::IsTrue(queuedModel.Observe(queued.observation).publish);
+            ActivePictureTransitionModel model;const auto decision=model.Observe(admission.observation);
+            Assert::IsTrue(decision.publish && decision.stable,
+                L"Already measured current spatial geometry plus verified discarded bands must acquire on its first real source, not four later displayed sources");
+            Assert::AreEqual(top&~1,decision.bounds.top);Assert::AreEqual((bottom+1)&~1,decision.bounds.bottom);
+            Assert::AreEqual(top,imported.physicalEdges.estimate.top);
+            Assert::AreEqual(bottom,imported.physicalEdges.estimate.bottom);
+            Assert::AreEqual(int(ActivePictureDetectorKind::SourceSpatialMeasured),int(decision.detector));
+            Assert::IsFalse(model.Observe(observation).publish,L"Presenting the same source again cannot add a new vote or publication");
+            }
+        }
+
+        TEST_METHOD(CurrentCrossingCaptionSpatialVerificationAcquiresWithoutExtraDisplayedFrames)
+        {
+            constexpr int top=264,bottom=1896;
+            SpatialStartupPixels frame(3840,2160,top,bottom,true);
+            frame.Fill(1190,bottom-146,2650,bottom+16,64);
+            for(int y:{bottom-134,bottom-52})for(int glyph=0;glyph<26;++glyph) {
+                const int x=1210+glyph*52;
+                frame.Fill(x-2,y-2,x+36,y+58,64);frame.Fill(x,y,x+34,y+56,800);frame.Fill(x+8,y+10,x+26,y+46,64);
+            }
+            const auto identity=SpatialStartupIdentity(5);
+            const auto detected=DetectSourcePictureForWorker(frame.source);
+            Assert::IsTrue(detected.evidence.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+                detected.evidence.physicalEdges.estimateAvailable);
+            Assert::AreEqual(top,detected.evidence.physicalEdges.estimate.top);
+            Assert::AreEqual(bottom,detected.evidence.physicalEdges.estimate.bottom);
+            AnalysisLumaSample crossing;
+            Assert::IsTrue(frame.source.Sample(1210,bottom+1,crossing));
+            Assert::AreEqual(800,int(crossing.luma),
+                L"Actual native glyph pixels must cross the independently measured physical boundary");
+            SubtitleBoxDetector scanner;scanner.SetNearBarDistance(20);
+            SubtitlePictureAuthority shared;shared.required=true;shared.identity=identity;
+            const auto current=SubtitleBoxLookahead::Measure(scanner,frame.source,{},identity,false,{},47,23,shared);
+            Assert::IsTrue(current.analyzed && current.text.detected && current.ink && current.ink->rawEvidenceComplete);
+            Assert::AreEqual(2,current.text.lineCount);
+            bool measuredCrossing=false;
+            for(int line=0;line<current.text.lineCount;++line)
+                measuredCrossing|=current.text.lineBounds[line].top<bottom && current.text.lineBounds[line].bottom>bottom;
+            Assert::IsTrue(measuredCrossing,L"The real current detector must own a bar-crossing line");
+            auto proofSource=frame.source;proofSource.generation=identity.transportGeneration;
+            const auto verified=VerifySuppliedActivePictureCandidateWithSubtitle(proofSource,detected.evidence,current,
+                identity,47,23,current.scriptHint);
+            Assert::IsTrue(verified.accepted && verified.IsCurrentFor(proofSource,identity,47,23,current.scriptHint));
+            ActivePictureTransitionModel model;
+            const auto observation=CurrentSpatialObservation(verified.evidence,identity,23.976,0);
+            const auto decision=model.Observe(observation);
+            Assert::IsTrue(decision.publish && decision.stable,
+                L"A real exact-current caption mask verifies the spatial crop now; startup cannot request extra displayed-frame votes");
+            Assert::AreEqual(verified.candidate.top,decision.bounds.top);
+            Assert::AreEqual(verified.candidate.bottom,decision.bounds.bottom);
+            // Real newly exposed picture pixels establish occupancy; a
+            // separate real current glyph-mask proof certifies what remains
+            // outside the independently nominated spatial rectangle.
+            const ActivePictureBounds oldBase{0,400,3840,1760,3840,2160,3840.0/1360,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            AlphaSourceCrop::TransitionAdmissionInput outward;
+            outward.currentIdentity=identity;
+            outward.sourceGeneration=outward.trustedGeneration=identity.transportGeneration;
+            outward.sourceSequence=identity.acceptedSequence;outward.framesPerSecond=23.976;
+            outward.evidence=verified.evidence;
+            outward.trustedGeometryAvailable=outward.compatiblePresentation=true;
+            outward.trustedGeometry=outward.presentationBeforeObservation=oldBase;
+            outward.outwardCandidate=verified.evidence.trustedBounds;
+            ActivePictureMeasurementCache rawCache;rawCache.Begin(proofSource,identity,47,23);
+            Assert::IsTrue(rawCache.SeedQueued(frame.source,identity,detected.evidence,
+                EvaluateActivePictureArDarkness(frame.source,detected.evidence)));
+            outward.retention=EvaluateActivePicturePresentationRetention(proofSource,oldBase,rawCache.Picture(),
+                EvaluateActivePictureGlobalNearBlack(proofSource),EvaluateActivePictureArDarkness(proofSource,rawCache.Picture()));
+            Logger::WriteMessage((std::string("Masked outward real strip candidate raw=")+
+                std::to_string(outward.retention.expansionCandidate.top)+","+std::to_string(outward.retention.expansionCandidate.bottom)+
+                " masked="+std::to_string(outward.outwardCandidate.top)+","+std::to_string(outward.outwardCandidate.bottom)).c_str());
+            // The renderer's actual admission adapter remeasures the exact
+            // promoted nominee's strips after the masked boundary correction.
+            Assert::IsTrue(ResampleActivePictureExpansionStrips(proofSource,oldBase,
+                outward.outwardCandidate,outward.retention));
+            // Deliberately WITHHOLD raw classification authority, leaving every
+            // actual sampled occupancy strip untouched. This isolates the real
+            // masked verifier's current typed permission rather than letting a
+            // second unmasked native permission make the assertion tautological.
+            outward.retention.activePicture.classification=ActivePictureClassification::PROVISIONAL;
+            const auto admitted=AlphaSourceCrop::EvaluateTransitionAdmission(outward);
+            Logger::WriteMessage((std::string("Masked outward real occupancy reason=")+admitted.outward.diagnosticReason+
+                " top="+std::to_string(outward.retention.expandingTop.barPixels)+","+
+                std::to_string(outward.retention.expandingTop.blackFraction)+","+
+                std::to_string(outward.retention.expandingTop.continuity)+","+std::to_string(outward.retention.expandingTop.lumaP90)+
+                " bottom="+std::to_string(outward.retention.expandingBottom.barPixels)+","+
+                std::to_string(outward.retention.expandingBottom.blackFraction)+","+
+                std::to_string(outward.retention.expandingBottom.continuity)+","+std::to_string(outward.retention.expandingBottom.lumaP90)).c_str());
+            Assert::IsTrue(admitted.outward.broadOpposingPicture && admitted.outward.state.confirmations>0,
+                L"The crossing-caption source must supply real outward picture occupancy, without synthetic strip flags.");
+            Assert::IsTrue(admitted.currentSpatialOutward && admitted.outward.state.candidateCropVerified,
+                L"A genuine exact-current masked spatial proof certifies the candidate's remaining discarded bands even when raw authority is withheld.");
+            Assert::IsFalse(admitted.outward.authoritative,
+                L"The new discard marker must not fabricate the separate legacy three-source occupancy confirmation.");
+            Assert::IsFalse(admitted.observation.transitionDeferred);
+            ActivePictureTransitionModel established;Establish(established,oldBase);
+            Assert::IsFalse(established.Observe(admitted.observation).publish,
+                L"Verified outward crop permission preserves the model's existing two-source transition requirement.");
+            for(int fault=0;fault<4;++fault) {
+                auto invalid=outward;
+                if(fault==0)invalid.evidence.currentSourceIdentityAvailable=false;
+                if(fault==1)++invalid.currentIdentity.analysisDomainKey;
+                if(fault==2)++invalid.currentIdentity.acceptedSequence;
+                if(fault==3)invalid.evidence.candidateVerification.vertical=ActivePictureCandidateVerificationState::CONTRADICTED;
+                const auto rejected=AlphaSourceCrop::EvaluateTransitionAdmission(invalid);
+                Assert::IsTrue(rejected.outward.state.confirmations>0,
+                    L"Removing crop permission must not pretend the actual exterior picture occupancy disappeared.");
+                Assert::IsFalse(rejected.currentSpatialOutward || rejected.outward.state.candidateCropVerified,
+                    L"Occupancy alone cannot restore stale, foreign, unbound or contradicted masked crop permission.");
+            }
+        }
+
+        TEST_METHOD(ImmediateSpatialAcquisitionRejectsUnboundChangedOrStaleProofAndKeepsTransitionConfirmation)
+        {
+            SpatialStartupPixels frame(960,540,66,474);
+            const auto identity=SpatialStartupIdentity();const auto detected=DetectSourcePictureForWorker(frame.source);
+            auto live=frame.source;live.generation=identity.transportGeneration;
+            ActivePictureMeasurementCache cache;cache.Begin(live,identity,47,23);
+            Assert::IsTrue(cache.SeedQueued(frame.source,identity,detected.evidence,
+                EvaluateActivePictureArDarkness(frame.source,detected.evidence)));
+            const auto bound=cache.Picture();
+            const auto valid=CurrentSpatialObservation(bound,identity,60.0,0);
+            Assert::IsTrue(valid.currentSpatialCropProof.Matches(valid));
+            for(int fault=0;fault<8;++fault) {
+                auto wrong=identity;
+                switch(fault) {
+                case 0:++wrong.acceptedSequence;break;
+                case 1:++wrong.sourceFrameNumber;break;
+                case 2:++wrong.captureTimestamp;break;
+                case 3:++wrong.transportGeneration;break;
+                case 4:++wrong.sourceFormatGeneration;break;
+                case 5:++wrong.analysisDomainKey;break;
+                case 6:++wrong.viewportGeneration;break;
+                case 7:++wrong.rendererGeneration;break;
+                }
+                const auto observation=CurrentSpatialObservation(bound,wrong,60.0,0);
+                Assert::IsFalse(observation.currentSpatialCropProof.Matches(observation),
+                    L"A source-bound crop certificate cannot mint immediate authority for another source context");
+                ActivePictureTransitionModel model;Assert::IsFalse(model.Observe(observation).publish);
+            }
+            for(int fault=0;fault<20;++fault) {
+                auto wrong=bound;
+                switch(fault) {
+                case 0:wrong.currentSourceIdentityAvailable=false;break;
+                case 1:wrong.detector=ActivePictureDetectorKind::Legacy;break;
+                case 2:wrong.detector=ActivePictureDetectorKind::SourceSpatialUnavailable;break;
+                case 3:wrong.detector=ActivePictureDetectorKind::SourceSpatialCanvas;break;
+                case 4:wrong.classification=ActivePictureClassification::PROVISIONAL;break;
+                case 5:wrong.available=false;break;
+                case 6:wrong.physicalEdges.confidence=PhysicalPictureEdgeConfidence::SOURCE_CANVAS_ESTIMATE;break;
+                case 7:wrong.physicalEdges.sourceGeneration=99;break;
+                case 8:wrong.candidateVerification.sourceGeneration=99;break;
+                case 9:++wrong.candidateVerification.nomination.top;break;
+                case 10:++wrong.candidateVerification.bounds.top;break;
+                case 11:wrong.candidateVerification.vertical=ActivePictureCandidateVerificationState::UNKNOWN;break;
+                case 12:wrong.candidateVerification.samples=0;break;
+                case 13:wrong.physicalEdges.estimateAvailable=false;break;
+                case 14:wrong.physicalEdges.evaluated=false;break;
+                case 15:++wrong.currentSourceIdentity.analysisDomainKey;break;
+                case 16:wrong.physicalEdges.estimate.left=wrong.physicalEdges.estimate.right;
+                    wrong.candidateVerification.nomination=wrong.physicalEdges.estimate;break;
+                case 17:wrong.trustedBounds.right=wrong.trustedBounds.rasterWidth+1;
+                    wrong.candidateVerification.bounds=wrong.trustedBounds;break;
+                case 18:wrong.physicalEdges.estimate.aspectRatio=std::numeric_limits<double>::quiet_NaN();
+                    wrong.candidateVerification.nomination=wrong.physicalEdges.estimate;break;
+                case 19:wrong.trustedBounds.aspectRatio=2.0;wrong.candidateVerification.bounds=wrong.trustedBounds;break;
+                }
+                const auto observation=CurrentSpatialObservation(wrong,identity,60.0,0);
+                Assert::IsFalse(observation.currentSpatialCropProof.Matches(observation),
+                    L"A detector enum or unverifiable/changed evidence cannot shorten legacy startup");
+                ActivePictureTransitionModel model;Assert::IsFalse(model.Observe(observation).publish);
+            }
+            for(int fault=0;fault<8;++fault) {
+                auto changed=valid;
+                switch(fault) {
+                case 0:changed.transitionDeferred=true;break;
+                case 1:++changed.bounds.top;break;
+                case 2:++changed.frameNumber;break;
+                case 3:changed.axisEvidence.vertical.scanComplete=false;break;
+                case 4:changed.classification=ActivePictureClassification::PROVISIONAL;break;
+                case 5:changed.bounds.aspectRatio=std::numeric_limits<double>::quiet_NaN();break;
+                case 6:changed.bounds.aspectRatio=0.5;break;
+                case 7:changed.bounds.aspectRatio=std::numeric_limits<double>::infinity();break;
+                }
+                Assert::IsFalse(changed.currentSpatialCropProof.Matches(changed),
+                    L"Later policy modifications must invalidate the exact verified acquisition summary");
+                ActivePictureTransitionModel model;Assert::IsFalse(model.Observe(changed).publish);
+            }
+            // Ordinary legacy startup still needs its original four observations.
+            ActivePictureTransitionModel established;
+            for(uint64_t sequence=1;sequence<=4;++sequence) {
+                ActivePictureObservation legacy;legacy.available=true;legacy.frameNumber=sequence;
+                legacy.bounds=bound.trustedBounds;legacy.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                Assert::AreEqual(sequence==4,established.Observe(legacy).publish);
+            }
+            SpatialStartupPixels changedFrame(960,540,18,522);
+            const auto next=DetectSourcePictureForWorker(changedFrame.source);
+            Assert::IsTrue(next.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            for(uint64_t sequence=5;sequence<=6;++sequence) {
+                const auto id=SpatialStartupIdentity(sequence);auto current=changedFrame.source;current.generation=id.transportGeneration;
+                ActivePictureMeasurementCache currentCache;currentCache.Begin(current,id,47,23);
+                Assert::IsTrue(currentCache.SeedQueued(changedFrame.source,id,next.evidence,
+                    EvaluateActivePictureArDarkness(changedFrame.source,next.evidence)));
+                const auto observation=CurrentSpatialObservation(currentCache.Picture(),id,60.0,0);
+                Assert::IsTrue(observation.currentSpatialCropProof.Matches(observation));
+                Assert::AreEqual(sequence==6,established.Observe(observation).publish,
+                    L"Initial spatial acquisition must not bypass existing established-transition confirmation");
+            }
+            auto foreign=bound;++foreign.currentSourceIdentity.analysisDomainKey;
+            ActivePictureMeasurementCache rejected;rejected.Begin(live,identity,47,23);
+            Assert::IsFalse(rejected.SeedQueued(frame.source,identity,foreign,
+                EvaluateActivePictureArDarkness(frame.source,detected.evidence)),
+                L"Canonical source import must reject an already bound foreign identity");
+        }
+
+        TEST_METHOD(SpatialDetectorTagCannotGrantCropAuthorityOrRenewUnknownFrames)
+        {
+            ActivePictureTransitionModel model;
+            ActivePictureObservation observation;
+            observation.bounds=ScopeBounds();observation.available=true;
+            observation.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+            observation.classification=ActivePictureClassification::PROVISIONAL;
+            for(uint64_t frame=1;frame<=6;++frame) {
+                observation.frameNumber=frame;
+                Assert::IsFalse(model.Observe(observation).publish);
+            }
+            observation.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            ActivePictureTransitionDecision accepted;
+            for(uint64_t frame=7;frame<=10;++frame) {
+                observation.frameNumber=frame;accepted=model.Observe(observation);
+                Assert::AreEqual(frame==10,accepted.publish);
+            }
+            Assert::AreEqual(int(observation.detector),int(accepted.detector));
+            observation.available=false;observation.frameNumber=11;
+            observation.detector=ActivePictureDetectorKind::SourceSpatialUnavailable;
+            const auto unknown=model.Observe(observation);
+            Assert::IsFalse(unknown.publish);
+            Assert::AreEqual(int(ActivePictureDetectorKind::SourceSpatialMeasured),int(unknown.detector));
+            Assert::AreEqual(int(unknown.detector),int(unknown.stableDetector));
+            observation.available=true;observation.frameNumber=10;
+            observation.detector=ActivePictureDetectorKind::Legacy;
+            const auto repeat=model.Observe(observation);
+            Assert::IsFalse(repeat.publish);
+            Assert::AreEqual(int(unknown.detector),int(repeat.detector));
+        }
+
+        TEST_METHOD(ExactCurrentGeometryCanAcceptNewDetectorButProvisionalCannotRelabelIt)
+        {
+            ActivePictureTransitionModel model;Establish(model,ScopeBounds());
+            ActivePictureObservation observation;
+            observation.bounds=ScopeBounds();observation.available=true;observation.frameNumber=5;
+            observation.classification=ActivePictureClassification::PROVISIONAL;
+            observation.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+            const auto provisional=model.Observe(observation);
+            Assert::IsFalse(provisional.publish);
+            Assert::AreEqual(int(ActivePictureDetectorKind::Legacy),int(provisional.stableDetector));
+            observation.classification=ActivePictureClassification::BAR_CROP_TRUSTED;observation.frameNumber=6;
+            const auto verified=model.Observe(observation);
+            Assert::IsTrue(verified.publish);
+            Assert::AreEqual(int(observation.detector),int(verified.detector));
+            Assert::AreEqual(int(observation.detector),int(verified.stableDetector));
+            Assert::IsTrue(model.ResetForNativeQueueContinuity(ScopeBounds()));
+            observation.available=false;observation.frameNumber=7;
+            Assert::AreEqual(int(observation.detector),int(model.Observe(observation).stableDetector));
+        }
+
+        TEST_METHOD(ReacquiredHistoryAndQueuedAdoptionKeepTheirActualDetector)
+        {
+            ActivePictureTransitionModel model;
+            ActivePictureObservation observation;
+            observation.available=true;observation.bounds=ScopeBounds();
+            observation.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            observation.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+            for(uint64_t frame=1;frame<=4;++frame){observation.frameNumber=frame;model.Observe(observation);}
+            observation.bounds=ImaxBounds();observation.detector=ActivePictureDetectorKind::Legacy;
+            observation.frameNumber=5;model.Observe(observation);observation.frameNumber=6;
+            Assert::IsTrue(model.Observe(observation).publish);
+            observation.bounds=ScopeBounds();observation.classification=ActivePictureClassification::PROVISIONAL;
+            observation.frameNumber=7;model.Observe(observation);observation.frameNumber=8;
+            const auto returning=model.Observe(observation);
+            Assert::IsTrue(returning.publish);
+            Assert::IsTrue(returning.knownTrustedGeometryReacquired);
+            Assert::AreEqual(int(ActivePictureDetectorKind::SourceSpatialMeasured),int(returning.detector));
+            Assert::AreEqual(int(ActivePictureDetectorKind::Legacy),int(returning.stableDetector));
+            ActivePictureTransitionModel queued;
+            ActivePictureObservation canvas;
+            canvas.available=true;canvas.bounds={0,0,3840,2160,3840,2160,16.0/9.0,ActivePictureBounds::BarAxes::NONE};
+            canvas.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            canvas.detector=ActivePictureDetectorKind::SourceSpatialCanvas;canvas.frameNumber=1;
+            const auto publication=queued.Observe(canvas);
+            Assert::IsTrue(publication.publish);
+            ActivePictureTransitionModel live;
+            Assert::IsTrue(live.AdoptPublishedDecision(publication,canvas.classification));
+            canvas.available=false;canvas.frameNumber=2;
+            Assert::AreEqual(int(canvas.detector),int(live.Observe(canvas).detector));
+            auto forged=publication;forged.bounds=ScopeBounds();forged.stableBounds={};
+            ActivePictureTransitionModel untrusted;
+            Assert::IsFalse(untrusted.AdoptPublishedDecision(forged,ActivePictureClassification::PROVISIONAL),
+                L"Detector provenance must not promote provisional geometry to native crop authority");
+        }
+
         TEST_METHOD(IncompletePillarboxCannotAcquireFromStartupOrFullRaster)
         {
             for (bool fullFirst : {false, true})

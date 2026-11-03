@@ -20,6 +20,60 @@
 - Verify the active checkout, branch, remote, and worktree status before Git
   writes. Feature branches start from the current remote beta tip.
 
+## Live HDMI video is the primary real-time contract
+
+- VideoProcessor processes continuously arriving live HDMI frames. Video must
+  keep advancing on its normal presentation schedule while subtitle, aspect,
+  crop, classification, shader-preparation, or other optional decisions are pending.
+- Real-time processing is fundamental across the entire capture-to-display
+  pipeline, including analysis, subtitle preparation, rendering and presentation.
+  Sustain the incoming HDMI frame rate with bounded end-to-end latency and no
+  growing backlog. Design around live frame deadlines; budget expensive work
+  off the mandatory video path and discard stale optional work instead of
+  blocking current video. Functional output or screenshots alone do not meet
+  this real-time requirement.
+- Bounded latency alone is insufficient. Mandatory capture/render/presentation
+  work must also fit the actual frame budget; measure the total critical path
+  and worst-case costs, not only average latency, queue age or drop counters.
+- Run expensive subtitle detection/grouping, template construction and current
+  pixel/cleanup verification on a separate bounded worker path. Initial cue
+  detection may cost more; unchanged cues must use a cheaper verified reuse path
+  before full grouping. Analysis cadence may be below display cadence when
+  necessary, but video cadence must continue independently without waiting.
+  Optional worker results must remain exact-source and context-bound; a cached
+  cue never supplies old movie/background pixels or crop/absence authority.
+- Use remote versions where subtitles previously worked well, before the latest
+  regressions, including earlier released RC6 builds and pre-RC6, as architecture
+  and performance references. Identify actual package source pins; a reused RC6
+  label or tag alone does not identify both the older and latest released builds.
+  Compare scheduling, buffering, processing cost, caption behavior and current
+  frame progression under matched conditions; learn from that working behavior
+  while preserving independently verified fixes.
+- Never hold or replay the last whole video frame solely to wait for subtitle
+  inspection, caption confirmation/composition, crop approval, or analysis readiness.
+  UNKNOWN, delayed, missing, failed, or out-of-order optional results must not
+  starve otherwise eligible current-source video submissions.
+- Defer optional processing and select an explicit current-source, pixel-preserving
+  fallback. Preserve visible picture/caption pixels and original frame/timestamp
+  identity. Do not substitute an older composed subtitle frame, invent absence,
+  cleanup or crop proof, or turn fallback presentation into detected/native AR
+  authority. Keep physical detection independent of presentation fallback.
+- Keep live latency bounded. Do not conceal stalls by increasing queues, lookahead,
+  timeouts or confirmation delays. Preserve required cadence conversion,
+  deinterlacing and genuine input/device transition handling; distinguish those
+  from a whole-source veto caused by an unfinished optional decision.
+- Subtitle cues commonly remain static across many frames for seconds. Reuse
+  verified cue text/layout/glyph templates where safe, with bounded current-pixel
+  checks for glyphs, backing and newly added or changed text. Moving background
+  outside the glyphs is not by itself a cue change. Never make a fresh full subtitle
+  decision a prerequisite for every movie frame, and never reuse old movie,
+  background or cleanup pixels as current-source evidence.
+- Regressions must exercise dense/changing subtitles, volume/UI overlays,
+  slow/missing analysis, profile/format resets, and Off-mode framing stability.
+  Verify distinct current-source submissions and actual presentation/source gaps,
+  caption/picture preservation and bounded latency. Zero reported renderer drops
+  alone does not establish uninterrupted playback.
+
 ## Stories
 
 - Stories are tracked in `C:\Users\bslac\vp\story-tracker\stories`.
@@ -40,6 +94,30 @@
   `MSBuild.exe VideoProcessor.sln /t:Build /m /p:Configuration=Release /p:Platform=x64 /p:MagewellSdkRoot=E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3 /v:minimal`.
 
 ## Testing and diagnostics
+
+- Repair iteration uses `tools/qualify_runtime_build.ps1 -Lane Native` for CPU
+  proofs or `-Lane Focused -Methods <names>` for matching Release runtime builds
+  and selected renderer checks. These lanes record partial evidence and never
+  issue full qualification. See `docs/FAST_REPAIR_ITERATION.md`.
+- Release/packaging builds must pass the mandatory native AR/subtitle contracts
+  and the real Classic lifecycle matrix on both shipped renderer dependencies.
+  `tools/qualify_runtime_build.ps1` builds and tests the matching x64 Release
+  host, renderers and test binaries; there is no skip-tests release path.
+  `tools/assert_runtime_qualification.ps1` must pass immediately before copying
+  runtime binaries for deployment or packaging. Missing, failed or stale source,
+  binary or test evidence blocks release/packaging. An explicitly requested
+  manual-review deployment may use disclosed focused evidence while full
+  qualification continues; it must never be represented as qualified.
+  A successful compiler exit alone
+  is not qualification. Keep the user configuration intact when deploying.
+- The critical matrix covers both fill directions with normal 500 ms engage,
+  2,000 ms hold and 2,000 ms release, natural skipped analyses, true measured
+  aspect changes and profile changes. Its 24 distinct displayed source frames
+  are a post-transition observation window, never a runtime confirmation delay.
+  Keep these regressions in `tools/critical_runtime_tests.json`; a missing or
+  unexecuted required method is a failure. Private captured movie fixtures are
+  optional additional evidence and must not be represented as exercised when absent.
+
 
 - After changing temporal packet lifetime, source processing, or subtitle GPU
   preparation, run `tools/test_subtitle_motion_renderers.ps1` against both shipped
