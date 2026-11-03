@@ -11,8 +11,9 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1066,
+  "minimumNativeTests": 1068,
   "requiredNativeMethods": [
+    "CurrentFootprintRearmsStrideOneOnlyAndKeepsOriginalPixelBaseline",
     "CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk",
     "UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats",
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
@@ -400,6 +401,21 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 40,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "PendingCurrentPixelProofKeepsCueWithoutBarAuthorityOrLeaseRenewal"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "ActualQueueRetirementPendingPixelsPreserveCueThenExpireWithoutWorkerRenewal"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "PendingPresentationReassociationRequiresExactTokenAndSuccessfulCurrentProof"
+    },
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
