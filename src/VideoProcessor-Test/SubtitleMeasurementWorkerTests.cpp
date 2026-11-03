@@ -63,8 +63,9 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         preview.current.analyzed=false;preview.current.text={};return preview;
     }
     static SubtitleBoxObservation CompleteThreeLineScan(uint64_t sequence,
-        const std::vector<uint16_t>& pixels,uint64_t continuity=21) {
+        const std::vector<uint16_t>& pixels,uint64_t continuity=21,int nearBarDistance=0) {
         auto scan=Ready(sequence).current;scan.continuityGeneration=continuity;
+        scan.nearBarDistance=nearBarDistance;
         scan.independentBarAnalysis=true;scan.barEvidence.available=true;
         scan.barEvidence.top=scan.pictureTop;scan.barEvidence.bottom=scan.pictureBottom;
         scan.text.topSearchComplete=scan.text.bottomSearchComplete=true;
@@ -84,12 +85,23 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         scan.ink=ink;return scan;
     }
     static SubtitleBoxPreview ReassociateThreeLineCue(SubtitleBoxPresentation& tracker,
-        const std::vector<uint16_t>& pixels,SubtitleBoxResult& accepted) {
+        const std::vector<uint16_t>& pixels,SubtitleBoxResult& accepted,bool addUnownedRaw=false,
+        int nearBarDistance=0) {
+        const auto addUnownedRawBit=[&](SubtitleBoxObservation& observation) {
+            if(!addUnownedRaw)return;
+            auto ink=std::make_shared<SubtitleInkSnapshot>(*observation.ink);
+            const size_t raw=size_t(35)*160+20,fringe=size_t(50)*160+49;
+            ink->rawInk[raw/64]|=uint64_t{1}<<(raw%64);
+            ink->ownedInk[fringe/64]&=~(uint64_t{1}<<(fringe%64));
+            observation.ink=std::move(ink);
+        };
         std::array<SubtitleBoxObservation,4> initial;
-        for(size_t i=0;i<initial.size();++i)initial[i]=CompleteThreeLineScan(i+1,pixels);
+        for(size_t i=0;i<initial.size();++i) {
+            initial[i]=CompleteThreeLineScan(i+1,pixels,21,nearBarDistance);addUnownedRawBit(initial[i]);
+        }
         const auto acquired=tracker.Consume(SubtitleBoxLookahead::Resolve(initial.data(),initial.size(),11,21));
         Assert::IsTrue(acquired.detected);Assert::AreEqual(3,acquired.lineCount);
-        auto current=CompleteThreeLineScan(5,pixels,22);
+        auto current=CompleteThreeLineScan(5,pixels,22,nearBarDistance);addUnownedRawBit(current);
         auto preview=SubtitleBoxLookahead::Resolve(&current,1,11,22);
         Assert::IsFalse(preview.text.detected,L"One ready frame cannot freshly acquire a crowded cue.");
         accepted=tracker.Consume(preview,250,40,&initial[0].identity,true);
@@ -99,8 +111,9 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         Assert::IsTrue(tracker.AcceptedCueSeedCertificate().Matches(preview,accepted));
         return preview;
     }
-    static SubtitleBoxPreview PendingAfterReassociation(uint64_t sequence) {
+    static SubtitleBoxPreview PendingAfterReassociation(uint64_t sequence,int nearBarDistance=0) {
         auto pending=Pending(sequence);pending.continuityGeneration=pending.current.continuityGeneration=22;
+        pending.current.nearBarDistance=nearBarDistance;
         return pending;
     }
     static SubtitleBoxObservation WorkerKey(uint64_t sequence,uint64_t analysisDomain) {
@@ -1415,10 +1428,13 @@ public:
     }
     TEST_METHOD(PendingCurrentInkProofIgnoresMovingMarginsAndRefreshesCurrentSnapshot) {
         auto pixels=PixelsWithCurrentBars();
-        auto scan=CompleteThreeLineScan(1,pixels);
-        auto ready=SubtitleBoxLookahead::Resolve(&scan,1,11,21);
+        SubtitleBoxPresentation tracker;SubtitleBoxResult accepted;
+        auto ready=ReassociateThreeLineCue(tracker,pixels,accepted,false,20);
+        const auto certificate=tracker.AcceptedCueSeedCertificate();
         SubtitlePendingMeasurementGuard guard;
-        Assert::IsTrue(guard.RememberAccepted(ready,ready.current.text,Source(pixels),40,250),
+        const bool remembered=guard.RememberAccepted(ready,accepted,Source(pixels),40,250,&certificate);
+        if(!remembered)Logger::WriteMessage((std::string("current ink seed: ")+guard.DecisionReason()).c_str());
+        Assert::IsTrue(remembered,
             L"A complete current detector scan must seed the bounded raw/owned witness.");
         const auto oldInk=ready.current.ink;
         // These pixels are in the detector's one-step line-box margin, not in
@@ -1432,8 +1448,10 @@ public:
         // A small current antialias change remains within the owned-pixel
         // identity tolerance while proving the current source was re-sampled.
         pixels[50*160+50]=uint16_t(703<<6);
-        auto pending=Pending(2);
-        Assert::IsTrue(guard.Resolve(pending,Source(pixels),40,250),
+        auto pending=PendingAfterReassociation(6,20);
+        const bool resolved=guard.Resolve(pending,Source(pixels),40,250);
+        if(!resolved)Logger::WriteMessage((std::string("current ink pending: ")+guard.DecisionReason()).c_str());
+        Assert::IsTrue(resolved,
             L"Changed non-owned picture margins must not invalidate an otherwise exact static cue.");
         Assert::IsTrue(pending.current.pendingRefresh,
             L"The fast path must stay an unprocessed pending refresh.");
@@ -1448,13 +1466,16 @@ public:
         Assert::IsTrue(guard.DecisionDiagnostics().glyphSamplesChecked>=12);
     }
     TEST_METHOD(PendingCurrentInkProofRejectsChangedGlyphAndNovelCompanion) {
-        for(int scenario=0;scenario<5;++scenario) {
+        for(int scenario=0;scenario<6;++scenario) {
             auto pixels=PixelsWithCurrentBars();
             if(scenario==4)pixels[50*160+108]=uint16_t(420<<6);
-            auto scan=CompleteThreeLineScan(1,pixels);
-            auto ready=SubtitleBoxLookahead::Resolve(&scan,1,11,21);
+            SubtitleBoxPresentation tracker;SubtitleBoxResult accepted;
+            auto ready=ReassociateThreeLineCue(tracker,pixels,accepted,false,20);
+            const auto certificate=tracker.AcceptedCueSeedCertificate();
             SubtitlePendingMeasurementGuard guard;
-            Assert::IsTrue(guard.RememberAccepted(ready,ready.current.text,Source(pixels),40,250));
+            const bool remembered=guard.RememberAccepted(ready,accepted,Source(pixels),40,250,&certificate);
+            if(!remembered)Logger::WriteMessage((std::string("current ink negative seed: ")+guard.DecisionReason()).c_str());
+            Assert::IsTrue(remembered);
             if(scenario==0) {
                 pixels[50*160+50]=uint16_t(300<<6);
             } else if(scenario==1) {
@@ -1476,39 +1497,42 @@ public:
                 // hidden by the old-mask neighborhood or a component-size rule.
                 const size_t uv=size_t(160)*90+size_t(50/2)*160+size_t(110/2)*2;
                 pixels[uv]=uint16_t(800<<6);pixels[uv+1]=uint16_t(512<<6);
-            } else {
+            } else if(scenario==4) {
                 // A same-palette low-luma point was quiet at seed time. A new
                 // strong local edge at that exact fringe point must invalidate
                 // the witness even though it remains below inkFloor.
                 pixels[50*160+108]=uint16_t(470<<6);
+            } else {
+                // A tiny alternate-chroma mark immediately inside the active
+                // picture's lower bar seam must be detected by same-side
+                // evidence; the unchanged picture/bar luminance step itself
+                // must not look like a new subtitle.
+                const size_t uv=size_t(160)*90+size_t(76/2)*160+size_t(20/2)*2;
+                pixels[uv]=uint16_t(800<<6);pixels[uv+1]=uint16_t(512<<6);
             }
-            auto pending=Pending(2);
+            auto pending=PendingAfterReassociation(6,20);
             Assert::IsFalse(guard.Resolve(pending,Source(pixels),40,250),
                 L"The current witness must reject lost accepted glyphs and any new raw subtitle ink outside the template.");
             Assert::IsFalse(pending.available);
             const char* expected=scenario==0?"current-owned-glyph-changed":
                 scenario==1?"new-current-raw-ink":scenario==4?"current-known-ink-changed":
                     "new-current-contrast-ink";
-            Assert::AreEqual(expected,
-                guard.DecisionReason());
+            if(scenario==0)Assert::IsTrue(std::strcmp(guard.DecisionReason(),"current-owned-glyph-changed")==0 ||
+                std::strcmp(guard.DecisionReason(),"current-known-ink-changed")==0);
+            else Assert::AreEqual(expected,guard.DecisionReason());
         }
     }
     TEST_METHOD(PendingCurrentInkProofRejectsChangedBackingSourceContextAndUnavailablePixels) {
         for(int scenario=0;scenario<4;++scenario) {
             auto pixels=PixelsWithCurrentBars();
-            const size_t unownedRaw=size_t(35)*160+20;
             if(scenario==3)pixels[50*160+49]=uint16_t(500<<6);
-            auto scan=CompleteThreeLineScan(1,pixels);
-            if(scenario==3) {
-                auto seedInk=std::make_shared<SubtitleInkSnapshot>(*scan.ink);
-                seedInk->rawInk[unownedRaw/64]|=uint64_t{1}<<(unownedRaw%64);
-                const size_t fringeRaw=size_t(50)*160+49;
-                seedInk->ownedInk[fringeRaw/64]&=~(uint64_t{1}<<(fringeRaw%64));
-                scan.ink=std::move(seedInk);
-            }
-            auto ready=SubtitleBoxLookahead::Resolve(&scan,1,11,21);
+            SubtitleBoxPresentation tracker;SubtitleBoxResult accepted;
+            auto ready=ReassociateThreeLineCue(tracker,pixels,accepted,scenario==3,20);
+            const auto certificate=tracker.AcceptedCueSeedCertificate();
             SubtitlePendingMeasurementGuard guard;
-            Assert::IsTrue(guard.RememberAccepted(ready,ready.current.text,Source(pixels),40,250));
+            const bool remembered=guard.RememberAccepted(ready,accepted,Source(pixels),40,250,&certificate);
+            if(!remembered)Logger::WriteMessage((std::string("current ink context seed: ")+guard.DecisionReason()).c_str());
+            Assert::IsTrue(remembered);
             auto current=Source(pixels);
             if(scenario==0) {
                 // Still a valid physical bar, but a changed black-card support
@@ -1522,7 +1546,7 @@ public:
                 pixels[uv]=uint16_t(800<<6);pixels[uv+1]=uint16_t(512<<6);
                 current=Source(pixels);
             }
-            auto pending=Pending(2);
+            auto pending=PendingAfterReassociation(6,20);
             Assert::IsFalse(guard.Resolve(pending,current,40,250));
             Assert::IsFalse(pending.available);
             const char* expected=scenario==0?"current-black-backing-changed":
@@ -1586,7 +1610,20 @@ public:
             L"The original source-age limit still applies after queue reassociation.");
     }
     TEST_METHOD(CurrentInkSeedSurvivesAuthorizedHeldAndCadenceContinuationsWithoutRenewal) {
-        auto storage=HistoryConfirmedSeed();auto& w=*storage;const double frameMs=40.0;
+        struct Workspace {
+            std::vector<uint16_t> pixels=PixelsWithCurrentBars(),cadencePixels=PixelsWithCurrentBars();
+            SubtitleBoxPresentation tracker,cadenceTracker;
+            SubtitleBoxResult accepted,held,cadenceAccepted;
+            SubtitleBoxPreview preview,heldPreview,cadencePreview,cadenceAnalysis,skipped,afterHeld,heldExpired,afterCadence;
+            std::array<SubtitleBoxObservation,2> heldScans;
+            SubtitlePendingMeasurementGuard guard,invalidHeld,cadenceGuard,invalidCadence;
+            SubtitleCadenceGuard cadence;
+            SubtitleCutPasteGeometry geometry;
+            SubtitleCadenceProof proof,badProof;
+        };
+        auto storage=std::make_unique<Workspace>();auto& w=*storage;
+        const double frameMs=40.0;
+        w.preview=ReassociateThreeLineCue(w.tracker,w.pixels,w.accepted,false,20);
         const auto original=w.preview.current.identity;
         const auto certificate=w.tracker.AcceptedCueSeedCertificate();
         Assert::IsTrue(w.guard.RememberAccepted(w.preview,w.accepted,Source(w.pixels),frameMs,250,&certificate));
@@ -1594,70 +1631,74 @@ public:
         // A current complete source can produce an accepted held pose when its
         // lookahead grouping is pruned. Its current prepared certificate may
         // preserve, but cannot advance or renew, the original cue seed.
-        std::array<SubtitleBoxObservation,2> heldScans={
-            CompleteThreeLineScan(original.acceptedSequence+1,w.pixels),
-            CompleteThreeLineScan(original.acceptedSequence+2,w.pixels)};
-        auto heldPreview=SubtitleBoxLookahead::Resolve(heldScans.data(),heldScans.size(),11,21);
-        heldPreview.text=w.preview.text;heldPreview.futureAvailable=false;heldPreview.followingCount=0;
-        heldPreview.currentLinesConfirmed=false;heldPreview.matchingFrames=1;
-        const auto held=w.tracker.Consume(heldPreview,250,frameMs);
-        Assert::IsTrue(held.detected && held.held,
+        w.heldScans={CompleteThreeLineScan(original.acceptedSequence+1,w.pixels,22,20),
+            CompleteThreeLineScan(original.acceptedSequence+2,w.pixels,22,20)};
+        w.heldPreview=SubtitleBoxLookahead::Resolve(w.heldScans.data(),w.heldScans.size(),11,22);
+        w.heldPreview.text.lineCount=1;w.heldPreview.text.lineBounds[1]={};w.heldPreview.text.lineBounds[2]={};
+        w.heldPreview.currentLinesConfirmed=false;w.heldPreview.matchingFrames=1;
+        w.held=w.tracker.Consume(w.heldPreview,250,frameMs);
+        Assert::IsTrue(w.held.detected && w.held.held,
             L"A pruned current grouping must exercise the held-cue continuation path.");
-        const auto heldCertificate=w.tracker.CurrentPreparedCueCertificate();
-        Assert::IsTrue(heldCertificate.Matches(heldPreview.current,held,heldPreview.current.sharedPicture.bounds));
-        SubtitlePendingMeasurementGuard invalidHeld;
-        Assert::IsTrue(invalidHeld.RememberAccepted(w.preview,w.accepted,Source(w.pixels),frameMs,250,&certificate));
-        auto wrongBase=heldPreview.current.sharedPicture.bounds;++wrongBase.bottom;
-        Assert::IsFalse(invalidHeld.RememberAccepted(heldPreview,held,Source(w.pixels),frameMs,250,nullptr,
+        const auto& heldCertificate=w.tracker.CurrentPreparedCueCertificate();
+        Assert::IsTrue(heldCertificate.Matches(w.heldPreview.current,w.held,w.heldPreview.current.sharedPicture.bounds));
+        Assert::IsTrue(w.invalidHeld.RememberAccepted(w.preview,w.accepted,Source(w.pixels),frameMs,250,&certificate));
+        auto wrongBase=w.heldPreview.current.sharedPicture.bounds;++wrongBase.bottom;
+        Assert::IsFalse(w.invalidHeld.RememberAccepted(w.heldPreview,w.held,Source(w.pixels),frameMs,250,nullptr,
             &heldCertificate,&wrongBase));
-        Assert::AreEqual("held-current-seed-unqualified",invalidHeld.DecisionReason());
-        Assert::IsFalse(invalidHeld.Resolve(Pending(original.acceptedSequence+2),Source(w.pixels),frameMs,250));
+        Assert::AreEqual("held-current-seed-unqualified",w.invalidHeld.DecisionReason());
+        w.afterHeld=PendingAfterReassociation(original.acceptedSequence+2,20);
+        Assert::IsFalse(w.invalidHeld.Resolve(w.afterHeld,Source(w.pixels),frameMs,250));
 
-        Assert::IsFalse(w.guard.RememberAccepted(heldPreview,held,Source(w.pixels),frameMs,250,nullptr,
-            &heldCertificate,&heldPreview.current.sharedPicture.bounds));
+        Assert::IsFalse(w.guard.RememberAccepted(w.heldPreview,w.held,Source(w.pixels),frameMs,250,nullptr,
+            &heldCertificate,&w.heldPreview.current.sharedPicture.bounds));
         Assert::AreEqual("held-current-proof-preserves-original-seed",w.guard.DecisionReason());
         Assert::AreEqual(original.acceptedSequence,w.guard.AcceptedSeedIdentity().acceptedSequence);
         Assert::AreEqual(original.acceptedSequence,w.guard.LastVerifiedIdentity().acceptedSequence);
         Assert::AreEqual(0.0,w.guard.PendingElapsedMilliseconds(),0.001);
-        auto afterHeld=Pending(original.acceptedSequence+6);
-        Assert::IsTrue(w.guard.Resolve(afterHeld,Source(w.pixels),frameMs,250));
+        w.afterHeld=PendingAfterReassociation(original.acceptedSequence+6,20);
+        Assert::IsTrue(w.guard.Resolve(w.afterHeld,Source(w.pixels),frameMs,250));
         Assert::AreEqual(6*frameMs,w.guard.PendingElapsedMilliseconds(),0.001);
         Assert::AreEqual(original.acceptedSequence,w.guard.AcceptedSeedIdentity().acceptedSequence);
-        auto heldExpired=Pending(original.acceptedSequence+7);
-        Assert::IsFalse(w.guard.Resolve(heldExpired,Source(w.pixels),frameMs,250));
+        w.heldExpired=PendingAfterReassociation(original.acceptedSequence+7,20);
+        Assert::IsFalse(w.guard.Resolve(w.heldExpired,Source(w.pixels),frameMs,250));
         Assert::AreEqual("pending-budget-expired",w.guard.DecisionReason());
 
         // A cadence proof is a distinct exact-source advance. It must work with
         // the new bounded raw/owned seed while preserving its source and lease.
-        auto cadenceStorage=HistoryConfirmedSeed();auto& c=*cadenceStorage;
-        const auto cadenceOriginal=c.preview.current.identity;
-        const auto cadenceCertificate=c.tracker.AcceptedCueSeedCertificate();
-        Assert::IsTrue(c.guard.RememberAccepted(c.preview,c.accepted,Source(c.pixels),frameMs,250,&cadenceCertificate));
-        SubtitleCutPasteGeometry geometry;geometry.valid=true;geometry.content=c.accepted.bounds;
-        geometry.glyphLines=c.accepted.lineBounds;geometry.source=geometry.destination=c.accepted.capturePanel;
-        geometry.generatedCleanup=geometry.pictureCapture=c.accepted.sourcePanel;
-        geometry.pictureTop=c.preview.current.pictureTop;geometry.pictureBottom=c.preview.current.pictureBottom;
-        SubtitleCadenceGuard cadence;
-        Assert::IsTrue(cadence.RememberAccepted(c.preview,c.accepted,Source(c.pixels),
-            c.preview.current.sharedPicture.bounds,geometry,frameMs,250));
-        auto skipped=Pending(cadenceOriginal.acceptedSequence+1);
-        skipped.current.cadenceSkipped=true;skipped.current.analysisStride=2;
-        const auto proof=cadence.PrepareReference(skipped,Source(c.pixels),
-            c.preview.current.sharedPicture.bounds,frameMs,250);
-        Assert::IsTrue(proof.valid);
-        SubtitlePendingMeasurementGuard invalidCadence;
-        Assert::IsTrue(invalidCadence.RememberAccepted(c.preview,c.accepted,Source(c.pixels),frameMs,250,&cadenceCertificate));
-        auto badProof=proof;badProof.valid=false;
-        Assert::IsFalse(invalidCadence.AdvanceVerifiedCadence(badProof,proof.continuation.accepted,frameMs,250));
-        Assert::AreEqual("cadence-advance-context-changed",invalidCadence.DecisionReason());
-        Assert::IsTrue(c.guard.AdvanceVerifiedCadence(proof,proof.continuation.accepted,frameMs,250));
-        Assert::AreEqual(cadenceOriginal.acceptedSequence,c.guard.AcceptedSeedIdentity().acceptedSequence);
-        Assert::AreEqual(skipped.current.identity.acceptedSequence,c.guard.LastVerifiedIdentity().acceptedSequence);
-        Assert::AreEqual(frameMs,c.guard.PendingElapsedMilliseconds(),0.001);
-        auto afterCadence=Pending(cadenceOriginal.acceptedSequence+2);
-        Assert::IsTrue(c.guard.Resolve(afterCadence,Source(c.pixels),frameMs,250));
-        Assert::AreEqual(2*frameMs,c.guard.PendingElapsedMilliseconds(),0.001);
-        Assert::AreEqual(cadenceOriginal.acceptedSequence,c.guard.AcceptedSeedIdentity().acceptedSequence);
+        w.cadencePreview=ReassociateThreeLineCue(w.cadenceTracker,w.cadencePixels,w.cadenceAccepted,false,20);
+        const auto cadenceOriginal=w.cadencePreview.current.identity;
+        const auto cadenceCertificate=w.cadenceTracker.AcceptedCueSeedCertificate();
+        Assert::IsTrue(w.cadenceGuard.RememberAccepted(w.cadencePreview,w.cadenceAccepted,Source(w.cadencePixels),
+            frameMs,250,&cadenceCertificate));
+        w.geometry.valid=true;w.geometry.content=w.cadenceAccepted.bounds;
+        w.geometry.glyphLines=w.cadenceAccepted.lineBounds;
+        w.geometry.source=w.geometry.destination=w.geometry.generatedCleanup=w.geometry.pictureCapture=
+            w.cadenceAccepted.sourcePanel;
+        w.geometry.pictureTop=12;w.geometry.pictureBottom=78;
+        w.cadenceAnalysis=w.cadencePreview;w.cadenceAnalysis.current.analysisStride=2;
+        const auto cadenceSource=CadenceSource(w.cadencePixels);
+        const bool cadenceSeeded=w.cadence.RememberAccepted(w.cadenceAnalysis,w.cadenceAccepted,cadenceSource,
+            w.cadencePreview.current.sharedPicture.bounds,w.geometry,frameMs,250);
+        if(!cadenceSeeded)Logger::WriteMessage((std::string("cadence seed: ")+w.cadence.DecisionReason()).c_str());
+        Assert::IsTrue(cadenceSeeded);
+        w.skipped=PendingAfterReassociation(cadenceOriginal.acceptedSequence+1,20);
+        w.skipped.current.cadenceSkipped=true;w.skipped.current.analysisStride=2;
+        w.proof=w.cadence.PrepareReference(w.skipped,cadenceSource,
+            w.cadencePreview.current.sharedPicture.bounds,frameMs,250);
+        Assert::IsTrue(w.proof.valid);
+        Assert::IsTrue(w.invalidCadence.RememberAccepted(w.cadencePreview,w.cadenceAccepted,Source(w.cadencePixels),
+            frameMs,250,&cadenceCertificate));
+        w.badProof=w.proof;w.badProof.valid=false;
+        Assert::IsFalse(w.invalidCadence.AdvanceVerifiedCadence(w.badProof,w.proof.continuation.accepted,frameMs,250));
+        Assert::AreEqual("cadence-advance-context-changed",w.invalidCadence.DecisionReason());
+        Assert::IsTrue(w.cadenceGuard.AdvanceVerifiedCadence(w.proof,w.proof.continuation.accepted,frameMs,250));
+        Assert::AreEqual(cadenceOriginal.acceptedSequence,w.cadenceGuard.AcceptedSeedIdentity().acceptedSequence);
+        Assert::AreEqual(w.skipped.current.identity.acceptedSequence,w.cadenceGuard.LastVerifiedIdentity().acceptedSequence);
+        Assert::AreEqual(frameMs,w.cadenceGuard.PendingElapsedMilliseconds(),0.001);
+        w.afterCadence=PendingAfterReassociation(cadenceOriginal.acceptedSequence+2,20);
+        Assert::IsTrue(w.cadenceGuard.Resolve(w.afterCadence,Source(w.cadencePixels),frameMs,250));
+        Assert::AreEqual(2*frameMs,w.cadenceGuard.PendingElapsedMilliseconds(),0.001);
+        Assert::AreEqual(cadenceOriginal.acceptedSequence,w.cadenceGuard.AcceptedSeedIdentity().acceptedSequence);
     }
     TEST_METHOD(HistoryConfirmedPendingSeedRejectsForeignPartialHeldAndReusedProof) {
         for(int fault=0;fault<10;++fault) {

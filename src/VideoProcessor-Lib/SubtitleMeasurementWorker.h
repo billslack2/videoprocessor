@@ -820,6 +820,7 @@ public:
     };
     void Reset() { m_reference={};m_samples.clear();m_ownedSamples.clear();m_backingSamples.clear();
         m_knownInkSamples.clear();m_paletteFringe.clear();
+        m_currentPixels.clear();m_currentSampled.clear();
         m_currentInkProofSeeded=false;m_sourceLayout={};m_elapsed=0;m_last={};m_diagnostics={};
         m_certifiedSeed={};m_certifiedPolicy=m_certifiedContinuity=0;m_consumedCertificate={}; }
     const char* DecisionReason() const { return m_reason; }
@@ -1245,11 +1246,13 @@ private:
         const size_t area=size_t(ink->width)*size_t(ink->height),words=(area+63)/64;
         if(ink->rawInk.size()!=words || ink->ownedInk.size()!=words || ink->blackBacking.size()!=words)
             return CurrentInkSeedState::Failed;
+        const ValidatedAnalysisLumaSampler sampler(source);
+        if(!sampler.IsValid())return CurrentInkSeedState::Failed;
         std::vector<KnownInkSample> knownInk;knownInk.reserve(4096);
         for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x)if(ink->Get(x,y)) {
             if(knownInk.size()>=CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
             AnalysisLumaSample sample;
-            if(!source.Sample(x*ink->step,ink->sourceRows[size_t(y)],sample))return CurrentInkSeedState::Failed;
+            if(!sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],sample))return CurrentInkSeedState::Failed;
             knownInk.push_back({x,y,sample});
         }
         std::vector<uint64_t> paletteFringe(words,0);
@@ -1262,7 +1265,7 @@ private:
             if(!nextToKnownRaw)continue;
             if(++fringeSamples>CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
             AnalysisLumaSample sample;
-            if(!source.Sample(x*ink->step,ink->sourceRows[size_t(y)],sample))return CurrentInkSeedState::Failed;
+            if(!sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],sample))return CurrentInkSeedState::Failed;
             if(sample.luma>=ink->inkFloor-80 &&
                 std::abs(int(sample.chromaU)-ink->inkU)<=80 &&
                 std::abs(int(sample.chromaV)-ink->inkV)<=80) {
@@ -1286,7 +1289,7 @@ private:
                     if(px<bounds.left || px>=bounds.right || !ink->Get(x,y,true))continue;
                     if(!ink->Get(x,y) || owned.size()>=32768)return CurrentInkSeedState::Failed;
                     AnalysisLumaSample value;
-                    if(!source.Sample(px,py,value) || value.luma<ink->inkFloor ||
+                    if(!sampler.Sample(px,py,value) || value.luma<ink->inkFloor ||
                         std::abs(int(value.chromaU)-ink->inkU)>80 ||
                         std::abs(int(value.chromaV)-ink->inkV)>80)return CurrentInkSeedState::Failed;
                     owned.push_back({x,y,value});++ownedPerLine[size_t(line)];
@@ -1320,7 +1323,7 @@ private:
             if(y<topEnd || y>=bottomStart)backing.push_back({x,y,ink->Black(x,y)});
             else {
                 AnalysisLumaSample value;
-                if(!source.Sample(x*ink->step,ink->sourceRows[size_t(y)],value))return CurrentInkSeedState::Failed;
+                if(!sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],value))return CurrentInkSeedState::Failed;
                 backing.push_back({x,y,value.luma<=ink->blackLimit});
             }
             if(backing.size()>CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
@@ -1343,6 +1346,8 @@ private:
         if(!CurrentInkGeometry(old,*oldInk,topEnd,bottomStart)) {
             reason="current-search-coverage-unavailable";return false;
         }
+        const ValidatedAnalysisLumaSampler sampler(source);
+        if(!sampler.IsValid()) {reason="current-source-layout-changed";return false;}
         const size_t area=size_t(oldInk->width)*size_t(oldInk->height),words=(area+63)/64;
         if(area>1048576 || oldInk->rawInk.size()!=words || oldInk->ownedInk.size()!=words ||
             oldInk->blackBacking.size()!=words) {reason="current-ink-grid-invalid";return false;}
@@ -1352,14 +1357,16 @@ private:
         fresh->inkU=oldInk->inkU;fresh->inkV=oldInk->inkV;fresh->blackLimit=oldInk->blackLimit;
         fresh->paletteValid=true;fresh->rawEvidenceComplete=false;
         fresh->rawInk.assign(words,0);fresh->ownedInk.assign(words,0);fresh->blackBacking.assign(words,0);
-        std::vector<AnalysisLumaSample> pixels(area);std::vector<uint8_t> sampled(area,0);
+        m_currentPixels.resize(area);m_currentSampled.resize(area);
+        std::fill(m_currentSampled.begin(),m_currentSampled.end(),uint8_t(0));
+        auto& pixels=m_currentPixels;auto& sampled=m_currentSampled;
         size_t count=0;
         const auto read=[&](int x,int y,AnalysisLumaSample& value)->bool {
             if(x<0 || y<0 || x>=fresh->width || y>=fresh->height)return false;
             const size_t at=size_t(y)*fresh->width+x;
             if(!sampled[at]) {
                 if(count>=CurrentInkSampleBudget)return false;
-                if(!source.Sample(x*fresh->step,fresh->sourceRows[size_t(y)],pixels[at]))return false;
+                if(!sampler.Sample(x*fresh->step,fresh->sourceRows[size_t(y)],pixels[at]))return false;
                 sampled[at]=1;++count;
                 m_diagnostics.currentBandSamplesChecked=count;
                 if(pixels[at].luma<=fresh->blackLimit)
@@ -1488,6 +1495,9 @@ private:
             for(int direction=0;direction<4;++direction) {
                 const int nx=x+neighborX[direction],ny=y+neighborY[direction];
                 if(!inBand(ny))continue;
+                const bool pointInPicture=y>=top && y<bottom;
+                const bool neighborInPicture=ny>=top && ny<bottom;
+                if(pointInPicture!=neighborInPicture)continue;
                 const auto& neighbor=pixels[size_t(ny)*width+nx];
                 const bool brightLocalInk=int(point.luma)-int(neighbor.luma)>=48;
                 const bool alternatePalette=(std::abs(int(point.chromaU)-reference.inkU)>80 ||
@@ -1519,6 +1529,10 @@ private:
     std::vector<BackingSample> m_backingSamples;
     std::vector<KnownInkSample> m_knownInkSamples;
     std::vector<uint64_t> m_paletteFringe;
+    // Reused per pending frame. Every sampled mark is reset before reuse, and
+    // pixel values are read only after the corresponding mark is set current.
+    std::vector<AnalysisLumaSample> m_currentPixels;
+    std::vector<uint8_t> m_currentSampled;
     SourceLayout m_sourceLayout{};
     bool m_currentInkProofSeeded=false;
     SubtitleBoxPreview m_reference;
