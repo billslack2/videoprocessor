@@ -1,0 +1,32 @@
+{
+  "source": "43ba61d4c8cfd24b65003d4c887413bd7969d031",
+  "branch": "codex/subtitle-pixel-tolerance-20261103",
+  "storyStatus": "In Progress",
+  "sourcePushed": true,
+  "deployedSource": "a4858d7c3c19071e955c80952d5d4a4a21d76191",
+  "deployment": "No candidate deployment; installed prior trial failed user acceptance.",
+  "userAcceptance": "Open; private replay does not establish live user acceptance.",
+  "qualification": "Partial isolated Standard/Beta actual-renderer captured replay only; not full qualification or 60 Hz input qualification.",
+  "nativeRun": "Fresh 1098-test Native lane running when this progress record was written; no passing result claimed.",
+  "performanceFollowup": "Each candidate steady window still reports 252 worker full scans for 144 sources; investigate scan scheduling/semantic refresh cost.",
+  "files": [
+    {
+      "file": "candidate-receipt.json",
+      "sourcePath": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\subtitle-tolerance\\real-renderer\\candidate-43ba61d4-q4-20261103-175242\\receipt.json",
+      "sha256": "D825ADAF4E8C68B31BC4BBDE4BF1930F4CEF162842546B6FC3A1C27506354847",
+      "bytes": 2858
+    },
+    {
+      "file": "baseline-coverage-audit.json",
+      "sourcePath": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\subtitle-tolerance\\real-renderer\\baseline-a4858d7c-q4-20261103-174010\\coverage-audit.json",
+      "sha256": "79F23982C98C71672A3044A4C7DE11A9A3ED8681B798CDF87154B1D058A848A0",
+      "bytes": 1839
+    },
+    {
+      "file": "off-ar-report.json",
+      "sourcePath": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\subtitle-tolerance\\off-ar-report-20261103.json",
+      "sha256": "5F9049778CC63440A0F7CA306E8F5D3425C25A74E6928F4DD3F8540D4F87B901",
+      "bytes": 6055
+    }
+  ]
+}

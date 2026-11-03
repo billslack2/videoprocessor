@@ -1,0 +1,52 @@
+{
+  "case": "candidate-43ba61d4-q4",
+  "testSource": "43ba61d4c8cfd24b65003d4c887413bd7969d031",
+  "dirty": false,
+  "pluginRoot": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release",
+  "fullQualification": false,
+  "gpuIsolated": true,
+  "capture": "C:\\Videoprocessor\\vp\\logs\\analysis-20261103-164841-56444-1",
+  "started": "2026-11-03T17:52:42.9847367-05:00",
+  "finished": "2026-11-03T17:54:30.9103094-05:00",
+  "status": "completed",
+  "testExit": 0,
+  "results": [
+    {
+      "name": "StandardRendererCapturedV210CueHasNoCadenceFlicker",
+      "outcome": "Passed",
+      "duration": "00:00:54.5279364",
+      "captureExercised": true,
+      "summary": "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=144 submitted=144 distinct=144 composed=144 phases=4 inspection_requests=144 templates=0 proofs=144 consumed=144 scans=252 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9518 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=57.4208 max_latency_ms=147.393 early_latency_ms=134.952 late_latency_ms=134.324 work_samples=144 max_frame_work_ms=19.0518 max_ingress_ms=0.2911",
+      "error": ""
+    },
+    {
+      "name": "BetaRendererCapturedV210CueHasNoCadenceFlicker",
+      "outcome": "Passed",
+      "duration": "00:00:52.3025317",
+      "captureExercised": true,
+      "summary": "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=144 submitted=144 distinct=144 composed=144 phases=4 inspection_requests=144 templates=0 proofs=144 consumed=144 scans=252 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9869 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=55.5587 max_latency_ms=146.03 early_latency_ms=134.418 late_latency_ms=134.35 work_samples=144 max_frame_work_ms=17.6655 max_ingress_ms=0.251",
+      "error": ""
+    }
+  ],
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "958DF316C6471754C118086D6EE8B28AB8D73DE4FA9F56568724EA898494E8D0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "CD8DA82C854A22B4430A0C22ED8F6B2ED2591B707F2B225809AADB78B9485980"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "9D7AE458B3A4424F826795DB9AF4A7E34D57AAA4540354F4CF7A3BBD20651AE8"
+    }
+  ],
+  "binariesStable": true,
+  "captureExercised": true,
+  "trxHash": "035B02BF2AF3C6E54535F4C212C6884D8FC61D16CE0D2EC89D67E2A443CAFCE1",
+  "passed": true,
+  "runnerError": null,
+  "endSource": "43ba61d4c8cfd24b65003d4c887413bd7969d031",
+  "sourceStable": true
+}

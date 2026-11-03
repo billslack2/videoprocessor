@@ -1,0 +1,22 @@
+{
+  "kind": "coverage-audit",
+  "originalReceiptSha256": "6FC78CB5E373B144AFD5D20DAF446748EE217E6B38CAC6113504464F11E9EFC0",
+  "trxSha256": "1A6D7984227313F01DB13CFB451B17FBB8E858051C53AC5E4355331BB230613A",
+  "reason": "Original runner counted duplicated global XML stdout; corrected per-test coverage leaves original receipt intact.",
+  "cases": [
+    {
+      "name": "StandardRendererCapturedV210CueHasNoCadenceFlicker",
+      "outcome": "Failed",
+      "captureExercised": true,
+      "summary": "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=144 submitted=144 distinct=144 composed=61 phases=4 inspection_requests=144 templates=40 proofs=144 consumed=24 scans=204 current_exact=1 native_stable=1 no_fallback=0 source_fps=24.025 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=59.0303 max_latency_ms=148.058 early_latency_ms=137.156 late_latency_ms=136.22 work_samples=144 max_frame_work_ms=20.8003 max_ingress_ms=1.1492",
+      "failure": "Assert failed. Captured unchanged cue still alternates composed and expanded raw fallback output."
+    },
+    {
+      "name": "BetaRendererCapturedV210CueHasNoCadenceFlicker",
+      "outcome": "Failed",
+      "captureExercised": true,
+      "summary": "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=144 submitted=144 distinct=144 composed=56 phases=4 inspection_requests=144 templates=43 proofs=144 consumed=20 scans=202 current_exact=1 native_stable=1 no_fallback=0 source_fps=23.9801 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=56.3218 max_latency_ms=152.083 early_latency_ms=137.098 late_latency_ms=137.339 work_samples=144 max_frame_work_ms=19.9531 max_ingress_ms=1.1528",
+      "failure": "Assert failed. Captured unchanged cue still alternates composed and expanded raw fallback output."
+    }
+  ]
+}

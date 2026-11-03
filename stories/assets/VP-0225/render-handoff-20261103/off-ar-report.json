@@ -1,0 +1,260 @@
+{
+  "observation": "User screenshot reports detected and retained spatial AR2.39 but ARinuse2.15 after switching subtitlesOff; installed failedtrial unchanged.",
+  "installedSource": "a4858d7c3c19071e955c80952d5d4a4a21d76191",
+  "samples": 240,
+  "nativeShapes": [
+    [
+      0,
+      272,
+      3840,
+      1886
+    ]
+  ],
+  "actualSourceShapes": [
+    [
+      0,
+      272,
+      3840,
+      2056
+    ]
+  ],
+  "measuredShapes": [
+    [
+      0,
+      275,
+      3840,
+      1884
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "reasons": {
+    "current excluded-band contradiction preserves outward visibility without changing native AR": 60,
+    "bounded outward presentation expansion accepted": 180
+  },
+  "first": {
+    "schema": 1,
+    "instance": "{A8DEA9EF-5DD1-47F2-9315-743CFB1B22DE}",
+    "process": 56444,
+    "tick_ms": 334049671,
+    "qpc": 3340499042209,
+    "qpc_hz": 10000000,
+    "diagnostic_cpu_ms": 0.3428,
+    "utc_ms": 1793744190078,
+    "timecode": "22:16:30.078Z A8DEA9EF G2 O40172 S40175",
+    "timecode_drawn": true,
+    "output": 40172,
+    "generation": 2,
+    "input": 40175,
+    "selected": 40175,
+    "facts_source": 40175,
+    "facts_current": true,
+    "source_pts": 334049.769,
+    "output_pts": 334049.769,
+    "temporal": false,
+    "repeated": false,
+    "rendered": true,
+    "submitted": true,
+    "screen_aspect": 2.35,
+    "actual_source": [
+      0,
+      272,
+      3840,
+      2056
+    ],
+    "actual_target": [
+      84.0568924,
+      136.9680786,
+      1915.943115,
+      988.0319214
+    ],
+    "viewport": 0,
+    "format": 15805081878477807578,
+    "domain": 4768279117495752782,
+    "policy": 2,
+    "continuity": 4,
+    "raster": [
+      3840,
+      2160
+    ],
+    "measurement_source": 40175,
+    "measurement_available": false,
+    "measurement_reason": "insufficient-distributed-edge-support",
+    "classification": 0,
+    "measured": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "native_available": true,
+    "native_accepted_source": 128,
+    "native": [
+      0,
+      272,
+      3840,
+      1886
+    ],
+    "observation_supports_crop": false,
+    "retention_evaluated": true,
+    "retention_safe": false,
+    "visible_available": true,
+    "raw_visible": [
+      0,
+      272,
+      3840,
+      2046
+    ],
+    "subtitle_processing_profile": 0,
+    "requested_mode": 0,
+    "preparation_state": 0,
+    "preparation_key": 15395681094294014475,
+    "shader_failed": false,
+    "mode": 0,
+    "caption_source": 0,
+    "caption_current": false,
+    "cue": 0,
+    "detected": false,
+    "held": false,
+    "incomplete": false,
+    "caption": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "destination": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "composed": false,
+    "source_prepared": false,
+    "prepare_failures": 193,
+    "current_composition": false,
+    "strong_prepared": false,
+    "absence": false,
+    "scan_reason": "unavailable",
+    "ownership_reason": "not-qualified",
+    "erasure_reason": "not-qualified",
+    "continuation_reason": "not-attempted",
+    "owner": "fit",
+    "reason": "current excluded-band contradiction preserves outward visibility without changing native AR"
+  },
+  "last": {
+    "schema": 1,
+    "instance": "{A8DEA9EF-5DD1-47F2-9315-743CFB1B22DE}",
+    "process": 56444,
+    "tick_ms": 334059640,
+    "qpc": 3340598764163,
+    "qpc_hz": 10000000,
+    "diagnostic_cpu_ms": 0.6485,
+    "utc_ms": 1793744200050,
+    "timecode": "22:16:40.050Z A8DEA9EF G2 O40411 S40414",
+    "timecode_drawn": true,
+    "output": 40411,
+    "generation": 2,
+    "input": 40414,
+    "selected": 40414,
+    "facts_source": 40414,
+    "facts_current": true,
+    "source_pts": 334059.7371,
+    "output_pts": 334059.7371,
+    "temporal": false,
+    "repeated": false,
+    "rendered": true,
+    "submitted": true,
+    "screen_aspect": 2.35,
+    "actual_source": [
+      0,
+      272,
+      3840,
+      2056
+    ],
+    "actual_target": [
+      84.0568924,
+      136.9680786,
+      1915.943115,
+      988.0319214
+    ],
+    "viewport": 0,
+    "format": 15805081878477807578,
+    "domain": 4768279117495752782,
+    "policy": 2,
+    "continuity": 4,
+    "raster": [
+      3840,
+      2160
+    ],
+    "measurement_source": 40414,
+    "measurement_available": true,
+    "measurement_reason": "native candidate has an unverified nominated crop axis",
+    "classification": 3,
+    "measured": [
+      0,
+      275,
+      3840,
+      1884
+    ],
+    "native_available": true,
+    "native_accepted_source": 128,
+    "native": [
+      0,
+      272,
+      3840,
+      1886
+    ],
+    "observation_supports_crop": false,
+    "retention_evaluated": true,
+    "retention_safe": false,
+    "visible_available": true,
+    "raw_visible": [
+      0,
+      272,
+      3840,
+      2046
+    ],
+    "subtitle_processing_profile": 0,
+    "requested_mode": 0,
+    "preparation_state": 0,
+    "preparation_key": 15395681094294014475,
+    "shader_failed": false,
+    "mode": 0,
+    "caption_source": 0,
+    "caption_current": false,
+    "cue": 0,
+    "detected": false,
+    "held": false,
+    "incomplete": false,
+    "caption": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "destination": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "composed": false,
+    "source_prepared": false,
+    "prepare_failures": 193,
+    "current_composition": false,
+    "strong_prepared": false,
+    "absence": false,
+    "scan_reason": "unavailable",
+    "ownership_reason": "not-qualified",
+    "erasure_reason": "not-qualified",
+    "continuation_reason": "not-attempted",
+    "owner": "fit",
+    "reason": "bounded outward presentation expansion accepted"
+  },
+  "meaning": "Off policy preserves original caption pixels in a taller presentation aperture without replacing native picture bounds; Reconstruction flicker remains active repair."
+}
