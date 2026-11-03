@@ -30,6 +30,9 @@ struct SubtitleInkSnapshot {
     // Raw evidence covers sampled search regions, not the entire raster.
     bool paletteValid=false;
     int inkFloor=0, inkU=512, inkV=512, blackLimit=0;
+    // Composition-only measured caption-card/background classification
+    // threshold. This is not raw-ink, bar, native-AR, or crop authority.
+    int captionBackingLimit=0;
     int width=0,height=0,step=0;
     std::vector<int> sourceRows;
     std::vector<uint64_t> rawInk,ownedInk;

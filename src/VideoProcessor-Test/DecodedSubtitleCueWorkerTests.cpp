@@ -99,6 +99,7 @@ TEST_CLASS(DecodedSubtitleCueWorkerTests) {
            <<" currentYUV="<<now.luma<<','<<now.chromaU<<','<<now.chromaV
            <<" inkFloor="<<(palette?palette->inkFloor:-1)
            <<" blackLimit="<<(palette?palette->blackLimit:-1)
+           <<" captionBackingLimit="<<(palette?palette->captionBackingLimit:-1)
            <<" source="<<Rect(geometry.source)<<" inSource="<<In(geometry.source,x,y)
            <<" content="<<Rect(geometry.content)<<" inContent="<<In(geometry.content,x,y)
            <<" cleanup="<<Rect(geometry.generatedCleanup)<<" inCleanup="<<In(geometry.generatedCleanup,x,y)
@@ -138,6 +139,10 @@ public:
             Assert::IsTrue(measured.analyzed&&measured.text.detected&&
                 measured.text.lineCount==3&&!measured.text.workLimit,
                 L"Four genuine decoded-DV sampler scans must acquire all three H glyph rows.");
+            Assert::AreEqual(18,measured.ink->blackLimit,
+                L"Full-range encoded-bar tracking retains its original strict matte threshold.");
+            Assert::AreEqual(74,measured.ink->captionBackingLimit,
+                L"Composition backing uses the actual detector card threshold, separately from bar tracking.");
             prior=SubtitleBoxLookahead::AdvanceBarTrackingReference(measured);
             scans.push_back(std::move(measured));
         }

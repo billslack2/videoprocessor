@@ -389,6 +389,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     const int JoinedWordMaxGlyphHeights = m_scriptHint==SubtitleScriptHint::Arabic?18:
         m_scriptHint==SubtitleScriptHint::Latin?10:14;
     const int componentCardLimit=bar+(std::max)(24,(ink-bar)/12);
+    evidence.captionBackingLimit=componentCardLimit;
     auto hasAnyOpaqueSurround=[&](const Line& component) {
         const auto& r=component.box;
         if(r.top<top || r.bottom>bottom)return true;

@@ -507,6 +507,9 @@ private:
             p.sourceRows.size()==size_t(p.height) && p.rawInk.size()==words &&
             p.ownedInk.size()==words && p.blackBacking.size()==words &&
             p.inkFloor>=0 && p.inkFloor<=1023 && p.blackLimit>=0 && p.blackLimit<=1023 &&
+            p.captionBackingLimit>=0 && p.captionBackingLimit<=1023 &&
+            (p.captionBackingLimit==0 || (p.captionBackingLimit>=p.blackLimit &&
+                p.captionBackingLimit<p.inkFloor)) &&
             std::is_sorted(p.sourceRows.begin(),p.sourceRows.end()) &&
             std::adjacent_find(p.sourceRows.begin(),p.sourceRows.end())==p.sourceRows.end() &&
             p.sourceRows.front()>=0 && p.sourceRows.back()<source.height;
@@ -600,7 +603,8 @@ private:
         if(p.width!=m_baseline->width || p.height!=m_baseline->height || p.step!=m_baseline->step ||
             p.sourceRows!=m_baseline->sourceRows)return reject(RearmRejectCode::InkGrid);
         if(p.inkFloor!=m_baseline->inkFloor || p.inkU!=m_baseline->inkU ||
-            p.inkV!=m_baseline->inkV || p.blackLimit!=m_baseline->blackLimit)
+            p.inkV!=m_baseline->inkV || p.blackLimit!=m_baseline->blackLimit ||
+            p.captionBackingLimit!=m_baseline->captionBackingLimit)
             return reject(RearmRejectCode::InkPalette);
         for(int line=0;line<accepted.lineCount;++line)
             if(!SameRect(accepted.lineBounds[line],previous.text.lineBounds[line]) ||
@@ -643,6 +647,24 @@ private:
     static bool Black(const AnalysisLumaSample& p,const SubtitleInkSnapshot& palette) {
         return p.luma<=palette.blackLimit && std::abs(int(p.chromaU)-512)<=48 &&
             std::abs(int(p.chromaV)-512)<=48;
+    }
+    static bool NeutralChroma(const AnalysisLumaSample& p) {
+        return std::abs(int(p.chromaU)-512)<=48 && std::abs(int(p.chromaV)-512)<=48;
+    }
+    static bool StableCaptionBackingTransition(const AnalysisLumaSample& current,
+        const AnalysisLumaSample& seed,const SubtitleInkSnapshot& palette) {
+        return palette.captionBackingLimit>0 &&
+            current.luma<=palette.captionBackingLimit && seed.luma<=palette.captionBackingLimit &&
+            std::abs(int(current.luma)-int(seed.luma))<48 &&
+            std::abs(int(current.chromaU)-int(seed.chromaU))<=8 &&
+            std::abs(int(current.chromaV)-int(seed.chromaV))<=8 &&
+            NeutralChroma(current) && NeutralChroma(seed);
+    }
+    bool InAcceptedCaptionBackingFootprint(int x,int y) const {
+        if(x<m_base.left || x>=m_base.right || y<m_base.top || y>=m_base.bottom)return false;
+        if(Inside(m_geometry.pictureCapture,x,y))return true;
+        for(const auto& capture:m_capture)if(Inside(capture,x,y))return true;
+        return false;
     }
     static bool NearFloor(const AnalysisLumaSample& p,const SubtitleInkSnapshot& palette) {
         return std::abs(int(p.luma)-palette.inkFloor)<=16 &&
@@ -874,9 +896,13 @@ private:
         const AnalysisLumaSample& seedNeighbor,const SubtitleInkSnapshot& palette,
         uint16_t seededDirections,uint16_t directionBit) {
         const int candidateFloor=(std::max)(96,palette.inkFloor-160);
-        return (seededDirections&directionBit) && Black(point,palette) && Black(seedPoint,palette) &&
+        return (seededDirections&directionBit) &&
+            StableCaptionBackingTransition(point,seedPoint,palette) &&
             !Ink(neighbor,palette) && !Ink(seedNeighbor,palette) &&
             neighbor.luma<candidateFloor && seedNeighbor.luma<candidateFloor &&
+            std::abs(int(neighbor.luma)-int(seedNeighbor.luma))<48 &&
+            std::abs(int(neighbor.chromaU)-int(seedNeighbor.chromaU))<=8 &&
+            std::abs(int(neighbor.chromaV)-int(seedNeighbor.chromaV))<=8 &&
             std::abs(int(neighbor.chromaU)-512)<=48 && std::abs(int(neighbor.chromaV)-512)<=48 &&
             std::abs(int(seedNeighbor.chromaU)-512)<=48 && std::abs(int(seedNeighbor.chromaV)-512)<=48;
     }
@@ -1034,7 +1060,10 @@ private:
                     (std::abs(int(now.pixel.luma)-oldPixel.pixel.luma)>8 ||
                      std::abs(int(now.pixel.chromaU)-oldPixel.pixel.chromaU)>8 ||
                      std::abs(int(now.pixel.chromaV)-oldPixel.pixel.chromaV)>8);
-                if(changedUnownedBacking) {
+                const bool measuredCaptionBackingVariation=changedUnownedBacking &&
+                    InAcceptedCaptionBackingFootprint(oldPixel.x,oldPixel.y) &&
+                    StableCaptionBackingTransition(now.pixel,oldPixel.pixel,*m_baseline);
+                if(changedUnownedBacking && !measuredCaptionBackingVariation) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
                     if(!allowProtectedCleanupProjection || m_geometry.generatedCleanupRowCount ||
                         !Inside(m_geometry.generatedCleanup,oldPixel.x,oldPixel.y) ||

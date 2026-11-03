@@ -289,6 +289,10 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
         Assert::AreEqual(1u,measured.analysisStride);
         Assert::AreEqual(4,measured.ink->step,
             L"Observation cadence and ink-grid sampling step are independent.");
+        Assert::IsTrue(measured.ink->captionBackingLimit>=64 &&
+            measured.ink->captionBackingLimit>=measured.ink->blackLimit &&
+            measured.ink->captionBackingLimit<measured.ink->inkFloor,
+            L"The detector card limit must cover 48/64 backing, remain above its tracking black limit, and stay below the glyph ink floor.");
         prior=SubtitleBoxLookahead::AdvanceBarTrackingReference(measured);
         scans->push_back(std::move(measured));
     }
@@ -529,6 +533,30 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     Assert::IsFalse(insideFailure.valid,
         L"The same nonblack change inside the actual content hull must still reject reuse.");
     Assert::AreEqual("current-cleanup-edge-not-protectable",insideFailure.reason);
+
+    // The measured card limit must not turn a dim overlay into reusable
+    // backing. Although 110 may be under the card limit, its 300-luma seed is
+    // above it, so this transition remains unsafe.
+    auto dimInkPixels=movingPixels;
+    dimInkPixels[size_t(preparedContentProbeY)*kFootprintWidth+preparedContentProbeX]=uint16_t(110<<6);
+    auto dimInkSource=CurrentFootprintUhdSource(dimInkPixels);
+    const auto dimInkFailure=footprint->VerifyCurrentFootprint(source93->current,dimInkSource,
+        preview->current,accepted,base);
+    Assert::IsFalse(dimInkFailure.valid,
+        L"A dim transition from outside the measured caption-backing range cannot be exempted as neutral card motion.");
+
+    // Chroma changes stay strict even when both luma values are within the
+    // detector's dark-card limit.
+    auto chromaInkPixels=movingPixels;
+    const size_t chromaArea=size_t(kFootprintWidth)*kFootprintHeight;
+    const size_t chromaAt=chromaArea+size_t(preparedContentProbeY/2)*kFootprintWidth+
+        (preparedContentProbeX&~1);
+    chromaInkPixels[chromaAt]=uint16_t(800<<6);
+    auto chromaInkSource=CurrentFootprintUhdSource(chromaInkPixels);
+    const auto chromaInkFailure=footprint->VerifyCurrentFootprint(source93->current,chromaInkSource,
+        preview->current,accepted,base);
+    Assert::IsFalse(chromaInkFailure.valid,
+        L"Alternate chroma inside the operation remains unsafe even when luma is below the measured card limit.");
 
     // Put dim current pixels in the exact original-minus-inner rectangle.
     // This is below the accepted ink floor, so it must remain current video

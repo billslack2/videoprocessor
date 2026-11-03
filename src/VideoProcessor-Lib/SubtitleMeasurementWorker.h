@@ -1817,7 +1817,9 @@ private:
         if(ink->width!=oldInk->width || ink->height!=oldInk->height || ink->step!=oldInk->step ||
             ink->sourceRows!=oldInk->sourceRows)return reject(ReadyRearmRejectCode::InkGrid);
         if(ink->inkFloor!=oldInk->inkFloor || ink->inkU!=oldInk->inkU || ink->inkV!=oldInk->inkV ||
-            ink->blackLimit!=oldInk->blackLimit)return reject(ReadyRearmRejectCode::InkPalette);
+            ink->blackLimit!=oldInk->blackLimit ||
+            ink->captionBackingLimit!=oldInk->captionBackingLimit)
+            return reject(ReadyRearmRejectCode::InkPalette);
 
         const size_t words=(size_t(oldInk->width)*oldInk->height+63)/64;
         if(oldInk->width<=0 || oldInk->height<=0 || oldInk->step<=0 ||
@@ -1963,7 +1965,11 @@ private:
             !ink->paletteValid || !source.IsValid() || source.width!=current.width ||
             source.height!=current.height || ink->inkFloor<0 || ink->inkFloor>1023 ||
             ink->inkU<0 || ink->inkU>1023 || ink->inkV<0 || ink->inkV>1023 ||
-            ink->blackLimit<0 || ink->blackLimit>1023)return CurrentInkSeedState::NotApplicable;
+            ink->blackLimit<0 || ink->blackLimit>1023 ||
+            ink->captionBackingLimit<0 || ink->captionBackingLimit>1023 ||
+            (ink->captionBackingLimit!=0 &&
+                (ink->captionBackingLimit<ink->blackLimit || ink->captionBackingLimit>=ink->inkFloor)))
+            return CurrentInkSeedState::NotApplicable;
         if(!text.topSearchComplete || !text.bottomSearchComplete)return CurrentInkSeedState::Failed;
         int topEnd=0,bottomStart=0;
         if(!CurrentInkGeometry(current,*ink,topEnd,bottomStart))return CurrentInkSeedState::Failed;
@@ -2165,6 +2171,7 @@ private:
         fresh->width=oldInk->width;fresh->height=oldInk->height;fresh->step=oldInk->step;
         fresh->sourceRows=oldInk->sourceRows;fresh->inkFloor=oldInk->inkFloor;
         fresh->inkU=oldInk->inkU;fresh->inkV=oldInk->inkV;fresh->blackLimit=oldInk->blackLimit;
+        fresh->captionBackingLimit=oldInk->captionBackingLimit;
         fresh->paletteValid=true;fresh->rawEvidenceComplete=false;
         fresh->rawInk.assign(words,0);fresh->ownedInk.assign(words,0);fresh->blackBacking.assign(words,0);
         const int top=(old.pictureTop+fresh->step-1)/fresh->step;
