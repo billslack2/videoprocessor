@@ -580,8 +580,17 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     Assert::IsTrue(positiveWorker->RememberAccepted(*preview,accepted,seedSource,1000.0/60,250,
         nullptr,nullptr,&base,footprint.get()));
     auto positivePending=CurrentFootprintPendingPreview(*preview,93,55);
-    Assert::IsTrue(positiveWorker->Resolve(*positivePending,dimProtectedSource,1000.0/60,250,
-        &preview->current.identity,true,footprint.get()),L"Worker must retain the source-88 backlog token and validate source-93 current pixels.");
+    const bool positiveResolved=positiveWorker->Resolve(*positivePending,dimProtectedSource,1000.0/60,250,
+        &preview->current.identity,true,footprint.get());
+    if(!positiveResolved) {
+        const auto& diagnostics=positiveWorker->DecisionDiagnostics();
+        Logger::WriteMessage((std::string("UHD protected-edge pending failure: ")+
+            positiveWorker->DecisionReason()+" mismatch="+std::to_string(diagnostics.glyphMismatchX)+","+
+            std::to_string(diagnostics.glyphMismatchY)+" samples="+
+            std::to_string(diagnostics.currentFootprintSamplesChecked)+"/"+
+            std::to_string(diagnostics.currentBandSamplesChecked)).c_str());
+    }
+    Assert::IsTrue(positiveResolved,L"Worker must retain the source-88 backlog token and validate source-93 current pixels.");
     Assert::IsTrue(positivePending->available&&positivePending->current.ink&&!positivePending->current.ink->rawEvidenceComplete);
     Assert::AreEqual(1u,positivePending->current.analysisStride);
     Assert::IsFalse(positivePending->current.cadenceSkipped,

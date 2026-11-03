@@ -642,7 +642,7 @@ public:
         const auto inspect=[&](const SubtitleBoxObservation& key) {
             if(SameOwnedWorkSource(key,incoming))oldContinuity=(std::max)(oldContinuity,key.continuityGeneration);
         };
-        for(const auto& active:m_activeJobs)if(active.active)inspect(active.key);
+        for(const auto& active:m_activeJobs)if(active.active && !active.currentCueTask)inspect(active.key);
         for(const auto& job:m_pending)inspect(job.key);
         return oldContinuity!=0;
     }
@@ -689,7 +689,8 @@ public:
             ++m_diagnostics.expired;return false;
         }
         for(const auto& active:m_activeJobs)
-            if(active.active && (SameKey(active.key,requestKey) || SamePendingFullSourceWork(active.key,requestKey) ||
+            if(active.active && !active.currentCueTask &&
+                (SameKey(active.key,requestKey) || SamePendingFullSourceWork(active.key,requestKey) ||
                 CanCoalesceOwnedWork(active.key,requestKey,ownedWitness,timelinePolicy))) {
                 Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return false;
             }
@@ -971,7 +972,8 @@ private:
                 if(workerIndex==0 && !m_currentCuePending.empty()) {
                     job=std::move(m_currentCuePending.front());m_currentCuePending.pop_front();
                 } else {job=std::move(m_pending.front());m_pending.pop_front();}
-                m_activeJobs[workerIndex].active=true;m_activeJobs[workerIndex].key=job.key;
+                m_activeJobs[workerIndex].active=true;m_activeJobs[workerIndex].currentCueTask=bool(job.currentCueTask);
+                m_activeJobs[workerIndex].key=job.key;
             }
             if(job.currentCueTask) {
                 const auto workStart=std::chrono::steady_clock::now();
@@ -1038,7 +1040,7 @@ private:
     SubtitleBoxObservation m_rawSettings;
     uint64_t m_nextRawRevision=0;bool m_rawSettingsKnown=false;
     ActivePictureFrameIdentity m_windowHead;
-    struct ActiveJob { bool active=false;SubtitleBoxObservation key; };
+    struct ActiveJob { bool active=false,currentCueTask=false;SubtitleBoxObservation key; };
     std::array<ActiveJob,2> m_activeJobs;
     size_t m_workerLimit=1;
     bool m_stopping=false;
@@ -2929,7 +2931,9 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         trace.counters[2]=diagnostics.currentFootprintSamplesChecked;
         trace.counters[3]=diagnostics.barVisibilitySamplesChecked;
         trace.counters[4]=verified?state->descriptor.cue.lineCount:0;
-        trace.metrics[0]=elapsed;trace.flags=(verified?1u:0u)|(semanticRefreshDue?2u:0u)|
+        trace.metrics[0]=elapsed;
+        trace.metrics[1]=diagnostics.glyphMismatchX;trace.metrics[2]=diagnostics.glyphMismatchY;
+        trace.flags=(verified?1u:0u)|(semanticRefreshDue?2u:0u)|
             (semanticRefreshQueued?4u:0u);AnalysisDiagnosticTrace::Emit(trace);
         AnalysisLumaSource retiredSource=std::move(request.source);
         Work retiredRequestScan=std::move(request.fullScanOnMiss);

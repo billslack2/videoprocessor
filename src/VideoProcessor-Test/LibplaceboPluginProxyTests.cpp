@@ -3908,7 +3908,7 @@ namespace VideoProcessorTest
                         row<<"DV CRITICAL WORK TAIL: source="<<event.sourceFrameNumber<<" total_ms="<<event.metrics[0]
                             <<" live_preparation_ms="<<event.metrics[1]<<" render_ms="<<event.metrics[2]
                             <<" before_render_ms="<<event.metrics[3]<<" present_wait_ms="<<event.metrics[4]
-                            <<" source_period_ms="<<event.metrics[5];
+                            <<" source_period_ms="<<event.metrics[5]<<" subtitle_preparation_ms="<<event.metrics[6];
                         Logger::WriteMessage(row.str().c_str());
                     }
                 };

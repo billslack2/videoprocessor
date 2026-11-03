@@ -14819,19 +14819,23 @@ struct LibplaceboVideoRenderer::Impl
         const auto subtitleSourceProcessing=CaptureSubtitleSourceProcessingOptions(renderParams);
         const auto* subtitleSourceProcessingOptions=temporalSubtitleComposition?
             &subtitleSourceProcessing:nullptr;
+        double currentSubtitlePreparationMs=0.0;
         const auto measureSubtitlePreparation=[&](auto&& prepare) {
-            if (!OsdTimingPolicy::ProcessingPerformanceEnabled) return prepare();
             const auto before=subtitlePreparationRenderer.RenderCallCount();
             const auto started=SteadyClock::now();
             const bool result=prepare();
+            const double elapsedMs=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
             // Each helper below issues at most one actual pl_render_image call.
             // Binding failures and cached output draws are not preparation calls.
-            if(subtitlePreparationRenderer.RenderCallCount()!=before)
-                processingPerformance.RecordPreparation({frameGeneration,pictureProcessingEpoch,
-                    static_cast<uint64_t>(sourceSubtitleMode) |
-                    (temporalRenderer.Mixing()?uint64_t(1)<<32:0) |
-                    (temporalRenderer.NativeCompositionRequired()?uint64_t(1)<<33:0)},
-                    GetTickCount64(),std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
+            if(subtitlePreparationRenderer.RenderCallCount()!=before) {
+                currentSubtitlePreparationMs+=elapsedMs;
+                if(OsdTimingPolicy::ProcessingPerformanceEnabled)
+                    processingPerformance.RecordPreparation({frameGeneration,pictureProcessingEpoch,
+                        static_cast<uint64_t>(sourceSubtitleMode) |
+                        (temporalRenderer.Mixing()?uint64_t(1)<<32:0) |
+                        (temporalRenderer.NativeCompositionRequired()?uint64_t(1)<<33:0)},
+                        GetTickCount64(),elapsedMs);
+            }
             return result;
         };
         // This receipt gates subtitle preparation only. Native AR analysis and
@@ -16666,7 +16670,20 @@ struct LibplaceboVideoRenderer::Impl
             QualifiedSubtitlePresentationInput ownershipInput;
             ownershipInput.mode=subtitlePreviewMode;
             ownershipInput.currentIdentity=subtitleIdentity;
-            ownershipInput.observation=&subtitleSourcePreparation.ownershipObservation;
+            auto& ownershipObservationForPreparedReceipt=subtitleSourcePreparation.ownershipObservation;
+            auto& currentSharedBounds=ownershipObservationForPreparedReceipt.sharedPicture.bounds;
+            if(subtitleSourcePreparation.pendingPixelsVerified &&
+                SameSubtitlePresentationBounds(currentSharedBounds,effectiveGeometry) &&
+                currentSharedBounds.trustedBarAxes==effectiveGeometry.trustedBarAxes &&
+                currentSharedBounds.aspectRatio==0.0 &&
+                std::isfinite(effectiveGeometry.aspectRatio) && effectiveGeometry.aspectRatio>0.0) {
+                // This is already a presentation-owned copy of the source
+                // observation. Fill only its unspecified descriptive aspect
+                // after exact raster bounds and bar axes match the prepared
+                // operation. The worker/current preview remains untouched.
+                currentSharedBounds.aspectRatio=effectiveGeometry.aspectRatio;
+            }
+            ownershipInput.observation=&ownershipObservationForPreparedReceipt;
             ownershipInput.accepted=&subtitleSourcePreparation.ownershipAccepted;
             ownershipInput.composition=&relocatedSubtitle;
             ownershipInput.physicalBase=effectiveGeometry;
@@ -16831,6 +16848,43 @@ struct LibplaceboVideoRenderer::Impl
                         latestCropRetentionEvidence.outwardVisibleBounds.right,latestCropRetentionEvidence.outwardVisibleBounds.bottom,
                         displayCaptionProof.erasedSourceBounds.left,displayCaptionProof.erasedSourceBounds.top,
                         displayCaptionProof.erasedSourceBounds.right,displayCaptionProof.erasedSourceBounds.bottom);
+                    if(ownershipInput.pendingCurrentPixelsVerified && !pendingPreparedErasureRecorded) {
+                        const auto& observed=*ownershipInput.observation;
+                        const auto& shared=observed.sharedPicture;
+                        const auto& sharedBounds=shared.bounds;
+                        const auto& display=ownershipInput.currentDisplayPicture;
+                        DebugLog::Log("Alpha prepared erasure receipt rejection: generation=%llu sequence=%llu source_prepared=%d pending_pixels=%d operation_applied=%d recorded=%d observation=%d pending=%d refresh=%d cadence_skipped=%d stride=%u bar_authority=%d independent_bars=%d accepted=%d held=%d confirm=%d work_limit=%d accepted_cue=%llu text_cue=%llu ink=%d palette=%d raw_complete=%d shared_required=%d shared_available=%d shared_matches_display=%d shared_candidate=%d shared_candidate_origin=%llu shared_revision=%llu shared_bounds=%d,%d-%d,%d aspect=%.6f axes=%u base=%d,%d-%d,%d aspect=%.6f axes=%u display=%d,%d-%d,%d candidate=%d geometry_valid=%d cleanup=%d,%d-%d,%d",
+                            frameGeneration,sourceSequence,ownershipInput.sourcePrepared?1:0,
+                            ownershipInput.pendingCurrentPixelsVerified?1:0,
+                            subtitleSourcePreparation.pendingOperationApplied?1:0,
+                            pendingPreparedErasureRecorded?1:0,observed.analyzed?1:0,
+                            observed.pendingRefresh?1:0,observed.analysisRefresh?1:0,
+                            observed.cadenceSkipped?1:0,observed.analysisStride,
+                            observed.barAuthority?1:0,observed.independentBarAnalysis?1:0,
+                            subtitleSourcePreparation.ownershipAccepted.detected?1:0,
+                            subtitleSourcePreparation.ownershipAccepted.held?1:0,
+                            subtitleSourcePreparation.ownershipAccepted.confirmationPending?1:0,
+                            subtitleSourcePreparation.ownershipAccepted.workLimit?1:0,
+                            subtitleSourcePreparation.ownershipAccepted.cue,observed.text.cue,
+                            observed.ink?1:0,observed.ink && observed.ink->paletteValid?1:0,
+                            observed.ink && observed.ink->rawEvidenceComplete?1:0,
+                            shared.required?1:0,
+                            shared.AvailableFor(observed.identity,observed.width,observed.height)?1:0,
+                            shared.Matches(display)?1:0,shared.inspectionCandidate.valid?1:0,
+                            shared.inspectionCandidate.originIdentity.acceptedSequence,
+                            shared.inspectionCandidate.nativeGeometryRevision,
+                            sharedBounds.left,sharedBounds.top,sharedBounds.right,sharedBounds.bottom,
+                            sharedBounds.aspectRatio,static_cast<unsigned>(sharedBounds.trustedBarAxes),
+                            effectiveGeometry.left,effectiveGeometry.top,effectiveGeometry.right,effectiveGeometry.bottom,
+                            effectiveGeometry.aspectRatio,static_cast<unsigned>(effectiveGeometry.trustedBarAxes),
+                            display.bounds.left,display.bounds.top,display.bounds.right,display.bounds.bottom,
+                            display.inspectionCandidate.valid?1:0,
+                            ownershipInput.composition && ownershipInput.composition->valid?1:0,
+                            ownershipInput.composition?ownershipInput.composition->generatedCleanup.left:0,
+                            ownershipInput.composition?ownershipInput.composition->generatedCleanup.top:0,
+                            ownershipInput.composition?ownershipInput.composition->generatedCleanup.right:0,
+                            ownershipInput.composition?ownershipInput.composition->generatedCleanup.bottom:0);
+                    }
                     const auto& observed=subtitleSourcePreparation.ownershipObservation;
                     const auto& capture=relocatedSubtitle;
                     DebugLog::Log("Alpha relocated caption geometry: generation=%llu sequence=%llu prepared=%d observed_box=%d,%d-%d,%d capture=%d,%d-%d,%d source=%d,%d-%d,%d destination=%d,%d-%d,%d observed_picture=%d-%d composed_picture=%d-%d lines=%d",
@@ -22214,6 +22268,7 @@ releaseDriftBaseRetention =
 				work.metrics[1]=livePreparationMs;work.metrics[2]=renderMs;
 				work.metrics[3]=beforeRenderMs;work.metrics[4]=swapBlockMs;
 				work.metrics[5]=sourcePeriodMs;
+                work.metrics[6]=currentSubtitlePreparationMs;
 				AnalysisDiagnosticTrace::Emit(work);
 			}
 			const double displayPeriodMs =
