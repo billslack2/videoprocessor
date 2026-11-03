@@ -11,7 +11,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1058,
+  "minimumNativeTests": 1062,
   "requiredNativeMethods": [
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
     "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",
@@ -339,7 +339,11 @@
     "SourcePictureMissingGeometryPreservesBlackReferenceWithoutNativeVotes",
     "PendingSubtitleUsesOnlyExactCurrentRawVisibilityAndOtherwisePresentsFullInput",
     "RawSubtitleFallbackRequiresCurrentSourceAndAllVisiblePixels",
-    "CachedPendingSourceRevisesToExactRawFallbackBeforeMappingReuse"
+    "CachedPendingSourceRevisesToExactRawFallbackBeforeMappingReuse",
+    "PendingCurrentInkProofIgnoresMovingMarginsAndRefreshesCurrentSnapshot",
+    "PendingCurrentInkProofRejectsChangedGlyphAndNovelCompanion",
+    "PendingCurrentInkProofRejectsChangedBackingSourceContextAndUnavailablePixels",
+    "CurrentInkSeedSurvivesAuthorizedHeldAndCadenceContinuationsWithoutRenewal"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",

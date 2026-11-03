@@ -809,6 +809,7 @@ public:
     struct Diagnostics {
         uint32_t contextMismatch=0;
         size_t glyphSamplesChecked=0;
+        size_t currentBandSamplesChecked=0,backingSamplesChecked=0;
         int glyphMismatchX=-1, glyphMismatchY=-1;
         bool sharedPictureMatches=false, sharedPictureCurrent=false;
         bool barsAvailable=false, topRevalidated=false, bottomRevalidated=false;
@@ -817,7 +818,9 @@ public:
         bool backlogTokenAvailable=false;
         int expectedTop=0, expectedBottom=0, measuredTop=0, measuredBottom=0;
     };
-    void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={};m_diagnostics={};
+    void Reset() { m_reference={};m_samples.clear();m_ownedSamples.clear();m_backingSamples.clear();
+        m_knownInkSamples.clear();m_paletteFringe.clear();
+        m_currentInkProofSeeded=false;m_sourceLayout={};m_elapsed=0;m_last={};m_diagnostics={};
         m_certifiedSeed={};m_certifiedPolicy=m_certifiedContinuity=0;m_consumedCertificate={}; }
     const char* DecisionReason() const { return m_reason; }
     const Diagnostics& DecisionDiagnostics() const { return m_diagnostics; }
@@ -893,7 +896,7 @@ public:
             }
             const bool context=preview.available && current.analyzed && !current.pendingRefresh &&
                 source.IsValid() && source.width==current.width && source.height==current.height &&
-                !m_samples.empty() && sameShape && sameBacking && covers(current.text) &&
+                HasPixelSeed() && sameShape && sameBacking && covers(current.text) &&
                 heldCurrentCue && physicalBase && heldCurrentCue->Matches(current,accepted,*physicalBase) &&
                 SubtitleBoxLookahead::SameContext(old,current) &&
                 old.policyGeneration==current.policyGeneration && old.continuityGeneration==current.continuityGeneration &&
@@ -948,13 +951,13 @@ public:
         }
         auto seed=preview;seed.current.text=accepted;seed.text=accepted;
         Resolve(seed,source,frameMs,holdMs);
-        if(!m_samples.empty() && !resolvedCovers && certifiedExistingCue) {
+        if(HasPixelSeed() && !resolvedCovers && certifiedExistingCue) {
             m_certifiedSeed=now;m_certifiedPolicy=preview.policyGeneration;
             m_certifiedContinuity=preview.continuityGeneration;
             m_consumedCertificate=*existingCueCertificate;
             m_reason="accepted-existing-cue-certified";
         }
-        return !m_samples.empty();
+        return HasPixelSeed();
     }
     // Consume already verified cadence pixels only after the tracker accepts
     // the exact same cue. Advance the last-verified source, never the seed,
@@ -974,7 +977,7 @@ public:
                 old.policyGeneration==c.policyGeneration && old.continuityGeneration==c.continuityGeneration &&
                 m_reference.policyGeneration==v.policyGeneration && m_reference.continuityGeneration==v.continuityGeneration;
         };
-        if(m_samples.empty() || !cadence.valid || !v.available || !c.analyzed ||
+        if(!HasPixelSeed() || !cadence.valid || !v.available || !c.analyzed ||
             !c.cadenceSkipped || c.analysisStride!=2 || !c.pendingRefresh ||
             c.analysisRefresh || c.discontinuity || c.text.workLimit || accepted.workLimit ||
             !p.valid || p.localGlyphsOnly || !p.samples || !cadence.samples ||
@@ -1018,6 +1021,16 @@ public:
             if(key.analyzed && !key.glyphLocalTop && !key.glyphLocalBottom &&
                 key.text.detected && key.barAuthority && !key.text.workLimit) {
                 m_reference=preview;m_samples.clear();m_elapsed=0;m_last=key.identity;
+                m_ownedSamples.clear();m_backingSamples.clear();m_knownInkSamples.clear();m_paletteFringe.clear();
+                m_currentInkProofSeeded=false;
+                m_sourceLayout={};
+                const auto currentInkSeed=SeedCurrentInkProof(preview,source);
+                if(currentInkSeed==CurrentInkSeedState::Seeded) {
+                    m_reason="accepted-current-ink-seed";
+                    return false;
+                }
+                if(currentInkSeed==CurrentInkSeedState::Failed)
+                    return Reject("accepted-current-ink-seed-unavailable");
                 const int step=SubtitleBoxDetector::SamplingStep(source.width,source.height);
                 for(int line=0;line<key.text.lineCount && line<3;++line) {
                     const auto r=key.text.lineBounds[line];
@@ -1034,8 +1047,9 @@ public:
         }
         const auto& old=m_reference.current;
         const auto& a=m_last;const auto& b=key.identity;
+        std::shared_ptr<SubtitleInkSnapshot> currentInkForOutput;
         frameMs=std::isfinite(frameMs)&&frameMs>0?frameMs:1000.0/60;
-        if(m_samples.empty())return Reject("no-accepted-seed");
+        if(!HasPixelSeed())return Reject("no-accepted-seed");
         // Presentation may skip captured frames under load. Current native
         // pixels still prove the fixed accepted cue, but spend the full source
         // time gap and never permit repeats, backwards frames or epoch changes.
@@ -1075,16 +1089,24 @@ public:
                 (a.sourceFrameNumber && b.sourceFrameNumber>a.sourceFrameNumber &&
                  b.sourceFrameNumber-a.sourceFrameNumber==sourceGap));
         if(context && !backlogReassociation)return Reject("pending-context-changed");
-        for(const auto& sample:m_samples) {
-            AnalysisLumaSample now;
-            ++m_diagnostics.glyphSamplesChecked;
-            if(!source.Sample(sample.x,sample.y,now) ||
-                std::abs(int(now.luma)-sample.value.luma)>8 ||
-                std::abs(int(now.chromaU)-sample.value.chromaU)>8 ||
-                std::abs(int(now.chromaV)-sample.value.chromaV)>8) {
-                m_diagnostics.glyphMismatchX=sample.x;
-                m_diagnostics.glyphMismatchY=sample.y;
-                return Reject("current-pixels-changed");
+        if(m_currentInkProofSeeded) {
+            const char* proofFailure="current-ink-proof-unavailable";
+            if(!BuildCurrentInkProof(source,key,currentInkForOutput,proofFailure))return Reject(proofFailure);
+            // This current-source continuation witness is not a detector pass.
+            // Keep rawEvidenceComplete clear so it cannot mint current semantic,
+            // acquisition, absence, or native authority.
+        } else {
+            for(const auto& sample:m_samples) {
+                AnalysisLumaSample now;
+                ++m_diagnostics.glyphSamplesChecked;
+                if(!source.Sample(sample.x,sample.y,now) ||
+                    std::abs(int(now.luma)-sample.value.luma)>8 ||
+                    std::abs(int(now.chromaU)-sample.value.chromaU)>8 ||
+                    std::abs(int(now.chromaV)-sample.value.chromaV)>8) {
+                    m_diagnostics.glyphMismatchX=sample.x;
+                    m_diagnostics.glyphMismatchY=sample.y;
+                    return Reject("current-pixels-changed");
+                }
             }
         }
         SubtitleBarEvidence bars;
@@ -1135,6 +1157,7 @@ public:
             m_reference.continuityGeneration=key.continuityGeneration;
         }
         preview=m_reference;preview.current.identity=b;preview.current.discontinuity=false;
+        if(currentInkForOutput)preview.current.ink=std::move(currentInkForOutput);
         preview.current.sharedPicture=key.sharedPicture;
         preview.current.barEvidence=bars;preview.current.barTrackingAuthority=false;
         preview.current.currentAnchorUsesTrackedEdge=false;preview.current.hasBarTrackingReference=false;
@@ -1150,6 +1173,334 @@ public:
         return true;
     }
 private:
+    bool HasPixelSeed() const { return !m_samples.empty() || m_currentInkProofSeeded; }
+    struct OwnedSample { int x=0,y=0;AnalysisLumaSample value{}; };
+    struct BackingSample { int x=0,y=0;bool black=false; };
+    struct KnownInkSample { int x=0,y=0;AnalysisLumaSample value{}; };
+    enum class CurrentInkSeedState { NotApplicable, Seeded, Failed };
+    struct SourceLayout {
+        AnalysisLumaFormat format=AnalysisLumaFormat::P010;
+        VideoFrameEncoding encoding=VideoFrameEncoding::UNKNOWN;
+        ColorSpace colorspace=ColorSpace::UNKNOWN;
+        AnalysisLumaRange range=AnalysisLumaRange::Unknown;
+        size_t rowBytes=0,chromaRowBytes=0;
+        uint64_t generation=0;
+        uint8_t rgbBitAlignment=0;
+    };
+    static constexpr size_t CurrentInkSampleBudget=327680;
+    static bool SameSourceLayout(const AnalysisLumaSource& source,const SourceLayout& layout) {
+        return source.format==layout.format && source.encoding==layout.encoding &&
+            source.colorspace==layout.colorspace && source.range==layout.range &&
+            source.rowBytes==layout.rowBytes && source.chromaRowBytes==layout.chromaRowBytes &&
+            source.generation==layout.generation && source.rgbBitAlignment==layout.rgbBitAlignment;
+    }
+    static SourceLayout CaptureSourceLayout(const AnalysisLumaSource& source) {
+        SourceLayout layout;layout.format=source.format;layout.encoding=source.encoding;
+        layout.colorspace=source.colorspace;layout.range=source.range;layout.rowBytes=source.rowBytes;
+        layout.chromaRowBytes=source.chromaRowBytes;layout.generation=source.generation;
+        layout.rgbBitAlignment=source.rgbBitAlignment;return layout;
+    }
+    bool CurrentInkGeometry(const SubtitleBoxObservation& observation,
+        const SubtitleInkSnapshot& ink,int& topEnd,int& bottomStart) const {
+        const int width=observation.width,height=observation.height,step=ink.step;
+        if(width<1 || height<1 || step<1 || step>8 || ink.width!=(width+step-1)/step ||
+            ink.height!=(height+step-1)/step || step!=SubtitleBoxDetector::SamplingStep(width,height) ||
+            ink.sourceRows.size()!=size_t(ink.height) || observation.pictureTop<0 ||
+            observation.pictureBottom>height || observation.pictureTop>=observation.pictureBottom ||
+            observation.text.topSearchComplete!=(observation.pictureTop>0) ||
+            observation.text.bottomSearchComplete!=(observation.pictureBottom<height))return false;
+        const int top=(observation.pictureTop+step-1)/step;
+        const int bottom=observation.pictureBottom<height?
+            (std::min)(ink.height-1,(observation.pictureBottom+step-1)/step):ink.height;
+        const int depth=(std::max)(24,ink.height/7)+
+            (observation.nearBarDistance+step-1)/step;
+        topEnd=observation.pictureTop>0?(std::min)(ink.height,top+depth):0;
+        bottomStart=observation.pictureBottom<height?(std::max)(0,bottom-depth):ink.height;
+        for(int y=0;y<ink.height;++y) {
+            const int expected=observation.pictureTop>0 && y==top-1?observation.pictureTop-1:
+                (observation.pictureBottom<height && y==bottom?observation.pictureBottom:
+                    (std::min)(height-1,y*step));
+            if(ink.sourceRows[size_t(y)]!=expected)return false;
+        }
+        return true;
+    }
+    CurrentInkSeedState SeedCurrentInkProof(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source) {
+        const auto& current=preview.current;const auto& text=current.text;const auto ink=current.ink;
+        if(!preview.available || !current.analyzed || current.pendingRefresh || current.analysisRefresh ||
+            current.discontinuity || !current.independentBarAnalysis || !current.barAuthority ||
+            current.barTrackingAuthority || current.currentAnchorUsesTrackedEdge ||
+            current.analysisStride!=1 || current.cadenceSkipped || !current.barEvidence.available ||
+            current.pictureTop!=current.barEvidence.top || current.pictureBottom!=current.barEvidence.bottom ||
+            current.barEvidence.captionBackedTop || current.barEvidence.captionBackedBottom ||
+            !text.detected || text.held || text.confirmationPending || text.revised || text.workLimit ||
+            text.lineCount<1 || text.lineCount>3 ||
+            !ink || !ink->rawEvidenceComplete ||
+            !ink->paletteValid || !source.IsValid() || source.width!=current.width ||
+            source.height!=current.height || ink->inkFloor<0 || ink->inkFloor>1023 ||
+            ink->inkU<0 || ink->inkU>1023 || ink->inkV<0 || ink->inkV>1023 ||
+            ink->blackLimit<0 || ink->blackLimit>1023)return CurrentInkSeedState::NotApplicable;
+        if(!text.topSearchComplete || !text.bottomSearchComplete)return CurrentInkSeedState::Failed;
+        int topEnd=0,bottomStart=0;
+        if(!CurrentInkGeometry(current,*ink,topEnd,bottomStart))return CurrentInkSeedState::Failed;
+        const size_t area=size_t(ink->width)*size_t(ink->height),words=(area+63)/64;
+        if(ink->rawInk.size()!=words || ink->ownedInk.size()!=words || ink->blackBacking.size()!=words)
+            return CurrentInkSeedState::Failed;
+        std::vector<KnownInkSample> knownInk;knownInk.reserve(4096);
+        for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x)if(ink->Get(x,y)) {
+            if(knownInk.size()>=CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
+            AnalysisLumaSample sample;
+            if(!source.Sample(x*ink->step,ink->sourceRows[size_t(y)],sample))return CurrentInkSeedState::Failed;
+            knownInk.push_back({x,y,sample});
+        }
+        std::vector<uint64_t> paletteFringe(words,0);
+        size_t fringeSamples=0;
+        for(int y=0;y<ink->height;++y)if(y<topEnd || y>=bottomStart)for(int x=1;x<ink->width-1;++x) {
+            if(ink->Get(x,y))continue;
+            bool nextToKnownRaw=false;
+            for(int dy=-1;dy<=1 && !nextToKnownRaw;++dy)for(int dx=-1;dx<=1;++dx)
+                if((dx || dy) && ink->Get(x+dx,y+dy)){nextToKnownRaw=true;break;}
+            if(!nextToKnownRaw)continue;
+            if(++fringeSamples>CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
+            AnalysisLumaSample sample;
+            if(!source.Sample(x*ink->step,ink->sourceRows[size_t(y)],sample))return CurrentInkSeedState::Failed;
+            if(sample.luma>=ink->inkFloor-80 &&
+                std::abs(int(sample.chromaU)-ink->inkU)<=80 &&
+                std::abs(int(sample.chromaV)-ink->inkV)<=80) {
+                const size_t at=size_t(y)*ink->width+x;
+                paletteFringe[at/64]|=uint64_t{1}<<(at%64);
+                if(knownInk.size()>=CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
+                knownInk.push_back({x,y,sample});
+            }
+        }
+        std::vector<OwnedSample> owned;owned.reserve(4096);
+        std::array<unsigned,3> ownedPerLine{};
+        for(int line=0;line<text.lineCount;++line) {
+            const auto& bounds=text.lineBounds[line];
+            if(!bounds.Valid() || bounds.left<0 || bounds.top<0 ||
+                bounds.right>current.width || bounds.bottom>current.height)return CurrentInkSeedState::Failed;
+            for(int y=0;y<ink->height;++y) {
+                const int py=ink->sourceRows[size_t(y)];
+                if(py<bounds.top || py>=bounds.bottom)continue;
+                for(int x=0;x<ink->width;++x) {
+                    const int px=x*ink->step;
+                    if(px<bounds.left || px>=bounds.right || !ink->Get(x,y,true))continue;
+                    if(!ink->Get(x,y) || owned.size()>=32768)return CurrentInkSeedState::Failed;
+                    AnalysisLumaSample value;
+                    if(!source.Sample(px,py,value) || value.luma<ink->inkFloor ||
+                        std::abs(int(value.chromaU)-ink->inkU)>80 ||
+                        std::abs(int(value.chromaV)-ink->inkV)>80)return CurrentInkSeedState::Failed;
+                    owned.push_back({x,y,value});++ownedPerLine[size_t(line)];
+                }
+            }
+            if(ownedPerLine[size_t(line)]<4)return CurrentInkSeedState::Failed;
+        }
+        std::vector<uint8_t> support(area,0);
+        const auto addSupport=[&](const SubtitleBoxRect& bounds) {
+            if(!bounds.Valid())return true;
+            if(bounds.left<0 || bounds.top<0 || bounds.right>current.width || bounds.bottom>current.height)
+                return false;
+            for(int y=0;y<ink->height;++y) {
+                const int py=ink->sourceRows[size_t(y)];
+                if(py<bounds.top || py>=bounds.bottom)continue;
+                for(int x=0;x<ink->width;++x) {
+                    const int px=x*ink->step;
+                    if(px>=bounds.left && px<bounds.right)support[size_t(y)*ink->width+x]=1;
+                }
+            }
+            return true;
+        };
+        if(!addSupport(text.sourcePanel) || !addSupport(text.provenSourcePanel) ||
+            !addSupport(text.capturePanel))return CurrentInkSeedState::Failed;
+        for(int line=0;line<3;++line)
+            if(!addSupport(text.linePanels[line]) || !addSupport(text.provenLinePanels[line]) ||
+                !addSupport(text.lineCapturePanels[line]))return CurrentInkSeedState::Failed;
+        std::vector<BackingSample> backing;backing.reserve(4096);
+        for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x) {
+            if(!support[size_t(y)*ink->width+x])continue;
+            if(y<topEnd || y>=bottomStart)backing.push_back({x,y,ink->Black(x,y)});
+            else {
+                AnalysisLumaSample value;
+                if(!source.Sample(x*ink->step,ink->sourceRows[size_t(y)],value))return CurrentInkSeedState::Failed;
+                backing.push_back({x,y,value.luma<=ink->blackLimit});
+            }
+            if(backing.size()>CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
+        }
+        m_ownedSamples=std::move(owned);m_backingSamples=std::move(backing);
+        m_knownInkSamples=std::move(knownInk);
+        m_paletteFringe=std::move(paletteFringe);
+        m_sourceLayout=CaptureSourceLayout(source);m_currentInkProofSeeded=true;
+        return CurrentInkSeedState::Seeded;
+    }
+    bool BuildCurrentInkProof(const AnalysisLumaSource& source,const SubtitleBoxObservation& current,
+        std::shared_ptr<SubtitleInkSnapshot>& currentInk,const char*& reason) {
+        const auto& old=m_reference.current;const auto oldInk=old.ink;
+        if(!m_currentInkProofSeeded || !oldInk || !SameSourceLayout(source,m_sourceLayout) ||
+            source.width!=old.width || source.height!=old.height ||
+            current.width!=old.width || current.height!=old.height) {
+            reason="current-source-layout-changed";return false;
+        }
+        int topEnd=0,bottomStart=0;
+        if(!CurrentInkGeometry(old,*oldInk,topEnd,bottomStart)) {
+            reason="current-search-coverage-unavailable";return false;
+        }
+        const size_t area=size_t(oldInk->width)*size_t(oldInk->height),words=(area+63)/64;
+        if(area>1048576 || oldInk->rawInk.size()!=words || oldInk->ownedInk.size()!=words ||
+            oldInk->blackBacking.size()!=words) {reason="current-ink-grid-invalid";return false;}
+        auto fresh=std::make_shared<SubtitleInkSnapshot>();
+        fresh->width=oldInk->width;fresh->height=oldInk->height;fresh->step=oldInk->step;
+        fresh->sourceRows=oldInk->sourceRows;fresh->inkFloor=oldInk->inkFloor;
+        fresh->inkU=oldInk->inkU;fresh->inkV=oldInk->inkV;fresh->blackLimit=oldInk->blackLimit;
+        fresh->paletteValid=true;fresh->rawEvidenceComplete=false;
+        fresh->rawInk.assign(words,0);fresh->ownedInk.assign(words,0);fresh->blackBacking.assign(words,0);
+        std::vector<AnalysisLumaSample> pixels(area);std::vector<uint8_t> sampled(area,0);
+        size_t count=0;
+        const auto read=[&](int x,int y,AnalysisLumaSample& value)->bool {
+            if(x<0 || y<0 || x>=fresh->width || y>=fresh->height)return false;
+            const size_t at=size_t(y)*fresh->width+x;
+            if(!sampled[at]) {
+                if(count>=CurrentInkSampleBudget)return false;
+                if(!source.Sample(x*fresh->step,fresh->sourceRows[size_t(y)],pixels[at]))return false;
+                sampled[at]=1;++count;
+                m_diagnostics.currentBandSamplesChecked=count;
+                if(pixels[at].luma<=fresh->blackLimit)
+                    fresh->blackBacking[at/64]|=uint64_t{1}<<(at%64);
+            }
+            value=pixels[at];return true;
+        };
+        for(int y=0;y<fresh->height;++y)if(y<topEnd || y>=bottomStart)
+            for(int x=0;x<fresh->width;++x) {
+                AnalysisLumaSample unused;if(!read(x,y,unused)) {
+                    reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;
+                }
+            }
+        for(const auto& backing:m_backingSamples) {
+            AnalysisLumaSample value;
+            if(!read(backing.x,backing.y,value)) {
+                reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-backing-sample-failed";return false;
+            }
+            ++m_diagnostics.backingSamplesChecked;
+            const size_t at=size_t(backing.y)*fresh->width+backing.x;
+            const bool black=value.luma<=fresh->blackLimit;
+            if(black!=backing.black) {
+                m_diagnostics.glyphMismatchX=backing.x*fresh->step;
+                m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(backing.y)];
+                reason="current-black-backing-changed";return false;
+            }
+            if(black)fresh->blackBacking[at/64]|=uint64_t{1}<<(at%64);
+            else fresh->blackBacking[at/64]&=~(uint64_t{1}<<(at%64));
+        }
+        for(const auto& known:m_knownInkSamples) {
+            AnalysisLumaSample value;
+            if(!read(known.x,known.y,value)) {
+                reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-known-ink-sample-failed";return false;
+            }
+            if(std::abs(int(value.luma)-known.value.luma)>8 ||
+                std::abs(int(value.chromaU)-known.value.chromaU)>8 ||
+                std::abs(int(value.chromaV)-known.value.chromaV)>8) {
+                m_diagnostics.glyphMismatchX=known.x*fresh->step;
+                m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(known.y)];
+                reason="current-known-ink-changed";return false;
+            }
+        }
+        const int top=(old.pictureTop+fresh->step-1)/fresh->step;
+        const int bottom=old.pictureBottom<old.height?
+            (std::min)(fresh->height-1,(old.pictureBottom+fresh->step-1)/fresh->step):fresh->height;
+        const int radius=(std::max)(3,fresh->height/180);
+        for(int y=0;y<fresh->height;++y)if(y<topEnd || y>=bottomStart)for(int x=1;x<fresh->width-1;++x) {
+            AnalysisLumaSample point;
+            if(!read(x,y,point)) {reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;}
+            if(point.luma<fresh->inkFloor || std::abs(int(point.chromaU)-fresh->inkU)>80 ||
+                std::abs(int(point.chromaV)-fresh->inkV)>80)continue;
+            bool raw=y<top || y>=bottom;
+            if(!raw) {
+                const int x0=(std::max)(0,x-radius),x1=(std::min)(fresh->width-1,x+radius);
+                const int y0=(std::max)(y<topEnd?0:bottomStart,y-radius);
+                const int y1=(std::min)(y<topEnd?topEnd-1:fresh->height-1,y+radius);
+                int dark=point.luma;
+                for(int xx=x0;xx<=x1;++xx) {AnalysisLumaSample n;if(!read(xx,y,n)) {
+                    reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;}
+                    dark=(std::min)(dark,int(n.luma));}
+                for(int yy=y0;yy<=y1;++yy) {AnalysisLumaSample n;if(!read(x,yy,n)) {
+                    reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;}
+                    dark=(std::min)(dark,int(n.luma));}
+                raw=int(point.luma)-dark>=48; // Conservative lower bound; false positives reject rather than acquire ink.
+            }
+            if(!raw)continue;
+            const size_t at=size_t(y)*fresh->width+x;const uint64_t bit=uint64_t{1}<<(at%64);
+            if(!oldInk->Get(x,y)) {
+                m_diagnostics.glyphMismatchX=x*fresh->step;
+                m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(y)];
+                reason="new-current-raw-ink";return false;
+            }
+            fresh->rawInk[at/64]|=bit;
+        }
+        for(const auto& sample:m_ownedSamples) {
+            AnalysisLumaSample now;
+            if(!read(sample.x,sample.y,now)) {
+                reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-glyph-sample-failed";return false;
+            }
+            ++m_diagnostics.glyphSamplesChecked;
+            if(std::abs(int(now.luma)-sample.value.luma)>8 ||
+                std::abs(int(now.chromaU)-sample.value.chromaU)>8 ||
+                std::abs(int(now.chromaV)-sample.value.chromaV)>8 || !fresh->Get(sample.x,sample.y)) {
+                m_diagnostics.glyphMismatchX=sample.x*fresh->step;
+                m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(sample.y)];
+                reason="current-owned-glyph-changed";return false;
+            }
+            const size_t at=size_t(sample.y)*fresh->width+sample.x;
+            fresh->ownedInk[at/64]|=uint64_t{1}<<(at%64);
+        }
+        if(HasNovelPotentialInk(*oldInk,m_paletteFringe,pixels,top,bottom,topEnd,bottomStart,
+            m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY)) {
+            reason="new-current-contrast-ink";return false;
+        }
+        currentInk=std::move(fresh);
+        reason="current-owned-cue-verified";return true;
+    }
+    static bool HasNovelPotentialInk(const SubtitleInkSnapshot& reference,
+        const std::vector<uint64_t>& paletteFringe,
+        const std::vector<AnalysisLumaSample>& pixels,int top,int bottom,int topEnd,int bottomStart,
+        int& mismatchX,int& mismatchY) {
+        const int width=reference.width,height=reference.height;
+        const size_t area=size_t(width)*size_t(height);
+        if(pixels.size()!=area)return true;
+        const auto inBand=[&](int y){return y>=0 && y<height && (y<topEnd || y>=bottomStart);};
+        const auto knownPaletteFringe=[&](int x,int y) {
+            if(reference.Get(x,y))return true;
+            const size_t at=size_t(y)*width+x;
+            if(at/64>=paletteFringe.size() || !(paletteFringe[at/64]&(uint64_t{1}<<(at%64))))return false;
+            const auto& point=pixels[size_t(y)*width+x];
+            if(point.luma<reference.inkFloor-80 ||
+                std::abs(int(point.chromaU)-reference.inkU)>80 ||
+                std::abs(int(point.chromaV)-reference.inkV)>80)return false;
+            return true;
+        };
+        constexpr int neighborX[4]={-1,1,0,0},neighborY[4]={0,0,-1,1};
+        for(int y=0;y<height;++y)if(inBand(y))for(int x=1;x<width-1;++x) {
+            if(knownPaletteFringe(x,y))continue;
+            const auto& point=pixels[size_t(y)*width+x];
+            // In encoded bars, any newly observed nonblack sample outside the
+            // accepted raw mask may be a differently colored or dimmer cue.
+            // Reject it even when a single grid cell cannot form a component.
+            if((y<top || y>=bottom) && point.luma>reference.blackLimit) {
+                mismatchX=x*reference.step;mismatchY=reference.sourceRows[size_t(y)];return true;
+            }
+            for(int direction=0;direction<4;++direction) {
+                const int nx=x+neighborX[direction],ny=y+neighborY[direction];
+                if(!inBand(ny))continue;
+                const auto& neighbor=pixels[size_t(ny)*width+nx];
+                const bool brightLocalInk=int(point.luma)-int(neighbor.luma)>=48;
+                const bool alternatePalette=(std::abs(int(point.chromaU)-reference.inkU)>80 ||
+                    std::abs(int(point.chromaV)-reference.inkV)>80) &&
+                    (std::abs(int(point.chromaU)-int(neighbor.chromaU))>=64 ||
+                     std::abs(int(point.chromaV)-int(neighbor.chromaV))>=64);
+                if(brightLocalInk || alternatePalette) {
+                    mismatchX=x*reference.step;mismatchY=reference.sourceRows[size_t(y)];return true;
+                }
+            }
+        }
+        return false;
+    }
     bool Reject(const char* reason) {
         const auto diagnostics=m_diagnostics;
         const auto certified=m_certifiedSeed;const auto policy=m_certifiedPolicy,continuity=m_certifiedContinuity;
@@ -1164,6 +1515,12 @@ private:
     const char* m_reason="reset";
     Diagnostics m_diagnostics;
     struct Sample { int x,y;AnalysisLumaSample value; };
+    std::vector<OwnedSample> m_ownedSamples;
+    std::vector<BackingSample> m_backingSamples;
+    std::vector<KnownInkSample> m_knownInkSamples;
+    std::vector<uint64_t> m_paletteFringe;
+    SourceLayout m_sourceLayout{};
+    bool m_currentInkProofSeeded=false;
     SubtitleBoxPreview m_reference;
     SubtitleAcceptedCueSeedCertificate m_consumedCertificate;
     ActivePictureFrameIdentity m_last,m_certifiedSeed;

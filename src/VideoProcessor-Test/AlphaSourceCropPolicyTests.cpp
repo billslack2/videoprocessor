@@ -18887,6 +18887,28 @@ public:
                     L"A current outboard burned-in extent must remain visible even during initial shader preparation.");
                 Assert::IsFalse(expanded.presentation.nativePresentation.available);
                 Assert::IsFalse(expanded.presentation.confirmedFitOwnership.available);
+                auto present=outboard;
+                const auto& c=present.crop;
+                present.captionObservation={CaptionObservationState::PRESENT,c.frameSourceGeneration,
+                    c.frameSourceSequence,present.presentationEpoch,c.frameSourceFormatKey,c.frameAnalysisDomainKey};
+                present.confirmedCaptionBounds={1552,n.bottom-12,2288,n.bottom+37,3840,2160};
+                const auto positive=ResolveUncertainPicturePresentation(present,Evaluate(present.crop)).presentation;
+                Assert::IsTrue(positive.rawSubtitleFallback,
+                    L"A known outboard cue cannot be cropped away merely because subtitle shaders are building.");
+                Assert::IsTrue(positive.sourceBounds.bottom>=present.confirmedCaptionBounds.bottom);
+                Assert::IsFalse(positive.nativePresentation.available);
+                Assert::IsFalse(positive.confirmedFitOwnership.available);
+                Assert::AreEqual(int(CaptionObservationState::PRESENT),int(present.captionObservation.state));
+
+                SetCurrentSourceVisibility(present,n);
+                present.confirmedCaptionBounds={1552,n.bottom-60,2288,n.bottom-8,3840,2160};
+                const auto inside=ResolveUncertainPicturePresentation(present,Evaluate(present.crop)).presentation;
+                Assert::IsTrue(inside.unprocessedSubtitleCanvas);
+                Assert::IsFalse(inside.rawSubtitleFallback);
+                Assert::AreEqual(n.top,inside.sourceBounds.top);
+                Assert::AreEqual(n.bottom,inside.sourceBounds.bottom);
+                Assert::IsFalse(inside.nativePresentation.available);
+                Assert::IsFalse(inside.confirmedFitOwnership.available);
             }
         }
         TEST_METHOD(OffModeMayPreserveTheLargerRawCaptionAperture)

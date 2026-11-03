@@ -2788,6 +2788,68 @@ TEST_CLASS(TemporalCleanPacketGpuTests) { public:
                 L"Older completed picture/subtitle pixels leaked into raw current output.");
     }
 
+    TEST_METHOD(UnprocessedNativeCanvasContinuationUsesCurrentRawDespiteEligibleOlderCompletePacket) {
+        GpuFixture g;MotionConfig::Settings settings;
+        settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+        TemporalRenderer::PresentationGeometry geometry{};
+        geometry.valid=true;geometry.familyBase={0,0,64,64};geometry.sourceCrop={0,0,64,64};
+        geometry.verifiedVisible={0,0,64,64};geometry.viewportEpoch=7;
+        geometry.owner=1;geometry.visibleSafe=true;geometry.cleaned=true;
+        std::vector<float> oldComplete(64*64*4),currentComplete(64*64*4),currentRaw(64*64*4);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            oldComplete[o]=oldComplete[o+1]=oldComplete[o+2]=1.0f;
+            oldComplete[o+3]=1.0f;
+            if(x>=24&&x<40&&y>=24&&y<40) {
+                oldComplete[o]=1.0f;oldComplete[o+1]=oldComplete[o+2]=0.0f;
+            }
+            currentComplete[o]=currentComplete[o+1]=currentComplete[o+2]=0.0f;
+            currentComplete[o+3]=1.0f;
+            currentRaw[o]=currentRaw[o+1]=currentRaw[o+2]=0.0f;
+            currentRaw[o+3]=1.0f;
+            if(x>=8&&x<16&&y>=40&&y<48)currentRaw[o+1]=1.0f;
+        }
+        g.Upload(0);g.UploadFloatPixels(g.clean,oldComplete);
+        g.temporal.Begin(settings,24,60,false,0,9,100,0.0,false,true);
+        g.temporal.outputPts=0.0;
+        Assert::IsTrue(g.temporal.CaptureCompleteComposition(g.device->gpu,g.cleanInput,100,true));
+        Assert::IsTrue(g.temporal.AnnotatePresentation(100,geometry));
+        auto params=pl_render_default_params;
+        params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+        Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,params,31));
+        g.temporal.MarkSubmitted();
+
+        g.UploadFloatPixels(g.clean,currentComplete);
+        g.temporal.Begin(settings,24,60,false,0,9,101,1.0/24.0,false,true);
+        g.temporal.outputPts=1.0/24.0;
+        Assert::IsTrue(g.temporal.CaptureCompleteComposition(g.device->gpu,g.cleanInput,101,false));
+        auto pending=geometry;pending.cleaned=false;
+        Assert::IsTrue(g.temporal.AnnotatePresentation(101,pending));
+        Assert::IsTrue(g.temporal.SelectSubtitleFallback(31,7,g.input,g.output,params,64,64),
+            L"The fixture must prove the older complete subtitle packet would otherwise be eligible.");
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==100,
+            L"The eligible fallback fixture did not select the older completed picture.");
+        Assert::IsTrue(g.temporal.SelectUnprocessedCurrentSource(101),
+            L"The unprocessed current source should be present in temporal history.");
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==101,
+            L"Unprocessed-current selection must clear the older completed packet before rendering.");
+
+        g.UploadFloatPixels(g.source,currentRaw);
+        Assert::IsTrue(g.temporal.CaptureCurrentRawSource(g.device->gpu,g.input,101,9,7,77,88));
+        Assert::IsTrue(g.temporal.RenderCurrentRaw(g.renderer,g.input,g.output,params,31,
+            101,9,7,77,88),L"An unprocessed native-canvas continuation must render the current raw source.");
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==101,
+            L"The unprocessed output must identify the current source, not the older complete packet.");
+        Assert::IsFalse(g.temporal.SubtitleFallbackActive(),
+            L"The current raw render must retire the older subtitle fallback selection.");
+        const auto currentMarker=g.Read(12,44),oldGlyphLocation=g.Read(32,32),currentBackground=g.Read(4,4);
+        Assert::IsTrue(currentMarker[1]>220&&currentMarker[0]<20&&currentMarker[2]<20,
+            L"Current raw source marker was not preserved.");
+        for(int c=0;c<3;++c)
+            Assert::IsTrue(oldGlyphLocation[c]<20&&currentBackground[c]<20,
+                L"Older complete movie/subtitle pixels leaked into the unprocessed current output.");
+    }
+
     TEST_METHOD(PendingSubtitleRawOutputRetainsInterlacedBobProcessingAndCurrentIdentity) {
         MotionConfig::Settings settings;settings.smoothMotion="off";
         settings.deinterlace="force";settings.algorithm="bwdif";

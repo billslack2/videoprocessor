@@ -7089,10 +7089,14 @@ namespace AlphaSourceCrop
             d.reason="unknown subtitle inspection continues current raw frame at retained movie size";
             result.retained=true;return true;
         } else if(advanced && c.initialSubtitleShaderBuild) {
-            // Preserve the existing initial-build exception: playback may show
-            // the native canvas before subtitle shaders are ready. This grants
-            // neither caption completion nor erasure/cleanup ownership.
-            d.reason="initial subtitle shader build preserves native movie size; caption processing pending";
+            ActivePictureBounds visible;
+            if(!TryCurrentSourceVisibilityEnvelope(input,visible) || !ContainedBounds(n,visible))
+                return pending("initial subtitle shader build needs current raw visibility beyond the native canvas");
+            // Shader readiness cannot hide an already confirmed outboard cue.
+            // A contained current raw frame needs no processed-caption proof.
+            d.unprocessedSubtitleCanvas=true;
+            d.reason="initial subtitle shader build presents exact contained current raw pixels";
+            result.retained=true;return true;
         } else if(!advanced && bothBars) {
             // Classic cannot preserve both bars in one native-size window.
             // Bottom content wins explicitly; top content never widens it.

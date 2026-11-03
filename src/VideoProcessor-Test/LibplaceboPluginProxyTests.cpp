@@ -4282,7 +4282,19 @@ namespace VideoProcessorTest
                                     std::abs((bottom-top)-(native[3]-native[1]))<0.01&&
                                     top>=native[1]-0.01&&top<=classicSettledTop+0.01;
                                 if(!ready) {
-                                    require(nativePose,
+                                    const auto rawAdmission=classicCanvasAdmissions.find(
+                                        {record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
+                                    const bool rawStartup=rawAdmission!=classicCanvasAdmissions.end()&&
+                                        (rawAdmission->second.flags&32u)&&
+                                        IsCurrentRawSubtitleFallback(record,rawAdmission->second,width,height);
+                                    if(rawStartup) {
+                                        require(captionVisible&&record.metrics[8]<=0&&record.metrics[10]>=width&&
+                                            top<=native[1]&&bottom>=native[3],
+                                            L"Before Classic acquires a caption pose, raw fallback must preserve the whole current picture and caption.");
+                                        for(int edge=0;edge<4;++edge)require(record.published[edge]==native[edge],
+                                            L"Classic raw startup changed the already measured native picture geometry.");
+                                    }
+                                    require(nativePose||rawStartup,
                                         L"Classic startup resized the picture or clipped the current caption.");
                                     if(nativePose){require(top+0.01>=previousTop,
                                         L"Classic startup native translation reversed during engage.");previousTop=top;}

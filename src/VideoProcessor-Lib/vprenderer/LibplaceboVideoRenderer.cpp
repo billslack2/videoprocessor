@@ -4883,6 +4883,8 @@ struct LibplaceboVideoRenderer::Impl
         bool translationRequested=false;
         bool translationPoseEligible=false;
         bool subtitleCanvasWait=false,subtitleCanvasRange=false,rawSubtitleFallback=false;
+        // Output-only source selection marker; it grants no crop or caption authority.
+        bool unprocessedCurrentSource=false;
         float subtitleCanvasMinimumY=0,subtitleCanvasMaximumY=0;
         TemporalRenderer::PresentationGeometry presentation{};
         int ownerUpdate=0;
@@ -16322,6 +16324,7 @@ struct LibplaceboVideoRenderer::Impl
         bool temporalPolicyTranslationPoseEligible=false;
         AlphaSourceCrop::Decision temporalSubtitleCanvasDecision;
         bool rawSubtitleFallbackCurrent=false,rawSubtitleFallbackOutput=false;
+        bool unprocessedCurrentSourceCurrent=false,unprocessedCurrentSourceOutput=false;
         TemporalRenderer::PresentationGeometry temporalPolicyPresentation{};
         bool temporalPolicySubmittedScopeContinuityRetention=false;
         bool temporalPolicyStartupPoseQualified=false;
@@ -16384,11 +16387,11 @@ struct LibplaceboVideoRenderer::Impl
               latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
               latestActivePicturePresentationRetentionSourceSequence==sourceSequence)) &&
             temporalSourceEvidence.CanReviseSucceeded({frameGeneration,sourceSequence});
-        const bool reviseSourcePresentation=revisedSubtitlePacket || subtitleCanvasCompletion ||
+        bool reviseSourcePresentation=revisedSubtitlePacket || subtitleCanvasCompletion ||
             subtitleCanvasPendingRevisionCandidate;
-        const auto* priorRevisionSnapshot=reviseSourcePresentation?
+        const TemporalPresentationSnapshot* priorRevisionSnapshot=reviseSourcePresentation?
             temporalSourceEvidence.Find({frameGeneration,sourceSequence}):nullptr;
-        const uint64_t revisedSourcePolicyTick=priorRevisionSnapshot?priorRevisionSnapshot->sourceTick:0;
+        uint64_t revisedSourcePolicyTick=priorRevisionSnapshot?priorRevisionSnapshot->sourceTick:0;
         QualifiedSubtitlePresentationEvidence temporalPolicyCaptionProof;
         PresentationDecisionTelemetry::Facts temporalPolicyDecisionFacts;
 		auto configureViewport =
@@ -18430,6 +18433,22 @@ releaseDriftBaseRetention =
             rawSubtitleFallbackCurrent=uncertainPicture.presentation.rawSubtitleFallback &&
                 uncertainPicture.presentation.subtitleCanvasApplied &&
                 !uncertainPicture.presentation.waitForSubtitleProcessing;
+            unprocessedCurrentSourceCurrent=uncertainPicture.presentation.unprocessedSubtitleCanvas &&
+                !uncertainPicture.presentation.waitForSubtitleProcessing;
+            const TemporalSourceEvidenceKey currentKey{frameGeneration,sourceSequence};
+            const auto* existing=temporalSourceEvidence.Find(currentKey);
+            const bool sameOutputContext=existing&&
+                existing->sourceGeneration==frameGeneration&&existing->sourceSequence==sourceSequence&&
+                existing->viewportEpoch==viewportRequestSerial&&
+                existing->presentation.outputContract==temporalOutputContract;
+            if(sameOutputContext&&existing->unprocessedCurrentSource)
+                unprocessedCurrentSourceCurrent=true;
+            if(unprocessedCurrentSourceCurrent&&sameOutputContext&&!existing->unprocessedCurrentSource&&
+                temporalSourceEvidence.CanReviseSucceeded(currentKey)) {
+                reviseSourcePresentation=true;
+                priorRevisionSnapshot=existing;
+                revisedSourcePolicyTick=existing->sourceTick;
+            }
             if(uncertainPicture.presentation.subtitleCanvasApplied) {
                 const auto& canvas=uncertainPicture.presentation;
                 if(DebugLog::IsEnhancedLoggingEnabled() || (canvas.waitForSubtitleProcessing && sourceSequence%120==0))
@@ -19591,10 +19610,12 @@ releaseDriftBaseRetention =
                 temporalPolicyNearBlackEnvelopeEpisodeStart =
                     nearBlackBoundedDecision.episodeStartSequence;
             }
-			if(rawSubtitleFallbackCurrent) {
-				const auto rawCrop=source.crop;
-				source=image;
-				source.crop=rawCrop;
+            if(unprocessedCurrentSourceCurrent) {
+                const auto rawCrop=source.crop;
+                source=image;
+                source.crop=rawCrop;
+            }
+            if(rawSubtitleFallbackCurrent) {
 				renderParams.hooks=nullptr;renderParams.num_hooks=0;
 				temporalRuntimeNlsGeometry={};temporalRuntimeNlsGeometryAvailable=false;
 				temporalPolicyCaptionProof={};
@@ -19973,11 +19994,15 @@ releaseDriftBaseRetention =
         TemporalPresentationSnapshot selectedPresentationForCommit{};
         bool selectedPresentationValid=false;
         auto applyPresentationSnapshot=[&](const TemporalPresentationSnapshot& snapshot) {
-            const bool useCurrentRaw=snapshot.rawSubtitleFallback &&
-                snapshot.sourceGeneration==frameGeneration && snapshot.sourceSequence==sourceSequence;
+            const bool exactCurrentSource=snapshot.sourceGeneration==frameGeneration &&
+                snapshot.sourceSequence==sourceSequence && snapshot.viewportEpoch==viewportRequestSerial &&
+                snapshot.presentation.outputContract==temporalOutputContract;
+            const bool useCurrentRaw=(snapshot.rawSubtitleFallback &&
+                snapshot.sourceGeneration==frameGeneration && snapshot.sourceSequence==sourceSequence) ||
+                ((snapshot.unprocessedCurrentSource || unprocessedCurrentSourceCurrent) && exactCurrentSource);
             renderImage=useCurrentRaw?image:subtitleComposedImage;
             renderImage.crop=snapshot.sourceCrop;
-            if (!useCurrentRaw && snapshot.translationPoseEligible && temporalRenderer.Active()) {
+            if (!snapshot.rawSubtitleFallback && snapshot.translationPoseEligible && temporalRenderer.Active()) {
                 TemporalPresentationPoseInput pose{};
                 pose.drift=snapshot.drift;
                 pose.verticalInput=snapshot.verticalInput;
@@ -19992,7 +20017,7 @@ releaseDriftBaseRetention =
                 pose.translationRequested=snapshot.translationRequested;
                 renderImage.crop=ResolveTemporalPresentationCrop(pose);
             }
-            if(!useCurrentRaw && snapshot.subtitleCanvasRange) {
+            if(!snapshot.rawSubtitleFallback && snapshot.subtitleCanvasRange) {
                 const float top=std::max(snapshot.subtitleCanvasMinimumY,std::min(renderImage.crop.y0,snapshot.subtitleCanvasMaximumY));
                 const float delta=top-renderImage.crop.y0;renderImage.crop.y0+=delta;renderImage.crop.y1+=delta;
             }
@@ -20029,11 +20054,18 @@ releaseDriftBaseRetention =
         if (temporalRenderer.Active()) {
             bool newlyEvaluated=false;
             const auto buildSourcePresentation=[&](TemporalPresentationSnapshot& sourceSnapshot) {
+                    if(unprocessedCurrentSourceCurrent) {
+                        const auto policyCrop=renderImage.crop;
+                        renderImage=image;
+                        renderImage.crop=policyCrop;
+                    }
                     configureViewport(renderImage,target,configuredScreenActive,
                         subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
                     sourceSnapshot.decisionFacts=temporalPolicyDecisionFacts;
                     sourceSnapshot.subtitleCanvasWait=temporalSubtitleCanvasDecision.waitForSubtitleProcessing;
                     sourceSnapshot.rawSubtitleFallback=temporalSubtitleCanvasDecision.rawSubtitleFallback;
+                    sourceSnapshot.unprocessedCurrentSource=temporalSubtitleCanvasDecision.unprocessedSubtitleCanvas &&
+                        !temporalSubtitleCanvasDecision.waitForSubtitleProcessing;
                     sourceSnapshot.subtitleCanvasRange=temporalSubtitleCanvasDecision.subtitleTranslationRange;
                     if(sourceSnapshot.subtitleCanvasRange) {
                         const float base=renderImage.crop.y0-temporalSubtitleCanvasDecision.verticalTranslationPixels;
@@ -20045,13 +20077,15 @@ releaseDriftBaseRetention =
                     sourceSnapshot.startupFormatKey=startupContext.sourceFormatKey;
                     sourceSnapshot.startupOutputContract=startupContext.outputContract;
                     sourceSnapshot.subtitleMode=subtitlePreviewMode;
-                    sourceSnapshot.captionOwnershipProof=sourceSnapshot.rawSubtitleFallback
+                    sourceSnapshot.captionOwnershipProof=(sourceSnapshot.rawSubtitleFallback ||
+                        sourceSnapshot.unprocessedCurrentSource)
                         ? QualifiedSubtitlePresentationEvidence{} : temporalPolicyCaptionProof;
                     sourceSnapshot.captionOwnershipIdentity=subtitleIdentity;
                     sourceSnapshot.captionOwnershipPolicy=localBoundaryPolicyGeneration;
                     sourceSnapshot.captionOwnershipContinuity=localBoundaryContinuityGeneration;
                     sourceSnapshot.captureClockFrequency=captureClockFrequency;
-                    sourceSnapshot.captionConfirmedAbsent=!sourceSnapshot.rawSubtitleFallback && currentNoCaptionConfirmed;
+                    sourceSnapshot.captionConfirmedAbsent=!sourceSnapshot.rawSubtitleFallback &&
+                        !sourceSnapshot.unprocessedCurrentSource && currentNoCaptionConfirmed;
                     sourceSnapshot.sourceTick=revisedSourcePolicyTick?revisedSourcePolicyTick:temporalPolicySourceTick;
                     sourceSnapshot.sourcePts=temporalRenderer.currentPts;
                     sourceSnapshot.drift=temporalPolicyDrift;
@@ -20089,6 +20123,7 @@ releaseDriftBaseRetention =
                     sourceSnapshot.presentation.viewportEpoch=viewportRequestSerial;
                     sourceSnapshot.presentation.outputContract=temporalOutputContract;
                     sourceSnapshot.presentation.cleaned=!sourceSnapshot.rawSubtitleFallback &&
+                        !sourceSnapshot.unprocessedCurrentSource &&
                         TemporalRenderer::HasCleanPresentation(
                             temporalSubtitleComposition,subtitleCompositionSucceeded,currentNoCaptionConfirmed);
                     if (!sourceSnapshot.presentation.valid) {
@@ -20201,9 +20236,17 @@ releaseDriftBaseRetention =
                         sourceSnapshot.presentation.outputContract==temporalOutputContract &&
                         temporalSubtitleCanvasDecision.rawSubtitleFallback &&
                         rawSubtitleFallbackCurrent;
+                    const bool exactCurrentUnprocessedSource=sourceSnapshot.unprocessedCurrentSource &&
+                        sourceSnapshot.sourceGeneration==frameGeneration &&
+                        sourceSnapshot.sourceSequence==sourceSequence &&
+                        sourceSnapshot.viewportEpoch==viewportRequestSerial &&
+                        sourceSnapshot.presentation.outputContract==temporalOutputContract &&
+                        unprocessedCurrentSourceCurrent;
                     if(subtitleCanvasPendingRevisionCandidate && !exactCurrentRawFallback &&
+                        !exactCurrentUnprocessedSource &&
                         !subtitleCanvasCompletion && !revisedSubtitlePacket)return false;
-                    if(subtitleCanvasCompletion && sourceSnapshot.subtitleCanvasWait)return false;
+                    if(subtitleCanvasCompletion && sourceSnapshot.subtitleCanvasWait &&
+                        !exactCurrentUnprocessedSource)return false;
                     newlyEvaluated=true;
                     return true;
                 };
@@ -20219,7 +20262,8 @@ releaseDriftBaseRetention =
                 temporalPresentations.InvalidateSuccessfulSource(frameGeneration,sourceSequence);
             if (sourceReady && temporalRenderer.HasCurrentFrame(sourceSequence)) {
                 const auto* annotated=temporalSourceEvidence.Find(sourcePresentationKey);
-                if (annotated && !annotated->subtitleCanvasWait && !annotated->rawSubtitleFallback)
+                if (annotated && !annotated->subtitleCanvasWait && !annotated->rawSubtitleFallback &&
+                    !annotated->unprocessedCurrentSource)
                     temporalRenderer.AnnotatePresentation(
                     sourceSequence,annotated->presentation);
             }
@@ -20245,7 +20289,7 @@ releaseDriftBaseRetention =
                 frameGpuTiming.EndRender();
                 return true;
             }
-            if (temporalSkipPresentation && !rawSubtitleFallbackCurrent) {
+            if (temporalSkipPresentation && !rawSubtitleFallbackCurrent && !unprocessedCurrentSourceCurrent) {
                 lastRenderSkipReason="temporal-output-not-ready";
                 frameGpuTiming.EndRender();
                 return true;
@@ -20253,10 +20297,13 @@ releaseDriftBaseRetention =
             // Missing reconstructed cues may repeat an immutable complete
             // processed packet for two source intervals. Select before binding
             // geometry/HDR so every part of the output names the same source.
-            if(!rawSubtitleFallbackCurrent)
+            if(unprocessedCurrentSourceCurrent)
+                temporalRenderer.SelectUnprocessedCurrentSource(sourceSequence);
+            // Only complete processed outputs may substitute an older packet.
+            if(!rawSubtitleFallbackCurrent && !unprocessedCurrentSourceCurrent)
                 temporalRenderer.SelectSubtitleFallback(pictureProcessingEpoch,viewportRequestSerial,
                     renderImage,target,renderParams,temporalOutputWidth,temporalOutputHeight,temporalOutputContract);
-            const uint64_t selected=rawSubtitleFallbackCurrent
+            const uint64_t selected=(rawSubtitleFallbackCurrent || unprocessedCurrentSourceCurrent)
                 ? sourceSequence : temporalRenderer.SelectedPacketSequence();
             ensureFrozenPresentation(selected);
             const TemporalPresentationSnapshot* selectedSnapshot=
@@ -20271,11 +20318,25 @@ releaseDriftBaseRetention =
                 lastRenderSkipReason="raw-subtitle-fallback-cannot-repeat";
                 frameGpuTiming.EndRender();return true;
             }
+            if(selectedSnapshot->unprocessedCurrentSource && selected!=sourceSequence) {
+                lastRenderSkipReason="unprocessed-current-source-cannot-repeat";
+                frameGpuTiming.EndRender();return true;
+            }
             selectedPresentationForCommit=*selectedSnapshot;
+            unprocessedCurrentSourceOutput=(selectedPresentationForCommit.unprocessedCurrentSource ||
+                unprocessedCurrentSourceCurrent) && selectedPresentationForCommit.sourceGeneration==frameGeneration &&
+                selectedPresentationForCommit.sourceSequence==sourceSequence &&
+                selectedPresentationForCommit.viewportEpoch==viewportRequestSerial &&
+                selectedPresentationForCommit.presentation.outputContract==temporalOutputContract;
+            if(unprocessedCurrentSourceOutput)
+                selectedPresentationForCommit.unprocessedCurrentSource=true;
+            if(unprocessedCurrentSourceOutput)
+                selectedPresentationForCommit.subtitleCanvasWait=false;
             rawSubtitleFallbackOutput=selectedSnapshot->rawSubtitleFallback &&
                 selectedSnapshot->sourceGeneration==frameGeneration &&
                 selectedSnapshot->sourceSequence==sourceSequence;
-            if(temporalCompositionPreflightFailed && !rawSubtitleFallbackOutput)
+            if(temporalCompositionPreflightFailed && !rawSubtitleFallbackOutput &&
+                !unprocessedCurrentSourceOutput)
                 return failSubtitleMotion(temporalRenderer.status.c_str());
             if (selectedPresentationForCommit.cropAdmission.optionalFillRetained) {
                 auto& selectedFill=selectedPresentationForCommit;
@@ -20338,6 +20399,12 @@ releaseDriftBaseRetention =
             target=baseTarget;
             target.crop=selectedTargetCrop;
         } else {
+            if(unprocessedCurrentSourceCurrent) {
+                const auto policyCrop=renderImage.crop;
+                renderImage=image;
+                renderImage.crop=policyCrop;
+                unprocessedCurrentSourceOutput=true;
+            }
             configureViewport(renderImage,target,configuredScreenActive,
                 subtitleShiftSourcePixels,&trustedActivePicture,&hdrTrustedPicture);
             rawSubtitleFallbackOutput=rawSubtitleFallbackCurrent;
@@ -20347,7 +20414,7 @@ releaseDriftBaseRetention =
                 selectedPresentationForCommit.sourceGeneration==frameGeneration &&
                 selectedPresentationForCommit.sourceSequence==sourceSequence
             : rawSubtitleFallbackCurrent;
-        if(temporalSubtitleComposition && !rawSubtitleFallbackOutput) {
+        if(temporalSubtitleComposition && !rawSubtitleFallbackOutput && !unprocessedCurrentSourceOutput) {
             const auto selected=temporalRenderer.SelectedPacketSequence();
             const auto& packet=subtitlePresentationPackets[selected%subtitlePresentationPackets.size()];
             // Selected output uses its own delayed cue geometry.
@@ -20355,13 +20422,13 @@ releaseDriftBaseRetention =
             subtitleCompositionSucceeded=selected &&
                 packet.generation==frameGeneration && packet.sequence==selected && packet.composed;
             relocatedSubtitle=subtitleCompositionSucceeded?packet.geometry:SubtitleCutPasteGeometry{};
-        } else if(rawSubtitleFallbackOutput) {
+        } else if(rawSubtitleFallbackOutput || unprocessedCurrentSourceOutput) {
             subtitleCompositionSucceeded=false;
             relocatedSubtitle={};
         }
         const bool selectedCanvasWait=selectedPresentationValid?selectedPresentationForCommit.subtitleCanvasWait:
             temporalSubtitleCanvasDecision.waitForSubtitleProcessing;
-        if(selectedCanvasWait) {
+        if(selectedCanvasWait && !unprocessedCurrentSourceOutput) {
             lastRenderSkipReason="subtitle-canvas-processing-pending";
             // Withhold the WHOLE new source. No submitted pixels, geometry, cue
             // permission or native authority can come from this unfinished output.
@@ -20864,7 +20931,7 @@ releaseDriftBaseRetention =
                 SetShaderStatus("NLS: Safe fit (hook failure)");
                 assembleOverlays();
             }, [&](const pl_frame& source, const pl_frame& destination, pl_render_params& parameters) {
-                if(rawSubtitleFallbackOutput) {
+                if(rawSubtitleFallbackOutput || unprocessedCurrentSourceOutput) {
                     if(temporalRenderer.Active()) {
                         // History mode changes can clear the independent raw
                         // packet after the early capture. This call is idempotent

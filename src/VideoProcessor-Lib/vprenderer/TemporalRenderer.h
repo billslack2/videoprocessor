@@ -286,6 +286,15 @@ public:
         }
         return false;
     }
+    // Unprocessed current pixels cannot inherit a previous complete movie
+    // packet. This only clears temporal subtitle selection; it adds no
+    // presentation, crop, or caption authority.
+    bool SelectUnprocessedCurrentSource(uint64_t sequence) {
+        rawOutputSequence=0;rawOutputPts=0.0;
+        subtitleFallbackSequence=0;subtitleFallbackReason="unprocessed-current-source";
+        return Active()&&!history.empty()&&history.back()->sequence==sequence&&
+            history.back()->pts==currentPts;
+    }
     bool RenderCurrentRaw(pl_renderer renderer,const pl_frame& source,
         const pl_frame& target,pl_render_params& params,uint64_t epoch,
         uint64_t sourceSequence,uint64_t sourceGeneration,uint64_t viewportEpoch,

@@ -58,3 +58,29 @@ raw visibility witness. On those rows only, counters 3..7 are witness source seq
 source generation, viewport epoch, source format key and analysis domain. Metrics
 8..11 contain raw bounds and previous[] contains its native base. Candidate presence
 retains flag 8 and engage-pose retention flag 16. Ordinary row meanings are unchanged.
+
+## Static cue reuse and all unprocessed source selection
+
+The persistent-caption counterexample is a remembered-pixel check at (1548,1886),
+four pixels outside glyphs beginning x1552. Exact background equality over an
+expanded line rectangle is not cue identity. The pending guard now supports a
+bounded current-source ink verifier seeded from an accepted owned-glyph template.
+It samples the configured subtitle bands, verifies current known glyphs and black
+support, and vetoes new ink, alternate-color/local-contrast marks, and tiny adjacent
+changes. Raw/fringe exemptions require tightly matching seed YUV. Incomplete or
+over-budget live palette proofs cannot fall through to a smaller legacy ROI check.
+The sample cap is 327,680; no connected-component recognition is added to this
+current-source verification path. Source masks are rebuilt from current pixels,
+remain pending/non-semantic, and preserve the original hold budget and seed age.
+
+Every unprocessed canvas decision, including the older native-size continuation,
+now carries a separate exact-current source marker into temporal selection. It
+cannot select an older complete movie/subtitle packet. This marker is distinct
+from diagnostic bit32, which still identifies only the explicit union/full-input
+geometry fallback. Current color/deinterlace processing and policy geometry remain.
+
+Initial shader preparation must also preserve a known positive outboard caption;
+only proven-contained current raw pixels may remain in the native aperture while
+processing is pending. Before the first Classic pose, explicit source-joined raw
+fallback may preserve picture plus caption at a larger envelope. Once a processed
+or settled cue is acquired, existing steady viewport/cadence/pixel checks stay strict.
