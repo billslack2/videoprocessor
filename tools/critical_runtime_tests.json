@@ -11,8 +11,10 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1071,
+  "minimumNativeTests": 1073,
   "requiredNativeMethods": [
+    "ReadyCertifiedExistingCueRearmsAcrossContinuityWithOriginalPixelSeed",
+    "PendingFootprintReceiptAllowsOnlyExactCurrentPreparedErasureWithoutBarAuthority",
     "IndependentSameCueScansRearmOriginalPendingSeedWithoutBandResampling",
     "ReadySameCueRearmFallsBackToFreshSeedOnChangedInkBackingOrContext",
     "UhdFreshReadyRearmsWithBoundedCurrentPixelChecks",

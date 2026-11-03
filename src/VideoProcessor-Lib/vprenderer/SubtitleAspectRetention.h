@@ -313,6 +313,11 @@ struct QualifiedSubtitlePresentationInput
     const SubtitleCutPasteGeometry* composition = nullptr;
     const SubtitleCueContinuation* continuation = nullptr;
     const SubtitleCurrentPreparedCueCertificate* currentPreparedCue = nullptr;
+    // Per-frame receipt minted only after current pending pixels were verified,
+    // the exact prepared geometry was protected, and the compositor succeeded.
+    // It permits the prepared-erasure proof to survive a missing bar plane; it
+    // does not carry semantic, native-picture, or lease authority.
+    const class PendingPreparedSubtitleErasureReceipt* pendingPreparedErasure = nullptr;
     ActivePictureBounds physicalBase;
     // Current renderer-owned output authority. A queued worker's geometry hint
     // may predate this source packet even when its measured pixels are current.
@@ -320,6 +325,148 @@ struct QualifiedSubtitlePresentationInput
     uint64_t policyGeneration=0,continuityGeneration=0;
     bool sourcePrepared = false, pendingCurrentPixelsVerified=false;
     size_t maxOwnershipSamples=262144;
+};
+
+// Exact-current handoff from the pending-footprint verifier to presentation
+// ownership. The renderer records this only after the one-use cleanup receipt
+// is applied and the resulting geometry is actually composited. Identity,
+// cue, source ink, display snapshot, policy and operation are all pinned so a
+// receipt from a prior source or a different prepared operation cannot pass.
+class PendingPreparedSubtitleErasureReceipt
+{
+public:
+    void Record(const SubtitleBoxObservation& current,const SubtitleBoxResult& accepted,
+        const ActivePictureBounds& base,const SubtitlePictureAuthority& display,
+        const SubtitleCutPasteGeometry& geometry,SubtitlePreviewMode mode,
+        uint64_t policy,uint64_t continuity,bool pendingOperationApplied)
+    {
+        Clear();
+        if(!pendingOperationApplied || !SubtitlePreviewOverridesClassicHandling(mode) ||
+            !current.analyzed || current.discontinuity ||
+            !current.pendingRefresh || current.analysisRefresh || current.cadenceSkipped ||
+            (current.analysisStride!=1 && current.analysisStride!=2) ||
+            current.barAuthority || current.independentBarAnalysis || !current.ink ||
+            !current.ink->paletteValid || current.ink->rawEvidenceComplete ||
+            !accepted.detected || !accepted.held || accepted.confirmationPending || accepted.workLimit ||
+            accepted.revised || !accepted.cue || current.text.cue!=accepted.cue ||
+            current.policyGeneration!=policy || current.continuityGeneration!=continuity ||
+            current.width<=0 || current.height<=0 || base.rasterWidth!=current.width ||
+            base.rasterHeight!=current.height || base.left<0 || base.top<0 || base.right>current.width ||
+            base.bottom>current.height || base.left>=base.right || base.top>=base.bottom || !geometry.valid ||
+            !display.AvailableFor(current.identity,current.width,current.height) ||
+            !SameAnalysisFrameIdentity(display.identity,current.identity) ||
+            !SamePendingPreparedBounds(display.bounds,base) ||
+            !current.sharedPicture.AvailableFor(current.identity,current.width,current.height) ||
+            !SamePendingPreparedBounds(current.sharedPicture.bounds,base) ||
+            !current.sharedPicture.Matches(display))return;
+        m_valid=true;m_identity=current.identity;m_policy=policy;m_continuity=continuity;
+        m_width=current.width;m_height=current.height;m_base=base;m_display=display;
+        m_cue=accepted;m_geometry=geometry;m_mode=mode;m_ink=current.ink.get();
+    }
+
+    void Clear()
+    {
+        m_valid=false;m_identity={};m_policy=m_continuity=0;m_width=m_height=0;
+        m_base={};m_display={};m_cue={};m_geometry={};m_mode=SubtitlePreviewMode::None;m_ink=nullptr;
+    }
+
+    bool Matches(const SubtitleBoxObservation& current,const SubtitleBoxResult& accepted,
+        const ActivePictureBounds& base,const SubtitlePictureAuthority& display,
+        const SubtitleCutPasteGeometry& geometry,SubtitlePreviewMode mode,
+        uint64_t policy,uint64_t continuity) const
+    {
+        return m_valid && mode==m_mode && policy==m_policy && continuity==m_continuity &&
+            SameAnalysisFrameIdentity(current.identity,m_identity) &&
+            current.policyGeneration==m_policy && current.continuityGeneration==m_continuity &&
+            current.width==m_width && current.height==m_height &&
+            SamePendingPreparedBounds(base,m_base) && SamePendingPreparedBounds(display.bounds,m_display.bounds) &&
+            SameAnalysisFrameIdentity(display.identity,m_identity) && display.Matches(m_display) &&
+            current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
+            SamePendingPreparedBounds(current.sharedPicture.bounds,m_base) &&
+            current.sharedPicture.Matches(display) && current.analyzed && !current.discontinuity &&
+            current.pendingRefresh && !current.analysisRefresh && !current.cadenceSkipped &&
+            (current.analysisStride==1 || current.analysisStride==2) &&
+            !current.barAuthority && !current.independentBarAnalysis &&
+            current.ink && current.ink.get()==m_ink && current.ink->paletteValid &&
+            !current.ink->rawEvidenceComplete && current.text.cue==m_cue.cue &&
+            accepted.detected && accepted.held && !accepted.confirmationPending &&
+            !accepted.workLimit && !accepted.revised && SamePendingPreparedCue(accepted,m_cue) &&
+            SamePendingPreparedGeometry(geometry,m_geometry);
+    }
+
+private:
+    static bool SamePendingPreparedRect(const SubtitleBoxRect& a,const SubtitleBoxRect& b)
+    { return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom; }
+    static bool SamePendingPreparedBounds(const ActivePictureBounds& a,const ActivePictureBounds& b)
+    {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+            a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight &&
+            a.aspectRatio==b.aspectRatio && a.trustedBarAxes==b.trustedBarAxes;
+    }
+    static bool SamePendingPreparedCue(const SubtitleBoxResult& a,const SubtitleBoxResult& b)
+    {
+        if(a.cue!=b.cue || a.observations!=b.observations || a.lineCount!=b.lineCount ||
+            a.detected!=b.detected || a.held!=b.held || a.confirmationPending!=b.confirmationPending ||
+            a.revised!=b.revised || a.workLimit!=b.workLimit ||
+            a.capturePanelMeasured!=b.capturePanelMeasured ||
+            a.nearBarEligibilityMeasured!=b.nearBarEligibilityMeasured ||
+            a.nearBarEligible!=b.nearBarEligible || a.topSearchComplete!=b.topSearchComplete ||
+            a.bottomSearchComplete!=b.bottomSearchComplete ||
+            !SamePendingPreparedRect(a.bounds,b.bounds) || !SamePendingPreparedRect(a.anchor,b.anchor) ||
+            !SamePendingPreparedRect(a.sourcePanel,b.sourcePanel) ||
+            !SamePendingPreparedRect(a.provenSourcePanel,b.provenSourcePanel) ||
+            !SamePendingPreparedRect(a.capturePanel,b.capturePanel) ||
+            a.signature!=b.signature || a.anchorSignature!=b.anchorSignature)return false;
+        for(size_t i=0;i<a.lineBounds.size();++i)
+            if(!SamePendingPreparedRect(a.lineBounds[i],b.lineBounds[i]) ||
+                a.lineSignatures[i]!=b.lineSignatures[i] ||
+                !SamePendingPreparedRect(a.linePanels[i],b.linePanels[i]) ||
+                !SamePendingPreparedRect(a.provenLinePanels[i],b.provenLinePanels[i]) ||
+                !SamePendingPreparedRect(a.lineCapturePanels[i],b.lineCapturePanels[i]) ||
+                a.panelTopEdges[i].y!=b.panelTopEdges[i].y ||
+                a.panelTopEdges[i].left!=b.panelTopEdges[i].left ||
+                a.panelTopEdges[i].right!=b.panelTopEdges[i].right ||
+                a.panelTopEdges[i].supportBasisPoints!=b.panelTopEdges[i].supportBasisPoints)return false;
+        return true;
+    }
+    static bool SamePendingPreparedGeometry(const SubtitleCutPasteGeometry& a,const SubtitleCutPasteGeometry& b)
+    {
+        if(!SamePendingPreparedRect(a.source,b.source) || !SamePendingPreparedRect(a.destination,b.destination) ||
+            !SamePendingPreparedRect(a.content,b.content) || !SamePendingPreparedRect(a.generatedCleanup,b.generatedCleanup) ||
+            !SamePendingPreparedRect(a.pictureCapture,b.pictureCapture) ||
+            !SamePendingPreparedRect(a.pendingProtectedCleanup,b.pendingProtectedCleanup) ||
+            !SamePendingPreparedRect(a.generatedCleanupExclusion,b.generatedCleanupExclusion) ||
+            !SamePendingPreparedRect(a.cleanupLimit,b.cleanupLimit) ||
+            a.generatedCleanupRowCount!=b.generatedCleanupRowCount ||
+            a.generatedCleanupRowCount>a.generatedCleanupRows.size() ||
+            a.glyphScale!=b.glyphScale || a.glyphTranslateX!=b.glyphTranslateX ||
+            a.glyphTranslateY!=b.glyphTranslateY || a.centeredGlyphMapping!=b.centeredGlyphMapping ||
+            a.roundedCorners!=b.roundedCorners || a.extendToBar!=b.extendToBar ||
+            a.pictureIntrusion!=b.pictureIntrusion || a.backgroundGuarded!=b.backgroundGuarded ||
+            a.pictureTop!=b.pictureTop || a.pictureBottom!=b.pictureBottom ||
+            a.displayPictureLeft!=b.displayPictureLeft || a.displayPictureTop!=b.displayPictureTop ||
+            a.displayPictureRight!=b.displayPictureRight || a.displayPictureBottom!=b.displayPictureBottom ||
+            a.valid!=b.valid || a.fromTopBar!=b.fromTopBar ||
+            !SamePendingPreparedRect(a.placementLimits,b.placementLimits) ||
+            !SamePendingPreparedRect(a.layoutContent,b.layoutContent) ||
+            !SamePendingPreparedRect(a.layoutCoverage,b.layoutCoverage))return false;
+        for(size_t i=0;i<a.glyphLines.size();++i)
+            if(!SamePendingPreparedRect(a.glyphLines[i],b.glyphLines[i]))return false;
+        for(unsigned i=0;i<a.generatedCleanupRowCount;++i)
+            if(!SamePendingPreparedRect(a.generatedCleanupRows[i],b.generatedCleanupRows[i]))return false;
+        return true;
+    }
+
+    bool m_valid=false;
+    ActivePictureFrameIdentity m_identity;
+    uint64_t m_policy=0,m_continuity=0;
+    int m_width=0,m_height=0;
+    ActivePictureBounds m_base;
+    SubtitlePictureAuthority m_display;
+    SubtitleBoxResult m_cue;
+    SubtitleCutPasteGeometry m_geometry;
+    SubtitlePreviewMode m_mode=SubtitlePreviewMode::None;
+    const SubtitleInkSnapshot* m_ink=nullptr;
 };
 struct QualifiedSubtitlePresentationEvidence
 {
@@ -437,12 +584,27 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     }();
     const bool currentHeldPreparedErasure=preparedErasureOnly && input.currentPreparedCue &&
         input.currentPreparedCue->Matches(observation,accepted,base);
+    // A pending footprint can keep only a successfully prepared, exact-current
+    // erasure. Its receipt is minted after the one-use cleanup projection and
+    // actual compositor pass; it cannot stand in for bar/native evidence or a
+    // fresh semantic cue acquisition.
+    const bool currentVerifiedPreparedFootprint=preparedErasureOnly && input.pendingCurrentPixelsVerified &&
+        input.pendingPreparedErasure && observation.pendingRefresh && !observation.analysisRefresh &&
+        !observation.cadenceSkipped && (observation.analysisStride==1 || observation.analysisStride==2) &&
+        !observation.barAuthority && !observation.independentBarAnalysis && observation.ink &&
+        observation.ink->paletteValid && !observation.ink->rawEvidenceComplete &&
+        accepted.held && !accepted.confirmationPending && !accepted.workLimit &&
+        input.pendingPreparedErasure->Matches(observation,accepted,base,input.currentDisplayPicture,
+            move,input.mode,input.policyGeneration,input.continuityGeneration);
     if(!SameAnalysisFrameIdentity(observation.identity,input.currentIdentity) ||
         observation.policyGeneration!=input.policyGeneration || observation.continuityGeneration!=input.continuityGeneration ||
-        observation.discontinuity || !observation.analyzed || (!observation.barAuthority && !currentVerifiedNonlocalCadence) ||
-        (observation.pendingRefresh && !input.pendingCurrentPixelsVerified && !currentVerifiedNonlocalCadence) || text.workLimit ||
+        observation.discontinuity || !observation.analyzed ||
+        (!observation.barAuthority && !currentVerifiedNonlocalCadence && !currentVerifiedPreparedFootprint) ||
+        (observation.pendingRefresh && !input.pendingCurrentPixelsVerified &&
+            !currentVerifiedNonlocalCadence && !currentVerifiedPreparedFootprint) || text.workLimit ||
         !text.detected || !text.nearBarEligibilityMeasured || !text.nearBarEligible ||
-        !accepted.detected || (accepted.held && !continuation && !currentHeldPreparedErasure) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
+        !accepted.detected || (accepted.held && !continuation && !currentHeldPreparedErasure &&
+            !currentVerifiedPreparedFootprint) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
         text.lineCount<1 || text.lineCount>3 || !move.valid)
         return reject("current-caption-proof-unavailable");
     const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {

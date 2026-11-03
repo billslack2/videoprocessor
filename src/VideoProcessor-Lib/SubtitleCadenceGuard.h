@@ -475,7 +475,7 @@ private:
         return true;
     }
     static bool ValidSource(const SubtitleBoxObservation& o,const AnalysisLumaSource& s){return s.IsValid() && s.width==o.width && s.height==o.height && s.generation==o.identity.transportGeneration;}
-    static bool SameContext(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+    static bool SameContext(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b,bool compareContinuity=true) {
         return a.identity.transportGeneration==b.identity.transportGeneration &&
             a.identity.sourceFormatGeneration==b.identity.sourceFormatGeneration &&
             a.identity.analysisDomainKey==b.identity.analysisDomainKey &&
@@ -483,7 +483,8 @@ private:
             a.identity.rendererGeneration==b.identity.rendererGeneration &&
             a.width==b.width && a.height==b.height && a.scriptHint==b.scriptHint &&
             a.optimizationMode==b.optimizationMode && a.nearBarDistance==b.nearBarDistance &&
-            a.policyGeneration==b.policyGeneration && a.continuityGeneration==b.continuityGeneration;
+            a.policyGeneration==b.policyGeneration &&
+            (!compareContinuity || a.continuityGeneration==b.continuityGeneration);
     }
     static bool ValidGrid(const SubtitleInkSnapshot& p,const AnalysisLumaSource& source) {
         const size_t words=(size_t(p.width)*p.height+63)/64;
@@ -556,9 +557,13 @@ private:
         if(m_lastGeometryMismatchBits)return reject(RearmRejectCode::Geometry);
         if(!SameBase(base,m_base))return reject(RearmRejectCode::PhysicalBase);
         const auto& c=preview.current;const auto& previous=m_reference->current;const auto& p=*c.ink;
-        if(!SameContext(c,previous))return reject(RearmRejectCode::Context);
+        if(!SameContext(c,previous,!allowAnalyzedStrideOne))return reject(RearmRejectCode::Context);
         if(preview.policyGeneration!=m_reference->policyGeneration)return reject(RearmRejectCode::PolicyGeneration);
-        if(preview.continuityGeneration!=m_reference->continuityGeneration)
+        if(allowAnalyzedStrideOne && c.continuityGeneration!=preview.continuityGeneration)
+            return reject(RearmRejectCode::ContinuityGeneration);
+        if(preview.continuityGeneration!=m_reference->continuityGeneration &&
+            (!allowAnalyzedStrideOne || !m_reference->continuityGeneration || !preview.continuityGeneration ||
+             c.continuityGeneration!=preview.continuityGeneration))
             return reject(RearmRejectCode::ContinuityGeneration);
         if(
             // A fresh complete pending-footprint source may follow intervening

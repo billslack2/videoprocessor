@@ -206,3 +206,23 @@ inside the prepared operation. Glyph/core/fringe, backing and new bar-ink checks
 remain unchanged. Ready-rearm first-rejection codes and layout/geometry submasks
 are now recorded so any remaining expensive rebuild can be attributed before
 changing an eligibility condition.
+
+Tracking continuity is not itself a pixel-template change. After a genuinely new
+complete independent positive source (including an exact current existing-cue
+certificate when grouping prunes rows), the generic guard adopts the actual
+current preview wrapper while keeping the original pixel seed identity, masks,
+samples and contrast baseline separate. It rechecks all other physical/source,
+policy, layout, mask and current glyph/backing conditions. Held, pending, duplicate
+or foreign-context inputs cannot perform this rebase or renew its age. The
+analyzed footprint cache likewise allows a continuity-only rearm only from a
+successfully composed current source; ordinary cadence remains strict.
+
+A separate PendingPreparedSubtitleErasureReceipt carries current display-only
+composition proof through the final ownership stage. The renderer records it only
+when current footprint verification passed, the exact operation's one-use cleanup
+protection was applied, and this source's composition preparation succeeded. It
+binds the source identity, ink, accepted cue, policy/continuity, physical/display
+bounds and final operation. It may qualify prepared erasure for this source with
+bar authority still absent; it cannot qualify semantic acquisition, native aspect,
+absence, lease renewal or an older packet. Rejection controls cover stale/changed
+identities, operation, mode, bounds, ink/cue and unapplied protection.

@@ -3059,7 +3059,7 @@ namespace VideoProcessorTest
             const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
             const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
             Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly && !prepared.renewsHold);
-            for(int fault=0;fault<25;++fault) {
+            for(int fault=0;fault<26;++fault) {
                 auto observation=std::make_unique<SubtitleBoxObservation>(f.observation);auto accepted=f.accepted;
                 auto proof=prepared;auto identity=f.observation.identity;auto base=f.base;
                 auto mode=input.mode;bool pixels=true,source=true,composed=true,incomplete=false;
@@ -3088,6 +3088,88 @@ namespace VideoProcessorTest
             const auto changedRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
             const auto changed=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),changedRaw,input);
             Assert::IsFalse(changed.qualified);
+        }
+        TEST_METHOD(PendingFootprintReceiptAllowsOnlyExactCurrentPreparedErasureWithoutBarAuthority)
+        {
+          for(unsigned stride:{1u,2u}) {
+            LoggedRelocatedCaptionFixture f(false,true);
+            f.observation.policyGeneration=7;f.observation.continuityGeneration=9;
+            f.observation.pendingRefresh=true;f.observation.analysisRefresh=false;
+            f.observation.analysisStride=stride;f.observation.cadenceSkipped=false;
+            f.observation.barAuthority=false;f.observation.independentBarAnalysis=false;
+            f.observation.sharedPicture.required=true;f.observation.sharedPicture.identity=f.observation.identity;
+            f.observation.sharedPicture.bounds=f.base;
+            f.ink->paletteValid=true;f.ink->rawEvidenceComplete=false;
+            f.accepted.held=true;
+
+            auto input=f.Input();input.policyGeneration=7;input.continuityGeneration=9;
+            input.pendingCurrentPixelsVerified=true;input.currentDisplayPicture=f.observation.sharedPicture;
+            const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            PendingPreparedSubtitleErasureReceipt receipt;
+            receipt.Record(f.observation,f.accepted,f.base,input.currentDisplayPicture,
+                f.composition,input.mode,input.policyGeneration,input.continuityGeneration,true);
+            PendingPreparedSubtitleErasureReceipt unappliedReceipt;
+            unappliedReceipt.Record(f.observation,f.accepted,f.base,input.currentDisplayPicture,
+                f.composition,input.mode,input.policyGeneration,input.continuityGeneration,false);
+            input.pendingPreparedErasure=&receipt;
+            const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+            Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly,
+                L"An exact-current verified pending footprint may preserve its already-held cue composition without bar authority.");
+            Assert::IsFalse(prepared.renewsHold);
+            Assert::IsFalse(prepared.retention.currentlyPixelSafe,
+                L"Prepared erasure cannot claim the remaining source bands are safe or acquire native authority.");
+            Assert::IsFalse(CommitQualifiedSubtitlePresentationHold({},prepared,f.observation.identity,f.base,
+                input.mode,7,9,1000,true,false,10000000).available,
+                L"A pending footprint receipt cannot seed a caption lease.");
+
+            for(int fault=0;fault<25;++fault) {
+                auto observation=f.observation;auto accepted=f.accepted;auto composition=f.composition;
+                auto display=input.currentDisplayPicture;auto bad=input;
+                bad.observation=&observation;bad.accepted=&accepted;bad.composition=&composition;
+                bad.currentDisplayPicture=display;bad.pendingPreparedErasure=&receipt;
+                auto badRaw=raw;
+                switch(fault) {
+                case 0: bad.pendingPreparedErasure=nullptr;break;
+                case 1: bad.pendingCurrentPixelsVerified=false;break;
+                case 2: bad.sourcePrepared=false;break;
+                case 3: bad.mode=SubtitlePreviewMode::None;break;
+                case 4: --bad.physicalBase.bottom;break;
+                case 5: --display.bounds.bottom;bad.currentDisplayPicture=display;break;
+                case 6: ++display.identity.acceptedSequence;bad.currentDisplayPicture=display;break;
+                case 7: ++composition.destination.left;break;
+                case 8:
+                    ++observation.identity.acceptedSequence;
+                    observation.sharedPicture.identity=observation.identity;
+                    bad.currentIdentity=observation.identity;break;
+                case 9: ++observation.policyGeneration;++bad.policyGeneration;break;
+                case 10: ++observation.continuityGeneration;++bad.continuityGeneration;break;
+                case 11: observation.pendingRefresh=false;break;
+                case 12: observation.cadenceSkipped=true;break;
+                case 13: observation.analysisStride=2;break;
+                case 14: observation.analysisRefresh=true;break;
+                case 15: observation.barAuthority=true;break;
+                case 16: observation.independentBarAnalysis=true;break;
+                case 17: {
+                    auto ink=std::make_shared<SubtitleInkSnapshot>(*observation.ink);
+                    ink->paletteValid=false;observation.ink=std::move(ink);break;
+                }
+                case 18: {
+                    auto ink=std::make_shared<SubtitleInkSnapshot>(*observation.ink);
+                    ink->rawEvidenceComplete=true;observation.ink=std::move(ink);break;
+                }
+                case 19: accepted.held=false;break;
+                case 20: ++accepted.cue;break;
+                case 21: ++observation.text.cue;break;
+                case 22: accepted.confirmationPending=true;break;
+                case 23: observation.discontinuity=true;break;
+                case 24: bad.pendingPreparedErasure=&unappliedReceipt;break;
+                case 25: observation.sharedPicture.bounds.aspectRatio+=0.01;break;
+                }
+                const auto rejected=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),badRaw,bad);
+                Assert::IsFalse(rejected.qualified,
+                    L"Prepared-erasure permission must fail closed on a stale or altered current-source receipt/context.");
+            }
+          }
         }
         TEST_METHOD(CurrentHeldErasureCertificateCannotBypassIdentityCompositionOrPictureSafety)
         {

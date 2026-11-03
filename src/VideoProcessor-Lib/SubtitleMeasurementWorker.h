@@ -873,12 +873,13 @@ public:
         m_contrastSeedPixels.clear();m_contrastSeedDirections.clear();
         m_contrastSeedTopEnd=m_contrastSeedBottomStart=m_contrastSeedPictureTop=m_contrastSeedPictureBottom=0;
         m_contrastSeedWidth=m_contrastSeedHeight=0;
-        m_currentInkProofSeeded=false;m_currentFootprintRequired=false;m_sourceLayout={};m_elapsed=0;m_last={};m_diagnostics={};
+        m_currentInkProofSeeded=false;m_currentFootprintRequired=false;m_sourceLayout={};m_elapsed=0;m_last={};
+        m_pixelSeedIdentity={};m_pixelSeedInk.reset();m_diagnostics={};
         m_certifiedSeed={};m_certifiedPolicy=m_certifiedContinuity=0;m_consumedCertificate={}; }
     const char* DecisionReason() const { return m_reason; }
     const Diagnostics& DecisionDiagnostics() const { return m_diagnostics; }
     ActivePictureFrameIdentity LastVerifiedIdentity() const { return m_last; }
-    ActivePictureFrameIdentity AcceptedSeedIdentity() const { return m_reference.current.identity; }
+    ActivePictureFrameIdentity AcceptedSeedIdentity() const { return m_pixelSeedIdentity; }
     double PendingElapsedMilliseconds() const { return m_elapsed; }
     uint64_t ReferenceContinuity() const { return m_reference.continuityGeneration; }
     // Only accepted extraction may seed the late-worker fallback. A held cue
@@ -1026,7 +1027,18 @@ public:
             return false;
         }
         if(eligibleSameCueRearm &&
-            TryRearmAcceptedSameCue(preview,accepted,source,frameMs,currentFootprint))return true;
+            TryRearmAcceptedSameCue(preview,accepted,source,frameMs,currentFootprint,eligibleSameCueRearm)) {
+            if(certifiedExistingCue && existingCueCertificate) {
+                // Remember the newest exact current certificate with the
+                // adopted wrapper. A repeated tracker presentation may omit
+                // exporting it; that replay must preserve this seed without
+                // rearming or spending its lease again.
+                m_certifiedSeed=now;m_certifiedPolicy=preview.policyGeneration;
+                m_certifiedContinuity=preview.continuityGeneration;
+                m_consumedCertificate=*existingCueCertificate;
+            }
+            return true;
+        }
         if(eligibleSameCueRearm && currentFootprint)
             m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::FootprintDelegated;
         const auto readyRearmReject=m_diagnostics.readyRearmRejectCode;
@@ -1115,7 +1127,8 @@ public:
                 if(requireFootprint && !currentFootprint->MatchesAcceptedSeed(
                     preview,preview.text,source,key.sharedPicture.bounds))
                     return Reject("accepted-current-footprint-seed-unavailable");
-                m_reference=preview;m_samples.clear();m_elapsed=0;m_last=key.identity;
+                m_reference=preview;m_pixelSeedIdentity=key.identity;m_pixelSeedInk=key.ink;
+                m_samples.clear();m_elapsed=0;m_last=key.identity;
                 m_ownedSamples.clear();m_backingSamples.clear();m_knownInkSamples.clear();m_paletteFringe.clear();
                 m_currentInkProofSeeded=false;m_currentFootprintRequired=false;
                 m_sourceLayout={};
@@ -1354,7 +1367,8 @@ private:
         return ReadyRearmRejectCode::NotAttempted;
     }
     bool TryRearmAcceptedSameCue(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
-        const AnalysisLumaSource& source,double frameMs,const SubtitleCadenceGuard* currentFootprint) {
+        const AnalysisLumaSource& source,double frameMs,const SubtitleCadenceGuard* currentFootprint,
+        bool freshIndependentCue) {
         m_diagnostics.readyRearmMaskWordsChecked=0;
         m_diagnostics.readyRearmGlyphSamplesChecked=0;
         m_diagnostics.readyRearmKnownSamplesChecked=0;
@@ -1367,7 +1381,7 @@ private:
             !m_samples.empty() || !std::isfinite(frameMs) || frameMs<=0)
             return reject(ReadyRearmRejectCode::SeedOrMode);
         const auto& old=m_reference.current;const auto& current=preview.current;
-        const auto oldInk=old.ink;const auto ink=current.ink;
+        const auto oldInk=m_pixelSeedInk;const auto ink=current.ink;
         const auto& a=m_last;const auto& b=current.identity;
         if(!oldInk || !ink)return reject(ReadyRearmRejectCode::InkGrid);
         if(!source.IsValid() || !SameSourceLayout(source,m_sourceLayout) ||
@@ -1390,8 +1404,11 @@ private:
         if(current.policyGeneration!=preview.policyGeneration || old.policyGeneration!=preview.policyGeneration ||
             m_reference.policyGeneration!=preview.policyGeneration)
             return reject(ReadyRearmRejectCode::PolicyGeneration);
-        if(current.continuityGeneration!=preview.continuityGeneration || old.continuityGeneration!=preview.continuityGeneration ||
-            m_reference.continuityGeneration!=preview.continuityGeneration)
+        if(current.continuityGeneration!=preview.continuityGeneration ||
+            m_reference.continuityGeneration!=old.continuityGeneration)
+            return reject(ReadyRearmRejectCode::ContinuityGeneration);
+        if(old.continuityGeneration!=preview.continuityGeneration &&
+            (!freshIndependentCue || !old.continuityGeneration || !preview.continuityGeneration))
             return reject(ReadyRearmRejectCode::ContinuityGeneration);
         if(!SubtitleBoxLookahead::SameContext(old,current))return reject(ReadyRearmRejectCode::IdentityContext);
         if(!SameRearmPhysicalBase(old.sharedPicture.bounds,current.sharedPicture.bounds))
@@ -1472,6 +1489,10 @@ private:
                 (std::abs(int(now.chromaU)-512)<=48 && std::abs(int(now.chromaV)-512)<=48));
             if(black!=backing.black)return reject(ReadyRearmRejectCode::BackingPixels);
         }
+        // Adopt only the actual fresh complete measurement wrapper. The native
+        // ink/pixel reference and its identity remain immutable across this
+        // continuity-only rebase.
+        m_reference=preview;m_reference.current.text=accepted;m_reference.text=accepted;
         m_elapsed=0;m_last=b;m_reason="accepted-same-cue-current-scan-rearmed";
         m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::Passed;
         m_diagnostics.lastVerifiedSource=b.acceptedSequence;
@@ -1715,7 +1736,7 @@ private:
     bool BuildCurrentInkProof(const AnalysisLumaSource& source,const SubtitleBoxObservation& current,
         std::shared_ptr<SubtitleInkSnapshot>& currentInk,const char*& reason,
         const SubtitleCadenceGuard* currentFootprint) {
-        const auto& old=m_reference.current;const auto oldInk=old.ink;
+        const auto& old=m_reference.current;const auto oldInk=m_pixelSeedInk;
         if(!m_currentInkProofSeeded || !oldInk || !SameSourceLayout(source,m_sourceLayout) ||
             source.width!=old.width || source.height!=old.height ||
             current.width!=old.width || current.height!=old.height) {
@@ -2017,7 +2038,8 @@ private:
     bool m_currentInkProofSeeded=false,m_currentFootprintRequired=false;
     SubtitleBoxPreview m_reference;
     SubtitleAcceptedCueSeedCertificate m_consumedCertificate;
-    ActivePictureFrameIdentity m_last,m_certifiedSeed;
+    ActivePictureFrameIdentity m_last,m_certifiedSeed,m_pixelSeedIdentity;
+    std::shared_ptr<SubtitleInkSnapshot> m_pixelSeedInk;
     uint64_t m_certifiedPolicy=0,m_certifiedContinuity=0;
     std::vector<Sample> m_samples;
     double m_elapsed=0;

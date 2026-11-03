@@ -4722,7 +4722,7 @@ struct LibplaceboVideoRenderer::Impl
         SubtitleCueContinuation continuation;
         SubtitleBoxResult ownershipAccepted;
         uint64_t ownershipPolicy=0,ownershipContinuity=0;
-        bool pendingPixelsVerified=false,ownershipEvaluated=false;
+        bool pendingPixelsVerified=false,pendingOperationApplied=false,ownershipEvaluated=false;
         ActivePictureBounds ownershipBase;
         QualifiedSubtitlePresentationEvidence ownershipEvidence,preparedErasureEvidence;
         double ownershipMilliseconds=0;
@@ -14936,6 +14936,7 @@ struct LibplaceboVideoRenderer::Impl
         subtitleIdentity.rendererGeneration = frameGeneration;
         bool currentMeasuredCaptionAvailable = false;
         bool currentSubtitlePendingPixelsVerified = false;
+        bool currentSubtitlePendingOperationApplied = false;
         auto& currentSubtitlePreview=subtitlePreviews->current;
         SubtitleCueContinuation currentCueContinuation;
         // Keep the bounded proof workspace off the presentation thread stack.
@@ -15452,14 +15453,17 @@ struct LibplaceboVideoRenderer::Impl
                 }
                 }
                 if(move.valid && pendingCurrentPixelsVerified &&
-                    SubtitlePreviewOverridesClassicHandling(sourceSubtitleMode) &&
-                    (!nlsGeometryAvailable || !subtitlePendingFootprintGuard.ApplyCurrentFootprintProtection(
-                        currentSubtitlePreview.current,nlsGeometry,move))) {
-                    // A pixel witness is usable only with the exact operation
-                    // whose protected rows will reach the compositor. Let the
-                    // current-source raw path handle any failed binding.
-                    move.valid=false;pendingCurrentPixelsVerified=false;
-                    currentSubtitleWorkIncomplete=true;
+                    SubtitlePreviewOverridesClassicHandling(sourceSubtitleMode)) {
+                    currentSubtitlePendingOperationApplied=nlsGeometryAvailable &&
+                        subtitlePendingFootprintGuard.ApplyCurrentFootprintProtection(
+                            currentSubtitlePreview.current,nlsGeometry,move);
+                    if(!currentSubtitlePendingOperationApplied) {
+                        // A pixel witness is usable only with the exact operation
+                        // whose protected rows will reach the compositor. Let the
+                        // current-source raw path handle any failed binding.
+                        move.valid=false;pendingCurrentPixelsVerified=false;
+                        currentSubtitleWorkIncomplete=true;
+                    }
                 }
                 const auto& priorLayout=subtitleLoggedLayout;
                 auto equalRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
@@ -15931,6 +15935,7 @@ struct LibplaceboVideoRenderer::Impl
             subtitleSourcePreparation.ownershipPolicy=currentSubtitlePreview.policyGeneration;
             subtitleSourcePreparation.ownershipContinuity=currentSubtitlePreview.continuityGeneration;
             subtitleSourcePreparation.pendingPixelsVerified=currentSubtitlePendingPixelsVerified;
+            subtitleSourcePreparation.pendingOperationApplied=currentSubtitlePendingOperationApplied;
             subtitleSourcePreparation.ownershipEvaluated=false;
             subtitleSourcePreparation.unknownHoldEvaluated=false;
             subtitleSourcePreparation.captionBounds=currentConfirmedCaptionBounds;
@@ -16634,6 +16639,19 @@ struct LibplaceboVideoRenderer::Impl
                 effectiveClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
                 latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
                 latestActivePicturePresentationRetentionSourceSequence==sourceSequence;
+            PendingPreparedSubtitleErasureReceipt pendingPreparedErasure;
+            if(ownershipInput.sourcePrepared && ownershipInput.pendingCurrentPixelsVerified &&
+                subtitleSourcePreparation.pendingOperationApplied) {
+                // This receipt is display-only: current operation pixels passed
+                // verification, its one-use cleanup protection was consumed,
+                // and this exact source was successfully composited.
+                pendingPreparedErasure.Record(*ownershipInput.observation,*ownershipInput.accepted,
+                    ownershipInput.physicalBase,ownershipInput.currentDisplayPicture,
+                    *ownershipInput.composition,ownershipInput.mode,
+                    ownershipInput.policyGeneration,ownershipInput.continuityGeneration,
+                    subtitleSourcePreparation.pendingOperationApplied);
+                ownershipInput.pendingPreparedErasure=&pendingPreparedErasure;
+            }
             const auto& proofBase=subtitleSourcePreparation.ownershipBase;
             const bool cachedOwnership=subtitleSourcePreparation.ownershipEvaluated &&
                 proofBase.left==effectiveGeometry.left && proofBase.top==effectiveGeometry.top &&

@@ -660,8 +660,9 @@ static SubtitleBoxObservation MeasureUhd(SubtitleBoxDetector& detector,
 static std::unique_ptr<SubtitleBoxPreview> UhdPending(const SubtitleBoxPreview& ready,
     const ActivePictureFrameIdentity& id) {
     auto p=std::make_unique<SubtitleBoxPreview>();
-    p->available=false; p->policyGeneration=UhdPolicy; p->continuityGeneration=UhdContinuity;
+    p->available=false; p->policyGeneration=UhdPolicy; p->continuityGeneration=ready.continuityGeneration;
     p->current=ready.current; p->current.identity=id; p->current.sharedPicture.identity=id;
+    p->current.continuityGeneration=ready.continuityGeneration;
     p->current.analyzed=false; p->current.text={}; p->current.ink.reset(); p->text={}; return p;
 }
 static double Pct(std::vector<double> v,double p) {
@@ -815,17 +816,18 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         const auto original=guard->AcceptedSeedIdentity();
 
         // The actual renderer supplies a complete four-source lookahead window
-        // for a fresh ready result. A single raw detector frame can preserve
-        // current pixels but is not itself a new accepted cue certificate.
+        // for a fresh ready result. This full positive may adopt the current
+        // caption-continuity wrapper while keeping the original pixel baseline.
         auto currentScans=std::make_unique<std::array<SubtitleBoxObservation,4>>();
         for(size_t i=0;i<currentScans->size();++i) {
             (*currentScans)[i]=MeasureUhd(detector,source,UhdIdentity(i+2,format));
+            (*currentScans)[i].continuityGeneration=UhdContinuity+1;
             Assert::IsTrue((*currentScans)[i].analyzed && (*currentScans)[i].text.detected &&
                 (*currentScans)[i].ink && (*currentScans)[i].ink->rawEvidenceComplete);
         }
         auto current=std::make_unique<SubtitleBoxPreview>();
-        SubtitleBoxLookahead::ResolveInto(*current,currentScans->data(),currentScans->size(),UhdPolicy,UhdContinuity);
-        const auto currentAccepted=tracker.Consume(*current,1000,frameMs);
+        SubtitleBoxLookahead::ResolveInto(*current,currentScans->data(),currentScans->size(),UhdPolicy,UhdContinuity+1);
+        const auto currentAccepted=tracker.Consume(*current,1000,frameMs,&seed->current.identity,true);
         const auto& certificate=tracker.AcceptedCueSeedCertificate();
         const bool certificatePresent=certificate.Matches(*current,currentAccepted);
         Logger::WriteMessage((std::string("UHD ready tracker reason=")+tracker.DecisionReason()+
@@ -863,13 +865,86 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::IsTrue(guard->DecisionDiagnostics().readyRearmKnownSamplesChecked>0);
         Assert::AreEqual(original.acceptedSequence,guard->AcceptedSeedIdentity().acceptedSequence,
             L"The original UHD pixel reference remains immutable.");
+        Assert::AreEqual(UhdContinuity+1,guard->ReferenceContinuity(),
+            L"Only the current source wrapper adopts the fresh continuity generation.");
         Assert::IsFalse(guard->RememberAccepted(*current,currentAccepted,source,frameMs,1000,nullptr),
             L"Replaying the same full-positive source cannot renew the pending lease twice.");
         Assert::AreEqual("accepted-current-positive-already-consumed",guard->DecisionReason());
         Assert::AreEqual(current->current.identity.acceptedSequence,guard->LastVerifiedIdentity().acceptedSequence);
         Assert::AreEqual(0.0,guard->PendingElapsedMilliseconds(),0.001);
+
+        auto currentPending=UhdPending(*current,
+            UhdIdentity(current->current.identity.acceptedSequence+1,format));
+        Assert::IsTrue(guard->Resolve(*currentPending,source,frameMs,1000),
+            L"A pending source in the freshly accepted continuity wrapper still verifies against the original pixels.");
+        Assert::AreEqual(original.acceptedSequence,guard->AcceptedSeedIdentity().acceptedSequence);
+        Assert::AreEqual(UhdContinuity+1,guard->ReferenceContinuity());
+        Assert::AreEqual(frameMs,guard->PendingElapsedMilliseconds(),0.001);
+        auto foreignPending=UhdPending(*current,
+            UhdIdentity(currentPending->current.identity.acceptedSequence+1,format));
+        foreignPending->continuityGeneration=UhdContinuity+2;
+        foreignPending->current.continuityGeneration=UhdContinuity+2;
+        Assert::IsFalse(guard->Resolve(*foreignPending,source,frameMs,1000),
+            L"An unproven pending continuity change cannot use the fresh-ready rearm exception.");
+        Assert::AreEqual("pending-context-changed",guard->DecisionReason());
+        Assert::AreEqual(UhdContinuity+1,guard->ReferenceContinuity());
+        Assert::AreEqual(frameMs,guard->PendingElapsedMilliseconds(),0.001);
     }
 
+    TEST_METHOD(ReadyCertifiedExistingCueRearmsAcrossContinuityWithOriginalPixelSeed) {
+        constexpr double frameMs=1000.0/60;
+        auto pixels=PixelsWithCurrentBars();auto source=Source(pixels);
+        SubtitleBoxPresentation tracker;
+        auto scans=std::make_unique<std::array<SubtitleBoxObservation,4>>();
+        for(size_t i=0;i<scans->size();++i)
+            (*scans)[i]=CompleteThreeLineScan(i+1,pixels,21);
+        auto seed=std::make_unique<SubtitleBoxPreview>();
+        SubtitleBoxLookahead::ResolveInto(*seed,scans->data(),scans->size(),11,21);
+        const auto acquired=tracker.Consume(*seed,250,frameMs);
+        Assert::IsTrue(acquired.detected && acquired.lineCount==3 && !acquired.held);
+        SubtitlePendingMeasurementGuard guard;
+        Assert::IsTrue(guard.RememberAccepted(*seed,acquired,source,frameMs,250));
+        const auto originalSeed=guard.AcceptedSeedIdentity();
+
+        auto currentRaw=CompleteThreeLineScan(5,pixels,22);
+        auto current=SubtitleBoxLookahead::Resolve(&currentRaw,1,11,22);
+        Assert::IsTrue(current.text.lineCount<3,
+            L"The short-horizon preview intentionally prunes the three-line cue.");
+        const auto accepted=tracker.Consume(current,250,frameMs,&(*scans)[0].identity,true);
+        const auto& certificate=tracker.AcceptedCueSeedCertificate();
+        Assert::IsTrue(accepted.detected && accepted.lineCount==3 && !accepted.held && !accepted.confirmationPending);
+        Assert::IsTrue(certificate.Matches(current,accepted),
+            L"A fresh exact-current certificate may retain the tracker’s accepted cue through grouping pruning.");
+        const bool remembered=guard.RememberAccepted(current,accepted,source,frameMs,250,&certificate);
+        if(!remembered)Logger::WriteMessage((std::string("certified continuity rearm: ")+guard.DecisionReason()).c_str());
+        Assert::IsTrue(remembered);
+        Assert::AreEqual("accepted-same-cue-current-scan-rearmed",guard.DecisionReason());
+        Assert::AreEqual(uint64_t(0),guard.DecisionDiagnostics().seedBandSamplesChecked,
+            L"Certified reuse still uses bounded current-pixel checks, not a repeated full-band seed.");
+        Assert::AreEqual(originalSeed.acceptedSequence,guard.AcceptedSeedIdentity().acceptedSequence,
+            L"Continuity rebase must not replace or relabel the immutable original pixel seed.");
+        Assert::AreEqual(uint64_t(22),guard.ReferenceContinuity());
+        Assert::AreEqual(current.current.identity.acceptedSequence,guard.LastVerifiedIdentity().acceptedSequence);
+        Assert::AreEqual(0.0,guard.PendingElapsedMilliseconds(),0.001);
+
+        const auto repeatedAccepted=tracker.Consume(current,250,frameMs);
+        const auto& repeatedCertificate=tracker.AcceptedCueSeedCertificate();
+        Assert::IsTrue(repeatedAccepted.detected && !repeatedAccepted.held);
+        Assert::IsFalse(repeatedCertificate.Matches(current,repeatedAccepted),
+            L"Repeated tracker output does not export a new acquisition certificate.");
+        Assert::IsFalse(guard.RememberAccepted(current,repeatedAccepted,source,frameMs,250,&repeatedCertificate),
+            L"The exact consumed certificate cannot rearm the pruned current cue twice.");
+        Assert::AreEqual("accepted-certificate-already-consumed",guard.DecisionReason());
+        Assert::AreEqual(originalSeed.acceptedSequence,guard.AcceptedSeedIdentity().acceptedSequence);
+        Assert::AreEqual(current.current.identity.acceptedSequence,guard.LastVerifiedIdentity().acceptedSequence);
+        Assert::AreEqual(0.0,guard.PendingElapsedMilliseconds(),0.001);
+
+        auto pending=PendingAfterReassociation(6);
+        Assert::IsTrue(guard.Resolve(pending,source,frameMs,250),
+            L"The adopted current wrapper accepts a same-context pending source without renewing the original seed.");
+        Assert::AreEqual(originalSeed.acceptedSequence,guard.AcceptedSeedIdentity().acceptedSequence);
+        Assert::AreEqual(frameMs,guard.PendingElapsedMilliseconds(),0.001);
+    }
     TEST_METHOD(SubtitleCompletionSignalFollowsReadyCachePublication) {
         SubtitleMeasurementWorker worker;
         auto signal=std::make_shared<AnalysisCompletionSignal>();
@@ -3459,18 +3534,20 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         // silently incorporated into that baseline.
         auto movedPixels=pixels;movedPixels[80*160+42]=uint16_t(110<<6);
         auto movedSeed=Ready(4);movedSeed.current=CompleteThreeLineScan(4,movedPixels);
-        movedSeed.current.analysisStride=1;movedSeed.text=movedSeed.current.text;
+        movedSeed.current.analysisStride=1;movedSeed.continuityGeneration=22;
+        movedSeed.current.continuityGeneration=22;movedSeed.text=movedSeed.current.text;
         auto movedSource=CadenceSource(movedPixels);
         Assert::IsTrue(footprint->RememberCurrentFootprint(movedSeed,movedSeed.text,movedSource,base,geometry));
         Assert::AreEqual("cadence-seed-rearmed",footprint->DecisionReason());
         Assert::AreEqual(0u,footprint->SampleCount(),L"Stride-1 rearm must reuse the immutable baseline, not rebuild it.");
-        auto laterSeed=Ready(12);laterSeed.current=CompleteThreeLineScan(12,movedPixels);
-        laterSeed.current.analysisStride=1;laterSeed.text=laterSeed.current.text;
+        auto laterSeed=Ready(12);laterSeed.current=CompleteThreeLineScan(12,movedPixels,22);
+        laterSeed.current.analysisStride=1;laterSeed.continuityGeneration=22;
+        laterSeed.current.continuityGeneration=22;laterSeed.text=laterSeed.current.text;
         Assert::IsTrue(footprint->RememberCurrentFootprint(laterSeed,laterSeed.text,movedSource,base,geometry),
             L"A fresh complete positive source may rearm after a multi-source gap without replacing the native baseline.");
         Assert::AreEqual("cadence-seed-rearmed",footprint->DecisionReason());
         Assert::AreEqual(0u,footprint->SampleCount());
-        auto verifyCurrent=CompleteThreeLineScan(13,movedPixels);
+        auto verifyCurrent=CompleteThreeLineScan(13,movedPixels,22);
         const auto movedProof=footprint->VerifyCurrentFootprint(verifyCurrent,movedSource,
             laterSeed.current,laterSeed.text,base);
         Assert::IsFalse(movedProof.valid,
@@ -3522,6 +3599,14 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::AreNotEqual("cadence-seed-rearmed",cadence->DecisionReason());
         Assert::IsTrue(cadence->SampleCount()>0,
             L"The ordinary cadence seed remains tied to its stride-2 source spacing.");
+
+        auto continuityChanged=Ready(4);continuityChanged.current=CompleteThreeLineScan(4,pixels,22);
+        continuityChanged.continuityGeneration=22;continuityChanged.current.analysisStride=2;
+        continuityChanged.text=continuityChanged.current.text;
+        Assert::IsTrue(cadence->RememberAccepted(continuityChanged,continuityChanged.text,source,base,cadenceGeometry));
+        Assert::AreNotEqual("cadence-seed-rearmed",cadence->DecisionReason(),
+            L"The ordinary stride-2 cadence guard does not get the fresh-footprint continuity exception.");
+        Assert::IsTrue(cadence->SampleCount()>0);
     }
     TEST_METHOD(CadenceGuardRequiresNewStrongScanAndRejectsUnownedExtraCapture) {
         auto pixels=Pixels();auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);

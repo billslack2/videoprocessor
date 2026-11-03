@@ -38,7 +38,10 @@ namespace
         const AnalysisDiagnosticRecordV1& admission,int width,int height) {
         if(strcmp(output.stage,"submitted-presentation")||strcmp(admission.stage,"subtitle-canvas-admission")||
             !(output.flags&1u)||(output.flags&(2u|16u|32u|64u|1024u|4096u|8192u|16384u))||
-            !(admission.flags&32u)||!(admission.flags&2u)||(admission.flags&(1u|4u))||
+            // bit 4 is preparation's pre-fallback composition result. When bit
+            // 32 selects the raw-current fallback, submitted output flags below
+            // remain the authority for whether pixels were actually composed.
+            !(admission.flags&32u)||!(admission.flags&2u)||(admission.flags&1u)||
             !output.acceptedSequence||output.counters[0]!=output.acceptedSequence||output.counters[1]!=output.acceptedSequence||
             admission.acceptedSequence!=output.acceptedSequence||admission.rendererInstanceKey!=output.rendererInstanceKey||
             admission.transportGeneration!=output.transportGeneration||admission.rendererGeneration!=output.rendererGeneration||
@@ -2525,8 +2528,9 @@ namespace VideoProcessorTest
                 GetProcAddress(plugin,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT));
             Assert::IsNotNull(reinterpret_cast<void*>(diagnostics));
             struct DiagnosticCleanup {VideoProcessorLibplaceboConfigureDiagnosticFn configure;
-                ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);}} diagnosticCleanup{diagnostics};
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=false;}
+                ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);
+                    classicPoseCaptureSubtitleAdmissions.store(false,std::memory_order_relaxed);}} diagnosticCleanup{diagnostics};
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=false;classicPoseCaptureSubtitleAdmissions.store(true,std::memory_order_relaxed);}
             diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);}
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
@@ -4006,7 +4010,8 @@ namespace VideoProcessorTest
                     if(output.counters[0]!=output.acceptedSequence || output.counters[1]!=output.acceptedSequence ||
                         (!classic&&!advanced) || (!rawFallback&&advanced&&(admission.flags&8u)) ||
                         (!rawFallback&&admission.counters[1]!=static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN)) ||
-                        !(admission.flags&2u) || (admission.flags&(1u|4u)) || (!rawFallback&&classic&&!rawCurrent)) {
+                        !(admission.flags&2u) || (admission.flags&1u) ||
+                        (!rawFallback&&(admission.flags&4u)) || (!rawFallback&&classic&&!rawCurrent)) {
                         failure="current output/admission is not an exact-source unprocessed UNKNOWN continuation in its documented mode";return false;
                     }
                     if((output.flags&(2u|16u|32u|64u|8192u))!=0 || (!rawFallback&&output.counters[4]==0)) {
@@ -5093,7 +5098,7 @@ namespace VideoProcessorTest
                 VideoProcessorLibplaceboConfigureDiagnosticFn callback;
                 ~DiagnosticCleanup(){if(callback)callback(nullptr,nullptr,nullptr,nullptr);}
             } diagnosticCleanup{diagnostics};
-            size_t spatialCursor=0;std::vector<AnalysisDiagnosticRecordV1> spatialOutputs,spatialAccepted,spatialProduced,spatialCanvas,spatialInset;
+            size_t spatialCursor=0;std::vector<AnalysisDiagnosticRecordV1> spatialOutputs,spatialAccepted,spatialProduced,spatialVerified,spatialCanvas,spatialInset;
             if(requireSpatial) {
                 Assert::IsTrue(diagnostics!=nullptr);
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=true;}
@@ -5187,7 +5192,14 @@ namespace VideoProcessorTest
                             detail<<"ord:"<<candidate.recordSequence<<",flags:"<<candidate.flags
                                 <<",result:"<<candidate.resultCode<<",source:"<<candidate.sourceFrameNumber
                                 <<",capture:"<<candidate.captureTimestamp<<",mode:"<<candidate.counters[0]
-                                <<",format:"<<candidate.sourceFormatGeneration<<",domain:"<<candidate.analysisDomainKey;
+                                <<",renderer:"<<candidate.rendererInstanceKey<<",transport:"<<candidate.transportGeneration
+                                <<",renderer_gen:"<<candidate.rendererGeneration<<",viewport:"<<candidate.viewportGeneration
+                                <<",format:"<<candidate.sourceFormatGeneration<<",domain:"<<candidate.analysisDomainKey
+                                <<",policy:"<<candidate.policyGeneration<<",continuity:"<<candidate.continuityGeneration
+                                <<",measured:"<<candidate.measured[0]<<','<<candidate.measured[1]<<'-'
+                                <<candidate.measured[2]<<','<<candidate.measured[3]
+                                <<",published:"<<candidate.published[0]<<','<<candidate.published[1]<<'-'
+                                <<candidate.published[2]<<','<<candidate.published[3];
                             if(count>=6){detail<<";...";break;}
                         }
                         if(!count)detail<<"none";
@@ -5225,6 +5237,18 @@ namespace VideoProcessorTest
                     return samePhysicalContext(record) && record.policyGeneration==output.policyGeneration &&
                         record.continuityGeneration==output.continuityGeneration;
                 };
+                const auto hasVerifiedCurrentBounds=[&](const AnalysisDiagnosticRecordV1& source,const int bounds[4]) {
+                    for(const auto& verified:spatialVerified)if(!strcmp(verified.stage,"source-crop-verification") &&
+                        verified.acceptedSequence==source.acceptedSequence &&
+                        verified.sourceFrameNumber==source.sourceFrameNumber && verified.captureTimestamp==source.captureTimestamp &&
+                        samePhysicalContext(verified) && verified.policyGeneration==source.policyGeneration &&
+                        verified.continuityGeneration==source.continuityGeneration &&
+                        (verified.flags&3u)==3u && verified.recordSequence<source.recordSequence) {
+                        bool exact=true;for(int edge=0;edge<4;++edge)exact&=verified.published[edge]==bounds[edge];
+                        if(exact)return true;
+                    }
+                    return false;
+                };
                 const AnalysisDiagnosticRecordV1* admissionMatch=nullptr;
                 for(const auto& admission:spatialCanvas)if(!strcmp(admission.stage,"subtitle-canvas-admission") &&
                     admission.acceptedSequence==output.acceptedSequence && sameCurrentContext(admission) &&
@@ -5241,10 +5265,44 @@ namespace VideoProcessorTest
                     source.captureTimestamp==output.captureTimestamp && sameCurrentContext(source) &&
                     source.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
                     (source.flags&(1u|2u|4u|8u))==(1u|2u|4u|8u)) {
-                    bool exact=true;for(int edge=0;edge<4;++edge)exact&=source.measured[edge]==expected[edge];
-                    if(exact && source.recordSequence<admissionMatch->recordSequence)sourceMeasurement=&source;
+                    bool exactVerified=true;for(int edge=0;edge<4;++edge)exactVerified&=source.published[edge]==expected[edge];
+                    if(exactVerified && hasVerifiedCurrentBounds(source,expected) &&
+                        source.recordSequence<admissionMatch->recordSequence)sourceMeasurement=&source;
                 }
-                if(!sourceMeasurement)return reject("exact-current-source-picture-active-measurement");
+                if(!sourceMeasurement) {
+                    std::ostringstream detail;
+                    detail<<"exact-current-source-picture-active-measurement expected="
+                        <<expected[0]<<','<<expected[1]<<'-'<<expected[2]<<','<<expected[3]
+                        <<" current_source_subchecks=";
+                    unsigned count=0;
+                    for(const auto& source:spatialProduced) {
+                        if(strcmp(source.stage,"source-picture-active") ||
+                            source.acceptedSequence!=output.acceptedSequence)continue;
+                        const bool sameSource=source.sourceFrameNumber==output.sourceFrameNumber &&
+                            source.captureTimestamp==output.captureTimestamp;
+                        const bool sameContext=sameCurrentContext(source);
+                        const bool publishedExact=std::equal(std::begin(expected),std::end(expected),source.published);
+                        const bool verifiedBounds=hasVerifiedCurrentBounds(source,expected);
+                        const bool ordered=source.recordSequence<admissionMatch->recordSequence;
+                        if(count++)detail<<';';
+                        detail<<"ord:"<<source.recordSequence<<",source:"<<source.sourceFrameNumber
+                            <<",capture:"<<source.captureTimestamp<<",same_source:"<<sameSource
+                            <<",same_context:"<<sameContext<<",result:"<<source.resultCode
+                            <<",required_flags:"<<((source.flags&(1u|2u|4u|8u))==(1u|2u|4u|8u))
+                            <<",published_exact:"<<publishedExact<<",verified_bounds:"<<verifiedBounds
+                            <<",measured:"<<source.measured[0]<<','
+                            <<source.measured[1]<<'-'<<source.measured[2]<<','<<source.measured[3]
+                            <<",published:"<<source.published[0]<<','<<source.published[1]<<'-'
+                            <<source.published[2]<<','<<source.published[3]
+                            <<",before_admission:"<<ordered<<",renderer:"<<source.rendererInstanceKey
+                            <<",transport:"<<source.transportGeneration<<",renderer_gen:"<<source.rendererGeneration
+                            <<",viewport:"<<source.viewportGeneration<<",format:"<<source.sourceFormatGeneration
+                            <<",domain:"<<source.analysisDomainKey<<",policy:"<<source.policyGeneration
+                            <<",continuity:"<<source.continuityGeneration;
+                    }
+                    if(!count)detail<<"none";
+                    return reject(detail.str().c_str());
+                }
                 const uint64_t nativeOwner=output.counters[4];
                 const AnalysisDiagnosticRecordV1* acceptedModel=nullptr;
                 const AnalysisDiagnosticRecordV1* ownerMeasurement=nullptr;
@@ -5263,8 +5321,10 @@ namespace VideoProcessorTest
                         source.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
                         (source.flags&(1u|2u|4u|8u))==(1u|2u|4u|8u) &&
                         source.recordSequence<accepted.recordSequence) {
-                        bool exactMeasured=true;for(int edge=0;edge<4;++edge)exactMeasured&=source.measured[edge]==expected[edge];
-                        if(exactMeasured) {acceptedModel=&accepted;ownerMeasurement=&source;break;}
+                        bool exactVerified=true;for(int edge=0;edge<4;++edge)exactVerified&=source.published[edge]==expected[edge];
+                        if(exactVerified && hasVerifiedCurrentBounds(source,expected)) {
+                            acceptedModel=&accepted;ownerMeasurement=&source;break;
+                        }
                     }
                 }
                 if(!acceptedModel || !ownerMeasurement)return reject("accepted-native-model-owner-source-measurement-context-or-order");
@@ -5292,6 +5352,7 @@ namespace VideoProcessorTest
                         if(!strcmp(record.stage,"subtitle-canvas-admission"))spatialCanvas.push_back(record);
                         if(!strcmp(record.stage,"accepted-picture-detector"))spatialAccepted.push_back(record);
                         if(!strcmp(record.stage,"source-picture-active"))spatialProduced.push_back(record);
+                        if(!strcmp(record.stage,"source-crop-verification"))spatialVerified.push_back(record);
                         if(strcmp(record.stage,"submitted-presentation") || !(record.flags&1u))continue;
                         if(record.counters[4]) {
                             const bool wholeSource=std::abs(record.metrics[8])<0.01 && std::abs(record.metrics[9])<0.01 &&
