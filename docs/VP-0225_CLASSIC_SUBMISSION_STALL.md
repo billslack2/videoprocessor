@@ -15,11 +15,14 @@ candidate and configured-fill ownership before selecting a correction.
 
 ## Historical comparison
 
-Remote tag 1.4-beta-rc4 (6d5f8ad4241c24b750b96d2e3f54abb458bc7986) and RC6
-1.4-beta-rc6 (e3a34b6c9358485e2d975d7b76c7be1ad05baec2) have no
+Direct GitHub verification identifies remote tag 1.4-beta-rc4 as
+6d5f8ad4241c24b750b96d2e3f54abb458bc7986 and remote 1.4-beta-rc6 as
+7af23836ae937353edb50a5b1b3f8e9176634480. Both have no
 SubtitleCanvasMode/waitForSubtitleProcessing/selectedCanvasWait whole-output
-gate. These tags are not a linear ancestry pair; their common ancestor is
-a1853906. The wait machinery first appears in Nov 2 commit 01c1e13f, whose
+gate. The initial local RC6 tag was stale at release ancestor
+e3a34b6c9358485e2d975d7b76c7be1ad05baec2; the remote RC6 merge has identical
+crop-policy code and only seven renderer lines differ, with no canvas gate.
+The wait machinery first appears in Nov 2 commit 01c1e13f, whose
 purpose was to prevent subtitles from resizing the movie. The fixed movie
 canvas requirement remains valid; withholding prolonged source progression is
 not an acceptable way to satisfy it. This identifies a post-RC6 regression
@@ -67,5 +70,14 @@ certificates for this unprocessed continuation. No extra full detector or text
 scan belongs in the presentation path. Stale/missing/infeasible evidence must
 not acquire new authority. Test source progression, candidate coverage and
 context mismatches; passing policy tests alone is not live playback acceptance.
+
+The confirmed-caption path preserves the same exact-current raw occupied-side
+margin: changing UNKNOWN to PRESENT must not drop that bound and reverse a safe
+pan. The original source frame/capture identity is retained from the selected
+snapshot in diagnostics; delayed output never borrows the current input's identity.
+Runtime tests join unprocessed output to exact-source admissions and previously
+measured native geometry without inventing a presentation certificate. Existing
+per-output caption visibility, shader readiness, native dimensions and repeat
+identity assertions remain in force for Classic, Black and Reconstruction.
 
 No deployment or active configuration changes are part of this work.
