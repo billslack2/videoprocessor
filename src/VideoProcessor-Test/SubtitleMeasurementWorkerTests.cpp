@@ -2261,7 +2261,7 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         auto changedPending=PendingAfterReassociation(6);
         Assert::IsFalse(changedGuard.Resolve(changedPending,Source(changedPixels),40,250),
             L"A changed accepted glyph sample outside the current search band must still fail exact current-pixel verification.");
-        Assert::AreEqual("current-owned-glyph-changed",changedGuard.DecisionReason());
+        Assert::AreEqual("current-known-ink-changed",changedGuard.DecisionReason());
         const auto retained=tracker.Consume(pending,250,40);
         Assert::IsTrue(retained.detected);Assert::AreEqual(3,retained.lineCount);
         Assert::AreEqual(accepted.cue,retained.cue);
@@ -3155,6 +3155,69 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 }
             }
         }
+    }
+    TEST_METHOD(CurrentFootprintRearmsStrideOneOnlyAndKeepsOriginalPixelBaseline) {
+        auto makeGeometry=[](const SubtitleBoxResult& accepted,int top,int bottom) {
+            SubtitleCutPasteGeometry g;g.valid=true;g.content=accepted.bounds;
+            g.glyphLines=accepted.lineBounds;g.pictureCapture=accepted.capturePanel;
+            g.generatedCleanup=accepted.sourcePanel;g.source=g.destination=g.content;
+            g.pictureTop=top;g.pictureBottom=bottom;return g;
+        };
+        auto pixels=PixelsWithCurrentBars();
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,pixels);seed.current.analysisStride=1;
+        seed.text=seed.current.text;const auto accepted=seed.current.text;
+        const auto base=seed.current.sharedPicture.bounds;const auto geometry=makeGeometry(accepted,12,78);
+        auto source=CadenceSource(pixels);
+        auto footprint=std::make_unique<SubtitleCadenceGuard>();
+        Assert::IsTrue(footprint->RememberCurrentFootprint(seed,accepted,source,base,geometry));
+
+        // A consecutive independently analyzed stride-1 source may reuse the
+        // immutable footprint topology. A black-to-nonblack change is not
+        // silently incorporated into that baseline.
+        auto movedPixels=pixels;movedPixels[80*160+42]=uint16_t(110<<6);
+        auto movedSeed=Ready(2);movedSeed.current=CompleteThreeLineScan(2,movedPixels);
+        movedSeed.current.analysisStride=1;movedSeed.text=movedSeed.current.text;
+        auto movedSource=CadenceSource(movedPixels);
+        Assert::IsTrue(footprint->RememberCurrentFootprint(movedSeed,movedSeed.text,movedSource,base,geometry));
+        Assert::AreEqual("cadence-seed-rearmed",footprint->DecisionReason());
+        Assert::AreEqual(0u,footprint->SampleCount(),L"Stride-1 rearm must reuse the immutable baseline, not rebuild it.");
+        auto verifyCurrent=CompleteThreeLineScan(3,movedPixels);
+        const auto movedProof=footprint->VerifyCurrentFootprint(verifyCurrent,movedSource,
+            movedSeed.current,movedSeed.text,base);
+        Assert::IsFalse(movedProof.valid,
+            L"A changed old-black cleanup sample must still fail against the original seed after rearm.");
+        Assert::AreEqual("current-black-backing-changed",movedProof.reason);
+
+        // Changed owned masks and changed shader geometry cannot reuse the
+        // old topology. A fresh independent accepted source can seed anew.
+        for(int fault=0;fault<2;++fault) {
+            auto faultGuard=std::make_unique<SubtitleCadenceGuard>();
+            Assert::IsTrue(faultGuard->RememberCurrentFootprint(seed,accepted,source,base,geometry));
+            auto changedPixels=pixels;
+            if(fault==0)changedPixels[50*160+50]=uint16_t(300<<6);
+            auto changed=Ready(2);changed.current=CompleteThreeLineScan(2,changedPixels);
+            changed.current.analysisStride=1;changed.text=changed.current.text;
+            auto changedSource=CadenceSource(changedPixels);auto changedGeometry=geometry;
+            if(fault==1)++changedGeometry.generatedCleanup.left;
+            Assert::IsTrue(faultGuard->RememberCurrentFootprint(changed,changed.text,changedSource,base,changedGeometry));
+            Assert::AreNotEqual("cadence-seed-rearmed",faultGuard->DecisionReason(),
+                L"Changed glyph ownership or final geometry must not use the prior footprint baseline.");
+            Assert::IsTrue(faultGuard->SampleCount()>0,
+                L"An ineligible rearm must take the complete fresh seed path.");
+        }
+
+        // The ordinary cadence guard retains its original stride-2 rearm rule.
+        auto cadenceSeed=Ready(1);cadenceSeed.current=CompleteThreeLineScan(1,pixels);
+        cadenceSeed.current.analysisStride=2;cadenceSeed.text=cadenceSeed.current.text;
+        auto cadenceGeometry=makeGeometry(cadenceSeed.text,12,78);
+        auto cadence=std::make_unique<SubtitleCadenceGuard>();
+        Assert::IsTrue(cadence->RememberAccepted(cadenceSeed,cadenceSeed.text,source,base,cadenceGeometry));
+        auto strideOne=Ready(2);strideOne.current=CompleteThreeLineScan(2,pixels);
+        strideOne.current.analysisStride=2;strideOne.text=strideOne.current.text;
+        Assert::IsTrue(cadence->RememberAccepted(strideOne,strideOne.text,source,base,cadenceGeometry));
+        Assert::AreNotEqual("cadence-seed-rearmed",cadence->DecisionReason());
+        Assert::IsTrue(cadence->SampleCount()>0,
+            L"The ordinary cadence seed remains tied to its stride-2 source spacing.");
     }
     TEST_METHOD(CadenceGuardRequiresNewStrongScanAndRejectsUnownedExtraCapture) {
         auto pixels=Pixels();auto ready=Ready(1);ready.current=CompleteThreeLineScan(1,pixels);

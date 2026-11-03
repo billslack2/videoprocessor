@@ -192,7 +192,7 @@ private:
             return fail("cadence-cleanup-unbounded");
         // Only generated black/reconstruction modes erase bar content this way.
         if(backgroundMode!=3 && backgroundMode!=5)return fail("cadence-unsupported-background");
-        if(CanRearm(preview,accepted,source,base,geometry)) {
+        if(CanRearm(preview,accepted,source,base,geometry,allowAnalyzedStrideOne)) {
             // Only a fresh independent positive scan advances this identity.
             // Keep the ORIGINAL native baseline: fringe drift cannot accumulate.
             *m_reference=preview;m_reference->current.text=accepted;m_reference->text=accepted;
@@ -486,12 +486,14 @@ private:
         return true;
     }
     bool CanRearm(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
-        const AnalysisLumaSource& source,const ActivePictureBounds& base,const SubtitleCutPasteGeometry& geometry) const {
+        const AnalysisLumaSource& source,const ActivePictureBounds& base,const SubtitleCutPasteGeometry& geometry,
+        bool allowAnalyzedStrideOne) const {
         if(!m_valid || !m_baseline || !m_detectorReference || !SameGeometry(geometry,m_geometry) || !SameBase(base,m_base))return false;
         const auto& c=preview.current;const auto& previous=m_reference->current;const auto& p=*c.ink;
         if(!SameContext(c,previous) || preview.policyGeneration!=m_reference->policyGeneration ||
             preview.continuityGeneration!=m_reference->continuityGeneration ||
-            c.identity.acceptedSequence!=previous.identity.acceptedSequence+2 ||
+            c.identity.acceptedSequence!=previous.identity.acceptedSequence+
+                (allowAnalyzedStrideOne && c.analysisStride==1?1u:2u) ||
             c.identity.sourceFrameNumber<=previous.identity.sourceFrameNumber ||
             c.identity.captureTimestamp<=previous.identity.captureTimestamp ||
             source.format!=m_source.format || source.encoding!=m_source.encoding || source.range!=m_source.range ||

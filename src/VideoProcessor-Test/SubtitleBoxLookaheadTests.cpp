@@ -4394,6 +4394,9 @@ public:
             const auto before=timeline.ContinuityGeneration();
             auto pixels=Pixels(false);Text(pixels,230,305,12);
             auto first=MeasureWithBar(pixels,1,{},11,before);first.identity=identity(1);
+            first.sharedPicture.required=true;first.sharedPicture.identity=first.identity;
+            first.sharedPicture.bounds={0,first.pictureTop,first.width,first.pictureBottom,
+                first.width,first.height};
             auto initial=SubtitleBoxLookahead::Resolve(&first,1,11,before);
             SubtitleBoxPresentation tracker;SubtitlePendingMeasurementGuard guard;
             const auto acquired=tracker.Consume(initial,250,50);
@@ -4404,16 +4407,22 @@ public:
             for(uint64_t sequence:{uint64_t(3),uint64_t(4),uint64_t(6)}) {
                 if(sequence==6)timeline.MarkDiscarded(identity(5),5,reason);
                 const auto currentContinuity=timeline.ContinuityGeneration();
-                auto key=first;key.identity=identity(sequence);key.analyzed=false;key.text={};key.ink.reset();
+                auto key=first;key.identity=identity(sequence);key.sharedPicture.identity=key.identity;
+                key.analyzed=false;key.text={};key.ink.reset();
                 key.continuityGeneration=currentContinuity;
                 auto pending=SubtitleBoxLookahead::Resolve(&key,1,11,currentContinuity);
-                const auto token=tracker.AcceptedTemplateIdentity();
+                const auto token=tracker.AcceptedQueueTemplateIdentity();
                 const bool queueOnly=timeline.OnlyBacklogRetirementBetween(token,key.identity,
-                    tracker.AcceptedTemplateContinuity(),currentContinuity);
+                    tracker.AcceptedQueueTemplateContinuity(),currentContinuity);
                 Assert::AreEqual(sequence!=4,queueOnly);
                 const bool verified=ResolvePendingQueue(guard,pending,Source(pixels),50,250,
                     queueOnly?&token:nullptr,queueOnly,0);
                 Assert::IsTrue(verified);
+                // The exact-current shared-picture footprint may carry
+                // verified pixels while intentionally withholding bar
+                // authority from the tracker.
+                pending.current.independentBarAnalysis=false;
+                pending.current.barAuthority=false;pending.current.barEvidence={};
                 const auto kept=ConsumePendingQueue(tracker,pending,250,50,
                     queueOnly?&token:nullptr,queueOnly,verified,0);
                 Assert::IsTrue(kept.detected);
@@ -4421,8 +4430,14 @@ public:
                 Assert::AreEqual(acquired.lineCount,kept.lineCount);
                 Assert::AreEqual(acquired.bounds.top,kept.bounds.top);
                 Assert::AreEqual(acquired.bounds.bottom,kept.bounds.bottom);
-                Assert::IsTrue(SameAnalysisFrameIdentity(key.identity,tracker.AcceptedTemplateIdentity()));
-                Assert::AreEqual(currentContinuity,tracker.AcceptedTemplateContinuity());
+                Assert::IsFalse(SubtitleBoxLookahead::HasBarEvidence(pending.current),
+                    L"Pending pixel continuity must not reconstruct bar evidence.");
+                Assert::IsTrue(tracker.HasAcceptedQueueTemplate(),
+                    L"Verified queue identity can advance while physical authority remains absent.");
+                Assert::IsFalse(tracker.HasAcceptedSourceTemplate());
+                Assert::IsFalse(tracker.AcceptedCueSeedCertificate().Matches(pending,kept));
+                Assert::IsTrue(SameAnalysisFrameIdentity(key.identity,tracker.AcceptedQueueTemplateIdentity()));
+                Assert::AreEqual(currentContinuity,tracker.AcceptedQueueTemplateContinuity());
                 Assert::IsFalse(pending.futureAvailable || pending.currentLinesConfirmed);
                 Assert::IsFalse(pending.current.subtitleArProof.accepted);
                 auto reseedAttempt=guard;
@@ -4430,7 +4445,8 @@ public:
                     L"Recovered pending output is never a new accepted measurement seed.");
                 timeline.MarkConsumed(key.identity);
             }
-            auto key=first;key.identity=identity(7);key.analyzed=false;key.text={};key.ink.reset();
+            auto key=first;key.identity=identity(7);key.sharedPicture.identity=key.identity;
+            key.analyzed=false;key.text={};key.ink.reset();
             key.continuityGeneration=timeline.ContinuityGeneration();
             auto expired=SubtitleBoxLookahead::Resolve(&key,1,11,key.continuityGeneration);
             const bool verified=ResolvePendingQueue(guard,expired,Source(pixels),50,250,nullptr,false,0);
@@ -4443,16 +4459,22 @@ public:
         for(int scenario=0;scenario<8;++scenario) {
             auto pixels=Pixels(false);Text(pixels,230,305,12);
             auto first=MeasureWithBar(pixels,1,{},11,21);
+            first.sharedPicture.required=true;first.sharedPicture.identity=first.identity;
+            first.sharedPicture.bounds={0,first.pictureTop,first.width,first.pictureBottom,
+                first.width,first.height};
             auto initial=SubtitleBoxLookahead::Resolve(&first,1,11,21);
             SubtitleBoxPresentation tracker;SubtitlePendingMeasurementGuard guard;
             const auto acquired=tracker.Consume(initial);
             Assert::IsTrue(acquired.detected);
             Assert::IsTrue(guard.RememberAccepted(initial,acquired,Source(pixels),40,250));
-            auto key=first;key.identity=Identity(3);key.analyzed=false;key.text={};key.ink.reset();
+            auto key=first;key.identity=Identity(3);key.sharedPicture.identity=key.identity;
+            key.analyzed=false;key.text={};key.ink.reset();
             key.continuityGeneration=22;
             auto pending=SubtitleBoxLookahead::Resolve(&key,1,11,22);
             auto token=tracker.AcceptedTemplateIdentity();
             Assert::IsTrue(ResolvePendingQueue(guard,pending,Source(pixels),40,250,&token,true,0));
+            pending.current.independentBarAnalysis=false;pending.current.barAuthority=false;
+            pending.current.barEvidence={};
             bool verified=true,queueOnly=true;const ActivePictureFrameIdentity* tokenPointer=&token;
             switch(scenario) {
             case 0: verified=false;break;
@@ -4517,6 +4539,60 @@ public:
         auto expired=SubtitleBoxLookahead::Resolve(&key,1,policy,continuity);
         Assert::IsFalse(guard.Resolve(expired,Source(pixels),50,250));
         Assert::IsFalse(expired.available);
+    }
+    TEST_METHOD(PendingCurrentPixelProofKeepsCueWithoutBarAuthorityOrLeaseRenewal) {
+        auto pixels=Pixels(false);Text(pixels,230,305,12);constexpr uint64_t policy=11,continuity=21;
+        auto first=MeasureWithBar(pixels,1,{},policy,continuity);
+        first.sharedPicture.required=true;first.sharedPicture.identity=first.identity;
+        first.sharedPicture.bounds={0,first.pictureTop,first.width,first.pictureBottom,
+            first.width,first.height};
+        auto initial=SubtitleBoxLookahead::Resolve(&first,1,policy,continuity);
+        SubtitleBoxPresentation presentation;SubtitlePendingMeasurementGuard guard;
+        const auto accepted=presentation.Consume(initial,250,50);
+        Assert::IsTrue(accepted.detected);
+        Assert::IsTrue(guard.RememberAccepted(initial,accepted,Source(pixels),50,250));
+
+        auto currentKey=first;currentKey.identity=Identity(2);currentKey.analyzed=false;
+        currentKey.sharedPicture.identity=currentKey.identity;
+        currentKey.text={};currentKey.ink.reset();
+        auto pending=SubtitleBoxLookahead::Resolve(&currentKey,1,policy,continuity);
+        Assert::IsTrue(guard.Resolve(pending,Source(pixels),50,250));
+        pending.current.independentBarAnalysis=false;pending.current.barAuthority=false;
+        pending.current.barEvidence={};
+        Assert::IsFalse(SubtitleBoxLookahead::HasBarEvidence(pending.current));
+        const double elapsed=guard.PendingElapsedMilliseconds();
+        const auto kept=presentation.Consume(pending,250,50,nullptr,false,true);
+        Assert::IsTrue(kept.detected);
+        Assert::IsTrue(kept.held,L"A pending pixel continuation retains the cue as held output.");
+        Assert::AreEqual(accepted.cue,kept.cue);
+        Assert::AreEqual("pending-current-pixels-without-bar-authority",presentation.DecisionReason());
+        Assert::IsFalse(presentation.AcceptedCueSeedCertificate().Matches(pending,kept));
+        Assert::IsTrue(presentation.HasAcceptedQueueTemplate());
+        Assert::AreEqual(uint64_t(2),presentation.AcceptedQueueTemplateIdentity().acceptedSequence);
+        Assert::IsFalse(presentation.HasAcceptedSourceTemplate(),
+            L"The queue identity is not a source-presentation or native-bar certificate.");
+        Assert::AreEqual(elapsed,guard.PendingElapsedMilliseconds(),
+            L"Presentation handoff cannot renew the worker's original pending lease.");
+
+        // Even when the success flag is accidentally reused, a different
+        // current ink snapshot cannot substitute for the exact verified one.
+        auto damaged=std::make_unique<SubtitleBoxPreview>(pending);
+        auto damagedInk=std::make_shared<SubtitleInkSnapshot>(*damaged->current.ink);
+        const auto& line=damaged->current.text.lineBounds[0];
+        for(int y=line.top;y<line.bottom;++y)for(int x=line.left;x<line.right;++x) {
+            const int gx=x/damagedInk->step;
+            const auto row=std::lower_bound(damagedInk->sourceRows.begin(),damagedInk->sourceRows.end(),y);
+            if(row==damagedInk->sourceRows.end() || *row!=y)continue;
+            const int gy=int(row-damagedInk->sourceRows.begin());
+            if(gx<0 || gx>=damagedInk->width)continue;
+            const size_t at=size_t(gy)*damagedInk->width+gx;const uint64_t bit=uint64_t{1}<<(at%64);
+            damagedInk->rawInk[at/64]&=~bit;damagedInk->ownedInk[at/64]&=~bit;
+        }
+        damaged->current.ink=std::move(damagedInk);
+        SubtitleBoxPresentation rejected;rejected.Consume(initial,250,50);
+        const auto lost=rejected.Consume(*damaged,250,50,nullptr,false,true);
+        Assert::IsFalse(lost.detected,
+            L"A success flag cannot make a changed current ink snapshot match the accepted cue.");
     }
     TEST_METHOD(PendingWorkerRejectsChangedGlyphsBlankFramesAndNewEpoch) {
         for(int scenario=0;scenario<4;++scenario) {

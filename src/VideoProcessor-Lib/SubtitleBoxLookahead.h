@@ -2458,9 +2458,14 @@ public:
         if(m_result.workLimit)return false;
         if(HasAcceptedSourceTemplate())return true;
         const auto& c=m_previous.current;const auto& q=m_queueContinuation;
+        const bool cadenceContinuation=q.valid && !q.pendingPixelsVerified &&
+            c.pendingRefresh && c.cadenceSkipped && c.analysisStride==2 && !c.independentBarAnalysis;
+        const bool pendingPixelContinuation=q.valid && q.pendingPixelsVerified &&
+            c.pendingRefresh && !c.cadenceSkipped && (c.analysisStride==1 || c.analysisStride==2) &&
+            c.analyzed && !c.independentBarAnalysis;
         if(!q.valid || !m_hasPrevious || m_handoffActive || !m_result.detected || m_result.confirmationPending ||
             !m_inkReference.ink || !m_previous.available || !c.analyzed || !c.text.detected || c.text.workLimit ||
-            !c.pendingRefresh || !c.cadenceSkipped || c.analysisStride!=2 || c.independentBarAnalysis ||
+            !(cadenceContinuation || pendingPixelContinuation) ||
             c.discontinuity || c.analysisRefresh || c.glyphLocalTop || c.glyphLocalBottom ||
             !SameAnalysisFrameIdentity(q.identity,c.identity) ||
             q.policy!=m_previous.policyGeneration || q.policy!=c.policyGeneration ||
@@ -2637,7 +2642,7 @@ public:
         double sourceFrameMilliseconds = 1000.0/60.0,
         const ActivePictureFrameIdentity* backlogTemplateIdentity = nullptr,
         bool backlogRetirementOnly = false,
-        bool backlogPendingPixelsVerified = false,
+        bool pendingCurrentPixelsVerified = false,
         const SubtitleCueContinuation* cueContinuation = nullptr)
     {
         // Even an unavailable/failed next Consume spends the single transport
@@ -2689,6 +2694,92 @@ public:
             m_previous.continuityGeneration == preview.continuityGeneration &&
             m_previous.current.scriptHint==preview.current.scriptHint) return m_handoffActive?m_handoffResult:m_result;
         m_queueContinuation={};
+        // Shared-picture pending reuse deliberately carries exact current
+        // pixels while withholding bar authority. The worker sets this
+        // per-call flag only after rechecking the immutable cue footprint and
+        // current bars. Continue the already accepted cue without converting
+        // that pixel witness into a new bar, detector, or native certificate.
+        const auto& pendingCurrent=preview.current;
+        if(pendingCurrentPixelsVerified && preview.available && m_hasPrevious && m_result.detected &&
+            !m_result.confirmationPending && !m_result.workLimit && m_inkReference.ink &&
+            pendingCurrent.pendingRefresh && pendingCurrent.analyzed &&
+            !pendingCurrent.discontinuity && !pendingCurrent.analysisRefresh &&
+            !pendingCurrent.cadenceSkipped && (pendingCurrent.analysisStride==1 || pendingCurrent.analysisStride==2) &&
+            !pendingCurrent.independentBarAnalysis && !SubtitleBoxLookahead::HasBarEvidence(pendingCurrent) &&
+            !pendingCurrent.text.held && !pendingCurrent.text.confirmationPending && !pendingCurrent.text.workLimit &&
+            pendingCurrent.text.detected && pendingCurrent.ink && pendingCurrent.ink!=m_inkReference.ink &&
+            pendingCurrent.ink->paletteValid && !pendingCurrent.ink->rawEvidenceComplete &&
+            pendingCurrent.sharedPicture.AvailableFor(pendingCurrent.identity,pendingCurrent.width,pendingCurrent.height) &&
+            pendingCurrent.sharedPicture.Matches(m_inkReference.sharedPicture) &&
+            (SubtitleBoxLookahead::ContextMismatchMask(m_inkReference,pendingCurrent)&~4096u)==0 &&
+            pendingCurrent.pictureTop==m_inkReference.pictureTop &&
+            pendingCurrent.pictureBottom==m_inkReference.pictureBottom &&
+            pendingCurrent.policyGeneration==preview.policyGeneration &&
+            pendingCurrent.continuityGeneration==preview.continuityGeneration &&
+            m_previous.policyGeneration==preview.policyGeneration &&
+            m_previous.current.optimizationMode==pendingCurrent.optimizationMode &&
+            pendingCurrent.identity.acceptedSequence>m_previous.current.identity.acceptedSequence &&
+            pendingCurrent.identity.captureTimestamp>m_previous.current.identity.captureTimestamp &&
+            (!m_previous.current.identity.sourceFrameNumber || !pendingCurrent.identity.sourceFrameNumber ||
+                pendingCurrent.identity.sourceFrameNumber>m_previous.current.identity.sourceFrameNumber)) {
+            const auto sameRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+                return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+            };
+            const auto& text=pendingCurrent.text;
+            bool sameAcceptedText=text.cue==m_result.cue && text.lineCount==m_result.lineCount &&
+                text.capturePanelMeasured==m_result.capturePanelMeasured &&
+                sameRect(text.bounds,m_result.bounds) && sameRect(text.sourcePanel,m_result.sourcePanel) &&
+                sameRect(text.provenSourcePanel,m_result.provenSourcePanel) &&
+                sameRect(text.capturePanel,m_result.capturePanel);
+            for(int line=0;sameAcceptedText && line<m_result.lineCount && line<3;++line)
+                sameAcceptedText=sameRect(text.lineBounds[line],m_result.lineBounds[line]) &&
+                    sameRect(text.linePanels[line],m_result.linePanels[line]) &&
+                    sameRect(text.provenLinePanels[line],m_result.provenLinePanels[line]) &&
+                    sameRect(text.lineCapturePanels[line],m_result.lineCapturePanels[line]) &&
+                    text.lineSignatures[line]==m_result.lineSignatures[line];
+            // The worker's per-call success is bound to this exact source and
+            // has already rechecked current bars. Supply accepted bar metadata
+            // only to a private comparison copy so the immutable glyph matcher
+            // can validate refreshed pixels; never publish it or advance bar
+            // tracking/certificates from this continuation.
+            auto verifiedPixelView=pendingCurrent;
+            verifiedPixelView.barAuthority=m_inkReference.barAuthority;
+            verifiedPixelView.barTrackingAuthority=m_inkReference.barTrackingAuthority;
+            verifiedPixelView.barEvidence=m_inkReference.barEvidence;
+            // The worker has already checked the complete current bar bands
+            // and every pixel this compositor can erase/copy. Current picture
+            // pixels outside that operation footprint remain pass-through, so
+            // do not repeat a detector-style novelty search here.
+            const bool currentInkMatches=sameAcceptedText &&
+                SubtitleBoxLookahead::SameCue(m_inkReference,verifiedPixelView) &&
+                SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,verifiedPixelView,&m_inkDiagnostic);
+            const auto& prior=m_previous.current.identity;
+            const auto& next=pendingCurrent.identity;
+            const bool queueToken=backlogRetirementOnly && backlogTemplateIdentity &&
+                SameAnalysisFrameIdentity(prior,*backlogTemplateIdentity);
+            const bool immediate=prior.acceptedSequence!=(std::numeric_limits<uint64_t>::max)() &&
+                next.acceptedSequence==prior.acceptedSequence+1;
+            const bool sameContinuity=m_previous.continuityGeneration==preview.continuityGeneration &&
+                m_previous.current.continuityGeneration==pendingCurrent.continuityGeneration;
+            const bool permittedAdvance=queueToken && (immediate || next.acceptedSequence>prior.acceptedSequence+1);
+            if(currentInkMatches && ((sameContinuity && immediate) || permittedAdvance)) {
+                auto result=m_result;result.held=true;result.revised=false;
+                m_previous=preview;m_previous.current.text=result;
+                m_result=result;m_hasPrevious=true;
+                auto& q=m_queueContinuation;q.valid=true;q.pendingPixelsVerified=true;
+                q.identity=next;q.policy=preview.policyGeneration;q.continuity=preview.continuityGeneration;
+                q.base=pendingCurrent.sharedPicture.bounds;q.cue=result.cue;q.lineCount=result.lineCount;
+                q.captureMeasured=result.capturePanelMeasured;q.bounds=result.bounds;
+                q.sourcePanel=result.sourcePanel;q.capturePanel=result.capturePanel;
+                q.lines=result.lineBounds;q.captures=result.lineCapturePanels;
+                m_pendingPictureGlyphAcquisition={};m_hasPendingPictureGlyphAcquisition=false;
+                m_refreshedReference={};m_decisionReason="pending-current-pixels-without-bar-authority";
+                m_diagnosticWeakMs=m_weakTemplateMilliseconds;
+                m_inkDiagnostic={};m_inkDiagnostic.pixelComparisonPerformed=true;
+                m_inkDiagnostic.reason="verified-current-pixel-continuation";
+                return result;
+            }
+        }
         const bool currentSharedPicture=preview.current.sharedPicture.AvailableFor(
             preview.current.identity,preview.current.width,preview.current.height);
         const bool sharedContinuation=cueContinuation && currentSharedPicture &&
@@ -2712,7 +2803,7 @@ public:
             auto fresh=std::make_unique<SubtitleBoxPresentation>(*this);
             fresh->m_completeOutputRetirement=completeOutputRetirement;
             const auto accepted=fresh->Consume(suppliedPreview,holdMilliseconds,sourceFrameMilliseconds,
-                backlogTemplateIdentity,backlogRetirementOnly,backlogPendingPixelsVerified,nullptr);
+                backlogTemplateIdentity,backlogRetirementOnly,pendingCurrentPixelsVerified,nullptr);
             if(accepted.detected && !accepted.held && !accepted.confirmationPending && !accepted.workLimit &&
                 accepted.lineCount==preview.current.text.lineCount) {
                 *this=std::move(*fresh);
@@ -2807,7 +2898,7 @@ public:
         // This per-call flag comes only from successful pending-guard current
         // pixel/bar revalidation, with the same exact timeline token. A copied
         // pending preview or a queue token alone cannot reconnect the cue.
-        const bool pendingBacklogReassociation=backlogPendingPixelsVerified &&
+        const bool pendingBacklogReassociation=pendingCurrentPixelsVerified &&
             backlogRetirementOnly && backlogTemplateIdentity && m_hasPrevious && m_result.detected &&
             SameAnalysisFrameIdentity(m_previous.current.identity,*backlogTemplateIdentity) &&
             preview.current.pendingRefresh && preview.current.analyzed &&
@@ -3267,7 +3358,7 @@ private:
         uint64_t policy=0,continuity=0;
     } m_completeOutputRetirement;
     struct QueueContinuationCertificate {
-        bool valid=false,captureMeasured=false;
+        bool valid=false,captureMeasured=false,pendingPixelsVerified=false;
         ActivePictureFrameIdentity identity;
         ActivePictureBounds base;
         uint64_t policy=0,continuity=0,cue=0;

@@ -2001,7 +2001,7 @@ namespace VideoProcessorTest
                     std::map<uint64_t,std::vector<const AnalysisDiagnosticRecordV1*>> admissionsByFrame;
                     std::vector<const AnalysisDiagnosticRecordV1*> phaseOutputs;
                     bool contextChanged=previousContext==nullptr;
-                    bool newInputStarted=previousContext==nullptr;unsigned oldQueuedDrain=0;
+                    bool newInputStarted=previousContext==nullptr;unsigned oldQueuedDrain=0,captionReassociatedDrains=0;
                     uint64_t lastDrained=previousContext?previousContext->sourceFrameNumber:0;
                     for(const auto& record:records) {
                         if(record.recordSequence<firstRecord)continue;
@@ -2016,12 +2016,17 @@ namespace VideoProcessorTest
                             record.sourceFrameNumber>lastDrained && record.transportGeneration==previousContext->transportGeneration &&
                             record.rendererGeneration==previousContext->rendererGeneration &&
                             record.sourceFormatGeneration==previousContext->sourceFormatGeneration &&
-                            record.analysisDomainKey==previousContext->analysisDomainKey &&
-                            record.continuityGeneration==previousContext->continuityGeneration) {
+                            record.analysisDomainKey==previousContext->analysisDomainKey) {
                             const auto oldInput=pendingInputIdentities.find(record.sourceFrameNumber);
                             require(oldInput!=pendingInputIdentities.end()&&oldInput->second.timestamp==record.captureTimestamp&&
                                 record.counters[0]==record.acceptedSequence&&record.counters[1]==record.acceptedSequence&&
                                 !(record.flags&16384u),L"Queued old-context drain lost its original source identity.");
+                            // Caption continuity may be reassociated while the
+                            // unchanged video source drains across a state reset.
+                            // This exception is limited to the bounded, exact
+                            // pre-input queue drain; source/PTS and physical
+                            // analysis context remain joined above.
+                            captionReassociatedDrains+=record.continuityGeneration!=previousContext->continuityGeneration;
                             require(++oldQueuedDrain<=4,L"Old-context output exceeded the fixture's original four-frame queue target.");
                             lastDrained=record.sourceFrameNumber;continue;
                         }
@@ -2093,6 +2098,7 @@ namespace VideoProcessorTest
                     }
                     std::ostringstream timing;timing<<"PENDING BURST REAL TIME: phase="<<phaseName
                         <<" outputs="<<phaseOutputs.size()<<" old_context_drain="<<oldQueuedDrain
+                        <<" caption_reassociated_drains="<<captionReassociatedDrains
                         <<" max_steady_submit_gap_ms="<<maxGapMs<<" max_input_to_submit_ms="<<maxLatencyMs
                         <<" first24_mean_latency_ms="<<firstLatency<<" last24_mean_latency_ms="<<lastLatency;
                     Logger::WriteMessage(timing.str().c_str());
@@ -3573,7 +3579,8 @@ namespace VideoProcessorTest
                 int64_t longestArrivalGap=0,longestOnFrame=0,longestPump=0;
                 const auto arrivalFrequency=clock.TimingClockTicksPerSecond();
                 const auto arrivalPeriod=static_cast<int64_t>(uint64_t(arrivalFrequency)*duration/scale);
-                struct SubtitleStageTiming {uint64_t calls=0,successes=0;std::vector<double> elapsedMs,leaseAgeMs;};
+                struct SubtitleStageTiming {uint64_t calls=0,successes=0;std::vector<double> elapsedMs,leaseAgeMs;
+                    std::map<std::string,uint64_t> reasons;};
                 std::array<SubtitleStageTiming,4> subtitleStageTimings{};
                 auto collectSubtitleStageTiming=[&](const AnalysisDiagnosticRecordV1& record) {
                     size_t index=subtitleStageTimings.size();
@@ -3584,6 +3591,7 @@ namespace VideoProcessorTest
                     if(index==subtitleStageTimings.size())return;
                     auto& timing=subtitleStageTimings[index];++timing.calls;
                     if(record.flags&1u)++timing.successes;
+                    ++timing.reasons[record.reason[0]?record.reason:"<empty>"];
                     const double elapsed=record.metrics[index==1?3:0];
                     if(std::isfinite(elapsed)&&elapsed>=0)timing.elapsedMs.push_back(elapsed);
                     if(index==1&&std::isfinite(record.metrics[0])&&record.metrics[0]>=0)
@@ -3613,6 +3621,11 @@ namespace VideoProcessorTest
                                 <<" lease_age_max_ms="<<(timing.leaseAgeMs.empty()?-1.0:timing.leaseAgeMs.back());
                         }
                         Logger::WriteMessage(row.str().c_str());
+                        for(const auto& reason:timing.reasons) {
+                            std::ostringstream reasonRow;reasonRow<<"DV SUBTITLE STAGE REASON: stage="<<names[index]
+                                <<" count="<<reason.second<<" reason="<<reason.first;
+                            Logger::WriteMessage(reasonRow.str().c_str());
+                        }
                     }
                 };
                 auto reportProducerTiming=[&](bool failure) {
@@ -5013,6 +5026,62 @@ namespace VideoProcessorTest
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));
             cleanup.renderer->Build();cleanup.renderer->Start();
             uint64_t sequence=1;std::set<uint64_t> witnessedNativeOwners;
+            auto exactCurrentMeasuredUnprocessedCrop=[&](const AnalysisDiagnosticRecordV1& output) {
+                if(!processedMode || strcmp(output.stage,"submitted-presentation") || !(output.flags&1u) ||
+                    output.counters[0]!=output.acceptedSequence || output.counters[1]!=output.acceptedSequence ||
+                    output.counters[2]!=0 || output.counters[3]!=processedMode ||
+                    output.counters[4]!=output.acceptedSequence || output.counters[5]!=0 || output.counters[6]!=0 || output.counters[7]!=0 ||
+                    output.resultCode!=int(AlphaSourceCrop::DecisionOwner::TRUSTED_CROP) ||
+                    ((output.flags>>24)&3u)!=unsigned(ActivePictureDetectorKind::SourceSpatialMeasured) ||
+                    (output.flags&(2u|4u|8u|16u|32u|64u|128u|256u|512u|1024u|4096u|8192u|16384u)))return false;
+                const int expected[4]={0,scopeBar,width,height-scopeBar};
+                for(int edge=0;edge<4;++edge)
+                    if(output.published[edge]!=expected[edge] || output.displayed[edge]!=expected[edge] ||
+                        !std::isfinite(output.metrics[8+edge]) || std::abs(output.metrics[8+edge]-expected[edge])>=0.01)return false;
+                const auto expectedCanvasMode=processedMode==unsigned(SubtitlePreviewMode::BlackBackground)
+                    ? AlphaSourceCrop::SubtitleCanvasMode::BLACK : AlphaSourceCrop::SubtitleCanvasMode::RECONSTRUCTION;
+                const AnalysisDiagnosticRecordV1* sourceMeasurement=nullptr;
+                for(const auto& source:spatialProduced)if(!strcmp(source.stage,"source-picture-active") &&
+                    source.acceptedSequence==output.acceptedSequence && source.sourceFrameNumber==output.sourceFrameNumber &&
+                    source.captureTimestamp==output.captureTimestamp && source.transportGeneration==output.transportGeneration &&
+                    source.rendererGeneration==output.rendererGeneration && source.viewportGeneration==output.viewportGeneration &&
+                    source.sourceFormatGeneration==output.sourceFormatGeneration && source.analysisDomainKey==output.analysisDomainKey &&
+                    source.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
+                    (source.flags&(1u|2u|4u|8u))==(1u|2u|4u|8u)) {
+                    bool exact=true;for(int edge=0;edge<4;++edge)exact&=source.measured[edge]==expected[edge];
+                    if(exact && source.recordSequence<output.recordSequence)sourceMeasurement=&source;
+                }
+                if(!sourceMeasurement)return false;
+                const AnalysisDiagnosticRecordV1* acceptedModel=nullptr;
+                for(const auto& accepted:spatialAccepted)if(!strcmp(accepted.stage,"accepted-picture-detector") &&
+                    accepted.acceptedSequence==output.acceptedSequence && accepted.counters[0]==output.acceptedSequence &&
+                    accepted.rendererInstanceKey==output.rendererInstanceKey &&
+                    accepted.transportGeneration==output.transportGeneration && accepted.rendererGeneration==output.rendererGeneration &&
+                    accepted.viewportGeneration==output.viewportGeneration &&
+                    accepted.sourceFormatGeneration==output.sourceFormatGeneration && accepted.analysisDomainKey==output.analysisDomainKey &&
+                    accepted.policyGeneration==output.policyGeneration && accepted.continuityGeneration==output.continuityGeneration &&
+                    accepted.sourceFrameNumber==output.sourceFrameNumber && accepted.captureTimestamp==output.captureTimestamp &&
+                    accepted.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
+                    sourceMeasurement->recordSequence<accepted.recordSequence && accepted.recordSequence<output.recordSequence) {
+                    bool exact=true;for(int edge=0;edge<4;++edge)exact&=accepted.published[edge]==expected[edge];
+                    if(exact)acceptedModel=&accepted;
+                }
+                if(!acceptedModel)return false;
+                for(const auto& admission:spatialCanvas)if(!strcmp(admission.stage,"subtitle-canvas-admission") &&
+                    admission.acceptedSequence==output.acceptedSequence && admission.rendererInstanceKey==output.rendererInstanceKey &&
+                    admission.transportGeneration==output.transportGeneration && admission.rendererGeneration==output.rendererGeneration &&
+                    admission.viewportGeneration==output.viewportGeneration &&
+                    admission.sourceFormatGeneration==output.sourceFormatGeneration && admission.analysisDomainKey==output.analysisDomainKey &&
+                    admission.policyGeneration==output.policyGeneration && admission.continuityGeneration==output.continuityGeneration &&
+                    admission.sourceFrameNumber==output.sourceFrameNumber && admission.captureTimestamp==output.captureTimestamp &&
+                    admission.counters[0]==static_cast<unsigned>(expectedCanvasMode) &&
+                    admission.counters[1]==static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) &&
+                    (admission.flags&2u) && !(admission.flags&(1u|4u|8u|32u|64u)) &&
+                    acceptedModel->recordSequence<admission.recordSequence && admission.recordSequence<output.recordSequence) {
+                    return true;
+                }
+                return false;
+            };
             auto pump=[&](std::vector<uint16_t>& pixels) {
                 MSG message;
                 while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE))
@@ -5045,6 +5114,8 @@ namespace VideoProcessorTest
                                     return canvas.counters[0]==static_cast<unsigned>(expectedCanvasMode) &&
                                         IsCurrentRawSubtitleFallback(record,canvas,width,height);
                                 });
+                            const bool currentMeasuredUnprocessedCrop=!wholeSource &&
+                                exactCurrentMeasuredUnprocessedCrop(record);
                             const bool retained=processedMode && !wholeSource && measured &&
                                 record.resultCode==int(AlphaSourceCrop::DecisionOwner::SUBMITTED_SCOPE_RETENTION) &&
                                 witnessedNativeOwners.count(record.counters[4]) && record.counters[4]<record.acceptedSequence &&
@@ -5059,7 +5130,7 @@ namespace VideoProcessorTest
                                         (canvas.flags&2u) && !(canvas.flags&(1u|4u));
                                 });
                             const bool validFullRaster=wholeSource && ((record.flags&4096u)!=0 || exactCurrentRawFallback);
-                            const bool validCrop=!wholeSource && (certified || retained);
+                            const bool validCrop=!wholeSource && (certified || retained || currentMeasuredUnprocessedCrop);
                             if(!measured || (!validFullRaster && !validCrop)) {
                                 std::ostringstream summary;summary<<"AR TRANSITION REJECTED OUTPUT: sequence="<<record.acceptedSequence
                                     <<" input="<<record.sourceFrameNumber<<" capture="<<record.captureTimestamp
@@ -5071,6 +5142,7 @@ namespace VideoProcessorTest
                                     <<" native="<<record.published[0]<<','<<record.published[1]<<'-'<<record.published[2]<<','<<record.published[3]
                                     <<" actual="<<record.metrics[8]<<','<<record.metrics[9]<<'-'<<record.metrics[10]<<','<<record.metrics[11]
                                     <<" whole="<<wholeSource<<" measured="<<measured<<" certified="<<certified
+                                    <<" current_physical_raw_crop="<<currentMeasuredUnprocessedCrop
                                     <<" raw_current="<<exactCurrentRawFallback;
                                 Logger::WriteMessage(summary.str().c_str());
                                 for(const auto& canvas:spatialCanvas)if(canvas.acceptedSequence==record.acceptedSequence &&
@@ -5092,7 +5164,7 @@ namespace VideoProcessorTest
                                 }
                             }
                             Assert::IsTrue(measured && (validFullRaster || validCrop),
-                                L"A crop needs current native proof or a same-source unprocessed continuation; full raster needs current authority or exact current raw visibility.");
+                                L"A crop needs a current measured native certificate, prior witnessed unprocessed continuation, or exact current measured source for an unprocessed advanced output; full raster needs current authority or exact current raw visibility.");
                         }
                         if(((record.flags>>24)&3u)==unsigned(ActivePictureDetectorKind::SourceSpatialMeasured))spatialOutputs.push_back(record);
                     }
