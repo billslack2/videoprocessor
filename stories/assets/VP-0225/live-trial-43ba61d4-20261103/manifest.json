@@ -1,0 +1,39 @@
+{
+  "source": "43ba61d4c8cfd24b65003d4c887413bd7969d031",
+  "storyStatus": "In Progress",
+  "deploymentStatus": "UserAuthorizedLiveTrial",
+  "fullQualification": false,
+  "userAcceptance": "OPEN; bounded telemetry is not visual acceptance.",
+  "reopenedProcess": 45776,
+  "subtitleProfile": "Reconstruction",
+  "profileActivation": "One verified Ctrl+Shift+T; other saved state preserved, including StandardScope.",
+  "performanceFollowup": "Captured steady replay still records 252 worker full scans per 144 sources.",
+  "files": [
+    {
+      "file": "deployment.json",
+      "sourcePath": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-43ba61d4\\deployment.json",
+      "sha256": "9D3C80703ABAEEB8B166DED876527792A85899477F2877EEF7E857A80FCA400C",
+      "bytes": 12087
+    },
+    {
+      "file": "native-iteration.json",
+      "sourcePath": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-175444-f4fd97b5\\iteration.json",
+      "sha256": "89F22E1A1F2CF7A7ACE0A9AC75176789811C808C4DA509D91D939768B509F690",
+      "bytes": 2701
+    },
+    {
+      "file": "motion-renderer-tests.json",
+      "sourcePath": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\subtitle-tolerance\\motion-43ba61d4-20261103\\motion-renderer-tests.json",
+      "sha256": "65279364929A20F917407AD691AE6ED12D57A480880E991EF9A7B46F9BEAB512",
+      "bytes": 1609
+    },
+    {
+      "file": "live-initial.json",
+      "sourcePath": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-43ba61d4\\live-initial.json",
+      "sha256": "1D019017F4046A8FB0120F62CEC5B82B7D8E5C21967A749265BE54918E115758",
+      "bytes": 679665
+    }
+  ],
+  "verifiedDeploymentFiles": 28,
+  "configurationSha256": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E"
+}
