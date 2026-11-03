@@ -34,6 +34,38 @@
 
 namespace
 {
+    bool IsCurrentRawSubtitleFallback(const AnalysisDiagnosticRecordV1& output,
+        const AnalysisDiagnosticRecordV1& admission,int width,int height) {
+        if(strcmp(output.stage,"submitted-presentation")||strcmp(admission.stage,"subtitle-canvas-admission")||
+            !(output.flags&1u)||(output.flags&(2u|16u|32u|64u|4096u|8192u|16384u))||
+            !(admission.flags&32u)||!(admission.flags&2u)||(admission.flags&(1u|4u))||
+            !output.acceptedSequence||output.counters[0]!=output.acceptedSequence||output.counters[1]!=output.acceptedSequence||
+            admission.acceptedSequence!=output.acceptedSequence||admission.rendererInstanceKey!=output.rendererInstanceKey||
+            admission.transportGeneration!=output.transportGeneration||admission.rendererGeneration!=output.rendererGeneration||
+            admission.viewportGeneration!=output.viewportGeneration||admission.sourceFormatGeneration!=output.sourceFormatGeneration||
+            admission.analysisDomainKey!=output.analysisDomainKey||admission.policyGeneration!=output.policyGeneration||
+            admission.continuityGeneration!=output.continuityGeneration||admission.sourceFrameNumber!=output.sourceFrameNumber||
+            admission.captureTimestamp!=output.captureTimestamp)return false;
+        for(int i=0;i<4;++i)if(output.displayed[i]!=admission.displayed[i])return false;
+        for(int i=0;i<4;++i)if(!std::isfinite(output.metrics[8+i])||
+            std::abs(output.metrics[8+i]-double(output.displayed[i]))>=0.01)return false;
+        if(output.displayed[0]<0||output.displayed[1]<0||output.displayed[2]>width||output.displayed[3]>height||
+            output.displayed[0]>=output.displayed[2]||output.displayed[1]>=output.displayed[3])return false;
+        const bool full=output.displayed[0]==0&&output.displayed[1]==0&&output.displayed[2]==width&&output.displayed[3]==height;
+        if(!(admission.flags&64u))return full;
+        if(admission.counters[3]!=output.acceptedSequence||admission.counters[4]!=output.transportGeneration||
+            admission.counters[5]!=output.viewportGeneration||admission.counters[6]!=output.sourceFormatGeneration||
+            admission.counters[7]!=output.analysisDomainKey)return false;
+        const auto& raw=admission.metrics;
+        if(!std::isfinite(raw[8])||!std::isfinite(raw[9])||!std::isfinite(raw[10])||!std::isfinite(raw[11])||
+            raw[8]<0||raw[9]<0||raw[10]>width||raw[11]>height||raw[8]>=raw[10]||raw[9]>=raw[11]||
+            output.displayed[0]>raw[8]||output.displayed[1]>raw[9]||output.displayed[2]<raw[10]||output.displayed[3]<raw[11])return false;
+        if(full)return true;
+        if(!output.counters[4])return false;
+        for(int i=0;i<4;++i)if(admission.previous[i]!=output.published[i])return false;
+        return output.displayed[0]<=output.published[0]&&output.displayed[1]<=output.published[1]&&
+            output.displayed[2]>=output.published[2]&&output.displayed[3]>=output.published[3];
+    }
     constexpr ULONGLONG ColdShaderPreparationBudgetMs=180000;
     std::mutex snapshotTestLogMutex;
     std::ofstream snapshotTestLog;
@@ -345,6 +377,50 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboPluginProxyTests)
 	{
 	public:
+        TEST_METHOD(RawSubtitleFallbackRequiresCurrentSourceAndAllVisiblePixels) {
+            AnalysisDiagnosticRecordV1 output{};
+            strcpy_s(output.stage,"submitted-presentation");output.flags=1u;
+            output.acceptedSequence=20;output.counters[0]=output.counters[1]=20;output.counters[4]=7;
+            output.rendererInstanceKey=99;output.transportGeneration=output.rendererGeneration=3;
+            output.viewportGeneration=4;output.sourceFormatGeneration=5;output.analysisDomainKey=6;
+            output.policyGeneration=8;output.continuityGeneration=9;
+            output.sourceFrameNumber=120;output.captureTimestamp=4321;
+            output.published[0]=0;output.published[1]=44;output.published[2]=640;output.published[3]=316;
+            output.displayed[0]=0;output.displayed[1]=20;output.displayed[2]=640;output.displayed[3]=316;
+            for(int i=0;i<4;++i)output.metrics[8+i]=output.displayed[i];
+            auto admission=output;strcpy_s(admission.stage,"subtitle-canvas-admission");admission.flags=2u|32u|64u;
+            admission.counters[3]=20;admission.counters[4]=3;admission.counters[5]=4;
+            admission.counters[6]=5;admission.counters[7]=6;
+            for(int i=0;i<4;++i)admission.previous[i]=output.published[i];
+            admission.metrics[8]=0;admission.metrics[9]=20;admission.metrics[10]=640;admission.metrics[11]=316;
+            Assert::IsTrue(IsCurrentRawSubtitleFallback(output,admission,640,360));
+            for(int fault=0;fault<21;++fault) {
+                auto bad=output;auto witness=admission;
+                if(fault==0)--bad.counters[0];if(fault==1)--bad.counters[1];
+                if(fault==2)++bad.sourceFrameNumber;if(fault==3)++bad.captureTimestamp;
+                if(fault==4)++witness.transportGeneration;if(fault==5)++witness.viewportGeneration;
+                if(fault==6)++witness.sourceFormatGeneration;if(fault==7)++witness.analysisDomainKey;
+                if(fault==8)++witness.policyGeneration;if(fault==9)++witness.continuityGeneration;
+                if(fault==10)--witness.counters[3];if(fault==11)++witness.counters[4];
+                if(fault==12)witness.metrics[9]=18;if(fault==13)++witness.previous[1];
+                if(fault==14)bad.flags|=2u;if(fault==15)bad.flags|=16u;
+                if(fault==16)bad.flags|=32u|64u;if(fault==17)bad.flags|=8192u;
+                if(fault==18)bad.flags|=16384u;if(fault==19)witness.flags&=~64u;
+                if(fault==20)bad.metrics[8]=bad.displayed[0]+1.0;
+                Assert::IsFalse(IsCurrentRawSubtitleFallback(bad,witness,640,360),
+                    L"Raw fallback must preserve exact source/context, all current pixels, and no processed/absence/native authority.");
+            }
+            auto full=output;auto noWitness=admission;
+            full.counters[4]=0;full.displayed[0]=full.displayed[1]=0;
+            full.displayed[2]=640;full.displayed[3]=360;
+            for(int i=0;i<4;++i)full.metrics[8+i]=full.displayed[i];
+            noWitness.flags=2u|32u;for(int i=0;i<4;++i)noWitness.displayed[i]=full.displayed[i];
+            Assert::IsTrue(IsCurrentRawSubtitleFallback(full,noWitness,640,360),
+                L"No visibility witness permits complete current input presentation, never a crop or an old frame.");
+            full.flags|=4096u;
+            Assert::IsFalse(IsCurrentRawSubtitleFallback(full,noWitness,640,360),
+                L"Full-input fallback cannot invent physical full-raster authority.");
+        }
         TEST_METHOD(ComposedCaptionRequiresFreshSourceOrOneIdenticalCompletedImageRepeat) {
             AnalysisDiagnosticRecordV1 original{};strcpy_s(original.stage,"submitted-presentation");
             original.flags=1u|2u|32u|64u;original.transportGeneration=original.rendererGeneration=7;
@@ -1640,8 +1716,13 @@ namespace VideoProcessorTest
         { VerifyClassicLifecycleMatrix(false,false,true); }
         TEST_METHOD(BetaRendererClassicUnknownCandidateSubmitsItsCurrentSource)
         { VerifyClassicLifecycleMatrix(true,false,true); }
+        TEST_METHOD(StandardRendererPendingCaptionBurstKeepsCurrentVideoAdvancing)
+        { VerifyClassicLifecycleMatrix(false,false,false,true); }
+        TEST_METHOD(BetaRendererPendingCaptionBurstKeepsCurrentVideoAdvancing)
+        { VerifyClassicLifecycleMatrix(true,false,false,true); }
 
-        void VerifyClassicLifecycleMatrix(bool beta,bool narrower,bool unknownAdmissionRegression=false)
+        void VerifyClassicLifecycleMatrix(bool beta,bool narrower,bool unknownAdmissionRegression=false,
+            bool pendingCaptionBurstRegression=false)
         {
             struct ProbeClock final : ITimingClock {
                 LARGE_INTEGER frequency{};
@@ -1674,9 +1755,10 @@ namespace VideoProcessorTest
                     if(captureAdmissions) {
                         std::lock_guard<std::mutex> lock(classicPoseLogMutex);
                         classicPoseCaptureSubtitleAdmissions.store(false,std::memory_order_relaxed);
+                        classicPoseAllRecordStages=false;
                     }
-                }} diagnosticCleanup{diagnostics,unknownAdmissionRegression};
-            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=false;classicPoseCaptureSubtitleAdmissions.store(unknownAdmissionRegression,std::memory_order_relaxed);}
+                }} diagnosticCleanup{diagnostics,unknownAdmissionRegression||pendingCaptionBurstRegression};
+            {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=pendingCaptionBurstRegression;classicPoseCaptureSubtitleAdmissions.store(unknownAdmissionRegression||pendingCaptionBurstRegression,std::memory_order_relaxed);}
             diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);}
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
@@ -1696,7 +1778,7 @@ namespace VideoProcessorTest
             const int bar=narrower?64:68,pictureBottom=height-bar;
             const int captionBottom=pictureBottom+20,captionTop=captionBottom-captionHeight;
             VideoStateComPtr state=new VideoState();state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::P210;
-            state->displayMode=std::make_shared<DisplayMode>(width,height,false,(narrower||unknownAdmissionRegression)?24000:60000,1001);
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,(narrower||unknownAdmissionRegression||pendingCaptionBurstRegression)?24000:60000,1001);
             state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
             std::vector<uint16_t> native(state->BytesPerFrame()/2,uint16_t(512<<6));
             auto paintPicture=[&](std::vector<uint16_t>& pixels,int top,int bottom) {
@@ -1708,6 +1790,55 @@ namespace VideoProcessorTest
                 for(int x=342+glyph*22;x<356+glyph*22;++x)
                     if(x<345+glyph*22 || x>=353+glyph*22 || (y>=captionTop+6&&y<captionTop+9))
                         caption[size_t(y)*width+x]=uint16_t(700<<6);
+            struct PixelPoint {int x=0,y=0;};
+            struct PendingCaptionFrame {
+                std::vector<uint16_t> pixels;
+                std::vector<PixelPoint> volumeInk;
+                std::vector<PixelPoint> captionInk;
+            };
+            std::vector<PendingCaptionFrame> pendingCaptionFrames;
+            if(pendingCaptionBurstRegression) {
+                auto setInk=[&](PendingCaptionFrame& frame,int x,int y,std::vector<PixelPoint>& evidence) {
+                    if(x<0||x>=width||y<0||y>=height)return;
+                    frame.pixels[size_t(y)*width+x]=uint16_t(760<<6);
+                    evidence.push_back({x,y});
+                };
+                auto drawGlyph=[&](PendingCaptionFrame& frame,int x,int y,unsigned glyph,unsigned phase,
+                    std::vector<PixelPoint>& evidence) {
+                    for(int dy=0;dy<14;++dy)for(int dx=0;dx<12;++dx) {
+                        const bool stroke=dx==0||dx==11||dy==0||dy==13||
+                            ((dx+dy+int(glyph)+int(phase))%7==0 && dy>2 && dy<11);
+                        if(stroke)setInk(frame,x+dx,y+dy,evidence);
+                    }
+                };
+                for(unsigned variant=0;variant<12;++variant) {
+                    PendingCaptionFrame frame;frame.pixels=native;
+                    // A bright top-bar volume panel with a changing level and
+                    // changing pseudo-text, present in every source frame.
+                    for(int y=14;y<44;++y)for(int x=230;x<730;++x)
+                        if(y==14||y==43||x==230||x==729)setInk(frame,x,y,frame.volumeInk);
+                    for(unsigned glyph=0;glyph<4;++glyph)
+                        drawGlyph(frame,250+int(glyph)*17,21,glyph,variant,frame.volumeInk);
+                    const int level=24+int(variant%8)*36;
+                    for(int y=25;y<34;++y)for(int x=336;x<690;++x) {
+                        if(y==25||y==33||x==336||x==689||x<336+level)
+                            setInk(frame,x,y,frame.volumeInk);
+                    }
+                    for(unsigned glyph=0;glyph<3;++glyph)
+                        drawGlyph(frame,681+int(glyph)*14,21,glyph+variant,variant,frame.volumeInk);
+
+                    // Two-line subtitle bursts change glyphs and position by
+                    // a few pixels while the top UI remains independently live.
+                    const int subtitleShift=int(variant%5)-2;
+                    for(unsigned glyph=0;glyph<14;++glyph)
+                        drawGlyph(frame,260+int(glyph)*29+subtitleShift,472+subtitleShift,
+                            glyph,variant,frame.captionInk);
+                    for(unsigned glyph=0;glyph<10;++glyph)
+                        drawGlyph(frame,322+int(glyph)*30-subtitleShift,494-subtitleShift,
+                            glyph+3,variant+2,frame.captionInk);
+                    pendingCaptionFrames.push_back(std::move(frame));
+                }
+            }
             const ActivePictureBounds physical{0,bar,width,pictureBottom,width,height,double(width)/(pictureBottom-bar),ActivePictureBounds::BarAxes::TOP_BOTTOM};
             const int target=(std::min)(bar,captionBottom+(std::max)(8,height/90)+15-pictureBottom+10);
             const int shift=(target+1)&~1;
@@ -1781,11 +1912,18 @@ namespace VideoProcessorTest
                 return std::abs(g.right-g.left-(settled.right-settled.left))<0.01&&
                     std::abs(g.bottom-g.top-(settled.bottom-settled.top))<0.01;
             };
-            const auto sourcePeriod=std::chrono::duration<double>(1001.0/((narrower||unknownAdmissionRegression)?24000.0:60000.0));
+            const auto sourcePeriod=std::chrono::duration<double>(1001.0/((narrower||unknownAdmissionRegression||pendingCaptionBurstRegression)?24000.0:60000.0));
             auto nextSource=std::chrono::steady_clock::now();
+            struct PendingInputIdentity {size_t pattern=0;timingclocktime_t timestamp=0;};
+            std::map<uint64_t,PendingInputIdentity> pendingInputIdentities;
+            size_t pendingPatternForNextSource=0;
             auto pump=[&](std::vector<uint16_t>& pixels) {
                 MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
-                if(callback.state==RENDERSTATE_RENDERING){VideoFrame frame(pixels.data(),sequence++,clock.TimingClockNow(),&buffer);cleanup.renderer->OnVideoFrame(frame);}
+                if(callback.state==RENDERSTATE_RENDERING){
+                    const auto timestamp=pendingCaptionBurstRegression?clock.TimingClockNow():timingclocktime_t(0);
+                    if(pendingCaptionBurstRegression)pendingInputIdentities[sequence]={pendingPatternForNextSource,timestamp};
+                    VideoFrame frame(pixels.data(),sequence++,timestamp,&buffer);cleanup.renderer->OnVideoFrame(frame);
+                }
                 nextSource+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(sourcePeriod);
                 std::this_thread::sleep_until(nextSource);
                 DetectedPictureAspect value;cleanup.renderer->GetDetectedPictureAspect(value);UseCompletedSubmittedPresentation(value);return value;
@@ -1814,6 +1952,155 @@ namespace VideoProcessorTest
                 }while(GetTickCount64()<deadlineMs&&callback.state!=RENDERSTATE_FAILED);
                 require(false,L"Normal-drift fixture failed independent native-plane acquisition or exact configured fill.");
             };
+            if(pendingCaptionBurstRegression) {
+                require(!pendingCaptionFrames.empty(),L"Pending-caption fixture has no source-pixel burst frames.");
+                Logger::WriteMessage("Classic pending-caption burst: actual renderer startup before native acquisition\n");
+                auto recordCursor=[] {
+                    std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                    return classicPoseRecords.size()+1;
+                };
+                auto pointsVisible=[&](const AnalysisDiagnosticRecordV1& output,const PendingCaptionFrame& source,
+                    const std::vector<PixelPoint>& points) {
+                    const auto pointVisible=[&](const PixelPoint& point) {
+                        return output.displayed[0]<=point.x&&point.x<output.displayed[2]&&
+                            output.displayed[1]<=point.y&&point.y<output.displayed[3]&&
+                            source.pixels[size_t(point.y)*width+point.x]==uint16_t(760<<6);
+                    };
+                    return !points.empty()&&std::all_of(points.begin(),points.end(),pointVisible);
+                };
+                auto captionPixelsVisible=[&](const AnalysisDiagnosticRecordV1& output,const PendingCaptionFrame& source) {
+                    return pointsVisible(output,source,source.captionInk);
+                };
+                auto rawPixelsVisible=[&](const AnalysisDiagnosticRecordV1& output,const PendingCaptionFrame& source) {
+                    return pointsVisible(output,source,source.volumeInk)&&captionPixelsVisible(output,source);
+                };
+                struct BurstPhaseResult {uint64_t firstRawSource=0,formatGeneration=0;size_t outputCount=0;};
+                auto verifyBurstPhase=[&](uint64_t firstInput,size_t firstRecord,
+                    const AnalysisDiagnosticRecordV1* previousContext,const char* phaseName) {
+                    std::vector<AnalysisDiagnosticRecordV1> records;
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);records=classicPoseRecords;}
+                    std::map<uint64_t,const AnalysisDiagnosticRecordV1*> outputsByFrame;
+                    std::map<uint64_t,std::vector<const AnalysisDiagnosticRecordV1*>> admissionsByFrame;
+                    std::vector<const AnalysisDiagnosticRecordV1*> phaseOutputs;
+                    bool contextChanged=previousContext==nullptr;
+                    for(const auto& record:records) {
+                        if(record.recordSequence<firstRecord)continue;
+                        if(!strcmp(record.stage,"subtitle-canvas-admission")) {
+                            if(record.sourceFrameNumber>=firstInput &&
+                                record.counters[0]==static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::CLASSIC))
+                                admissionsByFrame[record.sourceFrameNumber].push_back(&record);
+                            continue;
+                        }
+                        if(strcmp(record.stage,"submitted-presentation")||!(record.flags&1u))continue;
+                        require(record.sourceFrameNumber>=firstInput,
+                            L"A prior-source image was submitted after pending Classic inputs began.");
+                        require(outputsByFrame.emplace(record.sourceFrameNumber,&record).second,
+                            L"Renderer submitted the same source identity more than once instead of advancing the actual source.");
+                        phaseOutputs.push_back(&record);
+                        require(std::isfinite(record.metrics[0])&&record.metrics[0]>0&&
+                            record.counters[0]==record.acceptedSequence&&record.counters[1]==record.acceptedSequence&&
+                            !(record.flags&16384u),
+                            L"Pending Classic output repeated an older complete image or failed to identify its current input.");
+                        require(!(record.flags&(2u|16u|8192u))&&record.counters[3]==0,
+                            L"Pending raw source output claimed subtitle composition, cleanup, caption absence, or a processed mode.");
+                        const auto input=pendingInputIdentities.find(record.sourceFrameNumber);
+                        require(input!=pendingInputIdentities.end()&&input->second.timestamp==record.captureTimestamp,
+                            L"Submitted source does not join the exact current input frame number and capture timestamp.");
+                        const auto& source=pendingCaptionFrames[input->second.pattern];
+                        require(captionPixelsVisible(record,source),
+                            L"Actual submitted source bounds clip current subtitle-burst pixels.");
+                        if(previousContext &&
+                            (record.rendererGeneration!=previousContext->rendererGeneration||
+                             record.sourceFormatGeneration!=previousContext->sourceFormatGeneration||
+                             record.analysisDomainKey!=previousContext->analysisDomainKey||
+                             record.continuityGeneration!=previousContext->continuityGeneration))contextChanged=true;
+                    }
+                    require(contextChanged,L"The real OnVideoState format change did not produce a new native-analysis context.");
+                    BurstPhaseResult result;result.outputCount=phaseOutputs.size();
+                    require(!phaseOutputs.empty(),L"Pending Classic phase produced no current submitted outputs.");
+                    result.formatGeneration=phaseOutputs.front()->sourceFormatGeneration;
+                    std::set<uint64_t> rawFallbackSources;
+                    for(const auto& admissionGroup:admissionsByFrame) {
+                        const auto source=admissionGroup.first;
+                        for(const auto* admission:admissionGroup.second) {
+                            if(admission->counters[1]!=static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) ||
+                                !(admission->flags&32u) || !(admission->flags&2u) || (admission->flags&(1u|4u)))continue;
+                            const auto outputAt=outputsByFrame.find(source);
+                            require(outputAt!=outputsByFrame.end(),
+                                L"An explicit pending raw-fallback admission did not submit its exact current source.");
+                            const auto& output=*outputAt->second;
+                            require(IsCurrentRawSubtitleFallback(output,*admission,width,height),
+                                L"Bit-32 raw fallback did not join exact-source pixels, actual submitted bounds, and the full renderer context.");
+                            require(rawPixelsVisible(output,pendingCaptionFrames[pendingInputIdentities.at(source).pattern]),
+                                L"Raw fallback failed to preserve the current top UI and burst subtitle pixels.");
+                            rawFallbackSources.insert(source);
+                        }
+                    }
+                    require(!rawFallbackSources.empty(),
+                        L"No explicit bit-32 Classic UNKNOWN raw fallback reached an actual current-source output.");
+                    for(const auto rawSource:rawFallbackSources) {
+                        bool advancingRun=true;double priorPts=0;uint64_t priorAccepted=0;
+                        for(unsigned offset=0;offset<24;++offset) {
+                            const auto found=outputsByFrame.find(rawSource+offset);
+                            if(found==outputsByFrame.end()){advancingRun=false;break;}
+                            const auto& output=*found->second;
+                            if(offset && (output.acceptedSequence!=priorAccepted+1 ||
+                                !(output.metrics[0]>priorPts))) {advancingRun=false;break;}
+                            const auto input=pendingInputIdentities.find(output.sourceFrameNumber);
+                            if(input==pendingInputIdentities.end()||input->second.timestamp!=output.captureTimestamp||
+                                !captionPixelsVisible(output,pendingCaptionFrames[input->second.pattern])) {
+                                advancingRun=false;break;
+                            }
+                            priorAccepted=output.acceptedSequence;priorPts=output.metrics[0];
+                        }
+                        if(advancingRun){result.firstRawSource=rawSource;break;}
+                    }
+                    require(result.firstRawSource>0,
+                        L"A bit-32 raw fallback was not followed by 24 consecutive current-source outputs with advancing timestamps and visible pixels.");
+                    Logger::WriteMessage((std::string("Classic pending-caption burst phase=")+phaseName+
+                        " source="+std::to_string(result.firstRawSource)+
+                        " raw_fallbacks="+std::to_string(rawFallbackSources.size())+
+                        " joined_outputs="+std::to_string(result.outputCount)+
+                        " consecutive_current_outputs=24 visible_UI_and_caption_pixels=preserved\n").c_str());
+                    return result;
+                };
+                auto sendBurst=[&](uint64_t firstInput,size_t count,size_t phaseOffset) {
+                    for(size_t i=0;i<count&&callback.state!=RENDERSTATE_FAILED;++i) {
+                        pendingPatternForNextSource=(phaseOffset+i)%pendingCaptionFrames.size();
+                        pump(pendingCaptionFrames[pendingPatternForNextSource].pixels);
+                    }
+                    require(sequence>firstInput+24,
+                        L"Actual renderer never resumed producing distinct sources during the pending-caption burst.");
+                };
+
+                const uint64_t startupInput=sequence;const size_t startupRecord=recordCursor();
+                sendBurst(startupInput,120,0);
+                const auto startup=verifyBurstPhase(startupInput,startupRecord,nullptr,"initial-startup");
+
+                std::vector<AnalysisDiagnosticRecordV1> beforeResetRecords;
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);beforeResetRecords=classicPoseRecords;}
+                const AnalysisDiagnosticRecordV1* priorContext=nullptr;
+                for(const auto& record:beforeResetRecords)
+                    if(!strcmp(record.stage,"submitted-presentation")&&(record.flags&1u)&&
+                        (!priorContext||record.sourceFrameNumber>priorContext->sourceFrameNumber))priorContext=&record;
+                require(priorContext!=nullptr,L"No completed source exists before the real format-context reset.");
+                const auto priorContextCopy=*priorContext;
+                VideoStateComPtr changedState=new VideoState(*state);
+                changedState->eotf=EOTF::PQ;changedState->colorspace=ColorSpace::BT_2020;
+                changedState->hdrData=std::make_shared<HDRData>();
+                changedState->hdrData->masteringDisplayMaxLuminance=1000;
+                changedState->hdrData->maxCll=1000;changedState->hdrData->maxFall=400;
+                require(cleanup.renderer->OnVideoState(changedState),
+                    L"Renderer rejected the natural P210 SDR-to-HDR format-context change.");
+                state=changedState;
+                const uint64_t resetInput=sequence;const size_t resetRecord=recordCursor();
+                sendBurst(resetInput,120,5);
+                const auto resetPhase=verifyBurstPhase(resetInput,resetRecord,&priorContextCopy,"post-OnVideoState-reset");
+                require(startup.firstRawSource>0&&resetPhase.firstRawSource>startup.firstRawSource&&
+                    resetPhase.formatGeneration!=startup.formatGeneration,
+                    L"Startup and post-reset raw fallback did not prove distinct source/format contexts.");
+                return;
+            }
             acquireNative();
             if(unknownAdmissionRegression) {
                 require(acceptedNativeSource>0,
@@ -3440,16 +3727,17 @@ namespace VideoProcessorTest
                     const bool classic=admission.counters[0]==static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::CLASSIC);
                     const bool advanced=admission.counters[0]==static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::BLACK)||
                         admission.counters[0]==static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::RECONSTRUCTION);
+                    const bool rawFallback=(admission.flags&32u)!=0;
                     const bool rawCurrent=admission.counters[3]==output.acceptedSequence &&
                         admission.counters[4]==output.acceptedSequence && admission.counters[5]==1 &&
                         admission.counters[6]==output.transportGeneration && admission.counters[7]==output.transportGeneration;
                     if(output.counters[0]!=output.acceptedSequence || output.counters[1]!=output.acceptedSequence ||
-                        (!classic&&!advanced) || (advanced&&(admission.flags&8u)) ||
-                        admission.counters[1]!=static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) ||
-                        !(admission.flags&2u) || (admission.flags&(1u|4u)) || (classic&&!rawCurrent)) {
+                        (!classic&&!advanced) || (!rawFallback&&advanced&&(admission.flags&8u)) ||
+                        (!rawFallback&&admission.counters[1]!=static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN)) ||
+                        !(admission.flags&2u) || (admission.flags&(1u|4u)) || (!rawFallback&&classic&&!rawCurrent)) {
                         failure="current output/admission is not an exact-source unprocessed UNKNOWN continuation in its documented mode";return false;
                     }
-                    if((output.flags&(2u|16u|32u|64u|8192u))!=0 || output.counters[4]==0) {
+                    if((output.flags&(2u|16u|32u|64u|8192u))!=0 || (!rawFallback&&output.counters[4]==0)) {
                         failure="unprocessed continuation claims composition, cleanup, certificate, caption absence, or no accepted native source";return false;
                     }
                     if(input==nativeInputs.end() || input->second.sourceFrameNumber!=admission.sourceFrameNumber ||
@@ -3458,6 +3746,54 @@ namespace VideoProcessorTest
                         input->second.sourceFormatGeneration!=admission.sourceFormatGeneration ||
                         input->second.analysisDomainKey!=admission.analysisDomainKey) {
                         failure="admission does not join the exact original analysis input identity/context";return false;
+                    }
+                    if(rawFallback) {
+                        if(!IsCurrentRawSubtitleFallback(output,admission,width,height)) {
+                            failure="explicit pending fallback lacks exact current raw pixels/identity or invents output authority";return false;
+                        }
+                        // Pending subtitle work is not permission to repeat an
+                        // older whole frame or trim current source pixels.
+                        const bool full=output.displayed[0]==0&&output.displayed[1]==0&&
+                            output.displayed[2]==width&&output.displayed[3]==height;
+                        for(int i=0;i<4;++i)if(admission.displayed[i]!=output.displayed[i]) {
+                            failure="raw pending fallback output differs from its exact-source admitted bounds";return false;
+                        }
+                        if(!(admission.flags&64u)) {
+                            if(!full){failure="pending output without exact raw visibility must preserve the complete current input";return false;}
+                            return true;
+                        }
+                        if(admission.counters[3]!=output.acceptedSequence||
+                            admission.counters[4]!=output.transportGeneration||
+                            admission.counters[5]!=output.viewportGeneration||
+                            admission.counters[6]!=output.sourceFormatGeneration||
+                            admission.counters[7]!=output.analysisDomainKey) {
+                            failure="pending raw visibility has foreign source/generation/epoch/format/domain identity";return false;
+                        }
+                        const auto& raw=admission.metrics;
+                        if(!std::isfinite(raw[8])||!std::isfinite(raw[9])||!std::isfinite(raw[10])||!std::isfinite(raw[11])||
+                            raw[8]<0||raw[9]<0||raw[10]>width||raw[11]>height||raw[8]>=raw[10]||raw[9]>=raw[11]||
+                            output.displayed[0]>raw[8]||output.displayed[1]>raw[9]||
+                            output.displayed[2]<raw[10]||output.displayed[3]<raw[11]) {
+                            failure="pending fallback clips current visible raw pixels or uses invalid visibility bounds";return false;
+                        }
+                        if(full)return true;
+                        if(!output.counters[4]){failure="cropped raw fallback lacks an accepted physical native base";return false;}
+                        for(int i=0;i<4;++i)if(admission.previous[i]!=output.published[i]) {
+                            failure="pending raw visibility base differs from the unchanged accepted native picture";return false;
+                        }
+                        if(output.displayed[0]>output.published[0]||output.displayed[1]>output.published[1]||
+                            output.displayed[2]<output.published[2]||output.displayed[3]<output.published[3]) {
+                            failure="pending fallback clips native picture pixels";return false;
+                        }
+                        bool priorPhysical=false;
+                        for(const auto& prior:outputs)if(prior.acceptedSequence<output.acceptedSequence&&
+                            prior.counters[4]==output.counters[4]&&witnessedNativeContextMatches(prior)&&
+                            IsMeasuredSpatialNativeSubmission(prior)) {
+                            bool same=true;for(int i=0;i<4;++i)same&=prior.published[i]==output.published[i];
+                            priorPhysical|=same;
+                        }
+                        if(!priorPhysical){failure="cropped pending fallback lacks its previously measured native-source witness";return false;}
+                        return true;
                     }
                     const AnalysisDiagnosticRecordV1* nativeWitness=nullptr;
                     for(auto it=outputs.rbegin();it!=outputs.rend();++it) {

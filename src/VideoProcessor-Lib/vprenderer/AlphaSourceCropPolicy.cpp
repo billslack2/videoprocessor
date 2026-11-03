@@ -6969,6 +6969,66 @@ namespace AlphaSourceCrop
         return true;
     }
 
+    static bool TryCurrentSourceVisibilityEnvelope(const PresentationRecoveryInput& input,
+        ActivePictureBounds& bounds)
+    {
+        const auto& c=input.crop;
+        const bool trustedBase=HasAcceptedNativeCrop(c) &&
+            SameTrustedCropContract(c.acceptedNativeCrop.bounds,c.geometry);
+        const auto& witness=input.currentSourceVisibility;
+        const bool exactCurrent=trustedBase && witness.available && witness.directCurrentSample &&
+            witness.sourceGeneration==c.frameSourceGeneration &&
+            witness.sourceSequence==c.frameSourceSequence &&
+            witness.presentationEpoch==input.presentationEpoch &&
+            witness.presentationEpoch==c.framePresentationEpoch &&
+            witness.sourceFormatKey==c.frameSourceFormatKey &&
+            witness.analysisDomainKey==c.frameAnalysisDomainKey &&
+            SameTrustedCropContract(witness.nativeBase,c.acceptedNativeCrop.bounds) &&
+            ValidBounds(witness.bounds,c.rasterWidth,c.rasterHeight);
+        if(!exactCurrent)return false;
+
+        bounds=c.acceptedNativeCrop.bounds;
+        bounds.left=std::max(0,std::min(bounds.left,witness.bounds.left)&~1);
+        bounds.top=std::max(0,std::min(bounds.top,witness.bounds.top)&~1);
+        bounds.right=std::min(c.rasterWidth,(std::max(bounds.right,witness.bounds.right)+1)&~1);
+        bounds.bottom=std::min(c.rasterHeight,(std::max(bounds.bottom,witness.bounds.bottom)+1)&~1);
+        bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+        bounds.aspectRatio=double(bounds.right-bounds.left)/std::max(1,bounds.bottom-bounds.top);
+        return ValidBounds(bounds,c.rasterWidth,c.rasterHeight);
+    }
+
+    static bool ApplyRawSubtitleFallback(const PresentationRecoveryInput& input,
+        UncertainPicturePresentationDecision& result,const char* reason)
+    {
+        const auto& c=input.crop;
+        auto& d=result.presentation;
+        d={};
+        d.subtitleCanvasApplied=true;
+        d.unprocessedSubtitleCanvas=true;
+        d.rawSubtitleFallback=true;
+        d.waitForSubtitleProcessing=false;
+        d.nativePresentation={};
+        d.confirmedFitOwnership={};
+        d.reason=std::string("raw subtitle fallback to current source: ")+reason;
+        result.retained=false;
+        result.expanded=false;
+        result.currentPixelExtent=false;
+        result.nativeCrop={};
+
+        const auto raster=FullRaster(c.rasterWidth,c.rasterHeight);
+        ActivePictureBounds bounds;
+        const bool exactCurrent=TryCurrentSourceVisibilityEnvelope(input,bounds);
+        if(!exactCurrent)bounds=raster;
+        else result.currentPixelExtent=true;
+
+        d.sourceBounds=bounds;
+        d.applyCrop=!SameBounds(bounds,raster);
+        d.outwardExpanded=result.currentPixelExtent && !SameBounds(bounds,c.acceptedNativeCrop.bounds);
+        d.owner=d.applyCrop?DecisionOwner::OUTWARD_FIT:DecisionOwner::FULL_RASTER;
+        result.expanded=d.outwardExpanded;
+        return true;
+    }
+
     static bool ResolveProcessedSubtitleCanvas(const PresentationRecoveryInput& input,
         UncertainPicturePresentationDecision& result)
     {
@@ -6982,10 +7042,10 @@ namespace AlphaSourceCrop
         result.presentation.applyCrop=true;result.presentation.owner=DecisionOwner::TRUSTED_CROP;
         result.presentation.subtitleCanvasApplied=true;
         auto& d=result.presentation;
-        const auto wait=[&](const char* reason) {
-            d.waitForSubtitleProcessing=true;d.reason=reason;return true;
+        const auto pending=[&](const char* reason) {
+            return ApplyRawSubtitleFallback(input,result,reason);
         };
-        if(!HasAcceptedNativeCrop(c))return wait("native canvas context pending; keep the last complete movie canvas");
+        if(!HasAcceptedNativeCrop(c))return pending("native canvas context pending");
         const auto& o=input.captionObservation;
         const bool emptyBands=input.measurementCurrent && input.retentionEvaluated && input.excludedBandsPixelSafe &&
             input.retentionSourceGeneration==c.frameSourceGeneration && input.retentionSourceSequence==c.frameSourceSequence &&
@@ -6999,7 +7059,7 @@ namespace AlphaSourceCrop
         const bool advanced=input.subtitleCanvasMode!=SubtitleCanvasMode::CLASSIC;
         const auto expected=input.subtitleCanvasMode==SubtitleCanvasMode::BLACK?PreparedNativeMode::BLACK:
             input.subtitleCanvasMode==SubtitleCanvasMode::RECONSTRUCTION?PreparedNativeMode::RECONSTRUCTION:PreparedNativeMode::NONE;
-        if(c.subtitlePresentationMode!=expected)return wait("subtitle profile context changed; keep the last complete movie canvas");
+        if(c.subtitlePresentationMode!=expected)return pending("subtitle profile context changed");
         const bool composed=HasCurrentSubtitleCompositionPresentation(c) || HasCurrentPreparedSubtitlePresentation(c);
         const bool rawCurrent=c.currentVisibleBoundsAvailable && input.measurementCurrent && input.retentionEvaluated &&
             input.retentionSourceGeneration==c.frameSourceGeneration && input.retentionSourceSequence==c.frameSourceSequence &&
@@ -7016,10 +7076,15 @@ namespace AlphaSourceCrop
             SameTrustedCropContract(input.submittedScopeAnchor.crop,n) &&
             input.submittedScopeAnchor.acceptedNativeCrop.sourceFormatKey==c.frameSourceFormatKey &&
             input.submittedScopeAnchor.acceptedNativeCrop.analysisDomainKey==c.frameAnalysisDomainKey) {
-            // Unknown inspection is not a queued caption job. Keep submitting
-            // THIS source with the accepted movie dimensions while acquisition
-            // continues. Do not synthesize absence, cleanup, native authority or
-            // a successful processed packet from an older displayed image.
+            // The current source may continue on the accepted movie aperture
+            // only when a separate exact-current visibility witness proves
+            // that no raw pixels lie outside it. Unknown caption semantics do
+            // not make an outboard raw extent safe to clip.
+            ActivePictureBounds currentEnvelope;
+            if(!TryCurrentSourceVisibilityEnvelope(input,currentEnvelope) || !ContainedBounds(n,currentEnvelope))
+                return pending("current raw visibility is not proven inside the advanced native canvas");
+            // Do not synthesize absence, cleanup, native authority or a
+            // successful processed packet from an older displayed image.
             d.unprocessedSubtitleCanvas=true;d.owner=DecisionOwner::SUBMITTED_SCOPE_RETENTION;
             d.reason="unknown subtitle inspection continues current raw frame at retained movie size";
             result.retained=true;return true;
@@ -7039,13 +7104,13 @@ namespace AlphaSourceCrop
             if(current && o.state==CaptionObservationState::PRESENT)bottom=input.confirmedCaptionBounds;
             if(ValidBounds(bottom,c.rasterWidth,c.rasterHeight) && bottom.bottom>n.bottom) {
                 if(bottom.left<viewport.left || bottom.right>viewport.right)
-                    return wait("bottom content requires relocation; no same-size Classic window is available");
+                    return pending("bottom content requires relocation; no same-size Classic window is available");
                 minimum=std::max(minimum,bottom.bottom+margin-viewport.bottom);
                 // A union spanning both bars must not constrain the top edge.
                 if(bottom.top>=n.top)maximum=std::min(maximum,bottom.top-margin-viewport.top);
             }
             minimum=(minimum+1)&~1;maximum&=~1;
-            if(minimum>maximum)return wait("bottom content requires relocation before the fixed Classic canvas can be submitted");
+            if(minimum>maximum)return pending("bottom content requires relocation before the fixed Classic canvas can be submitted");
             int requested=c.verticalTranslationActive?c.verticalTranslationPixels:0;
             const auto& a=input.submittedScopeAnchor;const auto& prior=a.submittedPresentation;
             if(IsCurrentSubmittedNativeScopeAnchor(a,c.frameSourceGeneration,c.frameSourceSequence,input.presentationEpoch,
@@ -7066,9 +7131,9 @@ namespace AlphaSourceCrop
             viewport.top+=shift;viewport.bottom+=shift;
             if(ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight) &&
                 !ContainedBounds(viewport,input.currentTextCandidate))
-                return wait("current text needs processing before the fixed movie canvas can be submitted");
+                return pending("current text needs processing before the fixed movie canvas can be submitted");
             if(n.top+shift<0 || n.bottom+shift>c.rasterHeight)
-                return wait("Classic release pose unavailable; keep the last complete movie canvas");
+                return pending("Classic release pose unavailable");
             d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
             d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
             d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
@@ -7089,15 +7154,15 @@ namespace AlphaSourceCrop
                 const bool candidateCurrent=!advanced && current &&
                     ValidBounds(input.currentTextCandidate,c.rasterWidth,c.rasterHeight);
                 if(!rawCurrent || !ContainedBounds(n,viewport) || (!priorPan && !candidateCurrent))
-                    return wait("subtitle inspection pending; keep the last complete movie canvas");
+                    return pending("subtitle inspection pending");
                 if(c.currentVisibleBounds.left<n.left || c.currentVisibleBounds.right>n.right)
-                    return wait("current horizontal content requires independent picture preservation before Classic continuation");
+                    return pending("current horizontal content requires independent picture preservation before Classic continuation");
                 // Raw continuity alone cannot reverse the established occupied
                 // side or treat an unobserved caption as semantically absent.
                 if(!candidateCurrent &&
                     !((pose.top>viewport.top && c.currentVisibleBounds.bottom>n.bottom) ||
                       (pose.top<viewport.top && c.currentVisibleBounds.top<n.top)))
-                    return wait("current occupied-side inspection pending; keep the last complete movie canvas");
+                    return pending("current occupied-side inspection pending");
                 const int margin=std::max(0,input.captionEdgeMarginPixels);
                 int minimum=-n.top,maximum=c.rasterHeight-n.bottom;
                 const bool bottomPriority=candidateCurrent && input.currentTextCandidate.top<n.top &&
@@ -7114,16 +7179,16 @@ namespace AlphaSourceCrop
                 if(candidateCurrent) {
                     const auto& caption=input.currentTextCandidate;
                     if(caption.left<viewport.left || caption.right>viewport.right)
-                        return wait("current text needs relocation before the fixed canvas can be submitted");
+                        return pending("current text needs relocation before the fixed canvas can be submitted");
                     minimum=std::max(minimum,caption.bottom+margin-viewport.bottom);
                     // A measured union across both bars retains Classic's
                     // bottom priority; the top union cannot force a resize.
                     if(!bottomPriority)maximum=std::min(maximum,caption.top-margin-viewport.top);
                     occupied=true;
                 }
-                if(!occupied)return wait("current occupied-side inspection pending; keep the last complete movie canvas");
+                if(!occupied)return pending("current occupied-side inspection pending");
                 minimum=(minimum+1)&~1;maximum&=~1;
-                if(minimum>maximum)return wait("current bar content needs relocation before the fixed canvas can be submitted");
+                if(minimum>maximum)return pending("current bar content needs relocation before the fixed canvas can be submitted");
                 int requested=c.verticalTranslationActive?c.verticalTranslationPixels:0;
                 if(priorPan) {
                     const int previous=pose.top-viewport.top;
@@ -7149,15 +7214,15 @@ namespace AlphaSourceCrop
             if(o.state==CaptionObservationState::PRESENT) {
                 const auto& caption=input.confirmedCaptionBounds;
                 if(!ValidBounds(caption,c.rasterWidth,c.rasterHeight))
-                    return wait("confirmed caption extent unavailable; keep the last complete movie canvas");
-                if(advanced)return wait("subtitle composition pending; keep the last complete movie canvas");
+                    return pending("confirmed caption extent unavailable");
+                if(advanced)return pending("subtitle composition pending");
                 // Classic can move its window; a caption cannot change its size.
                 // Use the ordinary configured canvas to account for fixed fill,
                 // then constrain only translation so every caption pixel remains.
                 const auto& viewport=ValidBounds(input.fixedNativeViewport,c.rasterWidth,c.rasterHeight)
                     ? input.fixedNativeViewport:n;
                 if(!ContainedBounds(n,viewport) || caption.left<viewport.left || caption.right>viewport.right)
-                    return wait("caption requires relocation; no same-size Classic window is available");
+                    return pending("caption requires relocation; no same-size Classic window is available");
                 const int margin=std::max(0,input.captionEdgeMarginPixels);
                 int minimum=std::max(-n.top,caption.bottom+margin-viewport.bottom);
                 int maximum=std::min(c.rasterHeight-n.bottom,caption.top-margin-viewport.top);
@@ -7172,7 +7237,7 @@ namespace AlphaSourceCrop
                 }
                 // Round the admissible interval INWARD to chroma-aligned poses.
                 minimum=(minimum+1)&~1;maximum&=~1;
-                if(minimum>maximum)return wait("caption requires relocation; no same-size Classic window is available");
+                if(minimum>maximum)return pending("caption requires relocation; no same-size Classic window is available");
                 const int requested=c.verticalTranslationActive?c.verticalTranslationPixels:0;
                 const auto& a=input.submittedScopeAnchor;const auto& prior=a.submittedPresentation;
                 if(input.classicTranslationEngaging &&
@@ -7208,7 +7273,7 @@ namespace AlphaSourceCrop
                 // Absence retires the caption constraint, not the live release clock.
                 const int shift=!advanced && c.verticalTranslationActive?c.verticalTranslationPixels:0;
                 if(n.top+shift<0 || n.bottom+shift>c.rasterHeight)
-                    return wait("Classic release pose unavailable; keep the last complete movie canvas");
+                    return pending("Classic release pose unavailable");
                 d.sourceBounds.top+=shift;d.sourceBounds.bottom+=shift;
                 d.verticallyTranslated=shift!=0;d.verticalTranslationPixels=shift;
                 d.owner=shift?DecisionOwner::VERTICAL_TRANSLATION:DecisionOwner::TRUSTED_CROP;
@@ -7230,6 +7295,12 @@ namespace AlphaSourceCrop
         const auto& crop = input.crop;
         const auto& anchor = input.submittedScopeAnchor;
         const auto raster = FullRaster(crop.rasterWidth, crop.rasterHeight);
+        if(input.subtitleCanvasMode!=SubtitleCanvasMode::OFF && crop.automaticCropEnabled &&
+            !crop.fullRasterPresentationAuthoritative && !HasCurrentNativePicturePreservation(input)) {
+            ApplyRawSubtitleFallback(input,result,
+                "processed subtitle canvas pending; present current raw source pixels without acquiring crop authority");
+            return result;
+        }
         if(UsesAdvancedNativePicturePolicy(crop)) {
             const bool currentPicture=HasCurrentNativePicturePreservation(input);
             result.presentation=AdvancedNativePictureDecision(crop,currentPicture?
@@ -7773,6 +7844,9 @@ namespace AlphaSourceCrop
             fixed.fixedAspect = input.fixedCropAspect;
             fixed.sourceBounds = input.presentation.sourceBounds;
             return EvaluateFixedAspectCrop(fixed);
+        }
+        if(input.presentation.rawSubtitleFallback) {
+            result.reason="raw subtitle fallback presents current source pixels without optional fill";return result;
         }
         if(input.presentation.nativePresentation.origin==NativePresentationOrigin::VISIBILITY_FALLBACK ||
             (input.uncertainPicture.retained &&

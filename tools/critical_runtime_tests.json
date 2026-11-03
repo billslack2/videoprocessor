@@ -11,7 +11,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1055,
+  "minimumNativeTests": 1058,
   "requiredNativeMethods": [
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
     "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",
@@ -336,7 +336,10 @@
     "SourcePictureActiveAdapterPreservesPortraitAndCaptionMeasurement",
     "SuppliedSpatialCaptionProofUsesExactNomineeAndCurrentInkWithoutLegacyBars",
     "SuppliedSpatialCaptionMaskCannotExplainUnownedConnectedPictureOrMenu",
-    "SourcePictureMissingGeometryPreservesBlackReferenceWithoutNativeVotes"
+    "SourcePictureMissingGeometryPreservesBlackReferenceWithoutNativeVotes",
+    "PendingSubtitleUsesOnlyExactCurrentRawVisibilityAndOtherwisePresentsFullInput",
+    "RawSubtitleFallbackRequiresCurrentSourceAndAllVisiblePixels",
+    "CachedPendingSourceRevisesToExactRawFallbackBeforeMappingReuse"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -376,7 +379,9 @@
     "StandardRendererDecodedDvUnknownInputRepeatsOneCompleteOutput",
     "BetaRendererDecodedDvUnknownInputRepeatsOneCompleteOutput",
     "StandardRendererRetainsUncertainPictureAndAcceptsRealTransitions",
-    "BetaRendererRetainsUncertainPictureAndAcceptsRealTransitions"
+    "BetaRendererRetainsUncertainPictureAndAcceptsRealTransitions",
+    "StandardRendererPendingCaptionBurstKeepsCurrentVideoAdvancing",
+    "BetaRendererPendingCaptionBurstKeepsCurrentVideoAdvancing"
   ],
   "optionalPrivateFixtures": [
     "VP_AR_COLLAR_CAPTURE_FRAME",
@@ -385,7 +390,7 @@
     "VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY"
   ],
   "minimumOriginalNativeTests": 663,
-  "minimumActualTests": 30,
+  "minimumActualTests": 38,
   "explicitNativeMethods": [
     {
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
@@ -906,6 +911,16 @@
       "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
       "class": "OptionalAnalysisWorkerTests",
       "method": "WorkerCompletionWakesOnlyAfterImmutablePublication"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "RawSubtitleFallbackRequiresCurrentSourceAndAllVisiblePixels"
+    },
+    {
+      "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
+      "class": "TemporalCleanPacketGpuTests",
+      "method": "CachedPendingSourceRevisesToExactRawFallbackBeforeMappingReuse"
     }
   ]
 }

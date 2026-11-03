@@ -2731,5 +2731,154 @@ TEST_CLASS(TemporalCleanPacketGpuTests) { public:
         const auto mixed=g.Draw();
         Assert::IsTrue(mixed[0]<isolated[0]-30,L"Compatible cleaned picture should retain smooth motion.");
     }
+
+    TEST_METHOD(PendingSubtitleRawOutputUsesCurrentPixelsInsteadOfOlderCompletedPacket) {
+        GpuFixture g;MotionConfig::Settings settings;
+        settings.smoothMotion="always";settings.mixer="oversample";settings.deinterlace="off";
+        std::vector<float> oldCompleted(64*64*4);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            oldCompleted[o]=oldCompleted[o+1]=oldCompleted[o+2]=1.0f;
+            oldCompleted[o+3]=1.0f;
+            if(x>=24&&x<40&&y>=24&&y<40) {
+                oldCompleted[o]=1.0f;oldCompleted[o+1]=oldCompleted[o+2]=0.0f;
+            }
+        }
+        g.UploadFloatPixels(g.clean,oldCompleted);
+        g.temporal.Begin(settings,24,60,false,0,9,100,0.0,false,true);
+        g.temporal.outputPts=0.0;
+        Assert::IsTrue(g.temporal.CaptureCompleteComposition(g.device->gpu,g.cleanInput,100,true));
+        auto params=pl_render_default_params;
+        params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+        Assert::IsTrue(g.temporal.Render(g.renderer,g.input,g.output,params,31));
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==100);
+        const auto oldGlyph=g.Read(32,32);
+        Assert::IsTrue(oldGlyph[0]>220&&oldGlyph[1]<20&&oldGlyph[2]<20,
+            L"Fixture did not produce the older completed red subtitle packet.");
+        g.temporal.MarkSubmitted();
+
+        g.temporal.Begin(settings,24,60,false,0,9,101,1.0/24.0,false,true);
+        g.temporal.outputPts=1.0/24.0;
+        std::vector<unsigned char> raw(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            raw[o]=raw[o+1]=raw[o+2]=0;raw[o+3]=255;
+            if(x>=8&&x<16&&y>=40&&y<48)raw[o+1]=255; // Current burned-in source marker.
+        }
+        pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=raw.data();
+        Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload));
+        Assert::IsTrue(g.temporal.CaptureCurrentRawSource(g.device->gpu,g.input,101,9,7,77,88));
+        Assert::IsFalse(g.temporal.RenderCurrentRaw(g.renderer,g.input,g.output,params,31,
+            101,9,7,78,88),L"A current raw packet must reject a mismatched source-format identity.");
+        Assert::IsTrue(g.temporal.RenderCurrentRaw(g.renderer,g.input,g.output,params,31,
+            101,9,7,77,88),L"Current uncomposed picture should render while subtitle preparation is pending.");
+        Assert::IsTrue(g.temporal.SelectedPacketSequence()==101,
+            L"Raw fallback selected the older completed subtitle source.");
+        Assert::IsTrue(g.temporal.SelectedPacketPts()==1.0/24.0,
+            L"Raw fallback PTS must belong to the current source.");
+        Assert::IsTrue(g.temporal.SelectedSubtitleSequence()==0&&g.temporal.LastSubtitleSequence()==0,
+            L"Raw current output must not claim an older subtitle packet.");
+        Assert::IsFalse(g.temporal.SubtitleFallbackActive(),
+            L"Raw current output must bypass subtitle packet replay.");
+        const auto currentMarker=g.Read(12,44),oldGlyphLocation=g.Read(32,32),currentBackground=g.Read(4,4);
+        Assert::IsTrue(currentMarker[1]>220&&currentMarker[0]<20&&currentMarker[2]<20,
+            L"The current burned-in source marker was not preserved.");
+        for(int c=0;c<3;++c)
+            Assert::IsTrue(oldGlyphLocation[c]<20&&currentBackground[c]<20,
+                L"Older completed picture/subtitle pixels leaked into raw current output.");
+    }
+
+    TEST_METHOD(PendingSubtitleRawOutputRetainsInterlacedBobProcessingAndCurrentIdentity) {
+        MotionConfig::Settings settings;settings.smoothMotion="off";
+        settings.deinterlace="force";settings.algorithm="bwdif";
+        settings.fieldOrder="top";settings.cadence="frame";
+        auto render=[&settings](bool rawFallback) {
+            GpuFixture g;g.Upload(0,true);
+            g.temporal.Begin(settings,30,30,true,1,12,45,0.0,false,false);
+            if(rawFallback) {
+                Assert::IsTrue(g.temporal.CaptureCurrentRawSource(g.device->gpu,g.input,45,12,19,77,88));
+                g.temporal.outputPts=0.0;
+                auto params=pl_render_default_params;
+                params.dither_params=nullptr;params.deband_params=nullptr;params.peak_detect_params=nullptr;
+                Assert::IsTrue(g.temporal.RenderCurrentRaw(g.renderer,g.input,g.output,params,31,
+                    45,12,19,77,88),L"Interlaced current raw packet should use source deinterlacing.");
+            } else {
+                Assert::IsTrue(g.temporal.Capture(g.device->gpu,g.input,45));
+                g.temporal.outputPts=0.0;
+                g.Draw();
+            }
+            Assert::IsTrue(g.temporal.SelectedPacketSequence()==45,
+                L"Interlaced output identity must name the current raw source.");
+            Assert::IsTrue(g.temporal.SelectedSubtitleSequence()==0&&g.temporal.LastSubtitleSequence()==0,
+                L"Interlaced raw output must not identify a subtitle packet.");
+            Assert::IsTrue(g.temporal.lastSubmittedField==PL_FIELD_TOP,
+                L"Interlaced raw output lost the configured top-field selection.");
+            return g.ReadPixels();
+        };
+        const auto direct=render(false),raw=render(true);
+        Assert::AreEqual(direct.size(),raw.size());
+        int maxError=0;
+        for(size_t i=0;i<direct.size();++i)
+            maxError=(std::max)(maxError,std::abs(int(direct[i])-int(raw[i])));
+        Assert::IsTrue(maxError<=2,
+            (std::wstring(L"Raw subtitle fallback diverged from current-source deinterlacing; max error=")+
+                std::to_wstring(maxError)).c_str());
+    }
+
+    TEST_METHOD(CachedPendingSourceRevisesToExactRawFallbackBeforeMappingReuse) {
+        struct Snapshot {
+            uint64_t generation=0,sequence=0,viewport=0,contract=0;
+            bool subtitleCanvasWait=false,rawFallback=false,composed=false;
+        };
+        TemporalSourceEvidenceLedger<Snapshot,4> sourceEvidence;
+        TemporalPresentationLedger<Snapshot,4,TemporalPresentationKey> mappings;
+        const TemporalSourceEvidenceKey sourceKey{9,101};
+        const TemporalPresentationKey mappingKey{9,101,19,31};
+        Assert::IsTrue(sourceEvidence.Ensure(sourceKey,[&](Snapshot& snapshot) {
+            snapshot.generation=9;snapshot.sequence=101;snapshot.viewport=19;snapshot.contract=31;
+            snapshot.subtitleCanvasWait=true;snapshot.composed=false;
+            return true;
+        }));
+        Assert::IsTrue(mappings.Ensure(mappingKey,[&](Snapshot& snapshot) {
+            snapshot.generation=9;snapshot.sequence=101;snapshot.viewport=19;snapshot.contract=31;
+            snapshot.composed=true; // This is the stale complete-composition mapping.
+            return true;
+        }));
+        Assert::IsTrue(sourceEvidence.CanReviseSucceeded(sourceKey));
+        Assert::IsFalse(sourceEvidence.ReviseSucceeded(sourceKey,[&](Snapshot& snapshot) {
+            snapshot.generation=9;snapshot.sequence=101;snapshot.viewport=20;snapshot.contract=31;
+            snapshot.rawFallback=true;return false; // Wrong viewport cannot replace the pending source.
+        }));
+        Assert::IsTrue(sourceEvidence.Find(sourceKey)->subtitleCanvasWait,
+            L"Failed context join must leave the pending source fact intact.");
+        Assert::IsTrue(mappings.Find(mappingKey)->composed,
+            L"Failed source revision must not invalidate or replace the prior mapping.");
+
+        const bool revised=sourceEvidence.ReviseSucceeded(sourceKey,[&](Snapshot& snapshot) {
+            snapshot.generation=9;snapshot.sequence=101;snapshot.viewport=19;snapshot.contract=31;
+            snapshot.rawFallback=true;snapshot.subtitleCanvasWait=false;snapshot.composed=false;
+            return snapshot.generation==sourceKey.sourceGeneration &&
+                snapshot.sequence==sourceKey.sourceSequence && snapshot.viewport==mappingKey.viewportEpoch &&
+                snapshot.contract==mappingKey.outputContractSerial && snapshot.rawFallback;
+        });
+        Assert::IsTrue(revised,L"Exact current raw fallback should revise the pending same-source fact.");
+        const auto* rawSource=sourceEvidence.Find(sourceKey);
+        Assert::IsTrue(rawSource&&rawSource->rawFallback&&!rawSource->subtitleCanvasWait&&!rawSource->composed,
+            L"The revised source must name current raw pixels without claiming composition.");
+        mappings.InvalidateSuccessfulSource(sourceKey.sourceGeneration,sourceKey.sourceSequence);
+        Assert::IsNull(mappings.Find(mappingKey),
+            L"A successful raw-source revision must retire the prior composed mapping.");
+        Assert::IsTrue(mappings.Ensure(mappingKey,[&](Snapshot& snapshot) {
+            const auto* source=sourceEvidence.Find(sourceKey);
+            if(!source||source->generation!=mappingKey.sourceGeneration||
+                source->sequence!=mappingKey.sourceSequence||source->viewport!=mappingKey.viewportEpoch||
+                source->contract!=mappingKey.outputContractSerial||!source->rawFallback||
+                source->subtitleCanvasWait||source->composed)return false;
+            snapshot=*source;return true;
+        }));
+        const auto* currentMapping=mappings.Find(mappingKey);
+        Assert::IsTrue(currentMapping&&currentMapping->rawFallback&&!currentMapping->composed,
+            L"Mapping rebuild must follow the current raw snapshot, never the old composed one.");
+    }
 };
 }

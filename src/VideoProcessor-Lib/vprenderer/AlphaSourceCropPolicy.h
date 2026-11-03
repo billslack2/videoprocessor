@@ -1531,11 +1531,16 @@ namespace AlphaSourceCrop
 		std::string reason;
         ConfirmedFitOwnershipEvidence confirmedFitOwnership;
         NativePresentationCertificate nativePresentation;
-        // A positively identified pending caption can withhold its whole source.
-        // Unknown inspection alone is not pending composition.
+        // Legacy snapshot veto retained for validation; normal pending subtitle
+        // resolution now selects current raw pixels instead of withholding video.
         bool waitForSubtitleProcessing=false;
-        // Current raw frame at the retained aperture; no caption/native proof.
+        // Current raw frame selected without processed-subtitle/caption proof.
         bool unprocessedSubtitleCanvas=false;
+        // The processed subtitle canvas could not be admitted. This decision
+        // presents only the current source's raw pixels (or full input when
+        // exact visibility/base identity is unavailable); it carries no crop,
+        // caption, native-picture, or physical full-raster authority.
+        bool rawSubtitleFallback=false;
         bool subtitleEngagePoseRetained=false;
         bool subtitleCanvasApplied=false, subtitleTranslationRange=false;
         int subtitleMinimumTranslation=0, subtitleMaximumTranslation=0;
@@ -1955,8 +1960,21 @@ namespace AlphaSourceCrop
         uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
         uint64_t sourceFormatKey = 0, analysisDomainKey = 0;
     };
+
+    // Exact current-source occupied extent used only to keep its raw pixels
+    // visible while processed subtitle admission is pending. This is not
+    // detector, caption, or native-crop authority.
+    struct CurrentSourceVisibilityWitness
+    {
+        bool available=false, directCurrentSample=false;
+        ActivePictureBounds nativeBase, bounds;
+        uint64_t sourceGeneration=0,sourceSequence=0,presentationEpoch=0;
+        uint64_t sourceFormatKey=0,analysisDomainKey=0;
+    };
+
 	struct PresentationRecoveryInput
 	{
+        CurrentSourceVisibilityWitness currentSourceVisibility;
         NativeEntryReleaseProof currentNativeEntryRelease;
         // Completed current native-pixel inspection of individual excluded bands.
         // Coarse edge nominations may disagree; only this exact identity may
