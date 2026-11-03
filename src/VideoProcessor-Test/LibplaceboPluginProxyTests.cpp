@@ -3609,12 +3609,14 @@ namespace VideoProcessorTest
             const auto diagnostics=reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticFn>(GetProcAddress(plugin,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT));
             Assert::IsTrue(create&&destroy&&diagnostics);
             struct DiagnosticCleanup{VideoProcessorLibplaceboConfigureDiagnosticFn configure;
-                ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);}} diagnosticCleanup{diagnostics};
+                ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);
+                    std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                    classicPoseCaptureSubmitTiming=false;classicPoseSubmitWallNs.clear();}} diagnosticCleanup{diagnostics};
             for(const unsigned duration:{1001u,1000u}) {
                 // Source cadence is independent of the current output display.
                 constexpr unsigned scale=60000;
                 const double inputHz=double(scale)/duration;
-                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseMessages.clear();classicPoseAllRecordStages=true;}
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseMessages.clear();classicPoseSubmitWallNs.clear();classicPoseCaptureSubmitTiming=true;classicPoseAllRecordStages=true;}
                 diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
                 ClassicPreparationLogForwarder preparationLog;
                 char temp[MAX_PATH]={},configPath[MAX_PATH]={};
@@ -3650,6 +3652,13 @@ namespace VideoProcessorTest
                 VideoStateComPtr state=new VideoState(*sourceState);state->displayMode=std::make_shared<DisplayMode>(width,height,false,scale,duration);
                 Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
                 uint64_t sequence=1;size_t cursor=0;std::map<uint64_t,timingclocktime_t> delivered;
+                std::map<uint64_t,uint64_t> inputWallNs;uint64_t lastInputSourceFrame=0;
+                const auto steadyWallNowNs=[] {return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count());};
+                struct SubmissionTimingSample final {
+                    uint64_t recordSequence=0,sourceFrameNumber=0,captureTimestamp=0,consumedSourceFrame=0;
+                    uint64_t callbackWallNs=0,inputWallNs=0;bool joined=false,afterStop=false;
+                };
                 std::map<uint64_t,AnalysisDiagnosticRecordV1> nativeInputs;
                 std::map<ClassicSubmittedPreparationKey,AnalysisDiagnosticRecordV1> acceptedPhysicalModels;
                 std::vector<AnalysisDiagnosticRecordV1> outputs;
@@ -4296,6 +4305,8 @@ namespace VideoProcessorTest
                             if(gap>0&&gap<arrivalPeriod/2)++fastArrivalGaps;
                             longestArrivalGap=(std::max)(longestArrivalGap,gap);}
                         ++arrivalCount;lastArrival=arrival->entered;lastCapture=stamp;
+                        lastInputSourceFrame=arrival->source;
+                        inputWallNs[arrival->source]=steadyWallNowNs();
                         cleanup.renderer->OnVideoFrame(frame);arrival->returned=clock.TimingClockNow();
                         longestOnFrame=(std::max)(longestOnFrame,arrival->returned-arrival->entered);
                     }
@@ -4327,7 +4338,10 @@ namespace VideoProcessorTest
                     // to establish native presentation. Feed captions from input1
                     // and inspect every safe fallback output, without a blank gate.
                     const auto first=mode?uint64_t(1):sequence;
-                    size_t inspected=mode?0:outputs.size();uint64_t ready=0;size_t checked=0;
+                    size_t inspected=mode?0:outputs.size();
+                    uint64_t ready=0,steadyStartSourceFrameNumber=0,steadyStartRecordSequence=0,lastTimedRecordSequence=0,stopStartedWallNs=0;size_t checked=0;
+                    std::vector<SubmissionTimingSample> submissionTiming;
+                    bool submissionTimingJoinFailure=false;std::string submissionTimingJoinFailureDetail;
                     std::set<uint64_t> distinct;bool odd=false,even=false,displayedOdd=false,displayedEven=false;
                     double pinned[4]={},previousTop=native[1];
                     bool warmupNativeKnown=false;int32_t warmupNative[4]={};
@@ -4376,16 +4390,71 @@ namespace VideoProcessorTest
                     const auto startupStarted=GetTickCount64();
                     const auto startupDeadline=startupStarted+(mode?ColdShaderPreparationBudgetMs:20000);
                     uint64_t steadyDeadline=0;
-                    auto beginSteadyObservation=[&](uint64_t source) {
+                    auto beginSteadyObservation=[&](uint64_t source,uint64_t recordSequence) {
                         ready=source;
+                        if(!steadyStartRecordSequence) {
+                            steadyStartRecordSequence=recordSequence;
+                            steadyStartSourceFrameNumber=nativeInputs.at(source).sourceFrameNumber;
+                        }
                         const auto now=GetTickCount64();steadyDeadline=now+90000;
                         std::ostringstream status;
                         status<<"Decoded-DV startup ready: input="<<inputHz<<" mode="<<mode<<" selected="<<source
                             <<" startup_elapsed_ms="<<(now-startupStarted)<<" steady_budget_ms=90000";
                         Logger::WriteMessage(status.str().c_str());
                     };
+                    auto collectSubmissionTiming=[&](const AnalysisDiagnosticRecordV1& record) {
+                        if(!steadyStartRecordSequence||record.recordSequence<steadyStartRecordSequence||
+                            record.recordSequence<=lastTimedRecordSequence)return;
+                        lastTimedRecordSequence=record.recordSequence;
+                        SubmissionTimingSample sample;sample.recordSequence=record.recordSequence;
+                        sample.sourceFrameNumber=record.sourceFrameNumber;sample.captureTimestamp=record.captureTimestamp;
+                        bool exactInputJoin=false,inputWallJoined=false,callbackWallJoined=false;
+                        const auto selectedInput=nativeInputs.find(record.counters[1]);
+                        if(selectedInput==nativeInputs.end()) {
+                            submissionTimingJoinFailure=true;
+                            if(submissionTimingJoinFailureDetail.empty())submissionTimingJoinFailureDetail="successful output has no exact selected analysis input";
+                        } else {
+                            sample.consumedSourceFrame=nativeInputs.at(record.counters[0]).sourceFrameNumber;
+                            exactInputJoin=selectedInput->second.sourceFrameNumber==record.sourceFrameNumber&&
+                                selectedInput->second.captureTimestamp==record.captureTimestamp&&
+                                selectedInput->second.sourceFrameNumber<=lastInputSourceFrame;
+                            if(!exactInputJoin) {
+                                submissionTimingJoinFailure=true;
+                                if(submissionTimingJoinFailureDetail.empty())submissionTimingJoinFailureDetail="successful output source frame/capture timestamp differs from its exact selected active input";
+                            }
+                            const auto inputWall=inputWallNs.find(selectedInput->second.sourceFrameNumber);
+                            if(inputWall==inputWallNs.end()) {
+                                submissionTimingJoinFailure=true;
+                                if(submissionTimingJoinFailureDetail.empty())submissionTimingJoinFailureDetail="selected input has no pre-OnVideoFrame wall timestamp";
+                            } else {
+                                sample.inputWallNs=inputWall->second;inputWallJoined=true;
+                            }
+                        }
+                        {
+                            std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                            const auto callbackWall=classicPoseSubmitWallNs.find(record.recordSequence);
+                            if(callbackWall==classicPoseSubmitWallNs.end()) {
+                                submissionTimingJoinFailure=true;
+                                if(submissionTimingJoinFailureDetail.empty())submissionTimingJoinFailureDetail="successful output has no callback wall timestamp for its record ordinal";
+                            } else {
+                                sample.callbackWallNs=callbackWall->second;callbackWallJoined=true;
+                            }
+                        }
+                        if(inputWallJoined&&callbackWallJoined&&sample.callbackWallNs<sample.inputWallNs) {
+                            submissionTimingJoinFailure=true;
+                            if(submissionTimingJoinFailureDetail.empty())submissionTimingJoinFailureDetail="callback wall timestamp precedes its exact input submission";
+                        }
+                        sample.afterStop=stopStartedWallNs&&sample.callbackWallNs>=stopStartedWallNs;
+                        sample.joined=exactInputJoin&&inputWallJoined&&callbackWallJoined&&
+                            sample.callbackWallNs>=sample.inputWallNs;
+                        if(!sample.joined)submissionTimingJoinFailure=true;
+                        submissionTiming.push_back(sample);
+                    };
                     auto inspectEverySubmittedOutput=[&] {
                         for(;inspected<outputs.size();++inspected){const auto& record=outputs[inspected];
+                            // Capture every successful output at/after the ready
+                            // callback ordinal, before content, repeat, or mode checks.
+                            collectSubmissionTiming(record);
                             const auto displayedSource=nativeInputs.at(record.counters[1]).sourceFrameNumber;
                             const auto consumedSource=nativeInputs.at(record.counters[0]).sourceFrameNumber;
                             if(consumedSource<first)continue;
@@ -4522,7 +4591,8 @@ namespace VideoProcessorTest
                                         record.published[1]>=pictureTop-8&&record.published[1]<=pictureTop&&
                                         record.published[3]>=pictureBottom&&record.published[3]<=pictureBottom+8,
                                         L"First composed source lacks independently accurate native boundary authority.");
-                                    std::copy_n(record.published,4,native);beginSteadyObservation(record.counters[1]);
+                                    std::copy_n(record.published,4,native);beginSteadyObservation(record.counters[1],record.recordSequence);
+                                    collectSubmissionTiming(record);
                                     for(int e=0;e<4;++e)pinned[e]=record.metrics[8+e];
                                 }
                                 if(ready){
@@ -4570,7 +4640,8 @@ namespace VideoProcessorTest
                                     if(nativePose){require(top+0.01>=previousTop,
                                         L"Classic startup native translation reversed during engage.");previousTop=top;}
                                     if(nativePose&&std::abs(top-classicSettledTop)<0.01&&std::abs(bottom-classicSettledBottom)<0.01){
-                                        beginSteadyObservation(record.counters[1]);
+                                        beginSteadyObservation(record.counters[1],record.recordSequence);
+                                        collectSubmissionTiming(record);
                                         for(int e=0;e<4;++e)pinned[e]=record.metrics[8+e];
                                         std::ostringstream target;target<<"Classic exact settled pose: shift="<<classicShift
                                             <<" caption_bottom="<<captionBottom<<" padding="<<(std::max)(8,height/90)
@@ -4599,7 +4670,64 @@ namespace VideoProcessorTest
                     }while(GetTickCount64()<(ready?steadyDeadline:startupDeadline));
                     // Stop drains in-flight rendering. Inspect that final tail before
                     // locals expire; no successful caption output escapes assertions.
+                    stopStartedWallNs=steadyWallNowNs();
                     cleanup.renderer->Stop();drain();preparationLog.Flush();inspectEverySubmittedOutput();
+                    std::vector<double> submissionLatenciesMs;std::set<uint64_t> timingDistinctSources;
+                    double maxSubmitGapMs=0,maxInputToSubmitMs=0,maxSourceIdGap=0;
+                    uint64_t firstSubmitWallNs=0,lastSubmitWallNs=0,previousSubmitWallNs=0,previousSourceFrame=0;
+                    size_t joinedSubmissionCount=0,postStopSubmissionCount=0;bool timingAdjacentGapsComplete=true;
+                    for(const auto& sample:submissionTiming) {
+                        postStopSubmissionCount+=sample.afterStop?1u:0u;
+                        if(!sample.joined){timingAdjacentGapsComplete=false;continue;}
+                        ++joinedSubmissionCount;timingDistinctSources.insert(sample.sourceFrameNumber);
+                        submissionLatenciesMs.push_back(double(sample.callbackWallNs-sample.inputWallNs)/1.0e6);
+                        maxInputToSubmitMs=(std::max)(maxInputToSubmitMs,submissionLatenciesMs.back());
+                        if(!firstSubmitWallNs)firstSubmitWallNs=sample.callbackWallNs;
+                        lastSubmitWallNs=sample.callbackWallNs;
+                        if(previousSubmitWallNs) {
+                            if(sample.callbackWallNs<previousSubmitWallNs)timingAdjacentGapsComplete=false;
+                            else maxSubmitGapMs=(std::max)(maxSubmitGapMs,double(sample.callbackWallNs-previousSubmitWallNs)/1.0e6);
+                        }
+                        previousSubmitWallNs=sample.callbackWallNs;
+                        if(previousSourceFrame)maxSourceIdGap=(std::max)(maxSourceIdGap,
+                            double(sample.sourceFrameNumber>previousSourceFrame?sample.sourceFrameNumber-previousSourceFrame:previousSourceFrame-sample.sourceFrameNumber));
+                        previousSourceFrame=sample.sourceFrameNumber;
+                    }
+                    double actualInputFps=0,distinctSourceFps=0,first24MeanMs=-1,last24MeanMs=-1;
+                    if(steadyStartSourceFrameNumber&&lastInputSourceFrame>steadyStartSourceFrameNumber) {
+                        const auto firstInput=inputWallNs.find(steadyStartSourceFrameNumber),lastInput=inputWallNs.find(lastInputSourceFrame);
+                        if(firstInput!=inputWallNs.end()&&lastInput!=inputWallNs.end()&&lastInput->second>firstInput->second)
+                            actualInputFps=double(lastInputSourceFrame-steadyStartSourceFrameNumber)*1.0e9/
+                                double(lastInput->second-firstInput->second);
+                    }
+                    if(timingDistinctSources.size()>1&&lastSubmitWallNs>firstSubmitWallNs)
+                        distinctSourceFps=double(timingDistinctSources.size()-1)*1.0e9/double(lastSubmitWallNs-firstSubmitWallNs);
+                    if(submissionLatenciesMs.size()>=48) {
+                        first24MeanMs=0;last24MeanMs=0;
+                        for(size_t i=0;i<24;++i)first24MeanMs+=submissionLatenciesMs[i]/24.0;
+                        for(size_t i=submissionLatenciesMs.size()-24;i<submissionLatenciesMs.size();++i)
+                            last24MeanMs+=submissionLatenciesMs[i]/24.0;
+                    }
+                    const double sourcePeriodMs=1000.0/inputHz,refreshMs=1000.0/60.0;
+                    const double maxSubmitGapLimitMs=2.0*sourcePeriodMs+refreshMs;
+                    const double maxLatencyLimitMs=9.0*sourcePeriodMs+refreshMs;
+                    const double latencyGrowthMs=first24MeanMs>=0&&last24MeanMs>=0?
+                        last24MeanMs-first24MeanMs:std::numeric_limits<double>::infinity();
+                    std::ostringstream timingRow;timingRow.setf(std::ios::fixed);timingRow.precision(3);
+                    timingRow<<"DV SUBMISSION TIMING: nominal_input_hz="<<inputHz<<" actual_input_hz="<<actualInputFps
+                        <<" distinct_source_fps="<<distinctSourceFps<<" successful_outputs="<<submissionTiming.size()
+                        <<" joined_outputs="<<joinedSubmissionCount<<" distinct_sources="<<timingDistinctSources.size()
+                        <<" max_submit_gap_ms="<<maxSubmitGapMs<<" max_input_to_submit_ms="<<maxInputToSubmitMs
+                        <<" first24_mean_latency_ms="<<first24MeanMs<<" last24_mean_latency_ms="<<last24MeanMs
+                        <<" latency_growth_ms="<<latencyGrowthMs<<" max_source_id_gap="<<maxSourceIdGap
+                        <<" source_fps_floor="<<(0.97*inputHz)<<" max_submit_gap_limit_ms="<<maxSubmitGapLimitMs
+                        <<" max_latency_limit_ms="<<maxLatencyLimitMs<<" latency_growth_limit_ms="<<sourcePeriodMs
+                        <<" source_id_gap_limit=2"
+                        <<" post_stop_outputs="<<postStopSubmissionCount<<" join_complete="<<(!submissionTimingJoinFailure)
+                        <<" gap_series_complete="<<timingAdjacentGapsComplete;
+                    if(submissionTimingJoinFailure&&!submissionTimingJoinFailureDetail.empty())
+                        timingRow<<" join_failure="<<submissionTimingJoinFailureDetail;
+                    Logger::WriteMessage(timingRow.str().c_str());
                     std::ostringstream coverage;coverage<<"Actual persistent decoded-DV cadence: input="<<inputHz<<" mode="<<mode
                         <<" inspected="<<checked<<" distinct_displayed="<<distinct.size()<<" consumed_odd="<<odd<<" consumed_even="<<even
                         <<" displayed_odd="<<displayedOdd<<" displayed_even="<<displayedEven
@@ -4610,6 +4738,22 @@ namespace VideoProcessorTest
                         L"Classic decoded-DV startup did not settle within20seconds; steady cadence was not exercised.");
                     require(checked>=60&&distinct.size()>=60&&odd&&even,
                         L"Actual persistent Dolby subtitle test did not inspect 60 distinct displayed sources and BOTH consumed input parities.");
+                    require(!submissionTimingJoinFailure&&submissionTiming.size()==joinedSubmissionCount&&timingAdjacentGapsComplete,
+                        L"Every successful steady submitted output must have an exact selected source/capture join and callback wall timestamp.");
+                    require(timingDistinctSources.size()>=60,
+                        L"Steady timing window did not include at least 60 distinct successful source submissions.");
+                    require(actualInputFps>=0.97*inputHz,
+                        L"Measured test input cadence fell below 97% of the nominal HDMI input rate.");
+                    require(distinctSourceFps>=0.97*inputHz,
+                        L"Distinct current-source submission rate fell below 97% of nominal HDMI input cadence.");
+                    require(maxSourceIdGap<=2,
+                        L"Successful steady submissions skipped more than two source IDs.");
+                    require(maxSubmitGapMs<=maxSubmitGapLimitMs,
+                        L"Successful steady submission callbacks exceeded the two-source-period plus one-refresh gap limit.");
+                    require(maxInputToSubmitMs<=maxLatencyLimitMs,
+                        L"Successful steady source input-to-submission latency exceeded the nine-source-period plus one-refresh limit.");
+                    require(first24MeanMs>=0&&last24MeanMs<=first24MeanMs+sourcePeriodMs,
+                        L"Steady source-to-submit latency grew by more than one input period across the observation window.");
                     if(mode)require(cleanupMotionCoverage(false),
                         L"Actual subtitle cleanup never intersected changing picture pixels; benign background motion is not cadence regression coverage.");
                     if(requireUnknownInputCurrentSource)require(unknownSent&&unknownCurrentSubmitted&&nextCleanFresh,

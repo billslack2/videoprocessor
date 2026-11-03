@@ -3059,7 +3059,7 @@ namespace VideoProcessorTest
             const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
             const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
             Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly && !prepared.renewsHold);
-            for(int fault=0;fault<26;++fault) {
+            for(int fault=0;fault<25;++fault) {
                 auto observation=std::make_unique<SubtitleBoxObservation>(f.observation);auto accepted=f.accepted;
                 auto proof=prepared;auto identity=f.observation.identity;auto base=f.base;
                 auto mode=input.mode;bool pixels=true,source=true,composed=true,incomplete=false;
@@ -3112,6 +3112,9 @@ namespace VideoProcessorTest
             unappliedReceipt.Record(f.observation,f.accepted,f.base,input.currentDisplayPicture,
                 f.composition,input.mode,input.policyGeneration,input.continuityGeneration,false);
             input.pendingPreparedErasure=&receipt;
+            Assert::IsTrue(receipt.Matches(f.observation,f.accepted,f.base,input.currentDisplayPicture,
+                f.composition,input.mode,input.policyGeneration,input.continuityGeneration),
+                L"The fixture must satisfy every exact-current receipt binding before testing downstream ownership.");
             const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
             Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly,
                 L"An exact-current verified pending footprint may preserve its already-held cue composition without bar authority.");
@@ -3122,7 +3125,7 @@ namespace VideoProcessorTest
                 input.mode,7,9,1000,true,false,10000000).available,
                 L"A pending footprint receipt cannot seed a caption lease.");
 
-            for(int fault=0;fault<25;++fault) {
+            for(int fault=0;fault<26;++fault) {
                 auto observation=f.observation;auto accepted=f.accepted;auto composition=f.composition;
                 auto display=input.currentDisplayPicture;auto bad=input;
                 bad.observation=&observation;bad.accepted=&accepted;bad.composition=&composition;
@@ -3145,7 +3148,7 @@ namespace VideoProcessorTest
                 case 10: ++observation.continuityGeneration;++bad.continuityGeneration;break;
                 case 11: observation.pendingRefresh=false;break;
                 case 12: observation.cadenceSkipped=true;break;
-                case 13: observation.analysisStride=2;break;
+                case 13: observation.analysisStride=3;break;
                 case 14: observation.analysisRefresh=true;break;
                 case 15: observation.barAuthority=true;break;
                 case 16: observation.independentBarAnalysis=true;break;

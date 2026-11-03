@@ -707,7 +707,11 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(continuation && !contains(continuation->sampledBounds,box))
         return reject("continuation-ownership-outside-sampled-region");
     const auto* ink=continuation ? continuation->ink.get() : observation.ink.get();
-    if(!ink || (!ink->rawEvidenceComplete && !continuation) || !ink->paletteValid || ink->step<1 || ink->step>8 ||
+    // A verified pending footprint proves its own exact current glyph/native
+    // support. Its partial palette mask is shape metadata here, never a claim
+    // that the detector's full raw search was complete.
+    if(!ink || (!ink->rawEvidenceComplete && !continuation && !currentVerifiedPreparedFootprint) ||
+        !ink->paletteValid || ink->step<1 || ink->step>8 ||
         ink->width<1 || ink->height<1 || ink->sourceRows.size()!=size_t(ink->height) ||
         ink->ownedInk.size()!=(size_t(ink->width)*ink->height+63)/64 ||
         !std::is_sorted(ink->sourceRows.begin(),ink->sourceRows.end()))

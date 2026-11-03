@@ -887,8 +887,11 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::IsFalse(guard->Resolve(*foreignPending,source,frameMs,1000),
             L"An unproven pending continuity change cannot use the fresh-ready rearm exception.");
         Assert::AreEqual("pending-context-changed",guard->DecisionReason());
-        Assert::AreEqual(UhdContinuity+1,guard->ReferenceContinuity());
-        Assert::AreEqual(frameMs,guard->PendingElapsedMilliseconds(),0.001);
+        Assert::AreEqual(uint64_t(0),guard->AcceptedSeedIdentity().acceptedSequence,
+            L"An unproven context change withdraws the seed rather than retaining an old template.");
+        Assert::AreEqual(uint64_t(0),guard->ReferenceContinuity());
+        Assert::AreEqual(uint64_t(0),guard->LastVerifiedIdentity().acceptedSequence);
+        Assert::AreEqual(0.0,guard->PendingElapsedMilliseconds(),0.001);
     }
 
     TEST_METHOD(ReadyCertifiedExistingCueRearmsAcrossContinuityWithOriginalPixelSeed) {
