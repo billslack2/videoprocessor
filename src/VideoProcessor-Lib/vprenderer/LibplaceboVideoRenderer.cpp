@@ -20506,6 +20506,10 @@ releaseDriftBaseRetention =
         } else if(rawSubtitleFallbackOutput || unprocessedCurrentSourceOutput) {
             subtitleCompositionSucceeded=false;
             relocatedSubtitle={};
+            // An unfinished processed canvas presents current raw pixels only.
+            // Keep absence a source-analysis fact; this output cannot publish
+            // a no-caption decision from a partially prepared subtitle path.
+            currentNoCaptionConfirmed=false;
         }
         const bool selectedCanvasWait=selectedPresentationValid?selectedPresentationForCommit.subtitleCanvasWait:
             temporalSubtitleCanvasDecision.waitForSubtitleProcessing;

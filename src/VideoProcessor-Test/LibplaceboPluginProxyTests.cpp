@@ -3693,7 +3693,7 @@ namespace VideoProcessorTest
                 Assert::IsTrue(outputModeKnown,
                     L"Decoded-DV cadence window did not land on its enumerated 60 Hz target monitor.");
                 const double outputHz=double(outputMode.dmDisplayFrequency);
-                cleanup.renderer=create(&callback,69,cleanup.window,&clock,true,16,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
+                cleanup.renderer=create(&callback,69,cleanup.window,&clock,true,9,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
                 Assert::IsNotNull(cleanup.renderer);
                 std::ostringstream outputTarget;outputTarget<<"Decoded-DV presentation target: width="<<outputMode.dmPelsWidth
                     <<" height="<<outputMode.dmPelsHeight<<" refresh_hz="<<outputHz;
@@ -3707,7 +3707,23 @@ namespace VideoProcessorTest
                 Logger::WriteMessage((std::string("Cadence initial snapshot: generation=")+std::to_string(initialSnapshot->generation)+
                     " profile=cadence type="+initialType+" expected_mode="+std::to_string(requestedMode)).c_str());
                 Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*initialSnapshot,active,restart,reset)&&!restart);
-                cleanup.renderer->SetQueueFramePolicy(4,9,true);cleanup.renderer->SetActivePictureLookaheadFrames(4);
+                cleanup.renderer->SetQueueFramePolicy(4,4,true);
+                bool queuePolicyObserved=false;std::string observedQueuePolicy;
+                {
+                    std::lock_guard<std::mutex> guard(classicPoseLogMutex);
+                    for(auto it=classicPoseMessages.rbegin();it!=classicPoseMessages.rend();++it)
+                        if(it->find("Alpha queue policy:")!=std::string::npos) {
+                            observedQueuePolicy=*it;
+                            queuePolicyObserved=it->find("target_frames=4 target=4 hard_capacity=9")!=std::string::npos;
+                            break;
+                        }
+                }
+                std::ostringstream queuePolicyRow;queuePolicyRow<<"DV QUEUE POLICY: requested_target_frames=4 requested_hard_capacity=9 observed="
+                    <<(observedQueuePolicy.empty()?"unavailable":observedQueuePolicy);
+                Logger::WriteMessage(queuePolicyRow.str().c_str());
+                Assert::IsTrue(queuePolicyObserved,
+                    L"Decoded-DV fixture did not configure the backend queue target=4 and hard capacity=9 through its renderer API.");
+                cleanup.renderer->SetActivePictureLookaheadFrames(4);
                 VideoStateComPtr state=new VideoState(*sourceState);state->displayMode=std::make_shared<DisplayMode>(width,height,false,scale,duration);
                 Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();
                 cleanup.renderer->SetRenderLoadDisplayRefreshRate(outputHz);cleanup.renderer->Start();
