@@ -3180,7 +3180,7 @@ namespace VideoProcessorTest
                 std::vector<AnalysisDiagnosticRecordV1> outputs;
                 std::vector<ClassicShaderPreparationSelection> outputPreparation;
                 std::set<uint64_t> repeatedAnchors;
-                std::set<uint64_t> verifiedUnprocessedClassicSources;
+                std::set<uint64_t> verifiedUnprocessedSources;
                 std::map<ClassicSubmittedPreparationKey,AnalysisDiagnosticRecordV1> classicCanvasAdmissions;
                 PersistentCaptionProofIndex captionProofs;
                 // Numeric-only bounded producer telemetry. Formatting happens
@@ -3411,7 +3411,7 @@ namespace VideoProcessorTest
                     }
                     for(const auto& line:failureMessages)Logger::WriteMessage(line.c_str());
                     Assert::Fail(why);};
-                auto validateUnprocessedClassicUnknown=[&](const AnalysisDiagnosticRecordV1& output,std::string& failure)->bool {
+                auto validateUnprocessedSubtitleUnknown=[&](const AnalysisDiagnosticRecordV1& output,std::string& failure)->bool {
                     const auto key=ClassicSubmittedPreparationKey{output.rendererInstanceKey,output.transportGeneration,output.acceptedSequence};
                     const auto found=classicCanvasAdmissions.find(key);
                     if(found==classicCanvasAdmissions.end()){failure="no exact-source subtitle-canvas-admission record";return false;}
@@ -3423,7 +3423,9 @@ namespace VideoProcessorTest
                             other.rendererGeneration==output.rendererGeneration&&
                             other.viewportGeneration==output.viewportGeneration&&
                             other.sourceFormatGeneration==output.sourceFormatGeneration&&
-                            other.analysisDomainKey==output.analysisDomainKey;
+                            other.analysisDomainKey==output.analysisDomainKey&&
+                            other.policyGeneration==output.policyGeneration&&
+                            other.continuityGeneration==output.continuityGeneration;
                     };
                     const auto witnessedNativeContextMatches=[&](const AnalysisDiagnosticRecordV1& other) {
                         return exactRendererContextMatches(other)&&
@@ -3435,14 +3437,17 @@ namespace VideoProcessorTest
                         admission.sourceFrameNumber!=output.sourceFrameNumber || admission.captureTimestamp!=output.captureTimestamp) {
                         failure="admission source identity or renderer/policy context differs from the submitted current source";return false;
                     }
+                    const bool classic=admission.counters[0]==static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::CLASSIC);
+                    const bool advanced=admission.counters[0]==static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::BLACK)||
+                        admission.counters[0]==static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::RECONSTRUCTION);
+                    const bool rawCurrent=admission.counters[3]==output.acceptedSequence &&
+                        admission.counters[4]==output.acceptedSequence && admission.counters[5]==1 &&
+                        admission.counters[6]==output.transportGeneration && admission.counters[7]==output.transportGeneration;
                     if(output.counters[0]!=output.acceptedSequence || output.counters[1]!=output.acceptedSequence ||
-                        admission.counters[0]!=static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::CLASSIC) ||
+                        (!classic&&!advanced) || (advanced&&(admission.flags&8u)) ||
                         admission.counters[1]!=static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) ||
-                        !(admission.flags&2u) || (admission.flags&(1u|4u)) ||
-                        admission.counters[3]!=output.acceptedSequence || admission.counters[4]!=output.acceptedSequence ||
-                        admission.counters[5]!=1 || admission.counters[6]!=output.transportGeneration ||
-                        admission.counters[7]!=output.transportGeneration) {
-                        failure="current output/admission is not an exact-current unprocessed Classic UNKNOWN continuation";return false;
+                        !(admission.flags&2u) || (admission.flags&(1u|4u)) || (classic&&!rawCurrent)) {
+                        failure="current output/admission is not an exact-source unprocessed UNKNOWN continuation in its documented mode";return false;
                     }
                     if((output.flags&(2u|16u|32u|64u|8192u))!=0 || output.counters[4]==0) {
                         failure="unprocessed continuation claims composition, cleanup, certificate, caption absence, or no accepted native source";return false;
@@ -3471,9 +3476,33 @@ namespace VideoProcessorTest
                         !close(m[3]-m[1],output.displayed[3]-output.displayed[1])) {
                         failure="raw continuation changed the current configured viewport dimensions or horizontal fill";return false;
                     }
-                    if(!std::isfinite(m[8])||!std::isfinite(m[9])||!std::isfinite(m[10])||!std::isfinite(m[11])||
-                        m[8]<0||m[9]<0||m[10]>width||m[11]>height||m[8]>=m[10]||m[9]>=m[11]) {
-                        failure="exact-current visible raw extent is missing or outside the source raster";return false;
+                    if(advanced && (!close(m[1],output.displayed[1])||!close(m[3],output.displayed[3]))) {
+                        failure="advanced UNKNOWN continuation moved its retained native viewport";return false;
+                    }
+                    if(classic||rawCurrent) {
+                        if(!std::isfinite(m[8])||!std::isfinite(m[9])||!std::isfinite(m[10])||!std::isfinite(m[11])||
+                            m[8]<0||m[9]<0||m[10]>width||m[11]>height||m[8]>=m[10]||m[9]>=m[11]) {
+                            failure="exact-current visible raw extent is missing or outside the source raster";return false;
+                        }
+                    }
+                    if(classic) {
+                        // This fixture owns the profile settings: Classic uses
+                        // its explicit 15px offset, advanced startup fallthrough
+                        // retains the configured default Classic padding.
+                        const int margin=requestedMode?RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_PADDING_PIXELS:15;
+                        const bool bottom=m[11]>output.published[3],top=m[9]<output.published[1];
+                        const bool candidate=(admission.flags&8u)!=0;
+                        const bool candidateBoth=candidate&&m[5]<output.published[1]&&m[7]>output.published[3];
+                        const bool bottomPriority=(bottom&&top)||candidateBoth;
+                        if((bottom&&output.displayed[3]<m[11]+margin)||
+                            (top&&!bottomPriority&&output.displayed[1]>m[9]-margin)) {
+                            failure="Classic continuation clipped the current raw occupied-side margin";return false;
+                        }
+                        if(candidate && (output.displayed[0]>m[4]||output.displayed[2]<m[6]||
+                            output.displayed[3]<m[7]+margin||
+                            (!candidateBoth&&output.displayed[1]>m[5]-margin))) {
+                            failure="Classic continuation clipped the exact-current candidate or its configured margin";return false;
+                        }
                     }
                     return true;
                 };
@@ -3540,7 +3569,7 @@ namespace VideoProcessorTest
                                 // Repeating final pixels is permitted only for an original
                                 // raw continuation already accepted below; the existing
                                 // complete-image identity/geometry checks above remain in force.
-                                validUnprocessedContinuation=verifiedUnprocessedClassicSources.count(record.acceptedSequence)!=0;
+                                validUnprocessedContinuation=verifiedUnprocessedSources.count(record.acceptedSequence)!=0;
                                 if(!validUnprocessedContinuation) {
                                     std::ostringstream diagnostic;diagnostic<<"PERSISTENT DV REJECTED REPEAT WITHOUT VERIFIED RAW SOURCE: source="
                                         <<record.acceptedSequence<<" consumed="<<record.counters[0]<<" native="<<record.counters[4]
@@ -3549,8 +3578,8 @@ namespace VideoProcessorTest
                                 }
                             } else {
                                 std::string reason;
-                                validUnprocessedContinuation=validateUnprocessedClassicUnknown(record,reason);
-                                if(validUnprocessedContinuation)verifiedUnprocessedClassicSources.insert(record.acceptedSequence);
+                                validUnprocessedContinuation=validateUnprocessedSubtitleUnknown(record,reason);
+                                if(validUnprocessedContinuation)verifiedUnprocessedSources.insert(record.acceptedSequence);
                                 else {
                                     const auto admission=classicCanvasAdmissions.find({record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
                                     std::ostringstream diagnostic;diagnostic<<"PERSISTENT DV REJECTED UNPROCESSED SOURCE: source="
@@ -3566,7 +3595,7 @@ namespace VideoProcessorTest
                                 }
                             }
                             require(validUnprocessedContinuation,
-                                L"ACTIVE native authority requires a measured-source certificate except for a joined exact-source unprocessed Classic UNKNOWN continuation with unchanged, previously witnessed native geometry and no fabricated certificate/caption authority.");
+                                L"ACTIVE native authority requires a measured-source certificate except for a joined exact-source unprocessed UNKNOWN continuation with unchanged, previously witnessed native geometry and no fabricated certificate/caption authority.");
                         }
                         require(std::isfinite(record.metrics[8])&&std::isfinite(record.metrics[9])&&
                             record.metrics[10]>record.metrics[8]&&record.metrics[11]>record.metrics[9],
