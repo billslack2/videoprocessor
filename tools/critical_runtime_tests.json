@@ -11,7 +11,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1049,
+  "minimumNativeTests": 1050,
   "requiredNativeMethods": [
     "SourcePictureGrayTerminalAgreesAcrossRgbYuvRangeConversions",
     "SourcePictureWeakTerminalSurvivesEncodingPhasesAndEquivalentYuvFormats",
@@ -28,6 +28,7 @@
     "ClassicUnknownCurrentCandidateUsesIncidentFilledPanWithoutMintingProof",
     "ClassicUnknownRawExtentProgressesAcrossFilledPoseAndVerticalFillOffset",
     "ClassicUnknownCandidateRejectsStaleRawAndInfeasibleContexts",
+    "ClassicCurrentRawOccupiedExtentSurvivesCaptionConfirmationHandoff",
     "OffModeMayPreserveTheLargerRawCaptionAperture",
     "PendingClassicRetargetKeepsSubmittedTranslationThroughDenseScanGap",
     "PendingClassicRetargetStillYieldsToUncoveredPixelsAndCompetingOwners",

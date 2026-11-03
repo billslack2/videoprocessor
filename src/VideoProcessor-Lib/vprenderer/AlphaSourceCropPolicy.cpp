@@ -7153,6 +7153,15 @@ namespace AlphaSourceCrop
                 const int margin=std::max(0,input.captionEdgeMarginPixels);
                 int minimum=std::max(-n.top,caption.bottom+margin-viewport.bottom);
                 int maximum=std::min(c.rasterHeight-n.bottom,caption.top-margin-viewport.top);
+                // Confirmation changes semantic ownership, not the current raw
+                // occupied-side margin. Dropping that bound can reverse the pan
+                // immediately after a safe unconfirmed source was displayed.
+                if(rawCurrent) {
+                    if(caption.bottom>n.bottom && c.currentVisibleBounds.bottom>n.bottom)
+                        minimum=std::max(minimum,c.currentVisibleBounds.bottom+margin-viewport.bottom);
+                    else if(caption.top<n.top && c.currentVisibleBounds.top<n.top)
+                        maximum=std::min(maximum,c.currentVisibleBounds.top-margin-viewport.top);
+                }
                 // Round the admissible interval INWARD to chroma-aligned poses.
                 minimum=(minimum+1)&~1;maximum&=~1;
                 if(minimum>maximum)return wait("caption requires relocation; no same-size Classic window is available");

@@ -3180,6 +3180,8 @@ namespace VideoProcessorTest
                 std::vector<AnalysisDiagnosticRecordV1> outputs;
                 std::vector<ClassicShaderPreparationSelection> outputPreparation;
                 std::set<uint64_t> repeatedAnchors;
+                std::set<uint64_t> verifiedUnprocessedClassicSources;
+                std::map<ClassicSubmittedPreparationKey,AnalysisDiagnosticRecordV1> classicCanvasAdmissions;
                 PersistentCaptionProofIndex captionProofs;
                 // Numeric-only bounded producer telemetry. Formatting happens
                 // only at final success/failure reporting, never per input.
@@ -3409,11 +3411,79 @@ namespace VideoProcessorTest
                     }
                     for(const auto& line:failureMessages)Logger::WriteMessage(line.c_str());
                     Assert::Fail(why);};
+                auto validateUnprocessedClassicUnknown=[&](const AnalysisDiagnosticRecordV1& output,std::string& failure)->bool {
+                    const auto key=ClassicSubmittedPreparationKey{output.rendererInstanceKey,output.transportGeneration,output.acceptedSequence};
+                    const auto found=classicCanvasAdmissions.find(key);
+                    if(found==classicCanvasAdmissions.end()){failure="no exact-source subtitle-canvas-admission record";return false;}
+                    const auto& admission=found->second;
+                    const auto input=nativeInputs.find(output.acceptedSequence);
+                    const auto exactRendererContextMatches=[&](const AnalysisDiagnosticRecordV1& other) {
+                        return other.rendererInstanceKey==output.rendererInstanceKey&&
+                            other.transportGeneration==output.transportGeneration&&
+                            other.rendererGeneration==output.rendererGeneration&&
+                            other.viewportGeneration==output.viewportGeneration&&
+                            other.sourceFormatGeneration==output.sourceFormatGeneration&&
+                            other.analysisDomainKey==output.analysisDomainKey;
+                    };
+                    const auto witnessedNativeContextMatches=[&](const AnalysisDiagnosticRecordV1& other) {
+                        return exactRendererContextMatches(other)&&
+                            other.policyGeneration==output.policyGeneration&&
+                            other.continuityGeneration==output.continuityGeneration;
+                    };
+                    const auto close=[](double a,int32_t b){return std::isfinite(a)&&std::abs(a-double(b))<0.01;};
+                    if(!exactRendererContextMatches(admission) || admission.acceptedSequence!=output.acceptedSequence ||
+                        admission.sourceFrameNumber!=output.sourceFrameNumber || admission.captureTimestamp!=output.captureTimestamp) {
+                        failure="admission source identity or renderer/policy context differs from the submitted current source";return false;
+                    }
+                    if(output.counters[0]!=output.acceptedSequence || output.counters[1]!=output.acceptedSequence ||
+                        admission.counters[0]!=static_cast<unsigned>(AlphaSourceCrop::SubtitleCanvasMode::CLASSIC) ||
+                        admission.counters[1]!=static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) ||
+                        !(admission.flags&2u) || (admission.flags&(1u|4u)) ||
+                        admission.counters[3]!=output.acceptedSequence || admission.counters[4]!=output.acceptedSequence ||
+                        admission.counters[5]!=1 || admission.counters[6]!=output.transportGeneration ||
+                        admission.counters[7]!=output.transportGeneration) {
+                        failure="current output/admission is not an exact-current unprocessed Classic UNKNOWN continuation";return false;
+                    }
+                    if((output.flags&(2u|16u|32u|64u|8192u))!=0 || output.counters[4]==0) {
+                        failure="unprocessed continuation claims composition, cleanup, certificate, caption absence, or no accepted native source";return false;
+                    }
+                    if(input==nativeInputs.end() || input->second.sourceFrameNumber!=admission.sourceFrameNumber ||
+                        input->second.captureTimestamp!=admission.captureTimestamp ||
+                        input->second.transportGeneration!=admission.transportGeneration ||
+                        input->second.sourceFormatGeneration!=admission.sourceFormatGeneration ||
+                        input->second.analysisDomainKey!=admission.analysisDomainKey) {
+                        failure="admission does not join the exact original analysis input identity/context";return false;
+                    }
+                    const AnalysisDiagnosticRecordV1* nativeWitness=nullptr;
+                    for(auto it=outputs.rbegin();it!=outputs.rend();++it) {
+                        if(it->acceptedSequence>=output.acceptedSequence || it->counters[4]!=output.counters[4] ||
+                            !witnessedNativeContextMatches(*it) || !IsMeasuredSpatialNativeSubmission(*it))continue;
+                        bool sameNative=true;
+                        for(int i=0;i<4;++i)sameNative&=it->published[i]==output.published[i]&&admission.measured[i]==output.published[i];
+                        if(sameNative){nativeWitness=&*it;break;}
+                    }
+                    if(!nativeWitness){failure="accepted native geometry lacks an earlier measured-source witness in this exact context";return false;}
+                    const auto& m=admission.metrics;
+                    if(!std::isfinite(m[0])||!std::isfinite(m[1])||!std::isfinite(m[2])||!std::isfinite(m[3])||
+                        m[0]<output.published[0]||m[1]<output.published[1]||
+                        m[2]>output.published[2]||m[3]>output.published[3]||m[0]>=m[2]||m[1]>=m[3]||
+                        !close(m[0],output.displayed[0])||!close(m[2],output.displayed[2])||
+                        !close(m[3]-m[1],output.displayed[3]-output.displayed[1])) {
+                        failure="raw continuation changed the current configured viewport dimensions or horizontal fill";return false;
+                    }
+                    if(!std::isfinite(m[8])||!std::isfinite(m[9])||!std::isfinite(m[10])||!std::isfinite(m[11])||
+                        m[8]<0||m[9]<0||m[10]>width||m[11]>height||m[8]>=m[10]||m[9]>=m[11]) {
+                        failure="exact-current visible raw extent is missing or outside the source raster";return false;
+                    }
+                    return true;
+                };
                 auto drain=[&] {
                     std::vector<AnalysisDiagnosticRecordV1> records;
                     {std::lock_guard<std::mutex> lock(classicPoseLogMutex);CopyUnreadCallbackTail(classicPoseRecords,cursor,records);}
                     // Index every source-bound proof in this tail before checking
                     // submissions; the unchanged oracle enforces original ordinals.
+                    for(const auto& record:records)if(!strcmp(record.stage,"subtitle-canvas-admission"))
+                        classicCanvasAdmissions[{record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence}]=record;
                     for(const auto& record:records)captionProofs.Observe(record);
                     for(const auto& record:records){
                         if(!strcmp(record.stage,"analysis-input")) {
@@ -3464,8 +3534,40 @@ namespace VideoProcessorTest
                                 L"Whole-image repeat cannot silently change source or target crop coordinates.");
                         } else require((record.flags&16384u)==0,
                             L"A repeat must expose consumed current and original displayed source separately.");
-                        if(requireSpatial && record.counters[4])require(IsMeasuredSpatialNativeSubmission(record),
-                            L"ACTIVE native authority and successfully submitted certificate must originate in source-spatial measurement (flags24..25), not legacy or unavailable evidence.");
+                        if(requireSpatial && record.counters[4] && !IsMeasuredSpatialNativeSubmission(record)) {
+                            bool validUnprocessedContinuation=false;
+                            if(record.counters[0]!=record.counters[1]) {
+                                // Repeating final pixels is permitted only for an original
+                                // raw continuation already accepted below; the existing
+                                // complete-image identity/geometry checks above remain in force.
+                                validUnprocessedContinuation=verifiedUnprocessedClassicSources.count(record.acceptedSequence)!=0;
+                                if(!validUnprocessedContinuation) {
+                                    std::ostringstream diagnostic;diagnostic<<"PERSISTENT DV REJECTED REPEAT WITHOUT VERIFIED RAW SOURCE: source="
+                                        <<record.acceptedSequence<<" consumed="<<record.counters[0]<<" native="<<record.counters[4]
+                                        <<" flags="<<record.flags;
+                                    Logger::WriteMessage(diagnostic.str().c_str());
+                                }
+                            } else {
+                                std::string reason;
+                                validUnprocessedContinuation=validateUnprocessedClassicUnknown(record,reason);
+                                if(validUnprocessedContinuation)verifiedUnprocessedClassicSources.insert(record.acceptedSequence);
+                                else {
+                                    const auto admission=classicCanvasAdmissions.find({record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
+                                    std::ostringstream diagnostic;diagnostic<<"PERSISTENT DV REJECTED UNPROCESSED SOURCE: source="
+                                        <<record.acceptedSequence<<" consumed="<<record.counters[0]<<" selected="<<record.counters[1]
+                                        <<" native="<<record.counters[4]<<" flags="<<record.flags<<" reason="<<reason;
+                                    if(admission!=classicCanvasAdmissions.end())diagnostic<<" admission_flags="<<admission->second.flags
+                                        <<" admission_mode="<<admission->second.counters[0]<<" observation="<<admission->second.counters[1]
+                                        <<" visible="<<admission->second.counters[3]<<" retention="<<admission->second.counters[4]
+                                        <<" measurement_current="<<admission->second.counters[5]
+                                        <<" retained_generation="<<admission->second.counters[6]
+                                        <<" visible_generation="<<admission->second.counters[7];
+                                    Logger::WriteMessage(diagnostic.str().c_str());
+                                }
+                            }
+                            require(validUnprocessedContinuation,
+                                L"ACTIVE native authority requires a measured-source certificate except for a joined exact-source unprocessed Classic UNKNOWN continuation with unchanged, previously witnessed native geometry and no fabricated certificate/caption authority.");
+                        }
                         require(std::isfinite(record.metrics[8])&&std::isfinite(record.metrics[9])&&
                             record.metrics[10]>record.metrics[8]&&record.metrics[11]>record.metrics[9],
                             L"Every successful output must publish valid actual source coordinates.");
