@@ -84,3 +84,20 @@ only proven-contained current raw pixels may remain in the native aperture while
 processing is pending. Before the first Classic pose, explicit source-joined raw
 fallback may preserve picture plus caption at a larger envelope. Once a processed
 or settled cue is acquired, existing steady viewport/cadence/pixel checks stay strict.
+
+## Timing review boundaries
+
+The 327,680 ceiling bounds unique source reads, not elapsed render-thread time.
+At UHD the grid is 960 by 540; both search bands contain about 147,840 points at
+zero near-bar distance and about 205,440 at 120 source pixels. Seed creation also
+walks masks/support, and current proofs inspect cached neighbors. Accepted current
+measurements can recreate the seed, so seed cost must be measured as well as the
+late-worker branch. The earlier guard capped expanded line-window reads at 32,768.
+Do not claim this broader verification is faster solely because work is bounded.
+
+The independent local-contrast veto is conservative. Textured movie pixels in the
+search bands can reject continuation even when the cue is unchanged. Such rejection
+must lead to current raw video, never waiting or reuse of older movie pixels. Uniform
+moving-background positives do not establish successful reuse over arbitrary movie
+texture. Report verifier time and rejection reasons with actual UHD detector seeds,
+and distinguish a safe rejected proof from successful static-cue reuse.
