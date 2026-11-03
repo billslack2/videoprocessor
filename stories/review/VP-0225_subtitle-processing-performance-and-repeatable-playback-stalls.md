@@ -21,8 +21,9 @@ the cleanup hull wrongly rejects current movie motion. Independent review confir
 that only prepared shader extraction/content, not raw detector bbox padding, should
 bound this projection; narrow repair and regression are in progress. New UNKNOWN
 tests require current source pixels rather than replaying an old whole frame.
-Some shader-startup outputs also retain a translated Classic crop after selecting
-advanced mode; that production routing is under review. Last deployment remains
+Shader-startup checks also still reject current raw-union outputs. A prior inference
+about translated Classic output after the mode switch was incorrect: those records
+precede F6, while the actual pending outputs119-125 are the current250-1956 union. Last deployment remains
 53058498. Full qualification, motion GPU coverage and live acceptance remain open.
 
 2026-11-03 native follow-up: clean source 3d7fb6a8 passes all 1,068 native
