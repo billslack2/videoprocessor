@@ -245,7 +245,7 @@ private:
             // Only a fresh independent positive scan advances this identity.
             // Keep the ORIGINAL native baseline: fringe drift cannot accumulate.
             *m_reference=preview;m_reference->current.text=accepted;m_reference->text=accepted;
-            m_reference->current.ink=m_baseline;m_source=source;m_source.backingOwner.reset();
+            m_reference->current.ink=m_baseline;m_source=source;m_source.data=nullptr;m_source.backingOwner.reset();
             m_valid=true;m_used=false;ClearInPlace(*m_cached);m_reason="cadence-seed-rearmed";return true;
         }
         const auto rearmReject=m_lastRearmRejectCode;
@@ -349,7 +349,7 @@ private:
         }
         m_cleanupChangedIndices.clear();m_cleanupChangedIndices.reserve(m_native.size());
         *m_reference=preview;m_reference->current.text=accepted;m_reference->text=accepted;
-        m_geometry=geometry;m_base=base;m_source=source;m_source.backingOwner.reset();
+        m_geometry=geometry;m_base=base;m_source=source;m_source.data=nullptr;m_source.backingOwner.reset();
         // Detector raw bits also require local picture contrast; native palette
         // classification deliberately has different semantics. Preserve the
         // immutable acquisition detector snapshot for detector-to-detector

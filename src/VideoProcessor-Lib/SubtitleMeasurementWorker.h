@@ -3,6 +3,7 @@
 #include <SourcePictureDetector.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCadenceGuard.h>
+#include <SubtitlePreviewMode.h>
 #include <AnalysisDiagnosticHooks.h>
 #include <DebugLog.h>
 #include <algorithm>
@@ -18,6 +19,12 @@
 #include <cstdlib>
 #include <mutex>
 #include <thread>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#endif
 
 // The optional fault capture stays diagnostic: a current worker observation and
 // a current shared picture are both required. This never grants crop authority.
@@ -217,6 +224,180 @@ private:
     bool m_capturedDiagnostic=false;
 };
 
+// A successful accepted cue is retained as a comparison template only. The
+// source owner is carried while the seed job samples it, then discarded; no
+// previous frame pixels are retained for presentation.
+struct SubtitleCurrentCueTemplateInput {
+    SubtitleBoxObservation observation;
+    SubtitleBoxResult acceptedCue;
+    AnalysisLumaSource source;
+    ActivePictureBounds physicalBase;
+    SubtitleCutPasteGeometry composedOperation;
+    SubtitlePreviewMode sourceMode=SubtitlePreviewMode::None;
+    bool compositionSucceeded=false;
+    bool acceptedCurrentScan=false;
+    int backgroundMode=3;
+    double frameMs=1000.0/60.0;
+    int holdMs=250;
+};
+
+enum class SubtitleCurrentCueProofStatus : uint8_t {
+    NoTemplate, NoTask, NotEligible, Queued, Pending, Ready, FallbackQueued, Failed, Expired, Consumed
+};
+
+enum class SubtitleCurrentCueProofProvenance : uint8_t {
+    None, PresentationOnlyCurrentPixels
+};
+
+// Typed presentation evidence. It is deliberately separate from the ordinary
+// analyzed observation cache and carries no physical, bar, absence, or new-cue
+// authority. `currentKey` is a sanitized exact-source key, not a scan result.
+class SubtitleCurrentCueProofReceipt {
+    friend class SubtitleMeasurementWorker;
+    friend class SubtitleBoxPresentation;
+    bool m_valid=false;
+    SubtitleCurrentCueProofProvenance m_provenance=SubtitleCurrentCueProofProvenance::None;
+    uint64_t m_templateRevision=0;
+    ActivePictureFrameIdentity m_seedIdentity;
+    uint64_t m_workerThreadId=0;
+    double m_workerMilliseconds=0;
+    int m_verifiedLineCount=0;
+    SubtitlePreviewMode m_sourceMode=SubtitlePreviewMode::None;
+    int m_backgroundMode=3;
+    SubtitleBoxObservation m_currentKey;
+    SubtitleBoxResult m_acceptedCue;
+    std::shared_ptr<const SubtitleInkSnapshot> m_currentInk;
+    ActivePictureBounds m_physicalBase;
+    SubtitleCutPasteGeometry m_operation;
+    bool m_cropExcludedBarsVerified=false;
+    size_t m_footprintSamples=0,m_barVisibilitySamples=0;
+    const char* m_reason="not-ready";
+    std::shared_ptr<std::atomic_bool> m_consumed;
+public:
+    bool Valid() const {return m_valid;}
+    SubtitleCurrentCueProofProvenance Provenance() const {return m_provenance;}
+    uint64_t TemplateRevision() const {return m_templateRevision;}
+    const ActivePictureFrameIdentity& SeedIdentity() const {return m_seedIdentity;}
+    uint64_t WorkerThreadId() const {return m_workerThreadId;}
+    double WorkerMilliseconds() const {return m_workerMilliseconds;}
+    int VerifiedLineCount() const {return m_verifiedLineCount;}
+    SubtitlePreviewMode SourceMode() const {return m_sourceMode;}
+    int BackgroundMode() const {return m_backgroundMode;}
+    const SubtitleBoxObservation& CurrentKey() const {return m_currentKey;}
+    const SubtitleBoxResult& AcceptedCue() const {return m_acceptedCue;}
+    const std::shared_ptr<const SubtitleInkSnapshot>& CurrentInk() const {return m_currentInk;}
+    const ActivePictureBounds& PhysicalBase() const {return m_physicalBase;}
+    const SubtitleCutPasteGeometry& Operation() const {return m_operation;}
+    bool CropExcludedBarsVerified() const {return m_cropExcludedBarsVerified;}
+    size_t FootprintSamples() const {return m_footprintSamples;}
+    size_t BarVisibilitySamples() const {return m_barVisibilitySamples;}
+    const char* Reason() const {return m_reason;}
+};
+
+inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
+    const SubtitleCurrentCueProofReceipt& receipt,SubtitleBoxPreview& outPreview,
+    SubtitleBoxResult& outCue) {
+    outPreview={};outCue={};
+    if(!receipt.m_valid || receipt.m_provenance!=
+            SubtitleCurrentCueProofProvenance::PresentationOnlyCurrentPixels ||
+        !receipt.m_templateRevision || !receipt.m_currentInk ||
+        receipt.m_currentInk->rawEvidenceComplete || !receipt.m_currentInk->paletteValid ||
+        !receipt.m_acceptedCue.detected || receipt.m_acceptedCue.held ||
+        receipt.m_acceptedCue.confirmationPending || receipt.m_acceptedCue.workLimit ||
+        receipt.m_acceptedCue.lineCount<1 || receipt.m_acceptedCue.lineCount>3 ||
+        !receipt.m_currentKey.identity.acceptedSequence ||
+        !receipt.m_currentKey.width || !receipt.m_currentKey.height ||
+        receipt.m_physicalBase.rasterWidth!=receipt.m_currentKey.width ||
+        receipt.m_physicalBase.rasterHeight!=receipt.m_currentKey.height ||
+        receipt.m_physicalBase.left<0 || receipt.m_physicalBase.top<0 ||
+        receipt.m_physicalBase.right>receipt.m_currentKey.width ||
+        receipt.m_physicalBase.bottom>receipt.m_currentKey.height ||
+        receipt.m_physicalBase.left>=receipt.m_physicalBase.right ||
+        receipt.m_physicalBase.top>=receipt.m_physicalBase.bottom ||
+        (receipt.m_sourceMode==SubtitlePreviewMode::None && receipt.m_operation.valid) ||
+        (receipt.m_sourceMode!=SubtitlePreviewMode::None && !receipt.m_operation.valid) ||
+        (receipt.m_currentKey.sharedPicture.required &&
+            !receipt.m_currentKey.sharedPicture.AvailableFor(receipt.m_currentKey.identity,
+                receipt.m_currentKey.width,receipt.m_currentKey.height)) ||
+        (receipt.m_operation.valid && !receipt.m_operation.content.Valid()))return false;
+    bool expected=false;
+    if(!receipt.m_consumed || !receipt.m_consumed->compare_exchange_strong(
+            expected,true,std::memory_order_acq_rel))return false;
+    auto cue=receipt.m_acceptedCue;cue.held=true;cue.revised=false;
+    cue.confirmationPending=false;cue.workLimit=false;
+    outPreview.current=receipt.m_currentKey;
+    outPreview.current.analyzed=true;
+    outPreview.current.pendingRefresh=true;
+    outPreview.current.analysisRefresh=false;
+    outPreview.current.cadenceSkipped=false;
+    outPreview.current.independentBarAnalysis=false;
+    outPreview.current.barAuthority=false;
+    outPreview.current.barTrackingAuthority=false;
+    outPreview.current.currentAnchorUsesTrackedEdge=false;
+    outPreview.current.sharedProbeAttempted=false;
+    outPreview.current.sharedProbeDetected=false;
+    outPreview.current.sharedProbeWorkLimit=false;
+    outPreview.current.sharedProbeReason="presentation-only-current-pixel-proof";
+    outPreview.current.sharedProbeAnchor={};
+    outPreview.current.subtitleArProof={};
+    outPreview.current.subtitleArDarkness={};
+    outPreview.current.barStripClearance={};
+    outPreview.current.barEvidence={};
+    outPreview.current.hasBarTrackingReference=false;
+    outPreview.current.barTrackingReferenceIdentity={};
+    outPreview.current.incomingBarTrackingReference={};
+    outPreview.text=cue;
+    outPreview.current.text=cue;
+    outPreview.current.text.diagnosticReason="presentation-only-current-pixel-proof";
+    outPreview.current.ink=receipt.m_currentInk;
+    outPreview.policyGeneration=receipt.m_currentKey.policyGeneration;
+    outPreview.continuityGeneration=receipt.m_currentKey.continuityGeneration;
+    outPreview.matchingFrames=1;outPreview.available=true;
+    outPreview.futureAvailable=false;outPreview.currentLinesConfirmed=false;
+    outPreview.presentationOnlyCurrentCueProof=true;
+    outPreview.newScanMs=0;outPreview.newScanFrames=0;
+    outCue=cue;
+    // This path reattaches only the old cue's presentation result. Old scan
+    // references/certificates are invalid after UNKNOWN and cannot be revived.
+    m_acceptedCueSeedCertificate={};m_currentPreparedCueCertificate={};
+    m_completeOutputRetirement={};m_queueContinuation={};
+    m_previous={};m_reference={};m_inkReference={};m_previousRawCrowded={};
+    m_result=cue;m_hasPrevious=false;m_bridgedFrames=0;
+    m_barTrackingReference={};m_pendingPictureGlyphAcquisition={};
+    m_hasPendingPictureGlyphAcquisition=false;m_expansionEvidence.clear();
+    m_handoffResult={};m_handoffSources=0;m_handoffActive=false;
+    m_handoffMilliseconds=0;m_handoffReason="current-template-pixel-proof";m_handoffProof={};
+    m_weakTemplateMilliseconds=0;m_weakTemplateExhausted=false;
+    m_refreshedReference={};m_referenceSamples=0;
+    m_referenceRefresh="presentation-only-current-pixel-proof";
+    m_diagnosticWeakMs=0;m_decisionReason="current-template-pixel-proof";
+    return true;
+}
+
+using SubtitleMeasurementWork = std::function<SubtitleBoxObservation(
+    SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&)>;
+
+struct SubtitleCurrentCueProofRequest {
+    SubtitleBoxObservation currentKey;
+    AnalysisLumaSource source;
+    ActivePictureBounds physicalBase;
+    SubtitlePreviewMode sourceMode=SubtitlePreviewMode::None;
+    int backgroundMode=3;
+    ActivePictureFrameIdentity eligibleRenderHead;
+    uint64_t eligibleTailSequence=0;
+    uint64_t templateRevision=0;
+    double frameMs=1000.0/60.0;
+    bool fullScanDue=false;
+    SubtitleMeasurementWork fullScanOnMiss;
+    OwnedScanBacklogWitness ownedWitness;
+    bool hasOwnedWitness=false;
+    uint64_t ownedTimelinePolicy=0;
+    std::shared_ptr<AnalysisCompletionSignal> completion;
+};
+
+struct SubtitleCurrentCueWorkerState;
+struct SubtitleCurrentCueTaskEntry;
+
 // Bounded CPU-only work. Jobs own their source storage. Current-source preparation
 // may await completion within its enqueue-derived deadline; presentation never
 // consumes a result for another source frame or policy epoch.
@@ -224,13 +405,15 @@ class SubtitleMeasurementWorker {
 public:
     struct Diagnostics {
         uint64_t fullScans=0,refreshes=0,failed=0,dropped=0,requestMisses=0;
+        uint64_t currentCueTasks=0;
         uint64_t submitted=0,exactReads=0,deduplicated=0,expired=0,staleCompleted=0;
         double fullMs=0,fullPeakMs=0,refreshMs=0,refreshPeakMs=0,queueWaitMs=0,queueWaitPeakMs=0;
+        double currentCueMs=0,currentCuePeakMs=0;
         size_t pending=0,ready=0,workerLimit=1,activeWorkers=0;bool active=false,stopping=false;
     };
     Diagnostics TakeDiagnostics() {
         std::lock_guard<std::mutex> lock(m_mutex);
-        auto out=m_diagnostics;out.pending=m_pending.size();out.ready=m_ready.size();out.workerLimit=m_workerLimit;
+        auto out=m_diagnostics;out.pending=m_pending.size()+m_currentCuePending.size();out.ready=m_ready.size();out.workerLimit=m_workerLimit;
         for(const auto& active:m_activeJobs)if(active.active)++out.activeWorkers;
         out.active=out.activeWorkers!=0;out.stopping=m_stopping;
         m_diagnostics={};return out;
@@ -252,14 +435,31 @@ public:
         r.metrics[0]=key.analysisMs;r.metrics[1]=key.pictureTop;r.metrics[2]=key.pictureBottom;
         AnalysisDiagnosticTrace::Emit(r);
     }
-    using Work=std::function<SubtitleBoxObservation(SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&)>;
+    using Work=SubtitleMeasurementWork;
+    // Seed only after the renderer has accepted and composed this exact full
+    // current cue. Classic may seed an accepted scan without cut/paste; the
+    // advanced modes require a successful operation.
+    SubtitleCurrentCueProofStatus SubmitCurrentCueTemplate(
+        SubtitleCurrentCueTemplateInput input,uint64_t& templateRevision);
+    // Proof is attempted before grouping. On a miss/unknown, the captured
+    // full scan is handed to the ordinary bounded queue only when due.
+    SubtitleCurrentCueProofStatus SubmitCurrentCueProof(SubtitleCurrentCueProofRequest request);
+    // Exact-key, one-use, nonblocking receipt poll.
+    SubtitleCurrentCueProofStatus TryTakeCurrentCueProof(
+        const SubtitleBoxObservation& exactKey,uint64_t templateRevision,
+        SubtitleCurrentCueProofReceipt& receipt);
+    // The proof source window follows renderable queued frames, not capture's
+    // newest sequence. Tail is bounded by the caller's existing queue window.
+    void AdvanceCurrentCueRenderWindow(const ActivePictureFrameIdentity& head,
+        uint64_t tailSequence);
     // Input cadence owns analysis capacity. Display refresh/repeated outputs
     // cannot add workers or change source observations. A lower cadence parks
     // worker1 after its current independent job, without interrupting pixels.
     void SetInputRateHz(double inputHz) {
         {std::lock_guard<std::mutex> lock(m_mutex);
             if(m_stopping)return;
-            m_workerLimit=std::isfinite(inputHz) && inputHz>30.0?2u:1u;
+            m_workerLimit=(std::isfinite(inputHz) && inputHz>30.0) || m_currentCueState?2u:1u;
+            if(m_workerLimit>1 && !m_threads[1].joinable())m_threads[1]=std::thread([this]{Run(1);});
         }
         m_changed.notify_all();
     }
@@ -538,7 +738,7 @@ public:
         return true;
     }
     void Stop() {
-        {std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;m_pending.clear();m_pastRaw.clear();m_rawVersions.clear();}
+        {std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;m_pending.clear();m_currentCuePending.clear();m_currentCueTasks.clear();m_pastRaw.clear();m_rawVersions.clear();}
         m_changed.notify_all();
         for(auto& thread:m_threads)if(thread.joinable())thread.join();
     }
@@ -729,7 +929,14 @@ private:
         Trace(key,"worker-miss",m_ready.empty()?"no-ready-results":"no-compatible-result",mismatches);
         ++m_diagnostics.requestMisses;return false;
     }
-    struct Job {SubtitleBoxObservation key;Work work;uint64_t rawRevision=0;std::shared_ptr<AnalysisCompletionSignal> completion;std::chrono::steady_clock::time_point queued=std::chrono::steady_clock::now();};
+    struct Job {
+        SubtitleBoxObservation key;Work work;uint64_t rawRevision=0;
+        std::shared_ptr<AnalysisCompletionSignal> completion;
+        std::chrono::steady_clock::time_point queued=std::chrono::steady_clock::now();
+        std::function<void(size_t)> currentCueTask;
+        bool currentCueSeedTask=false;
+        std::shared_ptr<SubtitleCurrentCueTaskEntry> cueEntry;
+    };
     void Run(size_t workerIndex) {
         SubtitleMeasurementSampler scanner;
         SubtitleBarTrackingReference previous;
@@ -737,11 +944,32 @@ private:
             Job job;
             {std::unique_lock<std::mutex> lock(m_mutex);
                 m_changed.wait(lock,[this,workerIndex]{
-                    return m_stopping || (workerIndex<m_workerLimit && !m_pending.empty());
+                    if(m_stopping || workerIndex>=m_workerLimit)return m_stopping;
+                    if(workerIndex==0)return !m_currentCuePending.empty() ||
+                        (!m_currentCueState && !m_pending.empty());
+                    return !m_pending.empty();
                 });
                 if(m_stopping)return;
-                job=std::move(m_pending.front());m_pending.pop_front();
+                if(workerIndex==0 && !m_currentCuePending.empty()) {
+                    job=std::move(m_currentCuePending.front());m_currentCuePending.pop_front();
+                } else {job=std::move(m_pending.front());m_pending.pop_front();}
                 m_activeJobs[workerIndex].active=true;m_activeJobs[workerIndex].key=job.key;
+            }
+            if(job.currentCueTask) {
+                const auto workStart=std::chrono::steady_clock::now();
+                try {job.currentCueTask(workerIndex);} catch(...) {}
+                const auto finished=std::chrono::steady_clock::now();
+                const double ms=std::chrono::duration<double,std::milli>(finished-workStart).count();
+                const double waited=std::chrono::duration<double,std::milli>(workStart-job.queued).count();
+                {std::lock_guard<std::mutex> lock(m_mutex);
+                    m_diagnostics.queueWaitMs+=waited;
+                    m_diagnostics.queueWaitPeakMs=(std::max)(m_diagnostics.queueWaitPeakMs,waited);
+                    ++m_diagnostics.currentCueTasks;m_diagnostics.currentCueMs+=ms;
+                    m_diagnostics.currentCuePeakMs=(std::max)(m_diagnostics.currentCuePeakMs,ms);
+                    m_activeJobs[workerIndex]={};
+                }
+                if(job.completion)job.completion->Notify();
+                continue;
             }
             if(job.key.discontinuity || !previous.IsImmediatePredecessor(job.key.identity,
                 job.key.width,job.key.height,job.key.policyGeneration,job.key.continuityGeneration,job.key.scriptHint)) {
@@ -780,6 +1008,11 @@ private:
     std::condition_variable m_changed;
     std::array<std::thread,2> m_threads;
     std::deque<Job> m_pending;
+    std::deque<Job> m_currentCuePending;
+    std::deque<std::shared_ptr<SubtitleCurrentCueTaskEntry>> m_currentCueTasks;
+    std::shared_ptr<SubtitleCurrentCueWorkerState> m_currentCueState;
+    ActivePictureFrameIdentity m_currentCueWindowHead;
+    uint64_t m_currentCueWindowTail=0,m_nextCurrentCueRevision=0;
     std::deque<SubtitleBoxObservation> m_ready;
     std::deque<SubtitleBoxObservation> m_pastRaw;
     std::deque<RawVersion> m_rawVersions;
@@ -856,7 +1089,9 @@ public:
         uint32_t contextMismatch=0;
         size_t glyphSamplesChecked=0;
         size_t currentBandSamplesChecked=0,backingSamplesChecked=0;
-        size_t seedBandSamplesChecked=0;
+        size_t currentFootprintSamplesChecked=0,barVisibilitySamplesChecked=0;
+        size_t seedBandSamplesChecked=0,seedGlyphSamplesChecked=0;
+        size_t seedKnownSamplesChecked=0,seedBackingSamplesChecked=0;
         size_t readyRearmMaskWordsChecked=0,readyRearmGlyphSamplesChecked=0;
         size_t readyRearmBackingSamplesChecked=0,readyRearmKnownSamplesChecked=0;
         int glyphMismatchX=-1, glyphMismatchY=-1;
@@ -890,7 +1125,8 @@ public:
         const SubtitleAcceptedCueSeedCertificate* existingCueCertificate=nullptr,
         const SubtitleCurrentPreparedCueCertificate* heldCurrentCue=nullptr,
         const ActivePictureBounds* physicalBase=nullptr,
-        const SubtitleCadenceGuard* currentFootprint=nullptr) {
+        const SubtitleCadenceGuard* currentFootprint=nullptr,
+        bool presentationTemplateProof=false) {
         m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::NotAttempted;
         m_diagnostics.readyRearmLayoutMismatchBits=0;
         m_diagnostics.seedBandSamplesChecked=0;
@@ -1044,7 +1280,7 @@ public:
         const auto readyRearmReject=m_diagnostics.readyRearmRejectCode;
         const auto readyRearmLayoutMismatchBits=m_diagnostics.readyRearmLayoutMismatchBits;
         auto seed=preview;seed.current.text=accepted;seed.text=accepted;
-        Resolve(seed,source,frameMs,holdMs,nullptr,false,currentFootprint);
+        Resolve(seed,source,frameMs,holdMs,nullptr,false,currentFootprint,presentationTemplateProof);
         m_diagnostics.readyRearmRejectCode=readyRearmReject;
         m_diagnostics.readyRearmLayoutMismatchBits=readyRearmLayoutMismatchBits;
         if(HasPixelSeed() && !resolvedCovers && certifiedExistingCue) {
@@ -1101,11 +1337,48 @@ public:
         m_elapsed+=frameMs;m_last=c.identity;m_reason="cadence-last-source-advanced";
         return true;
     }
+    // Worker-only source proof for a static accepted cue. This is deliberately
+    // independent of Resolve's short pending lease: it reads required current
+    // pixels and never advances or replaces the immutable seed.
+    bool VerifyCurrentCuePixels(const SubtitleBoxObservation& current,
+        const AnalysisLumaSource& source,const SubtitleCadenceGuard* currentFootprint,
+        std::shared_ptr<SubtitleInkSnapshot>& currentInk,const char*& reason,
+        bool presentationTemplateProof=false) {
+        m_diagnostics={};currentInk.reset();reason="current-cue-proof-unavailable";
+        const auto& seed=m_reference.current;
+        if(!HasPixelSeed() || !m_currentInkProofSeeded || !source.backingOwner ||
+            !source.IsValid() || source.width!=seed.width || source.height!=seed.height ||
+            current.width!=seed.width || current.height!=seed.height || current.discontinuity ||
+            current.identity.transportGeneration!=seed.identity.transportGeneration ||
+            current.identity.sourceFormatGeneration!=seed.identity.sourceFormatGeneration ||
+            current.identity.analysisDomainKey!=seed.identity.analysisDomainKey ||
+            current.identity.viewportGeneration!=seed.identity.viewportGeneration ||
+            current.identity.rendererGeneration!=seed.identity.rendererGeneration ||
+            current.policyGeneration!=seed.policyGeneration ||
+            current.continuityGeneration!=seed.continuityGeneration ||
+            current.nearBarDistance!=seed.nearBarDistance || current.scriptHint!=seed.scriptHint ||
+            current.optimizationMode!=seed.optimizationMode ||
+            !current.sharedPicture.AvailableFor(current.identity,current.width,current.height) ||
+            !current.sharedPicture.Matches(seed.sharedPicture) ||
+            current.identity.acceptedSequence<=seed.identity.acceptedSequence ||
+            current.identity.captureTimestamp<=seed.identity.captureTimestamp ||
+            (seed.identity.sourceFrameNumber && (!current.identity.sourceFrameNumber ||
+                current.identity.sourceFrameNumber<=seed.identity.sourceFrameNumber)) ||
+            (m_currentFootprintRequired!=static_cast<bool>(currentFootprint))) {
+            reason="current-cue-proof-context-changed";return false;
+        }
+        if(!BuildCurrentInkProof(source,current,currentInk,reason,currentFootprint,presentationTemplateProof))return false;
+        if(!currentInk || currentInk->rawEvidenceComplete || !currentInk->paletteValid) {
+            currentInk.reset();reason="current-cue-proof-not-presentation-only";return false;
+        }
+        reason="current-cue-pixels-verified";return true;
+    }
     bool Resolve(SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
         double frameMs,int holdMs,
         const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,
         bool backlogRetirementOnly=false,
-        const SubtitleCadenceGuard* currentFootprint=nullptr) {
+        const SubtitleCadenceGuard* currentFootprint=nullptr,
+        bool presentationTemplateProof=false) {
         struct FootprintReceiptScope {
             const SubtitleCadenceGuard* guard=nullptr;
             bool keep=false;
@@ -1132,7 +1405,8 @@ public:
                 m_ownedSamples.clear();m_backingSamples.clear();m_knownInkSamples.clear();m_paletteFringe.clear();
                 m_currentInkProofSeeded=false;m_currentFootprintRequired=false;
                 m_sourceLayout={};
-                const auto currentInkSeed=SeedCurrentInkProof(preview,source,!requireFootprint,currentFootprint);
+                const auto currentInkSeed=SeedCurrentInkProof(preview,source,
+                    !requireFootprint && !presentationTemplateProof,currentFootprint,presentationTemplateProof);
                 if(currentInkSeed==CurrentInkSeedState::Seeded) {
                     m_currentFootprintRequired=requireFootprint;
                     m_reason="accepted-current-ink-seed";
@@ -1561,14 +1835,17 @@ private:
         return true;
     }
     CurrentInkSeedState SeedCurrentInkProof(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
-        bool seedDirectionalBaseline=true,const SubtitleCadenceGuard* currentFootprint=nullptr) {
+        bool seedDirectionalBaseline=true,const SubtitleCadenceGuard* currentFootprint=nullptr,
+        bool presentationTemplateProof=false) {
+        m_diagnostics.seedBandSamplesChecked=0;m_diagnostics.seedGlyphSamplesChecked=0;
+        m_diagnostics.seedKnownSamplesChecked=0;m_diagnostics.seedBackingSamplesChecked=0;
         const auto& current=preview.current;const auto& text=current.text;const auto ink=current.ink;
         if(!preview.available || !current.analyzed || current.pendingRefresh || current.analysisRefresh ||
             current.discontinuity || !current.independentBarAnalysis || !current.barAuthority ||
             current.barTrackingAuthority || current.currentAnchorUsesTrackedEdge ||
             (seedDirectionalBaseline?current.analysisStride!=1:
                 (current.analysisStride!=1 && current.analysisStride!=2)) || current.cadenceSkipped ||
-            (!seedDirectionalBaseline && !currentFootprint) || !current.barEvidence.available ||
+            (!seedDirectionalBaseline && !currentFootprint && !presentationTemplateProof) || !current.barEvidence.available ||
             current.pictureTop!=current.barEvidence.top || current.pictureBottom!=current.barEvidence.bottom ||
             current.barEvidence.captionBackedTop || current.barEvidence.captionBackedBottom ||
             !text.detected || text.held || text.confirmationPending || text.revised || text.workLimit ||
@@ -1631,7 +1908,7 @@ private:
                     }
                 }
         }
-        else if(!currentFootprint->MatchesAcceptedSeed(preview,text,source,current.sharedPicture.bounds))
+        else if(currentFootprint && !currentFootprint->MatchesAcceptedSeed(preview,text,source,current.sharedPicture.bounds))
             return CurrentInkSeedState::Failed;
         const auto sampleSeed=[&](int x,int y,AnalysisLumaSample& value) {
             if(x<0 || y<0 || x>=ink->width || y>=ink->height)return false;
@@ -1643,8 +1920,11 @@ private:
             return sampler.Sample(x*ink->step,ink->sourceRows[size_t(y)],value);
         };
         std::vector<KnownInkSample> knownInk;knownInk.reserve(4096);
-        for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x)if(ink->Get(x,y) &&
-            (!currentFootprint || currentFootprint->ContainsFootprintSample(x*ink->step,ink->sourceRows[size_t(y)]))) {
+        for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x)if(ink->Get(x,y)) {
+            const int sourceY=ink->sourceRows[size_t(y)];
+            const bool encodedBar=sourceY<current.pictureTop || sourceY>=current.pictureBottom;
+            if(currentFootprint && !currentFootprint->ContainsFootprintSample(x*ink->step,sourceY))continue;
+            if(presentationTemplateProof && !currentFootprint && !encodedBar && !ink->Get(x,y,true))continue;
             if(knownInk.size()>=CurrentInkSampleBudget)return CurrentInkSeedState::Failed;
             AnalysisLumaSample sample;
             if(!sampleSeed(x,y,sample))return CurrentInkSeedState::Failed;
@@ -1653,6 +1933,9 @@ private:
         std::vector<uint64_t> paletteFringe(words,0);
         size_t fringeSamples=0;
         for(int y=0;y<ink->height;++y)if(y<topEnd || y>=bottomStart)for(int x=1;x<ink->width-1;++x) {
+            if(presentationTemplateProof && !currentFootprint &&
+                ink->sourceRows[size_t(y)]>=current.pictureTop &&
+                ink->sourceRows[size_t(y)]<current.pictureBottom)continue;
             if(ink->Get(x,y))continue;
             if(currentFootprint && !currentFootprint->ContainsFootprintSample(x*ink->step,ink->sourceRows[size_t(y)]))continue;
             bool nextToKnownRaw=false;
@@ -1717,6 +2000,7 @@ private:
                 !addSupport(text.lineCapturePanels[line]))return CurrentInkSeedState::Failed;
         std::vector<BackingSample> backing;backing.reserve(4096);
         for(int y=0;y<ink->height;++y)for(int x=0;x<ink->width;++x) {
+            if(presentationTemplateProof && !currentFootprint)continue;
             if(!support[size_t(y)*ink->width+x] ||
                 (currentFootprint && !currentFootprint->ContainsFootprintSample(x*ink->step,ink->sourceRows[size_t(y)])))continue;
             if(y<topEnd || y>=bottomStart)backing.push_back({x,y,ink->Black(x,y)});
@@ -1730,12 +2014,15 @@ private:
         m_ownedSamples=std::move(owned);m_backingSamples=std::move(backing);
         m_knownInkSamples=std::move(knownInk);
         m_paletteFringe=std::move(paletteFringe);
+        m_diagnostics.seedGlyphSamplesChecked=m_ownedSamples.size();
+        m_diagnostics.seedKnownSamplesChecked=m_knownInkSamples.size();
+        m_diagnostics.seedBackingSamplesChecked=m_backingSamples.size();
         m_sourceLayout=CaptureSourceLayout(source);m_currentInkProofSeeded=true;
         return CurrentInkSeedState::Seeded;
     }
     bool BuildCurrentInkProof(const AnalysisLumaSource& source,const SubtitleBoxObservation& current,
         std::shared_ptr<SubtitleInkSnapshot>& currentInk,const char*& reason,
-        const SubtitleCadenceGuard* currentFootprint) {
+        const SubtitleCadenceGuard* currentFootprint,bool presentationTemplateProof=false) {
         const auto& old=m_reference.current;const auto oldInk=m_pixelSeedInk;
         if(!m_currentInkProofSeeded || !oldInk || !SameSourceLayout(source,m_sourceLayout) ||
             source.width!=old.width || source.height!=old.height ||
@@ -1752,6 +2039,7 @@ private:
                 m_diagnostics.currentBandSamplesChecked=verified.samples;
                 reason=verified.reason;return false;
             }
+            m_diagnostics.currentFootprintSamplesChecked=verified.samples;
         } else if(currentFootprint) {
             reason="current-footprint-mode-changed";return false;
         }
@@ -1785,13 +2073,14 @@ private:
                 if(!sampler.Sample(x*fresh->step,fresh->sourceRows[size_t(y)],pixels[at]))return false;
                 sampled[at]=1;++count;
                 m_diagnostics.currentBandSamplesChecked=count;
+                if(y<top || y>=bottom)++m_diagnostics.barVisibilitySamplesChecked;
                 if(pixels[at].luma<=fresh->blackLimit)
                     fresh->blackBacking[at/64]|=uint64_t{1}<<(at%64);
             }
             value=pixels[at];return true;
         };
         for(int y=0;y<fresh->height;++y)if((y<topEnd || y>=bottomStart) &&
-            (!m_currentFootprintRequired || y<top || y>=bottom))
+            ((!m_currentFootprintRequired && !presentationTemplateProof) || y<top || y>=bottom))
             for(int x=0;x<fresh->width;++x) {
                 AnalysisLumaSample unused;if(!read(x,y,unused)) {
                     reason=count>=CurrentInkSampleBudget?"current-ink-sample-budget":"current-ink-sample-failed";return false;
@@ -1833,7 +2122,8 @@ private:
             }
         }
         const size_t bandCells=CurrentBandCellCount(fresh->width,fresh->height,topEnd,bottomStart);
-        if(!m_currentFootprintRequired && (m_contrastSeedWidth!=fresh->width || m_contrastSeedHeight!=fresh->height ||
+        if(!m_currentFootprintRequired && !presentationTemplateProof &&
+            (m_contrastSeedWidth!=fresh->width || m_contrastSeedHeight!=fresh->height ||
             m_contrastSeedTopEnd!=topEnd || m_contrastSeedBottomStart!=bottomStart ||
             m_contrastSeedPictureTop!=top || m_contrastSeedPictureBottom!=bottom ||
             m_contrastSeedPixels.size()!=bandCells || m_contrastSeedDirections.size()!=bandCells)) {
@@ -1841,6 +2131,7 @@ private:
         }
         const int radius=(std::max)(3,fresh->height/180);
         for(int y=0;y<fresh->height;++y)if(y<topEnd || y>=bottomStart)for(int x=1;x<fresh->width-1;++x) {
+            if(presentationTemplateProof && !m_currentFootprintRequired && y>=top && y<bottom)continue;
             const bool inNativeFootprint=m_currentFootprintRequired && currentFootprint &&
                 currentFootprint->ContainsVerifiedFootprintSample(x*fresh->step,fresh->sourceRows[size_t(y)]);
             if(m_currentFootprintRequired && y>=top && y<bottom && !inNativeFootprint)continue;
@@ -1901,8 +2192,8 @@ private:
             fresh->rawInk[at/64]|=bit;
             fresh->ownedInk[at/64]|=uint64_t{1}<<(at%64);
         }
-        if(m_currentFootprintRequired) {
-            if(HasNonblackEncodedBarPixels(*oldInk,pixels,currentFootprint,top,bottom,topEnd,bottomStart,
+        if(m_currentFootprintRequired || presentationTemplateProof) {
+            if(HasNonblackEncodedBarPixels(*fresh,pixels,top,bottom,topEnd,bottomStart,
                 m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY)) {
                 reason="new-current-bar-ink";return false;
             }
@@ -1915,15 +2206,17 @@ private:
         reason="current-owned-cue-verified";return true;
     }
     bool HasNonblackEncodedBarPixels(const SubtitleInkSnapshot& reference,
-        const std::vector<AnalysisLumaSample>& currentPixels,const SubtitleCadenceGuard* currentFootprint,
-        int top,int bottom,int topEnd,int bottomStart,int& mismatchX,int& mismatchY) const {
+        const std::vector<AnalysisLumaSample>& currentPixels,
+        int top,int bottom,int topEnd,int bottomStart,
+        int& mismatchX,int& mismatchY) const {
         const int width=reference.width,height=reference.height;
         const size_t bandCells=CurrentBandCellCount(width,height,topEnd,bottomStart);
-        if(!currentFootprint || currentPixels.size()!=size_t(width)*height || !bandCells)return true;
+        if(currentPixels.size()!=size_t(width)*height || !bandCells)return true;
         for(int y=0;y<height;++y)if(InCurrentBand(y,height,topEnd,bottomStart) && (y<top || y>=bottom))
             for(int x=0;x<width;++x) {
-                if(currentFootprint->ContainsFootprintSample(x*reference.step,reference.sourceRows[size_t(y)]))
-                    continue; // The pure native witness checked this exact sample.
+                // The only permitted nonblack sample is an old detector-owned
+                // glyph cell, whose exact current YUV was checked above.
+                if(reference.Get(x,y,true))continue;
                 const auto& sample=currentPixels[size_t(y)*width+x];
                 const bool black=sample.luma<=reference.blackLimit &&
                     std::abs(int(sample.chromaU)-512)<=48 && std::abs(int(sample.chromaV)-512)<=48;
@@ -2044,3 +2337,431 @@ private:
     std::vector<Sample> m_samples;
     double m_elapsed=0;
 };
+
+struct SubtitleCurrentCueTemplateDescriptor {
+    SubtitleBoxObservation context;
+    SubtitleBoxResult cue;
+    ActivePictureBounds physicalBase;
+    SubtitleCutPasteGeometry operation;
+    AnalysisLumaSource sourceLayout;
+    SubtitlePreviewMode sourceMode=SubtitlePreviewMode::None;
+    int backgroundMode=3;
+    uint64_t revision=0;
+    bool valid=false;
+};
+
+struct SubtitleCurrentCueTaskEntry {
+    SubtitleBoxObservation key;
+    SubtitleCurrentCueTemplateDescriptor descriptor;
+    std::shared_ptr<SubtitleCurrentCueWorkerState> workerState;
+    SubtitleCurrentCueProofStatus status=SubtitleCurrentCueProofStatus::Queued;
+    SubtitleCurrentCueProofReceipt receipt;
+    uint64_t revision=0;
+    bool seedTask=false;
+};
+
+struct SubtitleCurrentCueWorkerState {
+    SubtitlePendingMeasurementGuard pending;
+    SubtitleCadenceGuard footprint;
+    SubtitleCurrentCueTemplateDescriptor descriptor;
+};
+
+namespace SubtitleCurrentCueWorkerDetail {
+inline bool SameRect(const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+    return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+}
+inline bool SameBounds(const ActivePictureBounds& a,const ActivePictureBounds& b) {
+    return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+        a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight;
+}
+inline bool SameContext(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+    return a.identity.transportGeneration==b.identity.transportGeneration &&
+        a.identity.sourceFormatGeneration==b.identity.sourceFormatGeneration &&
+        a.identity.analysisDomainKey==b.identity.analysisDomainKey &&
+        a.identity.viewportGeneration==b.identity.viewportGeneration &&
+        a.identity.rendererGeneration==b.identity.rendererGeneration &&
+        a.width==b.width && a.height==b.height && a.nearBarDistance==b.nearBarDistance &&
+        a.scriptHint==b.scriptHint && a.optimizationMode==b.optimizationMode &&
+        a.policyGeneration==b.policyGeneration && a.continuityGeneration==b.continuityGeneration &&
+        a.sharedPicture.Matches(b.sharedPicture);
+}
+inline bool SameSourceLayout(const AnalysisLumaSource& a,const AnalysisLumaSource& b) {
+    return a.width==b.width && a.height==b.height && a.format==b.format &&
+        a.encoding==b.encoding && a.colorspace==b.colorspace && a.range==b.range &&
+        a.rowBytes==b.rowBytes && a.chromaRowBytes==b.chromaRowBytes &&
+        a.generation==b.generation && a.rgbBitAlignment==b.rgbBitAlignment;
+}
+inline bool SameCue(const SubtitleBoxResult& a,const SubtitleBoxResult& b) {
+    if(a.cue!=b.cue || a.lineCount!=b.lineCount || a.detected!=b.detected ||
+        a.held!=b.held || a.confirmationPending!=b.confirmationPending || a.revised!=b.revised ||
+        a.workLimit!=b.workLimit || a.signature!=b.signature || a.anchorSignature!=b.anchorSignature ||
+        a.lineSignatures!=b.lineSignatures || a.capturePanelMeasured!=b.capturePanelMeasured ||
+        !SameRect(a.bounds,b.bounds) || !SameRect(a.anchor,b.anchor) ||
+        !SameRect(a.sourcePanel,b.sourcePanel) || !SameRect(a.provenSourcePanel,b.provenSourcePanel) ||
+        !SameRect(a.capturePanel,b.capturePanel))return false;
+    for(size_t i=0;i<a.lineBounds.size();++i)
+        if(!SameRect(a.lineBounds[i],b.lineBounds[i]) || !SameRect(a.linePanels[i],b.linePanels[i]) ||
+            !SameRect(a.provenLinePanels[i],b.provenLinePanels[i]) ||
+            !SameRect(a.lineCapturePanels[i],b.lineCapturePanels[i]))return false;
+    return true;
+}
+inline bool SameOperation(const SubtitleCutPasteGeometry& a,const SubtitleCutPasteGeometry& b) {
+    if(!SameRect(a.source,b.source) || !SameRect(a.destination,b.destination) ||
+        !SameRect(a.content,b.content) || !SameRect(a.generatedCleanup,b.generatedCleanup) ||
+        !SameRect(a.pictureCapture,b.pictureCapture) || !SameRect(a.pendingProtectedCleanup,b.pendingProtectedCleanup) ||
+        !SameRect(a.generatedCleanupExclusion,b.generatedCleanupExclusion) ||
+        !SameRect(a.placementLimits,b.placementLimits) || !SameRect(a.layoutContent,b.layoutContent) ||
+        !SameRect(a.layoutCoverage,b.layoutCoverage) || !SameRect(a.cleanupLimit,b.cleanupLimit) ||
+        a.generatedCleanupRowCount!=b.generatedCleanupRowCount || a.glyphScale!=b.glyphScale ||
+        a.glyphTranslateX!=b.glyphTranslateX || a.glyphTranslateY!=b.glyphTranslateY ||
+        a.centeredGlyphMapping!=b.centeredGlyphMapping || a.roundedCorners!=b.roundedCorners ||
+        a.extendToBar!=b.extendToBar || a.pictureIntrusion!=b.pictureIntrusion ||
+        a.backgroundGuarded!=b.backgroundGuarded || a.pictureTop!=b.pictureTop ||
+        a.pictureBottom!=b.pictureBottom || a.displayPictureLeft!=b.displayPictureLeft ||
+        a.displayPictureTop!=b.displayPictureTop || a.displayPictureRight!=b.displayPictureRight ||
+        a.displayPictureBottom!=b.displayPictureBottom || a.valid!=b.valid || a.fromTopBar!=b.fromTopBar)
+        return false;
+    for(size_t i=0;i<a.glyphLines.size();++i)if(!SameRect(a.glyphLines[i],b.glyphLines[i]))return false;
+    for(size_t i=0;i<a.generatedCleanupRows.size();++i)
+        if(!SameRect(a.generatedCleanupRows[i],b.generatedCleanupRows[i]))return false;
+    return true;
+}
+inline SubtitleCurrentCueTemplateDescriptor Describe(const SubtitleCurrentCueTemplateInput& input) {
+    SubtitleCurrentCueTemplateDescriptor out;
+    out.context=input.observation;out.context.text={};out.context.ink.reset();
+    out.context.subtitleArProof={};out.context.subtitleArDarkness={};out.context.barEvidence={};
+    out.context.barStripClearance={};out.context.hasBarTrackingReference=false;
+    out.context.barTrackingReferenceIdentity={};out.context.incomingBarTrackingReference={};
+    out.context.sharedProbeAnchor={};
+    out.cue=input.acceptedCue;out.physicalBase=input.physicalBase;out.operation=input.composedOperation;
+    out.sourceLayout=input.source;out.sourceLayout.data=nullptr;out.sourceLayout.dataBytes=0;
+    out.sourceLayout.backingOwner.reset();out.sourceMode=input.sourceMode;
+    out.backgroundMode=input.backgroundMode;out.valid=true;return out;
+}
+inline bool SameDescriptor(const SubtitleCurrentCueTemplateDescriptor& a,
+    const SubtitleCurrentCueTemplateDescriptor& b) {
+    return a.valid && b.valid && SameContext(a.context,b.context) && SameCue(a.cue,b.cue) &&
+        SameBounds(a.physicalBase,b.physicalBase) && SameOperation(a.operation,b.operation) &&
+        SameSourceLayout(a.sourceLayout,b.sourceLayout) && a.sourceMode==b.sourceMode &&
+        a.backgroundMode==b.backgroundMode;
+}
+inline bool CurrentMatches(const SubtitleCurrentCueTemplateDescriptor& seed,
+    const SubtitleBoxObservation& current,const ActivePictureBounds& base,
+    const AnalysisLumaSource& source,SubtitlePreviewMode mode,int backgroundMode) {
+    return seed.valid && SameContext(seed.context,current) && SameBounds(seed.physicalBase,base) &&
+        source.IsValid() && SameSourceLayout(seed.sourceLayout,source) &&
+        mode==seed.sourceMode && backgroundMode==seed.backgroundMode &&
+        current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
+        SameBounds(current.sharedPicture.bounds,base);
+}
+inline bool InWindow(const ActivePictureFrameIdentity& head,uint64_t tail,
+    const ActivePictureFrameIdentity& current) {
+    return head.transportGeneration && current.transportGeneration==head.transportGeneration &&
+        current.sourceFormatGeneration==head.sourceFormatGeneration &&
+        current.viewportGeneration==head.viewportGeneration && current.rendererGeneration==head.rendererGeneration &&
+        (!head.analysisDomainKey || current.analysisDomainKey==head.analysisDomainKey) &&
+        current.acceptedSequence>=head.acceptedSequence && current.acceptedSequence<=tail &&
+        current.acceptedSequence-head.acceptedSequence<=ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES+2;
+}
+inline bool SameExactTaskKey(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
+    return SameAnalysisFrameIdentity(a.identity,b.identity) && a.policyGeneration==b.policyGeneration &&
+        a.continuityGeneration==b.continuityGeneration && a.width==b.width && a.height==b.height &&
+        a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode &&
+        a.scriptHint==b.scriptHint && a.sharedPicture.Matches(b.sharedPicture);
+}
+inline uint64_t ThreadId() {
+#ifdef _WIN32
+    return static_cast<uint64_t>(::GetCurrentThreadId());
+#else
+    return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+#endif
+}
+}
+
+inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCueTemplate(
+    SubtitleCurrentCueTemplateInput input,uint64_t& templateRevision) {
+    using namespace SubtitleCurrentCueWorkerDetail;
+    templateRevision=0;
+    const auto& o=input.observation;const auto& cue=input.acceptedCue;
+    const bool classic=input.sourceMode==SubtitlePreviewMode::None;
+    const bool advanced=input.sourceMode==SubtitlePreviewMode::BlackBackground ||
+        input.sourceMode==SubtitlePreviewMode::GeneratedGrayBackground;
+    if((!classic && !advanced) || !input.acceptedCurrentScan || !o.analyzed || o.discontinuity ||
+        o.pendingRefresh || o.analysisRefresh || o.cadenceSkipped || o.glyphLocalTop || o.glyphLocalBottom ||
+        o.analysisStride!=1 || !o.text.detected || o.text.workLimit || o.text.held ||
+        o.text.confirmationPending || o.text.revised ||
+        !o.independentBarAnalysis || !o.barAuthority || o.barTrackingAuthority || o.currentAnchorUsesTrackedEdge ||
+        !o.barEvidence.available || o.barEvidence.captionBackedTop || o.barEvidence.captionBackedBottom ||
+        o.pictureTop!=o.barEvidence.top || o.pictureBottom!=o.barEvidence.bottom ||
+        !o.ink || !o.ink->rawEvidenceComplete || !o.ink->paletteValid ||
+        !cue.detected || cue.held || cue.confirmationPending || cue.revised || cue.workLimit ||
+        cue.lineCount<1 || cue.lineCount>3 || !input.source.backingOwner || !input.source.IsValid() ||
+        input.source.width!=o.width || input.source.height!=o.height ||
+        !o.sharedPicture.AvailableFor(o.identity,o.width,o.height) ||
+        !SameBounds(o.sharedPicture.bounds,input.physicalBase) ||
+        input.physicalBase.rasterWidth!=o.width || input.physicalBase.rasterHeight!=o.height ||
+        !std::isfinite(input.frameMs) || input.frameMs<=0 || input.holdMs<=0 ||
+        (advanced && (!input.compositionSucceeded || !input.composedOperation.valid)) ||
+        (advanced && input.backgroundMode!=3 && input.backgroundMode!=5))
+        return SubtitleCurrentCueProofStatus::NotEligible;
+    auto descriptor=Describe(input);
+    std::shared_ptr<SubtitleCurrentCueWorkerState> state;
+    std::shared_ptr<SubtitleCurrentCueTaskEntry> entry;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if(m_stopping)return SubtitleCurrentCueProofStatus::Failed;
+        if(m_currentCueState && SameDescriptor(m_currentCueState->descriptor,descriptor)) {
+            templateRevision=m_currentCueState->descriptor.revision;
+            return SubtitleCurrentCueProofStatus::Ready;
+        }
+        for(const auto& pending:m_currentCueTasks)
+            if(pending->seedTask && pending->status==SubtitleCurrentCueProofStatus::Queued &&
+                pending->revision && SameDescriptor(pending->descriptor,descriptor)) {
+                templateRevision=pending->revision;return SubtitleCurrentCueProofStatus::Queued;
+            }
+        if(m_currentCuePending.size()>=2)return SubtitleCurrentCueProofStatus::NotEligible;
+        descriptor.revision=++m_nextCurrentCueRevision;
+        templateRevision=descriptor.revision;
+        state=std::make_shared<SubtitleCurrentCueWorkerState>();
+        entry=std::make_shared<SubtitleCurrentCueTaskEntry>();
+        entry->key=o;entry->key.ink.reset();entry->revision=descriptor.revision;
+        entry->descriptor=descriptor;
+        entry->workerState=state;
+        entry->seedTask=true;entry->status=SubtitleCurrentCueProofStatus::Queued;
+        m_currentCueTasks.push_back(entry);
+    }
+    Job job;job.key=o;job.key.ink.reset();job.currentCueSeedTask=true;job.cueEntry=entry;
+    job.queued=std::chrono::steady_clock::now();
+    job.currentCueTask=[this,entry,state,descriptor,input=std::move(input)](size_t) mutable {
+        const auto started=std::chrono::steady_clock::now();
+        bool seeded=false;const char* reason="current-cue-template-seed-failed";
+        SubtitleBoxPreview preview;preview.current=input.observation;
+        preview.current.text=input.observation.text;preview.text=input.acceptedCue;
+        preview.available=true;preview.policyGeneration=input.observation.policyGeneration;
+        preview.continuityGeneration=input.observation.continuityGeneration;
+        const bool advanced=input.sourceMode!=SubtitlePreviewMode::None;
+        bool footprintSeeded=!advanced || state->footprint.RememberCurrentFootprint(preview,input.acceptedCue,
+            input.source,input.physicalBase,input.composedOperation,input.frameMs,input.holdMs,input.backgroundMode);
+        if(footprintSeeded) {
+            const auto* footprint=advanced?&state->footprint:nullptr;
+            seeded=state->pending.RememberAccepted(preview,input.acceptedCue,input.source,input.frameMs,
+                input.holdMs,nullptr,nullptr,&input.physicalBase,footprint);
+            if(seeded && state->pending.HasPixelSeed()) {
+                state->descriptor=descriptor;state->descriptor.revision=entry->revision;
+                reason=advanced?"current-cue-template-footprint-seeded":"current-cue-template-seeded";
+            } else {seeded=false;reason=state->pending.DecisionReason();}
+        } else reason=state->footprint.DecisionReason();
+        if(seeded) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if(!m_stopping) {
+                m_currentCueState=state;m_workerLimit=2;
+                if(!m_threads[1].joinable())m_threads[1]=std::thread([this]{Run(1);});
+            }
+        }
+        const double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+        AnalysisTraceRecord trace=AnalysisTraceRecord(input.observation.identity,this,"worker-cue-template",reason);
+        trace.kind=AnalysisDiagnosticRecordKindV1::Worker;trace.policyGeneration=input.observation.policyGeneration;
+        trace.continuityGeneration=input.observation.continuityGeneration;trace.sourceWidth=input.observation.width;
+        trace.sourceHeight=input.observation.height;trace.resultCode=input.acceptedCue.lineCount;
+        trace.counters[0]=entry->revision;trace.counters[1]=SubtitleCurrentCueWorkerDetail::ThreadId();
+        const auto& seedDiagnostics=state->pending.DecisionDiagnostics();
+        trace.counters[2]=seedDiagnostics.seedBandSamplesChecked+seedDiagnostics.seedGlyphSamplesChecked+
+            seedDiagnostics.seedKnownSamplesChecked+seedDiagnostics.seedBackingSamplesChecked;
+        trace.counters[3]=0;trace.counters[4]=0;trace.metrics[0]=elapsed;
+        trace.flags=seeded?1u:0u;AnalysisDiagnosticTrace::Emit(trace);
+        {std::lock_guard<std::mutex> lock(m_mutex);
+            entry->status=seeded?SubtitleCurrentCueProofStatus::Ready:SubtitleCurrentCueProofStatus::Failed;
+            entry->key.ink.reset();entry->workerState.reset();
+            while(m_currentCueTasks.size()>8)m_currentCueTasks.pop_front();
+        }
+    };
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if(m_stopping) {entry->status=SubtitleCurrentCueProofStatus::Failed;return SubtitleCurrentCueProofStatus::Failed;}
+        m_currentCuePending.push_back(std::move(job));
+        if(!m_threads[0].joinable())m_threads[0]=std::thread([this]{Run(0);});
+    }
+    m_changed.notify_all();
+    return SubtitleCurrentCueProofStatus::Queued;
+}
+
+inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCueProof(
+    SubtitleCurrentCueProofRequest request) {
+    using namespace SubtitleCurrentCueWorkerDetail;
+    std::shared_ptr<SubtitleCurrentCueWorkerState> state;
+    std::shared_ptr<SubtitleCurrentCueTaskEntry> entry;
+    SubtitleCurrentCueTemplateDescriptor descriptor;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if(m_stopping)return SubtitleCurrentCueProofStatus::Failed;
+        if(!request.templateRevision)return SubtitleCurrentCueProofStatus::NoTemplate;
+        if(m_currentCueState && m_currentCueState->descriptor.revision==request.templateRevision) {
+            state=m_currentCueState;descriptor=state->descriptor;
+        } else {
+            for(const auto& pending:m_currentCueTasks)
+                if(pending->seedTask && pending->status==SubtitleCurrentCueProofStatus::Queued &&
+                    pending->revision==request.templateRevision) {
+                    state=pending->workerState;descriptor=pending->descriptor;break;
+                }
+            if(!state)return m_currentCueState?SubtitleCurrentCueProofStatus::NotEligible:
+                SubtitleCurrentCueProofStatus::NoTemplate;
+        }
+        if(!CurrentMatches(descriptor,request.currentKey,request.physicalBase,request.source,
+                request.sourceMode,request.backgroundMode) || !request.source.backingOwner ||
+            !request.currentKey.identity.acceptedSequence || !request.currentKey.identity.captureTimestamp ||
+            !std::isfinite(request.frameMs) || request.frameMs<=0)
+            return SubtitleCurrentCueProofStatus::NotEligible;
+        if(!m_currentCueWindowHead.transportGeneration) {
+            m_currentCueWindowHead=request.eligibleRenderHead;
+            m_currentCueWindowTail=request.eligibleTailSequence;
+        }
+        if(!SameAnalysisFrameIdentity(m_currentCueWindowHead,request.eligibleRenderHead) ||
+            request.eligibleTailSequence>m_currentCueWindowTail ||
+            !InWindow(m_currentCueWindowHead,m_currentCueWindowTail,request.currentKey.identity) ||
+            !InWindow(request.eligibleRenderHead,request.eligibleTailSequence,request.currentKey.identity))
+            return SubtitleCurrentCueProofStatus::NotEligible;
+        for(const auto& old:m_currentCueTasks)
+            if(!old->seedTask && old->revision==request.templateRevision && SameExactTaskKey(old->key,request.currentKey))
+                return old->status;
+        if(m_currentCuePending.size()>=2)return SubtitleCurrentCueProofStatus::NotEligible;
+        entry=std::make_shared<SubtitleCurrentCueTaskEntry>();entry->key=request.currentKey;
+        entry->key.ink.reset();
+        entry->revision=request.templateRevision;entry->status=SubtitleCurrentCueProofStatus::Queued;
+        m_currentCueTasks.push_back(entry);
+    }
+    Job job;job.key=request.currentKey;job.cueEntry=entry;job.queued=std::chrono::steady_clock::now();
+    job.currentCueTask=[this,state,entry,request=std::move(request)](size_t) mutable {
+        const auto started=std::chrono::steady_clock::now();
+        {std::lock_guard<std::mutex> lock(m_mutex);entry->status=SubtitleCurrentCueProofStatus::Pending;}
+        SubtitleCurrentCueProofReceipt receipt;const char* reason="current-cue-template-miss";
+        std::shared_ptr<SubtitleInkSnapshot> currentInk;bool verified=false;
+        SubtitleCutPasteGeometry operation=state->descriptor.operation;
+        const auto& key=request.currentKey;
+        bool stillCurrent=false;
+        {std::lock_guard<std::mutex> lock(m_mutex);
+            stillCurrent=!m_stopping && m_currentCueState==state &&
+                entry->revision==state->descriptor.revision &&
+                SubtitleCurrentCueWorkerDetail::InWindow(m_currentCueWindowHead,
+                    m_currentCueWindowTail,key.identity);
+        }
+        if(stillCurrent && SubtitleCurrentCueWorkerDetail::CurrentMatches(state->descriptor,key,
+                request.physicalBase,request.source,request.sourceMode,request.backgroundMode)) {
+            const auto* footprint=request.sourceMode==SubtitlePreviewMode::None?nullptr:&state->footprint;
+            verified=state->pending.VerifyCurrentCuePixels(
+                key,request.source,footprint,currentInk,reason,true);
+            if(verified && footprint && !footprint->ApplyCurrentFootprintProtection(
+                    key,request.physicalBase,operation)) {
+                verified=false;currentInk.reset();reason="current-cue-cleanup-projection-unavailable";
+            }
+        } else reason="current-cue-template-context-or-window-changed";
+        const double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+        const uint64_t threadId=SubtitleCurrentCueWorkerDetail::ThreadId();
+        const auto& diagnostics=state->pending.DecisionDiagnostics();
+        if(verified && currentInk && !currentInk->rawEvidenceComplete && currentInk->paletteValid) {
+            receipt.m_valid=true;receipt.m_provenance=SubtitleCurrentCueProofProvenance::PresentationOnlyCurrentPixels;
+            receipt.m_templateRevision=entry->revision;receipt.m_seedIdentity=state->descriptor.context.identity;
+            receipt.m_workerThreadId=threadId;receipt.m_workerMilliseconds=elapsed;
+            receipt.m_verifiedLineCount=state->descriptor.cue.lineCount;
+            receipt.m_sourceMode=state->descriptor.sourceMode;
+            receipt.m_backgroundMode=state->descriptor.backgroundMode;
+            receipt.m_currentKey=key;receipt.m_currentKey.text={};receipt.m_currentKey.ink.reset();
+            receipt.m_currentKey.independentBarAnalysis=false;receipt.m_currentKey.barAuthority=false;
+            receipt.m_currentKey.barTrackingAuthority=false;receipt.m_currentKey.currentAnchorUsesTrackedEdge=false;
+            receipt.m_currentInk=std::move(currentInk);receipt.m_physicalBase=request.physicalBase;
+            receipt.m_operation=operation;receipt.m_cropExcludedBarsVerified=true;
+            receipt.m_footprintSamples=diagnostics.currentFootprintSamplesChecked;
+            receipt.m_barVisibilitySamples=diagnostics.barVisibilitySamplesChecked;
+            receipt.m_reason="current-cue-pixels-verified";receipt.m_consumed=std::make_shared<std::atomic_bool>(false);
+            reason=receipt.m_reason;
+        } else verified=false;
+        bool fallbackQueued=false;
+        if(!verified && request.fullScanDue && request.fullScanOnMiss) {
+            fallbackQueued=Submit(key,std::move(request.fullScanOnMiss),
+                request.hasOwnedWitness?&request.ownedWitness:nullptr,request.ownedTimelinePolicy,
+                true,{});
+        }
+        AnalysisTraceRecord trace=AnalysisTraceRecord(key.identity,this,"worker-cue-proof",reason);
+        trace.kind=AnalysisDiagnosticRecordKindV1::Worker;trace.policyGeneration=key.policyGeneration;
+        trace.continuityGeneration=key.continuityGeneration;trace.sourceWidth=key.width;trace.sourceHeight=key.height;
+        trace.resultCode=verified?state->descriptor.cue.lineCount:0;
+        trace.counters[0]=entry->revision;trace.counters[1]=threadId;
+        trace.counters[2]=diagnostics.currentFootprintSamplesChecked;
+        trace.counters[3]=diagnostics.barVisibilitySamplesChecked;
+        trace.counters[4]=verified?state->descriptor.cue.lineCount:0;
+        trace.metrics[0]=elapsed;trace.flags=verified?1u:0u;AnalysisDiagnosticTrace::Emit(trace);
+        {std::lock_guard<std::mutex> lock(m_mutex);
+            if(verified) {entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;}
+            else entry->status=fallbackQueued?SubtitleCurrentCueProofStatus::FallbackQueued:
+                (stillCurrent?SubtitleCurrentCueProofStatus::Failed:SubtitleCurrentCueProofStatus::Expired);
+            entry->key.ink.reset();request.source={};request.fullScanOnMiss={};
+            while(m_currentCueTasks.size()>8)m_currentCueTasks.pop_front();
+        }
+    };
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if(m_stopping) {entry->status=SubtitleCurrentCueProofStatus::Failed;return entry->status;}
+        m_currentCuePending.push_back(std::move(job));
+        if(!m_threads[0].joinable())m_threads[0]=std::thread([this]{Run(0);});
+    }
+    m_changed.notify_all();return SubtitleCurrentCueProofStatus::Queued;
+}
+
+inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::TryTakeCurrentCueProof(
+    const SubtitleBoxObservation& exactKey,uint64_t templateRevision,
+    SubtitleCurrentCueProofReceipt& receipt) {
+    using namespace SubtitleCurrentCueWorkerDetail;
+    receipt={};std::lock_guard<std::mutex> lock(m_mutex);
+    for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
+        const auto& entry=**i;
+        if(entry.seedTask || entry.revision!=templateRevision || !SameExactTaskKey(entry.key,exactKey))continue;
+        if(entry.status==SubtitleCurrentCueProofStatus::Ready) {
+            if(!m_currentCueState || m_currentCueState->descriptor.revision!=templateRevision ||
+                !InWindow(m_currentCueWindowHead,m_currentCueWindowTail,exactKey.identity)) {
+                entry.status=SubtitleCurrentCueProofStatus::Expired;entry.receipt={};
+                return SubtitleCurrentCueProofStatus::Expired;
+            }
+            if(!entry.receipt.Valid() || !entry.receipt.m_consumed ||
+                entry.receipt.m_consumed->load(std::memory_order_acquire))return SubtitleCurrentCueProofStatus::Consumed;
+            receipt=entry.receipt;
+            entry.status=SubtitleCurrentCueProofStatus::Consumed;
+            entry.receipt={};
+            return SubtitleCurrentCueProofStatus::Ready;
+        }
+        return entry.status;
+    }
+    if(!templateRevision || !m_currentCueState)return SubtitleCurrentCueProofStatus::NoTemplate;
+    return SubtitleCurrentCueProofStatus::NoTask;
+}
+
+inline void SubtitleMeasurementWorker::AdvanceCurrentCueRenderWindow(
+    const ActivePictureFrameIdentity& head,uint64_t tailSequence) {
+    using namespace SubtitleCurrentCueWorkerDetail;
+    std::vector<std::shared_ptr<AnalysisCompletionSignal>> completions;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if(!head.transportGeneration)return;
+        if(m_currentCueWindowHead.transportGeneration &&
+            (head.transportGeneration<m_currentCueWindowHead.transportGeneration ||
+                (head.transportGeneration==m_currentCueWindowHead.transportGeneration &&
+                    head.acceptedSequence<m_currentCueWindowHead.acceptedSequence)))return;
+        m_currentCueWindowHead=head;
+        const uint64_t lookahead=ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES+2;
+        const uint64_t maxTail=head.acceptedSequence>UINT64_MAX-lookahead?UINT64_MAX:head.acceptedSequence+lookahead;
+        m_currentCueWindowTail=(std::max)(head.acceptedSequence,(std::min)(tailSequence,maxTail));
+        for(auto i=m_currentCuePending.begin();i!=m_currentCuePending.end();) {
+            if(!i->currentCueSeedTask && !InWindow(head,m_currentCueWindowTail,i->key.identity)) {
+                if(i->cueEntry)i->cueEntry->status=SubtitleCurrentCueProofStatus::Expired;
+                if(i->completion)completions.push_back(i->completion);
+                i=m_currentCuePending.erase(i);++m_diagnostics.expired;
+            } else ++i;
+        }
+        for(auto& entry:m_currentCueTasks)if(!entry->seedTask &&
+            entry->status!=SubtitleCurrentCueProofStatus::Consumed &&
+            !InWindow(head,m_currentCueWindowTail,entry->key.identity)) {
+            entry->status=SubtitleCurrentCueProofStatus::Expired;entry->receipt={};++m_diagnostics.expired;
+        }
+        while(m_currentCueTasks.size()>8)m_currentCueTasks.pop_front();
+    }
+    m_changed.notify_all();
+    for(const auto& completion:completions)completion->Notify();
+}

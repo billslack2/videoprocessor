@@ -223,6 +223,9 @@ struct SubtitleBoxPreview
     uint64_t policyGeneration = 0, continuityGeneration = 0;
     unsigned matchingFrames = 0;
     bool available = false, futureAvailable = false, currentLinesConfirmed = false;
+    // This preview is a render-only adapter from a typed current-pixel proof;
+    // it must never be admitted as an ordinary detector/analysis observation.
+    bool presentationOnlyCurrentCueProof = false;
     double newScanMs = 0.0;
     unsigned newScanFrames = 0;
     // Preserve the full queued lookahead for fixed-pixel row confirmation.
@@ -2417,6 +2420,8 @@ namespace SubtitleBoxLookahead
     }
 }
 
+struct SubtitleCurrentCueProofReceipt;
+
 // Only presentation advances this state. Looking into future pixels never moves
 // the current cue forward, and repeated output cannot manufacture confirmation.
 class SubtitleBoxPresentation
@@ -2618,6 +2623,12 @@ public:
         m_referenceRefresh="current-reference-pixels";
         return true;
     }
+    // Reattach an already acquired cue only from a typed exact-current worker
+    // receipt. The implementation lives beside the receipt type in the worker
+    // header to avoid making this detector/presentation header depend on worker
+    // internals.
+    bool ConsumeCurrentCueProof(const SubtitleCurrentCueProofReceipt& receipt,
+        SubtitleBoxPreview& outPreview,SubtitleBoxResult& outCue);
     unsigned ReferenceSampleCount() const {return m_referenceSamples;}
     const char* ReferenceRefreshReason() const {return m_referenceRefresh;}
     bool ReusePreviewForRepeatedSourceFrame(const ActivePictureFrameIdentity& identity,

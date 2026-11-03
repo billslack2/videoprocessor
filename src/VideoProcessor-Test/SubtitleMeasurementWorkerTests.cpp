@@ -64,6 +64,9 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
     static AnalysisLumaSource CadenceSource(std::vector<uint16_t>& pixels) {
         auto source=Source(pixels);source.generation=1;return source;
     }
+    static AnalysisLumaSource OwnedSource(const std::shared_ptr<std::vector<uint16_t>>& pixels) {
+        auto source=Source(*pixels);source.backingOwner=pixels;return source;
+    }
     static SubtitleBoxPreview Pending(uint64_t sequence) {
         auto preview=Ready(sequence);preview.available=false;preview.text={};
         preview.current.analyzed=false;preview.current.text={};return preview;
@@ -294,6 +297,116 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     auto compositor=std::make_unique<SubtitleCutPastePresentation>();
     const auto geometry=compositor->Consume(accepted,*preview,{},0);
     Assert::IsTrue(geometry.valid&&geometry.pictureCapture.Valid());
+
+    // Exercise the typed worker route with a real accepted Black-background
+    // operation. A single alternate-chroma pixel in its erase footprint must
+    // fail current verification even though its luma remains bar-black and it
+    // does not resemble the accepted subtitle palette.
+    auto typedSeedPixels=std::make_shared<std::vector<uint16_t>>(seedPixels);
+    auto typedSeedSource=CurrentFootprintUhdSource(*typedSeedPixels);
+    typedSeedSource.backingOwner=typedSeedPixels;
+    SubtitleBoxRect initialCleanup=geometry.generatedCleanup;
+    if(!initialCleanup.Valid()&&geometry.generatedCleanupRowCount)for(unsigned i=0;i<geometry.generatedCleanupRowCount;++i) {
+        const auto& row=geometry.generatedCleanupRows[i];
+        if(!initialCleanup.Valid())initialCleanup=row;
+        else initialCleanup={(std::min)(initialCleanup.left,row.left),(std::min)(initialCleanup.top,row.top),
+            (std::max)(initialCleanup.right,row.right),(std::max)(initialCleanup.bottom,row.bottom)};
+    }
+    int alternateX=-1,alternateY=-1;
+    for(int y=(std::max)(initialCleanup.top,base.top);initialCleanup.Valid()&&
+        y<(std::min)(initialCleanup.bottom,base.bottom)&&alternateY<0;++y)
+        for(int x=initialCleanup.left;x<initialCleanup.right;++x) {
+            bool inCleanup=geometry.generatedCleanupRowCount==0 && geometry.generatedCleanup.Valid() &&
+                x>=geometry.generatedCleanup.left && x<geometry.generatedCleanup.right &&
+                y>=geometry.generatedCleanup.top && y<geometry.generatedCleanup.bottom;
+            for(unsigned row=0;row<geometry.generatedCleanupRowCount;++row) {
+                const auto& r=geometry.generatedCleanupRows[row];
+                inCleanup|=r.Valid()&&x>=r.left&&x<r.right&&y>=r.top&&y<r.bottom;
+            }
+            if(!inCleanup)continue;
+            bool inGlyph=false;
+            for(const auto& glyph:geometry.glyphLines)
+                inGlyph|=glyph.Valid()&&x>=glyph.left&&x<glyph.right&&y>=glyph.top&&y<glyph.bottom;
+            AnalysisLumaSample sample;
+            if(!inGlyph&&seedSource.Sample(x,y,sample)&&sample.luma<=96&&
+                std::abs(int(sample.chromaU)-512)<=48&&std::abs(int(sample.chromaV)-512)<=48) {
+                alternateX=x;alternateY=y;break;
+            }
+        }
+    Assert::IsTrue(alternateX>=0&&alternateY>=0,
+        L"The compositor fixture must expose a non-glyph black pixel inside its cleanup footprint.");
+    SubtitleCurrentCueTemplateInput typedSeed;typedSeed.observation=preview->current;
+    typedSeed.acceptedCue=accepted;typedSeed.source=typedSeedSource;typedSeed.physicalBase=base;
+    typedSeed.composedOperation=geometry;typedSeed.sourceMode=SubtitlePreviewMode::BlackBackground;
+    typedSeed.compositionSucceeded=true;typedSeed.acceptedCurrentScan=true;typedSeed.backgroundMode=3;
+    auto alternatePixels=std::make_shared<std::vector<uint16_t>>(*typedSeedPixels);
+    const size_t typedArea=size_t(kFootprintWidth)*kFootprintHeight;
+    const size_t typedUv=typedArea+size_t(alternateY/2)*kFootprintWidth+(alternateX&~1);
+    (*alternatePixels)[typedUv]=uint16_t(800<<6);
+    auto alternateSource=CurrentFootprintUhdSource(*alternatePixels);alternateSource.backingOwner=alternatePixels;
+    auto alternateKey=CurrentFootprintUhdKey(93,base);
+    alternateKey.pictureTop=preview->current.pictureTop;alternateKey.pictureBottom=preview->current.pictureBottom;
+    alternateKey.barEvidence=preview->current.barEvidence;alternateKey.independentBarAnalysis=true;
+    alternateKey.barAuthority=true;
+    SubtitleMeasurementWorker typedWorker;typedWorker.AdvanceCurrentCueRenderWindow(alternateKey.identity,93);
+    uint64_t typedRevision=0;
+    Assert::IsTrue(typedWorker.SubmitCurrentCueTemplate(std::move(typedSeed),typedRevision)==
+        SubtitleCurrentCueProofStatus::Queued);
+    SubtitleCurrentCueProofRequest alternateRequest;alternateRequest.currentKey=alternateKey;
+    alternateRequest.source=alternateSource;alternateRequest.physicalBase=base;
+    alternateRequest.sourceMode=SubtitlePreviewMode::BlackBackground;alternateRequest.backgroundMode=3;
+    alternateRequest.eligibleRenderHead=alternateKey.identity;alternateRequest.eligibleTailSequence=93;
+    alternateRequest.templateRevision=typedRevision;alternateRequest.fullScanDue=false;
+    Assert::IsTrue(typedWorker.SubmitCurrentCueProof(std::move(alternateRequest))==
+        SubtitleCurrentCueProofStatus::Queued);
+    SubtitleCurrentCueProofReceipt alternateReceipt;SubtitleCurrentCueProofStatus alternateStatus=SubtitleCurrentCueProofStatus::Queued;
+    for(int attempt=0;attempt<1000;++attempt) {
+        alternateStatus=typedWorker.TryTakeCurrentCueProof(alternateKey,typedRevision,alternateReceipt);
+        if(alternateStatus==SubtitleCurrentCueProofStatus::Failed || alternateStatus==SubtitleCurrentCueProofStatus::Ready ||
+            alternateStatus==SubtitleCurrentCueProofStatus::Expired)break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Assert::IsTrue(alternateStatus==SubtitleCurrentCueProofStatus::Failed,
+        L"A single alternate-chroma current pixel inside the cleanup footprint cannot be erased as old backing.");
+    Assert::IsFalse(alternateReceipt.Valid());
+
+    // Let a later full current proof start, then move the eligible render head
+    // while it is running. Its eventual success must be discarded as stale.
+    auto stalePixels=std::make_shared<std::vector<uint16_t>>(*typedSeedPixels);
+    const std::weak_ptr<std::vector<uint16_t>> weakStale=stalePixels;
+    auto staleSource=CurrentFootprintUhdSource(*stalePixels);staleSource.backingOwner=stalePixels;
+    auto staleKey=CurrentFootprintUhdKey(94,base);
+    staleKey.pictureTop=preview->current.pictureTop;staleKey.pictureBottom=preview->current.pictureBottom;
+    staleKey.barEvidence=preview->current.barEvidence;staleKey.independentBarAnalysis=true;
+    staleKey.barAuthority=true;typedWorker.AdvanceCurrentCueRenderWindow(staleKey.identity,94);
+    SubtitleCurrentCueProofRequest staleRequest;staleRequest.currentKey=staleKey;
+    staleRequest.source=staleSource;staleRequest.physicalBase=base;
+    staleRequest.sourceMode=SubtitlePreviewMode::BlackBackground;staleRequest.backgroundMode=3;
+    staleRequest.eligibleRenderHead=staleKey.identity;staleRequest.eligibleTailSequence=94;
+    staleRequest.templateRevision=typedRevision;staleRequest.fullScanDue=false;
+    Assert::IsTrue(typedWorker.SubmitCurrentCueProof(std::move(staleRequest))==
+        SubtitleCurrentCueProofStatus::Queued);
+    SubtitleCurrentCueProofReceipt staleReceipt;SubtitleCurrentCueProofStatus staleStatus=SubtitleCurrentCueProofStatus::Queued;
+    for(int attempt=0;attempt<100000 && staleStatus==SubtitleCurrentCueProofStatus::Queued;++attempt) {
+        staleStatus=typedWorker.TryTakeCurrentCueProof(staleKey,typedRevision,staleReceipt);
+        if(staleStatus==SubtitleCurrentCueProofStatus::Queued)std::this_thread::yield();
+    }
+    Assert::IsTrue(staleStatus==SubtitleCurrentCueProofStatus::Pending,
+        L"The UHD verification must be observed running before the source window advances.");
+    auto newerHead=staleKey.identity;++newerHead.acceptedSequence;++newerHead.sourceFrameNumber;
+    newerHead.captureTimestamp+=16683;typedWorker.AdvanceCurrentCueRenderWindow(newerHead,newerHead.acceptedSequence);
+    stalePixels.reset();
+    for(int attempt=0;attempt<1000;++attempt) {
+        staleStatus=typedWorker.TryTakeCurrentCueProof(staleKey,typedRevision,staleReceipt);
+        if(staleStatus==SubtitleCurrentCueProofStatus::Expired)break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Assert::IsTrue(staleStatus==SubtitleCurrentCueProofStatus::Expired,
+        L"A successful completion after head advancement cannot produce a renderable receipt.");
+    Assert::IsFalse(staleReceipt.Valid());
+    for(int attempt=0;attempt<1000 && !weakStale.expired();++attempt)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    Assert::IsTrue(weakStale.expired(),L"A stale proof releases its exact current source after completion.");
 
     auto cleanup=geometry.generatedCleanup;
     if(!cleanup.Valid()&&geometry.generatedCleanupRowCount)for(unsigned i=0;i<geometry.generatedCleanupRowCount;++i) {
@@ -3640,6 +3753,265 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         auto pending=Pending(2);
         Assert::IsFalse(guard.Resolve(pending,Source(pixels),40,250));
         Assert::IsFalse(pending.available);
+    }
+    TEST_METHOD(CurrentCueWorkerProofUsesFreshPixelsAndIgnoresMovingPictureOutsideCue) {
+        auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto seed=CompleteThreeLineScan(1,*seedPixels);
+        SubtitleCurrentCueTemplateInput templateInput;templateInput.observation=seed;
+        templateInput.acceptedCue=seed.text;templateInput.source=OwnedSource(seedPixels);
+        templateInput.physicalBase=seed.sharedPicture.bounds;
+        templateInput.sourceMode=SubtitlePreviewMode::None;
+        templateInput.compositionSucceeded=false; // Classic seeds from the accepted full scan.
+        templateInput.acceptedCurrentScan=true;templateInput.frameMs=1000.0/60;templateInput.holdMs=250;
+
+        auto currentPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        (*currentPixels)[30*160+5]=uint16_t(340<<6); // Moving picture background, outside cue glyphs.
+        auto current=CompleteThreeLineScan(2,*currentPixels);
+        SubtitleMeasurementWorker worker;worker.AdvanceCurrentCueRenderWindow(current.identity,2);
+        uint64_t revision=0;
+        Assert::IsTrue(worker.SubmitCurrentCueTemplate(std::move(templateInput),revision)==
+            SubtitleCurrentCueProofStatus::Queued);
+        Assert::IsTrue(revision!=0);
+        SubtitleCurrentCueProofRequest request;request.currentKey=current;
+        request.source=OwnedSource(currentPixels);request.physicalBase=current.sharedPicture.bounds;
+        request.sourceMode=SubtitlePreviewMode::None;request.backgroundMode=3;
+        request.eligibleRenderHead=current.identity;request.eligibleTailSequence=2;
+        request.templateRevision=revision;request.fullScanDue=false;
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
+
+        SubtitleCurrentCueProofReceipt receipt;SubtitleCurrentCueProofStatus status=SubtitleCurrentCueProofStatus::Queued;
+        for(int attempt=0;attempt<1000;++attempt) {
+            status=worker.TryTakeCurrentCueProof(current,revision,receipt);
+            if(status==SubtitleCurrentCueProofStatus::Ready || status==SubtitleCurrentCueProofStatus::Failed ||
+                status==SubtitleCurrentCueProofStatus::Expired || status==SubtitleCurrentCueProofStatus::NotEligible)break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Ready,
+            L"The worker proves the current glyphs and excluded bars without comparing unrelated movie background.");
+        Assert::AreEqual(uint64_t(1),receipt.SeedIdentity().acceptedSequence);
+        Assert::IsTrue(receipt.SourceMode()==SubtitlePreviewMode::None);
+        SubtitleBoxPresentation tracker;SubtitleBoxPreview preview;SubtitleBoxResult held;
+        Assert::IsTrue(tracker.ConsumeCurrentCueProof(receipt,preview,held));
+        Assert::IsTrue(preview.presentationOnlyCurrentCueProof && preview.current.pendingRefresh);
+        Assert::IsTrue(preview.current.text.held && preview.current.text.cue==seed.text.cue);
+        Assert::IsFalse(preview.current.barAuthority || preview.current.independentBarAnalysis);
+        Assert::IsFalse(preview.current.ink->rawEvidenceComplete);
+        SubtitleBoxPreview replayedPreview;SubtitleBoxResult replayedCue;
+        Assert::IsFalse(tracker.ConsumeCurrentCueProof(receipt,replayedPreview,replayedCue),
+            L"A sealed current proof receipt is single-use, including through the presentation adapter.");
+        Assert::IsTrue(worker.TryTakeCurrentCueProof(current,revision,receipt)==
+            SubtitleCurrentCueProofStatus::Consumed);
+    }
+    TEST_METHOD(CurrentCueWorkerProofRejectsChangedOwnedGlyphPixels) {
+        auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto seed=CompleteThreeLineScan(1,*seedPixels);
+        SubtitleCurrentCueTemplateInput templateInput;templateInput.observation=seed;
+        templateInput.acceptedCue=seed.text;templateInput.source=OwnedSource(seedPixels);
+        templateInput.physicalBase=seed.sharedPicture.bounds;templateInput.acceptedCurrentScan=true;
+
+        auto currentPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        (*currentPixels)[50*160+50]=uint16_t(400<<6);
+        auto current=CompleteThreeLineScan(2,*currentPixels);
+        SubtitleMeasurementWorker worker;worker.AdvanceCurrentCueRenderWindow(current.identity,2);
+        uint64_t revision=0;worker.SubmitCurrentCueTemplate(std::move(templateInput),revision);
+        SubtitleCurrentCueProofRequest request;request.currentKey=current;request.source=OwnedSource(currentPixels);
+        request.physicalBase=current.sharedPicture.bounds;request.eligibleRenderHead=current.identity;
+        request.eligibleTailSequence=2;request.templateRevision=revision;
+        request.sourceMode=SubtitlePreviewMode::None;request.fullScanDue=false;
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
+        SubtitleCurrentCueProofReceipt receipt;SubtitleCurrentCueProofStatus status=SubtitleCurrentCueProofStatus::Queued;
+        for(int attempt=0;attempt<1000;++attempt) {
+            status=worker.TryTakeCurrentCueProof(current,revision,receipt);
+            if(status==SubtitleCurrentCueProofStatus::Failed || status==SubtitleCurrentCueProofStatus::Expired ||
+                status==SubtitleCurrentCueProofStatus::Ready)break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Failed,
+            L"A changed owned glyph is rejected by exact current-source YUV checks.");
+        Assert::IsFalse(receipt.Valid());
+    }
+    TEST_METHOD(CurrentCueWorkerProofPersistsAcrossStaticCueAndRunsBesideBlockedGrouping) {
+        auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        const std::weak_ptr<std::vector<uint16_t>> weakSeed=seedPixels;
+        const auto seed=CompleteThreeLineScan(1,*seedPixels);
+        const auto makeTemplate=[&]() {
+            SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=seed.text;
+            input.source=OwnedSource(seedPixels);input.physicalBase=seed.sharedPicture.bounds;
+            input.sourceMode=SubtitlePreviewMode::None;input.acceptedCurrentScan=true;
+            input.frameMs=1000.0/60;input.holdMs=250;return input;
+        };
+        SubtitleMeasurementWorker worker;worker.SetInputRateHz(24.0);
+        uint64_t revision=0;
+        Assert::IsTrue(worker.SubmitCurrentCueTemplate(makeTemplate(),revision)==SubtitleCurrentCueProofStatus::Queued);
+        bool seeded=false;
+        for(int attempt=0;attempt<1000;++attempt) {
+            uint64_t observedRevision=0;
+            const auto status=worker.SubmitCurrentCueTemplate(makeTemplate(),observedRevision);
+            if(status==SubtitleCurrentCueProofStatus::Ready) {
+                Assert::AreEqual(revision,observedRevision);seeded=true;break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsTrue(seeded,L"The initial full accepted cue is seeded asynchronously.");
+        seedPixels.reset();
+        for(int attempt=0;attempt<1000 && !weakSeed.expired();++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Assert::IsTrue(weakSeed.expired(),L"The immutable cue template retains no seed frame owner.");
+
+        std::atomic_bool entered{false},release{false};std::atomic<uint64_t> groupingThread{0};
+        ReleaseBlockedWorkers unblock{release};
+        const auto blocker=WorkerKey(900,0xA11CE);
+        Assert::IsTrue(worker.Submit(blocker,[&](SubtitleMeasurementSampler&,
+            const SubtitleBarTrackingReference&) {
+            groupingThread.store(static_cast<uint64_t>(::GetCurrentThreadId()),std::memory_order_release);
+            entered.store(true,std::memory_order_release);
+            while(!release.load(std::memory_order_acquire))std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            return blocker;
+        }));
+        for(int attempt=0;attempt<1000 && !entered.load(std::memory_order_acquire);++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Assert::IsTrue(entered.load(std::memory_order_acquire),L"The ordinary full-grouping worker is blocked.");
+
+        for(uint64_t sequence=2;sequence<302;++sequence) {
+            auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+            (*pixels)[30*160+5]=uint16_t((sequence&1?300:340)<<6);
+            const auto current=CompleteThreeLineScan(sequence,*pixels);
+            const std::weak_ptr<std::vector<uint16_t>> weakCurrent=pixels;
+            worker.AdvanceCurrentCueRenderWindow(current.identity,sequence);
+            SubtitleCurrentCueProofRequest request;request.currentKey=current;
+            request.source=OwnedSource(pixels);request.physicalBase=current.sharedPicture.bounds;
+            request.sourceMode=SubtitlePreviewMode::None;request.backgroundMode=3;
+            request.eligibleRenderHead=current.identity;request.eligibleTailSequence=sequence;
+            request.templateRevision=revision;request.fullScanDue=false;
+            Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
+            SubtitleCurrentCueProofReceipt receipt;SubtitleCurrentCueProofStatus status=SubtitleCurrentCueProofStatus::Queued;
+            for(int attempt=0;attempt<1000;++attempt) {
+                status=worker.TryTakeCurrentCueProof(current,revision,receipt);
+                if(status==SubtitleCurrentCueProofStatus::Ready || status==SubtitleCurrentCueProofStatus::Failed ||
+                    status==SubtitleCurrentCueProofStatus::Expired)break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Ready,
+                L"Every advancing source remains provable beyond the former 250 ms pending window.");
+            Assert::AreEqual(uint64_t(1),receipt.SeedIdentity().acceptedSequence,
+                L"Successful current proofs never replace the immutable acquisition baseline.");
+            Assert::IsTrue(receipt.WorkerThreadId()!=groupingThread.load(std::memory_order_acquire),
+                L"Current pixel proofs run on the reserved worker while ordinary grouping is blocked.");
+            pixels.reset();
+            for(int attempt=0;attempt<1000 && !weakCurrent.expired();++attempt)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            Assert::IsTrue(weakCurrent.expired(),L"A consumed proof keeps no source frame owner.");
+            receipt={};std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsFalse(release.load(std::memory_order_acquire),
+            L"The current-cue verifier completed its 300-source run while full grouping remained blocked.");
+    }
+    TEST_METHOD(CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase) {
+        auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        const auto seed=CompleteThreeLineScan(1,*seedPixels);
+        auto currentPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        // This is new high-luma caption-like ink in the encoded top bar, well
+        // outside the accepted cue's line/capture geometry.
+        (*currentPixels)[5*160+7]=uint16_t(700<<6);
+        const auto current=CompleteThreeLineScan(2,*currentPixels);
+        SubtitleMeasurementWorker worker;worker.AdvanceCurrentCueRenderWindow(current.identity,2);
+        SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=seed.text;
+        input.source=OwnedSource(seedPixels);input.physicalBase=seed.sharedPicture.bounds;
+        input.sourceMode=SubtitlePreviewMode::None;input.acceptedCurrentScan=true;
+        uint64_t revision=0;
+        Assert::IsTrue(worker.SubmitCurrentCueTemplate(std::move(input),revision)==
+            SubtitleCurrentCueProofStatus::Queued);
+
+        SubtitleCurrentCueProofRequest request;request.currentKey=current;
+        request.source=OwnedSource(currentPixels);request.physicalBase=current.sharedPicture.bounds;
+        request.sourceMode=SubtitlePreviewMode::None;request.backgroundMode=3;
+        request.eligibleRenderHead=current.identity;request.eligibleTailSequence=2;
+        request.templateRevision=revision;request.fullScanDue=false;
+        auto foreign=request;foreign.sourceMode=SubtitlePreviewMode::BlackBackground;
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(foreign))==SubtitleCurrentCueProofStatus::NotEligible,
+            L"A cue template cannot cross presentation mode.");
+        foreign=request;foreign.backgroundMode=5;
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(foreign))==SubtitleCurrentCueProofStatus::NotEligible,
+            L"A cue template cannot cross compositor background mode.");
+        foreign=request;++foreign.currentKey.policyGeneration;
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(foreign))==SubtitleCurrentCueProofStatus::NotEligible,
+            L"A cue template cannot cross policy generation.");
+        foreign=request;++foreign.physicalBase.top;
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(foreign))==SubtitleCurrentCueProofStatus::NotEligible,
+            L"A cue template cannot cross its native base.");
+        foreign=request;++foreign.currentKey.identity.sourceFormatGeneration;
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(foreign))==SubtitleCurrentCueProofStatus::NotEligible,
+            L"A cue template cannot cross source format generation.");
+        foreign=request;foreign.source.format=AnalysisLumaFormat::P210;
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(foreign))==SubtitleCurrentCueProofStatus::NotEligible,
+            L"A cue template cannot cross source pixel format/layout.");
+
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
+        SubtitleCurrentCueProofReceipt receipt;SubtitleCurrentCueProofStatus status=SubtitleCurrentCueProofStatus::Queued;
+        for(int attempt=0;attempt<1000;++attempt) {
+            status=worker.TryTakeCurrentCueProof(current,revision,receipt);
+            if(status==SubtitleCurrentCueProofStatus::Failed || status==SubtitleCurrentCueProofStatus::Ready ||
+                status==SubtitleCurrentCueProofStatus::Expired)break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Failed,
+            L"A one-pixel bar caption must veto the current cue proof even outside the old ROI.");
+        Assert::IsFalse(receipt.Valid());
+    }
+    TEST_METHOD(CurrentCueWorkerPollingIsNonblockingAndDropsQueuedExpiredOwners) {
+        auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        const auto seed=CompleteThreeLineScan(1,*seedPixels);
+        auto currentPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        const std::weak_ptr<std::vector<uint16_t>> weakCurrent=currentPixels;
+        const auto current=CompleteThreeLineScan(2,*currentPixels);
+        SubtitleMeasurementWorker worker;
+        std::atomic_bool entered{false},release{false};ReleaseBlockedWorkers unblock{release};
+        const auto blocker=WorkerKey(900,0xA11CE);
+        Assert::IsTrue(worker.Submit(blocker,[&](SubtitleMeasurementSampler&,
+            const SubtitleBarTrackingReference&) {
+            entered.store(true,std::memory_order_release);
+            while(!release.load(std::memory_order_acquire))
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            return blocker;
+        }));
+        Assert::IsTrue(WaitForEntered(entered,1),L"The ordinary grouping lane is intentionally occupied.");
+
+        SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=seed.text;
+        input.source=OwnedSource(seedPixels);input.physicalBase=seed.sharedPicture.bounds;
+        input.sourceMode=SubtitlePreviewMode::None;input.acceptedCurrentScan=true;
+        uint64_t revision=0;
+        Assert::IsTrue(worker.SubmitCurrentCueTemplate(std::move(input),revision)==
+            SubtitleCurrentCueProofStatus::Queued);
+        worker.AdvanceCurrentCueRenderWindow(current.identity,2);
+        SubtitleCurrentCueProofRequest request;request.currentKey=current;
+        request.source=OwnedSource(currentPixels);request.physicalBase=current.sharedPicture.bounds;
+        request.sourceMode=SubtitlePreviewMode::None;request.backgroundMode=3;
+        request.eligibleRenderHead=current.identity;request.eligibleTailSequence=2;
+        request.templateRevision=revision;request.fullScanDue=false;
+        Assert::IsTrue(worker.SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
+
+        SubtitleCurrentCueProofReceipt receipt;
+        const auto pollStart=std::chrono::steady_clock::now();
+        const auto firstPoll=worker.TryTakeCurrentCueProof(current,revision,receipt);
+        const auto pollMs=std::chrono::duration<double,std::milli>(
+            std::chrono::steady_clock::now()-pollStart).count();
+        Assert::IsTrue(firstPoll==SubtitleCurrentCueProofStatus::Queued ||
+            firstPoll==SubtitleCurrentCueProofStatus::Pending,
+            L"A queued proof is reported immediately while the grouping lane is blocked.");
+        Assert::IsTrue(pollMs<50.0,L"Render-side proof polling never waits for worker completion.");
+
+        auto nextHead=current.identity;++nextHead.acceptedSequence;++nextHead.sourceFrameNumber;
+        nextHead.captureTimestamp+=1000;
+        worker.AdvanceCurrentCueRenderWindow(nextHead,nextHead.acceptedSequence);
+        currentPixels.reset();
+        for(int attempt=0;attempt<1000 && !weakCurrent.expired();++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Assert::IsTrue(weakCurrent.expired(),
+            L"Advancing the render head drops a queued stale proof and releases its frame owner.");
+        Assert::IsTrue(worker.TryTakeCurrentCueProof(current,revision,receipt)==
+            SubtitleCurrentCueProofStatus::Expired,
+            L"A completion outside the current head window cannot become a usable receipt.");
+        Assert::IsFalse(receipt.Valid());
     }
 };
 }

@@ -306,8 +306,29 @@ namespace
             r.captureTimestamp==input.captureTimestamp && r.policyGeneration==input.policyGeneration &&
             r.continuityGeneration==input.continuityGeneration && r.counters[0]==input.acceptedSequence &&
             r.counters[1]==input.analysisDomainKey && (!proof || r.recordSequence>proof->recordSequence))proof=&r;
-        return proof && proof->resultCode==3 && proof->counters[4]==3 &&
-            (proof->flags&(1u|4u|16u))==(1u|4u|16u) && !(proof->flags&32u);
+        if(!proof || proof->resultCode!=3 || proof->counters[4]!=3 ||
+            (proof->flags&(1u|4u|16u))!=(1u|4u|16u) || (proof->flags&32u))return false;
+        if(!(proof->flags&2u))return true; // Complete current independent scan.
+        // Partial current pixels need their own worker-issued presentation
+        // receipt. A pending preview's three-line count alone is not proof.
+        const AnalysisDiagnosticRecordV1* receipt=nullptr;
+        for(const auto& r:records)if(!strcmp(r.stage,"subtitle-cue-proof-consumed") &&
+            r.recordSequence && r.recordSequence<proof->recordSequence &&
+            r.rendererInstanceKey==output.rendererInstanceKey && r.acceptedSequence==input.acceptedSequence &&
+            r.transportGeneration==input.transportGeneration && r.rendererGeneration==input.rendererGeneration &&
+            r.viewportGeneration==input.viewportGeneration && r.sourceFormatGeneration==input.sourceFormatGeneration &&
+            r.analysisDomainKey==input.analysisDomainKey && r.sourceFrameNumber==input.sourceFrameNumber &&
+            r.captureTimestamp==input.captureTimestamp && r.policyGeneration==input.policyGeneration &&
+            r.continuityGeneration==input.continuityGeneration &&
+            (!receipt || r.recordSequence>receipt->recordSequence))receipt=&r;
+        if(!receipt || !(receipt->flags&1u) || !receipt->counters[0] || !receipt->counters[1] ||
+            !receipt->counters[2] || receipt->counters[1]==receipt->counters[2] || receipt->counters[3]!=3 ||
+            !receipt->counters[4] || receipt->counters[4]>=input.acceptedSequence ||
+            !receipt->counters[5] || !receipt->counters[6] || receipt->counters[7]!=output.counters[3] ||
+            !std::isfinite(receipt->metrics[0]) || receipt->metrics[0]<0 ||
+            !std::isfinite(receipt->metrics[1]) || receipt->metrics[1]<0)return false;
+        for(int edge=0;edge<4;++edge)if(receipt->previous[edge]!=output.published[edge])return false;
+        return true;
     }
     void CopyUnreadCallbackTail(const std::vector<AnalysisDiagnosticRecordV1>& source,size_t& cursor,
         std::vector<AnalysisDiagnosticRecordV1>& tail)
@@ -320,7 +341,8 @@ namespace
         std::map<Key,std::vector<AnalysisDiagnosticRecordV1>> sources;
     public:
         void Observe(const AnalysisDiagnosticRecordV1& record) {
-            if(!strcmp(record.stage,"subtitle-output") || !strcmp(record.stage,"submitted-presentation"))
+            if(!strcmp(record.stage,"subtitle-output") || !strcmp(record.stage,"submitted-presentation") ||
+                !strcmp(record.stage,"subtitle-cue-proof-consumed"))
                 sources[{record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence}].push_back(record);
         }
         const std::vector<AnalysisDiagnosticRecordV1>& For(const AnalysisDiagnosticRecordV1& output) const {
@@ -484,6 +506,37 @@ namespace VideoProcessorTest
             raw.policyGeneration=11;raw.continuityGeneration=12;raw.counters[0]=50;raw.counters[1]=17;
             raw.flags=1u|4u|16u;raw.resultCode=3;raw.counters[4]=3;
             Assert::IsTrue(HasCompletePersistentThreeLineCaption({raw},output,input));
+            auto partialProof=raw;partialProof.flags|=2u;
+            Assert::IsFalse(HasCompletePersistentThreeLineCaption({partialProof},output,input),
+                L"A partial preview cannot stand in for current worker pixel verification.");
+            auto receipt=input;strcpy_s(receipt.stage,"subtitle-cue-proof-consumed");
+            receipt.rendererInstanceKey=output.rendererInstanceKey;receipt.recordSequence=98;receipt.flags=1;
+            receipt.counters[0]=9;receipt.counters[1]=44;receipt.counters[2]=45;receipt.counters[3]=3;
+            receipt.counters[4]=49;receipt.counters[5]=100;receipt.counters[6]=100;receipt.counters[7]=output.counters[3];
+            receipt.metrics[0]=1;receipt.metrics[1]=0.05;
+            Assert::IsTrue(HasCompletePersistentThreeLineCaption({receipt,partialProof},output,input));
+            for(int receiptFault=0;receiptFault<15;++receiptFault) {
+                auto invalidReceipt=receipt;
+                switch(receiptFault) {
+                case 0: invalidReceipt.flags=0;break;
+                case 1: invalidReceipt.counters[0]=0;break;
+                case 2: invalidReceipt.counters[1]=invalidReceipt.counters[2];break;
+                case 3: invalidReceipt.counters[3]=2;break;
+                case 4: invalidReceipt.counters[4]=input.acceptedSequence;break;
+                case 5: invalidReceipt.counters[5]=0;break;
+                case 6: invalidReceipt.counters[6]=0;break;
+                case 7: ++invalidReceipt.counters[7];break;
+                case 8: ++invalidReceipt.acceptedSequence;break;
+                case 9: ++invalidReceipt.captureTimestamp;break;
+                case 10: ++invalidReceipt.sourceFormatGeneration;break;
+                case 11: ++invalidReceipt.policyGeneration;break;
+                case 12: ++invalidReceipt.continuityGeneration;break;
+                case 13: invalidReceipt.recordSequence=100;break;
+                case 14: ++invalidReceipt.previous[1];break;
+                }
+                Assert::IsFalse(HasCompletePersistentThreeLineCaption({invalidReceipt,partialProof},output,input),
+                    L"A foreign, unissued, partial, late, or inline-thread receipt cannot qualify current caption pixels.");
+            }
             for(int fault=0;fault<16;++fault) {
                 auto invalid=raw;
                 if(fault==0)invalid.resultCode=2;
@@ -3352,7 +3405,7 @@ namespace VideoProcessorTest
 
         // Exercise the complete production tunnel/worker/render path. Every successful
         // output is inspected in sink order, including outputs between OSD publications.
-        void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputCurrentSource=false,bool nativePreflightOnly=false,bool alternatingPreflight=false)
+        void VerifyPersistentDecodedDvCadence(bool beta,unsigned requestedMode,bool requireUnknownInputCurrentSource=false,bool nativePreflightOnly=false,bool alternatingPreflight=false,bool requireCurrentCueWorkerBudget=false)
         {
             const bool requireSpatial=SourceSpatialProductionEnabled();
             ScopedCadenceDiagnostics cadenceDiagnostics(!nativePreflightOnly&&SubtitlePreviewOverridesClassicHandling(static_cast<SubtitlePreviewMode>(requestedMode)));
@@ -3657,6 +3710,7 @@ namespace VideoProcessorTest
                 // the actual output monitor's refresh cadence.
                 const unsigned scale=cadence.scale,duration=cadence.duration;
                 const double inputHz=double(scale)/duration;
+                const size_t requiredSteadySources=requireCurrentCueWorkerBudget?size_t(std::ceil(inputHz*5.0))+1:60;
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseMessages.clear();classicPoseSubmitWallNs.clear();classicPoseCaptureSubmitTiming=true;classicPoseAllRecordStages=true;}
                 diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
                 ClassicPreparationLogForwarder preparationLog;
@@ -3765,18 +3819,25 @@ namespace VideoProcessorTest
                 struct SubtitleStageTiming {uint64_t calls=0,successes=0;std::vector<double> elapsedMs,leaseAgeMs;
                     std::map<std::string,uint64_t> reasons;
                     std::map<std::pair<uint32_t,uint32_t>,uint64_t> rearmDispositions;};
-                std::array<SubtitleStageTiming,4> subtitleStageTimings{};
+                std::array<SubtitleStageTiming,8> subtitleStageTimings{};
+                std::vector<AnalysisDiagnosticRecordV1> cueBudgetEvents;
                 auto collectSubtitleStageTiming=[&](const AnalysisDiagnosticRecordV1& record) {
+                    if(!strcmp(record.stage,"worker-complete") || !strcmp(record.stage,"subtitle-cue-proof-consumed") ||
+                        !strcmp(record.stage,"source-frame-work"))cueBudgetEvents.push_back(record);
                     size_t index=subtitleStageTimings.size();
                     if(!strcmp(record.stage,"subtitle-pending-pixels"))index=0;
                     else if(!strcmp(record.stage,"subtitle-pending-seed"))index=1;
                     else if(!strcmp(record.stage,"subtitle-footprint-seed"))index=2;
                     else if(!strcmp(record.stage,"subtitle-cadence-seed"))index=3;
+                    else if(!strcmp(record.stage,"worker-cue-template"))index=4;
+                    else if(!strcmp(record.stage,"worker-cue-proof"))index=5;
+                    else if(!strcmp(record.stage,"subtitle-cue-proof-consumed"))index=6;
+                    else if(!strcmp(record.stage,"source-frame-work"))index=7;
                     if(index==subtitleStageTimings.size())return;
                     auto& timing=subtitleStageTimings[index];++timing.calls;
                     if(record.flags&1u)++timing.successes;
                     ++timing.reasons[record.reason[0]?record.reason:"<empty>"];
-                    const double elapsed=record.metrics[index==1?3:0];
+                    const double elapsed=record.metrics[index==1?3:index==6?1:0];
                     if(std::isfinite(elapsed)&&elapsed>=0)timing.elapsedMs.push_back(elapsed);
                     if(index==1&&std::isfinite(record.metrics[0])&&record.metrics[0]>=0)
                         timing.leaseAgeMs.push_back(record.metrics[0]);
@@ -3793,7 +3854,8 @@ namespace VideoProcessorTest
                     }
                 };
                 auto reportSubtitleStageTiming=[&] {
-                    static const char* names[]={"pending-pixels","pending-seed","footprint-seed","cadence-seed"};
+                    static const char* names[]={"pending-pixels","pending-seed","footprint-seed","cadence-seed",
+                        "worker-template","worker-proof","render-receipt-bind","source-frame-work"};
                     for(size_t index=0;index<subtitleStageTimings.size();++index) {
                         auto& timing=subtitleStageTimings[index];
                         std::sort(timing.elapsedMs.begin(),timing.elapsedMs.end());
@@ -4534,12 +4596,11 @@ namespace VideoProcessorTest
                             const auto displayedSource=nativeInputs.at(record.counters[1]).sourceFrameNumber;
                             const auto consumedSource=nativeInputs.at(record.counters[0]).sourceFrameNumber;
                             if(consumedSource<first)continue;
-                            // The very first caption input may legally repeat the last
-                            // complete blank image for one input. Its provenance was
-                            // checked by drain(); current cue assertions begin when a
-                            // caption-bearing original is actually displayed.
-                            if(displayedSource<first){require((record.flags&16384u)!=0&&consumedSource==first,
-                                L"Only the first cue input may repeat an immediately preceding complete blank output.");continue;}
+                            // Every distinct incoming source advances video, including
+                            // the first cue source; optional acquisition cannot replay
+                            // the previous whole blank image for this new input.
+                            if(displayedSource<first){require(false,
+                                L"Subtitle acquisition replayed an older whole source for a distinct current input.");continue;}
                             const bool composed=(record.flags&2u)!=0;
                             if(composed&&mode) {
                                 const auto& lineRecords=captionProofs.For(record);
@@ -4738,7 +4799,7 @@ namespace VideoProcessorTest
                         }
                     };
                     do {pump(true);inspectEverySubmittedOutput();
-                        if(checked>=60&&distinct.size()>=60&&odd&&even) {
+                        if(checked>=requiredSteadySources&&distinct.size()>=requiredSteadySources&&odd&&even) {
                             if(!requireUnknownInputCurrentSource)break;
                             if(!unknownSent){pump(true,true);unknownSent=true;inspectEverySubmittedOutput();}
                             if(unknownCurrentSubmitted&&nextCleanFresh)break;
@@ -4815,11 +4876,11 @@ namespace VideoProcessorTest
                     require(ready>0,mode?
                         L"Decoded-DV cold preparation did not produce its first valid composed output within180seconds; steady cadence was not exercised.":
                         L"Classic decoded-DV startup did not settle within20seconds; steady cadence was not exercised.");
-                    require(checked>=60&&distinct.size()>=60&&odd&&even,
+                    require(checked>=requiredSteadySources&&distinct.size()>=requiredSteadySources&&odd&&even,
                         L"Actual persistent Dolby subtitle test did not inspect 60 distinct displayed sources and BOTH consumed input parities.");
                     require(!submissionTimingJoinFailure&&submissionTiming.size()==joinedSubmissionCount&&timingAdjacentGapsComplete,
                         L"Every successful steady submitted output must have an exact selected source/capture join and callback wall timestamp.");
-                    require(timingDistinctSources.size()>=60,
+                    require(timingDistinctSources.size()>=requiredSteadySources,
                         L"Steady timing window did not include at least 60 distinct successful source submissions.");
                     require(actualInputFps>=0.97*inputHz,
                         L"Measured test input cadence fell below 97% of the nominal HDMI input rate.");
@@ -4833,6 +4894,52 @@ namespace VideoProcessorTest
                         L"Successful steady source input-to-submission latency exceeded the nine-source-period plus one-refresh limit.");
                     require(first24MeanMs>=0&&last24MeanMs<=first24MeanMs+sourcePeriodMs,
                         L"Steady source-to-submit latency grew by more than one input period across the observation window.");
+                    if(requireCurrentCueWorkerBudget) {
+                        std::set<uint64_t> consumedProofSources,frameWorkSources;
+                        size_t groupedScans=0,legacyForegroundCalls=0;bool workerThreadsValid=true;
+                        std::vector<double> bindMs,frameWorkMs,presentWaitMs;
+                        for(size_t stage=0;stage<4;++stage)legacyForegroundCalls+=subtitleStageTimings[stage].calls;
+                        for(const auto& event:cueBudgetEvents) {
+                            if(event.sourceFrameNumber<steadyStartSourceFrameNumber || event.sourceFrameNumber>lastInputSourceFrame)continue;
+                            if(!strcmp(event.stage,"worker-complete")) {++groupedScans;continue;}
+                            if(!strcmp(event.stage,"subtitle-cue-proof-consumed") && (event.flags&1u)) {
+                                consumedProofSources.insert(event.sourceFrameNumber);
+                                workerThreadsValid&=event.counters[1]&&event.counters[2]&&event.counters[1]!=event.counters[2];
+                                if(std::isfinite(event.metrics[1])&&event.metrics[1]>=0)bindMs.push_back(event.metrics[1]);
+                            }
+                            if(!strcmp(event.stage,"source-frame-work") && (event.flags&1u)) {
+                                frameWorkSources.insert(event.sourceFrameNumber);
+                                if(std::isfinite(event.metrics[0])&&event.metrics[0]>=0)frameWorkMs.push_back(event.metrics[0]);
+                                if(std::isfinite(event.metrics[4])&&event.metrics[4]>=0)presentWaitMs.push_back(event.metrics[4]);
+                            }
+                        }
+                        const auto percentile=[](std::vector<double> values,double fraction) {
+                            if(values.empty())return -1.0;
+                            std::sort(values.begin(),values.end());
+                            return values[(std::max)(size_t(1),size_t(std::ceil(fraction*values.size())))-1];
+                        };
+                        const double frameP95=percentile(frameWorkMs,.95),bindP95=percentile(bindMs,.95);
+                        std::ostringstream workerBudget;workerBudget<<"DV CURRENT-CUE WORKER BUDGET: observation_seconds="
+                            <<double(lastSubmitWallNs-firstSubmitWallNs)/1.0e9<<" source_period_ms="<<sourcePeriodMs
+                            <<" distinct_sources="<<timingDistinctSources.size()<<" receipt_sources="<<consumedProofSources.size()
+                            <<" grouped_scans="<<groupedScans<<" legacy_foreground_calls="<<legacyForegroundCalls
+                            <<" frame_work_samples="<<frameWorkMs.size()<<" frame_work_p50_ms="<<percentile(frameWorkMs,.50)
+                            <<" frame_work_p95_ms="<<frameP95<<" frame_work_max_ms="<<percentile(frameWorkMs,1)
+                            <<" render_bind_p95_ms="<<bindP95<<" render_bind_max_ms="<<percentile(bindMs,1)
+                            <<" present_wait_p95_ms="<<percentile(presentWaitMs,.95)
+                            <<" worker_thread_is_separate="<<workerThreadsValid;
+                        Logger::WriteMessage(workerBudget.str().c_str());
+                        require(consumedProofSources.size()*5>=timingDistinctSources.size()*4,
+                            L"A five-second unchanged cue did not use current worker proofs for at least 80% of sources.");
+                        require(groupedScans*5<=timingDistinctSources.size(),
+                            L"An unchanged cue still launched full grouping for more than 20% of sources.");
+                        require(legacyForegroundCalls==0,
+                            L"Expensive legacy cue proof/template setup is still invoked synchronously from rendering.");
+                        require(workerThreadsValid&&bindP95>=0&&bindP95<=sourcePeriodMs*.1,
+                            L"Current cue receipt binding is not a separate-worker result with bounded render-thread cost.");
+                        require(frameWorkSources.size()*10>=timingDistinctSources.size()*9&&frameP95>=0&&frameP95<=sourcePeriodMs,
+                            L"Measured capture/render critical-path work does not fit the input frame budget.");
+                    }
                     if(mode)require(cleanupMotionCoverage(false),
                         L"Actual subtitle cleanup never intersected changing picture pixels; benign background motion is not cadence regression coverage.");
                     if(requireUnknownInputCurrentSource)require(unknownSent&&unknownCurrentSubmitted&&nextCleanFresh,
@@ -4859,6 +4966,11 @@ namespace VideoProcessorTest
         {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::BlackBackground));}
         TEST_METHOD(BetaRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker)
         {VerifyPersistentDecodedDvCadence(true,unsigned(SubtitlePreviewMode::BlackBackground));}
+
+        TEST_METHOD(StandardRendererStaticCueWorkerFitsLiveFrameBudget)
+        {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),false,false,false,true);}
+        TEST_METHOD(BetaRendererStaticCueWorkerFitsLiveFrameBudget)
+        {VerifyPersistentDecodedDvCadence(true,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),false,false,false,true);}
 
         TEST_METHOD(StandardRendererDecodedDvUnknownInputKeepsCurrentSource)
         {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),true);}

@@ -11,7 +11,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1073,
+  "minimumNativeTests": 1078,
   "requiredNativeMethods": [
     "ReadyCertifiedExistingCueRearmsAcrossContinuityWithOriginalPixelSeed",
     "PendingFootprintReceiptAllowsOnlyExactCurrentPreparedErasureWithoutBarAuthority",
@@ -351,7 +351,12 @@
     "PendingCurrentInkProofIgnoresMovingMarginsAndRefreshesCurrentSnapshot",
     "PendingCurrentInkProofRejectsChangedGlyphAndNovelCompanion",
     "PendingCurrentInkProofRejectsChangedBackingSourceContextAndUnavailablePixels",
-    "CurrentInkSeedSurvivesAuthorizedHeldAndCadenceContinuationsWithoutRenewal"
+    "CurrentInkSeedSurvivesAuthorizedHeldAndCadenceContinuationsWithoutRenewal",
+    "CurrentCueWorkerProofUsesFreshPixelsAndIgnoresMovingPictureOutsideCue",
+    "CurrentCueWorkerProofRejectsChangedOwnedGlyphPixels",
+    "CurrentCueWorkerProofPersistsAcrossStaticCueAndRunsBesideBlockedGrouping",
+    "CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase",
+    "CurrentCueWorkerPollingIsNonblockingAndDropsQueuedExpiredOwners"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -395,7 +400,9 @@
     "StandardRendererRetainsUncertainPictureAndAcceptsRealTransitions",
     "BetaRendererRetainsUncertainPictureAndAcceptsRealTransitions",
     "StandardRendererPendingCaptionBurstKeepsCurrentVideoAdvancing",
-    "BetaRendererPendingCaptionBurstKeepsCurrentVideoAdvancing"
+    "BetaRendererPendingCaptionBurstKeepsCurrentVideoAdvancing",
+    "StandardRendererStaticCueWorkerFitsLiveFrameBudget",
+    "BetaRendererStaticCueWorkerFitsLiveFrameBudget"
   ],
   "optionalPrivateFixtures": [
     "VP_AR_COLLAR_CAPTURE_FRAME",
@@ -404,7 +411,7 @@
     "VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY"
   ],
   "minimumOriginalNativeTests": 663,
-  "minimumActualTests": 40,
+  "minimumActualTests": 42,
   "explicitNativeMethods": [
     {
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
