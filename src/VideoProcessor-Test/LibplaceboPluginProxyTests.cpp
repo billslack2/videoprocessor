@@ -3156,13 +3156,35 @@ namespace VideoProcessorTest
                     L"Ready cross-edge Reconstruction did not retain one safe viewport for 24 distinct sources after acquisition.":
                     L"Ready UHD Reconstruction did not present 24 distinct actually composed native sources within its separate five-second observation budget.");
                 if(transportOverlay) {
+                    wchar_t visualSetting[8]={};
+                    const bool visualCapture=GetEnvironmentVariableW(L"VP_TRANSPORT_VISUAL_CAPTURE",visualSetting,8)==1&&visualSetting[0]==L'1';
+                    auto capture=[&](const char* phase) {
+                        if(!visualCapture)return;
+                        CString status;const bool queued=cleanup.renderer->RequestRenderedOutputCapture(status);
+                        std::ostringstream row;row<<"TRANSPORT VISUAL REQUEST: phase="<<phase<<" next_input="<<sequence
+                            <<" queued="<<queued<<"; actual source is recorded in capture JSON";Logger::WriteMessage(row.str().c_str());
+                        require(queued,L"Transport visual capture could not queue its actual rendered output.");
+                    };
+                    if(visualCapture) {
+                        Logger::WriteMessage("TRANSPORT VISUAL ONLY: five actual output captures; synchronous readback perturbs frame work. This run does not qualify performance.");
+                        capture("settled-caption");for(unsigned i=0;i<8;++i)pump(caption);
+                    }
                     {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseAllRecordStages=true;classicPoseCaptureSubmitTiming=true;classicPoseSubmitWallNs.clear();}
                     const uint64_t uiFirst=sequence,uiLast=uiFirst+95;
-                    while(sequence<=uiLast)pump(transport[(sequence-uiFirst)%2]);
+                    while(sequence<=uiLast) {
+                        const auto offset=sequence-uiFirst;
+                        if(offset==12)capture("ui-onset");
+                        if(offset==37)capture("ui-phase-one");
+                        if(offset==60)capture("ui-phase-two");
+                        pump(transport[offset%2]);
+                    }
                     const uint64_t returnFirst=sequence;
                     // Drain queued UI with fresh caption sources, then observe
                     // restoration. Never wait for optional work on each source.
-                    while(sequence<returnFirst+72)pump(caption);
+                    while(sequence<returnFirst+72) {
+                        if(sequence==returnFirst+48)capture("recovered-caption");
+                        pump(caption);
+                    }
                     const auto trace=records();std::set<uint64_t> uiSources,returnedSources;
                     unsigned uiOutputs=0,rawUi=0,composedUi=0,workSamples=0;double maxFrameWorkMs=0;bool exact=true,nativeStable=true,uiVisible=true,stableEnvelope=true;
                     int32_t envelope[4]={};bool envelopeKnown=false;uint64_t lastSource=0,maxSourceGap=0,lastWall=0;double maxGapMs=0;
@@ -3205,8 +3227,11 @@ namespace VideoProcessorTest
                     require(nativeStable,L"Player UI or raw fallback changed independently measured native authority or invented caption absence.");
                     require(uiVisible&&composedUi==0,L"Subtitle reconstruction covered player UI or cropped current UI/movie pixels.");
                     require(stableEnvelope,L"Persistent transport UI alternated composed-native and raw-expanded framing.");
-                    require(maxSourceGap<=1&&maxGapMs<=2*(1001.0/24.0)+1000.0/59.0,L"Player UI transition interrupted live current-source cadence.");
-                    require(workSamples>=90&&maxFrameWorkMs<=1001.0/24.0,L"Mandatory UI transition frame work exceeded the 23.976 Hz input budget.");
+                    require(maxSourceGap<=1,L"Player UI transition skipped otherwise eligible current sources.");
+                    if(!visualCapture) {
+                        require(maxGapMs<=2*(1001.0/24.0)+1000.0/59.0,L"Player UI transition interrupted live current-source cadence.");
+                        require(workSamples>=90&&maxFrameWorkMs<=1001.0/24.0,L"Mandatory UI transition frame work exceeded the 23.976 Hz input budget.");
+                    }
                     require(returnedSources.size()>=32,L"Removing player UI did not restore the actual current reconstructed caption.");
                     {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseCaptureSubmitTiming=false;classicPoseAllRecordStages=false;}
                     return;

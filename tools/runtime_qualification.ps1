@@ -13,6 +13,9 @@ function Get-VpQualificationReceiptPath([string]$Root) {
     return Join-Path (Get-VpQualificationRoot $Root) 'artifacts\qualification\runtime-Release-x64.json'
 }
 function Assert-VpQualificationTestEnvironment {
+    if (-not [string]::IsNullOrEmpty($env:VP_TRANSPORT_VISUAL_CAPTURE)) {
+        throw 'Unset VP_TRANSPORT_VISUAL_CAPTURE before runtime qualification. Screenshot readback changes frame work; visual-only runs cannot qualify performance.'
+    }
     if (-not [string]::IsNullOrEmpty($env:VP_RENDERER_REGRESSION_PLUGIN_ROOT)) {
         throw 'Unset VP_RENDERER_REGRESSION_PLUGIN_ROOT before runtime qualification. The diagnostic baseline override cannot qualify new source against an older installed renderer.'
     }
