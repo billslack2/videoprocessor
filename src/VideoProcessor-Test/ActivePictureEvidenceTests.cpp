@@ -3446,6 +3446,18 @@ namespace VideoProcessorTest
         TEST_METHOD(CurrentComposedCaptionViewportFactDoesNotCertifyResidualUiErasure)
         {
             LoggedRelocatedCaptionFixture f(false,true);
+            const auto clearRaw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            const auto clearInput=f.Input();
+            const auto clearProof=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),clearRaw,clearInput);
+            const auto clearViewport=QualifyCurrentSubtitleCompositionPresentation(
+                clearProof,clearInput.currentIdentity,f.base,clearInput.mode);
+            Assert::IsTrue(clearViewport.available);
+            Assert::IsTrue(QualifyPreparedSubtitleCropPresentation(
+                clearProof,clearInput.currentIdentity,f.base).available);
+            auto unavailable=clearProof;unavailable.qualified=false;
+            unavailable.retention.relocatedOverlayExclusionEvaluated=false;
+            Assert::IsFalse(QualifyPreparedSubtitleCropPresentation(
+                unavailable,clearInput.currentIdentity,f.base).available);
             // Unrelated top-bar badge is neither part of the current caption nor
             // permission to erase/clean the remaining raw source bands.
             f.frame.FillRectangle(100,100,180,180,700);

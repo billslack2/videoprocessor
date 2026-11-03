@@ -18695,6 +18695,11 @@ public:
                 r.captionObservation={CaptionObservationState::PRESENT,r.crop.frameSourceGeneration,r.crop.frameSourceSequence,
                     r.presentationEpoch,r.crop.frameSourceFormatKey,r.crop.frameAnalysisDomainKey};r.classicTranslationEnabled=false;
                 auto& composed=r.crop.currentSubtitleComposition;composed.available=true;
+                r.crop.preparedSubtitle={true,r.crop.geometry,r.crop.frameSourceGeneration,
+                    r.crop.frameSourceSequence,r.presentationEpoch};
+                r.crop.frameLocalPresentationRetentionEvaluated=true;
+                r.crop.frameLocalPresentationRetentionSafe=true;
+                r.crop.currentVisibleBoundsAvailable=false;
                 composed.nativeBase=r.crop.geometry;composed.mode=mode;
                 composed.identity.transportGeneration=r.crop.frameSourceGeneration;
                 composed.identity.acceptedSequence=r.crop.frameSourceSequence;
@@ -20343,10 +20348,10 @@ public:
                 Assert::AreEqual(native.bottom,r.crop.acceptedNativeCrop.bounds.bottom);
             }
         }
-        TEST_METHOD(CurrentAdvancedCompositionPermitsNativeViewportWithoutResidualCleanupAuthority)
+        TEST_METHOD(CurrentAdvancedCompositionRequiresResidualSafetyForNativeViewport)
         {
             for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})
-            for(int fault=0;fault<9;++fault) {
+            for(int fault=0;fault<10;++fault) {
                 auto r=AdvancedLoggedFrame(3909,{},false,mode);
                 r.crop.currentVisibleBounds.top=126;r.crop.currentVisibleBounds.bottom=2050;
                 auto& proof=r.crop.currentSubtitleComposition;
@@ -20364,20 +20369,48 @@ public:
                 if(fault==6)++proof.identity.viewportGeneration;
                 if(fault==7)proof.nativeBase.top+=2;
                 if(fault==8)proof.mode=PreparedNativeMode::NONE;
-                Assert::AreEqual(fault==0,HasCurrentSubtitleCompositionPresentation(r.crop));
+                // Exact current composition may coexist with an unrelated top-bar
+                // badge and bottom seekbar. Neither may be clipped or reconstructed.
+                if(fault==9)r.crop.currentVisibleBoundsAvailable=false;
+                const int expectedTop=fault==9?0:126;
+                const int expectedBottom=fault==9?2160:2050;
+                Assert::AreEqual(fault==0 || fault==9,HasCurrentSubtitleCompositionPresentation(r.crop));
                 Assert::IsFalse(HasCurrentPreparedSubtitlePresentation(r.crop));
-                const auto resolved=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+                const auto evaluated=Evaluate(r.crop);
+                Assert::AreEqual(expectedTop,evaluated.sourceBounds.top);
+                Assert::AreEqual(expectedBottom,evaluated.sourceBounds.bottom);
+                const auto resolved=ResolveUncertainPicturePresentation(r,evaluated);
                 const auto& actual=resolved.presentation;
-                Assert::AreEqual(fault?126:250,actual.sourceBounds.top);
-                Assert::AreEqual(fault?2050:1906,actual.sourceBounds.bottom);
+                Assert::IsFalse(actual.waitForSubtitleProcessing);
+                Assert::IsTrue(actual.rawSubtitleFallback);
+                Assert::AreEqual(expectedTop,actual.sourceBounds.top);
+                Assert::AreEqual(expectedBottom,actual.sourceBounds.bottom);
+                if(fault==0 || fault==9) {
+                    auto uncomposed=r;uncomposed.crop.currentSubtitleComposition={};
+                    const auto raw=ResolveUncertainPicturePresentation(uncomposed,Evaluate(uncomposed.crop)).presentation;
+                    Assert::IsTrue(raw.rawSubtitleFallback && !raw.waitForSubtitleProcessing);
+                    Assert::AreEqual(raw.sourceBounds.top,actual.sourceBounds.top);
+                    Assert::AreEqual(raw.sourceBounds.bottom,actual.sourceBounds.bottom,
+                        L"Residual UI must keep the same raw aperture whether caption composition succeeded or not.");
+                }
                 Assert::AreEqual(250,actual.nativePresentation.nativeBase.top);
                 Assert::AreEqual(1906,actual.nativePresentation.nativeBase.bottom);
                 Assert::IsTrue(actual.nativePresentation.preparedNativeMode==PreparedNativeMode::NONE);
                 Assert::IsFalse(actual.nativePresentation.captionPreservation.available);
                 Assert::IsFalse(r.crop.frameLocalPresentationRetentionSafe);
-                Assert::IsTrue(r.crop.currentVisibleBoundsAvailable);
+                Assert::AreEqual(fault!=9,r.crop.currentVisibleBoundsAvailable);
                 Assert::AreEqual(uint64_t(694),r.crop.acceptedNativeCrop.acceptedSourceSequence);
                 if(!fault) {
+                    // The complete existing witness, not the composition fact,
+                    // is the single permission for a native prepared canvas.
+                    auto safe=r;safe.crop.currentVisibleBoundsAvailable=false;
+                    safe.crop.frameLocalPresentationRetentionSafe=true;
+                    safe.crop.preparedSubtitle={true,safe.crop.geometry,safe.crop.frameSourceGeneration,
+                        safe.crop.frameSourceSequence,safe.crop.framePresentationEpoch};
+                    Assert::IsTrue(HasCurrentPreparedSubtitlePresentation(safe.crop));
+                    const auto prepared=ResolveUncertainPicturePresentation(safe,Evaluate(safe.crop)).presentation;
+                    Assert::IsFalse(prepared.rawSubtitleFallback);
+                    Assert::AreEqual(250,prepared.sourceBounds.top);Assert::AreEqual(1906,prepared.sourceBounds.bottom);
                     const auto admission=AdmitCropPresentation({},r.crop,actual,r.presentationEpoch);
                     auto output=Submission(r.crop);output.selectedAdmission=admission.state;
                     output.selectedOwner=actual.owner;output.submittedBounds=actual.sourceBounds;

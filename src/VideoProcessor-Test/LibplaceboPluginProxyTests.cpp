@@ -2569,10 +2569,10 @@ namespace VideoProcessorTest
             require(reconstructionSources.size()>=24,L"Ready Reconstruction did not present 24 distinct actually composed native sources within five seconds.");
         }
 
-        void VerifyClassicUhdBarOverlay(bool beta,bool bothBars,bool reconstruction=false,bool nativeV210=false,bool crossingEdge=false,bool nativePreflightOnly=false,bool blackMode=false)
+        void VerifyClassicUhdBarOverlay(bool beta,bool bothBars,bool reconstruction=false,bool nativeV210=false,bool crossingEdge=false,bool nativePreflightOnly=false,bool blackMode=false,bool transportOverlay=false)
         {
-            ScopedCadenceDiagnostics cadenceDiagnostics(reconstruction&&crossingEdge&&!nativePreflightOnly);
-            constexpr bool narrower=false;
+            ScopedCadenceDiagnostics cadenceDiagnostics(reconstruction&&(crossingEdge||transportOverlay)&&!nativePreflightOnly);
+            const bool narrower=transportOverlay;
             const unsigned advancedMode=static_cast<unsigned>(blackMode?SubtitlePreviewMode::BlackBackground:SubtitlePreviewMode::GeneratedGrayBackground);
             struct ProbeClock final : ITimingClock {
                 LARGE_INTEGER frequency{};
@@ -2589,6 +2589,10 @@ namespace VideoProcessorTest
 #ifdef VP_LIBPLACEBO_BETA
             pluginPath+=L"\\..";
 #endif
+            char* overrideValue=nullptr;size_t overrideSize=0;
+            Assert::AreEqual(0,_dupenv_s(&overrideValue,&overrideSize,"VP_RENDERER_REGRESSION_PLUGIN_ROOT"));
+            std::unique_ptr<char,decltype(&std::free)> overrideOwner(overrideValue,&std::free);
+            if(overrideValue&&*overrideValue){const std::string value(overrideValue);pluginPath.assign(value.begin(),value.end());}
             pluginPath+=beta?L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll":L"\\vprenderer\\VideoProcessorVPRenderer.dll";
             HMODULE plugin=LoadLibraryExW(pluginPath.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
             Assert::IsNotNull(plugin);
@@ -2601,7 +2605,9 @@ namespace VideoProcessorTest
             Assert::IsNotNull(reinterpret_cast<void*>(diagnostics));
             struct DiagnosticCleanup {VideoProcessorLibplaceboConfigureDiagnosticFn configure;
                 ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);
-                    classicPoseCaptureSubtitleAdmissions.store(false,std::memory_order_relaxed);}} diagnosticCleanup{diagnostics};
+                    classicPoseCaptureSubtitleAdmissions.store(false,std::memory_order_relaxed);
+                    std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseAllRecordStages=false;
+                    classicPoseCaptureSubmitTiming=false;classicPoseSubmitWallNs.clear();}} diagnosticCleanup{diagnostics};
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);classicPoseAllRecordStages=false;classicPoseCaptureSubtitleAdmissions.store(true,std::memory_order_relaxed);}
             diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseMessages.clear();ResetShaderPreparationHistory(classicSubmittedShaderPreparation,classicCurrentShaderPreparation);}
@@ -2644,7 +2650,7 @@ namespace VideoProcessorTest
                         caption[size_t(y)*width+x]=uint16_t(892<<6);
             auto both=caption;
             // Pixel owners outlive Cleanup, which drains renderer references first.
-            std::vector<uint16_t> residual[2],motionOnly[2];
+            std::vector<uint16_t> residual[2],motionOnly[2],transport[2];
             std::map<const uint16_t*,std::vector<uint32_t>> packedFrames;
             // Sparse bar UI crosses the trusted top boundary, as in the live
             // 134..262 top row; the separate bottom cue remains present.
@@ -2685,6 +2691,22 @@ namespace VideoProcessorTest
                 }
 
             }
+            if(transportOverlay)for(unsigned phase=0;phase<2;++phase) {
+                // Keep the current caption: the incident's raw output shows it
+                // below the player controls while the composed output hides it.
+                transport[phase]=motionOnly[phase];
+                const auto ui=[&](int left,int top,int right,int bottom,int code) {
+                    for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)transport[phase][size_t(y)*width+x]=uint16_t(code<<6);
+                };
+                // Thin player seekbar crosses the reconstructed destination,
+                // above the original caption. A time bubble and outboard badge
+                // are never subtitle-owned and cannot be covered by old backing.
+                ui(120,1860,3720,1872,640);ui(120,1860,900+int(phase)*12,1872,892);
+                ui(540,1802,760,1860,892);ui(572,1815,584,1847,64);ui(602,1815,616,1847,64);
+                ui(641,1815,653,1847,64);ui(680,1815,694,1847,64);ui(720,1815,732,1847,64);
+                ui(80,120,360,170,892);
+                ui(3360,1990,3390,2020,892);ui(3410,1990,3440,2020,892);ui(3460,1990,3490,2020,892);
+            }
             if(nativeV210) {
                 const size_t pitch=state->BytesPerRow();
                 Assert::IsTrue(pitch==10240,L"UHD native V210 capture must use the live 10240-byte stride.");
@@ -2711,6 +2733,7 @@ namespace VideoProcessorTest
                 };
                 pack(native);pack(caption);pack(both);
                 if(reconstruction){pack(residual[0]);pack(residual[1]);pack(motionOnly[0]);pack(motionOnly[1]);}
+                if(transportOverlay){pack(transport[0]);pack(transport[1]);}
             }
             if(reconstruction) {
                 // Exercise the exact source producer and native worker contract before
@@ -2817,7 +2840,7 @@ namespace VideoProcessorTest
             } cleanup{CreateWindowExW(0,L"STATIC",L"Classic UHD simultaneous bar UI",WS_POPUP,0,0,2000,1125,
                 nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
             Assert::IsNotNull(cleanup.window);
-            cleanup.renderer=create(&callback,44,cleanup.window,&clock,true,16,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
+            cleanup.renderer=create(&callback,44,cleanup.window,&clock,true,transportOverlay?10:16,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
             Assert::IsNotNull(cleanup.renderer);
             ConfigFile config;Assert::IsTrue(config.Load(configPath));UnifiedProfileRuntime::Runtime runtime;std::string error;
             const bool initialized=runtime.Initialize(config,{},error);
@@ -2826,8 +2849,8 @@ namespace VideoProcessorTest
             CString active;bool restart=false,reset=false;
             Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*runtime.GetSnapshot(),active,restart,reset));
             Assert::IsFalse(restart);
-            cleanup.renderer->SetQueueFramePolicy(4,9,true);
-            cleanup.renderer->SetActivePictureLookaheadFrames(4);
+            cleanup.renderer->SetQueueFramePolicy(4,transportOverlay?4:9,true);
+            cleanup.renderer->SetActivePictureLookaheadFrames(transportOverlay?3:4);
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();cleanup.renderer->Start();
             uint64_t sequence=1;size_t finalRecordCursor=0;
             uint64_t acceptedNativeSequence=0;
@@ -3132,6 +3155,62 @@ namespace VideoProcessorTest
                 require(warmSources.size()>=24,crossingEdge?
                     L"Ready cross-edge Reconstruction did not retain one safe viewport for 24 distinct sources after acquisition.":
                     L"Ready UHD Reconstruction did not present 24 distinct actually composed native sources within its separate five-second observation budget.");
+                if(transportOverlay) {
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseAllRecordStages=true;classicPoseCaptureSubmitTiming=true;classicPoseSubmitWallNs.clear();}
+                    const uint64_t uiFirst=sequence,uiLast=uiFirst+95;
+                    while(sequence<=uiLast)pump(transport[(sequence-uiFirst)%2]);
+                    const uint64_t returnFirst=sequence;
+                    // Drain queued UI with fresh caption sources, then observe
+                    // restoration. Never wait for optional work on each source.
+                    while(sequence<returnFirst+72)pump(caption);
+                    const auto trace=records();std::set<uint64_t> uiSources,returnedSources;
+                    unsigned uiOutputs=0,rawUi=0,composedUi=0,workSamples=0;double maxFrameWorkMs=0;bool exact=true,nativeStable=true,uiVisible=true,stableEnvelope=true;
+                    int32_t envelope[4]={};bool envelopeKnown=false;uint64_t lastSource=0,maxSourceGap=0,lastWall=0;double maxGapMs=0;
+                    for(const auto& output:trace) {
+                        if(!strcmp(output.stage,"source-frame-work")&&(output.flags&1u)&&output.sourceFrameNumber>=uiFirst&&output.sourceFrameNumber<=uiLast&&std::isfinite(output.metrics[0])) {
+                            ++workSamples;maxFrameWorkMs=(std::max)(maxFrameWorkMs,output.metrics[0]);
+                        }
+                        if(strcmp(output.stage,"submitted-presentation")||!(output.flags&1u))continue;
+                        const auto input=uhdDeliveredSources.find(output.sourceFrameNumber);
+                        if(output.sourceFrameNumber>=uiFirst&&output.sourceFrameNumber<=uiLast) {
+                            ++uiOutputs;const bool composed=(output.flags&2u)!=0;composedUi+=composed;rawUi+=!composed;
+                            exact&=input!=uhdDeliveredSources.end()&&output.captureTimestamp==uint64_t(input->second.timestamp)&&
+                                output.acceptedSequence==output.counters[0]&&output.acceptedSequence==output.counters[1];
+                            nativeStable&=output.counters[4]!=0&&output.published[0]==physical.left&&output.published[1]==physical.top&&
+                                output.published[2]==physical.right&&output.published[3]==physical.bottom&&!(output.flags&(4096u|8192u));
+                            uiVisible&=!composed&&output.metrics[8]<=80.01&&output.metrics[9]<=120.01&&
+                                output.metrics[10]>=3719.99&&output.metrics[11]>=2019.99;
+                            if(!envelopeKnown){std::copy_n(output.displayed,4,envelope);envelopeKnown=true;}
+                            else for(int edge=0;edge<4;++edge)stableEnvelope&=output.displayed[edge]==envelope[edge];
+                            if(uiSources.insert(output.sourceFrameNumber).second) {
+                                if(lastSource)maxSourceGap=(std::max)(maxSourceGap,output.sourceFrameNumber-lastSource);lastSource=output.sourceFrameNumber;
+                                std::lock_guard<std::mutex> lock(classicPoseLogMutex);const auto wall=classicPoseSubmitWallNs.find(output.recordSequence);
+                                if(wall!=classicPoseSubmitWallNs.end()){if(lastWall)maxGapMs=(std::max)(maxGapMs,double(wall->second-lastWall)/1e6);lastWall=wall->second;}
+                            }
+                            if(composed||!uiVisible) {
+                                std::ostringstream row;row<<"TRANSPORT UI OUTPUT: source="<<output.sourceFrameNumber<<" flags="<<output.flags
+                                    <<" native="<<output.published[1]<<'-'<<output.published[3]<<" actual="<<output.metrics[8]<<','<<output.metrics[9]
+                                    <<'-'<<output.metrics[10]<<','<<output.metrics[11]<<" selected="<<output.counters[1];Logger::WriteMessage(row.str().c_str());
+                            }
+                        }
+                        if(output.sourceFrameNumber>=returnFirst+24&&output.sourceFrameNumber<returnFirst+60&&(output.flags&2u)&&
+                            output.published[1]==bar&&output.published[3]==pictureBottom&&output.metrics[9]==initial.top&&output.metrics[11]==initial.bottom)
+                            returnedSources.insert(output.sourceFrameNumber);
+                    }
+                    std::ostringstream result;result<<"TRANSPORT UI SUMMARY: ui_outputs="<<uiOutputs<<" distinct="<<uiSources.size()
+                        <<" raw="<<rawUi<<" composed="<<composedUi<<" exact="<<exact<<" native_stable="<<nativeStable
+                        <<" ui_visible="<<uiVisible<<" stable_envelope="<<stableEnvelope<<" max_source_gap="<<maxSourceGap
+                        <<" max_submit_gap_ms="<<maxGapMs<<" work_samples="<<workSamples<<" max_frame_work_ms="<<maxFrameWorkMs<<" returned_composed="<<returnedSources.size();Logger::WriteMessage(result.str().c_str());
+                    require(uiSources.size()==96&&exact,L"Player UI takeover lost or replayed otherwise eligible current-source video.");
+                    require(nativeStable,L"Player UI or raw fallback changed independently measured native authority or invented caption absence.");
+                    require(uiVisible&&composedUi==0,L"Subtitle reconstruction covered player UI or cropped current UI/movie pixels.");
+                    require(stableEnvelope,L"Persistent transport UI alternated composed-native and raw-expanded framing.");
+                    require(maxSourceGap<=1&&maxGapMs<=2*(1001.0/24.0)+1000.0/59.0,L"Player UI transition interrupted live current-source cadence.");
+                    require(workSamples>=90&&maxFrameWorkMs<=1001.0/24.0,L"Mandatory UI transition frame work exceeded the 23.976 Hz input budget.");
+                    require(returnedSources.size()>=32,L"Removing player UI did not restore the actual current reconstructed caption.");
+                    {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseCaptureSubmitTiming=false;classicPoseAllRecordStages=false;}
+                    return;
+                }
                 bool cleanupIntersection=false,cleanupChangedRejection=false;
                 auto inspectMovingCleanup=[&](uint64_t first,uint64_t presented) {
                     for(const auto& line:messages()) {
@@ -5284,6 +5363,11 @@ namespace VideoProcessorTest
         { VerifyClassicUhdBarOverlay(false,true); }
         TEST_METHOD(BetaRendererClassicUhdBothBarUiOutsideFillLimit)
         { VerifyClassicUhdBarOverlay(true,true); }
+
+        TEST_METHOD(StandardRendererReconstructionTransportOverlayPreservesCurrentUi)
+        {VerifyClassicUhdBarOverlay(false,false,true,true,false,false,false,true);}
+        TEST_METHOD(BetaRendererReconstructionTransportOverlayPreservesCurrentUi)
+        {VerifyClassicUhdBarOverlay(true,false,true,true,false,false,false,true);}
 
         TEST_METHOD(StandardRendererReconstructionUhdResidualUiWithMovingPicture)
         { VerifyClassicUhdBarOverlay(false,true,true); }

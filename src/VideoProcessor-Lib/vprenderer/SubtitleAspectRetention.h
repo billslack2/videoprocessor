@@ -496,8 +496,8 @@ struct QualifiedSubtitlePresentationEvidence
     ActivePictureBounds erasedSourceBounds;
     QualifiedSubtitlePresentationStatus status=QualifiedSubtitlePresentationStatus::Unknown;
     bool qualified = false;
-    // Successful current caption composition is a narrower fact than clean
-    // remaining source bands. It permits only the requested native viewport.
+    // Successful current caption composition is independent of clean remaining
+    // source bands. It does not by itself permit the native viewport.
     bool currentCompositionVerified=false;
     SubtitlePreviewMode currentCompositionMode=SubtitlePreviewMode::None;
     bool renewsHold=false;
@@ -863,8 +863,8 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     const ActivePictureBounds erased{box.left,box.top,box.right,box.bottom,source.width,source.height,
         double(bw)/(box.bottom-box.top),ActivePictureBounds::BarAxes::NONE};
     // All current-source/cue/capture/geometry and owned-erasure checks above
-    // passed. Residual UI can still veto cleanup/retention below, independently
-    // of this exact successful caption composition's native viewport permission.
+    // passed. Record composition separately; residual UI below still vetoes
+    // native-viewport permission as well as cleanup/retention.
     result.currentCompositionVerified=true;result.currentCompositionMode=input.mode;
     const auto projected=EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(source,base,raw,erased,0);
     if(!projected.relocatedOverlayExclusionEvaluated)return reject("outside-proof-unavailable");

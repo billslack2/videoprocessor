@@ -1348,8 +1348,9 @@ namespace AlphaSourceCrop
         uint64_t preparedNativeSourceSequence=0;
     };
 
-    // Exact selected-source composition only. This does not certify that
-    // unrelated residual bands are empty, nor grant erasure or caption leases.
+    // Exact selected-source composition fact only, for diagnostics. Native-canvas
+    // permission requires PreparedSubtitlePresentation with safe current residual
+    // visibility; successful composition alone cannot authorize a crop.
     struct CurrentSubtitleComposition
     {
         bool available=false;

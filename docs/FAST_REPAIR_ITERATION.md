@@ -94,3 +94,33 @@ its three source-processing scenarios. Later scenarios are not independently
 cold-start claims. Full runtime qualification still creates an empty application
 cache for each run and exercises both renderer dependencies; cold startup and
 post-readiness caption correctness remain required.
+
+## Incident-first iteration
+
+Start from the visible failure and its exact source identity, rather than a broad
+suite. Keep a small incident manifest with source/build pin, native geometry,
+subtitle operation, timestamps, relevant decision fields, and expected output.
+Label original HDMI pixels, rendered recordings, and synthetic fixtures distinctly;
+a rendered recording cannot establish the original detector's pixel-level cause.
+Private movie pixels remain local. Preserve minimized synthetic reproducers in the
+fixture corpus so new evidence becomes a repeatable regression.
+
+Make one contract change at a time. Prefer removing contradictory admission paths
+over adding another exception or proof flag. The central contracts are advancing
+current-source video, preserving current picture/caption/UI pixels, and keeping
+physical picture detection independent of presentation fallback. A focused test
+must fail for the demonstrated defect and exercise the corrected behavior, not
+merely mirror an implementation flag.
+
+Use selected Native methods for the first edit/test loop, then the smallest actual
+renderer replay that demonstrates the incident. Produce source-linked output
+images or a short playable comparison for visual review. Existing manual rendered
+captures perform readback on the rendering path, so collect visual evidence in a
+separate pass from frame-deadline timing and never count capture cost as ordinary
+playback performance. Check missing words, cleanup/backing overlap, and picture
+movement in the output, in addition to telemetry flags.
+
+Run broad native/GPU and full qualification at integration/release checkpoints,
+not before every visual iteration. Focused evidence remains explicitly partial;
+existing qualification and authorized manual-trial deployment rules still apply.
+Do not bundle unrelated failures simply to obtain another large test count.

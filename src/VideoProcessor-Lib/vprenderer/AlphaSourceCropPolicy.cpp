@@ -4200,7 +4200,7 @@ namespace AlphaSourceCrop
         Decision result;
         const bool rawVisibilityContradictsAbsence=HasCurrentAdvancedRawVisibility(crop) &&
             !SameBounds(crop.currentVisibleBounds,crop.geometry);
-        if(!HasCurrentPreparedSubtitlePresentation(crop) && !HasCurrentSubtitleCompositionPresentation(crop) &&
+        if(!HasCurrentPreparedSubtitlePresentation(crop) &&
             !(crop.currentCaptionAbsenceConfirmed && !rawVisibilityContradictsAbsence) &&
             !crop.initialSubtitleShaderBuild) {
             // Requested advanced mode does not erase raw caption pixels. Missing
@@ -7060,7 +7060,7 @@ namespace AlphaSourceCrop
         const auto expected=input.subtitleCanvasMode==SubtitleCanvasMode::BLACK?PreparedNativeMode::BLACK:
             input.subtitleCanvasMode==SubtitleCanvasMode::RECONSTRUCTION?PreparedNativeMode::RECONSTRUCTION:PreparedNativeMode::NONE;
         if(c.subtitlePresentationMode!=expected)return pending("subtitle profile context changed");
-        const bool composed=HasCurrentSubtitleCompositionPresentation(c) || HasCurrentPreparedSubtitlePresentation(c);
+        const bool composed=HasCurrentPreparedSubtitlePresentation(c);
         const bool rawCurrent=c.currentVisibleBoundsAvailable && input.measurementCurrent && input.retentionEvaluated &&
             input.retentionSourceGeneration==c.frameSourceGeneration && input.retentionSourceSequence==c.frameSourceSequence &&
             SameTrustedCropContract(input.retentionBounds,n) && c.currentVisibleSourceGeneration==c.frameSourceGeneration &&
