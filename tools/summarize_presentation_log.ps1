@@ -1,0 +1,72 @@
+[CmdletBinding()]
+param([Parameter(Mandatory=$true)][string]$LogPath,[Parameter(Mandatory=$true)][string]$OutputDirectory,[string]$ScreenshotMetadataPath,[string]$VideoTimecode,[string]$IncidentDirectory)
+$ErrorActionPreference='Stop'
+$LogPath=[IO.Path]::GetFullPath($LogPath)
+if(Test-Path -LiteralPath $OutputDirectory){throw 'Choose a new report directory; previous reports are preserved.'}
+$rows=[Collections.Generic.List[object]]::new();$invalid=0;$legacy=[Collections.Generic.List[object]]::new();$legacyKey='';$loss=@{}
+$gateNames=@('composition-failed','preparation-missing','generation-mismatch','source-mismatch','viewport-mismatch','mode-mismatch','policy-mismatch','continuity-mismatch','geometry-missing','geometry-generation-mismatch','scene-verification-only','non-native-origin','geometry-untrusted','retention-generation-mismatch','retention-source-mismatch')
+function AddDecision($d,$json,$event,$wall,$span) {
+  $failed=@();for($i=0;$i -lt $gateNames.Count;$i++){if([uint32]$d.prepare_failures -band (1 -shl $i)){$failed+=$gateNames[$i]}}
+  $rows.Add([pscustomobject]@{Time=$wall;UtcMs=$d.utc_ms;Timecode=$d.timecode;TickMs=$d.tick_ms;Instance=$d.instance;Generation=$d.generation;Input=$d.input;Selected=$d.selected;Output=$d.output;Event=$event;Span=$span;FactsCurrent=$d.facts_current;Native=($d.native -join ',');Measured=($d.measured -join ',');ActualSource=($d.actual_source -join ',');ActualTarget=($d.actual_target -join ',');RequestedMode=$d.requested_mode;PreparationState=$d.preparation_state;PreparationKey=$d.preparation_key;ShaderFailed=$d.shader_failed;Mode=$d.mode;Composed=$d.composed;CaptionCurrent=$d.caption_current;ScanReason=$d.scan_reason;OwnershipReason=$d.ownership_reason;PreparationFailures=($failed -join ',');DecisionReason=$d.reason;Rendered=$d.rendered;Submitted=$d.submitted;Record=$json})
+}
+foreach($line in [IO.File]::ReadLines($LogPath)) {
+ if($line -match 'VP async log telemetry:.*transport=(\S+).*dropped_full=(\d+).*truncated=(\d+)'){$loss[$Matches[1]]=@([long]$Matches[2],[long]$Matches[3])}
+ if($line -match '^(.*?) \| VP presentation decision: event=(\S+) span=(\d+) (\{.*\})$') {
+  $wall=$Matches[1];$event=$Matches[2];$span=[long]$Matches[3];$json=$Matches[4]
+  try {$d=$json | ConvertFrom-Json;if($d.schema -ne 1){$invalid++;continue}}catch{$invalid++;continue}
+  AddDecision $d $json $event $wall $span
+ } elseif($line -match '^(.*?) \| Alpha native presentation commit: generation=(\d+) selected=(\d+).*native_rect=([^ ]+).*actual=([^ ]+).*reason=(.*)$') {
+  $key=$Matches[2]+'|'+$Matches[4]+'|'+$Matches[5]
+  if($key -ne $legacyKey){$legacy.Add([pscustomobject]@{Time=$Matches[1];Generation=$Matches[2];Selected=$Matches[3];Native=$Matches[4];ActualSource=$Matches[5];DecisionReason=$Matches[6];Event='legacy-geometry-change';FactsCurrent='unknown'});$legacyKey=$key}
+ }
+}
+$incidentImages=@()
+if($IncidentDirectory) {
+ foreach($path in Get-ChildItem -LiteralPath $IncidentDirectory -Filter '*.decisions.jsonl' -File) {
+  foreach($json in [IO.File]::ReadLines($path.FullName)) {
+   try {$d=$json|ConvertFrom-Json;AddDecision $d $json 'incident-context' '' 1}catch{$invalid++}
+  }
+ }
+ foreach($path in Get-ChildItem -LiteralPath $IncidentDirectory -Filter '*.json' -File) {
+  try {
+   $image=Get-Content -LiteralPath $path.FullName -Raw|ConvertFrom-Json;$d=$image.presentation_decision
+   if($d){$json=$d|ConvertTo-Json -Depth 8 -Compress;AddDecision $d $json 'incident-image' '' 1
+    $incidentImages+=[pscustomobject]@{Image=[IO.Path]::ChangeExtension($path.FullName,'.png');Phase=$image.phase;Reason=$image.reason;Timecode=$d.timecode;Output=$d.output;Selected=$d.selected;Submitted=$d.submitted}}
+  }catch{$invalid++}
+ }
+}
+if($rows.Count){$rows=@($rows|Group-Object {"$($_.Instance)|$($_.Generation)|$($_.Output)"}|ForEach-Object {$_.Group|Sort-Object Submitted -Descending|Select-Object -First 1}|Sort-Object UtcMs,TickMs)}
+New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
+if($incidentImages.Count){$incidentImages|Export-Csv -NoTypeInformation -LiteralPath (Join-Path $OutputDirectory 'incident-images.csv')}
+$mode='structured';$reportRows=$rows
+if(!$rows.Count){$mode='legacy-limited';$reportRows=$legacy}
+$reportRows | Select-Object * -ExcludeProperty Record | Export-Csv -LiteralPath (Join-Path $OutputDirectory 'timeline.csv') -NoTypeInformation
+if($rows.Count){$rows.Record | Set-Content -LiteralPath (Join-Path $OutputDirectory 'decisions.jsonl')}
+$changes=@($reportRows | Where-Object {$_.Event -in @('initial','state-change','presentation-change','legacy-geometry-change')})
+$correlations=@($reportRows | Where-Object {$_.Event -eq 'correlation'})
+$summary=[Collections.Generic.List[string]]::new()
+$summary.Add("Presentation report: $mode");$summary.Add("Source: $LogPath");$summary.Add("Records: $($reportRows.Count); decision changes: $($changes.Count); per-output correlations: $($correlations.Count); malformed/unsupported records: $invalid")
+if($mode -eq 'legacy-limited'){$summary.Add('Legacy log: geometry changes only. Missing caption/preparation facts are UNKNOWN. They cannot be reconstructed from these records.')}
+$sumDropped=0L;$sumTruncated=0L;foreach($v in $loss.Values){$sumDropped+=$v[0];$sumTruncated+=$v[1]}
+$summary.Add("Last reported cumulative async losses by transport: dropped=$sumDropped truncated=$sumTruncated. Missing loss reports do not prove zero loss.")
+if($VideoTimecode) {
+ if($VideoTimecode -notmatch '(\d{2}:\d{2}:\d{2}\.\d{3}Z)\s+(\S+)\s+G(\d+)\s+O(\d+)\s+S(\d+)'){throw 'Paste the complete visible timecode, including tag, G, O and S IDs.'}
+ $tag=$Matches[2];$gen=[long]$Matches[3];$out=[long]$Matches[4];$selected=[long]$Matches[5]
+ $exact=@($rows|Where-Object {($_.Instance -replace '[{}]','').StartsWith($tag) -and $_.Generation -eq $gen -and $_.Output -eq $out -and $_.Selected -eq $selected})
+ $summary.Add("Video timecode: $VideoTimecode; exact records=$($exact.Count)")
+ if($exact.Count){$exact|Select-Object * -ExcludeProperty Record|Export-Csv -NoTypeInformation -LiteralPath (Join-Path $OutputDirectory 'video-match.csv');$summary.Add("Matched decision: $($exact[0].DecisionReason); scan=$($exact[0].ScanReason); preparation=$($exact[0].PreparationFailures)")}
+ else{$summary.Add('Exact output is absent from the supplied log/context. Do not substitute another frame; inspect session, logging state and dropped-record counters.')}
+}
+$summary.Add('Latest changes (see timeline.csv for complete chronology):')
+foreach($c in ($changes | Select-Object -Last 30)){$summary.Add("$($c.Time) source=$($c.Selected) native=$($c.Native) displayed=$($c.ActualSource) composed=$($c.Composed) scan=$($c.ScanReason) preparation=$($c.PreparationFailures) reason=$($c.DecisionReason)")}
+if($ScreenshotMetadataPath) {
+ $shot=Get-Content -LiteralPath $ScreenshotMetadataPath -Raw | ConvertFrom-Json
+ if($shot.presentation_decision) {
+  $s=$shot.presentation_decision
+  $exact=@($rows | Where-Object {$_.Instance -eq $s.instance -and $_.Output -eq $s.output -and $_.Generation -eq $s.generation})
+  $summary.Add("Screenshot: capture=$($shot.capture_id) instance=$($s.instance) output=$($s.output) selected=$($s.selected) exact_log_records=$($exact.Count). Screenshot stage is before Present; its submitted flag does not report eventual Present success.")
+  $s | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'screenshot-decision.json')
+ }else{$summary.Add('Screenshot sidecar has no presentation_decision. Exact pipeline correlation unavailable.')}
+}
+$summary | Set-Content -LiteralPath (Join-Path $OutputDirectory 'summary.txt')
+$summary | Select-Object -First 5

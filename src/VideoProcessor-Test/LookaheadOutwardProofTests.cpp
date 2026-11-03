@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include <ActivePictureDecisionTimeline.h>
 #include <ActivePictureEvidence.h>
+#include <SourcePictureDetector.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 #include <vprenderer/AlphaQueuePolicy.h>
@@ -50,7 +51,7 @@ namespace Tests
 				source.data=reinterpret_cast<const uint8_t*>(pixels.data()); source.dataBytes=pixels.size()*sizeof(uint16_t);
 				source.width=3840; source.height=2160; source.rowBytes=source.chromaRowBytes=3840*sizeof(uint16_t);
 				source.format=AnalysisLumaFormat::P010; source.generation=11;
-				evidence=ExtractActivePictureEvidence(source);
+				evidence=DetectSourcePictureForWorker(source).evidence;
 				retention=EvaluateActivePicturePresentationRetention(source,BufferedScope());
 			}
 			AnalysisLumaSource Source() const
@@ -505,7 +506,7 @@ namespace Tests
                     for (int y=top;y<bottom;++y)
                         std::fill(frame.pixels.begin()+size_t(y)*3840+left,
                             frame.pixels.begin()+size_t(y)*3840+right,uint16_t(512<<6));
-                    frame.evidence=ExtractActivePictureEvidence(frame.Source());
+                    frame.evidence=DetectSourcePictureForWorker(frame.Source()).evidence;
                     frame.retention=EvaluateActivePicturePresentationRetention(frame.Source(),BufferedScope());
                 }
                 const auto samples=BufferedSamples(frames);
@@ -576,6 +577,98 @@ namespace Tests
             }
         }
 
+        TEST_METHOD(CompleteNativeExpansionSupersedesReleaseDriftAndFitOnFirstPendingSource) {
+            const std::array<BufferedPixelSample,3> frames;
+            const auto samples=BufferedSamples(frames);
+            const auto proof=BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23);
+            Assert::IsTrue(proof.valid);
+            for(int owner=0;owner<4;++owner) {
+                auto current=BufferedLiveInput(frames[0]);
+                current.presentation.action=owner==2?VerticalBarPresentationAction::FIT:
+                    owner==3?VerticalBarPresentationAction::TRANSLATE:VerticalBarPresentationAction::NONE;
+                current.translationDriftActive=owner!=1;current.previousOutward.verticalPresentationSeen=true;
+                Assert::IsTrue(ValidateBufferedIndependentPictureExpansion(proof,BufferedIdentity(100),current,true),
+                    L"Complete current three-source native picture proof cannot wait for an old subtitle hold/release/FIT owner");
+                ActivePictureTransitionModel model;
+                for(uint64_t source=1;source<=4;++source)model.Observe(BufferedObservation(source,BufferedScope()));
+                Assert::IsTrue(model.AdoptPublishedDecision(proof.decision.transition,current.evidence.classification,
+                    false,nullptr,&current.evidence.axisEvidence,true));
+                Assert::AreEqual(uint64_t(100),proof.decision.effectiveIdentity.acceptedSequence);
+                Assert::AreEqual(68,proof.decision.transition.bounds.top);
+                Assert::AreEqual(2092,proof.decision.transition.bounds.bottom);
+            }
+        }
+        TEST_METHOD(IndependentOwnerBypassRejectsProvisionalAndForeignCurrentPixelProofs) {
+            const std::array<BufferedPixelSample,3> frames;
+            const auto samples=BufferedSamples(frames);
+            const auto original=BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23);
+            Assert::IsTrue(original.valid);
+            for(int fault=0;fault<10;++fault) {
+                auto proof=original;auto current=BufferedLiveInput(frames[0]);auto identity=BufferedIdentity(100);bool eligible=true;
+                current.translationDriftActive=true;current.previousOutward.verticalPresentationSeen=true;
+                if(fault==0)proof.relativeContrast=true;
+                if(fault==1)current.evidence.classification=ActivePictureClassification::PROVISIONAL;
+                if(fault==2)current.retention.expansionStripsAvailable=false;
+                if(fault==3)current.retention.globalNearBlack=true;
+                if(fault==4)++identity.captureTimestamp;
+                if(fault==5)++current.sourceSequence;
+                if(fault==6)current.presentationBeforeObservation.top+=4;
+                if(fault==7)eligible=false;
+                if(fault==8)proof.decision.proofFrameCount=1;
+                if(fault==9)current.compatiblePresentation=false;
+                Assert::IsFalse(ValidateBufferedIndependentPictureExpansion(proof,identity,current,eligible));
+            }
+        }
+        static ActivePictureFrameDecision CurrentPreparedInwardOwnerProof(TransitionAdmissionInput& current) {
+            ActivePictureTransitionModel model;
+            for(uint64_t sequence=1;sequence<=4;++sequence)model.Observe(BufferedObservation(sequence,BufferedTaller()));
+            const std::array<BufferedPixelSample,2> pixels={BufferedPixelSample(276,1884),BufferedPixelSample(276,1884)};
+            std::array<BufferedPictureExpansionSample,2> samples;
+            for(size_t i=0;i<samples.size();++i) {
+                samples[i].identity=BufferedIdentity(100+i);
+                samples[i].observation=MakeActivePictureObservation(pixels[i].evidence,100+i,24);
+                samples[i].retention=EvaluateActivePicturePresentationRetention(pixels[i].Source(),BufferedTaller());
+                samples[i].nearBlackEvaluated=true;
+            }
+            current=BufferedLiveInput(pixels[0]);
+            current.trustedGeometry=current.presentationBeforeObservation=BufferedTaller();
+            current.retention=samples[0].retention;
+            current.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+            current.translationDriftActive=true;current.previousOutward.verticalPresentationSeen=true;
+            return BuildBufferedInwardDecision(samples.data(),2,model,BufferedTaller(),1,1,19,23);
+        }
+        TEST_METHOD(ExactQueuedInwardProofCannotWaitForOldSubtitlePresentationTimers) {
+            TransitionAdmissionInput current;const auto proof=CurrentPreparedInwardOwnerProof(current);
+            Assert::IsTrue(proof.transition.publish && proof.inwardProof==ActivePictureInwardProofValidation::ACCEPTED);
+            for(int owner=0;owner<3;++owner) {
+                current.presentation.action=owner==0?VerticalBarPresentationAction::TRANSLATE:
+                    owner==1?VerticalBarPresentationAction::FIT:VerticalBarPresentationAction::NONE;
+                Assert::IsTrue(ValidatePreparedInwardPictureTransition(proof,BufferedIdentity(100),current,false,false,false),
+                    L"Exact two-source current native inward proof must apply to its first pending source despite old subtitle timers");
+            }
+            Assert::AreEqual(uint64_t(100),proof.effectiveIdentity.acceptedSequence);
+            Assert::AreEqual(uint64_t(101),proof.observationIdentity.acceptedSequence);
+        }
+        TEST_METHOD(InwardOwnerBypassRetainsExactSourceAndMovingPictureVetoes) {
+            TransitionAdmissionInput original;const auto valid=CurrentPreparedInwardOwnerProof(original);
+            Assert::IsTrue(valid.transition.publish);
+            for(int fault=0;fault<11;++fault) {
+                auto proof=valid;auto current=original;auto identity=BufferedIdentity(100);
+                bool onset=false,moving=false,awaiting=false;
+                if(fault==0)++identity.acceptedSequence;
+                if(fault==1)++identity.captureTimestamp;
+                if(fault==2)current.evidence.classification=ActivePictureClassification::PROVISIONAL;
+                if(fault==3)current.retention.globalNearBlack=true;
+                if(fault==4)proof.inwardProof=ActivePictureInwardProofValidation::EVIDENCE_NOT_TRUSTED;
+                if(fault==5)proof.proofFrameCount=1;
+                if(fault==6)onset=true;
+                if(fault==7)moving=true;
+                if(fault==8)awaiting=true;
+                if(fault==9)current.trustedGeometry.top+=4;
+                if(fault==10)current.compatiblePresentation=false;
+                Assert::IsFalse(ValidatePreparedInwardPictureTransition(proof,identity,current,onset,moving,awaiting));
+            }
+        }
         TEST_METHOD(BufferedInwardUsesAvailableAdjacentProofAtLiveCropCadence)
         {
             for (double fps : {24.0, 60.0})

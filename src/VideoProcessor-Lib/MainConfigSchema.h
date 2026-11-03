@@ -337,6 +337,8 @@ namespace MainConfigSchema
 		const std::vector<ConfigSchema::KeyRule> loggingRules = {
 			ConfigSchema::Boolean("enabled"),
 			ConfigSchema::Boolean("debug"),
+            ConfigSchema::Boolean("video_timecode"),
+            ConfigSchema::Boolean("incident_screenshots"),
 			ConfigSchema::Any("debug_log_retention")
 		};
 		return ConfigSchema::ValidateSection(

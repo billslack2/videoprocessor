@@ -19,6 +19,8 @@ if (-not $StageRoot) {
 }
 $BuildRoot = [IO.Path]::GetFullPath($BuildRoot)
 $StageRoot = [IO.Path]::GetFullPath($StageRoot)
+# All portable and installer payloads require the exact tested runtime outputs.
+& (Join-Path $PSScriptRoot 'assert_runtime_qualification.ps1') -Root $repositoryRoot -RequiredBinaryPath (Join-Path $BuildRoot 'VideoProcessor-GUI.exe')
 $artifactPrefix = $artifactRoot.TrimEnd('\') + '\'
 if (-not $StageRoot.StartsWith($artifactPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "StageRoot must remain under the repository artifact directory: $artifactRoot"

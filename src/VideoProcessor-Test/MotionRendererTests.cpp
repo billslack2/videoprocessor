@@ -5,8 +5,11 @@
 #include <vprenderer/DisplayFrameCache.h>
 #include <vprenderer/DisplayVsyncClock.h>
 #include <vprenderer/InputAnalysisCadence.h>
+#include <vprenderer/SourceCadencePresentation.h>
+#include <vprenderer/SourceCadenceNativeHandoff.h>
 #include <vprenderer/SourceUploadBatch.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
+#include <vprenderer/PreparedPictureWindow.h>
 #include <vprenderer/AnalysisPerformanceWindow.h>
 #include <vprenderer/OptionalAnalysisWorker.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
@@ -237,9 +240,13 @@ struct SubtitlePacketHoldFixture {
 }
 TEST_CLASS(MotionRendererTests){public:
     TEST_METHOD(SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases) {
+        // One private, initially empty cache per test/dependency. The worker
+        // must prepare every new scenario; compiled programs common to RGB,
+        // temporal RGB and P010 need not be compiled three times. Keep every
+        // geometry/phase assertion and the no-live-compilation signature check.
+        struct Cache { pl_cache value=pl_cache_create(nullptr); ~Cache(){pl_cache_destroy(&value);} } cache;
         for (int scenario : {0, 1, 2}) {
             GpuFixture g;
-            struct Cache { pl_cache value=pl_cache_create(nullptr); ~Cache(){pl_cache_destroy(&value);} } cache;
             pl_gpu_set_cache(g.device->gpu,cache.value);
             g.Upload(100);
             if (scenario==2) g.CreateP010AlternatingChroma();
@@ -626,14 +633,350 @@ TEST_CLASS(MotionRendererTests){public:
         // Presentation repeats final pixels between these field outputs rather
         // than generating 18 expensive temporal outputs and hitting its cap.
     }
-    TEST_METHOD(AnalysisUsesInputSequenceAndAlternatesOnlyAboveThirty) {
+    TEST_METHOD(WarmupCadenceRepeatYieldsToExactCurrentNativeAspectHandoffs) {
+        ActivePictureFrameIdentity current{1,29,29,2900,2,3,1};current.analysisDomainKey=4;
+        const ActivePictureBounds scope{0,262,3840,1898,3840,2160};
+        const ActivePictureBounds imax{0,120,3840,2040,3840,2160};
+        ActivePictureFrameDecision decision;decision.effectiveIdentity=decision.observationIdentity=current;
+        decision.continuityGeneration=7;decision.lookaheadPolicyGeneration=2;decision.proofFrameCount=1;
+        decision.transition.state=ActivePictureTransitionState::STABLE;
+        decision.transition.publish=decision.transition.stable=true;
+        decision.transition.authoritativeClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        decision.transition.bounds=imax;decision.transition.stableBounds=scope;
+        AlphaSourceCrop::BufferedPictureExpansionProof buffered;buffered.valid=true;buffered.decision=decision;
+        buffered.decision.transition.diagnostic=true;
+        GuardedRememberedEdgeReturnCertificate remembered;remembered.available=true;
+        remembered.policyGeneration=2;remembered.continuityGeneration=7;remembered.frameCount=2;
+        remembered.identities[0]=current;remembered.identities[1]=current;
+        ++remembered.identities[1].acceptedSequence;++remembered.identities[1].sourceFrameNumber;
+        ++remembered.identities[1].captureTimestamp;
+        remembered.decision=decision.transition;remembered.decision.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
+        remembered.nomination.available=remembered.nomination.guarded=true;
+        remembered.nomination.establishedBase=scope;remembered.nomination.rememberedBounds=imax;
+        remembered.nomination.sourceGeneration=current.transportGeneration;remembered.nomination.sourceSequence=current.acceptedSequence;
+        remembered.nomination.rendererGeneration=current.rendererGeneration;remembered.nomination.viewportGeneration=current.viewportGeneration;
+        remembered.nomination.sourceFormatGeneration=current.sourceFormatGeneration;remembered.nomination.policyGeneration=2;
+        remembered.configuredFuture=remembered.actualFuture=1;
+        remembered.diagnostic.allPass=true;remembered.diagnostic.expectedFrames=remembered.diagnostic.passedFrames=2;
+        remembered.currentEvidence.available=true;
+        remembered.currentEvidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        remembered.currentEvidence.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
+        remembered.currentEvidence.trustedBounds=imax;remembered.diagnostic.presentation=imax;
+        const unsigned routes=unsigned(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,&decision,nullptr,nullptr))+
+            unsigned(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,&buffered,nullptr))+
+            unsigned(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,nullptr,&remembered));
+        Assert::AreEqual(3u,routes,L"Every exact-current proven changed native geometry must render immediately instead of spending the warmup repeat.");
+        decision.transition.bounds={0,0,3840,2160,3840,2160};
+        decision.transition.authoritativeClassification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+        Assert::IsTrue(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,&decision,nullptr,nullptr));
+        Assert::AreEqual(262,scope.top);Assert::AreEqual(1898,scope.bottom);
+        for(unsigned fault=0;fault<18;++fault) {
+            auto bad=remembered;
+            switch(fault) {
+            case 0:bad.available=false;break;
+            case 1:bad.diagnostic.allPass=false;break;
+            case 2:++bad.policyGeneration;break;
+            case 3:++bad.continuityGeneration;break;
+            case 4:++bad.identities[0].acceptedSequence;break;
+            case 5:++bad.identities[0].analysisDomainKey;break;
+            case 6:bad.frameCount=1;break;
+            case 7:bad.nomination.shadowOnly=true;break;
+            case 8:bad.nomination.guarded=false;break;
+            case 9:++bad.nomination.sourceSequence;break;
+            case 10:bad.nomination.establishedBase=imax;break;
+            case 11:bad.currentEvidence.available=false;break;
+            case 12:bad.currentEvidence.trustedBounds=scope;break;
+            case 13:bad.decision.bounds=scope;bad.currentEvidence.trustedBounds=scope;bad.diagnostic.presentation=scope;break;
+            case 14:bad.decision.publish=false;break;
+            case 15:++bad.identities[1].sourceFrameNumber;break;
+            case 16:bad.identities[1].captureTimestamp=current.captureTimestamp;break;
+            case 17:++bad.identities[1].viewportGeneration;break;
+            }
+            Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,nullptr,&bad));
+        }
+    }
+    TEST_METHOD(WarmupNativeHandoffVetoRejectsStaleUnprovenAndUnchangedGeometry) {
+        ActivePictureFrameIdentity current{1,29,29,2900,2,3,1};current.analysisDomainKey=4;
+        const ActivePictureBounds scope{0,262,3840,1898,3840,2160};
+        ActivePictureFrameDecision good;good.effectiveIdentity=good.observationIdentity=current;
+        good.continuityGeneration=7;good.lookaheadPolicyGeneration=2;good.proofFrameCount=1;
+        good.transition.state=ActivePictureTransitionState::STABLE;good.transition.publish=good.transition.stable=true;
+        good.transition.authoritativeClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        good.transition.bounds={0,120,3840,2040,3840,2160};good.transition.stableBounds=scope;
+        Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,nullptr,nullptr));
+        for(unsigned fault=0;fault<18;++fault) {
+            auto bad=good;
+            switch(fault) {
+            case 0:bad.transition.bounds=scope;break;
+            case 1:++bad.effectiveIdentity.acceptedSequence;break;
+            case 2:--bad.effectiveIdentity.acceptedSequence;break;
+            case 3:++bad.effectiveIdentity.analysisDomainKey;break;
+            case 4:++bad.effectiveIdentity.viewportGeneration;break;
+            case 5:++bad.effectiveIdentity.sourceFormatGeneration;break;
+            case 6:++bad.effectiveIdentity.rendererGeneration;break;
+            case 7:++bad.continuityGeneration;break;
+            case 8:++bad.lookaheadPolicyGeneration;break;
+            case 9:bad.proofFrameCount=0;break;
+            case 10:bad.transition.publish=false;break;
+            case 11:bad.transition.stable=false;break;
+            case 12:bad.transition.authoritativeClassification=ActivePictureClassification::PROVISIONAL;break;
+            case 13:bad.transition.bounds={};break;
+            case 14:bad.transition.bounds.bottom=2200;break;
+            case 15:++bad.observationIdentity.transportGeneration;break;
+            case 16:--bad.observationIdentity.acceptedSequence;break;
+            case 17:bad.transition.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;break;
+            }
+            Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,&bad,nullptr,nullptr),
+                L"A pending, unknown, stale or unchanged nominee cannot manufacture a native transition veto.");
+            AlphaSourceCrop::BufferedPictureExpansionProof buffered;buffered.valid=true;buffered.decision=bad;
+            Assert::IsFalse(SourceCadenceHasCurrentNativeHandoff(current,scope,2,7,nullptr,&buffered,nullptr));
+        }
+    }
+    TEST_METHOD(SourceCadenceCurrentReadinessRequiresConclusivePixelEvidence) {
+        ActivePictureFrameIdentity identity;identity.transportGeneration=1;identity.acceptedSequence=7;
+        identity.sourceFrameNumber=7;identity.captureTimestamp=700;identity.sourceFormatGeneration=2;
+        identity.viewportGeneration=3;identity.rendererGeneration=1;identity.analysisDomainKey=4;
+        SubtitleBoxObservation observation;observation.identity=identity;observation.analyzed=true;
+        observation.width=1920;observation.height=1080;
+        Assert::IsFalse(SourceCadenceObservationComplete(observation,identity),
+            L"An analyzed job with unavailable bars and no text search is not ready current evidence.");
+        observation.barAuthority=true;
+        observation.text.topSearchComplete=observation.text.bottomSearchComplete=true;
+        observation.text.diagnosticReason="no-bright-ink";
+        Assert::IsTrue(SourceCadenceObservationComplete(observation,identity));
+        for(int missing=0;missing<3;++missing) {
+            auto partial=observation;
+            if(missing==0)partial.text.topSearchComplete=false;
+            if(missing==1)partial.text.bottomSearchComplete=false;
+            if(missing==2)partial.barAuthority=false;
+            Assert::IsFalse(SourceCadenceObservationComplete(partial,identity),
+                L"A partial or unqualified negative scan cannot make current absence conclusive.");
+        }
+        auto rejected=observation;rejected.text.diagnosticReason="no-complete-line";
+        Assert::IsFalse(SourceCadenceObservationComplete(rejected,identity),
+            L"Rejected bright components are not confirmed subtitle absence.");
+        observation.text.detected=true;observation.text.bounds={200,900,1720,1040};
+        observation.text.diagnosticReason="detected";
+        Assert::IsTrue(SourceCadenceObservationComplete(observation,identity));
+        for(int defect=0;defect<9;++defect) {
+            auto bad=observation;
+            if(defect==0)bad.text.bounds={};if(defect==1)bad.text.workLimit=true;
+            if(defect==2)bad.text.held=true;if(defect==3)bad.pendingRefresh=true;
+            if(defect==4)bad.analysisRefresh=true;if(defect==5)bad.analyzed=false;
+            if(defect==6)++bad.identity.acceptedSequence;if(defect==7)++bad.identity.analysisDomainKey;
+            if(defect==8)bad.inspectionCandidateUsed=true,bad.text.detected=false;
+            Assert::IsFalse(SourceCadenceObservationComplete(bad,identity));
+        }
+    }
+    TEST_METHOD(SourceCadenceRepeatUsesDeclaredInputBeforeFiveSecondCaptureEstimate) {
+        int gpu;
+        for(const auto rate:{60.0,60000.0/1001.0}) {
+            SourceCadencePresentationContext c;c.gpu=&gpu;c.generation=1;c.sourceFormat=2;
+            c.analysisDomain=3;c.outputContract=4;c.frameDuration=rate==60.0?1:1001;c.timeScale=rate==60.0?60:60000;
+            SourceCadencePresentation repeat;repeat.Candidate(c,82,82.0/rate,true,true);repeat.Submitted(true);
+            for(const double measured:{0.0,23.976,rate*1.0002}) {
+                const auto inputRate=SourceCadenceInputRate(measured,c.frameDuration,c.timeScale);
+                Assert::AreEqual(rate,inputRate,0.0000001,
+                    L"A complete input before the five-second estimator publication still has an exact declared source period.");
+                Assert::IsTrue(repeat.CanRepeat(c,inputRate,83,83.0/rate));
+            }
+            auto changed=c;changed.frameDuration=1001;changed.timeScale=24000;
+            Assert::IsFalse(repeat.CanRepeat(changed,SourceCadenceInputRate(60,1001,24000),83,83.0/rate));
+        }
+        SourceCadencePresentationContext low;low.gpu=&gpu;low.generation=1;low.sourceFormat=2;
+        low.analysisDomain=3;low.outputContract=4;low.frameDuration=1001;low.timeScale=24000;
+        SourceCadencePresentation lowRepeat;lowRepeat.Candidate(low,82,82.0*1001/24000,true,true);lowRepeat.Submitted(true);
+        Assert::IsFalse(lowRepeat.CanRepeat(low,SourceCadenceInputRate(60,1001,24000),83,83.0*1001/24000),
+            L"A stale measured60 estimate cannot enable high-input-cadence reuse on a declared23.976 source.");
+        Assert::AreEqual(24000.0/1001.0,SourceCadenceInputRate(60,1001,24000),0.0000001);
+        Assert::AreEqual(0.0,SourceCadenceInputRate(60,0,60000));
+        Assert::AreEqual(0.0,SourceCadenceInputRate(60,1001,0));
+    }
+    TEST_METHOD(SourceCadenceWarmupImageRepeatsAcrossFirstReadyWithoutRenewingCaptionCompleteness) {
+        int gpu;SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+        pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+        pending.frameDuration=1;pending.timeScale=60;pending.preparationKey=17;pending.requestedSubtitleMode=2;
+        pending.preparationState=SourceCadencePreparationState::Pending;pending.subtitleMode=0;
+        auto ready=pending;ready.preparationState=SourceCadencePreparationState::Ready;ready.subtitleMode=2;
+        SourceCadencePresentation repeat;repeat.WarmupCandidate(pending,34,34.0/60,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(ready,60,35,35.0/60),
+            L"First Ready UNKNOWN input must retain the exact successful prior Pending whole image for one input");
+        Assert::AreEqual(uint64_t(34),repeat.DisplayedSource());
+        Assert::IsTrue(repeat.DisplayedIsWarmup());
+        Assert::IsFalse(repeat.CanRepeat(pending,60,35,35.0/60),L"A warmup bridge is reserved for first Ready; still-building outputs remain fresh");
+        repeat.RepeatSubmitted(true);
+        Assert::IsFalse(repeat.CanRepeat(ready,60,35,35.0/60));
+        Assert::IsFalse(repeat.CanRepeat(ready,60,36,36.0/60));
+        ready.preparedCaptionPresented=true;
+        repeat.Candidate(ready,36,36.0/60,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(ready,60,37,37.0/60));
+        Assert::IsFalse(repeat.DisplayedIsWarmup());
+        auto wrongMode=ready;wrongMode.subtitleMode=0;
+        Assert::IsFalse(repeat.CanRepeat(wrongMode,60,37,37.0/60),L"Regular complete anchors retain exact effective-mode matching");
+    }
+    TEST_METHOD(SourceCadenceWarmupBridgeCannotBeSpentBeforeFirstReadyInput) {
+        int gpu;
+        for(bool fractional:{false,true})for(uint64_t initial:{uint64_t(33),uint64_t(34)}) {
+            SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+            pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+            pending.frameDuration=fractional?1001:1;pending.timeScale=fractional?60000:60;
+            const double rate=double(pending.timeScale)/pending.frameDuration;
+            pending.preparationKey=17;pending.requestedSubtitleMode=2;
+            pending.preparationState=SourceCadencePreparationState::Pending;
+            SourceCadencePresentation repeat;repeat.WarmupCandidate(pending,initial,double(initial)/rate,true,true);
+            repeat.Submitted(true);
+            Assert::IsFalse(repeat.CanRepeat(pending,rate,initial+1,double(initial+1)/rate),
+                L"Pending UNKNOWN must render and cache its allowed fresh raw image instead of spending the only first-Ready bridge");
+            repeat.WarmupCandidate(pending,initial+1,double(initial+1)/rate,true,true);repeat.Submitted(true);
+            auto ready=pending;ready.subtitleMode=2;ready.preparationState=SourceCadencePreparationState::Ready;
+            Assert::IsTrue(repeat.CanRepeat(ready,rate,initial+2,double(initial+2)/rate));
+            Assert::AreEqual(initial+1,repeat.DisplayedSource());repeat.RepeatSubmitted(true);
+            Assert::IsFalse(repeat.CanRepeat(ready,rate,initial+3,double(initial+3)/rate));
+            ready.preparedCaptionPresented=true;
+            repeat.Candidate(ready,initial+3,double(initial+3)/rate,true,true);repeat.Submitted(true);
+            Assert::IsTrue(repeat.CanRepeat(ready,rate,initial+4,double(initial+4)/rate));
+            Assert::IsFalse(repeat.DisplayedIsWarmup());
+        }
+    }
+    TEST_METHOD(SourceCadenceWarmupImageRejectsForeignContextFailureAndPostComposedReuse) {
+        int gpu;SourceCadencePresentationContext pending;pending.gpu=&gpu;pending.generation=1;
+        pending.sourceFormat=2;pending.analysisDomain=3;pending.outputContract=4;
+        pending.frameDuration=1;pending.timeScale=60;pending.preparationKey=17;pending.requestedSubtitleMode=3;
+        pending.preparationState=SourceCadencePreparationState::Pending;
+        for(int fault=-1;fault<15;++fault) {
+            auto source=pending;auto current=pending;current.subtitleMode=3;current.preparationState=SourceCadencePreparationState::Ready;
+            bool native=true,captured=true,submitted=true;uint64_t next=35;double pts=35.0/60;
+            if(fault==0)++current.preparationKey;
+            if(fault==1)current.requestedSubtitleMode=2;
+            if(fault==2)native=false;
+            if(fault==3)captured=false;
+            if(fault==4)submitted=false;
+            if(fault==5)next=36;
+            if(fault==6)pts=37.0/60;
+            if(fault==7)source.preparedCaptionPresented=true;
+            if(fault==8)current.preparedCaptionPresented=true;
+            if(fault==9)source.preparationState=SourceCadencePreparationState::Failed;
+            if(fault==10)current.preparationState=SourceCadencePreparationState::Failed;
+            if(fault==11)source.preparationKey=0;
+            if(fault==12)++current.viewport;
+            if(fault==13)++current.policy;
+            if(fault==14)source.subtitleMode=3;
+            SourceCadencePresentation repeat;repeat.WarmupCandidate(source,34,34.0/60,native,captured);repeat.Submitted(submitted);
+            Assert::AreEqual(fault==-1,repeat.CanRepeat(current,60,next,pts));
+        }
+    }
+    TEST_METHOD(SourceCadenceRepeatRequiresSubmittedCompletePixelsAndNeverRenewsAnchor) {
+        int gpu;
+        SourceCadencePresentationContext c;c.gpu=&gpu;c.generation=3;c.sourceFormat=4;
+        c.analysisDomain=5;c.outputContract=6;c.outputEpoch=7;c.startupRevision=8;
+        c.frameDuration=100;c.timeScale=5994;
+        SourceCadencePresentation repeat;
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,1.0/59.94));
+        for(bool complete:{false,true})for(bool captured:{false,true})for(bool submitted:{false,true}) {
+            repeat.Candidate(c,1,0,complete,captured);repeat.Submitted(submitted);
+            Assert::AreEqual(complete&&captured&&submitted,
+                repeat.CanRepeat(c,59.94,2,1.0/59.94),
+                L"Only a successful complete submitted presentation can replace current-source analysis.");
+        }
+        auto noOutput=c;noOutput.outputContract=0;
+        repeat.Candidate(noOutput,1,0,true,true);repeat.Submitted(true);
+        Assert::IsFalse(repeat.CanRepeat(noOutput,59.94,2,1.0/59.94),
+            L"An absent output contract cannot authorize reuse on either presenter.");
+        repeat.Candidate(c,1,0,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,2,1.0/59.94));
+        Assert::IsFalse(repeat.CanRepeat(c,23.976,2,1.0/23.976));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,3,2.0/59.94));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,3.0/59.94));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,0));
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,1.0/59.94,true));
+        for(int fault=0;fault<23;++fault) {
+            auto bad=c;
+            switch(fault) {
+            case 0:bad.gpu=nullptr;break;case 1:++bad.generation;break;case 2:++bad.sourceFormat;break;
+            case 3:++bad.analysisDomain;break;case 4:++bad.viewport;break;case 5:++bad.renderer;break;
+            case 6:++bad.processing;break;case 7:++bad.policy;break;case 8:++bad.continuity;break;
+            case 9:++bad.reset;break;case 10:++bad.scene;break;case 11:++bad.outputContract;break;
+            case 12:++bad.outputEpoch;break;case 13:++bad.startupRevision;break;case 14:++bad.subtitleMode;break;
+            case 15:++bad.transfer;break;case 16:++bad.colorspace;break;case 17:bad.configuredScreen=true;break;
+            case 18:bad.interlaced=true;break;case 19:bad.temporal=true;break;case 20:bad.deferredReset=true;break;
+            case 21:++bad.frameDuration;break;case 22:++bad.timeScale;break;
+            }
+            Assert::IsFalse(repeat.CanRepeat(bad,59.94,2,1.0/59.94));
+        }
+        for(double invalid:{(std::numeric_limits<double>::quiet_NaN)(),
+            (std::numeric_limits<double>::infinity)(),-1.0}) {
+            Assert::IsFalse(repeat.CanRepeat(c,invalid,2,1.0/59.94));
+            Assert::IsFalse(repeat.CanRepeat(c,59.94,2,invalid));
+        }
+        Assert::IsFalse(repeat.CanRepeat(c,60.0,2,1.0/60.0),L"An input cadence change invalidates a previous-rate anchor.");
+        repeat.RepeatSubmitted(true);
+        Assert::AreEqual(uint64_t(1),repeat.DisplayedSource());
+        Assert::AreEqual(0.0,repeat.DisplayedPts());
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,2,1.0/59.94),L"A repeated output cannot renew its source lease.");
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,3,2.0/59.94));
+        repeat.Candidate(c,3,2.0/59.94,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,4,3.0/59.94));
+        repeat.RepeatSubmitted(false);
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,4,3.0/59.94));
+        repeat.Candidate(c,2,1.0/59.94,true,true);repeat.Submitted(true);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,3,2.0/59.94),
+            L"An unavailable odd input may repeat an analyzed even source; parity is not evidence.");
+        repeat.RepeatSubmitted(true);
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,4,3.0/59.94));
+    }
+    TEST_METHOD(SourceCadenceRepeatKeepsEntireFinalImageThenShowsNewSceneOnNextAnalyzedSource) {
+        GpuFixture g;DisplayFrameCache pixels;SourceCadencePresentation repeat;
+        SourceCadencePresentationContext c;c.gpu=g.device->gpu;c.generation=1;
+        c.sourceFormat=1;c.analysisDomain=1;c.outputContract=1;c.frameDuration=100;c.timeScale=5994;
+        auto params=pl_render_default_params;params.dither_params=nullptr;
+        // Includes picture, bar and caption pixels; all must be repeated together.
+        std::vector<unsigned char> source(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t o=(y*64+x)*4;
+            const unsigned char v=y<8||y>=48?0:static_cast<unsigned char>(40+x+y);
+            for(int channel=0;channel<3;++channel)source[o+channel]=
+                y>=52&&y<58&&x>=18&&x<46?255:v;
+        }
+        pl_tex_transfer_params upload{};upload.tex=g.source;upload.ptr=source.data();
+        Assert::IsTrue(pl_tex_upload(g.device->gpu,&upload));
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        const auto complete=g.ReadPixels();
+        repeat.Candidate(c,1,0,true,pixels.Capture(g.device->gpu,g.target));repeat.Submitted(true);
+        // A scene/AR cut arrives on the intentionally skipped input. The user
+        // permits one-source latency, never old caption cleanup on new pixels.
+        g.Upload(220);g.input.crop={0,8,64,56};
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        const auto nextScene=g.ReadPixels();Assert::IsTrue(complete!=nextScene);
+        Assert::IsTrue(repeat.CanRepeat(c,59.94,2,1.0/59.94));
+        Assert::IsTrue(pixels.CopyTo(g.target));Assert::IsTrue(complete==g.ReadPixels());
+        repeat.RepeatSubmitted(true);
+        Assert::IsFalse(repeat.CanRepeat(c,59.94,3,2.0/59.94));
+        Assert::IsTrue(pl_render_image(g.renderer,&g.input,&g.output,&params));
+        Assert::IsTrue(nextScene==g.ReadPixels(),L"A new scene must appear on the next analyzed source, with no multi-source hold.");
+        Assert::AreEqual(uint64_t(1),repeat.DisplayedSource());
+        Assert::AreEqual(0.0,repeat.DisplayedPts());
+    }
+    TEST_METHOD(SkippedInputWithoutCompletePresentationPermissionMustAnalyze) {
+        // Input frequency/parity alone cannot authorize losing current captions.
+        // No successful submitted-image repeat has been supplied to this API.
+        for(double inputHz:{30.001,50.0,59.0,59.94,60.0,120.0})
+            for(uint64_t sequence:{2ULL,4ULL,100ULL})
+                Assert::IsTrue(InputFrameAnalysisDue(inputHz,sequence),
+                    L"A skipped source without an exact complete-presentation repeat must receive fresh analysis.");
+        Assert::IsTrue(InputFrameAnalysisDue(23.976,2),
+            L"A 60 Hz display cannot change the 23.976 Hz input analysis decision.");
+    }
+    TEST_METHOD(OnlyExplicitCompletePresentationPermissionAllowsInputCadenceSkip) {
         for(double hz:{23.976,24.0,25.0,29.97,30.0,50.0,59.94,60.0,120.0}) {
             unsigned analyses=0;
             for(uint64_t sequence=1;sequence<=120;++sequence) {
-                const bool due=InputFrameAnalysisDue(hz,sequence);
+                // This permission belongs to an exact committed presentation,
+                // not merely to input frequency or a prior subtitle observation.
+                const bool due=InputFrameAnalysisDue(hz,sequence,true);
                 Assert::IsTrue(due==(hz<=30.0 || (sequence&1)!=0));
+                Assert::IsTrue(InputFrameAnalysisDue(hz,sequence,false));
                 for(int output=0;output<4;++output)
-                    Assert::IsTrue(due==InputFrameAnalysisDue(hz,sequence));
+                    Assert::IsTrue(due==InputFrameAnalysisDue(hz,sequence,true));
                 if(due)++analyses;
             }
             Assert::AreEqual(hz<=30.0?120u:60u,analyses);
@@ -1383,10 +1726,28 @@ TEST_CLASS(MotionRendererTests){public:
         PresentationAnalysisBudget budget;
         const auto skipped=budget.Begin(2,1000000,1000000,true,false);
         Assert::AreEqual(int64_t(0),skipped.deadlineQpc);
-        OptionalAnalysisPrefix expiredBudget;
-        if(skipped.deadlineQpc>0) expiredBudget.Admit(0,headResult!=nullptr);
-        Assert::AreEqual(size_t(0),expiredBudget.Size(),
-            L"A skipped optional budget cannot publish a ready lookahead certificate");
+        OptionalAnalysisPrefix repeatedPrefix;
+        PreparedPictureWindowSource repeatedSource;repeatedSource.available=true;repeatedSource.repeat=true;
+        const auto repeated=RunPreparedPictureWindowPhases(
+            MakePreparedPictureWindowAdmission(repeatedSource,skipped.deadlineQpc),skipped.deadlineQpc,
+            []{return int64_t(1000000);},[&](int64_t,bool) {
+                repeatedPrefix.Admit(0,headResult!=nullptr);return true;
+            });
+        Assert::IsFalse(repeated.completed);
+        Assert::AreEqual(size_t(0),repeatedPrefix.Size(),
+            L"A repeated presentation cannot contribute another source observation");
+        OptionalAnalysisPrefix freshPrefix;
+        PreparedPictureWindowSource freshSource;freshSource.available=true;
+        const auto fresh=RunPreparedPictureWindowPhases(
+            MakePreparedPictureWindowAdmission(freshSource,skipped.deadlineQpc),skipped.deadlineQpc,
+            []{return int64_t(1000000);},[&](int64_t deadline,bool) {
+                Assert::AreEqual(int64_t(0),deadline);
+                return freshPrefix.Admit(0,headResult->domain==7) &&
+                    freshPrefix.Admit(1,futureResult->domain==7);
+            });
+        Assert::IsTrue(fresh.completed);
+        Assert::AreEqual(size_t(2),freshPrefix.Size(),
+            L"Zero optional scan budget on a fresh source does not invalidate ready evidence");
         worker.Stop();
         Assert::IsTrue(lifetime.expired());
         Assert::AreEqual(73,headResult->pixel,

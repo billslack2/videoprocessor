@@ -84,6 +84,7 @@ void ActivePictureTransitionModel::Reset()
     m_hasGuardedRememberedEnvelope = false;
     m_guardedRememberedNominal = {};
 	m_stableOrigin = ActivePictureAuthorityOrigin::NATIVE;
+    m_stableDetector = ActivePictureDetectorKind::Legacy;
 	m_stable = {};
 	m_stableClassification = ActivePictureClassification::UNAVAILABLE;
 	m_recentTrusted = {};
@@ -122,11 +123,13 @@ bool ActivePictureTransitionModel::ResetForNativeQueueContinuity(
         !HasCropAuthority(stable) || !ExactSparseBounds(m_stable, exactNativeBounds))
         return false;
     const auto native = m_stable;
+    const auto detector = m_stableDetector;
     const auto recent = m_recentTrusted;
     const auto recentCount = m_recentTrustedCount;
     Reset();
     m_hasStable = true;
     m_stable = native;
+    m_stableDetector = detector;
     m_stableClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
     m_stableOrigin = ActivePictureAuthorityOrigin::NATIVE;
     m_recentTrusted = recent;
@@ -761,7 +764,8 @@ bool ActivePictureTransitionModel::HasAuthorityForCroppedAxes(
 
 void ActivePictureTransitionModel::RememberTrustedGeometry(
 	const ActivePictureBounds& bounds,
-	ActivePictureClassification classification, ActivePictureAuthorityOrigin origin)
+	ActivePictureClassification classification, ActivePictureAuthorityOrigin origin,
+    ActivePictureDetectorKind detector)
 {
 	// Experimental geometry must never become a remembered native format.
 	if (origin != ActivePictureAuthorityOrigin::NATIVE ||
@@ -773,7 +777,8 @@ void ActivePictureTransitionModel::RememberTrustedGeometry(
 			continue;
 		// Promote a returning geometry to the front instead of retaining a
 		// duplicate, so recency remains meaningful for a three-mode feature.
-		const TrustedGeometry known = m_recentTrusted[index];
+		TrustedGeometry known = m_recentTrusted[index];
+        known.detector = detector;
 		for (size_t move = index; move > 0; --move)
 			m_recentTrusted[move] = m_recentTrusted[move - 1];
 		m_recentTrusted[0] = known;
@@ -783,7 +788,7 @@ void ActivePictureTransitionModel::RememberTrustedGeometry(
 		m_recentTrustedCount, RECENT_TRUSTED_GEOMETRIES - 1);
 	for (size_t move = retained; move > 0; --move)
 		m_recentTrusted[move] = m_recentTrusted[move - 1];
-	m_recentTrusted[0] = { bounds, classification };
+	m_recentTrusted[0] = { bounds, detector, classification };
 	m_recentTrustedCount = std::min(
 		RECENT_TRUSTED_GEOMETRIES, m_recentTrustedCount + 1);
 }
@@ -792,7 +797,7 @@ void ActivePictureTransitionModel::RememberTrustedGeometry(
 bool ActivePictureTransitionModel::FindRecentTrustedGeometry(
 	const ActivePictureObservation& observation,
 	ActivePictureBounds& bounds,
-	ActivePictureClassification& classification) const
+	ActivePictureClassification& classification, ActivePictureDetectorKind& detector) const
 {
 	if (!m_hasStable ||
 		!MateriallyDifferent(m_stable, observation.bounds))
@@ -813,6 +818,7 @@ bool ActivePictureTransitionModel::FindRecentTrustedGeometry(
 			continue;
 		bounds = known.bounds;
 		classification = known.classification;
+        detector = known.detector;
 		return true;
 	}
 	return false;
@@ -830,6 +836,7 @@ void ActivePictureTransitionModel::StartCandidate(
 	m_candidate = observation.bounds;
 	m_candidateClassification = observation.classification;
 	m_candidateOrigin = observation.authorityOrigin;
+	m_candidateDetector = observation.detector;
 	m_candidateSparseTransitionProof = observation.sparseTransitionProof;
 	m_candidateRememberedProof = observation.rememberedEdgeReturnProof;
 	m_candidateRememberedLastSequence = observation.frameNumber;
@@ -843,6 +850,7 @@ void ActivePictureTransitionModel::ClearCandidate()
 	m_candidate = {};
 	m_candidateClassification = ActivePictureClassification::UNAVAILABLE;
 	m_candidateOrigin = ActivePictureAuthorityOrigin::NATIVE;
+    m_candidateDetector = ActivePictureDetectorKind::Legacy;
 	m_candidateSparseTransitionProof = {};
 	m_candidateRememberedProof = {};
 	m_candidateRememberedLastSequence = 0;
@@ -869,6 +877,7 @@ ActivePictureTransitionModel::CommitCandidate(
 		retained.bounds = retained.stableBounds = m_stable;
 		retained.authoritativeClassification = m_stableClassification;
 		retained.authorityOrigin = retained.stableAuthorityOrigin = m_stableOrigin;
+        retained.detector = retained.stableDetector = m_stableDetector;
 		retained.reason = "experimental inward proof no longer matches established base";
 		return retained;
 	}
@@ -882,6 +891,7 @@ ActivePictureTransitionModel::CommitCandidate(
         retained.bounds = retained.stableBounds = m_stable;
         retained.authoritativeClassification = m_stableClassification;
         retained.authorityOrigin = retained.stableAuthorityOrigin = m_stableOrigin;
+        retained.detector = retained.stableDetector = m_stableDetector;
         retained.reason = "remembered return proof no longer matches native history and base";
         return retained;
     }
@@ -890,6 +900,7 @@ ActivePictureTransitionModel::CommitCandidate(
 	// exclude pixels verified on this commit frame. Provisional/history-only
 	// recurrence keeps its canonical remembered contract.
 	ActivePictureBounds committedBounds = m_candidate;
+    auto committedDetector = m_candidateDetector;
 	if (HasCropAuthority(observation) &&
 		observation.classification == m_candidateClassification &&
 		observation.bounds.trustedBarAxes == m_candidate.trustedBarAxes &&
@@ -900,6 +911,7 @@ ActivePictureTransitionModel::CommitCandidate(
 		 ValidSparseTransitionObservation(observation) || ValidRememberedEdgeReturnObservation(observation)))
 	{
 		committedBounds = observation.bounds;
+        committedDetector = observation.detector;
 	}
 	ActivePictureTransitionDecision decision;
 	decision.state = ActivePictureTransitionState::STABLE;
@@ -910,7 +922,9 @@ ActivePictureTransitionModel::CommitCandidate(
 	decision.diagnostic = true;
 	decision.authoritativeClassification = m_candidateClassification;
 	decision.authorityOrigin = m_candidateOrigin;
+	decision.detector = committedDetector;
 	decision.stableAuthorityOrigin = m_stableOrigin;
+	decision.stableDetector = m_stableDetector;
 	decision.knownTrustedGeometryReacquired =
 		m_candidateUsesKnownTrustedGeometry;
 	decision.matchingCandidates = m_matchingCandidates;
@@ -924,11 +938,12 @@ ActivePictureTransitionModel::CommitCandidate(
 	decision.reason = reason;
 	if (m_hasStable && !SameBounds(m_stable, committedBounds))
 	{
-		RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);
+		RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin, m_stableDetector);
 	}
 	m_stable = committedBounds;
 	m_stableClassification = m_candidateClassification;
 	m_stableOrigin = m_candidateOrigin;
+    m_stableDetector = committedDetector;
     m_hasGuardedRememberedEnvelope = m_candidateRememberedProof.available && m_candidateRememberedProof.guarded &&
         m_candidateOrigin == ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
     m_guardedRememberedNominal = m_hasGuardedRememberedEnvelope ? m_candidateRememberedProof.nomination.rememberedBounds : ActivePictureBounds{};
@@ -938,6 +953,37 @@ ActivePictureTransitionModel::CommitCandidate(
 	return decision;
 }
 
+
+bool ActivePictureCurrentSpatialCropProof::ValidRectangle(const ActivePictureBounds& b)
+{
+    if(b.rasterWidth<=0 || b.rasterHeight<=0 || b.left<0 || b.top<0 ||
+        b.right>b.rasterWidth || b.bottom>b.rasterHeight || b.left>=b.right || b.top>=b.bottom)
+        return false;
+    const double measuredRatio=double(b.right-b.left)/double(b.bottom-b.top);
+    return std::isfinite(b.aspectRatio) && b.aspectRatio>0 &&
+        std::abs(b.aspectRatio-measuredRatio)<=std::max(1.0,measuredRatio)*1e-12;
+}
+
+bool ActivePictureCurrentSpatialCropProof::Matches(const ActivePictureObservation& observation) const
+{
+    const auto& b=observation.bounds;
+    const auto same=[](const ActivePictureBounds& a,const ActivePictureBounds& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+            a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight && a.trustedBarAxes==b.trustedBarAxes;
+    };
+    const bool vertical=b.top>0 || b.bottom<b.rasterHeight;
+    const bool horizontal=b.left>0 || b.right<b.rasterWidth;
+    return available && ValidRectangle(measured) && ValidRectangle(retained) && ValidRectangle(b) &&
+        sequence && sequence==observation.frameNumber && transport && format && domain &&
+        observation.available && observation.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+        observation.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+        observation.classification==ActivePictureClassification::BAR_CROP_TRUSTED && !observation.transitionDeferred &&
+        same(retained,b) && !observation.axisEvidence.HasBlockingFailedBar(b) &&
+        (!vertical || (observation.axisEvidence.vertical.scanComplete &&
+            observation.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS)) &&
+        (!horizontal || (observation.axisEvidence.horizontal.scanComplete &&
+            observation.axisEvidence.horizontal.state==ActivePictureAxisState::TRUSTED_BARS));
+}
 
 ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	const ActivePictureObservation& observation)
@@ -950,7 +996,9 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	decision.stableBounds = m_hasStable ? m_stable : ActivePictureBounds{};
 	decision.stable = m_hasStable;
 	decision.authorityOrigin = m_stableOrigin;
+	decision.detector = m_stableDetector;
 	decision.stableAuthorityOrigin = m_stableOrigin;
+	decision.stableDetector = m_stableDetector;
 	decision.authoritativeClassification = m_hasStable
 		? m_stableClassification
 		: ActivePictureClassification::UNAVAILABLE;
@@ -980,6 +1028,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 				ActivePictureTransitionState::CANDIDATE_TRANSITION;
 			decision.bounds = m_candidate;
 			decision.authorityOrigin = m_candidateOrigin;
+			decision.detector = m_candidateDetector;
 			decision.matchingCandidates = m_matchingCandidates;
 			decision.contradictoryCandidates = m_contradictoryCandidates;
 			decision.candidateReversals = m_candidateReversals;
@@ -1057,12 +1106,13 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
         return decision;
     }
 	ActivePictureBounds recentTrustedBounds;
+    ActivePictureDetectorKind recentTrustedDetector = ActivePictureDetectorKind::Legacy;
 	ActivePictureClassification recentTrustedClassification =
 		ActivePictureClassification::UNAVAILABLE;
 	// History may name native formats, but cannot canonicalize or promote an
 	// experimental target into native authority or shorten its current proof.
 	const bool matchesRecentTrusted = observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
-		FindRecentTrustedGeometry(observation, recentTrustedBounds, recentTrustedClassification);
+		FindRecentTrustedGeometry(observation, recentTrustedBounds, recentTrustedClassification, recentTrustedDetector);
 	if (!validSparseTransition && !validRememberedReturn && RetainsIncompleteInwardFormat(
 		matchesRecentTrusted ? recentTrustedBounds : observation.bounds, observation.axisEvidence))
 	{
@@ -1088,16 +1138,36 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		// Current, non-deferred native authority verifies this exact rectangle.
 		// Near matches and remembered/provisional observations cannot upgrade it.
 		m_stableOrigin = ActivePictureAuthorityOrigin::NATIVE;
+        m_stableDetector = observation.detector;
         m_hasGuardedRememberedEnvelope = false;
         m_guardedRememberedNominal = {};
 		ClearCandidate();
 		decision.authorityOrigin = m_stableOrigin;
+		decision.detector = m_stableDetector;
 		decision.stableAuthorityOrigin = m_stableOrigin;
+		decision.stableDetector = m_stableDetector;
 		decision.publish = true;
 		decision.diagnostic = true;
 		decision.reason = "exact native evidence verified experimental geometry";
 		return decision;
 	}
+    // Changing the producing detector is itself an accepted publication only
+    // when fresh authoritative evidence verifies the exact already-owned rectangle.
+    // Unknown/provisional recurrence must retain the original accepted provenance.
+    if (m_hasStable && m_stableDetector != observation.detector &&
+        m_stableOrigin == observation.authorityOrigin &&
+        observation.classification == m_stableClassification && HasCropAuthority(observation) &&
+        !observation.axisEvidence.HasBlockingFailedBar(observation.bounds) &&
+        ExactSparseBounds(m_stable, observation.bounds))
+    {
+        m_stableDetector = observation.detector;
+        ClearCandidate();
+        decision.detector = decision.stableDetector = m_stableDetector;
+        decision.publish = true;
+        decision.diagnostic = true;
+        decision.reason = "exact current evidence verified detector provenance";
+        return decision;
+    }
 	// History and look-ahead must obey the same retention policy as live
 	// evidence. Test the remembered contract, not its noisy raw recurrence.
 	const auto retention = matchesRecentTrusted
@@ -1135,6 +1205,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			// hysteresis and later publish an internally inconsistent crop.
 			m_candidate = recentTrustedBounds;
 			m_candidateClassification = recentTrustedClassification;
+            m_candidateDetector = HasCropAuthority(observation) ? observation.detector : recentTrustedDetector;
 			m_candidateOrigin = ActivePictureAuthorityOrigin::NATIVE;
 			m_candidateUsesKnownTrustedGeometry = true;
 			decision.diagnostic = true;
@@ -1150,6 +1221,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			ActivePictureTransitionState::CANDIDATE_TRANSITION;
 		decision.bounds = m_candidate;
 		decision.authorityOrigin = m_candidateOrigin;
+		decision.detector = m_candidateDetector;
 		decision.stableBounds = m_stable;
 		decision.stable = true;
 		// Keep the last stable presentation while the known geometry is
@@ -1169,12 +1241,22 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		return decision;
 	}
 
+    // Initial acquisition needs no additional displayed sources when this
+    // exact source already supplies both spatial measurement and crop proof.
+    // Established geometry/transition confirmation and legacy startup are unchanged.
+    if (!m_hasStable && HasCropAuthority(observation) && observation.currentSpatialCropProof.Matches(observation))
+    {
+        StartCandidate(observation);
+        return CommitCandidate(observation,"current verified spatial crop acquired immediately");
+    }
+
 	if (!HasCropAuthority(observation))
 	{
 		const bool candidateChanged =
 			m_matchingCandidates == 0 ||
 			m_candidateClassification != observation.classification ||
 			m_candidateOrigin != observation.authorityOrigin ||
+            m_candidateDetector != observation.detector ||
 			!SameSparseCandidateProof(observation) ||
 			!SameRememberedCandidateProof(observation) ||
 			!SameBounds(m_candidate, observation.bounds);
@@ -1185,6 +1267,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 		decision.bounds = m_candidate;
 		decision.authorityOrigin = m_candidateOrigin;
+		decision.detector = m_candidateDetector;
 		decision.stableBounds =
 			m_hasStable ? m_stable : ActivePictureBounds{};
 		decision.stable = m_hasStable;
@@ -1204,6 +1287,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		m_candidate = observation.bounds;
 		m_candidateClassification = observation.classification;
 		m_candidateOrigin = observation.authorityOrigin;
+		m_candidateDetector = observation.detector;
 		m_matchingCandidates = 1;
 		m_firstContradictoryFrame = observation.frameNumber;
 		return CommitCandidate(
@@ -1217,6 +1301,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		const bool candidateChanged = m_matchingCandidates == 0 ||
 			m_candidateClassification != observation.classification ||
 			m_candidateOrigin != observation.authorityOrigin ||
+            m_candidateDetector != observation.detector ||
 			!SameSparseCandidateProof(observation) ||
 			!SameRememberedCandidateProof(observation) ||
 			!SameBounds(m_candidate, observation.bounds);
@@ -1228,6 +1313,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 		decision.bounds = m_candidate;
 		decision.authorityOrigin = m_candidateOrigin;
+		decision.detector = m_candidateDetector;
 		decision.stableBounds = m_stable;
 		decision.stable = true;
 		decision.diagnostic = candidateChanged;
@@ -1248,6 +1334,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		if (m_matchingCandidates == 0 ||
 			m_candidateClassification != observation.classification ||
 			m_candidateOrigin != observation.authorityOrigin ||
+            m_candidateDetector != observation.detector ||
 			!SameSparseCandidateProof(observation) ||
 			!SameRememberedCandidateProof(observation) ||
 			!SameBounds(m_candidate, observation.bounds))
@@ -1266,6 +1353,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 		decision.bounds = m_candidate;
 		decision.authorityOrigin = m_candidateOrigin;
+		decision.detector = m_candidateDetector;
 		decision.matchingCandidates = m_matchingCandidates;
 		decision.confidence = static_cast<double>(m_matchingCandidates) /
 			INITIAL_CONFIRMATIONS;
@@ -1300,6 +1388,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	if (m_matchingCandidates == 0 ||
 		m_candidateClassification != observation.classification ||
 		m_candidateOrigin != observation.authorityOrigin ||
+            m_candidateDetector != observation.detector ||
 		!SameSparseCandidateProof(observation) ||
 		!SameRememberedCandidateProof(observation) ||
 		!SameBounds(m_candidate, observation.bounds))
@@ -1321,6 +1410,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 	decision.bounds = m_candidate;
 	decision.authorityOrigin = m_candidateOrigin;
+	decision.detector = m_candidateDetector;
 	decision.stable = true;
 	// Candidate changes are presentation-safe in the outward direction and
 	// harmlessly conservative in the inward direction. Retain the stable
@@ -1402,6 +1492,7 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 	observation.bounds = decision.bounds;
 	observation.classification = classification;
 	observation.authorityOrigin = decision.authorityOrigin;
+    observation.detector = decision.detector;
 	if (currentAxisEvidence) observation.axisEvidence = *currentAxisEvidence;
 	if (!decision.publish || !decision.stable ||
 		!HasCropAuthority(observation))
@@ -1468,11 +1559,12 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 		return reject(retention);
 	if (m_hasStable && !SameBounds(m_stable, decision.bounds))
 	{
-		RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);
+		RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin, m_stableDetector);
 	}
 	m_stable = decision.bounds;
 	m_stableClassification = classification;
 	m_stableOrigin = decision.authorityOrigin;
+    m_stableDetector = decision.detector;
     m_hasGuardedRememberedEnvelope = false;
     m_guardedRememberedNominal = {};
 	m_hasStable = true;
@@ -1581,10 +1673,11 @@ bool ActivePictureTransitionModel::AdoptGuardedRememberedReturn(
         !trial.m_hasGuardedRememberedEnvelope) return false;
     // Commit only presentation authority. Never copy future observation clocks,
     // source context or newly accumulated qualification into the live model.
-    RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);
+    RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin, m_stableDetector);
     m_stable = trial.m_stable;
     m_stableClassification = trial.m_stableClassification;
     m_stableOrigin = trial.m_stableOrigin;
+    m_stableDetector = trial.m_stableDetector;
     m_hasStable = true;
     m_hasGuardedRememberedEnvelope = true;
     m_guardedRememberedNominal = trial.m_guardedRememberedNominal;

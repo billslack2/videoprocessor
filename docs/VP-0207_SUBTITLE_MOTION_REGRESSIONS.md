@@ -1,3 +1,112 @@
+# Native boundary and input-cadence repair, 31 October 2026
+
+The deployed 4fa45da9 build failed live acceptance despite its earlier automated
+qualification. The 59.94 Hz input log shows persistent captions alternating
+between detected and `input-cadence-not-analyzed` at a 16.7 ms interval. This is
+not expiration of a 250 ms subtitle hold. Display refresh and input cadence are
+separate measurements.
+
+Input parity cannot authorize losing current-source evidence. Queue full input
+analysis by default. A conclusive observation contains either valid current
+caption bounds or qualified complete searches proving caption absence; finishing
+a worker job without searching text is insufficient.
+
+A high-rate input uses two independent subtitle scanner workers; inputs at 30 Hz
+and below retain one serial worker. Both lanes still analyze complete source
+frames at stride one. Their mutable scanners and tracking hints are separate;
+only an immediately preceding source in the same context may supply a tracking
+hint. Ready observations and active-job deduplication use full source keys, and
+late obsolete completions cannot evict current window evidence. Parallel work
+must not manufacture consecutive confirmation from nonadjacent source frames.
+
+An established caption can retain its layout while complete CURRENT source
+pixels still prove its glyph ownership. A source-bound tracker certificate may
+permit only prepared-erasure verification for that held layout. It requires
+fresh independent bars, complete current raw ink and every accepted line, strict
+existing-cue pixel agreement and no novel owned extension. It cannot acquire a
+new cue, promote native AR, seed or renew a semantic lease, or certify another
+source. All actual capture, cleanup and residual-pixel checks remain mandatory;
+unknown or changed glyphs retain the existing rejection. A successfully verified
+held output can anchor one complete-image repeat without sealing a reusable
+source-analysis receipt.
+
+The progressive D3D11 path with inactive temporal processing may bridge
+one inconclusive input by copying the previous successful complete final image.
+Picture, subtitles, crop and HDR provenance remain together. The original source
+identity and PTS remain unchanged, and the consumed input is logged separately.
+Only the immediately following source may use an anchor, once. Failed capture or
+submission, changed context/rate, reset, resize, discontinuity and excessive age
+invalidate permission. Fresh conclusive current evidence wins immediately. Interlaced input and active temporal processing retain full analysis;
+this path does not reinterpret old cleanup as permission to erase new pixels.
+
+A successful one-input whole-image repeat retires that input separately from
+measurement history. The tracker may bridge only that exact retired input to its
+immediate successor, which must independently pass complete current glyph proof.
+The prior measured source, cue observations and lease clocks keep their original
+identities; generic source gaps receive no such permission.
+
+Classic's confirmed controller target can contain a caption while a partial timed
+engage pose still clips it. Until the actual admitted pan contains the current
+outside-picture visible strip, presentation retains a fresh current safe envelope.
+Dense-scan gaps use current visible pixels, and the original controller measurement
+and expiry stay unchanged. Once the actual pan fits, normal native-height motion
+resumes without changing the target, drift clock or measured picture boundaries.
+
+Both the normal libplacebo-owned and diagnostic VP-owned presenters are covered.
+For each pinned D3D11 dependency, `submit_frame` only releases its acquired
+backbuffer; `swap_buffers` owns presentation. A failed cache copy can therefore
+consume the acquisition without calling Present, then render the fresh fallback.
+Successful reuse calls native Present exactly once. This backend-specific
+contract is checked by `tools/test_d3d11_submit_contract.ps1` during runtime
+qualification and requires review when replacing the shipped dependency.
+
+Physical source measurement is separate from conservative retained bounds and
+from tentative caption-contaminated nominations. The private native capture
+replays 64 frames with visible picture edges 263..1897 at 3840x2160, giving
+2.350061:1; its larger retention collar must not become the reported physical
+aspect. Source-axis observations retain uncertainty and never independently grant
+pixel-discard authority. Explicit current raster-edge proof supports full-raster
+extent; retaining the whole HDMI input alone does not prove that measurement.
+Screen aspect, zoom, CIH and fitting do not choose the detected source aspect.
+
+Centered optional fill uses equal aligned insets at both edges. If symmetric
+chroma-aligned removal cannot fit within the requested crop, preserve those rows
+or columns rather than shifting the picture or clipping the opposite edge.
+
+`tools/critical_runtime_tests.json` requires the native measurement, capture,
+current-evidence and real renderer regressions. Missing or unexecuted required
+methods fail runtime qualification on both dependencies. The separate motion GPU
+suite remains required after source/preparation/temporal changes. GPU copy tests
+check complete final pixels; actual renderer diagnostic tests check successful
+submission identity, caption/certificate ownership and source/target geometry.
+Neither layer alone establishes physical playback or display acceptance.
+
+The actual DV fixture first proves its decoded native pixels and measured cleanup
+crossing moving picture. Full-range DV matte 0 and limited-range matte 64 have
+different glyph-backing limits; a fixture must satisfy the production rules for
+its own range. The controlled UNKNOWN fixture independently hits the real
+component budget before asserting one complete-output repeat and a fresh clean
+successor. Fixtures that fail preflight do not establish renderer coverage.
+
+Cold shader preparation and steady-state cadence have separate bounded test
+budgets. The advanced fixture validates every safe raw fallback output during
+its 180-second startup budget, then begins its independent 90-second observation
+budget on the first valid composed output. It never resets that observation on
+a bounce. Per-pass preparation timings expose the measured cold compilation
+cost; a longer startup allowance does not establish instant cold readiness.
+Classic startup permits only caption-preserving presentation while its configured
+engage runs; the exact settled translated native crop then remains strict.
+
+Opt-in `ar-boundary-chain` records separate nomination, physical observation,
+retained guard, accepted native crop and submitted output. Physical confidence
+and source identity are explicit; previous-frame proof cannot be stamped current.
+Native diagnostic capture samples across its duration within the byte budget and
+retains both input parities above 30 Hz. Intentional sampling and failed retention
+are counted separately. Private capture replay uses
+`VP_PHYSICAL_EDGE_CAPTURE_FRAME` or `VP_PHYSICAL_EDGE_CAPTURE_DIRECTORY`; pixels
+remain local. `VP_RENDERER_REGRESSION_PLUGIN_ROOT` is only for diagnostic baseline
+runs and is rejected by runtime qualification.
+
 # Current-beta integration, 27 October 2026
 
 This test build ports complete progressive composition (082a4aab), transactional
@@ -224,3 +333,22 @@ Ordinary active Smooth Motion does not normally enqueue the host's true cadence
 correction repeats, so reproducing that supported retry contract does not prove
 it caused steady-playback subtitle flashing. Discontinuity-source inserted-output
 reuse is tested independently. Retain this distinction in deployment receipts.
+
+## Startup and picture-only follow-up
+
+Repeat eligibility uses the declared input time scale and frame duration. The
+measured-rate estimate remains telemetry: its initial five-second observation
+window must not disable complete-output retention for a declared60Hz input.
+
+Classic's current visibility envelope also applies before translation target
+confirmation. Every enlarged viewport requires current visible source pixels;
+carried controller measurements retain their original source and expiry.
+
+Black/Reconstruction use measured native picture geometry independently of
+caption continuity and shader readiness. Caption clipping while shaders compile
+is intentionally permitted by the operator. A caption hold cannot suppress the
+certificate for an independently authorized, actually applied native fill.
+Unowned UI in encoded bars must not enlarge the measured movie viewport.
+After readiness, actual-output tests require complete source-bound captions or
+one identical complete-image repeat; fresh moving cleanup need not trigger a
+legacy stale-mask rejection to count as coverage.

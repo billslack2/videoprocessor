@@ -4,6 +4,7 @@
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 #include <vector>
+#include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -144,6 +145,24 @@ void EqualDimBounds(const ActivePictureBounds& a,const ActivePictureBounds& b)
     Assert::AreEqual(a.right,b.right); Assert::AreEqual(a.bottom,b.bottom);
     Assert::AreEqual(a.rasterWidth,b.rasterWidth); Assert::AreEqual(a.rasterHeight,b.rasterHeight);
     Assert::AreEqual(int(a.trustedBarAxes),int(b.trustedBarAxes));
+}
+void LogDimNegativeControl(const char* name,int pattern,const ActivePictureEvidence& e)
+{
+    const auto rect=[](const ActivePictureBounds& b) {
+        return std::to_string(b.left)+","+std::to_string(b.top)+"-"+
+            std::to_string(b.right)+","+std::to_string(b.bottom)+"/"+std::to_string(int(b.trustedBarAxes));
+    };
+    const auto& a=e.axisEvidence;
+    Logger::WriteMessage((std::string(name)+" pattern="+std::to_string(pattern)+
+        " class="+std::to_string(int(e.classification))+" proposed="+rect(e.proposedBounds)+
+        " trusted="+rect(e.trustedBounds)+" nomination="+rect(e.candidateVerification.nomination)+
+        " verification="+std::to_string(int(e.candidateVerification.vertical))+","+
+            std::to_string(int(e.candidateVerification.horizontal))+
+        " axis="+std::to_string(int(a.vertical.state))+","+std::to_string(int(a.horizontal.state))+
+        " reason="+std::to_string(int(a.vertical.reason))+","+std::to_string(int(a.horizontal.reason))+
+        " candidate="+std::to_string(a.vertical.barCandidate)+","+std::to_string(a.horizontal.barCandidate)+
+        " profile="+std::to_string(e.verticalBarProfile.evaluated)+","+std::to_string(e.verticalBarProfile.clean)+
+        " extraction="+e.reason).c_str());
 }
 void EstablishDimNative(ActivePictureTransitionModel& model,
     const ActivePictureEvidence& evidence,uint64_t& sequence)
@@ -641,7 +660,7 @@ public:
         }
     }
 
-    TEST_METHOD(QuantizedShadowedSideRejectsDeeperPictureCaptionsAndRamps)
+    TEST_METHOD(QuantizedShadowedSidePreservesDeeperPixelsAndRejectsUnprovedChanges)
     {
         for(int pattern=0;pattern<4;++pattern)
         {
@@ -653,26 +672,58 @@ public:
             if(pattern==2)frame.Rectangle(480,267,600,276,300);
             if(pattern==3)for(int y=255;y<276;++y)frame.Rectangle(0,y,3840,y+1,64+(y-255)/2);
             const auto observed=ExtractActivePictureEvidence(frame.Source());
-            if(pattern==2)
-            {
-                // This object touches picture across the proposed boundary.
-                // Dense continuation now rejects it before strict profile recovery.
-                Assert::IsTrue(observed.available && !observed.top.trusted && observed.bottom.trusted);
+            LogDimNegativeControl("quantized-negative",pattern,observed);
+            Assert::IsTrue(observed.available);
+            Assert::AreEqual(0,observed.proposedBounds.left); Assert::AreEqual(3468,observed.proposedBounds.right);
+            Assert::AreEqual(276,observed.proposedBounds.top); Assert::AreEqual(1884,observed.proposedBounds.bottom);
+            if(pattern!=2)
+                Assert::IsTrue(observed.verticalBarProfile.evaluated && !observed.verticalBarProfile.clean,
+                    L"The original unsafe crop profile must not be relabeled clean.");
+            const bool qualified=observed.classification==ActivePictureClassification::BAR_CROP_TRUSTED;
+            const int occupiedTop=(pattern==0 || pattern==2)?267:pattern==3?255:273;
+            const int occupiedBottom=pattern==1?1893:1887;
+            if(qualified) {
+                // Independent recovery may move the crop OUTWARD to include
+                // the new row/caption. This is safe geometry, unlike approving
+                // the old276..1884 aperture which would remove those pixels.
+                Assert::IsTrue(observed.lowContrastBoundaryProof);
+                Assert::IsTrue(observed.candidateVerification.vertical==ActivePictureCandidateVerificationState::VERIFIED);
+                Assert::AreEqual(frame.Source().generation,observed.candidateVerification.sourceGeneration);
+                EqualDimBounds(observed.trustedBounds,observed.candidateVerification.bounds);
+                Assert::IsTrue(observed.verticalBarGuardProfile.completed && observed.verticalBarGuardProfile.clean);
+                Assert::AreEqual(0,observed.trustedBounds.left); Assert::AreEqual(3840,observed.trustedBounds.right);
+                Assert::IsTrue(observed.trustedBounds.top<=occupiedTop && observed.trustedBounds.top>=occupiedTop-4);
+                Assert::IsTrue(observed.trustedBounds.bottom>=occupiedBottom && observed.trustedBounds.bottom<=occupiedBottom+4);
+            } else {
                 Assert::IsTrue(observed.classification==ActivePictureClassification::PROVISIONAL);
-                Assert::IsTrue(observed.axisEvidence.vertical.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION);
-                Assert::IsTrue(observed.axisEvidence.horizontal.FailedBar());
-                Assert::AreEqual(0,observed.proposedBounds.left);
-                Assert::AreEqual(3468,observed.proposedBounds.right);
-                Assert::AreEqual(276,observed.proposedBounds.top);
-                Assert::AreEqual(1884,observed.proposedBounds.bottom);
             }
-            else
-            {
-                AssertFourKShadowedRaw(observed);
-                Assert::IsTrue(observed.verticalBarProfile.evaluated && !observed.verticalBarProfile.clean);
+            if(pattern==3)
+                Assert::IsFalse(qualified,L"A smooth ramp cannot establish an abrupt native picture boundary.");
+
+            DimCompositionPixels initial(3840,2160); initial.Rectangle(0,68,3840,2092,300);
+            const auto base=ExtractActivePictureEvidence(initial.Source());
+            ActivePictureTransitionModel model; uint64_t sequence=1;
+            EstablishDimNative(model,base,sequence);
+            bool published=false;
+            for(int i=0;i<12;++i) {
+                const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(
+                    DimAdmission(frame.Source(),observed,base.trustedBounds,sequence++));
+                const auto decision=model.Observe(admission.observation);
+                if(decision.publish) {
+                    published=true;
+                    Assert::IsTrue(qualified,L"Unproved current geometry cannot become authoritative through repetition.");
+                    EqualDimBounds(observed.trustedBounds,decision.bounds);
+                    Assert::AreEqual(0,decision.bounds.left); Assert::AreEqual(3840,decision.bounds.right);
+                    Assert::IsTrue(decision.bounds.top<=occupiedTop && decision.bounds.bottom>=occupiedBottom,
+                        L"Published geometry must preserve the new native/caption pixels.");
+                }
+                if(!qualified) {
+                    Assert::IsFalse(decision.publish || decision.clearTransition);
+                    EqualDimBounds(base.trustedBounds,decision.stableBounds);
+                }
             }
-            Assert::IsFalse(observed.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds));
-            Assert::IsTrue(observed.axisEvidence.HasBlockingFailedBar(observed.trustedBounds));
+            Assert::AreEqual(qualified,published,
+                L"Only an independently verified, pixel-preserving replacement may publish.");
         }
     }
 
@@ -885,8 +936,12 @@ public:
             if(pattern==3)frame.Rectangle(400,20,432,22,700);
             const auto base=ExtractActivePictureEvidence(initial.Source());
             const auto observed=ExtractActivePictureEvidence(frame.Source());
-            Assert::IsTrue(observed.top.trusted && observed.bottom.trusted);
-            Assert::IsTrue(observed.axisEvidence.horizontal.FailedBar());
+            LogDimNegativeControl("removed-band-negative",pattern,observed);
+            Assert::IsTrue(observed.available && observed.classification==ActivePictureClassification::PROVISIONAL);
+            Assert::IsTrue(observed.candidateVerification.vertical!=ActivePictureCandidateVerificationState::VERIFIED);
+            Assert::IsTrue(observed.axisEvidence.vertical.state==ActivePictureAxisState::UNKNOWN);
+            Assert::AreEqual(0,observed.trustedBounds.top); Assert::AreEqual(540,observed.trustedBounds.bottom);
+            Assert::IsFalse(observed.lowContrastBoundaryProof);
             Assert::AreEqual(64,observed.proposedBounds.top);
             Assert::AreEqual(476,observed.proposedBounds.bottom);
             Assert::IsTrue(observed.verticalBarProfile.evaluated && !observed.verticalBarProfile.clean);

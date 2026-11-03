@@ -10551,6 +10551,17 @@ QWidget* ConfigEditorWindow::createLogsPage()
         "Keep all VP logs and write additional live telemetry files for diagnosis."));
     layout->addWidget(enhanced);
 
+    auto* videoTimecode = bindCheckField(QStringLiteral("Show recording timecode on video"),
+        QStringLiteral("logging"), QStringLiteral("video_timecode"), false);
+    videoTimecode->setObjectName(QStringLiteral("config.logging.video_timecode"));
+    videoTimecode->setToolTip(QStringLiteral("With enhanced logging, show UTC time and output/source IDs on video and log every output for recording correlation."));
+    layout->addWidget(videoTimecode);
+    auto* incidentScreenshots = bindCheckField(QStringLiteral("Capture suspected AR failures automatically"),
+        QStringLiteral("logging"), QStringLiteral("incident_screenshots"), false);
+    incidentScreenshots->setObjectName(QStringLiteral("config.logging.incident_screenshots"));
+    incidentScreenshots->setToolTip(QStringLiteral("With enhanced logging, save bounded failure/after screenshots and decision context. At most 12 images per renderer session; 20-second cooldown."));
+    layout->addWidget(incidentScreenshots);
+
     auto* retention = new QSpinBox;
     retention->setObjectName(QStringLiteral("config.logging.debug_log_retention"));
     retention->setAccessibleName(QStringLiteral("Log retention"));
@@ -10573,10 +10584,12 @@ QWidget* ConfigEditorWindow::createLogsPage()
             std::to_string(count));
         markDirty();
     });
-    auto syncLoggingControls = [enabled, enhanced, retention]
+    auto syncLoggingControls = [enabled, enhanced, retention, videoTimecode, incidentScreenshots]
     {
         const bool loggingEnabled = enabled->isChecked();
         enhanced->setEnabled(loggingEnabled);
+        videoTimecode->setEnabled(loggingEnabled && enhanced->isChecked());
+        incidentScreenshots->setEnabled(loggingEnabled && enhanced->isChecked());
         retention->setEnabled(loggingEnabled && !enhanced->isChecked());
     };
     connect(enabled, &QCheckBox::toggled, this, syncLoggingControls);

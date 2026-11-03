@@ -4,7 +4,9 @@ param(
     [Parameter(Mandatory = $true)][version]$ToolsetVersion
 )
 $ErrorActionPreference = 'Stop'
-Import-Module Microsoft.PowerShell.Utility
+# Resolve the running host's modules, not a different edition earlier in PSModulePath.
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -Force -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Management\Microsoft.PowerShell.Management.psd1') -Force -ErrorAction Stop
 # Build-only sidecar, deliberately excluded from the release package.
 [ordered]@{
     schemaVersion = 1

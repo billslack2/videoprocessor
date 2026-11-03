@@ -7,6 +7,10 @@
 // must pass each new source. Worker measurements and picture authority stay unchanged.
 class SubtitleCueContinuationGuard {
 public:
+    // UHD wide/multiline captions can require more than 65,536 grid samples
+    // after the fixed glyph-surround margin is included. Keep the complete ROI
+    // and all pixel vetoes; keep a fixed upper bound of 131,072 samples.
+    static constexpr size_t SampleBudget=131072;
     void Reset() { m_valid=false; m_reference={}; m_baseline.reset(); m_cached={}; m_elapsed=0;m_missingStarted=false;m_localGlyphsOnly=false; }
     bool HasReference() const { return m_valid; }
     // Keep the last seed result through Reset so cursor cleanup cannot erase it.
@@ -73,7 +77,7 @@ public:
             merge(accepted.sourcePanel);
         }
         unsigned samples=0;const char* reason="not-eligible";
-        auto sampled=Sample(*c.ink,roi,source,65536,samples,reason);
+        auto sampled=Sample(*c.ink,roi,source,SampleBudget,samples,reason);
         if(!sampled)return reject(reason);
         // Acquisition grouping supplies ownership; pixels are freshly sampled.
         const size_t words=sampled->rawInk.size();
@@ -89,7 +93,7 @@ public:
         return true;
     }
     SubtitleCueContinuation Prepare(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
-        const ActivePictureBounds& base,int holdMs,double frameMs,size_t maxSamples=65536) {
+        const ActivePictureBounds& base,int holdMs,double frameMs,size_t maxSamples=SampleBudget) {
         SubtitleCueContinuation out;const auto& c=preview.current;
         out.identity=c.identity;out.templateIdentity=m_reference.identity;out.previousIdentity=m_last;
         out.policyGeneration=preview.policyGeneration;out.continuityGeneration=preview.continuityGeneration;
@@ -157,7 +161,7 @@ public:
     // Advances only the source cursor after fresh verification. It neither
     // replaces acquisition evidence nor renews its finite lease once an edge is missing.
     bool AdvanceVerified(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,const AnalysisLumaSource& source,
-        const ActivePictureBounds& base,int holdMs,double frameMs,size_t maxSamples=65536) {
+        const ActivePictureBounds& base,int holdMs,double frameMs,size_t maxSamples=SampleBudget) {
         const auto& c=preview.current;
         if(accepted.confirmationPending){Reset();return false;}
         if(!m_valid)return false;
