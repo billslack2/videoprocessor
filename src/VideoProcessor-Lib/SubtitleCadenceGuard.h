@@ -17,6 +17,38 @@ struct SubtitleCadenceProof {
 class SubtitleCadenceGuard {
 public:
     using Result=SubtitleCadenceProof;
+    enum class RearmRejectCode : uint8_t {
+        NotAttempted, Passed, NoEligibleFreshSeed, SeedUnavailable, Geometry,
+        PhysicalBase, Context, PolicyGeneration, ContinuityGeneration,
+        Sequence, SourceLayout, CueIdentity, CueLayout, InkPalette, InkGrid, DetectorMask
+    };
+    enum GeometryMismatchBit : uint32_t {
+        GeometrySourceOperation=1u<<0, GeometryDestination=1u<<1,
+        GeometryDisplay=1u<<2, GeometryTranslation=1u<<3, GeometryOther=1u<<4
+    };
+    static const char* RearmRejectReasonName(RearmRejectCode code) {
+        switch(code) {
+        case RearmRejectCode::NotAttempted:return "not-attempted";
+        case RearmRejectCode::Passed:return "passed";
+        case RearmRejectCode::NoEligibleFreshSeed:return "no-eligible-fresh-seed";
+        case RearmRejectCode::SeedUnavailable:return "seed-unavailable";
+        case RearmRejectCode::Geometry:return "geometry";
+        case RearmRejectCode::PhysicalBase:return "physical-base";
+        case RearmRejectCode::Context:return "context";
+        case RearmRejectCode::PolicyGeneration:return "policy-generation";
+        case RearmRejectCode::ContinuityGeneration:return "continuity-generation";
+        case RearmRejectCode::Sequence:return "sequence";
+        case RearmRejectCode::SourceLayout:return "source-layout";
+        case RearmRejectCode::CueIdentity:return "cue-identity";
+        case RearmRejectCode::CueLayout:return "cue-layout";
+        case RearmRejectCode::InkPalette:return "ink-palette";
+        case RearmRejectCode::InkGrid:return "ink-grid";
+        case RearmRejectCode::DetectorMask:return "detector-mask";
+        }
+        return "unknown";
+    }
+    RearmRejectCode LastRearmRejectCode() const {return m_lastRearmRejectCode;}
+    uint32_t LastGeometryMismatchBits() const {return m_lastGeometryMismatchBits;}
     struct CurrentFootprintVerification {
         bool valid=false;
         size_t samples=0;
@@ -27,7 +59,9 @@ public:
     };
     // Native pixels, counted once across the exact extraction/erasure union.
     static constexpr unsigned SampleBudget=1048576;
-    void Reset() { m_valid=false;m_used=false;m_currentFootprintReceiptValid=false;m_cleanupChangedIndices.clear();ClearInPlace(*m_reference);m_source={};m_baseline.reset();m_detectorReference.reset();
+    void Reset() { m_valid=false;m_used=false;m_currentFootprintReceiptValid=false;m_cleanupChangedIndices.clear();
+        m_lastRearmRejectCode=RearmRejectCode::NotAttempted;m_lastGeometryMismatchBits=0;
+        ClearInPlace(*m_reference);m_source={};m_baseline.reset();m_detectorReference.reset();
         m_native.clear();m_currentPixels.clear();m_changedComponents.clear();m_index.clear();m_components.clear();ClearInPlace(*m_cached); }
     bool HasReference() const {return m_valid;}
     const char* DecisionReason() const {return m_reason;}
@@ -188,6 +222,7 @@ private:
         const SubtitleCutPasteGeometry& geometry,double frameMs,int holdMs,int backgroundMode,
         bool allowAnalyzedStrideOne) {
         m_samples=0;m_currentFootprintReceiptValid=false;m_cleanupChangedIndices.clear();
+        m_lastRearmRejectCode=RearmRejectCode::NoEligibleFreshSeed;m_lastGeometryMismatchBits=0;
         const auto fail=[&](const char* reason){m_valid=false;m_used=false;m_reason=reason;return false;};
         const auto& c=preview.current;
         const bool validStride=allowAnalyzedStrideOne?
@@ -213,7 +248,10 @@ private:
             m_reference->current.ink=m_baseline;m_source=source;m_source.backingOwner.reset();
             m_valid=true;m_used=false;ClearInPlace(*m_cached);m_reason="cadence-seed-rearmed";return true;
         }
+        const auto rearmReject=m_lastRearmRejectCode;
+        const auto geometryMismatchBits=m_lastGeometryMismatchBits;
         Reset();m_samples=0;
+        m_lastRearmRejectCode=rearmReject;m_lastGeometryMismatchBits=geometryMismatchBits;
         m_capture=geometry.glyphLines;m_cleanup={};m_roi={};
         const auto merge=[&](SubtitleBoxRect& into,const SubtitleBoxRect& r) {
             if(!r.Valid())return true;
@@ -478,34 +516,51 @@ private:
     static bool SameRect(const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
         return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
     }
-    static bool SameGeometry(const SubtitleCutPasteGeometry& a,const SubtitleCutPasteGeometry& b) {
-        if(!SameRect(a.source,b.source) || !SameRect(a.destination,b.destination) ||
-            !SameRect(a.content,b.content) || !SameRect(a.generatedCleanup,b.generatedCleanup) ||
-            !SameRect(a.pictureCapture,b.pictureCapture) ||
+    static uint32_t GeometryMismatchBits(const SubtitleCutPasteGeometry& a,const SubtitleCutPasteGeometry& b) {
+        uint32_t bits=0;
+        if(!SameRect(a.source,b.source) || !SameRect(a.content,b.content) ||
+            !SameRect(a.generatedCleanup,b.generatedCleanup) || !SameRect(a.pictureCapture,b.pictureCapture) ||
             !SameRect(a.pendingProtectedCleanup,b.pendingProtectedCleanup) ||
             !SameRect(a.generatedCleanupExclusion,b.generatedCleanupExclusion) ||
-            !SameRect(a.placementLimits,b.placementLimits) || !SameRect(a.layoutContent,b.layoutContent) ||
-            !SameRect(a.layoutCoverage,b.layoutCoverage) || !SameRect(a.cleanupLimit,b.cleanupLimit) ||
-            a.generatedCleanupRowCount!=b.generatedCleanupRowCount ||
-            a.glyphScale!=b.glyphScale || a.glyphTranslateX!=b.glyphTranslateX || a.glyphTranslateY!=b.glyphTranslateY ||
-            a.centeredGlyphMapping!=b.centeredGlyphMapping || a.roundedCorners!=b.roundedCorners ||
-            a.extendToBar!=b.extendToBar || a.pictureIntrusion!=b.pictureIntrusion ||
-            a.backgroundGuarded!=b.backgroundGuarded || a.valid!=b.valid || a.fromTopBar!=b.fromTopBar ||
-            a.pictureTop!=b.pictureTop || a.pictureBottom!=b.pictureBottom ||
+            !SameRect(a.cleanupLimit,b.cleanupLimit) || a.generatedCleanupRowCount!=b.generatedCleanupRowCount)
+            bits|=GeometrySourceOperation;
+        if(!SameRect(a.destination,b.destination))bits|=GeometryDestination;
+        if(!SameRect(a.placementLimits,b.placementLimits) || !SameRect(a.layoutContent,b.layoutContent) ||
+            !SameRect(a.layoutCoverage,b.layoutCoverage) || a.pictureTop!=b.pictureTop || a.pictureBottom!=b.pictureBottom ||
             a.displayPictureLeft!=b.displayPictureLeft || a.displayPictureRight!=b.displayPictureRight ||
-            a.displayPictureTop!=b.displayPictureTop || a.displayPictureBottom!=b.displayPictureBottom)return false;
-        for(size_t i=0;i<a.glyphLines.size();++i)if(!SameRect(a.glyphLines[i],b.glyphLines[i]))return false;
+            a.displayPictureTop!=b.displayPictureTop || a.displayPictureBottom!=b.displayPictureBottom)
+            bits|=GeometryDisplay;
+        if(a.glyphScale!=b.glyphScale || a.glyphTranslateX!=b.glyphTranslateX ||
+            a.glyphTranslateY!=b.glyphTranslateY || a.centeredGlyphMapping!=b.centeredGlyphMapping)
+            bits|=GeometryTranslation;
+        if(a.roundedCorners!=b.roundedCorners || a.extendToBar!=b.extendToBar ||
+            a.pictureIntrusion!=b.pictureIntrusion || a.backgroundGuarded!=b.backgroundGuarded ||
+            a.valid!=b.valid || a.fromTopBar!=b.fromTopBar)
+            bits|=GeometryOther;
+        for(size_t i=0;i<a.glyphLines.size();++i)
+            if(!SameRect(a.glyphLines[i],b.glyphLines[i]))bits|=GeometrySourceOperation;
         for(unsigned i=0;i<a.generatedCleanupRowCount;++i)
-            if(!SameRect(a.generatedCleanupRows[i],b.generatedCleanupRows[i]))return false;
-        return true;
+            if(!SameRect(a.generatedCleanupRows[i],b.generatedCleanupRows[i]))bits|=GeometrySourceOperation;
+        return bits;
+    }
+    static bool SameGeometry(const SubtitleCutPasteGeometry& a,const SubtitleCutPasteGeometry& b) {
+        return GeometryMismatchBits(a,b)==0;
     }
     bool CanRearm(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
         const AnalysisLumaSource& source,const ActivePictureBounds& base,const SubtitleCutPasteGeometry& geometry,
-        bool allowAnalyzedStrideOne) const {
-        if(!m_valid || !m_baseline || !m_detectorReference || !SameGeometry(geometry,m_geometry) || !SameBase(base,m_base))return false;
+        bool allowAnalyzedStrideOne) {
+        m_lastRearmRejectCode=RearmRejectCode::NotAttempted;m_lastGeometryMismatchBits=0;
+        const auto reject=[&](RearmRejectCode code){m_lastRearmRejectCode=code;return false;};
+        if(!m_valid || !m_baseline || !m_detectorReference)return reject(RearmRejectCode::SeedUnavailable);
+        m_lastGeometryMismatchBits=GeometryMismatchBits(geometry,m_geometry);
+        if(m_lastGeometryMismatchBits)return reject(RearmRejectCode::Geometry);
+        if(!SameBase(base,m_base))return reject(RearmRejectCode::PhysicalBase);
         const auto& c=preview.current;const auto& previous=m_reference->current;const auto& p=*c.ink;
-        if(!SameContext(c,previous) || preview.policyGeneration!=m_reference->policyGeneration ||
-            preview.continuityGeneration!=m_reference->continuityGeneration ||
+        if(!SameContext(c,previous))return reject(RearmRejectCode::Context);
+        if(preview.policyGeneration!=m_reference->policyGeneration)return reject(RearmRejectCode::PolicyGeneration);
+        if(preview.continuityGeneration!=m_reference->continuityGeneration)
+            return reject(RearmRejectCode::ContinuityGeneration);
+        if(
             // A fresh complete pending-footprint source may follow intervening
             // pending sources. This reuses topology, not a cadence permission;
             // keep the original native pixel baseline for later verification.
@@ -513,20 +568,25 @@ private:
                 ? c.identity.acceptedSequence<=previous.identity.acceptedSequence
                 : c.identity.acceptedSequence!=previous.identity.acceptedSequence+2) ||
             c.identity.sourceFrameNumber<=previous.identity.sourceFrameNumber ||
-            c.identity.captureTimestamp<=previous.identity.captureTimestamp ||
-            source.format!=m_source.format || source.encoding!=m_source.encoding || source.range!=m_source.range ||
+            c.identity.captureTimestamp<=previous.identity.captureTimestamp)
+            return reject(RearmRejectCode::Sequence);
+        if(source.format!=m_source.format || source.encoding!=m_source.encoding || source.range!=m_source.range ||
             source.colorspace!=m_source.colorspace || source.generation!=m_source.generation ||
-            source.rgbBitAlignment!=m_source.rgbBitAlignment ||
-            accepted.cue!=previous.text.cue || accepted.lineCount!=previous.text.lineCount ||
+            source.rgbBitAlignment!=m_source.rgbBitAlignment)
+            return reject(RearmRejectCode::SourceLayout);
+        if(accepted.cue!=previous.text.cue || accepted.lineCount!=previous.text.lineCount ||
             accepted.signature!=previous.text.signature || accepted.anchorSignature!=previous.text.anchorSignature ||
-            accepted.lineSignatures!=previous.text.lineSignatures ||
-            c.text.lineCount!=accepted.lineCount || c.text.signature!=accepted.signature ||
-            p.width!=m_baseline->width || p.height!=m_baseline->height || p.step!=m_baseline->step ||
-            p.sourceRows!=m_baseline->sourceRows || p.inkFloor!=m_baseline->inkFloor ||
-            p.inkU!=m_baseline->inkU || p.inkV!=m_baseline->inkV || p.blackLimit!=m_baseline->blackLimit)return false;
+            accepted.lineSignatures!=previous.text.lineSignatures || c.text.lineCount!=accepted.lineCount ||
+            c.text.signature!=accepted.signature)
+            return reject(RearmRejectCode::CueIdentity);
+        if(p.width!=m_baseline->width || p.height!=m_baseline->height || p.step!=m_baseline->step ||
+            p.sourceRows!=m_baseline->sourceRows)return reject(RearmRejectCode::InkGrid);
+        if(p.inkFloor!=m_baseline->inkFloor || p.inkU!=m_baseline->inkU ||
+            p.inkV!=m_baseline->inkV || p.blackLimit!=m_baseline->blackLimit)
+            return reject(RearmRejectCode::InkPalette);
         for(int line=0;line<accepted.lineCount;++line)
             if(!SameRect(accepted.lineBounds[line],previous.text.lineBounds[line]) ||
-                !SameRect(c.text.lineBounds[line],accepted.lineBounds[line]))return false;
+                !SameRect(c.text.lineBounds[line],accepted.lineBounds[line]))return reject(RearmRejectCode::CueLayout);
         // A fresh full detector scan must independently agree with acquisition
         // at every extraction grid sample. Cleanup changes are not silently
         // renewed: the next skipped source still compares every native erase
@@ -536,9 +596,11 @@ private:
             for(int x=(m_roi.left+p.step-1)/p.step;x<p.width && x*p.step<m_roi.right;++x) {
                 const int at=Index(x*p.step,sy);
                 if(at>=0 && m_native[at].line>=0 &&
-                    (p.Get(x,y)!=m_detectorReference->Get(x,y) || p.Get(x,y,true)!=m_detectorReference->Get(x,y,true)))return false;
+                    (p.Get(x,y)!=m_detectorReference->Get(x,y) || p.Get(x,y,true)!=m_detectorReference->Get(x,y,true)))
+                    return reject(RearmRejectCode::DetectorMask);
             }
         }
+        m_lastRearmRejectCode=RearmRejectCode::Passed;
         return true;
     }
     struct CurrentPixel {AnalysisLumaSample pixel;bool ink=false,black=false;};
@@ -666,8 +728,6 @@ private:
             hullTop=(std::min)(hullTop,top);hullBottom=(std::max)(hullBottom,bottom);
         };
         for(const auto& r:m_capture)include(r);
-        for(int line=0;line<m_reference->text.lineCount && line<3;++line)
-            include(m_reference->text.lineBounds[line]);
         include(m_geometry.content);
         if(hullLeft<cleanup.left || hullRight>cleanup.right || hullTop<cleanup.top || hullBottom>cleanup.bottom ||
             hullLeft>=hullRight || hullTop>=hullBottom)return false;
@@ -799,6 +859,8 @@ private:
         return out;
     }
     bool m_valid=false,m_used=false;const char* m_reason="no-cadence-seed";unsigned m_samples=0;
+    RearmRejectCode m_lastRearmRejectCode=RearmRejectCode::NotAttempted;
+    uint32_t m_lastGeometryMismatchBits=0;
     // These aggregate records are 57-64KB each. Own reusable heap storage so
     // reset/default construction never creates their aggregate stack copies.
     std::unique_ptr<SubtitleBoxPreview> m_reference=std::make_unique<SubtitleBoxPreview>();

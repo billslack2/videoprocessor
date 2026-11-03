@@ -196,3 +196,13 @@ backing state. The original pixel/contrast seed remains immutable; latest verifi
 source advances and pending age resets only for this new full positive. Duplicate,
 held, pending, partial or context-changed results cannot take that shortcut.
 These newer changes still require native and actual-renderer qualification.
+
+The cleanup-projection hull uses only the prepared capture/content envelope. Raw
+detector/result line boxes include analysis padding and are not shader sampling
+support; including them wrongly treated changing current movie margins as glyph
+changes. The UHD regression keeps those raw boxes wider than prepared capture,
+requires the actual margin pixel to stay protected, and still rejects a change
+inside the prepared operation. Glyph/core/fringe, backing and new bar-ink checks
+remain unchanged. Ready-rearm first-rejection codes and layout/geometry submasks
+are now recorded so any remaining expensive rebuild can be attributed before
+changing an eligibility condition.

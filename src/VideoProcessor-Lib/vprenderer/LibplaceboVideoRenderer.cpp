@@ -4645,6 +4645,8 @@ struct LibplaceboVideoRenderer::Impl
         trace.metrics[2]=static_cast<int>(mode);
         trace.metrics[3]=std::chrono::duration<double,std::milli>(SteadyClock::now()-seedStarted).count();
         trace.metrics[4]=subtitlePendingGuard.DecisionDiagnostics().seedBandSamplesChecked;
+        trace.metrics[5]=static_cast<unsigned>(subtitlePendingGuard.DecisionDiagnostics().readyRearmRejectCode);
+        trace.metrics[6]=subtitlePendingGuard.DecisionDiagnostics().readyRearmLayoutMismatchBits;
         AnalysisTraceRect(trace.previous,preview.text.bounds);
         AnalysisTraceRect(trace.measured,current.text.bounds);AnalysisTraceRect(trace.published,cue.bounds);
         AnalysisDiagnosticTrace::Emit(trace);
@@ -15905,6 +15907,8 @@ struct LibplaceboVideoRenderer::Impl
                         activeSettings.subtitleHoldMs,subtitleCutPasteBackground);
                     auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-footprint-seed",subtitlePendingFootprintGuard.DecisionReason());
                     trace.flags=remembered?1u:0u;trace.counters[0]=subtitlePendingFootprintGuard.SampleCount();
+                    trace.counters[1]=static_cast<unsigned>(subtitlePendingFootprintGuard.LastRearmRejectCode());
+                    trace.counters[2]=subtitlePendingFootprintGuard.LastGeometryMismatchBits();
                     trace.metrics[0]=std::chrono::duration<double,std::milli>(SteadyClock::now()-seedStarted).count();
                     AnalysisDiagnosticTrace::Emit(trace);
                 }

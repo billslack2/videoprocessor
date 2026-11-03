@@ -289,11 +289,71 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     Assert::AreEqual(uint64_t(88),preview->current.identity.acceptedSequence,
         L"The accepted current source is exactly 88; later scans only confirm it.");
     auto tracker=std::make_unique<SubtitleBoxPresentation>();tracker->RefreshReferencePixels(*preview,seedSource);
-    const auto accepted=tracker->Consume(*preview,250,1000.0/60);
+    auto accepted=tracker->Consume(*preview,250,1000.0/60);
     Assert::IsTrue(accepted.detected&&!accepted.held&&!accepted.confirmationPending&&accepted.lineCount==2);
     auto compositor=std::make_unique<SubtitleCutPastePresentation>();
     const auto geometry=compositor->Consume(accepted,*preview,{},0);
     Assert::IsTrue(geometry.valid&&geometry.pictureCapture.Valid());
+
+    auto cleanup=geometry.generatedCleanup;
+    if(!cleanup.Valid()&&geometry.generatedCleanupRowCount)for(unsigned i=0;i<geometry.generatedCleanupRowCount;++i) {
+        const auto& r=geometry.generatedCleanupRows[i];
+        if(!cleanup.Valid())cleanup=r;else cleanup={
+            (std::min)(cleanup.left,r.left),(std::min)(cleanup.top,r.top),
+            (std::max)(cleanup.right,r.right),(std::max)(cleanup.bottom,r.bottom)};
+    }
+    Assert::IsTrue(cleanup.Valid(),L"The source-derived fixture must provide a measured cleanup rectangle.");
+    int preparedRight=geometry.content.right;
+    for(const auto& capture:geometry.glyphLines)if(capture.Valid())preparedRight=(std::max)(preparedRight,capture.right);
+    const int paddedRawRight=(std::min)(kFootprintWidth,cleanup.right+8);
+    Assert::IsTrue(paddedRawRight>preparedRight,
+        L"The regression pads only detector line bounds beyond the already-prepared source/capture geometry.");
+    for(int line=0;line<accepted.lineCount&&line<3;++line)
+        if(accepted.lineBounds[line].Valid())accepted.lineBounds[line].right=
+            (std::max)(accepted.lineBounds[line].right,paddedRawRight);
+    auto paddedPreview=std::make_unique<SubtitleBoxPreview>(*preview);
+    paddedPreview->text=accepted;paddedPreview->current.text=accepted;
+    preview=std::move(paddedPreview);
+    Assert::IsTrue(accepted.lineBounds[0].right>preparedRight&&
+        accepted.lineBounds[0].right>=paddedRawRight,
+        L"The raw detector box is deliberately wider than the prepared operation footprint.");
+    int rawPaddingProbeX=-1,rawPaddingProbeY=-1,rawPaddingProbeLine=-1;
+    for(int line=0;line<accepted.lineCount&&rawPaddingProbeX<0;++line) {
+        const auto& raw=accepted.lineBounds[line];if(!raw.Valid())continue;
+        const int top=(std::max)(cleanup.top,raw.top),bottom=(std::min)(cleanup.bottom,raw.bottom);
+        for(int y=top;y<bottom&&rawPaddingProbeX<0;++y)
+            for(int x=(std::max)(cleanup.left,preparedRight);x<(std::min)(cleanup.right,raw.right);++x) {
+                bool inCapture=false;
+                for(const auto& capture:geometry.glyphLines)
+                    inCapture|=capture.Valid()&&x>=capture.left&&x<capture.right&&y>=capture.top&&y<capture.bottom;
+                if(!inCapture&&x>=geometry.content.right) {
+                    rawPaddingProbeX=x;rawPaddingProbeY=y;rawPaddingProbeLine=line;break;
+                }
+            }
+    }
+    Assert::IsTrue(rawPaddingProbeX>=0&&rawPaddingProbeY>=0,
+        L"A cleanup pixel must lie outside prepared content/capture but inside the padded raw line box.");
+    Assert::IsTrue(rawPaddingProbeLine>=0&&rawPaddingProbeX<accepted.lineBounds[rawPaddingProbeLine].right);
+    int preparedContentProbeX=-1,preparedContentProbeY=-1;
+    for(int y=(std::max)(cleanup.top,geometry.content.top);
+        y<(std::min)(cleanup.bottom,geometry.content.bottom)&&preparedContentProbeX<0;++y)
+        for(int x=(std::max)(cleanup.left,geometry.content.left);x<(std::min)(cleanup.right,geometry.content.right);++x) {
+            AnalysisLumaSample sample;
+            if(!seedSource.Sample(x,y,sample)||sample.luma>=preview->current.ink->inkFloor)continue;
+            preparedContentProbeX=x;preparedContentProbeY=y;break;
+        }
+    Assert::IsTrue(preparedContentProbeX>=0&&preparedContentProbeY>=0,
+        L"The fixture must provide non-glyph pixels inside the prepared cleanup/content intersection.");
+    // This isolated non-caption pixel is outside the prepared operation. Its
+    // current change must survive by shrinking that operation at its edge.
+    seedPixels[size_t(rawPaddingProbeY)*kFootprintWidth+rawPaddingProbeX]=uint16_t(300<<6);
+    // Keep one low-luma non-glyph sample inside the actual operation so the
+    // matching changed-pixel control must still fail closed.
+    seedPixels[size_t(preparedContentProbeY)*kFootprintWidth+preparedContentProbeX]=uint16_t(300<<6);
+    const auto preservePreparedBackground=[&](std::vector<uint16_t>& pixels) {
+        pixels[size_t(rawPaddingProbeY)*kFootprintWidth+rawPaddingProbeX]=uint16_t(340<<6);
+        pixels[size_t(preparedContentProbeY)*kFootprintWidth+preparedContentProbeX]=uint16_t(300<<6);
+    };
 
     auto footprint=std::make_unique<SubtitleCadenceGuard>();
     Assert::IsTrue(footprint->RememberCurrentFootprint(*preview,accepted,seedSource,base,geometry,
@@ -318,21 +378,22 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     // Source 88 -> 93 changes a picture-wide edge at x=4/y=1716 plus the
     // 48/64 dark backing inside the measured cleanup. Both dark values remain
     // black with neutral UV; the x=4 movie edge lies outside all mutation spans.
-    auto movingPixels=CurrentFootprintUhdPixels(1);auto movingSource=CurrentFootprintUhdSource(movingPixels);
+    auto movingPixels=CurrentFootprintUhdPixels(1);
+    preservePreparedBackground(movingPixels);
+    auto movingSource=CurrentFootprintUhdSource(movingPixels);
     const auto pureMotion=footprint->VerifyCurrentFootprint(source93->current,movingSource,
         preview->current,accepted,base);
     if(!pureMotion.valid)Logger::WriteMessage((std::string("Current footprint motion: ")+pureMotion.reason+" samples="+std::to_string(pureMotion.samples)+" mismatch="+std::to_string(pureMotion.mismatchX)+","+std::to_string(pureMotion.mismatchY)).c_str());
     Assert::IsTrue(pureMotion.valid&&pureMotion.samples>0,
         L"Current movie texture outside the footprint cannot veto this source; black backing may vary 48/64.");
+    Assert::IsTrue(pureMotion.protectedCleanupRight<=rawPaddingProbeX,
+        L"Changed nonblack movie pixels under the padded raw line bound must be kept by shrinking the prepared cleanup edge.");
+    Logger::WriteMessage((std::string("Padded raw line projection point=")+std::to_string(rawPaddingProbeX)+","+
+        std::to_string(rawPaddingProbeY)+" prepared_right="+std::to_string(preparedRight)+
+        " raw_right="+std::to_string(accepted.lineBounds[rawPaddingProbeLine].right)+
+        " cleanup_right="+std::to_string(cleanup.right)+
+        " projected_right="+std::to_string(pureMotion.protectedCleanupRight)).c_str());
 
-    auto cleanup=geometry.generatedCleanup;
-    if(!cleanup.Valid()&&geometry.generatedCleanupRowCount)for(unsigned i=0;i<geometry.generatedCleanupRowCount;++i) {
-        const auto& r=geometry.generatedCleanupRows[i];
-        if(!cleanup.Valid())cleanup=r;else cleanup={
-            (std::min)(cleanup.left,r.left),(std::min)(cleanup.top,r.top),
-            (std::max)(cleanup.right,r.right),(std::max)(cleanup.bottom,r.bottom)};
-    }
-    Assert::IsTrue(cleanup.Valid(),L"The source-derived fixture must provide a measured cleanup rectangle.");
     Assert::IsTrue(pureMotion.protectedCleanupLeft>cleanup.left ||
         pureMotion.protectedCleanupRight<cleanup.right ||
         pureMotion.protectedCleanupTop>cleanup.top ||
@@ -341,6 +402,15 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     Assert::IsTrue(pureMotion.protectedCleanupLeft>cleanup.left ||
         pureMotion.protectedCleanupRight<cleanup.right,
         L"The moving UHD fixture must exercise a horizontal cleanup-edge projection.");
+
+    auto changedInsidePixels=movingPixels;
+    changedInsidePixels[size_t(preparedContentProbeY)*kFootprintWidth+preparedContentProbeX]=uint16_t(332<<6);
+    auto changedInsideSource=CurrentFootprintUhdSource(changedInsidePixels);
+    const auto insideFailure=footprint->VerifyCurrentFootprint(source93->current,changedInsideSource,
+        preview->current,accepted,base);
+    Assert::IsFalse(insideFailure.valid,
+        L"The same nonblack change inside the actual content hull must still reject reuse.");
+    Assert::AreEqual("current-cleanup-edge-not-protectable",insideFailure.reason);
 
     // Put dim current pixels in the exact original-minus-inner rectangle.
     // This is below the accepted ink floor, so it must remain current video
@@ -362,7 +432,7 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
         return sx>=geometry.content.left-glyphFilterHalo&&sx<geometry.content.right+glyphFilterHalo&&
             sy>=geometry.content.top-glyphFilterHalo&&sy<geometry.content.bottom+glyphFilterHalo;
     };
-    auto dimProtectedPixels=CurrentFootprintUhdPixels(1);
+    auto dimProtectedPixels=CurrentFootprintUhdPixels(1);preservePreparedBackground(dimProtectedPixels);
     int protectedX=-1,protectedY=-1;
     for(int y=cleanup.top;y<cleanup.bottom&&protectedY<0;++y)
         for(int x=cleanup.left;x<cleanup.right;++x) {
@@ -510,7 +580,7 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
             }
     };
     for(bool alternate:{false,true}) {
-        auto changedPixels=CurrentFootprintUhdPixels(1);drawH(changedPixels,alternate);
+        auto changedPixels=CurrentFootprintUhdPixels(1);preservePreparedBackground(changedPixels);drawH(changedPixels,alternate);
         auto changedSource=CurrentFootprintUhdSource(changedPixels);
         const auto proof=footprint->VerifyCurrentFootprint(source93->current,changedSource,
             preview->current,accepted,base);
@@ -521,7 +591,7 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     // A U=800, luma=64 caption outside the exact mutation footprint is allowed
     // by that pure footprint witness, but must be caught by the worker's full
     // top/bottom search-band sample comparison (luma alone calls this black).
-    auto barPixels=CurrentFootprintUhdPixels(1);AddU800BarH(barPixels,600,kFootprintBottom+100);
+    auto barPixels=CurrentFootprintUhdPixels(1);preservePreparedBackground(barPixels);AddU800BarH(barPixels,600,kFootprintBottom+100);
     auto barSource=CurrentFootprintUhdSource(barPixels);
     Assert::IsFalse(footprint->ContainsFootprintSample(600,kFootprintBottom+100));
     Assert::IsTrue(footprint->VerifyCurrentFootprint(source93->current,barSource,

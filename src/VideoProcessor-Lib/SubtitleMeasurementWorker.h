@@ -798,6 +798,50 @@ private:
 // accepted glyph rectangle. No OCR, spatial search, wait or GPU readback here.
 class SubtitlePendingMeasurementGuard {
 public:
+    enum class ReadyRearmRejectCode : uint8_t {
+        NotAttempted, Passed, NoEligibleFreshPositive, FootprintDelegated,
+        SeedOrMode, SourceLayout, CurrentFlags, BarEvidence, PhysicalBounds,
+        PolicyGeneration, ContinuityGeneration, IdentityContext,
+        CueIdentity, CueBounds, CuePanelsCapture, CueSignatures, CueLines, CueEdges,
+        Sequence, InkPalette, InkGrid, RawMask, OwnedMask, GlyphPixels,
+        KnownPixels, BackingPixels
+    };
+    enum ReadyRearmLayoutMismatch : uint32_t {
+        ReadyLayoutCueIdentity=1u<<0, ReadyLayoutBounds=1u<<1,
+        ReadyLayoutPanels=1u<<2, ReadyLayoutCapture=1u<<3,
+        ReadyLayoutSignatures=1u<<4, ReadyLayoutLines=1u<<5, ReadyLayoutEdges=1u<<6
+    };
+    static const char* ReadyRearmRejectReasonName(ReadyRearmRejectCode code) {
+        switch(code) {
+        case ReadyRearmRejectCode::NotAttempted:return "not-attempted";
+        case ReadyRearmRejectCode::Passed:return "passed";
+        case ReadyRearmRejectCode::NoEligibleFreshPositive:return "no-eligible-fresh-positive";
+        case ReadyRearmRejectCode::FootprintDelegated:return "footprint-delegated";
+        case ReadyRearmRejectCode::SeedOrMode:return "seed-or-mode";
+        case ReadyRearmRejectCode::SourceLayout:return "source-layout";
+        case ReadyRearmRejectCode::CurrentFlags:return "current-flags";
+        case ReadyRearmRejectCode::BarEvidence:return "bar-evidence";
+        case ReadyRearmRejectCode::PhysicalBounds:return "physical-bounds";
+        case ReadyRearmRejectCode::PolicyGeneration:return "policy-generation";
+        case ReadyRearmRejectCode::ContinuityGeneration:return "continuity-generation";
+        case ReadyRearmRejectCode::IdentityContext:return "identity-context";
+        case ReadyRearmRejectCode::CueIdentity:return "cue-identity";
+        case ReadyRearmRejectCode::CueBounds:return "cue-bounds";
+        case ReadyRearmRejectCode::CuePanelsCapture:return "cue-panels-capture";
+        case ReadyRearmRejectCode::CueSignatures:return "cue-signatures";
+        case ReadyRearmRejectCode::CueLines:return "cue-lines";
+        case ReadyRearmRejectCode::CueEdges:return "cue-edges";
+        case ReadyRearmRejectCode::Sequence:return "sequence";
+        case ReadyRearmRejectCode::InkPalette:return "ink-palette";
+        case ReadyRearmRejectCode::InkGrid:return "ink-grid";
+        case ReadyRearmRejectCode::RawMask:return "raw-mask";
+        case ReadyRearmRejectCode::OwnedMask:return "owned-mask";
+        case ReadyRearmRejectCode::GlyphPixels:return "glyph-pixels";
+        case ReadyRearmRejectCode::KnownPixels:return "known-pixels";
+        case ReadyRearmRejectCode::BackingPixels:return "backing-pixels";
+        }
+        return "unknown";
+    }
     enum ContextMismatch : uint32_t {
         ContextDiscontinuity=1u<<0, ContextSource=1u<<1,
         ContextDimensions=1u<<2, ContextTransport=1u<<3,
@@ -807,6 +851,8 @@ public:
         ContextPolicy=1u<<10, ContextContinuity=1u<<11, ContextOptimization=1u<<12
     };
     struct Diagnostics {
+        ReadyRearmRejectCode readyRearmRejectCode=ReadyRearmRejectCode::NotAttempted;
+        uint32_t readyRearmLayoutMismatchBits=0;
         uint32_t contextMismatch=0;
         size_t glyphSamplesChecked=0;
         size_t currentBandSamplesChecked=0,backingSamplesChecked=0;
@@ -844,6 +890,8 @@ public:
         const SubtitleCurrentPreparedCueCertificate* heldCurrentCue=nullptr,
         const ActivePictureBounds* physicalBase=nullptr,
         const SubtitleCadenceGuard* currentFootprint=nullptr) {
+        m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::NotAttempted;
+        m_diagnostics.readyRearmLayoutMismatchBits=0;
         const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
             return outer.Valid() && inner.Valid() && outer.left<=inner.left &&
                 outer.top<=inner.top && outer.right>=inner.right && outer.bottom>=inner.bottom;
@@ -939,6 +987,8 @@ public:
         const bool currentCompletePositive=independentCurrentCue && resolvedCovers;
         const bool eligibleSameCueRearm=certifiedExistingCue || currentCompletePositive;
         const bool consumedCertificate=independentCurrentCue && m_consumedCertificate.Matches(preview,accepted);
+        m_diagnostics.readyRearmRejectCode=eligibleSameCueRearm ? ReadyRearmRejectCode::NotAttempted :
+            ReadyRearmRejectCode::NoEligibleFreshPositive;
         if(!preview.available || !preview.current.analyzed || preview.current.pendingRefresh ||
             preview.current.discontinuity || preview.current.glyphLocalTop || preview.current.glyphLocalBottom ||
             !preview.current.barAuthority ||
@@ -950,6 +1000,7 @@ public:
         if(!resolvedCovers && consumedCertificate) {
             // The tracker intentionally exports no new certificate on a repeated
             // presentation. Preserve the exact prior seed without renewing time.
+            m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::Sequence;
             m_reason="accepted-certificate-already-consumed";return false;
         }
         const auto& old=m_certifiedSeed;const auto& now=current.identity;
@@ -959,18 +1010,26 @@ public:
             old.rendererGeneration==now.rendererGeneration && m_certifiedPolicy==preview.policyGeneration &&
             m_certifiedContinuity==preview.continuityGeneration && now.acceptedSequence<=old.acceptedSequence) {
             // Replaying the same exported certificate cannot renew the lease.
+            m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::Sequence;
             m_reason="accepted-certificate-already-consumed";return false;
         }
         if(HasPixelSeed() && eligibleSameCueRearm && now.acceptedSequence<=m_last.acceptedSequence) {
             const bool sameSource=SameAnalysisFrameIdentity(now,m_last);
+            m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::Sequence;
             m_reason=sameSource ? (certifiedExistingCue ? "accepted-certificate-already-consumed" :
                 "accepted-current-positive-already-consumed") : "accepted-current-positive-not-forward";
             return false;
         }
         if(eligibleSameCueRearm &&
             TryRearmAcceptedSameCue(preview,accepted,source,frameMs,currentFootprint))return true;
+        if(eligibleSameCueRearm && currentFootprint)
+            m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::FootprintDelegated;
+        const auto readyRearmReject=m_diagnostics.readyRearmRejectCode;
+        const auto readyRearmLayoutMismatchBits=m_diagnostics.readyRearmLayoutMismatchBits;
         auto seed=preview;seed.current.text=accepted;seed.text=accepted;
         Resolve(seed,source,frameMs,holdMs,nullptr,false,currentFootprint);
+        m_diagnostics.readyRearmRejectCode=readyRearmReject;
+        m_diagnostics.readyRearmLayoutMismatchBits=readyRearmLayoutMismatchBits;
         if(HasPixelSeed() && !resolvedCovers && certifiedExistingCue) {
             m_certifiedSeed=now;m_certifiedPolicy=preview.policyGeneration;
             m_certifiedContinuity=preview.continuityGeneration;
@@ -1252,98 +1311,164 @@ private:
                 a.panelTopEdges[line].supportBasisPoints!=b.panelTopEdges[line].supportBasisPoints)return false;
         return true;
     }
+    static uint32_t CueLayoutMismatchBits(const SubtitleBoxResult& a,const SubtitleBoxResult& b,
+        bool compareCue=true) {
+        uint32_t bits=0;
+        if(!a.detected || !b.detected || (compareCue && a.cue!=b.cue))bits|=ReadyLayoutCueIdentity;
+        if(a.lineCount!=b.lineCount)bits|=ReadyLayoutLines;
+        if(!SameCueRect(a.bounds,b.bounds) || !SameCueRect(a.anchor,b.anchor))bits|=ReadyLayoutBounds;
+        if(!SameCueRect(a.sourcePanel,b.sourcePanel) || !SameCueRect(a.provenSourcePanel,b.provenSourcePanel))
+            bits|=ReadyLayoutPanels;
+        if(a.capturePanelMeasured!=b.capturePanelMeasured || !SameCueRect(a.capturePanel,b.capturePanel))
+            bits|=ReadyLayoutCapture;
+        if(a.signature!=b.signature || a.anchorSignature!=b.anchorSignature ||
+            a.lineSignatures!=b.lineSignatures)bits|=ReadyLayoutSignatures;
+        for(int line=0;line<a.lineCount && line<3;++line) {
+            if(!SameCueRect(a.linePanels[line],b.linePanels[line]) ||
+                !SameCueRect(a.provenLinePanels[line],b.provenLinePanels[line]))bits|=ReadyLayoutPanels;
+            if(!SameCueRect(a.lineCapturePanels[line],b.lineCapturePanels[line]))bits|=ReadyLayoutCapture;
+            if(!SameCueRect(a.lineBounds[line],b.lineBounds[line]))bits|=ReadyLayoutLines;
+            if(a.panelTopEdges[line].y!=b.panelTopEdges[line].y ||
+                a.panelTopEdges[line].left!=b.panelTopEdges[line].left ||
+                a.panelTopEdges[line].right!=b.panelTopEdges[line].right ||
+                a.panelTopEdges[line].supportBasisPoints!=b.panelTopEdges[line].supportBasisPoints)
+                bits|=ReadyLayoutEdges;
+        }
+        if(a.topSearchComplete!=b.topSearchComplete || a.bottomSearchComplete!=b.bottomSearchComplete ||
+            a.nearBarEligibilityMeasured!=b.nearBarEligibilityMeasured || a.nearBarEligible!=b.nearBarEligible)
+            bits|=ReadyLayoutEdges;
+        return bits;
+    }
+    static ReadyRearmRejectCode CueLayoutCodeForMismatch(uint32_t bits) {
+        if(bits&ReadyLayoutCueIdentity)return ReadyRearmRejectCode::CueIdentity;
+        if(bits&ReadyLayoutBounds)return ReadyRearmRejectCode::CueBounds;
+        if(bits&(ReadyLayoutPanels|ReadyLayoutCapture))return ReadyRearmRejectCode::CuePanelsCapture;
+        if(bits&ReadyLayoutSignatures)return ReadyRearmRejectCode::CueSignatures;
+        if(bits&ReadyLayoutLines)return ReadyRearmRejectCode::CueLines;
+        if(bits&ReadyLayoutEdges)return ReadyRearmRejectCode::CueEdges;
+        return ReadyRearmRejectCode::NotAttempted;
+    }
     bool TryRearmAcceptedSameCue(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
         const AnalysisLumaSource& source,double frameMs,const SubtitleCadenceGuard* currentFootprint) {
+        m_diagnostics.readyRearmMaskWordsChecked=0;
+        m_diagnostics.readyRearmGlyphSamplesChecked=0;
+        m_diagnostics.readyRearmKnownSamplesChecked=0;
+        m_diagnostics.readyRearmBackingSamplesChecked=0;
+        m_diagnostics.readyRearmLayoutMismatchBits=0;
+        const auto reject=[&](ReadyRearmRejectCode code) {
+            m_diagnostics.readyRearmRejectCode=code;return false;
+        };
         if(!m_currentInkProofSeeded || m_currentFootprintRequired || currentFootprint ||
-            !m_samples.empty() || !std::isfinite(frameMs) || frameMs<=0)return false;
+            !m_samples.empty() || !std::isfinite(frameMs) || frameMs<=0)
+            return reject(ReadyRearmRejectCode::SeedOrMode);
         const auto& old=m_reference.current;const auto& current=preview.current;
         const auto oldInk=old.ink;const auto ink=current.ink;
         const auto& a=m_last;const auto& b=current.identity;
-        if(!oldInk || !ink || !source.IsValid() || !SameSourceLayout(source,m_sourceLayout) ||
-            source.width!=old.width || source.height!=old.height ||
-            current.width!=old.width || current.height!=old.height ||
-            !current.analyzed || (current.analysisStride!=1 && current.analysisStride!=2) || current.cadenceSkipped ||
+        if(!oldInk || !ink)return reject(ReadyRearmRejectCode::InkGrid);
+        if(!source.IsValid() || !SameSourceLayout(source,m_sourceLayout) ||
+            source.width!=old.width || source.height!=old.height || current.width!=old.width || current.height!=old.height)
+            return reject(ReadyRearmRejectCode::SourceLayout);
+        if(!current.analyzed || (current.analysisStride!=1 && current.analysisStride!=2) || current.cadenceSkipped ||
             current.analysisRefresh || current.pendingRefresh || current.discontinuity ||
             current.glyphLocalTop || current.glyphLocalBottom || current.text.held ||
-            current.text.confirmationPending || current.text.revised || current.text.workLimit ||
-            !current.independentBarAnalysis || !current.barAuthority || current.barTrackingAuthority ||
+            current.text.confirmationPending || current.text.revised || current.text.workLimit)
+            return reject(ReadyRearmRejectCode::CurrentFlags);
+        if(!current.independentBarAnalysis || !current.barAuthority || current.barTrackingAuthority ||
             current.currentAnchorUsesTrackedEdge || !current.barEvidence.available ||
             current.barEvidence.topRevalidatedAtReference || current.barEvidence.topRevalidatedNearby ||
             current.barEvidence.bottomRevalidatedAtReference || current.barEvidence.bottomRevalidatedNearby ||
-            current.barEvidence.captionBackedTop || current.barEvidence.captionBackedBottom ||
-            current.pictureTop!=current.barEvidence.top || current.pictureBottom!=current.barEvidence.bottom ||
-            current.pictureTop!=old.pictureTop || current.pictureBottom!=old.pictureBottom ||
-            current.policyGeneration!=preview.policyGeneration || current.continuityGeneration!=preview.continuityGeneration ||
-            old.policyGeneration!=preview.policyGeneration || old.continuityGeneration!=preview.continuityGeneration ||
-            m_reference.policyGeneration!=preview.policyGeneration ||
-            m_reference.continuityGeneration!=preview.continuityGeneration ||
-            !SubtitleBoxLookahead::SameContext(old,current) ||
-            !current.sharedPicture.AvailableFor(current.identity,current.width,current.height) ||
-            current.sharedPicture.required!=old.sharedPicture.required ||
-            !old.sharedPicture.Matches(current.sharedPicture) ||
-            !SameRearmPhysicalBase(old.sharedPicture.bounds,current.sharedPicture.bounds) ||
-            !current.text.topSearchComplete || !current.text.bottomSearchComplete ||
-            !SameCueLayout(m_reference.text,current.text,false) ||
-            !SameCueLayout(m_reference.text,accepted) || !SameCueLayout(current.text,accepted,false) ||
-            !SameCueLayout(m_reference.text,m_reference.current.text) ||
-            b.acceptedSequence<=a.acceptedSequence || !b.sourceFrameNumber ||
-            !a.sourceFrameNumber || b.sourceFrameNumber<=a.sourceFrameNumber ||
+            current.barEvidence.captionBackedTop || current.barEvidence.captionBackedBottom)
+            return reject(ReadyRearmRejectCode::BarEvidence);
+        if(current.pictureTop!=current.barEvidence.top || current.pictureBottom!=current.barEvidence.bottom ||
+            current.pictureTop!=old.pictureTop || current.pictureBottom!=old.pictureBottom)
+            return reject(ReadyRearmRejectCode::PhysicalBounds);
+        if(current.policyGeneration!=preview.policyGeneration || old.policyGeneration!=preview.policyGeneration ||
+            m_reference.policyGeneration!=preview.policyGeneration)
+            return reject(ReadyRearmRejectCode::PolicyGeneration);
+        if(current.continuityGeneration!=preview.continuityGeneration || old.continuityGeneration!=preview.continuityGeneration ||
+            m_reference.continuityGeneration!=preview.continuityGeneration)
+            return reject(ReadyRearmRejectCode::ContinuityGeneration);
+        if(!SubtitleBoxLookahead::SameContext(old,current))return reject(ReadyRearmRejectCode::IdentityContext);
+        if(!SameRearmPhysicalBase(old.sharedPicture.bounds,current.sharedPicture.bounds))
+            return reject(ReadyRearmRejectCode::PhysicalBounds);
+        if(!current.sharedPicture.AvailableFor(current.identity,current.width,current.height) ||
+            current.sharedPicture.required!=old.sharedPicture.required || !old.sharedPicture.Matches(current.sharedPicture))
+            return reject(ReadyRearmRejectCode::IdentityContext);
+        if(!current.text.topSearchComplete || !current.text.bottomSearchComplete)
+            return reject(ReadyRearmRejectCode::CueEdges);
+        m_diagnostics.readyRearmLayoutMismatchBits=
+            CueLayoutMismatchBits(m_reference.text,current.text,false) |
+            CueLayoutMismatchBits(m_reference.text,accepted,true) |
+            CueLayoutMismatchBits(current.text,accepted,false) |
+            CueLayoutMismatchBits(m_reference.text,m_reference.current.text,false);
+        if(m_diagnostics.readyRearmLayoutMismatchBits)
+            return reject(CueLayoutCodeForMismatch(m_diagnostics.readyRearmLayoutMismatchBits));
+        if(b.acceptedSequence<=a.acceptedSequence || !b.sourceFrameNumber || !a.sourceFrameNumber ||
+            b.sourceFrameNumber<=a.sourceFrameNumber ||
             b.sourceFrameNumber-a.sourceFrameNumber!=b.acceptedSequence-a.acceptedSequence ||
-            b.captureTimestamp<=a.captureTimestamp || !ink->rawEvidenceComplete || !ink->paletteValid ||
-            !oldInk->rawEvidenceComplete || !oldInk->paletteValid ||
-            ink->width!=oldInk->width || ink->height!=oldInk->height || ink->step!=oldInk->step ||
-            ink->sourceRows!=oldInk->sourceRows || ink->inkFloor!=oldInk->inkFloor ||
-            ink->inkU!=oldInk->inkU || ink->inkV!=oldInk->inkV || ink->blackLimit!=oldInk->blackLimit)
-            return false;
+            b.captureTimestamp<=a.captureTimestamp)return reject(ReadyRearmRejectCode::Sequence);
+        if(!ink->rawEvidenceComplete || !ink->paletteValid || !oldInk->rawEvidenceComplete || !oldInk->paletteValid)
+            return reject(ReadyRearmRejectCode::InkPalette);
+        if(ink->width!=oldInk->width || ink->height!=oldInk->height || ink->step!=oldInk->step ||
+            ink->sourceRows!=oldInk->sourceRows)return reject(ReadyRearmRejectCode::InkGrid);
+        if(ink->inkFloor!=oldInk->inkFloor || ink->inkU!=oldInk->inkU || ink->inkV!=oldInk->inkV ||
+            ink->blackLimit!=oldInk->blackLimit)return reject(ReadyRearmRejectCode::InkPalette);
 
         const size_t words=(size_t(oldInk->width)*oldInk->height+63)/64;
         if(oldInk->width<=0 || oldInk->height<=0 || oldInk->step<=0 ||
             oldInk->rawInk.size()!=words || oldInk->ownedInk.size()!=words ||
             ink->rawInk.size()!=words || ink->ownedInk.size()!=words ||
             oldInk->blackBacking.size()!=words || ink->blackBacking.size()!=words)
-            return false;
-        m_diagnostics={};
+            return reject(ReadyRearmRejectCode::InkGrid);
         for(size_t word=0;word<words;++word) {
             ++m_diagnostics.readyRearmMaskWordsChecked;
             // A ready rearm uses the full current detector mask as a cheap
             // source-current novelty check. Any raw or owned-mask change falls
             // through to the normal complete seed path.
-            if(oldInk->rawInk[word]!=ink->rawInk[word] || oldInk->ownedInk[word]!=ink->ownedInk[word])return false;
+            if(oldInk->rawInk[word]!=ink->rawInk[word])return reject(ReadyRearmRejectCode::RawMask);
+            if(oldInk->ownedInk[word]!=ink->ownedInk[word])return reject(ReadyRearmRejectCode::OwnedMask);
         }
 
         const ValidatedAnalysisLumaSampler sampler(source);
-        if(!sampler.IsValid())return false;
+        if(!sampler.IsValid())return reject(ReadyRearmRejectCode::SourceLayout);
         for(const auto& glyph:m_ownedSamples) {
             if(glyph.x<0 || glyph.y<0 || glyph.x>=ink->width || glyph.y>=ink->height ||
-                !ink->Get(glyph.x,glyph.y,true))return false;
+                !ink->Get(glyph.x,glyph.y,true))return reject(ReadyRearmRejectCode::GlyphPixels);
             AnalysisLumaSample now;
-            if(!sampler.Sample(glyph.x*ink->step,ink->sourceRows[size_t(glyph.y)],now))return false;
+            if(!sampler.Sample(glyph.x*ink->step,ink->sourceRows[size_t(glyph.y)],now))
+                return reject(ReadyRearmRejectCode::GlyphPixels);
             ++m_diagnostics.readyRearmGlyphSamplesChecked;
             if(std::abs(int(now.luma)-glyph.value.luma)>8 ||
                 std::abs(int(now.chromaU)-glyph.value.chromaU)>8 ||
                 std::abs(int(now.chromaV)-glyph.value.chromaV)>8 || now.luma<ink->inkFloor ||
-                std::abs(int(now.chromaU)-ink->inkU)>80 || std::abs(int(now.chromaV)-ink->inkV)>80)return false;
+                std::abs(int(now.chromaU)-ink->inkU)>80 || std::abs(int(now.chromaV)-ink->inkV)>80)
+                return reject(ReadyRearmRejectCode::GlyphPixels);
         }
         for(const auto& known:m_knownInkSamples) {
-            if(known.x<0 || known.y<0 || known.x>=ink->width || known.y>=ink->height)return false;
+            if(known.x<0 || known.y<0 || known.x>=ink->width || known.y>=ink->height)
+                return reject(ReadyRearmRejectCode::KnownPixels);
             AnalysisLumaSample now;
-            if(!sampler.Sample(known.x*ink->step,ink->sourceRows[size_t(known.y)],now))return false;
+            if(!sampler.Sample(known.x*ink->step,ink->sourceRows[size_t(known.y)],now))
+                return reject(ReadyRearmRejectCode::KnownPixels);
             ++m_diagnostics.readyRearmKnownSamplesChecked;
             if(std::abs(int(now.luma)-known.value.luma)>8 ||
                 std::abs(int(now.chromaU)-known.value.chromaU)>8 ||
-                std::abs(int(now.chromaV)-known.value.chromaV)>8)return false;
+                std::abs(int(now.chromaV)-known.value.chromaV)>8)return reject(ReadyRearmRejectCode::KnownPixels);
         }
         for(const auto& backing:m_backingSamples) {
-            if(backing.x<0 || backing.y<0 || backing.x>=ink->width || backing.y>=ink->height)return false;
+            if(backing.x<0 || backing.y<0 || backing.x>=ink->width || backing.y>=ink->height)
+                return reject(ReadyRearmRejectCode::BackingPixels);
             AnalysisLumaSample now;
-            if(!sampler.Sample(backing.x*ink->step,ink->sourceRows[size_t(backing.y)],now))return false;
+            if(!sampler.Sample(backing.x*ink->step,ink->sourceRows[size_t(backing.y)],now))
+                return reject(ReadyRearmRejectCode::BackingPixels);
             ++m_diagnostics.readyRearmBackingSamplesChecked;
             const bool inEncodedBar=backing.y<m_contrastSeedTopEnd || backing.y>=m_contrastSeedBottomStart;
             const bool black=now.luma<=ink->blackLimit && (!inEncodedBar ||
                 (std::abs(int(now.chromaU)-512)<=48 && std::abs(int(now.chromaV)-512)<=48));
-            if(black!=backing.black)return false;
+            if(black!=backing.black)return reject(ReadyRearmRejectCode::BackingPixels);
         }
         m_elapsed=0;m_last=b;m_reason="accepted-same-cue-current-scan-rearmed";
+        m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::Passed;
         m_diagnostics.lastVerifiedSource=b.acceptedSequence;
         return true;
     }

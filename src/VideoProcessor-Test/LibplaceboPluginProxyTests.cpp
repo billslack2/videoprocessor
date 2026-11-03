@@ -2770,6 +2770,7 @@ namespace VideoProcessorTest
             };
 
             AnalysisDiagnosticRecordV1 previousSuccessfulOutput{};bool havePreviousSuccessfulOutput=false;
+            unsigned rawStartupDiagnosticCount=0;
             struct Geometry {uint64_t sequence=0;double left=0,top=0,right=0,bottom=0,pts=0;unsigned mode=0;bool composed=false,sourceBoundCaption=false,shaderBuilding=false,poseEligible=false,currentRawFallback=false;int routedTranslation=0;double poseDelta=0,minimumTop=0,maximumTop=0;};
             auto geometries=[&] {
                 std::vector<Geometry> result;std::vector<AnalysisDiagnosticRecordV1> trace;
@@ -2805,6 +2806,72 @@ namespace VideoProcessorTest
                             {record.rendererInstanceKey,record.transportGeneration,record.acceptedSequence});
                         g.shaderBuilding=preparation!=classicSubmittedShaderPreparation.end() &&
                             preparation->second.AllowsInitialBuildFallback(record.transportGeneration,record.sourceFormatGeneration,advancedMode);
+                    }
+                    if(rawStartupDiagnosticCount<8 && g.shaderBuilding && !g.composed && !g.currentRawFallback &&
+                        g.left<=physical.left && g.top<=physical.top &&
+                        g.right>=physical.right && g.bottom>=captionBottom) {
+                        ++rawStartupDiagnosticCount;
+                        const bool deliveredSourceExists=delivered!=uhdDeliveredSources.end();
+                        const bool deliveredCaptionPointer=deliveredSourceExists&&delivered->second.pixels==&caption;
+                        const bool deliveredTimestampMatches=deliveredSourceExists&&
+                            delivered->second.timestamp==record.captureTimestamp;
+                        const bool nativeOwnerMatches=acceptedNativeSequence!=0 &&
+                            record.counters[4]==acceptedNativeSequence &&
+                            record.published[0]==physical.left && record.published[1]==physical.top &&
+                            record.published[2]==physical.right && record.published[3]==physical.bottom;
+                        const bool noCompositionMetadata=record.counters[2]==0 && record.counters[5]==0 &&
+                            record.counters[6]==0 && record.counters[7]==0 && !(record.flags&(4u|8u|128u|256u|512u));
+                        std::ostringstream raw;raw<<"UHD raw startup diagnostic: accepted="<<record.acceptedSequence
+                            <<" source_frame="<<record.sourceFrameNumber<<" capture="<<record.captureTimestamp
+                            <<" delivered_source_exists="<<deliveredSourceExists
+                            <<" delivered_capture="<<(deliveredSourceExists?delivered->second.timestamp:0)
+                            <<" delivered_caption_pointer="<<deliveredCaptionPointer
+                            <<" delivered_timestamp_match="<<deliveredTimestampMatches
+                            <<" consumed="<<record.counters[0]<<" selected="<<record.counters[1]
+                            <<" format="<<record.sourceFormatGeneration
+                            <<" domain="<<record.analysisDomainKey<<" policy="<<record.policyGeneration
+                            <<" continuity="<<record.continuityGeneration<<" viewport="<<record.viewportGeneration
+                            <<" mode="<<record.counters[3]<<" flags="<<record.flags
+                            <<" native_owner="<<record.counters[4]<<" expected_native_owner="<<acceptedNativeSequence
+                            <<" native_owner_matches="<<nativeOwnerMatches<<" no_composition_metadata="<<noCompositionMetadata
+                            <<" native="<<record.published[0]<<','<<record.published[1]<<'-'<<record.published[2]<<','<<record.published[3]
+                            <<" current="<<g.left<<','<<g.top<<'-'<<g.right<<','<<g.bottom
+                            <<" raw_fallback_helper="<<g.currentRawFallback;
+                        Logger::WriteMessage(raw.str().c_str());
+                        unsigned admissions=0;
+                        for(const auto& admission:trace)if(!strcmp(admission.stage,"subtitle-canvas-admission") &&
+                            admission.acceptedSequence==record.acceptedSequence && admissions<6) {
+                            ++admissions;
+                            const bool currentPhysicalContext=admission.rendererInstanceKey==record.rendererInstanceKey &&
+                                admission.transportGeneration==record.transportGeneration &&
+                                admission.rendererGeneration==record.rendererGeneration &&
+                                admission.viewportGeneration==record.viewportGeneration &&
+                                admission.sourceFormatGeneration==record.sourceFormatGeneration &&
+                                admission.analysisDomainKey==record.analysisDomainKey;
+                            const bool currentProfileContext=currentPhysicalContext &&
+                                admission.policyGeneration==record.policyGeneration &&
+                                admission.continuityGeneration==record.continuityGeneration;
+                            const bool currentInputIdentity=admission.sourceFrameNumber==record.sourceFrameNumber &&
+                                admission.captureTimestamp==record.captureTimestamp;
+                            std::ostringstream canvas;canvas<<"UHD raw startup admission: ordinal="<<admission.recordSequence
+                                <<" accepted="<<admission.acceptedSequence<<" source_frame="<<admission.sourceFrameNumber
+                                <<" capture="<<admission.captureTimestamp<<" format="<<admission.sourceFormatGeneration
+                                <<" domain="<<admission.analysisDomainKey<<" policy="<<admission.policyGeneration
+                                <<" continuity="<<admission.continuityGeneration<<" viewport="<<admission.viewportGeneration
+                                <<" current_physical_context="<<currentPhysicalContext
+                                <<" current_profile_context="<<currentProfileContext
+                                <<" current_input_identity="<<currentInputIdentity
+                                <<" mode="<<admission.counters[0]<<" state="<<admission.counters[1]
+                                <<" flags="<<admission.flags<<" raw_join="<<admission.counters[3]<<','
+                                <<admission.counters[4]<<','<<admission.counters[5]<<','<<admission.counters[6]<<','
+                                <<admission.counters[7]<<" display="<<admission.displayed[0]<<','<<admission.displayed[1]
+                                <<'-'<<admission.displayed[2]<<','<<admission.displayed[3]<<" raw_visible="
+                                <<admission.metrics[8]<<','<<admission.metrics[9]<<'-'<<admission.metrics[10]<<','
+                                <<admission.metrics[11]<<" helper="<<IsCurrentRawSubtitleFallback(record,admission,width,height)
+                                <<" reason="<<admission.reason;
+                            Logger::WriteMessage(canvas.str().c_str());
+                        }
+                        if(!admissions)Logger::WriteMessage("UHD raw startup admission: none for exact accepted sequence");
                     }
                     previousSuccessfulOutput=record;havePreviousSuccessfulOutput=true;
                     g.poseDelta=record.metrics[2];g.routedTranslation=int(std::lround(record.metrics[4]));
@@ -3607,7 +3674,8 @@ namespace VideoProcessorTest
                 const auto arrivalFrequency=clock.TimingClockTicksPerSecond();
                 const auto arrivalPeriod=static_cast<int64_t>(uint64_t(arrivalFrequency)*duration/scale);
                 struct SubtitleStageTiming {uint64_t calls=0,successes=0;std::vector<double> elapsedMs,leaseAgeMs;
-                    std::map<std::string,uint64_t> reasons;};
+                    std::map<std::string,uint64_t> reasons;
+                    std::map<std::pair<uint32_t,uint32_t>,uint64_t> rearmDispositions;};
                 std::array<SubtitleStageTiming,4> subtitleStageTimings{};
                 auto collectSubtitleStageTiming=[&](const AnalysisDiagnosticRecordV1& record) {
                     size_t index=subtitleStageTimings.size();
@@ -3623,6 +3691,17 @@ namespace VideoProcessorTest
                     if(std::isfinite(elapsed)&&elapsed>=0)timing.elapsedMs.push_back(elapsed);
                     if(index==1&&std::isfinite(record.metrics[0])&&record.metrics[0]>=0)
                         timing.leaseAgeMs.push_back(record.metrics[0]);
+                    if(index==1) {
+                        const uint32_t code=std::isfinite(record.metrics[5])&&record.metrics[5]>=0&&record.metrics[5]<=255
+                            ?static_cast<uint32_t>(record.metrics[5]):255u;
+                        const uint32_t mask=std::isfinite(record.metrics[6])&&record.metrics[6]>=0&&
+                            record.metrics[6]<=static_cast<double>(UINT32_MAX)
+                            ?static_cast<uint32_t>(record.metrics[6]):UINT32_MAX;
+                        ++timing.rearmDispositions[{code,mask}];
+                    } else if(index==2) {
+                        ++timing.rearmDispositions[{static_cast<uint32_t>(record.counters[1]),
+                            static_cast<uint32_t>(record.counters[2])}];
+                    }
                 };
                 auto reportSubtitleStageTiming=[&] {
                     static const char* names[]={"pending-pixels","pending-seed","footprint-seed","cadence-seed"};
@@ -3652,6 +3731,18 @@ namespace VideoProcessorTest
                             std::ostringstream reasonRow;reasonRow<<"DV SUBTITLE STAGE REASON: stage="<<names[index]
                                 <<" count="<<reason.second<<" reason="<<reason.first;
                             Logger::WriteMessage(reasonRow.str().c_str());
+                        }
+                        if(index==1||index==2)for(const auto& disposition:timing.rearmDispositions) {
+                            const auto code=disposition.first.first;
+                            const char* codeName=index==1
+                                ?SubtitlePendingMeasurementGuard::ReadyRearmRejectReasonName(
+                                    static_cast<SubtitlePendingMeasurementGuard::ReadyRearmRejectCode>(code))
+                                :SubtitleCadenceGuard::RearmRejectReasonName(
+                                    static_cast<SubtitleCadenceGuard::RearmRejectCode>(code));
+                            std::ostringstream dispositionRow;dispositionRow<<"DV SUBTITLE STAGE REARM: stage="<<names[index]
+                                <<" count="<<disposition.second<<" reject="<<codeName<<" code="<<code
+                                <<" mismatch_bits=0x"<<std::hex<<disposition.first.second;
+                            Logger::WriteMessage(dispositionRow.str().c_str());
                         }
                     }
                 };
@@ -5089,7 +5180,9 @@ namespace VideoProcessorTest
                     auto appendCandidates=[&](const char* stage,const std::vector<AnalysisDiagnosticRecordV1>& records) {
                         detail<<' '<<stage<<'=';unsigned count=0;
                         for(const auto& candidate:records) {
-                            if(strcmp(candidate.stage,stage) || candidate.acceptedSequence!=output.acceptedSequence)continue;
+                            if(strcmp(candidate.stage,stage) ||
+                                (candidate.acceptedSequence!=output.acceptedSequence &&
+                                 candidate.acceptedSequence!=output.counters[4]))continue;
                             if(count++)detail<<';';
                             detail<<"ord:"<<candidate.recordSequence<<",flags:"<<candidate.flags
                                 <<",result:"<<candidate.resultCode<<",source:"<<candidate.sourceFrameNumber
@@ -5107,7 +5200,8 @@ namespace VideoProcessorTest
                 if(!processedMode || strcmp(output.stage,"submitted-presentation") || !(output.flags&1u) ||
                     output.counters[0]!=output.acceptedSequence || output.counters[1]!=output.acceptedSequence ||
                     output.counters[2]!=0 || (output.counters[3]!=0 && output.counters[3]!=processedMode) ||
-                    output.counters[4]!=output.acceptedSequence || output.counters[5]!=0 || output.counters[6]!=0 || output.counters[7]!=0 ||
+                    output.counters[4]==0 || output.counters[4]>output.acceptedSequence ||
+                    output.counters[5]!=0 || output.counters[6]!=0 || output.counters[7]!=0 ||
                     output.resultCode!=int(AlphaSourceCrop::DecisionOwner::TRUSTED_CROP) ||
                     ((output.flags>>24)&3u)!=unsigned(ActivePictureDetectorKind::SourceSpatialMeasured) ||
                     (output.flags&(2u|4u|8u|16u|32u|64u|128u|256u|512u|1024u|4096u|8192u|16384u)))
@@ -5119,48 +5213,67 @@ namespace VideoProcessorTest
                         return reject("submitted-native-and-actual-geometry");
                 const auto expectedCanvasMode=processedMode==unsigned(SubtitlePreviewMode::BlackBackground)
                     ? AlphaSourceCrop::SubtitleCanvasMode::BLACK : AlphaSourceCrop::SubtitleCanvasMode::RECONSTRUCTION;
-                const AnalysisDiagnosticRecordV1* sourceMeasurement=nullptr;
-                for(const auto& source:spatialProduced)if(!strcmp(source.stage,"source-picture-active") &&
-                    source.acceptedSequence==output.acceptedSequence && source.sourceFrameNumber==output.sourceFrameNumber &&
-                    source.captureTimestamp==output.captureTimestamp && source.transportGeneration==output.transportGeneration &&
-                    source.rendererGeneration==output.rendererGeneration && source.viewportGeneration==output.viewportGeneration &&
-                    source.sourceFormatGeneration==output.sourceFormatGeneration && source.analysisDomainKey==output.analysisDomainKey &&
-                    source.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
-                    (source.flags&(1u|2u|4u|8u))==(1u|2u|4u|8u)) {
-                    bool exact=true;for(int edge=0;edge<4;++edge)exact&=source.measured[edge]==expected[edge];
-                    if(exact && source.recordSequence<output.recordSequence)sourceMeasurement=&source;
-                }
-                if(!sourceMeasurement)return reject("exact-current-source-picture-active-measurement");
-                const AnalysisDiagnosticRecordV1* acceptedModel=nullptr;
-                for(const auto& accepted:spatialAccepted)if(!strcmp(accepted.stage,"accepted-picture-detector") &&
-                    accepted.acceptedSequence==output.acceptedSequence && accepted.counters[0]==output.acceptedSequence &&
-                    accepted.rendererInstanceKey==output.rendererInstanceKey &&
-                    accepted.transportGeneration==output.transportGeneration && accepted.rendererGeneration==output.rendererGeneration &&
-                    accepted.viewportGeneration==output.viewportGeneration &&
-                    accepted.sourceFormatGeneration==output.sourceFormatGeneration && accepted.analysisDomainKey==output.analysisDomainKey &&
-                    accepted.policyGeneration==output.policyGeneration && accepted.continuityGeneration==output.continuityGeneration &&
-                    accepted.sourceFrameNumber==output.sourceFrameNumber && accepted.captureTimestamp==output.captureTimestamp &&
-                    accepted.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
-                    sourceMeasurement->recordSequence<accepted.recordSequence && accepted.recordSequence<output.recordSequence) {
-                    bool exact=true;for(int edge=0;edge<4;++edge)exact&=accepted.published[edge]==expected[edge];
-                    if(exact)acceptedModel=&accepted;
-                }
-                if(!acceptedModel)return reject("exact-current-accepted-physical-model");
+                const auto samePhysicalContext=[&](const AnalysisDiagnosticRecordV1& record) {
+                    return record.rendererInstanceKey==output.rendererInstanceKey &&
+                        record.transportGeneration==output.transportGeneration &&
+                        record.rendererGeneration==output.rendererGeneration &&
+                        record.viewportGeneration==output.viewportGeneration &&
+                        record.sourceFormatGeneration==output.sourceFormatGeneration &&
+                        record.analysisDomainKey==output.analysisDomainKey;
+                };
+                const auto sameCurrentContext=[&](const AnalysisDiagnosticRecordV1& record) {
+                    return samePhysicalContext(record) && record.policyGeneration==output.policyGeneration &&
+                        record.continuityGeneration==output.continuityGeneration;
+                };
+                const AnalysisDiagnosticRecordV1* admissionMatch=nullptr;
                 for(const auto& admission:spatialCanvas)if(!strcmp(admission.stage,"subtitle-canvas-admission") &&
-                    admission.acceptedSequence==output.acceptedSequence && admission.rendererInstanceKey==output.rendererInstanceKey &&
-                    admission.transportGeneration==output.transportGeneration && admission.rendererGeneration==output.rendererGeneration &&
-                    admission.viewportGeneration==output.viewportGeneration &&
-                    admission.sourceFormatGeneration==output.sourceFormatGeneration && admission.analysisDomainKey==output.analysisDomainKey &&
-                    admission.policyGeneration==output.policyGeneration && admission.continuityGeneration==output.continuityGeneration &&
+                    admission.acceptedSequence==output.acceptedSequence && sameCurrentContext(admission) &&
                     admission.sourceFrameNumber==output.sourceFrameNumber && admission.captureTimestamp==output.captureTimestamp &&
                     admission.counters[0]==static_cast<unsigned>(expectedCanvasMode) &&
                     admission.counters[1]==static_cast<unsigned>(AlphaSourceCrop::CaptionObservationState::UNKNOWN) &&
                     (admission.flags&2u) && !(admission.flags&(1u|4u|8u|32u|64u)) &&
-                    acceptedModel->recordSequence<admission.recordSequence && admission.recordSequence<output.recordSequence) {
-                    failure.clear();
-                    return true;
+                    admission.recordSequence<output.recordSequence)
+                    admissionMatch=&admission;
+                if(!admissionMatch)return reject("exact-current-unknown-subtitle-admission-order-and-context");
+                const AnalysisDiagnosticRecordV1* sourceMeasurement=nullptr;
+                for(const auto& source:spatialProduced)if(!strcmp(source.stage,"source-picture-active") &&
+                    source.acceptedSequence==output.acceptedSequence && source.sourceFrameNumber==output.sourceFrameNumber &&
+                    source.captureTimestamp==output.captureTimestamp && sameCurrentContext(source) &&
+                    source.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
+                    (source.flags&(1u|2u|4u|8u))==(1u|2u|4u|8u)) {
+                    bool exact=true;for(int edge=0;edge<4;++edge)exact&=source.measured[edge]==expected[edge];
+                    if(exact && source.recordSequence<admissionMatch->recordSequence)sourceMeasurement=&source;
                 }
-                return reject("exact-current-unknown-subtitle-admission-order-and-context");
+                if(!sourceMeasurement)return reject("exact-current-source-picture-active-measurement");
+                const uint64_t nativeOwner=output.counters[4];
+                const AnalysisDiagnosticRecordV1* acceptedModel=nullptr;
+                const AnalysisDiagnosticRecordV1* ownerMeasurement=nullptr;
+                for(const auto& accepted:spatialAccepted)if(!strcmp(accepted.stage,"accepted-picture-detector") &&
+                    accepted.acceptedSequence==nativeOwner && accepted.counters[0]==nativeOwner &&
+                    nativeOwner<=output.acceptedSequence && samePhysicalContext(accepted) &&
+                    accepted.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
+                    accepted.recordSequence<admissionMatch->recordSequence) {
+                    bool exactNative=true;for(int edge=0;edge<4;++edge)exactNative&=accepted.published[edge]==expected[edge];
+                    if(!exactNative)continue;
+                    for(const auto& source:spatialProduced)if(!strcmp(source.stage,"source-picture-active") &&
+                        source.acceptedSequence==nativeOwner && source.sourceFrameNumber==accepted.sourceFrameNumber &&
+                        source.captureTimestamp==accepted.captureTimestamp && samePhysicalContext(source) &&
+                        source.policyGeneration==accepted.policyGeneration &&
+                        source.continuityGeneration==accepted.continuityGeneration &&
+                        source.resultCode==int(ActivePictureDetectorKind::SourceSpatialMeasured) &&
+                        (source.flags&(1u|2u|4u|8u))==(1u|2u|4u|8u) &&
+                        source.recordSequence<accepted.recordSequence) {
+                        bool exactMeasured=true;for(int edge=0;edge<4;++edge)exactMeasured&=source.measured[edge]==expected[edge];
+                        if(exactMeasured) {acceptedModel=&accepted;ownerMeasurement=&source;break;}
+                    }
+                }
+                if(!acceptedModel || !ownerMeasurement)return reject("accepted-native-model-owner-source-measurement-context-or-order");
+                if(acceptedModel->recordSequence>=admissionMatch->recordSequence ||
+                    sourceMeasurement->recordSequence>=admissionMatch->recordSequence ||
+                    admissionMatch->recordSequence>=output.recordSequence)
+                    return reject("current-and-owner-physical-measurement-order");
+                failure.clear();
+                return true;
             };
             auto pump=[&](std::vector<uint16_t>& pixels) {
                 MSG message;
@@ -5197,6 +5310,10 @@ namespace VideoProcessorTest
                             std::string currentMeasuredUnprocessedCropFailure;
                             const bool currentMeasuredUnprocessedCrop=!wholeSource &&
                                 exactCurrentMeasuredUnprocessedCrop(record,currentMeasuredUnprocessedCropFailure);
+                            // This proves only the accepted native physical model
+                            // and current measured crop. It does not grant caption
+                            // ownership or a composition certificate.
+                            if(currentMeasuredUnprocessedCrop)witnessedNativeOwners.insert(record.counters[4]);
                             const bool retained=processedMode && !wholeSource && measured &&
                                 record.resultCode==int(AlphaSourceCrop::DecisionOwner::SUBMITTED_SCOPE_RETENTION) &&
                                 witnessedNativeOwners.count(record.counters[4]) && record.counters[4]<record.acceptedSequence &&
