@@ -1,0 +1,82 @@
+{
+  "status": "Failed",
+  "source": {
+    "commit": "7e49dec1a4d27fda352573a8e43cd73c2d80b7db",
+    "dirty": false,
+    "fingerprint": "80341e4c913bb26379ec4be144e8b15552aad18d6aa49df7612f051007ad2195",
+    "label": "7e49dec1a4d2",
+    "build": "7e49dec1a4d27fda352573a8e43cd73c2d80b7db"
+  },
+  "testEnvironment": {
+    "sourcePictureDetector": true,
+    "legacyDetectorEnvironment": null,
+    "sourcePictureShadow": null
+  },
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0,
+      "seconds": 0.569,
+      "log": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-061258-52a27a30\\native-library-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "48702d20-77d2-4963-a6a5-97ef2ba36ca7",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "host",
+      "project": "src\\VideoProcessor-GUI\\VideoProcessor-GUI.vcxproj",
+      "exit": 0,
+      "seconds": 25.246,
+      "log": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-061258-52a27a30\\host-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "7fa95070-0405-47d3-a6c0-5d45348842bc",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRenderer.vcxproj",
+      "exit": 0,
+      "seconds": 34.234,
+      "log": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-061258-52a27a30\\standard-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "ca25d44e-a9aa-4078-b02b-bbf55c8776d1",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "beta-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRendererBeta.vcxproj",
+      "exit": 0,
+      "seconds": 32.559,
+      "log": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-061258-52a27a30\\beta-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "5635cab5-9533-4560-8083-9fa32ebd4b88",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "exit": 0,
+      "seconds": 65.226,
+      "log": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-061258-52a27a30\\standard-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "376aaab6-df1c-48a9-a7f6-b6597baf17b9",
+      "PSShowComputerName": false
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 1,
+      "binary": "x64\\Release\\VideoProcessor-Test.dll",
+      "trx": "artifacts/qualification/runs/20261103-061258-52a27a30/standard.trx",
+      "trxSha256": "7E1D50D9D4D70BBC93529D2D6566A9D1AC8F0D2217A4B4EB6A477E9FDDE47578",
+      "executed": 0,
+      "native": 0,
+      "actualClassic": 0,
+      "seconds": 59.19
+    }
+  ],
+  "finished": "2026-11-03T06:15:39.2683813-05:00"
+}

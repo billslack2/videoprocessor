@@ -4,6 +4,36 @@
 
 Review
 
+2026-11-03 current timing review (7e49dec1, not deployed): all 1,073 native
+contracts pass. Focused actual-renderer coverage executes 12 tests, one passes
+and 11 fail. The desktop is currently 3840x2160 at 24 Hz, independently read
+through EnumDisplaySettingsW and Win32_VideoController after the run. The six
+persistent DV fixtures feed 59.94 Hz but never supply the host's target-refresh
+metadata to the renderer; their 23.94-24.09 distinct submissions/sec cannot be
+classified as a subtitle throughput regression without accounting for legitimate
+24 Hz presentation. Joins are complete; maximum source age is about 205-207 ms,
+and the first/last latency means are nearly flat. Actual target-aware cadence and
+bounded source age still need qualification; queues/timeouts will not be enlarged.
+
+Static-cue baseline reuse now has measured actual effects: advanced footprint
+setup rearms 46-56 times per case at 0.13-0.25 ms median; generic pending-seed
+setup remains 2.32-2.66 ms median in those modes. Classic median ready setup is
+0.095-0.162 ms, but current pending-pixel checks can still cost 11.5 ms median
+and 20.4 ms peak in one case. These are separate per-call samples, not additive
+percentiles or whole-pipeline speedup. Full asynchronous detector grouping still
+runs; incremental grouping avoidance remains an explicit optimization candidate.
+
+A confirmed mandatory-path defect remains: missing optional subtitle readiness
+invokes PresentInputCadenceRepeat and submits the preceding whole movie frame for
+a new input. This conflicts with the live-HDMI contract; removal is in progress,
+while explicit cadence conversion remains. A separate UHD pending source preserves
+current raw caption pixels but loses an already-ready composition for one frame,
+expanding the viewport; its downstream exact prepared-erasure handoff is under
+review. One UNKNOWN oracle wrongly required renderer-owned IDs on worker-side
+physical measurements; the correction retains exact source/physical/bounds/order
+joins. No repair after 53058498 has been deployed. Full qualification, paired
+motion GPU tests and live acceptance remain open.
+
 2026-11-03 full runtime follow-up (312c1370, not deployed): all 1,071 native
 contracts pass inside the full x64 Release run. Standard executes 1,091 tests:
 1,082 pass and nine actual-renderer cases fail; the Beta runtime lane is not reached.

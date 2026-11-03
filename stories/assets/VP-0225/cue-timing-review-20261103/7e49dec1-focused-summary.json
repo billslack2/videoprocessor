@@ -1,0 +1,182 @@
+{
+  "commit": "7e49dec1a4d27fda352573a8e43cd73c2d80b7db",
+  "native": {
+    "total": 1073,
+    "passed": 1073
+  },
+  "focused": {
+    "failed": 11,
+    "total": 12,
+    "passed": 1
+  },
+  "desktopReadAfterRun": {
+    "width": 3840,
+    "height": 2160,
+    "method": "EnumDisplaySettingsW and Win32_VideoController independently",
+    "fixtureTargetRefreshSet": false,
+    "hz": 24
+  },
+  "results": [
+    {
+      "method": "StandardRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker",
+      "outcome": "Failed",
+      "error": "Assert failed. Distinct current-source submission rate fell below 97% of nominal HDMI input cadence.",
+      "timing": [
+        "DV SUBMISSION TIMING: nominal_input_hz=59.940 actual_input_hz=59.783 distinct_source_fps=23.984 successful_outputs=61 joined_outputs=61 distinct_sources=61 max_submit_gap_ms=48.076 max_input_to_submit_ms=206.220 first24_mean_latency_ms=186.384 last24_mean_latency_ms=182.942 latency_growth_ms=-3.442 max_source_id_gap=4.000 source_fps_floor=58.142 max_submit_gap_limit_ms=50.033 max_latency_limit_ms=166.817 latency_growth_limit_ms=16.683 source_id_gap_limit=2 post_stop_outputs=1 join_complete=1 gap_series_complete=1",
+        "DV SUBTITLE STAGE TIMING: stage=pending-pixels calls=1 successes=0 samples=1 p50_ms=0.031 p95_ms=0.031 max_ms=0.031",
+        "DV SUBTITLE STAGE TIMING: stage=pending-seed calls=66 successes=51 samples=66 p50_ms=2.321 p95_ms=4.472 max_ms=12.506 lease_age_samples=66 lease_age_p50_ms=0.000 lease_age_p95_ms=0.000 lease_age_max_ms=0.000",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=14 reject=not-attempted code=0 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=2 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=1 reject=no-eligible-fresh-positive code=2 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=47 reject=footprint-delegated code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=2 reject=seed-or-mode code=4 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=footprint-seed calls=47 successes=47 samples=47 p50_ms=0.203 p95_ms=0.652 max_ms=6.975",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=46 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=1 reject=seed-unavailable code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=cadence-seed calls=61 successes=0 samples=61 p50_ms=0.001 p95_ms=0.003 max_ms=0.007"
+      ]
+    },
+    {
+      "method": "StandardRendererReconstructionUhdV210ResidualUiWithMovingPicture",
+      "outcome": "Failed",
+      "error": "Assert failed. Top-UI clearance changed native framing or lost the current composed caption.",
+      "timing": []
+    },
+    {
+      "method": "StandardRendererBlackUhdV210ResidualUiWithMovingPicture",
+      "outcome": "Passed",
+      "error": "",
+      "timing": []
+    },
+    {
+      "method": "StandardRendererDecodedDvUnknownInputKeepsCurrentSource",
+      "outcome": "Failed",
+      "error": "Assert failed. The component-budget UNKNOWN must submit its exact current unprocessed source, preserving the accepted native model and current visible pixels without reusing or composing an older image.",
+      "timing": [
+        "DV SUBTITLE STAGE TIMING: stage=pending-pixels calls=1 successes=0 samples=1 p50_ms=0.044 p95_ms=0.044 max_ms=0.044",
+        "DV SUBTITLE STAGE TIMING: stage=pending-seed calls=68 successes=53 samples=68 p50_ms=2.395 p95_ms=4.426 max_ms=10.361 lease_age_samples=68 lease_age_p50_ms=0.000 lease_age_p95_ms=0.000 lease_age_max_ms=0.000",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=15 reject=not-attempted code=0 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=3 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=49 reject=footprint-delegated code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=1 reject=seed-or-mode code=4 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=footprint-seed calls=49 successes=49 samples=49 p50_ms=0.173 p95_ms=0.839 max_ms=11.745",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=48 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=1 reject=seed-unavailable code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=cadence-seed calls=64 successes=0 samples=64 p50_ms=0.001 p95_ms=0.004 max_ms=0.012"
+      ]
+    },
+    {
+      "method": "StandardRendererClassicPersistentDecodedDvCaptionHasNoCadenceFlicker",
+      "outcome": "Failed",
+      "error": "Assert failed. Distinct current-source submission rate fell below 97% of nominal HDMI input cadence.",
+      "timing": [
+        "DV SUBMISSION TIMING: nominal_input_hz=59.940 actual_input_hz=60.014 distinct_source_fps=23.989 successful_outputs=60 joined_outputs=60 distinct_sources=60 max_submit_gap_ms=48.515 max_input_to_submit_ms=206.566 first24_mean_latency_ms=184.320 last24_mean_latency_ms=190.257 latency_growth_ms=5.936 max_source_id_gap=5.000 source_fps_floor=58.142 max_submit_gap_limit_ms=50.033 max_latency_limit_ms=166.817 latency_growth_limit_ms=16.683 source_id_gap_limit=2 post_stop_outputs=0 join_complete=1 gap_series_complete=1",
+        "DV SUBTITLE STAGE TIMING: stage=pending-pixels calls=17 successes=6 samples=17 p50_ms=11.506 p95_ms=20.359 max_ms=20.359",
+        "DV SUBTITLE STAGE TIMING: stage=pending-seed calls=69 successes=53 samples=69 p50_ms=0.162 p95_ms=18.647 max_ms=18.864 lease_age_samples=69 lease_age_p50_ms=0.000 lease_age_p95_ms=0.000 lease_age_max_ms=66.733",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=16 reject=not-attempted code=0 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=45 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=8 reject=seed-or-mode code=4 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=footprint-seed calls=0 successes=0 samples=0 p50_ms=-1.000 p95_ms=-1.000 max_ms=-1.000",
+        "DV SUBTITLE STAGE TIMING: stage=cadence-seed calls=0 successes=0 samples=0 p50_ms=-1.000 p95_ms=-1.000 max_ms=-1.000"
+      ]
+    },
+    {
+      "method": "StandardRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
+      "outcome": "Failed",
+      "error": "Assert failed. Distinct current-source submission rate fell below 97% of nominal HDMI input cadence.",
+      "timing": [
+        "DV SUBMISSION TIMING: nominal_input_hz=59.940 actual_input_hz=59.959 distinct_source_fps=24.042 successful_outputs=61 joined_outputs=61 distinct_sources=61 max_submit_gap_ms=48.152 max_input_to_submit_ms=206.992 first24_mean_latency_ms=181.715 last24_mean_latency_ms=185.217 latency_growth_ms=3.502 max_source_id_gap=4.000 source_fps_floor=58.142 max_submit_gap_limit_ms=50.033 max_latency_limit_ms=166.817 latency_growth_limit_ms=16.683 source_id_gap_limit=2 post_stop_outputs=1 join_complete=1 gap_series_complete=1",
+        "DV SUBTITLE STAGE TIMING: stage=pending-pixels calls=1 successes=0 samples=1 p50_ms=0.047 p95_ms=0.047 max_ms=0.047",
+        "DV SUBTITLE STAGE TIMING: stage=pending-seed calls=65 successes=52 samples=65 p50_ms=2.399 p95_ms=4.344 max_ms=10.759 lease_age_samples=65 lease_age_p50_ms=0.000 lease_age_p95_ms=0.000 lease_age_max_ms=0.000",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=13 reject=not-attempted code=0 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=2 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=49 reject=footprint-delegated code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=1 reject=seed-or-mode code=4 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=footprint-seed calls=49 successes=49 samples=49 p50_ms=0.254 p95_ms=0.955 max_ms=11.778",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=48 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=1 reject=seed-unavailable code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=cadence-seed calls=61 successes=0 samples=61 p50_ms=0.001 p95_ms=0.004 max_ms=0.013"
+      ]
+    },
+    {
+      "method": "StandardRendererClassicLifecycleWithNormalDriftAndWiderFill",
+      "outcome": "Failed",
+      "error": "Assert failed. Ready Classic-to-Reconstruction output changed its native presentation.",
+      "timing": []
+    },
+    {
+      "method": "BetaRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker",
+      "outcome": "Failed",
+      "error": "Assert failed. Distinct current-source submission rate fell below 97% of nominal HDMI input cadence.",
+      "timing": [
+        "DV SUBMISSION TIMING: nominal_input_hz=59.940 actual_input_hz=59.659 distinct_source_fps=24.094 successful_outputs=61 joined_outputs=61 distinct_sources=61 max_submit_gap_ms=48.146 max_input_to_submit_ms=205.450 first24_mean_latency_ms=182.550 last24_mean_latency_ms=182.633 latency_growth_ms=0.083 max_source_id_gap=4.000 source_fps_floor=58.142 max_submit_gap_limit_ms=50.033 max_latency_limit_ms=166.817 latency_growth_limit_ms=16.683 source_id_gap_limit=2 post_stop_outputs=1 join_complete=1 gap_series_complete=1",
+        "DV SUBTITLE STAGE TIMING: stage=pending-pixels calls=1 successes=0 samples=1 p50_ms=0.064 p95_ms=0.064 max_ms=0.064",
+        "DV SUBTITLE STAGE TIMING: stage=pending-seed calls=66 successes=62 samples=66 p50_ms=2.525 p95_ms=4.749 max_ms=10.926 lease_age_samples=66 lease_age_p50_ms=0.000 lease_age_p95_ms=0.000 lease_age_max_ms=0.000",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=4 reject=not-attempted code=0 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=4 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=57 reject=footprint-delegated code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=1 reject=seed-or-mode code=4 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=footprint-seed calls=57 successes=57 samples=57 p50_ms=0.133 p95_ms=0.567 max_ms=10.625",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=56 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=1 reject=seed-unavailable code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=cadence-seed calls=61 successes=0 samples=61 p50_ms=0.001 p95_ms=0.003 max_ms=0.009"
+      ]
+    },
+    {
+      "method": "BetaRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
+      "outcome": "Failed",
+      "error": "Assert failed. Distinct current-source submission rate fell below 97% of nominal HDMI input cadence.",
+      "timing": [
+        "DV SUBMISSION TIMING: nominal_input_hz=59.940 actual_input_hz=60.057 distinct_source_fps=23.938 successful_outputs=61 joined_outputs=61 distinct_sources=61 max_submit_gap_ms=48.197 max_input_to_submit_ms=207.037 first24_mean_latency_ms=186.813 last24_mean_latency_ms=188.091 latency_growth_ms=1.279 max_source_id_gap=4.000 source_fps_floor=58.142 max_submit_gap_limit_ms=50.033 max_latency_limit_ms=166.817 latency_growth_limit_ms=16.683 source_id_gap_limit=2 post_stop_outputs=1 join_complete=1 gap_series_complete=1",
+        "DV SUBTITLE STAGE TIMING: stage=pending-pixels calls=1 successes=0 samples=1 p50_ms=0.048 p95_ms=0.048 max_ms=0.048",
+        "DV SUBTITLE STAGE TIMING: stage=pending-seed calls=65 successes=51 samples=65 p50_ms=2.657 p95_ms=4.813 max_ms=11.223 lease_age_samples=65 lease_age_p50_ms=0.000 lease_age_p95_ms=0.000 lease_age_max_ms=0.000",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=14 reject=not-attempted code=0 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=3 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=47 reject=footprint-delegated code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=1 reject=seed-or-mode code=4 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=footprint-seed calls=47 successes=47 samples=47 p50_ms=0.203 p95_ms=1.069 max_ms=12.927",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=46 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=1 reject=seed-unavailable code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=cadence-seed calls=61 successes=0 samples=61 p50_ms=0.001 p95_ms=0.005 max_ms=0.009"
+      ]
+    },
+    {
+      "method": "BetaRendererDecodedDvUnknownInputKeepsCurrentSource",
+      "outcome": "Failed",
+      "error": "Assert failed. The component-budget UNKNOWN must submit its exact current unprocessed source, preserving the accepted native model and current visible pixels without reusing or composing an older image.",
+      "timing": [
+        "DV SUBTITLE STAGE TIMING: stage=pending-pixels calls=1 successes=0 samples=1 p50_ms=0.040 p95_ms=0.040 max_ms=0.040",
+        "DV SUBTITLE STAGE TIMING: stage=pending-seed calls=68 successes=57 samples=68 p50_ms=2.522 p95_ms=4.741 max_ms=11.734 lease_age_samples=68 lease_age_p50_ms=0.000 lease_age_p95_ms=0.000 lease_age_max_ms=0.000",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=11 reject=not-attempted code=0 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=3 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=53 reject=footprint-delegated code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=1 reject=seed-or-mode code=4 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=footprint-seed calls=53 successes=53 samples=53 p50_ms=0.150 p95_ms=0.773 max_ms=10.549",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=52 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=footprint-seed count=1 reject=seed-unavailable code=3 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=cadence-seed calls=64 successes=0 samples=64 p50_ms=0.001 p95_ms=0.004 max_ms=0.021"
+      ]
+    },
+    {
+      "method": "BetaRendererClassicPersistentDecodedDvCaptionHasNoCadenceFlicker",
+      "outcome": "Failed",
+      "error": "Assert failed. Distinct current-source submission rate fell below 97% of nominal HDMI input cadence.",
+      "timing": [
+        "DV SUBMISSION TIMING: nominal_input_hz=59.940 actual_input_hz=60.095 distinct_source_fps=23.958 successful_outputs=61 joined_outputs=61 distinct_sources=61 max_submit_gap_ms=48.116 max_input_to_submit_ms=204.980 first24_mean_latency_ms=183.645 last24_mean_latency_ms=185.026 latency_growth_ms=1.381 max_source_id_gap=4.000 source_fps_floor=58.142 max_submit_gap_limit_ms=50.033 max_latency_limit_ms=166.817 latency_growth_limit_ms=16.683 source_id_gap_limit=2 post_stop_outputs=1 join_complete=1 gap_series_complete=1",
+        "DV SUBTITLE STAGE TIMING: stage=pending-pixels calls=1 successes=0 samples=1 p50_ms=0.041 p95_ms=0.041 max_ms=0.041",
+        "DV SUBTITLE STAGE TIMING: stage=pending-seed calls=77 successes=64 samples=77 p50_ms=0.095 p95_ms=0.383 max_ms=10.918 lease_age_samples=77 lease_age_p50_ms=0.000 lease_age_p95_ms=0.000 lease_age_max_ms=0.000",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=13 reject=not-attempted code=0 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=63 reject=passed code=1 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE REARM: stage=pending-seed count=1 reject=seed-or-mode code=4 mismatch_bits=0x0",
+        "DV SUBTITLE STAGE TIMING: stage=footprint-seed calls=0 successes=0 samples=0 p50_ms=-1.000 p95_ms=-1.000 max_ms=-1.000",
+        "DV SUBTITLE STAGE TIMING: stage=cadence-seed calls=0 successes=0 samples=0 p50_ms=-1.000 p95_ms=-1.000 max_ms=-1.000"
+      ]
+    },
+    {
+      "method": "StandardRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",
+      "outcome": "Failed",
+      "error": "Assert failed. A crop needs a current measured native certificate, prior witnessed unprocessed continuation, or exact current measured source for an unprocessed advanced output; full raster needs current authority or exact current raw visibility.",
+      "timing": []
+    }
+  ]
+}
