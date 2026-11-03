@@ -16404,7 +16404,7 @@ struct LibplaceboVideoRenderer::Impl
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
              coldStrictWorkerProof, coldStrictWorkerPicture,
              subtitleIdentity, captureClockFrequency, sceneDetectorGeneration, &temporalPolicyCaptionProof, &temporalPolicyDecisionFacts,
-             &rawSubtitleFallbackCurrent, &unprocessedCurrentSourceCurrent,
+             &rawSubtitleFallbackCurrent, &unprocessedCurrentSourceCurrent, &temporalOutputContract,
              &reviseSourcePresentation, &priorRevisionSnapshot, &revisedSourcePolicyTick, &currentSubtitlePreview,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
