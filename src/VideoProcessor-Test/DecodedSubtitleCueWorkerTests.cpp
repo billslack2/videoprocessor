@@ -174,9 +174,24 @@ public:
             1000.0/60.0,250,5),
             L"Exact accepted source and cleanup geometry must seed current-footprint reuse.");
 
+        constexpr int interlineX=1548,interlineY=1820;
+        Assert::IsTrue(In(geometry.content,interlineX,interlineY) &&
+            !In(geometry.pictureCapture,interlineX,interlineY),
+            L"The motion point must be inside the accepted content hull but outside pictureCapture.");
+        bool interlineGlyph=false;
+        for(const auto& line:geometry.glyphLines)interlineGlyph|=In(line,interlineX,interlineY);
+        Assert::IsFalse(interlineGlyph,
+            L"The measured backing transition is an inter-line support pixel, not a glyph pixel.");
+        Assert::AreEqual(uint16_t(48),FixtureLuma(interlineX,interlineY,0));
+        Assert::AreEqual(uint16_t(64),FixtureLuma(interlineX,interlineY,1));
+
         FillDecodedFrame(words,1);
         source=Source(words);
         auto current=Key(5);current.analysisStride=2;current.cadenceSkipped=true;current.analyzed=false;
+        AnalysisLumaSample currentInterline;
+        Assert::IsTrue(source.Sample(interlineX,interlineY,currentInterline) && currentInterline.luma==64 &&
+            currentInterline.chromaU==512 && currentInterline.chromaV==512,
+            L"The source-derived inter-line backing changes only from neutral 48 to neutral 64.");
         auto proof=guard->VerifyCurrentFootprint(current,source,preview->current,cue,base);
         if(!proof.valid) {
             const auto detail=FailureDetail(proof,*preview,cue,geometry,source);
@@ -184,6 +199,33 @@ public:
             const std::wstring failure(detail.begin(),detail.end());
             Assert::IsTrue(proof.valid,failure.c_str());
         }
+
+        // Two individually bounded neutral backing changes must still reject
+        // when together they introduce a new strong local edge (old 48/48,
+        // current 1/74). This is a candidate-local check over sampled native
+        // neighbors, not a full-picture motion comparison.
+        auto newDarkEdgeWords=words;
+        newDarkEdgeWords[size_t(interlineY)*Width+interlineX]=uint16_t(1<<6);
+        newDarkEdgeWords[size_t(interlineY)*Width+interlineX+1]=uint16_t(74<<6);
+        auto newDarkEdgeSource=Source(newDarkEdgeWords);
+        const auto newDarkEdgeProof=guard->VerifyCurrentFootprint(
+            current,newDarkEdgeSource,preview->current,cue,base);
+        Assert::IsFalse(newDarkEdgeProof.valid,
+            L"Bounded backing changes cannot create a new 48-luma local contrast that the accepted source did not have.");
+
+        auto dimWords=words;
+        dimWords[size_t(interlineY)*Width+interlineX]=uint16_t(110<<6);
+        auto dimSource=Source(dimWords);
+        const auto dimProof=guard->VerifyCurrentFootprint(current,dimSource,preview->current,cue,base);
+        Assert::IsFalse(dimProof.valid,
+            L"The backing exception cannot admit a new 110-luma pixel above the measured decoded-DV card limit 74.");
+
+        auto chromaWords=words;
+        chromaWords[plane+size_t(interlineY)*Width+size_t(interlineX/2)*2]=uint16_t(800<<6);
+        auto chromaSource=Source(chromaWords);
+        const auto chromaProof=guard->VerifyCurrentFootprint(current,chromaSource,preview->current,cue,base);
+        Assert::IsFalse(chromaProof.valid,
+            L"Alternate chroma at the same inter-line pixel remains a strict current-source mismatch.");
     }
 };
 }

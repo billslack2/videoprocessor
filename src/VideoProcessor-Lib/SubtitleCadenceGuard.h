@@ -662,8 +662,23 @@ private:
     }
     bool InAcceptedCaptionBackingFootprint(int x,int y) const {
         if(x<m_base.left || x>=m_base.right || y<m_base.top || y>=m_base.bottom)return false;
+        if(Inside(m_geometry.content,x,y))return true;
         if(Inside(m_geometry.pictureCapture,x,y))return true;
         for(const auto& capture:m_capture)if(Inside(capture,x,y))return true;
+        return false;
+    }
+    bool IntroducesStrongBackingContrast(size_t index) const {
+        if(index>=m_native.size() || index>=m_currentPixels.size())return true;
+        const auto& seedPoint=m_native[index];const auto& currentPoint=m_currentPixels[index];
+        for(const auto& direction:Neighbours()) {
+            const int neighborIndex=Index(seedPoint.x+direction.first,seedPoint.y+direction.second);
+            if(neighborIndex<0 || size_t(neighborIndex)>=m_native.size() ||
+                size_t(neighborIndex)>=m_currentPixels.size())continue;
+            const int currentDelta=int(m_currentPixels[neighborIndex].pixel.luma)-int(currentPoint.pixel.luma);
+            if(std::abs(currentDelta)<48)continue;
+            const int seedDelta=int(m_native[neighborIndex].pixel.luma)-int(seedPoint.pixel.luma);
+            if(std::abs(currentDelta-seedDelta)>=48)return true;
+        }
         return false;
     }
     static bool NearFloor(const AnalysisLumaSample& p,const SubtitleInkSnapshot& palette) {
@@ -1080,7 +1095,8 @@ private:
                      std::abs(int(now.pixel.chromaV)-oldPixel.pixel.chromaV)>8);
                 const bool measuredCaptionBackingVariation=changedUnownedBacking &&
                     InAcceptedCaptionBackingFootprint(oldPixel.x,oldPixel.y) &&
-                    StableCaptionBackingTransition(now.pixel,oldPixel.pixel,*m_baseline);
+                    StableCaptionBackingTransition(now.pixel,oldPixel.pixel,*m_baseline) &&
+                    !IntroducesStrongBackingContrast(i);
                 if(changedUnownedBacking && !measuredCaptionBackingVariation) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
                     if(!allowProtectedCleanupProjection || m_geometry.generatedCleanupRowCount ||
