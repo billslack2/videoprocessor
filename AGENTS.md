@@ -50,6 +50,12 @@
   timeouts or confirmation delays. Preserve required cadence conversion,
   deinterlacing and genuine input/device transition handling; distinguish those
   from a whole-source veto caused by an unfinished optional decision.
+- Subtitle cues commonly remain static across many frames for seconds. Reuse
+  verified cue text/layout/glyph templates where safe, with bounded current-pixel
+  checks for glyphs, backing and newly added or changed text. Moving background
+  outside the glyphs is not by itself a cue change. Never make a fresh full subtitle
+  decision a prerequisite for every movie frame, and never reuse old movie,
+  background or cleanup pixels as current-source evidence.
 - Regressions must exercise dense/changing subtitles, volume/UI overlays,
   slow/missing analysis, profile/format resets, and Off-mode framing stability.
   Verify distinct current-source submissions and actual presentation/source gaps,
