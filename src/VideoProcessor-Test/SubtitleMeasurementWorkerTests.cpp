@@ -3804,7 +3804,7 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
     TEST_METHOD(CurrentFootprintSemanticPaddingRequiresStableBlackActualErasure) {
         // A complete black strip below line0 is cleanup, but lies outside its
         // immutable glyph capture. The other three sides remain movie pixels.
-        for(int scenario=0;scenario<5;++scenario) {
+        for(int scenario=0;scenario<6;++scenario) {
             auto pixels=PixelsWithCurrentBars();
             for(int y=56;y<60;++y)for(int x=50;x<110;++x)pixels[y*160+x]=uint16_t(96<<6);
             if(scenario==1)pixels[56*160+54]=uint16_t(700<<6); // Stable bright omitted glyph.
@@ -3814,6 +3814,9 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             geometry.glyphLines=seed.text.lineBounds;geometry.pictureCapture=seed.text.capturePanel;
             geometry.generatedCleanup=seed.text.sourcePanel;geometry.source=geometry.destination=geometry.content;
             geometry.pictureTop=12;geometry.pictureBottom=78;
+            if(scenario==5) {
+                geometry.glyphLines[0].left=49;geometry.generatedCleanup.left=50;
+            }
             if(scenario==2)geometry.generatedCleanup={}; // No actual erasure of the padding.
             auto guard=std::make_unique<SubtitleCadenceGuard>();
             const auto base=seed.current.sharedPicture.bounds;
@@ -3828,13 +3831,13 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             const auto current=CompleteThreeLineScan(2,currentPixels);
             const auto proof=guard->VerifyCurrentFootprint(current,CadenceSource(currentPixels),
                 seed.current,seed.text,base);
-            if(scenario<3)Assert::IsTrue(proof.valid);
+            if(scenario<3 || scenario==5)Assert::IsTrue(proof.valid);
             else Assert::IsFalse(proof.valid);
             const auto bounds=guard->VerifiedSemanticLineBounds(4);
-            if(scenario==0) {
+            if(scenario==0 || scenario==5) {
                 Assert::AreEqual(60,bounds[0].bottom,L"Only the four verified black padding rows may extend semantic bounds.");
                 Assert::AreEqual(geometry.glyphLines[0].top,bounds[0].top);
-                Assert::AreEqual(geometry.glyphLines[0].left,bounds[0].left);
+                Assert::AreEqual(seed.text.lineBounds[0].left,bounds[0].left);
                 Assert::AreEqual(geometry.glyphLines[0].right,bounds[0].right);
                 Assert::AreEqual(56,geometry.glyphLines[0].bottom,L"The actual glyph operation remains unchanged.");
                 Assert::AreEqual(58,guard->VerifiedSemanticLineBounds(2)[0].bottom);
@@ -4322,6 +4325,13 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
             if(mutation==0 && status==SubtitleCurrentCueProofStatus::Ready) {
+                const auto& semantic=receipt.VerifiedSemanticLineBounds();
+                Assert::IsTrue(semantic[0].Valid(),
+                    L"Semantic bounds must be sealed before consuming the worker footprint-protection receipt.");
+                Assert::IsTrue(semantic[0].left<=receipt.AcceptedCue().lineBounds[0].left &&
+                    semantic[0].top<=receipt.AcceptedCue().lineBounds[0].top &&
+                    semantic[0].right>=receipt.AcceptedCue().lineBounds[0].right &&
+                    semantic[0].bottom>=receipt.AcceptedCue().lineBounds[0].bottom);
                 SubtitleBoxPresentation tracker;SubtitleBoxPreview preview;SubtitleBoxResult held;
                 Assert::IsTrue(tracker.ConsumeCurrentCueProof(receipt,preview,held),
                     L"A valid advanced proof adapts without a measured request key.");
@@ -4811,7 +4821,7 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             auto replacement=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(2,*pixels));
             // Model a harmless tracker identity/signature change after a fresh
             // scan. Both templates still verify the same exact current pixels.
-            ++replacement->text.cue;replacement->text.signature^=1;
+            ++replacement->text.cue;replacement->text.signature[0]^=1;
             auto worker=std::make_unique<SubtitleMeasurementWorker>();
             const auto makeTemplate=[&](const SubtitleBoxObservation& scan,int background=3) {
                 SubtitleCurrentCueTemplateInput input;input.observation=scan;input.acceptedCue=scan.text;

@@ -93,8 +93,12 @@ public:
         Assert::AreEqual(accepted.lineBounds[0].bottom,tight.glyphLines[0].bottom);
         auto excessive=semantic;++excessive[0].bottom;
         Assert::IsFalse(CurrentSubtitleCueFitsVerifiedOperation(rounded,accepted,tight,4,&excessive));
-        auto shrunken=semantic;++shrunken[0].left;
+        auto shrunken=semantic;shrunken[0].left=accepted.lineBounds[0].left+1;
         Assert::IsFalse(CurrentSubtitleCueFitsVerifiedOperation(rounded,accepted,tight,4,&shrunken));
+        // An unused capture collar need not become a semantic padding strip.
+        auto narrow=semantic;narrow[0].left=accepted.lineBounds[0].left;
+        Assert::IsTrue(narrow[0].left>tight.glyphLines[0].left);
+        Assert::IsTrue(CurrentSubtitleCueFitsVerifiedOperation(rounded,accepted,tight,4,&narrow));
         // Two similar lines still require a one-to-one capture correspondence.
         auto pair=accepted;pair.lineCount=2;pair.lineBounds[1]={200,336,440,350};
         pair.lineSignatures[1]=pair.lineSignatures[0];

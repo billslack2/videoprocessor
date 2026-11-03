@@ -3127,6 +3127,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         SubtitleCutPasteGeometry operation=state->descriptor.operation;
         const auto& key=request.currentKey;
         bool stillCurrent=false;
+        std::array<SubtitleBoxRect,3> semanticLineBounds{};
         {std::lock_guard<std::mutex> lock(m_mutex);
             stillCurrent=!m_stopping && m_currentCueState &&
                 SameProofInterpretation(state->descriptor,m_currentCueState->descriptor) &&
@@ -3139,14 +3140,13 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             const auto* footprint=request.sourceMode==SubtitlePreviewMode::None?nullptr:&state->footprint;
             verified=state->pending.VerifyCurrentCuePixels(
                 key,request.source,footprint,currentInk,reason,true);
+            if(verified && footprint && currentInk)
+                semanticLineBounds=footprint->VerifiedSemanticLineBounds(currentInk->step);
             if(verified && footprint && !footprint->ApplyCurrentFootprintProtection(
                     key,request.physicalBase,operation)) {
                 verified=false;currentInk.reset();reason="current-cue-cleanup-projection-unavailable";
             }
         } else reason="current-cue-template-context-or-window-changed";
-        std::array<SubtitleBoxRect,3> semanticLineBounds{};
-        if(verified && currentInk && request.sourceMode!=SubtitlePreviewMode::None)
-            semanticLineBounds=state->footprint.VerifiedSemanticLineBounds(currentInk->step);
         const auto proofFinished=std::chrono::steady_clock::now();
         const double elapsed=std::chrono::duration<double,std::milli>(proofFinished-started).count();
 #ifdef _WIN32

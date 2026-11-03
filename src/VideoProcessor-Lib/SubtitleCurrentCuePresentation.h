@@ -70,14 +70,18 @@ inline bool CurrentSubtitleCueFitsVerifiedOperation(const SubtitleBoxResult& cur
             const auto& line=current.lineBounds[i];
             const auto& capture=operation.glyphLines[j];
             const auto& semantic=verifiedSemanticLineBounds?(*verifiedSemanticLineBounds)[j]:capture;
-            // Only the typed worker receipt supplies wider bounds in production.
-            // Check their bounded shape again here; the immutable capture stays exact.
-            if(!capture.Valid() || !semantic.Valid() ||
-                semantic.left>capture.left || semantic.top>capture.top ||
-                semantic.right<capture.right || semantic.bottom<capture.bottom ||
-                capture.left-semantic.left>sampleStep || capture.top-semantic.top>sampleStep ||
-                semantic.right-capture.right>sampleStep || semantic.bottom-capture.bottom>sampleStep ||
-                !SubtitleBoxLookahead::SameLine(line,accepted.lineBounds[j],sampleStep) ||
+            // Only the typed worker receipt supplies a semantic fringe in
+            // production. It is anchored to the accepted grouping box: an
+            // unused glyph-capture collar must not require un-erased movie
+            // pixels to become padding. The immutable capture stays exact.
+            const auto& anchor=accepted.lineBounds[j];
+            const bool boundedSeal=!verifiedSemanticLineBounds ||
+                (anchor.Valid() && semantic.left<=anchor.left && semantic.top<=anchor.top &&
+                 semantic.right>=anchor.right && semantic.bottom>=anchor.bottom &&
+                 anchor.left-semantic.left<=sampleStep && anchor.top-semantic.top<=sampleStep &&
+                 semantic.right-anchor.right<=sampleStep && semantic.bottom-anchor.bottom<=sampleStep);
+            if(!capture.Valid() || !semantic.Valid() || !boundedSeal ||
+                !SubtitleBoxLookahead::SameLine(line,anchor,sampleStep) ||
                 line.left<semantic.left || line.top<semantic.top ||
                 line.right>semantic.right || line.bottom>semantic.bottom ||
                 !SubtitleBoxLookahead::SimilarSignature(current.lineSignatures[i],accepted.lineSignatures[j]))continue;

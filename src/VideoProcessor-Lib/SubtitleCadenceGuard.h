@@ -129,43 +129,51 @@ public:
     }
     // This is only a semantic grouping allowance around the original glyph
     // captures. It never enlarges capture, erasure, destination, or ownership.
-    // Every added native pixel was already erased by the accepted operation,
+    // Added pixels inside the original capture already have its current glyph
+    // proof. Outside it, every added pixel was erased by the accepted operation,
     // was BLACK in its immutable seed, and has passed current-source verification
     // within the encoding envelope. Bright omitted glyphs cannot acquire this seal.
     std::array<SubtitleBoxRect,3> VerifiedSemanticLineBounds(int sampleStep) const {
         std::array<SubtitleBoxRect,3> bounds{};
         if(!m_currentFootprintReceiptValid || sampleStep<1 || sampleStep>8)return bounds;
-        bounds=m_capture;
-        const auto paddingPixel=[&](int x,int y) {
+        const auto paddingPixel=[&](const SubtitleBoxRect& capture,int x,int y) {
+            if(Inside(capture,x,y))return ContainsVerifiedFootprintSample(x,y);
             if(!VerifiedFootprintSampleIsEncodingEquivalent(x,y,true))return false;
             const int at=Index(x,y);
             return at>=0 && m_native[size_t(at)].black;
         };
-        const auto row=[&](int left,int right,int y) {
-            for(int x=left;x<right;++x)if(!paddingPixel(x,y))return false;
+        const auto row=[&](const SubtitleBoxRect& capture,int left,int right,int y) {
+            for(int x=left;x<right;++x)if(!paddingPixel(capture,x,y))return false;
             return true;
         };
-        const auto column=[&](int x,int top,int bottom) {
-            for(int y=top;y<bottom;++y)if(!paddingPixel(x,y))return false;
+        const auto column=[&](const SubtitleBoxRect& capture,int x,int top,int bottom) {
+            for(int y=top;y<bottom;++y)if(!paddingPixel(capture,x,y))return false;
             return true;
         };
-        for(auto& line:bounds)if(line.Valid()) {
+        for(size_t i=0;i<bounds.size();++i) {
+            const auto& capture=m_capture[i];
+            const auto& accepted=m_reference->text.lineBounds[i];
+            if(!accepted.Valid() || !Contains(capture,accepted))continue;
+            auto& line=bounds[i];line=accepted;
+            // Start from the semantic line, not padded capture edges: an
+            // unrelated un-erased corner outside the measured line must not
+            // veto a fully verified narrow black strip beneath that line.
             // Check sides independently; later strips include any newly added
             // orthogonal span so all corners are covered too. No source reads.
             for(int n=0;n<sampleStep && line.top>0;++n) {
-                if(!row(line.left,line.right,line.top-1))break;
+                if(!row(capture,line.left,line.right,line.top-1))break;
                 --line.top;
             }
             for(int n=0;n<sampleStep && line.bottom<m_source.height;++n) {
-                if(!row(line.left,line.right,line.bottom))break;
+                if(!row(capture,line.left,line.right,line.bottom))break;
                 ++line.bottom;
             }
             for(int n=0;n<sampleStep && line.left>0;++n) {
-                if(!column(line.left-1,line.top,line.bottom))break;
+                if(!column(capture,line.left-1,line.top,line.bottom))break;
                 --line.left;
             }
             for(int n=0;n<sampleStep && line.right<m_source.width;++n) {
-                if(!column(line.right,line.top,line.bottom))break;
+                if(!column(capture,line.right,line.top,line.bottom))break;
                 ++line.right;
             }
         }
