@@ -1,0 +1,46 @@
+{
+  "sourceCommit": "312c1370a0e3c37be891a8c2531a3ce1a8698660",
+  "run": "20261103-042748-df55f6d2",
+  "status": "Failed",
+  "executed": 1091,
+  "passed": 1082,
+  "failed": 9,
+  "failures": [
+    {
+      "method": "StandardRendererGeneratedPersistentDecodedDvCaptionHasNoCadenceFlicker",
+      "message": "Assert failed. Persistent caption composition flashed OFF on an actually submitted source."
+    },
+    {
+      "method": "StandardRendererBlackPersistentDecodedDvCaptionHasNoCadenceFlicker",
+      "message": "Assert failed. Persistent caption composition flashed OFF on an actually submitted source."
+    },
+    {
+      "method": "StandardRendererClassicLifecycleWithNormalDriftAndWiderFill",
+      "message": "Assert failed. Reconstruction submitted an unprocessed caption or changed the native picture size during preparation."
+    },
+    {
+      "method": "StandardRendererBlackUhdV210ResidualUiWithMovingPicture",
+      "message": "Assert failed. Shader building changed the accepted native picture viewport."
+    },
+    {
+      "method": "StandardRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",
+      "message": "Assert failed. A crop needs a current measured native certificate, prior witnessed unprocessed continuation, or exact current measured source for an unprocessed advanced output; full raster needs current authority or exact current raw visibility."
+    },
+    {
+      "method": "StandardRendererReconstructionUhdV210CrossEdgeMovingCleanup",
+      "message": "Assert failed. Shader building changed the accepted native picture viewport."
+    },
+    {
+      "method": "StandardRendererReconstructionUhdV210ResidualUiWithMovingPicture",
+      "message": "Assert failed. Shader building changed the accepted native picture viewport."
+    },
+    {
+      "method": "StandardRendererDecodedDvUnknownInputKeepsCurrentSource",
+      "message": "Assert failed. The clean input after one current-source UNKNOWN must be the fresh adjacent source with its own composed cue, without repeat renewal or a synthetic gap."
+    },
+    {
+      "method": "StandardRendererReconstructionUhdResidualUiWithMovingPicture",
+      "message": "Assert failed. Shader building changed the accepted native picture viewport."
+    }
+  ]
+}

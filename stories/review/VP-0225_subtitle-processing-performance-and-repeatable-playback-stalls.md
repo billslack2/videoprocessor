@@ -4,6 +4,27 @@
 
 Review
 
+2026-11-03 full runtime follow-up (312c1370, not deployed): all 1,071 native
+contracts pass inside the full x64 Release run. Standard executes 1,091 tests:
+1,082 pass and nine actual-renderer cases fail; the Beta runtime lane is not reached.
+The real UHD single ready-rearm probe takes about 0.09ms with 8,100 mask words and
+current glyph/backing checks, but actual 60Hz Classic still rebuilds on 38 of 57
+eligible same-cue attempts, leaving median setup near 9.6ms. No whole-pipeline
+speedup or passing qualification is claimed. Computed first-rejection diagnostics
+are being added before changing any eligibility guard.
+
+Current-source handoff now reuses the exact successfully composed final operation
+and consumes the exact-current one-use cleanup receipt. The remaining dense-cue
+failure is at unowned movie pixel (2291,1897): the raw detector line bbox extends
+to2298 while actual glyph capture/content ends2290. Including raw bbox padding in
+the cleanup hull wrongly rejects current movie motion. Independent review confirms
+that only prepared shader extraction/content, not raw detector bbox padding, should
+bound this projection; narrow repair and regression are in progress. New UNKNOWN
+tests require current source pixels rather than replaying an old whole frame.
+Some shader-startup outputs also retain a translated Classic crop after selecting
+advanced mode; that production routing is under review. Last deployment remains
+53058498. Full qualification, motion GPU coverage and live acceptance remain open.
+
 2026-11-03 native follow-up: clean source 3d7fb6a8 passes all 1,068 native
 contracts (run035012-eed9d9c5). The tracker now consumes verified current pixel
 continuation without recreating bar authority; it retains original cue/reference
