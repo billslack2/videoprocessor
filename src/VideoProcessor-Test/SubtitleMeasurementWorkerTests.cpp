@@ -3769,9 +3769,13 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
     }
     TEST_METHOD(CurrentCueWorkerProofUsesFreshPixelsAndIgnoresMovingPictureOutsideCue) {
         auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
-        auto seed=CompleteThreeLineScan(4,*seedPixels);
+        std::array<SubtitleBoxObservation,4> acceptedFrames;
+        for(size_t i=0;i<acceptedFrames.size();++i)
+            acceptedFrames[i]=CompleteThreeLineScan(4+i,*seedPixels);
+        auto seed=acceptedFrames.front();
         SubtitleBoxPresentation tracker;
-        const auto seedPreview=SubtitleBoxLookahead::Resolve(&seed,1,11,21);
+        const auto seedPreview=SubtitleBoxLookahead::Resolve(
+            acceptedFrames.data(),acceptedFrames.size(),11,21);
         const auto acquired=tracker.Consume(seedPreview);
         Assert::IsTrue(acquired.detected && acquired.lineCount==3,
             L"The comparison tracker starts with an independently accepted three-line cue.");
