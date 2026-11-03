@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "sourceCodeTested": "3ea6335ad5e772505e38878ad7baf91bace38300",
+  "documentationHead": "69c51f18f516866912d89c0900c7da9478ab9bf5",
+  "evidenceFiles": [
+    {
+      "path": "capture-summary.json",
+      "bytes": 676,
+      "sha256": "b06875a7dbd94795f78cb6e4ee909960277c42978cd1ed68240fe026391b889d"
+    },
+    {
+      "path": "contact_00-14s.jpg",
+      "bytes": 528102,
+      "sha256": "bdc29529bb501776cec3440c4a34b15dba91d13c929df254c07e7a318bd19773"
+    },
+    {
+      "path": "contact_15-29s.jpg",
+      "bytes": 589767,
+      "sha256": "8b1bef4fd7e73c89031bdb8529799ef8a8a57ead11bd8d7cf3686ca7d35915b1"
+    },
+    {
+      "path": "contact_30-42s.jpg",
+      "bytes": 536261,
+      "sha256": "196d2d5d690e08d6f948f4c8da398ff65d48373bac99d1557db52824ef284674"
+    },
+    {
+      "path": "engine_caption_pixels_27-35.csv",
+      "bytes": 21598,
+      "sha256": "3ddf7182165ce37700e6b2fe2cf62eed66c22953ea6c834d47e43b99b2a5b4f2"
+    },
+    {
+      "path": "evidence.md",
+      "bytes": 4731,
+      "sha256": "5177be1a11cb2c9b6ae69f9990553a57a0fec195e9bad7a81c3a1a2ee7df0e74"
+    },
+    {
+      "path": "frame_034.0s.png",
+      "bytes": 1568690,
+      "sha256": "b666e97fd74096aecbb2c8c70b3c81033c6e1123eb8a28b5afc3eb46ac8f20ad"
+    },
+    {
+      "path": "frame_034.5s.png",
+      "bytes": 1613422,
+      "sha256": "7b02e309f73f95d489f7200fe21b37b3cbfff887b2dbd472c368bdc9c88c9d5b"
+    },
+    {
+      "path": "frame_036.2s.png",
+      "bytes": 1500375,
+      "sha256": "b4eafe23876b64ddeaa515033b8329dd56a188b3ca9c2b849766f17f98bc2013"
+    },
+    {
+      "path": "frame-000001.txt",
+      "bytes": 142,
+      "sha256": "d471ef95ed63e7f2d21b55c86aa65ebc86d3592277b920e7d733a57175cc8698"
+    },
+    {
+      "path": "key_log_excerpt_steam.txt",
+      "bytes": 14865,
+      "sha256": "9789699f9f96b4c19537dd5611b803b9518c68c02103b4a3d2f006241939498d"
+    },
+    {
+      "path": "log-correlation.md",
+      "bytes": 6138,
+      "sha256": "15ca3149bbc224043398e032005a145b5dda081c1bc6ec74eb4c70123cf7fd63"
+    },
+    {
+      "path": "presentation_transitions_1253.txt",
+      "bytes": 93316,
+      "sha256": "d62c36590d89c0ea9e921e0c92db9fce25dd4cbca543e6a21754f357d5a972c2"
+    },
+    {
+      "path": "recording-visual-review.md",
+      "bytes": 7961,
+      "sha256": "ce3ca5b7fbb769b6b02d76947a246bf02b829b15edd48a131a3a2a7a898bde77"
+    },
+    {
+      "path": "replay-build.log",
+      "bytes": 416,
+      "sha256": "9b8c0cf55f0ea009dd0b998d57afe9954b7592b06b4d37354b1f0806de6da65b"
+    },
+    {
+      "path": "replay-current.txt",
+      "bytes": 6456,
+      "sha256": "ec7304004adcb5f8fc6a63a46f3019ada6e2b91d092c7db48e46762705de8dcf"
+    },
+    {
+      "path": "replay-edge-jitter.txt",
+      "bytes": 7278,
+      "sha256": "cac6894b7f251c541cd82c8ac10db1794291055d84a9b627202d2ad934f690dd"
+    },
+    {
+      "path": "replay-held-control.txt",
+      "bytes": 8005,
+      "sha256": "b9b8c8ddd02dc6ae679de664c1df41affe10037c04083d847646a084b38738ba"
+    },
+    {
+      "path": "replay-held-edge-jitter-before-fix.txt",
+      "bytes": 7278,
+      "sha256": "3713ff3912f1b05ebb2f56fe612550a86b2e40f663553e089f92beca57c41476"
+    },
+    {
+      "path": "replay-held-edge-jitter.txt",
+      "bytes": 8005,
+      "sha256": "8f23ce6d5e7d2151a4b4c25979f61e2c878485793cac2743eb83b0ed9b02a2bf"
+    },
+    {
+      "path": "replay-phase-guard.txt",
+      "bytes": 8005,
+      "sha256": "186a5236977c5d78f697fe3408221654ca51ff0b340692bd549292302f74c48b"
+    },
+    {
+      "path": "replay-sequence-current.txt",
+      "bytes": 7278,
+      "sha256": "6aef769b55820a340a9bd370aaa915890789b889d297c79b5539f518af3da460"
+    },
+    {
+      "path": "replay-sequence-legacy.txt",
+      "bytes": 7278,
+      "sha256": "9db66c5fbaa7118be18f3fcb29d689914625cc1332340d5dea53af6b3c3882e5"
+    },
+    {
+      "path": "shader-cold-compile-excerpt.txt",
+      "bytes": 2284,
+      "sha256": "1dae35fa9d235f7ed101a649a4687c7626e8534fc236a7425fe5fb0dbc2dbe38"
+    }
+  ],
+  "excludedInputs": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\logs\\analysis-20261103-125656-57168-1\\frame-000001.bin",
+      "bytes": 22118400,
+      "sha256": "49c956a75beecf13f08a7d869d5957123eb3655dae5e5caab14130e2dc5c3ee2",
+      "copied": false
+    },
+    {
+      "path": "C:\\Users\\bslac\\Videos\\2026-11-03 12-53-07.mp4 and separate 95-frame capture",
+      "bytes": 2101248000,
+      "copied": false,
+      "note": "Full video/capture binaries intentionally omitted."
+    }
+  ],
+  "currentProbeSource": {
+    "path": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\steam-engine-20261103\\decoded_subtitle_cue_replay.cpp",
+    "bytes": 11461,
+    "lastWrite": "2026-11-03T13:30:59.8611602-05:00",
+    "sha256": "df954b6a7bb221f84644110ce224b602fa8d4795ec7e745dcdb7a2909555ff44",
+    "copied": false,
+    "builtOrRunByTrackerUpdate": false,
+    "note": "Current file revision may be newer than the saved replay output logs."
+  },
+  "results": {
+    "focusedCpu": "2/2 passed, run 20261103-133146-f69b91b6",
+    "native": "1083/1083 passed, run 20261103-133614-d43641aa",
+    "gpu": "not run",
+    "liveAcceptance": "not established"
+  }
+}

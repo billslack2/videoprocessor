@@ -1,0 +1,14 @@
+Source log: C:\Videoprocessor\vp\logs\vp.log
+
+2026-11-02 22:08:57 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-3/blur-0/phase-0 result=ready elapsed_ms=13.91
+2026-11-02 22:08:57 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-5/blur-1/phase-0 result=ready elapsed_ms=8.67
+2026-11-02 22:09:38 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-3/blur-0/phase-0 result=ready elapsed_ms=16.38
+2026-11-02 22:09:38 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-5/blur-1/phase-0 result=ready elapsed_ms=12.00
+2026-11-02 22:09:53 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-3/blur-0/phase-0 result=ready elapsed_ms=9.35
+2026-11-02 22:09:53 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-5/blur-1/phase-0 result=ready elapsed_ms=10.77
+2026-11-02 22:14:26 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-3/blur-0/phase-0 result=ready elapsed_ms=12.11
+2026-11-02 22:14:26 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-5/blur-1/phase-0 result=ready elapsed_ms=11.90
+2026-11-02 22:20:34 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-3/blur-0/phase-0 result=ready elapsed_ms=24.17
+2026-11-02 22:20:34 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-5/blur-1/phase-0 result=ready elapsed_ms=15.18
+2026-11-03 12:49:09 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-3/blur-0/phase-0 result=ready elapsed_ms=31827.64
+2026-11-03 12:49:49 | VP subtitle background preparation: stage=compile-pass key=12832300491286232719 pass=field-0/algorithm-0/background-5/blur-1/phase-0 result=ready elapsed_ms=39488.31
