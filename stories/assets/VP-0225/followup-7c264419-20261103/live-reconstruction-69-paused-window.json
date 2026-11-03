@@ -1,0 +1,22 @@
+{
+  "runtimeSource": "69c51f18f516866912d89c0900c7da9478ab9bf5",
+  "process": 63656,
+  "profile": "reconstruction",
+  "frames": 240,
+  "first": "19:14:39.623Z 92F80D06 G1 O27848 S27848",
+  "last": "19:14:49.589Z 92F80D06 G1 O28087 S28087",
+  "composed": 240,
+  "prepared": 240,
+  "submitted": 240,
+  "currentSelected": 240,
+  "nativeShapes": [
+    "0,272,3840,1888"
+  ],
+  "sourceShapes": [
+    "22,272,3818,1888"
+  ],
+  "maxLogSubmissionGapMs": 49.6082,
+  "maxSelectedStep": 1.0,
+  "visualAcceptance": false,
+  "fullQualification": false
+}

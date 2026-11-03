@@ -1,0 +1,41 @@
+source-picture outcome=1 available=1 measured=1 estimate=1 bounds=0,275-3840,1884 reason=distributed-source-boundaries samples=204008
+scenario sequence=0 legacy_refresh=0
+cadence_seed valid=1 reason=cadence-seeded seq=7733 reduction=30 scale=0.70 geometry_valid=1 samples=152620
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=0 seq=7733 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=context-or-pixel-proof coverage=100 difference=0 line=-1 owned=0 covered=0 fringe=0 pixel_compare=0 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+footprint_benchmark phase=0 repeats=32 valid=32 median_ms=2.9951 p95_ms=3.9396 max_ms=4.0065
+cadence_phase phase=0 valid=1 reason=cadence-current-pixels samples=152620 mismatch=-1,-1
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=1 seq=7734 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+footprint_benchmark phase=0 repeats=32 valid=32 median_ms=2.9171 p95_ms=5.0437 max_ms=5.4078
+cadence_phase phase=0 valid=1 reason=cadence-current-pixels samples=152620 mismatch=-1,-1
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=2 seq=7735 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+footprint_benchmark phase=0 repeats=32 valid=32 median_ms=3.0218 p95_ms=4.5825 max_ms=5.0205
+cadence_phase phase=0 valid=1 reason=cadence-current-pixels samples=152620 mismatch=-1,-1
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=3 seq=7736 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=4 seq=7737 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=5 seq=7738 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=6 seq=7739 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=7 seq=7740 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=8 seq=7741 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=9 seq=7742 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=10 seq=7743 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=11 seq=7744 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=12 seq=7745 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=13 seq=7746 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=14 seq=7747 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876
+raw_plane picture=275-1884 ink_floor=677 step=4
+frame=15 seq=7748 raw_detected=1 raw_held=0 raw_lines=1 raw_complete=1 independent_bars=1 bar_authority=1 revalidated=0/0 caption_backed=0/0 accepted=1 held=0 revised=0 pending=0 work_limit=0 cue=1 box=1518,1926-2310,2022 ink_reason=glyphs-match coverage=100 difference=0 line=0 owned=0 covered=0 fringe=0 pixel_compare=1 cert=0 geometry_valid=1 src=1462,1900-2362,2032 dst=1462,1744-2362,1876

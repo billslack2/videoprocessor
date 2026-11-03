@@ -1,0 +1,42 @@
+{
+  "sourceCommit": "7c264419b7e648fa03992ee58512d7de1559a176",
+  "nativeRun": "20261103-141551-53d4a8dc",
+  "nativeExecuted": 1084,
+  "nativePassed": 1084,
+  "qualification": false,
+  "copiedEvidence": [
+    {
+      "file": "live-reconstruction-69-paused-window.json",
+      "source": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\steam-engine-20261103\\live-reconstruction-69-paused-window.json",
+      "sha256": "BF7DDAC3B112EEB15ED7145D79908E7EB148FE4B201EF0052B7DC61BA05F5FD5"
+    },
+    {
+      "file": "footprint-benchmark-final-receipt.json",
+      "source": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\steam-engine-20261103\\footprint-benchmark-final-receipt.json",
+      "sha256": "212C001BC40070483C00B989EFBA505518511427EE39B8E9B9F164DCBECB5D6E"
+    },
+    {
+      "file": "footprint-benchmark-final-static.txt",
+      "source": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\steam-engine-20261103\\footprint-benchmark-final-static.txt",
+      "sha256": "24FB4F04FFE81FFED6375989F55B26361387381F4003874249A1750738011817"
+    },
+    {
+      "file": "native-1084-iteration.json",
+      "source": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-141551-53d4a8dc\\iteration.json",
+      "sha256": "A45E0B0E6B7C04A394F50792628405D861E33319DCB8DE7E80FC7728A1B63B3B"
+    },
+    {
+      "file": "focused-3-release-iteration.json",
+      "source": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-141756-16008dbd\\iteration.json",
+      "sha256": "1E104151EFF6DB7192348F5F013F517728E99576CC17DFF012FF5966B0152716"
+    }
+  ],
+  "nativeTrxSha256": "6094B7B5A333CF430F4E14417C0CD4EE1BD187B6F2FC40F03BA77078529B8B99",
+  "benchmarkGuardSha256": "6EB25E2F3DAF8132A24506B7A5D07E45313588ED1B9E0750B632E692FBA45DDC",
+  "benchmarkBinarySha256": "089302ACBBBA4776B4DD44178A02DD1AAB5711300448A45E8B2210DEE588021D",
+  "focusedRun": "20261103-141756-16008dbd",
+  "focusedExecuted": 3,
+  "focusedPassed": 3,
+  "focusedQualification": false,
+  "focusedTrxSha256": "F566813C1C0FF98538693F78478F2AB0AA9D52103E94AEF0F1441D59ED1FB365"
+}
