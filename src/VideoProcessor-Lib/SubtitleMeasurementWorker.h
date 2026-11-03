@@ -892,6 +892,11 @@ public:
         const SubtitleCadenceGuard* currentFootprint=nullptr) {
         m_diagnostics.readyRearmRejectCode=ReadyRearmRejectCode::NotAttempted;
         m_diagnostics.readyRearmLayoutMismatchBits=0;
+        m_diagnostics.seedBandSamplesChecked=0;
+        m_diagnostics.readyRearmMaskWordsChecked=0;
+        m_diagnostics.readyRearmGlyphSamplesChecked=0;
+        m_diagnostics.readyRearmBackingSamplesChecked=0;
+        m_diagnostics.readyRearmKnownSamplesChecked=0;
         const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
             return outer.Valid() && inner.Valid() && outer.left<=inner.left &&
                 outer.top<=inner.top && outer.right>=inner.right && outer.bottom>=inner.bottom;
