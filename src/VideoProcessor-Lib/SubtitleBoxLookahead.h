@@ -2420,7 +2420,7 @@ namespace SubtitleBoxLookahead
     }
 }
 
-struct SubtitleCurrentCueProofReceipt;
+class SubtitleCurrentCueProofReceipt;
 
 // Only presentation advances this state. Looking into future pixels never moves
 // the current cue forward, and repeated output cannot manufacture confirmation.

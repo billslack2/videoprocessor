@@ -182,8 +182,8 @@ public:
         for(const auto& line:geometry.glyphLines)interlineGlyph|=In(line,interlineX,interlineY);
         Assert::IsFalse(interlineGlyph,
             L"The measured backing transition is an inter-line support pixel, not a glyph pixel.");
-        Assert::AreEqual(uint16_t(48),FixtureLuma(interlineX,interlineY,0));
-        Assert::AreEqual(uint16_t(64),FixtureLuma(interlineX,interlineY,1));
+        Assert::AreEqual(48,int(FixtureLuma(interlineX,interlineY,0)));
+        Assert::AreEqual(64,int(FixtureLuma(interlineX,interlineY,1)));
 
         FillDecodedFrame(words,1);
         source=Source(words);
