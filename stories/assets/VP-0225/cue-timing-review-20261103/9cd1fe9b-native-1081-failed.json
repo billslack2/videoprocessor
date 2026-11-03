@@ -1,0 +1,52 @@
+{
+  "status": "Failed",
+  "source": {
+    "commit": "9cd1fe9b6785106f2b3fe92f1aaaf2d5a1bbec6b",
+    "dirty": false,
+    "fingerprint": "d86358a9ac65acd6918415113751c3fe56c73ea30ed6c4cf504d5f8bdd178c05",
+    "label": "9cd1fe9b6785",
+    "build": "9cd1fe9b6785106f2b3fe92f1aaaf2d5a1bbec6b"
+  },
+  "testEnvironment": {
+    "sourcePictureDetector": true,
+    "legacyDetectorEnvironment": null,
+    "sourcePictureShadow": null
+  },
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0,
+      "seconds": 0.612,
+      "log": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-090826-5ec5a5b9\\native-library-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "5c60aa90-e2cf-4b13-bf18-8c5cec47854a",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "critical-native-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-CriticalNativeTests.vcxproj",
+      "exit": 0,
+      "seconds": 47.329,
+      "log": "E:\\codex\\videoprocessor\\combined-ar-stutter-20261102\\artifacts\\qualification\\runs\\20261103-090826-5ec5a5b9\\critical-native-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "f6ebfd66-1c20-44f0-bc30-912867277f50",
+      "PSShowComputerName": false
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 1,
+      "binary": "x64\\Release\\tests-critical-native\\VideoProcessor-CriticalNativeTests.dll",
+      "trx": "artifacts/qualification/runs/20261103-090826-5ec5a5b9/standard.trx",
+      "trxSha256": "32691462791854C5D258CD616FB6C0C22F480B21C8B55D4BB01016DC4190885C",
+      "executed": 0,
+      "native": 0,
+      "actualClassic": 0,
+      "seconds": 72.262
+    }
+  ],
+  "finished": "2026-11-03T09:10:27.2504369-05:00"
+}
