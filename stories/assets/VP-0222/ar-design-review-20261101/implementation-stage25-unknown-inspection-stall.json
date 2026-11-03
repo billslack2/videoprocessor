@@ -1,0 +1,34 @@
+{
+  "stage": 25,
+  "date": "2026-11-02",
+  "deployedSource": "ad9e7701e05393c1d79fb5f9b11b5a88484c3a35",
+  "repairSource": "788554a100afe0af2352b904fe1870d80fb75bb7",
+  "repairBranch": "codex/reconstruction-admission-stall-20261102",
+  "status": "Focused native and actual-renderer checks passed; full qualification and motion suites running",
+  "incident": {
+    "process": 36456,
+    "profile": "reconstruction",
+    "instance": "{A3E5EE18-EF5A-43C6-A88C-C6E29BC0BE15}",
+    "lastSubmittedSource": 286,
+    "inputSourceObserved": 1608,
+    "workerSubmitted": 1577,
+    "workerCompleted": 1576,
+    "workerFailed": 0,
+    "workerCpuAverageMs": 7.981,
+    "admissionReason": "subtitle inspection pending; keep the last complete movie canvas"
+  },
+  "diagnosis": "Input and analysis advance; UNKNOWN subtitle inspections with no current candidate withhold every new frame indefinitely. Presentation starvation, not a demonstrated blocked GPU.",
+  "repair": "Continue current raw input at an already submitted matching native aperture, without minting caption/native certificates, absence, erasure or renewed detection. Keep positive cue and actual picture-expansion guards.",
+  "focusedValidation": {
+    "nativeUnknownInspections": 1600,
+    "nativeNoNewProof": true,
+    "standardAndBetaActualRenderers": true,
+    "blackAndReconstruction": true,
+    "distinctActuallySubmittedUnknownSourcesRequired": 21,
+    "realAspectTransitionsAfterUnknown": true
+  },
+  "configurationEdits": [],
+  "temporaryRecovery": "Restarted unchanged build; existing renderer.ready action selected Classic and current-frame submissions resumed. Player subsequently closed to isolate GPU qualification.",
+  "evidenceRoot": "E:\\codex\\videoprocessor\\evidence\\reconstruction-presentation-stall-20261102-1853",
+  "movingPlaybackStutter": "This captured stall is diagnosed and repaired in source; general moving-playback smoothness remains a live acceptance check."
+}
