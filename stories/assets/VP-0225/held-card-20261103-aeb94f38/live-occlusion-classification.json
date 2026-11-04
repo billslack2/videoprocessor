@@ -1,0 +1,37 @@
+{
+  "process": 31588,
+  "sourceCommit": "aeb94f38ef7edc89f5f10b3307c47c67a8a508bd",
+  "submissionGapMs": 35914,
+  "renderedNotSubmitted": 848,
+  "classification": "Host/window occlusion, not demonstrated optional-analysis starvation",
+  "evidence": [
+    {
+      "line": 21347,
+      "time": "2026-11-03 22:27:47",
+      "text": "VP presentation unavailable: present_hr=0x087A0001 removed_hr=0x00000000 occluded=1"
+    },
+    {
+      "line": 21353,
+      "text": "presentation deferred: visible=1 iconic=1 client=0x0 rendered_but_occluded=1 failure_streak=0"
+    }
+  ],
+  "repeatedOcclusionThrough": "2026-11-03 22:28:21",
+  "firstSuccessfulSubmit": {
+    "source": 852,
+    "utc": "2026-11-04T03:28:22.810Z",
+    "presentId": 1
+  },
+  "otherGaps": [
+    {
+      "ms": 429,
+      "cause": "Renderer replacement"
+    },
+    {
+      "ms": 162,
+      "cause": "Scheduled fullscreen-entry live-queue reset"
+    }
+  ],
+  "userActionInferred": false,
+  "log": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-aeb94f38\\live-latest\\runtime.log",
+  "logSha256": "d98dadecde253100806c7d485ca8a985bb30dc8d8fdb1214a898fdfa25525fc8"
+}

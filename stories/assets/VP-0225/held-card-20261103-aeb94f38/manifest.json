@@ -1,0 +1,63 @@
+{
+  "sourceCommit": "aeb94f38ef7edc89f5f10b3307c47c67a8a508bd",
+  "generatedUtc": "2026-11-04T03:31:49.069103+00:00",
+  "files": [
+    {
+      "file": "deployment.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-aeb94f38\\deployment.json",
+      "bytes": 16461,
+      "sha256": "f3da9d2f40ca3fc15ee64116766f8cbde1a17a146a462650dad7ee0b8a871d92"
+    },
+    {
+      "file": "captured-contract.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-aeb94f38\\captured-contract-validation.json",
+      "bytes": 1361,
+      "sha256": "c2b583ca37bf0784a09babb0916ec14358ca0e004e1cf9fd5a5831da7cd97175"
+    },
+    {
+      "file": "paired-comparison.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-214303\\paired-comparison.json",
+      "bytes": 23048,
+      "sha256": "cf05bd1252f44f62ceb8f22da1a302f0fa6a9a322c5f49dc4ca9f67ceb04ae0b"
+    },
+    {
+      "file": "native.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-214538-3a4095a8\\iteration.json",
+      "bytes": 2700,
+      "sha256": "6523da8c8138daf272f0c3bbf32f733e98aacd381eddceb8acd6c28f4286e0fb"
+    },
+    {
+      "file": "focused.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-220716-e8224e6f\\iteration.json",
+      "bytes": 4800,
+      "sha256": "37201e7129174d733af745af7f6b4ce647c9b899ad59a23d075f6d18060bfd19"
+    },
+    {
+      "file": "motion.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\motion-aeb94f38-20261103\\motion-renderer-tests.json",
+      "bytes": 1609,
+      "sha256": "b8939a3fb7452f9a9764d505bbb7976e28fed5766eadd038d5327d6a33e1f622"
+    },
+    {
+      "file": "live.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-aeb94f38\\live-latest\\summary.json",
+      "bytes": 13579,
+      "sha256": "ddd14422912ce176c871ba63c8773c59909738fde4da4c5d9990c426c9ed1dad"
+    },
+    {
+      "file": "launch.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-aeb94f38\\launch.json",
+      "bytes": 565,
+      "sha256": "23878d140a2b87a9297fefbcf28144b795884ce8ead8436dbc8b7882cba89c57"
+    },
+    {
+      "file": "summary.md",
+      "sha256": "8d7cf78c6e8fa93c87c9fde8f2adcf09ed83f394f4ffe2e2e353e55df48999eb"
+    },
+    {
+      "file": "live-occlusion-classification.json",
+      "sha256": "6247e2c4149413c5b0741ce81b6e18d7d9b6eb7bb0db81d612a148f8cbfcc94d"
+    }
+  ],
+  "privatePixelsCommitted": false
+}

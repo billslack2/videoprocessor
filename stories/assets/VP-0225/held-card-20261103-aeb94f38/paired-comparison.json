@@ -1,0 +1,1101 @@
+{
+  "schemaVersion": 1,
+  "status": "CapturedComponentRedGreenPassed",
+  "qualification": false,
+  "redDirectory": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-213537",
+  "greenDirectory": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-214303",
+  "redSource": {
+    "commit": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace",
+    "dirty": true,
+    "fingerprint": "2916f9f0c26f2dc32ebf192267c89a3c473d96547ce04b77e9832de042dd0e6a",
+    "label": "378e090af3f1-dirty-2916f9f0c26f",
+    "build": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace-dirty-2916f9f0c26f2dc32ebf192267c89a3c473d96547ce04b77e9832de042dd0e6a"
+  },
+  "greenSource": {
+    "commit": "dc774495dc3629b06e33b46e400fc3e023dd25de",
+    "dirty": true,
+    "fingerprint": "4d9865868dbd0cbd3bcea32e56801f66725b55d775ed4e645a57495f1ffa9a4d",
+    "label": "dc774495dc36-dirty-4d9865868dbd",
+    "build": "dc774495dc3629b06e33b46e400fc3e023dd25de-dirty-4d9865868dbd0cbd3bcea32e56801f66725b55d775ed4e645a57495f1ffa9a4d"
+  },
+  "producerUnchanged": true,
+  "nativeInputsUnchanged": true,
+  "nativeInputFiles": 28,
+  "pixelEdits": false,
+  "forcedHeldFlags": false,
+  "gpu": "none; sourcePrepared modeled identically on both sides",
+  "identityScope": "Captured bytes and original source mapping; synthetic consecutive identities for actual tracker phase-order replay",
+  "redExpectedLineCoverageFailure": true,
+  "greenAllSevenQualified": true,
+  "greenAllThreeHeldCertified": true,
+  "greenOmittedSamplesZero": true,
+  "redFrames": [
+    {
+      "index": 44,
+      "capturedSource": 13568,
+      "syntheticSource": 13568,
+      "cue": 1,
+      "held": 0,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 1,
+      "failed": 1,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "detected",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 45,
+      "capturedSource": 13573,
+      "syntheticSource": 13569,
+      "cue": 1,
+      "held": 0,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 1,
+      "failed": 1,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "detected",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 46,
+      "capturedSource": 13578,
+      "syntheticSource": 13570,
+      "cue": 1,
+      "held": 0,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 1,
+      "failed": 1,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "detected",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 47,
+      "capturedSource": 13583,
+      "syntheticSource": 13571,
+      "cue": 1,
+      "held": 1,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 65535,
+      "failed": 32768,
+      "reason": "current-caption-proof-unavailable",
+      "tracker": "strict-current-ink",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 48,
+      "capturedSource": 13588,
+      "syntheticSource": 13572,
+      "cue": 1,
+      "held": 1,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 65535,
+      "failed": 32768,
+      "reason": "current-caption-proof-unavailable",
+      "tracker": "strict-current-ink",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 49,
+      "capturedSource": 13593,
+      "syntheticSource": 13573,
+      "cue": 1,
+      "held": 1,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 65535,
+      "failed": 32768,
+      "reason": "current-caption-proof-unavailable",
+      "tracker": "strict-current-ink",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 50,
+      "capturedSource": 13598,
+      "syntheticSource": 13574,
+      "cue": 1,
+      "held": 0,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 1,
+      "failed": 1,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "detected",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    }
+  ],
+  "greenFrames": [
+    {
+      "index": 44,
+      "capturedSource": 13568,
+      "syntheticSource": 13568,
+      "cue": 1,
+      "held": 0,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 1,
+      "failed": 1,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "detected",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 45,
+      "capturedSource": 13573,
+      "syntheticSource": 13569,
+      "cue": 1,
+      "held": 0,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 1,
+      "failed": 1,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "detected",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 46,
+      "capturedSource": 13578,
+      "syntheticSource": 13570,
+      "cue": 1,
+      "held": 0,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 1,
+      "failed": 1,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "detected",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 47,
+      "capturedSource": 13583,
+      "syntheticSource": 13571,
+      "cue": 1,
+      "held": 1,
+      "detected": 1,
+      "certificate": 1,
+      "evaluated": 262143,
+      "failed": 0,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "strict-current-ink",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 48,
+      "capturedSource": 13588,
+      "syntheticSource": 13572,
+      "cue": 1,
+      "held": 1,
+      "detected": 1,
+      "certificate": 1,
+      "evaluated": 262143,
+      "failed": 0,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "strict-current-ink",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 49,
+      "capturedSource": 13593,
+      "syntheticSource": 13573,
+      "cue": 1,
+      "held": 1,
+      "detected": 1,
+      "certificate": 1,
+      "evaluated": 262143,
+      "failed": 0,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "strict-current-ink",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1567,
+          1933,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    },
+    {
+      "index": 50,
+      "capturedSource": 13598,
+      "syntheticSource": 13574,
+      "cue": 1,
+      "held": 0,
+      "detected": 1,
+      "certificate": 0,
+      "evaluated": 1,
+      "failed": 1,
+      "reason": "current-prepared-caption-erasure",
+      "tracker": "detected",
+      "rawCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "operationCapture": [
+        [
+          1132,
+          1784,
+          2698,
+          1888
+        ],
+        [
+          1566,
+          1930,
+          2262,
+          2032
+        ]
+      ],
+      "rawLineCards": [
+        [
+          1088,
+          1749,
+          2752,
+          1886
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "omittedSamples": 0,
+      "omittedAbove96": 0,
+      "omittedMaxY": 0,
+      "content": [
+        1132,
+        1784,
+        2698,
+        2032
+      ],
+      "destination": [
+        1055,
+        1630,
+        2774,
+        1876
+      ]
+    }
+  ],
+  "otherSequence": {
+    "note": "Both versions pass; genuine tracker reacquires cue2 at31. No fabricated held failure.",
+    "range": "28-34",
+    "heldCount": 0,
+    "allSevenQualified": true
+  },
+  "producerAudit": [
+    {
+      "path": "artifacts\\incident-20261103-210654\\caption\\held-capture-replay.cpp",
+      "red": "677630D680F1D28D535D9601B1FB17207F10B52A0B36FE615C44822C5066DBEE",
+      "green": "677630D680F1D28D535D9601B1FB17207F10B52A0B36FE615C44822C5066DBEE",
+      "same": true
+    },
+    {
+      "path": "artifacts\\incident-20261103-210654\\caption\\held-capture-replay.vcxproj",
+      "red": "D52F771399B28DD14C40216513BEA18638E012BC9B546869660E14FE25A58FCF",
+      "green": "D52F771399B28DD14C40216513BEA18638E012BC9B546869660E14FE25A58FCF",
+      "same": true
+    },
+    {
+      "path": "tools\\subtitle_tolerance_replay.cpp",
+      "red": "BD92BE5DDFAE1A997DABAE763142657C42BB3267C7BCFCD340D0EABC48F54679",
+      "green": "BD92BE5DDFAE1A997DABAE763142657C42BB3267C7BCFCD340D0EABC48F54679",
+      "same": true
+    },
+    {
+      "path": "src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h",
+      "red": "0DA7FCDB2E9488C0576F980FC1C3B1FA383B54AD4CED0C428D7D6C70C7C16249",
+      "green": "2FF2F5AD15E97771437B0C842461637FC06458623999A5CDCDB556BD0DF9C46C",
+      "same": false
+    },
+    {
+      "path": "src\\VideoProcessor-Lib\\SubtitleCutPaste.h",
+      "red": "A09A7CE81F48A8788B84785C19588C8786F21A46D5A3C135664B8D7F48FF4FF4",
+      "green": "A09A7CE81F48A8788B84785C19588C8786F21A46D5A3C135664B8D7F48FF4FF4",
+      "same": true
+    },
+    {
+      "path": "src\\VideoProcessor-Lib\\vprenderer\\SubtitleAspectRetention.h",
+      "red": "CFD7D90B2E4AD211972302FCE7025634A2E9878E7024E9DE9976678823F25F8D",
+      "green": "CFD7D90B2E4AD211972302FCE7025634A2E9878E7024E9DE9976678823F25F8D",
+      "same": true
+    },
+    {
+      "path": "x64\\Release\\VideoProcessor-Lib.lib",
+      "red": "391252A83109E6ECD0281A1B3DBEB346A7B2E5467619B4C5E1E9F32299BB6C2F",
+      "green": "609659095163E1C3829618BE7E99E95CF675AC5E0A3E9EFCFD5DD26B5EABE476",
+      "same": false
+    }
+  ],
+  "runnerSha256": "C185E3ADF0C489A57683D496FE8ED8BF2D5AF065CE0392658066868740479204",
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-213537\\frames-44-50.jsonl",
+      "sha256": "F0261BA27DF03A0E20DF2ACC60CE97B35859319CE9BE0B10163F0253FAA542B2"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-213537\\frames-28-34.jsonl",
+      "sha256": "068FFC0D7A38005BBA8E87D2A74B62E59CE4345AE62D0EC1044BE426B1C3060B"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-213537\\inputs.json",
+      "sha256": "6EED9AC59321294AC2C05F800799B835E2217D378B7E5EECF8D30EE8CF4CCC0C"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-213537\\receipt.json",
+      "sha256": "8696B51D72EEC9936C0AAB9F5A23EC0EE8B61442E9F405527AE8A0DC64563EB1"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-214303\\frames-44-50.jsonl",
+      "sha256": "D353402B2450E24AB244C8CBFE2F03078F20299D1F2D5642DBB38BF5BBD98BEA"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-214303\\frames-28-34.jsonl",
+      "sha256": "068FFC0D7A38005BBA8E87D2A74B62E59CE4345AE62D0EC1044BE426B1C3060B"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-214303\\inputs.json",
+      "sha256": "717BA1AB18586C0C6B6B7127B59EB1E21D683B312EC91FDEAE71BAD96FD1618A"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-210654\\caption\\held-replay-20261103-214303\\receipt.json",
+      "sha256": "C49F820E4CA1227665F3057410A665E4A0BF6129DE78B70AB3607447FDF7E38F"
+    }
+  ]
+}

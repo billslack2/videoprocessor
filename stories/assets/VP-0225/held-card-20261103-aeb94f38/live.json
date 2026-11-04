@@ -1,0 +1,378 @@
+{
+  "process": 31588,
+  "collectedUtc": "2026-11-04T03:30:34.032649+00:00",
+  "logStartOffset": 2600051471,
+  "logEndOffset": 2621246853,
+  "logBytes": 21195382,
+  "rows": 6102,
+  "groups": [
+    {
+      "instance": "{98171D46-F05F-42A9-B357-395DBD4EFDBC}",
+      "generation": 1,
+      "entire": {
+        "samples": 2130,
+        "firstSource": 1,
+        "lastSource": 2130,
+        "distinctSources": 2130,
+        "maxSelectedGap": 1,
+        "maxRecordedSubmitGapMs": 63,
+        "factsCurrent": 2130,
+        "composed": 913,
+        "reasons": {
+          "raw subtitle fallback to current source: processed subtitle canvas pending; present current raw source pixels without acquiring ...": 50,
+          "current empty native bands preserve the fixed movie canvas without claiming caption absence": 948,
+          "raw subtitle fallback to current source: subtitle inspection pending": 176,
+          "current caption absence preserves the fixed native movie canvas": 2,
+          "initial subtitle shader build presents exact contained current raw pixels": 5,
+          "unknown subtitle inspection continues current raw frame at retained movie size": 12,
+          "processed subtitle preserves the fixed native movie canvas": 811,
+          "raw subtitle fallback to current source: subtitle composition pending": 97,
+          "raw subtitle fallback to current source: current raw visibility is not proven inside the advanced native canvas": 29
+        },
+        "profiles": {
+          "1": 354,
+          "3": 1776
+        },
+        "nativeShapes": {
+          "[0, 0, 0, 0]": 50,
+          "[0, 272, 3840, 1886]": 2080
+        },
+        "actualShapes": {
+          "[0, 0, 3840, 2160]": 50,
+          "[24, 272, 3816, 1886]": 1741,
+          "[0, 150, 3840, 1886]": 57,
+          "[24, 100, 3816, 1714]": 37,
+          "[0, 272, 3840, 2026]": 163,
+          "[0, 150, 3840, 2026]": 82
+        },
+        "largestGaps": []
+      },
+      "last240": {
+        "samples": 240,
+        "firstSource": 1891,
+        "lastSource": 2130,
+        "distinctSources": 240,
+        "maxSelectedGap": 1,
+        "maxRecordedSubmitGapMs": 47,
+        "factsCurrent": 240,
+        "composed": 191,
+        "reasons": {
+          "processed subtitle preserves the fixed native movie canvas": 142,
+          "current empty native bands preserve the fixed movie canvas without claiming caption absence": 3,
+          "raw subtitle fallback to current source: subtitle inspection pending": 49,
+          "raw subtitle fallback to current source: subtitle composition pending": 46
+        },
+        "profiles": {
+          "3": 240
+        },
+        "nativeShapes": {
+          "[0, 272, 3840, 1886]": 240
+        },
+        "actualShapes": {
+          "[24, 272, 3816, 1886]": 145,
+          "[0, 272, 3840, 2026]": 42,
+          "[0, 150, 3840, 2026]": 53
+        },
+        "largestGaps": []
+      }
+    },
+    {
+      "instance": "{F3AF7DAF-9D88-4CF5-B3F7-4DCBA588B7D7}",
+      "generation": 2,
+      "entire": {
+        "samples": 32,
+        "firstSource": 852,
+        "lastSource": 883,
+        "distinctSources": 32,
+        "maxSelectedGap": 1,
+        "maxRecordedSubmitGapMs": 47,
+        "factsCurrent": 32,
+        "composed": 0,
+        "reasons": {
+          "confirmed Classic subtitle uses a same-size native movie canvas": 32
+        },
+        "profiles": {
+          "1": 32
+        },
+        "nativeShapes": {
+          "[0, 274, 3840, 1886]": 32
+        },
+        "actualShapes": {
+          "[26, 462, 3814, 2074]": 32
+        },
+        "largestGaps": []
+      },
+      "last240": {
+        "samples": 32,
+        "firstSource": 852,
+        "lastSource": 883,
+        "distinctSources": 32,
+        "maxSelectedGap": 1,
+        "maxRecordedSubmitGapMs": 47,
+        "factsCurrent": 32,
+        "composed": 0,
+        "reasons": {
+          "confirmed Classic subtitle uses a same-size native movie canvas": 32
+        },
+        "profiles": {
+          "1": 32
+        },
+        "nativeShapes": {
+          "[0, 274, 3840, 1886]": 32
+        },
+        "actualShapes": {
+          "[26, 462, 3814, 2074]": 32
+        },
+        "largestGaps": []
+      }
+    },
+    {
+      "instance": "{3A1E6CB6-F50A-4BDB-B003-573050608E9D}",
+      "generation": 1,
+      "entire": {
+        "samples": 117,
+        "firstSource": 1,
+        "lastSource": 117,
+        "distinctSources": 117,
+        "maxSelectedGap": 1,
+        "maxRecordedSubmitGapMs": 62,
+        "factsCurrent": 117,
+        "composed": 49,
+        "reasons": {
+          "raw subtitle fallback to current source: processed subtitle canvas pending; present current raw source pixels without acquiring ...": 3,
+          "current source occupancy continues the fixed Classic canvas without caption confirmation": 1,
+          "confirmed Classic subtitle uses a same-size native movie canvas": 40,
+          "raw subtitle fallback to current source: initial subtitle shader build needs current raw visibility beyond the native canvas": 5,
+          "raw subtitle fallback to current source: current raw visibility is not proven inside the advanced native canvas": 11,
+          "processed subtitle preserves the fixed native movie canvas": 32,
+          "raw subtitle fallback to current source: subtitle inspection pending": 12,
+          "raw subtitle fallback to current source: subtitle composition pending": 13
+        },
+        "profiles": {
+          "1": 44,
+          "3": 73
+        },
+        "nativeShapes": {
+          "[0, 0, 0, 0]": 3,
+          "[0, 274, 3840, 1886]": 114
+        },
+        "actualShapes": {
+          "[0, 0, 3840, 2160]": 3,
+          "[26, 446, 3814, 2058]": 17,
+          "[26, 462, 3814, 2074]": 24,
+          "[0, 274, 3840, 2026]": 10,
+          "[26, 274, 3814, 1886]": 32,
+          "[0, 152, 3840, 2026]": 2,
+          "[0, 148, 3840, 2026]": 21,
+          "[0, 148, 3840, 1886]": 8
+        },
+        "largestGaps": []
+      },
+      "last240": {
+        "samples": 117,
+        "firstSource": 1,
+        "lastSource": 117,
+        "distinctSources": 117,
+        "maxSelectedGap": 1,
+        "maxRecordedSubmitGapMs": 62,
+        "factsCurrent": 117,
+        "composed": 49,
+        "reasons": {
+          "raw subtitle fallback to current source: processed subtitle canvas pending; present current raw source pixels without acquiring ...": 3,
+          "current source occupancy continues the fixed Classic canvas without caption confirmation": 1,
+          "confirmed Classic subtitle uses a same-size native movie canvas": 40,
+          "raw subtitle fallback to current source: initial subtitle shader build needs current raw visibility beyond the native canvas": 5,
+          "raw subtitle fallback to current source: current raw visibility is not proven inside the advanced native canvas": 11,
+          "processed subtitle preserves the fixed native movie canvas": 32,
+          "raw subtitle fallback to current source: subtitle inspection pending": 12,
+          "raw subtitle fallback to current source: subtitle composition pending": 13
+        },
+        "profiles": {
+          "1": 44,
+          "3": 73
+        },
+        "nativeShapes": {
+          "[0, 0, 0, 0]": 3,
+          "[0, 274, 3840, 1886]": 114
+        },
+        "actualShapes": {
+          "[0, 0, 3840, 2160]": 3,
+          "[26, 446, 3814, 2058]": 17,
+          "[26, 462, 3814, 2074]": 24,
+          "[0, 274, 3840, 2026]": 10,
+          "[26, 274, 3814, 1886]": 32,
+          "[0, 152, 3840, 2026]": 2,
+          "[0, 148, 3840, 2026]": 21,
+          "[0, 148, 3840, 1886]": 8
+        },
+        "largestGaps": []
+      }
+    },
+    {
+      "instance": "{3A1E6CB6-F50A-4BDB-B003-573050608E9D}",
+      "generation": 2,
+      "entire": {
+        "samples": 2975,
+        "firstSource": 121,
+        "lastSource": 3095,
+        "distinctSources": 2975,
+        "maxSelectedGap": 1,
+        "maxRecordedSubmitGapMs": 78,
+        "factsCurrent": 2975,
+        "composed": 1944,
+        "reasons": {
+          "raw subtitle fallback to current source: processed subtitle canvas pending; present current raw source pixels without acquiring ...": 1,
+          "raw subtitle fallback to current source: initial subtitle shader build needs current raw visibility beyond the native canvas": 8,
+          "processed subtitle preserves the fixed native movie canvas": 1879,
+          "current empty native bands preserve the fixed movie canvas without claiming caption absence": 616,
+          "unknown subtitle inspection continues current raw frame at retained movie size": 368,
+          "raw subtitle fallback to current source: subtitle inspection pending": 65,
+          "raw subtitle fallback to current source: subtitle composition pending": 34,
+          "current caption absence preserves the fixed native movie canvas": 1,
+          "raw subtitle fallback to current source: current text needs processing before the fixed movie canvas can be submitted": 3
+        },
+        "profiles": {
+          "3": 2975
+        },
+        "nativeShapes": {
+          "[0, 0, 0, 0]": 1,
+          "[0, 274, 3840, 1888]": 1599,
+          "[0, 66, 3840, 2096]": 154,
+          "[0, 272, 3840, 1886]": 1221
+        },
+        "actualShapes": {
+          "[0, 0, 3840, 2160]": 1,
+          "[0, 274, 3840, 2026]": 12,
+          "[24, 274, 3816, 1888]": 1552,
+          "[0, 274, 3840, 2048]": 21,
+          "[0, 274, 3840, 2030]": 14,
+          "[0, 66, 3840, 2096]": 154,
+          "[24, 272, 3816, 1886]": 1161,
+          "[0, 272, 3840, 2034]": 8,
+          "[0, 272, 3840, 2026]": 49,
+          "[0, 272, 3840, 2046]": 3
+        },
+        "largestGaps": []
+      },
+      "last240": {
+        "samples": 240,
+        "firstSource": 2856,
+        "lastSource": 3095,
+        "distinctSources": 240,
+        "maxSelectedGap": 1,
+        "maxRecordedSubmitGapMs": 63,
+        "factsCurrent": 240,
+        "composed": 104,
+        "reasons": {
+          "raw subtitle fallback to current source: subtitle inspection pending": 3,
+          "processed subtitle preserves the fixed native movie canvas": 104,
+          "current empty native bands preserve the fixed movie canvas without claiming caption absence": 74,
+          "unknown subtitle inspection continues current raw frame at retained movie size": 59
+        },
+        "profiles": {
+          "3": 240
+        },
+        "nativeShapes": {
+          "[0, 272, 3840, 1886]": 240
+        },
+        "actualShapes": {
+          "[0, 272, 3840, 2026]": 3,
+          "[24, 272, 3816, 1886]": 237
+        },
+        "largestGaps": []
+      }
+    }
+  ],
+  "performanceWindows": 108,
+  "presentationWindows": 45,
+  "metrics": {
+    "active_peak_ms": {
+      "max": 31.297,
+      "sum": 1380.1379999999997
+    },
+    "source_period_exceeded": {
+      "max": 0.0,
+      "sum": 0.0
+    },
+    "display_period_exceeded": {
+      "max": 3.0,
+      "sum": 9.0
+    },
+    "deadline_overruns": {
+      "max": 0.0,
+      "sum": 0.0
+    },
+    "worker_queued": {
+      "max": 0.0,
+      "sum": 0.0
+    },
+    "worker_active_age_ms": {
+      "max": 10.8,
+      "sum": 86.29200000000002
+    },
+    "presented": {
+      "first": 0.0,
+      "last": 3002.0,
+      "min": 0.0,
+      "max": 3002.0
+    },
+    "debt": {
+      "first": 1.0,
+      "last": 1.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "gpu_frame_peak_ms": {
+      "first": 0.0,
+      "last": 5.142,
+      "min": 0.0,
+      "max": 15.616
+    },
+    "gpu_frame_coverage_pct": {
+      "first": 0.0,
+      "last": 49.2,
+      "min": 0.0,
+      "max": 49.2
+    },
+    "oldest_ms": {
+      "first": 84.21,
+      "last": 84.02,
+      "min": 83.86,
+      "max": 84.91
+    }
+  },
+  "configurationSha256": "5a549688243aa9a09596a49c42d42effc004059305ce9318f0931b696159167e",
+  "savedState": "# Managed by VideoProcessor.\nprofile.motion: profile_1\nprofile.display: standard_scope\nprofile.color: bt2020\nprofile.viewport: scope\nprofile.zoom: scope\nprofile.subtitles: reconstruction\nprofile.queue: madvr_queue\nprofile.lldv: default\nprofile.nls: profile_1\n",
+  "scope": "Observed current-process submission and available presentation telemetry; no visual acceptance, no complete GPU timing coverage, and no full runtime qualification. Entire observation retains startup gaps separately from last240.",
+  "firstRecordedSubmitAfterProcessStartMs": 8424.155029296875,
+  "allContextMaxRecordedSubmitGapMs": 35914,
+  "allContextLargeGaps": [
+    {
+      "fromInstance": "{98171D46-F05F-42A9-B357-395DBD4EFDBC}",
+      "toInstance": "{F3AF7DAF-9D88-4CF5-B3F7-4DCBA588B7D7}",
+      "fromGeneration": 1,
+      "toGeneration": 2,
+      "fromSource": 2130,
+      "toSource": 852,
+      "ms": 35914
+    },
+    {
+      "fromInstance": "{F3AF7DAF-9D88-4CF5-B3F7-4DCBA588B7D7}",
+      "toInstance": "{3A1E6CB6-F50A-4BDB-B003-573050608E9D}",
+      "fromGeneration": 2,
+      "toGeneration": 1,
+      "fromSource": 883,
+      "toSource": 1,
+      "ms": 429
+    },
+    {
+      "fromInstance": "{3A1E6CB6-F50A-4BDB-B003-573050608E9D}",
+      "toInstance": "{3A1E6CB6-F50A-4BDB-B003-573050608E9D}",
+      "fromGeneration": 1,
+      "toGeneration": 2,
+      "fromSource": 117,
+      "toSource": 121,
+      "ms": 162
+    }
+  ]
+}

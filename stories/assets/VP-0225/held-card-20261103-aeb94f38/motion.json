@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "aeb94f38ef7edc89f5f10b3307c47c67a8a508bd",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "reusedQualifiedBuild": false,
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "ReconstructionMotionTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildMode": "rebuilt",
+      "reusedQualifiedBuild": false,
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "8CE0726199B8175AB1197F62BDDECA58E91ADB81FF9C73A945044262EF859DEB",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "passed": 226
+    },
+    {
+      "variant": "beta",
+      "buildMode": "rebuilt",
+      "reusedQualifiedBuild": false,
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "03F946AE2593F7328D1C0A19E39AF8225C3E0C4988BB6B0E9861EF9BEFA07FD4",
+      "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "passed": 226
+    }
+  ],
+  "finished": "2026-11-03T22:24:33.9082270-05:00",
+  "scope": "Controlled GPU/cue tests; physical playback, refresh and HDR display acceptance remain separate."
+}

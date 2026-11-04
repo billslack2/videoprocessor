@@ -1,0 +1,26 @@
+{
+  "status": "CapturedComponentRedGreenPassed",
+  "qualification": false,
+  "gpu": false,
+  "redSource": {
+    "commit": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace",
+    "dirty": true,
+    "fingerprint": "2916f9f0c26f2dc32ebf192267c89a3c473d96547ce04b77e9832de042dd0e6a",
+    "label": "378e090af3f1-dirty-2916f9f0c26f",
+    "build": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace-dirty-2916f9f0c26f2dc32ebf192267c89a3c473d96547ce04b77e9832de042dd0e6a"
+  },
+  "greenSource": {
+    "commit": "dc774495dc3629b06e33b46e400fc3e023dd25de",
+    "dirty": true,
+    "fingerprint": "4d9865868dbd0cbd3bcea32e56801f66725b55d775ed4e645a57495f1ffa9a4d",
+    "label": "dc774495dc36-dirty-4d9865868dbd",
+    "build": "dc774495dc3629b06e33b46e400fc3e023dd25de-dirty-4d9865868dbd0cbd3bcea32e56801f66725b55d775ed4e645a57495f1ffa9a4d"
+  },
+  "finalSourcePin": "aeb94f38ef7edc89f5f10b3307c47c67a8a508bd",
+  "finalSourceMatch": "All audited source/header/harness hashes match final checkout; historical producer dirtiness remains explicit",
+  "allSevenCurrentCaptureComplete": true,
+  "threeGenuineHeldPhasesRedThenGreen": true,
+  "nativeInputsHashVerified": 28,
+  "identityScope": "Captured bytes and original source mapping; synthetic consecutive identities for actual tracker phase-order replay",
+  "sourcePrepared": "modeled identically, not GPU evidence"
+}

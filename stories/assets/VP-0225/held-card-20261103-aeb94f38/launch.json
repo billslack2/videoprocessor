@@ -1,0 +1,9 @@
+{
+  "process": 31588,
+  "startedUtc": "2026-11-04T03:26:09.6968453Z",
+  "logOffset": 2600051471,
+  "sourceCommit": "aeb94f38ef7edc89f5f10b3307c47c67a8a508bd",
+  "executable": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+  "configurationEdited": false,
+  "savedState": "# Managed by VideoProcessor.\r\nprofile.motion: profile_1\r\nprofile.display: standard_scope\r\nprofile.color: bt2020\r\nprofile.viewport: scope\r\nprofile.zoom: scope\r\nprofile.subtitles: classic\r\nprofile.queue: madvr_queue\r\nprofile.lldv: default\r\nprofile.nls: profile_1\r\n"
+}
