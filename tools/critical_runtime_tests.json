@@ -13,8 +13,11 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1116,
+  "minimumNativeTests": 1119,
   "requiredNativeMethods": [
+    "RegressionRendererFactoryOptionsRejectUnsupportedInputs",
+    "CurrentHeldPreparedCueUsesCurrentRevalidatedBarsWithoutAcquiringNativeAuthority",
+    "CurrentHeldRevalidatedBarsStillRequireCompleteCurrentGlyphAndSharedEvidence",
     "SourcePictureOverlappingQuantizedRayIntervalsKeepCurrentEdgeAcrossPhases",
     "SourcePictureRayIntervalConsensusRejectsSeparatedChainsAndDuplicateRays",
     "ColdCurrentSpatialNomineeProducesExactRawWorkWithoutNativeAuthority",
@@ -1013,6 +1016,21 @@
       "source": "src/VideoProcessor-Test/MotionRendererTests.cpp",
       "class": "TemporalCleanPacketGpuTests",
       "method": "CachedPendingSourceRevisesToExactRawFallbackBeforeMappingReuse"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentHeldPreparedCueUsesCurrentRevalidatedBarsWithoutAcquiringNativeAuthority"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentHeldRevalidatedBarsStillRequireCompleteCurrentGlyphAndSharedEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
+      "class": "LibplaceboPluginProxyTests",
+      "method": "RegressionRendererFactoryOptionsRejectUnsupportedInputs"
     }
   ]
 }

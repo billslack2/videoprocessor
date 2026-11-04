@@ -508,7 +508,7 @@ public:
         }
     }
     TEST_METHOD(CurrentHeldCrossingGlyphRequiresOnlyCurrentPictureCardCoverage) {
-        for(int fault=0;fault<7;++fault) {
+        for(int fault=0;fault<8;++fault) {
             auto tracker=std::make_unique<SubtitleBoxPresentation>();
             const auto scan=[](uint64_t sequence) {
                 auto o=CurrentHeldProofCue(sequence);
@@ -549,10 +549,15 @@ public:
             }
             if(fault==4)raw.text.lineCapturePanels[0]={196,314,196,325}; // Malformed present card.
             if(fault==5)raw.text.lineCapturePanels[0]={1,1,2,2}; // Unrelated present card.
-            if(fault==6)raw.independentBarAnalysis=false;
+            if(fault==6)raw.barEvidence.available=false;
+            if(fault==7) {
+                raw.independentBarAnalysis=false;
+                raw.barEvidence.topRevalidatedAtReference=true;
+                raw.barEvidence.bottomRevalidatedAtReference=true;
+            }
             const auto held=tracker->Consume(*preview,250,16.683);
             const bool certified=tracker->CurrentPreparedCueCertificate().Matches(raw,held,raw.sharedPicture.bounds);
-            if(fault==0) {
+            if(fault==0 || fault==7) {
                 Assert::IsTrue(held.detected&&held.held);
                 Assert::AreEqual(acquired.cue,held.cue);
                 Assert::IsTrue(certified,L"Current picture backing plus unchanged bar glyphs proves this held crossing line.");
@@ -564,6 +569,63 @@ public:
             } else {
                 Assert::IsFalse(certified,L"Incomplete picture coverage/glyphs, novel bar ink or invalid authority cannot certify erasure.");
             }
+        }
+    }
+    TEST_METHOD(CurrentHeldPreparedCueUsesCurrentRevalidatedBarsWithoutAcquiringNativeAuthority) {
+        auto tracker=std::make_unique<SubtitleBoxPresentation>();
+        const SubtitleBoxObservation seed[2]={CurrentHeldProofCue(1),CurrentHeldProofCue(2)};
+        auto initial=SubtitleBoxLookahead::Resolve(seed,2,7,9);
+        const auto acquired=tracker->Consume(initial,250,16.683);
+        Assert::IsTrue(acquired.detected&&!acquired.held);
+        for(uint64_t sequence=2;sequence<=5;++sequence) {
+            const SubtitleBoxObservation scans[2]={CurrentHeldProofCue(sequence),CurrentHeldProofCue(sequence+1)};
+            auto current=SubtitleBoxLookahead::Resolve(scans,2,7,9);
+            // Same bounded grouping fixture as the existing consecutive held
+            // test; unlike the three-line fixture it has no four-source rearm.
+            current.text.lineCount=1;current.text.lineBounds[1]={};
+            auto& raw=current.current;
+            raw.independentBarAnalysis=false;
+            raw.barEvidence.topRevalidatedAtReference=true;
+            raw.barEvidence.bottomRevalidatedAtReference=true;
+            const auto held=tracker->Consume(current,250,16.683);
+            Assert::IsTrue(held.detected&&held.held,L"Current two-line pixels retain the acquired pose despite the shorter future grouping.");
+            Assert::AreEqual(acquired.cue,held.cue);
+            Assert::AreEqual(acquired.observations,held.observations);
+            const auto& certificate=tracker->CurrentPreparedCueCertificate();
+            Assert::IsTrue(certificate.Matches(raw,held,raw.sharedPicture.bounds),
+                L"Current complete glyphs and revalidated bars may certify current held erasure without a new independent AR measurement.");
+            Assert::IsFalse(raw.independentBarAnalysis);
+            Assert::IsTrue(raw.barEvidence.topRevalidatedAtReference&&raw.barEvidence.bottomRevalidatedAtReference);
+            auto stale=raw;++stale.identity.sourceFrameNumber;
+            Assert::IsFalse(certificate.Matches(stale,held,raw.sharedPicture.bounds));
+            auto foreignBase=raw.sharedPicture.bounds;++foreignBase.top;
+            Assert::IsFalse(certificate.Matches(raw,held,foreignBase));
+            auto changed=held;++changed.lineBounds[0].left;
+            Assert::IsFalse(certificate.Matches(raw,changed,raw.sharedPicture.bounds));
+        }
+    }
+    TEST_METHOD(CurrentHeldRevalidatedBarsStillRequireCompleteCurrentGlyphAndSharedEvidence) {
+        for(int fault=0;fault<10;++fault) {
+            auto tracker=std::make_unique<SubtitleBoxPresentation>();
+            const auto acquired=tracker->Consume(RetiredThreeLinePreview(1,false),250,16.683);
+            Assert::IsTrue(acquired.detected&&!acquired.held);
+            auto current=RetiredThreeLinePreview(2,true);auto& raw=current.current;
+            raw.independentBarAnalysis=false;
+            raw.barEvidence.topRevalidatedAtReference=true;
+            raw.barEvidence.bottomRevalidatedAtReference=true;
+            if(fault==0)raw.barAuthority=false;
+            if(fault==1)raw.barEvidence.available=false;
+            if(fault==2)raw.text.bottomSearchComplete=false;
+            if(fault==3) {auto ink=std::make_shared<SubtitleInkSnapshot>(*raw.ink);ink->rawEvidenceComplete=false;raw.ink=ink;}
+            if(fault==4)raw.sharedPicture.required=false;
+            if(fault==5)++raw.sharedPicture.identity.analysisDomainKey;
+            if(fault==6)raw.barTrackingAuthority=true;
+            if(fault==7)raw.barEvidence.captionBackedBottom=true;
+            if(fault==8)raw.glyphLocalBottom=true;
+            if(fault==9)raw.inspectionCandidateUsed=true;
+            const auto held=tracker->Consume(current,250,16.683);
+            Assert::IsFalse(tracker->CurrentPreparedCueCertificate().Matches(raw,held,raw.sharedPicture.bounds),
+                L"Revalidated bars do not replace complete current glyphs, current shared context, or unrestricted current search.");
         }
     }
     TEST_METHOD(CurrentHeldCertificateTelemetryPreservesShortCircuitFacts) {
@@ -769,7 +831,7 @@ public:
                 current.ink=ink;
             }
             if(fault==3)current.text.workLimit=true;
-            if(fault==4)current.independentBarAnalysis=false;
+            if(fault==4) {auto ink=std::make_shared<SubtitleInkSnapshot>(*current.ink);ink->rawEvidenceComplete=false;current.ink=ink;}
             if(fault==5)current.pendingRefresh=true;
             if(fault==6)current.discontinuity=true;
             auto preview=SubtitleBoxLookahead::Resolve(&current,1,7,9);

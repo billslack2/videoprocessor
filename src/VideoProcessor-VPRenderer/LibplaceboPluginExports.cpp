@@ -113,3 +113,28 @@ VideoProcessorLibplaceboGetStartupPresentationReadinessV1(
 extern "C" __declspec(dllexport) void __cdecl
 VideoProcessorLibplaceboConfigureLoggingV1(bool enhanced)
 { DebugLog::SetExternalEnhancedLoggingEnabled(enhanced); }
+
+// Separate entry point: the normal host factory and shared vtable are unchanged.
+extern "C" __declspec(dllexport) IVideoRenderer* __cdecl
+VideoProcessorLibplaceboCreateRendererForRegressionV1(
+    IRendererCallback* callback, uint32_t rendererGeneration, HWND videoHwnd,
+    ITimingClock* timingClock, bool useFrameQueue, size_t frameQueueMaxSize,
+    VideoConversionOverride videoConversionOverride, const char* rendererConfigPath,
+    VideoProcessorLibplaceboLogSink logSink, const LibplaceboRegressionOptionsV1* options)
+{
+    if (!callback || !ValidLibplaceboRegressionOptions(options)) return nullptr;
+    DebugLog::SetExternalSink(logSink);
+    ConfigFile::SetRendererConfigurationPath(rendererConfigPath ? rendererConfigPath : "");
+    DebugLog::Log("VP regression factory: version=1 flags=%u commit=%ls dirty=%d",
+        options->flags, VERSION_URL, VERSION_DIRTY ? 1 : 0);
+    try {
+        return new LibplaceboVideoRenderer(*callback, rendererGeneration, videoHwnd,
+            timingClock, useFrameQueue, frameQueueMaxSize, videoConversionOverride,
+            (options->flags & VP_REGRESSION_DECLINE_CUE_PROOF) != 0);
+    } catch (const std::exception& e) {
+        DebugLog::Log("libplacebo regression factory failed: %s", e.what());
+    } catch (...) {
+        DebugLog::Log("libplacebo regression factory failed: unknown exception");
+    }
+    return nullptr;
+}

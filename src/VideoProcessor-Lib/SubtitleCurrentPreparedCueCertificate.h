@@ -6,7 +6,9 @@
 // A tracker may retain an acquired layout while CURRENT complete glyph pixels
 // still prove that same cue. This token authorizes only verification of erasure
 // actually prepared for that source. It grants no semantic/native acquisition,
-// future-frame ownership, or lease renewal.
+// future-frame ownership, or lease renewal. Reacquiring independent physical
+// bars is not required: current revalidation and complete current glyphs may
+// certify the same held pose against the separately accepted shared base.
 class SubtitleCurrentPreparedCueCertificate
 {
 public:
@@ -16,10 +18,8 @@ public:
     {
         return m_valid && current.analyzed && !current.discontinuity &&
             !current.pendingRefresh && !current.analysisRefresh &&
-            current.independentBarAnalysis && current.barAuthority && current.barEvidence.available &&
+            current.barAuthority && current.barEvidence.available &&
             !current.barTrackingAuthority && !current.currentAnchorUsesTrackedEdge &&
-            !current.barEvidence.topRevalidatedAtReference && !current.barEvidence.topRevalidatedNearby &&
-            !current.barEvidence.bottomRevalidatedAtReference && !current.barEvidence.bottomRevalidatedNearby &&
             !current.barEvidence.captionBackedTop && !current.barEvidence.captionBackedBottom &&
             !current.glyphLocalTop && !current.glyphLocalBottom && !current.inspectionCandidateUsed &&
             current.ink && current.ink==m_ink && current.ink->rawEvidenceComplete && current.ink->paletteValid &&

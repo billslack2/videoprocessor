@@ -44,7 +44,8 @@ public:
 		ITimingClock* timingClock,
 		bool useFrameQueue,
 		size_t frameQueueMaxSize,
-		VideoConversionOverride videoConversionOverride);
+		VideoConversionOverride videoConversionOverride,
+        bool regressionDeclineCueProof = false);
 	~LibplaceboVideoRenderer() override;
 
 	size_t GetConvertedQueueSize() override;
@@ -255,6 +256,7 @@ private:
 	HWND m_videoHwnd = nullptr;
 	ITimingClock* m_timingClock = nullptr;
 	bool m_useFrameQueue = true;
+    const bool m_regressionDeclineCueProof;
 	VideoConversionOverride m_videoConversionOverride =
 		VideoConversionOverride::VIDEOCONVERSION_NONE;
 

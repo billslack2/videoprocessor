@@ -8,10 +8,12 @@ from pathlib import Path
 IDENTITY_FIELDS = ("transportGeneration", "acceptedSequence", "sourceFrameNumber",
     "captureTimestamp", "sourceFormatGeneration", "viewportGeneration", "rendererGeneration",
     "analysisDomainKey", "policyGeneration", "continuityGeneration")
+# Bits16 and64 retain their historical meanings and are no longer evaluated.
+# New current bar evidence uses bit18 (262144), so old failures remain truthful.
 CERTIFICATE_BITS = ("HeldPose", "CurrentTemplate", "StrongPose", "CurrentScan",
-    "IndependentBars", "UntrackedBars", "UnrevalidatedBars", "UnmaskedBars", "NonlocalScan",
+    "LegacyIndependentBars", "UntrackedBars", "LegacyUnrevalidatedBars", "UnmaskedBars", "NonlocalScan",
     "CurrentRawCue", "CompleteSearch", "CompleteInk", "SharedPicture", "MeasuredEdges",
-    "CurrentContext", "LineCoverage", "SameCurrentInk", "NoNovelOwnedInk")
+    "CurrentContext", "LineCoverage", "SameCurrentInk", "NoNovelOwnedInk", "CurrentBarEvidence")
 PIXEL_STAGES = ("None", "GlyphOwnerOrFloor", "GlyphComponentBudget", "GlyphSurvivingCore",
     "GlyphStrongCore", "CleanupBlackTransition", "CleanupUnownedChange",
     "CleanupProjectionConflict", "DestinationNovelty")

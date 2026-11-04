@@ -2435,11 +2435,11 @@ public:
     struct CurrentPreparedCueDecision {
         enum Fact : uint64_t {
             HeldPose=1ull, CurrentTemplate=2ull, StrongPose=4ull, CurrentScan=8ull,
-            IndependentBars=16ull, UntrackedBars=32ull, UnrevalidatedBars=64ull,
+            LegacyIndependentBars=16ull, UntrackedBars=32ull, LegacyUnrevalidatedBars=64ull,
             UnmaskedBars=128ull, NonlocalScan=256ull, CurrentRawCue=512ull,
             CompleteSearch=1024ull, CompleteInk=2048ull, SharedPicture=4096ull,
             MeasuredEdges=8192ull, CurrentContext=16384ull, LineCoverage=32768ull,
-            SameCurrentInk=65536ull, NoNovelOwnedInk=131072ull
+            SameCurrentInk=65536ull, NoNovelOwnedInk=131072ull, CurrentBarEvidence=262144ull
         };
         uint64_t evaluated=0,failed=0;
         bool certified=false;
@@ -3420,7 +3420,7 @@ public:
                     // are proved separately below; it need not extend the card.
                     const SubtitleBoxRect picturePart{current.left,(std::max)(current.top,raw.pictureTop),
                         current.right,(std::min)(current.bottom,raw.pictureBottom)};
-                    const bool currentPicture=raw.independentBarAnalysis && raw.barAuthority && raw.barEvidence.available &&
+                    const bool currentPicture=raw.barAuthority && raw.barEvidence.available &&
                         raw.pictureTop>0 && raw.pictureBottom<raw.height && raw.pictureTop<raw.pictureBottom &&
                         raw.pictureTop==raw.barEvidence.top && raw.pictureBottom==raw.barEvidence.bottom;
                     const auto& requiredCard=currentPicture && picturePart.Valid()?picturePart:current;
@@ -3474,13 +3474,12 @@ public:
             certificateDecision.Check(CertificateFact::CurrentScan,
                 preview.available && preview.current.analyzed && !preview.current.discontinuity &&
                 !preview.current.analysisRefresh && !preview.current.pendingRefresh) &&
-            certificateDecision.Check(CertificateFact::IndependentBars,
-                preview.current.independentBarAnalysis && preview.current.barAuthority && preview.current.barEvidence.available) &&
+            // This is current presentation evidence, not a new physical AR
+            // acquisition. Current-pixel revalidation remains current evidence.
+            certificateDecision.Check(CertificateFact::CurrentBarEvidence,
+                preview.current.barAuthority && preview.current.barEvidence.available) &&
             certificateDecision.Check(CertificateFact::UntrackedBars,
                 !preview.current.barTrackingAuthority && !preview.current.currentAnchorUsesTrackedEdge) &&
-            certificateDecision.Check(CertificateFact::UnrevalidatedBars,
-                !preview.current.barEvidence.topRevalidatedAtReference && !preview.current.barEvidence.topRevalidatedNearby &&
-                !preview.current.barEvidence.bottomRevalidatedAtReference && !preview.current.barEvidence.bottomRevalidatedNearby) &&
             certificateDecision.Check(CertificateFact::UnmaskedBars,
                 !preview.current.barEvidence.captionBackedTop && !preview.current.barEvidence.captionBackedBottom) &&
             certificateDecision.Check(CertificateFact::NonlocalScan,

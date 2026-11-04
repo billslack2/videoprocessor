@@ -72,3 +72,22 @@ using VideoProcessorLibplaceboGetHdrStatusFn = bool (__cdecl *)(
 // Optional diagnostic-only side channel; no shared snapshot or factory ABI change.
 static constexpr const char* VP_LIBPLACEBO_LOGGING_EXPORT = "VideoProcessorLibplaceboConfigureLoggingV1";
 using VideoProcessorLibplaceboConfigureLoggingFn = void (__cdecl *)(bool enhanced);
+
+// Explicit regression factory only: never selected by the host, config or environment.
+// This models unavailable optional reuse; it cannot grant pixel or crop authority.
+struct LibplaceboRegressionOptionsV1 {
+    uint32_t size = sizeof(LibplaceboRegressionOptionsV1);
+    uint32_t version = 1;
+    uint32_t flags = 0;
+};
+static constexpr uint32_t VP_REGRESSION_DECLINE_CUE_PROOF = 1u;
+inline bool ValidLibplaceboRegressionOptions(const LibplaceboRegressionOptionsV1* options) {
+    return options && options->size == sizeof(LibplaceboRegressionOptionsV1) &&
+        options->version == 1 && !(options->flags & ~VP_REGRESSION_DECLINE_CUE_PROOF);
+}
+static constexpr const char* VP_LIBPLACEBO_REGRESSION_CREATE_EXPORT =
+    "VideoProcessorLibplaceboCreateRendererForRegressionV1";
+using VideoProcessorLibplaceboCreateRegressionRendererFn = IVideoRenderer* (__cdecl *)(
+    IRendererCallback*, uint32_t, HWND, ITimingClock*, bool, size_t,
+    VideoConversionOverride, const char*, VideoProcessorLibplaceboLogSink,
+    const LibplaceboRegressionOptionsV1*);

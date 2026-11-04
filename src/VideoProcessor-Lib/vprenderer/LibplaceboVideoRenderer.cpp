@@ -4495,6 +4495,8 @@ private:
 
 struct LibplaceboVideoRenderer::Impl
 {
+    explicit Impl(bool declineCueProof=false) : regressionDeclineCueProof(declineCueProof) {}
+    const bool regressionDeclineCueProof;
 	SceneDetector sceneDetector;
 	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
 	AlphaPresentationTelemetry presentationTelemetry;
@@ -9626,6 +9628,15 @@ struct LibplaceboVideoRenderer::Impl
         const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t ownedTimelinePolicy=0,
         const char* offerOrigin="render")
     {
+        // Regression factory models an unavailable optional reuse task. Normal
+        // accepted-source/prime/render callers retain their ordinary full-scan
+        // fallback. Never stall, synthesize a failed pixel proof or retire a cue.
+        if(regressionDeclineCueProof) {
+            auto trace=AnalysisTraceRecord(key.identity,this,"regression-cue-proof-declined","optional-reuse-unavailable");
+            AnalysisTraceText(trace.detail,offerOrigin);
+            AnalysisDiagnosticTrace::Emit(trace);
+            return SubtitleCurrentCueProofStatus::NotEligible;
+        }
         SubtitleBoxObservation proofKey;
         ActivePictureBounds proofBase;
         uint64_t revision=0;
@@ -15206,6 +15217,17 @@ struct LibplaceboVideoRenderer::Impl
                 ((hasExactCurrentPositiveScan(currentSubtitlePreview) && subtitleBoxResult.detected &&
                     !subtitleBoxResult.held && !subtitleBoxResult.confirmationPending &&
                     !subtitleBoxResult.workLimit) || currentPreparedHeldCue);
+            if(regressionDeclineCueProof) {
+                auto trace=AnalysisTraceRecord(subtitleIdentity,this,"regression-current-scan","natural-tracker-result");
+                trace.flags=(hasExactCurrentPositiveScan(currentSubtitlePreview)?1u:0u)|
+                    (subtitleBoxResult.held?2u:0u)|(currentPreparedHeldCue?4u:0u)|
+                    (currentFullCuePresentation?8u:0u)|(currentCueProofPending?16u:0u)|
+                    (preparedHeldObservation.independentBarAnalysis?32u:0u);
+                trace.counters[0]=subtitleBoxResult.cue;
+                trace.counters[1]=preparedHeldObservation.text.lineCount;
+                trace.counters[2]=subtitleBoxResult.lineCount;
+                AnalysisDiagnosticTrace::Emit(trace);
+            }
             const bool currentIndependentScan=!currentCueProofPending && currentSubtitlePreview.available &&
                 SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,subtitleIdentity) &&
                 currentSubtitlePreview.current.analyzed && !currentSubtitlePreview.current.pendingRefresh &&
@@ -23361,12 +23383,14 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	ITimingClock* timingClock,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
-	VideoConversionOverride videoConversionOverride) :
+	VideoConversionOverride videoConversionOverride,
+    bool regressionDeclineCueProof) :
 	m_callback(callback),
 	m_callbackGeneration(rendererGeneration),
 	m_videoHwnd(videoHwnd),
 	m_timingClock(timingClock),
 	m_useFrameQueue(useFrameQueue),
+    m_regressionDeclineCueProof(regressionDeclineCueProof),
 	m_videoConversionOverride(videoConversionOverride),
 	m_frameQueueDesiredDepth(AlphaQueuePolicy::NormalizeDesiredDepth(frameQueueMaxSize)),
 	m_frameQueueMaxSize(AlphaQueuePolicy::HardCapacity(frameQueueMaxSize))
@@ -23863,7 +23887,7 @@ void LibplaceboVideoRenderer::Build()
 	// D3D11 device/swapchain creation and persistent cache loading can enter the
 	// driver for seconds. Build only captures an immutable construction request;
 	// RenderLoop performs the actual initialization on its own thread.
-	m_impl.reset(new Impl());
+	m_impl.reset(new Impl(m_regressionDeclineCueProof));
     m_impl->startupRendererGeneration=m_callbackGeneration;
 	m_impl->displayRefreshRate.SetEventSink(
 		[this](const std::string& event, double actualRefreshRate,
