@@ -1,0 +1,92 @@
+[
+  {
+    "file": "stage-findings.txt",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/black-reference-comparison-20261103/stage-findings.txt",
+    "sha256": "62360583070A950D4CB42F7EACF56EF11C785F5A6DAB546FA7F803C45B94B31C"
+  },
+  {
+    "file": "stage-sealed.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/black-reference-comparison-20261103/stage-sealed.json",
+    "sha256": "6FAA70D2F786522953EE5208BC8D098EDF5ED704DDC32586B04397DFFB62722C"
+  },
+  {
+    "file": "rc4-findings.txt",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/black-reference-comparison-20261103/rc4-findings.txt",
+    "sha256": "375A8CE0BDB0AE014409C451DBD9D25877B868D31D6F1E1FFFAAC87F950AE30C"
+  },
+  {
+    "file": "rc4-direct-sealed.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/black-reference-comparison-20261103/rc4-direct-sealed.json",
+    "sha256": "A9C0799DD3261D15997538B985F2017D5456255E5DE2839D5F149F3F5F5D6F7A"
+  },
+  {
+    "file": "recording-review.md",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/incident-20261103-222819/full-review/review.md",
+    "sha256": "3F74B471DCEA3E41F2161BBBED6648EF62E9A97B250FD674987A9EE76426B47A"
+  },
+  {
+    "file": "recording-verified.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/incident-20261103-222819/full-review/verified-review.json",
+    "sha256": "2D404CAED8F9FA80678722B7D5F232FFE36AEB61F76762E500F4C3F4CE4273A8"
+  },
+  {
+    "file": "recording-preservation.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/incident-20261103-222819/full-review/preservation.json",
+    "sha256": "F91A15A76E4E54EB34146E7700AFDB0758C9E80D9D6A2D7D1C557643C96C6475"
+  },
+  {
+    "file": "log-preservation.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/incident-20261103-222819/logs/preservation.json",
+    "sha256": "BE03B86406CD0183148DF4CDB7B273A9A9CAB93301C7E22055535233E1DF590F"
+  },
+  {
+    "file": "replay-84-receipt.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/consecutive-held-replay-20261103/run-20261103-230529/receipt.json",
+    "sha256": "4FCA2F77915086FE935AF58A46181F9EB719976E7346977E461FD0F768E277EA"
+  },
+  {
+    "file": "replay-87-receipt.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts/consecutive-held-replay-20261103/run-20261103-231303-capture2/receipt.json",
+    "sha256": "943508DDE5EC536907EE25B68D64579BD0269C1A6812C66C5D4F872F49F4EA31"
+  },
+  {
+    "file": "capture-1-preservation.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts/native-bursts-20261103/capture-1/preservation.json",
+    "sha256": "AA3239E5432E68ABB2922CE96A065640B77203C44CF221F601D365F819D8F9A6"
+  },
+  {
+    "file": "capture-2-preservation.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts/native-bursts-20261103/capture-2/preservation.json",
+    "sha256": "2AB173BF3F95DBE07EE93E20B123457209EDD3773ADBDC3DCB486B8230447510"
+  },
+  {
+    "file": "live-capture-timing.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts/native-bursts-20261103/live-capture-timing.json",
+    "sha256": "AE01D5C38597BD9E3C5513513E320FB0E50A93518E398BD03976D7DDDFEBAD53"
+  },
+  {
+    "file": "deployment.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts/deployment-trial-fcfbd214/deployment.json",
+    "sha256": "3341984847FB5AC9E28FDC7A9C69594DF561B6428B61A8304E0766028AF69F2D"
+  },
+  {
+    "file": "launch.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts/deployment-trial-fcfbd214/launch.json",
+    "sha256": "ADE0E80AB0EDE870DD7DE226AFED4AF27683125817ADEB0D0130B42349C68B64"
+  },
+  {
+    "file": "loaded-modules.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts/deployment-trial-fcfbd214/loaded-modules.json",
+    "sha256": "DE0BD72EA8E29F969D0DF186886AC44491C2EEA5B3C085EDDF3325EA05B79100"
+  },
+  {
+    "file": "native-15-iteration.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts/qualification/runs/20261103-224945-3bfa7307/iteration.json",
+    "sha256": "E4FA59CA282642E9AE0F0CB38D4D3974034760734BE82B35C0FC2B3E47EEFA48"
+  },
+  {
+    "file": "continuity-2-iteration.json",
+    "source": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts/qualification/runs/20261103-225719-ecbbb28d/iteration.json",
+    "sha256": "76EE098EF2537528F4FE4C4904D7AA9864192D9CD74D9F1F2F1F660878C82F99"
+  }
+]

@@ -1,0 +1,24 @@
+RC4 user-grounded baseline follow-up
+
+User identified RC4 as the last working release family. We tested actual published later RC4 source fa4e210db426b086e2ab4ae5d590a10112c4c09c; GitHub release also retains an earlier6d5f8ad4 package with materially different subtitle code. This run does not claim which exact RC4 package was installed by the user.
+
+96 same unmodified captured frames; all192 original BIN/TXT hashes reverified. Original source algorithms exported and verified against339 Git blobs (CRLF-only export normalization). No source modifications, GPU, temporal scheduling or full-renderer replay.
+
+At identical recorded shared base272..1886:
+- RC4 directly uses that current/retained plane for subtitle measurement.
+- Current code independently remeasures subtitle bars and scans275..1883/1884.
+- Current-vs-RC4 per-line glyph rectangles differ32/96; overallcards52/96, perlinecards56/96, detection4/96.
+- Cue34 counterpart28–32: RC4 lowerline top1933/upperline bottom1884 constant. Current lower1936 or1933/upper1888 or1884. Both use same sampled blackLimit82 and corresponding inkFloor677/674.
+- Cue10644–50: RC4 lowerline top1933 throughout; current lower1936 except46/50top1933. RC4cardbottom1889 vs current1886.
+
+CONTROLLED COUNTERFACTUAL:
+Unmodified CURRENT SubtitleBoxDetector::Analyze run directly at recorded272..1886, bypassing only the artifact's current-bar resolver handoff, matches RC4 per-line glyph/card rectangles, detection, raw completeness and measured palette on ALL96 frames. Only2 overallbbox metadata differences remain. This is strong component evidence that the changed boundary-to-sampling handoff creates these geometry differences; it grants no crop, erasure, bar or renderer authority.
+
+Historical introduction: commit222e64b6 (Oct14) adds ResolveCurrentSubtitleAnalysisBars/current-independent-subtitle-bars in the shared-picture path. Earlier RC4 explicitly avoided independently replacing Classic's current/retained plane. Current safe design must separate stable sampling coordinates from fresh physical-boundary evidence, without restoring stale authority or ignoring genuine transitions/UI. No behavior fix is implemented by this experiment.
+
+RC4 lacks AnalysisLumaRange, blackReference telemetry, analysisDomainKey and independentBarAnalysis members. Adapter preserves original range/domain in output, validates this fixture is limited NativeV210, holds original buffer lifetime locally, and reports unsupported diagnostic fields as null. Do not interpret null as pass or black0. Actual native floor not directly observed through that older API.
+
+Authoritative report: rc4-direct-sealed.json (source/input/producer/executable hashes, exact paired rows).
+Normal path comparison: rc4-comparison.json.
+Original per-pin raw rows: rc4/frames.jsonl, current/frames.jsonl.
+Counterfactual rows: current/frames-direct.jsonl.

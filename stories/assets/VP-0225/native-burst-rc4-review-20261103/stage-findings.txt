@@ -1,0 +1,13 @@
+Confirmed first divergent extraction stage (artifact CPU evidence)
+
+Current source: aeb94f38ef7edc89f5f10b3307c47c67a8a508bd. Exact native input bytes and original source identities were preserved. The96 frames are stride-five samples, not a consecutive-history claim. Instrumented normal and rows-only outputs equal their corresponding uninstrumented outputs on all96 frames.
+
+Frame47 / recorded-base path: normal current physical bars275..1883. Upper anchor native recovery consumes0..60844 samples. Lower recovery starts60844, reaches65536, rejects19728 reads at the unchanged shared limit, and retains coarse top1936. Counterfactual regular-grid rows keep the SAME physical bars but place lower line first:0..30350, zero budget rejections, native top1933 recovered. Upper then consumes30350..65536 with23559 rejected reads. Frame28 repeats the mechanism: normal upper consumes49817 before lower exhausts; regular-grid lower runs first and recovers1933 in45159 samples.
+
+Therefore the measured boundary's edge sample substitution can affect anchor selection and native recovery order. The shared cap then makes current extraction geometry phase-dependent. This is not explained solely by a black-level formula or exact pixel comparison. RC4 direct shared-boundary scanning and the current fixed-boundary diagnostic produce the stable lower geometry on this capture; both released RC4 pins agree on glyph lines. This does not prove which RC4 package the user installed.
+
+rawEvidenceComplete remains the completed sampled raw grid; no assertion is made that this field promises complete native fringe recovery. A separate native completion witness is currently absent from the emitted result. Later exact-current extraction/capture containment must remain strict.
+
+Next focused regression: use the unchanged frame47 pixels and actual measured bars, exercise native completion with the competing upper/lower components, and require all required current glyph extents or an explicit incomplete result under the SAME bounded total work. Review a fair/reserved native recovery allocation or cheap complete fringe pass; retain genuine edge probes, no increased global budget, no old pixels, no relaxed final containment. The rows-only ablation is diagnostic, not a safe proposed patch.
+
+Fresh consecutive captures provide scope limits: capture1 segment84frames and capture2 segment87frames each have one raw extraction shape, all ordinary observations and all modeled CPU qualifier passes. They do not reproduce this geometry-changing held case, and no forced held flags or synthetic remapping were used. Source was captured in Classic; offline Reconstruction success remains modeled, not GPU proof.

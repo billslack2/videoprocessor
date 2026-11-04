@@ -1,0 +1,16 @@
+{
+  "source": "C:\\Users\\bslac\\Videos\\2026-11-03 22-28-19.mp4",
+  "copy": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-222819\\full-review\\2026-11-03 22-28-19.mp4",
+  "bytes": 1371664791,
+  "mtimeNs": 1793764403517247800,
+  "sha256": "e8e4cf33d323bf54fcc56b1689ee0677d89eac8fe89ec88bfb47aab8935914f9",
+  "stableDuringCopy": true,
+  "indexedFrameCount": 90231,
+  "fps": 60.0,
+  "indexedDurationSeconds": 1503.85,
+  "lastSequentialDecodedIndex": 90229,
+  "limitation": "last indexed frame90230 did not decode; stable file preserved as-is, no claim every indexed frame verified",
+  "kind": "screen recording output, not native HDMI input",
+  "runtimeProcess": 31588,
+  "runtimeSource": "aeb94f38ef7edc89f5f10b3307c47c67a8a508bd"
+}

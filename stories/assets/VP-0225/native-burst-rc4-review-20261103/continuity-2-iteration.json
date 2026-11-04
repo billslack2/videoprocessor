@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "status": "FocusedPassed",
+  "qualification": false,
+  "lane": "Focused",
+  "source": {
+    "commit": "fcfbd21424b59462f9560fa13bb8be44027692d2",
+    "dirty": false,
+    "fingerprint": "c7c12b158979adefd76ccd97b3b0277773390db75e7caa6bd754dc8f4be5a0f9",
+    "label": "fcfbd21424b5",
+    "build": "fcfbd21424b59462f9560fa13bb8be44027692d2"
+  },
+  "testEnvironment": {
+    "sourcePictureDetector": true,
+    "legacyDetectorEnvironment": null,
+    "sourcePictureShadow": null
+  },
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-Lib.lib",
+      "sha256": "1390286DB966D5F58B57C30D515A493CDEBE4AFD4B389C575C20BC638BA07D2C"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "0959E48E7C0E447DB7138023B91098944772D8A77A4D0D4CA497B726249C609C"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Test.dll",
+      "sha256": "03A20D811876A3CA66EAF94557E1EB894107988FEC3360F4F6D8CBB5D690CA34"
+    },
+    {
+      "path": "x64/Release/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "F554E1CF4E41AF5BA88B3BF651C9D5272BDD39CBC96B3C6A1818BF48FB983FBE"
+    },
+    {
+      "path": "x64/Release/vprenderer/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "07554825E877B97C45751C36EBB2298CCD3E2D7D6A8B4DCE97363EBC7AD65F6B"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    }
+  ],
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0,
+      "seconds": 0.602,
+      "log": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\qualification\\runs\\20261103-225719-ecbbb28d\\native-library-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "62f849dc-3b85-4819-a911-66de7d5743b5",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRenderer.vcxproj",
+      "exit": 0,
+      "seconds": 1.678,
+      "log": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\qualification\\runs\\20261103-225719-ecbbb28d\\standard-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "12f4a7e4-6e65-4f82-af1f-2879d3ecfcd7",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "host",
+      "project": "src\\VideoProcessor-GUI\\VideoProcessor-GUI.vcxproj",
+      "exit": 0,
+      "seconds": 2.614,
+      "log": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\qualification\\runs\\20261103-225719-ecbbb28d\\host-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "aac4f92b-eaaa-4899-8b55-8ef986afcb60",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "beta-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRendererBeta.vcxproj",
+      "exit": 0,
+      "seconds": 1.349,
+      "log": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\qualification\\runs\\20261103-225719-ecbbb28d\\beta-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "4d7188ca-a04a-47e1-a1c9-78c197cc7eed",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "exit": 0,
+      "seconds": 1.399,
+      "log": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\qualification\\runs\\20261103-225719-ecbbb28d\\standard-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "bef4f52b-a2eb-436e-9233-669a8d776467",
+      "PSShowComputerName": false
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\VideoProcessor-Test.dll",
+      "trx": "artifacts/qualification/runs/20261103-225719-ecbbb28d/standard.trx",
+      "trxSha256": "6ED2938B7BEBF112517108743C17EB692472CAEFF25570D9A76DB54A0071A699",
+      "executed": 2,
+      "native": 0,
+      "actualClassic": 2,
+      "seconds": 20.268
+    }
+  ],
+  "seconds": 27.957,
+  "shaderCacheDirectory": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\TestShaderCache",
+  "coldShaderCache": false,
+  "finished": "2026-11-03T22:57:47.1369161-05:00"
+}

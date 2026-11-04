@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "source": "fcfbd21424b59462f9560fa13bb8be44027692d2",
+  "buildReceipt": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\qualification\\runs\\20261103-225719-ecbbb28d\\iteration.json",
+  "buildSource": {
+    "commit": "fcfbd21424b59462f9560fa13bb8be44027692d2",
+    "dirty": false,
+    "fingerprint": "c7c12b158979adefd76ccd97b3b0277773390db75e7caa6bd754dc8f4be5a0f9",
+    "label": "fcfbd21424b5",
+    "build": "fcfbd21424b59462f9560fa13bb8be44027692d2"
+  },
+  "librarySha256": "1390286DB966D5F58B57C30D515A493CDEBE4AFD4B389C575C20BC638BA07D2C",
+  "producerSha256": "A39A15C725D40CC70FE0609FFAEE0640032BEE331CBA30F2A6FE66AA0397890A",
+  "helperSha256": "BD92BE5DDFAE1A997DABAE763142657C42BB3267C7BCFCD340D0EABC48F54679",
+  "inputManifestSha256": "19975287046C392501F834B0C9D99CB54800E4A5AAABB1301929DBB328E6BF9F",
+  "exit": 0,
+  "gpu": "none: sourcePrepared modeled from op.valid",
+  "geometrySettings": "same component recipe as preserved sparse producer; not runtime configuration reconstruction",
+  "identities": "original source identities, contiguous accepted and physical sequence, no remapping",
+  "qualification": false,
+  "finished": "2026-11-03T23:05:57.0641039-05:00",
+  "resultHashes": {
+    "frames": "767EDD2D2902CFD95788A08D9F43CACDD1794CBA7EEE62EB875FCDD8AE30AC26",
+    "diagnosticTrace": "5FE5CF92C22C6F00817DA697A4A0D2ECDF90FF6A3755DAD30473542D24D7F9A1",
+    "executable": "C20B96DEFBBBF9B4DB5355E13184B91F1FE8343434FB902A362DC0EC13EAE794"
+  }
+}

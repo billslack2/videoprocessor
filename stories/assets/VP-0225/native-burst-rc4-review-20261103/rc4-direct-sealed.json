@@ -1,0 +1,9948 @@
+{
+  "schemaVersion": 1,
+  "qualification": false,
+  "rc4Pin": "fa4e210db426b086e2ab4ae5d590a10112c4c09c",
+  "rc4ArchiveFilesVerified": 339,
+  "rc4CRLFNormalizedFiles": 339,
+  "currentPin": "aeb94f38ef7edc89f5f10b3307c47c67a8a508bd",
+  "nativeInputFiles": 192,
+  "nativeInputsReverified": true,
+  "inputProvenanceSha256": "674B00988C5B2E5AD41C072FF57C6B94F5A677B07FB6DBF31FCB8B89290F8549",
+  "counterfactual": "Current unmodified raw detector Analyze called with recorded retained bounds, bypassing only the artifact bar-resolver adapter; NO production authority/temporal/GPU proof",
+  "perFieldDifferences": {
+    "bounds": 2
+  },
+  "all96RawLineCardPaletteDetectionCompleteMatch": true,
+  "rows": [
+    {
+      "index": 1,
+      "source": 13353,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "source": 13358,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "source": 13363,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 4,
+      "source": 13368,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 5,
+      "source": 13373,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 6,
+      "source": 13378,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 7,
+      "source": 13383,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 8,
+      "source": 13388,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 9,
+      "source": 13393,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 10,
+      "source": 13398,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 11,
+      "source": 13403,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 12,
+      "source": 13408,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 13,
+      "source": 13413,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 14,
+      "source": 13418,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1233,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1233,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1233,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1233,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 15,
+      "source": 13423,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1234,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1234,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1234,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1234,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 16,
+      "source": 13428,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1233,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1233,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1233,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1233,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 17,
+      "source": 13433,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1233,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1233,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1233,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1233,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 18,
+      "source": 13438,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1233,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1233,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1233,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1233,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 19,
+      "source": 13443,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1232,
+          1736,
+          2612,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1232,
+            1736,
+            2612,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1232,
+          1736,
+          2612,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1232,
+            1736,
+            2612,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 20,
+      "source": 13448,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1234,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1234,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1234,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1234,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 21,
+      "source": 13453,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1234,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1234,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1234,
+          1749,
+          2607,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1234,
+            1749,
+            2607,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 22,
+      "source": 13458,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1234,
+          1749,
+          2606,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1234,
+            1749,
+            2606,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1282,
+          1778,
+          2558,
+          2042
+        ],
+        "card": [
+          1234,
+          1749,
+          2606,
+          1889
+        ],
+        "lines": [
+          [
+            1464,
+            1933,
+            2372,
+            2032
+          ],
+          [
+            1289,
+            1787,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1234,
+            1749,
+            2606,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 23,
+      "source": 13463,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 24,
+      "source": 13468,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 25,
+      "source": 13473,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 26,
+      "source": 13478,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 27,
+      "source": 13483,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1240,
+          1748,
+          2604,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1240,
+            1748,
+            2604,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1240,
+          1748,
+          2604,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1240,
+            1748,
+            2604,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 28,
+      "source": 13488,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1241,
+          1749,
+          2600,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1241,
+            1749,
+            2600,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1241,
+          1749,
+          2600,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1241,
+            1749,
+            2600,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 29,
+      "source": 13493,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1748,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1748,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1748,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1748,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 30,
+      "source": 13498,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1748,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1748,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1748,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1748,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 31,
+      "source": 13503,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 32,
+      "source": 13508,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 33,
+      "source": 13513,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 34,
+      "source": 13518,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 35,
+      "source": 13523,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 36,
+      "source": 13528,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 37,
+      "source": 13533,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 38,
+      "source": 13538,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 39,
+      "source": 13543,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1242,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1242,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 40,
+      "source": 13548,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1241,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1241,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1241,
+          1749,
+          2599,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1241,
+            1749,
+            2599,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 41,
+      "source": 13553,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1241,
+          1749,
+          2598,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1241,
+            1749,
+            2598,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1290,
+          1778,
+          2558,
+          2022
+        ],
+        "card": [
+          1241,
+          1749,
+          2598,
+          1889
+        ],
+        "lines": [
+          [
+            1392,
+            1933,
+            2440,
+            2012
+          ],
+          [
+            1299,
+            1788,
+            2548,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1241,
+            1749,
+            2598,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 42,
+      "source": 13558,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 43,
+      "source": 13563,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 44,
+      "source": 13568,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 45,
+      "source": 13573,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 46,
+      "source": 13578,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 47,
+      "source": 13583,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 48,
+      "source": 13588,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 49,
+      "source": 13593,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 50,
+      "source": 13598,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 51,
+      "source": 13603,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          78,
+          537
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1084,
+          1692,
+          2756,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1084,
+            1692,
+            2756,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          78,
+          537
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1084,
+          1692,
+          2756,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1084,
+            1692,
+            2756,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 52,
+      "source": 13608,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          173
+        ],
+        "bounds": [
+          1562,
+          1926,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1572,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          173
+        ],
+        "bounds": [
+          1562,
+          1926,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1572,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 53,
+      "source": 13613,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1562,
+          1926,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1571,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1562,
+          1926,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1571,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 54,
+      "source": 13618,
+      "changed": [
+        "bounds"
+      ],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          167
+        ],
+        "bounds": [
+          1562,
+          1922,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1571,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          167
+        ],
+        "bounds": [
+          1558,
+          1922,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1571,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 55,
+      "source": 13623,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1562,
+          1926,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1571,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1562,
+          1926,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1571,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 56,
+      "source": 13628,
+      "changed": [
+        "bounds"
+      ],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1562,
+          1922,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1571,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1558,
+          1922,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1571,
+            1932,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 57,
+      "source": 13633,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          355
+        ],
+        "bounds": [
+          1562,
+          1926,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          355
+        ],
+        "bounds": [
+          1562,
+          1926,
+          2270,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 58,
+      "source": 13638,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 59,
+      "source": 13643,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 60,
+      "source": 13648,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 61,
+      "source": 13653,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 62,
+      "source": 13658,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 63,
+      "source": 13663,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 64,
+      "source": 13668,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 65,
+      "source": 13673,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1130,
+          1778,
+          2706,
+          2042
+        ],
+        "card": [
+          1088,
+          1749,
+          2752,
+          1889
+        ],
+        "lines": [
+          [
+            1572,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1787,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1088,
+            1749,
+            2752,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 66,
+      "source": 13678,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1766,
+          2706,
+          2042
+        ],
+        "card": [
+          1084,
+          1668,
+          2756,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1725,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1084,
+            1668,
+            2756,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1130,
+          1766,
+          2706,
+          2042
+        ],
+        "card": [
+          1084,
+          1668,
+          2756,
+          1889
+        ],
+        "lines": [
+          [
+            1571,
+            1933,
+            2260,
+            2032
+          ],
+          [
+            1137,
+            1725,
+            2696,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1084,
+            1668,
+            2756,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 67,
+      "source": 13683,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 68,
+      "source": 13688,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 69,
+      "source": 13693,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 70,
+      "source": 13698,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 71,
+      "source": 13703,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 0,
+        "palette": [
+          -1,
+          -1
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 72,
+      "source": 13708,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 0,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          206
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 0,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          206
+        ],
+        "bounds": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [],
+        "lineCards": []
+      }
+    },
+    {
+      "index": 73,
+      "source": 13713,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 74,
+      "source": 13718,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          167
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          167
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 75,
+      "source": 13723,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 76,
+      "source": 13728,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 77,
+      "source": 13733,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          206
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          206
+        ],
+        "bounds": [
+          1838,
+          1926,
+          1998,
+          2022
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1847,
+            1935,
+            1988,
+            2012
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 78,
+      "source": 13738,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          81,
+          635
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2581,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2581,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          81,
+          635
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2581,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2581,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 79,
+      "source": 13743,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 80,
+      "source": 13748,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 81,
+      "source": 13753,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 82,
+      "source": 13758,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 83,
+      "source": 13763,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          78,
+          537
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1256,
+          1748,
+          2588,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1786,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1256,
+            1748,
+            2588,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          78,
+          537
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1256,
+          1748,
+          2588,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1786,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1256,
+            1748,
+            2588,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 84,
+      "source": 13768,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          173
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          173
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 85,
+      "source": 13773,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 86,
+      "source": 13778,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          167
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          167
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 87,
+      "source": 13783,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 88,
+      "source": 13788,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          352
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          352
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 89,
+      "source": 13793,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 90,
+      "source": 13798,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 91,
+      "source": 13803,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 92,
+      "source": 13808,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 93,
+      "source": 13813,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          677
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 94,
+      "source": 13818,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          82,
+          674
+        ],
+        "bounds": [
+          1306,
+          1778,
+          2542,
+          2042
+        ],
+        "card": [
+          1258,
+          1749,
+          2582,
+          1889
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ],
+          [
+            1316,
+            1787,
+            2532,
+            1884
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1258,
+            1749,
+            2582,
+            1889
+          ]
+        ]
+      }
+    },
+    {
+      "index": 95,
+      "source": 13823,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          433
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          433
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "index": 96,
+      "source": 13828,
+      "changed": [],
+      "rc4": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": null,
+        "barAuthority": 1,
+        "barReason": "shared-classic-picture-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "currentDirect": {
+        "picture": [
+          272,
+          1886
+        ],
+        "independent": 0,
+        "barAuthority": 0,
+        "barReason": "counterfactual-direct-fixed-boundary-no-authority",
+        "detected": 1,
+        "rawComplete": 1,
+        "palette": [
+          76,
+          170
+        ],
+        "bounds": [
+          1402,
+          1926,
+          2434,
+          2042
+        ],
+        "card": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lines": [
+          [
+            1410,
+            1934,
+            2424,
+            2032
+          ]
+        ],
+        "lineCards": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "compare-rc4.cpp",
+      "sha256": "0D9A98BA4D033C9017E04D730A74C1603BF4C7D095000A6D91147A8EA84D8884"
+    },
+    {
+      "path": "compare-rc4.vcxproj",
+      "sha256": "A513C39A19AF22B6A11AFD4191B5DE327B2A9A64A6974A75C273325EE24FE5A5"
+    },
+    {
+      "path": "run-rc4.ps1",
+      "sha256": "377426F1ADD33DD6567642556C47EDC510E5777AAB83B7FBD486D5A75DD76448"
+    },
+    {
+      "path": "compare-direct.cpp",
+      "sha256": "99CD6796C7D3BFE5040D2E1A2301603FEA68B838E5D756A54320FF4E38B731A1"
+    },
+    {
+      "path": "compare-direct.vcxproj",
+      "sha256": "D9BBBB4DBA3272DCF74E3B57A59DCFE9330DCA52B9DE187BB5484F0DF415FA96"
+    },
+    {
+      "path": "run-direct.ps1",
+      "sha256": "8B74EF6FD0F15EFC6C30256DD436381CA5CF52281F0AFEDA081939521FBD4EF8"
+    },
+    {
+      "path": "summarize-rc4.py",
+      "sha256": "30689EC348CD156BDEC480D74CA328820E7EB46CBC4F5DC50A48794CAAFA1AB8"
+    },
+    {
+      "path": "seal-rc4.py",
+      "sha256": "2387BC1C677873395D995AA5A37F8E6BFC809652547E61C2F3690A4F804518AA"
+    },
+    {
+      "path": "rc4/frames.jsonl",
+      "sha256": "F4E69CAF08D19D0E4721AAAEBAF4DBD2A9999105A858F41CB5916A796398B331"
+    },
+    {
+      "path": "rc4/receipt.json",
+      "sha256": "8850C53AFAA3F3BE20EEEA77E48D52699ADBC29BDA019807B14CB98EFBC7496F"
+    },
+    {
+      "path": "rc4/source.tar",
+      "sha256": "C03D4E881013B5851BAA7D6D5D11E8FCAC26AD626BB723A5BDBF23D876EA46A0"
+    },
+    {
+      "path": "rc4/build/BlackReferenceComparison.exe",
+      "sha256": "3C502CDF1312BC239463CA1CF7932CBADD70155499E22607188537140142F83C"
+    },
+    {
+      "path": "current/frames-direct.jsonl",
+      "sha256": "11D26C870F01CFD8A7FBA5F1CB43557F8FF760F0C2A1770E3514D6A2F89F6EEE"
+    },
+    {
+      "path": "current/direct-receipt.json",
+      "sha256": "8DC6B6A919F55497A4D44EAE71513907B1FBCDAEBDB227D70A1C3657CE02B49B"
+    },
+    {
+      "path": "current/build/BlackReferenceDirectComparison.exe",
+      "sha256": "7D1BFF36768E1CDFA8DC9D32BDEF686BB9905439F6228E92088E13F583944531"
+    },
+    {
+      "path": "authoritative-release-metadata.json",
+      "sha256": "D32EF8612287AB81B3486EEC25AD91BB4D5E21A6781FF20A1F4445B568FC7AEF"
+    }
+  ]
+}

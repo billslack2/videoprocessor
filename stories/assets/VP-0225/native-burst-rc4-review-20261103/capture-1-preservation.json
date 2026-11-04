@@ -1,0 +1,1179 @@
+{
+  "source": "C:\\Videoprocessor\\vp\\logs\\analysis-20261103-230106-61168-1",
+  "preserved": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\native-bursts-20261103\\capture-1",
+  "sourceCommit": "fcfbd21424b59462f9560fa13bb8be44027692d2",
+  "runtimeProfile": "Classic; input capture is independent of subsequent offline Reconstruction experiments",
+  "nativeBurstComplete": false,
+  "frames": 91,
+  "captureMisses": 6,
+  "segments": [
+    {
+      "firstIndex": 1,
+      "lastIndex": 2,
+      "count": 2,
+      "firstAccepted": 2042,
+      "lastAccepted": 2043,
+      "firstPhysical": 2050,
+      "lastPhysical": 2051,
+      "firstTimestamp": 354726415070,
+      "lastTimestamp": 354726456780
+    },
+    {
+      "firstIndex": 3,
+      "lastIndex": 86,
+      "count": 84,
+      "firstAccepted": 2048,
+      "lastAccepted": 2131,
+      "firstPhysical": 2056,
+      "lastPhysical": 2139,
+      "firstTimestamp": 354726665310,
+      "lastTimestamp": 354730127040
+    },
+    {
+      "firstIndex": 87,
+      "lastIndex": 87,
+      "count": 1,
+      "firstAccepted": 2133,
+      "lastAccepted": 2133,
+      "firstPhysical": 2141,
+      "lastPhysical": 2141,
+      "firstTimestamp": 354730210460,
+      "lastTimestamp": 354730210460
+    },
+    {
+      "firstIndex": 88,
+      "lastIndex": 91,
+      "count": 4,
+      "firstAccepted": 2135,
+      "lastAccepted": 2138,
+      "firstPhysical": 2143,
+      "lastPhysical": 2146,
+      "firstTimestamp": 354730293870,
+      "lastTimestamp": 354730419000
+    }
+  ],
+  "bestContiguousSubset": {
+    "firstIndex": 3,
+    "lastIndex": 86,
+    "count": 84,
+    "firstAccepted": 2048,
+    "lastAccepted": 2131,
+    "firstPhysical": 2056,
+    "lastPhysical": 2139,
+    "firstTimestamp": 354726665310,
+    "lastTimestamp": 354730127040
+  },
+  "inputs": [
+    {
+      "file": "frame-000001.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000001.txt",
+      "bytes": 141,
+      "sha256": "c300431492d50f42042a9f3ab3059ced523508e94150f5465f2b55fbca41749d",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000002.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000002.txt",
+      "bytes": 141,
+      "sha256": "dc39afcf4ef26a41492eba58244d622823c909550c50116f75f54baa0fbcbba6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000003.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000003.txt",
+      "bytes": 141,
+      "sha256": "3c00c5021a3a57f74817679a28c15ef2e34cb1bf214288da5f0e9d0e351c0a82",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000004.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000004.txt",
+      "bytes": 141,
+      "sha256": "9cb0dd764ae9b7ae737cdae974ec6f68310fa2c86e992842eab89175a21b82d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000005.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000005.txt",
+      "bytes": 141,
+      "sha256": "c46599211308d7e9f9645932a82dfb3a629b60b71a608a36c58a1535f61d23c6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000006.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000006.txt",
+      "bytes": 141,
+      "sha256": "c0a61ba4eed64ff44e670a524e1de5e0b66e00eadf4c36f1673d827a3c974eaa",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000007.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000007.txt",
+      "bytes": 141,
+      "sha256": "5a4240fbb3eb533e4beb0f4e1c0492873cdfaa1e16212eb5c259792efb2e3ec7",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000008.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000008.txt",
+      "bytes": 141,
+      "sha256": "fe5ad014d2817937f7acce9f1d9b271ac621c636f113bfd8667ce02f14acacb8",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000009.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000009.txt",
+      "bytes": 141,
+      "sha256": "c78207a339d279581c0f4805f66e0b7aa4e95353b2bea9e5a9af3de782f8a4bf",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000010.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000010.txt",
+      "bytes": 141,
+      "sha256": "00a00a099a8e3eff68c4bea7edc82a47a1998f26cfbb3c829faf33c589d4cbfd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000011.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000011.txt",
+      "bytes": 141,
+      "sha256": "a5f9a0f5dee61bc52668cfdfdc5144a7fbc63b20da0f425be99a8d52b8e595ea",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000012.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000012.txt",
+      "bytes": 141,
+      "sha256": "ac0a8e9a7123355cbe420b801c7defbf9bb05361dcbd0b8e74b78e3e5f0abb50",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000013.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000013.txt",
+      "bytes": 141,
+      "sha256": "478e4ef00cdc4c919442cc6236dc87112d1fbb0edbd15ac00f121ddcd9275e22",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000014.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000014.txt",
+      "bytes": 141,
+      "sha256": "3e551741cec3e8f88c3e94df1e7854a4864300987eaf7e64feacb75897eadeb1",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000015.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000015.txt",
+      "bytes": 141,
+      "sha256": "9d7a9835b4edc322765ecfed8e68eeb7717e34c0e8ccd1f397360e1aa1da535f",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000016.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000016.txt",
+      "bytes": 141,
+      "sha256": "492c2a5d413d3cf61b76ddbc528338953ed5f47358eeb12eaf317c1251bcf7e2",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000017.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000017.txt",
+      "bytes": 141,
+      "sha256": "616783b54b335ace90d81739e1ba719e7516265b14913611ad3cf0dcdddc7526",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000018.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000018.txt",
+      "bytes": 141,
+      "sha256": "a1af893287d7e43d2808c89114e9da148c48f560e55b39b0719c7f8eaf3d5d67",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000019.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000019.txt",
+      "bytes": 141,
+      "sha256": "e4187aa57265fc2d01d754cab53cea5cb22a169f2af5c58b07cd6931337bafb4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000020.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000020.txt",
+      "bytes": 141,
+      "sha256": "b45bfb06a052f3313e020a31be13f45754825c85f1d6b46cd9c794573afe41c6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000021.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000021.txt",
+      "bytes": 141,
+      "sha256": "7e793c7fb71cd33c2693e925e4c08a43ce96a496bf32fb1e2328fff4fac52f1e",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000022.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000022.txt",
+      "bytes": 141,
+      "sha256": "6b554ee43c525fb272a798a88bd403a46f46593fd17471df2ad1fc7a640151ba",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000023.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000023.txt",
+      "bytes": 141,
+      "sha256": "d9193b8624f25cf843ccd538a17197de282baec3e9bc3b342f28c0ea5ffa0807",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000024.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000024.txt",
+      "bytes": 141,
+      "sha256": "6cddd89bc8f5c7fcadecab2a91c8107f154684a78c127bb9d6cfe68b0da296de",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000025.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000025.txt",
+      "bytes": 141,
+      "sha256": "a66aaeb5143e768b4eccc90a11e2beb14d86fd80d74dc162a7430fb53b526b68",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000026.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000026.txt",
+      "bytes": 141,
+      "sha256": "5b3363c57800d0110a8f9c1ca2a20d05e1fadad6b14e9be51c18da0adb977ff1",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000027.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000027.txt",
+      "bytes": 141,
+      "sha256": "0fcaeed04bfdda45c63c926bcc9877f0fe9ea3d8bca4a5f5a567e911a91ca46f",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000028.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000028.txt",
+      "bytes": 141,
+      "sha256": "5f8771c28c5c3523a7e391306c3a3955dc7ef79aca69f2fbe853ede67e463732",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000029.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000029.txt",
+      "bytes": 141,
+      "sha256": "f449710862e8bd8e312e5ee2afc7472478412c897bbe5c959e63d3b1814f3007",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000030.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000030.txt",
+      "bytes": 141,
+      "sha256": "fb613e4d8d77f956c418af6561d6281248c984d5b57986ac2385cc8c77695013",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000031.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000031.txt",
+      "bytes": 141,
+      "sha256": "5d3f84f07d5af16472bbff73663971361f275b8cc8a2379a598f48605ae8c3fb",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000032.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000032.txt",
+      "bytes": 141,
+      "sha256": "a40f2c4a125e4e6c0b1ce2b3aa95e9a92370ef2c42dd07d8688103f576360619",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000033.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000033.txt",
+      "bytes": 141,
+      "sha256": "d96de4f9d80226af6779840af60066e63ef5d79043cd11c62a27b9fcb2f38e43",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000034.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000034.txt",
+      "bytes": 141,
+      "sha256": "a92cb6a82924d4452582ab23cdb1e57fb8d7306c138d24b9c46f2c203879cdde",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000035.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000035.txt",
+      "bytes": 141,
+      "sha256": "c57685d63bdb4073640f260bfcb044ac89e79e4811b6a9ed6b9442126eeb0a49",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000036.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000036.txt",
+      "bytes": 141,
+      "sha256": "a6e893dc5393e60a327261034ae4246b4174ddb7faa30deff2544c162250c3eb",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000037.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000037.txt",
+      "bytes": 141,
+      "sha256": "f2bea99c75087ed1e55d280c01f8cd2a90b8ec9b8be3792148476ec50e3d3613",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000038.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000038.txt",
+      "bytes": 141,
+      "sha256": "411b9099c342562e23fa8f245c0971701a4ada875da46196da523ccc587d5f1f",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000039.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000039.txt",
+      "bytes": 141,
+      "sha256": "7b4243ef7ece835c09f2329025a6ac3d9f3d902d98b32527d3fc10fdb76380d5",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000040.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000040.txt",
+      "bytes": 141,
+      "sha256": "ff3150d719610fa0e43dc5fb155b05d0ad5d4bf893f4f2b96c2ce2bc9395a80f",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000041.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000041.txt",
+      "bytes": 141,
+      "sha256": "d898fa28d90a42d58b5cf06520c9a573217354b66bacbd2d6063ced9cbc19ab0",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000042.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000042.txt",
+      "bytes": 141,
+      "sha256": "50757624ad399dd59ea047c4d4d4e9b7b92f9bded6da2cf291d2aedc3c7f34b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000043.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000043.txt",
+      "bytes": 141,
+      "sha256": "6112f4dd9bd5bc4d521e772508730bc43cdffbd72ced92c80afc0065d9b770f7",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000044.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000044.txt",
+      "bytes": 141,
+      "sha256": "e9938e71c9686f0c2024aad907f1971bd49f88ddc6d6847ee6a140fff4dce4c7",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000045.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000045.txt",
+      "bytes": 141,
+      "sha256": "f3d2ee0384ec8152f759df17ced2a740abbfa73d7e254fd91b5e1a20a4f7f813",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000046.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000046.txt",
+      "bytes": 141,
+      "sha256": "2e8d7d5d54f27e670db9a90b2748231c2fa4b3108d9788472683905b2b239e1f",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000047.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000047.txt",
+      "bytes": 141,
+      "sha256": "c0fb26985e8932ae312f44f768dfd16668b844aa4a2970724d512a739475ff8e",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000048.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000048.txt",
+      "bytes": 141,
+      "sha256": "5248d492090c69b3eb1bcb950e798a4bbe3877bd045bdcbc9b3997349cbd6490",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000049.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000049.txt",
+      "bytes": 141,
+      "sha256": "4286726412149802f8415ac583208b9ec01b47c3c4948c36bb64a7693cb64697",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000050.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000050.txt",
+      "bytes": 141,
+      "sha256": "a08422c0b51a08abdc9792885551fc238501b3ea4e4f0fa53b94347a7dcd90c8",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000051.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000051.txt",
+      "bytes": 141,
+      "sha256": "644bb689235a9908d288e3b42234af7fd6a3ca81467a6d11763d4775cdec7d5b",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000052.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000052.txt",
+      "bytes": 141,
+      "sha256": "d1e8373ea48350f5023dc6e61a9a616a780b32c6bdaf11fe6b6d35de9bc4687e",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000053.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000053.txt",
+      "bytes": 141,
+      "sha256": "9f739ec12ed8a92acbbe7c53f49330f7c39cccef6fd897282a125c4ec59b1829",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000054.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000054.txt",
+      "bytes": 141,
+      "sha256": "7af879f3090f19e9e352eb1683ae9ef5488d2348edb89d3141a7fcd0fb35e627",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000055.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000055.txt",
+      "bytes": 141,
+      "sha256": "1d438286ce7d35241dcc551bd69a402d5ca75248e320a7f5f8bddc29f8060300",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000056.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000056.txt",
+      "bytes": 141,
+      "sha256": "fadff04f07973774d3b287a33b693fe20ba34807a586a7d1a99adde3c8a70cb1",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000057.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000057.txt",
+      "bytes": 141,
+      "sha256": "2bc636921e0671ccdd05072e0183c0e7267e3154bddbc5a6b4f327e2a67ac321",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000058.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000058.txt",
+      "bytes": 141,
+      "sha256": "b8d91bbde6782034f6b6310d1ace83fbbb9d9150ac52aa491b9e5b4e270b5642",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000059.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000059.txt",
+      "bytes": 141,
+      "sha256": "8270c2d645788fd39d527e0af2084572cf92d792809b3536088874cc166d0586",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000060.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000060.txt",
+      "bytes": 141,
+      "sha256": "b3d04e6d4ff9fe666c338d7e315d5d4428c99960f4446f45c6452c5b0214cbb0",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000061.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000061.txt",
+      "bytes": 141,
+      "sha256": "9834fa2a361a257bc6e4a858ae2ffddcaa55ff393235eca1eafdff99bb8918b3",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000062.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000062.txt",
+      "bytes": 141,
+      "sha256": "0672500311e3b0b63fa776cea81429374f62e4bcdb1906d08c8dab003802408b",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000063.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000063.txt",
+      "bytes": 141,
+      "sha256": "1e18eb46c8469f441cfb220cb8cad3a42b4872de84b9648bc6c26a4aa021f34b",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000064.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000064.txt",
+      "bytes": 141,
+      "sha256": "351f68060276890c4381c6b8ee94b54605e8027d21358897eed10073609307a7",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000065.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000065.txt",
+      "bytes": 141,
+      "sha256": "0096f0828de1865d9f6d420ade328c4300c517918549bab50fa5ccafe44e5199",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000066.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000066.txt",
+      "bytes": 141,
+      "sha256": "ef9001f8c1d1f774fe2e13e99a28912d3144253cce98049f102edeb62e69d2fe",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000067.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000067.txt",
+      "bytes": 141,
+      "sha256": "28a9f1d796b35680e6c0a94ecd3b48ac725f461d97585e26757c206363204131",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000068.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000068.txt",
+      "bytes": 141,
+      "sha256": "48f8b5a4bc1712869ee46b912a20b534b0782527f49124972c163d54f4d8bd9e",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000069.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000069.txt",
+      "bytes": 141,
+      "sha256": "ae98ecd8bbde93ba465d40483f15687a1324e0059bd3aa23465d3a1e8287a2d4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000070.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000070.txt",
+      "bytes": 141,
+      "sha256": "9a2c0c6b0cf27d7cf9c1bb8e5404e92cefd9b2a1b71ee7c699177a81421d7439",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000071.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000071.txt",
+      "bytes": 141,
+      "sha256": "603b4ba29051fe2c1d821b8d65235006bb9cd55702ac4c2ab19ca8a2fb3e813f",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000072.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000072.txt",
+      "bytes": 141,
+      "sha256": "df3492a9e04d8ace96755957cfb494e83644237f86f946fb44cdd8138381b986",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000073.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000073.txt",
+      "bytes": 141,
+      "sha256": "542cea3939d7df39df7d550060afd6dc99038d8490930ee83600fbaea94d2c92",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000074.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000074.txt",
+      "bytes": 141,
+      "sha256": "e4040647e099acb2cd41162971a1423f82b58e147d24bd7e387e39d04e5e0049",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000075.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000075.txt",
+      "bytes": 141,
+      "sha256": "e854a83f0eb7a2310c5669de3b0a11348f89179c2170be89b3269f8c39adfb4e",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000076.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000076.txt",
+      "bytes": 141,
+      "sha256": "15532691d375da058c2ff24ef3a507169f7d3d9e7e4a99b49487ddc7062d469c",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000077.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000077.txt",
+      "bytes": 141,
+      "sha256": "951d5d6fa10ad91bd06ea382d20b7b813b30f1e3d20f731fcb3da5a08108fc93",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000078.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000078.txt",
+      "bytes": 141,
+      "sha256": "f88a9e2f1c1f7b18c5a07e52ba7144d8da96e54cf9ecffcabd67d61934eb122d",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000079.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000079.txt",
+      "bytes": 141,
+      "sha256": "b2550be8f0e630312d36ab42570a4e30a63c7a0a61b353c3b2714942ab9aff0c",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000080.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000080.txt",
+      "bytes": 141,
+      "sha256": "cf3b4e019bbd567a667a172db4eb1a1a37bd01139a477e92ee9c4ffd6efc27ba",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000081.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000081.txt",
+      "bytes": 141,
+      "sha256": "6517d56af8ee345659c468428cb0fee95f0b40bd5b85bd5c7527cbb29575c363",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000082.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000082.txt",
+      "bytes": 141,
+      "sha256": "7697f125d6279242aacdf613cfff59e898dd339c0c03395a8f3eceb20e28b565",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000083.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000083.txt",
+      "bytes": 141,
+      "sha256": "f90a83359224728630d95e28f28c553f547e6d306376b6b3bf65df08f0769659",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000084.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000084.txt",
+      "bytes": 141,
+      "sha256": "bb25b8490184aaadcee7d61b814406e3956feccd75e81ccfd44f6511dbd2cf26",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000085.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000085.txt",
+      "bytes": 141,
+      "sha256": "77c968f66feb8178f4de50893b70dc107d7f34312e56cea3ec923043ba380f7e",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000086.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000086.txt",
+      "bytes": 141,
+      "sha256": "b580cbcf1bd84a2452a13467403fc1e394d9600b65236648465207b4ea0fd400",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000087.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000087.txt",
+      "bytes": 141,
+      "sha256": "6c13a56a9fa0ab814a529399cebe997074521287f77871c7b11a09192cdb1912",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000088.bin",
+      "bytes": 22118400,
+      "sha256": "b4a3995c9e27fe31854ab8de4f29ee573754e13ffe8a5a8b4f1209363d1e34d6",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000088.txt",
+      "bytes": 141,
+      "sha256": "3672e6ea9600eec10f142c28e325d983390277a6b6858ef9585eb9dfbd6f0853",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000089.bin",
+      "bytes": 22118400,
+      "sha256": "8deed112618da97ac4f78303c5bd4580613649d6428358d57833ee081507823a",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000089.txt",
+      "bytes": 141,
+      "sha256": "c97e2c900cb0a2e269d305a9548fca62b2e3a158d27fca10302ea06966701664",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000090.bin",
+      "bytes": 22118400,
+      "sha256": "154fa680306dd87f2c3eeda5e0f471ffd863d1823520c904c94e9b55b08929b4",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000090.txt",
+      "bytes": 141,
+      "sha256": "e16dcd59c520c94d3f645b7c4826fc6965df9f4e167be159f781553719cebbba",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000091.bin",
+      "bytes": 22118400,
+      "sha256": "ee4892640172388523a534daae9402887e95395ed0f62c61c80b98b9b54289cd",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frame-000091.txt",
+      "bytes": 141,
+      "sha256": "f756358a33a4e64a8607c5438cec2fa9803ffbe6a9e98583bbf036de128fa049",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "capture-summary.json",
+      "bytes": 1402,
+      "sha256": "3f5881c0af8700c0d17ee30be4561a33d36e4e05312315e30e238d5b183cd978",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "analysis.jsonl",
+      "bytes": 26118315,
+      "sha256": "f7bced497e37a64c73f754a26a9a4bf42f60c928ac9aa66505565b526dab27c8",
+      "originalSha256Matched": true
+    },
+    {
+      "file": "frames.jsonl",
+      "bytes": 15643,
+      "sha256": "83ff981f2c3d87218c8e677efa518799f9fd97b32b3851c91e014d103ff46b6a",
+      "originalSha256Matched": true
+    }
+  ],
+  "scope": "Original and preserved bytes match SHA256. Consecutive subsets require complete original identities, fixed context, increasing timestamps and no repeat/discontinuity. Gaps are capture omissions, not fabricated/replayed frames."
+}
