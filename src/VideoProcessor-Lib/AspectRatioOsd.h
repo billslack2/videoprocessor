@@ -7,7 +7,7 @@
 #include <string>
 #include <limits>
 
-enum class PhysicalAspectConfidence : uint32_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT, SOURCE_CANVAS_ESTIMATE };
+enum class PhysicalAspectConfidence : uint32_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT, SOURCE_CANVAS_ESTIMATE, BOUNDED_FILTERED_EDGE };
 
 enum class PictureAspectUse : uint32_t { UNAVAILABLE, STARTUP_FALLBACK, DETECTED, HELD, PRESENTATION };
 
@@ -88,7 +88,8 @@ public:
                 swprintf_s(geometry, L" [%d,%d..%d,%d; %ls]",
                     reading.physicalBounds[0], reading.physicalBounds[1],
                     reading.physicalBounds[2], reading.physicalBounds[3],
-                    reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT ? L"source extent" : L"strong edge");
+                    reading.physicalConfidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT ? L"source extent" :
+                    reading.physicalConfidence == PhysicalAspectConfidence::BOUNDED_FILTERED_EDGE ? L"bounded filtered edge" : L"strong edge");
                 rows.detected += geometry;
             }
             if (spatial) rows.detected += L" (source spatial)";
@@ -228,7 +229,8 @@ public:
         m_value.physicalConfidence = confidence;
         m_value.available = evaluated && estimateAvailable &&
             (confidence == PhysicalAspectConfidence::STRONG_ABRUPT_EDGE ||
-             confidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT) &&
+             confidence == PhysicalAspectConfidence::SOURCE_RASTER_EXTENT ||
+             confidence == PhysicalAspectConfidence::BOUNDED_FILTERED_EDGE) &&
             left >= 0 && top >= 0 && right > left && bottom > top;
         m_value.provisional = false;
         m_value.ratio = m_value.available ? double(right-left) / double(bottom-top) : 0.0;

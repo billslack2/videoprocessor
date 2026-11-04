@@ -22,6 +22,13 @@ struct SourcePictureComponent {
     unsigned samples=0;
     bool glyphLike=false;
 };
+// Current measured ray profile only; no temporal or crop permission.
+struct SourcePictureTransitionProfile {
+    unsigned side=0,ray=0;
+    int minimum=0,maximum=0,transitionMinimum=0,transitionMaximum=0;
+    int readMinimum=0,readMaximum=0;
+    bool filtered=false;
+};
 struct SourcePictureObservation {
     SourcePictureOutcome outcome=SourcePictureOutcome::NotMeasured;
     uint64_t sourceGeneration=0;
@@ -34,6 +41,12 @@ struct SourcePictureObservation {
     ActivePictureBounds measuredBounds;
     std::array<std::vector<SourcePictureEdgeCandidate>,4> edges;
     std::vector<SourcePictureComponent> components;
+    // Bounded current sample windows for selected boundaries. Overflow disables
+    // optional temporal equivalence; it does not change current measurement.
+    bool transitionProfilesComplete=true;
+    std::vector<SourcePictureTransitionProfile> transitionProfiles;
+    unsigned filteredEdgeMask=0;
+    std::array<int,4> edgeMinimum{},edgeMaximum{},transitionMinimum{},transitionMaximum{};
     // Sparse topology is not an absence certificate or permission to crop.
     int overviewStepX=0, overviewStepY=0;
     bool denseCoverage=false;

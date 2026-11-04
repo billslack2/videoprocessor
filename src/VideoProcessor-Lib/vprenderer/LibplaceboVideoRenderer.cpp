@@ -71,6 +71,7 @@
 #include <vprenderer/SourcePictureShadowPolicy.h>
 #include <SourcePictureMeasurement.h>
 #include <SourcePictureDetector.h>
+#include "SourcePictureSupportEpisode.h"
 #include <vprenderer/SourceCadenceNativeHandoff.h>
 #include <vprenderer/TemporalPresentationLedger.h>
 #include <vprenderer/TemporalPresentationPose.h>
@@ -290,11 +291,15 @@ namespace
 
     template<class Measurement>
     void PopulateNativeSourceMeasurement(Measurement& result,const PreparedAnalysisFrame& prepared,
-        const ActivePictureFrameIdentity& identity) {
+        const ActivePictureFrameIdentity& identity, SourcePictureSupportEpisode& episode) {
         const auto started=SteadyClock::now();
         result.domainKey=prepared.domainKey;result.source=prepared.source;result.identity=identity;
         result.identity.analysisDomainKey=prepared.domainKey;
-        auto detected=DetectPreparedSourcePictureBounded(prepared.source,result.identity);
+        SourcePictureSupportRequest request;
+        const bool ordered=episode.Begin(prepared.source,result.identity,request);
+        auto detected=DetectPreparedSourcePictureBounded(prepared.source,result.identity,ordered?&request:nullptr);
+        if(ordered)episode.Complete(detected);
+        result.sourcePictureSupport=std::move(detected.support);
         result.evidence=std::move(detected.evidence);
         result.sourcePictureObservation=std::move(detected.observation);
         result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
@@ -4592,6 +4597,7 @@ struct LibplaceboVideoRenderer::Impl
     LookaheadPerformanceWindow lookaheadPerformance;
     PreparedPictureEvidenceWorker::Metrics previousPictureProofMetrics;
     QueuedFrame::LookaheadWorker lookaheadMeasurementWorker;
+    std::shared_ptr<SourcePictureSupportEpisode> sourcePictureSupportEpisode=std::make_shared<SourcePictureSupportEpisode>();
     QueuedFrame::OutwardWindowWorker outwardWindowWorker;
     uint64_t outwardAsyncReady=0, outwardAsyncLate=0, outwardAsyncStale=0;
     uint64_t outwardRawComputed=0,outwardRawReused=0,outwardRetentionComputed=0,outwardRetentionReused=0;
@@ -11334,6 +11340,8 @@ struct LibplaceboVideoRenderer::Impl
                     PhysicalAspectConfidence::STRONG_ABRUPT_EDGE:
                 current && physical.confidence==PhysicalPictureEdgeConfidence::SOURCE_RASTER_EXTENT?
                     PhysicalAspectConfidence::SOURCE_RASTER_EXTENT:
+                current && physical.confidence==PhysicalPictureEdgeConfidence::BOUNDED_FILTERED_EDGE?
+                    PhysicalAspectConfidence::BOUNDED_FILTERED_EDGE:
                 current && physical.confidence==PhysicalPictureEdgeConfidence::SOURCE_CANVAS_ESTIMATE?
                     PhysicalAspectConfidence::SOURCE_CANVAS_ESTIMATE:PhysicalAspectConfidence::UNKNOWN,
                 edge.left,edge.top,edge.right,edge.bottom,
@@ -13825,7 +13833,7 @@ struct LibplaceboVideoRenderer::Impl
                 const auto native = QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
                 if (native && native->domainKey == preparedLive.domainKey)
                     pixelMeasurements.SeedQueued(native->source, native->identity,
-                        native->evidence, native->darkness);
+                        native->evidence, native->darkness, native->sourcePictureSupport);
             }
 
             // Consume a completed exact-frame worker job before AR evaluates this
@@ -19385,6 +19393,52 @@ releaseDriftBaseRetention =
                 ? aspectLimitFill.sourceBounds : ActivePictureBounds{};
             cropPresentationAdmission.optionalFillSourceSequence = sourceSequence;
             cropPresentationAdmission.optionalFillScreenAspect = configuredScreenAspect;
+            // Experimental current-pixel support is a presentation envelope,
+            // not a replacement physical boundary or native crop certificate.
+            // Keep existing prepared/translated/NLS operations unchanged.
+            const auto currentSupport=pixelMeasurements.CurrentSourceSupport();
+            const bool supportPresentation=currentSupport && currentSupport->currentSupport.verified &&
+                currentSupport->currentSupport.samplingBounds.rasterWidth==width &&
+                currentSupport->currentSupport.samplingBounds.rasterHeight==height &&
+                cropInput.automaticCropEnabled && !fixedCropAspectConfigured && !nlsRequested &&
+                !subtitleCompositionSucceeded && !verticalTranslationActive &&
+                verticalTranslationPixels==0 && !captionPresentationHeld && !unknownCaptionHold.retained &&
+                (!cropInput.latestObservationSupportsCrop ||
+                 pixelMeasurements.PhysicalEdges().confidence==PhysicalPictureEdgeConfidence::BOUNDED_FILTERED_EDGE);
+            if(supportPresentation) {
+                auto bounds=currentSupport->currentSupport.samplingBounds;
+                // Affirmative current caption/UI visibility is never discarded
+                // by the bounded sampled bar verifier. This outward extension
+                // is local to this presentation and cannot renew the episode.
+                if(currentMeasuredCaptionAvailable && currentConfirmedCaptionBounds.right>currentConfirmedCaptionBounds.left &&
+                    currentConfirmedCaptionBounds.bottom>currentConfirmedCaptionBounds.top) {
+                    bounds.left=std::min(bounds.left,currentConfirmedCaptionBounds.left);
+                    bounds.top=std::min(bounds.top,currentConfirmedCaptionBounds.top);
+                    bounds.right=std::max(bounds.right,currentConfirmedCaptionBounds.right);
+                    bounds.bottom=std::max(bounds.bottom,currentConfirmedCaptionBounds.bottom);
+                }
+                const auto& rawText=recoveryInput.currentTextCandidate;
+                if(rawText.rasterWidth==width && rawText.rasterHeight==height &&
+                    rawText.right>rawText.left && rawText.bottom>rawText.top) {
+                    bounds.left=std::min(bounds.left,rawText.left);bounds.top=std::min(bounds.top,rawText.top);
+                    bounds.right=std::max(bounds.right,rawText.right);bounds.bottom=std::max(bounds.bottom,rawText.bottom);
+                }
+                if(cropInput.currentVisibleBoundsAvailable &&
+                    cropInput.currentVisibleSourceGeneration==frameGeneration &&
+                    cropInput.currentVisibleSourceSequence==sourceSequence) {
+                    bounds.left=std::min(bounds.left,cropInput.currentVisibleBounds.left);
+                    bounds.top=std::min(bounds.top,cropInput.currentVisibleBounds.top);
+                    bounds.right=std::max(bounds.right,cropInput.currentVisibleBounds.right);
+                    bounds.bottom=std::max(bounds.bottom,cropInput.currentVisibleBounds.bottom);
+                }
+                bounds.aspectRatio=double(bounds.right-bounds.left)/double(bounds.bottom-bounds.top);
+                cropDecision={};cropDecision.sourceBounds=bounds;cropDecision.applyCrop=true;
+                cropDecision.owner=AlphaSourceCrop::DecisionOwner::CURRENT_SOURCE_SUPPORT;
+                cropDecision.reason="current-verified-source-support-presentation";
+                cropDecision.rawSubtitleFallback=true;cropDecision.unprocessedSubtitleCanvas=true;
+                aspectLimitFill={};cropPresentationAdmission={};
+                temporalPolicyPreFillBounds=bounds;temporalPolicyPreFillAvailable=true;
+            }
 			const ActivePictureBounds& presentationCropBounds =
 				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
 				cropDecision.sourceBounds;
@@ -19396,7 +19450,7 @@ releaseDriftBaseRetention =
             // Certify the final translated pose after either configured fill axis.
             cropPresentationAdmission = AlphaSourceCrop::QualifyTranslatedNativePresentation(
                 cropPresentationAdmission, finalFillInput, aspectLimitFill);
-            const bool captionAnchorEligible = !unknownCaptionHold.retained &&
+            const bool captionAnchorEligible = !supportPresentation && !unknownCaptionHold.retained &&
                 (captionPresentationHeld ||
                  (cropDecision.applyCrop && !cropDecision.verticallyTranslated &&
                   !verticalTranslationConfirmationPending && !verticalFitConfirmationPending &&
@@ -19910,7 +19964,7 @@ releaseDriftBaseRetention =
 					presentationCropBounds.right);
 				source.crop.y1 = static_cast<float>(
 					presentationCropBounds.bottom);
-				if (trustedActivePicture && !captionPresentationHeld)
+				if (trustedActivePicture && !captionPresentationHeld && !supportPresentation)
 					*trustedActivePicture = true;
 			}
 			// This is the sole per-frame NLS authority. Derive every mapping input
@@ -25817,10 +25871,10 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
 
     if(!CurrentLookaheadMeasurement(prepared,identity,initial) || !SourcePictureMeasurementWorkComplete(initial->evidence)) {
         trace.nativeQueued=m_impl->lookaheadMeasurementWorker.Submit(slot,identity.transportGeneration,identity.acceptedSequence,
-            minimumSequence,[prepared,identity,slot] {
+            minimumSequence,[prepared,identity,slot,episode=m_impl->sourcePictureSupportEpisode] {
                 const auto ready=QueuedFrame::LookaheadWorker::Ready(slot);
                 if(CurrentLookaheadMeasurement(prepared,identity,ready) && SourcePictureMeasurementWorkComplete(ready->evidence))return *ready;
-                QueuedFrame::LookaheadMeasurement result;PopulateNativeSourceMeasurement(result,prepared,identity);return result;
+                QueuedFrame::LookaheadMeasurement result;PopulateNativeSourceMeasurement(result,prepared,identity,*episode);return result;
             },[prepared,identity,slot,initial](std::shared_ptr<const QueuedFrame::LookaheadMeasurement> result) {
                 PublishPreparedOutwardRaw<QueuedFrame::LookaheadMeasurement>(prepared,identity,slot,initial,std::move(result));
             });
@@ -25940,7 +25994,7 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
             if(present==m_frameQueue.end())continue;
         }
         m_impl->lookaheadMeasurementWorker.Submit(slot,identity.transportGeneration,
-            identity.acceptedSequence,minimumSequence,[prepared,identity,slot] {
+            identity.acceptedSequence,minimumSequence,[prepared,identity,slot,episode=m_impl->sourcePictureSupportEpisode] {
                 auto expected=identity;expected.analysisDomainKey=prepared.domainKey;
                 if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
                     if (CurrentLookaheadMeasurement(prepared,expected,ready) &&
@@ -25949,7 +26003,7 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
                     SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                 (void)prioritySet;
                 QueuedFrame::LookaheadMeasurement result;
-                PopulateNativeSourceMeasurement(result,prepared,identity);
+                PopulateNativeSourceMeasurement(result,prepared,identity,*episode);
                 return result;
             },[prepared,currentExpected,slot,ready](std::shared_ptr<const QueuedFrame::LookaheadMeasurement> result) {
                 PublishPreparedOutwardRaw<QueuedFrame::LookaheadMeasurement>(prepared,currentExpected,slot,ready,std::move(result));
@@ -26531,7 +26585,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             !SourcePictureMeasurementWorkComplete(measured->evidence)) {
             if(allowBackgroundDispatch)m_impl->lookaheadMeasurementWorker.Submit(queued.analysis->lookahead,
                 analysisIdentity.transportGeneration,analysisIdentity.acceptedSequence,
-                previewFrames.front().activePictureIdentity.acceptedSequence,[prepared,analysisIdentity,slot=queued.analysis->lookahead] {
+                previewFrames.front().activePictureIdentity.acceptedSequence,[prepared,analysisIdentity,slot=queued.analysis->lookahead,episode=m_impl->sourcePictureSupportEpisode] {
                     if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
                         if (CurrentLookaheadMeasurement(prepared,analysisIdentity,ready) &&
                             SourcePictureMeasurementWorkComplete(ready->evidence))return *ready;
@@ -26540,7 +26594,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                         SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                     (void)prioritySet;
                     QueuedFrame::LookaheadMeasurement result;
-                    PopulateNativeSourceMeasurement(result,prepared,analysisIdentity);
+                    PopulateNativeSourceMeasurement(result,prepared,analysisIdentity,*episode);
                     return result;
                 },[prepared,analysisIdentity,slot=queued.analysis->lookahead,measured](std::shared_ptr<const QueuedFrame::LookaheadMeasurement> result) {
                     PublishPreparedOutwardRaw<QueuedFrame::LookaheadMeasurement>(prepared,analysisIdentity,slot,measured,std::move(result));

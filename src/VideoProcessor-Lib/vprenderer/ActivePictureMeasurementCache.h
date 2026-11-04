@@ -47,6 +47,7 @@ public:
             !SameSource(source, m_source))
         {
             m_globalValid = m_pictureValid = m_darknessValid = m_retentionValid = m_subtitleValid = false;
+            m_support.reset();
         }
         m_source = source; // Retain immutable pixels while observations are reusable.
         m_identity = identity;
@@ -62,7 +63,8 @@ public:
     bool SeedQueued(const AnalysisLumaSource& queuedSource,
         const ActivePictureFrameIdentity& identity,
         const ActivePictureEvidence& picture,
-        const ActivePictureArDarknessEvidence& darkness)
+        const ActivePictureArDarknessEvidence& darkness,
+        std::shared_ptr<const SourcePictureSupportResult> support = {})
     {
         auto rebound = queuedSource;
         rebound.generation = m_source.generation;
@@ -103,9 +105,13 @@ public:
         }
         if (!m_globalValid) { m_global = darkness.global; m_globalValid = true; }
         if (!m_darknessValid) { m_darkness = darkness; m_darknessValid = true; }
+        if(support && SameAnalysisFrameIdentity(support->currentSupport.identity,m_identity))
+            m_support=std::move(support);
         ++m_statistics.workerImports;
         return true;
     }
+
+    std::shared_ptr<const SourcePictureSupportResult> CurrentSourceSupport() const { return m_support; }
 
     ActivePictureGlobalNearBlackEvidence GlobalNearBlack()
     {
@@ -338,6 +344,7 @@ private:
     bool m_globalValid = false, m_pictureValid = false, m_darknessValid = false, m_retentionValid = false;
     ActivePictureGlobalNearBlackEvidence m_global;
     ActivePictureEvidence m_picture;
+    std::shared_ptr<const SourcePictureSupportResult> m_support;
     ActivePictureArDarknessEvidence m_darkness;
     ActivePicturePresentationRetentionEvidence m_retention;
     ActivePictureBounds m_presentation;

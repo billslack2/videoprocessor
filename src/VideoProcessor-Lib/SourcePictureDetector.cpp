@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 
 bool SourcePictureDetectorEnabled() {
     // One production geometry producer. A process environment cannot silently
@@ -30,6 +31,85 @@ ActivePictureEvidence MissingSourcePictureEvidence(const AnalysisLumaSource& sou
     result.physicalEdges.reason=reason;
     return result;
 }
+bool CurrentSourceTransitionSupportsHypothesis(const SourcePictureObservation& facts,const ActivePictureBounds& hypothesis) {
+    if(!facts.complete || !facts.rectangleAvailable || !facts.transitionProfilesComplete || facts.outcome!=SourcePictureOutcome::Measured ||
+        hypothesis.rasterWidth!=facts.width || hypothesis.rasterHeight!=facts.height ||
+        hypothesis.left!=facts.measuredBounds.left || hypothesis.right!=facts.measuredBounds.right)return false;
+    for(unsigned side:{1u,3u}) {
+        const int selected=side==1?facts.measuredBounds.top:facts.measuredBounds.bottom;
+        const int value=side==1?hypothesis.top:hypothesis.bottom;
+        if(value==selected)continue;
+        std::array<bool,128> rays{};std::array<unsigned,4> regions{};unsigned support=0,broad=0;
+        for(const auto& p:facts.transitionProfiles)if(p.side==side && selected>=p.minimum && selected<=p.maximum &&
+            value>=p.transitionMinimum && value<=p.transitionMaximum && p.ray<128)rays[p.ray]=true;
+        for(unsigned i=0;i<128;++i)if(rays[i]){++support;++regions[i/32];}
+        for(auto n:regions)if(n>=2)++broad;
+        if(support<32 || (broad<3 && !(regions[0]>=12 && regions[3]>=12)))return false;
+    }
+    return true;
+}
+std::shared_ptr<const SourcePictureBoundaryReference> SourcePictureBoundaryReference::Capture(
+    const AnalysisLumaSource& source,const ActivePictureFrameIdentity& identity,const SourcePictureObservation& facts,
+    const ActivePictureBounds* compatibleHypothesis,const AnalysisEvaluationBudget* budget) {
+    if(!source.IsValid() || !identity.transportGeneration || !identity.acceptedSequence || !identity.sourceFormatGeneration || !identity.analysisDomainKey ||
+        (source.generation!=identity.transportGeneration && source.generation!=identity.sourceFormatGeneration) ||
+        !facts.complete || !facts.rectangleAvailable || !facts.transitionProfilesComplete || facts.sourceGeneration!=source.generation ||
+        facts.width!=source.width || facts.height!=source.height || facts.measuredBounds.left!=0 || facts.measuredBounds.right!=source.width)return {};
+    if(compatibleHypothesis && !CurrentSourceTransitionSupportsHypothesis(facts,*compatibleHypothesis))return {};
+    auto reference=std::shared_ptr<SourcePictureBoundaryReference>(new SourcePictureBoundaryReference);
+    reference->hypothesis_=compatibleHypothesis?*compatibleHypothesis:facts.measuredBounds;
+    reference->identity_=identity;reference->interpretation_=source;reference->interpretation_.data=nullptr;
+    reference->interpretation_.dataBytes=0;reference->interpretation_.backingOwner.reset();reference->measured_=facts.measuredBounds;
+    reference->windows_={source.height,-1,source.height,-1};std::array<std::array<bool,128>,2> coverage{};std::set<uint64_t> seen;
+    ValidatedAnalysisLumaSampler read(source);
+    for(const auto& p:facts.transitionProfiles) {
+        if(p.side!=1 && p.side!=3)continue;
+        if(p.ray>=128)return {};
+        const unsigned side=p.side==1?0:1;
+        const int selected=side==0?facts.measuredBounds.top:facts.measuredBounds.bottom;
+        if(selected<p.minimum || selected>p.maximum)continue;
+        coverage[side][p.ray]=true;reference->windows_[2*side]=std::min(reference->windows_[2*side],p.readMinimum);
+        reference->windows_[2*side+1]=std::max(reference->windows_[2*side+1],p.readMaximum);
+        const int x=int(uint64_t(2*p.ray+1)*source.width/256);
+        for(int y=std::max(0,p.readMinimum);y<=std::min(source.height-1,p.readMaximum);++y) {
+            CheckAnalysisEvaluationBudget(budget);const uint64_t key=(uint64_t(uint32_t(y))<<32)|uint32_t(x);
+            if(!seen.insert(key).second)continue;if(reference->samples_.size()>=16384)return {};
+            AnalysisLumaSample sample;if(!read.Sample(x,y,sample))return {};reference->samples_.push_back({x,y,sample});
+        }
+    }
+    for(const auto& side:coverage) {
+        unsigned support=0,broad=0;std::array<unsigned,4> regions{};
+        for(unsigned i=0;i<128;++i)if(side[i]){++support;++regions[i/32];}
+        for(auto n:regions)if(n>=2)++broad;
+        if(support<32 || (broad<3 && !(regions[0]>=12&&regions[3]>=12)))return {};
+    }
+    return reference;
+}
+bool SourcePictureBoundaryReference::MatchesCurrent(const AnalysisLumaSource& source,
+    const ActivePictureFrameIdentity& id,const SourcePictureObservation* facts,const AnalysisEvaluationBudget* budget) const {
+    const auto& a=interpretation_;
+    if(!source.IsValid() || samples_.empty() || id.transportGeneration!=identity_.transportGeneration ||
+        id.sourceFormatGeneration!=identity_.sourceFormatGeneration || id.viewportGeneration!=identity_.viewportGeneration ||
+        id.rendererGeneration!=identity_.rendererGeneration || id.analysisDomainKey!=identity_.analysisDomainKey ||
+        id.acceptedSequence<identity_.acceptedSequence || id.sourceFrameNumber<identity_.sourceFrameNumber ||
+        (id.captureTimestamp&&identity_.captureTimestamp&&id.captureTimestamp<identity_.captureTimestamp) ||
+        source.generation!=a.generation || source.width!=a.width || source.height!=a.height || source.rowBytes!=a.rowBytes ||
+        source.chromaRowBytes!=a.chromaRowBytes || source.format!=a.format || source.encoding!=a.encoding ||
+        source.colorspace!=a.colorspace || source.range!=a.range || source.rgbBitAlignment!=a.rgbBitAlignment)return false;
+    if(facts && (facts->sourceGeneration!=source.generation || facts->width!=source.width || facts->height!=source.height))return false;
+    if(facts && facts->rectangleAvailable) {
+        const auto& b=facts->measuredBounds;
+        if(b.left!=measured_.left || b.right!=measured_.right || b.top<windows_[0] || b.top>windows_[1] || b.bottom<windows_[2] || b.bottom>windows_[3])return false;
+    }
+    ValidatedAnalysisLumaSampler read(source);
+    for(const auto& old:samples_) {
+        CheckAnalysisEvaluationBudget(budget);AnalysisLumaSample now;if(!read.Sample(old.x,old.y,now))return false;
+        if(std::abs(int(now.luma)-int(old.value.luma))>4 || std::abs(int(now.chromaU)-int(old.value.chromaU))>4 ||
+           std::abs(int(now.chromaV)-int(old.value.chromaV))>4)return false;
+    }
+    return true;
+}
+
 static SourcePictureDetectionResult VerifySourcePictureObservation(const AnalysisLumaSource& source,
     std::shared_ptr<const SourcePictureObservation> observation,const AnalysisEvaluationBudget* budget) {
     SourcePictureDetectionResult result;
@@ -71,10 +151,13 @@ static SourcePictureDetectionResult VerifySourcePictureObservation(const Analysi
     physical.conservativeBounds=evidence.trustedBounds;
     physical.estimateAvailable=measured;
     physical.estimate=measured?facts.measuredBounds:ActivePictureBounds{};
+    physical.positionMinimum=facts.edgeMinimum;physical.positionMaximum=facts.edgeMaximum;
+    physical.transitionMinimum=facts.transitionMinimum;physical.transitionMaximum=facts.transitionMaximum;
     const bool full=measured && nominee.left==0 && nominee.top==0 &&
         nominee.right==source.width && nominee.bottom==source.height;
     physical.confidence=canvas?PhysicalPictureEdgeConfidence::SOURCE_CANVAS_ESTIMATE:
-        full?PhysicalPictureEdgeConfidence::SOURCE_RASTER_EXTENT:PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE;
+        full?PhysicalPictureEdgeConfidence::SOURCE_RASTER_EXTENT:(facts.filteredEdgeMask || !facts.transitionProfilesComplete)?
+        PhysicalPictureEdgeConfidence::BOUNDED_FILTERED_EDGE:PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE;
     physical.reason=facts.reason;
     return result;
 }
@@ -86,7 +169,7 @@ SourcePictureDetectionResult DetectSourcePictureForWorker(const AnalysisLumaSour
 }
 
 SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLumaSource& source,
-    const ActivePictureFrameIdentity& identity) {
+    const ActivePictureFrameIdentity& identity,const SourcePictureSupportRequest* supportRequest) {
     const auto started=std::chrono::steady_clock::now();
     auto deadline=started+std::chrono::milliseconds(24);
     AnalysisEvaluationBudget budget([](void* value) {
@@ -121,6 +204,77 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
         result.evidence.currentSourceIdentity=identity;
         result.evidence.currentSourceIdentityAvailable=true;
     }
+    // Current support is optional presentation evidence. Budget failure here
+    // cannot erase a completed current physical measurement above.
+    auto supportResult=supportRequest?std::make_shared<SourcePictureSupportResult>():nullptr;
+    if(supportRequest && result.evidence.currentSourceIdentityAvailable) {
+        try {
+            const auto* facts=result.observation.get();
+            const auto* measured=facts&&facts->complete&&facts->rectangleAvailable?&facts->measuredBounds:nullptr;
+            bool sameMeasured=false;
+            if(supportRequest && supportRequest->boundary) {
+                supportResult->boundaryEncodingEquivalent=supportRequest->boundary->MatchesCurrent(source,identity,facts,&budget);
+                const auto& seed=supportRequest->boundary->MeasuredBounds();
+                sameMeasured=measured && measured->left==seed.left && measured->top==seed.top && measured->right==seed.right && measured->bottom==seed.bottom;
+            }
+            if(supportRequest && supportRequest->physicalHypothesisAvailable) {
+                const auto& hypothesis=supportRequest->physicalHypothesis;
+                const auto* bound=supportRequest->boundary?&supportRequest->boundary->BoundHypothesis():nullptr;
+                const bool boundMatches=bound && hypothesis.rasterWidth==bound->rasterWidth && hypothesis.rasterHeight==bound->rasterHeight &&
+                    hypothesis.left==bound->left && hypothesis.top==bound->top && hypothesis.right==bound->right && hypothesis.bottom==bound->bottom;
+                supportResult->physicalHypothesisCompatible=(supportResult->boundaryEncodingEquivalent && boundMatches) ||
+                    (facts && CurrentSourceTransitionSupportsHypothesis(*facts,hypothesis));
+                if(supportResult->physicalHypothesisCompatible)supportResult->retainedPhysicalHypothesis=supportRequest->physicalHypothesis;
+            }
+            const bool candidateCompatible=supportResult->boundaryEncodingEquivalent || sameMeasured || supportResult->physicalHypothesisCompatible;
+            const auto* retained=supportRequest&&supportRequest->retainedSupportAvailable&&candidateCompatible?&supportRequest->retainedSupport:nullptr;
+            const auto& native=result.evidence;
+            const bool currentNativeSafe=native.sourceCandidateVerificationComplete &&
+                (native.classification==ActivePictureClassification::BAR_CROP_TRUSTED || native.classification==ActivePictureClassification::FULL_RASTER_TRUSTED);
+            if(currentNativeSafe) {
+                // This source has already paid for strict native verification.
+                // An outward union discards a subset of those proved bars, so
+                // it needs no second sampling pass and grants no new native AR.
+                auto sampling=native.trustedBounds;
+                const bool validRetained=retained && retained->rasterWidth==source.width && retained->rasterHeight==source.height &&
+                    retained->left>=0 && retained->top>=0 && retained->right<=source.width && retained->bottom<=source.height &&
+                    retained->right>retained->left && retained->bottom>retained->top;
+                if(validRetained) {
+                    sampling.left=std::min(sampling.left,retained->left);sampling.top=std::min(sampling.top,retained->top);
+                    sampling.right=std::max(sampling.right,retained->right);sampling.bottom=std::max(sampling.bottom,retained->bottom);
+                    sampling.aspectRatio=double(sampling.right-sampling.left)/(sampling.bottom-sampling.top);
+                }
+                auto& support=supportResult->currentSupport;support.evaluated=support.verified=true;support.identity=identity;
+                support.samplingBounds=sampling;support.verification=native.candidateVerification;
+                support.retainedCandidateVerified=validRetained && sampling.left==retained->left &&
+                    sampling.top==retained->top && sampling.right==retained->right && sampling.bottom==retained->bottom;support.reason="current-native-proof-covers-support-aperture";
+            } else supportResult->currentSupport=VerifyCurrentSourceSupport(source,identity,measured,retained,&budget);
+            const auto* hypothesis=supportResult->physicalHypothesisCompatible?&supportResult->retainedPhysicalHypothesis:nullptr;
+            const auto* bound=supportRequest->boundary?&supportRequest->boundary->BoundHypothesis():nullptr;
+            const bool sameBinding=!hypothesis || (bound && hypothesis->left==bound->left && hypothesis->top==bound->top &&
+                hypothesis->right==bound->right && hypothesis->bottom==bound->bottom);
+            if(supportResult->boundaryEncodingEquivalent && sameBinding)supportResult->boundaryReference=supportRequest->boundary;
+            else if(facts)supportResult->boundaryReference=SourcePictureBoundaryReference::Capture(source,identity,*facts,hypothesis,&budget);
+        } catch(const AnalysisEvaluationCancelled&) {
+            if(!supportResult->currentSupport.verified)supportResult->currentSupport.reason="current-support-budget-exhausted";
+        }
+    }
+    if(supportRequest) {
+        auto supportTrace=AnalysisTraceRecord(identity,nullptr,"source-picture-support",supportResult->currentSupport.reason);
+        supportTrace.flags=(supportResult->currentSupport.verified?1u:0u)|(supportResult->currentSupport.retainedCandidateVerified?2u:0u)|
+            (supportResult->boundaryEncodingEquivalent?4u:0u)|(supportResult->physicalHypothesisCompatible?8u:0u);
+        supportTrace.counters[0]=supportResult->currentSupport.samples;
+        if(supportResult->boundaryReference) {
+            supportTrace.counters[1]=supportResult->boundaryReference->SeedIdentity().acceptedSequence;
+            supportTrace.counters[2]=supportResult->boundaryReference->SeedIdentity().sourceFrameNumber;
+            AnalysisTraceRect(supportTrace.previous,supportResult->boundaryReference->MeasuredBounds());
+        }
+        AnalysisTraceRect(supportTrace.measured,result.evidence.physicalEdges.estimate);
+        AnalysisTraceRect(supportTrace.candidate,supportResult->retainedPhysicalHypothesis);
+        AnalysisTraceRect(supportTrace.published,supportResult->currentSupport.samplingBounds);
+        AnalysisDiagnosticTrace::Emit(supportTrace);
+    }
+    result.support=std::move(supportResult);
     auto trace=AnalysisTraceRecord(identity,nullptr,"source-picture-active",result.evidence.physicalEdges.reason);
     trace.resultCode=static_cast<int32_t>(result.evidence.detector);
     trace.flags=(result.evidence.available?1u:0u)|(result.observation?2u:0u);

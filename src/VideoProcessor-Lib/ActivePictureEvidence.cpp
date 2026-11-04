@@ -1261,7 +1261,8 @@ ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidenc
             evidence.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
             evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
             physical.evaluated && physical.estimateAvailable &&
-            physical.confidence==PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE &&
+            (physical.confidence==PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE ||
+             physical.confidence==PhysicalPictureEdgeConfidence::BOUNDED_FILTERED_EDGE) &&
             knownGeneration(physical.sourceGeneration) && knownGeneration(certificate.sourceGeneration) &&
             certificate.samples && sameRect(certificate.nomination,measured) && sameRect(certificate.bounds,retained) &&
             ActivePictureCurrentSpatialCropProof::ValidRectangle(measured) &&
@@ -2926,6 +2927,73 @@ ActivePictureEvidence ExtractP010ActivePictureEvidence(
 	return ExtractActivePictureEvidence(source);
 }
 
+
+CurrentSourceSupportEvidence VerifyCurrentSourceSupport(
+    const AnalysisLumaSource& source,const ActivePictureFrameIdentity& identity,
+    const ActivePictureBounds* currentPhysicalNominee,const ActivePictureBounds* retainedCandidate,
+    const AnalysisEvaluationBudget* budget)
+{
+    CurrentSourceSupportEvidence result;result.identity=identity;
+    if(!source.IsValid() || !identity.transportGeneration || !identity.acceptedSequence || !identity.sourceFormatGeneration ||
+        !identity.analysisDomainKey || (source.generation!=identity.sourceFormatGeneration && source.generation!=identity.transportGeneration)) {
+        result.reason="invalid-current-support-source";return result;
+    }
+    result.evaluated=true;
+    const auto verify=[&](const ActivePictureBounds& candidate,bool retained) {
+        const auto checked=VerifySuppliedActivePictureCandidate(source,candidate,budget);
+        result.samples+=checked.lumaSamples;
+        if(checked.classification!=ActivePictureClassification::BAR_CROP_TRUSTED &&
+           checked.classification!=ActivePictureClassification::FULL_RASTER_TRUSTED)return false;
+        result.verified=true;result.samplingBounds=checked.trustedBounds;
+        result.retainedCandidateVerified=retained && candidate.left==checked.trustedBounds.left &&
+            candidate.top==checked.trustedBounds.top && candidate.right==checked.trustedBounds.right &&
+            candidate.bottom==checked.trustedBounds.bottom;
+        result.verification=checked.candidateVerification;
+        result.reason=result.retainedCandidateVerified?"current-support-candidate-reverified":"current-support-independently-verified";
+        return true;
+    };
+    try {
+        CheckAnalysisEvaluationBudget(budget);
+        if(retainedCandidate && IsValidBoundsForSource(*retainedCandidate,source) && verify(*retainedCandidate,true))return result;
+        if(!currentPhysicalNominee || !IsValidBoundsForSource(*currentPhysicalNominee,source)) {
+            result.reason="no-current-support-nomination";return result;
+        }
+        // This initial adapter handles vertical encoded bars. Other axes retain
+        // their existing policy; no inferred symmetry or standard ratio is used.
+        auto candidate=*currentPhysicalNominee;
+        if(candidate.left!=0 || candidate.right!=source.width) {
+            result.reason="current-support-axis-not-supported";return result;
+        }
+        SampleContext samples{source};samples.budget=budget;
+        struct CountSamples {size_t& result;const SampleContext& samples;~CountSamples(){result+=samples.lumaSamples;}} count{result.samples,samples};
+        for(bool leading:{true,false}) {
+            const int band=leading?candidate.top:source.height-candidate.bottom;
+            if(band<=0)continue;
+            const auto reference=MeasureOuterMatte(samples,true,leading,band);
+            if(reference.state!=ActivePictureMatteReferenceState::QUALIFIED) {
+                result.reason="current-support-matte-unresolved";return result;
+            }
+            bool found=false;
+            for(int depth=0;depth<band && !found;++depth)for(int i=0;i<96;++i) {
+                if(samples.lumaSamples>=60000) {result.reason="current-support-sample-budget";return result;}
+                samples.Checkpoint();AnalysisLumaSample pixel;
+                const int row=leading?depth:source.height-1-depth;
+                if(!source.Sample(i*(source.width-1)/95,row,pixel)) {result.reason="current-support-sample-unavailable";return result;}
+                ++samples.lumaSamples;++samples.chromaSamples;
+                // Conservative nomination uses the existing collar-retention
+                // criterion. The unchanged native verifier alone certifies it.
+                if(std::abs(int(pixel.luma)-reference.y)>4 || std::abs(int(pixel.chromaU)-reference.u)>4 ||
+                    std::abs(int(pixel.chromaV)-reference.v)>4) {
+                    if(leading)candidate.top=row&~1;else candidate.bottom=std::min(source.height,(row+2)&~1);
+                    found=true;break;
+                }
+            }
+        }
+        candidate.aspectRatio=double(candidate.right-candidate.left)/(candidate.bottom-candidate.top);
+        if(!verify(candidate,false))result.reason="current-support-verifier-rejected";
+    } catch(const AnalysisEvaluationCancelled&) {result.reason="current-support-budget-exhausted";}
+    return result;
+}
 
 ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
 	const AnalysisLumaSource& source,

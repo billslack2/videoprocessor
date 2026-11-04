@@ -135,6 +135,7 @@ void Components(Reader& reader,int floor,SourcePictureObservation& out) {
 }
 void MarkGlyphEdge(SourcePictureObservation& out,unsigned side,SourcePictureEdgeCandidate& edge,
     const AnalysisEvaluationBudget* budget);
+
 void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictureObservation& out,bool terminalOnly=false) {
     const bool vertical=edge==SourcePictureEdge::Top||edge==SourcePictureEdge::Bottom;
     const bool leading=edge==SourcePictureEdge::Top||edge==SourcePictureEdge::Left;
@@ -168,6 +169,13 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
     struct Votes {
         SourcePictureEdgeCandidate edge;
         std::array<uint64_t,2> rays{};
+    };
+    const auto profile=[&](unsigned side,unsigned ray,int lo,int hi,int begin,int end,int readLo,int readHi,bool filtered) {
+        if(!out.transitionProfilesComplete)return;
+        if(out.transitionProfiles.size()>=8192) {
+            out.transitionProfilesComplete=false;out.transitionProfiles.clear();return;
+        }
+        out.transitionProfiles.push_back({side,ray,lo,hi,begin,end,readLo,readHi,filtered});
     };
     std::map<int,Votes> candidates;
     // Exact immutable native samples, reused only within this ray. Bound memory
@@ -230,32 +238,52 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
             for(int at=start;at<=coarse;++at) {
                 if(at<=lastHit+sustain || at<=lastExamined)continue;
                 lastExamined=at;
+                // Resolve compact first-picture support before fitting a broader filtered step.
                 const auto first=read(at),outside=read(at-1);
-                const int halo=Difference(outside,border),jump=int(first.luma)-int(outside.luma);
-                if(halo>12 || jump<=0 || (halo>5 && jump<std::max(16,4*halo+4)))continue;
-                const auto second=read(at+1),third=read(at+2),inside=read(at+sustain);
-                const int next=int(second.luma)-int(first.luma),last=int(third.luma)-int(second.luma);
-                // The paused HDMI source can dither an 8-code native step into
-                // 4,0,4 (or 4,0,8). Preserve its <=2-row uncertainty instead of
-                // accepting only the phase with a single large adjacent jump.
-                // A real plateau and monotonic bounded profile distinguish this
-                // from a smooth ramp; neither halo nor sustain gates are waived.
-                bool integrated=halo<=5 && jump>0 && jump<6 && next>=0 && last>=0 &&
-                    (next==0 || last==0) && int(third.luma)-int(outside.luma)>=8 &&
-                    int(third.luma)-int(outside.luma)<=16 && Difference(inside,border)>=6;
-                if(integrated) {
-                    const auto farther=read(at+sustain+2),farthest=read(at+sustain+4);
-                    // A quantized ramp also contains local plateaus. It is not
-                    // a localized edge if the same monotone departure keeps
-                    // accumulating another complete profile beyond sustain.
-                    if(inside.luma<=farther.luma && farther.luma<=farthest.luma &&
-                        int(farthest.luma)-int(inside.luma)>=8)integrated=false;
+                // A resolved short plateau is already visible picture support.
+                // Never replace a faint first-picture collar with a stronger
+                // interior step merely because the latter fits a wider window.
+                const int near1=read(at+1).luma,near2=read(at+2).luma;
+                const int nearLow=std::min({int(first.luma),near1,near2});
+                const int nearHigh=std::max({int(first.luma),near1,near2});
+                const int far0=read(at+sustain).luma,far1=read(at+sustain+2).luma,far2=read(at+sustain+4).luma;
+                const int departure=int(first.luma)-int(outside.luma);
+                const bool continuing=far0<=far1 && far1<=far2 && far2-far0>=8;
+                if(Difference(outside,border)<=5 && departure>0 && nearHigh-nearLow<=std::max(8,departure) &&
+                    near1>=first.luma && near2>=near1 && near2-int(outside.luma)>=6 &&
+                    far0-int(border.luma)>=6 && !continuing) {
+                    const int width=departure>=6?0:2;
+                    profile(unsigned(edge),i,leading?at:depth-at-width,leading?at+width:depth-at,leading?at:depth-at-width,leading?at+width:depth-at,leading?std::max(0,at-3):depth-1-(at+sustain+4),leading?at+sustain+4:depth-1-std::max(0,at-3),false);
+                    add(at,near2-int(border.luma)>=16,width);lastHit=at;continue;
                 }
-                const bool abrupt=halo<=12 && jump>=6 && (halo<=5 || jump>=std::max(16,4*halo+4)) &&
-                    Difference(second,border)>=6 && Difference(third,border)>=6 && Difference(inside,border)>=6 &&
-                    !(Difference(first,border)<16 && Difference(second,border)>=16);
-                if(!abrupt && !integrated)continue;
-                add(at,Difference(first,border)>=16,integrated?2:0);lastHit=at;
+                const int pre0=read(std::max(0,at-3)).luma,pre1=read(std::max(0,at-2)).luma,pre2=outside.luma;
+                const int post0=read(at+sustain).luma,post1=read(at+sustain+2).luma,post2=read(at+sustain+4).luma;
+                auto median=[](int a,int b,int c){return a+b+c-std::min({a,b,c})-std::max({a,b,c});};
+                const int low=median(pre0,pre1,pre2),high=median(post0,post1,post2),contrast=high-low;
+                const int preSpread=std::max({pre0,pre1,pre2})-std::min({pre0,pre1,pre2});
+                const int postSpread=std::max({post0,post1,post2})-std::min({post0,post1,post2});
+                if(contrast<8 || std::abs(low-int(border.luma))>12 ||
+                    preSpread>std::max(4,contrast/8) || postSpread>std::max(4,contrast/4))continue;
+                const int noise=std::max(2,std::max(preSpread,postSpread)/2);
+                const int half=low+contrast/2;
+                // Require a bounded rise which finishes at the interior level,
+                // not an arbitrary point on a continuing low-gradient ramp.
+                if(int(first.luma)<=low || int(outside.luma)>low+contrast/4 ||
+                    int(read(at+sustain-1).luma)<high-std::max(noise,contrast/4))continue;
+                int crossing=-1,lo=-1,hi=-1;bool monotone=true;
+                int previous=outside.luma;
+                for(int k=0;k<sustain;++k) {
+                    const int value=read(at+k).luma;
+                    if(value+std::max(4,noise)<previous)monotone=false;
+                    if(crossing<0 && value>=half)crossing=at+k;
+                    if(value+noise>=half && previous-noise<half) {if(lo<0)lo=at+k;hi=at+k;}
+                    previous=value;
+                }
+                if(!monotone || crossing<0 || lo<0 || hi-lo>2)continue;
+                // Preserve exact single-row steps; only ambiguous samples
+                // straddling the measured half-level carry positional width.
+                profile(unsigned(edge),i,leading?lo:depth-hi,leading?hi:depth-lo,leading?at:depth-(at+sustain-1),leading?at+sustain-1:depth-at,leading?std::max(0,at-3):depth-1-(at+sustain+4),leading?at+sustain+4:depth-1-std::max(0,at-3),true);
+                add(lo,contrast>=16,hi-lo);lastHit=hi;
             }
         }
     }
@@ -892,6 +920,23 @@ SourcePictureObservation MeasureSourcePicture(const AnalysisLumaSource& source,c
                     for(auto& side:out.edges)for(auto& candidate:side)candidate.contradicted=true;
                 } else {
                     out.measuredBounds=bounds;out.rectangleAvailable=true;out.outcome=SourcePictureOutcome::Measured;
+                    const SourcePictureEdgeCandidate* selected[4]={left,top,right,bottom};
+                    for(unsigned side=0;side<4;++side) {
+                        out.edgeMinimum[side]=selected[side]->minimum;out.edgeMaximum[side]=selected[side]->maximum;
+                        out.transitionMinimum[side]=out.edgeMinimum[side];out.transitionMaximum[side]=out.edgeMaximum[side];
+                    }
+                    if(out.transitionProfilesComplete) {
+                        auto& profiles=out.transitionProfiles;
+                        profiles.erase(std::remove_if(profiles.begin(),profiles.end(),[&](const auto& p) {
+                            return selected[p.side]->coordinate<p.minimum || selected[p.side]->coordinate>p.maximum;
+                        }),profiles.end());
+                        for(const auto& p:profiles) {
+                            out.transitionMinimum[p.side]=std::min(out.transitionMinimum[p.side],p.transitionMinimum);
+                            out.transitionMaximum[p.side]=std::max(out.transitionMaximum[p.side],p.transitionMaximum);
+                            if(p.filtered)out.filteredEdgeMask|=1u<<p.side;
+                        }
+                    }
+
                     out.reason=out.perpendicularInset.accepted?"distributed-source-boundaries-with-perpendicular-inset-contact":
                         sparseTerminalCompleted?"native-raster-contact-with-distributed-sparse-texture":
                         !out.topologyComplete?"distributed-raster-contacts-with-bounded-topology":darkTerminalCompleted?

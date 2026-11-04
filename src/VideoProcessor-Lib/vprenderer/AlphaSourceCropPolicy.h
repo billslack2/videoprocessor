@@ -1495,6 +1495,7 @@ namespace AlphaSourceCrop
 		VERTICAL_TRANSLATION,
         MOVING_PICTURE_HOLD,
 		SUBMITTED_SCOPE_RETENTION,
+        CURRENT_SOURCE_SUPPORT,
 	};
 
 	enum class WithdrawalCause

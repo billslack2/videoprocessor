@@ -31,6 +31,7 @@
 
 class ConfigFile;
 struct SourcePictureObservation;
+struct SourcePictureSupportResult;
 
 // In-process D3D11 renderer. HDR input is color-managed and tone-mapped to
 // an SDR Rec.709 swapchain; this backend deliberately does not emit HDR.
@@ -168,6 +169,7 @@ private:
             // Immutable spatial facts owned by this exact source packet.
             // Active mode verifies these independently before granting crop authority.
             std::shared_ptr<const SourcePictureObservation> sourcePictureObservation;
+            std::shared_ptr<const SourcePictureSupportResult> sourcePictureSupport;
         };
         using LookaheadWorker = OptionalAnalysisWorker<LookaheadMeasurement>;
         using OutwardWindowResult = PreparedOutwardWindowResult;

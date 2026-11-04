@@ -139,13 +139,16 @@ struct ActivePictureCandidateVerification
 
 // Source-pixel edge observation only. Does not authorize discarding pixels,
 // acquiring native AR, or changing the conservative retention rectangle.
-enum class PhysicalPictureEdgeConfidence : uint8_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT, SOURCE_CANVAS_ESTIMATE };
+enum class PhysicalPictureEdgeConfidence : uint8_t { UNKNOWN, STRONG_ABRUPT_EDGE, SOURCE_RASTER_EXTENT, SOURCE_CANVAS_ESTIMATE, BOUNDED_FILTERED_EDGE };
 struct PhysicalPictureEdgeObservation
 {
     bool evaluated=false, estimateAvailable=false;
     PhysicalPictureEdgeConfidence confidence=PhysicalPictureEdgeConfidence::UNKNOWN;
     // Conservative bounds are the uncertainty envelope; estimate never discards it.
     ActivePictureBounds estimate, conservativeBounds;
+    // Estimated midpoint uncertainty and observed transition support are
+    // different facts. Neither array authorizes discarding source pixels.
+    std::array<int,4> positionMinimum{},positionMaximum{},transitionMinimum{},transitionMaximum{};
     uint64_t sourceGeneration=0;
     size_t samples=0;
     const char* reason="not-evaluated";
@@ -391,6 +394,24 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 ActivePictureEvidence VerifySuppliedActivePictureCandidate(
     const AnalysisLumaSource& source, const ActivePictureBounds& measuredBounds,
     const AnalysisEvaluationBudget* budget = nullptr);
+
+// A current-source presentation sampling aperture only. This must not be
+// substituted for physical AR, native acquisition, or configured fill authority.
+struct CurrentSourceSupportEvidence {
+    bool evaluated=false,verified=false;
+    // True only when the original retained aperture itself verifies unchanged.
+    // A repaired/expanded temporary result must not renew the episode baseline.
+    bool retainedCandidateVerified=false;
+    ActivePictureFrameIdentity identity;
+    ActivePictureBounds samplingBounds;
+    ActivePictureCandidateVerification verification;
+    size_t samples=0;
+    const char* reason="not-evaluated";
+};
+CurrentSourceSupportEvidence VerifyCurrentSourceSupport(
+    const AnalysisLumaSource& source,const ActivePictureFrameIdentity& identity,
+    const ActivePictureBounds* currentPhysicalNominee,const ActivePictureBounds* retainedCandidate,
+    const AnalysisEvaluationBudget* budget=nullptr);
 
 ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
 	const AnalysisLumaSource& source,
