@@ -1,0 +1,34 @@
+{
+  "source": "e726ab1ad9521a9d2f52650874793b53ac04f035",
+  "pid": 49684,
+  "status": "FailedLiveTrial",
+  "exception": "0xc00000fd",
+  "meaning": "stack overflow",
+  "module": "VideoProcessorVPRendererBeta.dll",
+  "offset": "0x2cc7d7",
+  "event": {
+    "utc": "2026-11-04T18:36:55.4160006Z",
+    "recordId": 338184,
+    "id": 1000,
+    "message": "Faulting application name: VideoProcessor.exe, version: 0.0.0.0, time stamp: 0x6aeb7aa0\r\nFaulting module name: VideoProcessorVPRendererBeta.dll, version: 0.0.0.0, time stamp: 0x6aeb7b03\r\nException code: 0xc00000fd\r\nFault offset: 0x00000000002cc7d7\r\nFaulting process id: 0xc214\r\nFaulting application start time: 0x01dd6c8b6e207038\r\nFaulting application path: E:\\codex\\videoprocessor\\previews\\ar-temporal-e726ab1ad9521a9d2f52650874793b53ac04f035\\VideoProcessor.exe\r\nFaulting module path: E:\\codex\\videoprocessor\\previews\\ar-temporal-e726ab1ad9521a9d2f52650874793b53ac04f035\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll\r\nReport Id: 2f2faf57-30fb-4659-9abe-1e7cd14b81fe\r\nFaulting package full name: \r\nFaulting package-relative application ID: "
+  },
+  "dump": {
+    "sha256": "A3DBA71369DBEBFAA8D515516C37D1EB813021A2FB94741449E98A311219421E",
+    "bytes": 146643395,
+    "path": "C:\\Users\\bslac\\AppData\\Local\\CrashDumps\\VideoProcessor.exe.49684.dmp",
+    "copied": false
+  },
+  "wer": {
+    "source": "C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportArchive\\AppCrash_VideoProcessor.e_3df4cdee697594d9166dc3e70bb8bd98a9ceca2_8f5daaaf_07a255ea-0a38-4687-bfbf-8ac0abfa46c8\\Report.wer",
+    "sha256": "8D1D3397392F0FE68AC804C235E61229D8EC9F2A2386DB19CC877892851E2ED8",
+    "bytes": 22892,
+    "preserved": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\crash-e726-20261104\\Report.wer"
+  },
+  "acceptance": "FAILED for e726; story acceptance OPEN",
+  "qualification": false,
+  "requiredBeforeFixedReuseTrial": [
+    "Focused render-stack regression",
+    "Actual-renderer profile-cycle validation"
+  ],
+  "note": "CPU results remain component evidence only; no retry performed. Parent restoring previous isolated7cc while preserving current user configuration/state."
+}
