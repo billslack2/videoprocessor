@@ -2637,8 +2637,9 @@ public:
         }
         SubtitleBoxPreview pending;pending.current=key;pending.current.identity=Identity(2);
         Assert::IsFalse(guard.Resolve(pending,Source(noBars),1000.0/60,250));
-        Assert::AreEqual(std::string("current-bars-changed"),std::string(guard.DecisionReason()),
-            L"old shared bounds and unchanged accepted glyph pixels cannot stand in for disappeared physical bars");
+        const std::string reason=guard.DecisionReason();
+        Assert::IsTrue(reason=="current-bars-changed" || reason=="current-black-backing-changed",
+            L"Lost current bars must reject: the earlier black-backing check may reject before the physical-bar check; unchanged glyphs and old shared bounds authorize neither.");
     }
     TEST_METHOD(PendingSharedCueRejectsCurrentBandGeometryChange) {
         auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,310,16);

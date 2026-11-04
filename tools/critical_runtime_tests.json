@@ -13,8 +13,9 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1119,
+  "minimumNativeTests": 1120,
   "requiredNativeMethods": [
+    "PendingSharedCueRejectsLostPhysicalBarsWhenAcceptedGlyphPixelsAreUnchanged",
     "RegressionRendererFactoryOptionsRejectUnsupportedInputs",
     "CurrentHeldPreparedCueUsesCurrentRevalidatedBarsWithoutAcquiringNativeAuthority",
     "CurrentHeldRevalidatedBarsStillRequireCompleteCurrentGlyphAndSharedEvidence",
@@ -1031,6 +1032,11 @@
       "source": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
       "class": "LibplaceboPluginProxyTests",
       "method": "RegressionRendererFactoryOptionsRejectUnsupportedInputs"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "PendingSharedCueRejectsLostPhysicalBarsWhenAcceptedGlyphPixelsAreUnchanged"
     }
   ]
 }
