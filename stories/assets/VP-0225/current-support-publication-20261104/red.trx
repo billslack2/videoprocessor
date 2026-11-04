@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="d235f72e-3540-4a5c-9d03-345414f351de" name="bslac@DESKTOP-3G35SCJ 2026-11-04 13:00:26" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-04T13:00:26.1182283-05:00" queuing="2026-11-04T13:00:26.1182283-05:00" start="2026-11-04T13:00:25.6413000-05:00" finish="2026-11-04T13:00:26.1442523-05:00" />
+  <TestSettings name="default" id="a67c23f8-4d23-4c74-9f56-aa07988ca2de">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-11-04_13_00_26" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="189de6f9-2775-4cd2-a015-df7f9aab3e9a" testId="d4a56aba-2aad-4458-8146-22650fdbeb37" testName="CompleteNativePublicationRetainsLateCurrentSupportInEitherProducerOrder" computerName="DESKTOP-3G35SCJ" duration="00:00:00.2086353" startTime="2026-11-04T13:00:25.8850382-05:00" endTime="2026-11-04T13:00:26.0936735-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="189de6f9-2775-4cd2-a015-df7f9aab3e9a">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed. A complete outward/native result must not suppress later exact-current sampling support.</Message>
+          <StackTrace>	at VideoProcessorTest::PreparedOutwardWindowTests::CompleteNativePublicationRetainsLateCurrentSupportInEitherProducerOrder() in E:\codex\videoprocessor\reconstruction-crop-stability-20261104\src\VideoProcessor-Test\PreparedOutwardWindowTests.cpp:line 120</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="CompleteNativePublicationRetainsLateCurrentSupportInEitherProducerOrder" storage="e:\codex\videoprocessor\reconstruction-crop-stability-20261104\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="d4a56aba-2aad-4458-8146-22650fdbeb37">
+      <Execution id="189de6f9-2775-4cd2-a015-df7f9aab3e9a" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-crop-stability-20261104\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="VideoProcessorTest.PreparedOutwardWindowTests" name="VideoProcessorTest::PreparedOutwardWindowTests::CompleteNativePublicationRetainsLateCurrentSupportInEitherProducerOrder" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="d4a56aba-2aad-4458-8146-22650fdbeb37" executionId="189de6f9-2775-4cd2-a015-df7f9aab3e9a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="1" executed="1" passed="0" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>

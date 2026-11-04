@@ -1,0 +1,38 @@
+{
+  "scope": "Five focused Native tests and successful isolated Release build/launch; live verification pending. Metadata only.",
+  "acceptance": "OPEN",
+  "assets": [
+    {
+      "sha256": "467F1C15B970304AC649F7006ACD24CA2D657C981DC7B2D2A276397BCCFCCFF3",
+      "file": "red-failed.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-130017-0960325b\\failed.json"
+    },
+    {
+      "sha256": "33D8C4DA4263DF144EDEAE7D2B6EAD8CDB1BF56C8BEC6C40CDE1FF2FB7A67AE7",
+      "file": "red.trx",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-130017-0960325b\\standard.trx"
+    },
+    {
+      "sha256": "E5742B30266BC37C378DDCBB71003D127F60CF9813551FFB334CEC2C2B5CE13F",
+      "file": "native5-iteration.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-130611-b9395161\\iteration.json"
+    },
+    {
+      "sha256": "0765660D10FC12C49FDF2551D81B37E868573942921ACABF8C07B233DC1DEF65",
+      "file": "build-7cc909b3.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\build-20261104-130745-7cc909b3\\build-receipt.json"
+    },
+    {
+      "sha256": "3C957259B5E8A90592CEF071F8EFAB17B00CC2E39FB68C7619FAD54ABB6C7775",
+      "file": "preview-7cc909b3.json",
+      "source": "E:\\codex\\videoprocessor\\previews\\ar-temporal-7cc909b368a5c866f589eeadb60a259061041f3f\\preview-receipt.json"
+    },
+    {
+      "sha256": "5D1B1BDBC4C056504A11AF469CAEEA64C904C91045D6671633D97E2BE59E56DD",
+      "file": "live-before-timing.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\live-34a26-records\\handoff-timing-summary.json"
+    }
+  ],
+  "qualification": false,
+  "source": "7cc909b368a5c866f589eeadb60a259061041f3f"
+}

@@ -1,0 +1,52 @@
+{
+  "status": "Failed",
+  "source": {
+    "commit": "34a26ca7b0c2b968fc416f1f1ebe5c72895da02c",
+    "dirty": true,
+    "fingerprint": "526861df7028f4ec4125a320a0b295acf810671fea8fc006b3bdcae1fa47080a",
+    "label": "34a26ca7b0c2-dirty-526861df7028",
+    "build": "34a26ca7b0c2b968fc416f1f1ebe5c72895da02c-dirty-526861df7028f4ec4125a320a0b295acf810671fea8fc006b3bdcae1fa47080a"
+  },
+  "testEnvironment": {
+    "sourcePictureDetector": true,
+    "legacyDetectorEnvironment": null,
+    "sourcePictureShadow": null
+  },
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0,
+      "seconds": 0.702,
+      "log": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-130017-0960325b\\native-library-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "ff029f47-1abf-4d79-ad31-96630b6f72dd",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "critical-native-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-CriticalNativeTests.vcxproj",
+      "exit": 0,
+      "seconds": 5.499,
+      "log": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-130017-0960325b\\critical-native-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "f64c2df4-6b15-4d9b-95cb-6a8be56583f6",
+      "PSShowComputerName": false
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 1,
+      "binary": "x64\\Release\\tests-critical-native\\VideoProcessor-CriticalNativeTests.dll",
+      "trx": "artifacts/qualification/runs/20261104-130017-0960325b/standard.trx",
+      "trxSha256": "33D8C4DA4263DF144EDEAE7D2B6EAD8CDB1BF56C8BEC6C40CDE1FF2FB7A67AE7",
+      "executed": 0,
+      "native": 0,
+      "actualClassic": 0,
+      "seconds": 1.177
+    }
+  ],
+  "finished": "2026-11-04T13:00:26.2167843-05:00"
+}

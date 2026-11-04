@@ -1,0 +1,89 @@
+{
+  "matched": 693,
+  "supportVerified": 693,
+  "supportAfterQuery": 1,
+  "supportBeforeComplete": 693,
+  "workerCompleteBeforePresentation": 693,
+  "groups": [
+    {
+      "flags": 8,
+      "count": 542,
+      "queryMs": {
+        "min": 16.0306,
+        "median": 17.89595,
+        "p95": 22.611,
+        "max": 30.3583
+      },
+      "supportAfterStartMs": {
+        "min": -8.8053,
+        "median": 11.09995,
+        "p95": 15.0321,
+        "max": 17.8346
+      },
+      "supportAfterQueryMs": {
+        "min": -30.7496,
+        "median": -6.8321,
+        "p95": -4.4624,
+        "max": 0.0878
+      },
+      "workMs": {
+        "min": 28.8058,
+        "median": 32.02165,
+        "p95": 37.4156,
+        "max": 53.1454
+      },
+      "queueMs": {
+        "min": 0.01,
+        "median": 0.0147,
+        "p95": 0.0275,
+        "max": 23.1889
+      },
+      "workerBeforePresentMs": {
+        "min": 66.8403,
+        "median": 101.5989,
+        "p95": 106.6683,
+        "max": 110.2804
+      }
+    },
+    {
+      "flags": 14,
+      "count": 151,
+      "queryMs": {
+        "min": 16.6849,
+        "median": 19.3154,
+        "p95": 23.3859,
+        "max": 25.6031
+      },
+      "supportAfterStartMs": {
+        "min": 6.6556,
+        "median": 11.1029,
+        "p95": 12.7586,
+        "max": 13.9253
+      },
+      "supportAfterQueryMs": {
+        "min": -13.6563,
+        "median": -8.3661,
+        "p95": -5.9707,
+        "max": -3.9597
+      },
+      "workMs": {
+        "min": 33.0601,
+        "median": 36.3111,
+        "p95": 41.4073,
+        "max": 49.1054
+      },
+      "queueMs": {
+        "min": 0.0102,
+        "median": 0.0153,
+        "p95": 0.0236,
+        "max": 4.4831
+      },
+      "workerBeforePresentMs": {
+        "min": 89.4402,
+        "median": 97.8645,
+        "p95": 102.7092,
+        "max": 106.8488
+      }
+    }
+  ]
+}
