@@ -5124,12 +5124,13 @@ namespace VideoProcessorTest
         // portable manifest: select explicitly with VP_SUBTITLE_CAPTURE_ROOT set.
         // This runs the actual plugin, worker, queue, shader and submission path;
         // no caller supplies picture or successful composition authority.
-        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false)
+        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false)
         {
             char* captureValue=nullptr;size_t captureSize=0;
             Assert::AreEqual(0,_dupenv_s(&captureValue,&captureSize,"VP_SUBTITLE_CAPTURE_ROOT"));
             std::unique_ptr<char,decltype(&std::free)> captureOwner(captureValue,&std::free);
             if(!captureValue||!*captureValue) {
+                Assert::IsFalse(pausedNative,L"The paused native regression requires its original private capture; missing corpus is not a pass.");
                 Logger::WriteMessage("OPTIONAL_FIXTURE_NOT_EXERCISED: VP_SUBTITLE_CAPTURE_ROOT absent; private frames exercised=0. This result is not capture coverage.");
                 return;
             }
@@ -5139,22 +5140,34 @@ namespace VideoProcessorTest
             // row1885; raw image transition is275..1884, not retained bottom1888.
             const int pictureTop=pausedRecovery?274:272,pictureBottom=1886;
             constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
-            std::array<std::vector<BYTE>,4> phases;
-            for(unsigned phase=0;phase<4;++phase) {
-                char stem[40];sprintf_s(stem,"\\frame-%06u",phase+1);
+            const unsigned phaseCount=pausedNative?46u:4u;
+            std::vector<std::vector<BYTE>> phases(phaseCount);
+            for(unsigned phase=0;phase<phaseCount;++phase) {
+                char stem[40];sprintf_s(stem,"\\frame-%06u",phase+(pausedNative?16:1));
                 const std::string path=std::string(captureValue)+stem;
                 std::ifstream metadata(path+".txt");
                 int w=0,h=0,rb=0,crb=0,format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;
                 metadata>>w>>h>>rb>>crb>>format>>encoding>>color>>top>>bottom>>script>>range;
                 Assert::IsTrue(bool(metadata)&&w==width&&h==height&&rb==rowBytes&&crb==0&&format==3&&
                     encoding==int(VideoFrameEncoding::V210)&&color==int(ColorSpace::REC_709)&&range==1&&
-                    top==pictureTop&&bottom==(pausedRecovery?1888:1886),L"This regression requires the selected limited-range V210 recording and its original sidecar context.");
+                    (pausedNative?(top==0&&bottom==0):(top==pictureTop&&bottom==(pausedRecovery?1888:1886))),L"This regression requires the selected limited-range V210 recording and its original sidecar context.");
+                if(pausedNative) {
+                    std::string version;std::array<uint64_t,16> original{};
+                    metadata>>version;for(auto& value:original)metadata>>value;
+                    Assert::IsTrue(bool(metadata)&&version=="identity_v1"&&original[0]==2&&
+                        original[1]==450+phase&&original[2]==751414+phase&&original[12]==417083,
+                        L"Replay input must be the original consecutive capture segment and cadence.");
+                    std::ostringstream mapping;mapping<<"PAUSED NATIVE INPUT: index="<<phase+16<<" original_identity_v1=";
+                    for(const auto value:original)mapping<<value<<',';
+                    mapping<<" renderer_index=(renderer_source-1)%46; renderer timestamps and generations are fresh; looping is replay scheduling, not additional recorded history";
+                    Logger::WriteMessage(mapping.str().c_str());
+                }
                 std::ifstream pixels(path+".bin",std::ios::binary|std::ios::ate);
                 Assert::IsTrue(bool(pixels)&&pixels.tellg()==std::streamoff(rowBytes)*height,L"Native capture length mismatch.");
                 phases[phase].resize(size_t(rowBytes)*height);pixels.seekg(0);
                 pixels.read(reinterpret_cast<char*>(phases[phase].data()),phases[phase].size());
                 Assert::IsTrue(bool(pixels));
-                for(unsigned previous=0;previous<phase;++previous)
+                if(!pausedNative)for(unsigned previous=0;previous<phase;++previous)
                     Assert::IsTrue(phases[previous]!=phases[phase],L"All four recorded quantization phases must be exercised.");
             }
             // The earlier live template pixels were not captured. This one-pixel
@@ -5255,31 +5268,58 @@ namespace VideoProcessorTest
                         if(!size||size>=32768)return;
                         std::ofstream out((std::wstring(path)+(beta?L"/beta-decisions.tsv":L"/standard-decisions.tsv")).c_str());
                         const auto clean=[](const char* text){std::string value(text);for(auto& ch:value)if(ch=='\t'||ch=='\r'||ch=='\n')ch=' ';return value;};
-                        out<<"source\taccepted\tstage\treason\tflags\tcounters\tmetrics\tpublished\n";
+                        out<<"source\taccepted\tstage\treason\tflags\tcounters\tmetrics\tpublished\tmeasured\tguard\tnomination\n";
                         for(const auto& r:records) {
                             out<<r.sourceFrameNumber<<'\t'<<r.acceptedSequence<<'\t'<<clean(r.stage)<<'\t'<<clean(r.reason)<<'\t'<<r.flags<<'\t';
                             for(const auto value:r.counters)out<<value<<',';out<<'\t';
                             for(const auto value:r.metrics)out<<value<<',';out<<'\t';
-                            for(const auto value:r.published)out<<value<<',';out<<'\n';
+                            for(const auto value:r.published)out<<value<<',';out<<'\t';
+                            for(const auto value:r.measured)out<<value<<',';out<<'\t';
+                            for(const auto value:r.candidate)out<<value<<',';out<<'\t';
+                            for(const auto value:r.previous)out<<value<<',';out<<'\n';
                         }
                     } catch(...) {} // Diagnostic export cannot alter test behavior.
                 }
             } traceDump{observed,beta};
+            std::vector<DetectedPictureAspect> physicalReadings;
+            struct PhysicalDump {
+                const std::vector<DetectedPictureAspect>& rows;bool beta;
+                ~PhysicalDump() {try {
+                    wchar_t path[32768]={};const auto size=GetEnvironmentVariableW(L"VP_PAUSED_REPLAY_TRACE_ROOT",path,32768);
+                    if(!size||size>=32768)return;
+                    std::ofstream out((std::wstring(path)+(beta?L"/beta-physical.tsv":L"/standard-physical.tsv")).c_str());
+                    out<<"presented\tdetected\tcurrent_available\tcurrent_physical_available\tcurrent_ratio\tcurrent_bounds\tstable_available\tstable_source\tstable_held\tstable_ratio\tstable_bounds\n";
+                    for(const auto& row:rows) {
+                        out<<row.presentedSequence<<'\t'<<row.detectedSequence<<'\t'<<row.available<<'\t'<<row.physicalBoundsAvailable<<'\t'<<row.ratio<<'\t';
+                        for(const auto v:row.physicalBounds)out<<v<<',';
+                        const auto& stable=row.stableDetection;
+                        out<<'\t'<<stable.available<<'\t'<<stable.acceptedSequence<<'\t'<<stable.held<<'\t'<<stable.ratio<<'\t';
+                        for(const auto v:stable.physicalBounds)out<<v<<',';out<<'\n';
+                    }
+                }catch(...){} }
+            } physicalDump{physicalReadings,beta};
+            uint64_t lastPhysicalPresented=0;
             const auto drain=[&] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);
                 while(cursor<classicPoseRecords.size()){const auto& r=classicPoseRecords[cursor++];observed.push_back(r);
                     if(!strcmp(r.stage,"submitted-presentation")&&(r.flags&3u)==3u&&r.counters[4]&&
-                        r.published[1]==pictureTop&&r.published[3]==pictureBottom)acquired=true;}};
+                        (pausedNative||(r.published[1]==pictureTop&&r.published[3]==pictureBottom)))acquired=true;}};
             const auto pump=[&] {
                 MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
                 if(callback.state==RENDERSTATE_RENDERING) {
                     const auto stamp=captureOrigin+timingclocktime_t((sequence-1)*uint64_t(clock.TimingClockTicksPerSecond())*1001/24000);
                     const auto start=wallNs();inputs.emplace(sequence,std::make_pair(stamp,start));
-                    const auto* pixels=usePriorBackground?priorBackground.data():phases[(sequence-1)%4].data();
+                    const auto* pixels=usePriorBackground?priorBackground.data():phases[(sequence-1)%phaseCount].data();
                     VideoFrame frame(pixels,sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);
                     if(steadyStart)ingressMs.push_back(double(wallNs()-start)/1e6);
                 }
                 next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1/inputHz));
                 std::this_thread::sleep_until(next);drain();
+                if(pausedNative) {
+                    DetectedPictureAspect reading;Assert::IsTrue(cleanup.renderer->GetDetectedPictureAspect(reading));
+                    if(reading.presentedSequence&&reading.presentedSequence!=lastPhysicalPresented) {
+                        lastPhysicalPresented=reading.presentedSequence;physicalReadings.push_back(reading);
+                    }
+                }
                 Assert::IsTrue(callback.state!=RENDERSTATE_FAILED,L"Actual capture renderer failed.");
             };
             const auto warmupDeadline=GetTickCount64()+ColdShaderPreparationBudgetMs;
@@ -5343,11 +5383,12 @@ namespace VideoProcessorTest
                     r.acceptedSequence==r.counters[1]&&sourceOrder&&
                     (temporal?selectionLag<=10:selectionLag==0)&&
                     (!(r.flags&4u)||((r.flags&8u)&&r.counters[7]==r.counters[1]));
-                native&=r.counters[4]!=0&&r.published[0]==0&&r.published[1]==pictureTop&&r.published[2]==width&&r.published[3]==pictureBottom;
-                noFallback&=r.metrics[9]>=pictureTop-.01&&r.metrics[11]<=pictureBottom+.01&&!(r.flags&(4096u|8192u|16384u));
+                native&=r.counters[4]!=0&&r.published[0]==0&&r.published[2]==width&&
+                    (pausedNative||(r.published[1]==pictureTop&&r.published[3]==pictureBottom));
+                noFallback&=r.metrics[9]>=(pausedNative?r.published[1]:pictureTop)-.01&&r.metrics[11]<=(pausedNative?r.published[3]:pictureBottom)+.01&&!(r.flags&(4096u|8192u|16384u));
                 const auto time=classicPoseSubmitWallNs.find(r.recordSequence);
                 if(distinct.insert(r.sourceFrameNumber).second&&time!=classicPoseSubmitWallNs.end()) {
-                    phaseCoverage.insert(unsigned((r.sourceFrameNumber-1)%4));
+                    phaseCoverage.insert(unsigned((r.sourceFrameNumber-1)%phaseCount));
                     if(lastWall)maxGapMs=(std::max)(maxGapMs,double(time->second-lastWall)/1e6);
                     if(lastSource)maxSourceGap=(std::max)(maxSourceGap,r.sourceFrameNumber>lastSource?r.sourceFrameNumber-lastSource:uint64_t(144));
                     if(!firstWall)firstWall=time->second;lastWall=time->second;lastSource=r.sourceFrameNumber;
@@ -5418,7 +5459,55 @@ namespace VideoProcessorTest
                 Assert::IsTrue(transitionOutputs>=144&&transitionExact&&transitionMaxGap<=2&&transitionGapMs<=2*periodMs+1000/outputHz,
                     L"Current source video stalled or lost identity while subtitle recovery was pending.");
             }
-            Assert::IsTrue(outputs>=136&&distinct.size()>=136&&phaseCoverage.size()==4,L"Missing steady current-source coverage.");
+            if(pausedNative) {
+                // Current physical facts, stable physical history and accepted
+                // crop guard are distinct contracts. None substitutes for another.
+                const auto correctPhysical=[](const auto& b,double aspect) {
+                    return b[0]==0&&b[2]==3840&&std::abs(b[1]-275)<=2&&std::abs(b[3]-1884)<=2&&
+                        std::isfinite(aspect)&&std::round(aspect*100)==239;
+                };
+                uint64_t firstPhysical=0;unsigned currentKnown=0,currentUnknown=0,currentWrong=0;
+                std::set<uint64_t> currentSources;std::set<unsigned> currentPhases;
+                for(const auto& r:observed)if(!strcmp(r.stage,"ar-boundary-chain")&&(r.flags&16u)&&r.sourceFrameNumber<=steadyEnd) {
+                    if(!firstPhysical&&(r.flags&2u)&&correctPhysical(r.measured,r.metrics[0]))firstPhysical=r.sourceFrameNumber;
+                    if(!firstPhysical||r.sourceFrameNumber<firstPhysical)continue;
+                    if(!currentSources.insert(r.sourceFrameNumber).second)continue;
+                    currentPhases.insert(unsigned((r.sourceFrameNumber-1)%phaseCount));
+                    if(!(r.flags&2u)||r.counters[2]!=r.acceptedSequence)++currentUnknown;
+                    else {++currentKnown;if(!correctPhysical(r.measured,r.metrics[0]))++currentWrong;}
+                }
+                bool stable=true,stableStarted=false;std::array<int,4> stableAnchor{};unsigned stableSamples=0;
+                for(const auto& reading:physicalReadings) {
+                    if(reading.presentedSequence>steadyEnd)continue;
+                    const auto& accepted=reading.stableDetection;
+                    if(!stableStarted&&accepted.available&&accepted.physicalBoundsAvailable) {
+                        stableStarted=true;std::copy(std::begin(accepted.physicalBounds),std::end(accepted.physicalBounds),stableAnchor.begin());
+                    }
+                    if(!stableStarted)continue;++stableSamples;
+                    stable&=accepted.available&&accepted.physicalBoundsAvailable&&correctPhysical(accepted.physicalBounds,accepted.ratio)&&
+                        std::equal(stableAnchor.begin(),stableAnchor.end(),std::begin(accepted.physicalBounds));
+                }
+                bool mappingStable=true;bool haveMapping=false;std::array<double,8> mapping{};std::array<int32_t,4> guard{};
+                for(const auto& r:observed)if(!strcmp(r.stage,"submitted-presentation")&&(r.flags&1u)&&
+                    r.sourceFrameNumber>=steadyStart&&r.sourceFrameNumber<=steadyEnd) {
+                    if(!haveMapping) {for(unsigned i=0;i<8;++i)mapping[i]=r.metrics[8+i];
+                        std::copy(std::begin(r.published),std::end(r.published),guard.begin());haveMapping=true;}
+                    for(unsigned i=0;i<8;++i)mappingStable&=std::abs(mapping[i]-r.metrics[8+i])<.001;
+                    mappingStable&=std::equal(guard.begin(),guard.end(),std::begin(r.published));
+                }
+                std::ostringstream result;result<<"PAUSED NATIVE: first_physical="<<firstPhysical<<" current_known="<<currentKnown
+                    <<" current_unknown="<<currentUnknown<<" current_wrong="<<currentWrong<<" current_phases="<<currentPhases.size()
+                    <<" stable_samples="<<stableSamples<<" stable_physical="<<stable<<" mapping_stable="<<mappingStable
+                    <<" guard="<<guard[0]<<','<<guard[1]<<','<<guard[2]<<','<<guard[3];Logger::WriteMessage(result.str().c_str());
+                bool completeSteadyPhysical=true;
+                for(uint64_t expected=steadyStart;expected<=steadyEnd;++expected)
+                    completeSteadyPhysical&=currentSources.count(expected)!=0;
+                Assert::IsTrue(firstPhysical>0&&firstPhysical<steadyStart&&completeSteadyPhysical&&currentKnown>=144&&currentUnknown==0&&currentWrong==0&&currentPhases.size()==46,
+                    L"Current physical AR must remain known and round to2.39 on every captured phase after cold acquisition; retained detection cannot cover unknown current facts.");
+                Assert::IsTrue(stableStarted&&stableSamples>=144&&stable,L"Accepted physical measurement changed or became unavailable.");
+                Assert::IsTrue(distinct.size()==144&&haveMapping&&mappingStable,L"Every expected current source must retain one caption/picture mapping through all captured inputs.");
+            }
+            Assert::IsTrue(outputs>=136&&distinct.size()>=136&&phaseCoverage.size()==phaseCount,L"Missing steady current-source coverage.");
             Assert::IsTrue(exact,L"Subtitle readiness held/replayed or mismatched an otherwise eligible current source.");
             Assert::IsTrue(native,L"Measured native geometry changed or fallback gained native authority.");
             Assert::IsTrue(composed==outputs&&noFallback,L"Captured unchanged cue still alternates composed and expanded raw fallback output.");
@@ -5438,6 +5527,11 @@ namespace VideoProcessorTest
         {VerifyCapturedV210CueCadence(false,true);}
         TEST_METHOD(BetaRendererPausedCapturedCueRecoversFailedBackgroundTemplate)
         {VerifyCapturedV210CueCadence(true,true);}
+
+        TEST_METHOD(StandardRendererPausedNativeCaptureAcquiresAndKeepsReconstruction)
+        {VerifyCapturedV210CueCadence(false,false,true);}
+        TEST_METHOD(BetaRendererPausedNativeCaptureAcquiresAndKeepsReconstruction)
+        {VerifyCapturedV210CueCadence(true,false,true);}
 
         TEST_METHOD(AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed)
         {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),false,true,true);}
