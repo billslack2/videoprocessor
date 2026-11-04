@@ -393,6 +393,8 @@
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
   "actualMethods": [
+    "StandardRendererContainedRawCaptionKeepsConfiguredMovieMapping",
+    "BetaRendererContainedRawCaptionKeepsConfiguredMovieMapping",
     "StandardRendererOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry",
     "BetaRendererOffUhdVolumeOverlayKeepsCurrentPixelsAndNativeGeometry",
     "StandardRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",

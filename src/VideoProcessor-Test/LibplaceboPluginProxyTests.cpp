@@ -5889,6 +5889,236 @@ namespace VideoProcessorTest
             DeleteFileA(cleanup.config);cleanup.config=nullptr;
             Assert::IsTrue(buffer.references.load()==0,L"Renderer retained a capture buffer after shutdown.");
         }
+        void VerifyContainedRawReconstructionFill(bool beta)
+        {
+            constexpr bool configuredFill=true;
+            constexpr unsigned processedMode=unsigned(SubtitlePreviewMode::GeneratedGrayBackground);
+            const bool requireSpatial=SourceSpatialProductionEnabled();
+            Assert::IsTrue(requireSpatial,L"Contained raw fill regression requires the production spatial detector.");
+            Logger::WriteMessage(requireSpatial?"AR transition fixture: detector=spatial":"AR transition fixture: detector=legacy");
+            HMODULE self=nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&SnapshotTestLog),&self)!=FALSE);
+            wchar_t modulePath[MAX_PATH]={};
+            GetModuleFileNameW(self,modulePath,MAX_PATH);
+            std::wstring pluginPath(modulePath);pluginPath.resize(pluginPath.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            pluginPath+=L"\\..";
+#endif
+            pluginPath+=beta?L"\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll":
+                L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+            HMODULE plugin=LoadLibraryExW(pluginPath.c_str(),nullptr,
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct ModuleCleanup { HMODULE value; ~ModuleCleanup(){FreeLibrary(value);} } moduleCleanup{plugin};
+            struct FixtureLogCleanup {
+                ~FixtureLogCleanup(){std::lock_guard<std::mutex> lock(snapshotTestLogMutex);snapshotTestLog.close();}
+            } fixtureLogCleanup;
+            { std::lock_guard<std::mutex> lock(snapshotTestLogMutex);
+              snapshotTestLog.close();snapshotTestLog.clear();
+              snapshotTestLog.open(beta?"contained-raw-fill-beta.log":"contained-raw-fill-standard.log",std::ios::trunc); }
+            const auto create=reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(
+                GetProcAddress(plugin,VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy=reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(
+                GetProcAddress(plugin,VP_LIBPLACEBO_DESTROY_EXPORT));
+            Assert::IsTrue(create&&destroy);
+            const auto diagnostics=requireSpatial?reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticFn>(
+                GetProcAddress(plugin,VP_LIBPLACEBO_DIAGNOSTIC_EXPORT)):nullptr;
+            struct DiagnosticCleanup {
+                VideoProcessorLibplaceboConfigureDiagnosticFn callback;
+                ~DiagnosticCleanup(){if(callback)callback(nullptr,nullptr,nullptr,nullptr);}
+            } diagnosticCleanup{diagnostics};
+            size_t spatialCursor=0;
+            if(requireSpatial) {
+                Assert::IsTrue(diagnostics!=nullptr);
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=true;}
+                diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
+            }
+            char temp[MAX_PATH]={},configPath[MAX_PATH]={};
+            Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0);
+            Assert::IsTrue(GetTempFileNameA(temp,"art",0,configPath)!=0);
+            std::ofstream(configPath)<<"[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                "[vprenderer]\nquality: fast\n"
+                "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n"
+                "[vprenderer.zoom.native]\nautomatic_crop: true\nsubtitle_fit: true\n"
+                "crop_narrower_content_to_fill_screen: true\ncrop_wider_content_to_fill_screen: "
+                <<(configuredFill?"true":"false")<<"\ncrop_narrower_content_aspect_limit: 2.32\ncrop_wider_content_aspect_limit: 2.42\n";
+            if(processedMode)std::ofstream(configPath,std::ios::app)
+                <<"[vprenderer.subtitles.processed]\ntype: "<<(processedMode==unsigned(SubtitlePreviewMode::BlackBackground)?"black":"generated_gray")
+                <<"\nshortcut: F6\nsubtitle_hold_ms: 250\ncleanup_fill: stable_surround\n";
+            constexpr int width=640,height=360;
+            const int scopeBar=configuredFill?46:44;
+            const double nativeScope=double(width)/(height-2*scopeBar);
+            VideoStateComPtr state=new VideoState();
+            state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::P210;
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,24000,1001);
+            state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
+            std::vector<uint16_t> scope(state->BytesPerFrame()/2,uint16_t(512<<6));
+            for(int y=0;y<height;++y)for(int x=0;x<width;++x)
+                scope[y*width+x]=uint16_t((y>=scopeBar&&y<height-scopeBar?200:64)<<6);
+            auto candidate=scope;
+            const auto fill=[&](int l,int t,int r,int b,int value) {
+                for(int y=t;y<b;++y)for(int x=l;x<r;++x)candidate[size_t(y)*width+x]=uint16_t(value<<6);
+            };
+            fill(282,287,344,314,64);fill(300,293,326,311,510);fill(303,296,323,308,64);
+            AnalysisLumaSource nativeSource;nativeSource.data=reinterpret_cast<const uint8_t*>(candidate.data());
+            nativeSource.dataBytes=candidate.size()*sizeof(uint16_t);nativeSource.width=width;nativeSource.height=height;
+            nativeSource.rowBytes=nativeSource.chromaRowBytes=width*2;nativeSource.format=AnalysisLumaFormat::P210;nativeSource.generation=1;
+            SubtitleBoxDetector nativeDetector;nativeDetector.SetNearBarDistance(20);
+            const auto detected=nativeDetector.Analyze(nativeSource,scopeBar,height-scopeBar,1,1);
+            const auto ink=nativeDetector.InkSnapshot();
+            Assert::IsTrue(detected.detected && !detected.workLimit && detected.topSearchComplete && detected.bottomSearchComplete &&
+                ink && ink->paletteValid && ink->rawEvidenceComplete,
+                L"GPU input must first produce a genuine complete raw subtitle candidate through the production detector.");
+            SnapshotTestCallback callback;NativeP210Buffer buffer;
+            struct Cleanup {
+                HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;
+                const char* config;
+                ~Cleanup(){if(renderer){renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);DeleteFileA(config);}
+            } cleanup{CreateWindowExW(0,L"STATIC",L"AR transition fixture",WS_POPUP,
+                0,0,640,360,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr),nullptr,destroy,configPath};
+            Assert::IsNotNull(cleanup.window);
+            struct ProbeClock final : ITimingClock {
+                LARGE_INTEGER frequency{};
+                ProbeClock(){Assert::IsTrue(QueryPerformanceFrequency(&frequency)!=FALSE && frequency.QuadPart>0);}
+                timingclocktime_t TimingClockNow() override {LARGE_INTEGER now{};QueryPerformanceCounter(&now);return now.QuadPart;}
+                timingclocktime_t TimingClockTicksPerSecond() const override {return frequency.QuadPart;}
+                const TCHAR* TimingClockDescription() override {return _T("Spatial transition fixture QPC");}
+            } clock;
+            cleanup.renderer=create(&callback,42,cleanup.window,&clock,requireSpatial,requireSpatial?9:1,
+                VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,SnapshotTestLog);
+            Assert::IsNotNull(cleanup.renderer);
+            if(processedMode) {
+                ConfigFile config;Assert::IsTrue(config.Load(configPath));
+                UnifiedProfileRuntime::Runtime runtime;std::string error;
+                Assert::IsTrue(runtime.Initialize(config,{},error));
+                UnifiedProfileRuntime::SelectionResult selected;
+                Assert::IsTrue(runtime.SelectKey("F6",{},selected,error),std::wstring(error.begin(),error.end()).c_str());
+                Assert::IsNotNull(selected.snapshot.get(),L"F6 fixture key did not publish a subtitle profile snapshot.");
+                const auto subtitles=selected.snapshot->effectiveSelections.find("subtitles");
+                Assert::IsTrue(subtitles!=selected.snapshot->effectiveSelections.end() &&
+                    subtitles->second.size()==1 && subtitles->second.front()=="processed",
+                    L"F6 fixture key did not select the requested processed subtitle profile.");
+                CString active;bool restart=false,reset=false;
+                Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*selected.snapshot,active,restart,reset));
+                Assert::IsFalse(restart);
+            }
+            // This experiment requires prepared-source lead. Keep the legacy
+            // zero-depth case, and exercise the active mode with the user's
+            // queued playback contract rather than inventing a stale-frame vote.
+            if(requireSpatial) { cleanup.renderer->SetQueueFramePolicy(4,9,true);cleanup.renderer->SetActivePictureLookaheadFrames(4); }
+            Assert::IsTrue(cleanup.renderer->OnVideoState(state));
+            cleanup.renderer->Build();cleanup.renderer->Start();
+            uint64_t sequence=1;std::vector<AnalysisDiagnosticRecordV1> records,outputs;
+            std::set<uint64_t> injected;
+            auto pump=[&](bool caption) {
+                MSG message;while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}
+                if(callback.state==RENDERSTATE_RENDERING) {
+                    if(caption)injected.insert(sequence);
+                    VideoFrame frame((caption?candidate:scope).data(),sequence++,clock.TimingClockNow(),&buffer);
+                    cleanup.renderer->OnVideoFrame(frame);
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(42));
+                std::vector<AnalysisDiagnosticRecordV1> tail;
+                {std::lock_guard<std::mutex> lock(classicPoseLogMutex);CopyUnreadCallbackTail(classicPoseRecords,spatialCursor,tail);}
+                for(const auto& r:tail){records.push_back(r);if(!strcmp(r.stage,"submitted-presentation")&&(r.flags&1u))outputs.push_back(r);}
+                Assert::IsTrue(callback.state!=RENDERSTATE_FAILED,L"Actual renderer failed while source video was advancing.");
+            };
+            AlphaSourceCrop::AspectLimitFillInput configured;
+            configured.sourceBounds={0,scopeBar,width,height-scopeBar,width,height,nativeScope,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            configured.contentReferenceAvailable=true;configured.contentReferenceBounds=configured.sourceBounds;
+            configured.trustedContentAuthorityAccepted=true;configured.screenAspect=2.35;
+            configured.cropWiderContentToFillScreen=configured.widerLimitConfigured=true;configured.widerAspectLimit=2.42;
+            const auto expected=AlphaSourceCrop::EvaluateAspectLimitFill(configured);
+            Assert::IsTrue(expected.applied);
+            AnalysisDiagnosticRecordV1 anchor{};
+            const auto warmDeadline=std::chrono::steady_clock::now()+std::chrono::seconds(20);
+            while(std::chrono::steady_clock::now()<warmDeadline) {
+                pump(false);
+                if(!outputs.empty()) {
+                    const auto& o=outputs.back();
+                    if(o.published[1]==scopeBar && o.published[3]==height-scopeBar &&
+                        o.displayed[0]==expected.sourceBounds.left && o.displayed[2]==expected.sourceBounds.right &&
+                        (o.flags&8192u)){anchor=o;break;}
+                }
+            }
+            Assert::IsTrue(anchor.acceptedSequence!=0,L"Actual renderer did not establish configured native fill on an absent-caption source.");
+            const auto first=sequence;
+            // Isolated genuine glyph inputs have clean preceding/following frames:
+            // the tracker cannot borrow a fabricated held or composed cue.
+            wchar_t captureSetting[8]={};
+            const bool visualCapture=GetEnvironmentVariableW(L"VP_CONTAINED_RAW_VISUAL_CAPTURE",captureSetting,8)==1 && captureSetting[0]==L'1';
+            for(unsigned i=0;i<96;++i) {
+                if(visualCapture && i==26) {
+                    CString status;Assert::IsTrue(cleanup.renderer->RequestRenderedOutputCapture(status),L"Actual output capture could not be queued.");
+                    Logger::WriteMessage("CONTAINED RAW VISUAL: actual source identity is in capture JSON; readback run is not performance qualification.");
+                }
+                pump(i%8==2);
+            }
+            for(unsigned i=0;i<16;++i)pump(false);
+            const auto sameSource=[](const AnalysisDiagnosticRecordV1& a,const AnalysisDiagnosticRecordV1& b) {
+                return a.rendererInstanceKey==b.rendererInstanceKey && a.transportGeneration==b.transportGeneration &&
+                    a.rendererGeneration==b.rendererGeneration && a.viewportGeneration==b.viewportGeneration &&
+                    a.sourceFormatGeneration==b.sourceFormatGeneration && a.analysisDomainKey==b.analysisDomainKey &&
+                    a.policyGeneration==b.policyGeneration && a.continuityGeneration==b.continuityGeneration &&
+                    a.acceptedSequence==b.acceptedSequence && a.sourceFrameNumber==b.sourceFrameNumber && a.captureTimestamp==b.captureTimestamp;
+            };
+            std::set<uint64_t> submitted,physical;unsigned rawCandidates=0,absentAfter=0;
+            uint64_t previousSelected=0,previousPhysical=0,previousTimestamp=0;
+            double maxOutputGapMs=0.0,maxCriticalWorkMs=0.0;unsigned criticalWorkSamples=0;
+            for(const auto& r:records)if(!strcmp(r.stage,"source-frame-work") &&
+                r.sourceFrameNumber>=first && r.sourceFrameNumber<first+96 && std::isfinite(r.metrics[0])) {
+                maxCriticalWorkMs=(std::max)(maxCriticalWorkMs,r.metrics[0]);++criticalWorkSamples;
+            }
+            for(const auto& o:outputs)if(o.sourceFrameNumber>=first && o.sourceFrameNumber<first+96) {
+                Assert::AreEqual(o.counters[0],o.counters[1],L"Pending processing cannot select an old whole source.");
+                Assert::IsFalse((o.flags&16384u)!=0,L"Pending processing cannot freeze or repeat the last output.");
+                Assert::IsTrue(submitted.insert(o.counters[1]).second && physical.insert(o.sourceFrameNumber).second,
+                    L"Every tested current source must submit once, without duplicate selected or physical identities.");
+                if(previousSelected) {
+                    Assert::AreEqual(previousSelected+1,o.counters[1],L"Selected current sources must advance without gaps.");
+                    Assert::AreEqual(previousPhysical+1,o.sourceFrameNumber,L"Original physical input identities must advance without gaps.");
+                    if(previousTimestamp && o.timestampNs>=previousTimestamp)
+                        maxOutputGapMs=(std::max)(maxOutputGapMs,double(o.timestampNs-previousTimestamp)/1000000.0);
+                }
+                previousSelected=o.counters[1];previousPhysical=o.sourceFrameNumber;previousTimestamp=o.timestampNs;
+                for(int edge=0;edge<4;++edge) {
+                    Assert::AreEqual(anchor.published[edge],o.published[edge],L"Caption presence changed independent native geometry.");
+                    Assert::AreEqual(anchor.metrics[8+edge],o.metrics[8+edge],0.01,L"Caption presence changed configured movie crop.");
+                    Assert::AreEqual(anchor.metrics[12+edge],o.metrics[12+edge],0.01,L"Caption presence moved or resized the movie target.");
+                }
+                absentAfter+=(o.flags&8192u)!=0;
+                const AnalysisDiagnosticRecordV1* admission=nullptr;const AnalysisDiagnosticRecordV1* scan=nullptr;
+                for(const auto& r:records)if(sameSource(r,o)) {
+                    if(!strcmp(r.stage,"subtitle-canvas-admission"))admission=&r;
+                    if(!strcmp(r.stage,"subtitle-output"))scan=&r;
+                }
+                if(admission && scan && (admission->flags&32u) && (scan->flags&64u)) {
+                    Assert::IsTrue(injected.count(o.sourceFrameNumber)!=0,L"Raw candidate must originate in an actual injected current glyph frame.");
+                    Assert::IsTrue((admission->flags&64u)!=0 && (admission->flags&2u)!=0 && !(admission->flags&1u));
+                    Assert::IsFalse((o.flags&(2u|16u|32u|64u|4096u|8192u))!=0,L"Raw fill must not create composition, cleanup, native certificate, or absence.");
+                    Assert::AreEqual(uint64_t(0),o.counters[2]);Assert::AreEqual(uint64_t(0),o.counters[5]);
+                    for(int edge=0;edge<4;++edge)Assert::AreEqual(double(anchor.published[edge]),admission->metrics[8+edge],0.01,
+                        L"Side fill requires exact-current raw visibility contained by unchanged native.");
+                    ++rawCandidates;
+                }
+            }
+            Assert::AreEqual(size_t(96),submitted.size(),L"Every one of the96 on/off inputs must reach a distinct current-source submission.");
+            Assert::AreEqual(first,*physical.begin());Assert::AreEqual(first+95,*physical.rbegin());
+            Assert::IsTrue(rawCandidates>=2,L"Actual completed raw candidates never exercised pending side fill; timing-only coverage cannot pass.");
+            Assert::IsTrue(absentAfter>=16,L"Absence after the candidate was not independently exercised.");
+            std::ostringstream summary;summary<<"CONTAINED RAW FILL: renderer="<<(beta?"beta":"standard")<<" current_sources="<<submitted.size()
+                <<" exact_raw_candidates="<<rawCandidates<<" absent="<<absentAfter
+                <<" max_output_gap_ms="<<maxOutputGapMs<<" critical_work_samples="<<criticalWorkSamples
+                <<" max_critical_work_ms="<<maxCriticalWorkMs<<" source_budget_ms="<<(1000.0*1001.0/24000.0)
+                <<" gpu_budget_coverage=not_measured visual_readback="<<visualCapture<<" actual_crop="<<anchor.displayed[0]<<','<<anchor.displayed[1]
+                <<','<<anchor.displayed[2]<<','<<anchor.displayed[3];Logger::WriteMessage(summary.str().c_str());
+        }
+        TEST_METHOD(StandardRendererContainedRawCaptionKeepsConfiguredMovieMapping)
+        { VerifyContainedRawReconstructionFill(false); }
+        TEST_METHOD(BetaRendererContainedRawCaptionKeepsConfiguredMovieMapping)
+        { VerifyContainedRawReconstructionFill(true); }
         void VerifyNativeAspectTransitionSequence(bool beta,bool configuredFill=false,unsigned processedMode=0)
         {
             const bool requireSpatial=SourceSpatialProductionEnabled();
