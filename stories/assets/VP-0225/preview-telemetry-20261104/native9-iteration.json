@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "status": "NativePassed",
+  "qualification": false,
+  "lane": "Native",
+  "source": {
+    "commit": "3f81237c5ded93a6c998a083b12534259d040efc",
+    "dirty": true,
+    "fingerprint": "65d8868d827efb1e9d4b527252ae83ec07f3d8690a5c63b8e912974b599a1fd7",
+    "label": "3f81237c5ded-dirty-65d8868d827e",
+    "build": "3f81237c5ded93a6c998a083b12534259d040efc-dirty-65d8868d827efb1e9d4b527252ae83ec07f3d8690a5c63b8e912974b599a1fd7"
+  },
+  "testEnvironment": {
+    "sourcePictureDetector": true,
+    "legacyDetectorEnvironment": null,
+    "sourcePictureShadow": null
+  },
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-Lib.lib",
+      "sha256": "04068FB8882835FC6F1107605939712E9EFBE77F413459EB7A3C309363A33809"
+    },
+    {
+      "path": "x64/Release/tests-critical-native/VideoProcessor-CriticalNativeTests.dll",
+      "sha256": "C439168A04588937E4ECE71ABEEF01984DE7ACF8319F8AEBECE3C1C34B016034"
+    },
+    {
+      "path": "x64/Release/tests-critical-native/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    }
+  ],
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0,
+      "seconds": 30.895,
+      "log": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-115930-5f1a7cf0\\native-library-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "8e60e591-f53f-4c98-aac8-af2007ff5df4",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "critical-native-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-CriticalNativeTests.vcxproj",
+      "exit": 0,
+      "seconds": 20.145,
+      "log": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-115930-5f1a7cf0\\critical-native-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "abd6d71d-b2fe-4dbb-97c5-e4f74e859bc0",
+      "PSShowComputerName": false
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\tests-critical-native\\VideoProcessor-CriticalNativeTests.dll",
+      "trx": "artifacts/qualification/runs/20261104-115930-5f1a7cf0/standard.trx",
+      "trxSha256": "E5DAF8FCCA4E83FAC3E6D1186D76BFEB4285C5B865483DBE3089F4B755C28C2E",
+      "executed": 9,
+      "native": 9,
+      "actualClassic": 0,
+      "seconds": 1.126
+    }
+  ],
+  "seconds": 55.281,
+  "shaderCacheDirectory": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\TestShaderCache",
+  "coldShaderCache": false,
+  "finished": "2026-11-04T12:00:24.4894603-05:00"
+}

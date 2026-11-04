@@ -1,0 +1,290 @@
+{
+  "user-capture": {
+    "nativeFrames": 8,
+    "firstIdentity": [
+      2,
+      3251,
+      8607,
+      401256842090,
+      15805081878477807578,
+      0,
+      2,
+      4768279117495752782
+    ],
+    "lastIdentity": [
+      2,
+      3332,
+      8688,
+      401260220410,
+      15805081878477807578,
+      0,
+      2,
+      4768279117495752782
+    ],
+    "savedPhysicalGaps": 74,
+    "fullIdentityJoin": [
+      "transportGeneration",
+      "acceptedSequence",
+      "sourceFrameNumber",
+      "captureTimestamp",
+      "sourceFormatGeneration",
+      "viewportGeneration",
+      "rendererGeneration",
+      "analysisDomainKey"
+    ],
+    "stages": {
+      "ar-boundary-chain": {
+        "records": 8,
+        "sources": 8,
+        "measured": {
+          "[0, 275, 3840, 1884]": 8
+        },
+        "displayed": {
+          "[0, 272, 3840, 2044]": 8
+        },
+        "published": {
+          "[0, 272, 3840, 1890]": 8
+        },
+        "reasons": {
+          "computed-only; guard and nomination are not physical measurements": 8
+        },
+        "flags": {
+          "55": 8
+        }
+      },
+      "source-picture-support": {
+        "records": 8,
+        "sources": 8,
+        "measured": {
+          "[0, 275, 3840, 1884]": 8
+        },
+        "displayed": {
+          "[0, 0, 0, 0]": 8
+        },
+        "published": {
+          "[0, 272, 3840, 2032]": 8
+        },
+        "reasons": {
+          "current-support-independently-verified": 8
+        },
+        "flags": {
+          "9": 8
+        }
+      },
+      "presentation": {
+        "records": 8,
+        "sources": 8,
+        "measured": {
+          "[0, 272, 3840, 1886]": 8
+        },
+        "displayed": {
+          "[0, 272, 3840, 2044]": 8
+        },
+        "published": {
+          "[0, 272, 3840, 1890]": 8
+        },
+        "reasons": {
+          "raw subtitle fallback to current source: subtitle inspection pending": 3,
+          "raw subtitle fallback to current source: subtitle composition pending": 5
+        },
+        "flags": {
+          "1": 8
+        }
+      },
+      "submitted-presentation": {
+        "records": 8,
+        "sources": 8,
+        "measured": {
+          "[0, 0, 0, 0]": 8
+        },
+        "displayed": {
+          "[0, 272, 3840, 2044]": 8
+        },
+        "published": {
+          "[0, 272, 3840, 1890]": 8
+        },
+        "reasons": {
+          "rendered-and-submitted": 8
+        },
+        "flags": {
+          "16777217": 8
+        }
+      },
+      "subtitle-output": {
+        "records": 8,
+        "sources": 8,
+        "measured": {
+          "[0, 0, 0, 0]": 8
+        },
+        "displayed": {
+          "[0, 0, 0, 0]": 8
+        },
+        "published": {
+          "[0, 0, 0, 0]": 8
+        },
+        "reasons": {
+          "detected": 8
+        },
+        "flags": {
+          "29": 8
+        }
+      }
+    }
+  },
+  "exact-paused-burst": {
+    "nativeFrames": 89,
+    "firstIdentity": [
+      2,
+      5161,
+      10517,
+      401336503660,
+      15805081878477807578,
+      0,
+      2,
+      4768279117495752782
+    ],
+    "lastIdentity": [
+      2,
+      5253,
+      10609,
+      401340340750,
+      15805081878477807578,
+      0,
+      2,
+      4768279117495752782
+    ],
+    "savedPhysicalGaps": 4,
+    "fullIdentityJoin": [
+      "transportGeneration",
+      "acceptedSequence",
+      "sourceFrameNumber",
+      "captureTimestamp",
+      "sourceFormatGeneration",
+      "viewportGeneration",
+      "rendererGeneration",
+      "analysisDomainKey"
+    ],
+    "stages": {
+      "ar-boundary-chain": {
+        "records": 88,
+        "sources": 88,
+        "measured": {
+          "[0, 275, 3840, 1884]": 88
+        },
+        "displayed": {
+          "[0, 272, 3840, 2044]": 88
+        },
+        "published": {
+          "[0, 272, 3840, 1890]": 88
+        },
+        "reasons": {
+          "computed-only; guard and nomination are not physical measurements": 88
+        },
+        "flags": {
+          "55": 88
+        }
+      },
+      "source-picture-support": {
+        "records": 89,
+        "sources": 89,
+        "measured": {
+          "[0, 275, 3840, 1884]": 89
+        },
+        "displayed": {
+          "[0, 0, 0, 0]": 89
+        },
+        "published": {
+          "[0, 272, 3840, 2032]": 89
+        },
+        "reasons": {
+          "current-support-independently-verified": 89
+        },
+        "flags": {
+          "9": 89
+        }
+      },
+      "presentation": {
+        "records": 89,
+        "sources": 89,
+        "measured": {
+          "[0, 272, 3840, 1886]": 89
+        },
+        "displayed": {
+          "[0, 272, 3840, 2044]": 89
+        },
+        "published": {
+          "[0, 272, 3840, 1890]": 89
+        },
+        "reasons": {
+          "raw subtitle fallback to current source: subtitle composition pending": 45,
+          "raw subtitle fallback to current source: subtitle inspection pending": 44
+        },
+        "flags": {
+          "1": 89
+        }
+      },
+      "submitted-presentation": {
+        "records": 89,
+        "sources": 89,
+        "measured": {
+          "[0, 0, 0, 0]": 89
+        },
+        "displayed": {
+          "[0, 272, 3840, 2044]": 89
+        },
+        "published": {
+          "[0, 272, 3840, 1890]": 89
+        },
+        "reasons": {
+          "rendered-and-submitted": 89
+        },
+        "flags": {
+          "16777217": 89
+        }
+      },
+      "subtitle-output": {
+        "records": 89,
+        "sources": 89,
+        "measured": {
+          "[0, 0, 0, 0]": 89
+        },
+        "displayed": {
+          "[0, 0, 0, 0]": 89
+        },
+        "published": {
+          "[0, 0, 0, 0]": 89
+        },
+        "reasons": {
+          "detected": 89
+        },
+        "flags": {
+          "29": 67,
+          "24": 22
+        }
+      }
+    }
+  },
+  "pausedNativeDistinctBytePhases": 4,
+  "phaseDeltas": [
+    {
+      "native": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\exact-paused-burst\\frame-000001.bin",
+      "sha256": "b78787facec3cc9b0a5ce1cda70e9dfc4f16e9fe99706466fc80ad9b5c75e188",
+      "maxAnyEncodedYuvCodeDeltaFromFirst": 0
+    },
+    {
+      "native": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\exact-paused-burst\\frame-000002.bin",
+      "sha256": "c6e63211ee4443f334f2b750e9221fac922e6aca3c264ee0d9472a450b81ba6a",
+      "maxAnyEncodedYuvCodeDeltaFromFirst": 4
+    },
+    {
+      "native": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\exact-paused-burst\\frame-000003.bin",
+      "sha256": "bff4dba406536ba11d850733ef58a82b01f48ab48e4c2280a4d1d9464fe4333a",
+      "maxAnyEncodedYuvCodeDeltaFromFirst": 4
+    },
+    {
+      "native": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\exact-paused-burst\\frame-000004.bin",
+      "sha256": "a13e324487cc9dde886940e113008ab550aff47fc05129fb2e58ddc883f13872",
+      "maxAnyEncodedYuvCodeDeltaFromFirst": 4
+    }
+  ]
+}

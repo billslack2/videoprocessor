@@ -1,0 +1,12 @@
+2026-11-04 11:50:56 | Fullscreen session toggle: configured=1 requested_before=0 active=0 transition=none action=enter requested_after=1
+2026-11-04 11:50:56 | Renderer retirement queued: process=54588 generation=1 renderer=VP Renderer token=1 target=0000000000600B0A fullscreen_host=0000000000000000 fullscreen_intent=1 ui_thread=18720 purpose=replacement-handoff
+2026-11-04 11:50:57 | Fullscreen session toggle: configured=1 requested_before=1 active=0 transition=entering action=cancel-pending requested_after=0
+2026-11-04 11:51:04 | Fullscreen session toggle: configured=1 requested_before=0 active=0 transition=exiting action=enter requested_after=1
+2026-11-04 11:51:05 | Fullscreen session toggle: configured=1 requested_before=1 active=0 transition=entering action=cancel-pending requested_after=0
+2026-11-04 11:51:22 | VP subtitle background preparation: stage=compile-pass key=926351405086983007 pass=field-0/algorithm-0/background-5/blur-1/phase-0 result=ready elapsed_ms=24278.30
+2026-11-04 11:51:22 | VP subtitle background preparation: stage=compile-end key=926351405086983007 ready=1 elapsed_ms=44511.08
+2026-11-04 11:51:22 | VP Renderer retirement: swapchain and D3D resources released before display-global restoration
+2026-11-04 11:51:22 | VP Renderer retirement: external state refresh=restored nvidia=restored
+2026-11-04 11:51:22 | VP Renderer retirement: terminal black present=1 before swapchain release external_state=restored
+2026-11-04 11:51:22 | VP Renderer retirement: external state refresh=restored nvidia=restored
+2026-11-04 11:51:22 | VP Renderer retired: render thread stopped and presentation swapchain released external_state=restored

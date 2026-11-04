@@ -1,0 +1,251 @@
+{
+  "status": "BuildPassed",
+  "source": {
+    "commit": "3f81237c5ded93a6c998a083b12534259d040efc",
+    "dirty": false,
+    "fingerprint": "367f84bbd7f035bbe1567121b44660670c9a6afbdd8a26852e6f3d4c3a1fb0f8",
+    "label": "3f81237c5ded",
+    "build": "3f81237c5ded93a6c998a083b12534259d040efc"
+  },
+  "configuration": "Release",
+  "architecture": "x64",
+  "qualification": false,
+  "testsExecuted": 0,
+  "manualPreviewTestOverride": true,
+  "overrideReason": "User explicitly requested isolated actual AR preview and skipped broad tests",
+  "buildScope": "production-library-host-standard-beta-only",
+  "projectTestHookOverride": "Scoped existing child nonce, user-authorized experimental build",
+  "startedAt": "2026-11-04T11:47:26.0048030-05:00",
+  "builds": [
+    {
+      "name": "native-library",
+      "exit": 0,
+      "log": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\build-20261104-114725-3f81237c\\native-library-build.log",
+      "logSha256": "E3B32F7DF1E25C9664BE3CDA26E2665117FF0653C4C39D5E60CAA58D554910C5",
+      "elapsedSeconds": 0.6630438,
+      "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe",
+      "arguments": [
+        "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+        "/t:Build",
+        "/m:1",
+        "/nr:false",
+        "/p:Configuration=Release",
+        "/p:Platform=x64",
+        "/p:SolutionDir=E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\",
+        "/p:MagewellSdkRoot=E:\\codex\\tools\\MagewellCaptureSDK-3.3.1.1596\\SDKv3",
+        "/p:VPCriticalGateChild=true",
+        "/p:VPCriticalGateNonce=4eec3e05c91e47038d3efbefdea70125",
+        "/p:BuildingSolutionFile=false",
+        "/p:BuildingInsideVisualStudio=false",
+        "/p:ForceImportBeforeCppTargets=",
+        "/p:ForceImportAfterCppTargets=",
+        "/v:minimal",
+        "/nologo",
+        "/p:BuildProjectReferences=true",
+        "/p:OutDir=E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\"
+      ]
+    },
+    {
+      "name": "host",
+      "exit": 0,
+      "log": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\build-20261104-114725-3f81237c\\host-build.log",
+      "logSha256": "4C7E47893D461838E752AD3158851F574A52AF48056C34110563071EEFEDB031",
+      "elapsedSeconds": 26.9973542,
+      "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe",
+      "arguments": [
+        "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\src\\VideoProcessor-GUI\\VideoProcessor-GUI.vcxproj",
+        "/t:Build",
+        "/m:1",
+        "/nr:false",
+        "/p:Configuration=Release",
+        "/p:Platform=x64",
+        "/p:SolutionDir=E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\",
+        "/p:MagewellSdkRoot=E:\\codex\\tools\\MagewellCaptureSDK-3.3.1.1596\\SDKv3",
+        "/p:VPCriticalGateChild=true",
+        "/p:VPCriticalGateNonce=4eec3e05c91e47038d3efbefdea70125",
+        "/p:BuildingSolutionFile=false",
+        "/p:BuildingInsideVisualStudio=false",
+        "/p:ForceImportBeforeCppTargets=",
+        "/p:ForceImportAfterCppTargets=",
+        "/v:minimal",
+        "/nologo",
+        "/p:BuildProjectReferences=false",
+        "/p:OutDir=E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\"
+      ]
+    },
+    {
+      "name": "standard-renderer",
+      "exit": 0,
+      "log": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\build-20261104-114725-3f81237c\\standard-renderer-build.log",
+      "logSha256": "D24FAF99AC2C3AFD0F26BE29DAA8CDCC1FC660CCCA72AE458BC6595582FCB7C1",
+      "elapsedSeconds": 41.9320784,
+      "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe",
+      "arguments": [
+        "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRenderer.vcxproj",
+        "/t:Build",
+        "/m:1",
+        "/nr:false",
+        "/p:Configuration=Release",
+        "/p:Platform=x64",
+        "/p:SolutionDir=E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\",
+        "/p:MagewellSdkRoot=E:\\codex\\tools\\MagewellCaptureSDK-3.3.1.1596\\SDKv3",
+        "/p:VPCriticalGateChild=true",
+        "/p:VPCriticalGateNonce=4eec3e05c91e47038d3efbefdea70125",
+        "/p:BuildingSolutionFile=false",
+        "/p:BuildingInsideVisualStudio=false",
+        "/p:ForceImportBeforeCppTargets=",
+        "/p:ForceImportAfterCppTargets=",
+        "/v:minimal",
+        "/nologo",
+        "/p:BuildProjectReferences=false",
+        "/p:PreBuildEventUseInBuild=false"
+      ]
+    },
+    {
+      "name": "beta-renderer",
+      "exit": 0,
+      "log": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\build-20261104-114725-3f81237c\\beta-renderer-build.log",
+      "logSha256": "0FDF5926A4E0CE66DD0CA6E7AB36195DCF40C4EEA95039BE7E36A964F9C73C4B",
+      "elapsedSeconds": 41.3082378,
+      "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe",
+      "arguments": [
+        "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRendererBeta.vcxproj",
+        "/t:Build",
+        "/m:1",
+        "/nr:false",
+        "/p:Configuration=Release",
+        "/p:Platform=x64",
+        "/p:SolutionDir=E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\",
+        "/p:MagewellSdkRoot=E:\\codex\\tools\\MagewellCaptureSDK-3.3.1.1596\\SDKv3",
+        "/p:VPCriticalGateChild=true",
+        "/p:VPCriticalGateNonce=4eec3e05c91e47038d3efbefdea70125",
+        "/p:BuildingSolutionFile=false",
+        "/p:BuildingInsideVisualStudio=false",
+        "/p:ForceImportBeforeCppTargets=",
+        "/p:ForceImportAfterCppTargets=",
+        "/v:minimal",
+        "/nologo",
+        "/p:BuildProjectReferences=false",
+        "/p:PreBuildEventUseInBuild=false"
+      ]
+    }
+  ],
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "0BA169DF1CA00F6C3882202251B7E8DA39FF1B78BE16AAEBCFAACF93206659EC"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json",
+      "sha256": "06584FEDF4BC13A8A3121E3FA1912FB1CD1E69B623E23431286E8CF555C472F2"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\VideoProcessor-GUI.pdb",
+      "sha256": "F319636705FBB1EF5839265A9B8D2FFD519A12509BFDE2FF7BFCDA36B2BE966D"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "B13525743D3C0E5104519A317022CE5D968B7F9350046E1BD7D3994585A734D4"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "sha256": "7FE32BF0EAD4C9F464F86A3F9A47D3162892A9A0FF9CBD5B11D390703A74ECFA"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "sha256": "A15A3D89C484E9F5592AFFED8E3AB4DA574F1AC04756902E7323610B5033D00A"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "C9D136701280F71A5BE3B2EEAB47B9290395860929F630E4FE5C4A594B29AAE6"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "sha256": "992C4B691E40CB371288B2D6689DC62B8214D5E4AC07F370ED0EB930B02C977B"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.pdb",
+      "sha256": "E86A43E54BA064E41B26326F53D0F7664C3D28ADFB9B4F5CBEF3E8ECB0C64BD3"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    }
+  ],
+  "endSource": {
+    "commit": "3f81237c5ded93a6c998a083b12534259d040efc",
+    "dirty": false,
+    "fingerprint": "367f84bbd7f035bbe1567121b44660670c9a6afbdd8a26852e6f3d4c3a1fb0f8",
+    "label": "3f81237c5ded",
+    "build": "3f81237c5ded93a6c998a083b12534259d040efc"
+  },
+  "completedAt": "2026-11-04T11:49:18.4535398-05:00"
+}

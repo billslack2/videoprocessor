@@ -1,0 +1,74 @@
+{
+  "sourceCommit": "b1c1d827c6fc1209877ae6b7c2897b11c25dd09a",
+  "deployed": false,
+  "activePreviewSource": "3f81237c5ded93a6c998a083b12534259d040efc",
+  "activePreviewPid": 54588,
+  "acceptance": "OPEN",
+  "fullQualification": false,
+  "nativeExecuted": 9,
+  "nativeDiscovered": 1130,
+  "testedSource": "3f81237c5ded93a6c998a083b12534259d040efc",
+  "testedDirty": true,
+  "testedFingerprint": "65d8868d827efb1e9d4b527252ae83ec07f3d8690a5c63b8e912974b599a1fd7",
+  "configUiExpectationExecuted": false,
+  "queueRecords": 8192,
+  "queueMessageBytes": 4096,
+  "liveLogSegmentBytes": 67108864,
+  "defaultTotalLogFiles": 10,
+  "retentionLimitations": [
+    "Previously oversized archives may remain until count cycling removes them",
+    "Explicit native incident captures and screenshots have per-session limits but no aggregate disk cleanup; preserved evidence is not deleted"
+  ],
+  "fullscreenFinding": "Retirement queued11:50:56; compiler pass completes11:51:22 then swapchain retires and G2 first reveal11:51:23. Source Stop joins shader preparation before release; strong causal hypothesis, no blocked live stack captured and no fix claimed.",
+  "pausedFinding": "89 unedited saved frames,4 source gaps;88 current physical diagnostic rows all275..1884 (~2.39). All89 presented0,272..3840,2044 (~2.17), retained native272..1890, measured guard272..1886; screenshot current composition rejected physical-base-mismatch.",
+  "evidence": [
+    {
+      "file": "preview-3f.json",
+      "sha256": "17462438DB765E6715FB2B5A8F5970150CFE10DC2409EDF679CFA669DEB52654",
+      "original": "E:\\codex\\videoprocessor\\previews\\ar-temporal-3f81237c5ded93a6c998a083b12534259d040efc\\preview-receipt.json"
+    },
+    {
+      "file": "build-3f.json",
+      "sha256": "27FA69A9D240273CD24DA7E4BB86A089B5C6ADB0EF2D6B86491C225D5C330736",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\build-20261104-114725-3f81237c\\build-receipt.json"
+    },
+    {
+      "file": "native9-iteration.json",
+      "sha256": "FA03829912496C4C0DFBDE0F3A87FBC654D8E90522FC73266935A74A7C139B2C",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-115930-5f1a7cf0\\iteration.json"
+    },
+    {
+      "file": "native9.trx",
+      "sha256": "E5DAF8FCCA4E83FAC3E6D1186D76BFEB4285C5B865483DBE3089F4B755C28C2E",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-115930-5f1a7cf0\\standard.trx"
+    },
+    {
+      "file": "paused-source-comparison.json",
+      "sha256": "626757240B8DE8C1E179824C95AEC17252F06007E35213F686CC018D19E1A177",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\source-comparison.json"
+    },
+    {
+      "file": "paused-output-3185.json",
+      "sha256": "F39DED9975A1950EF47DE4759E1F80D05503CA52DF87C5EB199CAC4986447968",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\VP-rendered-20261104-115634-428-frame-3185.json"
+    },
+    {
+      "file": "c610-fill-regression.json",
+      "sha256": "4029976CC4B3D98855C30985AB48A046E416B13B68669AAFC1E0ED42DDA36FED",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\bounce-c610-20261104\\guard-cases.json"
+    },
+    {
+      "scope": "Selected timestamped events; full log retained outside Git",
+      "file": "fullscreen-events.txt",
+      "sha256": "C7A2BF4364478A23CF760492FB99396BD1189A666EEB40E2CC16CE73555F3E94",
+      "originalSha256": "2B47B0BCFCBA2FBA6A743C3E92FA2DB7EEB020C8FEC9DA5B482204F056AA8E84",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\fullscreen-3f-20261104\\runtime-tail.log"
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\fullscreen-3f-20261104\\runtime-tail.log",
+      "sha256": "192CFB615A76371D0D8BCD42D8043A078C5EFB82E8FF15259B929EAD7BCB30EB",
+      "file": "osd-placement-events.txt"
+    }
+  ],
+  "osdFinding": "Seven OSD placement events change bitmap height while picture coordinates stay0.4,137..1999.6,988. Later1008/1028 bitmap height changes panel top219.7/204.9 with bottom964.4fixed;1311 submitted decision rows keep same movie mapping. Consistent with panel text-wrap resizing, not proof of visible fullscreen behavior."
+}

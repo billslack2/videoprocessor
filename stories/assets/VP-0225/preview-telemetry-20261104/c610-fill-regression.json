@@ -1,0 +1,33 @@
+{
+  "scope": "Static eligibility truth table, not an executed renderer/GPU regression",
+  "otherCurrentSupportChecksAssumedPassing": true,
+  "cases": [
+    {
+      "crop": false,
+      "fill": false,
+      "supportFallbackAllowed": true
+    },
+    {
+      "crop": true,
+      "fill": false,
+      "supportFallbackAllowed": false
+    },
+    {
+      "crop": false,
+      "fill": true,
+      "supportFallbackAllowed": false
+    },
+    {
+      "crop": true,
+      "fill": true,
+      "supportFallbackAllowed": false
+    }
+  ],
+  "redSources": [
+    3889,
+    3890,
+    3891,
+    3895
+  ],
+  "regression": "filtered physical confidence selected post-fill support override and cleared already-approved fill"
+}
