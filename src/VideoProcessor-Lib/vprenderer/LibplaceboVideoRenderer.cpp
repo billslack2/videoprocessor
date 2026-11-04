@@ -15877,6 +15877,9 @@ struct LibplaceboVideoRenderer::Impl
             const bool advancedCueMode=SubtitlePreviewOverridesClassicHandling(sourceSubtitleMode);
             const bool cueTemplateModeAllowed=sourceSubtitleMode==SubtitlePreviewMode::None || advancedCueMode;
             const auto& seedObservation=currentSubtitlePreview.current;
+            const bool seedHeldCueMatches=advancedCueMode && subtitleBoxResult.held &&
+                subtitleBoxPresentation.CurrentPreparedCueCertificate().Matches(
+                    seedObservation,subtitleBoxResult,nlsGeometry);
             const bool fullAcceptedCueScan=!currentCueProofConsumed && currentSubtitlePreview.available &&
                 SameAnalysisFrameIdentity(seedObservation.identity,subtitleIdentity) && seedObservation.analyzed &&
                 !seedObservation.pendingRefresh && !seedObservation.analysisRefresh && !seedObservation.cadenceSkipped &&
@@ -15885,7 +15888,7 @@ struct LibplaceboVideoRenderer::Impl
                 seedObservation.independentBarAnalysis && seedObservation.barAuthority &&
                 seedObservation.text.detected && !seedObservation.text.held &&
                 !seedObservation.text.confirmationPending && !seedObservation.text.workLimit &&
-                subtitleBoxResult.detected && (!subtitleBoxResult.held || currentPreparedHeldCue) &&
+                subtitleBoxResult.detected && (!subtitleBoxResult.held || seedHeldCueMatches) &&
                 !subtitleBoxResult.confirmationPending && !subtitleBoxResult.workLimit &&
                 seedObservation.sharedPicture.AvailableFor(seedObservation.identity,width,height) &&
                 nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
@@ -15902,7 +15905,7 @@ struct LibplaceboVideoRenderer::Impl
                 seed.physicalBase=nlsGeometry;
                 seed.composedOperation=relocatedSubtitle;seed.sourceMode=sourceSubtitleMode;
                 seed.compositionSucceeded=subtitleCompositionSucceeded;seed.acceptedCurrentScan=true;
-                if(currentPreparedHeldCue)
+                if(seedHeldCueMatches)
                     seed.heldCurrentCue=std::make_shared<SubtitleCurrentPreparedCueCertificate>(
                         subtitleBoxPresentation.CurrentPreparedCueCertificate());
                 seed.backgroundMode=subtitleCutPasteBackground;

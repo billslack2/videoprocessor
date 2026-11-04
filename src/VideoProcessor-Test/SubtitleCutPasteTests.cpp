@@ -2141,7 +2141,16 @@ struct SubtitleShaderGpuFixture {
             " largest_linear_gain="+std::to_string(largestGain)).c_str());
         Assert::IsTrue(repaired>1000,L"Verified card side strips must be repaired instead of leaving the nested black shape.");
         const auto inside=[](const SubtitleBoxRect& r,int x,int y){return x>=r.left&&x<r.right&&y>=r.top&&y<r.bottom;};
-        const SubtitleBoxRect displayEnvelope{geometry.destination.left-8,geometry.destination.top-8,geometry.destination.right+8,geometry.pictureBottom};
+        // Use the shader's actual layer extent, including its two-pixel
+        // bar-facing overlap; this is display backing, not cleanup authority.
+        const auto layerBounds=ComputeSubtitleLayerBounds(geometry,width,height);
+        const SubtitleBoxRect displayEnvelope{layerBounds.x0,layerBounds.y0,layerBounds.x1,layerBounds.y1};
+        for(int y=roi.top;y<roi.bottom;++y)for(int x=roi.left;x<roi.right;++x)
+            // Generated destination backing legitimately samples cleanup;
+            // outside both operations the projection must change no pixels.
+            if(!inside(corrected.generatedCleanup,x,y)&&!inside(displayEnvelope,x,y))
+                for(int ch=0;ch<3;++ch)Assert::AreEqual(channel(before,x,y,ch),channel(after,x,y,ch),
+                    L"Card projection changed pixels outside verified cleanup and generated backing.");
         for(int y=roi.top;y<roi.bottom;++y)for(int x=roi.left;x<roi.right;++x)
             if(!inside(geometry.source,x,y)&&!inside(geometry.generatedCleanup,x,y)&&!inside(displayEnvelope,x,y))
                 for(int ch=0;ch<3;++ch)Assert::IsTrue(std::abs(channel(after,x,y,ch)-channel(original,x,y,ch))<.0005f,

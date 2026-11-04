@@ -5134,7 +5134,10 @@ namespace VideoProcessorTest
                 return;
             }
             constexpr int width=3840,height=2160,rowBytes=10240;
-            const int pictureTop=pausedRecovery?274:272,pictureBottom=pausedRecovery?1888:1886;
+            // The sidecar retains the live native base from earlier source history.
+            // Fresh native acquisition includes the current edge ringing through
+            // row1885; raw image transition is275..1884, not retained bottom1888.
+            const int pictureTop=pausedRecovery?274:272,pictureBottom=1886;
             constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
             std::array<std::vector<BYTE>,4> phases;
             for(unsigned phase=0;phase<4;++phase) {
@@ -5145,7 +5148,7 @@ namespace VideoProcessorTest
                 metadata>>w>>h>>rb>>crb>>format>>encoding>>color>>top>>bottom>>script>>range;
                 Assert::IsTrue(bool(metadata)&&w==width&&h==height&&rb==rowBytes&&crb==0&&format==3&&
                     encoding==int(VideoFrameEncoding::V210)&&color==int(ColorSpace::REC_709)&&range==1&&
-                    top==pictureTop&&bottom==pictureBottom,L"This regression requires the selected limited-range V210 recording and measured native base.");
+                    top==pictureTop&&bottom==(pausedRecovery?1888:1886),L"This regression requires the selected limited-range V210 recording and its original sidecar context.");
                 std::ifstream pixels(path+".bin",std::ios::binary|std::ios::ate);
                 Assert::IsTrue(bool(pixels)&&pixels.tellg()==std::streamoff(rowBytes)*height,L"Native capture length mismatch.");
                 phases[phase].resize(size_t(rowBytes)*height);pixels.seekg(0);
@@ -5244,6 +5247,24 @@ namespace VideoProcessorTest
             uint64_t sequence=1,steadyStart=0;size_t cursor=0;bool acquired=false;
             const auto captureOrigin=clock.TimingClockNow();auto next=std::chrono::steady_clock::now();
             std::vector<double> ingressMs;std::vector<AnalysisDiagnosticRecordV1> observed;
+            struct TraceDump {
+                const std::vector<AnalysisDiagnosticRecordV1>& records;bool beta;
+                ~TraceDump() {
+                    try {
+                        wchar_t path[32768]={};const auto size=GetEnvironmentVariableW(L"VP_PAUSED_REPLAY_TRACE_ROOT",path,32768);
+                        if(!size||size>=32768)return;
+                        std::ofstream out((std::wstring(path)+(beta?L"/beta-decisions.tsv":L"/standard-decisions.tsv")).c_str());
+                        const auto clean=[](const char* text){std::string value(text);for(auto& ch:value)if(ch=='\t'||ch=='\r'||ch=='\n')ch=' ';return value;};
+                        out<<"source\taccepted\tstage\treason\tflags\tcounters\tmetrics\tpublished\n";
+                        for(const auto& r:records) {
+                            out<<r.sourceFrameNumber<<'\t'<<r.acceptedSequence<<'\t'<<clean(r.stage)<<'\t'<<clean(r.reason)<<'\t'<<r.flags<<'\t';
+                            for(const auto value:r.counters)out<<value<<',';out<<'\t';
+                            for(const auto value:r.metrics)out<<value<<',';out<<'\t';
+                            for(const auto value:r.published)out<<value<<',';out<<'\n';
+                        }
+                    } catch(...) {} // Diagnostic export cannot alter test behavior.
+                }
+            } traceDump{observed,beta};
             const auto drain=[&] {std::lock_guard<std::mutex> lock(classicPoseLogMutex);
                 while(cursor<classicPoseRecords.size()){const auto& r=classicPoseRecords[cursor++];observed.push_back(r);
                     if(!strcmp(r.stage,"submitted-presentation")&&(r.flags&3u)==3u&&r.counters[4]&&
