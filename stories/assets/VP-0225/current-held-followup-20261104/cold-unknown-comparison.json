@@ -1,0 +1,36 @@
+{
+  "status": "read-only-analysis",
+  "currentSource": "ffbef350a5db2d2dedd53d3bf86d15928eb3f697",
+  "baselineSource": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "sameUnknownMethodsAndHelper": true,
+  "baselinePassed": 2,
+  "currentFailed": 2,
+  "failureSources": {
+    "standard": 13,
+    "beta": 14
+  },
+  "failureStage": "first dark interval after initial scope acquisition while initial subtitle shader build remains pending",
+  "currentPhysical": "unavailable, result3; retained independently acquired native0,44,640,316",
+  "actualCrop": "0,44,640,316",
+  "currentOwner": "TRUSTED_CROP",
+  "guard": "Unchanged initial shader path requires exact-current direct visibility witness with matching source, generation, presentation epoch, format, domain, accepted native base, and bounds contained in native",
+  "testGap": "Allowed UNKNOWN crop join covers SUBMITTED_SCOPE_RETENTION or current independent physical measurement, not initial-shader TRUSTED_CROP supported only by exact-current visibility",
+  "detectorEnvironmentCauseExcluded": true,
+  "cacheEnvironmentDifference": "Qualification sets LOCALAPPDATA/VideoProcessor/TestShaderCache; original standalone runner inherited environment without setting or recording it; default cache resolves relative to TestPlatform executable",
+  "classification": "Cold-path assertion remains open. Source-pixel loss and regression versus1b0 not established by available records. No GPU baseline rerun performed.",
+  "futureRunnerChange": "Artifact-only runners now explicitly set, record, and restore same persistent TestShaderCache directory. Original failed receipts/scripts preserved.",
+  "files": [
+    {
+      "sha256": "170DBA4D54D742D62975C22B5F74EDD2E89617B0C189BE44E1EB665D5809F47D",
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-085439-f108e0f7\\standard.trx"
+    },
+    {
+      "sha256": "CB6E4D96721F5DB96BE8C8CD3AD7272993B7A74F338EF08B4333029DB2C30B51",
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-102052\\unknown-transitions\\unknown-transitions.trx"
+    },
+    {
+      "sha256": "460456D1FB745505178350D6DBC9EE6D6A545A351815C2D0DA9FAF87FB5EB908",
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-102052\\run-unknown-transitions.ps1"
+    }
+  ]
+}

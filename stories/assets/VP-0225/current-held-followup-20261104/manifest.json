@@ -1,0 +1,42 @@
+[
+  {
+    "file": "native-1121.json",
+    "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-103935-25260ab2\\iteration.json",
+    "sha256": "DB965E7B52193D790407F06E187C119690E3BFAE257578437EE66EE4B76314C5"
+  },
+  {
+    "file": "release-focused-two.json",
+    "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-104119-f637f5d1\\iteration.json",
+    "sha256": "A74C92A507E939BC154A8169F572639604C427D57B545A0B3CA6184BE216A786"
+  },
+  {
+    "file": "timed-renderers.json",
+    "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\timed\\receipt.json",
+    "sha256": "DA951E74A2EE7850CB2C540323B8191F1B510C579D931F5F1392662C18A157F7"
+  },
+  {
+    "file": "visual-renderers.json",
+    "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\visual\\receipt.json",
+    "sha256": "D3EB751CAABCFDF79C2DF5A1ABAE8DEC0E5148F0450F04FADAB676BD086CBD08"
+  },
+  {
+    "file": "unknown-matched-cache.json",
+    "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\unknown-transitions\\receipt.json",
+    "sha256": "5E20D0D9F76FED7DA19CB6D4E0CC2A60A6D8BA6C5D133A4C8A19A2DC56AE8D81"
+  },
+  {
+    "file": "installed-runtime-restored.json",
+    "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\receipt.json",
+    "sha256": "B5053CB8AF945428D80A229477DE0C58AC241A3E28B8AC1F3A74027B22DEC216"
+  },
+  {
+    "file": "stack-comparison.json",
+    "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-100323\\timed\\stack-comparison.json",
+    "sha256": "27B6E2419E53B89D664FEB02577932CDFDF511F8040411CED7A1500905A9DECF"
+  },
+  {
+    "file": "cold-unknown-comparison.json",
+    "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-102052\\unknown-transitions\\read-only-comparison.json",
+    "sha256": "6E165ECAAD36774A4011B11EF52E75F0A9232D2D2C80D85175668AF1C8398C7D"
+  }
+]

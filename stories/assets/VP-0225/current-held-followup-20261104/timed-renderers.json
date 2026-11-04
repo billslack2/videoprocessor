@@ -1,0 +1,215 @@
+﻿{
+    "schemaVersion":  1,
+    "status":  "completed",
+    "passed":  false,
+    "fullQualification":  false,
+    "visual":  false,
+    "performanceQualified":  false,
+    "expectedSource":  "1052c3fba8b4cb59b5e4b16c79cf85111e45761f",
+    "startedUtc":  "2026-11-04T15:45:18.8733336Z",
+    "timeoutSeconds":  420,
+    "results":  [
+                    {
+                        "name":  "StandardRendererScriptureHeldCaptionWithoutOptionalCueProof",
+                        "outcome":  "Failed",
+                        "duration":  "00:00:11.6857510",
+                        "startTime":  "2026-11-04T10:45:36.1478205-05:00",
+                        "endTime":  "2026-11-04T10:45:47.8335715-05:00",
+                        "error":  "Assert failed. Captured unchanged cue still alternates composed and expanded raw fallback output.",
+                        "inputMappings":  83,
+                        "heldSummary":  [
+
+                                        ],
+                        "cadenceSummary":  [
+                                               "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=82 phases=83 inspection_requests=0 templates=0 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=0 source_fps=23.9864 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=55.012 max_latency_ms=150.233 early_latency_ms=134.703 late_latency_ms=135.287 work_samples=166 max_frame_work_ms=15.574 max_ingress_ms=0.1747"
+                                           ]
+                    },
+                    {
+                        "name":  "BetaRendererScriptureHeldCaptionWithoutOptionalCueProof",
+                        "outcome":  "Passed",
+                        "duration":  "00:00:11.5214106",
+                        "startTime":  "2026-11-04T10:45:24.6203364-05:00",
+                        "endTime":  "2026-11-04T10:45:36.1417470-05:00",
+                        "error":  "",
+                        "inputMappings":  83,
+                        "heldSummary":  [
+                                            "SCRIPTURE NATURAL HELD: corpus_frames=83 sources=166 proof_declined=166 ordinary=40 held=126 exact_full_scans=166 unready=0 current_held_certificate=1 mapping_stable=1 visual_requests=0"
+                                        ],
+                        "cadenceSummary":  [
+                                               "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=166 phases=83 inspection_requests=0 templates=0 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.968 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=55.7846 max_latency_ms=149.372 early_latency_ms=135.637 late_latency_ms=135.421 work_samples=166 max_frame_work_ms=16.4382 max_ingress_ms=0.203"
+                                           ]
+                    }
+                ],
+    "error":  null,
+    "testEnvironment":  {
+                            "shaderCacheDirectory":  "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\TestShaderCache",
+                            "inheritedShaderCacheDirectory":  null,
+                            "cachePolicy":  "same persistent directory as Focused qualification; existing cold-path failure remains separate",
+                            "legacyDetectorEnvironment":  null,
+                            "sourcePictureShadow":  null
+                        },
+    "source":  "1052c3fba8b4cb59b5e4b16c79cf85111e45761f",
+    "dirty":  false,
+    "buildReceipt":  {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-104119-f637f5d1\\iteration.json",
+                         "sha256":  "A74C92A507E939BC154A8169F572639604C427D57B545A0B3CA6184BE216A786"
+                     },
+    "buildStatus":  "FocusedPassed",
+    "binaries":  [
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\VideoProcessor-Test.dll",
+                         "sha256":  "3CAB234695E905A13679D90763314DDAB30F77F1641956779C966541AA188FD9"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\VideoProcessor-Test.dll.runtime.json",
+                         "sha256":  "C40E274F7BACB1CB7CFA73475CCE89F05A90534BA8373B5F6E70E1AE94BCDCCC"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libdovi.dll",
+                         "sha256":  "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libgcc_s_seh-1.dll",
+                         "sha256":  "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\liblcms2-2.dll",
+                         "sha256":  "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libplacebo-360.dll",
+                         "sha256":  "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libshaderc_shared.dll",
+                         "sha256":  "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libspirv-cross-c-shared.dll",
+                         "sha256":  "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libstdc++-6.dll",
+                         "sha256":  "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\libwinpthread-1.dll",
+                         "sha256":  "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+                         "sha256":  "E7C460CA75E18C400F7DDD846963752D42486E1EBDF6079227D825FA37C82A70"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+                         "sha256":  "2161F1C5016E85C65429E7C5F38C1E1F4B191E4F8D5F29C6A830FD7EFA949235"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer\\vulkan-1.dll",
+                         "sha256":  "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libdovi.dll",
+                         "sha256":  "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libgcc_s_seh-1.dll",
+                         "sha256":  "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\liblcms2-2.dll",
+                         "sha256":  "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libplacebo-388.dll",
+                         "sha256":  "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libshaderc_shared.dll",
+                         "sha256":  "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libspirv-cross-c-shared.dll",
+                         "sha256":  "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libstdc++-6.dll",
+                         "sha256":  "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\libwinpthread-1.dll",
+                         "sha256":  "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+                         "sha256":  "796516E6CE98386899460BFCC05EB9B8CE7B4AA7DFB92C739EC932C5825273E1"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+                         "sha256":  "43131A1AE185F4DC852EE4294A5E166BFCF399913E6F3E89788C6FBD5D31CF55"
+                     },
+                     {
+                         "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\vulkan-1.dll",
+                         "sha256":  "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+                     }
+                 ],
+    "pluginRoot":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release",
+    "capture":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651",
+    "inputManifest":  {
+                          "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-renderer-regression\\input-subset.json",
+                          "sha256":  "5530D031F776CE9A8309148BFCFBD2DD40367ECE7748D3DCA98159E3863CBFA1"
+                      },
+    "verifiedNativeInputs":  83,
+    "harnessRunner":  {
+                          "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-renderer-regression\\run-scripture.ps1",
+                          "sha256":  "099C4FC5C7ECA44C8076F5C0DE82A21D28E185CA500E8D90BA1FDECA565D1557"
+                      },
+    "runner":  {
+                   "path":  "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\Common7\\IDE\\Extensions\\TestPlatform\\vstest.console.exe",
+                   "sha256":  "304C669B715C7569C8F20B647EE5F6EECDA393906158EC881E07AA261E85003B"
+               },
+    "testProcessId":  51844,
+    "exitCode":  1,
+    "exitCodeMethod":  "GetExitCodeProcess using handle retained before WaitForExit",
+    "trx":  {
+                "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\timed\\scripture-held.trx",
+                "sha256":  "989A010BC7E6E886AB714E9B193199294B54F3C2BF5DEC4A8E6F285A094D1CE8"
+            },
+    "expectedMethodsMatched":  true,
+    "captureExercised":  false,
+    "trxComplete":  false,
+    "stdout":  {
+                   "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\timed\\tests.log",
+                   "sha256":  "1ABA7E1198BB9556ABDEF24AC0B59F3AD4AC70A3F9D4C21852D3F271A921E165"
+               },
+    "stderr":  {
+                   "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\timed\\tests.stderr.log",
+                   "sha256":  "DCF8C268BFDE477F9C77551D83B416CC0BE9010237FCF913F56278D347965D07"
+               },
+    "visualVerified":  true,
+    "endSource":  "1052c3fba8b4cb59b5e4b16c79cf85111e45761f",
+    "endDirty":  [
+
+                 ],
+    "binariesStable":  true,
+    "inputsStable":  true,
+    "traces":  [
+                   {
+                       "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\timed\\beta-decisions.tsv",
+                       "sha256":  "D3C122657D11E6C0A0E1B8B4CF9B186A6D7083FC369F9170C86C75172F8A7EDA"
+                   },
+                   {
+                       "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\timed\\beta-physical.tsv",
+                       "sha256":  "3FA053BD3D90352B8252039E33C9C243E758458C52D7EFF12691CAE38376927C"
+                   },
+                   {
+                       "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\timed\\standard-decisions.tsv",
+                       "sha256":  "CF573592966D1219D383F00424902609D942D7744D9D88F4EE8181FD1AFCC28F"
+                   },
+                   {
+                       "path":  "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\timed\\standard-physical.tsv",
+                       "sha256":  "3FA053BD3D90352B8252039E33C9C243E758458C52D7EFF12691CAE38376927C"
+                   }
+               ],
+    "finishedUtc":  "2026-11-04T15:45:50.2129438Z"
+}

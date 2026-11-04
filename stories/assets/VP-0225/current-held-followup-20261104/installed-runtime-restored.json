@@ -1,0 +1,92 @@
+{
+  "status": "completed",
+  "expectedSource": "1052c3fba8b4cb59b5e4b16c79cf85111e45761f",
+  "startedUtc": "2026-11-04T15:45:16.7766143Z",
+  "folder": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516",
+  "fullQualification": false,
+  "timedPassed": false,
+  "visualPassed": false,
+  "unknownPassed": true,
+  "error": null,
+  "reopenedPid": 46516,
+  "noDeployment": true,
+  "wrapper": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-renderer-regression\\run-isolated-scripture.ps1",
+    "sha256": "D74E5D36BBB12D34B74F4C43C7E2A2C56DF2FDA93BF4BF3A4F56D69E3EB02E04"
+  },
+  "buildReceipt": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-104119-f637f5d1\\iteration.json",
+    "sha256": "A74C92A507E939BC154A8169F572639604C427D57B545A0B3CA6184BE216A786"
+  },
+  "installedReceipt": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\deployment-trial-1b0b4aa5\\deployment.json",
+    "sha256": "D4F33328FF7AAD221BDD6F4080296D76E88556ADF8C9F085CC26BC5534874EF7"
+  },
+  "installedSource": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "installedFilesVerifiedBefore": 28,
+  "originalPid": 43896,
+  "captureStatus": {
+    "process": 43896,
+    "executable": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+    "action": "Status",
+    "result": "Status",
+    "recording": false,
+    "captureWriting": false,
+    "producerConnected": true,
+    "frameCaptureSupported": true,
+    "writerReady": true,
+    "includeFrames": false,
+    "requestedUtc": "2026-11-04T15:45:17.9722687Z"
+  },
+  "settingsBefore": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "sha256": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "sha256": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0"
+    }
+  ],
+  "closedUtc": "2026-11-04T15:45:18.6184199Z",
+  "settingsAfterClose": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "sha256": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "sha256": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0"
+    }
+  ],
+  "timedRunnerExit": 1,
+  "timedReceipt": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\timed\\receipt.json",
+    "sha256": "DA951E74A2EE7850CB2C540323B8191F1B510C579D931F5F1392662C18A157F7"
+  },
+  "visualRunnerExit": 1,
+  "visualReceipt": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\visual\\receipt.json",
+    "sha256": "D3EB751CAABCFDF79C2DF5A1ABAE8DEC0E5148F0450F04FADAB676BD086CBD08"
+  },
+  "unknownRunnerExit": 0,
+  "unknownReceipt": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-104516\\unknown-transitions\\receipt.json",
+    "sha256": "5E20D0D9F76FED7DA19CB6D4E0CC2A60A6D8BA6C5D133A4C8A19A2DC56AE8D81"
+  },
+  "reopenedUtc": "2026-11-04T15:46:41.8234349Z",
+  "installedFilesVerifiedAfter": 28,
+  "settingsAfter": [
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+      "sha256": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E"
+    },
+    {
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state",
+      "sha256": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0"
+    }
+  ],
+  "configPreserved": true,
+  "stateUnmodifiedByTests": true,
+  "finishedUtc": "2026-11-04T15:46:41.9828651Z"
+}

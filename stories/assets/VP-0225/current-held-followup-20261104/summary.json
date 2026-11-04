@@ -1,0 +1,63 @@
+{
+  "status": "In Progress",
+  "acceptance": "OPEN",
+  "fullQualification": false,
+  "deployedThisUpdate": false,
+  "candidateSource": "1052c3fba8b4cb59b5e4b16c79cf85111e45761f",
+  "installedSource": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "installedPidAfterIsolation": 46516,
+  "nativePassed": 1121,
+  "matchingReleaseFocusedCpuPassed": 2,
+  "stack": {
+    "deepChainReliefBytes": 64096,
+    "betaNominalHeadroomBytes": 83152,
+    "allPathStackSafetyProved": false,
+    "currentActualMethodsCompletedWithoutCrash": 6
+  },
+  "timed": {
+    "beta": {
+      "passed": true,
+      "currentSources": 166,
+      "composed": 166,
+      "ordinary": 40,
+      "held": 126,
+      "maxFrameWorkMs": 16.4382,
+      "maxSubmitGapMs": 55.7846,
+      "maxLatencyMs": 149.372,
+      "earlyLatencyMs": 135.637,
+      "lateLatencyMs": 135.421
+    },
+    "standard": {
+      "passed": false,
+      "currentSources": 166,
+      "currentScans": 166,
+      "composed": 82,
+      "ordinary": 40,
+      "certifiedHeld": 42,
+      "rejectedHeld": 84,
+      "failedPredicate": "NoNovelOwnedInk",
+      "failedBit": 131072,
+      "referenceRendererSource": 6,
+      "referenceOriginalFrame": 8,
+      "timingAssertionsNotReached": true
+    }
+  },
+  "visual": {
+    "betaPassed": true,
+    "standardPassed": false,
+    "standardComposed": 166,
+    "standardOrdinary": 166,
+    "standardHeld": 0,
+    "standardFailure": "Natural held-path coverage missing; not a flicker in this visual pass",
+    "originalPngAndJsonPairs": 10,
+    "continuousVideo": false,
+    "performanceQualified": false
+  },
+  "unknown": {
+    "matchedCachePassed": 2,
+    "priorColdPathFailureOpen": true,
+    "failureAttribution": "Unchanged initial-shader TRUSTED_CROP branch guarded by exact-current visibility is outside existing test join; source loss or new regression not established",
+    "noAssertionRelaxed": true
+  },
+  "remaining": "Reference-phase/current ink ownership failure; deterministic acquisition coverage; cold shader visibility contract; changing-scene physical AR; full real-time qualification and live user acceptance"
+}

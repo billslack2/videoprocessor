@@ -1,0 +1,34 @@
+{
+  "status": "measured",
+  "scope": "Read-only original PE/PDB stack reservations and observed crash chain; actual deepest runtime paths remain subject to isolated tests",
+  "baselineSource": "189dd7863afd4af569ed7c56e8f11d37b7f6bc5e",
+  "candidateSource": "ffbef350a5db2d2dedd53d3bf86d15928eb3f697",
+  "stackReserveIncreased": false,
+  "workspaceAllocationsPerRenderThreadInvocation": 1,
+  "perFrameWorkspaceAllocations": 0,
+  "measurements": [
+    {
+      "receipt": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-100323\\timed\\stack-baseline-189dd786\\stack-reservations.json",
+      "sha256": "f505ebaaa60d41b9735b56fb3179ebc4003c5fbbda71c7fa8975968f7522d3a1",
+      "dllSha256": "c1ae0db03b720f907015399a19eb87fe4efa06d7dcab6f91722dc5d179cac1fd",
+      "fourFrameChainBytes": 1029520,
+      "nominalOneMiBHeadroomBytes": 19056
+    },
+    {
+      "receipt": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-100323\\timed\\stack-candidate-ffbef350-beta.json",
+      "sha256": "cc9c094cda1c4c2e32e368bc0c2d8abff3b89154cf6e056ab2e1a8ab519bff25",
+      "dllSha256": "0e248fd32e62138e29b2ad37437457ca4cca2704ec718c2388b337e9a432b895",
+      "fourFrameChainBytes": 965424,
+      "nominalOneMiBHeadroomBytes": 83152
+    },
+    {
+      "receipt": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-100323\\timed\\stack-candidate-ffbef350-standard.json",
+      "sha256": "cc58be05d5b2ece86616c88977b086815e3e29d2e0640a2239279e1ca82ee3c3",
+      "dllSha256": "4f7d2ba5a29cdd6a87703e27f03e0560cdf208b1f048d321dbcdf112f99a6094",
+      "fourFrameChainBytes": 965312,
+      "nominalOneMiBHeadroomBytes": 83264
+    }
+  ],
+  "betaChainReductionBytes": 64096,
+  "limitation": "Headroom is nominal: subtract thread startup, guard/emergency stack and nested allocator/helper costs. This does not establish an upper bound for every renderer path."
+}
