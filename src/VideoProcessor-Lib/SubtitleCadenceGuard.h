@@ -65,6 +65,7 @@ public:
         int mismatchX=-1,mismatchY=-1;
         int protectedCleanupLeft=-1,protectedCleanupRight=-1;
         int protectedCleanupTop=-1,protectedCleanupBottom=-1;
+        bool actualPixelMismatch=false;
     };
     // Native pixels, counted once across the exact extraction/erasure union.
     static constexpr unsigned SampleBudget=1048576;
@@ -72,6 +73,7 @@ public:
         m_lastRearmRejectCode=RearmRejectCode::NotAttempted;m_lastGeometryMismatchBits=0;
         ClearInPlace(*m_reference);m_source={};m_baseline.reset();m_detectorReference.reset();
         m_native.clear();m_currentPixels.clear();m_changedComponents.clear();m_index.clear();m_components.clear();
+        m_indivisibleBackingCard={};
         m_destinationProbe={};m_destinationSeedPixels.clear();m_destinationSeedDirections.clear();
         m_destinationCurrentPixels.clear();ClearInPlace(*m_cached); }
     bool HasReference() const {return m_valid;}
@@ -256,11 +258,13 @@ public:
         if(!verified.valid)return verified;
         size_t destinationSamples=0;int destinationMismatchX=-1,destinationMismatchY=-1;
         const char* destinationReason="current-destination-proof-unavailable";
+        bool destinationPixelMismatch=false;
         if(!VerifyDestinationNovelty(source,sampler,destinationSamples,destinationMismatchX,
-            destinationMismatchY,destinationReason,verified)) {
+            destinationMismatchY,destinationReason,verified,destinationPixelMismatch)) {
             m_currentFootprintReceiptValid=false;
-            return {false,verified.samples+destinationSamples,destinationReason,
+            CurrentFootprintVerification failed{false,verified.samples+destinationSamples,destinationReason,
                 destinationMismatchX,destinationMismatchY};
+            failed.actualPixelMismatch=destinationPixelMismatch;return failed;
         }
         verified.samples+=destinationSamples;
         m_currentFootprintReceiptValid=true;m_currentFootprintReceiptIdentity=current.identity;
@@ -835,8 +839,26 @@ private:
                 }
             }
         }
+        m_indivisibleBackingCard={};
+        if(m_reference->current.text.capturePanelMeasured && m_geometry.pictureCapture.Valid() &&
+            m_geometry.generatedCleanup.Valid() && !m_geometry.generatedCleanupRowCount) {
+            const auto& card=m_geometry.pictureCapture;const auto& erase=m_geometry.generatedCleanup;
+            m_indivisibleBackingCard={(std::max)(card.left,erase.left),(std::max)(card.top,erase.top),
+                (std::min)(card.right,erase.right),(std::min)(card.bottom,erase.bottom)};
+        }
+        auto originalHull=m_geometry.content;
+        for(const auto& capture:m_capture)if(capture.Valid())originalHull={
+            (std::min)(originalHull.left,capture.left),(std::min)(originalHull.top,capture.top),
+            (std::max)(originalHull.right,capture.right),(std::max)(originalHull.bottom,capture.bottom)};
         for(auto& n:m_native) {
-            if(n.component<0 || !m_components[n.component].owned || n.pixel.luma<p.inkFloor+16)continue;
+            const bool owned=n.component>=0 && m_components[n.component].owned;
+            // Added support must be native black to make a card indivisible.
+            // Neutral backing variation alone can also describe moving scenery.
+            // The existing glyph hull already protects antialiased samples.
+            // Reuse the existing classification and traversal; no new samples.
+            if(Inside(m_indivisibleBackingCard,n.x,n.y) &&
+                !Inside(originalHull,n.x,n.y) && !n.black)m_indivisibleBackingCard={};
+            if(!owned || n.pixel.luma<p.inkFloor+16)continue;
             bool interior=true;
             for(const auto& d:Neighbours()) {
                 const int i=Index(n.x+d.first,n.y+d.second);
@@ -918,6 +940,10 @@ private:
         };
         for(const auto& r:m_capture)include(r);
         include(m_geometry.content);
+        // Current verification covers this immutable backing interior. Motion
+        // above it must not trim through unchanged card sides. Generic capture
+        // padding with a non-backing movie hole remains eligible for projection.
+        include(m_indivisibleBackingCard);
         if(hullLeft<cleanup.left || hullRight>cleanup.right || hullTop<cleanup.top || hullBottom>cleanup.bottom ||
             hullLeft>=hullRight || hullTop>=hullBottom) {
             if(!m_cleanupChangedIndices.empty() && m_cleanupChangedIndices.front()<m_native.size()) {
@@ -1112,8 +1138,8 @@ private:
     bool VerifyDestinationNovelty(const AnalysisLumaSource& source,
         const ValidatedAnalysisLumaSampler& sampler,size_t& samples,
         int& mismatchX,int& mismatchY,const char*& reason,
-        const CurrentFootprintVerification& verified) const {
-        samples=0;mismatchX=mismatchY=-1;
+        const CurrentFootprintVerification& verified,bool& actualPixelMismatch) const {
+        samples=0;mismatchX=mismatchY=-1;actualPixelMismatch=false;
         if(!m_destinationProbe.Valid())return true;
         const size_t area=size_t(m_destinationProbe.right-m_destinationProbe.left)*
             size_t(m_destinationProbe.bottom-m_destinationProbe.top);
@@ -1179,7 +1205,8 @@ private:
                         (alternate && (!(m_destinationSeedDirections[at]&alternateBit) || !samePair)) ||
                         (dark && (!(m_destinationSeedDirections[at]&darkBit) ||
                             (!samePair && !knownDarkBackground)))) {
-                        mismatchX=x;mismatchY=y;reason="current-destination-new-ink";return false;
+                        mismatchX=x;mismatchY=y;actualPixelMismatch=true;
+                        reason="current-destination-new-ink";return false;
                     }
                 }
             }
@@ -1190,8 +1217,9 @@ private:
         const ValidatedAnalysisLumaSampler& sampler,
         bool allowProtectedCleanupProjection=false) const {
         int mismatchX=-1,mismatchY=-1;
-        const auto fail=[&](size_t samples,const char* reason) {
-            return CurrentFootprintVerification{false,samples,reason,mismatchX,mismatchY};
+        const auto fail=[&](size_t samples,const char* reason,bool actualPixelMismatch=false) {
+            CurrentFootprintVerification result{false,samples,reason,mismatchX,mismatchY};
+            result.actualPixelMismatch=actualPixelMismatch;return result;
         };
         if(m_native.empty() || !m_baseline || m_native.size()>SampleBudget)
             return fail(0,"current-footprint-sample-budget-or-empty");
@@ -1222,14 +1250,14 @@ private:
                 const int owner=oldPixel.fringeComponent;
                 if(owner<0 || !NearFloor(oldPixel.pixel,*m_baseline) || !NearFloor(now.pixel,*m_baseline)) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
-                    return fail(samples,"cadence-current-glyph-changed");
+                    return fail(samples,"cadence-current-glyph-changed",true);
                 }
                 const auto& component=m_components[owner];
                 if(component.area<16 || component.cores<4 ||
                     ++m_changedComponents[owner]>(std::min)(16u,(std::max)(2u,component.area/64)) ||
                     ++lineChanges[oldPixel.line]>32) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
-                    return fail(samples,"cadence-current-glyph-changed");
+                    return fail(samples,"cadence-current-glyph-changed",true);
                 }
                 bool survivingCore=false;
                 for(const auto& d:Neighbours()) {
@@ -1241,7 +1269,7 @@ private:
                 }
                 if(!survivingCore) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
-                    return fail(samples,"cadence-current-glyph-changed");
+                    return fail(samples,"cadence-current-glyph-changed",true);
                 }
                 fringe=true;
             }
@@ -1249,12 +1277,12 @@ private:
             // core even if another edge gains the same number of pixels.
             if(oldPixel.core && (!now.ink || now.pixel.luma<m_baseline->inkFloor+16)) {
                 mismatchX=oldPixel.x;mismatchY=oldPixel.y;
-                return fail(samples,"cadence-current-glyph-changed");
+                return fail(samples,"cadence-current-glyph-changed",true);
             }
             if(oldPixel.erase && !fringe) {
                 if(oldPixel.black && !now.black) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
-                    return fail(samples,"cadence-current-cleanup-changed");
+                    return fail(samples,"cadence-current-cleanup-changed",true);
                 }
                 const bool owned=oldPixel.component>=0 && m_components[oldPixel.component].owned;
                 const bool changedUnownedBacking=!oldPixel.black && !owned &&
@@ -1270,7 +1298,7 @@ private:
                     if(!allowProtectedCleanupProjection || m_geometry.generatedCleanupRowCount ||
                         !Inside(m_geometry.generatedCleanup,oldPixel.x,oldPixel.y) ||
                         oldPixel.y<m_base.top || oldPixel.y>=m_base.bottom) {
-                        return fail(samples,"cadence-current-cleanup-changed");
+                        return fail(samples,"cadence-current-cleanup-changed",true);
                     }
                     if(m_cleanupChangedIndices.size()>=m_native.size())
                         return fail(samples,"cadence-current-cleanup-changed");
@@ -1291,7 +1319,7 @@ private:
                 if(projectionConflictX>=0) {
                     mismatchX=projectionConflictX;mismatchY=projectionConflictY;
                 }
-                return fail(samples,"current-cleanup-edge-not-protectable");
+                return fail(samples,"current-cleanup-edge-not-protectable",true);
             }
         }
         const char* reason=hasProtectedCleanup?"current-cleanup-edge-protected":"cadence-current-pixels";
@@ -1328,7 +1356,7 @@ private:
     std::unique_ptr<SubtitleCadenceProof> m_cached=std::make_unique<SubtitleCadenceProof>();
     std::unique_ptr<SubtitleCadenceProof> m_work=std::make_unique<SubtitleCadenceProof>();
     ActivePictureBounds m_base;AnalysisLumaSource m_source;
-    SubtitleCutPasteGeometry m_geometry;SubtitleBoxRect m_roi,m_cleanup,m_destinationProbe;
+    SubtitleCutPasteGeometry m_geometry;SubtitleBoxRect m_roi,m_cleanup,m_destinationProbe,m_indivisibleBackingCard;
     std::array<SubtitleBoxRect,3> m_capture{};
     std::vector<NativePixel> m_native;
     mutable std::vector<CurrentPixel> m_currentPixels;

@@ -15885,7 +15885,7 @@ struct LibplaceboVideoRenderer::Impl
                 seedObservation.independentBarAnalysis && seedObservation.barAuthority &&
                 seedObservation.text.detected && !seedObservation.text.held &&
                 !seedObservation.text.confirmationPending && !seedObservation.text.workLimit &&
-                subtitleBoxResult.detected && !subtitleBoxResult.held &&
+                subtitleBoxResult.detected && (!subtitleBoxResult.held || currentPreparedHeldCue) &&
                 !subtitleBoxResult.confirmationPending && !subtitleBoxResult.workLimit &&
                 seedObservation.sharedPicture.AvailableFor(seedObservation.identity,width,height) &&
                 nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
@@ -15902,6 +15902,9 @@ struct LibplaceboVideoRenderer::Impl
                 seed.physicalBase=nlsGeometry;
                 seed.composedOperation=relocatedSubtitle;seed.sourceMode=sourceSubtitleMode;
                 seed.compositionSucceeded=subtitleCompositionSucceeded;seed.acceptedCurrentScan=true;
+                if(currentPreparedHeldCue)
+                    seed.heldCurrentCue=std::make_shared<SubtitleCurrentPreparedCueCertificate>(
+                        subtitleBoxPresentation.CurrentPreparedCueCertificate());
                 seed.backgroundMode=subtitleCutPasteBackground;
                 seed.frameMs=state.displayMode && state.displayMode->TimeScale()>0
                     ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0;

@@ -237,6 +237,8 @@ struct SubtitleCurrentCueTemplateInput {
     SubtitlePreviewMode sourceMode=SubtitlePreviewMode::None;
     bool compositionSucceeded=false;
     bool acceptedCurrentScan=false;
+    // Same-source raw/retained-pose binding only; worker samples the new seed.
+    std::shared_ptr<const SubtitleCurrentPreparedCueCertificate> heldCurrentCue;
     int backgroundMode=3;
     double frameMs=1000.0/60.0;
     int holdMs=250;
@@ -379,7 +381,7 @@ inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
     outPreview.newScanMs=0;outPreview.newScanFrames=0;
     outCue=cue;
     // Seal one adjacency witness only when the typed proof follows the
-    // tracker’s latest independent full source. The worker seed and immutable
+    // tracker's latest independent full source. The worker seed and immutable
     // comparison snapshots may be older, but they must remain ordered in the
     // same context and describe this exact accepted cue/base.
     const auto& anchor=m_previous.current;
@@ -1253,7 +1255,9 @@ public:
         ContextNearBar=1u<<8, ContextScript=1u<<9,
         ContextPolicy=1u<<10, ContextContinuity=1u<<11, ContextOptimization=1u<<12
     };
+    enum class CurrentPixelVerificationFailure : uint8_t { None, PixelMismatch };
     struct Diagnostics {
+        CurrentPixelVerificationFailure currentPixelFailure=CurrentPixelVerificationFailure::None;
         ReadyRearmRejectCode readyRearmRejectCode=ReadyRearmRejectCode::NotAttempted;
         uint32_t readyRearmLayoutMismatchBits=0;
         uint32_t contextMismatch=0;
@@ -2228,6 +2232,8 @@ private:
                 m_diagnostics.glyphMismatchX=verified.mismatchX;
                 m_diagnostics.glyphMismatchY=verified.mismatchY;
                 m_diagnostics.currentBandSamplesChecked=verified.samples;
+                if(verified.actualPixelMismatch)
+                    m_diagnostics.currentPixelFailure=CurrentPixelVerificationFailure::PixelMismatch;
                 reason=verified.reason;return false;
             }
             m_diagnostics.currentFootprintSamplesChecked=verified.samples;
@@ -2313,6 +2319,7 @@ private:
                 backing.value,value)) {
                 m_diagnostics.glyphMismatchX=backing.x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(backing.y)];
+                m_diagnostics.currentPixelFailure=CurrentPixelVerificationFailure::PixelMismatch;
                 reason="current-black-backing-changed";return false;
             }
             if(black)fresh->blackBacking[at/64]|=uint64_t{1}<<(at%64);
@@ -2331,6 +2338,7 @@ private:
                 std::abs(int(value.chromaV)-known.value.chromaV)>8) {
                 m_diagnostics.glyphMismatchX=known.x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(known.y)];
+                m_diagnostics.currentPixelFailure=CurrentPixelVerificationFailure::PixelMismatch;
                 reason="current-known-ink-changed";return false;
             }
         }
@@ -2373,6 +2381,7 @@ private:
             if(!oldInk->Get(x,y) && (!m_currentFootprintRequired || inNativeFootprint) && !equivalentFootprintSample) {
                 m_diagnostics.glyphMismatchX=x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(y)];
+                m_diagnostics.currentPixelFailure=CurrentPixelVerificationFailure::PixelMismatch;
                 reason="new-current-raw-ink";return false;
             }
             fresh->rawInk[at/64]|=bit;
@@ -2391,6 +2400,7 @@ private:
             if(!SubtitleCadenceGuard::EncodingEquivalent(sample.value,now)) {
                 m_diagnostics.glyphMismatchX=sample.x*fresh->step;
                 m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(sample.y)];
+                m_diagnostics.currentPixelFailure=CurrentPixelVerificationFailure::PixelMismatch;
                 reason="current-owned-glyph-changed";return false;
             }
             const size_t at=size_t(sample.y)*fresh->width+sample.x;
@@ -2442,14 +2452,19 @@ private:
                     if(!black && !equivalentFootprintSample) {
                         m_diagnostics.glyphMismatchX=x*fresh->step;
                         m_diagnostics.glyphMismatchY=fresh->sourceRows[size_t(y)];
+                        m_diagnostics.currentPixelFailure=CurrentPixelVerificationFailure::PixelMismatch;
                         reason="new-current-bar-ink";return false;
                     }
                 }
             encodedBarPhase.Stop();
-        } else if(HasNovelPotentialInk(*oldInk,m_paletteFringe,pixels,m_contrastSeedPixels,m_contrastSeedDirections,
+        } else {
+            bool actualPixelMismatch=false;
+            if(HasNovelPotentialInk(*oldInk,m_paletteFringe,pixels,m_contrastSeedPixels,m_contrastSeedDirections,
             top,bottom,topEnd,bottomStart,
-            m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY)) {
-            reason="new-current-contrast-ink";return false;
+                m_diagnostics.glyphMismatchX,m_diagnostics.glyphMismatchY,actualPixelMismatch)) {
+                if(actualPixelMismatch)m_diagnostics.currentPixelFailure=CurrentPixelVerificationFailure::PixelMismatch;
+                reason="new-current-contrast-ink";return false;
+            }
         }
         currentInk=std::move(fresh);
         reason="current-owned-cue-verified";return true;
@@ -2459,7 +2474,8 @@ private:
         const std::vector<AnalysisLumaSample>& pixels,
         const std::vector<AnalysisLumaSample>& seedPixels,const std::vector<uint8_t>& seedDirections,
         int top,int bottom,int topEnd,int bottomStart,
-        int& mismatchX,int& mismatchY) {
+        int& mismatchX,int& mismatchY,bool& actualPixelMismatch) {
+        actualPixelMismatch=false;
         const int width=reference.width,height=reference.height;
         const size_t area=size_t(width)*size_t(height);
         const size_t bandCells=CurrentBandCellCount(width,height,topEnd,bottomStart);
@@ -2492,6 +2508,7 @@ private:
             // accepted raw mask may be a differently colored or dimmer cue.
             // Reject it even when a single grid cell cannot form a component.
             if((y<top || y>=bottom) && point.luma>reference.blackLimit) {
+                actualPixelMismatch=true;
                 mismatchX=x*reference.step;mismatchY=reference.sourceRows[size_t(y)];return true;
             }
             for(int direction=0;direction<4;++direction) {
@@ -2520,6 +2537,7 @@ private:
                 const bool existingAlternate=!alternatePalette ||
                     ((baseline&(uint8_t(1u<<(direction+4)))) && sameSamples);
                 if(!existingBright || !existingAlternate) {
+                    actualPixelMismatch=true;
                     mismatchX=x*reference.step;mismatchY=reference.sourceRows[size_t(y)];return true;
                 }
             }
@@ -2725,7 +2743,8 @@ inline bool SameDescriptor(const SubtitleCurrentCueTemplateDescriptor& a,
 // The presentation adapter separately validates current semantic compatibility.
 inline bool SameProofInterpretation(const SubtitleCurrentCueTemplateDescriptor& a,
     const SubtitleCurrentCueTemplateDescriptor& b) {
-    return a.valid && b.valid && SameContext(a.context,b.context) &&
+    // Working validity is separate from already completed exact-source proof.
+    return SameContext(a.context,b.context) &&
         SameBounds(a.physicalBase,b.physicalBase) && SameSourceLayout(a.sourceLayout,b.sourceLayout) &&
         a.sourceMode==b.sourceMode && a.backgroundMode==b.backgroundMode;
 }
@@ -2884,6 +2903,15 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     const bool classic=input.sourceMode==SubtitlePreviewMode::None;
     const bool advanced=input.sourceMode==SubtitlePreviewMode::BlackBackground ||
         input.sourceMode==SubtitlePreviewMode::GeneratedGrayBackground;
+    const bool retainedPresentation=cue.held;
+    if(retainedPresentation) {
+        if(!advanced || !input.heldCurrentCue || !input.heldCurrentCue->Matches(o,cue,input.physicalBase))
+            return SubtitleCurrentCueProofStatus::NotEligible;
+        // Never clear held on historical geometry. Use this complete raw
+        // measurement as the semantic seed, mapping only its display cue ID.
+        auto currentSemanticCue=o.text;currentSemanticCue.cue=cue.cue;
+        input.acceptedCue=std::move(currentSemanticCue);
+    }
     if((!classic && !advanced) || !input.acceptedCurrentScan || !o.analyzed || o.discontinuity ||
         o.pendingRefresh || o.analysisRefresh || o.cadenceSkipped || o.glyphLocalTop || o.glyphLocalBottom ||
         (o.analysisStride!=1 && o.analysisStride!=2) || !o.text.detected || o.text.workLimit || o.text.held ||
@@ -2915,6 +2943,15 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_stopping)return SubtitleCurrentCueProofStatus::Failed;
+        // Held presentation does not rebuild a healthy template for grouping
+        // quantization alone. Actual pixel failure retires that baseline below.
+        if(retainedPresentation && HasCurrentCueProofContextLocked() && m_currentCueState->descriptor.valid &&
+            m_currentCueState->descriptor.cue.cue==descriptor.cue.cue &&
+            SameProofInterpretation(m_currentCueState->descriptor,descriptor) &&
+            SameOperation(m_currentCueState->descriptor.operation,descriptor.operation)) {
+            templateRevision=m_currentCueState->descriptor.revision;
+            return SubtitleCurrentCueProofStatus::Ready;
+        }
         if(HasCurrentCueProofContextLocked() && SameDescriptor(m_currentCueState->descriptor,descriptor)) {
             templateRevision=m_currentCueState->descriptor.revision;
             return SubtitleCurrentCueProofStatus::Ready;
@@ -2924,6 +2961,14 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                 pending->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) && SameDescriptor(pending->descriptor,descriptor)) {
                 templateRevision=pending->revision;return SubtitleCurrentCueProofStatus::Queued;
             }
+        // A failed working seed is replaced only by a later independently
+        // measured source, never by replaying the seed or an older scan.
+        if(HasCurrentCueProofContextLocked() && !m_currentCueState->descriptor.valid &&
+            SameInterpretationContext(descriptor.context,m_currentCueState->descriptor.context) &&
+            (descriptor.context.identity.sourceFrameNumber<m_currentCueState->descriptor.context.identity.sourceFrameNumber ||
+             descriptor.context.identity.captureTimestamp<m_currentCueState->descriptor.context.identity.captureTimestamp ||
+             descriptor.context.identity.acceptedSequence<=m_currentCueState->descriptor.context.identity.acceptedSequence))
+            return SubtitleCurrentCueProofStatus::NotEligible;
         if(m_currentCuePending.size()>=2)return SubtitleCurrentCueProofStatus::NotEligible;
         descriptor.revision=++m_nextCurrentCueRevision;
         templateRevision=descriptor.revision;
@@ -2968,7 +3013,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         } else reason=state->footprint.DecisionReason();
         if(seeded) {
             std::lock_guard<std::mutex> lock(m_mutex);
-            if(!m_stopping && entry->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire)) {
+            if(!m_stopping && entry->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
+                (!m_currentCueState || entry->revision>=m_currentCueState->descriptor.revision)) {
                 m_currentCueState=state;m_workerLimit=2;
                 if(!m_threads[1].joinable())m_threads[1]=std::thread([this]{Run(1);});
             } else {seeded=false;reason="current-cue-template-context-invalidated";}
@@ -3172,14 +3218,16 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         std::array<SubtitleBoxRect,3> semanticLineBounds{};
         {std::lock_guard<std::mutex> lock(m_mutex);
             stillCurrent=!m_stopping && HasCurrentCueProofContextLocked() &&
+                state->descriptor.valid && m_currentCueState->descriptor.valid &&
                 entry->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
                 SameProofInterpretation(state->descriptor,m_currentCueState->descriptor) &&
                 entry->revision==state->descriptor.revision &&
                 SubtitleCurrentCueWorkerDetail::InWindow(m_currentCueWindowHead,
-                    m_currentCueWindowTail,key.identity);
+                    m_currentCueWindowTail,key.identity) &&
+                SubtitleCurrentCueWorkerDetail::CurrentMatches(state->descriptor,key,
+                    request.physicalBase,request.source,request.sourceMode,request.backgroundMode);
         }
-        if(stillCurrent && SubtitleCurrentCueWorkerDetail::CurrentMatches(state->descriptor,key,
-                request.physicalBase,request.source,request.sourceMode,request.backgroundMode)) {
+        if(stillCurrent) {
             const auto* footprint=request.sourceMode==SubtitlePreviewMode::None?nullptr:&state->footprint;
             verified=state->pending.VerifyCurrentCuePixels(
                 key,request.source,footprint,currentInk,reason,true);
@@ -3297,6 +3345,13 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         {std::lock_guard<std::mutex> lock(m_mutex);
             if(entry->revision<m_currentCueMinimumRevision->load(std::memory_order_acquire)) {
                 verified=false;stillCurrent=false;receipt={};reason="current-cue-proof-context-invalidated";
+            }
+            if(!verified && stillCurrent && m_currentCueState==state &&
+                entry->revision==state->descriptor.revision &&
+                diagnostics.currentPixelFailure==SubtitlePendingMeasurementGuard::CurrentPixelVerificationFailure::PixelMismatch) {
+                // Cue tasks run serially on worker0. Retain context and completed
+                // receipts; fresh independent evidence must replace this seed.
+                state->descriptor.valid=false;
             }
             if(verified) {entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;}
             else entry->status=(fallbackQueued || entry->fallbackQueued)?SubtitleCurrentCueProofStatus::FallbackQueued:

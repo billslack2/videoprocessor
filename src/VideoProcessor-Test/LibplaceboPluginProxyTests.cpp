@@ -5124,7 +5124,7 @@ namespace VideoProcessorTest
         // portable manifest: select explicitly with VP_SUBTITLE_CAPTURE_ROOT set.
         // This runs the actual plugin, worker, queue, shader and submission path;
         // no caller supplies picture or successful composition authority.
-        void VerifyCapturedV210CueCadence(bool beta)
+        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false)
         {
             char* captureValue=nullptr;size_t captureSize=0;
             Assert::AreEqual(0,_dupenv_s(&captureValue,&captureSize,"VP_SUBTITLE_CAPTURE_ROOT"));
@@ -5133,7 +5133,8 @@ namespace VideoProcessorTest
                 Logger::WriteMessage("OPTIONAL_FIXTURE_NOT_EXERCISED: VP_SUBTITLE_CAPTURE_ROOT absent; private frames exercised=0. This result is not capture coverage.");
                 return;
             }
-            constexpr int width=3840,height=2160,rowBytes=10240,pictureTop=272,pictureBottom=1886;
+            constexpr int width=3840,height=2160,rowBytes=10240;
+            const int pictureTop=pausedRecovery?274:272,pictureBottom=pausedRecovery?1888:1886;
             constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
             std::array<std::vector<BYTE>,4> phases;
             for(unsigned phase=0;phase<4;++phase) {
@@ -5144,7 +5145,7 @@ namespace VideoProcessorTest
                 metadata>>w>>h>>rb>>crb>>format>>encoding>>color>>top>>bottom>>script>>range;
                 Assert::IsTrue(bool(metadata)&&w==width&&h==height&&rb==rowBytes&&crb==0&&format==3&&
                     encoding==int(VideoFrameEncoding::V210)&&color==int(ColorSpace::REC_709)&&range==1&&
-                    top==pictureTop&&bottom==pictureBottom,L"This regression requires the 164841 limited-range V210 recording and measured native base.");
+                    top==pictureTop&&bottom==pictureBottom,L"This regression requires the selected limited-range V210 recording and measured native base.");
                 std::ifstream pixels(path+".bin",std::ios::binary|std::ios::ate);
                 Assert::IsTrue(bool(pixels)&&pixels.tellg()==std::streamoff(rowBytes)*height,L"Native capture length mismatch.");
                 phases[phase].resize(size_t(rowBytes)*height);pixels.seekg(0);
@@ -5153,6 +5154,17 @@ namespace VideoProcessorTest
                 for(unsigned previous=0;previous<phase;++previous)
                     Assert::IsTrue(phases[previous]!=phases[phase],L"All four recorded quantization phases must be exercised.");
             }
+            // The earlier live template pixels were not captured. This one-pixel
+            // prior background is explicitly synthetic; all later phases are the
+            // untouched 192209 paused recording. No glyph or bar pixels change.
+            auto priorBackground=phases[0];
+            if(pausedRecovery) {
+                constexpr size_t offset=size_t(1742)*rowBytes+(1786/6)*16+12;
+                uint32_t word=0;std::memcpy(&word,priorBackground.data()+offset,sizeof(word));
+                Assert::AreEqual(uint32_t(104),word&1023u);
+                word=(word&~1023u)|64u;std::memcpy(priorBackground.data()+offset,&word,sizeof(word));
+            }
+            bool usePriorBackground=pausedRecovery;uint64_t recoveryStart=0;
             struct ProbeClock final : ITimingClock {
                 LARGE_INTEGER frequency{};
                 ProbeClock(){QueryPerformanceFrequency(&frequency);}
@@ -5241,7 +5253,8 @@ namespace VideoProcessorTest
                 if(callback.state==RENDERSTATE_RENDERING) {
                     const auto stamp=captureOrigin+timingclocktime_t((sequence-1)*uint64_t(clock.TimingClockTicksPerSecond())*1001/24000);
                     const auto start=wallNs();inputs.emplace(sequence,std::make_pair(stamp,start));
-                    VideoFrame frame(phases[(sequence-1)%4].data(),sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);
+                    const auto* pixels=usePriorBackground?priorBackground.data():phases[(sequence-1)%4].data();
+                    VideoFrame frame(pixels,sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);
                     if(steadyStart)ingressMs.push_back(double(wallNs()-start)/1e6);
                 }
                 next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1/inputHz));
@@ -5273,7 +5286,14 @@ namespace VideoProcessorTest
             }
             Assert::IsTrue(acquired,L"Actual capture never produced a composed native-qualified source; no steady coverage claimed.");
             // Bounded warmup only; once steady observation begins every output counts.
-            for(unsigned i=0;i<48;++i)pump();steadyStart=sequence;
+            for(unsigned i=0;i<48;++i)pump();
+            if(pausedRecovery) {
+                recoveryStart=sequence;usePriorBackground=false;
+                // A test observation allowance, never a production hold/delay.
+                // Current video must keep advancing throughout this transition.
+                for(unsigned i=0;i<8;++i)pump();
+            }
+            steadyStart=sequence;
             const uint64_t steadyEnd=steadyStart+143;
             while(sequence<=steadyEnd+10)pump();
             cleanup.renderer->Stop();cleanup.stopped=true;drain();
@@ -5334,6 +5354,49 @@ namespace VideoProcessorTest
                     <<" published="<<r.published[1]<<'-'<<r.published[3]<<" actual="<<r.metrics[9]<<'-'<<r.metrics[11];
                 Logger::WriteMessage(row.str().c_str());
             }
+            if(pausedRecovery) {
+                unsigned failedOld=0,freshSeeds=0,transitionOutputs=0;bool transitionExact=true;
+                uint64_t failedRevision=0,replacementRevision=0,replacementSource=0;std::set<uint64_t> recoverySources;
+                uint64_t transitionLastSource=0,transitionLastWall=0,transitionMaxGap=0;double transitionGapMs=0;
+                for(const auto& r:observed)if(r.sourceFrameNumber>=recoveryStart&&r.sourceFrameNumber<=steadyEnd) {
+                    if(!strcmp(r.stage,"worker-cue-proof")&&!(r.flags&1u)&&
+                        !strcmp(r.reason,"cadence-current-cleanup-changed")) {
+                        ++failedOld;if(!failedRevision)failedRevision=r.counters[0];
+                    }
+                    if(!strcmp(r.stage,"worker-cue-template")&&(r.flags&1u)) {
+                        ++freshSeeds;if(!replacementRevision&&failedRevision&&r.counters[0]>failedRevision) {
+                            replacementRevision=r.counters[0];replacementSource=r.sourceFrameNumber;
+                        }
+                    }
+                    if(strcmp(r.stage,"submitted-presentation")||!(r.flags&1u))continue;
+                    ++transitionOutputs;if(r.sourceFrameNumber<steadyStart)recoverySources.insert(r.sourceFrameNumber);
+                    const auto input=inputs.find(r.sourceFrameNumber);
+                    transitionExact&=input!=inputs.end()&&r.captureTimestamp==uint64_t(input->second.first)&&
+                        r.acceptedSequence==r.counters[1];
+                    if(transitionLastSource&&r.sourceFrameNumber!=transitionLastSource)
+                        transitionMaxGap=(std::max)(transitionMaxGap,r.sourceFrameNumber>transitionLastSource?
+                            r.sourceFrameNumber-transitionLastSource:uint64_t(999));
+                    const auto time=classicPoseSubmitWallNs.find(r.recordSequence);
+                    if(time!=classicPoseSubmitWallNs.end()&&r.sourceFrameNumber!=transitionLastSource) {
+                        if(transitionLastWall)transitionGapMs=(std::max)(transitionGapMs,double(time->second-transitionLastWall)/1e6);
+                        transitionLastWall=time->second;
+                    }
+                    transitionLastSource=r.sourceFrameNumber;
+                }
+                std::ostringstream row;row<<"PAUSED RECOVERY: synthetic_prior_pixel=64 current_captured_pixel=104 start="<<recoveryStart
+                    <<" steady_start="<<steadyStart<<" failed_old="<<failedOld<<" fresh_seeds="<<freshSeeds
+                    <<" failed_revision="<<failedRevision<<" replacement_revision="<<replacementRevision<<" replacement_source="<<replacementSource
+                    <<" recovery_sources="<<recoverySources.size()<<" steady_templates="<<templates
+                    <<" current_outputs="<<transitionOutputs<<" exact="<<transitionExact<<" max_source_gap="<<transitionMaxGap
+                    <<" max_submit_gap_ms="<<transitionGapMs;
+                Logger::WriteMessage(row.str().c_str());
+                Assert::IsTrue(failedOld>0&&freshSeeds>0&&replacementRevision>failedRevision&&replacementSource<steadyStart,
+                    L"Actual failed-baseline and later independent replacement must recover within eight input sources.");
+                Assert::IsTrue(recoverySources.size()==8,L"Every current source must advance while subtitle recovery is pending.");
+                Assert::AreEqual(unsigned(0),templates,L"The recovered unchanged cue must reuse its template through the steady observation.");
+                Assert::IsTrue(transitionOutputs>=144&&transitionExact&&transitionMaxGap<=2&&transitionGapMs<=2*periodMs+1000/outputHz,
+                    L"Current source video stalled or lost identity while subtitle recovery was pending.");
+            }
             Assert::IsTrue(outputs>=136&&distinct.size()>=136&&phaseCoverage.size()==4,L"Missing steady current-source coverage.");
             Assert::IsTrue(exact,L"Subtitle readiness held/replayed or mismatched an otherwise eligible current source.");
             Assert::IsTrue(native,L"Measured native geometry changed or fallback gained native authority.");
@@ -5350,6 +5413,10 @@ namespace VideoProcessorTest
         {VerifyCapturedV210CueCadence(false);}
         TEST_METHOD(BetaRendererCapturedV210CueHasNoCadenceFlicker)
         {VerifyCapturedV210CueCadence(true);}
+        TEST_METHOD(StandardRendererPausedCapturedCueRecoversFailedBackgroundTemplate)
+        {VerifyCapturedV210CueCadence(false,true);}
+        TEST_METHOD(BetaRendererPausedCapturedCueRecoversFailedBackgroundTemplate)
+        {VerifyCapturedV210CueCadence(true,true);}
 
         TEST_METHOD(AlternatingDecodedDvBackdropKeepsThreeLineCueConfirmed)
         {VerifyPersistentDecodedDvCadence(false,unsigned(SubtitlePreviewMode::GeneratedGrayBackground),false,true,true);}

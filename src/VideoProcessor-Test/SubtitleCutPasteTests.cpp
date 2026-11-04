@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include "GpuFixtureProgramCache.h"
 #include <SubtitleCutPaste.h>
+#include <SubtitleCadenceGuard.h>
 #include <SubtitleTemporalFill.h>
 #include <SubtitleCutPasteShader.h>
 #include <SubtitleBackingLip.h>
@@ -1985,6 +1986,176 @@ struct SubtitleShaderGpuFixture {
                     format->host_bits[channel]);
         return pixels;
     }
+    void VerifyCurrentVerifiedCardProjectionPixels() {
+        constexpr int width=3840,height=2160;
+        const auto identity=[](uint64_t sequence)->ActivePictureFrameIdentity {
+            return {1,sequence,sequence,sequence*1000,2,3,4};
+        };
+        const auto ready=[&](uint64_t sequence) {
+            SubtitleBoxPreview preview;preview.available=true;preview.policyGeneration=11;preview.continuityGeneration=21;
+            auto& c=preview.current;c.identity=identity(sequence);c.analyzed=c.barAuthority=true;
+            c.policyGeneration=11;c.continuityGeneration=21;c.sharedPicture.required=true;c.sharedPicture.identity=c.identity;
+            c.text.detected=true;c.text.capturePanelMeasured=true;
+            for(int i=0;i<3;++i){c.text.lineCapturePanels[i]={40,47,120,82};c.text.linePanels[i]={40,47,120,82};}
+            return preview;
+        };
+        const auto lumaSource=[](std::vector<uint16_t>& pixels) {
+            AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+            source.dataBytes=pixels.size()*sizeof(uint16_t);source.width=3840;source.height=2160;
+            source.rowBytes=source.chromaRowBytes=7680;source.generation=1;
+            source.format=AnalysisLumaFormat::P010;source.range=AnalysisLumaRange::Limited;return source;
+        };
+        // Same source recipe as the native RED/GREEN regression: an unchanged
+        // measured picture card and three changed movie samples above it.
+    const ActivePictureBounds base{0,274,3840,1888,3840,2160};
+    const SubtitleBoxRect card{1526,1751,2314,1887};
+    SubtitleCutPasteGeometry geometry;geometry.valid=true;
+    geometry.generatedCleanup={1517,1706,2326,1884};
+    geometry.pictureCapture=card;geometry.content={1578,1784,2254,2028};
+    geometry.glyphLines[0]={1594,1931,2238,2028};
+    geometry.glyphLines[1]={1578,1784,2254,1884};
+    geometry.source={1505,1750,2327,2053};geometry.destination={1505,1639,2338,1878};
+    geometry.pictureTop=274;geometry.pictureBottom=1884;
+    geometry.glyphScale=0.7f;geometry.glyphTranslateX=574.8f;geometry.glyphTranslateY=424.3f;
+    auto seed=std::make_unique<SubtitleBoxPreview>(ready(1341));
+    auto& c=seed->current;c.width=3840;c.height=2160;c.analysisStride=1;
+    c.pictureTop=274;c.pictureBottom=1884;c.sharedPicture.bounds=base;
+    c.text.bounds={1574,1778,2262,2038};c.text.lineCount=2;c.text.cue=29;
+    c.text.lineBounds=geometry.glyphLines;c.text.capturePanel=card;
+    c.text.sourcePanel=geometry.generatedCleanup;c.text.provenSourcePanel={1517,1745,2323,1884};
+    std::vector<uint16_t> pixels(size_t(3840)*2160*3/2,uint16_t(512<<6));
+    std::fill(pixels.begin(),pixels.begin()+size_t(3840)*2160,uint16_t(64<<6));
+    for(int y=base.top;y<base.bottom;++y)for(int x=0;x<3840;++x)
+        pixels[size_t(y)*3840+x]=uint16_t(128<<6);
+    for(int y=card.top;y<card.bottom;++y)for(int x=card.left;x<card.right;++x)
+        pixels[size_t(y)*3840+x]=uint16_t(64<<6);
+    for(const auto& line:geometry.glyphLines)if(line.Valid())
+        for(int y=line.top;y<line.bottom;++y)for(int x=line.left;x<line.right;++x)
+            if((x-line.left)%28<12)pixels[size_t(y)*3840+x]=uint16_t(700<<6);
+    // Unchanged antialias sample already inside the accepted content hull.
+    pixels[size_t(1800)*3840+1579]=uint16_t(350<<6);
+    auto ink=std::make_shared<SubtitleInkSnapshot>();ink->width=960;ink->height=540;ink->step=4;
+    ink->sourceRows.resize(540);ink->rawEvidenceComplete=ink->paletteValid=true;
+    ink->inkFloor=500;ink->blackLimit=96;ink->captionBackingLimit=160;
+    ink->rawInk.resize(8100);ink->ownedInk.resize(8100);ink->blackBacking.resize(8100);
+    for(int y=0;y<540;++y) {ink->sourceRows[y]=4*y;for(int x=0;x<960;++x) {
+        const size_t at=size_t(y)*960+x;const uint64_t bit=uint64_t(1)<<(at%64);
+        const int value=pixels[size_t(y*4)*3840+x*4]>>6;
+        if(value>=500){ink->rawInk[at/64]|=bit;ink->ownedInk[at/64]|=bit;}
+        if(value<=96)ink->blackBacking[at/64]|=bit;
+    }}
+    c.ink=ink;seed->text=c.text;
+    auto source=lumaSource(pixels);
+    auto guard=std::make_unique<SubtitleCadenceGuard>();
+    Assert::IsTrue(guard->RememberCurrentFootprint(*seed,seed->text,source,base,geometry,1000.0/24,250,5),
+        L"The logged operation must be seeded from actual current source samples.");
+    auto current=std::make_unique<SubtitleBoxObservation>(c);
+    current->identity=identity(1347);current->sharedPicture.identity=current->identity;
+    current->analyzed=false;current->pendingRefresh=true;current->text={};current->ink.reset();
+    auto conflict=pixels;conflict[size_t(1780)*3840+1530]=uint16_t(300<<6);
+    const auto rejected=guard->VerifyCurrentFootprint(*current,lumaSource(conflict),c,seed->text,base);
+    Assert::IsFalse(rejected.valid,L"Changed pixels inside the accepted card still reject cleanup reuse.");
+    auto moving=pixels;
+    for(int x:{1574,1900,2268})moving[size_t(1745)*3840+x]=uint16_t(144<<6);
+    const auto verified=guard->VerifyCurrentFootprint(*current,lumaSource(moving),c,seed->text,base);
+        Assert::IsTrue(verified.valid,L"Current source must verify before any cleanup is rendered.");
+        auto corrected=geometry;
+        Assert::IsTrue(guard->ApplyCurrentFootprintProtection(*current,base,corrected));
+        Assert::IsTrue(corrected.generatedCleanup.left<=card.left&&corrected.generatedCleanup.right>=card.right);
+        Assert::AreEqual(1746,corrected.generatedCleanup.top);
+        auto legacy=corrected;legacy.generatedCleanup={1575,1746,2268,1884};
+        // This is the observed old projection on the same unchanged shader,
+        // not a second renderer/presentation run or a performance benchmark.
+        pl_tex_params storage{};storage.w=width;storage.h=height;storage.sampleable=true;
+        storage.format=pl_find_fmt(device->gpu,PL_FMT_UNORM,1,16,16,PL_FMT_CAP_SAMPLEABLE);
+        storage.initial_data=moving.data();Assert::IsNotNull(storage.format);
+        pl_tex_destroy(device->gpu,&inputTexture);inputTexture=pl_tex_create(device->gpu,&storage);
+        Assert::IsNotNull(inputTexture);
+        storage.w=width/2;storage.h=height/2;
+        storage.format=pl_find_fmt(device->gpu,PL_FMT_UNORM,2,16,16,PL_FMT_CAP_SAMPLEABLE);
+        storage.initial_data=moving.data()+size_t(width)*height;Assert::IsNotNull(storage.format);
+        chromaTexture=pl_tex_create(device->gpu,&storage);Assert::IsNotNull(chromaTexture);
+        input.num_planes=2;input.planes[0].texture=inputTexture;input.planes[0].components=1;input.planes[0].component_mapping[0]=0;
+        input.planes[1].texture=chromaTexture;input.planes[1].components=2;
+        input.planes[1].component_mapping[0]=1;input.planes[1].component_mapping[1]=2;
+        input.repr.sys=PL_COLOR_SYSTEM_BT_709;input.repr.levels=PL_COLOR_LEVELS_LIMITED;input.repr.alpha=PL_ALPHA_NONE;
+        input.repr.bits.sample_depth=16;input.repr.bits.color_depth=10;input.repr.bits.bit_shift=6;
+        input.color=pl_color_space_srgb;input.crop={0,0,float(width),float(height)};
+        const SubtitleBoxRect roi{1400,1580,2440,2070};const int rw=roi.right-roi.left,rh=roi.bottom-roi.top;
+        auto outputStorage=allOutput->params;outputStorage.w=rw;outputStorage.h=rh;
+        Assert::IsTrue(pl_tex_recreate(device->gpu,&allOutput,&outputStorage));
+        SubtitleGeneratedGrayStyle style;style.opacity=.65f;style.blurPixels=30;style.maxLuminance=.25f;style.borderWidth=1;
+        Assert::IsTrue(ParseSubtitleRgbHex("C9C9C9",style.textColor));
+        auto readCrop=[&](pl_frame source) {
+            source.crop={float(roi.left),float(roi.top),float(roi.right),float(roi.bottom)};
+            pl_frame target{};target.num_planes=1;target.planes[0].texture=allOutput;target.planes[0].components=4;
+            for(int ch=0;ch<4;++ch)target.planes[0].component_mapping[ch]=ch;
+            target.repr=pl_color_repr_rgb;target.repr.alpha=PL_ALPHA_NONE;target.color=pl_color_space_srgb;
+            target.color.transfer=PL_COLOR_TRC_LINEAR;target.crop={0,0,float(rw),float(rh)};
+            auto params=pl_render_fast_params;params.dither_params=nullptr;
+            Assert::IsTrue(pl_render_image(renderer,&source,&target,&params));return ReadLinear(allOutput);
+        };
+        const auto original=readCrop(input);
+        auto render=[&](const SubtitleCutPasteGeometry& operation) {
+            pl_frame composed{};
+            Assert::IsTrue(PrepareCompleteSubtitleSourcePacket(preparation,device->gpu,input,hook,operation,
+                5,style,3,&allTexture,composed));return readCrop(composed);
+        };
+        const auto before=render(legacy),after=render(corrected);
+        const auto channel=[&](const std::vector<float>& image,int x,int y,int ch=0) {
+            return image[(size_t(y-roi.top)*rw+x-roi.left)*4+ch];
+        };
+        wchar_t outputRoot[32768]={};const DWORD rootLength=GetEnvironmentVariableW(L"VP_TEST_PIXEL_OUTPUT_ROOT",outputRoot,32768);
+        if(rootLength) {
+            const DWORD attributes=GetFileAttributesW(outputRoot);
+            Assert::IsTrue(rootLength<32768&&attributes!=INVALID_FILE_ATTRIBUTES&&(attributes&FILE_ATTRIBUTE_DIRECTORY)!=0,
+                L"Pixel evidence directory must already exist.");
+            const std::wstring directory(outputRoot);
+            const auto save=[&](const wchar_t* name,const std::vector<float>& image) {
+                const std::wstring stem=directory+L"/"+name;
+                std::ofstream raw((stem+L".rgba32f").c_str(),std::ios::binary);raw.write(reinterpret_cast<const char*>(image.data()),std::streamsize(image.size()*sizeof(float)));
+                Assert::IsTrue(raw.good());
+                std::ofstream ppm((stem+L".ppm").c_str(),std::ios::binary);ppm<<"P6\n"<<rw<<" "<<rh<<"\n255\n";
+                for(size_t p=0;p<size_t(rw)*rh;++p)for(int ch=0;ch<3;++ch) {
+                    const float linear=(std::max)(0.f,(std::min)(1.f,image[p*4+ch]));
+                    const float srgb=linear<=.0031308f?12.92f*linear:1.055f*std::pow(linear,1.f/2.4f)-.055f;
+                    ppm.put(char(std::lround(srgb*255.f)));
+                }
+                Assert::IsTrue(ppm.good());
+            };
+            save(L"source-current",original);save(L"legacy-narrow-projection",before);save(L"verified-card-projection",after);
+            std::ofstream metadata((directory+L"/projection.json").c_str());
+            metadata<<"{\"schema\":\"vp-actual-shader-card-projection-v1\",\"roi\":[1400,1580,2440,2070],\"width\":"<<rw
+                <<",\"height\":"<<rh<<",\"float_format\":\"RGBA32F linear sRGB primaries\",\"preview\":\"sRGB encoded PPM\","
+                <<"\"current_source\":1347,\"source_card\":[1526,1751,2314,1887],\"legacy_cleanup\":[1575,1746,2268,1884],\"verified_cleanup\":["
+                <<corrected.generatedCleanup.left<<","<<corrected.generatedCleanup.top<<","<<corrected.generatedCleanup.right<<","<<corrected.generatedCleanup.bottom
+                <<"],\"destination\":[1505,1639,2338,1878],\"comparison\":\"observed old projection versus actual current-verified geometry on the same shader\"}";
+            Assert::IsTrue(metadata.good());
+        }
+        unsigned repaired=0;float largestGain=0;
+        for(int y=1780;y<1840;++y)for(int x=1536;x<2304;++x)if(x<1560||x>=2280) {
+            const float oldValue=channel(before,x,y),newValue=channel(after,x,y);
+            largestGain=(std::max)(largestGain,newValue-oldValue);repaired+=newValue>oldValue+.0002f;
+        }
+        Logger::WriteMessage((std::string("CARD PROJECTION GPU: repaired_strip_pixels=")+std::to_string(repaired)+
+            " largest_linear_gain="+std::to_string(largestGain)).c_str());
+        Assert::IsTrue(repaired>1000,L"Verified card side strips must be repaired instead of leaving the nested black shape.");
+        const auto inside=[](const SubtitleBoxRect& r,int x,int y){return x>=r.left&&x<r.right&&y>=r.top&&y<r.bottom;};
+        const SubtitleBoxRect displayEnvelope{geometry.destination.left-8,geometry.destination.top-8,geometry.destination.right+8,geometry.pictureBottom};
+        for(int y=roi.top;y<roi.bottom;++y)for(int x=roi.left;x<roi.right;++x)
+            if(!inside(geometry.source,x,y)&&!inside(geometry.generatedCleanup,x,y)&&!inside(displayEnvelope,x,y))
+                for(int ch=0;ch<3;++ch)Assert::IsTrue(std::abs(channel(after,x,y,ch)-channel(original,x,y,ch))<.0005f,
+                    L"Projection changed current movie pixels outside the authorized operation.");
+        for(int x:{1574,1900,2268})for(int ch=0;ch<3;++ch)
+            Assert::IsTrue(std::abs(channel(after,x,1745,ch)-channel(original,x,1745,ch))<.0005f,
+                L"Changed movie samples above the card must remain protected.");
+        unsigned oldGlyphs=0,newGlyphs=0;
+        for(int y=1746;y<1875;++y)for(int x=1580;x<2260;++x) {
+            oldGlyphs+=channel(before,x,y)>.1f;newGlyphs+=channel(after,x,y)>.1f;
+        }
+        Assert::IsTrue(oldGlyphs>500&&newGlyphs>=oldGlyphs,L"Restoring card coverage must preserve relocated glyph pixels.");
+    }
+
     void VerifyUhdTwoLinePictureAndBarGlyphsSurviveReduction() {
         constexpr int width=3840,height=2160;
         auto storage=inputTexture->params;storage.w=width;storage.h=height;
@@ -3172,6 +3343,9 @@ public:
             Assert::AreEqual(signature,pl_cache_signature(programs->value));
             Assert::IsTrue(pl_cache_size(programs->value)<=128u*1024u*1024u);
         }
+    }
+    TEST_METHOD(CurrentVerifiedCardProjectionRemovesNestedBackingAndPreservesMoviePixels) {
+        SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_SRGB);gpu.VerifyCurrentVerifiedCardProjectionPixels();
     }
     TEST_METHOD(UhdTwoLinePictureAndLetterboxGlyphsBothSurviveReduction) {
         SubtitleShaderGpuFixture gpu;gpu.VerifyUhdTwoLinePictureAndBarGlyphsSurviveReduction();
