@@ -2746,6 +2746,25 @@ inline bool SameInterpretationContext(const SubtitleBoxObservation& a,const Subt
 inline bool SameContext(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
     return SameInterpretationContext(a,b) && a.sharedPicture.Matches(b.sharedPicture);
 }
+// A scan's optional geometry hint may be absent. A present current hint must
+// agree with the already verified presentation base; it is never rewritten.
+inline bool CompatibleScanBase(const SubtitleBoxObservation& key,const ActivePictureBounds& base) {
+    const auto& hint=key.sharedPicture;
+    const bool hasBounds=hint.bounds.top<hint.bounds.bottom && hint.bounds.left<hint.bounds.right;
+    return (!hasBounds || (hint.AvailableFor(key.identity,key.width,key.height) && SameBounds(hint.bounds,base))) &&
+        (!hint.inspectionCandidate.valid ||
+         (hint.inspectionCandidate.AvailableFor(key.identity,key.width,key.height,key.policyGeneration,key.continuityGeneration) &&
+          SameBounds(hint.inspectionCandidate.bounds,base)));
+}
+// Scheduling alias only: exact source/settings and an already successful
+// current-pixel receipt. This grants neither raw scan nor native authority.
+inline bool MatchesVerifiedScanSource(const SubtitleCurrentCueTaskEntry& entry,const SubtitleBoxObservation& key) {
+    return entry.proofVerified && entry.receipt.Valid() && entry.receipt.SourceMode()!=SubtitlePreviewMode::None &&
+        SameAnalysisFrameIdentity(entry.key.identity,key.identity) && SameInterpretationContext(entry.key,key) &&
+        entry.key.analysisStride==key.analysisStride &&
+        !key.discontinuity && !key.pendingRefresh && !key.analysisRefresh && !key.cadenceSkipped &&
+        !key.glyphLocalTop && !key.glyphLocalBottom && CompatibleScanBase(key,entry.descriptor.physicalBase);
+}
 inline bool SameSourceLayout(const AnalysisLumaSource& a,const AnalysisLumaSource& b) {
     return a.width==b.width && a.height==b.height && a.format==b.format &&
         a.encoding==b.encoding && a.colorspace==b.colorspace && a.range==b.range &&
@@ -2794,12 +2813,9 @@ inline bool CompleteSemanticScanConfirmsVerifiedCue(const SubtitleBoxObservation
         !SameInterpretationContext(result,key) || result.analysisStride!=key.analysisStride ||
         !result.analyzed || result.discontinuity || result.pendingRefresh || result.analysisRefresh ||
         result.cadenceSkipped || result.glyphLocalTop || result.glyphLocalBottom ||
-        !result.barAuthority || !result.barEvidence.available ||
         !result.text.topSearchComplete || !result.text.bottomSearchComplete ||
         !result.ink || !result.ink->rawEvidenceComplete || !result.ink->paletteValid ||
-        !(result.samplingBasis.MatchesBase(result,receipt.PhysicalBase()) ||
-          (result.independentBarAnalysis && result.sharedPicture.AvailableFor(result.identity,result.width,result.height) &&
-           SameBounds(result.sharedPicture.bounds,receipt.PhysicalBase()))) ||
+        !CompatibleScanBase(key,receipt.PhysicalBase()) || !CompatibleScanBase(result,receipt.PhysicalBase()) ||
         !CurrentSubtitleCueFitsVerifiedOperation(result.text,receipt.AcceptedCue(),receipt.Operation(),
             result.ink->step,&receipt.VerifiedSemanticLineBounds()))return false;
     const auto& ink=*result.ink;
@@ -2944,7 +2960,8 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
     bool matchedVerifiedCurrentTask=false;
     for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
         auto& entry=**i;
-        if(entry.seedTask || entry.revision<minimumRevision || !SameExactTaskKey(entry.scanKey,key))continue;
+        if(entry.seedTask || entry.revision<minimumRevision ||
+            (!SameExactTaskKey(entry.scanKey,key) && !MatchesVerifiedScanSource(entry,key)))continue;
         if(entry.status==SubtitleCurrentCueProofStatus::Failed ||
             entry.status==SubtitleCurrentCueProofStatus::Expired)
             return SubtitleCurrentCueFullScanRoute::Enqueue;
@@ -2975,6 +2992,10 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
         return SubtitleCurrentCueFullScanRoute::Enqueue;
 
     const uint64_t sequence=key.identity.acceptedSequence;
+    // Even a burst requests another SOURCE, not duplicate grouping of this
+    // already verified source after its first refresh callback completed.
+    if(state->descriptor.sourceMode!=SubtitlePreviewMode::None &&
+        sequence==state->lastSemanticRefreshSequence)return SubtitleCurrentCueFullScanRoute::Suppress;
     const bool burst=state->needsFullScanBurst.load(std::memory_order_acquire);
     const uint64_t last=state->lastSemanticRefreshSequence;
     const uint64_t interval=(std::max)(uint64_t(1),state->semanticRefreshIntervalFrames);
@@ -3023,7 +3044,7 @@ inline void SubtitleMeasurementWorker::ObserveCurrentCueSemanticScan(
     if(!confirms)for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
         const auto& entry=**i;
         if(entry.seedTask || entry.revision!=state->descriptor.revision || !entry.proofVerified ||
-            !SameExactTaskKey(entry.scanKey,key))continue;
+            !MatchesVerifiedScanSource(entry,key))continue;
         confirms=CompleteSemanticScanConfirmsVerifiedCue(result,key,entry.receipt);break;
     }
     state->needsFullScanBurst.store(!confirms,std::memory_order_release);
@@ -3229,17 +3250,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         const bool sameTemplateContext=SameContext(descriptor.context,request.currentKey);
         const bool currentMatches=CurrentMatches(descriptor,request.currentKey,request.physicalBase,request.source,
             request.sourceMode,request.backgroundMode);
-        const auto& scanHint=request.fullScanKey.sharedPicture;
-        const bool hasSharedBounds=scanHint.bounds.top<scanHint.bounds.bottom &&
-            scanHint.bounds.left<scanHint.bounds.right;
-        const bool scanBaseCompatible=(!hasSharedBounds ||
-            (scanHint.AvailableFor(request.fullScanKey.identity,request.fullScanKey.width,request.fullScanKey.height) &&
-             SameBounds(scanHint.bounds,request.physicalBase))) &&
-            (!scanHint.inspectionCandidate.valid ||
-             (scanHint.inspectionCandidate.AvailableFor(request.fullScanKey.identity,
-                request.fullScanKey.width,request.fullScanKey.height,request.fullScanKey.policyGeneration,
-                request.fullScanKey.continuityGeneration) &&
-              SameBounds(scanHint.inspectionCandidate.bounds,request.physicalBase)));
+        const bool scanBaseCompatible=CompatibleScanBase(request.fullScanKey,request.physicalBase);
         const bool scanKeyMatches=!request.hasFullScanKey ||
             (SameAnalysisFrameIdentity(request.fullScanKey.identity,request.currentKey.identity) &&
              SameInterpretationContext(request.fullScanKey,request.currentKey) && scanBaseCompatible);

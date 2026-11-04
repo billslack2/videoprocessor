@@ -13,8 +13,9 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1139,
+  "minimumNativeTests": 1140,
   "requiredNativeMethods": [
+    "CurrentCueWorkerSharesVerifiedRefreshAcrossCompatibleKeys",
     "CurrentCueWorkerPreparedSamplingBasisRequiresExactQualifiedComposition",
     "CurrentCueWorkerPreparedSamplingBasisReusesCurrentPixelsAndRefreshesSemantics",
     "NativeSupportAttemptCompletesOnceAfterOutwardPublicationWithoutRetryingNegatives",

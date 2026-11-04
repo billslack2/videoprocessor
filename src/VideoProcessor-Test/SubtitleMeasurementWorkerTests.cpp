@@ -5135,6 +5135,73 @@ TEST_METHOD(CurrentCueWorkerPreparedSamplingBasisReusesCurrentPixelsAndRefreshes
     }
 }
 
+TEST_METHOD(CurrentCueWorkerSharesVerifiedRefreshAcrossCompatibleKeys) {
+    for(const double rate:{24.0,60.0})for(const bool aliasFirst:{false,true}) {
+        auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto seed=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(1,seedPixels));
+        seed->frameMs=1000.0/rate;
+        std::atomic_uint scans{0};
+        auto worker=std::make_unique<SubtitleMeasurementWorker>();worker->SetInputRateHz(rate);
+        uint64_t revision=0;
+        Assert::IsTrue(worker->SubmitCurrentCueTemplate(*seed,revision)==SubtitleCurrentCueProofStatus::Queued);
+        bool seeded=false;for(int poll=0;poll<1000;++poll) {
+            uint64_t same=0;if(worker->SubmitCurrentCueTemplate(*seed,same)==SubtitleCurrentCueProofStatus::Ready){seeded=true;break;}
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsTrue(seeded);
+        const unsigned interval=unsigned(std::ceil(100.0/seed->frameMs));
+        for(uint64_t sequence=2;sequence<=20;++sequence) {
+            auto pixels=std::make_shared<std::vector<uint16_t>>(*seedPixels);
+            // This newly found owned point is in the picture outside all old
+            // glyph/cleanup/destination samples. Full semantics must notice it.
+            if(sequence>=19)(*pixels)[25*160+130]=uint16_t(700<<6);
+            auto current=CompleteThreeLineScan(sequence,*pixels);current.identity.analysisDomainKey=17;
+            current.sharedPicture=seed->observation.sharedPicture;current.sharedPicture.identity=current.identity;
+            current.sharedPicture.inspectionCandidate.originIdentity=current.identity;current.inspectionCandidateUsed=true;
+            auto canonical=std::make_unique<SubtitleBoxObservation>();
+            Assert::IsTrue(BuildSubtitleCurrentCueProofKey(current,current.identity,seed->physicalBase,true,*canonical));
+            worker->AdvanceCurrentCueRenderWindow(current.identity,sequence);
+            SubtitleCurrentCueProofRequest request;request.currentKey=*canonical;request.fullScanKey=current;request.hasFullScanKey=true;
+            request.source=OwnedCadenceSource(pixels);request.physicalBase=seed->physicalBase;request.sourceMode=seed->sourceMode;
+            request.backgroundMode=3;request.templateRevision=revision;request.frameMs=seed->frameMs;request.fullScanDue=false;
+            request.eligibleRenderHead=current.identity;request.eligibleTailSequence=sequence;
+            Assert::IsTrue(worker->SubmitCurrentCueProof(std::move(request))==SubtitleCurrentCueProofStatus::Queued);
+            SubtitleCurrentCueProofReceipt receipt;auto status=SubtitleCurrentCueProofStatus::Queued;
+            for(int poll=0;poll<1000;++poll) {
+                status=worker->TryPeekCurrentCueProof(*canonical,receipt);
+                if(status!=SubtitleCurrentCueProofStatus::Queued && status!=SubtitleCurrentCueProofStatus::Pending)break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Ready);
+            for(int slot=0;slot<2;++slot) {
+                const bool alias=aliasFirst?slot==0:slot==1;
+                auto key=current;
+                if(alias){key.sharedPicture.bounds=seed->physicalBase;key.sharedPicture.inspectionCandidate={};key.inspectionCandidateUsed=false;}
+                auto result=current;result.sharedPicture=key.sharedPicture;result.inspectionCandidateUsed=key.inspectionCandidateUsed;
+                // Complete current glyph evidence remains factual even when
+                // physical-bar authority is unavailable. It grants no crop.
+                result.barAuthority=result.independentBarAnalysis=false;result.barEvidence={};result.samplingBasis={};
+                Assert::AreEqual(sequence<19,SubtitleCurrentCueWorkerDetail::CompleteSemanticScanConfirmsVerifiedCue(result,key,receipt));
+                const bool admitted=worker->Submit(key,[result,&scans](SubtitleMeasurementSampler&,
+                    const SubtitleBarTrackingReference&) mutable {++scans;return result;});
+                if(admitted){SubtitleBoxObservation output;Assert::IsTrue(WaitForRead(*worker,key,output));}
+                // The second alias arrives AFTER the first callback completed.
+                if(slot==1)Assert::IsFalse(admitted,L"One verified source gets at most one full semantic refresh, even during a burst.");
+            }
+            const unsigned expected=unsigned(((std::min)(sequence,uint64_t(19))-1)/interval)+(sequence==20?1u:0u);
+            Assert::AreEqual(expected,scans.load(),L"Steady semantics keep normal cadence; newly owned current content requests next-source refresh.");
+            if(sequence==20)for(int conflict=0;conflict<2;++conflict) {
+                auto key=current;key.sharedPicture.bounds=seed->physicalBase;key.sharedPicture.inspectionCandidate={};key.inspectionCandidateUsed=false;
+                if(conflict==0)++key.sharedPicture.bounds.top;
+                else {++key.identity.analysisDomainKey;key.sharedPicture.identity=key.identity;}
+                Assert::IsTrue(worker->Submit(key,[key](SubtitleMeasurementSampler&,
+                    const SubtitleBarTrackingReference&) mutable {return key;}),L"Contradictory geometry/domain cannot borrow verified alias suppression.");
+                SubtitleBoxObservation output;Assert::IsTrue(WaitForRead(*worker,key,output));
+            }
+        }
+    }
+}
+
 TEST_METHOD(CurrentCueWorkerSeedsFreshRawScanBoundToHeldPresentation) {
     struct Workspace {
         SubtitleBoxPresentation tracker;

@@ -197,6 +197,12 @@ namespace
     // do not acquire or print stack metadata.
     std::atomic<bool> nativeStackHostActive{false};
     std::atomic<size_t> nativeStackHostSubmittedReserve{0};
+    void NativeRendererFixtureLog(const char* message) {
+        if(nativeStackHostActive.load(std::memory_order_relaxed)) {
+            fprintf(stderr,"%s\n",message);fflush(stderr);
+        }
+        Microsoft::VisualStudio::CppUnitTestFramework::Logger::WriteMessage(message);
+    }
     __declspec(noinline) size_t NativeRegressionThreadStackReserve()
     {
         unsigned char stackAddress=0;
@@ -5152,7 +5158,7 @@ namespace VideoProcessorTest
             std::unique_ptr<char,decltype(&std::free)> captureOwner(captureValue,&std::free);
             if(!captureValue||!*captureValue) {
                 Assert::IsFalse(pausedNative||scriptureHeld,L"The paused native regression requires its original private capture; missing corpus is not a pass.");
-                Logger::WriteMessage("OPTIONAL_FIXTURE_NOT_EXERCISED: VP_SUBTITLE_CAPTURE_ROOT absent; private frames exercised=0. This result is not capture coverage.");
+                NativeRendererFixtureLog("OPTIONAL_FIXTURE_NOT_EXERCISED: VP_SUBTITLE_CAPTURE_ROOT absent; private frames exercised=0. This result is not capture coverage.");
                 return;
             }
             constexpr int width=3840,height=2160,rowBytes=10240;
@@ -5185,7 +5191,7 @@ namespace VideoProcessorTest
                     if(scriptureHeld)mapping<<" renderer_index follows SCRIPTURE REPLAY MAP; paused acquisition repeats original frame4, then ordered corpus";
                     else mapping<<" renderer_index=(renderer_source-1)%"<<phaseCount;
                     mapping<<"; renderer timestamps and generations are fresh; looping is replay scheduling, not additional recorded history";
-                    Logger::WriteMessage(mapping.str().c_str());
+                    NativeRendererFixtureLog(mapping.str().c_str());
                 }
                 std::ifstream pixels(path+".bin",std::ios::binary|std::ios::ate);
                 Assert::IsTrue(bool(pixels)&&pixels.tellg()==std::streamoff(rowBytes)*height,L"Native capture length mismatch.");
@@ -5238,7 +5244,7 @@ namespace VideoProcessorTest
             if(scriptureHeld)Assert::IsTrue(createRegression!=nullptr,
                 L"This fixture requires its explicit regression factory; absence is not coverage.");
             Assert::IsFalse(visualCapture&&!scriptureHeld,L"Visual readbacks belong only to the separate scripture visual method.");
-            if(visualCapture)Logger::WriteMessage("SCRIPTURE VISUAL ONLY: five source-linked actual output captures; no performance qualification.");
+            if(visualCapture)NativeRendererFixtureLog("SCRIPTURE VISUAL ONLY: five source-linked actual output captures; no performance qualification.");
             ScopedCadenceDiagnostics cadenceDiagnostics(true);
             struct DiagnosticCleanup{VideoProcessorLibplaceboConfigureDiagnosticFn configure;
                 ~DiagnosticCleanup(){configure(nullptr,nullptr,nullptr,nullptr);std::lock_guard<std::mutex> lock(classicPoseLogMutex);
@@ -5290,7 +5296,7 @@ namespace VideoProcessorTest
             cleanup.renderer->SetQueueFramePolicy(4,4,true);cleanup.renderer->SetActivePictureLookaheadFrames(3);
             {std::lock_guard<std::mutex> lock(classicPoseLogMutex);
                 for(auto it=classicPoseMessages.rbegin();it!=classicPoseMessages.rend();++it)
-                    if(it->find("Alpha queue policy:")!=std::string::npos){Logger::WriteMessage(it->c_str());break;}}
+                    if(it->find("Alpha queue policy:")!=std::string::npos){NativeRendererFixtureLog(it->c_str());break;}}
 
             VideoStateComPtr state=new VideoState();state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::V210;
             state->displayMode=std::make_shared<DisplayMode>(width,height,false,24000,1001);
@@ -5308,7 +5314,8 @@ namespace VideoProcessorTest
             std::vector<double> ingressMs;std::vector<AnalysisDiagnosticRecordV1> observed;
             struct TraceDump {
                 const std::vector<AnalysisDiagnosticRecordV1>& records;bool beta;
-                ~TraceDump() {
+                ~TraceDump() {Write();}
+                void Write() const {
                     try {
                         wchar_t path[32768]={};const auto size=GetEnvironmentVariableW(L"VP_PAUSED_REPLAY_TRACE_ROOT",path,32768);
                         if(!size||size>=32768)return;
@@ -5384,14 +5391,14 @@ namespace VideoProcessorTest
                 if(lastOutput)row<<" last_native="<<lastOutput->published[1]<<'-'<<lastOutput->published[3]
                     <<" last_actual="<<lastOutput->metrics[9]<<'-'<<lastOutput->metrics[11]
                     <<" last_mode="<<lastOutput->counters[3]<<" flags="<<lastOutput->flags;
-                Logger::WriteMessage(row.str().c_str());
+                NativeRendererFixtureLog(row.str().c_str());
                 size_t emitted=0;
                 for(auto i=observed.rbegin();i!=observed.rend()&&emitted<12;++i)
                     if(!strcmp(i->stage,"subtitle-canvas-admission")||!strcmp(i->stage,"worker-cue-template")||
                         !strcmp(i->stage,"subtitle-cue-proof-bind-rejected")||!strcmp(i->stage,"subtitle-cue-proof-key-rejected")) {
                         std::ostringstream detail;detail<<"CAPTURED V210 ACQUISITION DETAIL: source="<<i->sourceFrameNumber
                             <<" stage="<<i->stage<<" reason="<<i->reason<<" flags="<<i->flags;
-                        Logger::WriteMessage(detail.str().c_str());++emitted;
+                        NativeRendererFixtureLog(detail.str().c_str());++emitted;
                     }
             }
             Assert::IsTrue(acquired,L"Actual capture never produced a composed native-qualified source; no steady coverage claimed.");
@@ -5406,7 +5413,7 @@ namespace VideoProcessorTest
                     <<" preroll_original_index=4 preroll_original_accepted=15936 preroll_original_physical=20420"
                     <<" corpus_first="<<scriptureCorpusStart<<" corpus_original_first=3 corpus_count=83"
                     <<"; corpus_index=(renderer_source-corpus_first)%83; inputs are unmodified";
-                Logger::WriteMessage(mapping.str().c_str());
+                NativeRendererFixtureLog(mapping.str().c_str());
             }
             if(pausedRecovery) {
                 recoveryStart=sequence;usePriorBackground=false;
@@ -5425,12 +5432,14 @@ namespace VideoProcessorTest
                     Assert::IsTrue(runtime.SelectProfile("subtitles",profiles[phase],true,{},selection,error));
                     Assert::IsTrue(selection.snapshot!=nullptr);
                     bool profileRestart=false,profileReset=false;CString profileName;
-                    Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*selection.snapshot,profileName,
-                        profileRestart,profileReset)&&!profileRestart,
+                    const bool profileApplied=cleanup.renderer->ApplyApplicationState(*selection.snapshot,profileName,
+                        profileRestart,profileReset);
+                    if(!profileApplied || profileRestart)traceDump.Write();
+                    Assert::IsTrue(profileApplied&&!profileRestart,
                         L"Actual profile cycle must update the running renderer without recreation.");
                     std::ostringstream row;row<<"SCRIPTURE PROFILE: phase="<<phase<<" profile="<<profiles[phase]
                         <<" first_input="<<sequence<<" last_input="<<sequence+47;
-                    Logger::WriteMessage(row.str().c_str());
+                    NativeRendererFixtureLog(row.str().c_str());
                 }
                 if(visualCapture && sequence>=steadyStart+10 && sequence-steadyStart<150 &&
                     (sequence-steadyStart-10)%30==0) {
@@ -5439,12 +5448,13 @@ namespace VideoProcessorTest
                     ++visualRequests;
                     std::ostringstream row;row<<"SCRIPTURE VISUAL REQUEST: ordinal="<<visualRequests
                         <<" next_input="<<sequence<<"; actual source and context are in saved capture JSON";
-                    Logger::WriteMessage(row.str().c_str());
+                    NativeRendererFixtureLog(row.str().c_str());
                 }
                 pump();
             }
             cleanup.renderer->Stop();cleanup.stopped=true;drain();
             if(profileCycle) {
+                traceDump.Write(); // Framework SEH assertions do not run /EHsc destructors in the standalone host.
                 // Functional stack/lifecycle test on the actual renderer thread.
                 // Deliberately no stable-mapping or deadline claim across styles.
                 std::set<uint64_t> submitted;std::array<unsigned,6> perPhase{},prepared{};
@@ -5475,7 +5485,7 @@ namespace VideoProcessorTest
                     <<" expected="<<steadyCount<<" exact="<<currentExact<<" max_source_gap="<<maxGap
                     <<" prepared_seed_offers="<<seedOffers<<" seeded_templates="<<seeded;
                 for(unsigned i=0;i<6;++i)row<<" phase"<<i<<"="<<perPhase[i]<<" composed_tail"<<i<<"="<<prepared[i];
-                Logger::WriteMessage(row.str().c_str());
+                NativeRendererFixtureLog(row.str().c_str());
                 Assert::IsTrue(submitted.size()==steadyCount && currentExact && maxGap==1,
                     L"Every current input must advance through the live profile cycle without stale source replay.");
                 Assert::IsTrue(seedOffers>0 && seeded>0,
@@ -5536,14 +5546,14 @@ namespace VideoProcessorTest
                 <<" max_source_gap="<<maxSourceGap<<" max_processing_selection_lag="<<maxProcessingSelectionLag<<" max_submit_gap_ms="<<maxGapMs<<" max_latency_ms="<<maxLatencyMs
                 <<" early_latency_ms="<<early<<" late_latency_ms="<<late<<" work_samples="<<workMs.size()
                 <<" max_frame_work_ms="<<maxWorkMs<<" max_ingress_ms="<<maxIngress;
-            Logger::WriteMessage(summary.str().c_str());
+            NativeRendererFixtureLog(summary.str().c_str());
             for(const auto& r:observed)if(r.sourceFrameNumber>=steadyStart&&r.sourceFrameNumber<=steadyEnd&&
                 ((!strcmp(r.stage,"submitted-presentation")&&(!(r.flags&2u)||r.metrics[11]>pictureBottom+.01))||
                  !strcmp(r.stage,"subtitle-canvas-admission"))) {
                 std::ostringstream row;row<<"CAPTURED V210 DECISION: source="<<r.sourceFrameNumber<<" stage="<<r.stage
                     <<" flags="<<r.flags<<" reason="<<r.reason<<" detail="<<r.detail<<" selected="<<r.counters[1]
                     <<" published="<<r.published[1]<<'-'<<r.published[3]<<" actual="<<r.metrics[9]<<'-'<<r.metrics[11];
-                Logger::WriteMessage(row.str().c_str());
+                NativeRendererFixtureLog(row.str().c_str());
             }
             if(pausedRecovery) {
                 unsigned failedOld=0,freshSeeds=0,transitionOutputs=0;bool transitionExact=true;
@@ -5580,7 +5590,7 @@ namespace VideoProcessorTest
                     <<" recovery_sources="<<recoverySources.size()<<" steady_templates="<<templates
                     <<" current_outputs="<<transitionOutputs<<" exact="<<transitionExact<<" max_source_gap="<<transitionMaxGap
                     <<" max_submit_gap_ms="<<transitionGapMs;
-                Logger::WriteMessage(row.str().c_str());
+                NativeRendererFixtureLog(row.str().c_str());
                 Assert::IsTrue(failedOld>0&&freshSeeds>0&&replacementRevision>failedRevision&&replacementSource<steadyStart,
                     L"Actual failed-baseline and later independent replacement must recover within eight input sources.");
                 Assert::IsTrue(recoverySources.size()==8,L"Every current source must advance while subtitle recovery is pending.");
@@ -5627,7 +5637,7 @@ namespace VideoProcessorTest
                 std::ostringstream result;result<<"PAUSED NATIVE: first_physical="<<firstPhysical<<" current_known="<<currentKnown
                     <<" current_unknown="<<currentUnknown<<" current_wrong="<<currentWrong<<" current_phases="<<currentPhases.size()
                     <<" stable_samples="<<stableSamples<<" stable_physical="<<stable<<" mapping_stable="<<mappingStable
-                    <<" guard="<<guard[0]<<','<<guard[1]<<','<<guard[2]<<','<<guard[3];Logger::WriteMessage(result.str().c_str());
+                    <<" guard="<<guard[0]<<','<<guard[1]<<','<<guard[2]<<','<<guard[3];NativeRendererFixtureLog(result.str().c_str());
                 bool completeSteadyPhysical=true;
                 for(uint64_t expected=steadyStart;expected<=steadyEnd;++expected)
                     completeSteadyPhysical&=currentSources.count(expected)!=0;
@@ -5692,7 +5702,7 @@ namespace VideoProcessorTest
                     <<" current_held_certificate="<<genuineHeld<<" mapping_stable="<<mappingStable
                     <<" visual_requests="<<visualRequests<<" reference_witnesses="<<referenceWitnesses
                     <<" preroll_reference="<<prerollReference;
-                Logger::WriteMessage(row.str().c_str());
+                NativeRendererFixtureLog(row.str().c_str());
                 Assert::IsTrue(proofs==0&&consumed==0&&declined.size()==steadyCount,
                     L"Unavailable optional reuse must be exercised for each source; a ready receipt cannot mask the raw/held path.");
                 Assert::IsTrue(referenceWitnesses>0&&prerollReference,
