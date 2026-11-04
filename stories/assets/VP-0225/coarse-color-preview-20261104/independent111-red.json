@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "sourcePin": "7dc5b0e5768f5329f189dd3a4d506f250c5f639a",
+  "sourceDirty": true,
+  "nativeControlReceipt": "artifacts/qualification/runs/20261104-155803-c624f868",
+  "cases": 111,
+  "passed": 103,
+  "failed": 8,
+  "allPassed": false,
+  "failures": [
+    {
+      "case": "distant-subcell-glyph-gap",
+      "fullRange": 0,
+      "phase": 0,
+      "proposalAvailable": 0,
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "proposalReason": "coarse-color-native-continuity-unresolved",
+      "samples": 34732,
+      "proposalMs": 0.608,
+      "strictAvailable": 0,
+      "strictClass": 0,
+      "strictReason": "",
+      "passed": 0
+    },
+    {
+      "case": "distant-subcell-glyph-gap",
+      "fullRange": 0,
+      "phase": 1,
+      "proposalAvailable": 0,
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "proposalReason": "coarse-color-native-continuity-unresolved",
+      "samples": 34732,
+      "proposalMs": 0.8641,
+      "strictAvailable": 0,
+      "strictClass": 0,
+      "strictReason": "",
+      "passed": 0
+    },
+    {
+      "case": "distant-subcell-glyph-gap",
+      "fullRange": 0,
+      "phase": 2,
+      "proposalAvailable": 0,
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "proposalReason": "coarse-color-native-continuity-unresolved",
+      "samples": 34732,
+      "proposalMs": 0.5128,
+      "strictAvailable": 0,
+      "strictClass": 0,
+      "strictReason": "",
+      "passed": 0
+    },
+    {
+      "case": "distant-subcell-glyph-gap",
+      "fullRange": 0,
+      "phase": 3,
+      "proposalAvailable": 0,
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "proposalReason": "coarse-color-native-continuity-unresolved",
+      "samples": 34732,
+      "proposalMs": 0.5379,
+      "strictAvailable": 0,
+      "strictClass": 0,
+      "strictReason": "",
+      "passed": 0
+    },
+    {
+      "case": "distant-subcell-glyph-gap",
+      "fullRange": 1,
+      "phase": 0,
+      "proposalAvailable": 0,
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "proposalReason": "coarse-color-native-continuity-unresolved",
+      "samples": 34732,
+      "proposalMs": 0.4811,
+      "strictAvailable": 0,
+      "strictClass": 0,
+      "strictReason": "",
+      "passed": 0
+    },
+    {
+      "case": "distant-subcell-glyph-gap",
+      "fullRange": 1,
+      "phase": 1,
+      "proposalAvailable": 0,
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "proposalReason": "coarse-color-native-continuity-unresolved",
+      "samples": 34732,
+      "proposalMs": 0.5389,
+      "strictAvailable": 0,
+      "strictClass": 0,
+      "strictReason": "",
+      "passed": 0
+    },
+    {
+      "case": "distant-subcell-glyph-gap",
+      "fullRange": 1,
+      "phase": 2,
+      "proposalAvailable": 0,
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "proposalReason": "coarse-color-native-continuity-unresolved",
+      "samples": 34732,
+      "proposalMs": 0.6519,
+      "strictAvailable": 0,
+      "strictClass": 0,
+      "strictReason": "",
+      "passed": 0
+    },
+    {
+      "case": "distant-subcell-glyph-gap",
+      "fullRange": 1,
+      "phase": 3,
+      "proposalAvailable": 0,
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "proposalReason": "coarse-color-native-continuity-unresolved",
+      "samples": 34732,
+      "proposalMs": 0.5347,
+      "strictAvailable": 0,
+      "strictClass": 0,
+      "strictReason": "",
+      "passed": 0
+    }
+  ],
+  "currentSceneTransitionCases": 20,
+  "currentSceneTransitionsPassed": true,
+  "scope": "CPU independent synthetic proposal, strict native verifier and production worker detector; no live UI/GPU/runtime/deadline or temporal-model validation",
+  "remainingFailure": "Eight range/phase variants of 63-row bright glyph blocks separated by one matte row. New coarse path rejects native discontinuity. Unchanged topology fallback reports physical70..539 and BAR_CROP_TRUSTED, same geometry as direct established MeasureSourcePicture. This preserves expanded content but does not correctly separate authored picture70..411 from caption blocks. Assertions retained.",
+  "sourceAndLibraryHashes": {
+    "src/VideoProcessor-Lib/SourcePictureCoarseColor.h": "6fb84fe740c49437d4c2c40f439c9548a047cc3424c0b6a953aa2f72bd290306",
+    "src/VideoProcessor-Lib/SourcePictureDetector.cpp": "83090a62628f32c498f912925d60576fe26cb7b57ac08a91cc62a6bfeac5d605",
+    "src/VideoProcessor-Lib/SourcePictureMeasurement.h": "1cdd663d3221c896818ba111f8a5ff611571337760396d00dc06336b4fa67a59",
+    "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp": "277e493957b76c6caed0369313e9c52adcc5565676d0c96ebd206b0acc4b7c8d",
+    "x64/Release/VideoProcessor-Lib.lib": "3dca470a769c7d4f636d4d01e7acc4e3ca0e6c010dd89c9cd494fd4c078fa541"
+  },
+  "artifactHashes": {
+    "contracts.cpp": "eff5c5e7f0bce2b0f203b252bdaf0a16c5a25e69095cf3cbc1325fa475a89737",
+    "contracts.vcxproj": "a1894c4781584bb9e178ac20ae0dfd9f1f58021f629850e5944b753d165d762d",
+    "build/IndependentCoarseContracts.exe": "2c41bb19c213d9c58cf80a746277c25153ca66e90da771a6f516f6af22150adc",
+    "final111-results.jsonl": "4eb4aa6be8770a5f2a779711ae8c34d5448266a74f3be5c4eb02a6dd8e9d05b3",
+    "final111-stderr.log": "fdd82fdce86197030202e758e884a4a8082ecb1d2b77e18ab34a9b3ed7c674f0"
+  },
+  "hashScope": "Recorded immediately after final execution; source/library remained frozen by coordinated build ownership. No invented pre-run hash comparison."
+}

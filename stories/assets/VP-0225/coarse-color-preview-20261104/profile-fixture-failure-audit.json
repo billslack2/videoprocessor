@@ -1,0 +1,468 @@
+{
+  "scope": "Read-only diagnosis of preserved FAILED run; not a passing rerun or override",
+  "originalTestFailed": true,
+  "sourceTsvSha256": "e387319015cad6d1a09984ea8cc4c5cc8ca35fd39acb3602a367d34374e329b5",
+  "expectedAppliedModes": [
+    2,
+    3,
+    0,
+    2,
+    3
+  ],
+  "observedAppliedModes": [
+    2,
+    3,
+    0,
+    2,
+    3
+  ],
+  "uniqueSubmitted": 288,
+  "runs": [
+    {
+      "mode": 2,
+      "first": 66,
+      "last": 110,
+      "count": 45,
+      "last16": [
+        {
+          "source": 95,
+          "composed": true,
+          "processingSource": 95
+        },
+        {
+          "source": 96,
+          "composed": true,
+          "processingSource": 96
+        },
+        {
+          "source": 97,
+          "composed": true,
+          "processingSource": 97
+        },
+        {
+          "source": 98,
+          "composed": true,
+          "processingSource": 98
+        },
+        {
+          "source": 99,
+          "composed": true,
+          "processingSource": 99
+        },
+        {
+          "source": 100,
+          "composed": true,
+          "processingSource": 100
+        },
+        {
+          "source": 101,
+          "composed": true,
+          "processingSource": 101
+        },
+        {
+          "source": 102,
+          "composed": true,
+          "processingSource": 102
+        },
+        {
+          "source": 103,
+          "composed": true,
+          "processingSource": 103
+        },
+        {
+          "source": 104,
+          "composed": true,
+          "processingSource": 104
+        },
+        {
+          "source": 105,
+          "composed": true,
+          "processingSource": 105
+        },
+        {
+          "source": 106,
+          "composed": true,
+          "processingSource": 106
+        },
+        {
+          "source": 107,
+          "composed": true,
+          "processingSource": 107
+        },
+        {
+          "source": 108,
+          "composed": true,
+          "processingSource": 108
+        },
+        {
+          "source": 109,
+          "composed": true,
+          "processingSource": 109
+        },
+        {
+          "source": 110,
+          "composed": true,
+          "processingSource": 110
+        }
+      ],
+      "last16Composed": 16
+    },
+    {
+      "mode": 3,
+      "first": 111,
+      "last": 158,
+      "count": 48,
+      "last16": [
+        {
+          "source": 143,
+          "composed": true,
+          "processingSource": 143
+        },
+        {
+          "source": 144,
+          "composed": true,
+          "processingSource": 144
+        },
+        {
+          "source": 145,
+          "composed": true,
+          "processingSource": 145
+        },
+        {
+          "source": 146,
+          "composed": true,
+          "processingSource": 146
+        },
+        {
+          "source": 147,
+          "composed": true,
+          "processingSource": 147
+        },
+        {
+          "source": 148,
+          "composed": true,
+          "processingSource": 148
+        },
+        {
+          "source": 149,
+          "composed": true,
+          "processingSource": 149
+        },
+        {
+          "source": 150,
+          "composed": true,
+          "processingSource": 150
+        },
+        {
+          "source": 151,
+          "composed": true,
+          "processingSource": 151
+        },
+        {
+          "source": 152,
+          "composed": true,
+          "processingSource": 152
+        },
+        {
+          "source": 153,
+          "composed": true,
+          "processingSource": 153
+        },
+        {
+          "source": 154,
+          "composed": true,
+          "processingSource": 154
+        },
+        {
+          "source": 155,
+          "composed": true,
+          "processingSource": 155
+        },
+        {
+          "source": 156,
+          "composed": true,
+          "processingSource": 156
+        },
+        {
+          "source": 157,
+          "composed": true,
+          "processingSource": 157
+        },
+        {
+          "source": 158,
+          "composed": true,
+          "processingSource": 158
+        }
+      ],
+      "last16Composed": 16
+    },
+    {
+      "mode": 0,
+      "first": 159,
+      "last": 254,
+      "count": 96,
+      "last16": [
+        {
+          "source": 239,
+          "composed": false,
+          "processingSource": 239
+        },
+        {
+          "source": 240,
+          "composed": false,
+          "processingSource": 240
+        },
+        {
+          "source": 241,
+          "composed": false,
+          "processingSource": 241
+        },
+        {
+          "source": 242,
+          "composed": false,
+          "processingSource": 242
+        },
+        {
+          "source": 243,
+          "composed": false,
+          "processingSource": 243
+        },
+        {
+          "source": 244,
+          "composed": false,
+          "processingSource": 244
+        },
+        {
+          "source": 245,
+          "composed": false,
+          "processingSource": 245
+        },
+        {
+          "source": 246,
+          "composed": false,
+          "processingSource": 246
+        },
+        {
+          "source": 247,
+          "composed": false,
+          "processingSource": 247
+        },
+        {
+          "source": 248,
+          "composed": false,
+          "processingSource": 248
+        },
+        {
+          "source": 249,
+          "composed": false,
+          "processingSource": 249
+        },
+        {
+          "source": 250,
+          "composed": false,
+          "processingSource": 250
+        },
+        {
+          "source": 251,
+          "composed": false,
+          "processingSource": 251
+        },
+        {
+          "source": 252,
+          "composed": false,
+          "processingSource": 252
+        },
+        {
+          "source": 253,
+          "composed": false,
+          "processingSource": 253
+        },
+        {
+          "source": 254,
+          "composed": false,
+          "processingSource": 254
+        }
+      ],
+      "last16Composed": 0
+    },
+    {
+      "mode": 2,
+      "first": 255,
+      "last": 302,
+      "count": 48,
+      "last16": [
+        {
+          "source": 287,
+          "composed": true,
+          "processingSource": 287
+        },
+        {
+          "source": 288,
+          "composed": true,
+          "processingSource": 288
+        },
+        {
+          "source": 289,
+          "composed": true,
+          "processingSource": 289
+        },
+        {
+          "source": 290,
+          "composed": true,
+          "processingSource": 290
+        },
+        {
+          "source": 291,
+          "composed": true,
+          "processingSource": 291
+        },
+        {
+          "source": 292,
+          "composed": true,
+          "processingSource": 292
+        },
+        {
+          "source": 293,
+          "composed": true,
+          "processingSource": 293
+        },
+        {
+          "source": 294,
+          "composed": true,
+          "processingSource": 294
+        },
+        {
+          "source": 295,
+          "composed": true,
+          "processingSource": 295
+        },
+        {
+          "source": 296,
+          "composed": true,
+          "processingSource": 296
+        },
+        {
+          "source": 297,
+          "composed": true,
+          "processingSource": 297
+        },
+        {
+          "source": 298,
+          "composed": true,
+          "processingSource": 298
+        },
+        {
+          "source": 299,
+          "composed": true,
+          "processingSource": 299
+        },
+        {
+          "source": 300,
+          "composed": true,
+          "processingSource": 300
+        },
+        {
+          "source": 301,
+          "composed": true,
+          "processingSource": 301
+        },
+        {
+          "source": 302,
+          "composed": true,
+          "processingSource": 302
+        }
+      ],
+      "last16Composed": 16
+    },
+    {
+      "mode": 3,
+      "first": 303,
+      "last": 353,
+      "count": 51,
+      "last16": [
+        {
+          "source": 338,
+          "composed": true,
+          "processingSource": 338
+        },
+        {
+          "source": 339,
+          "composed": true,
+          "processingSource": 339
+        },
+        {
+          "source": 340,
+          "composed": true,
+          "processingSource": 340
+        },
+        {
+          "source": 341,
+          "composed": true,
+          "processingSource": 341
+        },
+        {
+          "source": 342,
+          "composed": true,
+          "processingSource": 342
+        },
+        {
+          "source": 343,
+          "composed": true,
+          "processingSource": 343
+        },
+        {
+          "source": 344,
+          "composed": true,
+          "processingSource": 344
+        },
+        {
+          "source": 345,
+          "composed": true,
+          "processingSource": 345
+        },
+        {
+          "source": 346,
+          "composed": true,
+          "processingSource": 346
+        },
+        {
+          "source": 347,
+          "composed": true,
+          "processingSource": 347
+        },
+        {
+          "source": 348,
+          "composed": true,
+          "processingSource": 348
+        },
+        {
+          "source": 349,
+          "composed": true,
+          "processingSource": 349
+        },
+        {
+          "source": 350,
+          "composed": true,
+          "processingSource": 350
+        },
+        {
+          "source": 351,
+          "composed": true,
+          "processingSource": 351
+        },
+        {
+          "source": 352,
+          "composed": true,
+          "processingSource": 352
+        },
+        {
+          "source": 353,
+          "composed": true,
+          "processingSource": 353
+        }
+      ],
+      "last16Composed": 16
+    }
+  ],
+  "finding": "Input profile boundary114 selected already-queued source111 under new mode; likewise159/162 and303/306. All4advanced actual-mode runs have their literal final16composed. Existing16-per-input-block assertion mixed presentation styles."
+}

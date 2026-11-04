@@ -1,0 +1,150 @@
+{
+  "process": 41684,
+  "preview": "E:\\codex\\videoprocessor\\previews\\ar-temporal-1b5b583bc3085a3168d4b2b1a8082bab3a920411",
+  "scope": "Last bounded live window; no GPU benchmark or visual verification",
+  "startByte": 0,
+  "endByte": 4107062,
+  "logSHA256": "e742de381f1c922043ebd232f7c12efc5303de0b1e71b6d461816d8c3aeb5afa",
+  "parseErrors": 0,
+  "contexts": [
+    {
+      "context": [
+        "{AAAB40D8-0BE0-4AEB-9BEC-4DCD94B39A86}",
+        1,
+        3,
+        2,
+        5
+      ],
+      "first": "21:28:19.040Z AAAB40D8 G1 O572 S572",
+      "last": "21:28:39.022Z AAAB40D8 G1 O1051 S1051",
+      "rows": 480,
+      "submitted": 480,
+      "distinctSources": 480,
+      "sourceRange": [
+        572,
+        1051
+      ],
+      "maxDistinctGapMs": 54,
+      "skippedSelectedIds": 0,
+      "repeatCount": 0,
+      "allFactsCurrent": true,
+      "allFinalFacts": true,
+      "final_owner": {
+        "\"trusted\"": 331,
+        "\"submitted-scope-retention\"": 22,
+        "\"fit\"": 127
+      },
+      "final_reason": {
+        "\"trusted wider content filled with centered left and right crop\"": 163,
+        "\"unprepared advanced output preserves current raw visibility\"": 4,
+        "\"current empty native bands preserve the fixed movie canvas without claiming caption absence\"": 174,
+        "\"unknown subtitle inspection continues current raw frame at retained movie size\"": 15,
+        "\"raw subtitle fallback to current source: subtitle composition pending\"": 5,
+        "\"submitted native side fill retained across uncertain analysis\"": 1,
+        "\"raw subtitle fallback to current source: current raw visibility is not proven inside the advanced native canvas\"": 56,
+        "\"raw subtitle fallback to current source: subtitle inspection pending\"": 62
+      },
+      "fill_approved": {
+        "true": 164,
+        "false": 316
+      },
+      "fill_applied": {
+        "true": 164,
+        "false": 316
+      },
+      "support_override_applied": {
+        "false": 480
+      },
+      "physical_available": {
+        "true": 363,
+        "false": 117
+      },
+      "physical_bounds": {
+        "[0,67,3840,2092]": 139,
+        "[0,0,0,0]": 117,
+        "[0,276,3840,1883]": 7,
+        "[0,274,3840,1884]": 53,
+        "[0,275,3840,1884]": 99,
+        "[0,67,3840,2091]": 64,
+        "[0,276,3840,1884]": 1
+      },
+      "native": {
+        "[0,274,3840,1886]": 289,
+        "[0,64,3840,2094]": 191
+      },
+      "actual_source": {
+        "[26,274,3814,1886]": 164,
+        "[0,54,3840,2106]": 4,
+        "[0,64,3840,2094]": 191,
+        "[0,274,3840,2026]": 4,
+        "[0,152,3840,2026]": 2,
+        "[0,148,3840,2026]": 115
+      },
+      "actual_target": {
+        "[0.06758020073,175.3191528,2559.932373,1264.680908]": 164,
+        "[260.7142029,175.3191528,2299.285889,1264.680908]": 4,
+        "[249.6677399,175.3191528,2310.332275,1264.680908]": 191,
+        "[86.17896271,175.3191528,2473.821045,1264.680908]": 4,
+        "[163.898407,175.3191528,2396.101562,1264.680908]": 2,
+        "[166.275528,175.3191528,2393.724365,1264.680908]": 115
+      },
+      "caption": {
+        "[0,0,0,0]": 265,
+        "[1246,1778,2606,2042]": 149,
+        "[1598,1926,2238,2022]": 4,
+        "[1618,1926,2226,2042]": 62
+      },
+      "destination": {
+        "[0,0,0,0]": 318,
+        "[1173,1633,2671,1876]": 103,
+        "[1530,1918,2314,2084]": 3,
+        "[1549,1735,2292,1876]": 10,
+        "[1172,1621,2680,1876]": 46
+      },
+      "composed": {
+        "false": 318,
+        "true": 162
+      },
+      "current_composition": {
+        "false": 334,
+        "true": 146
+      },
+      "strong_prepared": {
+        "false": 334,
+        "true": 146
+      },
+      "prepare_failures": {
+        "1": 318,
+        "0": 162
+      },
+      "ownership_reason": {
+        "\"not-qualified\"": 318,
+        "\"unowned-native-glyph-excursion\"": 38,
+        "\"current-caption-proof-unavailable\"": 108,
+        "\"no-erased-bar-overlap\"": 3,
+        "\"physical-base-mismatch\"": 4,
+        "\"inspection-candidate-is-not-picture-proof\"": 9
+      },
+      "erasure_reason": {
+        "\"not-qualified\"": 318,
+        "\"current-prepared-caption-erasure\"": 146,
+        "\"no-erased-bar-overlap\"": 3,
+        "\"physical-base-mismatch\"": 4,
+        "\"inspection-candidate-is-not-picture-proof\"": 9
+      },
+      "preparation_state": {
+        "3": 480
+      },
+      "shader_failed": {
+        "false": 480
+      },
+      "held": {
+        "false": 370,
+        "true": 110
+      },
+      "allPhysicalSourcesCurrent": true,
+      "allApprovedFillSourcesCurrent": true,
+      "actualSourceChanges": 10
+    }
+  ]
+}

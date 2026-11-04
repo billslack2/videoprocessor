@@ -1,0 +1,84 @@
+{
+  "source": "1b5b583bc3085a3168d4b2b1a8082bab3a920411",
+  "passed": true,
+  "scope": "Four focused actual Standard/Beta renderer checks; no full qualification or visual acceptance",
+  "actualThreadStackReserveBytes": 1048576,
+  "guiStackReserveBytes": 4194304,
+  "mainRuntimeUnchanged": true,
+  "configurationAndStateUnchanged": true,
+  "leftClosedForAuthorizedCandidateLaunch": true,
+  "buildReceipt": {
+    "sha256": "E7D4951D95B71A1EC365712E9D2C62C0F5D1738CDEF3D71A9EF7D800D6700BCE",
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-162144-742545de\\iteration.json"
+  },
+  "wrapperReceipt": {
+    "path": "artifacts\\isolation-stack-profile-20261104-162551\\receipt.json",
+    "sha256": "781a30427b341ffff3db964a16588b63af989f503cde5c2a998fe3bd1fc7ac92"
+  },
+  "pairReceipts": {
+    "profile-cycle": {
+      "path": "artifacts\\isolation-stack-profile-20261104-162551\\profile-cycle\\receipt.json",
+      "sha256": "cf44b6277a97803319bc3d5b57e20d87767f585a3f44515978d7e82c709c06fa"
+    },
+    "scripture": {
+      "path": "artifacts\\isolation-stack-profile-20261104-162551\\scripture\\receipt.json",
+      "sha256": "27eceedb44caaf265b8dabc418e2d2d0bbdd3a063d81fc0e07216ab1ef7d15de"
+    }
+  },
+  "results": [
+    {
+      "kind": "profile-cycle",
+      "variant": "standard",
+      "case": 2,
+      "passed": true,
+      "actualThreadReserveVerified": true,
+      "profileSummary": [
+        "SCRIPTURE PROFILE STACK: submitted=288 expected=288 exact=1 max_source_gap=1 prepared_seed_offers=11 seeded_templates=8 applied_mode_runs=5 applied_mode_sequence_valid=1 phase0=48 composed_tail0=16 tail_first0=89 tail_last0=104 phase1=48 composed_tail1=16 tail_first1=137 tail_last1=152 phase2=48 composed_tail2=0 tail_first2=0 tail_last2=0 phase3=48 composed_tail3=0 tail_first3=0 tail_last3=0 phase4=48 composed_tail4=16 tail_first4=281 tail_last4=296 phase5=48 composed_tail5=16 tail_first5=332 tail_last5=347"
+      ],
+      "cadenceSummary": [],
+      "heldSummary": []
+    },
+    {
+      "kind": "profile-cycle",
+      "variant": "beta",
+      "case": 3,
+      "passed": true,
+      "actualThreadReserveVerified": true,
+      "profileSummary": [
+        "SCRIPTURE PROFILE STACK: submitted=288 expected=288 exact=1 max_source_gap=1 prepared_seed_offers=9 seeded_templates=7 applied_mode_runs=5 applied_mode_sequence_valid=1 phase0=48 composed_tail0=16 tail_first0=88 tail_last0=103 phase1=48 composed_tail1=16 tail_first1=136 tail_last1=151 phase2=48 composed_tail2=0 tail_first2=0 tail_last2=0 phase3=48 composed_tail3=0 tail_first3=0 tail_last3=0 phase4=48 composed_tail4=16 tail_first4=280 tail_last4=295 phase5=48 composed_tail5=16 tail_first5=331 tail_last5=346"
+      ],
+      "cadenceSummary": [],
+      "heldSummary": []
+    },
+    {
+      "kind": "scripture",
+      "variant": "standard",
+      "case": 0,
+      "passed": true,
+      "actualThreadReserveVerified": true,
+      "profileSummary": [],
+      "cadenceSummary": [
+        "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=166 phases=83 inspection_requests=0 templates=1 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9371 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=55.6884 max_latency_ms=150.787 early_latency_ms=135.669 late_latency_ms=134.926 work_samples=166 max_frame_work_ms=17.8101 max_ingress_ms=0.2826"
+      ],
+      "heldSummary": [
+        "SCRIPTURE NATURAL HELD: corpus_frames=83 sources=166 proof_declined=166 ordinary=43 held=123 exact_full_scans=166 unready=0 current_held_certificate=1 mapping_stable=1 visual_requests=0 reference_witnesses=2 preroll_reference=1"
+      ]
+    },
+    {
+      "kind": "scripture",
+      "variant": "beta",
+      "case": 1,
+      "passed": true,
+      "actualThreadReserveVerified": true,
+      "profileSummary": [],
+      "cadenceSummary": [
+        "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=166 phases=83 inspection_requests=0 templates=1 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=1 source_fps=24.0032 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=56.0627 max_latency_ms=150.796 early_latency_ms=137.008 late_latency_ms=134.925 work_samples=166 max_frame_work_ms=17.245 max_ingress_ms=0.2858"
+      ],
+      "heldSummary": [
+        "SCRIPTURE NATURAL HELD: corpus_frames=83 sources=166 proof_declined=166 ordinary=43 held=123 exact_full_scans=166 unready=0 current_held_certificate=1 mapping_stable=1 visual_requests=0 reference_witnesses=3 preroll_reference=1"
+      ]
+    }
+  ],
+  "priorFailurePreserved": "artifacts/isolation-stack-profile-20261104-161815",
+  "fixtureCorrection": "Test-only1b5b uses observed applied-mode runs rather than queued input phase. All288 current-source checks, exact five mode runs, actual prepared-seed execution and literal final16 composed submissions in each advanced mode remain required."
+}

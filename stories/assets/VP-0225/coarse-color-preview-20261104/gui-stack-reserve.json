@@ -1,0 +1,8 @@
+{
+  "source": "1b5b583bc3085a3168d4b2b1a8082bab3a920411",
+  "binary": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\VideoProcessor-GUI.exe",
+  "sha256": "c43300a415a1f830b3f24095f716c7d17596a8abe9c2f9f63233d50f4300fa7a",
+  "stackReserveBytes": 4194304,
+  "passed": true,
+  "scope": "Compiled GUI PE reserve, not an executed stack-safety claim"
+}

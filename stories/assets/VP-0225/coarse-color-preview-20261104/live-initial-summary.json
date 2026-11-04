@@ -1,0 +1,394 @@
+{
+  "process": 41684,
+  "preview": "E:\\codex\\videoprocessor\\previews\\ar-temporal-1b5b583bc3085a3168d4b2b1a8082bab3a920411",
+  "scope": "Last bounded live window; no GPU benchmark or visual verification",
+  "startByte": 0,
+  "endByte": 1308779,
+  "logSHA256": "249563d29e4da7f5d9503ea3cd2f6f68a9f8d711740c52276d1b9bf55baf41b2",
+  "parseErrors": 0,
+  "contexts": [
+    {
+      "context": [
+        "{AAAB40D8-0BE0-4AEB-9BEC-4DCD94B39A86}",
+        1,
+        0,
+        2,
+        2
+      ],
+      "first": "21:27:55.245Z AAAB40D8 G1 O1 S1",
+      "last": "21:27:56.395Z AAAB40D8 G1 O29 S29",
+      "rows": 29,
+      "submitted": 29,
+      "distinctSources": 29,
+      "sourceRange": [
+        1,
+        29
+      ],
+      "maxDistinctGapMs": 48,
+      "skippedSelectedIds": 0,
+      "repeatCount": 0,
+      "allFactsCurrent": true,
+      "allFinalFacts": true,
+      "final_owner": {
+        "\"full-raster\"": 29
+      },
+      "final_reason": {
+        "\"raw subtitle fallback to current source: processed subtitle canvas pending; present current raw source pixels without acquiring ...\"": 29
+      },
+      "fill_approved": {
+        "false": 29
+      },
+      "fill_applied": {
+        "false": 29
+      },
+      "support_override_applied": {
+        "false": 29
+      },
+      "physical_available": {
+        "false": 29
+      },
+      "physical_bounds": {
+        "[0,0,0,0]": 29
+      },
+      "native": {
+        "[0,0,0,0]": 29
+      },
+      "actual_source": {
+        "[0,0,3840,2160]": 29
+      },
+      "actual_target": {
+        "[311.6784668,175.3191528,2248.321533,1264.680908]": 29
+      },
+      "caption": {
+        "[0,0,0,0]": 29
+      },
+      "destination": {
+        "[0,0,0,0]": 29
+      },
+      "composed": {
+        "false": 29
+      },
+      "current_composition": {
+        "false": 29
+      },
+      "strong_prepared": {
+        "false": 29
+      },
+      "prepare_failures": {
+        "29441": 29
+      },
+      "ownership_reason": {
+        "\"not-qualified\"": 29
+      },
+      "erasure_reason": {
+        "\"not-qualified\"": 29
+      },
+      "preparation_state": {
+        "0": 29
+      },
+      "shader_failed": {
+        "false": 29
+      },
+      "held": {
+        "false": 29
+      },
+      "allPhysicalSourcesCurrent": true,
+      "allApprovedFillSourcesCurrent": true,
+      "actualSourceChanges": 0
+    },
+    {
+      "context": [
+        "{AAAB40D8-0BE0-4AEB-9BEC-4DCD94B39A86}",
+        1,
+        1,
+        2,
+        3
+      ],
+      "first": "21:27:56.438Z AAAB40D8 G1 O30 S30",
+      "last": "21:27:56.853Z AAAB40D8 G1 O40 S40",
+      "rows": 11,
+      "submitted": 11,
+      "distinctSources": 11,
+      "sourceRange": [
+        30,
+        40
+      ],
+      "maxDistinctGapMs": 43,
+      "skippedSelectedIds": 0,
+      "repeatCount": 0,
+      "allFactsCurrent": true,
+      "allFinalFacts": true,
+      "final_owner": {
+        "\"full-raster\"": 8,
+        "\"current-source-support\"": 3
+      },
+      "final_reason": {
+        "\"raw subtitle fallback to current source: processed subtitle canvas pending; present current raw source pixels without acquiring ...\"": 8,
+        "\"current-verified-source-support-presentation\"": 3
+      },
+      "fill_approved": {
+        "false": 11
+      },
+      "fill_applied": {
+        "false": 11
+      },
+      "support_override_applied": {
+        "false": 8,
+        "true": 3
+      },
+      "physical_available": {
+        "false": 8,
+        "true": 3
+      },
+      "physical_bounds": {
+        "[0,0,0,0]": 8,
+        "[0,67,3840,2092]": 1,
+        "[0,67,3840,2091]": 2
+      },
+      "native": {
+        "[0,0,0,0]": 11
+      },
+      "actual_source": {
+        "[0,0,3840,2160]": 8,
+        "[0,64,3840,2094]": 3
+      },
+      "actual_target": {
+        "[311.6784668,175.3191528,2248.321533,1264.680908]": 8,
+        "[249.6677399,175.3191528,2310.332275,1264.680908]": 3
+      },
+      "caption": {
+        "[0,0,0,0]": 11
+      },
+      "destination": {
+        "[0,0,0,0]": 11
+      },
+      "composed": {
+        "false": 11
+      },
+      "current_composition": {
+        "false": 11
+      },
+      "strong_prepared": {
+        "false": 11
+      },
+      "prepare_failures": {
+        "29441": 11
+      },
+      "ownership_reason": {
+        "\"not-qualified\"": 11
+      },
+      "erasure_reason": {
+        "\"not-qualified\"": 11
+      },
+      "preparation_state": {
+        "0": 11
+      },
+      "shader_failed": {
+        "false": 11
+      },
+      "held": {
+        "false": 11
+      },
+      "allPhysicalSourcesCurrent": true,
+      "allApprovedFillSourcesCurrent": true,
+      "actualSourceChanges": 1
+    },
+    {
+      "context": [
+        "{AAAB40D8-0BE0-4AEB-9BEC-4DCD94B39A86}",
+        1,
+        2,
+        2,
+        4
+      ],
+      "first": "21:27:56.895Z AAAB40D8 G1 O41 S41",
+      "last": "21:28:00.606Z AAAB40D8 G1 O130 S130",
+      "rows": 90,
+      "submitted": 90,
+      "distinctSources": 90,
+      "sourceRange": [
+        41,
+        130
+      ],
+      "maxDistinctGapMs": 43,
+      "skippedSelectedIds": 0,
+      "repeatCount": 0,
+      "allFactsCurrent": true,
+      "allFinalFacts": true,
+      "final_owner": {
+        "\"full-raster\"": 3,
+        "\"current-source-support\"": 13,
+        "\"trusted\"": 74
+      },
+      "final_reason": {
+        "\"raw subtitle fallback to current source: processed subtitle canvas pending; present current raw source pixels without acquiring ...\"": 3,
+        "\"current-verified-source-support-presentation\"": 13,
+        "\"current empty native bands preserve the fixed movie canvas without claiming caption absence\"": 74
+      },
+      "fill_approved": {
+        "false": 90
+      },
+      "fill_applied": {
+        "false": 90
+      },
+      "support_override_applied": {
+        "false": 77,
+        "true": 13
+      },
+      "physical_available": {
+        "false": 3,
+        "true": 87
+      },
+      "physical_bounds": {
+        "[0,0,0,0]": 3,
+        "[0,67,3840,2091]": 43,
+        "[0,67,3840,2092]": 44
+      },
+      "native": {
+        "[0,0,0,0]": 16,
+        "[0,64,3840,2094]": 74
+      },
+      "actual_source": {
+        "[0,0,3840,2160]": 3,
+        "[0,64,3840,2094]": 87
+      },
+      "actual_target": {
+        "[311.6784668,175.3191528,2248.321533,1264.680908]": 3,
+        "[249.6677399,175.3191528,2310.332275,1264.680908]": 87
+      },
+      "caption": {
+        "[0,0,0,0]": 90
+      },
+      "destination": {
+        "[0,0,0,0]": 90
+      },
+      "composed": {
+        "false": 90
+      },
+      "current_composition": {
+        "false": 90
+      },
+      "strong_prepared": {
+        "false": 90
+      },
+      "prepare_failures": {
+        "29441": 16,
+        "1": 74
+      },
+      "ownership_reason": {
+        "\"not-qualified\"": 90
+      },
+      "erasure_reason": {
+        "\"not-qualified\"": 90
+      },
+      "preparation_state": {
+        "0": 90
+      },
+      "shader_failed": {
+        "false": 90
+      },
+      "held": {
+        "false": 90
+      },
+      "allPhysicalSourcesCurrent": true,
+      "allApprovedFillSourcesCurrent": true,
+      "actualSourceChanges": 1
+    },
+    {
+      "context": [
+        "{AAAB40D8-0BE0-4AEB-9BEC-4DCD94B39A86}",
+        1,
+        3,
+        2,
+        5
+      ],
+      "first": "21:28:00.648Z AAAB40D8 G1 O131 S131",
+      "last": "21:28:10.200Z AAAB40D8 G1 O360 S360",
+      "rows": 230,
+      "submitted": 230,
+      "distinctSources": 230,
+      "sourceRange": [
+        131,
+        360
+      ],
+      "maxDistinctGapMs": 45,
+      "skippedSelectedIds": 0,
+      "repeatCount": 0,
+      "allFactsCurrent": true,
+      "allFinalFacts": true,
+      "final_owner": {
+        "\"trusted\"": 230
+      },
+      "final_reason": {
+        "\"current empty native bands preserve the fixed movie canvas without claiming caption absence\"": 230
+      },
+      "fill_approved": {
+        "false": 230
+      },
+      "fill_applied": {
+        "false": 230
+      },
+      "support_override_applied": {
+        "false": 230
+      },
+      "physical_available": {
+        "false": 31,
+        "true": 199
+      },
+      "physical_bounds": {
+        "[0,0,0,0]": 31,
+        "[0,67,3840,2092]": 112,
+        "[0,67,3840,2091]": 58,
+        "[0,275,3840,1884]": 23,
+        "[0,274,3840,1884]": 6
+      },
+      "native": {
+        "[0,64,3840,2094]": 230
+      },
+      "actual_source": {
+        "[0,64,3840,2094]": 230
+      },
+      "actual_target": {
+        "[249.6677399,175.3191528,2310.332275,1264.680908]": 230
+      },
+      "caption": {
+        "[0,0,0,0]": 224,
+        "[1598,1926,2238,2022]": 5,
+        "[1246,1778,2606,2042]": 1
+      },
+      "destination": {
+        "[0,0,0,0]": 230
+      },
+      "composed": {
+        "false": 230
+      },
+      "current_composition": {
+        "false": 230
+      },
+      "strong_prepared": {
+        "false": 230
+      },
+      "prepare_failures": {
+        "1": 230
+      },
+      "ownership_reason": {
+        "\"not-qualified\"": 230
+      },
+      "erasure_reason": {
+        "\"not-qualified\"": 230
+      },
+      "preparation_state": {
+        "0": 230
+      },
+      "shader_failed": {
+        "false": 230
+      },
+      "held": {
+        "false": 230
+      },
+      "allPhysicalSourcesCurrent": true,
+      "allApprovedFillSourcesCurrent": true,
+      "actualSourceChanges": 0
+    }
+  ]
+}

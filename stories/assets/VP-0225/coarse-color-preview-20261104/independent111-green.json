@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "sourcePin": "7dc5b0e5768f5329f189dd3a4d506f250c5f639a",
+  "sourceDirty": true,
+  "nativeControlReceipt": "artifacts/qualification/runs/20261104-161048-9a7753cc",
+  "exitCode": 0,
+  "cases": 111,
+  "passed": 111,
+  "failed": 0,
+  "allPassed": true,
+  "sourceAndLibraryStable": true,
+  "sourceAndLibraryBefore": {
+    "src/VideoProcessor-Lib/SourcePictureCoarseColor.h": "925671863289f4e87e918911f535ed6aa08ee5545c22e5aa0728fb36b5ab354c",
+    "src/VideoProcessor-Lib/SourcePictureDetector.cpp": "8d668c979eec5c7f5c7c3189ef134023a91b7bb18bbbad894afe7d45a26ce599",
+    "src/VideoProcessor-Lib/SourcePictureMeasurement.h": "1cdd663d3221c896818ba111f8a5ff611571337760396d00dc06336b4fa67a59",
+    "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp": "f7355a4cb55ebe24130d856ba1118e0f6dc29ea4fb41164175fe7af3b83bd343",
+    "x64/Release/VideoProcessor-Lib.lib": "57b4b9b9601d5731259752d60efd5fe2d491a40f359e0f9de5bdf07a48d16b5c"
+  },
+  "sourceAndLibraryAfter": {
+    "src/VideoProcessor-Lib/SourcePictureCoarseColor.h": "925671863289f4e87e918911f535ed6aa08ee5545c22e5aa0728fb36b5ab354c",
+    "src/VideoProcessor-Lib/SourcePictureDetector.cpp": "8d668c979eec5c7f5c7c3189ef134023a91b7bb18bbbad894afe7d45a26ce599",
+    "src/VideoProcessor-Lib/SourcePictureMeasurement.h": "1cdd663d3221c896818ba111f8a5ff611571337760396d00dc06336b4fa67a59",
+    "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp": "f7355a4cb55ebe24130d856ba1118e0f6dc29ea4fb41164175fe7af3b83bd343",
+    "x64/Release/VideoProcessor-Lib.lib": "57b4b9b9601d5731259752d60efd5fe2d491a40f359e0f9de5bdf07a48d16b5c"
+  },
+  "scope": "Independent synthetic CPU proposal/strict-verifier/production-worker detector.20 current-source scene transition cases; not temporal-model/live/GPU/deadline qualification.",
+  "redReceipt": "final111-receipt.json",
+  "redReceiptSha256": "f2675b9b4714a521dfb5d6000cd7452638be824fda1ea284b786c12fdaa6e89b",
+  "correction": "Typed affirmative native continuity contradiction prevents same-source legacy fallback promotion. Incomplete Partial observation retained; no measured geometry/authority fabricated. Eight formerly misclassified dense cases now unavailable; all other assertions retained.",
+  "artifactHashes": {
+    "contracts.cpp": "eff5c5e7f0bce2b0f203b252bdaf0a16c5a25e69095cf3cbc1325fa475a89737",
+    "contracts.vcxproj": "a1894c4781584bb9e178ac20ae0dfd9f1f58021f629850e5944b753d165d762d",
+    "build/IndependentCoarseContracts.exe": "718940afa25de8861ef88e67a30817efb37dae73fd1af78003eea1a5fa28ed75",
+    "green111-results.jsonl": "da9b61dc4839269ae61e10f548ee4adb271cef905d5ec5b92906a44dc26540e2",
+    "green111-stderr.log": "80a45ceeb030681d502919c2534f342aa32a893079b58c2e9da3dfd4a259841b"
+  }
+}

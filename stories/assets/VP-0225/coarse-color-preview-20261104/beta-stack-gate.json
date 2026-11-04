@@ -1,0 +1,25 @@
+{
+  "source": "1b5b583bc3085a3168d4b2b1a8082bab3a920411",
+  "dll": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+  "dllSha256": "b7e4645de07d1344bed15ca64f8909c2063ea404e327c4afb1278afdf1fb2a47",
+  "pdbSha256": "d11117ba54b23cf4ec7c58e1bd0a5aaa870c9b8809011227f788440bd0115cb6",
+  "measurement": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\crash-e726-49684\\beta-1b5b583b-stack.json",
+  "measurementSha256": "0a870061341a8be2a316838208832d288f3cfb34ccc6368cd129b8cd18da255b",
+  "threadReserveBytes": 1048576,
+  "unlistedLeafAllowanceBytes": 16384,
+  "minimumHeadroomBytes": 131072,
+  "knownChainReservationsBytes": {
+    "template_seed": 711712,
+    "tracker_consume": 745120,
+    "current_proof": 677456,
+    "resolve_snapshot": 616528
+  },
+  "remainingHeadroomBytes": {
+    "template_seed": 320480,
+    "tracker_consume": 287072,
+    "current_proof": 354736,
+    "resolve_snapshot": 415664
+  },
+  "passed": true,
+  "scope": "Compiled PE reservations for observed seed chain and known tracker/proof/resolve routes; actual 1MiB-thread execution still required. Executable reserve is validated separately."
+}

@@ -1,0 +1,400 @@
+{
+  "schemaVersion": 1,
+  "scope": "Representative actual production replay after metadata-only Partial observation compatibility correction; prior full549 remains a distinct producer version. No live/GPU/fullqualification claim.",
+  "sourceCommit": "7dc5b0e5768f5329f189dd3a4d506f250c5f639a",
+  "sourceStatus": [
+    " M src/VideoProcessor-Lib/SourcePictureDetector.cpp",
+    " M src/VideoProcessor-Lib/SourcePictureMeasurement.h",
+    " M src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
+    " M tools/critical_runtime_tests.json",
+    "?? src/VideoProcessor-Lib/SourcePictureCoarseColor.h"
+  ],
+  "receipt": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\receipt.json",
+    "sha256": "63942c063903f37daa563932e8ab90d2d951cf2aaefce08073617a76f472d2c2",
+    "bytes": 10344
+  },
+  "outputs": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\bonfire93.jsonl",
+      "sha256": "f7e976006c2533bb86c4ac036c0570b7cfd1af70855b464c3234f4a360533654",
+      "bytes": 3218
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\bonfire91.jsonl",
+      "sha256": "9f6bd1c3899f4d7b7a7e0cfed335df3d194f50b08b6cf470a6a351045a7789df",
+      "bytes": 3208
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\prior-tall91.jsonl",
+      "sha256": "e5357fa03dbb2f518e5e04713a268e154c2ced075b30d47e4c3cf030674c6f8f",
+      "bytes": 3107
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\prior-tall90.jsonl",
+      "sha256": "1cd6c83cdd0ba13ff2cd423cbd5b8970fce674bdca70039feabc276a163062ae",
+      "bytes": 3110
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\prior-scope-all.jsonl",
+      "sha256": "90961c9b8beca4e30ddf82b471edf5de5f6bb7feb89d5e3ed7f4582db6f4f9b3",
+      "bytes": 3246
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\prior-scripture-all.jsonl",
+      "sha256": "cb140fbef284a4befc1f46f73d1c5f1bafc63837026952a03d472f141548bb61",
+      "bytes": 3147
+    }
+  ],
+  "selectedInputs": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected-inputs.json",
+    "sha256": "a237e873b2f3015ce3c7f35ba8588f6b30aab6dc21c6db085ea0d758b0db4f95",
+    "bytes": 18503
+  },
+  "nativeInputHashesReverified": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire93\\frame-000001.bin",
+      "sha256": "10a07955ce51cb6adbe145864e21b5bb2b2f40f02a426cbbff0ce2b75689deb4",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire93\\frame-000002.bin",
+      "sha256": "d5464e841014e68bc2d6c587e240633f13572e360d2da8793ecb8b18d857f85d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire93\\frame-000005.bin",
+      "sha256": "7729529a53b7c192b00cb206433b1636b4254beb6ec3dff14070bcab19769722",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire93\\frame-000006.bin",
+      "sha256": "45c094bde346705595ed00a6f89f92aac0164f48c281eb0699abe7f2bea07cc6",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire91\\frame-000001.bin",
+      "sha256": "45c094bde346705595ed00a6f89f92aac0164f48c281eb0699abe7f2bea07cc6",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire91\\frame-000002.bin",
+      "sha256": "10a07955ce51cb6adbe145864e21b5bb2b2f40f02a426cbbff0ce2b75689deb4",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire91\\frame-000004.bin",
+      "sha256": "d5464e841014e68bc2d6c587e240633f13572e360d2da8793ecb8b18d857f85d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire91\\frame-000005.bin",
+      "sha256": "7729529a53b7c192b00cb206433b1636b4254beb6ec3dff14070bcab19769722",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall91\\frame-000001.bin",
+      "sha256": "7e0ffb44bc871ad5eb0693bd3c36bc53c014576ebab0d7f794baf540d780b91c",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall91\\frame-000002.bin",
+      "sha256": "e07c82cf5295c5e40a0bc7f649a6598b2239f90243b75860bccee80b767c63f3",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall91\\frame-000003.bin",
+      "sha256": "e07c82cf5295c5e40a0bc7f649a6598b2239f90243b75860bccee80b767c63f3",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall91\\frame-000004.bin",
+      "sha256": "1c22e54bdc1769948c0e4fddff4db95ce2fed712520ae4c129647272245295de",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall90\\frame-000001.bin",
+      "sha256": "1c22e54bdc1769948c0e4fddff4db95ce2fed712520ae4c129647272245295de",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall90\\frame-000002.bin",
+      "sha256": "9195d8691ddcb092f34f7d1e8f6a91b8ec610fa890bfe7c271b6b743eae67629",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall90\\frame-000003.bin",
+      "sha256": "7e0ffb44bc871ad5eb0693bd3c36bc53c014576ebab0d7f794baf540d780b91c",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall90\\frame-000004.bin",
+      "sha256": "e07c82cf5295c5e40a0bc7f649a6598b2239f90243b75860bccee80b767c63f3",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scope-all\\frame-000001.bin",
+      "sha256": "57ef66a0f2d9eaffb6462ab5db483bb51e6dedc41bd2a99313bb6d311ec78a5d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scope-all\\frame-000002.bin",
+      "sha256": "24417149829796f7be7ed127a3ab09294eacc9f569c276f06fc91294c506b212",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scope-all\\frame-000003.bin",
+      "sha256": "9ebcb6ba095737a770352b49c54b49b10503680866bfef0f2c05f11086772cf7",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scope-all\\frame-000004.bin",
+      "sha256": "69e43e8b86ad83aaedf20919a109bf89e2658cd023580739e67f59c5b121610e",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scripture-all\\frame-000001.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scripture-all\\frame-000002.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scripture-all\\frame-000003.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scripture-all\\frame-000004.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    }
+  ],
+  "priorFull549": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-final\\sealed-results.json",
+    "sha256": "8a40fa4cc61ef080aff7987a837e657502b6c78949a5902e83a7b0f59b9a704b",
+    "bytes": 191925
+  },
+  "currentResults": [
+    {
+      "name": "bonfire93",
+      "capture": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire93",
+      "exitCode": 0,
+      "frames": 4,
+      "physicalAvailable": 4,
+      "trustedCrops": 4,
+      "sourceBound": 4,
+      "supportVerified": 4,
+      "geometryReused": 0,
+      "boundaryReferences": 0,
+      "physicalBounds": {
+        "[0, 67, 3840, 2091]": 2,
+        "[0, 67, 3840, 2092]": 2
+      },
+      "trustedBounds": {
+        "[0, 64, 3840, 2094]": 4
+      },
+      "reasons": {
+        "supplied source candidate independently passes excluded-band verification": 4
+      },
+      "proposalMs": {
+        "p50": 1.4714,
+        "p95": 1.4714,
+        "max": 3.9546
+      },
+      "productionMs": {
+        "p50": 3.0953,
+        "p95": 3.0953,
+        "max": 5.4891
+      }
+    },
+    {
+      "name": "bonfire91",
+      "capture": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\bonfire91",
+      "exitCode": 0,
+      "frames": 4,
+      "physicalAvailable": 4,
+      "trustedCrops": 4,
+      "sourceBound": 4,
+      "supportVerified": 4,
+      "geometryReused": 0,
+      "boundaryReferences": 0,
+      "physicalBounds": {
+        "[0, 67, 3840, 2091]": 2,
+        "[0, 67, 3840, 2092]": 2
+      },
+      "trustedBounds": {
+        "[0, 64, 3840, 2094]": 4
+      },
+      "reasons": {
+        "supplied source candidate independently passes excluded-band verification": 4
+      },
+      "proposalMs": {
+        "p50": 1.3926,
+        "p95": 1.3926,
+        "max": 1.4742
+      },
+      "productionMs": {
+        "p50": 3.0884,
+        "p95": 3.0884,
+        "max": 3.3573
+      }
+    },
+    {
+      "name": "prior-tall91",
+      "capture": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall91",
+      "exitCode": 0,
+      "frames": 4,
+      "physicalAvailable": 4,
+      "trustedCrops": 0,
+      "sourceBound": 4,
+      "supportVerified": 4,
+      "geometryReused": 1,
+      "boundaryReferences": 4,
+      "physicalBounds": {
+        "[0, 65, 3840, 2093]": 2,
+        "[0, 65, 3840, 2092]": 2
+      },
+      "trustedBounds": {
+        "[0, 0, 3840, 2160]": 4
+      },
+      "reasons": {
+        "native candidate has an unverified nominated crop axis": 4
+      },
+      "proposalMs": {
+        "p50": 1.5825,
+        "p95": 1.5825,
+        "max": 1.6481
+      },
+      "productionMs": {
+        "p50": 6.3562,
+        "p95": 6.3562,
+        "max": 9.177
+      }
+    },
+    {
+      "name": "prior-tall90",
+      "capture": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-tall90",
+      "exitCode": 0,
+      "frames": 4,
+      "physicalAvailable": 4,
+      "trustedCrops": 0,
+      "sourceBound": 4,
+      "supportVerified": 4,
+      "geometryReused": 0,
+      "boundaryReferences": 4,
+      "physicalBounds": {
+        "[0, 65, 3840, 2093]": 3,
+        "[0, 65, 3840, 2092]": 1
+      },
+      "trustedBounds": {
+        "[0, 0, 3840, 2160]": 4
+      },
+      "reasons": {
+        "native candidate has an unverified nominated crop axis": 4
+      },
+      "proposalMs": {
+        "p50": 1.2802,
+        "p95": 1.2802,
+        "max": 1.5063
+      },
+      "productionMs": {
+        "p50": 6.2502,
+        "p95": 6.2502,
+        "max": 9.7295
+      }
+    },
+    {
+      "name": "prior-scope-all",
+      "capture": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scope-all",
+      "exitCode": 0,
+      "frames": 4,
+      "physicalAvailable": 4,
+      "trustedCrops": 4,
+      "sourceBound": 4,
+      "supportVerified": 4,
+      "geometryReused": 0,
+      "boundaryReferences": 0,
+      "physicalBounds": {
+        "[0, 275, 3840, 1883]": 4
+      },
+      "trustedBounds": {
+        "[0, 272, 3840, 1886]": 4
+      },
+      "reasons": {
+        "supplied source candidate independently passes excluded-band verification": 4
+      },
+      "proposalMs": {
+        "p50": 1.491,
+        "p95": 1.491,
+        "max": 1.5277
+      },
+      "productionMs": {
+        "p50": 3.1158,
+        "p95": 3.1158,
+        "max": 3.1517
+      }
+    },
+    {
+      "name": "prior-scripture-all",
+      "capture": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\selected\\prior-scripture-all",
+      "exitCode": 0,
+      "frames": 4,
+      "physicalAvailable": 4,
+      "trustedCrops": 0,
+      "sourceBound": 4,
+      "supportVerified": 4,
+      "geometryReused": 0,
+      "boundaryReferences": 4,
+      "physicalBounds": {
+        "[0, 275, 3840, 1884]": 3,
+        "[0, 274, 3840, 1884]": 1
+      },
+      "trustedBounds": {
+        "[0, 0, 3840, 2160]": 4
+      },
+      "reasons": {
+        "native candidate has an unverified nominated crop axis": 4
+      },
+      "proposalMs": {
+        "p50": 1.3156,
+        "p95": 1.3156,
+        "max": 1.4068
+      },
+      "productionMs": {
+        "p50": 22.4553,
+        "p95": 22.4553,
+        "max": 22.6744
+      }
+    }
+  ],
+  "producerStable": true,
+  "comparedFields": [
+    "identity",
+    "policy",
+    "continuity",
+    "proposalAvailable",
+    "proposalBounds",
+    "proposalPhysical",
+    "proposalVerification",
+    "intervals",
+    "productionClass",
+    "productionReason",
+    "physicalAvailable",
+    "physicalConfidence",
+    "physicalBounds",
+    "trustedBounds",
+    "sourceBound",
+    "supportVerified",
+    "supportBounds",
+    "boundaryReferenceAvailable",
+    "supportReason"
+  ],
+  "differences": [],
+  "observedBehaviorIdentical": true,
+  "allFourBonfireBytePhases": true,
+  "qualification": false
+}

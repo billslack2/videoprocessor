@@ -1,0 +1,91 @@
+{
+  "source": "1b5b583bc3085a3168d4b2b1a8082bab3a920411",
+  "acceptance": "OPEN",
+  "fullQualification": false,
+  "scope": "Compact metadata only; native movie pixels, logs and dumps remain outside Git",
+  "files": [
+    {
+      "file": "native10-iteration.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-161048-9a7753cc\\iteration.json",
+      "sha256": "c6cddd7898e218049482a809f8d2a842472fa5525387878d056bed27187501a6",
+      "bytes": 2793
+    },
+    {
+      "file": "independent111-green.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\independent-coarse-contracts\\green111-receipt.json",
+      "sha256": "3882508ca1784591069627917ffa80d3f46ed7d2f2ae7f780faa0324ccc20589",
+      "bytes": 2761
+    },
+    {
+      "file": "independent111-red.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\independent-coarse-contracts\\final111-receipt.json",
+      "sha256": "f2675b9b4714a521dfb5d6000cd7452638be824fda1ea284b786c12fdaa6e89b",
+      "bytes": 5747
+    },
+    {
+      "file": "actual24-final-seal.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-1422\\production-coarse-metadata-final\\sealed-results.json",
+      "sha256": "1416e16a313d17d29543979d07a84ed7efad454697a8003e5335d5446a97fdad",
+      "bytes": 17253
+    },
+    {
+      "file": "focused-build.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-162144-742545de\\iteration.json",
+      "sha256": "e7d4951d95b71a1ec365712e9d2c62c0f5d1738cdef3d71a9ef7d800d6700bce",
+      "bytes": 4823
+    },
+    {
+      "file": "actual4-summary.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-stack-profile-20261104-162551\\summary.json",
+      "sha256": "994be373141f8b813fd5725aa57285de4d76ef9197db150dfa762834e18968b6",
+      "bytes": 5135
+    },
+    {
+      "file": "profile-fixture-failure-audit.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-stack-profile-20261104-161815\\profile-cycle\\profile-mode-audit.json",
+      "sha256": "8e948c93fda7725648d151afc923508bff1ad6c76b91cae3ecae8ee276039937",
+      "bytes": 10456
+    },
+    {
+      "file": "preview-launch.json",
+      "source": "E:\\codex\\videoprocessor\\previews\\ar-temporal-1b5b583bc3085a3168d4b2b1a8082bab3a920411\\preview-receipt.json",
+      "sha256": "0bcea052fc9d003f47686b3547b43c920f8278ef330f9fdfca470f254543f694",
+      "bytes": 11577
+    },
+    {
+      "file": "live-initial-summary.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\live-1b5b583b-initial\\summary.json",
+      "sha256": "0740ec358a72e23713aafe7acec989ed8255a8455f4c9011c071ff7472d13695",
+      "bytes": 9723
+    },
+    {
+      "file": "live-final-summary.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\live-1b5b583b-final\\summary.json",
+      "sha256": "c1a1389de87f2256bf32ff6813f56d5402d69a8bf378464a437207de8168406d",
+      "bytes": 4801
+    },
+    {
+      "file": "standard-stack-gate.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\crash-e726-49684\\standard-1b5b583b-gate.json",
+      "sha256": "32c4166e2f367cb2a5c94e255771b25dec3a9752aa425d45d2c14da5410d7385",
+      "bytes": 1268
+    },
+    {
+      "file": "beta-stack-gate.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\crash-e726-49684\\beta-1b5b583b-gate.json",
+      "sha256": "737f65d653cf7044dd0eba9abcd4b57c9a15b4b06f00e59a6a7977bd5b38e464",
+      "bytes": 1273
+    },
+    {
+      "file": "gui-stack-reserve.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\stack-profile-validation\\gui-1b5b583b-stack.json",
+      "sha256": "538737a9c462af7395d13aed7778ec1f77ec1f51cea0ef5f67a62e333b2643e2",
+      "bytes": 390
+    },
+    {
+      "file": "live-initial-runs.json",
+      "sha256": "8deb8ea44dbcf2143c7dcf510319038c22c7c14c90504b1b7cac474645fab188",
+      "bytes": 2198
+    }
+  ]
+}
