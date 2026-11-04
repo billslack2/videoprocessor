@@ -16543,7 +16543,7 @@ struct LibplaceboVideoRenderer::Impl
         QualifiedSubtitlePresentationEvidence temporalPolicyCaptionProof;
         PresentationDecisionTelemetry::Facts temporalPolicyDecisionFacts;
 		auto configureViewport =
-			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, width, height, frameGeneration, sourceSequence,
+			[this, &image, &subtitleComposedImage, &relocatedSubtitle, subtitleCompositionSucceeded, &analysisSource, &pixelMeasurements, width, height, frameGeneration, sourceSequence,
 			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary, activePictureIdentity,
 			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels, queuedAnalysisDomainKey,
