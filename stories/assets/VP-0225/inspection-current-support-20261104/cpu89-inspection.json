@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "status": "completed",
+  "qualification": false,
+  "scope": "CPU exact-native replay; actual current support and cold masked-native acquisition; deterministic late publication; sourcePrepared modeled, no GPU or deadline claim",
+  "sourceAtBuild": "ae467d578c272b5a4aaa59d7d41a6e53df194659",
+  "dirtyAtBuild": " M src/VideoProcessor-Lib/SubtitleBoxLookahead.h\n M src/VideoProcessor-Lib/SubtitleCurrentPreparedCueCertificate.h\n M src/VideoProcessor-Lib/vprenderer/SubtitleAspectRetention.h\n M src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp\n M src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp\n M tools/critical_runtime_tests.json\n",
+  "sourceAtSeal": "34a26ca7b0c2b968fc416f1f1ebe5c72895da02c",
+  "filesUnchanged": true,
+  "modes": {
+    "inspection-delayed": {
+      "checks": {
+        "all89OriginalIdentities": true,
+        "allFourBytePhases": true,
+        "neverGeneralOwnership": true,
+        "neverSharedAuthority": true,
+        "neverIndependentBars": true,
+        "inspectionProvenancePreserved": true,
+        "rawBarEvidenceUnchanged": true,
+        "allCurrentErasureQualified": true,
+        "allCurrentSupportVerified": true,
+        "allCurrentBasisMatched": true,
+        "noOmittedCurrentSamples": true,
+        "stableGlyphGeometry": true
+      },
+      "passed": true,
+      "reasons": {
+        "current-prepared-caption-erasure": 89
+      },
+      "callbackCount": 89,
+      "callbackFlags": {
+        "14": 89
+      },
+      "sourceGaps": 4,
+      "heldSources": 0,
+      "nativeBounds": {
+        "[272, 1886]": 89
+      },
+      "queryMs": {
+        "min": 16.2637,
+        "p50": 17.5983,
+        "p95": 21.8977,
+        "max": 26.5133
+      },
+      "artifacts": [
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-delayed-results.jsonl",
+          "sha256": "7b6455ad9b28563525f33a983c4fa1a35745e0598d759efe0753fec3e5abd8b9"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-delayed-trace.jsonl",
+          "sha256": "fe974963897dfb3cc88bf0c6f75ed924150d54428cd098582e05383a2167c2cb"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-delayed-stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    "inspection-missing": {
+      "checks": {
+        "all89OriginalIdentities": true,
+        "allFourBytePhases": true,
+        "neverGeneralOwnership": true,
+        "neverSharedAuthority": true,
+        "neverIndependentBars": true,
+        "inspectionProvenancePreserved": true,
+        "rawBarEvidenceUnchanged": true,
+        "noCurrentErasureQualified": true
+      },
+      "passed": true,
+      "reasons": {
+        "source-not-prepared": 22,
+        "inspection-candidate-is-not-picture-proof": 67
+      },
+      "callbackCount": 89,
+      "callbackFlags": {
+        "8": 89
+      },
+      "sourceGaps": 4,
+      "heldSources": 0,
+      "nativeBounds": {
+        "[272, 1886]": 89
+      },
+      "queryMs": {
+        "min": 16.504,
+        "p50": 17.8127,
+        "p95": 22.8558,
+        "max": 27.0323
+      },
+      "artifacts": [
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-missing-results.jsonl",
+          "sha256": "4bad271643d51dc716ba9a61d2217d368fdbdef6062f1a070c68b4cd2cce95f7"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-missing-trace.jsonl",
+          "sha256": "69a352c67bf8294da95cc051a2cff39d8dc2935de24d7afc079de003c3155a70"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-missing-stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    "inspection-foreign": {
+      "checks": {
+        "all89OriginalIdentities": true,
+        "allFourBytePhases": true,
+        "neverGeneralOwnership": true,
+        "neverSharedAuthority": true,
+        "neverIndependentBars": true,
+        "inspectionProvenancePreserved": true,
+        "rawBarEvidenceUnchanged": true,
+        "noCurrentErasureQualified": true
+      },
+      "passed": true,
+      "reasons": {
+        "source-not-prepared": 22,
+        "inspection-candidate-is-not-picture-proof": 67
+      },
+      "callbackCount": 89,
+      "callbackFlags": {
+        "8": 89
+      },
+      "sourceGaps": 4,
+      "heldSources": 0,
+      "nativeBounds": {
+        "[272, 1886]": 89
+      },
+      "queryMs": {
+        "min": 16.7199,
+        "p50": 19.0579,
+        "p95": 22.1629,
+        "max": 26.9459
+      },
+      "artifacts": [
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-foreign-results.jsonl",
+          "sha256": "0e9f32bb6a9462788f93c6bfc3cfd080dc628314f52432a6ecf90e9a8ccafecc"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-foreign-trace.jsonl",
+          "sha256": "970073fddc1286b1872a83792c2e045c62b4b2d30f6851faf8d197e6a6ebcd96"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-foreign-stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    "inspection-reset": {
+      "checks": {
+        "all89OriginalIdentities": true,
+        "allFourBytePhases": true,
+        "neverGeneralOwnership": true,
+        "neverSharedAuthority": true,
+        "neverIndependentBars": true,
+        "inspectionProvenancePreserved": true,
+        "rawBarEvidenceUnchanged": true,
+        "noCurrentErasureQualified": true
+      },
+      "passed": true,
+      "reasons": {
+        "inspection-candidate-is-not-picture-proof": 89
+      },
+      "callbackCount": 89,
+      "callbackFlags": {
+        "14": 89
+      },
+      "sourceGaps": 4,
+      "heldSources": 0,
+      "nativeBounds": {
+        "[272, 1886]": 89
+      },
+      "queryMs": {
+        "min": 16.007,
+        "p50": 17.7683,
+        "p95": 23.8694,
+        "max": 38.9304
+      },
+      "artifacts": [
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-reset-results.jsonl",
+          "sha256": "70450c5b2c08d89ee3810b4baf79ebf5ab44d92f47ae658375d2f4be509852e5"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-reset-trace.jsonl",
+          "sha256": "20ce3b1e6087e3d9e3cb94955905b7fe13e064f9b96bda1f9d1f4cf14b424967"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inspection-reset-stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    }
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\inputs.json",
+      "sha256": "ff3f3569cae96e029bc484a4e9f81412430f7ddb0683a5b90e5333b89e7eb438"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\consecutive-held-replay.cpp",
+      "sha256": "263594e612504bbab4c2db883cb16cda3e16a12a474115f0a1377352e7782632"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\consecutive-held-replay.vcxproj",
+      "sha256": "e201ff1e3866d138a9301e586cddc1b429bf3060e357b2889109a1212de2d08d"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\build.log",
+      "sha256": "986c437e6c993046e494e792ef4fb96caaa2d60c0a71bd2cc7c349598728e75b"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\build\\ConsecutiveHeldReplay.exe",
+      "sha256": "0731c38c9c2c29e6d40c91424565b74d092cb7fff95e8633289d2698bee36a68"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\inspection-support-replay\\seal.py",
+      "sha256": "9a83a5686c16f0f8ad260740e7cedd4dfbd74084deea13a2687f2f0bc087f5b8"
+    }
+  ],
+  "componentPassed": true
+}

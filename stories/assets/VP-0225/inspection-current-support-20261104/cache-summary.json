@@ -1,0 +1,14 @@
+{
+  "source": "34a26ca7b0c2b968fc416f1f1ebe5c72895da02c",
+  "process": 5908,
+  "copyVerified": true,
+  "copiedBytes": 527280,
+  "copiedSha256": "E776780B23957FFD310039E88E04AAED8C6B51A0D0F6944621D46BF76FEA05BC",
+  "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+  "loadedObjects": 29,
+  "loadedBytes": 527280,
+  "advancedPreparationElapsedMs": null,
+  "reason": "Observed profile Classic; no advanced compile completion in checked log",
+  "qualification": false,
+  "checkedAt": "2026-11-04T12:53:14.3236330-05:00"
+}

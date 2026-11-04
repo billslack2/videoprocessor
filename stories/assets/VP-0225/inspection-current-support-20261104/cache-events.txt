@@ -1,0 +1,25 @@
+2026-11-04 12:51:19 | libplacebo persistent shader cache loaded: 29 objects, 527280 bytes
+2026-11-04 12:51:40 | libplacebo persistent shader cache saved: 29 objects, 527280 bytes
+2026-11-04 12:51:40 | libplacebo persistent shader cache loaded: 29 objects, 527280 bytes
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-start key=14765392581537604928 thread=53844
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=device-create result=ready elapsed_ms=85.03
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=hook-create result=ready elapsed_ms=1.10
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=renderer-create result=ready elapsed_ms=0.01
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=source-create result=ready elapsed_ms=0.44
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/normalization result=ready elapsed_ms=1.13
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-3/blur-0/phase-0 result=ready elapsed_ms=11.83
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-3/blur-0/phase-1 result=ready elapsed_ms=0.82
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-3/blur-0/layer-only result=ready elapsed_ms=3.15
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-3/blur-1/phase-0 result=ready elapsed_ms=1.48
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-3/blur-1/phase-1 result=ready elapsed_ms=0.69
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-3/blur-1/layer-only result=ready elapsed_ms=0.63
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-5/blur-0/phase-0 result=ready elapsed_ms=3.07
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-5/blur-0/phase-1 result=ready elapsed_ms=0.72
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-5/blur-0/layer-only result=ready elapsed_ms=0.79
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-5/blur-1/phase-0 result=ready elapsed_ms=8.87
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-5/blur-1/phase-1 result=ready elapsed_ms=2.53
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=field-0/algorithm-0/background-5/blur-1/layer-only result=ready elapsed_ms=1.69
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=target-create result=ready elapsed_ms=0.16
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=final-normalization result=ready elapsed_ms=0.04
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-pass key=14765392581537604928 pass=final-viewport result=ready elapsed_ms=91.52
+2026-11-04 12:52:20 | VP subtitle background preparation: stage=compile-end key=14765392581537604928 ready=1 elapsed_ms=230.25
