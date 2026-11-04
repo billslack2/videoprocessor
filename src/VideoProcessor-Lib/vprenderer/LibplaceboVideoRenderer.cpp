@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <optional>
 #include "../SubtitleProfileUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
 #include "ShaderCacheStorage.h"
@@ -9618,6 +9619,15 @@ struct LibplaceboVideoRenderer::Impl
         currentCueTemplateRevision.store(0,std::memory_order_release);
     }
 
+    // Keep regression-only diagnostic storage out of RenderLocked's stack frame.
+    __declspec(noinline) void TraceRegressionCurrentScan(const ActivePictureFrameIdentity& identity,
+        uint32_t flags,uint64_t cue,int rawLines,int acceptedLines)
+    {
+        auto trace=AnalysisTraceRecord(identity,this,"regression-current-scan","natural-tracker-result");
+        trace.flags=flags;trace.counters[0]=cue;trace.counters[1]=rawLines;trace.counters[2]=acceptedLines;
+        AnalysisDiagnosticTrace::Emit(trace);
+    }
+
     SubtitleCurrentCueProofStatus SubmitCurrentCueProof(
         const PreparedAnalysisFrame& prepared,const SubtitleBoxObservation& key,
         const ActivePictureBounds& offeredPhysicalBase,const ActivePictureFrameIdentity& renderHead,
@@ -15217,17 +15227,13 @@ struct LibplaceboVideoRenderer::Impl
                 ((hasExactCurrentPositiveScan(currentSubtitlePreview) && subtitleBoxResult.detected &&
                     !subtitleBoxResult.held && !subtitleBoxResult.confirmationPending &&
                     !subtitleBoxResult.workLimit) || currentPreparedHeldCue);
-            if(regressionDeclineCueProof) {
-                auto trace=AnalysisTraceRecord(subtitleIdentity,this,"regression-current-scan","natural-tracker-result");
-                trace.flags=(hasExactCurrentPositiveScan(currentSubtitlePreview)?1u:0u)|
+            if(regressionDeclineCueProof)
+                TraceRegressionCurrentScan(subtitleIdentity,
+                    (hasExactCurrentPositiveScan(currentSubtitlePreview)?1u:0u)|
                     (subtitleBoxResult.held?2u:0u)|(currentPreparedHeldCue?4u:0u)|
                     (currentFullCuePresentation?8u:0u)|(currentCueProofPending?16u:0u)|
-                    (preparedHeldObservation.independentBarAnalysis?32u:0u);
-                trace.counters[0]=subtitleBoxResult.cue;
-                trace.counters[1]=preparedHeldObservation.text.lineCount;
-                trace.counters[2]=subtitleBoxResult.lineCount;
-                AnalysisDiagnosticTrace::Emit(trace);
-            }
+                    (preparedHeldObservation.independentBarAnalysis?32u:0u),
+                    subtitleBoxResult.cue,preparedHeldObservation.text.lineCount,subtitleBoxResult.lineCount);
             const bool currentIndependentScan=!currentCueProofPending && currentSubtitlePreview.available &&
                 SameAnalysisFrameIdentity(currentSubtitlePreview.current.identity,subtitleIdentity) &&
                 currentSubtitlePreview.current.analyzed && !currentSubtitlePreview.current.pendingRefresh &&
@@ -27462,10 +27468,20 @@ bool LibplaceboVideoRenderer::WaitForDisplaySlot(
 
 void LibplaceboVideoRenderer::RenderLoop()
 {
+    // Full current scans nest the tracker below this loop and RenderLocked.
+    // One reusable heap slot keeps its large lookahead snapshot off that stack.
+    // optional.emplace/reset preserve the original per-iteration lifetime,
+    // including source-owner release on every continue and exception path.
+    std::unique_ptr<std::optional<SubtitleBoxPreview>> loopSubtitlePreview;
+    struct ResetLoopSubtitlePreview {
+        std::optional<SubtitleBoxPreview>& value;
+        __declspec(noinline) ~ResetLoopSubtitlePreview() noexcept { value.reset(); }
+    };
 	unsigned int consecutiveFailures = 0;
     bool presentationPauseLogged=false;
 	try
 	{
+        loopSubtitlePreview=std::make_unique<std::optional<SubtitleBoxPreview>>();
 		{
 			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
 			if (!m_implInitialized.load(std::memory_order_acquire))
@@ -27667,7 +27683,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 		bool activePicturePreviewIdentityMatches = false;
 		uint64_t activePictureCurrentPolicyGeneration = 0;
 		ActivePictureFrameDecision activePicturePreviewDecision;
-        SubtitleBoxPreview subtitlePreview;
+        auto& subtitlePreview=loopSubtitlePreview->emplace();
+        ResetLoopSubtitlePreview resetSubtitlePreview{*loopSubtitlePreview};
         bool subtitlePreviewCurrent = false;
 		AlphaSourceCrop::BufferedPictureExpansionProof bufferedExpansion;
 		bool bufferedExpansionCurrent = false;
