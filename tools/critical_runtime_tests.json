@@ -13,8 +13,16 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1122,
+  "minimumNativeTests": 1130,
   "requiredNativeMethods": [
+    "CapturedCurrentSupportCannotReplaceAdmittedNativeFill",
+    "CurrentSupportFallbackRequiresVerifiedEligibilityAndNoAdmittedOperation",
+    "PresentationTelemetryPinsFinalFillAndPhysicalFactsToSelectedSource",
+    "LiveWriterRotatesBoundedSegmentsWithoutTouchingIncidentEvidence",
+    "LiveWriterRotationFailureStopsGrowthAndPreservesLockedArchive",
+    "SlowDiskWriteCannotBlockProducersOrGrowTheQueue",
+    "PausedProducerDoesNotBlockOtherPublicationOrDrain",
+    "ProductionFileSinkWritesOneCompleteMaximumSizedBatch",
     "PendingSharedCueRejectsLostPhysicalBarsWhenAcceptedGlyphPixelsAreUnchanged",
     "RegressionRendererFactoryOptionsRejectUnsupportedInputs",
     "CurrentHeldPreparedCueUsesCurrentRevalidatedBarsWithoutAcquiringNativeAuthority",
@@ -460,6 +468,31 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/DebugLogAsyncTests.cpp",
+      "class": "DebugLogAsyncTests",
+      "method": "LiveWriterRotatesBoundedSegmentsWithoutTouchingIncidentEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/DebugLogAsyncTests.cpp",
+      "class": "DebugLogAsyncTests",
+      "method": "LiveWriterRotationFailureStopsGrowthAndPreservesLockedArchive"
+    },
+    {
+      "source": "src/VideoProcessor-Test/DebugLogAsyncTests.cpp",
+      "class": "DebugLogAsyncTests",
+      "method": "SlowDiskWriteCannotBlockProducersOrGrowTheQueue"
+    },
+    {
+      "source": "src/VideoProcessor-Test/DebugLogAsyncTests.cpp",
+      "class": "DebugLogAsyncTests",
+      "method": "PausedProducerDoesNotBlockOtherPublicationOrDrain"
+    },
+    {
+      "source": "src/VideoProcessor-Test/DebugLogAsyncTests.cpp",
+      "class": "DebugLogAsyncTests",
+      "method": "ProductionFileSinkWritesOneCompleteMaximumSizedBatch"
+    },
     {
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",

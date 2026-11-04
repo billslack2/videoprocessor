@@ -10548,7 +10548,7 @@ QWidget* ConfigEditorWindow::createLogsPage()
         QStringLiteral("logging"), QStringLiteral("debug"), false);
     enhanced->setObjectName(QStringLiteral("config.logging.debug"));
     enhanced->setAccessibleDescription(QStringLiteral(
-        "Keep all VP logs and write additional live telemetry files for diagnosis."));
+        "Write additional diagnostic telemetry; normal VP log retention still applies."));
     layout->addWidget(enhanced);
 
     auto* videoTimecode = bindCheckField(QStringLiteral("Show recording timecode on video"),
@@ -10575,7 +10575,7 @@ QWidget* ConfigEditorWindow::createLogsPage()
         QStringLiteral("debug_log_retention"), QStringLiteral("10")).toInt(&validRetention);
     retention->setValue(validRetention && configuredRetention >= 1 && configuredRetention <= 100 ? configuredRetention : 10);
     retention->setToolTip(QStringLiteral(
-        "Keep 1 to 100 total files, including the active VP log. Default: 10."));
+        "Keep 1 to 100 total VP log files, with 64 MiB per live segment. Default: 10."));
     connect(retention, qOverload<int>(&QSpinBox::valueChanged), this,
         [this](int count)
     {
@@ -10590,7 +10590,7 @@ QWidget* ConfigEditorWindow::createLogsPage()
         enhanced->setEnabled(loggingEnabled);
         videoTimecode->setEnabled(loggingEnabled && enhanced->isChecked());
         incidentScreenshots->setEnabled(loggingEnabled && enhanced->isChecked());
-        retention->setEnabled(loggingEnabled && !enhanced->isChecked());
+        retention->setEnabled(loggingEnabled);
     };
     connect(enabled, &QCheckBox::toggled, this, syncLoggingControls);
     connect(enhanced, &QCheckBox::toggled, this, syncLoggingControls);
@@ -10599,7 +10599,7 @@ QWidget* ConfigEditorWindow::createLogsPage()
         QStringLiteral("1–100 total files, including the active log. Default: 10. Changes apply when VP next starts.")));
 
     layout->addWidget(helpLabel(QStringLiteral(
-        "Enhanced logging keeps all logs and writes additional live telemetry files. Use it only while diagnosing an issue.")));
+        "VP logs rotate at 64 MiB in both modes. Explicit analysis captures and incident screenshots are preserved separately; manage those files when no longer needed.")));
 
     QString logDirectory = QFileInfo(configPath_).absoluteDir().filePath(QStringLiteral("logs"));
     const QString logPath = QDir(logDirectory).filePath(QStringLiteral("vp.log"));

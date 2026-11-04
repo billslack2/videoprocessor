@@ -21,6 +21,7 @@
 #include <thread>
 #include <atomic>
 #include <cstdio>
+#include <utility>
 
 
 /**
@@ -29,7 +30,7 @@
  * Thread-safe file logging with timestamps - non-blocking for caller
  * 
  * OPTIMIZATION: Keeps file open in writer thread and batches writes to reduce I/O overhead
- * BEHAVIOR: Archives the prior session and prunes only matching VP logs
+ * BEHAVIOR: Bounds live segments and archives; prunes only matching VP logs
  */
 class DebugLog
 {
@@ -97,7 +98,7 @@ public:
 	/**
 	 * Initialize the async logger (call once at startup)
 	 * This archives the prior session and applies the startup-only retention
-	 * count before producer threads can enqueue normal diagnostics.
+	 * count before producer threads can enqueue normal diagnostics. Live rollover uses the same count.
 	 */
 	static void Initialize(
 		size_t retentionCount = DebugLogRetention::DEFAULT_COUNT,
@@ -117,37 +118,25 @@ public:
 			std::vector<std::string> initializationDiagnostics;
 			const std::string logPath = GetExecutableLogFilePath();
 			GetSelectedLogPath() = logPath;
+			GetRetentionCount() = (retentionCount >= DebugLogRetention::MIN_COUNT && retentionCount <= DebugLogRetention::MAX_COUNT) ? retentionCount : DebugLogRetention::DEFAULT_COUNT;
 			bool activeReady = false;
 			const bool logDirectoryReady =
 				DebugLogRetention::EnsureParentDirectory(
 					logPath, initializationDiagnostics);
-			if (logDirectoryReady && enhancedLogging)
-			{
-				// Enhanced mode is intentionally forensic: leave the current log
-				// and every previous trace artifact intact until the user cleans up.
-				std::ofstream active(logPath, std::ios::out | std::ios::app);
-				activeReady = active.is_open();
-				if (activeReady)
-					active.close();
-				else
-					initializationDiagnostics.push_back(
-						"Enhanced logging: cannot open active log '" + logPath + "'");
-			}
-			else if (logDirectoryReady)
-			{
-				auto rotation = DebugLogRetention::Rotate(logPath, retentionCount);
-				activeReady = rotation.activeReady;
-				initializationDiagnostics.insert(
-					initializationDiagnostics.end(),
-					rotation.diagnostics.begin(), rotation.diagnostics.end());
-			}
+            if (logDirectoryReady)
+            {
+                auto rotation = DebugLogRetention::Rotate(logPath, GetRetentionCount());
+                activeReady = rotation.activeReady;
+                initializationDiagnostics.insert(initializationDiagnostics.end(),
+                    rotation.diagnostics.begin(), rotation.diagnostics.end());
+            }
 			if (!activeReady)
 			{
 				// Never redirect diagnostics into an unrelated working directory.
 				GetLoggingEnabled().store(false, std::memory_order_release);
 				return;
 			}
-			std::ofstream file(logPath, std::ios::app);
+			std::ofstream file(logPath, std::ios::app | std::ios::binary);
 			if (file.is_open())
 			{
 				struct tm tm;
@@ -158,7 +147,7 @@ public:
 					" | " << retentionDiagnostic << "\n";
 				if (enhancedLogging)
 					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
-						" | Enhanced logging enabled: rotation disabled; live telemetry files enabled\n";
+						" | Enhanced logging enabled: live telemetry files enabled; vp.log segments bounded at 64 MiB\n";
 				else
 					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
 						" | VP log rotation: indexed archives use vp.log.0 (newest), vp.log.1, and so on\n";
@@ -226,7 +215,41 @@ private:
 		std::time_t cachedTimestamp = static_cast<std::time_t>(-1);
 		char timestampText[32]{};
 		bool haveTimestamp = false;
-		explicit FileSink(std::ofstream& output) : file(output) {}
+        std::string path;
+        size_t retentionCount = DebugLogRetention::DEFAULT_COUNT;
+        uint64_t limitBytes = 0, writtenBytes = 0;
+        bool disabled = false;
+        explicit FileSink(std::ofstream& output, std::string activePath = {},
+            size_t retained = DebugLogRetention::DEFAULT_COUNT, uint64_t limit = 0)
+            : file(output), path(std::move(activePath)), retentionCount(retained), limitBytes(limit)
+        {
+            file.seekp(0, std::ios::end);
+            const auto position = file.tellp();
+            if (position >= 0) writtenBytes = static_cast<uint64_t>(position);
+        }
+        bool AdmitBytes(size_t bytes)
+        {
+            if (disabled) return false;
+            if (!limitBytes) return true; // Existing isolated writer tests may omit rotation.
+            if (bytes > limitBytes || path.empty()) { disabled = true; return false; }
+            if (writtenBytes <= limitBytes - bytes) return true;
+            file.flush(); file.close();
+            const auto rotated = DebugLogRetention::Rotate(path, retentionCount);
+            if (!rotated.activeReady || rotated.retainedCount > retentionCount) { disabled = true; return false; }
+            // A one-file policy has no archive: recycle only its active file.
+            file.clear();
+            file.open(path, std::ios::out | std::ios::binary |
+                (retentionCount == 1 ? std::ios::trunc : std::ios::app));
+            if (!file.is_open()) { disabled = true; return false; }
+            file.seekp(0, std::ios::end);
+            const auto position = file.tellp();
+            if (position < 0) { disabled = true; return false; }
+            writtenBytes = static_cast<uint64_t>(position);
+            // Failed archive rename may leave the old active file intact. Do not
+            // silently append beyond the cap or discard it to conceal failure.
+            if (writtenBytes > limitBytes - bytes) { disabled = true; return false; }
+            return true;
+        }
 		size_t WriteBatch(const Transport::Record* records, size_t count)
 		{
 			size_t used = 0;
@@ -248,8 +271,11 @@ private:
 				std::memcpy(buffer.get() + used, record.message, record.length); used += record.length;
 				buffer[used++] = '\n';
 			}
+			if (!AdmitBytes(used)) return 0;
 			file.write(buffer.get(), static_cast<std::streamsize>(used));
-			return file.good() ? used : 0;
+			if (!file.good()) { disabled = true; return 0; }
+			writtenBytes += used;
+			return used;
 		}
 		void Flush() { file.flush(); }
 		size_t Report(const Metrics& metrics)
@@ -288,16 +314,22 @@ private:
 
 	static void WriterThreadProc()
 	{
-		std::ofstream file(GetLogFilePath(), std::ios::app);
+		std::ofstream file(GetLogFilePath(), std::ios::app | std::ios::binary);
 		if (!file.is_open())
 		{
 			GetLoggingEnabled().store(false, std::memory_order_release);
 			GetTransport().Close();
 			return;
 		}
-		FileSink sink{file};
+		FileSink sink{file, GetLogFilePath(), GetRetentionCount(), 64ull * 1024ull * 1024ull};
 		GetTransport().Run(sink);
 		file.close(); // Also outside every producer bookkeeping section.
+	}
+
+	static size_t& GetRetentionCount()
+	{
+		static size_t count = DebugLogRetention::DEFAULT_COUNT;
+		return count;
 	}
 
 	static Transport& GetTransport()

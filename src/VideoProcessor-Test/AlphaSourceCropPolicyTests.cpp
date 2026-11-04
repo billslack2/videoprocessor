@@ -1,5 +1,6 @@
 #include "pch.h"
 #include <SourcePictureDetector.h>
+#include "CapturedCurrentSupport20261104.h"
 #include "CppUnitTest.h"
 
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
@@ -16625,6 +16626,46 @@ TEST_CLASS(FinalAspectLimitFillRoutingTests)
         input.uncertainPicture = {};
     }
 public:
+    TEST_METHOD(CapturedCurrentSupportCannotReplaceAdmittedNativeFill)
+    {
+        using namespace CapturedCurrentSupport20261104;
+        static_assert(sizeof(rows)/sizeof(rows[0])==500,"Keep the original bounded source interval.");
+        unsigned observedChanges=0,verifiedOverrides=0;ActivePictureBounds last;
+        for(size_t i=0;i<sizeof(rows)/sizeof(rows[0]);++i) {
+            const auto& row=rows[i];
+            if(i)Assert::AreEqual(rows[i-1].sequence+1,row.sequence);
+            Decision admitted;admitted.applyCrop=row.admitted;admitted.owner=DecisionOwner::TRUSTED_CROP;
+            admitted.sourceBounds={row.native[0],row.native[1],row.native[2],row.native[3],3840,2160,
+                double(row.native[2]-row.native[0])/(row.native[3]-row.native[1]),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            AspectLimitFillInput configured;configured.trustedContentAuthorityAccepted=true;
+            configured.cropWiderContentToFillScreen=true;configured.widerLimitConfigured=true;
+            configured.widerAspectLimit=2.42;configured.screenAspect=2.35;configured.sourceBounds=admitted.sourceBounds;
+            const auto fill=EvaluateAspectLimitFill(configured);Assert::IsTrue(fill.applied);
+            const bool useSupport=CanApplyCurrentSourceSupportFallback(row.supportSelected,admitted,fill);
+            Assert::IsFalse(useSupport,L"Current support must not replace this source's admitted native fill.");
+            const auto& selected=fill.sourceBounds;
+            Assert::AreEqual(22,selected.left);Assert::AreEqual(3818,selected.right);
+            Assert::AreEqual(row.native[1],selected.top);Assert::AreEqual(row.native[3],selected.bottom);
+            if(i)Assert::IsTrue(selected.left==last.left && selected.top==last.top &&
+                selected.right==last.right && selected.bottom==last.bottom);
+            if(i && (row.observed[0]!=rows[i-1].observed[0] || row.observed[1]!=rows[i-1].observed[1] ||
+                row.observed[2]!=rows[i-1].observed[2] || row.observed[3]!=rows[i-1].observed[3]))++observedChanges;
+            if(row.supportSelected)++verifiedOverrides;last=selected;
+        }
+        Assert::AreEqual(120u,observedChanges,L"Preserve the actual historical oscillation evidence.");
+        Assert::AreEqual(64u,verifiedOverrides,L"Only explicit current-support selections certify old eligibility.");
+    }
+    TEST_METHOD(CurrentSupportFallbackRequiresVerifiedEligibilityAndNoAdmittedOperation)
+    {
+        Decision none;AspectLimitFillDecision noFill;
+        Assert::IsFalse(CanApplyCurrentSourceSupportFallback(false,none,noFill),L"No stale/missing/failed current proof.");
+        Assert::IsTrue(CanApplyCurrentSourceSupportFallback(true,none,noFill),L"Verified support still supplies a raw fallback.");
+        Decision crop;crop.applyCrop=true;
+        Assert::IsFalse(CanApplyCurrentSourceSupportFallback(true,crop,noFill),L"Preserve an admitted crop even without fill.");
+        AspectLimitFillDecision fill;fill.applied=true;
+        Assert::IsFalse(CanApplyCurrentSourceSupportFallback(true,none,fill),L"Preserve a configured fill even without native crop.");
+        Assert::IsFalse(CanApplyCurrentSourceSupportFallback(true,crop,fill));
+    }
     TEST_METHOD(Logged954955991992KeepsFillThroughRecoveryHold)
     {
         using namespace AnamorphicPresentation;

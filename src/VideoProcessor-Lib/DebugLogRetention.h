@@ -76,7 +76,7 @@ public:
 			setting.diagnostic =
 				"Debug log retention: configured " +
 				std::to_string(setting.count) +
-				" total file(s), including the active log (startup-only)";
+				" total file(s), including the active log (setting loaded at startup; live rotation at 64 MiB)";
 		}
 		catch (const std::exception&)
 		{

@@ -1509,9 +1509,9 @@ void testEveryPageRoundTrips()
     requireControl<QSpinBox>(window,
         QStringLiteral("config.logging.debug_log_retention"))->setValue(25);
     requireControl<QCheckBox>(window, QStringLiteral("config.logging.debug"))->setChecked(true);
-    require(!requireControl<QSpinBox>(window,
+    require(requireControl<QSpinBox>(window,
         QStringLiteral("config.logging.debug_log_retention"))->isEnabled(),
-        "Log retention remained editable while enhanced logging was enabled");
+        "Log retention must remain editable while enhanced logging is enabled");
     requireControl<QCheckBox>(window, QStringLiteral("config.logging.debug"))->setChecked(false);
     requireControl<QCheckBox>(window, QStringLiteral("config.logging.enabled"))->setChecked(false);
     require(!requireControl<QSpinBox>(window,

@@ -3420,6 +3420,23 @@ namespace VideoProcessorTest
             Assert::IsTrue(recorder.Observe(o).emit,L"Even same-millisecond restoration must be recorded.");
             o.tickMs=1101;Assert::IsTrue(recorder.Observe(o).emit,L"A stable scene needs a timed heartbeat.");
         }
+        TEST_METHOD(PresentationTelemetryPinsFinalFillAndPhysicalFactsToSelectedSource)
+        {
+            using namespace PresentationDecisionTelemetry;
+            Output o;o.generation=3;o.inputSequence=20;o.selectedSequence=19;
+            auto& f=o.facts;f.available=true;f.generation=3;f.sequence=19;
+            f.owner="trusted";f.decisionReason="earlier-policy";f.finalFactsAvailable=true;
+            f.finalOwner="current-source-support";f.finalReason="final-current-support";
+            f.fillApproved=true;f.fillApplied=false;f.fillApprovedSequence=19;f.supportOverrideApplied=true;
+            f.physicalSequence=19;f.physicalAvailable=true;f.physicalConfidence=4;f.physical={0,275,3840,1884};
+            auto json=Json(o);
+            Assert::IsTrue(json.find("\"final_owner\":\"current-source-support\"")!=std::string::npos);
+            Assert::IsTrue(json.find("\"fill_approved\":true,\"fill_applied\":false,\"fill_approved_source\":19")!=std::string::npos);
+            Assert::IsTrue(json.find("\"physical_bounds\":[0,275,3840,1884]")!=std::string::npos);
+            f.sequence=20;json=Json(o);
+            Assert::IsTrue(json.find("selected-source-facts-unavailable")!=std::string::npos);
+            Assert::IsTrue(json.find("final-current-support")==std::string::npos,L"Never borrow the newest input's final facts.");
+        }
         TEST_METHOD(PresentationTelemetryNeverJoinsLatestInputToAnotherDisplayedSource)
         {
             using namespace PresentationDecisionTelemetry;
@@ -3438,6 +3455,7 @@ namespace VideoProcessorTest
             o.sourcePts=std::numeric_limits<double>::infinity();o.outputPts=std::numeric_limits<double>::quiet_NaN();
             const std::string controls(192,'\x01');o.facts.measurementReason=controls;o.facts.scanReason=controls;o.facts.ownershipReason=controls;
             o.facts.erasureReason=controls;o.facts.continuationReason=controls;o.facts.decisionReason=controls;o.facts.owner=controls;
+            o.facts.finalOwner=controls;o.facts.finalReason=controls;o.facts.finalFactsAvailable=true;
             const auto json=Json(o);Assert::IsTrue(json.size()+128<4096,L"Structured records must not be truncated by the async transport.");
             Assert::IsTrue(json.find("\"source_pts\":null")!=std::string::npos);
             Assert::IsTrue(json.find("\"output_pts\":null")!=std::string::npos);

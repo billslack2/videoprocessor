@@ -1549,6 +1549,13 @@ namespace AlphaSourceCrop
 	};
 
 
+    // The caller supplies exact-current support eligibility. This final choice
+    // never displaces an already admitted native/caption crop or configured fill.
+    inline bool CanApplyCurrentSourceSupportFallback(bool currentSupportEligible,
+        const Decision& admitted, const AspectLimitFillDecision& fill) {
+        return currentSupportEligible && !admitted.applyCrop && !fill.applied;
+    }
+
 	// Tracks the logical contract of an actually applied crop, independently of
 	// temporary full-raster withdrawals and of diagnostic logging.
 	struct CropPresentationAdmissionState

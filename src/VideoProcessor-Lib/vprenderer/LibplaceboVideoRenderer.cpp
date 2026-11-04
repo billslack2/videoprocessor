@@ -289,6 +289,18 @@ namespace
         }
     }
 
+    template<class Action>
+    void TimedRetirementPhase(const char* phase,Action&& action) {
+        const auto started=SteadyClock::now();
+        DebugLog::Log("VP renderer retirement phase: stage=%s state=begin thread=%lu",phase,GetCurrentThreadId());
+        try {action();} catch(...) {
+            DebugLog::Log("VP renderer retirement phase: stage=%s state=failed elapsed_ms=%.3f",phase,
+                std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());throw;
+        }
+        DebugLog::Log("VP renderer retirement phase: stage=%s state=complete elapsed_ms=%.3f",phase,
+            std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
+    }
+
     template<class Measurement>
     void PopulateNativeSourceMeasurement(Measurement& result,const PreparedAnalysisFrame& prepared,
         const ActivePictureFrameIdentity& identity, SourcePictureSupportEpisode& episode) {
@@ -4871,13 +4883,14 @@ struct LibplaceboVideoRenderer::Impl
 
     PresentationDecisionTelemetry::Output lastSubmittedDecisionOutput;
     void RecordPresentationDecision(const PresentationDecisionTelemetry::Output& output,bool force=false) {
-        if(!DebugLog::IsEnhancedLoggingEnabled())return;
-        const auto event=presentationDecisionRecorder.Observe(output,force || activeSettings.recordingTimecode);
-        if(event.emit) {
-            const auto json=PresentationDecisionTelemetry::Json(output);
-            DebugLog::Log("VP presentation decision: event=%s span=%llu %s",event.event,event.span,json.c_str());
+        (void)force;
+        // One bounded asynchronous record per completed output. No second JSON
+        // serialization for state-change detection, pixel reads or disk waits.
+        const auto json=PresentationDecisionTelemetry::Json(output);
+        DebugLog::Log("VP presentation decision: event=frame span=1 %s",json.c_str());
+        if(DebugLog::IsEnhancedLoggingEnabled()) {
             recentPresentationDecisions.push_back(json);if(recentPresentationDecisions.size()>512)recentPresentationDecisions.pop_front();
-        }
+        } else recentPresentationDecisions.clear();
         if(output.rendered && output.submitted)lastSubmittedDecisionOutput=output;
     }
     struct TemporalPresentationSnapshot {
@@ -5907,12 +5920,12 @@ struct LibplaceboVideoRenderer::Impl
         InvalidateHdrStatus(true);
 		if (!outputResourcesRetired)
 		{
-            nlsPreparation.Stop();
-            subtitlePipelinePreparation.Stop();
-            pictureProofWorker.Stop();
-            lookaheadMeasurementWorker.Stop();
-            outwardWindowWorker.Stop();
-            subtitleMeasurementWorker.Stop();
+            TimedRetirementPhase("nls-preparation-stop",[&]{nlsPreparation.Stop();});
+            TimedRetirementPhase("subtitle-preparation-stop",[&]{subtitlePipelinePreparation.Stop();});
+            TimedRetirementPhase("picture-proof-stop",[&]{pictureProofWorker.Stop();});
+            TimedRetirementPhase("native-measurement-stop",[&]{lookaheadMeasurementWorker.Stop();});
+            TimedRetirementPhase("outward-window-stop",[&]{outwardWindowWorker.Stop();});
+            TimedRetirementPhase("subtitle-measurement-stop",[&]{subtitleMeasurementWorker.Stop();});
 			for (std::thread& worker : captureWorkers)
 				if (worker.joinable()) worker.join();
 			captureWorkers.clear();
@@ -19106,7 +19119,7 @@ releaseDriftBaseRetention =
                     subtitleCompositionSucceeded, currentNoCaptionConfirmed, discardedStripClear);
             // Copy existing decisions only. In particular, unavailable caption
             // work is a recordable state, not a condition for skipping telemetry.
-            if(DebugLog::IsEnhancedLoggingEnabled() || renderedOutputCaptureRequested.load(std::memory_order_relaxed)) {
+            {
                 auto& f=temporalPolicyDecisionFacts;f={};f.available=true;
                 f.generation=frameGeneration;f.sequence=sourceSequence;f.viewport=viewportRequestSerial;
                 f.format=AlphaSourceFormatKey(state);f.domain=queuedAnalysisDomainKey;
@@ -19397,16 +19410,15 @@ releaseDriftBaseRetention =
             // not a replacement physical boundary or native crop certificate.
             // Keep existing prepared/translated/NLS operations unchanged.
             const auto currentSupport=pixelMeasurements.CurrentSourceSupport();
-            const bool supportPresentation=currentSupport && currentSupport->currentSupport.verified &&
+            const bool supportEligible=currentSupport && currentSupport->currentSupport.verified &&
                 currentSupport->currentSupport.samplingBounds.rasterWidth==width &&
                 currentSupport->currentSupport.samplingBounds.rasterHeight==height &&
                 cropInput.automaticCropEnabled && !fixedCropAspectConfigured && !nlsRequested &&
-                // Support is a fallback only. A filtered physical observation
-                // must not replace an admitted native/caption crop or clear
-                // its configured fill on alternating source phases.
-                !cropDecision.applyCrop && !aspectLimitFill.applied &&
                 !subtitleCompositionSucceeded && !verticalTranslationActive &&
                 verticalTranslationPixels==0 && !captionPresentationHeld && !unknownCaptionHold.retained;
+            const bool fillApprovedBeforeSupport=aspectLimitFill.applied;
+            const bool supportPresentation=AlphaSourceCrop::CanApplyCurrentSourceSupportFallback(
+                supportEligible,cropDecision,aspectLimitFill);
             if(supportPresentation) {
                 auto bounds=currentSupport->currentSupport.samplingBounds;
                 // Affirmative current caption/UI visibility is never discarded
@@ -19444,6 +19456,22 @@ releaseDriftBaseRetention =
 			const ActivePictureBounds& presentationCropBounds =
 				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
 				cropDecision.sourceBounds;
+            if(temporalPolicyDecisionFacts.available) {
+                auto& f=temporalPolicyDecisionFacts;f.finalFactsAvailable=true;
+                f.finalOwner=AlphaSourceCrop::DecisionOwnerName(cropDecision.owner);
+                f.finalReason=aspectLimitFill.applied?aspectLimitFill.reason:cropDecision.reason;
+                f.fillApproved=fillApprovedBeforeSupport;f.fillApplied=aspectLimitFill.applied;
+                f.fillApprovedSequence=f.fillApproved?sourceSequence:0;
+                f.supportOverrideApplied=supportPresentation;
+                const bool currentPhysical=SameAnalysisFrameIdentity(latestPhysicalPictureIdentity,subtitleIdentity) &&
+                    latestPhysicalPictureEdges.sourceGeneration==frameGeneration;
+                f.physicalSequence=currentPhysical?sourceSequence:0;
+                f.physicalAvailable=currentPhysical && latestPhysicalPictureEdges.evaluated &&
+                    latestPhysicalPictureEdges.estimateAvailable;
+                f.physicalConfidence=currentPhysical?static_cast<int>(latestPhysicalPictureEdges.confidence):0;
+                f.physical=f.physicalAvailable?PresentationDecisionTelemetry::BoundsRect(latestPhysicalPictureEdges.estimate):
+                    PresentationDecisionTelemetry::Rect{};
+            }
             // The final fill policy authorizes an exact presentation, never a
             // replacement native boundary. Carry it with the selected packet;
             // successful submission rechecks the actual rectangle against it.
@@ -21501,7 +21529,7 @@ releaseDriftBaseRetention =
         displayVsyncClock.SkipMissed(SteadyClockNowNs());
         PresentationDecisionTelemetry::Output decisionOutput;
         const bool decisionTelemetryEnabled=DebugLog::IsEnhancedLoggingEnabled();
-        if(decisionTelemetryEnabled || renderedOutputCaptureRequested.load(std::memory_order_relaxed)) {
+        {
             decisionOutput.facts=selectedPresentationValid ? selectedPresentationForCommit.decisionFacts :
                 (!temporalRenderer.Active()?temporalPolicyDecisionFacts:PresentationDecisionTelemetry::Facts{});
             decisionOutput.instance=diagnosticInstanceId;decisionOutput.process=GetCurrentProcessId();
@@ -21590,7 +21618,7 @@ releaseDriftBaseRetention =
             targetLease.started=false; // Submit consumes the library frame even on failure.
             submitted = SubmitLibplaceboFrameChecked();
 		}
-        if(decisionTelemetryEnabled) {
+        {
             decisionOutput.submitted=submitted;
             CompleteDiagnosticOutput(decisionOutput,manualScreenshot || incidentScreenshot);
         }
@@ -23140,10 +23168,9 @@ releaseDriftBaseRetention =
     PresentationDecisionTelemetry::Output PrepareRepeatedDiagnostic(pl_tex output,uint64_t generation,
         uint64_t input,uint64_t selected,double outputPts) {
         PresentationDecisionTelemetry::Output o;
-        if(!DebugLog::IsEnhancedLoggingEnabled())return o;
         o=lastSubmittedDecisionOutput;o.generation=generation;o.inputSequence=input;o.selectedSequence=selected;
         o.outputPts=outputPts;o.repeated=true;o.rendered=true;o.submitted=false;
-        StampDecisionIdentity(o);DrawRecordingTimecode(output,o);return o;
+        StampDecisionIdentity(o);if(DebugLog::IsEnhancedLoggingEnabled())DrawRecordingTimecode(output,o);return o;
     }
     bool PresentInputCadenceRepeat(const SourceCadencePresentation& previous,
         const SourceCadencePresentationContext& context,const ActivePictureFrameIdentity& consumed,
@@ -23221,7 +23248,7 @@ releaseDriftBaseRetention =
         if(vpOwnedSwapchain)native=vpOwnedSwapchain;
         else native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
         const bool diagnosticSubmitted=PresentNativeChecked(native);
-        if(DebugLog::IsEnhancedLoggingEnabled()){diagnostic.submitted=diagnosticSubmitted;CompleteDiagnosticOutput(diagnostic,incident);}
+        {diagnostic.submitted=diagnosticSubmitted;CompleteDiagnosticOutput(diagnostic,incident);}
         if(!diagnosticSubmitted)return false;
         const int64_t ended=PerformanceCounterNow();
         auto record=sourceCadenceRecord;
@@ -23311,7 +23338,7 @@ releaseDriftBaseRetention =
         {
             submitted = SubmitLibplaceboFrameChecked();
         }
-        if(DebugLog::IsEnhancedLoggingEnabled()){diagnostic.submitted=compatible&&submitted;CompleteDiagnosticOutput(diagnostic,incident);}
+        {diagnostic.submitted=compatible&&submitted;CompleteDiagnosticOutput(diagnostic,incident);}
         if (!compatible || !submitted)
         {
             displayRepeatValid = false;
@@ -24512,7 +24539,7 @@ void LibplaceboVideoRenderer::Retire() noexcept
 	try
 	{
 		if (m_stopWorker.joinable())
-			m_stopWorker.join();
+            TimedRetirementPhase("stop-worker-join",[&]{m_stopWorker.join();});
 		{
 			std::lock_guard<std::mutex> guard(m_queueMutex);
 			m_stopRequested = true;
@@ -24525,7 +24552,7 @@ void LibplaceboVideoRenderer::Retire() noexcept
 		// swapchain, so no render or present can still use it.
 		if (m_renderThread.joinable())
 		{
-			m_renderThread.join();
+            TimedRetirementPhase("render-thread-join",[&]{m_renderThread.join();});
 		}
 		if (m_conversionThread.joinable())
 			m_conversionThread.join();

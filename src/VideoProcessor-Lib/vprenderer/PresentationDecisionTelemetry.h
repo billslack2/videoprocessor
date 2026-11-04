@@ -26,6 +26,10 @@ struct Facts {
     bool captionCurrent=false,captionDetected=false,captionHeld=false,captionIncomplete=false;
     bool composed=false,sourcePrepared=false,currentComposition=false,strongPrepared=false,absence=false;
     uint32_t preparationFailures=0;
+    bool finalFactsAvailable=false,fillApproved=false,fillApplied=false,supportOverrideApplied=false;
+    uint64_t fillApprovedSequence=0,physicalSequence=0;
+    bool physicalAvailable=false;int physicalConfidence=0;Rect physical;
+    std::string finalOwner,finalReason;
     std::string measurementReason,scanReason,ownershipReason,erasureReason,continuationReason,decisionReason,owner;
 };
 struct Output {
@@ -74,7 +78,12 @@ inline std::string Json(const Output& o) {
     s<<",\"composed\":"<<f.composed<<",\"source_prepared\":"<<f.sourcePrepared<<",\"prepare_failures\":"<<f.preparationFailures
      <<",\"current_composition\":"<<f.currentComposition<<",\"strong_prepared\":"<<f.strongPrepared<<",\"absence\":"<<f.absence
      <<",\"scan_reason\":"<<Quote(f.scanReason)<<",\"ownership_reason\":"<<Quote(f.ownershipReason)<<",\"erasure_reason\":"<<Quote(f.erasureReason)
-     <<",\"continuation_reason\":"<<Quote(f.continuationReason)<<",\"owner\":"<<Quote(f.owner)<<",\"reason\":"<<Quote(f.decisionReason)<<'}';return s.str();
+     <<",\"continuation_reason\":"<<Quote(f.continuationReason)<<",\"owner\":"<<Quote(f.owner)<<",\"reason\":"<<Quote(f.decisionReason)
+     <<",\"final_facts\":"<<f.finalFactsAvailable<<",\"final_owner\":"<<Quote(f.finalOwner)<<",\"final_reason\":"<<Quote(f.finalReason)
+     <<",\"fill_approved\":"<<f.fillApproved<<",\"fill_applied\":"<<f.fillApplied<<",\"fill_approved_source\":"<<f.fillApprovedSequence
+     <<",\"support_override_applied\":"<<f.supportOverrideApplied<<",\"physical_source\":"<<f.physicalSequence
+     <<",\"physical_available\":"<<f.physicalAvailable<<",\"physical_confidence\":"<<f.physicalConfidence<<",\"physical_bounds\":";
+    WriteRect(s,f.physical);s<<'}';return s.str();
 }
 inline std::string StateKey(Output o) {
     // Source counters advance during a stable scene. Preserve semantic freshness
@@ -83,6 +92,7 @@ inline std::string StateKey(Output o) {
     o.tickMs=o.qpc=o.qpcFrequency=o.outputId=o.inputSequence=o.utcMs=0;o.sourcePts=o.outputPts=o.diagnosticCpuMs=0;o.timecode.clear();
     o.selectedSequence=1;o.facts.sequence=current?1:0;
     o.facts.measurementSequence=o.facts.nativeAcceptedSequence=o.facts.captionSequence=o.facts.cue=0;
+    o.facts.fillApprovedSequence=o.facts.physicalSequence=0;
     o.repeated=false;
     return Json(o);
 }

@@ -33,6 +33,21 @@ namespace DebugLogAsync
 
 struct DebugLogTestAccess
 {
+    static size_t WriteRollingFrames(const std::string& path, size_t retention, size_t frames)
+    {
+        std::ofstream file(path, std::ios::binary | std::ios::app);
+        DebugLog::FileSink sink(file, path, retention, 256);
+        size_t accepted = 0;
+        for (size_t i = 0; i < frames; ++i)
+        {
+            DebugLogAsync::Transport<>::Record record;
+            const std::string text = "frame-" + std::to_string(i) + ":" + std::string(80, 'x');
+            std::memcpy(record.message, text.c_str(), text.size() + 1);
+            record.length = static_cast<uint32_t>(text.size()); record.timestamp = 1700000000;
+            if (sink.WriteBatch(&record, 1)) ++accepted;
+        }
+        sink.Flush(); return accepted;
+    }
     static size_t WriteMaximumBatch(const std::string& path)
     {
         using Queue = DebugLogAsync::Transport<>;
@@ -188,6 +203,36 @@ namespace VideoProcessorTest
     TEST_CLASS(DebugLogAsyncTests)
     {
     public:
+        TEST_METHOD(LiveWriterRotatesBoundedSegmentsWithoutTouchingIncidentEvidence)
+        {
+            TemporaryLogDirectory directory;
+            { std::ofstream unrelated(directory.Path("unrelated.log")); unrelated << "preserved incident"; }
+            Assert::AreEqual(size_t(30), DebugLogTestAccess::WriteRollingFrames(directory.Path("vp.log"), 2, 30));
+            const auto current = Contents(directory.Path("vp.log"));
+            const auto prior = Contents(directory.Path("vp.log.0"));
+            Assert::IsTrue(current.size() <= 256 && prior.size() <= 256);
+            Assert::IsTrue(current.find("frame-29:") != std::string::npos);
+            Assert::IsTrue(prior.find("frame-27:") != std::string::npos);
+            Assert::IsTrue(current.find("frame-0:") == std::string::npos && prior.find("frame-0:") == std::string::npos);
+            Assert::AreEqual(std::string("preserved incident"), Contents(directory.Path("unrelated.log")));
+            Assert::AreEqual(DWORD(INVALID_FILE_ATTRIBUTES), GetFileAttributesA(directory.Path("vp.log.1").c_str()));
+            Assert::AreEqual(size_t(12), DebugLogTestAccess::WriteRollingFrames(directory.Path("vp.log"), 1, 12));
+            Assert::IsTrue(Contents(directory.Path("vp.log")).size() <= 256);
+            Assert::AreEqual(DWORD(INVALID_FILE_ATTRIBUTES), GetFileAttributesA(directory.Path("vp.log.0").c_str()));
+        }
+        TEST_METHOD(LiveWriterRotationFailureStopsGrowthAndPreservesLockedArchive)
+        {
+            TemporaryLogDirectory directory;
+            { std::ofstream archive(directory.Path("vp.log.0")); archive << "locked evidence"; }
+            HANDLE locked = CreateFileA(directory.Path("vp.log.0").c_str(), GENERIC_READ,
+                FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            Assert::IsTrue(locked != INVALID_HANDLE_VALUE);
+            const auto accepted = DebugLogTestAccess::WriteRollingFrames(directory.Path("vp.log"), 2, 30);
+            CloseHandle(locked);
+            Assert::AreEqual(size_t(2), accepted, L"Archive failure must stop disk growth; subsequent records are rejected by the writer only");
+            Assert::IsTrue(Contents(directory.Path("vp.log")).size() <= 256);
+            Assert::AreEqual(std::string("locked evidence"), Contents(directory.Path("vp.log.0")));
+        }
         TEST_METHOD(RecordsOwnProducerTextAndCaptureTimestamp)
         {
             using Queue = DebugLogAsync::Transport<4, 32, 2>;
