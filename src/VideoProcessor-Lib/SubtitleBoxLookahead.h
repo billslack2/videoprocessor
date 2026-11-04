@@ -3413,8 +3413,17 @@ public:
                     // A line in an encoded bar need not have a finite opaque
                     // backing card. Empty card metadata is optional, not a
                     // missing current glyph scan or padded extraction area.
-                    const bool validCard=capture.Valid() && capture.left<=current.left &&
-                        capture.top<=current.top && capture.right>=current.right && capture.bottom>=current.bottom;
+                    // A measured card owns picture-side backing. A glyph line
+                    // may continue into the encoded bar, whose current glyphs
+                    // are proved separately below; it need not extend the card.
+                    const SubtitleBoxRect picturePart{current.left,(std::max)(current.top,raw.pictureTop),
+                        current.right,(std::min)(current.bottom,raw.pictureBottom)};
+                    const bool currentPicture=raw.independentBarAnalysis && raw.barAuthority && raw.barEvidence.available &&
+                        raw.pictureTop>0 && raw.pictureBottom<raw.height && raw.pictureTop<raw.pictureBottom &&
+                        raw.pictureTop==raw.barEvidence.top && raw.pictureBottom==raw.barEvidence.bottom;
+                    const auto& requiredCard=currentPicture && picturePart.Valid()?picturePart:current;
+                    const bool validCard=capture.Valid() && capture.left<=requiredCard.left &&
+                        capture.top<=requiredCard.top && capture.right>=requiredCard.right && capture.bottom>=requiredCard.bottom;
                     if(current.Valid() && (noCard(capture) || validCard) &&
                         std::abs(current.left-accepted.left)<=cell && std::abs(current.top-accepted.top)<=cell &&
                         std::abs(current.right-accepted.right)<=cell && std::abs(current.bottom-accepted.bottom)<=cell &&

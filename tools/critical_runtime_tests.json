@@ -13,8 +13,9 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1104,
+  "minimumNativeTests": 1105,
   "requiredNativeMethods": [
+    "CurrentHeldCrossingGlyphRequiresOnlyCurrentPictureCardCoverage",
     "CurrentFootprintFailureWitnessPreservesImmutableBaselineAndTruthfulClasses",
     "CurrentHeldCertificateTelemetryPreservesShortCircuitFacts",
     "QualifiedSubtitleRejectionDiagnosticsPreserveAdmissionAndLocateFailures",
@@ -440,6 +441,11 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentHeldCrossingGlyphRequiresOnlyCurrentPictureCardCoverage"
+    },
     {
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",

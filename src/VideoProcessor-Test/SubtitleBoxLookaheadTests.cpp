@@ -507,6 +507,65 @@ public:
                 L"No token, wrong source/context, another gap, or changed/unknown pixels cannot inherit retired-input adjacency.");
         }
     }
+    TEST_METHOD(CurrentHeldCrossingGlyphRequiresOnlyCurrentPictureCardCoverage) {
+        for(int fault=0;fault<7;++fault) {
+            auto tracker=std::make_unique<SubtitleBoxPresentation>();
+            const auto scan=[](uint64_t sequence) {
+                auto o=CurrentHeldProofCue(sequence);
+                // First line318..332 crosses the independently measured325
+                // boundary. Its finite card covers only picture rows318..324.
+                o.pictureBottom=o.barEvidence.bottom=325;
+                o.sharedPicture.bounds.bottom=325;o.sharedPicture.bounds.aspectRatio=640.0/280;
+                o.text.capturePanelMeasured=true;
+                o.text.sourcePanel=o.text.capturePanel={196,314,444,325};
+                o.text.linePanels[0]=o.text.lineCapturePanels[0]=o.text.capturePanel;
+                return o;
+            };
+            auto initial=std::make_unique<std::array<SubtitleBoxObservation,2>>();
+            (*initial)[0]=scan(1);(*initial)[1]=scan(2);
+            auto preview=std::make_unique<SubtitleBoxPreview>();
+            SubtitleBoxLookahead::ResolveInto(*preview,initial->data(),2,7,9);
+            const auto acquired=tracker->Consume(*preview,250,16.683);
+            Assert::IsTrue(acquired.detected&&!acquired.held);
+            (*initial)[0]=scan(2);(*initial)[1]=scan(3);
+            SubtitleBoxLookahead::ResolveInto(*preview,initial->data(),2,7,9);
+            // A shorter future grouping retains the acquired pose. Current RAW
+            // evidence remains complete; a one-cell lower-box inset exercises
+            // the bounded current line-coverage path without changing its ink.
+            preview->text.lineCount=1;preview->text.lineBounds[1]={};
+            auto& raw=preview->current;
+            ++raw.text.lineBounds[1].left;++raw.text.lineBounds[1].top;
+            if(fault==1)--raw.text.lineCapturePanels[0].bottom; // Missing picture-side coverage.
+            if(fault==2 || fault==3) {
+                auto ink=std::make_shared<SubtitleInkSnapshot>(*raw.ink);
+                const auto set=[&](int x,int y,bool owned) {
+                    const size_t pixel=size_t(y)*640+x;const uint64_t bit=uint64_t(1)<<(pixel%64);
+                    if(owned){ink->rawInk[pixel/64]|=bit;ink->ownedInk[pixel/64]|=bit;ink->blackBacking[pixel/64]&=~bit;}
+                    else {ink->rawInk[pixel/64]&=~bit;ink->ownedInk[pixel/64]&=~bit;ink->blackBacking[pixel/64]|=bit;}
+                };
+                if(fault==2)for(int y=338;y<348;++y)for(int x=460;x<468;++x)set(x,y,true); // Novel bar glyph.
+                else for(int y=318;y<325;++y)for(int x=200;x<205;++x)set(x,y,false); // Missing picture glyph.
+                raw.ink=std::move(ink);
+            }
+            if(fault==4)raw.text.lineCapturePanels[0]={196,314,196,325}; // Malformed present card.
+            if(fault==5)raw.text.lineCapturePanels[0]={1,1,2,2}; // Unrelated present card.
+            if(fault==6)raw.independentBarAnalysis=false;
+            const auto held=tracker->Consume(*preview,250,16.683);
+            const bool certified=tracker->CurrentPreparedCueCertificate().Matches(raw,held,raw.sharedPicture.bounds);
+            if(fault==0) {
+                Assert::IsTrue(held.detected&&held.held);
+                Assert::AreEqual(acquired.cue,held.cue);
+                Assert::IsTrue(certified,L"Current picture backing plus unchanged bar glyphs proves this held crossing line.");
+                Assert::AreEqual(uint64_t(0),tracker->PreparedCueDecision().failed);
+                Assert::IsTrue((tracker->PreparedCueDecision().evaluated&
+                    SubtitleBoxPresentation::CurrentPreparedCueDecision::NoNovelOwnedInk)!=0);
+                Assert::AreEqual(325,raw.text.lineCapturePanels[0].bottom,L"Certification must not enlarge measured card authority.");
+                Assert::AreEqual(332,raw.text.lineBounds[0].bottom,L"The complete glyph line remains unchanged.");
+            } else {
+                Assert::IsFalse(certified,L"Incomplete picture coverage/glyphs, novel bar ink or invalid authority cannot certify erasure.");
+            }
+        }
+    }
     TEST_METHOD(CurrentHeldCertificateTelemetryPreservesShortCircuitFacts) {
         using Fact=SubtitleBoxPresentation::CurrentPreparedCueDecision;
         for(bool incomplete:{false,true}) {
