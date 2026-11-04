@@ -16795,6 +16795,50 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleSourcePreparation.ownershipBase=effectiveGeometry;
                 subtitleSourcePreparation.ownershipEvaluated=true;
             }
+            // The current prepared output can seed semantic/glyph history even
+            // when raw bars are inspection-only. Offer this alternative only
+            // AFTER the existing final qualifier, never from shader success alone.
+            // The worker validates the typed witness and builds a fresh dense
+            // source footprint; no raw/native authority or old pixels are reused.
+            const auto& seedObservation=subtitleSourcePreparation.ownershipObservation;
+            const auto& preparedSeedEvidence=subtitleSourcePreparation.ownershipEvidence.qualified
+                ? subtitleSourcePreparation.ownershipEvidence : subtitleSourcePreparation.preparedErasureEvidence;
+            const bool completePreparedSeedScan=!reuseSubtitlePreparation && !currentCueProofConsumed &&
+                SubtitlePreviewOverridesClassicHandling(ownershipInput.mode) && ownershipInput.sourcePrepared &&
+                preparedSeedEvidence.qualified &&
+                seedObservation.samplingBasis.MatchesBase(seedObservation,effectiveGeometry) &&
+                SameAnalysisFrameIdentity(seedObservation.identity,subtitleIdentity) && seedObservation.analyzed &&
+                !seedObservation.pendingRefresh && !seedObservation.analysisRefresh && !seedObservation.cadenceSkipped &&
+                (seedObservation.analysisStride==1 || seedObservation.analysisStride==2) && !seedObservation.discontinuity &&
+                seedObservation.text.detected && !seedObservation.text.held &&
+                !seedObservation.text.confirmationPending && !seedObservation.text.workLimit;
+            if(completePreparedSeedScan) {
+                auto seed=std::make_unique<SubtitleCurrentCueTemplateInput>();
+                seed->observation=seedObservation;seed->acceptedCue=subtitleSourcePreparation.ownershipAccepted;
+                seed->source=analysisSource;seed->source.generation=seedObservation.identity.transportGeneration;
+                seed->physicalBase=effectiveGeometry;seed->composedOperation=relocatedSubtitle;
+                seed->sourceMode=ownershipInput.mode;seed->compositionSucceeded=subtitleCompositionSucceeded;
+                seed->acceptedCurrentScan=true;seed->backgroundMode=subtitleCutPasteBackground;
+                seed->preparedPresentation=std::make_shared<const QualifiedSubtitlePresentationEvidence>(preparedSeedEvidence);
+                if(seed->acceptedCue.held)
+                    seed->heldCurrentCue=std::make_shared<SubtitleCurrentPreparedCueCertificate>(
+                        subtitleSourcePreparation.currentPreparedCue);
+                seed->frameMs=state.displayMode && state.displayMode->TimeScale()>0
+                    ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0;
+                seed->holdMs=activeSettings.subtitleHoldMs;
+                uint64_t revision=0;const auto started=SteadyClock::now();
+                const auto status=subtitleMeasurementWorker.SubmitCurrentCueTemplate(std::move(*seed),revision);
+                if(revision)currentCueTemplateRevision.store(revision,std::memory_order_release);
+                auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-cue-template-offered",
+                    status==SubtitleCurrentCueProofStatus::Queued?"prepared-sampling-queued":
+                    status==SubtitleCurrentCueProofStatus::Ready?"prepared-sampling-already-seeded":"prepared-sampling-not-eligible");
+                trace.policyGeneration=localBoundaryPolicyGeneration;trace.continuityGeneration=localBoundaryContinuityGeneration;
+                trace.flags=(revision?1u:0u)|2u;trace.counters[0]=revision;
+                trace.counters[1]=static_cast<uint64_t>(ownershipInput.mode);
+                trace.counters[2]=static_cast<uint64_t>(subtitleSourcePreparation.ownershipAccepted.lineCount);
+                trace.metrics[0]=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
+                AnalysisDiagnosticTrace::Emit(trace);
+            }
             const auto& ownershipObservation=subtitleSourcePreparation.ownershipObservation;
             const auto& ownershipAccepted=subtitleSourcePreparation.ownershipAccepted;
             const bool pendingErasureCandidate=SubtitlePreviewOverridesClassicHandling(ownershipInput.mode) &&

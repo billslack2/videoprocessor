@@ -4975,6 +4975,166 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::IsTrue(recovered.detected && recovered.lineCount==3 && recovered.cue==acquired.cue,
             L"A complete scan immediately after a long proof chain reattaches only the unchanged cue.");
     }
+// This fixture models only successful GPU preparation. Current support and
+// prepared-erasure admission are evaluated from the actual synthetic pixels.
+static SubtitleCurrentCueTemplateInput PreparedSemanticSeed(uint64_t sequence,
+    const std::shared_ptr<std::vector<uint16_t>>& pixels) {
+    SubtitleCurrentCueTemplateInput input;
+    auto& o=input.observation;o=CompleteThreeLineScan(sequence,*pixels);
+    o.identity.analysisDomainKey=17;o.sharedPicture.identity=o.identity;
+    input.source=OwnedCadenceSource(pixels);input.physicalBase=o.sharedPicture.bounds;
+    ActivePictureBounds supportBounds=input.physicalBase;supportBounds.bottom=82;
+    auto support=std::make_shared<CurrentSourceSupportEvidence>(
+        VerifyCurrentSourceSupport(input.source,o.identity,&supportBounds,nullptr));
+    Assert::IsTrue(support->verified,L"The sampling witness comes from current native pixels.");
+    o.sharedPicture.bounds={};o.inspectionCandidateUsed=o.pictureAuthorityUnavailableForMeasurement=true;
+    auto& nominee=o.sharedPicture.inspectionCandidate;nominee.valid=true;
+    nominee.bounds=input.physicalBase;nominee.originIdentity=o.identity;
+    nominee.policyGeneration=o.policyGeneration;nominee.continuityGeneration=o.continuityGeneration;
+    nominee.nativeGeometryRevision=1;
+    o.pictureTop=o.barEvidence.top=0;o.samplingBasis.Apply(o,support);
+    Assert::IsTrue(o.samplingBasis.MatchesBase(o,input.physicalBase));
+    Assert::IsFalse(o.independentBarAnalysis);
+    // This synthetic full scan has a lower glyph row74..80 crossing the
+    // measured bottom78, so its near-bar result is affirmatively measured.
+    o.text.nearBarEligibilityMeasured=true;
+    o.text.nearBarEligible=o.text.lineBounds[2].top<o.pictureBottom &&
+        o.text.lineBounds[2].bottom>o.pictureBottom;
+    input.acceptedCue=o.text;input.sourceMode=SubtitlePreviewMode::BlackBackground;
+    input.acceptedCurrentScan=input.compositionSucceeded=true;input.backgroundMode=3;input.frameMs=40;
+    auto& op=input.composedOperation;op.valid=true;
+    op.content=SubtitleGlyphCaptureBounds(o.text,o.width,o.height);
+    op.glyphLines=SubtitleGlyphCaptureLines(o.text,o.width,o.height);
+    op.source=o.text.sourcePanel;op.pictureCapture=o.text.capturePanel;
+    op.destination={0,12,80,47};op.generatedCleanup={40,47,120,78};op.pictureTop=12;op.pictureBottom=78;
+    QualifiedSubtitlePresentationInput q;q.mode=input.sourceMode;q.currentIdentity=o.identity;
+    q.observation=&o;q.accepted=&input.acceptedCue;q.composition=&op;q.physicalBase=input.physicalBase;
+    q.policyGeneration=o.policyGeneration;q.continuityGeneration=o.continuityGeneration;
+    q.currentDisplayPicture.required=true;q.currentDisplayPicture.bounds=input.physicalBase;
+    q.currentDisplayPicture.identity=o.identity;q.sourcePrepared=true;
+    const auto raw=EvaluateActivePicturePresentationRetention(input.source,input.physicalBase);
+    auto proof=std::make_shared<QualifiedSubtitlePresentationEvidence>(
+        EvaluatePreparedSubtitlePresentationEvidence(input.source,raw,q));
+    if(!proof->qualified)Logger::WriteMessage(proof->reason);
+    Assert::IsTrue(proof->qualified,L"Modeled prepared output must pass the unchanged pixel qualifier.");
+    input.preparedPresentation=std::move(proof);return input;
+}
+TEST_METHOD(CurrentCueWorkerPreparedSamplingBasisRequiresExactQualifiedComposition) {
+    auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+    auto input=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(1,pixels));
+    for(int fault=0;fault<10;++fault) {
+        auto bad=std::make_unique<SubtitleCurrentCueTemplateInput>(*input);
+        auto proof=std::make_shared<QualifiedSubtitlePresentationEvidence>(*input->preparedPresentation);
+        bad->preparedPresentation=proof;
+        switch(fault) {
+        case 0:bad->preparedPresentation.reset();break;
+        case 1:proof->qualified=false;break;
+        case 2:++proof->identity.acceptedSequence;break;
+        case 3:++proof->physicalBase.top;break;
+        case 4:++proof->erasedSourceBounds.left;break;
+        case 5:proof->currentCompositionMode=SubtitlePreviewMode::GeneratedGrayBackground;break;
+        case 6:bad->observation.samplingBasis={};break;
+        case 7:++bad->observation.policyGeneration;break;
+        case 8:bad->observation.text.bottomSearchComplete=false;break;
+        case 9:bad->compositionSucceeded=false;break;
+        }
+        SubtitleMeasurementWorker worker;uint64_t revision=0;
+        Assert::IsTrue(worker.SubmitCurrentCueTemplate(*bad,revision)==SubtitleCurrentCueProofStatus::NotEligible);
+    }
+    auto worker=std::make_unique<SubtitleMeasurementWorker>();uint64_t revision=0;
+    Assert::IsTrue(worker->SubmitCurrentCueTemplate(*input,revision)==SubtitleCurrentCueProofStatus::Queued);
+    bool ready=false;for(int i=0;i<1000;++i) {
+        uint64_t observed=0;
+        if(worker->SubmitCurrentCueTemplate(*input,observed)==SubtitleCurrentCueProofStatus::Ready){ready=true;break;}
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Assert::IsTrue(ready);
+    Assert::IsTrue(input->observation.inspectionCandidateUsed);
+    Assert::IsFalse(input->observation.independentBarAnalysis);
+    Assert::IsFalse(input->observation.sharedPicture.AvailableFor(input->observation.identity,160,90));
+    Assert::AreEqual(0,input->observation.barEvidence.top,L"RAW facts are not rewritten for private cue reuse.");
+}
+TEST_METHOD(CurrentCueWorkerPreparedSamplingBasisReusesCurrentPixelsAndRefreshesSemantics) {
+    for(int fault=0;fault<8;++fault) {
+        auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+        auto input=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(1,seedPixels));
+        std::atomic_uint scans{0}; // Outlives joined callbacks.
+        auto worker=std::make_unique<SubtitleMeasurementWorker>();worker->SetInputRateHz(25);
+        uint64_t revision=0;
+        Assert::IsTrue(worker->SubmitCurrentCueTemplate(*input,revision)==SubtitleCurrentCueProofStatus::Queued);
+        bool ready=false;for(int i=0;i<1000;++i) {
+            uint64_t observed=0;
+            if(worker->SubmitCurrentCueTemplate(*input,observed)==SubtitleCurrentCueProofStatus::Ready){ready=true;break;}
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Assert::IsTrue(ready);
+        const uint64_t last=fault==5?25:(fault?2:93);
+        for(uint64_t sequence=2;sequence<=last;++sequence) {
+            auto pixels=std::make_shared<std::vector<uint16_t>>(*seedPixels);
+            // Movie motion outside glyph/cleanup/destination footprint is not a cue change.
+            for(int y=20;y<40;++y)for(int x=135;x<155;++x)
+                (*pixels)[size_t(y)*160+x]=uint16_t((300+int(sequence%4)*40)<<6);
+            if(fault==1)for(int y=82;y<85;++y)for(int x=130;x<140;++x)(*pixels)[size_t(y)*160+x]=uint16_t(700<<6);
+            if(fault==2)(*pixels)[size_t(50)*160+56]=uint16_t(64<<6);
+            if(fault==3) {
+                (*pixels)[size_t(82)*160+134]=uint16_t(700<<6);
+                (*pixels)[160*90+size_t(41)*160+134]=uint16_t(800<<6);
+            }
+            auto current=CompleteThreeLineScan(sequence,*pixels);current.identity.analysisDomainKey=17;
+            current.sharedPicture.identity=current.identity;
+            // Original inspection scan key, intentionally different from the private proof key.
+            current.sharedPicture.bounds={};current.sharedPicture.inspectionCandidate=input->observation.sharedPicture.inspectionCandidate;
+            current.sharedPicture.inspectionCandidate.originIdentity=current.identity;
+            current.inspectionCandidateUsed=true;
+            if(fault==5)current=PreparedSemanticSeed(sequence,pixels).observation;
+            SubtitleBoxObservation key;
+            Assert::IsTrue(BuildSubtitleCurrentCueProofKey(current,current.identity,input->physicalBase,true,key));
+            worker->AdvanceCurrentCueRenderWindow(current.identity,sequence);
+            if(fault==4)worker->InvalidateCurrentCueProofContext();
+            SubtitleCurrentCueProofRequest request;request.currentKey=key;request.fullScanKey=current;request.hasFullScanKey=true;
+            request.source=OwnedCadenceSource(pixels);request.physicalBase=input->physicalBase;
+            request.sourceMode=input->sourceMode;request.templateRevision=revision;request.backgroundMode=3;
+            request.frameMs=40;request.fullScanDue=false;request.eligibleRenderHead=current.identity;request.eligibleTailSequence=sequence;
+            if(fault==6) {
+                request.fullScanKey.sharedPicture.bounds=input->physicalBase;
+                ++request.fullScanKey.sharedPicture.bounds.top;
+            }
+            if(fault==7)++request.fullScanKey.sharedPicture.inspectionCandidate.bounds.top;
+            const auto queued=worker->SubmitCurrentCueProof(std::move(request));
+            if(fault==4){Assert::IsTrue(queued!=SubtitleCurrentCueProofStatus::Queued);break;}
+            if(fault>=6) {
+                Assert::IsTrue(queued==SubtitleCurrentCueProofStatus::NotEligible,
+                    L"A contradictory raw base cannot be paired with a different canonical proof to suppress its scan.");
+                Assert::IsTrue(worker->Submit(current,[current,&scans](SubtitleMeasurementSampler&,
+                    const SubtitleBarTrackingReference&) mutable {++scans;return current;}));
+                SubtitleBoxObservation scanned;Assert::IsTrue(WaitForRead(*worker,current,scanned));
+                Assert::AreEqual(1u,scans.load());break;
+            }
+            Assert::IsTrue(queued==SubtitleCurrentCueProofStatus::Queued);
+            SubtitleCurrentCueProofReceipt receipt;auto status=queued;
+            for(int i=0;i<1000;++i) {
+                status=worker->TryPeekCurrentCueProof(key,receipt);
+                if(status!=SubtitleCurrentCueProofStatus::Queued && status!=SubtitleCurrentCueProofStatus::Pending)break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            if(fault>0 && fault<4){Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Failed);break;}
+            Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Ready);
+            Assert::AreEqual(uint64_t(1),receipt.SeedIdentity().acceptedSequence);
+            Assert::AreEqual(sequence,receipt.CurrentKey().identity.acceptedSequence);
+            if(fault==5) {
+                const bool admitted=worker->Submit(current,[current,&scans](SubtitleMeasurementSampler&,
+                    const SubtitleBarTrackingReference&) mutable {++scans;return current;});
+                if(admitted) {
+                    SubtitleBoxObservation scanned;
+                    Assert::IsTrue(WaitForRead(*worker,current,scanned));
+                }
+                Assert::AreEqual(unsigned((sequence-1)/3),scans.load(),
+                    L"Original inspection keys route to exact proofs; unchanged semantics refresh every100ms without bursts.");
+            } else Assert::AreEqual(0u,scans.load(),L"Unchanged exact-source proofs need no full grouping callback.");
+        }
+    }
+}
+
 TEST_METHOD(CurrentCueWorkerSeedsFreshRawScanBoundToHeldPresentation) {
     struct Workspace {
         SubtitleBoxPresentation tracker;

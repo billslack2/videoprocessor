@@ -4,6 +4,7 @@
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCadenceGuard.h>
 #include <SubtitleCurrentCuePresentation.h>
+#include <vprenderer/SubtitleAspectRetention.h>
 #include <SubtitlePreviewMode.h>
 #include <AnalysisDiagnosticHooks.h>
 #include <DebugLog.h>
@@ -295,12 +296,31 @@ struct SubtitleCurrentCueTemplateInput {
     SubtitlePreviewMode sourceMode=SubtitlePreviewMode::None;
     bool compositionSucceeded=false;
     bool acceptedCurrentScan=false;
+    // Completed exact-source compositor qualification; presentation only.
+    std::shared_ptr<const QualifiedSubtitlePresentationEvidence> preparedPresentation;
     // Same-source raw/retained-pose binding only; worker samples the new seed.
     std::shared_ptr<const SubtitleCurrentPreparedCueCertificate> heldCurrentCue;
     int backgroundMode=3;
     double frameMs=1000.0/60.0;
     int holdMs=250;
 };
+
+// This alternative seeds only a comparison template, never a native lease.
+inline bool HasQualifiedCurrentCueSamplingBasis(const SubtitleCurrentCueTemplateInput& input) {
+    const auto& o=input.observation;const auto& proof=input.preparedPresentation;
+    const auto& op=input.composedOperation;
+    if(!SubtitlePreviewOverridesClassicHandling(input.sourceMode) || !proof ||
+        !proof->qualified || proof->status!=QualifiedSubtitlePresentationStatus::Qualified ||
+        !proof->currentCompositionVerified || proof->currentCompositionMode!=input.sourceMode ||
+        !SameAnalysisFrameIdentity(proof->identity,o.identity) ||
+        !SameSubtitlePresentationBounds(proof->physicalBase,input.physicalBase) ||
+        !o.samplingBasis.MatchesBase(o,input.physicalBase) || !input.compositionSucceeded || !op.valid)
+        return false;
+    const auto& erased=proof->erasedSourceBounds;const auto& content=op.content;
+    return erased.rasterWidth==o.width && erased.rasterHeight==o.height &&
+        erased.left==content.left && erased.top==content.top &&
+        erased.right==content.right && erased.bottom==content.bottom;
+}
 
 enum class SubtitleCurrentCueProofStatus : uint8_t {
     NoTemplate, NoTask, NotEligible, Queued, Pending, Ready, FallbackQueued, Failed, Expired, Consumed
@@ -2087,13 +2107,16 @@ private:
         m_diagnostics.seedBandSamplesChecked=0;m_diagnostics.seedGlyphSamplesChecked=0;
         m_diagnostics.seedKnownSamplesChecked=0;m_diagnostics.seedBackingSamplesChecked=0;
         const auto& current=preview.current;const auto& text=current.text;const auto ink=current.ink;
+        const bool verifiedPresentationFootprint=presentationTemplateProof && currentFootprint &&
+            currentFootprint->MatchesAcceptedSeed(preview,preview.text,source,current.sharedPicture.bounds);
         if(!preview.available || !current.analyzed || current.pendingRefresh || current.analysisRefresh ||
-            current.discontinuity || !current.independentBarAnalysis || !current.barAuthority ||
+            current.discontinuity || (!current.independentBarAnalysis && !verifiedPresentationFootprint) || !current.barAuthority ||
             current.barTrackingAuthority || current.currentAnchorUsesTrackedEdge ||
             (seedDirectionalBaseline?current.analysisStride!=1:
                 (current.analysisStride!=1 && current.analysisStride!=2)) || current.cadenceSkipped ||
             (!seedDirectionalBaseline && !currentFootprint && !presentationTemplateProof) || !current.barEvidence.available ||
-            current.pictureTop!=current.barEvidence.top || current.pictureBottom!=current.barEvidence.bottom ||
+            ((!verifiedPresentationFootprint) &&
+                (current.pictureTop!=current.barEvidence.top || current.pictureBottom!=current.barEvidence.bottom)) ||
             current.barEvidence.captionBackedTop || current.barEvidence.captionBackedBottom ||
             !text.detected || text.held || text.confirmationPending || text.revised || text.workLimit ||
             text.lineCount<1 || text.lineCount>3 ||
@@ -2659,6 +2682,8 @@ struct SubtitleCurrentCueTemplateDescriptor {
 
 struct SubtitleCurrentCueTaskEntry {
     SubtitleBoxObservation key;
+    // Original scan provenance paired with the canonical exact-source proof key.
+    SubtitleBoxObservation scanKey;
     SubtitleCurrentCueTemplateDescriptor descriptor;
     std::shared_ptr<SubtitleCurrentCueWorkerState> workerState;
     SubtitleMeasurementWork deferredFullScan;
@@ -2756,6 +2781,41 @@ inline bool CompleteSemanticScanConfirmsCue(const SubtitleBoxObservation& result
     // an unconfirmed raw token.
     candidate.cue=accepted.cue;
     return SameCue(candidate,accepted);
+}
+inline bool CompleteSemanticScanConfirmsVerifiedCue(const SubtitleBoxObservation& result,
+    const SubtitleBoxObservation& key,const SubtitleCurrentCueProofReceipt& receipt) {
+    if(!receipt.Valid() || receipt.SourceMode()==SubtitlePreviewMode::None ||
+        !SameAnalysisFrameIdentity(receipt.CurrentKey().identity,result.identity) ||
+        !SameAnalysisFrameIdentity(result.identity,key.identity) ||
+        !SameInterpretationContext(result,key) || result.analysisStride!=key.analysisStride ||
+        !result.analyzed || result.discontinuity || result.pendingRefresh || result.analysisRefresh ||
+        result.cadenceSkipped || result.glyphLocalTop || result.glyphLocalBottom ||
+        !result.barAuthority || !result.barEvidence.available ||
+        !result.text.topSearchComplete || !result.text.bottomSearchComplete ||
+        !result.ink || !result.ink->rawEvidenceComplete || !result.ink->paletteValid ||
+        !(result.samplingBasis.MatchesBase(result,receipt.PhysicalBase()) ||
+          (result.independentBarAnalysis && result.sharedPicture.AvailableFor(result.identity,result.width,result.height) &&
+           SameBounds(result.sharedPicture.bounds,receipt.PhysicalBase()))) ||
+        !CurrentSubtitleCueFitsVerifiedOperation(result.text,receipt.AcceptedCue(),receipt.Operation(),
+            result.ink->step,&receipt.VerifiedSemanticLineBounds()))return false;
+    const auto& ink=*result.ink;
+    if(ink.step<1 || ink.step>8 || ink.width<=0 || ink.height<=0 ||
+        ink.sourceRows.size()!=size_t(ink.height) ||
+        ink.ownedInk.size()!=(size_t(ink.width)*size_t(ink.height)+63)/64)return false;
+    // Skip empty mask words; do not scan the whole raster under the queue lock.
+    for(size_t word=0;word<ink.ownedInk.size();++word) {
+        uint64_t bits=ink.ownedInk[word];
+        for(unsigned bit=0;bits;++bit,bits>>=1)if(bits&1) {
+            const size_t cell=word*64+bit;
+            if(cell>=size_t(ink.width)*size_t(ink.height))return false;
+            const int px=int(cell%size_t(ink.width))*ink.step;
+            const int py=ink.sourceRows[cell/size_t(ink.width)];bool captured=false;
+            for(const auto& capture:receipt.Operation().glyphLines)
+                captured|=capture.Valid() && px>=capture.left && px<capture.right && py>=capture.top && py<capture.bottom;
+            if(!captured)return false;
+        }
+    }
+    return true;
 }
 inline bool SameOperation(const SubtitleCutPasteGeometry& a,const SubtitleCutPasteGeometry& b) {
     if(!SameRect(a.source,b.source) || !SameRect(a.destination,b.destination) ||
@@ -2880,7 +2940,7 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
     bool matchedVerifiedCurrentTask=false;
     for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
         auto& entry=**i;
-        if(entry.seedTask || entry.revision<minimumRevision || !SameExactTaskKey(entry.key,key))continue;
+        if(entry.seedTask || entry.revision<minimumRevision || !SameExactTaskKey(entry.scanKey,key))continue;
         if(entry.status==SubtitleCurrentCueProofStatus::Failed ||
             entry.status==SubtitleCurrentCueProofStatus::Expired)
             return SubtitleCurrentCueFullScanRoute::Enqueue;
@@ -2904,7 +2964,7 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
     // or suppress the ordinary scan needed before this source reaches render.
     if(!matchedVerifiedCurrentTask)return SubtitleCurrentCueFullScanRoute::Enqueue;
 
-    if(!HasCurrentCueProofContextLocked() || !state->descriptor.valid || !state->cadenceRoutingEligible || !SameContext(state->descriptor.context,key) ||
+    if(!HasCurrentCueProofContextLocked() || !state->descriptor.valid || !state->cadenceRoutingEligible || !SameInterpretationContext(state->descriptor.context,key) ||
         key.identity.acceptedSequence<=state->descriptor.context.identity.acceptedSequence ||
         key.discontinuity || key.cadenceSkipped || (key.analysisStride!=1 && key.analysisStride!=2) ||
         key.pendingRefresh || key.analysisRefresh || key.glyphLocalTop || key.glyphLocalBottom)
@@ -2954,12 +3014,15 @@ inline void SubtitleMeasurementWorker::ObserveCurrentCueSemanticScan(
     // The monotonic sequence watermark prevents an older completion from
     // clearing a burst reported by a newer result.
     state->lastSemanticScanSequence=key.identity.acceptedSequence;
-    // An inspection-only result can report change/unknown, but cannot confirm
-    // the independent native template or borrow this proof request's authority.
-    state->needsFullScanBurst.store(
-        !(SameContext(state->descriptor.context,key) &&
-          CompleteSemanticScanConfirmsCue(result,key,state->descriptor.cue)),
-        std::memory_order_release);
+    bool confirms=SameContext(state->descriptor.context,key) &&
+        CompleteSemanticScanConfirmsCue(result,key,state->descriptor.cue);
+    if(!confirms)for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
+        const auto& entry=**i;
+        if(entry.seedTask || entry.revision!=state->descriptor.revision || !entry.proofVerified ||
+            !SameExactTaskKey(entry.scanKey,key))continue;
+        confirms=CompleteSemanticScanConfirmsVerifiedCue(result,key,entry.receipt);break;
+    }
+    state->needsFullScanBurst.store(!confirms,std::memory_order_release);
 }
 
 inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCueTemplate(
@@ -2971,6 +3034,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     const bool advanced=input.sourceMode==SubtitlePreviewMode::BlackBackground ||
         input.sourceMode==SubtitlePreviewMode::GeneratedGrayBackground;
     const bool retainedPresentation=cue.held;
+    const bool qualifiedSamplingBasis=HasQualifiedCurrentCueSamplingBasis(input);
     if(retainedPresentation) {
         if(!advanced || !input.heldCurrentCue || !input.heldCurrentCue->Matches(o,cue,input.physicalBase))
             return SubtitleCurrentCueProofStatus::NotEligible;
@@ -2982,16 +3046,16 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     if((!classic && !advanced) || !input.acceptedCurrentScan || !o.analyzed || o.discontinuity ||
         o.pendingRefresh || o.analysisRefresh || o.cadenceSkipped || o.glyphLocalTop || o.glyphLocalBottom ||
         (o.analysisStride!=1 && o.analysisStride!=2) || !o.text.detected || o.text.workLimit || o.text.held ||
-        o.text.confirmationPending || o.text.revised ||
-        !o.independentBarAnalysis || !o.barAuthority || o.barTrackingAuthority || o.currentAnchorUsesTrackedEdge ||
+        o.text.confirmationPending || o.text.revised || !o.text.topSearchComplete || !o.text.bottomSearchComplete ||
+        (!o.independentBarAnalysis && !qualifiedSamplingBasis) || !o.barAuthority || o.barTrackingAuthority || o.currentAnchorUsesTrackedEdge ||
         !o.barEvidence.available || o.barEvidence.captionBackedTop || o.barEvidence.captionBackedBottom ||
-        o.pictureTop!=o.barEvidence.top || o.pictureBottom!=o.barEvidence.bottom ||
+        (!qualifiedSamplingBasis && (o.pictureTop!=o.barEvidence.top || o.pictureBottom!=o.barEvidence.bottom)) ||
         !o.ink || !o.ink->rawEvidenceComplete || !o.ink->paletteValid ||
         !cue.detected || cue.held || cue.confirmationPending || cue.revised || cue.workLimit ||
         cue.lineCount<1 || cue.lineCount>3 || !input.source.backingOwner || !input.source.IsValid() ||
         input.source.width!=o.width || input.source.height!=o.height ||
-        !o.sharedPicture.AvailableFor(o.identity,o.width,o.height) ||
-        !SameBounds(o.sharedPicture.bounds,input.physicalBase) ||
+        (!qualifiedSamplingBasis && (!o.sharedPicture.AvailableFor(o.identity,o.width,o.height) ||
+            !SameBounds(o.sharedPicture.bounds,input.physicalBase))) ||
         input.physicalBase.rasterWidth!=o.width || input.physicalBase.rasterHeight!=o.height ||
         !std::isfinite(input.frameMs) || input.frameMs<=0 || input.holdMs<=0 ||
         (advanced && (!input.compositionSucceeded || !input.composedOperation.valid)) ||
@@ -3148,9 +3212,20 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         const bool sameTemplateContext=SameContext(descriptor.context,request.currentKey);
         const bool currentMatches=CurrentMatches(descriptor,request.currentKey,request.physicalBase,request.source,
             request.sourceMode,request.backgroundMode);
+        const auto& scanHint=request.fullScanKey.sharedPicture;
+        const bool hasSharedBounds=scanHint.bounds.top<scanHint.bounds.bottom &&
+            scanHint.bounds.left<scanHint.bounds.right;
+        const bool scanBaseCompatible=(!hasSharedBounds ||
+            (scanHint.AvailableFor(request.fullScanKey.identity,request.fullScanKey.width,request.fullScanKey.height) &&
+             SameBounds(scanHint.bounds,request.physicalBase))) &&
+            (!scanHint.inspectionCandidate.valid ||
+             (scanHint.inspectionCandidate.AvailableFor(request.fullScanKey.identity,
+                request.fullScanKey.width,request.fullScanKey.height,request.fullScanKey.policyGeneration,
+                request.fullScanKey.continuityGeneration) &&
+              SameBounds(scanHint.inspectionCandidate.bounds,request.physicalBase)));
         const bool scanKeyMatches=!request.hasFullScanKey ||
             (SameAnalysisFrameIdentity(request.fullScanKey.identity,request.currentKey.identity) &&
-             SameInterpretationContext(request.fullScanKey,request.currentKey));
+             SameInterpretationContext(request.fullScanKey,request.currentKey) && scanBaseCompatible);
         const bool basicEligible=currentMatches && scanKeyMatches && request.source.backingOwner &&
             request.currentKey.identity.acceptedSequence && request.currentKey.identity.captureTimestamp &&
             std::isfinite(request.frameMs) && request.frameMs>0;
@@ -3174,6 +3249,8 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             if(m_currentCuePending.size()>=2)return SubtitleCurrentCueProofStatus::NotEligible;
             entry=std::make_shared<SubtitleCurrentCueTaskEntry>();entry->key=request.currentKey;
             entry->key.ink.reset();
+            entry->scanKey=request.hasFullScanKey?request.fullScanKey:request.currentKey;
+            entry->scanKey.ink.reset();
             entry->revision=request.templateRevision;entry->status=SubtitleCurrentCueProofStatus::Queued;
             entry->descriptor=descriptor;
             for(const auto& old:m_currentCueTasks)
