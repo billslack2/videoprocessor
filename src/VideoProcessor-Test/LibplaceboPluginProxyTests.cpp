@@ -5124,7 +5124,7 @@ namespace VideoProcessorTest
         // portable manifest: select explicitly with VP_SUBTITLE_CAPTURE_ROOT set.
         // This runs the actual plugin, worker, queue, shader and submission path;
         // no caller supplies picture or successful composition authority.
-        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false)
+        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false)
         {
             char* captureValue=nullptr;size_t captureSize=0;
             Assert::AreEqual(0,_dupenv_s(&captureValue,&captureSize,"VP_SUBTITLE_CAPTURE_ROOT"));
@@ -5141,7 +5141,7 @@ namespace VideoProcessorTest
             const int pictureTop=(pausedRecovery||scriptureHeld)?274:272,pictureBottom=1886;
             constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
             const unsigned phaseCount=scriptureHeld?83u:(pausedNative?46u:4u);
-            const unsigned steadyCount=scriptureHeld?166u:144u;
+            const unsigned steadyCount=profileCycle?288u:(scriptureHeld?166u:144u);
             std::vector<std::vector<BYTE>> phases(phaseCount);
             for(unsigned phase=0;phase<phaseCount;++phase) {
                 char stem[40];sprintf_s(stem,"\\frame-%06u",phase+(scriptureHeld?3:(pausedNative?16:1)));
@@ -5239,6 +5239,14 @@ namespace VideoProcessorTest
                 "subtitle_generated_gray_color: 000000\nsubtitle_generated_gray_max_luminance: .25\n"
                 "subtitle_generated_gray_opacity: .65\nsubtitle_generated_gray_border_color: 000000\n"
                 "subtitle_generated_gray_border_width: 1\nsubtitle_generated_gray_border_opacity: .4\nsubtitle_generated_gray_blur_px: 30\n";
+            if(profileCycle) {
+                std::ofstream extra(configPath,std::ios::app);
+                extra<<"[vprenderer.subtitles.black]\ntype: black\nshortcut: F6\noffset_pixels: 10\n"
+                    "subtitle_hold_ms: 250\nsubtitle_near_bar_px: 20\nsubtitle_script_hint: latin\n"
+                    "minimum_headroom_pixels: 30\ntext_reduction_percent: 30\nbackground_edge: extend\n"
+                    "[vprenderer.subtitles.classic]\ntype: classic\nshortcut: F7\noffset_pixels: 10\n"
+                    "[vprenderer.subtitles.off]\ntype: off\nshortcut: F8\n";
+            }
             SnapshotTestCallback callback;NativeP210Buffer buffer;
             struct Cleanup{HWND window;IVideoRenderer* renderer;VideoProcessorLibplaceboDestroyRendererFn destroy;const char* path;bool stopped=false;
                 ~Cleanup(){if(renderer){if(!stopped)renderer->Stop();destroy(renderer);}if(window)DestroyWindow(window);DeleteFileA(path);}}
@@ -5250,7 +5258,7 @@ namespace VideoProcessorTest
                 EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&mode)!=FALSE&&mode.dmDisplayFrequency>1);
             const double outputHz=mode.dmDisplayFrequency;
             if(scriptureHeld) {
-                LibplaceboRegressionOptionsV1 options;options.flags=VP_REGRESSION_DECLINE_CUE_PROOF;
+                LibplaceboRegressionOptionsV1 options;options.flags=profileCycle?0:VP_REGRESSION_DECLINE_CUE_PROOF;
                 cleanup.renderer=createRegression(&callback,73,cleanup.window,&clock,true,10,
                     VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog,&options);
             } else cleanup.renderer=create(&callback,73,cleanup.window,&clock,true,10,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
@@ -5389,6 +5397,20 @@ namespace VideoProcessorTest
             const uint64_t steadyEnd=steadyStart+steadyCount-1;
             unsigned visualRequests=0;
             while(sequence<=steadyEnd+10) {
+                if(profileCycle && sequence<=steadyEnd && (sequence-steadyStart)%48==0) {
+                    static const char* profiles[]={"black","reconstruction","classic","off","black","reconstruction"};
+                    const auto phase=unsigned((sequence-steadyStart)/48);
+                    UnifiedProfileRuntime::SelectionResult selection;
+                    Assert::IsTrue(runtime.SelectProfile("subtitles",profiles[phase],true,{},selection,error));
+                    Assert::IsTrue(selection.snapshot!=nullptr);
+                    bool profileRestart=false,profileReset=false;CString profileName;
+                    Assert::IsTrue(cleanup.renderer->ApplyApplicationState(*selection.snapshot,profileName,
+                        profileRestart,profileReset)&&!profileRestart,
+                        L"Actual profile cycle must update the running renderer without recreation.");
+                    std::ostringstream row;row<<"SCRIPTURE PROFILE: phase="<<phase<<" profile="<<profiles[phase]
+                        <<" first_input="<<sequence<<" last_input="<<sequence+47;
+                    Logger::WriteMessage(row.str().c_str());
+                }
                 if(visualCapture && sequence>=steadyStart+10 && sequence-steadyStart<150 &&
                     (sequence-steadyStart-10)%30==0) {
                     CString status;Assert::IsTrue(cleanup.renderer->RequestRenderedOutputCapture(status),
@@ -5401,6 +5423,49 @@ namespace VideoProcessorTest
                 pump();
             }
             cleanup.renderer->Stop();cleanup.stopped=true;drain();
+            if(profileCycle) {
+                // Functional stack/lifecycle test on the actual renderer thread.
+                // Deliberately no stable-mapping or deadline claim across styles.
+                std::set<uint64_t> submitted;std::array<unsigned,6> perPhase{},prepared{};
+                unsigned seedOffers=0,seeded=0;bool currentExact=true;uint64_t previous=0,maxGap=0;
+                for(const auto& r:observed) {
+                    if(!strcmp(r.stage,"subtitle-cue-template-offered") && (r.flags&2u))++seedOffers;
+                    if(!strcmp(r.stage,"worker-cue-template") && (r.flags&1u))++seeded;
+                    if(r.sourceFrameNumber<steadyStart || r.sourceFrameNumber>steadyEnd ||
+                        strcmp(r.stage,"submitted-presentation") || !(r.flags&1u))continue;
+                    const auto input=inputs.find(r.sourceFrameNumber);
+                    const bool temporal=(r.flags&(128u|256u))!=0;
+                    const bool sourceOrder=r.counters[0]>=r.counters[1];
+                    const auto selectionLag=sourceOrder?r.counters[0]-r.counters[1]:uint64_t(11);
+                    currentExact&=input!=inputs.end() && r.captureTimestamp==uint64_t(input->second.first) &&
+                        r.acceptedSequence==r.counters[1] && sourceOrder &&
+                        (temporal?selectionLag<=10:selectionLag==0) &&
+                        (!(r.flags&4u)||((r.flags&8u)&&r.counters[7]==r.counters[1]));
+                    if(!submitted.insert(r.sourceFrameNumber).second)continue;
+                    const auto phase=unsigned((r.sourceFrameNumber-steadyStart)/48);++perPhase[phase];
+                    const auto offset=(r.sourceFrameNumber-steadyStart)%48;
+                    const uint64_t expectedMode=(phase==0||phase==4)?2:3;
+                    if(offset>=32 && (phase==0||phase==1||phase==4||phase==5) &&
+                        (r.flags&2u) && r.counters[3]==expectedMode)++prepared[phase];
+                    if(previous)maxGap=(std::max)(maxGap,r.sourceFrameNumber-previous);
+                    previous=r.sourceFrameNumber;
+                }
+                std::ostringstream row;row<<"SCRIPTURE PROFILE STACK: submitted="<<submitted.size()
+                    <<" expected="<<steadyCount<<" exact="<<currentExact<<" max_source_gap="<<maxGap
+                    <<" prepared_seed_offers="<<seedOffers<<" seeded_templates="<<seeded;
+                for(unsigned i=0;i<6;++i)row<<" phase"<<i<<"="<<perPhase[i]<<" composed_tail"<<i<<"="<<prepared[i];
+                Logger::WriteMessage(row.str().c_str());
+                Assert::IsTrue(submitted.size()==steadyCount && currentExact && maxGap==1,
+                    L"Every current input must advance through the live profile cycle without stale source replay.");
+                Assert::IsTrue(seedOffers>0 && seeded>0,
+                    L"The exact prepared-template seed path implicated by the stack overflow must execute.");
+                for(unsigned i=0;i<6;++i) {
+                    Assert::AreEqual(48u,perPhase[i]);
+                    if(i==0||i==1||i==4||i==5)Assert::AreEqual(16u,prepared[i],
+                        L"Each advanced style must regain current composition after its bounded transition interval.");
+                }
+                return;
+            }
             unsigned outputs=0,composed=0,inspection=0,templates=0,proofs=0,consumed=0,scans=0;
             bool exact=true,native=true,noFallback=true;std::set<uint64_t> distinct;std::set<unsigned> phaseCoverage;
             uint64_t firstWall=0,lastWall=0,lastSource=0,maxSourceGap=0,maxProcessingSelectionLag=0;double maxGapMs=0,maxLatencyMs=0,maxWorkMs=0;
@@ -5657,6 +5722,10 @@ namespace VideoProcessorTest
         {VerifyCapturedV210CueCadence(false,false,false,true);}
         TEST_METHOD(BetaRendererScriptureHeldCaptionWithoutOptionalCueProof)
         {VerifyCapturedV210CueCadence(true,false,false,true);}
+        TEST_METHOD(StandardRendererScriptureProfileCycleUsesCurrentPreparedSeed)
+        {VerifyCapturedV210CueCadence(false,false,false,true,false,true);}
+        TEST_METHOD(BetaRendererScriptureProfileCycleUsesCurrentPreparedSeed)
+        {VerifyCapturedV210CueCadence(true,false,false,true,false,true);}
         TEST_METHOD(StandardRendererScriptureHeldCaptionVisualCheckpoints)
         {VerifyCapturedV210CueCadence(false,false,false,true,true);}
         TEST_METHOD(BetaRendererScriptureHeldCaptionVisualCheckpoints)

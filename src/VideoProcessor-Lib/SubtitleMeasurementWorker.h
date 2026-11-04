@@ -627,7 +627,11 @@ public:
     // current cue. Classic may seed an accepted scan without cut/paste; the
     // advanced modes require a successful operation.
     SubtitleCurrentCueProofStatus SubmitCurrentCueTemplate(
-        SubtitleCurrentCueTemplateInput input,uint64_t& templateRevision);
+        const SubtitleCurrentCueTemplateInput& input,uint64_t& templateRevision);
+    // Render callers transfer the large input without creating a by-value
+    // temporary on the 1 MiB presentation thread stack.
+    __declspec(noinline) SubtitleCurrentCueProofStatus SubmitCurrentCueTemplateOwned(
+        std::unique_ptr<SubtitleCurrentCueTemplateInput> input,uint64_t& templateRevision);
     // Proof is attempted before grouping. On a miss/unknown, the captured
     // full scan is handed to the ordinary bounded queue only when due.
     SubtitleCurrentCueProofStatus SubmitCurrentCueProof(SubtitleCurrentCueProofRequest request);
@@ -3026,9 +3030,16 @@ inline void SubtitleMeasurementWorker::ObserveCurrentCueSemanticScan(
 }
 
 inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCueTemplate(
-    SubtitleCurrentCueTemplateInput input,uint64_t& templateRevision) {
+    const SubtitleCurrentCueTemplateInput& input,uint64_t& templateRevision) {
+    return SubmitCurrentCueTemplateOwned(std::make_unique<SubtitleCurrentCueTemplateInput>(input),templateRevision);
+}
+
+__declspec(noinline) inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCueTemplateOwned(
+    std::unique_ptr<SubtitleCurrentCueTemplateInput> ownedInput,uint64_t& templateRevision) {
     using namespace SubtitleCurrentCueWorkerDetail;
     templateRevision=0;
+    if(!ownedInput)return SubtitleCurrentCueProofStatus::NotEligible;
+    auto& input=*ownedInput;
     const auto& o=input.observation;const auto& cue=input.acceptedCue;
     const bool classic=input.sourceMode==SubtitlePreviewMode::None;
     const bool advanced=input.sourceMode==SubtitlePreviewMode::BlackBackground ||
@@ -3113,7 +3124,13 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
     }
     Job job;job.key=o;job.key.ink.reset();job.currentCueSeedTask=true;job.cueEntry=entry;
     job.queued=std::chrono::steady_clock::now();
-    job.currentCueTask=[this,entry,state,descriptor,input=std::move(input)](size_t) mutable {
+    // The copyable std::function closure must stay small: capturing the input
+    // and descriptor by value created another 55 KiB stack temporary here.
+    // Both immutable objects remain owned until the bounded job is retired.
+    std::shared_ptr<const SubtitleCurrentCueTemplateInput> seedInput(std::move(ownedInput));
+    job.currentCueTask=[this,entry,state,seedInput](size_t) {
+        const auto& input=*seedInput;
+        const auto& descriptor=entry->descriptor;
         const auto started=std::chrono::steady_clock::now();
         {std::lock_guard<std::mutex> lock(m_mutex);
             if(m_stopping || entry->revision<m_currentCueMinimumRevision->load(std::memory_order_acquire)) {

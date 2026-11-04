@@ -15991,23 +15991,23 @@ struct LibplaceboVideoRenderer::Impl
             const bool fullAcceptedComposition=cueTemplateModeAllowed && fullAcceptedCueScan &&
                 (!advancedCueMode || (subtitleCompositionSucceeded && relocatedSubtitle.valid));
             if(fullAcceptedComposition) {
-                SubtitleCurrentCueTemplateInput seed;
-                seed.observation=seedObservation;seed.acceptedCue=subtitleBoxResult;
-                seed.source=preparedQueued.source;
-                seed.source.generation=seedObservation.identity.transportGeneration;
-                seed.physicalBase=nlsGeometry;
-                seed.composedOperation=relocatedSubtitle;seed.sourceMode=sourceSubtitleMode;
-                seed.compositionSucceeded=subtitleCompositionSucceeded;seed.acceptedCurrentScan=true;
+                auto seed=std::make_unique<SubtitleCurrentCueTemplateInput>();
+                seed->observation=seedObservation;seed->acceptedCue=subtitleBoxResult;
+                seed->source=preparedQueued.source;
+                seed->source.generation=seedObservation.identity.transportGeneration;
+                seed->physicalBase=nlsGeometry;
+                seed->composedOperation=relocatedSubtitle;seed->sourceMode=sourceSubtitleMode;
+                seed->compositionSucceeded=subtitleCompositionSucceeded;seed->acceptedCurrentScan=true;
                 if(seedHeldCueMatches)
-                    seed.heldCurrentCue=std::make_shared<SubtitleCurrentPreparedCueCertificate>(
+                    seed->heldCurrentCue=std::make_shared<SubtitleCurrentPreparedCueCertificate>(
                         subtitleBoxPresentation.CurrentPreparedCueCertificate());
-                seed.backgroundMode=subtitleCutPasteBackground;
-                seed.frameMs=state.displayMode && state.displayMode->TimeScale()>0
+                seed->backgroundMode=subtitleCutPasteBackground;
+                seed->frameMs=state.displayMode && state.displayMode->TimeScale()>0
                     ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0;
-                seed.holdMs=activeSettings.subtitleHoldMs;
+                seed->holdMs=activeSettings.subtitleHoldMs;
                 uint64_t revision=0;
                 const auto seedSubmitStarted=SteadyClock::now();
-                const auto seedStatus=subtitleMeasurementWorker.SubmitCurrentCueTemplate(
+                const auto seedStatus=subtitleMeasurementWorker.SubmitCurrentCueTemplateOwned(
                     std::move(seed),revision);
                 const double seedSubmitMs=std::chrono::duration<double,std::milli>(
                     SteadyClock::now()-seedSubmitStarted).count();
@@ -16828,7 +16828,7 @@ struct LibplaceboVideoRenderer::Impl
                     ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0;
                 seed->holdMs=activeSettings.subtitleHoldMs;
                 uint64_t revision=0;const auto started=SteadyClock::now();
-                const auto status=subtitleMeasurementWorker.SubmitCurrentCueTemplate(std::move(*seed),revision);
+                const auto status=subtitleMeasurementWorker.SubmitCurrentCueTemplateOwned(std::move(seed),revision);
                 if(revision)currentCueTemplateRevision.store(revision,std::memory_order_release);
                 auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-cue-template-offered",
                     status==SubtitleCurrentCueProofStatus::Queued?"prepared-sampling-queued":
