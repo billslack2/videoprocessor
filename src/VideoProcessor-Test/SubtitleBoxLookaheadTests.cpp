@@ -781,6 +781,90 @@ public:
             Assert::IsFalse(base.samplingBasis.Matches(base));
         }
     }
+    static ActivePictureFrameIdentity UnknownGapIdentity(uint64_t sequence) {
+        auto identity=Identity(sequence);identity.analysisDomainKey=55;return identity;
+    }
+    static SubtitleBoxObservation UnknownGapSamplingCue(uint64_t sequence,bool inspection) {
+        auto o=CurrentHeldProofCue(sequence);o.identity=UnknownGapIdentity(sequence);o.sharedPicture.identity=o.identity;
+        const auto base=o.sharedPicture.bounds;
+        if(inspection) {
+            auto& n=o.sharedPicture.inspectionCandidate;n.valid=true;n.bounds=base;
+            n.bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+            n.originIdentity=UnknownGapIdentity(1);n.policyGeneration=7;n.continuityGeneration=9;n.nativeGeometryRevision=1;
+            o.sharedPicture.bounds={};o.inspectionCandidateUsed=true;o.pictureAuthorityUnavailableForMeasurement=true;
+        }
+        o.pictureTop=o.barEvidence.top=0;
+        auto support=std::make_shared<CurrentSourceSupportEvidence>();
+        support->evaluated=support->verified=true;support->identity=o.identity;
+        support->samplingBounds=base;support->samplingBounds.bottom=o.height-10;
+        support->verification.bounds=support->samplingBounds;
+        support->verification.sourceGeneration=o.identity.transportGeneration;
+        support->verification.vertical=ActivePictureCandidateVerificationState::VERIFIED;
+        o.samplingBasis.Apply(o,support);
+        Assert::IsTrue(o.samplingBasis.Matches(o));
+        return o;
+    }
+    TEST_METHOD(ObservedUnknownSourcesRetainCueWithoutGrantingCurrentOutput) {
+        for(bool inspection:{false,true})for(unsigned missing:{1u,3u}) {
+            struct Workspace {SubtitleBoxPresentation tracker;std::array<SubtitleBoxObservation,2> scans;SubtitleBoxPreview preview;};
+            auto w=std::make_unique<Workspace>();
+            w->scans[0]=UnknownGapSamplingCue(1,inspection);w->scans[1]=UnknownGapSamplingCue(2,inspection);
+            SubtitleBoxLookahead::ResolveInto(w->preview,w->scans.data(),2,7,9);
+            const auto accepted=w->tracker.Consume(w->preview);
+            Assert::IsTrue(accepted.detected&&!accepted.held);
+            const auto owner=w->tracker.AcceptedQueueTemplateIdentity();const auto hold=w->tracker.WeakHoldMilliseconds();
+            for(unsigned i=0;i<missing;++i) {
+                Assert::IsTrue(w->tracker.ObserveMissingCurrentSource(UnknownGapIdentity(2+i),7,9));
+                Assert::IsTrue(SameAnalysisFrameIdentity(owner,w->tracker.AcceptedQueueTemplateIdentity()));
+                Assert::AreEqual(hold,w->tracker.WeakHoldMilliseconds());
+                Assert::IsFalse(w->tracker.CurrentPreparedCueCertificate().Matches(
+                    w->preview.current,accepted,w->preview.current.sharedPicture.bounds));
+            }
+            const uint64_t next=2+missing;
+            w->scans[0]=UnknownGapSamplingCue(next,inspection);w->scans[1]=UnknownGapSamplingCue(next+1,inspection);
+            SubtitleBoxLookahead::ResolveInto(w->preview,w->scans.data(),2,7,9);
+            w->preview.text.lineCount=1;w->preview.text.lineBounds[1]={};
+            const auto recovered=w->tracker.Consume(w->preview);
+            Assert::IsTrue(recovered.detected&&recovered.held);
+            const auto& current=w->preview.current;
+            const auto& base=inspection?current.sharedPicture.inspectionCandidate.bounds:current.sharedPicture.bounds;
+            Assert::IsTrue(w->tracker.CurrentPreparedCueCertificate().Matches(current,recovered,base));
+            Assert::AreEqual(accepted.cue,recovered.cue,L"Observed UNKNOWN is not a new cue after complete current same-point proof.");
+            Assert::IsFalse(w->preview.current.independentBarAnalysis);
+            Assert::AreEqual(0,w->preview.current.barEvidence.top,L"No raw/native authority is invented by recovery.");
+        }
+    }
+    TEST_METHOD(ObservedUnknownCueRecoveryRejectsUnobservedGapsAndChangedCurrentEvidence) {
+        for(int fault=0;fault<9;++fault) {
+            struct Workspace {SubtitleBoxPresentation tracker;std::array<SubtitleBoxObservation,2> scans;SubtitleBoxPreview preview;};
+            auto w=std::make_unique<Workspace>();
+            w->scans[0]=UnknownGapSamplingCue(1,true);w->scans[1]=UnknownGapSamplingCue(2,true);
+            SubtitleBoxLookahead::ResolveInto(w->preview,w->scans.data(),2,7,9);
+            const auto accepted=w->tracker.Consume(w->preview);Assert::IsTrue(accepted.detected);
+            if(fault!=0)Assert::IsTrue(w->tracker.ObserveMissingCurrentSource(UnknownGapIdentity(2),7,9));
+            if(fault==1) {
+                Assert::IsFalse(w->tracker.ObserveMissingCurrentSource(UnknownGapIdentity(2),7,9)); // stale duplicate
+                Assert::IsFalse(w->tracker.ObserveMissingCurrentSource(UnknownGapIdentity(2),7,9),
+                    L"A rejected order cannot restart the old retained anchor.");
+            }
+            if(fault==2) {auto changed=UnknownGapIdentity(3);++changed.viewportGeneration;
+                Assert::IsFalse(w->tracker.ObserveMissingCurrentSource(changed,7,9));}
+            w->scans[0]=UnknownGapSamplingCue(3,true);w->scans[1]=UnknownGapSamplingCue(4,true);
+            auto& c=w->scans[0];
+            if(fault==3)c.samplingBasis={};
+            if(fault==4)++c.sharedPicture.inspectionCandidate.bounds.top;
+            if(fault==5) {auto ink=std::make_shared<SubtitleInkSnapshot>(*c.ink);
+                const size_t bit=320*640+100;ink->rawInk[bit/64]|=uint64_t(1)<<(bit%64);
+                ink->ownedInk[bit/64]|=uint64_t(1)<<(bit%64);c.ink=ink;}
+            if(fault==6) {c.text={};c.text.topSearchComplete=c.text.bottomSearchComplete=true;}
+            if(fault==7) {auto ink=std::make_shared<SubtitleInkSnapshot>(*c.ink);ink->rawEvidenceComplete=false;c.ink=ink;}
+            if(fault==8)c.discontinuity=true;
+            SubtitleBoxLookahead::ResolveInto(w->preview,w->scans.data(),2,7,9);
+            const auto result=w->tracker.Consume(w->preview);
+            Assert::IsTrue(!result.detected || result.cue!=accepted.cue,
+                L"Unknown transport history alone cannot restore a cue without complete exact current proof.");
+        }
+    }
     TEST_METHOD(CurrentSamplingBasisRejectsForeignUnverifiedAndContradictoryEvidence) {
         for(int fault=0;fault<12;++fault) {
             auto raw=CurrentHeldProofCue(2);raw.pictureTop=raw.barEvidence.top=0;

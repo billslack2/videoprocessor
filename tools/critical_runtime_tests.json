@@ -13,8 +13,11 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1147,
+  "minimumNativeTests": 1150,
   "requiredNativeMethods": [
+    "ObservedUnknownSourcesRetainCueWithoutGrantingCurrentOutput",
+    "ObservedUnknownCueRecoveryRejectsUnobservedGapsAndChangedCurrentEvidence",
+    "CurrentGlyphReuseCannotCrossUnknownBarsOrCurrentSequenceGap",
     "OwnedPictureFactsRecurringAdmissionDoesNotPinCaptureOwnersOrTrustSignatures",
     "OwnedPictureFactsHistoryBoundsPrivateBytesAndEvictsLeastRecent",
     "OwnedPictureFactsRetainFourExactSourcePhases",
@@ -485,6 +488,21 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "ObservedUnknownSourcesRetainCueWithoutGrantingCurrentOutput"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "ObservedUnknownCueRecoveryRejectsUnobservedGapsAndChangedCurrentEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentGlyphReuseCannotCrossUnknownBarsOrCurrentSequenceGap"
+    },
     {
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",

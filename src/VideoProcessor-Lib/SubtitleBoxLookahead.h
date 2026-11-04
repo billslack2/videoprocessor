@@ -2557,6 +2557,7 @@ public:
         m_preparedCueDecision = {};
         m_lastHeldCertificateTrace=0;
         m_completeOutputRetirement = {};
+        m_unknownInputs = {};
         m_queueContinuation = {};
         m_currentCueProofComparison = {};
         m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
@@ -2684,6 +2685,35 @@ public:
         m_completeOutputRetirement.policy=policy;m_completeOutputRetirement.continuity=continuity;
         return true;
     }
+    // Remember transport progress only. Missing optional work supplies no ink,
+    // absence, lease renewal, presentation certificate or old-image permission.
+    bool ObserveMissingCurrentSource(const ActivePictureFrameIdentity& current,
+        uint64_t policy,uint64_t continuity) {
+        m_acceptedCueSeedCertificate={};m_currentPreparedCueCertificate={};
+        m_preparedCueDecision={};m_previousRawCrowded={};m_crowdedRawHistory.clear();
+        if(!HasAcceptedQueueTemplate() || m_previous.policyGeneration!=policy ||
+            m_previous.continuityGeneration!=continuity ||
+            !SameTransportContext(m_previous.current.identity,current)) {
+            Reset();m_decisionReason="missing-evidence-context-rejected";return false;
+        }
+        const auto& before=m_unknownInputs.valid?m_unknownInputs.last:
+            (m_currentCueProofComparison.valid &&
+             SameAnalysisFrameIdentity(m_currentCueProofComparison.anchorIdentity,m_previous.current.identity) &&
+             m_currentCueProofComparison.policy==policy && m_currentCueProofComparison.continuity==continuity?
+                m_currentCueProofComparison.proofIdentity:m_previous.current.identity);
+        if(!ImmediatelyFollowsTransport(before,current)) {
+            Reset();m_decisionReason="missing-evidence-order-rejected";return false;
+        }
+        if(!m_unknownInputs.valid) {
+            m_unknownInputs.anchor=m_previous.current.identity;
+            m_unknownInputs.policy=policy;m_unknownInputs.continuity=continuity;
+        }
+        m_unknownInputs.valid=true;m_unknownInputs.last=current;
+        m_decisionReason="await-current-evidence";
+        m_referenceRefresh="unchanged-await-current-evidence";
+        m_inkDiagnostic={}; // Never report an earlier pixel comparison as current.
+        return true;
+    }
     const char* DecisionReason() const { return m_decisionReason; }
     const SubtitleBoxLookahead::InkMatchDiagnostics& InkDiagnostics() const { return m_inkDiagnostic; }
     double WeakHoldMilliseconds() const { return m_diagnosticWeakMs; }
@@ -2785,6 +2815,8 @@ public:
     {
         // Even an unavailable/failed next Consume spends the single transport
         // witness. It can never authorize a later second gap or a retry lease.
+        const auto unknownInputs=m_unknownInputs;
+        m_unknownInputs={};
         const auto completeOutputRetirement=m_completeOutputRetirement;
         m_completeOutputRetirement={};
         const auto currentCueProofComparison=m_currentCueProofComparison;
@@ -3167,11 +3199,51 @@ public:
             }
             return true;
         }();
+        const bool observedUnknownAdjacency=[&] {
+            const auto& c=preview.current;
+            const auto& base=m_inkReference.inspectionCandidateUsed?
+                m_inkReference.sharedPicture.inspectionCandidate.bounds:m_inkReference.sharedPicture.bounds;
+            if(!unknownInputs.valid || !m_hasPrevious || !m_result.detected ||
+                !SameAnalysisFrameIdentity(unknownInputs.anchor,m_previous.current.identity) ||
+                !ImmediatelyFollowsTransport(unknownInputs.last,c.identity) ||
+                unknownInputs.policy!=preview.policyGeneration || unknownInputs.continuity!=preview.continuityGeneration ||
+                c.policyGeneration!=preview.policyGeneration || c.continuityGeneration!=preview.continuityGeneration ||
+                !preview.available || !c.analyzed || c.discontinuity || c.pendingRefresh || c.analysisRefresh ||
+                c.cadenceSkipped || c.glyphLocalTop || c.glyphLocalBottom ||
+                (c.analysisStride!=1 && c.analysisStride!=2) ||
+                !c.samplingBasis.MatchesBase(c,base) ||
+                !c.text.detected || c.text.held || c.text.confirmationPending || c.text.workLimit ||
+                !c.text.topSearchComplete || !c.text.bottomSearchComplete ||
+                !c.ink || !c.ink->rawEvidenceComplete || !c.ink->paletteValid ||
+                c.text.lineCount!=m_result.lineCount || !currentTemplatePixelsMatch ||
+                !SubtitleBoxLookahead::SameContext(m_inkReference,c) ||
+                !SubtitleBoxLookahead::SameCue(m_inkReference,c) ||
+                !NoNewInkOutsideReference(c) || !NoNewOwnedInkOutsideReference(c) ||
+                !ExpansionStillVisible(continuityPreview))return false;
+            for(int line=0;line<m_result.lineCount;++line) {
+                bool covered=false;
+                for(int rawLine=0;rawLine<c.text.lineCount;++rawLine) {
+                    const auto& x=c.text.lineBounds[rawLine];const auto& y=m_result.lineBounds[line];
+                    bool contains=x.Valid() && y.Valid() && x.left<=y.left && x.top<=y.top &&
+                        x.right>=y.right && x.bottom>=y.bottom;
+                    if(contains && m_result.capturePanelMeasured) {
+                        const auto& capture=c.text.capturePanel;
+                        const int top=(std::max)(y.top,c.pictureTop),bottom=(std::min)(y.bottom,c.pictureBottom);
+                        if(top<bottom && (!c.text.capturePanelMeasured || !capture.Valid() ||
+                            capture.left>y.left || capture.right<y.right || capture.top>top || capture.bottom<bottom))
+                            contains=false;
+                    }
+                    covered|=contains;
+                }
+                if(!covered)return false;
+            }
+            return true;
+        }();
         const bool followsPrevious=m_hasPrevious &&
             (preview.current.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1 ||
              (preview.current.pendingRefresh &&
               preview.current.identity.acceptedSequence>m_previous.current.identity.acceptedSequence) ||
-              backlogReassociation || retiredInputAdjacency || currentCueProofAdjacency);
+              backlogReassociation || retiredInputAdjacency || currentCueProofAdjacency || observedUnknownAdjacency);
         bool same = m_hasPrevious && !preview.current.discontinuity &&
             m_previous.policyGeneration == preview.policyGeneration &&
             (m_previous.continuityGeneration == preview.continuityGeneration ||
@@ -3750,6 +3822,11 @@ private:
         expected.sourceFrameNumber=after.sourceFrameNumber;expected.captureTimestamp=after.captureTimestamp;
         return SameAnalysisFrameIdentity(expected,after);
     }
+    struct ObservedUnknownInputs {
+        bool valid=false;
+        ActivePictureFrameIdentity anchor,last;
+        uint64_t policy=0,continuity=0;
+    } m_unknownInputs;
     struct CompleteOutputRetirement {
         bool valid=false;
         ActivePictureFrameIdentity anchor,consumed;

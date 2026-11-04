@@ -546,6 +546,29 @@ inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
         if(continuesSameWitness)witness.proofIdentity=receipt.m_currentKey.identity;
         else witness={};
     }
+    // Current typed proofs also record transport progress for a later full
+    // current scan. This watermark carries no pixels/absence/lease authority;
+    // immutable semantic/ink anchors and the independent comparison above stay fixed.
+    const bool currentHistoryAnchor=HasAcceptedSourceTemplate() && !m_result.revised &&
+        !m_result.confirmationPending && !m_result.workLimit &&
+        SameAcceptedCueLayout(m_result,receipt.m_acceptedCue) &&
+        SameTransportContext(anchor.identity,receipt.m_currentKey.identity) &&
+        SameTransportContext(anchor.identity,receipt.m_seedIdentity) &&
+        NotAfterTransport(receipt.m_seedIdentity,anchor.identity) &&
+        m_previous.policyGeneration==receipt.m_currentKey.policyGeneration &&
+        m_previous.continuityGeneration==receipt.m_currentKey.continuityGeneration &&
+        anchor.width==receipt.m_currentKey.width && anchor.height==receipt.m_currentKey.height &&
+        anchor.nearBarDistance==receipt.m_currentKey.nearBarDistance &&
+        anchor.optimizationMode==receipt.m_currentKey.optimizationMode &&
+        anchor.scriptHint==receipt.m_currentKey.scriptHint &&
+        (independentAnchor || anchor.samplingBasis.MatchesBase(anchor,receipt.m_physicalBase));
+    const auto& historyPrevious=m_unknownInputs.valid?m_unknownInputs.last:anchor.identity;
+    if(currentHistoryAnchor && ImmediatelyFollowsTransport(historyPrevious,receipt.m_currentKey.identity)) {
+        m_unknownInputs.valid=true;m_unknownInputs.anchor=anchor.identity;
+        m_unknownInputs.last=receipt.m_currentKey.identity;
+        m_unknownInputs.policy=receipt.m_currentKey.policyGeneration;
+        m_unknownInputs.continuity=receipt.m_currentKey.continuityGeneration;
+    } else m_unknownInputs={};
     // This is an output adapter only. The exact-source receipt is one-use, but
     // it must not replace, clear, or renew the independent tracker history.
     // The renderer bypasses semantic Consume for this presentation-only view.
