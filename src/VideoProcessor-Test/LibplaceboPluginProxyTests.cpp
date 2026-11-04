@@ -5933,7 +5933,17 @@ namespace VideoProcessorTest
             if(requireSpatial) {
                 Assert::IsTrue(diagnostics!=nullptr);
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);classicPoseRecords.clear();classicPoseAllRecordStages=true;}
-                diagnostics(nullptr,ClassicPoseTestRecord,nullptr,nullptr);
+                // The diagnostic callback precedes recorder timestamp filling.
+                // Stamp this test's copy at actual submission observation; zero
+                // recorder timestamps are not evidence of zero presentation gaps.
+                const auto timedRecord=+[](void* context,const AnalysisDiagnosticRecordV1* record) {
+                    if(!record)return;
+                    auto timed=*record;
+                    timed.timestampNs=uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count());
+                    ClassicPoseTestRecord(context,&timed);
+                };
+                diagnostics(nullptr,timedRecord,nullptr,nullptr);
             }
             char temp[MAX_PATH]={},configPath[MAX_PATH]={};
             Assert::IsTrue(GetTempPathA(MAX_PATH,temp)!=0);
@@ -6012,6 +6022,8 @@ namespace VideoProcessorTest
             cleanup.renderer->Build();cleanup.renderer->Start();
             uint64_t sequence=1;std::vector<AnalysisDiagnosticRecordV1> records,outputs;
             std::set<uint64_t> injected;
+            auto nextInput=std::chrono::steady_clock::now();
+            const auto inputPeriod=std::chrono::nanoseconds(1001000000000LL/24000);
             auto pump=[&](bool caption) {
                 MSG message;while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}
                 if(callback.state==RENDERSTATE_RENDERING) {
@@ -6019,7 +6031,8 @@ namespace VideoProcessorTest
                     VideoFrame frame((caption?candidate:scope).data(),sequence++,clock.TimingClockNow(),&buffer);
                     cleanup.renderer->OnVideoFrame(frame);
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(42));
+                nextInput+=inputPeriod;
+                std::this_thread::sleep_until(nextInput);
                 std::vector<AnalysisDiagnosticRecordV1> tail;
                 {std::lock_guard<std::mutex> lock(classicPoseLogMutex);CopyUnreadCallbackTail(classicPoseRecords,spatialCursor,tail);}
                 for(const auto& r:tail){records.push_back(r);if(!strcmp(r.stage,"submitted-presentation")&&(r.flags&1u))outputs.push_back(r);}
