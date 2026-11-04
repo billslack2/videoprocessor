@@ -1,0 +1,13 @@
+# Reconstruction configured side-fill continuity, 2026-11-04
+
+User contract: configured movie crop should remain applied through subtitle onset/off and processing transitions. Active scope settings: screen2.35, narrowlimit2.32, widelimit2.42, automatic crop and subtitle fit enabled.
+
+Observed source1413/1414/1415 at07:07:18.909/.948/.990ET retains native[0,272,3840,1886]. Pending candidate1414 removes configured24px side trim, reducing output height13.3617px with unchanged center. Raw padded candidate[2478,1850,2538,1894] fits horizontally. Adjacent scan logs show completed searches and no work limit; palette/raw completeness is inferred from detector control flow, not directly logged on this source.
+
+The raw fallback previously bypassed all optional fill. The focused correction retains horizontal configured fill only for a complete exact-current raw candidate, exact-current native-contained visibility and candidate horizontal margin containment. Existing fill calculation and limits determine the crop. Expanded/unknown/conflicting evidence, vertical trimming, competing fitting/NLS and picture transitions retain existing preservation behavior. Raw source selection, source identity, native detection and frame scheduling are unchanged. Raw fill cannot create a native/processed/optional-fill certificate. No new scans, thresholds, timeouts or queues.
+
+Regression: ContainedRawReconstructionPreservesConfiguredHorizontalFill fails before the fix; after the fix it verifies absent/pending/prepared/absent geometry at the recorded bounds. RawReconstructionConfiguredFillRejectsUnprovenOrConflictingPixels exercises23 negative cases. Focused Native5 pass in artifacts/qualification/runs/20261104-073127-87438a43; RED in20261104-072712-eb7f59ac. These are synthetic policy fixtures using actual logged geometry, not original-pixel or actual-renderer replay.
+
+Evidence and reproducible log analysis remain outside Git at E:\codex\videoprocessor\subtitle-native-burst-20261103\artifacts\crop-shifts-20261104-0722. Across29,711decisions, exactsamecontext/native/current Reconstruction pairs contain6purefill transitions and140expanded-envelope transitions. The latter remain unresolved by this patch: one source-to-screen transform cannot preserve both native movie mapping and additional outboard pixels. They require independently mapped current-source caption/bar content, without stale background, invented erasure authority or blocking current video.
+
+Actual-renderer visual/cadence validation and broader qualification remain pending. This document does not record deployment or claim all subtitle-linked shifts fixed.

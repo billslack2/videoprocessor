@@ -1,0 +1,41 @@
+{
+  "rows": [
+    {
+      "line": 31976,
+      "text": "2026-11-04 07:07:15 | SUBTITLE CONTINUATION STATE: gen=2 seq=1330 format_gen=15805081878477807578 domain=4768279117495752782 viewport=0 renderer=2 base_available=1 reference=0 last_seed_reason=not-attempted native=0,272-3840,1886 native_gen=2 native_origin=0 native_class=2 raw=275-1884 preview=1 analyzed=1 raw_text=1 accepted=0 shared_required=1 shared_current=1 shared=0,272-3840,1886 mode=3 float=0 opacity=0.650 hold_ms=250 held=0 cue=0 raw_lines=1 decision=picture-glyph-acquisition-glyphs-changed held_current_proof=0 held_proof_base=accepted-native held_nls_base_match=1"
+    },
+    {
+      "line": 31978,
+      "text": "2026-11-04 07:07:15 | SUBTITLE PROOF: frame=1330 cue=0 raw_picture=275-1884 raw_text=1 accepted=0 context_mask=0x0 precondition_mask=0x0 pixels_compared=1 result=component-coverage policy=2 continuity=4 domain=4768279117495752782 viewport=0"
+    },
+    {
+      "line": 31979,
+      "text": "2026-11-04 07:07:15 | SUBTITLE STABILITY: frame=1330 cue=0 detector=1 visible=0 held=0 reason=picture-glyph-acquisition-glyphs-changed hold_ms=250 weak_ms=0.0 detector_lost=0 detector_regained=0 output_lost=1 output_regained=0 suspected_flash=0 gap_ms=0.0 hold_start=0 hold_end=0 cue_changed=0 losses=15 flashes=0 lookahead=2 matching=1 lines_confirmed=0 analysis_work_limit=0 analysis_reason=detected analysis_components=74 near_bar_gap=0 near_bar_gap_inferred=1 move_valid=0 box=0,0-0,0 confirmation_pending=0 handoff_sources=0 handoff_reason=contraction-current-proof-incomplete handoff_owned=0 handoff_inspected=0 handoff_old=1358,1926-2466,2042 handoff_current=2510,1850-2574,1894"
+    },
+    {
+      "line": 31980,
+      "text": "2026-11-04 07:07:15 | SUBTITLE BBOX: frame=1330 cue=0 observed=0 held=0 revised=0 observations=0 lines=0 raw_lines=1 resolved_lines=1 box=0,0-0,0 padding=60,40,21 bar_authority=1 bar_tracking=0 picture=275-1884 consume_ms=0.507 peak_consume_ms=2.472 detected_frames=767 held_frames=41 work_limit=0 analysis_step=4 future_available=1 matching_frames=1 analysis_work_limit=0 analysis_reason=detected search_complete=1/1 analysis_components=74 near_bar_gap=0 near_bar_gap_inferred=1 current_scan_ms=15.696 window_new_scan_ms=0.000 window_new_scans=0 worker_async=1 bar_reason=current-independent-subtitle-bars bar_depth=275/276 bar_support=126/116 bar_black_fraction=1.0000/1.0000 reference_proof=0/0 reference_support=0/0 reference_black_fraction=0.0000/0.0000 reference_max_intrusion=0/0 bar_samples=39615"
+    },
+    {
+      "line": 32309,
+      "text": "2026-11-04 07:07:18 | SUBTITLE PROOF: frame=1414 cue=0 raw_picture=275-1884 raw_text=1 accepted=0 context_mask=0x0 precondition_mask=0x0 pixels_compared=0 result=not-compared policy=2 continuity=4 domain=4768279117495752782 viewport=0"
+    },
+    {
+      "line": 32310,
+      "text": "2026-11-04 07:07:18 | SUBTITLE STABILITY: frame=1414 cue=0 detector=1 visible=0 held=0 reason=picture-glyph-acquisition-neighbor-incomplete hold_ms=250 weak_ms=0.0 detector_lost=0 detector_regained=1 output_lost=0 output_regained=0 suspected_flash=0 gap_ms=0.0 hold_start=0 hold_end=0 cue_changed=0 losses=16 flashes=0 lookahead=2 matching=1 lines_confirmed=0 analysis_work_limit=0 analysis_reason=detected analysis_components=83 near_bar_gap=0 near_bar_gap_inferred=1 move_valid=0 box=0,0-0,0 confirmation_pending=0 handoff_sources=0 handoff_reason=not-required handoff_owned=0 handoff_inspected=0 handoff_old=0,0-0,0 handoff_current=2478,1850-2538,1894"
+    },
+    {
+      "line": 32311,
+      "text": "2026-11-04 07:07:18 | SUBTITLE BBOX: frame=1414 cue=0 observed=0 held=0 revised=0 observations=0 lines=0 raw_lines=1 resolved_lines=1 box=0,0-0,0 padding=60,40,21 bar_authority=1 bar_tracking=0 picture=275-1884 consume_ms=0.042 peak_consume_ms=2.472 detected_frames=814 held_frames=41 work_limit=0 analysis_step=4 future_available=1 matching_frames=1 analysis_work_limit=0 analysis_reason=detected search_complete=1/1 analysis_components=83 near_bar_gap=0 near_bar_gap_inferred=1 current_scan_ms=14.731 window_new_scan_ms=0.000 window_new_scans=0 worker_async=1 bar_reason=current-independent-subtitle-bars bar_depth=275/276 bar_support=118/118 bar_black_fraction=1.0000/1.0000 reference_proof=0/0 reference_support=0/0 reference_black_fraction=0.0000/0.0000 reference_max_intrusion=0/0 bar_samples=39576"
+    },
+    {
+      "line": 32360,
+      "text": "2026-11-04 07:07:19 | SUBTITLE PROOF: frame=1418 cue=0 raw_picture=275-1884 raw_text=1 accepted=0 context_mask=0x0 precondition_mask=0x0 pixels_compared=0 result=not-compared policy=2 continuity=4 domain=4768279117495752782 viewport=0"
+    },
+    {
+      "line": 32361,
+      "text": "2026-11-04 07:07:19 | SUBTITLE STABILITY: frame=1418 cue=0 detector=1 visible=0 held=0 reason=picture-glyph-acquisition-neighbor-incomplete hold_ms=250 weak_ms=0.0 detector_lost=0 detector_regained=1 output_lost=0 output_regained=0 suspected_flash=0 gap_ms=0.0 hold_start=0 hold_end=0 cue_changed=0 losses=16 flashes=0 lookahead=2 matching=1 lines_confirmed=0 analysis_work_limit=0 analysis_reason=detected analysis_components=91 near_bar_gap=0 near_bar_gap_inferred=1 move_valid=0 box=0,0-0,0 confirmation_pending=0 handoff_sources=0 handoff_reason=not-required handoff_owned=0 handoff_inspected=0 handoff_old=0,0-0,0 handoff_current=2474,1850-2534,1894"
+    }
+  ],
+  "limitation": "No analysis capture for07:07 exists. Palette validity and rawEvidenceComplete are not directly printed in these debug lines; do not invent their values."
+}

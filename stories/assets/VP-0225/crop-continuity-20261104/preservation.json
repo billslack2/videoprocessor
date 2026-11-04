@@ -1,0 +1,24 @@
+{
+  "sourceLog": "C:\\Videoprocessor\\vp\\logs\\vp.log",
+  "startByte": 4547171879,
+  "endByte": 4631056791,
+  "capturedUtc": "2026-11-04T12:22:14.299524+00:00",
+  "process": 61168,
+  "files": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\crop-shifts-20261104-0722\\runtime.log",
+      "bytes": 83884912,
+      "sha256": "ceb86fd38f0b79f0d7e537810f8127ceb5c448db80186734d33964dbfbb93976"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\crop-shifts-20261104-0722\\VideoProcessor.cfg",
+      "bytes": 20977,
+      "sha256": "5a549688243aa9a09596a49c42d42effc004059305ce9318f0931b696159167e"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-native-burst-20261103\\artifacts\\crop-shifts-20261104-0722\\VideoProcessor.state",
+      "bytes": 269,
+      "sha256": "99cf94a66291ac295858c9afd73dc880ee42f9496fd974d9cc44a9a1bf979222"
+    }
+  ]
+}

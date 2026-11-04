@@ -1,0 +1,45 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="d8a19464-d10c-4118-b26e-e00b01602b6e" name="bslac@DESKTOP-3G35SCJ 2026-11-04 07:28:27" runUser="DESKTOP-3G35SCJ\bslac" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-04T07:28:27.8902550-05:00" queuing="2026-11-04T07:28:27.8902550-05:00" start="2026-11-04T07:28:27.4025048-05:00" finish="2026-11-04T07:28:27.9192821-05:00" />
+  <TestSettings name="default" id="ba1a97d4-f522-4e89-ad33-a69e4e412c83">
+    <Deployment runDeploymentRoot="bslac_DESKTOP-3G35SCJ_2026-11-04_07_28_27" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="41c5bef7-888d-461b-8efa-33c4006289f0" testId="dfddb959-13de-5ecd-39e0-625291e5516a" testName="RawReconstructionConfiguredFillRejectsUnprovenOrConflictingPixels" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0001903" startTime="2026-11-04T07:28:27.6713291-05:00" endTime="2026-11-04T07:28:27.6715194-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="41c5bef7-888d-461b-8efa-33c4006289f0" />
+    <UnitTestResult executionId="b6616c71-5f71-49d0-96f0-a1874dc0bfd9" testId="d82d204f-7d43-72d5-bafb-9f1be6b701f9" testName="UnpreparedAdvancedOutputPreservesCurrentRawPixelsWithoutChangingNativeGeometry" computerName="DESKTOP-3G35SCJ" duration="00:00:00.0004828" startTime="2026-11-04T07:28:27.6653239-05:00" endTime="2026-11-04T07:28:27.6658067-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b6616c71-5f71-49d0-96f0-a1874dc0bfd9" />
+    <UnitTestResult executionId="71465949-53a1-47f7-aa36-6455ba80169b" testId="be335ac1-642b-06d8-ffc0-e911e5f49528" testName="ContainedRawReconstructionPreservesConfiguredHorizontalFill" computerName="DESKTOP-3G35SCJ" duration="00:00:00.1976615" startTime="2026-11-04T07:28:27.6713291-05:00" endTime="2026-11-04T07:28:27.8689906-05:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="71465949-53a1-47f7-aa36-6455ba80169b">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert failed. Contained raw subtitle inspection must not remove configured side fill for one current source.</Message>
+          <StackTrace>	at Tests::AcceptedNativePresentationContinuityTests::ContainedRawReconstructionPreservesConfiguredHorizontalFill() in E:\codex\videoprocessor\reconstruction-crop-stability-20261104\src\VideoProcessor-Test\AlphaSourceCropPolicyTests.cpp:line 20356</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="ContainedRawReconstructionPreservesConfiguredHorizontalFill" storage="e:\codex\videoprocessor\reconstruction-crop-stability-20261104\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="be335ac1-642b-06d8-ffc0-e911e5f49528">
+      <Execution id="71465949-53a1-47f7-aa36-6455ba80169b" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-crop-stability-20261104\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.AcceptedNativePresentationContinuityTests" name="Tests::AcceptedNativePresentationContinuityTests::ContainedRawReconstructionPreservesConfiguredHorizontalFill" />
+    </UnitTest>
+    <UnitTest name="UnpreparedAdvancedOutputPreservesCurrentRawPixelsWithoutChangingNativeGeometry" storage="e:\codex\videoprocessor\reconstruction-crop-stability-20261104\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="d82d204f-7d43-72d5-bafb-9f1be6b701f9">
+      <Execution id="b6616c71-5f71-49d0-96f0-a1874dc0bfd9" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-crop-stability-20261104\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.AcceptedNativePresentationContinuityTests" name="Tests::AcceptedNativePresentationContinuityTests::UnpreparedAdvancedOutputPreservesCurrentRawPixelsWithoutChangingNativeGeometry" />
+    </UnitTest>
+    <UnitTest name="RawReconstructionConfiguredFillRejectsUnprovenOrConflictingPixels" storage="e:\codex\videoprocessor\reconstruction-crop-stability-20261104\x64\release\tests-critical-native\videoprocessor-criticalnativetests.dll" id="dfddb959-13de-5ecd-39e0-625291e5516a">
+      <Execution id="41c5bef7-888d-461b-8efa-33c4006289f0" />
+      <TestMethod codeBase="E:\codex\videoprocessor\reconstruction-crop-stability-20261104\x64\Release\tests-critical-native\VideoProcessor-CriticalNativeTests.dll" adapterTypeName="executor://cppunittestexecutor/v1" className="Tests.AcceptedNativePresentationContinuityTests" name="Tests::AcceptedNativePresentationContinuityTests::RawReconstructionConfiguredFillRejectsUnprovenOrConflictingPixels" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="dfddb959-13de-5ecd-39e0-625291e5516a" executionId="41c5bef7-888d-461b-8efa-33c4006289f0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d82d204f-7d43-72d5-bafb-9f1be6b701f9" executionId="b6616c71-5f71-49d0-96f0-a1874dc0bfd9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="be335ac1-642b-06d8-ffc0-e911e5f49528" executionId="71465949-53a1-47f7-aa36-6455ba80169b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="3" executed="3" passed="2" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+  </ResultSummary>
+</TestRun>
