@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "status": "completed",
+  "buildExitCode": 0,
+  "replayExitCode": 0,
+  "expectedRejectionReproduced": true,
+  "source": "b1c1d827c6fc1209877ae6b7c2897b11c25dd09a",
+  "sourceUnchanged": true,
+  "libraryUnchanged": true,
+  "qualification": false,
+  "gpu": "sourcePrepared modeled; no renderer or timing claim",
+  "preservedOriginalIdentities": true,
+  "savedFrames": 89,
+  "byteDistinctPhases": 4,
+  "missingInteriorSources": 4,
+  "reasons": {
+    "source-not-prepared": 22,
+    "current-prepared-caption-erasure": 1,
+    "physical-base-mismatch": 66
+  },
+  "physicalBaseFailures": {
+    "64": 66
+  },
+  "phaseResults": {
+    "0": {
+      "source-not-prepared": 1,
+      "physical-base-mismatch": 22
+    },
+    "1": {
+      "current-prepared-caption-erasure": 1,
+      "source-not-prepared": 21
+    },
+    "2": {
+      "physical-base-mismatch": 22
+    },
+    "3": {
+      "physical-base-mismatch": 22
+    }
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\consecutive-held-replay.cpp",
+      "sha256": "3c743c3abc206a1c830bae8fd9f82f2345fc1a20cae862d70c2dc8b560a666f4"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\consecutive-held-replay.vcxproj",
+      "sha256": "e201ff1e3866d138a9301e586cddc1b429bf3060e357b2889109a1212de2d08d"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\build.log",
+      "sha256": "b054885b7f45b4488cf095f6b40070effa3d9948e224d9d85fcf32d805d039a8"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\build\\ConsecutiveHeldReplay.exe",
+      "sha256": "587385c85c7e1c08e49458904e8f2d56136acc02e9f645954be7e6120697f754"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\inputs.json",
+      "sha256": "78f83c5156e0fb4b0f03af7ac72a2dfce7893f827fc865374f7b659cdf86e7e5"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\results.jsonl",
+      "sha256": "9285415816134de294d90657aedbc6a57d4ff51f34d0335ddceb0939a4090f75"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\phase-results.jsonl",
+      "sha256": "18d9c9cb49e5f53cb7d0aeee1269ca223b6dbc68b688da938b53a126368cc136"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\trace.jsonl",
+      "sha256": "d3f89a5cc7254d5f2d8f4f398ade39000704d9151b73ec897d3716bad9b63347"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\burst-preservation.json",
+      "sha256": "7697cc447030db8dd94da2898729c03e4b8510e30f037570c7e519471d5c2eab"
+    }
+  ]
+}

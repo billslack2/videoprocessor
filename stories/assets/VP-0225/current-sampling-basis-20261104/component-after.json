@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "status": "completed",
+  "componentPassed": true,
+  "qualification": false,
+  "sourcePrepared": "modeled-only; no GPU or deadline claim",
+  "buildExitCode": 0,
+  "replayExitCode": 0,
+  "source": "b1c1d827c6fc1209877ae6b7c2897b11c25dd09a",
+  "dirtySourceRecorded": " M src/VideoProcessor-Lib/SubtitleBoxLookahead.h\n M src/VideoProcessor-Lib/SubtitleCurrentPreparedCueCertificate.h\n M src/VideoProcessor-Lib/SubtitleMeasurementWorker.h\n M src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp\n",
+  "checks": {
+    "originalIdentitiesUnchanged": true,
+    "all89Qualified": true,
+    "allCurrentSupportVerified": true,
+    "allCurrentSamplingBasisMatched": true,
+    "noOmittedNativeCaptureSamples": true,
+    "noPhysicalFailures": true,
+    "all4OriginalPhases": true,
+    "rawBarEvidenceUnchanged": true,
+    "oneSamplingPlane": true,
+    "oneGlyphGeometry": true,
+    "sourceFilesAndLibraryUnchanged": true
+  },
+  "sourceCount": 89,
+  "heldSources": 0,
+  "naturalCueIds": [
+    1,
+    2
+  ],
+  "phaseResults": {
+    "0": {
+      "sources": 23,
+      "qualified": 23
+    },
+    "1": {
+      "sources": 22,
+      "qualified": 22
+    },
+    "2": {
+      "sources": 22,
+      "qualified": 22
+    },
+    "3": {
+      "sources": 22,
+      "qualified": 22
+    }
+  },
+  "samplingPicture": [
+    272,
+    1886
+  ],
+  "physicalMeasured": [
+    0,
+    275,
+    3840,
+    1884
+  ],
+  "currentVerifiedSupport": [
+    0,
+    272,
+    3840,
+    2032
+  ],
+  "originalGapCount": 4,
+  "baselineReceipt": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\receipt.json",
+    "sha256": "467f8990367b4622cd44e2990d3d390d98dafc17688a1448e557cf819706218c"
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-green\\consecutive-held-replay.cpp",
+      "sha256": "c1645370bad2c620b196b550922d903e7de2cecc68c5f938a02ef396bd3ad4a0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-green\\consecutive-held-replay.vcxproj",
+      "sha256": "e201ff1e3866d138a9301e586cddc1b429bf3060e357b2889109a1212de2d08d"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-green\\inputs.json",
+      "sha256": "8ba4e7ae2a1f399de13e1b07d84c2d48ac9d0c906c8dabca5450714e5ff84067"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-green\\build.log",
+      "sha256": "265065ec0d8e0117687c4c2816a7f7ac14498f3af1a2933d1b9b3eea2f7b64f5"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-green\\build\\ConsecutiveHeldReplay.exe",
+      "sha256": "d541ea0809fb60c9a52cbe8d518e9649f7f76dbba76b7860a5a6a7b7a9ced16e"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-green\\results.jsonl",
+      "sha256": "85188559c2849ee10fd50f88e05fea64634164d35111c37308bf51b59653ecdf"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-green\\trace.jsonl",
+      "sha256": "005ca8df6465b7a673257e38b811e2e9d01e3b664da3bcf9921e552747217a93"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-green\\stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "finalSourceCommit": "56fd201e9ef10c2ff2a643cb02ca421ccca0ec36",
+  "finalSourceDirty": "",
+  "sourceIdentityNote": "Original build-input provenance retained; source was committed during this relink/run without changing listed headers. Final source file hashes match. Native library is the completed Native5 archive, not a rebuilt final-pin runtime."
+}

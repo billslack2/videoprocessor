@@ -1,0 +1,56 @@
+{
+  "sourceCommit": "56fd201e9ef10c2ff2a643cb02ca421ccca0ec36",
+  "acceptance": "OPEN",
+  "fullQualification": false,
+  "previewOnly": true,
+  "installedRuntimeModified": false,
+  "nativeFocusedPassed": 5,
+  "nativeDiscoveredNotExecuted": 1132,
+  "componentSources": 89,
+  "componentHeldSources": 0,
+  "componentComposition": "modeled-only",
+  "originalSourceGaps": 4,
+  "scope": "RC4 extraction components and candidate current-sampling-basis CPU proof, successful x64 Release build and isolated launch; no new actual-renderer/GPU or deadline qualification",
+  "evidence": [
+    {
+      "file": "rc4-published-release.json",
+      "sha256": "07C887DD053E74DCB41CF722CC20FEFB4AA4194100876ABCFC29BBD4FD11F20B",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-contract-review\\published-release.json"
+    },
+    {
+      "file": "rc4-contract.md",
+      "sha256": "321DAD1DAAA4C565656A95FA5A6DFA0ABF060E48BF3ED6FEA2594BBEE367AFCF",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-contract-review\\contract.md"
+    },
+    {
+      "file": "rc4-comparison.json",
+      "sha256": "83180692D201596B8605F772C4020CA358BBA7A79E3CCFF085C45621ACD1A6DC",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\receipt.json"
+    },
+    {
+      "file": "component-before.json",
+      "sha256": "467F8990367B4622CD44E2990D3D390D98DAFC17688A1448E557CF819706218C",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-replay\\receipt.json"
+    },
+    {
+      "file": "component-after.json",
+      "sha256": "A283FEBA5A918F72B1DBFFFD3D3A24008D1B1E7D895B69E1A6D457F9F9CFCF26",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\caption-basis-green\\receipt.json"
+    },
+    {
+      "file": "native5-iteration.json",
+      "sha256": "0490151C9823B5FE07D2EDE58519B1444F2AC6CCF8160481FFFB6ED8A30D3E26",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-121726-42ee0734\\iteration.json"
+    },
+    {
+      "file": "build-56fd.json",
+      "sha256": "13DDEFDF5D914B91DA3A4A966DEDBBCFB1B34FD10B85CFA7110B887E0F54CFBD",
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\build-20261104-121952-56fd201e\\build-receipt.json"
+    },
+    {
+      "file": "preview-56fd.json",
+      "sha256": "493B040F439487CFF94F9BF372353AD4E47224EB4EA6A7BD7A7D645DC9D0C1BB",
+      "original": "E:\\codex\\videoprocessor\\previews\\ar-temporal-56fd201e9ef10c2ff2a643cb02ca421ccca0ec36\\preview-receipt.json"
+    }
+  ]
+}

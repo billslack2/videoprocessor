@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "status": "completed",
+  "scope": "Historical raw extraction component comparison; not full RC4 renderer or cold native acquisition success",
+  "qualification": false,
+  "originalPixelsAndIdentities": true,
+  "currentSource": "b1c1d827c6fc1209877ae6b7c2897b11c25dd09a",
+  "inputPreservation": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\burst-preservation.json",
+    "sha256": "7697cc447030db8dd94da2898729c03e4b8510e30f037570c7e519471d5c2eab"
+  },
+  "adapter": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\compare-rc4.cpp",
+      "sha256": "604cd5a287dcebc5c1360606ea201de84e1e6a6f724550f7b47169acde2f2444"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\compare-rc4.vcxproj",
+      "sha256": "b82331d306e7b43ae197da68c61182d885397ab293637cec3d80b715085fc202"
+    }
+  ],
+  "versions": [
+    {
+      "label": "rc4",
+      "sourcePin": "fa4e210db426b086e2ab4ae5d590a10112c4c09c",
+      "buildExitCode": 0,
+      "replayExitCode": 0,
+      "sources": 89,
+      "modes": {
+        "independent": {
+          "detected": 22,
+          "rawComplete": 22,
+          "pictures": {
+            "[0, 2160]": 67,
+            "[275, 1918]": 22
+          },
+          "lineVariants": 2
+        },
+        "recorded_base": {
+          "detected": 89,
+          "rawComplete": 89,
+          "pictures": {
+            "[272, 1890]": 89
+          },
+          "lineVariants": 1
+        },
+        "native_trusted": {
+          "detected": 0,
+          "rawComplete": 0,
+          "pictures": {
+            "[0, 0]": 89
+          },
+          "lineVariants": 1
+        }
+      },
+      "sourceAudit": [
+        {
+          "file": "SubtitleBoxLookahead.h",
+          "archivedSha256": "ff3e7f41ed46e52e9811826f2f30c7ea5bff22be1987f4216c59f4779f1d4a97",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "SubtitleBoxDetector.cpp",
+          "archivedSha256": "c9263b526d0fe50947fbb5495c84aa3ca57267bb417e045d6a862fbe5766f62f",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "AnalysisLumaSource.cpp",
+          "archivedSha256": "d30f068b2d98898ea52f11a321b720383cea005515fcb5e5e9a58ad73970ba31",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "ActivePictureEvidence.cpp",
+          "archivedSha256": "9da92e7149d8bf711525c3ff9a7e20270fd5c4f37ed6d3080b1b1f8adb6ab3ad",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "ActivePictureTransitionModel.cpp",
+          "archivedSha256": "4417467eebf46e4361ebc2f563ad3d05967af492e1b6b13154f1262b057da3ac",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "ActivePictureDecisionTimeline.cpp",
+          "archivedSha256": "9de63917c30dd6037d22b24ed2a38c5f74e7a4edcde57575e8da5e6694045fde",
+          "matchesGitBlobIgnoringCRLF": true
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\rc4\\build.log",
+          "sha256": "d7d3589d655cece1b82c70a424355e60167eebe1d64b841d5be081a723b63c5c"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\rc4\\frames.jsonl",
+          "sha256": "f305215f467463c08fa742da05dec6f6159a3092c06bc0b4d8161c641a4c06fd"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\rc4\\stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\rc4\\build\\BlackReferenceComparison.exe",
+          "sha256": "cbd55080cb8befd17e2192c9a16cbed0cf2f4422e08a919f600bf2dbb11a2102"
+        }
+      ]
+    },
+    {
+      "label": "rc4_early",
+      "sourcePin": "6d5f8ad4241c24b750b96d2e3f54abb458bc7986",
+      "buildExitCode": 0,
+      "replayExitCode": 0,
+      "sources": 89,
+      "modes": {
+        "independent": {
+          "detected": 22,
+          "rawComplete": 22,
+          "pictures": {
+            "[0, 2160]": 67,
+            "[275, 1918]": 22
+          },
+          "lineVariants": 2
+        },
+        "recorded_base": {
+          "detected": 89,
+          "rawComplete": 89,
+          "pictures": {
+            "[272, 1890]": 89
+          },
+          "lineVariants": 1
+        },
+        "native_trusted": {
+          "detected": 0,
+          "rawComplete": 0,
+          "pictures": {
+            "[0, 0]": 89
+          },
+          "lineVariants": 1
+        }
+      },
+      "sourceAudit": [
+        {
+          "file": "SubtitleBoxLookahead.h",
+          "archivedSha256": "676faaad59fed7531ba099a3f2865568ac3cf936def6459ac7eda09a115926ea",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "SubtitleBoxDetector.cpp",
+          "archivedSha256": "f1796cfa5021e2bf201b4768a735519586de703fee1941e41494347107e74166",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "AnalysisLumaSource.cpp",
+          "archivedSha256": "d30f068b2d98898ea52f11a321b720383cea005515fcb5e5e9a58ad73970ba31",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "ActivePictureEvidence.cpp",
+          "archivedSha256": "9da92e7149d8bf711525c3ff9a7e20270fd5c4f37ed6d3080b1b1f8adb6ab3ad",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "ActivePictureTransitionModel.cpp",
+          "archivedSha256": "4417467eebf46e4361ebc2f563ad3d05967af492e1b6b13154f1262b057da3ac",
+          "matchesGitBlobIgnoringCRLF": true
+        },
+        {
+          "file": "ActivePictureDecisionTimeline.cpp",
+          "archivedSha256": "9de63917c30dd6037d22b24ed2a38c5f74e7a4edcde57575e8da5e6694045fde",
+          "matchesGitBlobIgnoringCRLF": true
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\rc4_early\\build.log",
+          "sha256": "9beb5067d22dd7c21193b35cab9cbc4b49da1c93f5cdc757c4e15c7e93c5866e"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\rc4_early\\frames.jsonl",
+          "sha256": "f305215f467463c08fa742da05dec6f6159a3092c06bc0b4d8161c641a4c06fd"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\rc4_early\\stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\rc4-comparison\\rc4_early\\build\\BlackReferenceComparison.exe",
+          "sha256": "8903c0faab4e3b2be75c2105a9d0e74ddef5f64009190764a471b3eeeea3f34e"
+        }
+      ]
+    }
+  ]
+}
