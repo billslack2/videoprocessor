@@ -1,0 +1,37 @@
+VP-0225 evidence — 2026-11-03, candidate 378e090af3f1a81bd37caf9a2ab774e91c5d7ace
+Status: In Progress. User acceptance and broader AR investigation remain open.
+
+The user requested smaller focused changes, focused tests and playable visual checks. The current work separates immutable-baseline recovery from the nested subtitle backing rectangle; it does not increase queues, delays or pixel thresholds. The eight paused native captures contain four repeating raster phases with no more than four luma levels of phase variation, within the existing eight-level seed tolerance. The repeated live failure therefore cannot be explained simply as insufficient tolerance between those captured phases.
+
+The focused actual-capture component replay now reproduces the recovery defect with genuine consecutive tracker consumption and an unchanged descriptor/cue ID. Baseline94 keeps failed revision1 when offered a fresh independent scan; the candidate replaces it with revision2 and verifies/consumes all eight captured sources. The old baseline pixel64 is an explicitly synthetic prior at the recorded failure coordinate; the original historical template1480 pixels were not captured. Source identities are synthetic consecutive identities, and this component replay models compositor admission. It establishes the same-descriptor recovery defect and correction, not exact reconstruction of every historical live state. The held-cue adapter has separate Native certificate coverage; these actual captured scans were ordinary, so genuine live held-history recovery is not claimed.
+
+The nested-card repair follows the logged source1341/1347 geometry. Current movie changes above an unchanged, fully sampled black card previously trimmed the cleanup rectangle sideways through that card. The corrected projection preserves the verified card extent while protecting the changed movie row. The actual shader comparison shows the backing correction, unchanged glyph counts and no changed pixels outside the production cleanup/layer envelope. The initial shader test remains recorded as Failed because its fixture omitted the production two-pixel bar-facing overlap. The corrected assertion subsequently passed in both Standard and Beta within the completed candidate378 motion suites: 226/226 each, x64 Release, clean pinned source. The separate actual shader capture run also passed both tests in each variant. The fresh Native run passed all 1,101 tests at the same clean source pin. Controlled GPU/cue tests do not establish physical playback, refresh or HDR display acceptance.
+
+Candidate378 actual renderer replay reports 144/144 distinct current sources composed with exact current proofs, stable native bounds and no fallback in each of Standard and Beta. Both recorded tests nevertheless remain Failed: their additional inspection-coverage assertion expected inspection requests, but observed zero. These successful output measurements are partial evidence, not a passing test run or full qualification. Cold preparation outputs are excluded from steady claims; aggregate startup counts must not be labeled steady flicker.
+
+The paused sample does not show native AR changing. The actual fresh detector result is [0,274,3840,1886]; its retained capture sidecar used bottom1888. Those are kept distinct in the replay. Other reported dark-scene/normal-playback AR losses remain open and are not explained away by this paused sample.
+
+Evidence paths relative to E:\codex\videoprocessor\subtitle-pixel-tolerance-20261103:
+- artifacts/incident-20261103-192209/paused-recovery/baseline94-run-20261103-204534/results.jsonl
+- artifacts/incident-20261103-192209/paused-recovery/run-20261103-204306/results.jsonl
+- artifacts/incident-20261103-192209/shader-projection/run-20261103-202010/receipt.json
+- artifacts/incident-20261103-192209/shader-projection/run-20261103-202010/pixel-audit.json
+- artifacts/incident-20261103-192209/motion-378e090a-20261103-2043/motion-renderer-tests.json
+- artifacts/incident-20261103-192209/renderer-recovery/candidate-378e090a-20261103-202744/receipt.json
+- artifacts/incident-20261103-192209/renderer-recovery/candidate-378e090a-20261103-202744/captured.trx
+
+Deployment/live verification: candidate378 was installed from clean x64 Release output as a user-authorized reversible manual trial, explicitly not a qualified release. Backup: C:\Videoprocessor\vp\backups\trial-378e090a-20261103-205809. Process59360 started at20:58:23 ET; one verified CtrlShiftT restored Reconstruction. Configuration SHA256 remained 5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E.
+
+A bounded steady live window contains240/240 distinct consecutive sources1441..1680, all composed/prepared with current facts. Maximum source gap1 and recorded submit gap48ms; native stays[0,274,3840,1886] and actual presentation stays[26,274,3814,1886]. The retained cue5 is held with unchanged raw box[1282,1778,2558,2042]. This telemetry supports current-source continuity during that window, not visual acceptance. Screenshot capture timed out, so no fresh screenshot acceptance is claimed.
+
+The separate startup receipt preserves a33.993-second/815-source gap whose cause remains unisolated and open. Do not merge that interval into the steady result or call the runtime qualified. The saved performance receipt covers ten recent analysis windows: maximum active work 13.21 ms against the 41.7076 ms input budget, with zero source/display/deadline overruns. Actual presentation timing is available; presented counts advance from 4,321 to 4,561 across the last three snapshots, with debt 1. GPU peak is 4.053 ms at 49.2% sampling coverage. This bounded sample does not settle startup behavior or complete worst-case performance qualification. User acceptance and the other dark-scene/normal-playback AR reports remain open.
+
+Additional evidence:
+- artifacts/qualification/runs/20261103-205536-9fa71abd/iteration.json
+- artifacts/incident-20261103-192209/shader-projection/both-378e090a-20261103-2056/receipt.json
+- artifacts/deployment-trial-378e090a/deployment.json
+- artifacts/deployment-trial-378e090a/live-initial.json
+- artifacts/deployment-trial-378e090a/live-steady.json
+- artifacts/deployment-trial-378e090a/live-performance.json
+
+The story remains In Progress; user playback acceptance is open.

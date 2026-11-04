@@ -1,0 +1,260 @@
+{
+  "schema": "vp-captured-cue-same-descriptor-recovery-comparison-v1",
+  "status": "completed",
+  "created": "2026-11-03T20:48:18.835161-05:00",
+  "passed": true,
+  "expectedPositiveObserved": true,
+  "expectedNegativeObserved": true,
+  "candidateSource": {
+    "commit": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace",
+    "dirty": false,
+    "fingerprint": "b1b71223504b4d38cdf5abf5a1a974d9b50f22b068137ab67bfa093e3c9bae6b",
+    "label": "378e090af3f1",
+    "build": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace"
+  },
+  "baselineProductionHeaderSource": "94c4419ab03443a0ae4d48acdcad43b494da9748",
+  "evidenceScope": "CPU actual captured V210 current phases, exact-source worker proof and same-descriptor replacement; synthetic one-pixel earlier source; modeled successful compositor. No actual GPU improvement, no held-certificate or historical-template reconstruction claim.",
+  "qualification": false,
+  "performanceQualification": false,
+  "heldAdapterExercised": false,
+  "syntheticPrior": {
+    "originalHistoricalTemplateAvailable": false,
+    "source": "Actual first captured frame clone",
+    "coordinate": [
+      1786,
+      1742
+    ],
+    "priorY": 64,
+    "currentY": 104,
+    "chromaUnchanged": true,
+    "currentFrames": "Eight exact captures, four byte-distinct phases",
+    "sourceIdentities": "Synthetic consecutive transport identities; exact original capture identities recorded per proof",
+    "physicalBaseContext": [
+      0,
+      274,
+      3840,
+      1888
+    ],
+    "nativeDetectionQualification": false
+  },
+  "sameHarnessBehavior": true,
+  "baselineApiCompatibility": "Only compile out heldCurrentCue field references unavailable in94. Ordinary-accepted test asserts no held cue/certificate; candidate-visible source matches preserved candidate source modulo whitespace.",
+  "libraryProvenance": "Current Release native library; linked out-of-line Lib sources unchanged since94; worker/guard inline headers exact94",
+  "candidate": {
+    "receipt": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\run-20261103-204306\\receipt.json",
+      "sha256": "F546149D1B9FD1E382B611F416AA8FE346FB3BBA0F0C6EA9CD237C0986D95BCC"
+    },
+    "results": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\run-20261103-204306\\results.jsonl",
+      "sha256": "0B518DB6A621485E00AB7F8F4807879C98FA336DA338F457340C1D1834946DA9"
+    },
+    "stderr": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\run-20261103-204306\\replay.stderr.log",
+      "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    "executable": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\run-20261103-204306\\PausedCueRecovery.exe",
+      "sha256": "4FFA6415948D3042BC53D652939B02FE52FBBB4803A269072259F5C7B9D524D4"
+    },
+    "harnessSource": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\run-20261103-204306\\harness-source-snapshot.cpp",
+      "sha256": "BD97F1DC584214C2C437F9A73BD03050E379858F708106B7F2BE12D62F91C83C"
+    },
+    "buildLog": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\run-20261103-204306\\build.log",
+      "sha256": "23E7A92836A3C7EE30A28D278839FDE86F9A266ED5E5B2E39E528DC3DF2A84FC"
+    },
+    "testExit": 0,
+    "passed": true,
+    "sourceStable": true,
+    "inputsStable": true,
+    "descriptor": {
+      "kind": "descriptor_sections",
+      "same_descriptor": 1,
+      "same_context": 1,
+      "same_cue": 1,
+      "same_base": 1,
+      "same_operation": 1,
+      "same_layout": 1,
+      "same_mode": 1,
+      "same_background": 1
+    },
+    "oldProof": {
+      "kind": "old_proof",
+      "revision": 1,
+      "status": 7,
+      "rejected": 1
+    },
+    "freshSeed": {
+      "kind": "fresh_seed",
+      "status": 5,
+      "old_revision": 1,
+      "fresh_revision": 2,
+      "accepted_held": 0,
+      "held_certificate_supplied": 0
+    }
+  },
+  "baseline": {
+    "receipt": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\baseline94-run-20261103-204534\\receipt.json",
+      "sha256": "A71B091E9CEC294143AE37937D8678B981F0CC76A106883BA2BDB8311321F1F4"
+    },
+    "results": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\baseline94-run-20261103-204534\\results.jsonl",
+      "sha256": "DFD3A381842029E4C1AD77C74E178D3CA598CDC188CF20B8AB5EB5B614117EEC"
+    },
+    "stderr": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\baseline94-run-20261103-204534\\replay.stderr.log",
+      "sha256": "B3D7FC3989E0803FFC0DF4EFAFD99C25D057851DF1EE2DFC1C02866170E0036C"
+    },
+    "executable": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\baseline94-run-20261103-204534\\PausedCueRecovery.exe",
+      "sha256": "10CBE99B0EBCD3DC94211AA340AFE2EBB824446DB3A114A25F5C2F9CEE7398D6"
+    },
+    "harnessSource": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\baseline94-run-20261103-204534\\harness-source-snapshot.cpp",
+      "sha256": "4288A9E19CED65CD3AAD2E66E80F04FD03FC7558D131401B537F1CAE488163AE"
+    },
+    "buildLog": {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\baseline94-run-20261103-204534\\build.log",
+      "sha256": "254FA320FC67C7B2A36C3ACADF76513CAEA3C9C0454B84EB5D0EC01D6FEC787F"
+    },
+    "testExit": 1,
+    "passed": false,
+    "sourceStable": true,
+    "inputsStable": true,
+    "descriptor": {
+      "kind": "descriptor_sections",
+      "same_descriptor": 1,
+      "same_context": 1,
+      "same_cue": 1,
+      "same_base": 1,
+      "same_operation": 1,
+      "same_layout": 1,
+      "same_mode": 1,
+      "same_background": 1
+    },
+    "oldProof": {
+      "kind": "old_proof",
+      "revision": 1,
+      "status": 7,
+      "rejected": 1
+    },
+    "freshSeed": {
+      "kind": "fresh_seed",
+      "status": 5,
+      "old_revision": 1,
+      "fresh_revision": 1,
+      "accepted_held": 0,
+      "held_certificate_supplied": 0
+    }
+  },
+  "candidateSummary": {
+    "kind": "summary",
+    "ready": 8,
+    "consumed": 8,
+    "expected": 8,
+    "held_adapter_exercised": 0,
+    "native_authority_injected": false,
+    "base_context": "retained captured native base; no detector qualification claim"
+  },
+  "matchingCaptureInputs": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000001.bin",
+      "sha256": "5924CEA165E418FB07A6822C46E7C8CD500369E12CB1293EF782A32E8C98FA99"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000001.txt",
+      "sha256": "29ABA49D028D269D3740B257CBEB364BE47CC757A6B06224D580FC2AC3652B33"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000002.bin",
+      "sha256": "086788D4D127CCD1A134E8966CF9179E2F02ABCC932D1A926E3A3FE029AF9CEF"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000002.txt",
+      "sha256": "2F037221387E801592E04091374B93212A6175B6C0E7E69568943B255AC8ABE5"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000003.bin",
+      "sha256": "621C2C4928834EE2E2CD76360B13EB3A3FCCB21991511F815CD8817BA1357914"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000003.txt",
+      "sha256": "87F82157480C2FA97134F047CB2A83F7C622D4F731BB096F8B150E73990CB2F0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000004.bin",
+      "sha256": "D0124549E16F1252AB37BBCF2CBA34B1908CB1BC2C8A1BD91BF5C30AE551D055"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000004.txt",
+      "sha256": "2F40F9E8709BE1095A844DC89AF810327A420A43F2E9BFEFEC10361E345FBEC7"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000005.bin",
+      "sha256": "5924CEA165E418FB07A6822C46E7C8CD500369E12CB1293EF782A32E8C98FA99"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000005.txt",
+      "sha256": "B6805C2A00C14AFE93262E3F7AA3BE796565F4BFB493423B424345418E794CB7"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000006.bin",
+      "sha256": "086788D4D127CCD1A134E8966CF9179E2F02ABCC932D1A926E3A3FE029AF9CEF"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000006.txt",
+      "sha256": "CBDE45412EEACC309AD699661C1B71D8345F94472A54D14AA5901F8AC92C39EE"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000007.bin",
+      "sha256": "621C2C4928834EE2E2CD76360B13EB3A3FCCB21991511F815CD8817BA1357914"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000007.txt",
+      "sha256": "3EFA8649E9EE232F16897B1A7155E5B52E21361D3787F8CA7285A2CFC866CD42"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000008.bin",
+      "sha256": "D0124549E16F1252AB37BBCF2CBA34B1908CB1BC2C8A1BD91BF5C30AE551D055"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay\\frame-000008.txt",
+      "sha256": "E5847D815AB2940C852F2B94229CBFCDDB694338CB6DB399874190559E6E1F9E"
+    }
+  ],
+  "candidateHeaders": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\src\\VideoProcessor-Lib\\SubtitleMeasurementWorker.h",
+      "sha256": "46FD934A519D57C0FAFB263B6B0ED41FD5869B21E04B5B0AABA8B0D8536C0AFC"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\src\\VideoProcessor-Lib\\SubtitleCadenceGuard.h",
+      "sha256": "674A8D9F4C779896F4DE73E6B44C06BAF2C28E870B5FE2EA19BDAA1B995F077E"
+    }
+  ],
+  "baselineHeaders": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\baseline94-source\\src\\VideoProcessor-Lib\\SubtitleMeasurementWorker.h",
+      "sha256": "10F2319A3013EDF47DF02A0E9FCACBDBCA4004468293DD4D38F718FE9AF309CE",
+      "gitBlobSha256": "A815559AAD311AF27185627983A73CDD2C243E8A8C91D69301318A64997744F6",
+      "contentMatchesGitBlobAfterCrLfNormalization": true
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\baseline94-source\\src\\VideoProcessor-Lib\\SubtitleCadenceGuard.h",
+      "sha256": "7AE9C770C85CB5E156D25EEB8AD8DD530F39152A37E5ED6745A2E65D46B01865",
+      "gitBlobSha256": "1D05DABC087437467BCE0C6E1F039EF77DAA23E1A40E181ABFB494EA280DBF05",
+      "contentMatchesGitBlobAfterCrLfNormalization": true
+    }
+  ],
+  "baselineSnapshot": {
+    "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\baseline94-source.zip",
+    "sha256": "8C244E10DE05EE82134BE61E9ADC465E0C78D6D9E8B6FF6B845009C6CFDFAD96"
+  },
+  "library": {
+    "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\VideoProcessor-Lib.lib",
+    "sha256": "07D7E805C0DC62F4DD833AD415BA4ADC58B60330B17244307BF37C81383E650B"
+  }
+}

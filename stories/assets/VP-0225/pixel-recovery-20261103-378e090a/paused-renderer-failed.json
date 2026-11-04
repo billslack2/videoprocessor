@@ -1,0 +1,62 @@
+{
+  "case": "candidate-378e090a",
+  "testSource": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace",
+  "source": {
+    "commit": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace",
+    "dirty": false,
+    "fingerprint": "b1b71223504b4d38cdf5abf5a1a974d9b50f22b068137ab67bfa093e3c9bae6b",
+    "label": "378e090af3f1",
+    "build": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace"
+  },
+  "fixture": "Synthetic prior Y64 at1786,1742; untouched current V210 phases Y104; original old live template missing",
+  "dirty": false,
+  "pluginRoot": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release",
+  "fullQualification": false,
+  "gpuIsolated": true,
+  "capture": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\native-replay",
+  "started": "2026-11-03T20:27:45.5578017-05:00",
+  "finished": "2026-11-03T20:29:30.7767871-05:00",
+  "status": "completed",
+  "testExit": 1,
+  "results": [
+    {
+      "name": "BetaRendererPausedCapturedCueRecoversFailedBackgroundTemplate",
+      "outcome": "Failed",
+      "duration": "00:00:51.8449769",
+      "captureExercised": true,
+      "summary": "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=144 submitted=144 distinct=144 composed=144 phases=4 inspection_requests=0 templates=0 proofs=144 consumed=144 scans=95 current_exact=1 native_stable=1 no_fallback=1 source_fps=24.0114 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=53.5009 max_latency_ms=147.683 early_latency_ms=132.738 late_latency_ms=133.172 work_samples=144 max_frame_work_ms=12.7641 max_ingress_ms=0.195",
+      "recovery": "PAUSED RECOVERY: synthetic_prior_pixel=64 current_captured_pixel=104 start=1064 steady_start=1072 failed_old=1 fresh_seeds=3 failed_revision=145 replacement_revision=146 replacement_source=1064 recovery_sources=8 steady_templates=0 current_outputs=152 exact=1 max_source_gap=1 max_submit_gap_ms=54.9172",
+      "error": "Assert failed. Live inspection-only/worker reuse path was not exercised."
+    },
+    {
+      "name": "StandardRendererPausedCapturedCueRecoversFailedBackgroundTemplate",
+      "outcome": "Failed",
+      "duration": "00:00:51.6993729",
+      "captureExercised": true,
+      "summary": "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=144 submitted=144 distinct=144 composed=144 phases=4 inspection_requests=0 templates=0 proofs=145 consumed=144 scans=98 current_exact=1 native_stable=1 no_fallback=1 source_fps=24.0205 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=57.0421 max_latency_ms=148.399 early_latency_ms=132.786 late_latency_ms=132.436 work_samples=144 max_frame_work_ms=15.3896 max_ingress_ms=0.2467",
+      "recovery": "PAUSED RECOVERY: synthetic_prior_pixel=64 current_captured_pixel=104 start=1054 steady_start=1062 failed_old=1 fresh_seeds=4 failed_revision=145 replacement_revision=146 replacement_source=1054 recovery_sources=8 steady_templates=0 current_outputs=152 exact=1 max_source_gap=1 max_submit_gap_ms=57.0421",
+      "error": "Assert failed. Live inspection-only/worker reuse path was not exercised."
+    }
+  ],
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "E326E105F28117F6772BC43FD16F44C36F293BF73BDA95846ACF30191770C3D6"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "DFDE7D8ABED82675E2E59DACD3AF478F83A1D062F1F2AE100FAF4E1DF5681E83"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "DF18A51FF16B87B714D79EDE1C3568F752C4858B0FC39FEAEF517274F3525502"
+    }
+  ],
+  "binariesStable": true,
+  "captureExercised": true,
+  "trxHash": "B0C63547886F14C58E60757943E39028E4C689A9A25257691B0A0F785DF776A0",
+  "passed": false,
+  "runnerError": null,
+  "endSource": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace",
+  "sourceStable": true
+}

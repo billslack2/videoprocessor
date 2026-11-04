@@ -1,0 +1,56 @@
+[
+  {
+    "file": "native.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-205536-9fa71abd\\iteration.json",
+    "sha256": "f6de9109d90c858f7b313309bb058cc4a9388fc794eab2612d6ceae85099891e"
+  },
+  {
+    "file": "focused.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-202500-db392b1e\\iteration.json",
+    "sha256": "3f6c0520425018000369b056df68ad694924481b20863d85574720cd866fbe20"
+  },
+  {
+    "file": "motion.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\motion-378e090a-20261103-2043\\motion-renderer-tests.json",
+    "sha256": "f1598aa87106fdea0592a85e41cc62d1fd6400113817e7f5950c0b189cedfd9f"
+  },
+  {
+    "file": "card-shader.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\shader-projection\\both-378e090a-20261103-2056\\receipt.json",
+    "sha256": "7ba59ca1114c3c08a39b68988fa57082789fd0fa02da88ecfefa59d6e554f59f"
+  },
+  {
+    "file": "paused-renderer-failed.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\renderer-recovery\\candidate-378e090a-20261103-202744\\receipt.json",
+    "sha256": "f73a641c1ffec88500e911dec96739a08a7c98f13885fed5bfc4121dd3f2b287"
+  },
+  {
+    "file": "matched-cpu-recovery.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\matched94-vs378-recovery.json",
+    "sha256": "979417b94a5a3932242f28d00fc7211f2014752e040e4df6cc8e517126d5ec40"
+  },
+  {
+    "file": "deployment.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-378e090a\\deployment.json",
+    "sha256": "88eec4f25d8ce8fa8fd78547d71ea1779030605fe9b69fb55f5c6ce219d6c3c3"
+  },
+  {
+    "file": "live-initial.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-378e090a\\live-initial.json",
+    "sha256": "e5ca7d48639c3f0d2c8ad41da894f18262578220c0768787ec77253c4f9d084e",
+    "originalSha256": "8cd0c4f5191883ba68888905c5185d80f31ac8f6a3d69bbecd6841161880b5de",
+    "transformation": "Summary with selected witness rows; full original retained at original path"
+  },
+  {
+    "file": "live-steady.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-378e090a\\live-steady.json",
+    "sha256": "8e10031d3c6ba0bdcca1a494b9aeb61caa81e262f70b54ea8c69aad0b6e2c094",
+    "originalSha256": "e3a272ce7ecee6768599616ce36e662a12d461d1ba5244b317a864d8bae5c770",
+    "transformation": "Summary with selected witness rows; full original retained at original path"
+  },
+  {
+    "file": "live-performance.json",
+    "original": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-378e090a\\live-performance.json",
+    "sha256": "aee0e130c020a54878c039cb1d895e1a90e6e87bb724bcfa601ab1d91a9abb25"
+  }
+]

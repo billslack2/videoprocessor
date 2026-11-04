@@ -1,0 +1,137 @@
+{
+  "process": 59360,
+  "observedUnix": 1793757582.2647038,
+  "samples": 240,
+  "profile": 3,
+  "mode": 3,
+  "firstSource": 1441,
+  "lastSource": 1680,
+  "distinctSources": 240,
+  "composed": 240,
+  "prepared": 240,
+  "factsCurrent": 240,
+  "maxSelectedGap": 1,
+  "maxRecordedSubmitGapMs": 48,
+  "nativeShapes": [
+    "[0, 274, 3840, 1886]"
+  ],
+  "actualShapes": [
+    "[26, 274, 3814, 1886]"
+  ],
+  "reasons": {
+    "processed subtitle preserves the fixed native movie canvas": 240
+  },
+  "configurationHash": "5a549688243aa9a09596a49c42d42effc004059305ce9318f0931b696159167e",
+  "scope": "Bounded submitted telemetry, not visual acceptance or full runtime qualification",
+  "originalRowsRetainedLocally": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-378e090a\\live-steady.json",
+  "lastRow": {
+    "schema": 1,
+    "instance": "{BA9B80D2-2C3E-4EC8-8E5E-9D05934275B8}",
+    "process": 59360,
+    "tick_ms": 347441500,
+    "qpc": 3474417263816,
+    "qpc_hz": 10000000,
+    "diagnostic_cpu_ms": 0.2957,
+    "utc_ms": 1793757581900,
+    "timecode": "01:59:41.900Z BA9B80D2 G1 O1680 S1680",
+    "timecode_drawn": true,
+    "output": 1680,
+    "generation": 1,
+    "input": 1680,
+    "selected": 1680,
+    "facts_source": 1680,
+    "facts_current": true,
+    "source_pts": 347441.5903,
+    "output_pts": 347441.5903,
+    "temporal": false,
+    "repeated": false,
+    "rendered": true,
+    "submitted": true,
+    "screen_aspect": 2.35,
+    "actual_source": [
+      26,
+      274,
+      3814,
+      1886
+    ],
+    "actual_target": [
+      0.06758020073,
+      175.3191528,
+      2559.932373,
+      1264.680908
+    ],
+    "viewport": 2,
+    "format": 15805081878477807578,
+    "domain": 4768279117495752782,
+    "policy": 2,
+    "continuity": 4,
+    "raster": [
+      3840,
+      2160
+    ],
+    "measurement_source": 1680,
+    "measurement_available": true,
+    "measurement_reason": "native candidate has an unverified nominated crop axis",
+    "classification": 2,
+    "measured": [
+      0,
+      274,
+      3840,
+      1886
+    ],
+    "native_available": true,
+    "native_accepted_source": 148,
+    "native": [
+      0,
+      274,
+      3840,
+      1886
+    ],
+    "observation_supports_crop": false,
+    "retention_evaluated": true,
+    "retention_safe": true,
+    "visible_available": false,
+    "raw_visible": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "subtitle_processing_profile": 3,
+    "requested_mode": 3,
+    "preparation_state": 3,
+    "preparation_key": 5620359545021884714,
+    "shader_failed": false,
+    "mode": 3,
+    "caption_source": 1680,
+    "caption_current": true,
+    "cue": 5,
+    "detected": true,
+    "held": true,
+    "incomplete": false,
+    "caption": [
+      1282,
+      1778,
+      2558,
+      2042
+    ],
+    "destination": [
+      1211,
+      1632,
+      2630,
+      1876
+    ],
+    "composed": true,
+    "source_prepared": true,
+    "prepare_failures": 0,
+    "current_composition": true,
+    "strong_prepared": true,
+    "absence": false,
+    "scan_reason": "presentation-only-current-pixel-proof",
+    "ownership_reason": "current-caption-proof-unavailable",
+    "erasure_reason": "current-prepared-caption-erasure",
+    "continuation_reason": "not-attempted",
+    "owner": "trusted",
+    "reason": "processed subtitle preserves the fixed native movie canvas"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "schema": "vp-current-card-shader-v1",
+  "source": {
+    "commit": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace",
+    "dirty": false,
+    "fingerprint": "b1b71223504b4d38cdf5abf5a1a974d9b50f22b068137ab67bfa093e3c9bae6b",
+    "label": "378e090af3f1",
+    "build": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace"
+  },
+  "focusedEvidence": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-202500-db392b1e\\iteration.json",
+  "passed": true,
+  "qualification": false,
+  "visualOnly": true,
+  "fixture": "Synthetic logged UHD P010 geometry; observed old projection versus current guard geometry on actual unchanged production shader",
+  "runs": [
+    {
+      "variant": "standard",
+      "exit": 0,
+      "passed": true,
+      "binary": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "E326E105F28117F6772BC43FD16F44C36F293BF73BDA95846ACF30191770C3D6",
+      "trx": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\shader-projection\\both-378e090a-20261103-2056\\standard\\shader.trx",
+      "trxSha256": "A1AF02E71BA984E7D3D69A79B09D3F8E42267DD1BE5F41098EDE3E539AD9586A",
+      "cases": [
+        {
+          "testName": "CurrentVerifiedCardProjectionRemovesNestedBackingAndPreservesMoviePixels",
+          "outcome": "Passed"
+        },
+        {
+          "testName": "GpuTestsLoadTheSelectedRendererDependency",
+          "outcome": "Passed"
+        }
+      ],
+      "output": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\shader-projection\\both-378e090a-20261103-2056\\standard"
+    },
+    {
+      "variant": "beta",
+      "exit": 0,
+      "passed": true,
+      "binary": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "DA454BECC9679067472EE5CCF823EC8383F5E8B92C74E2AFA59C105552C30E39",
+      "trx": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\shader-projection\\both-378e090a-20261103-2056\\beta\\shader.trx",
+      "trxSha256": "239CEEB0D01E314141EC66BF4A4FD86329ECAB870FA1838879DF24E1E68E383E",
+      "cases": [
+        {
+          "testName": "CurrentVerifiedCardProjectionRemovesNestedBackingAndPreservesMoviePixels",
+          "outcome": "Passed"
+        },
+        {
+          "testName": "GpuTestsLoadTheSelectedRendererDependency",
+          "outcome": "Passed"
+        }
+      ],
+      "output": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\shader-projection\\both-378e090a-20261103-2056\\beta"
+    }
+  ],
+  "at": "2026-11-03T20:57:00.9240445-05:00"
+}

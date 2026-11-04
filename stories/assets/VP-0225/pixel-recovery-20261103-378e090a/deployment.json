@@ -1,0 +1,408 @@
+{
+  "sourceCommit": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace",
+  "sourceFingerprint": "b1b71223504b4d38cdf5abf5a1a974d9b50f22b068137ab67bfa093e3c9bae6b",
+  "builtFromCleanSource": true,
+  "configuration": "Release",
+  "architecture": "x64",
+  "deploymentStatus": "UserAuthorizedManualReviewTrial",
+  "fullQualification": false,
+  "qualificationGate": "Runtime build is UNQUALIFIED: mandatory qualification receipt is missing. Build Release|x64 through MSBuild; passing tests are required.",
+  "manualReviewTrial": true,
+  "authorization": "Explicit user-authorized reversible trial reviewed by parent after focused evidence; this is not a release or full qualification",
+  "nativeExecuted": 1101,
+  "standardSmokeMethod": "StandardRendererUnknownSubtitleInspectionCannotFreezeCurrentVideo",
+  "pausedDiagnostic": {
+    "status": "diagnosticPassedContractsWithKnownHarnessFailure",
+    "testPassed": false,
+    "qualification": false,
+    "followup": "Correct fixture route assertion to distinguish available native context from inspection-only routing; rerun as a normal test",
+    "scope": "Both runtimes also recover through cue reacquisition in this UHD GPU fixture; this does not independently reproduce the original live retained-cue failure",
+    "variants": [
+      {
+        "method": "BetaRendererPausedCapturedCueRecoversFailedBackgroundTemplate",
+        "testOutcome": "Failed",
+        "knownHarnessFailure": "Assert failed. Live inspection-only/worker reuse path was not exercised.",
+        "contractStatus": "diagnosticPassedContractsWithKnownHarnessFailure",
+        "steady": {
+          "max_ingress_ms": 0.195,
+          "early_latency_ms": 132.738,
+          "source_fps": 24.0114,
+          "no_fallback": 1.0,
+          "current_exact": 1.0,
+          "proofs": 144.0,
+          "native_stable": 1.0,
+          "input_hz": 23.976,
+          "submitted": 144.0,
+          "late_latency_ms": 133.172,
+          "work_samples": 144.0,
+          "max_source_gap": 1.0,
+          "max_processing_selection_lag": 0.0,
+          "steady_sources": 144.0,
+          "templates": 0.0,
+          "inspection_requests": 0.0,
+          "consumed": 144.0,
+          "max_frame_work_ms": 12.7641,
+          "max_latency_ms": 147.683,
+          "composed": 144.0,
+          "distinct": 144.0,
+          "phases": 4.0,
+          "output_hz": 59.0,
+          "max_submit_gap_ms": 53.5009,
+          "scans": 95.0
+        },
+        "recovery": {
+          "synthetic_prior_pixel": 64.0,
+          "current_outputs": 152.0,
+          "replacement_revision": 146.0,
+          "steady_templates": 0.0,
+          "fresh_seeds": 3.0,
+          "failed_old": 1.0,
+          "replacement_source": 1064.0,
+          "recovery_sources": 8.0,
+          "max_submit_gap_ms": 54.9172,
+          "start": 1064.0,
+          "failed_revision": 145.0,
+          "current_captured_pixel": 104.0,
+          "max_source_gap": 1.0,
+          "exact": 1.0,
+          "steady_start": 1072.0
+        }
+      },
+      {
+        "method": "StandardRendererPausedCapturedCueRecoversFailedBackgroundTemplate",
+        "testOutcome": "Failed",
+        "knownHarnessFailure": "Assert failed. Live inspection-only/worker reuse path was not exercised.",
+        "contractStatus": "diagnosticPassedContractsWithKnownHarnessFailure",
+        "steady": {
+          "max_ingress_ms": 0.2467,
+          "early_latency_ms": 132.786,
+          "source_fps": 24.0205,
+          "no_fallback": 1.0,
+          "current_exact": 1.0,
+          "proofs": 145.0,
+          "native_stable": 1.0,
+          "input_hz": 23.976,
+          "submitted": 144.0,
+          "late_latency_ms": 132.436,
+          "work_samples": 144.0,
+          "max_source_gap": 1.0,
+          "max_processing_selection_lag": 0.0,
+          "steady_sources": 144.0,
+          "templates": 0.0,
+          "inspection_requests": 0.0,
+          "consumed": 144.0,
+          "max_frame_work_ms": 15.3896,
+          "max_latency_ms": 148.399,
+          "composed": 144.0,
+          "distinct": 144.0,
+          "phases": 4.0,
+          "output_hz": 59.0,
+          "max_submit_gap_ms": 57.0421,
+          "scans": 98.0
+        },
+        "recovery": {
+          "synthetic_prior_pixel": 64.0,
+          "current_outputs": 152.0,
+          "replacement_revision": 146.0,
+          "steady_templates": 0.0,
+          "fresh_seeds": 4.0,
+          "failed_old": 1.0,
+          "replacement_source": 1054.0,
+          "recovery_sources": 8.0,
+          "max_submit_gap_ms": 57.0421,
+          "start": 1054.0,
+          "failed_revision": 145.0,
+          "current_captured_pixel": 104.0,
+          "max_source_gap": 1.0,
+          "exact": 1.0,
+          "steady_start": 1062.0
+        }
+      }
+    ]
+  },
+  "capturedCpuRecovery": {
+    "status": "MatchedCpuMechanismRedGreen",
+    "candidateSource": "378e090af3f1a81bd37caf9a2ab774e91c5d7ace",
+    "baselineHeaders": "94c4419ab03443a0ae4d48acdcad43b494da9748",
+    "candidateVerifiedCaptures": 8,
+    "heldAdapterExercised": false,
+    "actualGpuImprovementProven": false,
+    "scope": "CPU actual captured V210 current phases, exact-source worker proof and same-descriptor replacement; synthetic one-pixel earlier source; modeled successful compositor. No actual GPU improvement, no held-certificate or historical-template reconstruction claim.",
+    "historicalPriorReconstructed": false
+  },
+  "startupLimitations": {
+    "standardTransportUiPassed": false,
+    "betaTransportUiPassed": false,
+    "baselineEvidence": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\baseline94-standard-startup-20261103-201714\\receipt.json",
+    "baselineEvidenceSha256": "D953274C5E46EBD94066769443BA2515257CF7413E654EC36A0A70AA11E64EEE",
+    "baselineTrx": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\baseline94-standard-startup-20261103-201714\\transport.trx",
+    "baselineTrxSha256": "22AA7E670A3D1F63A3460DC50227FA58235218C27D6C3543452E029D3F561203",
+    "baselineTestSource": "fc74e62616a22393982351fd01be0c445da0fcc6",
+    "baselineTestSourceDirty": [
+      " M src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp"
+    ],
+    "failure": "Assert failed. Ready UHD output lost its current caption or changed the native viewport.",
+    "interpretation": "Standard transport startup gap reproduced with preserved94 runtime and the same experiment test DLL before its UI phase. Beta UI phase also remains unverified from earlier startup evidence. The current-video smoke and paused recovery are separate evidence, not transport UI qualification."
+  },
+  "evidence": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-205536-9fa71abd\\iteration.json",
+      "sha256": "F6DE9109D90C858F7B313309BB058CC4A9388FC794EAB2612D6CEAE85099891E"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-202500-db392b1e\\iteration.json",
+      "sha256": "3F6C0520425018000369B056DF68AD694924481B20863D85574720CD866FBE20"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\renderer-recovery\\candidate-378e090a-20261103-202744\\receipt.json",
+      "sha256": "F73A641C1FFEC88500E911DEC96739A08A7C98F13885FED5BFC4121DD3F2B287"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\shader-projection\\both-378e090a-20261103-2056\\receipt.json",
+      "sha256": "7BA59CA1114C3C08A39B68988FA57082789FD0FA02DA88ECFEFA59D6E554F59F"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\motion-378e090a-20261103-2043\\motion-renderer-tests.json",
+      "sha256": "F1598AA87106FDEA0592A85E41CC62D1FD6400113817E7F5950C0B189CEDFD9F"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\paused-recovery\\matched94-vs378-recovery.json",
+      "sha256": "979417B94A5A3932242F28D00FC7211F2014752E040E4DF6CC8E517126D5EC40"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\baseline94-standard-startup-20261103-201714\\receipt.json",
+      "sha256": "D953274C5E46EBD94066769443BA2515257CF7413E654EC36A0A70AA11E64EEE"
+    }
+  ],
+  "motionTrxConsumptionHashes": [
+    {
+      "variant": "standard",
+      "trx": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\motion-378e090a-20261103-2043\\standard.trx",
+      "sha256": "3F923642216606AE2B072C439CA3229776CBF8003DE32E5646B2DCEFF8023927",
+      "hashProvenance": "Computed at deployment consumption; not a producer-sealed hash"
+    },
+    {
+      "variant": "beta",
+      "trx": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-192209\\motion-378e090a-20261103-2043\\beta.trx",
+      "sha256": "F15B87D1903C0DA3123CD1B47D5EBB11E2B33160ACF9D77F503962D344048CDD",
+      "hashProvenance": "Computed at deployment consumption; not a producer-sealed hash"
+    }
+  ],
+  "priorDeploymentEvidence": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-94c4419a\\deployment.json",
+  "priorDeploymentEvidenceSha256": "CE5207B8BE1BC744D5B1FFCED9B8761092D08C13785E3E909561D964C3B1A8B0",
+  "rollbackCommit": "94c4419ab03443a0ae4d48acdcad43b494da9748",
+  "knownLimitations": [
+    "Full mandatory runtime qualification remains incomplete when qualificationGate is non-null",
+    "Standard and Beta transport UI phases remain unverified after known startup-readiness gaps; current-video smoke and paused recovery are distinct evidence",
+    "Paused GPU tests remain Failed solely at the old inspection-route assertion; numeric current-video/recovery/budget contracts were independently verified for this manual trial",
+    "Actual UHD GPU recovery also succeeds on94 through cue reacquisition; same-descriptor worker RED/GREEN is separate CPU evidence",
+    "Synthetic pre-pause witness is labeled; original prior live template pixels are unavailable",
+    "User acceptance in complete live playback configuration remains open"
+  ],
+  "backup": "C:\\Videoprocessor\\vp\\backups\\trial-378e090a-20261103-205809",
+  "configurationEdits": [],
+  "configurationHashesBefore": {
+    "VideoProcessor.state": "99CF94A66291AC295858C9AFD73DC880EE42F9496FD974D9CC44A9A1BF979222",
+    "VideoProcessor.cfg": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E"
+  },
+  "configurationPreservedBeforeRestart": true,
+  "files": [
+    {
+      "source": "VideoProcessor-GUI.exe",
+      "target": "VideoProcessor.exe",
+      "sha256": "E4BE7D7A9B51EB197E2519E52A599A5AAB6AB0C23FEDBA1E0A158B127A874150",
+      "before": "64F9F09CFD1BFA157E5C5FAC36FEFBB6BA9EE9F4403E42EE72E20B17C0BE05DD",
+      "action": "copy"
+    },
+    {
+      "source": "VideoProcessor-GUI.exe.runtime.json",
+      "target": "VideoProcessor.exe.runtime.json",
+      "sha256": "251ACE9EF66B672797E26B9D27954D2FC0B8952DF1EE1741E8984DB2AEB8E4ED",
+      "before": "0EB99CEF4029C465EBBECE58406441FADACB703199BB3CF44F8698203CAE420B",
+      "action": "copy"
+    },
+    {
+      "source": "VideoProcessor-GUI.exe.runtime.json",
+      "target": "VideoProcessor-GUI.exe.runtime.json",
+      "sha256": "251ACE9EF66B672797E26B9D27954D2FC0B8952DF1EE1741E8984DB2AEB8E4ED",
+      "before": "0EB99CEF4029C465EBBECE58406441FADACB703199BB3CF44F8698203CAE420B",
+      "action": "copy"
+    },
+    {
+      "source": "VideoProcessor-GUI.pdb",
+      "target": "VideoProcessor-GUI.pdb",
+      "sha256": "1CC4262C5C1B728C9011D77E945834F4A85A995D4B6308B08746A303292AEADB",
+      "before": "B68F944AC7FC78052F47E8AA64A8B3DA88ED22388F9A0A8E3F058EBF61CA5498",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer\\libdovi.dll",
+      "target": "vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "before": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libgcc_s_seh-1.dll",
+      "target": "vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "before": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\liblcms2-2.dll",
+      "target": "vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "before": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libplacebo-360.dll",
+      "target": "vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "before": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libshaderc_shared.dll",
+      "target": "vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "before": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libspirv-cross-c-shared.dll",
+      "target": "vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "before": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libstdc++-6.dll",
+      "target": "vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "before": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\libwinpthread-1.dll",
+      "target": "vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "before": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "DFDE7D8ABED82675E2E59DACD3AF478F83A1D062F1F2AE100FAF4E1DF5681E83",
+      "before": "060865C9BD7E5CE5CD024B4E06386AA2D51D4761CCDB1CF91F6EE6A96211A34B",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer\\vulkan-1.dll",
+      "target": "vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "before": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json",
+      "sha256": "F72D6586BAEF31D7F4728D72852A63BB8DE87F6C45955867F739063790C8E1BE",
+      "before": "52E38789755981D514EF2B8710C06AC6A20F916BFD52868C1BCB8A73A2CB94B1",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "target": "vprenderer\\VideoProcessorVPRenderer.pdb",
+      "sha256": "3CBFDC935A7A90B223D850C93A646004B43AB6B4CA965309CC4C6C6CE3750CE5",
+      "before": "91865E09105D4FA9E4C59D0D26E82811AADC8270733AD95A41248584A70B8DD4",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer-beta\\libdovi.dll",
+      "target": "vprenderer-beta\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "before": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libgcc_s_seh-1.dll",
+      "target": "vprenderer-beta\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "before": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\liblcms2-2.dll",
+      "target": "vprenderer-beta\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "before": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libplacebo-388.dll",
+      "target": "vprenderer-beta\\libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "before": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libshaderc_shared.dll",
+      "target": "vprenderer-beta\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "before": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "target": "vprenderer-beta\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "before": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libstdc++-6.dll",
+      "target": "vprenderer-beta\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "before": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\libwinpthread-1.dll",
+      "target": "vprenderer-beta\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "before": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "DF18A51FF16B87B714D79EDE1C3568F752C4858B0FC39FEAEF517274F3525502",
+      "before": "1FD80F5B2C4B227D7B73DAB825A5D0DF938E5612181692AFE6642447C33BCB92",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer-beta\\vulkan-1.dll",
+      "target": "vprenderer-beta\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "before": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "action": "already-matching"
+    },
+    {
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json",
+      "sha256": "1B4A798586DF191C84239A5BBD2C08155725A463BD5C34955667703617A4B7DA",
+      "before": "875931D77A78FE13B844F5F178D017DA887E0947EC7E76FF6C8EABF660E9D0A6",
+      "action": "copy"
+    },
+    {
+      "source": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "target": "vprenderer-beta\\VideoProcessorVPRendererBeta.pdb",
+      "sha256": "8E855E57B30A260807752CB8314C86F837B4100946F423750A384725577EF9C8",
+      "before": "A0AE416211DE170488AA058AFD7570A9BB776F0D48AD2A76AC1AE9B9CF7BF39F",
+      "action": "copy"
+    }
+  ],
+  "deployedAt": "2026-11-03T20:58:12.5486694-05:00"
+}
