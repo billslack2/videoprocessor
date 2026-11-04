@@ -326,7 +326,7 @@ AnalysisDiagnosticRecordV1 AnalysisDiagnosticTrace::BoundaryChain(
 {
     auto r = current;
     strcpy_s(r.stage, "ar-boundary-chain");
-    const bool physical = f.physicalEvaluated && f.physicalAvailable && (f.physicalConfidence == 1 || f.physicalConfidence == 2) &&
+    const bool physical = f.physicalEvaluated && f.physicalAvailable && (f.physicalConfidence == 1 || f.physicalConfidence == 2 || f.physicalConfidence == 4) &&
         f.physical[0] >= 0 && f.physical[1] >= 0 && f.physical[2] > f.physical[0] && f.physical[3] > f.physical[1] &&
         f.physicalSource == current.acceptedSequence;
     strcpy_s(r.detail, physical ? "qualified-physical-estimate" : "physical-estimate-unknown");
