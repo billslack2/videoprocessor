@@ -1,0 +1,47 @@
+{
+  "source": "1e5c017b35a5a1d35408ee03465574fe6edd3f51",
+  "originalReceipt": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-native-20261104-084335\\private-renderer\\receipt.json",
+  "originalReceiptSha256": "d27c8377627fbb1855a439f5411f15168fd2a3b7e6cef1f72ac3e50b767e04bd",
+  "officialTestResult": "Both Failed; unchanged",
+  "failureClass": "Inherited inspectionCandidate request-path assertion is inapplicable to the newly available current shared physical path.",
+  "executedBeforeFailure": [
+    "all144 distinctcurrent sources",
+    "all46inputphases currentphysicalknown,correct2.39 rounded",
+    "stableacceptedphysical exactanchor",
+    "stableactualsourceandtargetmapping",
+    "144composed/nofallback",
+    "exactselectedsourcetimestampidentity"
+  ],
+  "timingLimitation": "Numbers satisfy existing limits by inspection, but timing assertions follow the failed coverage assertion and were not executed. A fresh corrected run is required.",
+  "proofCoverageSemantics": "worker-submit bit32 denotes current inspectionCandidate availability; zero does not imply missing typedproofreuse. 144verified/consumed receipts on onepriorrevision showactualreuse.",
+  "results": [
+    {
+      "name": "BetaRendererPausedNativeCaptureAcquiresAndKeepsReconstruction",
+      "outcome": "Failed",
+      "duration": "00:01:52.3942767",
+      "error": "Assert failed. Live inspection-only/worker reuse path was not exercised.",
+      "inputMappings": 46,
+      "nativeSummary": [
+        "PAUSED NATIVE: first_physical=1 current_known=1676 current_unknown=0 current_wrong=0 current_phases=46 stable_samples=1675 stable_physical=1 mapping_stable=1 guard=0,274,3840,1886"
+      ],
+      "cadenceSummary": [
+        "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=144 submitted=144 distinct=144 composed=144 phases=46 inspection_requests=0 templates=0 proofs=144 consumed=144 scans=101 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9492 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=56.1626 max_latency_ms=144.347 early_latency_ms=135.023 late_latency_ms=134.454 work_samples=144 max_frame_work_ms=17.7404 max_ingress_ms=0.6433"
+      ]
+    },
+    {
+      "name": "StandardRendererPausedNativeCaptureAcquiresAndKeepsReconstruction",
+      "outcome": "Failed",
+      "duration": "00:01:24.6758775",
+      "error": "Assert failed. Live inspection-only/worker reuse path was not exercised.",
+      "inputMappings": 46,
+      "nativeSummary": [
+        "PAUSED NATIVE: first_physical=1 current_known=1620 current_unknown=0 current_wrong=0 current_phases=46 stable_samples=1619 stable_physical=1 mapping_stable=1 guard=0,274,3840,1886"
+      ],
+      "cadenceSummary": [
+        "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=144 submitted=144 distinct=144 composed=144 phases=46 inspection_requests=0 templates=0 proofs=144 consumed=144 scans=100 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9841 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=53.4342 max_latency_ms=152.073 early_latency_ms=133.803 late_latency_ms=134.533 work_samples=144 max_frame_work_ms=14.3661 max_ingress_ms=4.2773"
+      ]
+    }
+  ],
+  "productionChangesForCorrection": false,
+  "correctionScope": "Only pausedNative mode now checks exact144receipts,onepriorrevision,offrenderworker,checkedpixels,zero templates andgroupingbelowinputcadence. Existingmodeassertionsunchanged."
+}

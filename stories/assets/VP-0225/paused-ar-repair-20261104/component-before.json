@@ -1,0 +1,267 @@
+{
+  "schema": "vp-current-spatial-nominee-ordered-replay-v1",
+  "scope": "CPU component replay: actual sampler, unchanged current masked native verifier, transition model, physical telemetry; not renderer/GPU/scheduler/deadline qualification",
+  "head": "4cec5b3aa2bd3bd016030c4b245773ff01ce6c3f",
+  "dirty_diff_sha256": "be89b1a1076f71d87a0a835333ac1d03e01f29696a1b51b5b39ff5f93abe04c8",
+  "files": {
+    "artifacts\\paused-ar-20261104-0744\\worker-ordered-replay\\replay.cpp": {
+      "bytes": 7481,
+      "sha256": "2ecb00ac2878dc89b6dc3243f7fab6bf7be1da831fe9f2bb897216b83523d1a0"
+    },
+    "artifacts\\paused-ar-20261104-0744\\worker-ordered-replay\\replay.vcxproj": {
+      "bytes": 2163,
+      "sha256": "528ec4576e9d533a5f7b871addffd0a5bc58543c7c442357ad6e43694117adfb"
+    },
+    "artifacts\\paused-ar-20261104-0744\\worker-ordered-replay\\build\\CurrentSpatialNomineeReplay.exe": {
+      "bytes": 790528,
+      "sha256": "63f4ab6962a191ffe0a6287edeecdb5b808bd3721da8ee258b372ef97d14e081"
+    },
+    "x64\\Release\\VideoProcessor-Lib.lib": {
+      "bytes": 132143836,
+      "sha256": "c9274737dc9e27dff3623d50e4ce7e0e3c8efc1eb9f7a14cb8249fcf8d434c82"
+    },
+    "src\\VideoProcessor-Lib\\SubtitleMeasurementWorker.h": {
+      "bytes": 243255,
+      "sha256": "cb4e88d0d0ee26c97854392ea76f93a4d3fb6b231cccfa1a1cb70ddbeb534a72"
+    },
+    "src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h": {
+      "bytes": 274848,
+      "sha256": "77f84db8791305b5299f6d320bbeb9375d459a94f658e82eebcdc47f7a3a98da"
+    }
+  },
+  "captures": {
+    "0744": {
+      "frames": 91,
+      "counts": {
+        "nativeAvailable": 67,
+        "currentNomineeInspection": 67,
+        "proofAccepted": 67,
+        "proofCurrent": 67,
+        "modelStable": 90,
+        "currentPhysicalAvailable": 67,
+        "retainedPhysicalAvailable": 90
+      },
+      "first_stable_identity": [
+        2,
+        432,
+        751396,
+        385979849930,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782
+      ],
+      "guarded_crops": {
+        "[0, 274, 3840, 1888]": 90
+      },
+      "retained_physical_ratios": {
+        "2.386575512740833": 90
+      },
+      "original_identity_gaps": [
+        {
+          "previous": [
+            432,
+            751396,
+            385979849930
+          ],
+          "current": [
+            436,
+            751400,
+            385980016760
+          ]
+        },
+        {
+          "previous": [
+            448,
+            751412,
+            385980517250
+          ],
+          "current": [
+            450,
+            751414,
+            385980600670
+          ]
+        },
+        {
+          "previous": [
+            495,
+            751459,
+            385982477510
+          ],
+          "current": [
+            497,
+            751461,
+            385982560920
+          ]
+        },
+        {
+          "previous": [
+            497,
+            751461,
+            385982560920
+          ],
+          "current": [
+            499,
+            751463,
+            385982644350
+          ]
+        }
+      ],
+      "result_sha256": "f3653ad9264d8a96b45f67107a60a8d840d580960e08665d3785d03cdd453d62"
+    },
+    "0751": {
+      "frames": 89,
+      "counts": {
+        "nativeAvailable": 68,
+        "currentNomineeInspection": 68,
+        "proofAccepted": 68,
+        "proofCurrent": 68,
+        "modelStable": 89,
+        "currentPhysicalAvailable": 68,
+        "retainedPhysicalAvailable": 89
+      },
+      "first_stable_identity": [
+        2,
+        182,
+        1065,
+        386415625750,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782
+      ],
+      "guarded_crops": {
+        "[0, 274, 3840, 1886]": 89
+      },
+      "retained_physical_ratios": {
+        "2.386575512740833": 89
+      },
+      "original_identity_gaps": [
+        {
+          "previous": [
+            183,
+            1066,
+            386415667450
+          ],
+          "current": [
+            188,
+            1071,
+            386415875990
+          ]
+        },
+        {
+          "previous": [
+            206,
+            1089,
+            386416626730
+          ],
+          "current": [
+            208,
+            1091,
+            386416710140
+          ]
+        },
+        {
+          "previous": [
+            217,
+            1100,
+            386417085510
+          ],
+          "current": [
+            219,
+            1102,
+            386417168930
+          ]
+        },
+        {
+          "previous": [
+            269,
+            1152,
+            386419254300
+          ],
+          "current": [
+            271,
+            1154,
+            386419337720
+          ]
+        },
+        {
+          "previous": [
+            274,
+            1157,
+            386419462840
+          ],
+          "current": [
+            276,
+            1159,
+            386419546260
+          ]
+        }
+      ],
+      "result_sha256": "e3a4e50de64f47275c31be193e80bd92c035881fbf541622bd8b539f2ae1380d"
+    }
+  },
+  "acceptance": {
+    "cold_bootstrap": "passed after first available exact-current nominee",
+    "stable_guarded_crop": "passed after acquisition",
+    "stable_retained_physical_aspect": "passed after first current estimate",
+    "all_phase_current_physical_estimate": "FAILED:24/21 unavailable spatial measurements remain",
+    "no_fabricated_ids_or_proofs": true,
+    "native_pixels_unmodified": true,
+    "current_shader_composition_modeled": false
+  },
+  "unavailable_phase": {
+    "first_burst_count": 24,
+    "second_burst_count": 21,
+    "identical_top_candidates_all_45": true,
+    "candidates": [
+      {
+        "coordinate": 273,
+        "range": [
+          273,
+          275
+        ],
+        "support": 1
+      },
+      {
+        "coordinate": 274,
+        "range": [
+          274,
+          276
+        ],
+        "support": 16
+      },
+      {
+        "coordinate": 275,
+        "range": [
+          275,
+          277
+        ],
+        "support": 31
+      },
+      {
+        "coordinate": 276,
+        "range": [
+          276,
+          278
+        ],
+        "support": 15
+      },
+      {
+        "coordinate": 278,
+        "range": [
+          278,
+          280
+        ],
+        "support": 1
+      }
+    ],
+    "existing_min_support": 32,
+    "causal_chain": "No top candidate meets32. Existing merge requires union of uncertainty intervals<=2, so adjacent two-row uncertain candidates remain separate. Without selected top, left relative matte completion is not evaluated; full rectangle remains unavailable.",
+    "fix_status": "No edge-selection behavior changed. Need bounded uncertainty-aware hypothesis with strict native verification and negative controls; threshold remains unchanged."
+  },
+  "trackerCompaction": {
+    "originalFullReceiptSha256": "36d305561e938d80d813041693d73a533aaa4690bdcfa6cd0f97e459d811c827",
+    "omitted": "duplicated native_files arrays only; complete reverified hashes remain in component-after.json"
+  }
+}

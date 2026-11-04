@@ -1,0 +1,362 @@
+{
+  "scope": "Artifact-only per-ray observation. No source read or behavioral change; native source frames1..5 from capture0744.",
+  "behavior_equivalent": true,
+  "rows": 5,
+  "point_support": {
+    "1": {
+      "273": {
+        "support": 1,
+        "regions": [
+          0,
+          0,
+          1,
+          0
+        ]
+      },
+      "274": {
+        "support": 17,
+        "regions": [
+          1,
+          6,
+          9,
+          1
+        ]
+      },
+      "275": {
+        "support": 48,
+        "regions": [
+          2,
+          11,
+          16,
+          19
+        ]
+      },
+      "276": {
+        "support": 61,
+        "regions": [
+          7,
+          16,
+          14,
+          24
+        ]
+      },
+      "277": {
+        "support": 44,
+        "regions": [
+          6,
+          10,
+          6,
+          22
+        ]
+      },
+      "278": {
+        "support": 15,
+        "regions": [
+          5,
+          5,
+          1,
+          4
+        ]
+      },
+      "279": {
+        "support": 1,
+        "regions": [
+          0,
+          0,
+          1,
+          0
+        ]
+      }
+    },
+    "2": {
+      "273": {
+        "support": 2,
+        "regions": [
+          0,
+          0,
+          2,
+          0
+        ]
+      },
+      "274": {
+        "support": 26,
+        "regions": [
+          5,
+          5,
+          4,
+          12
+        ]
+      },
+      "275": {
+        "support": 80,
+        "regions": [
+          31,
+          12,
+          19,
+          18
+        ]
+      },
+      "276": {
+        "support": 72,
+        "regions": [
+          31,
+          12,
+          10,
+          19
+        ]
+      },
+      "277": {
+        "support": 50,
+        "regions": [
+          26,
+          8,
+          8,
+          8
+        ]
+      },
+      "278": {
+        "support": 3,
+        "regions": [
+          0,
+          1,
+          0,
+          2
+        ]
+      },
+      "279": {
+        "support": 2,
+        "regions": [
+          0,
+          1,
+          0,
+          1
+        ]
+      }
+    },
+    "3": {
+      "273": {
+        "support": 2,
+        "regions": [
+          0,
+          0,
+          2,
+          0
+        ]
+      },
+      "274": {
+        "support": 26,
+        "regions": [
+          5,
+          5,
+          4,
+          12
+        ]
+      },
+      "275": {
+        "support": 80,
+        "regions": [
+          31,
+          12,
+          19,
+          18
+        ]
+      },
+      "276": {
+        "support": 72,
+        "regions": [
+          31,
+          12,
+          10,
+          19
+        ]
+      },
+      "277": {
+        "support": 50,
+        "regions": [
+          26,
+          8,
+          8,
+          8
+        ]
+      },
+      "278": {
+        "support": 3,
+        "regions": [
+          0,
+          1,
+          0,
+          2
+        ]
+      },
+      "279": {
+        "support": 2,
+        "regions": [
+          0,
+          1,
+          0,
+          1
+        ]
+      }
+    },
+    "4": {
+      "273": {
+        "support": 4,
+        "regions": [
+          0,
+          0,
+          2,
+          2
+        ]
+      },
+      "274": {
+        "support": 7,
+        "regions": [
+          0,
+          0,
+          5,
+          2
+        ]
+      },
+      "275": {
+        "support": 47,
+        "regions": [
+          6,
+          8,
+          12,
+          21
+        ]
+      },
+      "276": {
+        "support": 31,
+        "regions": [
+          1,
+          11,
+          6,
+          13
+        ]
+      },
+      "277": {
+        "support": 32,
+        "regions": [
+          1,
+          14,
+          5,
+          12
+        ]
+      },
+      "278": {
+        "support": 10,
+        "regions": [
+          0,
+          5,
+          2,
+          3
+        ]
+      },
+      "279": {
+        "support": 3,
+        "regions": [
+          0,
+          1,
+          2,
+          0
+        ]
+      }
+    },
+    "5": {
+      "273": {
+        "support": 4,
+        "regions": [
+          0,
+          1,
+          3,
+          0
+        ]
+      },
+      "274": {
+        "support": 10,
+        "regions": [
+          0,
+          3,
+          4,
+          3
+        ]
+      },
+      "275": {
+        "support": 43,
+        "regions": [
+          5,
+          9,
+          17,
+          12
+        ]
+      },
+      "276": {
+        "support": 76,
+        "regions": [
+          30,
+          13,
+          18,
+          15
+        ]
+      },
+      "277": {
+        "support": 67,
+        "regions": [
+          30,
+          11,
+          15,
+          11
+        ]
+      },
+      "278": {
+        "support": 40,
+        "regions": [
+          26,
+          6,
+          4,
+          4
+        ]
+      },
+      "279": {
+        "support": 2,
+        "regions": [
+          0,
+          1,
+          0,
+          1
+        ]
+      }
+    }
+  },
+  "files": {
+    "replay.cpp": {
+      "bytes": 7545,
+      "sha256": "db446199f80159ba7e8e4e19df626b899a9ae27035289cdb6ba712d26c91a636"
+    },
+    "SourcePictureMeasurement.probe.cpp": {
+      "bytes": 56045,
+      "sha256": "d010e9b41a35e215badb34850e4ce200a10a3dfc43a0359b9595b9bd4942a10b"
+    },
+    "probe.vcxproj": {
+      "bytes": 2321,
+      "sha256": "05f98b24cedea2f28c766dbc6858767d436ff9f4793444378a9e8c9f79ea8564"
+    },
+    "UncertaintyProbe.exe": {
+      "bytes": 768000,
+      "sha256": "beb6d736a1ced3cf2a62f43a7823bb5fb5c2a5ef0261ade8577198f1fa7bd400"
+    },
+    "rays.log": {
+      "bytes": 9306,
+      "sha256": "c53ee4874331f06db2aa44eea6f28a19abd1ee5bd18ebb8c0726bf821d3688fd"
+    },
+    "frames.jsonl": {
+      "bytes": 171864,
+      "sha256": "6b6a22c8e28bd11c2c9308657d039d48087256224269f26256fb7282a2b5c556"
+    },
+    "VideoProcessor-Lib.lib": {
+      "bytes": 132143836,
+      "sha256": "c9274737dc9e27dff3623d50e4ce7e0e3c8efc1eb9f7a14cb8249fcf8d434c82"
+    }
+  }
+}

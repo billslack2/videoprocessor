@@ -1,0 +1,120 @@
+{
+  "status": "In Progress",
+  "acceptance": "OPEN",
+  "qualification": false,
+  "deployed_source": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "candidate_final_pin": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "final_native_build_gpu_results": {
+    "native_1116": "passed clean1e5c017b; inherited through test-only delta, same production/library hashes; not rerun finalpin",
+    "gpu_four": "passed clean1b0b4aa5",
+    "private_paused_renderer": "both expected TRX methods Passed; independently verified completed success, original launcher passed=false retained because exitCode unavailable",
+    "timing_assertions": "executed and passed on corrected private run"
+  },
+  "deployment": "UserAuthorizedFocusedManualTrial; fullQualification=false",
+  "assets": {
+    "component-before.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\paused-ar-20261104-0744\\worker-ordered-replay\\receipt.json",
+      "bytes": 7237,
+      "sha256": "595f1648e3b8405e698fabc7c62d5d7e34a8a149b088a68ab64e2903992883c0",
+      "sourceArtifactSha256": "36d305561e938d80d813041693d73a533aaa4690bdcfa6cd0f97e459d811c827",
+      "transformation": "Omitted duplicated native_files arrays; all other baseline evidence retained."
+    },
+    "component-after.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\paused-ar-20261104-0744\\worker-ordered-replay-interval\\receipt.json",
+      "bytes": 78648,
+      "sha256": "719dc449c730d7e58f3402a045fe27579917d3d20d611bc933e36a9e153e439c"
+    },
+    "per-ray-probe.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\paused-ar-20261104-0744\\uncertainty-probe\\receipt.json",
+      "bytes": 6188,
+      "sha256": "93db562e37d54beade87832a79832581b32df30a5f47bb6b9c0566077b81a10f"
+    },
+    "design.md": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\docs\\PAUSED_NATIVE_EDGE_UNCERTAINTY.md",
+      "bytes": 4804,
+      "sha256": "365fa564948d416c704de8f1a1098c6cabbef48e138b990a952ec58a9657ec74"
+    },
+    "crop-native-1111.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-073507-a68a83d4\\iteration.json",
+      "bytes": 2711,
+      "sha256": "ae048deeaea94a12552c9307ae2b24355ab15fe3bc23e200baa621de5c5a58f6"
+    },
+    "crop-gpu-four.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-074740-c26ccb4a\\iteration.json",
+      "bytes": 4821,
+      "sha256": "2ba3ebee7b4b554a21f51e38794f50e58fab6bd0e0bb4aa2709a0035793d3eb1"
+    },
+    "worker-focused-seven.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-081256-ee15437f\\iteration.json",
+      "bytes": 2793,
+      "sha256": "8cb2dcdb246830992d351f04a339a75c53db29919f0e68cab2fba01def5da8dc"
+    },
+    "interval-focused-seven.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-082652-1c03395c\\iteration.json",
+      "bytes": 2793,
+      "sha256": "8a53af256372cb8669cb89ab705a80b8098c1ef1faf396de1703243525f95836"
+    },
+    "detector-fifty-seven.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-082811-3c0a2d23\\iteration.json",
+      "bytes": 2794,
+      "sha256": "f7a026f2fcd7c3139677110c88871747cce70791c929f899a7bf8ea161f0dd3b"
+    },
+    "summary.md": {
+      "bytes": 7454,
+      "sha256": "c342385ab4a3b81fc6be821243ba14e34abecc87505ed3c4cd3250f39b3487d5"
+    },
+    "native-1116.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-083528-72aabc3b\\iteration.json",
+      "bytes": 2711,
+      "sha256": "a4614bb306f289251a0428c51ca97e0918184d8303127645d285fc866c82986a"
+    },
+    "combined-gpu-four.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-084340-0f834dc9\\iteration.json",
+      "bytes": 4820,
+      "sha256": "f3f059cc195f54677ea23fe5e5c8c2ea8844fdcb91dbc6c456519e7ce4320bbc"
+    },
+    "private-renderer-failure-classification.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-native-20261104-084335\\private-renderer\\failure-classification.json",
+      "bytes": 3521,
+      "sha256": "d0ed9119cf42cb55cb43483dffe1d18bb711454523a5a75925a9b1c007f47db7"
+    },
+    "isolation-before-correction.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-native-20261104-084335\\receipt.json",
+      "bytes": 869,
+      "sha256": "95d3485d6e3a766b4647ee5613687596ef2cc84396d92dcc131df780c7add516"
+    },
+    "final-gpu-four.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-085439-f108e0f7\\iteration.json",
+      "bytes": 4821,
+      "sha256": "9dc39f21744af8bacf74343fb6297d2d106d9d281805d20ead666f0de55ee587"
+    },
+    "private-final-original-receipt.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-native-20261104-085434\\private-renderer\\receipt.json",
+      "bytes": 13608,
+      "sha256": "f7bb696f9f911737884c231ebaace9acc54f143b1cd9467d4ee79b6a0b8f3fc6"
+    },
+    "private-final-derived-verification.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-native-20261104-085434\\private-renderer\\derivedverification.json",
+      "bytes": 36730,
+      "sha256": "d883a93d5d8f663374e33e1b630a8e9acf3adcc4f055e8a87a04370f705939ca"
+    },
+    "deployment.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\deployment-trial-1b0b4aa5\\deployment.json",
+      "bytes": 16637,
+      "sha256": "d4f33328ff7aad221bdd6f4080296d76e88556adf8c9f085cc26bc5534874ef7"
+    },
+    "reopened.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\deployment-trial-1b0b4aa5\\reopened.json",
+      "bytes": 252,
+      "sha256": "7abcfbb4d9986b9f35deb00f3dc8971f160544f55d5ebfece5bf4538d35d8f26"
+    },
+    "live-verification-summary.json": {
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\deployment-trial-1b0b4aa5\\live-verification\\summary.json",
+      "bytes": 12531,
+      "sha256": "88a7976691cd6b08f8a86f8169b36482d061fff8443a5d52ac58d25468ff5d7d"
+    }
+  },
+  "live_verification": "Bounded original-scene sources143..293 composed/stable; later input changes and continued subtitle flashing require ongoing investigation, not general acceptance.",
+  "user_acceptance": "OPEN: paused scene works; continued subtitle flashing in real1.90/2.39 playback is unacceptable",
+  "ongoing_investigation": "Current AR availability versus current-source subtitle proof/composition/fallback/mapping"
+}

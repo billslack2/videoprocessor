@@ -1,0 +1,13 @@
+{
+  "started": "2026-11-04T08:43:35.9334075-05:00",
+  "source": "1e5c017b35a5a1d35408ee03465574fe6edd3f51",
+  "folder": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-native-20261104-084335",
+  "gpu4Passed": true,
+  "privatePassed": false,
+  "configBefore": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E",
+  "gpuEvidence": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-084340-0f834dc9\\iteration.json",
+  "privateEvidence": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-native-20261104-084335\\private-renderer\\receipt.json",
+  "reopenedPid": 22652,
+  "finished": "2026-11-04T08:49:09.0846022-05:00",
+  "configAfter": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E"
+}
