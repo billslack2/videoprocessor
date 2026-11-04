@@ -246,7 +246,7 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
         } else {
             result=DetectSourcePictureForWorker(source,&budget);
             if(result.observation && result.observation->complete)
-                factsCache.Store(source,identity,result.observation);
+                factsCache.Store(source,identity,result.observation,0,true);
         }
         result.geometryLookupMs=lookupMs;
     }

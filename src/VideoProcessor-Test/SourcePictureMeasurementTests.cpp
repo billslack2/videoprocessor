@@ -1625,6 +1625,123 @@ namespace VideoProcessorTest
             Assert::IsFalse(bool(cache.Find(samePadded,next,3)));
             Exact(MeasureSourcePicture(samePadded),Bounds(640,360,0,40,640,320));
         }
+        TEST_METHOD(OwnedPictureFactsRetainFourExactSourcePhases)
+        {
+            std::array<std::shared_ptr<SourcePictureFrame>,4> frames;
+            OwnedSourcePictureObservationCache cache;
+            ActivePictureFrameIdentity id;id.transportGeneration=1;id.sourceFormatGeneration=7;
+            id.analysisDomainKey=11;id.acceptedSequence=1;
+            for(unsigned phase=0;phase<frames.size();++phase) {
+                frames[phase]=std::make_shared<SourcePictureFrame>(640,360);
+                frames[phase]->Fill(0,40,640,320,220+phase*4);
+                auto source=frames[phase]->Source();source.backingOwner=frames[phase];
+                const auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(source));
+                Assert::IsTrue(facts->complete && facts->rectangleAvailable);
+                Assert::IsTrue(cache.Store(source,id,facts,3));++id.acceptedSequence;
+            }
+            for(unsigned repeat=0;repeat<12;++repeat) {
+                auto fresh=std::make_shared<SourcePictureFrame>(*frames[repeat%4]);
+                auto current=fresh->Source();current.backingOwner=fresh;current.generation=9;
+                const auto reused=cache.Find(current,id,3);++id.acceptedSequence;
+                Assert::IsTrue(bool(reused),
+                    L"Four recurring exact source encodings must reuse current-bound geometry without evicting each other.");
+                Assert::AreEqual(uint64_t(9),reused->sourceGeneration);
+                Exact(*reused,Bounds(640,360,0,40,640,320));
+            }
+        }
+        TEST_METHOD(OwnedPictureFactsRecurringAdmissionDoesNotPinCaptureOwnersOrTrustSignatures)
+        {
+            auto frame=std::make_shared<SourcePictureFrame>(640,360);frame->Fill(0,40,640,320,220);
+            auto source=frame->Source();source.backingOwner=frame;
+            auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(source));
+            ActivePictureFrameIdentity id;id.transportGeneration=1;id.sourceFormatGeneration=7;
+            id.analysisDomainKey=11;id.acceptedSequence=1;
+            OwnedSourcePictureObservationCache cache;
+            Assert::IsFalse(cache.Store(source,id,facts,3,true));
+            Assert::AreEqual(size_t(0),cache.RetainedSourceBytes());
+            ++id.acceptedSequence;Assert::IsTrue(cache.Store(source,id,facts,3,true));
+            auto fresh=std::make_shared<SourcePictureFrame>(*frame);
+            std::weak_ptr<SourcePictureFrame> captureOwner=frame;
+            source.backingOwner.reset();frame.reset();
+            Assert::IsTrue(captureOwner.expired(),L"History must release capture-driver ownership, not pin its frame pool.");
+            auto current=fresh->Source();current.backingOwner=fresh;
+            ++id.acceptedSequence;Assert::IsTrue(bool(cache.Find(current,id,3)));
+            const auto copies=cache.SnapshotCopyCount();const uint8_t old=fresh->bytes[9];
+            // Byte9 is between the filter's sampled blocks. A matching quick
+            // signature must neither supply equality nor trigger repeated copies.
+            for(unsigned i=1;i<=8;++i) {
+                fresh->bytes[9]=uint8_t(old+i);++id.acceptedSequence;
+                Assert::IsFalse(bool(cache.Find(current,id,3)));
+                Assert::IsFalse(cache.Store(current,id,facts,3,true));
+            }
+            Assert::AreEqual(copies,cache.SnapshotCopyCount());
+            fresh->bytes[9]=old;++id.acceptedSequence;
+            Assert::IsTrue(bool(cache.Find(current,id,3)),L"Collision misses must leave the immutable successful snapshot unchanged.");
+            const uint8_t first=fresh->bytes[0];
+            for(unsigned i=1;i<=8;++i) {
+                fresh->bytes[0]=uint8_t(first+i);++id.acceptedSequence;
+                Assert::IsFalse(cache.Store(current,id,facts,3,true));
+            }
+            Assert::AreEqual(copies,cache.SnapshotCopyCount(),L"Nonrecurring moving-frame signatures must not copy every source.");
+            cache.Clear();Assert::AreEqual(size_t(0),cache.RetainedSourceBytes());
+        }
+        TEST_METHOD(OwnedPictureFactsHistoryBoundsPrivateBytesAndEvictsLeastRecent)
+        {
+            auto frame=std::make_shared<SourcePictureFrame>(640,360);frame->Fill(0,40,640,320,220);
+            auto source=frame->Source();source.backingOwner=frame;
+            auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(source));
+            ActivePictureFrameIdentity id;id.transportGeneration=1;id.sourceFormatGeneration=7;
+            id.analysisDomainKey=11;id.acceptedSequence=1;
+            OwnedSourcePictureObservationCache cache;
+            std::array<std::shared_ptr<SourcePictureFrame>,5> versions;
+            for(unsigned i=0;i<5;++i) {
+                versions[i]=std::make_shared<SourcePictureFrame>(*frame);versions[i]->bytes[9]^=uint8_t(i);
+                auto view=versions[i]->Source();view.backingOwner=versions[i];
+                if(i==4) {auto recent=versions[0]->Source();recent.backingOwner=versions[0];
+                    Assert::IsTrue(bool(cache.Find(recent,id)));}
+                Assert::IsTrue(cache.Store(view,id,facts));++id.acceptedSequence;
+            }
+            Assert::AreEqual(size_t(4),cache.EntryCount());
+            auto evicted=versions[1]->Source();evicted.backingOwner=versions[1];
+            Assert::IsFalse(bool(cache.Find(evicted,id)));
+            auto recent=versions[0]->Source();recent.backingOwner=versions[0];Assert::IsTrue(bool(cache.Find(recent,id)));
+            cache.Clear();
+            constexpr size_t largeBytes=48u*1024u*1024u;
+            for(unsigned i=0;i<3;++i) {
+                auto bytes=std::make_shared<std::vector<uint8_t>>(largeBytes,0);
+                std::copy(frame->bytes.begin(),frame->bytes.end(),bytes->begin());bytes->back()=uint8_t(i);
+                auto view=source;view.data=bytes->data();view.dataBytes=bytes->size();view.backingOwner=bytes;
+                Assert::IsTrue(cache.Store(view,id,facts));++id.acceptedSequence;
+                Assert::IsTrue(cache.RetainedSourceBytes()<=OwnedSourcePictureObservationCache::MaximumRetainedBytes);
+                std::weak_ptr<std::vector<uint8_t>> owner=bytes;view.backingOwner.reset();bytes.reset();
+                Assert::IsTrue(owner.expired());
+            }
+            Assert::AreEqual(size_t(2),cache.EntryCount());
+            Assert::AreEqual(largeBytes*2,cache.RetainedSourceBytes());
+            {
+                auto large=std::make_shared<std::vector<uint8_t>>(largeBytes,0);
+                std::copy(frame->bytes.begin(),frame->bytes.end(),large->begin());
+                auto oversized=source;oversized.data=large->data();oversized.dataBytes=large->size();oversized.backingOwner=large;
+                const auto copies=cache.SnapshotCopyCount();
+                for(unsigned i=0;i<8;++i) {++id.acceptedSequence;Assert::IsFalse(cache.Store(oversized,id,facts,0,true));}
+                Assert::AreEqual(copies,cache.SnapshotCopyCount());Assert::AreEqual(size_t(0),cache.RetainedSourceBytes());
+            }
+            // Four UHD P210-sized byte views fit the per-worker cap. A padded
+            // source view isolates allocation/equality from new detector work.
+            {
+                constexpr size_t p210Bytes=size_t(3840)*2160*4;
+                auto bytes=std::make_shared<std::vector<uint8_t>>(p210Bytes,0);
+                std::copy(frame->bytes.begin(),frame->bytes.end(),bytes->begin());
+                auto view=source;view.data=bytes->data();view.dataBytes=bytes->size();view.backingOwner=bytes;
+                for(unsigned phase=0;phase<4;++phase) {bytes->back()=uint8_t(phase);++id.acceptedSequence;Assert::IsTrue(cache.Store(view,id,facts));}
+                Assert::AreEqual(size_t(4),cache.EntryCount());Assert::AreEqual(p210Bytes*4,cache.RetainedSourceBytes());
+                Assert::IsTrue(cache.RetainedSourceBytes()<=OwnedSourcePictureObservationCache::MaximumRetainedBytes);
+                for(unsigned phase=0;phase<4;++phase) {bytes->back()=uint8_t(phase);++id.acceptedSequence;Assert::IsTrue(bool(cache.Find(view,id)));}
+            }
+            ++id.analysisDomainKey;Assert::IsTrue(cache.Store(source,id,facts));
+            Assert::AreEqual(size_t(1),cache.EntryCount());
+            Assert::AreEqual(source.dataBytes,cache.RetainedSourceBytes());
+        }
         TEST_METHOD(OwnedPictureFactsCacheRejectsMissingWorkAndBoundsRetainedStorage)
         {
             auto frame=std::make_shared<SourcePictureFrame>(640,360);

@@ -13,8 +13,11 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1144,
+  "minimumNativeTests": 1147,
   "requiredNativeMethods": [
+    "OwnedPictureFactsRecurringAdmissionDoesNotPinCaptureOwnersOrTrustSignatures",
+    "OwnedPictureFactsHistoryBoundsPrivateBytesAndEvictsLeastRecent",
+    "OwnedPictureFactsRetainFourExactSourcePhases",
     "SourcePictureColorFastPathRejectsNativeGapsHiddenBetweenCoarseSamples",
     "SourcePictureCoarseColorRefinesRectanglesAndKeepsRasterContent",
     "SourcePictureCoarseColorNeverSuppliesCropAuthorityAcrossUnresolvedContent",
