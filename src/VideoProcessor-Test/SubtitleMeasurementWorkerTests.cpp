@@ -1357,6 +1357,135 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         Assert::AreEqual(uint64_t(1),a.text.cue);Assert::AreEqual(uint64_t(2),b.text.cue);Assert::AreEqual(uint64_t(3),c.text.cue);
         Assert::IsTrue(worker.TakeDiagnostics().deduplicated>=2);
     }
+    struct ColdSpatialNomineeFixture {
+        static constexpr int Width=3840,Height=2160,Top=264,Bottom=1896;
+        std::vector<uint16_t> pixels;
+        AnalysisLumaSource source;
+        SubtitleBoxObservation key;
+        ActivePictureEvidence native;
+        ColdSpatialNomineeFixture():pixels(size_t(Width)*Height*3/2,uint16_t(512<<6)) {
+            for(int y=0;y<Height;++y)for(int x=0;x<Width;++x)
+                pixels[size_t(y)*Width+x]=uint16_t((y>=Top&&y<Bottom?300:64)<<6);
+            Fill(1190,Bottom-146,2650,Bottom+16,64);
+            for(int y:{Bottom-134,Bottom-52})for(int glyph=0;glyph<26;++glyph) {
+                const int x=1210+glyph*52;
+                Fill(x-2,y-2,x+36,y+58,64);Fill(x,y,x+34,y+56,800);Fill(x+8,y+10,x+26,y+46,64);
+            }
+            source.data=reinterpret_cast<const uint8_t*>(pixels.data());source.dataBytes=pixels.size()*2;
+            source.width=Width;source.height=Height;source.rowBytes=source.chromaRowBytes=Width*2;
+            source.format=AnalysisLumaFormat::P010;source.range=AnalysisLumaRange::Limited;source.generation=2;
+            const ActivePictureBounds spatial{0,Top,Width,Bottom,Width,Height,double(Width)/(Bottom-Top),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            native=VerifySuppliedActivePictureCandidate(source,spatial);
+            native.detector=ActivePictureDetectorKind::SourceSpatialMeasured;
+            native.physicalEdges.evaluated=native.physicalEdges.estimateAvailable=true;
+            native.physicalEdges.estimate=spatial;native.physicalEdges.sourceGeneration=source.generation;
+            key.identity=Identity(10);key.identity.analysisDomainKey=0xA11CE;
+            key.width=Width;key.height=Height;key.policyGeneration=11;key.continuityGeneration=21;
+            key.nearBarDistance=20;key.sharedPicture.required=true;key.sharedPicture.identity=key.identity;
+            native.currentSourceIdentityAvailable=true;native.currentSourceIdentity=key.identity;
+        }
+        void Fill(int l,int t,int r,int b,int code) {
+            for(int y=t;y<b;++y)for(int x=l;x<r;++x)pixels[size_t(y)*Width+x]=uint16_t(code<<6);
+        }
+    };
+
+    TEST_METHOD(ColdCurrentSpatialNomineeProducesExactRawWorkWithoutNativeAuthority) {
+        auto fixture=std::make_shared<ColdSpatialNomineeFixture>();
+        SubtitleMeasurementSampler sampler;SubtitleBoxObservation measured;
+        Assert::IsFalse(fixture->key.sharedPicture.AvailableFor(fixture->key.identity,fixture->Width,fixture->Height));
+        Assert::IsTrue(sampler.TryMeasureCurrentSpatialNominee(fixture->source,fixture->key,fixture->native,measured),
+            L"A current independent spatial nominee must permit a raw scan during cold native acquisition.");
+        Assert::IsTrue(measured.analyzed&&measured.currentSpatialNomineeInspection&&measured.text.detected&&
+            measured.ink&&measured.ink->rawEvidenceComplete&&measured.ink->paletteValid);
+        Assert::IsTrue(SameAnalysisFrameIdentity(measured.identity,fixture->key.identity));
+        Assert::IsTrue(measured.sharedPicture.Matches(fixture->key.sharedPicture));
+        Assert::IsFalse(measured.barAuthority||measured.independentBarAnalysis||measured.inspectionCandidateUsed||measured.subtitleArProof.accepted,
+            L"Inspection geometry supplies no retained-native, independent-bar, or crop permission.");
+        Assert::IsFalse(measured.sharedPicture.inspectionCandidate.valid);
+        Assert::AreEqual(2,measured.text.lineCount);
+        auto proofSource=fixture->source;proofSource.generation=fixture->key.identity.transportGeneration;
+        const auto proof=VerifySuppliedActivePictureCandidateWithSubtitle(proofSource,fixture->native,measured,
+            fixture->key.identity,11,21,fixture->key.scriptHint);
+        Assert::IsTrue(proof.accepted,L"Only the existing current-pixel masked native verifier grants physical evidence.");
+        Assert::IsTrue(proof.IsCurrentFor(proofSource,fixture->key.identity,11,21,fixture->key.scriptHint));
+        Assert::AreEqual(fixture->Top,proof.evidence.physicalEdges.estimate.top);
+        Assert::AreEqual(fixture->Bottom,proof.evidence.physicalEdges.estimate.bottom);
+        SubtitleMeasurementWorker worker;
+        worker.Submit(fixture->key,[fixture](SubtitleMeasurementSampler& current,const SubtitleBarTrackingReference&) {
+            SubtitleBoxObservation result;
+            current.TryMeasureCurrentSpatialNominee(fixture->source,fixture->key,fixture->native,result);
+            return result;
+        });
+        SubtitleBoxObservation cached;
+        Assert::IsTrue(WaitForRead(worker,fixture->key,cached),L"Cold raw work remains readable using the original unavailable-native request key.");
+        Assert::IsTrue(cached.currentSpatialNomineeInspection&&cached.text.detected);
+        for(int fault=0;fault<11;++fault) {
+            auto foreign=fixture->key;
+            switch(fault) {
+            case 0:++foreign.identity.acceptedSequence;break;
+            case 1:++foreign.identity.sourceFrameNumber;break;
+            case 2:++foreign.identity.captureTimestamp;break;
+            case 3:++foreign.identity.transportGeneration;break;
+            case 4:++foreign.identity.sourceFormatGeneration;break;
+            case 5:++foreign.identity.analysisDomainKey;break;
+            case 6:++foreign.identity.viewportGeneration;break;
+            case 7:++foreign.identity.rendererGeneration;break;
+            case 8:++foreign.policyGeneration;break;
+            case 9:++foreign.continuityGeneration;break;
+            case 10:foreign.scriptHint=SubtitleScriptHint::Arabic;break;
+            }
+            Assert::IsFalse(worker.TryRead(foreign,cached),L"A raw nominee scan cannot be rebound to another source or policy.");
+        }
+        Assert::IsTrue(worker.TryRead(fixture->key,cached));worker.Stop();
+    }
+
+    TEST_METHOD(CurrentSpatialNomineeRejectsForeignOrUnavailableEvidence) {
+        auto fixture=std::make_unique<ColdSpatialNomineeFixture>();
+        for(int fault=0;fault<16;++fault) {
+            auto native=fixture->native;auto source=fixture->source;
+            switch(fault) {
+            case 0:native.currentSourceIdentityAvailable=false;break;
+            case 1:++native.currentSourceIdentity.acceptedSequence;break;
+            case 2:++native.currentSourceIdentity.sourceFrameNumber;break;
+            case 3:++native.currentSourceIdentity.captureTimestamp;break;
+            case 4:++native.currentSourceIdentity.transportGeneration;break;
+            case 5:++native.currentSourceIdentity.sourceFormatGeneration;break;
+            case 6:++native.currentSourceIdentity.analysisDomainKey;break;
+            case 7:++native.currentSourceIdentity.viewportGeneration;break;
+            case 8:++native.currentSourceIdentity.rendererGeneration;break;
+            case 9:native.available=false;break;
+            case 10:native.detector={};break;
+            case 11:native.physicalEdges.estimateAvailable=false;break;
+            case 12:native.physicalEdges.evaluated=false;break;
+            case 13:++native.physicalEdges.estimate.top;break;
+            case 14:++source.generation;break;
+            case 15:native.proposedBounds.top=native.physicalEdges.estimate.top=0;
+                native.proposedBounds.bottom=native.physicalEdges.estimate.bottom=fixture->Height;break;
+            }
+            SubtitleMeasurementSampler sampler;SubtitleBoxObservation result;
+            Assert::IsFalse(sampler.TryMeasureCurrentSpatialNominee(source,fixture->key,native,result),
+                L"Unavailable, stale, foreign, inconsistent or uncropped geometry cannot start a nominee inspection.");
+            Assert::IsFalse(result.ink!=nullptr||result.currentSpatialNomineeInspection||result.barAuthority||result.subtitleArProof.accepted);
+        }
+    }
+
+    TEST_METHOD(CurrentSpatialNomineeMaskCannotAuthorizeConnectedPictureOrMenu) {
+        for(int fault=0;fault<2;++fault) {
+            auto fixture=std::make_unique<ColdSpatialNomineeFixture>();
+            if(fault==0)fixture->Fill(100,1880,900,1940,400);
+            else fixture->Fill(0,1950,3840,2060,300);
+            SubtitleMeasurementSampler sampler;SubtitleBoxObservation measured;
+            Assert::IsTrue(sampler.TryMeasureCurrentSpatialNominee(fixture->source,fixture->key,fixture->native,measured));
+            auto proofSource=fixture->source;proofSource.generation=fixture->key.identity.transportGeneration;
+            const auto proof=VerifySuppliedActivePictureCandidateWithSubtitle(proofSource,fixture->native,measured,
+                fixture->key.identity,11,21,fixture->key.scriptHint);
+            Assert::IsFalse(proof.accepted,L"A current nominee is only inspection geometry; connected picture and broad UI remain visible.");
+            Assert::IsFalse(measured.barAuthority||measured.independentBarAnalysis);
+            Assert::AreEqual(fixture->Top,proof.evidence.proposedBounds.top);
+            Assert::AreEqual(fixture->Bottom,proof.evidence.proposedBounds.bottom);
+        }
+    }
+
     TEST_METHOD(CurrentInspectedGlyphScanCanVerifyOnlyTheIndependentSpatialNominee) {
         constexpr int width=3840,height=2160,top=264,bottom=1896;
         std::vector<uint16_t> pixels(size_t(width)*height*3/2,uint16_t(512<<6));

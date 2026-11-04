@@ -148,6 +148,8 @@ struct SubtitleBoxObservation
     bool pictureAuthorityUnavailableForMeasurement = false;
     // Fresh pixels were scanned using a nominated reference, not shared crop authority.
     bool inspectionCandidateUsed = false;
+    // Fresh raw scan at this source's physical nominee; no retained geometry or bar authority.
+    bool currentSpatialNomineeInspection = false;
     // Current physical bars, independently measured without retained presentation.
     // This permits analysis; only subtitleArProof can supply crop evidence.
     bool independentBarAnalysis = false;

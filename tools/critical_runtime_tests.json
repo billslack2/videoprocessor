@@ -13,8 +13,11 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1111,
+  "minimumNativeTests": 1114,
   "requiredNativeMethods": [
+    "ColdCurrentSpatialNomineeProducesExactRawWorkWithoutNativeAuthority",
+    "CurrentSpatialNomineeRejectsForeignOrUnavailableEvidence",
+    "CurrentSpatialNomineeMaskCannotAuthorizeConnectedPictureOrMenu",
     "ContainedRawReconstructionPreservesConfiguredHorizontalFill",
     "RawReconstructionConfiguredFillRejectsUnprovenOrConflictingPixels",
     "NativeBurstCapturesConsecutiveIdentitiesAt24And60WithoutStoppingTrace",

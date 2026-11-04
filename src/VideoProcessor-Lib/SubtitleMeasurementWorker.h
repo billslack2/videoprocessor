@@ -76,6 +76,52 @@ inline bool TryClaimSubtitleDiagnosticCapture(bool proofFailureMode)
 class SubtitleMeasurementSampler {
 public:
     void Reset() { m_scanner.Reset();m_analysisDomainKey=0; }
+    bool TryMeasureCurrentSpatialNominee(const AnalysisLumaSource& source,
+        const SubtitleBoxObservation& key,const ActivePictureEvidence& nativeEvidence,
+        SubtitleBoxObservation& result) {
+        const auto& bounds=nativeEvidence.proposedBounds;
+        const auto& physical=nativeEvidence.physicalEdges;
+        if(!source.IsValid() || !source.generation ||
+            (source.generation!=key.identity.sourceFormatGeneration &&
+             source.generation!=key.identity.transportGeneration) || !key.identity.acceptedSequence ||
+            key.discontinuity || key.analysisRefresh || key.pendingRefresh ||
+            key.width!=source.width || key.height!=source.height ||
+            !nativeEvidence.available || !nativeEvidence.currentSourceIdentityAvailable ||
+            !SameAnalysisFrameIdentity(nativeEvidence.currentSourceIdentity,key.identity) ||
+            nativeEvidence.detector!=ActivePictureDetectorKind::SourceSpatialMeasured ||
+            nativeEvidence.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+            !physical.evaluated || !physical.estimateAvailable ||
+            (physical.sourceGeneration!=source.generation &&
+             physical.sourceGeneration!=key.identity.sourceFormatGeneration) ||
+            bounds.rasterWidth!=source.width || bounds.rasterHeight!=source.height ||
+            bounds.left!=0 || bounds.right!=source.width ||
+            bounds.top<=0 || bounds.top>=bounds.bottom || bounds.bottom>=source.height ||
+            physical.estimate.left!=bounds.left || physical.estimate.top!=bounds.top ||
+            physical.estimate.right!=bounds.right || physical.estimate.bottom!=bounds.bottom ||
+            physical.estimate.rasterWidth!=source.width || physical.estimate.rasterHeight!=source.height)
+            return false;
+        // A nominee selects where to inspect this source. It supplies neither
+        // independent bar evidence nor retained presentation/crop permission.
+        // Reset before the full scan so its raw ink cannot come from another source.
+        m_scanner.Reset();m_analysisDomainKey=key.identity.analysisDomainKey;
+        m_scanner.SetOptimizationMode(key.optimizationMode);
+        m_scanner.SetScriptHint(key.scriptHint);
+        m_scanner.SetNearBarDistance(key.nearBarDistance);
+        result={};result.identity=key.identity;result.sharedPicture=key.sharedPicture;
+        result.width=source.width;result.height=source.height;
+        result.policyGeneration=key.policyGeneration;result.continuityGeneration=key.continuityGeneration;
+        result.nearBarDistance=key.nearBarDistance;result.optimizationMode=key.optimizationMode;
+        result.scriptHint=key.scriptHint;result.analysisStride=key.analysisStride;
+        result.pictureAuthorityUnavailableForMeasurement=
+            !key.sharedPicture.AvailableFor(key.identity,source.width,source.height);
+        result.pictureTop=bounds.top;result.pictureBottom=bounds.bottom;
+        result.currentSpatialNomineeInspection=true;result.analyzed=true;
+        result.barEvidence.reason="current-spatial-nominee-inspection-only";
+        result.text=m_scanner.Analyze(source,bounds.top,bounds.bottom,
+            key.identity.acceptedSequence,key.identity.viewportGeneration);
+        result.ink=m_scanner.InkSnapshot();
+        return true;
+    }
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/,
         const ActivePictureEvidence& nativeEvidence = {}) {
@@ -89,6 +135,16 @@ public:
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
         result.analysisStride=key.analysisStride;
+        // A cold independent bar probe can be unavailable even though this
+        // source has a spatial nominee. Inspect that nominee only when no raw
+        // glyph scan ran; completed negative scans and retained hints keep their
+        // original semantics. The existing masked verifier below is still the
+        // sole authority for accepting the nominee through caption pixels.
+        if(SourcePictureDetectorEnabled() && !result.ink && !result.barAuthority &&
+            !result.text.topSearchComplete && !result.text.bottomSearchComplete &&
+            !result.text.workLimit && !result.inspectionCandidateUsed && !result.sharedProbeAttempted &&
+            !key.sharedPicture.AvailableFor(key.identity,source.width,source.height))
+            TryMeasureCurrentSpatialNominee(source,key,nativeEvidence,result);
         const bool currentInspectionMask=SourcePictureDetectorEnabled() &&
             SubtitleBoxLookahead::HasCurrentInspectionGlyphMeasurement(result);
         if ((!result.inspectionCandidateUsed || currentInspectionMask) && result.text.detected && !result.text.held && !result.text.workLimit) {
