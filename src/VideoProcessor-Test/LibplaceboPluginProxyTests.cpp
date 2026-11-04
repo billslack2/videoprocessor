@@ -5511,7 +5511,27 @@ namespace VideoProcessorTest
             Assert::IsTrue(exact,L"Subtitle readiness held/replayed or mismatched an otherwise eligible current source.");
             Assert::IsTrue(native,L"Measured native geometry changed or fallback gained native authority.");
             Assert::IsTrue(composed==outputs&&noFallback,L"Captured unchanged cue still alternates composed and expanded raw fallback output.");
-            Assert::IsTrue(inspection>0&&proofs>0&&consumed>0,L"Live inspection-only/worker reuse path was not exercised.");
+            if(pausedNative) {
+                // This fixture now has current shared physical authority. Its
+                // ordinary scan key correctly lacks inspectionCandidate bit32;
+                // actual exact-source typed receipts prove worker reuse instead.
+                std::set<uint64_t> verifiedSources,consumedSources,revisions;
+                bool offRenderThread=true,priorSeed=true,checkedPixels=true;
+                for(const auto& r:observed) {
+                    if(r.sourceFrameNumber<steadyStart||r.sourceFrameNumber>steadyEnd)continue;
+                    if(!strcmp(r.stage,"worker-cue-proof")&&(r.flags&1u))verifiedSources.insert(r.sourceFrameNumber);
+                    if(strcmp(r.stage,"subtitle-cue-proof-consumed")||!(r.flags&1u))continue;
+                    consumedSources.insert(r.sourceFrameNumber);revisions.insert(r.counters[0]);
+                    offRenderThread&=r.counters[1]!=0&&r.counters[2]!=0&&r.counters[1]!=r.counters[2];
+                    priorSeed&=r.counters[4]!=0&&r.counters[4]<steadyStart;
+                    checkedPixels&=r.counters[3]>0&&r.counters[5]>0&&r.counters[6]>0;
+                }
+                Assert::IsTrue(proofs==144&&consumed==144&&verifiedSources.size()==144&&consumedSources.size()==144&&
+                    revisions.size()==1&&templates==0&&offRenderThread&&priorSeed&&checkedPixels&&scans<outputs,
+                    L"Every steady captured source must consume its exact current off-thread pixel proof from one prior template, with grouping below source cadence.");
+            } else {
+                Assert::IsTrue(inspection>0&&proofs>0&&consumed>0,L"Live inspection-only/worker reuse path was not exercised.");
+            }
             Assert::IsTrue(sourceFps>=.97*(std::min)(inputHz,outputHz)&&maxSourceGap<=2&&maxGapMs<=2*periodMs+1000/outputHz,
                 L"Current-source presentation gaps exceeded the live input/output cadence allowance.");
             Assert::IsTrue(maxLatencyMs<=10*periodMs+1000/outputHz&&latencies.size()>=48&&late<=early+periodMs,
