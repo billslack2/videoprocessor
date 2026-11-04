@@ -1,0 +1,879 @@
+{
+  "status": "RED",
+  "sourcePin": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "scope": "CPU actual native sampler, three-source Resolve and natural tracker; compositor success modeled only; no GPU/timing qualification",
+  "sourceIdentities": "Original identity_v1 unaltered; accepted and physical sequences contiguous, full context validated by producer",
+  "inputPixelEdits": false,
+  "forcedHeldFlags": false,
+  "sources": 83,
+  "held": 60,
+  "qualified": 23,
+  "heldFirstFailures": {
+    "IndependentBars_bit16": 60
+  },
+  "omittedSamples": 0,
+  "inputs": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000003.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000003.txt",
+      "sha256": "a92915e79759b98e3a4e861215d98e1dbeee20cfc7cca779a9eb678964986f8c",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000004.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000004.txt",
+      "sha256": "b74eea54fd36855c10e3519dcdef1c62878c069add22c06a2363c51741a3bc61",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000005.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000005.txt",
+      "sha256": "ee859fa48976c0b36be8f1014a38744ed976cd16854991c1f7ae306bb4779ed7",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000006.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000006.txt",
+      "sha256": "5f504dbdaac0fecaaec68245cdd7a2a1f889bad6ca6e151b7f835ae3540bbda7",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000007.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000007.txt",
+      "sha256": "67b7cda894e73f6d829590fc4542f8c33ed46b2cc669e29c4646449bf93755cd",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000008.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000008.txt",
+      "sha256": "8a6788c334697e8aa54c30106b50a2b123b13c3d766d5af38cb229643104b8f4",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000009.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000009.txt",
+      "sha256": "f20e86e744a66cad0d8e5114044b6bc3e2f8b17ceb4bfc94fbbe716af82170c3",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000010.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000010.txt",
+      "sha256": "e44958f4b641260618bfb21280165f6f178f5096bbd0737626d016d975bbbebf",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000011.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000011.txt",
+      "sha256": "780ad2e2037e3e4ea2cdb9cd55203fc4eeb2c95431360c4eef13a6ed6d13f872",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000012.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000012.txt",
+      "sha256": "e7a8c45253901c9621d7ade09b1eb026d833984382bcdd281bc4604ed34e88c7",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000013.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000013.txt",
+      "sha256": "f87722708b9604b23aedb189643adef36c9b110cfe4413b947f29c0372adcc30",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000014.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000014.txt",
+      "sha256": "9394e098517ec130cab884b4b86f9dcbf478b215725961e9e0b6dc1fc0058f6c",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000015.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000015.txt",
+      "sha256": "e889d06975003e7d2b3c33bd31ceb1aa611cf9f9f290061c1255fdb85c1d43a9",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000016.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000016.txt",
+      "sha256": "bdf49da57917d089245bafe639eea3b77c76e9c2b1a8b101296faea3be9d0a41",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000017.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000017.txt",
+      "sha256": "7901d9659d1932f0748b0aad5da317dbc37358e431331631f96217bccc2da2a0",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000018.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000018.txt",
+      "sha256": "c8ae516bb4e1c2a6723e39a9eb2ad37b1532b6c7762999daac0555a03913209c",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000019.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000019.txt",
+      "sha256": "86c8d1d48fee9a928bfc80f7625ffedac7c34a1ba9207e7cadbf0c6655adcc2e",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000020.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000020.txt",
+      "sha256": "cc5aa48310f5bfa76f110622f5e4cd27fa709683ff75bbdf909e571756913902",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000021.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000021.txt",
+      "sha256": "cc4805487aa593a8bac0e93a0c5f2c65cdc78b5e51363684bd7d8164e523903f",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000022.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000022.txt",
+      "sha256": "00c4bf084e472748dd982b09716ad12c148aa95e2a53c796ca9f2397c0150801",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000023.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000023.txt",
+      "sha256": "8ba997f1d55b244888b308e21ff9320cdd1709015026139b2f9dd4a75f686963",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000024.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000024.txt",
+      "sha256": "235468412dc29c326092347fc3c2089ac4e15782fd7163756cc8b6e01bfb5051",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000025.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000025.txt",
+      "sha256": "99bae7074f622867953e3582d4629411d6e83b97e44c750a4bc6aecbbc59fb6c",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000026.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000026.txt",
+      "sha256": "6f3a63cf9f211255eea270d9aed13a4474406bce0175b444be6676108b41af02",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000027.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000027.txt",
+      "sha256": "dc9b7c74d69b2cd324e472463a57f110efe3c7f88164a8828d29071fc0f9e3be",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000028.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000028.txt",
+      "sha256": "b9518b4274fa44b727206d882088533c9b602601c100e1e4b763e4b08a657940",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000029.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000029.txt",
+      "sha256": "063f9f89a2d6555e693d09f17c508baeee377b3296fd6a6884910133bd4ae74c",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000030.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000030.txt",
+      "sha256": "58380156551104492dcf79e0fd00a68dd8704139f5d5b9b40d1c070d61c9faae",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000031.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000031.txt",
+      "sha256": "df531792871f856ffba568dcfd847676dd8a654ee4b8f518731504809efe6d61",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000032.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000032.txt",
+      "sha256": "b4cca898fd72e716b7afdfd3c4d116b705aa2f978b00acf0fbae39ba25dfd2ed",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000033.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000033.txt",
+      "sha256": "9ec2b2f516e6bf14961b4f3c08a53787fa071c9d50dac87f1ce2bfae8467d8a2",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000034.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000034.txt",
+      "sha256": "e023e11266f55c947ebc6a1d2155eb8dd66f1e5a38be4d69854b515fde17e61c",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000035.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000035.txt",
+      "sha256": "38ef720536343285a168e1d490624041100b500d4e007a892856d5dba10a1757",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000036.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000036.txt",
+      "sha256": "43ff2542a62f3809b707432fc7f310872ee969749f17ddc078cfa498dbc29ed8",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000037.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000037.txt",
+      "sha256": "c6cf0791ec6beabcbc9d1ce55884d4b141f279c43b7be48d9235a108259f2238",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000038.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000038.txt",
+      "sha256": "62db3ccfbd90a1a52b399d050c1e8c35edd282854bb8e81a1637c64ea360b717",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000039.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000039.txt",
+      "sha256": "d6675b8109f2be83e3a3c44ad5156df988d13dec529df208f02743683fae50fc",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000040.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000040.txt",
+      "sha256": "538f535f34000874b1650c980c37a073de2bbbc9ce8c5d72c6778714a344905a",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000041.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000041.txt",
+      "sha256": "947af004b20f95093ef4b5edadfd073776a3cb8816611d2501f7a3d177dae8c0",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000042.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000042.txt",
+      "sha256": "8e64ca4779e0e31044b952ef40d4767836e4e70d91f93a9c1ffdb745299c93dd",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000043.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000043.txt",
+      "sha256": "b4af713f46474f17a6d6d8966548ef84ccfa8b33ed277a2c8c61e4755dece3c4",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000044.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000044.txt",
+      "sha256": "b69b65b033462c6cee6635ec9fe04b38de515ca0171f9bbc5979c4429d6e8b1e",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000045.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000045.txt",
+      "sha256": "752492ee29db0880f810af0e56b4171d79c56f6f1d62d5e21d5a48377dc7623a",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000046.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000046.txt",
+      "sha256": "eb4ce30f008679254dea1d70e8c86238858dd27a40bf72c758efe6fa1bc39869",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000047.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000047.txt",
+      "sha256": "d47776c79d41d75fb68c15a144131de92fc6c2ce8b9575184e3df6a5b1b25534",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000048.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000048.txt",
+      "sha256": "f4f655f889a2863739e2fb2127622c6e285170a431ece6888173df788929fbbc",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000049.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000049.txt",
+      "sha256": "73fec9aca8b5826e45cec70694f710efe90ef30b14f9de032e7ed0acdb88b9ef",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000050.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000050.txt",
+      "sha256": "8c6fac3e8720422ef80caba75d77bb9149eeef2e69f1ea4c1d6e5fa9388cfcf6",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000051.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000051.txt",
+      "sha256": "326c47563518342a57c4e8c3dc67b2851d3b745ba8a4e6bf1fe2dfdf6ba1f752",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000052.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000052.txt",
+      "sha256": "28d4d5bda33d0c1402d93948ea9dbbc6e61fa06804b50cf175600b5797f3b3b7",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000053.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000053.txt",
+      "sha256": "ea0a7f12a49498d49461beaad4b0b98c97421e793e9402d209575d8268340bc4",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000054.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000054.txt",
+      "sha256": "b415fb1489dbaafe3340f4472c7bba8d058d898978ff0258fb167e25d8280e71",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000055.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000055.txt",
+      "sha256": "bf935031d42dc4e9fae6c9bffe6126856d53c3c3f54f603c6e9d47ad9258549b",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000056.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000056.txt",
+      "sha256": "7a97d9e1a7e630b9f4b7c1d1afa3ffedf93f5cd7c941e8a622d61ec0befd8b91",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000057.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000057.txt",
+      "sha256": "8c3ccae15d48f8b5eeedf3701766a4f7938b60d5ac7745eb3c1a71a1493bae54",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000058.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000058.txt",
+      "sha256": "8d8f293cde503ce2fcc1fbffaf99b4d4a9ebc142e29bac960eee7a84d6ba3098",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000059.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000059.txt",
+      "sha256": "e5309bc549a7576d05173c862fb0022f61228dd1aede4a479c41bc476d928b5e",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000060.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000060.txt",
+      "sha256": "a2ae2c50535de0abc6e519d29f4ff549b41816fd7fdb0e0b772d18baa5658667",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000061.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000061.txt",
+      "sha256": "891eb5589c68c041809ea0c35a4a71507cc0e8d04d93fba7c3cd7902a05a77c5",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000062.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000062.txt",
+      "sha256": "98ffc1efc8c826962f9c90f893a6ab3863632da2f0087dffde25d781664fe814",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000063.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000063.txt",
+      "sha256": "18c2346f6d471f5699b0027a7f6e402c76a9745af67e16d09b0e7ec8436b79ac",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000064.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000064.txt",
+      "sha256": "638857c86cf7d524123d3e9be2de5cb6443793e7ff1ba0d1159081fecb63deca",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000065.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000065.txt",
+      "sha256": "204fe7baa3560aa688c17475bf5482b48542bc11222d2559876f29a233fbba26",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000066.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000066.txt",
+      "sha256": "09e8b8d0a045186405ece9bd0c4dd03b58fc67b7a22adbeaaff6fac829bccd03",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000067.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000067.txt",
+      "sha256": "417d042261060232f152102ba68230c4b4daab7a820b59fba4a530ab4232cc9a",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000068.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000068.txt",
+      "sha256": "e6677b1de6fbab4715415c52d8020c6de705c19c2f0bf1294eefcc0f7c1d2a59",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000069.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000069.txt",
+      "sha256": "1b20423f6d3b4bfa2e9fe1aa57551e4cafa1b9888610947ffa1c4880eedf1858",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000070.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000070.txt",
+      "sha256": "2465e900ded1b76274f52a92011ae85d6d6606940f6d2ff240f7d3fd6254713d",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000071.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000071.txt",
+      "sha256": "d763f959ff9733bdc2837351b8d874783077bf4396a83164458375a8ad31dc03",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000072.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000072.txt",
+      "sha256": "08167359945fe8b1f2e063aa825bd6f57b59a6617986c8bca46cfda0bb9ad083",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000073.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000073.txt",
+      "sha256": "1baf5f5b3001bac3c17b6e9b019d79e7d43ac7bcc2414e015c5a278b3c41931a",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000074.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000074.txt",
+      "sha256": "7a134306031000e721da381e08aa4bf977c22ff8dff566e1637a1fdf818ab919",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000075.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000075.txt",
+      "sha256": "496a7b910048c85827ad816714f427c57e6f4794b429fb249979e88784e7a3a4",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000076.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000076.txt",
+      "sha256": "459aa65262918f1991498985afe1f7990bef89891a6a34c72004ee06aaf805c5",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000077.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000077.txt",
+      "sha256": "44f6d84685995f97283435a6168dfbbe7ce22570117123872447825ab5c0840f",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000078.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000078.txt",
+      "sha256": "7c7c8f9e3be34efa087f31da303dee88084795b41d9c176a9b606cba4a280d1d",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000079.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000079.txt",
+      "sha256": "d913063c149a305495855afeb5408e4880cb29eb3e262bc84ed64ffd72db45d9",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000080.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000080.txt",
+      "sha256": "5243100a9f12d139f90724a93f42ad6166f629ea0575f949937b0efa305012d5",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000081.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000081.txt",
+      "sha256": "eaca6b516b0881f53288544fd78e5550a6a3a3ba6c093d4265f740efe9ed385a",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000082.bin",
+      "sha256": "0e5c3c871d712b5a09abf46153fc7d3b074f556bce6b36e89b1b5f24b6c96556",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000082.txt",
+      "sha256": "947f27a82fa558141d258a4e74902e397ec5c8518336d8e2d4b56a8fed3cd111",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000083.bin",
+      "sha256": "b6bb7d1c9d70ac5664ebe793133c167d390c0c8aef73f957d46e3fda138c405a",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000083.txt",
+      "sha256": "e42ca72ba51b86b50d5e80a26e6500fede356560d7635dcbf1c7eb1332b3a637",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000084.bin",
+      "sha256": "a3909e68a1250a2cf64856962eb99b04a21a0ceb9f60e288d8f604882a2b4d9d",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000084.txt",
+      "sha256": "06f65511556870405c0fba874069f1fe9125c39a2fcec84fb541d7c1b7ee2d5e",
+      "bytes": 143
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000085.bin",
+      "sha256": "b9708397d2c581d7fa878f5696de6592afab1c41c1b6e1d45db26aaed8140538",
+      "bytes": 22118400
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\scripture-burst-091651\\frame-000085.txt",
+      "sha256": "f6024fba6120a48a943443fa699cb4fadc6b676ea355f2d4d1d4f95c78cdc2bc",
+      "bytes": 143
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\consecutive-held-replay.cpp",
+      "sha256": "f09e040637342635ecece29757e3d12b2aa36949dd15b79c595482ed37e3340e",
+      "bytes": 9506
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\consecutive-held-replay.vcxproj",
+      "sha256": "e201ff1e3866d138a9301e586cddc1b429bf3060e357b2889109a1212de2d08d",
+      "bytes": 2205
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\build\\ConsecutiveHeldReplay.exe",
+      "sha256": "832ac41106a9ba80c760251406f9a1b4da8f1597580309a51957a28e038b44fc",
+      "bytes": 1353216
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\VideoProcessor-Lib.lib",
+      "sha256": "ecc54a29f1c98d29f8aa18aeda9adf9a0dd2c739f6c10044b09607975124483d",
+      "bytes": 132117010
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\frames.jsonl",
+      "sha256": "fe40ffe52890049b1852c2fa158b61730a82f6d03a33f2d6df173b74ba5f59a4",
+      "bytes": 107220
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\diagnostic-trace.jsonl",
+      "sha256": "f2bbac829cf77f95d6019df15511eed6beb30d28422dc6493ea377a7ec31eff2",
+      "bytes": 29463
+    }
+  ]
+}

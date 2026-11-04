@@ -1,0 +1,641 @@
+{
+  "schema": "vp-isolated-localized-step-prototype-v4",
+  "scope": "Artifact-only current-native nomination experiment. No production modifications, deployment, GPU, or real-time qualification. Existing native crop veto remains active.",
+  "productionBase": "4998b57883610483166d0730e1004980d879078f",
+  "currentWorkingTreeDirty": [],
+  "qualification": false,
+  "productionReady": false,
+  "testCounters": {
+    "total": "58",
+    "executed": "58",
+    "passed": "58",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "systematicSyntheticProfiles": 375,
+  "corpora": {
+    "dark": {
+      "capture": "artifacts/incident-20261104-090405/current-native-capture",
+      "frames": 94,
+      "sourceIdentitiesMatchOriginalSidecars": true,
+      "physicalSourceGaps": [
+        [
+          10723,
+          10728
+        ],
+        [
+          10728,
+          10733
+        ],
+        [
+          10733,
+          10738
+        ],
+        [
+          10738,
+          10743
+        ],
+        [
+          10743,
+          10748
+        ],
+        [
+          10748,
+          10753
+        ],
+        [
+          10753,
+          10758
+        ],
+        [
+          10758,
+          10763
+        ],
+        [
+          10763,
+          10768
+        ],
+        [
+          10768,
+          10773
+        ],
+        [
+          10773,
+          10778
+        ],
+        [
+          10778,
+          10783
+        ],
+        [
+          10783,
+          10788
+        ],
+        [
+          10788,
+          10793
+        ],
+        [
+          10793,
+          10798
+        ],
+        [
+          10798,
+          10803
+        ],
+        [
+          10803,
+          10808
+        ],
+        [
+          10808,
+          10813
+        ],
+        [
+          10813,
+          10818
+        ],
+        [
+          10818,
+          10823
+        ],
+        [
+          10823,
+          10828
+        ],
+        [
+          10828,
+          10833
+        ],
+        [
+          10833,
+          10843
+        ],
+        [
+          10843,
+          10848
+        ],
+        [
+          10848,
+          10853
+        ],
+        [
+          10853,
+          10858
+        ],
+        [
+          10858,
+          10863
+        ],
+        [
+          10863,
+          10868
+        ],
+        [
+          10868,
+          10873
+        ],
+        [
+          10873,
+          10878
+        ],
+        [
+          10878,
+          10883
+        ],
+        [
+          10883,
+          10888
+        ],
+        [
+          10888,
+          10893
+        ],
+        [
+          10893,
+          10898
+        ],
+        [
+          10898,
+          10903
+        ],
+        [
+          10903,
+          10908
+        ],
+        [
+          10908,
+          10913
+        ],
+        [
+          10913,
+          10918
+        ],
+        [
+          10918,
+          10923
+        ],
+        [
+          10923,
+          10928
+        ],
+        [
+          10928,
+          10933
+        ],
+        [
+          10933,
+          10938
+        ],
+        [
+          10938,
+          10943
+        ],
+        [
+          10943,
+          10948
+        ],
+        [
+          10948,
+          10953
+        ],
+        [
+          10953,
+          10958
+        ],
+        [
+          10958,
+          10963
+        ],
+        [
+          10963,
+          10968
+        ],
+        [
+          10968,
+          10973
+        ],
+        [
+          10973,
+          10978
+        ],
+        [
+          10978,
+          10983
+        ],
+        [
+          10983,
+          10988
+        ],
+        [
+          10988,
+          10993
+        ],
+        [
+          10993,
+          10998
+        ],
+        [
+          10998,
+          11003
+        ],
+        [
+          11003,
+          11008
+        ],
+        [
+          11008,
+          11013
+        ],
+        [
+          11013,
+          11018
+        ],
+        [
+          11018,
+          11023
+        ],
+        [
+          11023,
+          11028
+        ],
+        [
+          11028,
+          11033
+        ],
+        [
+          11033,
+          11038
+        ],
+        [
+          11038,
+          11043
+        ],
+        [
+          11043,
+          11048
+        ],
+        [
+          11048,
+          11053
+        ],
+        [
+          11053,
+          11058
+        ],
+        [
+          11058,
+          11063
+        ],
+        [
+          11063,
+          11068
+        ],
+        [
+          11068,
+          11078
+        ],
+        [
+          11078,
+          11083
+        ],
+        [
+          11083,
+          11088
+        ],
+        [
+          11088,
+          11093
+        ],
+        [
+          11093,
+          11098
+        ],
+        [
+          11098,
+          11103
+        ],
+        [
+          11103,
+          11108
+        ],
+        [
+          11108,
+          11113
+        ],
+        [
+          11113,
+          11118
+        ],
+        [
+          11118,
+          11123
+        ],
+        [
+          11123,
+          11128
+        ],
+        [
+          11128,
+          11133
+        ],
+        [
+          11133,
+          11138
+        ],
+        [
+          11138,
+          11143
+        ],
+        [
+          11143,
+          11148
+        ],
+        [
+          11148,
+          11153
+        ],
+        [
+          11153,
+          11158
+        ],
+        [
+          11158,
+          11163
+        ],
+        [
+          11163,
+          11168
+        ],
+        [
+          11168,
+          11173
+        ],
+        [
+          11173,
+          11178
+        ],
+        [
+          11178,
+          11183
+        ],
+        [
+          11183,
+          11188
+        ],
+        [
+          11188,
+          11193
+        ],
+        [
+          11193,
+          11198
+        ]
+      ],
+      "currentPhysicalKnown": 94,
+      "strictProofCurrent": 94,
+      "modelStable": 94,
+      "physicalBounds": {
+        "0,275,3840,1884": 94
+      },
+      "results": {
+        "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\dark.jsonl",
+        "sha256": "beecc5f198698c65d6d4bd69dae2765af8bdf30e9ee369e05a7711caafb68ac6",
+        "bytes": 221199
+      },
+      "preservationManifest": {
+        "path": "artifacts\\incident-20261104-090405\\current-native-capture\\preservation.json",
+        "sha256": "2d11fdbbbd7cf105c3eba7158e120790e42011373c886de29acfc8e1cc7f1add",
+        "bytes": 30333
+      }
+    },
+    "tall092543": {
+      "capture": "artifacts/incident-20261104-090405/ar190-burst-092543",
+      "frames": 91,
+      "sourceIdentitiesMatchOriginalSidecars": true,
+      "physicalSourceGaps": [
+        [
+          33184,
+          33188
+        ],
+        [
+          33237,
+          33239
+        ],
+        [
+          33276,
+          33278
+        ]
+      ],
+      "currentPhysicalKnown": 91,
+      "strictProofCurrent": 0,
+      "modelStable": 0,
+      "physicalBounds": {
+        "0,65,3840,2093": 67,
+        "0,65,3840,2092": 24
+      },
+      "results": {
+        "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\tall092543.jsonl",
+        "sha256": "554fbeb59d4a39a47ad2d69e491310ad60be2c84812a1b64c23f60bb143fde9a",
+        "bytes": 776322
+      },
+      "preservationManifest": {
+        "path": "artifacts\\incident-20261104-090405\\ar190-burst-092543\\preservation.json",
+        "sha256": "92d2fee530b0e0a037aa566ad209f8c0a6d50bc3985ea20f28908cdb1e1c093a",
+        "bytes": 29554
+      }
+    },
+    "tall092842": {
+      "capture": "artifacts/incident-20261104-090405/ar190-burst-092842",
+      "frames": 90,
+      "sourceIdentitiesMatchOriginalSidecars": true,
+      "physicalSourceGaps": [
+        [
+          37466,
+          37471
+        ],
+        [
+          37524,
+          37526
+        ],
+        [
+          37556,
+          37558
+        ],
+        [
+          37558,
+          37560
+        ]
+      ],
+      "currentPhysicalKnown": 90,
+      "strictProofCurrent": 0,
+      "modelStable": 0,
+      "physicalBounds": {
+        "0,65,3840,2093": 67,
+        "0,65,3840,2092": 23
+      },
+      "results": {
+        "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\tall092842.jsonl",
+        "sha256": "6337db8602ae843a1e6b7c2e12992a9ca572e1780b494fbbfb5548b46c645a5f",
+        "bytes": 767824
+      },
+      "preservationManifest": {
+        "path": "artifacts\\incident-20261104-090405\\ar190-burst-092842\\preservation.json",
+        "sha256": "1a9d26f2dc94afcd842dfaceefcdb49d3ac74e0bd5f68ea4e96b722a566d26af",
+        "bytes": 48281
+      }
+    },
+    "prior0744": {
+      "capture": "artifacts/paused-ar-20261104-0744/native-capture",
+      "frames": 91,
+      "sourceIdentitiesMatchOriginalSidecars": true,
+      "physicalSourceGaps": [
+        [
+          751396,
+          751400
+        ],
+        [
+          751412,
+          751414
+        ],
+        [
+          751459,
+          751461
+        ],
+        [
+          751461,
+          751463
+        ]
+      ],
+      "currentPhysicalKnown": 91,
+      "strictProofCurrent": 91,
+      "modelStable": 91,
+      "physicalBounds": {
+        "0,275,3840,1884": 91
+      },
+      "results": {
+        "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\prior0744.jsonl",
+        "sha256": "3213dd56c379d8e3d49b7c6ad277c2469474859602f60ee48bf28081d66e52ca",
+        "bytes": 9809960
+      },
+      "preservationManifest": {
+        "path": "artifacts\\paused-ar-20261104-0744\\native-capture\\preservation.json",
+        "sha256": "a53158e87ebfa8edd8f65ed12f7155d716c1d640d5e4abf01c5699f26906c808",
+        "bytes": 29289
+      }
+    },
+    "prior0751": {
+      "capture": "artifacts/paused-ar-20261104-0751/native-capture",
+      "frames": 89,
+      "sourceIdentitiesMatchOriginalSidecars": true,
+      "physicalSourceGaps": [
+        [
+          1066,
+          1071
+        ],
+        [
+          1089,
+          1091
+        ],
+        [
+          1100,
+          1102
+        ],
+        [
+          1152,
+          1154
+        ],
+        [
+          1157,
+          1159
+        ]
+      ],
+      "currentPhysicalKnown": 89,
+      "strictProofCurrent": 89,
+      "modelStable": 89,
+      "physicalBounds": {
+        "0,275,3840,1884": 89
+      },
+      "results": {
+        "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\prior0751.jsonl",
+        "sha256": "9fb8406c437811cc5528316b00f2d59d5a841846e5d7603e69769b83de2a869d",
+        "bytes": 9626474
+      },
+      "preservationManifest": {
+        "path": "artifacts\\paused-ar-20261104-0751\\native-capture\\preservation.json",
+        "sha256": "b422ded01db1d531452dc8b46520e94111342afcb46adf173a3b870173696caf",
+        "bytes": 28628
+      }
+    }
+  },
+  "files": [
+    {
+      "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\SourcePictureMeasurement.step.cpp",
+      "sha256": "dec890d92d2cba4f7b89f18bfda57a65310939695e6e8ed9e646bbe3bfbc7cdd",
+      "bytes": 55912
+    },
+    {
+      "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\replay.cpp",
+      "sha256": "3a0489027c82bef3d2066eb7f431ff25a201fe0d53f90e2027575dc186eb243a",
+      "bytes": 7529
+    },
+    {
+      "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\ArtifactStepContracts.cpp",
+      "sha256": "1ce117ca5652a359a876485aa198f41c13a19309783385f08fb482085dea659d",
+      "bytes": 1321
+    },
+    {
+      "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\build\\LocalizedStepPrototype.exe",
+      "sha256": "912552cc187c0d19557e0c2c54957045c98e45121e55db0e4a79475afe9ccd70",
+      "bytes": 770560
+    },
+    {
+      "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\build\\LocalizedStepContracts.dll",
+      "sha256": "1ea881f934574635bb10d7213fd056125d44ee4e9fc1101dde92f103fc23ad6f",
+      "bytes": 1033216
+    },
+    {
+      "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\tall-source-support.json",
+      "sha256": "e2e358e8ea815cc9f0a2046243f467b2c251f67b9d4a2ada0d417730bbbd29f9",
+      "bytes": 274642
+    },
+    {
+      "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\tall-witness.log",
+      "sha256": "ad71b9642d4843b5c93c55f5b8db8356f7bf744fbf778283a533328158159097",
+      "bytes": 1457
+    },
+    {
+      "path": "artifacts\\incident-20261104-090405\\native-review\\step-v4\\contracts\\bslac_DESKTOP-3G35SCJ_2026-11-04_09_48_12_net40.trx",
+      "sha256": "c5d3bdee0eee935d617c7beed47a89c930821bf674e4faf3139a359e8a407e4e",
+      "bytes": 111539
+    },
+    {
+      "path": "src\\VideoProcessor-Lib\\SourcePictureMeasurement.cpp",
+      "sha256": "fa0449695ea6dbcea2c1e407c29e8e95a887ad9264fa7fbc438b164b9b266598",
+      "bytes": 54728
+    },
+    {
+      "path": "src\\VideoProcessor-Test\\SourcePictureMeasurementTests.cpp",
+      "sha256": "16d355d3a7c57bc453d2afdc01eca50a1c192171285c75befd286c22664e170d",
+      "bytes": 109085
+    }
+  ],
+  "knownLimitations": [
+    "All181 tall frames still fail strict native crop verification and do not acquire a stable native model.",
+    "A filtered-step half-level center is not permission to discard faint picture or colored support.",
+    "Physical confidence classification and positional uncertainty for broad filters need design review.",
+    "No measured critical-path or optional worker budget qualification for this prototype.",
+    "Existing native source library linked; concurrent caption header changes are separate and not relabeled as clean prototype source."
+  ]
+}

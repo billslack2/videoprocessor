@@ -1,0 +1,14 @@
+{
+  "status": "PreExistingAssertionMismatchVerified",
+  "baselineSourcePin": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "scope": "Single CPU Native method, no build/GPU/live VP interruption",
+  "baselineReceipt": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-085439-f108e0f7\\iteration.json",
+  "baselineReceiptSha256": "9dc39f21744af8bacf74343fb6297d2d106d9d281805d20ead666f0de55ee587",
+  "dll": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\VideoProcessor-Test.dll",
+  "dllSha256": "538310d2a9bdc7213a8acab6c77979286e55730d358427677be83aea00993cf8",
+  "trxSha256": "d8098e58e1d41f51a8c3569ba14ef35e3eb6cb305eafcbbf1a778acbeb119be3",
+  "method": "PendingSharedCueRejectsLostPhysicalBarsWhenAcceptedGlyphPixelsAreUnchanged",
+  "testOutcome": "Failed",
+  "message": "Assert failed. Expected:<current-bars-changed> Actual:<current-black-backing-changed> - old shared bounds and unchanged accepted glyph pixels cannot stand in for disappeared physical bars",
+  "semanticSafetyOutcome": "Resolve correctly rejected lost current bars; an earlier current black backing check supplied the reason."
+}

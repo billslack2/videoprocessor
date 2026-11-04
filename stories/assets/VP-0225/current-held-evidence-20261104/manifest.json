@@ -1,0 +1,70 @@
+{
+  "scope": "Compact receipts only; no movie pixels; failed GPU attempt preserved as failed",
+  "assets": [
+    {
+      "asset": "component-before.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\red-receipt.json",
+      "bytes": 49756,
+      "sha256": "1c03531cc5a742be66e52de0233f53bf3d79026c771a5e3b6d502dd34ce6569a"
+    },
+    {
+      "asset": "component-after.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\green\\receipt.json",
+      "bytes": 3079,
+      "sha256": "19c80fe0e6ee1e329d60fa013a5e3f0be191d63967d560504d7559c8e2cf41e8"
+    },
+    {
+      "asset": "native-1119.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-094431-19113e10\\iteration.json",
+      "bytes": 2712,
+      "sha256": "56f8d7e097759bfff53eabe5927e888e38d3991b567ec828d091e2c837145c15"
+    },
+    {
+      "asset": "release-focused-two.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-095618-e7d13ff2\\iteration.json",
+      "bytes": 4825,
+      "sha256": "7a1bdde5f96cc87f5091ac31198320d68d15cdcad75ec578dc093a8d026aec39"
+    },
+    {
+      "asset": "lookahead-234.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\lookahead-189dd786\\receipt.json",
+      "bytes": 1013,
+      "sha256": "e1a4cf7e0ec1d2660644c75663302831dcbc9f139131ad98c9be80aaa6e010cd"
+    },
+    {
+      "asset": "gpu-attempt-failed.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-100323\\timed\\receipt.json",
+      "bytes": 10170,
+      "sha256": "9e3283a19ede46d603b83074764db25caa54c50344b5c2081e84417f7fe48cec"
+    },
+    {
+      "asset": "installed-runtime-restored.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\isolation-scripture-20261104-100323\\receipt.json",
+      "bytes": 3164,
+      "sha256": "39c18287068cca5977056da218cafb43a15910cdb9738c060c6fee741839a6a5"
+    },
+    {
+      "asset": "ar-prototype-open.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\native-review\\step-v4\\receipt.json",
+      "bytes": 14403,
+      "sha256": "6cffdc1a55d4ff49b2a7954d286669b30c0b1ced9939492bc1261e14178b4393"
+    },
+    {
+      "asset": "baseline-assertion.json",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\pending-bars-baseline-1b0\\verification.json",
+      "bytes": 1209,
+      "sha256": "6e6799d7ca7b359dceaf228e77966162edc97e76245556af5cf5d0db9498d598"
+    },
+    {
+      "asset": "design.md",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\docs\\CURRENT_HELD_PRESENTATION_EVIDENCE.md",
+      "bytes": 5321,
+      "sha256": "9232fa121243e5af51e817dfe421e3742f9d05cdaa6b1b8b374f66d8337a10c6"
+    },
+    {
+      "asset": "summary.json",
+      "bytes": 1919,
+      "sha256": "7e4fd89aca4cafc9f53d5b73ea4843bd55ac24ac02f6e65fbdd041fedcba15f8"
+    }
+  ]
+}

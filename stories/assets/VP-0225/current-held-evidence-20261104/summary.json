@@ -1,0 +1,55 @@
+{
+  "status": "InProgress",
+  "acceptance": "OPEN",
+  "deployedThisUpdate": false,
+  "fullQualification": false,
+  "installedSource": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "candidateSource": "189dd7863afd4af569ed7c56e8f11d37b7f6bc5e",
+  "component": {
+    "originalConsecutiveSources": 83,
+    "qualifiedBefore": 23,
+    "qualifiedAfter": 83,
+    "heldRejectedBefore": 60,
+    "heldRejectedAfter": 0,
+    "omittedCurrentGlyphSamples": 0,
+    "unchangedProducer": true,
+    "reverifiedOriginalInputFiles": 166,
+    "gpuComposition": "modeled only"
+  },
+  "validation": {
+    "native": {
+      "source": "4998b57883610483166d0730e1004980d879078f",
+      "passed": 1119,
+      "notClaimedAsFull1120": true
+    },
+    "matchingReleaseFocusedCpu": {
+      "source": "189dd7863afd4af569ed7c56e8f11d37b7f6bc5e",
+      "passed": 2
+    },
+    "fullLookaheadClass": {
+      "source": "189dd7863afd4af569ed7c56e8f11d37b7f6bc5e",
+      "passed": 234
+    },
+    "actualRenderer": {
+      "passed": false,
+      "completedTrxProduced": false,
+      "exitCode": -1073741571,
+      "exitHex": "0xC00000FD",
+      "failure": "stack overflow; fixture/seam diagnosis pending",
+      "visual": "not run"
+    }
+  },
+  "arPrototype": {
+    "productionChanged": false,
+    "readyOrQualified": false,
+    "currentTallNominees": 181,
+    "currentTallCropProofs": 0,
+    "limitation": "Original colored edge support extends beyond nominal midpoint; unchanged strict crop verifier vetoes. Temporal/current-support investigation remains open."
+  },
+  "remaining": [
+    "Actual current renderer composition, stable mapping and deadlines for the repaired held route",
+    "Visual and user acceptance across real changing cues and 1.90/2.39 scenes",
+    "Stable accurate physical AR and complete current support on the181 tall samples",
+    "Broader live real-time qualification"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "status": "Passed",
+  "scope": "Full SubtitleBoxLookaheadTests CPU class; no GPU/live player changes",
+  "source": {
+    "commit": "189dd7863afd4af569ed7c56e8f11d37b7f6bc5e",
+    "dirty": false,
+    "fingerprint": "774d925fed1a32c4fdb4d8a58911ad512ba67ce0b55d1d79d1948720c2b4857a",
+    "label": "189dd7863afd",
+    "build": "189dd7863afd4af569ed7c56e8f11d37b7f6bc5e"
+  },
+  "matchingReleaseReceipt": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-095618-e7d13ff2\\iteration.json",
+  "matchingReleaseReceiptSha256": "7a1bdde5f96cc87f5091ac31198320d68d15cdcad75ec578dc093a8d026aec39",
+  "testDllSha256": "3d2c9d8ab838fa5614c73081499602aa90e67549c7faa0a10e26a8c0213644f9",
+  "executed": 234,
+  "passed": 234,
+  "failed": 0,
+  "other": 0,
+  "processExitCode": 0,
+  "trxSha256": "00fb12f739b73d8d5fffe66d07f8b71c6a71f445ec69e5272e33b6fd1923dbe1",
+  "logSha256": "9101f16d2e5e3495bf9741c6e04569a91a9607893cdafc4d8207df36dc22f2da"
+}

@@ -1,0 +1,63 @@
+{
+  "status": "GREEN",
+  "sourcePin": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "sourceWorkingChanges": true,
+  "redReceiptSha256": "1c03531cc5a742be66e52de0233f53bf3d79026c771a5e3b6d502dd34ce6569a",
+  "scope": "CPU actual native sampler, three-source Resolve and natural tracker; compositor success modeled only; no GPU/timing qualification",
+  "inputPixelEdits": false,
+  "forcedHeldFlags": false,
+  "originalIdentitiesUnchanged": true,
+  "inputFilesRehashed": 166,
+  "producerUnchanged": true,
+  "sources": 83,
+  "held": 60,
+  "qualifiedBefore": 23,
+  "qualifiedAfter": 83,
+  "heldRejectedBefore": 60,
+  "heldRejectedAfter": 0,
+  "omittedSamples": 0,
+  "rawCaptureAndCardMetadataUnchanged": true,
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\consecutive-held-replay.cpp",
+      "sha256": "f09e040637342635ecece29757e3d12b2aa36949dd15b79c595482ed37e3340e",
+      "bytes": 9506
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\tools\\subtitle_tolerance_replay.cpp",
+      "sha256": "bd92be5ddfae1a997dabae763142657c42bb3267c7bcfcd340d0eabc48f54679",
+      "bytes": 26148
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\green\\build\\ConsecutiveHeldReplay.exe",
+      "sha256": "21b57a7c08591dfc111b82d95dbe533f82230a5211ecd5879dc7307f228aff74",
+      "bytes": 1353216
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\x64\\Release\\VideoProcessor-Lib.lib",
+      "sha256": "61c6170c129cb4bfdfca47029fd11595b09f1e0c71f3d3590fc5ca9df4e06872",
+      "bytes": 132117694
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\green\\frames.jsonl",
+      "sha256": "bf1373b05a54237e7ac72998404b460034e3815783d8f637ecdadd5568424a36",
+      "bytes": 107339
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-090405\\caption-contract\\held-replay\\green\\diagnostic-trace.jsonl",
+      "sha256": "0ab6133906d992a48a7a8168c433f55b61b2630636e47ed8e58ef3282bb52ed0",
+      "bytes": 29483
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h",
+      "sha256": "13c86b8030ccad4391a39023c72779305a4e11995abc2393baf5ac7d55f3c437",
+      "bytes": 270456
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\src\\VideoProcessor-Lib\\SubtitleCurrentPreparedCueCertificate.h",
+      "sha256": "5fee3d83e4a2dc5e668bbef3e3206ed3887c379d0c254c29f57b6c1fd5fef10f",
+      "bytes": 5782
+    }
+  ],
+  "workingDiffSha256": "2acc7a54ecb5ccbe23424743318601d764ffe2d45847283230a436c9c3a7917d"
+}
