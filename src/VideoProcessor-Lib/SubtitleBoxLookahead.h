@@ -126,10 +126,65 @@ class SubtitleInspectionWorkStamp {
     bool independentBars=false;
 };
 
+// Exact-current excluded-band proof may supply a sampling/placement plane.
+// It never changes raw bar evidence, physical detection, or crop authority.
+class SubtitleCurrentSamplingBasis {
+public:
+    template<class Observation>
+    void Apply(Observation& o,std::shared_ptr<const CurrentSourceSupportEvidence> support) {
+        if(!support || !support->evaluated || !support->verified ||
+            !SameAnalysisFrameIdentity(support->identity,o.identity) ||
+            !o.sharedPicture.AvailableFor(o.identity,o.width,o.height) ||
+            o.inspectionCandidateUsed || !o.barEvidence.available || o.glyphLocalTop || o.glyphLocalBottom)
+            return;
+        const auto& b=support->samplingBounds;const auto& v=support->verification;
+        const auto& shared=o.sharedPicture.bounds;
+        if(b.rasterWidth!=o.width || b.rasterHeight!=o.height || b.left!=0 || b.right!=o.width ||
+            b.top<0 || b.bottom>o.height || b.top>=b.bottom ||
+            v.vertical!=ActivePictureCandidateVerificationState::VERIFIED ||
+            (v.sourceGeneration!=o.identity.transportGeneration && v.sourceGeneration!=o.identity.sourceFormatGeneration) ||
+            v.bounds.rasterWidth!=o.width || v.bounds.rasterHeight!=o.height ||
+            v.bounds.left!=0 || v.bounds.right!=o.width ||
+            v.bounds.top<b.top || v.bounds.bottom>b.bottom || v.bounds.top>=v.bounds.bottom)
+            return;
+        // Only the independently verified matching side can supply a plane.
+        // A caption-expanded support bottom is never a physical bottom.
+        const bool top=b.top==shared.top && b.top>0 && o.barEvidence.bottom<o.height &&
+            (o.barEvidence.top==0 || std::abs(o.barEvidence.top-b.top)<=3);
+        const bool bottom=b.bottom==shared.bottom && b.bottom<o.height && o.barEvidence.top>0 &&
+            (o.barEvidence.bottom==o.height || std::abs(o.barEvidence.bottom-b.bottom)<=3);
+        if(!top && !bottom)return;
+        m_support=std::move(support);m_identity=o.identity;m_base=shared;
+        m_policy=o.policyGeneration;m_continuity=o.continuityGeneration;
+        m_rawTop=o.barEvidence.top;m_rawBottom=o.barEvidence.bottom;
+        if(top)o.pictureTop=b.top;
+        if(bottom)o.pictureBottom=b.bottom;
+        m_top=o.pictureTop;m_bottom=o.pictureBottom;
+        o.independentBarAnalysis=false;
+    }
+    template<class Observation> bool Matches(const Observation& o)const {
+        const auto& b=o.sharedPicture.bounds;
+        return m_support && SameAnalysisFrameIdentity(m_identity,o.identity) &&
+            SameAnalysisFrameIdentity(m_support->identity,o.identity) &&
+            o.policyGeneration==m_policy && o.continuityGeneration==m_continuity &&
+            o.sharedPicture.AvailableFor(o.identity,o.width,o.height) &&
+            b.left==m_base.left && b.top==m_base.top && b.right==m_base.right && b.bottom==m_base.bottom &&
+            b.rasterWidth==m_base.rasterWidth && b.rasterHeight==m_base.rasterHeight &&
+            o.pictureTop==m_top && o.pictureBottom==m_bottom &&
+            o.barEvidence.top==m_rawTop && o.barEvidence.bottom==m_rawBottom;
+    }
+private:
+    std::shared_ptr<const CurrentSourceSupportEvidence> m_support;
+    ActivePictureFrameIdentity m_identity;ActivePictureBounds m_base;
+    uint64_t m_policy=0,m_continuity=0;
+    int m_rawTop=0,m_rawBottom=0,m_top=0,m_bottom=0;
+};
+
 // A measurement belongs to source pixels, never retained presentation geometry.
 struct SubtitleBoxObservation
 {
     SubtitlePictureAuthority sharedPicture;
+    SubtitleCurrentSamplingBasis samplingBasis;
     int nearBarDistance=0;
     int optimizationMode=0;
     unsigned analysisStride=1;
@@ -450,7 +505,8 @@ namespace SubtitleBoxLookahead
         const ActivePictureFrameIdentity& identity, bool discontinuity,
         const SubtitleBarTrackingReference& priorBar = {},
         uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0,
-        const SubtitlePictureAuthority& sharedPicture = {})
+        const SubtitlePictureAuthority& sharedPicture = {},
+        std::shared_ptr<const CurrentSourceSupportEvidence> currentSupport = {})
     {
         SubtitleBoxObservation result;
         const auto start = std::chrono::steady_clock::now();
@@ -594,6 +650,7 @@ namespace SubtitleBoxLookahead
                     !bars.bottomRevalidatedAtReference && !bars.topRevalidatedNearby &&
                     !bars.bottomRevalidatedNearby && !bars.captionBackedTop &&
                     !bars.captionBackedBottom;
+                result.samplingBasis.Apply(result,std::move(currentSupport));
                 if(result.barAuthority && !result.glyphLocalTop &&
                     !result.glyphLocalBottom) {
                     scanner.Reset();
@@ -3495,7 +3552,8 @@ public:
             certificateDecision.Check(CertificateFact::SharedPicture,
                 preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height)) &&
             certificateDecision.Check(CertificateFact::MeasuredEdges,
-                preview.current.pictureTop==preview.current.barEvidence.top && preview.current.pictureBottom==preview.current.barEvidence.bottom) &&
+                (preview.current.pictureTop==preview.current.barEvidence.top && preview.current.pictureBottom==preview.current.barEvidence.bottom) ||
+                preview.current.samplingBasis.Matches(preview.current)) &&
             certificateDecision.Check(CertificateFact::CurrentContext,
                 preview.current.policyGeneration==preview.policyGeneration && preview.current.continuityGeneration==preview.continuityGeneration) &&
             certificateDecision.Check(CertificateFact::LineCoverage,currentPreparedLineCoverage) &&

@@ -9518,13 +9518,19 @@ struct LibplaceboVideoRenderer::Impl
             // starts. Reuse only its exact immutable source/owner/domain result;
             // no presentation geometry or another source can satisfy this read.
             auto currentNative=nativeEvidence;
-            if(!currentNative.available && analysisCache) {
+            std::shared_ptr<const CurrentSourceSupportEvidence> currentSupport;
+            if(analysisCache) {
                 const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
-                if(CurrentLookaheadMeasurement(prepared,key.identity,raw))currentNative=raw->evidence;
+                if(CurrentLookaheadMeasurement(prepared,key.identity,raw)) {
+                    if(!currentNative.available)currentNative=raw->evidence;
+                    if(raw->sourcePictureSupport)
+                        currentSupport=std::shared_ptr<const CurrentSourceSupportEvidence>(raw->sourcePictureSupport,
+                            &raw->sourcePictureSupport->currentSupport);
+                }
             }
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
-            auto result=scanner.Measure(prepared.source,key,reference,fps,currentNative);
+            auto result=scanner.Measure(prepared.source,key,reference,fps,currentNative,std::move(currentSupport));
             if(SourcePictureDetectorEnabled() && !result.subtitleArProof.accepted && analysisCache) {
                 // The spatial job can finish while glyphs are being measured.
                 const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);

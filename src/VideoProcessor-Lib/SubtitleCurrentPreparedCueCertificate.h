@@ -30,7 +30,8 @@ public:
             current.policyGeneration==m_policy && current.continuityGeneration==m_continuity &&
             current.width==m_width && current.height==m_height &&
             current.pictureTop==m_pictureTop && current.pictureBottom==m_pictureBottom &&
-            current.barEvidence.top==current.pictureTop && current.barEvidence.bottom==current.pictureBottom &&
+            ((current.barEvidence.top==current.pictureTop && current.barEvidence.bottom==current.pictureBottom) ||
+                current.samplingBasis.Matches(current)) &&
             current.nearBarDistance==m_nearBar && current.optimizationMode==m_optimization && current.scriptHint==m_script &&
             current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
             SameBounds(current.sharedPicture.bounds,m_base) && SameBounds(physicalBase,m_base) &&

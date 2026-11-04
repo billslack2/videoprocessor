@@ -124,7 +124,8 @@ public:
     }
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/,
-        const ActivePictureEvidence& nativeEvidence = {}) {
+        const ActivePictureEvidence& nativeEvidence = {},
+        std::shared_ptr<const CurrentSourceSupportEvidence> currentSupport = {}) {
         const auto started=std::chrono::steady_clock::now();
         if(m_analysisDomainKey!=key.identity.analysisDomainKey) {
             m_scanner.Reset();m_analysisDomainKey=key.identity.analysisDomainKey;
@@ -133,7 +134,7 @@ public:
         m_scanner.SetScriptHint(key.scriptHint);
         m_scanner.SetNearBarDistance(key.nearBarDistance);
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
-            prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
+            prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture,std::move(currentSupport));
         result.analysisStride=key.analysisStride;
         // A cold independent bar probe can be unavailable even though this
         // source has a spatial nominee. Inspect that nominee only when no raw

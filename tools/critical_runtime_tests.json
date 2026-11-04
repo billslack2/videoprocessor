@@ -13,8 +13,10 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1130,
+  "minimumNativeTests": 1132,
   "requiredNativeMethods": [
+    "CurrentVerifiedSamplingBasisPreservesRawUnknownAndHeldGlyphProof",
+    "CurrentSamplingBasisRejectsForeignUnverifiedAndContradictoryEvidence",
     "CapturedCurrentSupportCannotReplaceAdmittedNativeFill",
     "CurrentSupportFallbackRequiresVerifiedEligibilityAndNoAdmittedOperation",
     "PresentationTelemetryPinsFinalFillAndPhysicalFactsToSelectedSource",
@@ -468,6 +470,16 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentVerifiedSamplingBasisPreservesRawUnknownAndHeldGlyphProof"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentSamplingBasisRejectsForeignUnverifiedAndContradictoryEvidence"
+    },
     {
       "source": "src/VideoProcessor-Test/DebugLogAsyncTests.cpp",
       "class": "DebugLogAsyncTests",

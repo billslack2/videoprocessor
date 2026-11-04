@@ -665,6 +665,79 @@ public:
             L"Even dense ambiguous content is bounded to512KiB numeric storage, and overflow grants no uncertainty permission.");
         Assert::IsFalse(dense.Append(0,676,512,512),L"Overflow cannot silently restart with an incomplete sparse plane.");
     }
+    TEST_METHOD(CurrentVerifiedSamplingBasisPreservesRawUnknownAndHeldGlyphProof) {
+        auto supportFor=[](const SubtitleBoxObservation& o) {
+            auto p=std::make_shared<CurrentSourceSupportEvidence>();
+            p->evaluated=p->verified=true;p->identity=o.identity;
+            p->samplingBounds=o.sharedPicture.bounds;
+            p->samplingBounds.bottom=o.height-10; // Current caption-expanded support, NOT picture bottom.
+            p->verification.bounds=p->samplingBounds;
+            p->verification.sourceGeneration=o.identity.transportGeneration;
+            p->verification.vertical=ActivePictureCandidateVerificationState::VERIFIED;
+            return p;
+        };
+        auto tracker=std::make_unique<SubtitleBoxPresentation>();
+        const SubtitleBoxObservation seed[2]={CurrentHeldProofCue(1),CurrentHeldProofCue(2)};
+        const auto acquired=tracker->Consume(SubtitleBoxLookahead::Resolve(seed,2,7,9),250,16.683);
+        Assert::IsTrue(acquired.detected&&!acquired.held);
+        for(int rawTop:{0,48}) {
+            const uint64_t sequence=rawTop==0?2:3;
+            const SubtitleBoxObservation scans[2]={CurrentHeldProofCue(sequence),CurrentHeldProofCue(sequence+1)};
+            auto current=SubtitleBoxLookahead::Resolve(scans,2,7,9);
+            current.text.lineCount=1;current.text.lineBounds[1]={};
+            auto& raw=current.current;raw.barEvidence.top=raw.pictureTop=rawTop;
+            const auto ink=raw.ink;const int bottom=raw.pictureBottom;
+            auto support=supportFor(raw);
+            std::weak_ptr<const CurrentSourceSupportEvidence> lifetime=support;
+            raw.samplingBasis.Apply(raw,support);support.reset();
+            Assert::IsFalse(lifetime.expired(),L"The immutable witness owns the completed worker proof after callback release.");
+            Assert::IsTrue(raw.samplingBasis.Matches(raw));
+            Assert::AreEqual(raw.sharedPicture.bounds.top,raw.pictureTop);
+            Assert::AreEqual(bottom,raw.pictureBottom,L"The caption support envelope must not replace the measured bottom.");
+            Assert::AreEqual(rawTop,raw.barEvidence.top);
+            Assert::IsTrue(raw.ink==ink);Assert::IsFalse(raw.independentBarAnalysis);
+            const auto held=tracker->Consume(current,250,16.683);
+            Assert::IsTrue(held.detected&&held.held);
+            Assert::IsTrue(tracker->CurrentPreparedCueCertificate().Matches(raw,held,raw.sharedPicture.bounds));
+            auto stale=raw;++stale.identity.acceptedSequence;
+            Assert::IsFalse(stale.samplingBasis.Matches(stale));
+            auto policy=raw;++policy.policyGeneration;
+            Assert::IsFalse(policy.samplingBasis.Matches(policy));
+            auto continuity=raw;++continuity.continuityGeneration;
+            Assert::IsFalse(continuity.samplingBasis.Matches(continuity));
+            auto changedRaw=raw;++changedRaw.barEvidence.top;
+            Assert::IsFalse(changedRaw.samplingBasis.Matches(changedRaw));
+            auto base=raw;++base.sharedPicture.bounds.top;
+            Assert::IsFalse(base.samplingBasis.Matches(base));
+        }
+    }
+    TEST_METHOD(CurrentSamplingBasisRejectsForeignUnverifiedAndContradictoryEvidence) {
+        for(int fault=0;fault<12;++fault) {
+            auto raw=CurrentHeldProofCue(2);raw.pictureTop=raw.barEvidence.top=0;
+            auto support=std::make_shared<CurrentSourceSupportEvidence>();
+            support->evaluated=support->verified=true;support->identity=raw.identity;
+            support->samplingBounds=raw.sharedPicture.bounds;support->samplingBounds.bottom=350;
+            support->verification.bounds=support->samplingBounds;
+            support->verification.sourceGeneration=raw.identity.transportGeneration;
+            support->verification.vertical=ActivePictureCandidateVerificationState::VERIFIED;
+            if(fault==0)++support->identity.acceptedSequence;
+            if(fault==1)++support->identity.sourceFrameNumber;
+            if(fault==2)++support->identity.analysisDomainKey;
+            if(fault==3)++support->identity.viewportGeneration;
+            if(fault==4)support->verified=false;
+            if(fault==5)support->verification.vertical=ActivePictureCandidateVerificationState::UNKNOWN;
+            if(fault==6)++support->samplingBounds.top;
+            if(fault==7)--support->samplingBounds.rasterHeight;
+            if(fault==8)raw.barEvidence.top=raw.pictureTop=raw.sharedPicture.bounds.top-20;
+            if(fault==9)raw.inspectionCandidateUsed=true;
+            if(fault==10)raw.barEvidence.bottom=raw.pictureBottom=raw.height;
+            if(fault==11)--support->verification.bounds.top;
+            const int beforeTop=raw.pictureTop,beforeBottom=raw.pictureBottom;
+            raw.samplingBasis.Apply(raw,support);
+            Assert::IsFalse(raw.samplingBasis.Matches(raw));
+            Assert::AreEqual(beforeTop,raw.pictureTop);Assert::AreEqual(beforeBottom,raw.pictureBottom);
+        }
+    }
     TEST_METHOD(CurrentHeldPreparedCueUsesCurrentRevalidatedBarsWithoutAcquiringNativeAuthority) {
         auto tracker=std::make_unique<SubtitleBoxPresentation>();
         const SubtitleBoxObservation seed[2]={CurrentHeldProofCue(1),CurrentHeldProofCue(2)};
