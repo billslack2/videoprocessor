@@ -16609,6 +16609,7 @@ struct LibplaceboVideoRenderer::Impl
              &rawSubtitleFallbackCurrent, &unprocessedCurrentSourceCurrent, &temporalOutputContract,
              &reviseSourcePresentation, &priorRevisionSnapshot, &revisedSourcePolicyTick, &currentSubtitlePreview,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
+             reuseSubtitlePreparation, currentCueProofConsumed, subtitleCutPasteBackground,
              currentNoCaptionConfirmed, currentRawCandidateComplete, currentSubtitleScanReason, currentSubtitleBarStripClearance,
              currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels, &qualifiedPendingFinalPixels, cadenceCacheDiagnostic,
              currentCaptionFitWorkerBase, captionAnchorContextMatches, &state, &videoFrame,
