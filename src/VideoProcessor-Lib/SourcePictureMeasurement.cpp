@@ -194,16 +194,25 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
         const auto border=read(0);
         auto add=[&](int offset,bool strong,int uncertainty=0) {
             const int coordinate=leading?offset:depth-offset;
-            auto& votes=candidates[coordinate];auto& candidate=votes.edge;
             const int minimum=leading?coordinate:coordinate-uncertainty;
             const int maximum=leading?coordinate+uncertainty:coordinate;
-            if(!candidate.coverage) {candidate.minimum=minimum;candidate.maximum=maximum;}
-            else {candidate.minimum=std::min(candidate.minimum,minimum);candidate.maximum=std::max(candidate.maximum,maximum);}
-            candidate.coordinate=coordinate;candidate.coverage=kEdgeProbes;
-            const uint64_t bit=uint64_t(1)<<(i%64);
-            if(!(votes.rays[i/64]&bit)) {++candidate.support;++candidate.regionSupport[i/32];}
-            votes.rays[i/64]|=bit;
-            candidate.strong=candidate.strong||strong;
+            // Each ray supports only its measured abrupt point or bounded
+            // integrated interval. Count it once at every coordinate it can
+            // actually establish, rather than splitting uncertain departures
+            // by their first row and later borrowing neighboring ray counts.
+            for(int supported=minimum;supported<=maximum;++supported) {
+                auto& votes=candidates[supported];auto& candidate=votes.edge;
+                if(!candidate.coverage) {candidate.minimum=minimum;candidate.maximum=maximum;}
+                else {
+                    candidate.minimum=std::max(candidate.minimum,minimum);
+                    candidate.maximum=std::min(candidate.maximum,maximum);
+                }
+                candidate.coordinate=supported;candidate.coverage=kEdgeProbes;
+                const uint64_t bit=uint64_t(1)<<(i%64);
+                if(!(votes.rays[i/64]&bit)) {++candidate.support;++candidate.regionSupport[i/32];}
+                votes.rays[i/64]|=bit;
+                candidate.strong=candidate.strong||strong;
+            }
         };
         if(Foreground(border,floor) && Foreground(read(sustain),floor))add(0,true);
         // Keep every sustained matte-to-picture departure, including a scene
@@ -251,36 +260,13 @@ void EdgeCandidates(Reader& reader,SourcePictureEdge edge,int floor,SourcePictur
         }
     }
     auto& result=out.edges[unsigned(edge)];
-    // Merge only a fixed two-native-coordinate span, never a transitive chain.
-    // Bitsets count each source ray once even when it supports two close rows.
-    for(auto current=candidates.begin();current!=candidates.end();) {
-        Votes merged=current->second;const int firstCoordinate=current->first;
-        unsigned strongestSupport=merged.edge.support;
-        int strongestCoordinate=current->first;
-        auto next=std::next(current);
-        const bool terminal=firstCoordinate==0 || firstCoordinate==depth;
-        while(next!=candidates.end() && !terminal && next->first!=0 && next->first!=depth &&
-            next->first-firstCoordinate<=2 &&
-            std::max(merged.edge.maximum,next->second.edge.maximum)-std::min(merged.edge.minimum,next->second.edge.minimum)<=2) {
-            if(next->second.edge.support>strongestSupport ||
-                (!leading && next->second.edge.support==strongestSupport)) {
-                strongestSupport=next->second.edge.support;strongestCoordinate=next->first;
-            }
-            merged.edge.minimum=std::min(merged.edge.minimum,next->second.edge.minimum);
-            merged.edge.maximum=std::max(merged.edge.maximum,next->second.edge.maximum);
-            merged.edge.strong=merged.edge.strong||next->second.edge.strong;
-            for(unsigned word=0;word<2;++word)merged.rays[word]|=next->second.rays[word];
-            ++next;
-        }
-        // The interval retains weak neighboring votes; they cannot move the
-        // nominal physical boundary away from its strongest current support.
-        merged.edge.coordinate=strongestCoordinate;
-        merged.edge.support=0;merged.edge.regionSupport={};
-        merged.edge.supportingRays=merged.rays;
-        for(unsigned ray=0;ray<kEdgeProbes;++ray)if(merged.rays[ray/64]&(uint64_t(1)<<(ray%64))) {
-            ++merged.edge.support;++merged.edge.regionSupport[ray/32];
-        }
-        result.push_back(merged.edge);current=next;
+    // Keep competing coordinates separate: every supporting ray must contain
+    // the nominated coordinate in its own measured interval. A union here
+    // would reintroduce unsupported votes and transitive edge chains.
+    for(auto& entry:candidates) {
+        auto& votes=entry.second;
+        votes.edge.supportingRays=votes.rays;
+        result.push_back(votes.edge);
     }
     std::sort(result.begin(),result.end(),[&](const auto& a,const auto& b){return leading?a.coordinate<b.coordinate:a.coordinate>b.coordinate;});
 }

@@ -13,8 +13,10 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1114,
+  "minimumNativeTests": 1116,
   "requiredNativeMethods": [
+    "SourcePictureOverlappingQuantizedRayIntervalsKeepCurrentEdgeAcrossPhases",
+    "SourcePictureRayIntervalConsensusRejectsSeparatedChainsAndDuplicateRays",
     "ColdCurrentSpatialNomineeProducesExactRawWorkWithoutNativeAuthority",
     "CurrentSpatialNomineeRejectsForeignOrUnavailableEvidence",
     "CurrentSpatialNomineeMaskCannotAuthorizeConnectedPictureOrMenu",

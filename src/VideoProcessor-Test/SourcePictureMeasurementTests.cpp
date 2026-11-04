@@ -101,6 +101,77 @@ namespace VideoProcessorTest
             return frame;
         }
     public:
+        TEST_METHOD(SourcePictureOverlappingQuantizedRayIntervalsKeepCurrentEdgeAcrossPhases)
+        {
+            constexpr int width=960,height=540,coreTop=96,bottom=480;
+            const int profiles[4][3]={{68,68,72},{68,68,76},{68,72,72},{68,72,72}};
+            for(int phase=0;phase<4;++phase) {
+                SourcePictureFrame frame(width,height);frame.Fill(0,coreTop,width,bottom,300);
+                for(int x=0;x<width;++x) {
+                    const int ray=x*128/width,ordinal=ray/2;
+                    if((ray&1)||ordinal>=62)continue;
+                    const int start=ordinal<16?67:ordinal<47?68:69;
+                    frame.Fill(x,start+3,x+1,coreTop,(phase&1)?76:72);
+                    for(int row=0;row<3;++row)frame.Fill(x,start+row,x+1,start+row+1,profiles[phase][row]);
+                }
+                const auto observed=MeasureSourcePicture(frame.Source());
+                std::ostringstream diagnostic;diagnostic<<"phase="<<phase<<" reason="<<observed.reason;
+                for(const auto& edge:observed.edges[unsigned(SourcePictureEdge::Top)])
+                    diagnostic<<" edge="<<edge.coordinate<<"["<<edge.minimum<<","<<edge.maximum<<"]:"<<edge.support;
+                Logger::WriteMessage(diagnostic.str().c_str());
+                Assert::IsTrue(observed.complete&&observed.rectangleAvailable,
+                    L"Current distributed ray uncertainty must not become UNKNOWN merely because exact starting bins each miss32.");
+                Assert::AreEqual(68,observed.measuredBounds.top,
+                    L"Row68 is the outermost qualified coordinate:47 unique source-ray intervals support it; later picture at96 is not the departure.");
+                Assert::AreEqual(bottom,observed.measuredBounds.bottom);
+                Assert::AreEqual(double(width)/(bottom-68),observed.measuredBounds.aspectRatio,1e-12);
+                const auto& edges=observed.edges[unsigned(SourcePictureEdge::Top)];
+                Assert::IsTrue(std::any_of(edges.begin(),edges.end(),[](const SourcePictureEdgeCandidate& edge) {
+                    unsigned unique=0;for(auto word:edge.supportingRays)while(word){word&=word-1;++unique;}
+                    return edge.coordinate==68&&edge.minimum<=68&&edge.maximum>=68&&edge.support==47&&unique==47;
+                }),L"Support must be47 distinct current source rays at the selected coordinate, not a union of nominal candidate counts.");
+            }
+        }
+
+        TEST_METHOD(SourcePictureRayIntervalConsensusRejectsSeparatedChainsAndDuplicateRays)
+        {
+            constexpr int width=960,height=540,coreTop=112,bottom=480;
+            for(int fault=0;fault<3;++fault) {
+                SourcePictureFrame frame(width,height);frame.Fill(0,coreTop,width,bottom,300);
+                std::array<std::vector<std::pair<int,int>>,128> intervals;
+                for(int ray=0;ray<128;++ray) {
+                    const int ordinal=ray/2;
+                    if(fault==2) {
+                        if(ray%8==0)intervals[ray]={{67,69},{81,83}};
+                    } else if(!(ray&1)&&ordinal<62) {
+                        const int group=ordinal<16?0:ordinal<47?1:2;
+                        const int start=67+group*(fault==0?3:2);
+                        intervals[ray]={{start,start+2}};
+                    }
+                }
+                for(int x=0;x<width;++x)for(const auto& interval:intervals[x*128/width]) {
+                    const int start=interval.first;
+                    frame.Fill(x,start,x+1,start+2,68);
+                    frame.Fill(x,start+2,x+1,fault==2?start+9:coreTop,72);
+                }
+                const auto observed=MeasureSourcePicture(frame.Source());
+                Assert::IsTrue(observed.complete);
+                for(const auto& edge:observed.edges[unsigned(SourcePictureEdge::Top)])if(edge.coordinate<coreTop) {
+                    unsigned compatible=0,unique=0;
+                    for(const auto& ray:intervals)if(std::any_of(ray.begin(),ray.end(),[&](const std::pair<int,int>& interval) {
+                        return interval.first<=edge.coordinate&&edge.coordinate<=interval.second;
+                    }))++compatible;
+                    for(auto word:edge.supportingRays)while(word){word&=word-1;++unique;}
+                    Assert::IsTrue(edge.support<=compatible,
+                        L"A candidate cannot borrow nonintersecting intervals through a transitive chain.");
+                    Assert::AreEqual(edge.support,unique,L"Repeated departures on one ray count only once.");
+                    if(fault==2)Assert::IsTrue(edge.support<=16);
+                }
+                if(fault!=1)Assert::IsFalse(observed.rectangleAvailable&&observed.measuredBounds.top<coreTop,
+                    L"Separated under-supported edges and repeated same-ray departures cannot reach the unchanged support threshold.");
+            }
+        }
+
         TEST_METHOD(SourcePictureQuantizedFourPhaseEdgeKeepsBoundedNativeGeometry)
         {
             constexpr int width=960,height=540,top=17,bottom=523;
@@ -158,11 +229,24 @@ namespace VideoProcessorTest
             const auto observed=MeasureSourcePicture(frame.Source());
             Assert::IsTrue(observed.complete && observed.rectangleAvailable);
             const auto& edges=observed.edges[unsigned(SourcePictureEdge::Bottom)];
-            Assert::IsTrue(std::any_of(edges.begin(),edges.end(),[&](const SourcePictureEdgeCandidate& edge) {
-                return edge.minimum==bottom-1 && edge.maximum==bottom+1 && edge.support==128 && edge.coverage==128 &&
-                    std::all_of(edge.regionSupport.begin(),edge.regionSupport.end(),[](unsigned count){return count==32;});
-            }),L"Coherent adjacent-row support must aggregate each source ray once and expose its measured two-row span.");
-            Assert::IsTrue(observed.measuredBounds.bottom>=bottom-1 && observed.measuredBounds.bottom<=bottom+1);
+            for(int row=bottom-1;row<=bottom+1;++row) {
+                const auto found=std::find_if(edges.begin(),edges.end(),[&](const SourcePictureEdgeCandidate& edge) {
+                    return edge.coordinate==row;
+                });
+                Assert::IsTrue(found!=edges.end());
+                Assert::AreEqual(row,found->minimum);Assert::AreEqual(row,found->maximum);
+                unsigned expected=0;
+                for(unsigned ray=0;ray<128;++ray) {
+                    const bool supports=bottom+int(ray%3)-1==row;
+                    const bool recorded=(found->supportingRays[ray/64]&(uint64_t(1)<<(ray%64)))!=0;
+                    Assert::AreEqual(supports,recorded,L"An exact-row edge cannot borrow another source ray's different exact boundary.");
+                    expected+=supports;
+                }
+                Assert::AreEqual(expected,found->support);Assert::AreEqual(128u,found->coverage);
+                Assert::IsTrue(expected>=42&&expected<=43);
+            }
+            Assert::AreEqual(bottom+1,observed.measuredBounds.bottom,
+                L"The existing outward-first selection retains the full coherent source edge span without invented same-coordinate votes.");
         }
         TEST_METHOD(SourcePictureDarkStructuredTerminalDoesNotEraseFullRasterPicture)
         {
