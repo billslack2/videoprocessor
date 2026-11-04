@@ -1,0 +1,82 @@
+{
+  "status": "Failed",
+  "source": {
+    "commit": "94c4419ab03443a0ae4d48acdcad43b494da9748",
+    "dirty": false,
+    "fingerprint": "700e913b424fffff2cd234f0604307808eebd10d5eeda5a9a1a339af1bea6a65",
+    "label": "94c4419ab034",
+    "build": "94c4419ab03443a0ae4d48acdcad43b494da9748"
+  },
+  "testEnvironment": {
+    "sourcePictureDetector": true,
+    "legacyDetectorEnvironment": null,
+    "sourcePictureShadow": null
+  },
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0,
+      "seconds": 0.61,
+      "log": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-190018-cbb68b69\\native-library-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "a056eb14-28ac-4e98-88b9-9030f91bc5f2",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRenderer.vcxproj",
+      "exit": 0,
+      "seconds": 1.723,
+      "log": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-190018-cbb68b69\\standard-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "4cc23074-e9d3-44a0-a925-bdf90eea5e2d",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "host",
+      "project": "src\\VideoProcessor-GUI\\VideoProcessor-GUI.vcxproj",
+      "exit": 0,
+      "seconds": 2.645,
+      "log": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-190018-cbb68b69\\host-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "68596583-e434-4986-83c2-1b195efe597b",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "beta-renderer",
+      "project": "src\\VideoProcessor-VPRenderer\\VideoProcessor-VPRendererBeta.vcxproj",
+      "exit": 0,
+      "seconds": 1.367,
+      "log": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-190018-cbb68b69\\beta-renderer-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "d04ea778-7e01-47fc-a2c7-4d73874574fb",
+      "PSShowComputerName": false
+    },
+    {
+      "name": "standard-tests",
+      "project": "src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "exit": 0,
+      "seconds": 1.415,
+      "log": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-190018-cbb68b69\\standard-tests-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "f1994091-480e-4d92-99fc-b2e7674b3793",
+      "PSShowComputerName": false
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 1,
+      "binary": "x64\\Release\\VideoProcessor-Test.dll",
+      "trx": "artifacts/qualification/runs/20261103-190018-cbb68b69/standard.trx",
+      "trxSha256": "7A42BB9788859801BF64A3E98AC3E7683569730075DE22D5A799C2D8F453A2C8",
+      "executed": 0,
+      "native": 0,
+      "actualClassic": 0,
+      "seconds": 46.661
+    }
+  ],
+  "finished": "2026-11-03T19:01:12.0059439-05:00"
+}

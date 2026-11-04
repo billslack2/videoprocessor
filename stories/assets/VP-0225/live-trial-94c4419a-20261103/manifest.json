@@ -1,0 +1,62 @@
+{
+  "source": "94c4419ab03443a0ae4d48acdcad43b494da9748",
+  "fullQualification": false,
+  "scope": "User-authorized focused Standard-renderer live trial",
+  "files": [
+    {
+      "file": "deployment.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-94c4419a\\deployment.json",
+      "sha256": "ce5207b8be1bc744d5b1ffced9b8761092d08c13785e3e909561d964c3b1a8b0"
+    },
+    {
+      "file": "launch.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-94c4419a\\launch.json",
+      "sha256": "7e366b483d9d64020ce3c0587c5dfcded4ff0ef295264d6e7e1a620f25696427"
+    },
+    {
+      "file": "live-initial.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-94c4419a\\live-initial.json",
+      "sha256": "21b2ef8ba65184f2d2335911cb2248c64f39ce86af142a73d1bc74dad08db112"
+    },
+    {
+      "file": "native-iteration.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-185808-7f994bf5\\iteration.json",
+      "sha256": "814beb652758bd4f2c55bc92b0dc380d6035cd453bfefaf58618a8552fe59d8e"
+    },
+    {
+      "file": "standard-overlay.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-184142-b4d3a043\\iteration.json",
+      "sha256": "cf5b8f7a9701970c8ddac7aa0a0cf6d11bccbe178a91773be1ce14b7a72f9e0a"
+    },
+    {
+      "file": "captured-cue-pair.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\subtitle-tolerance\\real-renderer\\candidate-94c4419a-q4-20261103-190207\\receipt.json",
+      "sha256": "bc440debd07da624fd90580fd7508a59f550b8f2d38c1d113e707e3ff852cebe"
+    },
+    {
+      "file": "beta-startup-candidate-failed.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\qualification\\runs\\20261103-190018-cbb68b69\\failed.json",
+      "sha256": "93c1af8fb49d834d3da1685a394b936a9ecdb1f1436c25d30abf12d4b6c61dab"
+    },
+    {
+      "file": "beta-startup-installed-failed.json",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\incident-20261103-181348\\visual-pass\\baseline43-beta-startup-20261103-190412\\receipt.json",
+      "sha256": "993a97c81c08b4c8c626aac65cf6451de8210c05c7cc295c7d169b84e3477d5e"
+    },
+    {
+      "file": "deploy.ps1",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-94c4419a\\deploy.ps1",
+      "sha256": "3067081fe7481847e366cefc1f0c02c24660529ee863777fda9f3545f730b618"
+    },
+    {
+      "file": "rollback.ps1",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-94c4419a\\rollback.ps1",
+      "sha256": "55ef4b6e6b164eb957ff7cd5e2e8eb8aec421990dfadf82e0297414174d1481e"
+    },
+    {
+      "file": "collect-live.py",
+      "source": "E:\\codex\\videoprocessor\\subtitle-pixel-tolerance-20261103\\artifacts\\deployment-trial-94c4419a\\collect-live.py",
+      "sha256": "9f3e2485ae73d0247cfa4fafa909807538028cc87e85268667ec0943919fb736"
+    }
+  ]
+}
