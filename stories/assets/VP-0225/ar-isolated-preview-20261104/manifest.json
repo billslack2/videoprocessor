@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "c61019546b15fcdcb79f53d2b292cdd723db579f",
+  "acceptance": "OPEN",
+  "fullQualification": false,
+  "testsExecutedOnPreview": 0,
+  "userAuthorizedTestsSkipped": true,
+  "mainInstalledSource": "1b0b4aa59abe4417dc153727f0b7fe4458b1f5f3",
+  "mainInstalledRuntimeModified": false,
+  "evidence": [
+    {
+      "original": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\build-20261104-113941-c6101954\\build-receipt.json",
+      "sha256": "CD48D470D91FAD19F24603C89C9FDE0ACB1ECF02F95664A73F1B3183CFCAE412",
+      "file": "build-receipt.json"
+    },
+    {
+      "original": "E:\\codex\\videoprocessor\\previews\\ar-temporal-c61019546b15fcdcb79f53d2b292cdd723db579f\\preview-receipt.json",
+      "sha256": "19EA4B52ADC0F0661034A1426C2A185E57D5FA5B397D8769057DF2DB5C481391",
+      "file": "preview-receipt.json"
+    }
+  ],
+  "limits": [
+    "Successful build and isolated process launch only; no AR correctness or playback acceptance claim",
+    "Tests deliberately skipped for this user-authorized experimental preview",
+    "No installed runtime or configuration overwritten"
+  ]
+}
