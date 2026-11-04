@@ -5481,6 +5481,13 @@ namespace VideoProcessorTest
                 // Functional stack/lifecycle test on the actual renderer thread.
                 // Deliberately no stable-mapping or deadline claim across styles.
                 std::set<uint64_t> submitted;std::array<unsigned,6> perPhase{},prepared{};
+                // Profile application affects the selected queued source immediately;
+                // input-source blocks are not presentation-profile epochs. Validate
+                // the actual mode runs before evaluating their last16 submissions.
+                const uint64_t expectedModes[]={2,3,0,2,3};
+                std::array<std::vector<const AnalysisDiagnosticRecordV1*>,5> modeOutputs;
+                std::array<uint64_t,6> tailFirst{},tailLast{};
+                unsigned modeRuns=0;uint64_t lastMode=~uint64_t(0);bool modeSequenceValid=true;
                 unsigned seedOffers=0,seeded=0;bool currentExact=true;uint64_t previous=0,maxGap=0;
                 for(const auto& r:observed) {
                     if(!strcmp(r.stage,"subtitle-cue-template-offered") && (r.flags&2u))++seedOffers;
@@ -5497,22 +5504,38 @@ namespace VideoProcessorTest
                         (!(r.flags&4u)||((r.flags&8u)&&r.counters[7]==r.counters[1]));
                     if(!submitted.insert(r.sourceFrameNumber).second)continue;
                     const auto phase=unsigned((r.sourceFrameNumber-steadyStart)/48);++perPhase[phase];
-                    const auto offset=(r.sourceFrameNumber-steadyStart)%48;
-                    const uint64_t expectedMode=(phase==0||phase==4)?2:3;
-                    if(offset>=32 && (phase==0||phase==1||phase==4||phase==5) &&
-                        (r.flags&2u) && r.counters[3]==expectedMode)++prepared[phase];
+                    if(!modeRuns || r.counters[3]!=lastMode) {
+                        modeSequenceValid&=modeRuns<modeOutputs.size() &&
+                            r.counters[3]==expectedModes[(std::min)(modeRuns,4u)];
+                        ++modeRuns;lastMode=r.counters[3];
+                    }
+                    if(modeRuns<=modeOutputs.size())modeOutputs[modeRuns-1].push_back(&r);
                     if(previous)maxGap=(std::max)(maxGap,r.sourceFrameNumber-previous);
                     previous=r.sourceFrameNumber;
                 }
+                for(unsigned run=0;run<modeOutputs.size();++run) {
+                    if(expectedModes[run]==0)continue;
+                    const unsigned phase=run<2?run:run+1;
+                    const auto& outputs=modeOutputs[run];
+                    if(outputs.size()<16)continue;
+                    tailFirst[phase]=outputs[outputs.size()-16]->sourceFrameNumber;
+                    tailLast[phase]=outputs.back()->sourceFrameNumber;
+                    for(size_t i=outputs.size()-16;i<outputs.size();++i)
+                        if(outputs[i]->flags&2u)++prepared[phase];
+                }
                 std::ostringstream row;row<<"SCRIPTURE PROFILE STACK: submitted="<<submitted.size()
                     <<" expected="<<steadyCount<<" exact="<<currentExact<<" max_source_gap="<<maxGap
-                    <<" prepared_seed_offers="<<seedOffers<<" seeded_templates="<<seeded;
-                for(unsigned i=0;i<6;++i)row<<" phase"<<i<<"="<<perPhase[i]<<" composed_tail"<<i<<"="<<prepared[i];
+                    <<" prepared_seed_offers="<<seedOffers<<" seeded_templates="<<seeded
+                    <<" applied_mode_runs="<<modeRuns<<" applied_mode_sequence_valid="<<modeSequenceValid;
+                for(unsigned i=0;i<6;++i)row<<" phase"<<i<<"="<<perPhase[i]<<" composed_tail"<<i<<"="<<prepared[i]
+                    <<" tail_first"<<i<<"="<<tailFirst[i]<<" tail_last"<<i<<"="<<tailLast[i];
                 NativeRendererFixtureLog(row.str().c_str());
                 Assert::IsTrue(submitted.size()==steadyCount && currentExact && maxGap==1,
                     L"Every current input must advance through the live profile cycle without stale source replay.");
                 Assert::IsTrue(seedOffers>0 && seeded>0,
                     L"The exact prepared-template seed path implicated by the stack overflow must execute.");
+                Assert::IsTrue(modeSequenceValid && modeRuns==modeOutputs.size(),
+                    L"Submitted presentation modes must follow the selected profile sequence without extra flips.");
                 for(unsigned i=0;i<6;++i) {
                     Assert::AreEqual(48u,perPhase[i]);
                     if(i==0||i==1||i==4||i==5)Assert::AreEqual(16u,prepared[i],
