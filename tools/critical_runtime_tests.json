@@ -13,8 +13,12 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1105,
+  "minimumNativeTests": 1109,
   "requiredNativeMethods": [
+    "NativeBurstCapturesConsecutiveIdentitiesAt24And60WithoutStoppingTrace",
+    "NativeBurstQueuePressureCannotExtendWindowOrRetainExtraOwners",
+    "NativeBurstContextOrSourceResetStopsNativeOnly",
+    "NativeBurstMissingSourceRemainsIncompleteAtOriginalBoundary",
     "CurrentHeldCrossingGlyphRequiresOnlyCurrentPictureCardCoverage",
     "CurrentFootprintFailureWitnessPreservesImmutableBaselineAndTruthfulClasses",
     "CurrentHeldCertificateTelemetryPreservesShortCircuitFacts",

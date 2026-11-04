@@ -167,6 +167,12 @@ struct AnalysisDiagnosticTraceStatus
 	char outputPath[512] = {};
 };
 
+enum class AnalysisDiagnosticNativeSampling : uint32_t
+{
+    Uniform = 0,
+    ConsecutiveBurst = 1,
+};
+
 struct AnalysisDiagnosticTraceOptions
 {
 	uint32_t preRollMs = 10000;
@@ -220,7 +226,8 @@ public:
 	bool IsFrameCaptureActive() const noexcept;
 	bool IsRecording() const noexcept;
 
-	AnalysisDiagnosticCaptureResult StartCapture(bool includeFrames = false);
+	AnalysisDiagnosticCaptureResult StartCapture(bool includeFrames = false,
+        AnalysisDiagnosticNativeSampling sampling = AnalysisDiagnosticNativeSampling::Uniform);
 	void StopCapture() noexcept;
 	AnalysisDiagnosticTraceStatus Status() const;
 
@@ -240,6 +247,8 @@ private:
 		uint64_t captureIndex = 0;
 	};
 
+    void FinishNativeBurstLocked(const char* reason) noexcept;
+    bool SameNativeBurstContext(const AnalysisDiagnosticFramePacketV1& frame) const noexcept;
 	void WriterThreadProc();
 	void WriteCapture(const std::string& directory,
 		const std::vector<AnalysisDiagnosticRecordV1>& preRoll,
@@ -269,6 +278,17 @@ private:
 	uint64_t m_captureFrameOffered = 0, m_captureFrameSamplingSkipped = 0;
 	uint64_t m_captureFrameMissed = 0, m_captureFrameSamplingStep = 1;
 	uint64_t m_captureSamplingFirstSource = 0, m_captureSamplingGeneration = 0;
+    std::atomic<AnalysisDiagnosticNativeSampling> m_nativeSampling{AnalysisDiagnosticNativeSampling::Uniform};
+    std::atomic<bool> m_nativeFramesFinished{false};
+    std::atomic<uint64_t> m_nativeBurstLockMisses{0};
+    // Metadata only: never retains a source owner or pixel pointer.
+    AnalysisDiagnosticFramePacketV1 m_nativeBurstFirst{};
+    uint64_t m_nativeBurstTarget=0,m_nativeBurstFirstSource=0,m_nativeBurstLastSource=0;
+    uint64_t m_nativeBurstLastOffered=0,m_nativeBurstLastAccepted=0,m_nativeBurstLastTimestamp=0;
+    uint64_t m_nativeBurstOffered=0,m_nativeBurstSourceGaps=0,m_nativeBurstDuplicates=0;
+    uint64_t m_captureWriteFailuresAtStart=0;
+    bool m_nativeBurstUsesPhysicalSource=false,m_nativeBurstWindowEnded=false;
+    const char* m_nativeBurstEndReason="not-requested";
 	uint64_t m_captureAcceptedRecords = 0;
 	uint64_t m_recordsWritten = 0;
 	uint64_t m_framesWritten = 0;

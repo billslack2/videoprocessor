@@ -98,3 +98,53 @@ steady intervals. Tests of diagnostics must show that rejection decisions stay
 unchanged, masks distinguish unevaluated gates, and missing/expired work cannot
 produce a fabricated pixel witness. Optional diagnostic overload must drop
 samples under existing bounds rather than delay current video.
+
+
+## Consecutive input-frame bursts
+
+Use **Capture consecutive input-frame burst** when the question depends on
+acquisition, holding and rejection on adjacent input frames. The existing sampled
+capture remains available and unchanged. Both retain the twenty-second decision
+trace and metadata pre-roll. Neither has a native-pixel pre-roll: arm the burst
+before the cue appears.
+
+The burst uses the same two-owner nonblocking writer queue and 2 GiB byte limit.
+It selects every source in a fixed initial source window, rather than spreading
+samples over twenty seconds. At the observed 3840x2160 V210 stride this permits
+97 frames, about four seconds at 23.976 Hz. Disk/queue contention can still miss
+frames; a miss never stalls playback or extends the source window to conceal the
+hole. Context changes terminate the burst rather than join unrelated sources.
+Inspect the capture summary and full identity sequence before calling it a
+consecutive reproduction. A partial burst is evidence with gaps, not a passing
+replay fixture.
+
+These files contain the exact prepared analysis-source bytes and their original
+format/range/domain metadata. That is native V210 in this incident; other capture
+formats may use a converted analysis domain. Do not infer original HDMI values
+from a desktop MP4: output may already be toned, resized, composed and compressed.
+The recording supplies visible transitions/timecodes; these input files supply
+pixel and temporal evidence.
+
+### Background control
+
+`tools/request_analysis_capture.ps1` addresses one explicitly selected VP process
+and verifies its executable path. `-Action Status` is read-only; `-Action Records`,
+`SampledFrames` or `ConsecutiveBurst` starts the corresponding bounded capture.
+For example, use `-TargetProcessId 12345 -Action ConsecutiveBurst`, replacing the
+example PID with the running VP process. The default expected executable is
+`C:\Videoprocessor\vp\VideoProcessor.exe`; an alternate build requires an explicit
+`-ExpectedExecutable` path.
+
+The versioned local `VideoProcessor.AnalysisCapture.v1` request does not send keys,
+move the mouse, activate a window, restart playback or change profiles. Unsupported
+builds and failed requests report an error without showing a dialog. `AlreadyRecording`
+does not change the active capture mode or start another capture. Read `Status`
+until both `recording` and `captureWriting` are false before requesting a new one.
+The runtime log records the acknowledged request and exact output directory.
+
+Protocol: LPARAM is version 1; WPARAM is records=0, sampled=1, burst=2, status=3.
+Replies have tag `0x56500000`, low-byte capture-result code (0..5 from the recorder,
+6 for status), and flags in bits 8..13 for recording, writing, producer connected,
+frame support, writer ready and include-frames. Unknown versions/commands fail
+closed. The command script probes the endpoint on windows owned by the selected
+process; no window title or currently focused application is used as authority.

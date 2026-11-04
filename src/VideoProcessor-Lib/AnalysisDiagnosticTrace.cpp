@@ -375,9 +375,12 @@ void AnalysisDiagnosticTrace::SubmitFrame(
 	std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
 	if (!lock.owns_lock())
 	{
+        if(m_nativeSampling.load(std::memory_order_relaxed)==AnalysisDiagnosticNativeSampling::ConsecutiveBurst &&
+            IsFrameCaptureActive())m_nativeBurstLockMisses.fetch_add(1,std::memory_order_relaxed);
 		m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
 		return;
 	}
+    if(m_nativeFramesFinished.load(std::memory_order_acquire))return;
 	if (!m_recording.load(std::memory_order_acquire) ||
 		NowMs() >= m_captureDeadlineMs.load(std::memory_order_acquire) ||
 		!m_includeFrames.load(std::memory_order_acquire) ||
@@ -398,6 +401,10 @@ void AnalysisDiagnosticTrace::SubmitFrame(
     sampling.frameDuration100ns = input.frameDuration100ns;
     sampling.sourceWidth = input.width; sampling.sourceHeight = input.height;
     sampling.captureTimestamp = input.captureTimestamp;
+    sampling.sourceFormatGeneration=input.sourceFormatGeneration;
+    sampling.viewportGeneration=input.viewportGeneration;sampling.rendererGeneration=input.rendererGeneration;
+    sampling.policyGeneration=input.policyGeneration;sampling.continuityGeneration=input.continuityGeneration;
+    const bool burst=m_nativeSampling.load(std::memory_order_relaxed)==AnalysisDiagnosticNativeSampling::ConsecutiveBurst;
     auto finishSampling = [&](const char* reason, bool retained) {
         strcpy_s(sampling.reason, reason);
         sampling.flags = retained ? 1u : 0u;
@@ -405,6 +412,8 @@ void AnalysisDiagnosticTrace::SubmitFrame(
         sampling.counters[1] = m_captureFrameSamplingStep;
         sampling.counters[2] = m_captureFrameSamplingSkipped;
         sampling.counters[3] = m_captureFrameMissed;
+        sampling.counters[4]=m_nativeBurstTarget;sampling.counters[5]=m_nativeBurstFirstSource;
+        sampling.counters[6]=m_nativeBurstLastSource;sampling.counters[7]=burst?1u:0u;
         lock.unlock();
         Submit(sampling);
     };
@@ -414,10 +423,51 @@ void AnalysisDiagnosticTrace::SubmitFrame(
 		m_options.maxCaptureFrameBytes, MAX_CAPTURE_FRAME_BYTES);
 	const size_t maxOutstanding = std::min(
 		m_options.maxOutstandingFrames, FRAME_QUEUE_CAPACITY);
+    if(burst) {
+        const uint64_t source=input.sourceFrameNumber?input.sourceFrameNumber:input.acceptedSequence;
+        if(!m_nativeBurstTarget) {
+            const uint64_t slots=input.dataBytes?maxCaptureBytes/input.dataBytes:0;
+            if(!source || !input.acceptedSequence || !slots || input.dataBytes>maxPacketBytes ||
+                source>UINT64_MAX-(slots-1)) {
+                ++m_captureFrameMissed;FinishNativeBurstLocked("invalid-source-or-frame-budget");
+                finishSampling("burst-source-or-budget-unavailable",false);return;
+            }
+            m_nativeBurstFirst=input;
+            m_nativeBurstFirst.data=nullptr;m_nativeBurstFirst.ownerContext=nullptr;
+            m_nativeBurstFirst.retainOwner=nullptr;m_nativeBurstFirst.releaseOwner=nullptr;
+            m_nativeBurstUsesPhysicalSource=input.sourceFrameNumber!=0;
+            m_nativeBurstTarget=slots;m_nativeBurstFirstSource=source;m_nativeBurstLastSource=source+slots-1;
+            m_nativeBurstEndReason="recording";
+        } else if(!SameNativeBurstContext(input) || input.discontinuity ||
+            (input.sourceFrameNumber!=0)!=m_nativeBurstUsesPhysicalSource || source<m_nativeBurstLastOffered ||
+            (source>m_nativeBurstLastOffered && (input.acceptedSequence<=m_nativeBurstLastAccepted ||
+                (m_nativeBurstLastTimestamp && input.captureTimestamp<=m_nativeBurstLastTimestamp)))) {
+            FinishNativeBurstLocked("source-context-changed");
+            finishSampling("burst-source-context-changed",false);return;
+        }
+        m_captureFrameSamplingStep=1;
+        if(m_nativeBurstOffered && source==m_nativeBurstLastOffered) {
+            ++m_nativeBurstDuplicates;finishSampling("burst-duplicate-source",false);return;
+        }
+        if(source>m_nativeBurstLastSource) {
+            m_nativeBurstSourceGaps+=m_nativeBurstLastSource-m_nativeBurstLastOffered;
+            m_nativeBurstWindowEnded=true;FinishNativeBurstLocked("source-window-ended");
+            finishSampling("burst-source-window-ended",false);return;
+        }
+        if(m_nativeBurstOffered && source>m_nativeBurstLastOffered+1)
+            m_nativeBurstSourceGaps+=source-m_nativeBurstLastOffered-1;
+        m_nativeBurstLastOffered=source;m_nativeBurstLastAccepted=input.acceptedSequence;
+        m_nativeBurstLastTimestamp=input.captureTimestamp;++m_nativeBurstOffered;
+        // Finish at the requested SOURCE boundary even when this admission fails.
+        // Queue pressure must never extend the burst into later movie frames.
+        if(source==m_nativeBurstLastSource) {
+            m_nativeBurstWindowEnded=true;FinishNativeBurstLocked("source-window-ended");
+        }
+    }
     // Spread the byte budget across SOURCE time, rather than spending it on
     // the first seconds. Odd source steps visit both >30 Hz analysis parities.
     const uint64_t slots = input.dataBytes ? maxCaptureBytes / input.dataBytes : 0;
-    if (slots && input.frameDuration100ns > 0) {
+    if (!burst && slots && input.frameDuration100ns > 0) {
         const uint64_t duration = static_cast<uint64_t>(input.frameDuration100ns);
         const uint64_t expected = (uint64_t(m_captureMs) * 10000 + duration - 1) / duration;
         m_captureFrameSamplingStep = std::max<uint64_t>(1, (expected + slots - 1) / slots);
@@ -431,7 +481,7 @@ void AnalysisDiagnosticTrace::SubmitFrame(
         m_captureSamplingGeneration = input.transportGeneration;
     }
     const uint64_t sourceOffset = source ? source - m_captureSamplingFirstSource : m_captureFrameOffered - 1;
-    if (sourceOffset % m_captureFrameSamplingStep != 0) {
+    if (!burst && sourceOffset % m_captureFrameSamplingStep != 0) {
         ++m_captureFrameSamplingSkipped;
         finishSampling("uniform-source-sampling-skip", false);
         return;
@@ -484,9 +534,32 @@ void AnalysisDiagnosticTrace::SubmitFrame(
     m_changed.notify_one();
 }
 
+void AnalysisDiagnosticTrace::FinishNativeBurstLocked(const char* reason) noexcept
+{
+    if(m_nativeSampling.load(std::memory_order_relaxed)!=AnalysisDiagnosticNativeSampling::ConsecutiveBurst ||
+        m_nativeFramesFinished.load(std::memory_order_relaxed))return;
+    m_nativeBurstEndReason=reason;m_nativeFramesFinished.store(true,std::memory_order_release);
+}
+
+bool AnalysisDiagnosticTrace::SameNativeBurstContext(const AnalysisDiagnosticFramePacketV1& b) const noexcept
+{
+    const auto& a=m_nativeBurstFirst;
+    return a.transportGeneration==b.transportGeneration && a.sourceFormatGeneration==b.sourceFormatGeneration &&
+        a.viewportGeneration==b.viewportGeneration && a.rendererGeneration==b.rendererGeneration &&
+        a.analysisDomainKey==b.analysisDomainKey && a.policyGeneration==b.policyGeneration &&
+        a.continuityGeneration==b.continuityGeneration && a.width==b.width && a.height==b.height &&
+        a.stride0==b.stride0 && a.stride1==b.stride1 && a.format==b.format && a.encoding==b.encoding &&
+        a.colorspace==b.colorspace && a.analysisSampleRange==b.analysisSampleRange &&
+        a.rgbBitAlignment==b.rgbBitAlignment && a.dataBytes==b.dataBytes &&
+        a.frameDuration100ns==b.frameDuration100ns && a.scriptHint==b.scriptHint &&
+        a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode &&
+        (a.captureTimestamp!=0)==(b.captureTimestamp!=0);
+}
+
 bool AnalysisDiagnosticTrace::IsFrameCaptureActive() const noexcept
 {
 	return m_recording.load(std::memory_order_acquire) &&
+        !m_nativeFramesFinished.load(std::memory_order_acquire) &&
 		NowMs() < m_captureDeadlineMs.load(std::memory_order_acquire) &&
 		m_includeFrames.load(std::memory_order_acquire) &&
 		m_producerConnected.load(std::memory_order_acquire) &&
@@ -500,8 +573,11 @@ bool AnalysisDiagnosticTrace::IsRecording() const noexcept
 }
 
 AnalysisDiagnosticCaptureResult AnalysisDiagnosticTrace::StartCapture(
-	bool includeFrames)
+	bool includeFrames,AnalysisDiagnosticNativeSampling sampling)
 {
+    if((sampling!=AnalysisDiagnosticNativeSampling::Uniform && sampling!=AnalysisDiagnosticNativeSampling::ConsecutiveBurst) ||
+        (!includeFrames && sampling==AnalysisDiagnosticNativeSampling::ConsecutiveBurst))
+        return AnalysisDiagnosticCaptureResult::InvalidRequest;
 	std::lock_guard<std::mutex> lock(m_mutex);
 	const uint64_t now = NowMs();
 	if (m_recording.load(std::memory_order_acquire) &&
@@ -554,6 +630,12 @@ AnalysisDiagnosticCaptureResult AnalysisDiagnosticTrace::StartCapture(
 	m_captureFrameOffered = m_captureFrameSamplingSkipped = m_captureFrameMissed = 0;
 	m_captureFrameSamplingStep = 1;
 	m_captureSamplingFirstSource = m_captureSamplingGeneration = 0;
+    m_nativeSampling.store(sampling,std::memory_order_relaxed);m_nativeFramesFinished.store(false,std::memory_order_release);
+    m_nativeBurstLockMisses.store(0,std::memory_order_relaxed);m_nativeBurstFirst={};
+    m_nativeBurstTarget=m_nativeBurstFirstSource=m_nativeBurstLastSource=m_nativeBurstLastOffered=0;
+    m_nativeBurstLastAccepted=m_nativeBurstLastTimestamp=m_nativeBurstOffered=m_nativeBurstSourceGaps=m_nativeBurstDuplicates=0;
+    m_nativeBurstUsesPhysicalSource=m_nativeBurstWindowEnded=false;m_captureWriteFailuresAtStart=m_writeFailures;
+    m_nativeBurstEndReason=sampling==AnalysisDiagnosticNativeSampling::ConsecutiveBurst?"waiting-for-source":"not-requested";
 	m_recordsWritten = 0;
 	m_framesWritten = 0;
 	m_frameBytesWritten = 0;
@@ -568,6 +650,7 @@ void AnalysisDiagnosticTrace::StopCapture() noexcept
 {
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
+        FinishNativeBurstLocked("capture-stopped");
 		if (m_recording.exchange(false, std::memory_order_acq_rel))
 			m_captureStopSequence = m_nextSequence;
 	}
@@ -728,6 +811,7 @@ void AnalysisDiagnosticTrace::WriteCapture(
 			std::unique_lock<std::mutex> lock(m_mutex);
 			if (m_recording.load(std::memory_order_acquire) && NowMs() >= deadlineMs)
 			{
+                FinishNativeBurstLocked("capture-deadline");
 				m_recording.store(false, std::memory_order_release);
 				m_captureStopSequence = m_nextSequence;
 			}
@@ -903,6 +987,36 @@ void AnalysisDiagnosticTrace::WriteCaptureSummary(
 		WriteJsonString(summary,
 			"Lifetime counters are cumulative since recorder construction and may "
 			"include events outside this capture.");
+        summary << ",\"nativeSamplingMode\":";
+        WriteJsonString(summary,m_nativeSampling.load(std::memory_order_relaxed)==AnalysisDiagnosticNativeSampling::ConsecutiveBurst?
+            "consecutive-burst":"uniform");
+        if(m_nativeSampling.load(std::memory_order_relaxed)==AnalysisDiagnosticNativeSampling::ConsecutiveBurst) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            const uint64_t lockMisses=m_nativeBurstLockMisses.load(std::memory_order_relaxed);
+            const uint64_t writesFailed=m_writeFailures-m_captureWriteFailuresAtStart;
+            const bool complete=m_nativeBurstWindowEnded && m_nativeBurstTarget>0 &&
+                m_framesWritten==m_nativeBurstTarget && m_captureFrameIndex==m_nativeBurstTarget &&
+                !m_nativeBurstSourceGaps && !m_captureFrameMissed && !lockMisses && !writesFailed;
+            summary << ",\"nativeBurst\":{\"targetFrames\":" << m_nativeBurstTarget
+                << ",\"firstSource\":" << m_nativeBurstFirstSource << ",\"lastSource\":" << m_nativeBurstLastSource
+                << ",\"lastOfferedSource\":" << m_nativeBurstLastOffered
+                << ",\"lastOfferedAccepted\":" << m_nativeBurstLastAccepted
+                << ",\"lastOfferedTimestamp\":" << m_nativeBurstLastTimestamp
+                << ",\"offeredUnique\":" << m_nativeBurstOffered << ",\"sourceGaps\":" << m_nativeBurstSourceGaps
+                << ",\"duplicateOffers\":" << m_nativeBurstDuplicates << ",\"lockAdmissionMisses\":" << lockMisses
+                << ",\"admissionMisses\":" << m_captureFrameMissed << ",\"sessionWriteFailures\":" << writesFailed
+                << ",\"complete\":" << (complete?"true":"false") << ",\"windowEnded\":" << (m_nativeBurstWindowEnded?"true":"false")
+                << ",\"sourceCounter\":";
+            WriteJsonString(summary,m_nativeBurstUsesPhysicalSource?"sourceFrameNumber":"acceptedSequence");
+            summary << ",\"endReason\":";WriteJsonString(summary,m_nativeBurstEndReason);
+            const auto& f=m_nativeBurstFirst;
+            summary << ",\"firstIdentity\":{\"transportGeneration\":" << f.transportGeneration
+                << ",\"acceptedSequence\":" << f.acceptedSequence << ",\"sourceFrameNumber\":" << f.sourceFrameNumber
+                << ",\"captureTimestamp\":" << f.captureTimestamp << ",\"sourceFormatGeneration\":" << f.sourceFormatGeneration
+                << ",\"viewportGeneration\":" << f.viewportGeneration << ",\"rendererGeneration\":" << f.rendererGeneration
+                << ",\"analysisDomainKey\":" << f.analysisDomainKey << ",\"policyGeneration\":" << f.policyGeneration
+                << ",\"continuityGeneration\":" << f.continuityGeneration << "}}";
+        }
 		summary << "}\n";
 		summary.flush();
 		bool writeFailed = !summary.good();

@@ -16,6 +16,7 @@
 #include <BuildIdentityPolicy.h>
 #include <UpdateLauncher.h>
 static UINT vpUpdateExitMessage = RegisterWindowMessageW(L"VideoProcessor.UpdateExit.v1");
+static UINT vpAnalysisCaptureMessage = RegisterWindowMessageW(L"VideoProcessor.AnalysisCapture.v1");
 #include <ModernOperatorLayout.h>
 #include <WindowResizeLayout.h>
 #include <ModernOperatorStatusPolicy.h>
@@ -88,6 +89,7 @@ using Microsoft::WRL::ComPtr;
 
 constexpr UINT CaptureAnalysisDiagnosticsMenuCommand = 0x1ef0;
 constexpr UINT CaptureAnalysisDiagnosticsWithFramesMenuCommand = 0x1f00;
+constexpr UINT CaptureAnalysisBurstMenuCommand = 0x1f10;
 
 constexpr wchar_t ConfigurationEditorRelativePath[] =
 	L"config\\VideoProcessorConfig.exe";
@@ -2063,6 +2065,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
 	ON_MESSAGE(WM_MESSAGE_EXTERNAL_SHORTCUT, &CVideoProcessorDlg::OnMessageExternalShortcut)
 	ON_REGISTERED_MESSAGE(vpUpdateExitMessage, &CVideoProcessorDlg::OnUpdateExit)
+	ON_REGISTERED_MESSAGE(vpAnalysisCaptureMessage, &CVideoProcessorDlg::OnAnalysisCaptureControl)
 	ON_MESSAGE(WM_MESSAGE_FULLSCREEN_HOST_RESIZED, &CVideoProcessorDlg::OnMessageFullscreenHostResized)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
@@ -8115,7 +8118,38 @@ void CVideoProcessorDlg::OnCommandCaptureRenderedOutput()
 		status, m_rendererGeneration.load(std::memory_order_acquire));
 }
 
-void CVideoProcessorDlg::OnCommandCaptureAnalysisDiagnostics(bool includeFrames)
+// Versioned diagnostic control: no focus, simulated input, modal dialogs, or
+// presentation/profile changes. The caller addresses this process explicitly.
+LRESULT CVideoProcessorDlg::OnAnalysisCaptureControl(WPARAM request, LPARAM version)
+{
+    constexpr uint32_t responseTag = 0x56500000;
+    if (version != 1 || request > 3)
+        return responseTag | static_cast<uint32_t>(AnalysisDiagnosticCaptureResult::InvalidRequest);
+    auto& trace = AnalysisDiagnosticTrace::Instance();
+    uint32_t result = 6; // Status response; no capture requested.
+    if (request != 3) {
+        try {
+            result = static_cast<uint32_t>(trace.StartCapture(request != 0,
+                request == 2 ? AnalysisDiagnosticNativeSampling::ConsecutiveBurst :
+                    AnalysisDiagnosticNativeSampling::Uniform));
+        } catch (...) {
+            DebugLog::Log("Analysis diagnostic control: capture request failed; video continues");
+            result = static_cast<uint32_t>(AnalysisDiagnosticCaptureResult::Busy);
+        }
+    }
+    const auto status = trace.Status();
+    const uint32_t flags = (status.recording ? 1u : 0u) |
+        (status.captureWriting ? 2u : 0u) | (status.producerConnected ? 4u : 0u) |
+        (status.frameCaptureSupported ? 8u : 0u) | (status.writerReady ? 16u : 0u) |
+        (status.includeFrames ? 32u : 0u);
+    if (request != 3)
+        DebugLog::Log("Analysis diagnostic control: request=%llu result=%u recording=%d output=%s",
+            static_cast<unsigned long long>(request), result, status.recording ? 1 : 0,
+            status.outputPath);
+    return responseTag | (flags << 8) | result;
+}
+
+void CVideoProcessorDlg::OnCommandCaptureAnalysisDiagnostics(bool includeFrames, bool consecutiveBurst)
 {
 	auto& trace = AnalysisDiagnosticTrace::Instance();
 	const AnalysisDiagnosticTraceStatus before = trace.Status();
@@ -8126,7 +8160,8 @@ void CVideoProcessorDlg::OnCommandCaptureAnalysisDiagnostics(bool includeFrames)
 	else if (includeFrames && !before.frameCaptureSupported)
 		result = AnalysisDiagnosticCaptureResult::FrameCaptureUnavailable;
 	else
-		result = trace.StartCapture(includeFrames);
+		result = trace.StartCapture(includeFrames, consecutiveBurst ?
+			AnalysisDiagnosticNativeSampling::ConsecutiveBurst : AnalysisDiagnosticNativeSampling::Uniform);
 
 	const AnalysisDiagnosticTraceStatus status = trace.Status();
 	CString message;
@@ -8181,10 +8216,10 @@ void CVideoProcessorDlg::OnCommandCaptureAnalysisDiagnostics(bool includeFrames)
 	}
 
 	DebugLog::Log(
-		"Analysis diagnostic capture request: include_frames=%d result=%u "
+		"Analysis diagnostic capture request: include_frames=%d consecutive=%d result=%u "
 		"recording=%d producer=%d frame_capture_supported=%d records=%llu "
 		"frames=%llu output=%s",
-		includeFrames ? 1 : 0, static_cast<unsigned int>(result),
+		includeFrames ? 1 : 0, consecutiveBurst ? 1 : 0, static_cast<unsigned int>(result),
 		status.recording ? 1 : 0, status.producerConnected ? 1 : 0,
 		status.frameCaptureSupported ? 1 : 0,
 		static_cast<unsigned long long>(status.recordsWritten),
@@ -13792,6 +13827,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
         systemMenu->AppendMenu(MF_STRING,
             CaptureAnalysisDiagnosticsWithFramesMenuCommand,
             L"Capture analysis diagnostics with input frames...");
+        systemMenu->AppendMenu(MF_STRING, CaptureAnalysisBurstMenuCommand,
+            L"Capture consecutive input-frame burst...");
     }
     SetTimer(UpdateLauncher::StartupTimer, 30000, nullptr);
 	SetTimer(TIMER_ID_1SECOND, 1000, nullptr);
@@ -14914,6 +14951,11 @@ void CVideoProcessorDlg::OnSysCommand(UINT command, LPARAM lParam)
 	if ((command & 0xfff0) == CaptureAnalysisDiagnosticsWithFramesMenuCommand)
 	{
 		OnCommandCaptureAnalysisDiagnostics(true);
+		return;
+	}
+	if ((command & 0xfff0) == CaptureAnalysisBurstMenuCommand)
+	{
+		OnCommandCaptureAnalysisDiagnostics(true, true);
 		return;
 	}
 	if (ApplicationShutdownPolicy::IsCloseSystemCommand(command))

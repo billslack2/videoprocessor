@@ -24,6 +24,7 @@ namespace
 	{
 		std::atomic<int> retained{ 0 };
 		std::atomic<int> released{ 0 };
+        std::atomic<bool> blockRelease{false},releaseEntered{false};
 	};
 
 	struct OwnerSource
@@ -58,6 +59,10 @@ namespace
 	void __cdecl ReleaseOwner(void* token)
 	{
 		auto* retained = static_cast<OwnerToken*>(token);
+        if(retained->counters->blockRelease.load()) {
+            retained->counters->releaseEntered.store(true);
+            while(retained->counters->blockRelease.load())Sleep(1);
+        }
 		retained->counters->released.fetch_add(1, std::memory_order_relaxed);
 		delete retained;
 	}
@@ -154,6 +159,24 @@ namespace
 		}
 		return false;
 	}
+
+    bool WaitReleased(const OwnerCounters& counters,int count) {
+        const auto deadline=GetTickCount64()+1000;
+        while(counters.released.load()<count && GetTickCount64()<deadline)Sleep(1);
+        return counters.released.load()>=count;
+    }
+    std::string ReadCaptureText(const AnalysisDiagnosticTrace& trace,const char* name) {
+        std::ifstream input((std::string(trace.Status().outputPath)+"\\"+name).c_str(),std::ios::binary);
+        return {(std::istreambuf_iterator<char>(input)),std::istreambuf_iterator<char>()};
+    }
+    AnalysisDiagnosticFramePacketV1 BurstPacket(OwnerSource& owner) {
+        AnalysisDiagnosticFramePacketV1 f;f.width=f.height=2;f.stride0=2;f.stride1=0;
+        f.transportGeneration=2;f.sourceFormatGeneration=3;f.viewportGeneration=4;
+        f.rendererGeneration=5;f.analysisDomainKey=6;f.policyGeneration=7;f.continuityGeneration=8;
+        f.acceptedSequence=10;f.sourceFrameNumber=100;f.captureTimestamp=1000;
+        f.data=owner.bytes->data();f.dataBytes=owner.bytes->size();f.ownerContext=&owner;
+        f.retainOwner=RetainOwner;f.releaseOwner=ReleaseOwner;return f;
+    }
 
 	std::string CapturePath(const AnalysisDiagnosticTrace& trace)
 	{
@@ -452,6 +475,107 @@ namespace Tests
             Assert::AreEqual(0.0, record.metrics[0], L"Previous physical proof is not a current-source measurement.");
         }
 
+        TEST_METHOD(NativeBurstCapturesConsecutiveIdentitiesAt24And60WithoutStoppingTrace)
+        {
+            for(const int64_t duration:{417083,166833}) {
+                OwnerCounters counters;OwnerSource owner;
+                owner.bytes=std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{1,2,3,4});owner.counters=&counters;
+                TraceFixture fixture(true,2000);
+                Assert::AreEqual(uint32_t(AnalysisDiagnosticCaptureResult::Started),uint32_t(
+                    fixture.trace->StartCapture(true,AnalysisDiagnosticNativeSampling::ConsecutiveBurst)));
+                auto frame=BurstPacket(owner);frame.frameDuration100ns=duration;
+                for(unsigned i=0;i<8;++i) {
+                    frame.acceptedSequence=10+i;frame.sourceFrameNumber=100+i;frame.captureTimestamp=1000+i;
+                    fixture.trace->SubmitFrame(frame);Assert::IsTrue(WaitReleased(counters,int(i+1)));
+                    if(!i)fixture.trace->SubmitFrame(frame); // Duplicate source is not another native frame.
+                }
+                Assert::AreEqual(8,counters.retained.load());Assert::IsFalse(fixture.trace->IsFrameCaptureActive());
+                Assert::IsTrue(fixture.trace->IsRecording(),L"Native byte window must not stop the20s trace session.");
+                fixture.trace->Submit(Event("trace-after-native-burst"));
+                ++frame.sourceFrameNumber;++frame.acceptedSequence;fixture.trace->SubmitFrame(frame);
+                Assert::AreEqual(8,counters.retained.load());fixture.trace->StopCapture();
+                Assert::IsTrue(WaitForWriter(*fixture.trace));
+                Assert::AreEqual(uint64_t(32),fixture.trace->Status().frameBytesWritten);
+                const auto summary=ReadCaptureText(*fixture.trace,"capture-summary.json");
+                Assert::IsTrue(summary.find("\"targetFrames\":8,\"firstSource\":100,\"lastSource\":107")!=std::string::npos);
+                Assert::IsTrue(summary.find("\"complete\":true")!=std::string::npos);
+                Assert::IsTrue(summary.find("\"duplicateOffers\":1")!=std::string::npos);
+                Assert::IsTrue(ReadCaptureText(*fixture.trace,"frame-000008.txt").find(
+                    "identity_v1 2 17 107 1007 3 4 5 6 7 8")!=std::string::npos);
+                Assert::IsTrue(ReadCaptureText(*fixture.trace,"analysis.jsonl").find("trace-after-native-burst")!=std::string::npos);
+                Assert::AreEqual(std::string("\1\2\3\4",4),ReadCaptureText(*fixture.trace,"frame-000008.bin"));
+            }
+        }
+        TEST_METHOD(NativeBurstQueuePressureCannotExtendWindowOrRetainExtraOwners)
+        {
+            OwnerCounters counters;OwnerSource owner;
+            owner.bytes=std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{1,2,3,4});owner.counters=&counters;
+            TraceFixture fixture(true,2000);
+            struct Unblock {OwnerCounters& c;~Unblock(){c.blockRelease.store(false);}} unblock{counters};
+            counters.blockRelease.store(true);
+            fixture.trace->StartCapture(true,AnalysisDiagnosticNativeSampling::ConsecutiveBurst);
+            auto frame=BurstPacket(owner);fixture.trace->SubmitFrame(frame);
+            const auto deadline=GetTickCount64()+1000;
+            while(!counters.releaseEntered.load() && GetTickCount64()<deadline)Sleep(1);
+            Assert::IsTrue(counters.releaseEntered.load());
+            const auto before=GetTickCount64();
+            for(unsigned i=1;i<8;++i) {
+                frame.acceptedSequence=10+i;frame.sourceFrameNumber=100+i;frame.captureTimestamp=1000+i;
+                fixture.trace->SubmitFrame(frame);
+            }
+            Assert::IsTrue(GetTickCount64()-before<100,L"Admission must not wait for the deliberately blocked writer.");
+            Assert::AreEqual(2,counters.retained.load());Assert::IsFalse(fixture.trace->IsFrameCaptureActive());
+            Assert::IsTrue(fixture.trace->IsRecording());
+            frame.sourceFrameNumber=108;frame.acceptedSequence=18;fixture.trace->SubmitFrame(frame);
+            Assert::AreEqual(2,counters.retained.load());counters.blockRelease.store(false);
+            fixture.trace->StopCapture();Assert::IsTrue(WaitForWriter(*fixture.trace));
+            Assert::AreEqual(2,counters.released.load());
+            const auto summary=ReadCaptureText(*fixture.trace,"capture-summary.json");
+            Assert::IsTrue(summary.find("\"admissionMisses\":6")!=std::string::npos);
+            Assert::IsTrue(summary.find("\"complete\":false")!=std::string::npos);
+            Assert::IsTrue(summary.find("\"lastSource\":107")!=std::string::npos);
+        }
+        TEST_METHOD(NativeBurstContextOrSourceResetStopsNativeOnly)
+        {
+            for(unsigned fault=0;fault<11;++fault) {
+                OwnerCounters counters;OwnerSource owner;
+                owner.bytes=std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{1,2,3,4});owner.counters=&counters;
+                TraceFixture fixture(true,2000);
+                Assert::AreEqual(uint32_t(AnalysisDiagnosticCaptureResult::InvalidRequest),uint32_t(
+                    fixture.trace->StartCapture(false,AnalysisDiagnosticNativeSampling::ConsecutiveBurst)));
+                fixture.trace->StartCapture(true,AnalysisDiagnosticNativeSampling::ConsecutiveBurst);
+                auto frame=BurstPacket(owner);fixture.trace->SubmitFrame(frame);Assert::IsTrue(WaitReleased(counters,1));
+                ++frame.sourceFrameNumber;++frame.acceptedSequence;++frame.captureTimestamp;
+                if(fault==0)++frame.transportGeneration;if(fault==1)++frame.sourceFormatGeneration;
+                if(fault==2)++frame.continuityGeneration;if(fault==3)frame.sourceFrameNumber=99;
+                if(fault==4)++frame.width;if(fault==5)--frame.acceptedSequence;if(fault==6)--frame.captureTimestamp;
+                if(fault==7)++frame.frameDuration100ns;if(fault==8)++frame.scriptHint;
+                if(fault==9)++frame.nearBarDistance;if(fault==10)++frame.optimizationMode;
+                fixture.trace->SubmitFrame(frame);Assert::IsFalse(fixture.trace->IsFrameCaptureActive());
+                Assert::IsTrue(fixture.trace->IsRecording());Assert::AreEqual(1,counters.retained.load());
+                fixture.trace->StopCapture();Assert::IsTrue(WaitForWriter(*fixture.trace));
+                const auto summary=ReadCaptureText(*fixture.trace,"capture-summary.json");
+                Assert::IsTrue(summary.find("source-context-changed")!=std::string::npos);
+                Assert::IsTrue(summary.find("\"complete\":false")!=std::string::npos);
+            }
+        }
+        TEST_METHOD(NativeBurstMissingSourceRemainsIncompleteAtOriginalBoundary)
+        {
+            OwnerCounters counters;OwnerSource owner;
+            owner.bytes=std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{1,2,3,4});owner.counters=&counters;
+            TraceFixture fixture(true,2000);fixture.trace->StartCapture(true,AnalysisDiagnosticNativeSampling::ConsecutiveBurst);
+            auto frame=BurstPacket(owner);int written=0;
+            for(unsigned i=0;i<8;++i)if(i!=3) {
+                frame.acceptedSequence=10+i;frame.sourceFrameNumber=100+i;frame.captureTimestamp=1000+i;
+                fixture.trace->SubmitFrame(frame);Assert::IsTrue(WaitReleased(counters,++written));
+            }
+            Assert::IsFalse(fixture.trace->IsFrameCaptureActive());Assert::AreEqual(7,counters.retained.load());
+            fixture.trace->StopCapture();Assert::IsTrue(WaitForWriter(*fixture.trace));
+            const auto summary=ReadCaptureText(*fixture.trace,"capture-summary.json");
+            Assert::IsTrue(summary.find("\"sourceGaps\":1")!=std::string::npos);
+            Assert::IsTrue(summary.find("\"complete\":false")!=std::string::npos);
+            Assert::IsTrue(summary.find("\"lastSource\":107")!=std::string::npos);
+        }
         TEST_METHOD(NativeCaptureSamplesWholeDurationAndBothInputParitiesWithinBudget)
         {
             TraceFixture fixture(true, 2000);

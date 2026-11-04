@@ -290,7 +290,8 @@ public:
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
 	void OnCommandCaptureRenderedOutput();
-	void OnCommandCaptureAnalysisDiagnostics(bool includeFrames);
+	void OnCommandCaptureAnalysisDiagnostics(bool includeFrames, bool consecutiveBurst = false);
+	afx_msg LRESULT OnAnalysisCaptureControl(WPARAM request, LPARAM version);
 	void OnCommandConfigEditor();
 
 	// ICaptureDeviceDiscovererCallback
