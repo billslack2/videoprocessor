@@ -665,6 +665,40 @@ public:
             L"Even dense ambiguous content is bounded to512KiB numeric storage, and overflow grants no uncertainty permission.");
         Assert::IsFalse(dense.Append(0,676,512,512),L"Overflow cannot silently restart with an incomplete sparse plane.");
     }
+    TEST_METHOD(CurrentSamplingBasisHarvestsLateExactSupportBeforeFinalScanWithoutWaiting) {
+        auto pixels=Pixels();Text(pixels,200,318,16);const auto source=Source(pixels);
+        auto key=CurrentHeldProofCue(1);key.identity.analysisDomainKey=17;
+        key.sharedPicture.identity=key.identity;
+        ActivePictureBounds nominee{0,45,640,350,640,360,640.0/305,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        const auto measured=VerifyCurrentSourceSupport(source,key.identity,&nominee,nullptr);
+        Assert::IsTrue(measured.verified,L"The delayed result is generated from these actual current pixels.");
+        key.sharedPicture.bounds.top=measured.samplingBounds.top;
+        for(int fault=0;fault<5;++fault) {
+            SubtitleMeasurementSampler sampler;unsigned polls=0;
+            auto ready=std::make_shared<CurrentSourceSupportEvidence>(measured);
+            if(fault==2)++ready->identity.acceptedSequence;
+            if(fault==3)ready->verified=false;
+            if(fault==4)++ready->identity.analysisDomainKey;
+            // The production entry snapshot is empty. A completed immutable
+            // result becomes observable only at the post-bar-probe harvest.
+            const auto provider=[&]() -> std::shared_ptr<const CurrentSourceSupportEvidence> {
+                ++polls;return fault==1?nullptr:ready;
+            };
+            const auto observation=sampler.Measure(source,key,{},60,{}, {},provider);
+            Assert::AreEqual(1u,polls,L"One nonblocking harvest; no polling loop, wait, or full-scan retry.");
+            Assert::IsTrue(observation.analyzed&&observation.text.detected);
+            Assert::IsTrue(observation.ink&&observation.ink->rawEvidenceComplete);
+            Assert::AreEqual(fault==0,observation.samplingBasis.Matches(observation));
+            if(fault==0) {
+                Assert::AreEqual(measured.samplingBounds.top,observation.pictureTop);
+                Assert::AreEqual(315,observation.pictureBottom,L"Caption support bottom350 never becomes picture bottom.");
+                Assert::IsFalse(observation.independentBarAnalysis);
+            } else {
+                Assert::AreEqual(observation.barEvidence.top,observation.pictureTop);
+                Assert::AreEqual(observation.barEvidence.bottom,observation.pictureBottom);
+            }
+        }
+    }
     TEST_METHOD(CurrentVerifiedSamplingBasisPreservesRawUnknownAndHeldGlyphProof) {
         auto supportFor=[](const SubtitleBoxObservation& o) {
             auto p=std::make_shared<CurrentSourceSupportEvidence>();

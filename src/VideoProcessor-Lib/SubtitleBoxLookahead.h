@@ -14,6 +14,7 @@
 #include <limits>
 #include <cmath>
 #include <memory>
+#include <functional>
 #include <deque>
 #include <vector>
 
@@ -506,10 +507,13 @@ namespace SubtitleBoxLookahead
         const SubtitleBarTrackingReference& priorBar = {},
         uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0,
         const SubtitlePictureAuthority& sharedPicture = {},
-        std::shared_ptr<const CurrentSourceSupportEvidence> currentSupport = {})
+        std::shared_ptr<const CurrentSourceSupportEvidence> currentSupport = {},
+        const std::function<std::shared_ptr<const CurrentSourceSupportEvidence>()>& currentSupportProvider = {})
     {
         SubtitleBoxObservation result;
         const auto start = std::chrono::steady_clock::now();
+        const bool entrySupportAvailable=currentSupport && currentSupport->verified &&
+            SameAnalysisFrameIdentity(currentSupport->identity,identity);
         result.identity = identity; result.analyzed = true;
         result.nearBarDistance=scanner.NearBarDistance();
         result.optimizationMode=scanner.OptimizationMode();
@@ -650,7 +654,27 @@ namespace SubtitleBoxLookahead
                     !bars.bottomRevalidatedAtReference && !bars.topRevalidatedNearby &&
                     !bars.bottomRevalidatedNearby && !bars.captionBackedTop &&
                     !bars.captionBackedBottom;
+                // Native support often completes while the existing bar probes
+                // run. Harvest it without waiting, before choosing the final
+                // scan plane; never rebase an already sampled glyph snapshot.
+                if(currentSupportProvider) {
+                    auto completed=currentSupportProvider();
+                    if(completed)currentSupport=std::move(completed);
+                }
+                const bool finalSupportAvailable=currentSupport && currentSupport->verified &&
+                    SameAnalysisFrameIdentity(currentSupport->identity,identity);
+                auto basisTrace=AnalysisTraceRecord(identity,nullptr,"subtitle-sampling-basis",
+                    finalSupportAvailable?"current-support-ready":"current-support-not-ready");
+                basisTrace.policyGeneration=policyGeneration;basisTrace.continuityGeneration=continuityGeneration;
+                basisTrace.metrics[0]=std::chrono::duration<double,std::milli>(
+                    std::chrono::steady_clock::now()-start).count();
+                basisTrace.metrics[1]=bars.top;basisTrace.metrics[2]=bars.bottom;
+                if(currentSupport)AnalysisTraceRect(basisTrace.candidate,currentSupport->samplingBounds);
                 result.samplingBasis.Apply(result,std::move(currentSupport));
+                basisTrace.flags=(entrySupportAvailable?1u:0u)|(finalSupportAvailable?2u:0u)|
+                    (result.samplingBasis.Matches(result)?4u:0u)|(currentSupportProvider?8u:0u);
+                basisTrace.metrics[3]=result.pictureTop;basisTrace.metrics[4]=result.pictureBottom;
+                AnalysisDiagnosticTrace::Emit(basisTrace);
                 if(result.barAuthority && !result.glyphLocalTop &&
                     !result.glyphLocalBottom) {
                     scanner.Reset();

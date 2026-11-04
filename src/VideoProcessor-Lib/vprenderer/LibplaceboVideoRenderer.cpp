@@ -9530,7 +9530,15 @@ struct LibplaceboVideoRenderer::Impl
             }
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
-            auto result=scanner.Measure(prepared.source,key,reference,fps,currentNative,std::move(currentSupport));
+            const auto currentSupportProvider=[&]() -> std::shared_ptr<const CurrentSourceSupportEvidence> {
+                if(!analysisCache)return {};
+                const auto completed=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
+                if(!CurrentLookaheadMeasurement(prepared,key.identity,completed) || !completed->sourcePictureSupport)return {};
+                return std::shared_ptr<const CurrentSourceSupportEvidence>(completed->sourcePictureSupport,
+                    &completed->sourcePictureSupport->currentSupport);
+            };
+            auto result=scanner.Measure(prepared.source,key,reference,fps,currentNative,std::move(currentSupport),
+                currentSupportProvider);
             if(SourcePictureDetectorEnabled() && !result.subtitleArProof.accepted && analysisCache) {
                 // The spatial job can finish while glyphs are being measured.
                 const auto raw=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
