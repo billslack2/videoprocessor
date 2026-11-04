@@ -5165,13 +5165,32 @@ namespace VideoProcessorTest
             // The sidecar retains the live native base from earlier source history.
             // Fresh native acquisition includes the current edge ringing through
             // row1885; raw image transition is275..1884, not retained bottom1888.
-            const int pictureTop=(pausedRecovery||scriptureHeld)?274:272,pictureBottom=1886;
+            const int pictureTop=profileCycle?272:((pausedRecovery||scriptureHeld)?274:272),pictureBottom=1886;
             constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
-            const unsigned phaseCount=scriptureHeld?83u:(pausedNative?46u:4u);
+            std::vector<unsigned> profileCaptureIndices;
+            std::vector<std::array<uint64_t,16>> profileCaptureIdentities;
+            if(profileCycle) {
+                char* manifestValue=nullptr;size_t manifestSize=0;
+                Assert::AreEqual(0,_dupenv_s(&manifestValue,&manifestSize,"VP_PROFILE_CAPTURE_MANIFEST"));
+                std::unique_ptr<char,decltype(&std::free)> manifestOwner(manifestValue,&std::free);
+                Assert::IsTrue(manifestValue&&*manifestValue,L"Profile seed coverage requires the preserved opposite-bar-unknown corpus manifest.");
+                std::ifstream manifest(manifestValue);unsigned count=0;manifest>>count;
+                Assert::AreEqual(93u,count,L"Use the complete preserved93-source corpus, including its recorded gaps.");
+                for(unsigned i=0;i<count;++i) {
+                    unsigned index=0;std::array<uint64_t,16> identity{};manifest>>index;
+                    for(auto& value:identity)manifest>>value;
+                    Assert::IsTrue(bool(manifest)&&index>0&&identity[0]==2&&identity[1]>0&&identity[2]>0&&identity[12]==417083);
+                    if(i)Assert::IsTrue(index>profileCaptureIndices.back()&&identity[1]>profileCaptureIdentities.back()[1]&&
+                        identity[2]>profileCaptureIdentities.back()[2],L"Recorded source order and gaps must remain explicit.");
+                    profileCaptureIndices.push_back(index);profileCaptureIdentities.push_back(identity);
+                }
+            }
+            const unsigned phaseCount=profileCycle?unsigned(profileCaptureIndices.size()):(scriptureHeld?83u:(pausedNative?46u:4u));
             const unsigned steadyCount=profileCycle?288u:(scriptureHeld?166u:144u);
             std::vector<std::vector<BYTE>> phases(phaseCount);
             for(unsigned phase=0;phase<phaseCount;++phase) {
-                char stem[40];sprintf_s(stem,"\\frame-%06u",phase+(scriptureHeld?3:(pausedNative?16:1)));
+                const unsigned originalIndex=profileCycle?profileCaptureIndices[phase]:phase+(scriptureHeld?3:(pausedNative?16:1));
+                char stem[40];sprintf_s(stem,"\\frame-%06u",originalIndex);
                 const std::string path=std::string(captureValue)+stem;
                 std::ifstream metadata(path+".txt");
                 int w=0,h=0,rb=0,crb=0,format=0,encoding=0,color=0,top=0,bottom=0,script=0,range=0;
@@ -5182,13 +5201,14 @@ namespace VideoProcessorTest
                 if(pausedNative||scriptureHeld) {
                     std::string version;std::array<uint64_t,16> original{};
                     metadata>>version;for(auto& value:original)metadata>>value;
-                    Assert::IsTrue(bool(metadata)&&version=="identity_v1"&&original[0]==2&&
-                        original[1]==(scriptureHeld?15935u:450u)+phase&&
-                        original[2]==(scriptureHeld?20419u:751414u)+phase&&original[12]==417083,
-                        L"Replay input must be the original consecutive capture segment and cadence.");
-                    std::ostringstream mapping;mapping<<(scriptureHeld?"SCRIPTURE INPUT: index=":"PAUSED NATIVE INPUT: index=")<<phase+(scriptureHeld?3:16)<<" original_identity_v1=";
+                    const bool originalMatches=profileCycle?original==profileCaptureIdentities[phase]:
+                        (original[0]==2&&original[1]==(scriptureHeld?15935u:450u)+phase&&
+                         original[2]==(scriptureHeld?20419u:751414u)+phase&&original[12]==417083);
+                    Assert::IsTrue(bool(metadata)&&version=="identity_v1"&&originalMatches,
+                        L"Replay input must match every original sidecar identity; recorded gaps are never fabricated as captured frames.");
+                    std::ostringstream mapping;mapping<<(scriptureHeld?"SCRIPTURE INPUT: index=":"PAUSED NATIVE INPUT: index=")<<originalIndex<<" original_identity_v1=";
                     for(const auto value:original)mapping<<value<<',';
-                    if(scriptureHeld)mapping<<" renderer_index follows SCRIPTURE REPLAY MAP; paused acquisition repeats original frame4, then ordered corpus";
+                    if(scriptureHeld)mapping<<" renderer_index follows SCRIPTURE REPLAY MAP; paused acquisition repeats the declared original frame, then ordered corpus";
                     else mapping<<" renderer_index=(renderer_source-1)%"<<phaseCount;
                     mapping<<"; renderer timestamps and generations are fresh; looping is replay scheduling, not additional recorded history";
                     NativeRendererFixtureLog(mapping.str().c_str());
@@ -5308,7 +5328,7 @@ namespace VideoProcessorTest
             std::map<uint64_t,std::pair<timingclocktime_t,uint64_t>> inputs;
             uint64_t sequence=1,steadyStart=0,scriptureCorpusStart=0;size_t cursor=0;bool acquired=false;
             bool scripturePreroll=scriptureHeld;
-            constexpr unsigned ScriptureAcquisitionPhase=1; // Untouched original frame000004, not generated pixels.
+            const unsigned ScriptureAcquisitionPhase=profileCycle?0:1; // Untouched declared original frame, not generated pixels.
             std::map<uint64_t,unsigned> capturedPhaseBySource;
             const auto captureOrigin=clock.TimingClockNow();auto next=std::chrono::steady_clock::now();
             std::vector<double> ingressMs;std::vector<AnalysisDiagnosticRecordV1> observed;
@@ -5410,9 +5430,12 @@ namespace VideoProcessorTest
                 // renderer never holds an old source to wait for subtitles.
                 scripturePreroll=false;scriptureCorpusStart=sequence;
                 std::ostringstream mapping;mapping<<"SCRIPTURE REPLAY MAP: preroll_first=1 preroll_last="<<sequence-1
-                    <<" preroll_original_index=4 preroll_original_accepted=15936 preroll_original_physical=20420"
-                    <<" corpus_first="<<scriptureCorpusStart<<" corpus_original_first=3 corpus_count=83"
-                    <<"; corpus_index=(renderer_source-corpus_first)%83; inputs are unmodified";
+                    <<" preroll_original_index="<<(profileCycle?profileCaptureIndices[0]:4)
+                    <<" preroll_original_accepted="<<(profileCycle?profileCaptureIdentities[0][1]:15936)
+                    <<" preroll_original_physical="<<(profileCycle?profileCaptureIdentities[0][2]:20420)
+                    <<" corpus_first="<<scriptureCorpusStart<<" corpus_original_first="<<(profileCycle?profileCaptureIndices[0]:3)
+                    <<" corpus_count="<<phaseCount
+                    <<"; corpus_index=(renderer_source-corpus_first)%"<<phaseCount<<"; inputs are unmodified";
                 NativeRendererFixtureLog(mapping.str().c_str());
             }
             if(pausedRecovery) {
