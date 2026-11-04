@@ -2875,6 +2875,7 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
         SameContext(state->descriptor.context,key))
         return SubtitleCurrentCueFullScanRoute::Enqueue;
 
+    bool matchedVerifiedCurrentTask=false;
     for(auto i=m_currentCueTasks.rbegin();i!=m_currentCueTasks.rend();++i) {
         auto& entry=**i;
         if(entry.seedTask || entry.revision<minimumRevision || !SameExactTaskKey(entry.key,key))continue;
@@ -2892,8 +2893,14 @@ inline SubtitleCurrentCueFullScanRoute SubtitleMeasurementWorker::RouteCurrentCu
             return SubtitleCurrentCueFullScanRoute::Deferred;
         }
         if(!entry.proofVerified)return SubtitleCurrentCueFullScanRoute::Enqueue;
+        matchedVerifiedCurrentTask=true;
         break;
     }
+
+    // Semantic refresh cadence is optional only after this exact source has
+    // verified current pixels. A template alone cannot replace a missing task
+    // or suppress the ordinary scan needed before this source reaches render.
+    if(!matchedVerifiedCurrentTask)return SubtitleCurrentCueFullScanRoute::Enqueue;
 
     if(!HasCurrentCueProofContextLocked() || !state->descriptor.valid || !state->cadenceRoutingEligible || !SameContext(state->descriptor.context,key) ||
         key.identity.acceptedSequence<=state->descriptor.context.identity.acceptedSequence ||

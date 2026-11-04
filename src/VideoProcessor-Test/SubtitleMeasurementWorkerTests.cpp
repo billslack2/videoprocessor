@@ -5737,6 +5737,56 @@ TEST_METHOD(CurrentCueWorkerReplacesFailedPixelBaselineFromFreshIndependentScan)
             L"A later due request upgrades the same proof source when its semantic refresh interval elapsed.");
         Assert::AreEqual(1u,lateDueScans.load(std::memory_order_acquire));
     }
+    TEST_METHOD(CurrentCueWorkerAdmitsCurrentFullScanWhenProofTaskIsMissing) {
+        for(const auto rate:{24.0,60.0}) {
+            auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+            auto seed=CompleteThreeLineScan(1,*pixels);
+            if(rate>30.0)seed.analysisStride=2;
+            std::atomic_uint scans{0};std::atomic_bool ranOffCaller{false};
+            const auto callerThread=std::this_thread::get_id();
+            SubtitleMeasurementWorker worker;worker.SetInputRateHz(rate);
+            worker.AdvanceCurrentCueRenderWindow(seed.identity,1);
+            const auto makeTemplate=[&]() {
+                SubtitleCurrentCueTemplateInput input;input.observation=seed;input.acceptedCue=seed.text;
+                input.source=OwnedSource(pixels);input.physicalBase=seed.sharedPicture.bounds;
+                input.sourceMode=SubtitlePreviewMode::None;input.acceptedCurrentScan=true;
+                input.frameMs=1000.0/rate;input.holdMs=250;return input;
+            };
+            uint64_t revision=0;
+            Assert::IsTrue(worker.SubmitCurrentCueTemplate(makeTemplate(),revision)==
+                SubtitleCurrentCueProofStatus::Queued);
+            bool seeded=false;
+            for(int attempt=0;attempt<1000;++attempt) {
+                uint64_t sameRevision=0;
+                if(worker.SubmitCurrentCueTemplate(makeTemplate(),sameRevision)==SubtitleCurrentCueProofStatus::Ready) {
+                    Assert::AreEqual(revision,sameRevision);seeded=true;break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            Assert::IsTrue(seeded,L"The accepted template is ready before the next source is admitted.");
+
+            auto current=CompleteThreeLineScan(2,*pixels);
+            if(rate>30.0)current.analysisStride=2;
+            // The accepted-source tail advances before this source becomes the
+            // render head. No optional current-pixel proof task was submitted.
+            worker.AdvanceCurrentCueRenderWindow(seed.identity,2);
+            const bool admitted=worker.Submit(current,[current,&scans,&ranOffCaller,callerThread](
+                SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                ranOffCaller.store(std::this_thread::get_id()!=callerThread,std::memory_order_release);
+                ++scans;return current;
+            });
+            Assert::IsTrue(admitted,
+                L"A ready old template cannot throttle the only current-source scan when no exact proof task exists.");
+            SubtitleBoxObservation observed;
+            Assert::IsTrue(WaitForRead(worker,current,observed),
+                L"Ordinary fallback work must complete before render-head selection, without waiting for the semantic interval.");
+            Assert::IsTrue(SameAnalysisFrameIdentity(current.identity,observed.identity));
+            Assert::IsTrue(observed.analyzed && observed.text.detected);
+            Assert::AreEqual(1u,scans.load(std::memory_order_acquire));
+            Assert::IsTrue(ranOffCaller.load(std::memory_order_acquire),
+                L"Fallback admission must retain the bounded asynchronous worker path.");
+        }
+    }
     TEST_METHOD(CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence) {
         for(const auto rate:{24.0,60.0}) {
             auto seedPixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());

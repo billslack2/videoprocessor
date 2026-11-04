@@ -13,7 +13,7 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1120,
+  "minimumNativeTests": 1121,
   "requiredNativeMethods": [
     "PendingSharedCueRejectsLostPhysicalBarsWhenAcceptedGlyphPixelsAreUnchanged",
     "RegressionRendererFactoryOptionsRejectUnsupportedInputs",
@@ -394,6 +394,7 @@
     "CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase",
     "CurrentCueWorkerPollingIsNonblockingAndDropsQueuedExpiredOwners",
     "CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence",
+    "CurrentCueWorkerAdmitsCurrentFullScanWhenProofTaskIsMissing",
     "CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange",
     "CurrentCueWorkerTailOnlyCaptureExtensionPreservesProofAndAcceptsSubsetHead",
     "CurrentCueWorkerRejectsNovelInkInsideAdvancedDestinationAndAllowsUniformMotion",
