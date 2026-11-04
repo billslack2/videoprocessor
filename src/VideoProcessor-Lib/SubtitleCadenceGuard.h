@@ -21,7 +21,7 @@ public:
     // not classify black/ink or grant new ownership. Every comparison stays
     // anchored to the immutable seed; accepted noise cannot accumulate drift.
     static bool EncodingEquivalent(const AnalysisLumaSample& seed,const AnalysisLumaSample& current) {
-        constexpr int noise=8; // Existing normalized 10-bit current-glyph YUV budget.
+        constexpr int noise=SubtitleInkThresholdEvidence::EncodingTolerance; // Shared normalized 10-bit current-glyph YUV budget.
         return std::abs(int(current.luma)-int(seed.luma))<=noise &&
             std::abs(int(current.chromaU)-int(seed.chromaU))<=noise &&
             std::abs(int(current.chromaV)-int(seed.chromaV))<=noise;
@@ -1404,6 +1404,7 @@ private:
     std::shared_ptr<SubtitleInkSnapshot> Snapshot(const SubtitleInkSnapshot& p,
         const std::vector<Pixel>& pixels) const {
         auto out=std::make_shared<SubtitleInkSnapshot>(p);
+        out->thresholdEvidence.reset(); // Seed samples are not current-source numeric evidence.
         std::fill(out->rawInk.begin(),out->rawInk.end(),0);
         std::fill(out->blackBacking.begin(),out->blackBacking.end(),0);
         std::fill(out->ownedInk.begin(),out->ownedInk.end(),0);

@@ -13,11 +13,12 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1121,
+  "minimumNativeTests": 1122,
   "requiredNativeMethods": [
     "PendingSharedCueRejectsLostPhysicalBarsWhenAcceptedGlyphPixelsAreUnchanged",
     "RegressionRendererFactoryOptionsRejectUnsupportedInputs",
     "CurrentHeldPreparedCueUsesCurrentRevalidatedBarsWithoutAcquiringNativeAuthority",
+    "CurrentHeldGlyphThresholdNoiseUsesImmutableSamePointEvidence",
     "CurrentHeldRevalidatedBarsStillRequireCompleteCurrentGlyphAndSharedEvidence",
     "SourcePictureOverlappingQuantizedRayIntervalsKeepCurrentEdgeAcrossPhases",
     "SourcePictureRayIntervalConsensusRejectsSeparatedChainsAndDuplicateRays",
@@ -1038,6 +1039,11 @@
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
       "method": "PendingSharedCueRejectsLostPhysicalBarsWhenAcceptedGlyphPixelsAreUnchanged"
+    },
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentHeldGlyphThresholdNoiseUsesImmutableSamePointEvidence"
     }
   ]
 }

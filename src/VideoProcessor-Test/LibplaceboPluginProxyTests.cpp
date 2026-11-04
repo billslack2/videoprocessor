@@ -5161,7 +5161,9 @@ namespace VideoProcessorTest
                         L"Replay input must be the original consecutive capture segment and cadence.");
                     std::ostringstream mapping;mapping<<(scriptureHeld?"SCRIPTURE INPUT: index=":"PAUSED NATIVE INPUT: index=")<<phase+(scriptureHeld?3:16)<<" original_identity_v1=";
                     for(const auto value:original)mapping<<value<<',';
-                    mapping<<" renderer_index=(renderer_source-1)%"<<phaseCount<<"; renderer timestamps and generations are fresh; looping is replay scheduling, not additional recorded history";
+                    if(scriptureHeld)mapping<<" renderer_index follows SCRIPTURE REPLAY MAP; paused acquisition repeats original frame4, then ordered corpus";
+                    else mapping<<" renderer_index=(renderer_source-1)%"<<phaseCount;
+                    mapping<<"; renderer timestamps and generations are fresh; looping is replay scheduling, not additional recorded history";
                     Logger::WriteMessage(mapping.str().c_str());
                 }
                 std::ifstream pixels(path+".bin",std::ios::binary|std::ios::ate);
@@ -5269,7 +5271,10 @@ namespace VideoProcessorTest
             const auto wallNs=[] {return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count());};
             std::map<uint64_t,std::pair<timingclocktime_t,uint64_t>> inputs;
-            uint64_t sequence=1,steadyStart=0;size_t cursor=0;bool acquired=false;
+            uint64_t sequence=1,steadyStart=0,scriptureCorpusStart=0;size_t cursor=0;bool acquired=false;
+            bool scripturePreroll=scriptureHeld;
+            constexpr unsigned ScriptureAcquisitionPhase=1; // Untouched original frame000004, not generated pixels.
+            std::map<uint64_t,unsigned> capturedPhaseBySource;
             const auto captureOrigin=clock.TimingClockNow();auto next=std::chrono::steady_clock::now();
             std::vector<double> ingressMs;std::vector<AnalysisDiagnosticRecordV1> observed;
             struct TraceDump {
@@ -5320,7 +5325,10 @@ namespace VideoProcessorTest
                 if(callback.state==RENDERSTATE_RENDERING) {
                     const auto stamp=captureOrigin+timingclocktime_t((sequence-1)*uint64_t(clock.TimingClockTicksPerSecond())*1001/24000);
                     const auto start=wallNs();inputs.emplace(sequence,std::make_pair(stamp,start));
-                    const auto* pixels=usePriorBackground?priorBackground.data():phases[(sequence-1)%phaseCount].data();
+                    const unsigned phase=scriptureHeld ? (scripturePreroll?ScriptureAcquisitionPhase:
+                        unsigned((sequence-scriptureCorpusStart)%phaseCount)) : unsigned((sequence-1)%phaseCount);
+                    capturedPhaseBySource.emplace(sequence,phase);
+                    const auto* pixels=usePriorBackground?priorBackground.data():phases[phase].data();
                     VideoFrame frame(pixels,sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);
                     if(steadyStart)ingressMs.push_back(double(wallNs()-start)/1e6);
                 }
@@ -5360,6 +5368,17 @@ namespace VideoProcessorTest
             Assert::IsTrue(acquired,L"Actual capture never produced a composed native-qualified source; no steady coverage claimed.");
             // Bounded warmup only; once steady observation begins every output counts.
             for(unsigned i=0;i<48;++i)pump();
+            if(scriptureHeld) {
+                // Explicit paused test-input preroll fixes acquisition phase.
+                // Every submission still has a fresh identity/timestamp; the
+                // renderer never holds an old source to wait for subtitles.
+                scripturePreroll=false;scriptureCorpusStart=sequence;
+                std::ostringstream mapping;mapping<<"SCRIPTURE REPLAY MAP: preroll_first=1 preroll_last="<<sequence-1
+                    <<" preroll_original_index=4 preroll_original_accepted=15936 preroll_original_physical=20420"
+                    <<" corpus_first="<<scriptureCorpusStart<<" corpus_original_first=3 corpus_count=83"
+                    <<"; corpus_index=(renderer_source-corpus_first)%83; inputs are unmodified";
+                Logger::WriteMessage(mapping.str().c_str());
+            }
             if(pausedRecovery) {
                 recoveryStart=sequence;usePriorBackground=false;
                 // A test observation allowance, never a production hold/delay.
@@ -5370,8 +5389,8 @@ namespace VideoProcessorTest
             const uint64_t steadyEnd=steadyStart+steadyCount-1;
             unsigned visualRequests=0;
             while(sequence<=steadyEnd+10) {
-                if(visualCapture && sequence>=steadyStart && sequence-steadyStart<150 &&
-                    (sequence-steadyStart)%30==0) {
+                if(visualCapture && sequence>=steadyStart+10 && sequence-steadyStart<150 &&
+                    (sequence-steadyStart-10)%30==0) {
                     CString status;Assert::IsTrue(cleanup.renderer->RequestRenderedOutputCapture(status),
                         L"Could not request actual scripture output capture.");
                     ++visualRequests;
@@ -5412,7 +5431,7 @@ namespace VideoProcessorTest
                 noFallback&=r.metrics[9]>=((pausedNative||scriptureHeld)?r.published[1]:pictureTop)-.01&&r.metrics[11]<=((pausedNative||scriptureHeld)?r.published[3]:pictureBottom)+.01&&!(r.flags&(4096u|8192u|16384u));
                 const auto time=classicPoseSubmitWallNs.find(r.recordSequence);
                 if(distinct.insert(r.sourceFrameNumber).second&&time!=classicPoseSubmitWallNs.end()) {
-                    phaseCoverage.insert(unsigned((r.sourceFrameNumber-1)%phaseCount));
+                    phaseCoverage.insert(capturedPhaseBySource.at(r.sourceFrameNumber));
                     if(lastWall)maxGapMs=(std::max)(maxGapMs,double(time->second-lastWall)/1e6);
                     if(lastSource)maxSourceGap=(std::max)(maxSourceGap,r.sourceFrameNumber>lastSource?r.sourceFrameNumber-lastSource:uint64_t(144));
                     if(!firstWall)firstWall=time->second;lastWall=time->second;lastSource=r.sourceFrameNumber;
@@ -5555,11 +5574,18 @@ namespace VideoProcessorTest
                     L"Every steady captured source must consume its exact current off-thread pixel proof from one prior template, with grouping below source cadence.");
             } else if(scriptureHeld) {
                 std::set<uint64_t> declined,ordinary,held,fullScans,unready;
-                bool genuineHeld=true,mappingStable=true,haveMapping=false;
+                bool genuineHeld=true,mappingStable=true,haveMapping=false,prerollReference=true;
+                unsigned referenceWitnesses=0;
                 std::array<double,8> mapping{};std::array<int32_t,4> guard{};
                 for(const auto& r:observed) {
                     if(r.sourceFrameNumber<steadyStart||r.sourceFrameNumber>steadyEnd)continue;
                     if(!strcmp(r.stage,"regression-cue-proof-declined"))declined.insert(r.sourceFrameNumber);
+                    if(!strcmp(r.stage,"subtitle-held-certificate")) {
+                        ++referenceWitnesses;
+                        const auto reference=capturedPhaseBySource.find(r.counters[3]);
+                        prerollReference&=r.counters[3]>0 && r.counters[3]<scriptureCorpusStart &&
+                            reference!=capturedPhaseBySource.end() && reference->second==ScriptureAcquisitionPhase;
+                    }
                     if(!strcmp(r.stage,"regression-current-scan")) {
                         if(!(r.flags&1u))unready.insert(r.sourceFrameNumber);
                         else {
@@ -5578,10 +5604,13 @@ namespace VideoProcessorTest
                     <<" proof_declined="<<declined.size()<<" ordinary="<<ordinary.size()<<" held="<<held.size()
                     <<" exact_full_scans="<<fullScans.size()<<" unready="<<unready.size()
                     <<" current_held_certificate="<<genuineHeld<<" mapping_stable="<<mappingStable
-                    <<" visual_requests="<<visualRequests;
+                    <<" visual_requests="<<visualRequests<<" reference_witnesses="<<referenceWitnesses
+                    <<" preroll_reference="<<prerollReference;
                 Logger::WriteMessage(row.str().c_str());
                 Assert::IsTrue(proofs==0&&consumed==0&&declined.size()==steadyCount,
                     L"Unavailable optional reuse must be exercised for each source; a ready receipt cannot mask the raw/held path.");
+                Assert::IsTrue(referenceWitnesses>0&&prerollReference,
+                    L"Natural held proof must retain the explicitly supplied original frame4 acquisition; phase coverage cannot come from an unrelated later seed.");
                 Assert::IsTrue(!ordinary.empty()&&!held.empty()&&genuineHeld&&fullScans.size()==steadyCount&&unready.empty(),
                     L"The actual tracker must naturally accept both ordinary and current-certified held scans; missing current scans remain distinct failures.");
                 Assert::IsTrue(distinct.size()==steadyCount&&haveMapping&&mappingStable&&maxSourceGap==1,

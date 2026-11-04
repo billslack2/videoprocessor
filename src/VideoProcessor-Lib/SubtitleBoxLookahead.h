@@ -3465,6 +3465,7 @@ public:
         }
         auto& certificateDecision=m_preparedCueDecision;
         using CertificateFact=CurrentPreparedCueDecision;
+        m_novelInkWitness={};
         const bool certifyCurrentHeld=
             certificateDecision.Check(CertificateFact::HeldPose,templateHeld) &&
             certificateDecision.Check(CertificateFact::CurrentTemplate,currentTemplateEligible && currentTemplatePixelsMatch) &&
@@ -3518,6 +3519,9 @@ public:
             const auto add=[&](uint64_t value){fingerprint=(fingerprint^value)*1099511628211ull;};
             const auto addRect=[&](const SubtitleBoxRect& r){add(r.left);add(r.top);add(r.right);add(r.bottom);};
             add(certificateDecision.evaluated);add(certificateDecision.failed);add(facts);add(result.cue);
+            if(certificateDecision.failed&CertificateFact::NoNovelOwnedInk) {
+                add(m_novelInkWitness.x);add(m_novelInkWitness.y);add(m_novelInkWitness.flags);
+            }
             add(m_inkReference.identity.acceptedSequence);add(raw.policyGeneration);add(raw.continuityGeneration);
             add(raw.identity.transportGeneration);add(raw.identity.sourceFormatGeneration);
             add(raw.identity.viewportGeneration);add(raw.identity.rendererGeneration);add(raw.identity.analysisDomainKey);
@@ -3540,6 +3544,15 @@ public:
                 trace.counters[6]=m_inkReference.identity.transportGeneration;trace.counters[7]=m_inkReference.identity.analysisDomainKey;
                 trace.metrics[0]=raw.pictureTop;trace.metrics[1]=raw.pictureBottom;
                 trace.metrics[2]=raw.barEvidence.top;trace.metrics[3]=raw.barEvidence.bottom;
+                if(certificateDecision.failed&CertificateFact::NoNovelOwnedInk) {
+                    const auto& n=m_novelInkWitness;
+                    trace.metrics[4]=n.x;trace.metrics[5]=n.y;trace.metrics[6]=n.oldRow;
+                    trace.metrics[7]=n.seedFloor;trace.metrics[8]=n.currentFloor;
+                    trace.metrics[9]=SubtitleInkThresholdEvidence::EncodingTolerance;
+                    trace.metrics[10]=n.seedY;trace.metrics[11]=n.seedU;trace.metrics[12]=n.seedV;
+                    trace.metrics[13]=n.currentY;trace.metrics[14]=n.currentU;trace.metrics[15]=n.currentV;
+                    trace.metrics[16]=n.flags;
+                }
                 AnalysisTraceRect(trace.measured,raw.text.bounds);AnalysisTraceRect(trace.previous,result.bounds);
                 AnalysisTraceRect(trace.candidate,raw.sharedPicture.bounds);AnalysisDiagnosticTrace::Emit(trace);
                 auto reference=AnalysisTraceRecord(m_inkReference.identity,this,"subtitle-held-reference","glyph-reference");
@@ -3744,6 +3757,61 @@ private:
         }
         return extension.Valid();
     }
+    struct NovelInkWitness {
+        int x=-1,y=-1,oldRow=-1,seedFloor=0,currentFloor=0;
+        int seedY=-1,seedU=-1,seedV=-1,currentY=-1,currentU=-1,currentV=-1;
+        unsigned flags=0;
+    };
+    mutable NovelInkWitness m_novelInkWitness;
+    static const SubtitleInkThresholdSample* ThresholdSampleAt(const SubtitleBoxObservation& observation,int x,int y) {
+        if(!observation.ink)return nullptr;
+        const auto& ink=*observation.ink;const auto& stored=ink.thresholdEvidence;
+        if(!stored || !stored->complete || stored->overflowed ||
+            stored->samples.size()>SubtitleInkThresholdEvidence::MaximumSamples ||
+            stored->width!=ink.width || stored->height!=ink.height || stored->step!=ink.step ||
+            stored->inkFloor!=ink.inkFloor || stored->inkU!=ink.inkU || stored->inkV!=ink.inkV ||
+            stored->sequence!=observation.identity.acceptedSequence || stored->viewport!=observation.identity.viewportGeneration ||
+            !stored->generation || (stored->generation!=observation.identity.transportGeneration &&
+                stored->generation!=observation.identity.sourceFormatGeneration) ||
+            x<0 || y<0 || x>=ink.width || y>=ink.height ||
+            stored->sourceRows.size()!=size_t(ink.height) || ink.sourceRows.size()!=size_t(ink.height) ||
+            stored->sourceRows[size_t(y)]!=ink.sourceRows[size_t(y)])return nullptr;
+        const uint32_t index=uint32_t(size_t(y)*ink.width+x);
+        const auto found=std::lower_bound(stored->samples.begin(),stored->samples.end(),index,
+            [](const SubtitleInkThresholdSample& sample,uint32_t target){return sample.index<target;});
+        return found!=stored->samples.end() && found->index==index?&*found:nullptr;
+    }
+    bool SameCurrentThresholdFringe(const SubtitleBoxObservation& current,int x,int y,int oldY) const {
+        const auto& old=*m_inkReference.ink;const auto& now=*current.ink;
+        auto& witness=m_novelInkWitness;witness={};witness.x=x*now.step;witness.y=now.sourceRows[size_t(y)];
+        witness.oldRow=oldY;witness.seedFloor=old.inkFloor;witness.currentFloor=now.inkFloor;
+        if(oldY<0)return false;witness.flags|=1;
+        bool inside=false;
+        for(int line=0;line<m_inkReference.text.lineCount && line<3;++line) {
+            const auto& box=m_inkReference.text.lineBounds[line];
+            inside|=box.Valid() && witness.x>=box.left && witness.x<box.right && witness.y>=box.top && witness.y<box.bottom;
+        }
+        if(inside)witness.flags|=8;
+        bool adjacent=false;
+        for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx) {
+            const int row=oldY+dy;
+            if((dx||dy) && row>=0 && row<old.height &&
+                std::abs(old.sourceRows[size_t(row)]-witness.y)<=old.step && old.Get(x+dx,row,true))adjacent=true;
+        }
+        if(adjacent)witness.flags|=16;
+        const auto* seed=ThresholdSampleAt(m_inkReference,x,oldY);const auto* present=ThresholdSampleAt(current,x,y);
+        const auto unpack=[](uint32_t v,int& y,int& u,int& c){y=int(v&1023);u=int((v>>10)&1023);c=int((v>>20)&1023);};
+        if(seed){witness.flags|=2;unpack(seed->yuv,witness.seedY,witness.seedU,witness.seedV);}
+        if(present){witness.flags|=4;unpack(present->yuv,witness.currentY,witness.currentU,witness.currentV);}
+        if(!inside || !adjacent || !seed || !present)return false;
+        const bool seedNear=SubtitleInkThresholdEvidence::NearThreshold(witness.seedY,witness.seedU,witness.seedV,old.inkFloor,old.inkU,old.inkV);
+        const bool currentNear=SubtitleInkThresholdEvidence::NearThreshold(witness.currentY,witness.currentU,witness.currentV,now.inkFloor,now.inkU,now.inkV);
+        if(seedNear)witness.flags|=64;if(currentNear)witness.flags|=128;
+        const int tolerance=SubtitleInkThresholdEvidence::EncodingTolerance;
+        const bool equivalent=seedNear && currentNear && std::abs(witness.currentY-witness.seedY)<=tolerance &&
+            std::abs(witness.currentU-witness.seedU)<=tolerance && std::abs(witness.currentV-witness.seedV)<=tolerance;
+        if(equivalent)witness.flags|=32;return equivalent;
+    }
     bool NoNewOwnedInkOutsideReference(const SubtitleBoxObservation& current,
         bool requireReferenceOwnership=false) const
     {
@@ -3786,7 +3854,14 @@ private:
                 if(!now.Get(x,y,true) || (oldY>=0 && old.Get(x,oldY,true)))continue;
                 // The one-cell prepared-box allowance cannot admit any newly
                 // owned glyph, including a new word inside the old line box.
-                if(requireReferenceOwnership)return false;
+                if(requireReferenceOwnership) {
+                    // A categorical threshold crossing at the SAME existing
+                    // glyph fringe is not a newly drawn stroke. This uses only
+                    // immutable acquisition/current numeric evidence; it never
+                    // changes either ownership mask or accepts a shifted point.
+                    if(SameCurrentThresholdFringe(current,x,y,oldY))continue;
+                    return false;
+                }
                 const int px=x*now.step;
                 bool insideOld=false;
                 for(int line=0;line<m_result.lineCount && line<3;++line) {
@@ -3953,6 +4028,7 @@ private:
             source.sourceRows.size()!=size_t(source.height) ||
             m_inkReference.ink->sourceRows.size()!=size_t(source.height)) return {};
         auto novel=std::make_shared<SubtitleInkSnapshot>(source);
+        novel->thresholdEvidence.reset(); // A derived extension mask is not the original numeric ownership witness.
         std::fill(novel->rawInk.begin(),novel->rawInk.end(),0);
         novel->ownedInk.assign(words,0);
         const int left=(std::max)(0,bounds.left/source.step);

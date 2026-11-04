@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <cstdlib>
 #include <AnalysisLumaSource.h>
 
 // Diagnostic only. Half-open source-raster bounds; no source-pixel mutation,
@@ -21,6 +22,39 @@ struct SubtitlePanelTopEdge
 // Ink coverage in a normalized 64x16 grid. Density preserves stroke changes
 // in long lines where a one-bit cell would be set by several adjacent glyphs.
 using SubtitleLineSignature = std::array<uint8_t, 64 * 16>;
+// Numeric uncertainty evidence only. It never classifies/owns glyphs or
+// authorizes backing, cleanup, absence or native crop. Shared immutable storage
+// keeps snapshot copies on the presentation path shallow.
+struct SubtitleInkThresholdSample {
+    uint32_t index=0, yuv=0;
+};
+struct SubtitleInkThresholdEvidence {
+    enum { EncodingTolerance=8, MaximumSamples=65536 };
+    bool complete=false,overflowed=false;
+    int width=0,height=0,step=0,inkFloor=0,inkU=512,inkV=512;
+    uint64_t generation=0,sequence=0,viewport=0;
+    std::vector<int> sourceRows;
+    std::vector<SubtitleInkThresholdSample> samples;
+    static bool NearThreshold(int y,int u,int v,int floor,int paletteU,int paletteV) {
+        const int du=std::abs(u-paletteU),dv=std::abs(v-paletteV);
+        return y>=floor-EncodingTolerance && du<=80+EncodingTolerance && dv<=80+EncodingTolerance &&
+            (std::abs(y-floor)<=EncodingTolerance || std::abs(du-80)<=EncodingTolerance ||
+                std::abs(dv-80)<=EncodingTolerance);
+    }
+    bool Append(uint32_t index,uint16_t y,uint16_t u,uint16_t v) {
+        if(overflowed)return false;
+        if(width<=0 || height<=0 || width>960 || height>540 || y>1023 || u>1023 || v>1023 ||
+            index>=size_t(width)*size_t(height) || (!samples.empty() && index<=samples.back().index) ||
+            samples.size()>=MaximumSamples) {
+            overflowed=true;complete=false;samples.clear();return false;
+        }
+        if(samples.size()==samples.capacity()) {
+            const size_t doubled=samples.capacity()?samples.capacity()*2:16;
+            samples.reserve(doubled>MaximumSamples?size_t(MaximumSamples):doubled);
+        }
+        samples.push_back({index,uint32_t(y)|(uint32_t(u)<<10)|(uint32_t(v)<<20)});return true;
+    }
+};
 // Immutable bounded analysis evidence for fixed-coordinate cue revalidation.
 // Rows retain their actual source positions, including explicitly sampled bar
 // boundary rows. Raw ink is captured before component grouping can fail.
@@ -36,6 +70,7 @@ struct SubtitleInkSnapshot {
     int width=0,height=0,step=0;
     std::vector<int> sourceRows;
     std::vector<uint64_t> rawInk,ownedInk;
+    std::shared_ptr<const SubtitleInkThresholdEvidence> thresholdEvidence;
     // Independent sampled near-black evidence, available even if grouping fails.
     std::vector<uint64_t> blackBacking;
     bool Black(int x,int y) const {

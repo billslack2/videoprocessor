@@ -361,14 +361,28 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     const int trackingBlackLimit=bar+std::max(12,(ink-bar)/48);
     evidence.paletteValid=true; evidence.inkFloor=threshold;
     evidence.inkU=inkU; evidence.inkV=inkV; evidence.blackLimit=trackingBlackLimit;
+    auto thresholdEvidence=std::make_shared<SubtitleInkThresholdEvidence>();
+    thresholdEvidence->width=w;thresholdEvidence->height=h;thresholdEvidence->step=step;
+    thresholdEvidence->inkFloor=threshold;thresholdEvidence->inkU=inkU;thresholdEvidence->inkV=inkV;
+    thresholdEvidence->generation=m_generation;thresholdEvidence->sequence=m_sequence;thresholdEvidence->viewport=m_viewport;
+    thresholdEvidence->sourceRows=evidence.sourceRows;
+    thresholdEvidence->samples.reserve(4096);
     for(int y=0;y<h;++y) {
         if(y>=topEnd && y<bottomStart)continue; // Unread raster is not black evidence.
         for(int x=0;x<w;++x) {
             const size_t pixel=size_t(y)*w+x;
+            // Reuse the worker's existing source samples. Numeric uncertainty
+            // is not another raw/owned plane and never widens classification.
+            const uint16_t sampleY=m_luma[pixel],sampleU=uint16_t(m_chroma[pixel]&1023),sampleV=uint16_t(m_chroma[pixel]>>16);
+            if(!thresholdEvidence->overflowed && SubtitleInkThresholdEvidence::NearThreshold(
+                sampleY,sampleU,sampleV,threshold,inkU,inkV))
+                thresholdEvidence->Append(uint32_t(pixel),sampleY,sampleU,sampleV);
             if(m_luma[pixel]<=trackingBlackLimit)
                 evidence.blackBacking[pixel/64]|=uint64_t{1}<<(pixel%64);
         }
     }
+    thresholdEvidence->complete=!thresholdEvidence->overflowed;
+    evidence.thresholdEvidence=std::move(thresholdEvidence);
     for(size_t i=0;i<area;++i) if(m_mask[i]) evidence.rawInk[i/64]|=uint64_t{1}<<(i%64);
     evidence.rawEvidenceComplete=true;
     // Components preserve short words and punctuation until line grouping.

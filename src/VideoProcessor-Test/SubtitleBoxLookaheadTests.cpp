@@ -571,6 +571,100 @@ public:
             }
         }
     }
+    TEST_METHOD(CurrentHeldGlyphThresholdNoiseUsesImmutableSamePointEvidence) {
+        const auto scan=[](uint64_t sequence,int value,bool owned) {
+            auto o=CurrentHeldProofCue(sequence);
+            auto ink=std::make_shared<SubtitleInkSnapshot>(*o.ink);
+            ink->inkFloor=677;ink->inkU=ink->inkV=512;ink->blackLimit=96;
+            const size_t at=size_t(320)*640+205;const uint64_t bit=uint64_t(1)<<(at%64);
+            ink->rawInk[at/64]&=~bit;ink->ownedInk[at/64]&=~bit;ink->blackBacking[at/64]&=~bit;
+            if(owned){ink->rawInk[at/64]|=bit;ink->ownedInk[at/64]|=bit;}
+            auto evidence=std::make_shared<SubtitleInkThresholdEvidence>();
+            evidence->complete=true;evidence->width=640;evidence->height=360;evidence->step=1;evidence->inkFloor=677;
+            evidence->generation=o.identity.transportGeneration;evidence->sequence=sequence;evidence->viewport=o.identity.viewportGeneration;
+            evidence->sourceRows=ink->sourceRows;
+            evidence->samples.push_back({uint32_t(at),uint32_t(value)|(512u<<10)|(512u<<20)});
+            ink->thresholdEvidence=evidence;o.ink=ink;return o;
+        };
+        auto tracker=std::make_unique<SubtitleBoxPresentation>();
+        const SubtitleBoxObservation seed[2]={scan(1,676,false),scan(2,676,false)};
+        auto preview=std::make_unique<SubtitleBoxPreview>(SubtitleBoxLookahead::Resolve(seed,2,7,9));
+        const auto acquired=tracker->Consume(*preview,250,16.683);
+        Assert::IsTrue(acquired.detected&&!acquired.held);
+        auto immutable=seed[0].ink->thresholdEvidence;
+        for(uint64_t sequence=2;sequence<=4;++sequence) {
+            const int value=sequence==2?680:sequence==3?684:685;
+            const SubtitleBoxObservation current[2]={scan(sequence,value,true),scan(sequence+1,value,true)};
+            SubtitleBoxLookahead::ResolveInto(*preview,current,2,7,9);
+            preview->text.lineCount=1;preview->text.lineBounds[1]={};
+            --preview->current.text.lineBounds[0].bottom;
+            const auto held=tracker->Consume(*preview,250,16.683);
+            Assert::IsTrue(held.detected&&held.held);
+            const bool certified=tracker->CurrentPreparedCueCertificate().Matches(
+                preview->current,held,preview->current.sharedPicture.bounds);
+            Assert::AreEqual(sequence<4,certified,
+                L"676 to680/684 is bounded current fringe noise;685 must fail against immutable676 rather than walk through the previous frame.");
+            Assert::IsTrue(preview->current.ink->Get(205,320,true));
+            Assert::IsFalse(seed[0].ink->Get(205,320,true));
+            Assert::AreEqual(uint32_t(676),immutable->samples[0].yuv&1023u);
+            const auto clone=*preview->current.ink;
+            Assert::IsTrue(clone.thresholdEvidence==preview->current.ink->thresholdEvidence,
+                L"Snapshot copies must share immutable numeric evidence, not copy a pixel plane per presentation.");
+        }
+        // Exercise uncertainty evidence itself without changing the owned/raw
+        // classifier: missing provenance and actual new ink stay conservative.
+        for(int fault=0;fault<15;++fault) {
+            auto owner=std::make_unique<SubtitleBoxPresentation>();
+            auto old=scan(1,676,false);auto now=scan(2,680,true);
+            auto oldInk=std::make_shared<SubtitleInkSnapshot>(*old.ink);
+            auto nowInk=std::make_shared<SubtitleInkSnapshot>(*now.ink);
+            auto oldSamples=std::make_shared<SubtitleInkThresholdEvidence>(*oldInk->thresholdEvidence);
+            auto nowSamples=std::make_shared<SubtitleInkThresholdEvidence>(*nowInk->thresholdEvidence);
+            const auto pack=[](unsigned y,unsigned u,unsigned v){return y|(u<<10)|(v<<20);};
+            if(fault==0) {oldSamples->samples[0].yuv=pack(940,595,512);nowSamples->samples[0].yuv=pack(940,591,512);}
+            if(fault==1)nowSamples->samples[0].yuv=pack(940,512,512); // New strong stroke.
+            if(fault==2)nowSamples->samples[0].yuv=pack(680,521,512); // More than8 chroma codes.
+            if(fault==5)--nowSamples->sourceRows[320];
+            if(fault==6)++oldSamples->sequence;
+            if(fault==7) {
+                for(int y=319;y<=321;++y) {
+                    const size_t at=size_t(y)*640+204;const auto bit=uint64_t(1)<<(at%64);
+                    oldInk->rawInk[at/64]&=~bit;oldInk->ownedInk[at/64]&=~bit;
+                    nowInk->rawInk[at/64]&=~bit;nowInk->ownedInk[at/64]&=~bit;
+                }
+            }
+            if(fault==8)now.text.lineBounds[0].right=204; // Changed/current glyph coverage cannot inherit uncertainty.
+            if(fault==9)oldSamples->samples.resize(SubtitleInkThresholdEvidence::MaximumSamples+1);
+            if(fault==10)oldSamples->complete=false;
+            if(fault==11)oldSamples->samples[0].yuv=pack(64,512,512); // A new word over old background.
+            if(fault==12)nowSamples->generation=999;
+            if(fault==13)++oldSamples->inkFloor;
+            if(fault==14)++nowSamples->viewport;
+            oldInk->thresholdEvidence=fault==3?nullptr:oldSamples;
+            nowInk->thresholdEvidence=fault==4?nullptr:nowSamples;
+            old.ink=oldInk;now.ink=nowInk;
+            auto future=old;future.identity=Identity(2);future.sharedPicture.identity=future.identity;
+            const SubtitleBoxObservation initial[2]={old,future};
+            auto p=std::make_unique<SubtitleBoxPreview>(SubtitleBoxLookahead::Resolve(initial,2,7,9));
+            const auto first=owner->Consume(*p,250,16.683);Assert::IsTrue(first.detected&&!first.held);
+            auto next=now;next.identity=Identity(3);next.sharedPicture.identity=next.identity;
+            const SubtitleBoxObservation pair[2]={now,next};
+            SubtitleBoxLookahead::ResolveInto(*p,pair,2,7,9);
+            p->text.lineCount=1;p->text.lineBounds[1]={};--p->current.text.lineBounds[0].bottom;
+            const auto held=owner->Consume(*p,250,16.683);
+            const bool certified=owner->CurrentPreparedCueCertificate().Matches(p->current,held,p->current.sharedPicture.bounds);
+            Assert::AreEqual(fault==0,certified,
+                L"Only exact current numeric equivalence at a known glyph fringe can bridge a classification boundary; new ink and missing evidence reject.");
+        }
+        SubtitleInkThresholdEvidence dense;dense.width=960;dense.height=540;
+        for(uint32_t i=0;i<SubtitleInkThresholdEvidence::MaximumSamples;++i)
+            Assert::IsTrue(dense.Append(i,676,512,512));
+        Assert::IsFalse(dense.Append(SubtitleInkThresholdEvidence::MaximumSamples,676,512,512));
+        Assert::IsTrue(dense.overflowed&&!dense.complete&&dense.samples.empty());
+        Assert::IsTrue(dense.samples.capacity()<=SubtitleInkThresholdEvidence::MaximumSamples,
+            L"Even dense ambiguous content is bounded to512KiB numeric storage, and overflow grants no uncertainty permission.");
+        Assert::IsFalse(dense.Append(0,676,512,512),L"Overflow cannot silently restart with an incomplete sparse plane.");
+    }
     TEST_METHOD(CurrentHeldPreparedCueUsesCurrentRevalidatedBarsWithoutAcquiringNativeAuthority) {
         auto tracker=std::make_unique<SubtitleBoxPresentation>();
         const SubtitleBoxObservation seed[2]={CurrentHeldProofCue(1),CurrentHeldProofCue(2)};
