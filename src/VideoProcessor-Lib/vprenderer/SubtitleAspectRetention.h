@@ -563,9 +563,17 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(!input.sourcePrepared || !input.observation || !input.accepted || !input.composition)
         return reject("source-not-prepared");
     const auto& observation=*input.observation;
-    // Retained coordinates can nominate a fresh subtitle scan after the
-    // presentation lease expires. That scan cannot certify crop or retention.
-    if(observation.inspectionCandidateUsed)
+    // A nominee alone is never picture proof. Current prepared output may
+    // instead bind its sampling plane to exact-current excluded-band evidence,
+    // independently of Classic's inspection lease. All current glyph, actual
+    // cleanup and residual-pixel checks below still apply; native acquisition
+    // and the general retention path never consume this presentation witness.
+    const bool currentPreparedSamplingBase=preparedErasureOnly &&
+        observation.samplingBasis.MatchesBase(observation,input.physicalBase) &&
+        input.currentDisplayPicture.AvailableFor(input.currentIdentity,source.width,source.height) &&
+        SameAnalysisFrameIdentity(input.currentDisplayPicture.identity,input.currentIdentity) &&
+        SameSubtitlePresentationBounds(input.currentDisplayPicture.bounds,input.physicalBase);
+    if(observation.inspectionCandidateUsed && !currentPreparedSamplingBase)
         return reject("inspection-candidate-is-not-picture-proof");
     const bool glyphLocal=observation.glyphLocalTop || observation.glyphLocalBottom;
     if(glyphLocal && !preparedErasureOnly)
@@ -713,7 +721,7 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         display.AvailableFor(input.currentIdentity,source.width,source.height) &&
         SameAnalysisFrameIdentity(display.identity,input.currentIdentity) &&
         SameSubtitlePresentationBounds(display.bounds,base) &&
-        observation.sharedPicture.Matches(display);
+        (observation.sharedPicture.Matches(display) || currentPreparedSamplingBase);
     const bool exactComposedPicture=move.pictureTop==base.top && move.pictureBottom==base.bottom;
     if(!source.IsValid() || source.generation!=input.currentIdentity.transportGeneration || observation.width!=source.width || observation.height!=source.height ||
         base.rasterWidth!=source.width || base.rasterHeight!=source.height ||

@@ -665,6 +665,42 @@ public:
             L"Even dense ambiguous content is bounded to512KiB numeric storage, and overflow grants no uncertainty permission.");
         Assert::IsFalse(dense.Append(0,676,512,512),L"Overflow cannot silently restart with an incomplete sparse plane.");
     }
+    TEST_METHOD(CurrentHeldInspectionCertificateBindsVerifiedSamplingBaseOnly)
+    {
+        const auto inspected=[](uint64_t sequence) {
+            auto o=CurrentHeldProofCue(sequence);const auto base=o.sharedPicture.bounds;
+            o.identity.analysisDomainKey=17;o.sharedPicture.identity=o.identity;
+            o.sharedPicture.bounds={};o.inspectionCandidateUsed=o.pictureAuthorityUnavailableForMeasurement=true;
+            auto& n=o.sharedPicture.inspectionCandidate;n.valid=true;n.bounds=base;
+            n.bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;n.originIdentity=o.identity;
+            n.policyGeneration=o.policyGeneration;n.continuityGeneration=o.continuityGeneration;n.nativeGeometryRevision=1;
+            o.pictureTop=o.barEvidence.top=0;
+            auto support=std::make_shared<CurrentSourceSupportEvidence>();support->evaluated=support->verified=true;
+            support->identity=o.identity;support->samplingBounds=base;support->samplingBounds.bottom=350;
+            support->verification.bounds=support->samplingBounds;support->verification.sourceGeneration=o.identity.transportGeneration;
+            support->verification.vertical=ActivePictureCandidateVerificationState::VERIFIED;
+            o.samplingBasis.Apply(o,support);return o;
+        };
+        auto tracker=std::make_unique<SubtitleBoxPresentation>();
+        const SubtitleBoxObservation seed[2]={inspected(1),inspected(2)};
+        const auto acquired=tracker->Consume(SubtitleBoxLookahead::Resolve(seed,2,7,9),250,16.683);
+        Assert::IsTrue(acquired.detected&&!acquired.held);
+        const SubtitleBoxObservation scans[2]={inspected(2),inspected(3)};
+        auto current=SubtitleBoxLookahead::Resolve(scans,2,7,9);current.text.lineCount=1;current.text.lineBounds[1]={};
+        const auto held=tracker->Consume(current,250,16.683);auto& raw=current.current;
+        Assert::IsTrue(held.detected&&held.held);
+        const auto base=raw.samplingBasis.Base();
+        Assert::IsTrue(tracker->CurrentPreparedCueCertificate().Matches(raw,held,base));
+        Assert::IsTrue(raw.inspectionCandidateUsed);Assert::IsFalse(raw.independentBarAnalysis);
+        auto wrong=base;++wrong.bottom;
+        Assert::IsFalse(tracker->CurrentPreparedCueCertificate().Matches(raw,held,wrong));
+        auto stale=raw;++stale.identity.captureTimestamp;
+        Assert::IsFalse(tracker->CurrentPreparedCueCertificate().Matches(stale,held,base));
+        auto reset=raw;++reset.continuityGeneration;
+        Assert::IsFalse(tracker->CurrentPreparedCueCertificate().Matches(reset,held,base));
+        auto bare=raw;bare.samplingBasis={};
+        Assert::IsFalse(tracker->CurrentPreparedCueCertificate().Matches(bare,held,base));
+    }
     TEST_METHOD(CurrentSamplingBasisHarvestsLateExactSupportBeforeFinalScanWithoutWaiting) {
         auto pixels=Pixels();Text(pixels,200,318,16);const auto source=Source(pixels);
         auto key=CurrentHeldProofCue(1);key.identity.analysisDomainKey=17;

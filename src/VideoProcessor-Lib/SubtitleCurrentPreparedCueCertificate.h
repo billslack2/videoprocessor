@@ -21,7 +21,8 @@ public:
             current.barAuthority && current.barEvidence.available &&
             !current.barTrackingAuthority && !current.currentAnchorUsesTrackedEdge &&
             !current.barEvidence.captionBackedTop && !current.barEvidence.captionBackedBottom &&
-            !current.glyphLocalTop && !current.glyphLocalBottom && !current.inspectionCandidateUsed &&
+            !current.glyphLocalTop && !current.glyphLocalBottom &&
+            (!current.inspectionCandidateUsed || current.samplingBasis.MatchesBase(current,physicalBase)) &&
             current.ink && current.ink==m_ink && current.ink->rawEvidenceComplete && current.ink->paletteValid &&
             current.text.detected && !current.text.held && !current.text.workLimit &&
             !current.text.confirmationPending && current.text.topSearchComplete && current.text.bottomSearchComplete &&
@@ -33,8 +34,9 @@ public:
             ((current.barEvidence.top==current.pictureTop && current.barEvidence.bottom==current.pictureBottom) ||
                 current.samplingBasis.Matches(current)) &&
             current.nearBarDistance==m_nearBar && current.optimizationMode==m_optimization && current.scriptHint==m_script &&
-            current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
-            SameBounds(current.sharedPicture.bounds,m_base) && SameBounds(physicalBase,m_base) &&
+            ((current.sharedPicture.AvailableFor(current.identity,current.width,current.height) &&
+                SameBounds(current.sharedPicture.bounds,m_base)) || current.samplingBasis.MatchesBase(current,m_base)) &&
+            SameBounds(physicalBase,m_base) &&
             SameResult(current.text,m_raw) && SameResult(accepted,m_accepted) &&
             accepted.detected && accepted.held && !accepted.confirmationPending &&
             !accepted.workLimit && !accepted.revised && accepted.cue!=0;
@@ -47,7 +49,8 @@ private:
         m_valid=true;m_identity=current.identity;m_policy=current.policyGeneration;m_continuity=current.continuityGeneration;
         m_width=current.width;m_height=current.height;m_pictureTop=current.pictureTop;m_pictureBottom=current.pictureBottom;
         m_nearBar=current.nearBarDistance;m_optimization=current.optimizationMode;m_script=current.scriptHint;
-        m_ink=current.ink;m_raw=current.text;m_accepted=accepted;m_base=current.sharedPicture.bounds;
+        m_ink=current.ink;m_raw=current.text;m_accepted=accepted;
+        m_base=current.samplingBasis.Matches(current)?current.samplingBasis.Base():current.sharedPicture.bounds;
     }
     static bool SameBounds(const ActivePictureBounds& a,const ActivePictureBounds& b)
     {

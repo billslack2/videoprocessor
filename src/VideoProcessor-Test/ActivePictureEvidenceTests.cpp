@@ -2523,6 +2523,58 @@ namespace VideoProcessorTest
                 Assert::AreEqual(raw.outwardVisibleBounds.bottom,prepared.retention.outwardVisibleBounds.bottom);
             }
         }
+        TEST_METHOD(CurrentPreparedInspectionUsesVerifiedSamplingBaseWithoutNativeAuthority)
+        {
+            // Pure prepared-output contract fixture; actual captured-pixel
+            // replay separately exercises the native support producer.
+            for(int fault=0;fault<14;++fault) {
+                LoggedRelocatedCaptionFixture f(false,true);auto& o=f.observation;
+                o.inspectionCandidateUsed=o.pictureAuthorityUnavailableForMeasurement=true;
+                o.independentBarAnalysis=false;o.pictureTop=0;
+                o.barEvidence.available=true;o.barEvidence.top=0;o.barEvidence.bottom=o.pictureBottom;
+                o.text.topSearchComplete=o.text.bottomSearchComplete=true;
+                o.sharedPicture.required=true;o.sharedPicture.identity=o.identity;
+                auto& nominee=o.sharedPicture.inspectionCandidate;
+                nominee.valid=true;nominee.bounds=f.base;nominee.bounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+                nominee.originIdentity=o.identity;nominee.nativeGeometryRevision=1;
+                auto support=std::make_shared<CurrentSourceSupportEvidence>();
+                support->evaluated=support->verified=true;support->identity=o.identity;
+                support->samplingBounds=f.base;support->samplingBounds.bottom=2032;
+                support->verification.bounds=support->samplingBounds;
+                support->verification.sourceGeneration=o.identity.transportGeneration;
+                support->verification.vertical=ActivePictureCandidateVerificationState::VERIFIED;
+                if(fault==1)support.reset();
+                if(fault==2)++support->identity.sourceFrameNumber;
+                if(fault==3)support->verified=false;
+                o.samplingBasis.Apply(o,support);
+                auto input=f.Input();input.currentDisplayPicture.required=true;
+                input.currentDisplayPicture.bounds=f.base;input.currentDisplayPicture.identity=o.identity;
+                if(fault==4)++o.policyGeneration;
+                if(fault==5)++o.continuityGeneration;
+                if(fault==6)++input.currentDisplayPicture.identity.acceptedSequence;
+                if(fault==7)input.currentDisplayPicture.required=false;
+                if(fault==8)++nominee.bounds.top;
+                if(fault==9)input.sourcePrepared=false;
+                if(fault==10)f.composition.glyphLines={};
+                if(fault==11)f.composition.generatedCleanup.top=f.base.top-1;
+                if(fault==12)f.frame.FillRectangle(24,24,60,50,700);
+                auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                if(fault==13) {
+                    raw.activePicture.available=true;raw.activePicture.authorityOrigin=ActivePictureAuthorityOrigin::NATIVE;
+                    raw.activePicture.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+                }
+                const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+                const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                Assert::IsFalse(semantic.qualified,L"Current sampling support never grants native/general retention authority.");
+                std::ostringstream message;message<<"inspection prepared scenario="<<fault<<" reason="<<prepared.reason;
+                Logger::WriteMessage(message.str().c_str());
+                Assert::AreEqual(fault==0,prepared.qualified);
+                Assert::IsFalse(prepared.renewsHold);
+                Assert::IsTrue(o.inspectionCandidateUsed);Assert::IsFalse(o.independentBarAnalysis);
+                Assert::AreEqual(0,o.barEvidence.top);
+                Assert::IsFalse(o.sharedPicture.AvailableFor(o.identity,o.width,o.height));
+            }
+        }
         TEST_METHOD(InspectionCandidateCannotQualifySemanticOrPreparedPictureEvidence)
         {
             for(bool p210:{false,true}) {

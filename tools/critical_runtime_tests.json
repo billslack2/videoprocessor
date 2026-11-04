@@ -13,8 +13,10 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1133,
+  "minimumNativeTests": 1135,
   "requiredNativeMethods": [
+    "CurrentHeldInspectionCertificateBindsVerifiedSamplingBaseOnly",
+    "CurrentPreparedInspectionUsesVerifiedSamplingBaseWithoutNativeAuthority",
     "CurrentSamplingBasisHarvestsLateExactSupportBeforeFinalScanWithoutWaiting",
     "CurrentVerifiedSamplingBasisPreservesRawUnknownAndHeldGlyphProof",
     "CurrentSamplingBasisRejectsForeignUnverifiedAndContradictoryEvidence",
@@ -471,6 +473,11 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentHeldInspectionCertificateBindsVerifiedSamplingBaseOnly"
+    },
     {
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
