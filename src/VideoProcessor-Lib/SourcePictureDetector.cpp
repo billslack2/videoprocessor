@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <SourcePictureDetector.h>
 #include <OwnedSourcePictureObservationCache.h>
+#include <SourcePictureCoarseColor.h>
 #include <AnalysisDiagnosticHooks.h>
 #include <DebugLog.h>
 #include <algorithm>
@@ -111,7 +112,8 @@ bool SourcePictureBoundaryReference::MatchesCurrent(const AnalysisLumaSource& so
 }
 
 static SourcePictureDetectionResult VerifySourcePictureObservation(const AnalysisLumaSource& source,
-    std::shared_ptr<const SourcePictureObservation> observation,const AnalysisEvaluationBudget* budget) {
+    std::shared_ptr<const SourcePictureObservation> observation,const AnalysisEvaluationBudget* budget,
+    const ActivePictureEvidence* currentVerification=nullptr) {
     SourcePictureDetectionResult result;
     result.evidence=MissingSourcePictureEvidence(source);
     result.observation=std::move(observation);
@@ -135,11 +137,19 @@ static SourcePictureDetectionResult VerifySourcePictureObservation(const Analysi
     // Canvas inference may retain the complete input, never assert exact physical
     // edges or certify a discarded margin. Measured geometry stays unrounded.
     ActivePictureBounds nominee=measured?facts.measuredBounds:ActivePictureBounds{};
+    if(measured && facts.verificationBoundsAvailable) {
+        const auto& guard=facts.verificationBounds;
+        if(guard.rasterWidth!=source.width || guard.rasterHeight!=source.height ||
+            guard.left<0 || guard.top<0 || guard.right>source.width || guard.bottom>source.height ||
+            guard.left>nominee.left || guard.top>nominee.top || guard.right<nominee.right || guard.bottom<nominee.bottom)
+            return result;
+        nominee=guard;
+    }
     if(canvas) {
         nominee={0,0,source.width,source.height,source.width,source.height,
             double(source.width)/source.height,ActivePictureBounds::BarAxes::NONE};
     }
-    try { evidence=VerifySuppliedActivePictureCandidate(source,nominee,budget); }
+    try { evidence=currentVerification?*currentVerification:VerifySuppliedActivePictureCandidate(source,nominee,budget); }
     catch(const AnalysisEvaluationCancelled&) {
         evidence=MissingSourcePictureEvidence(source,"source-spatial-candidate-verification-budget-exhausted");
     }
@@ -164,6 +174,53 @@ static SourcePictureDetectionResult VerifySourcePictureObservation(const Analysi
 
 SourcePictureDetectionResult DetectSourcePictureForWorker(const AnalysisLumaSource& source,
     const AnalysisEvaluationBudget* budget) {
+    // Search cheaply in color, refine the nominated brackets at native source
+    // coordinates, then demand the same strict current-pixel verification used
+    // by the established path. A downsampled proposal alone is never evidence.
+    try {
+        const auto proposal=ProposeSourcePictureFromCoarseColor(source,budget);
+        if(proposal.physicalContinuityContradicted) {
+            // A sampled native gap contradicts the continuous picture hypothesis.
+            // Do not let a second, differently sampled search overwrite that fact
+            // with physical/crop authority for this same source. Unknown keeps
+            // current video pixels; ordinary absent proposals still fall back below.
+            SourcePictureDetectionResult unresolved;
+            unresolved.evidence=MissingSourcePictureEvidence(source,"source-color-native-discontinuity");
+            unresolved.evidence.physicalEdges.evaluated=true;
+            unresolved.evidence.physicalEdges.samples=proposal.samples;
+            auto facts=std::make_shared<SourcePictureObservation>();
+            facts->sourceGeneration=source.generation;facts->width=source.width;facts->height=source.height;
+            facts->outcome=SourcePictureOutcome::Partial;facts->samples=proposal.samples;
+            facts->transitionProfilesComplete=false;facts->reason="source-color-native-discontinuity";
+            unresolved.observation=std::move(facts);
+            return unresolved;
+        }
+        if(proposal.available) {
+            const auto verified=VerifySuppliedActivePictureCandidate(source,proposal.verificationBounds,budget);
+            if(verified.sourceCandidateVerificationComplete &&
+                (verified.classification==ActivePictureClassification::BAR_CROP_TRUSTED ||
+                 verified.classification==ActivePictureClassification::FULL_RASTER_TRUSTED)) {
+                auto facts=std::make_shared<SourcePictureObservation>();
+                facts->sourceGeneration=source.generation;facts->width=source.width;facts->height=source.height;
+                facts->complete=true;facts->rectangleAvailable=true;facts->outcome=SourcePictureOutcome::Measured;
+                facts->measuredBounds=proposal.physicalEstimate;facts->blackReference=verified.blackReference;
+                facts->verificationBoundsAvailable=true;facts->verificationBounds=proposal.verificationBounds;
+                facts->edgeMinimum=facts->transitionMinimum=proposal.bracketMinimum;
+                facts->edgeMaximum=facts->transitionMaximum=proposal.bracketMaximum;
+                // No component topology or per-ray transition certificate was
+                // produced by this search. Do not fabricate either for temporal reuse.
+                facts->transitionProfilesComplete=false;facts->samples=proposal.samples;
+                facts->reason="current-color-proposal-native-refinement-and-verification";
+                return VerifySourcePictureObservation(source,std::move(facts),budget,&verified);
+            }
+        }
+    } catch(const AnalysisEvaluationCancelled&) {
+        SourcePictureDetectionResult cancelled;
+        cancelled.evidence=MissingSourcePictureEvidence(source,"source-color-search-budget-cancelled");
+        return cancelled; // Never start another scan after this job's deadline.
+    }
+    // Ambiguous colors, detached overlays or a failed native proof retain the
+    // established topology detector; no old geometry or pixels are substituted.
     return VerifySourcePictureObservation(source,
         std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(source,budget)),budget);
 }

@@ -13,8 +13,12 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1140,
+  "minimumNativeTests": 1144,
   "requiredNativeMethods": [
+    "SourcePictureColorFastPathRejectsNativeGapsHiddenBetweenCoarseSamples",
+    "SourcePictureCoarseColorRefinesRectanglesAndKeepsRasterContent",
+    "SourcePictureCoarseColorNeverSuppliesCropAuthorityAcrossUnresolvedContent",
+    "SourcePictureColorFastPathSeparatesPhysicalTransitionFromCurrentGuard",
     "CurrentCueWorkerSharesVerifiedRefreshAcrossCompatibleKeys",
     "CurrentCueWorkerPreparedSamplingBasisRequiresExactQualifiedComposition",
     "CurrentCueWorkerPreparedSamplingBasisReusesCurrentPixelsAndRefreshesSemantics",

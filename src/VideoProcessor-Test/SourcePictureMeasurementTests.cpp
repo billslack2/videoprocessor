@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <SourcePictureMeasurement.h>
 #include <SourcePictureDetector.h>
+#include <SourcePictureCoarseColor.h>
 #include <OwnedSourcePictureObservationCache.h>
 #include <SubtitleMeasurementWorker.h>
 #include "CppUnitTest.h"
@@ -101,6 +102,100 @@ namespace VideoProcessorTest
             return frame;
         }
     public:
+        TEST_METHOD(SourcePictureCoarseColorRefinesRectanglesAndKeepsRasterContent)
+        {
+            for(bool full:{false,true}) {
+                const int floor=full?0:64;
+                const auto range=full?AnalysisLumaRange::Full:AnalysisLumaRange::Limited;
+                for(const auto& bounds:{Bounds(960,540,0,18,960,522),Bounds(960,540,37,61,917,491),Bounds(960,540,0,0,960,540)}) {
+                    SourcePictureFrame frame(960,540,floor);
+                    // Neutral chroma keeps odd luma boundaries exact in this 4:2:2 fixture;
+                    // a colored pair would truthfully extend one pixel outside them.
+                    frame.Fill(bounds.left,bounds.top,bounds.right,bounds.bottom,300);
+                    const auto proposal=ProposeSourcePictureFromCoarseColor(frame.Source(range));
+                    Logger::WriteMessage(proposal.reason);Assert::IsTrue(proposal.available);
+                    Assert::AreEqual(bounds.left,proposal.bounds.left);Assert::AreEqual(bounds.top,proposal.bounds.top);
+                    Assert::AreEqual(bounds.right,proposal.bounds.right);Assert::AreEqual(bounds.bottom,proposal.bounds.bottom);
+                    Assert::IsTrue(proposal.samples<100000,L"Coarse nomination, native refinement and continuity must stay well below a full-resolution scan.");
+                }
+                // An object reaching one edge is not a new black pillarbox.
+                SourcePictureFrame object(960,540,300);object.Fill(900,150,960,540,floor+4);
+                const auto proposal=ProposeSourcePictureFromCoarseColor(object.Source(range));
+                Assert::IsTrue(proposal.available);Assert::AreEqual(0,proposal.bounds.left);
+                Assert::AreEqual(960,proposal.bounds.right);Assert::AreEqual(540,proposal.bounds.bottom);
+            }
+        }
+        TEST_METHOD(SourcePictureCoarseColorNeverSuppliesCropAuthorityAcrossUnresolvedContent)
+        {
+            SourcePictureFrame dark(960,540);
+            Assert::IsFalse(ProposeSourcePictureFromCoarseColor(dark.Source()).available,
+                L"A uniform dark frame provides neither an aspect ratio nor absence proof.");
+            SourcePictureFrame caption(960,540);caption.Fill(0,70,960,470,300);
+            // A substantial detached overlay cannot supply a new picture edge.
+            caption.Fill(160,500,800,516,850);
+            const auto proposal=ProposeSourcePictureFromCoarseColor(caption.Source());
+            if(proposal.available) {
+                const auto verified=VerifySuppliedActivePictureCandidate(caption.Source(),proposal.bounds);
+                Assert::IsFalse(verified.classification==ActivePictureClassification::BAR_CROP_TRUSTED && proposal.bounds.bottom<=470,
+                    L"A coarse search cannot erase current visible overlay pixels.");
+            }
+            SourcePictureFrame before(960,540);before.Fill(0,70,960,470,300);
+            const auto oldProposal=ProposeSourcePictureFromCoarseColor(before.Source());Assert::IsTrue(oldProposal.available);
+            before.Fill(0,35,960,505,300);auto changed=before.Source();changed.generation=8;
+            const auto current=ProposeSourcePictureFromCoarseColor(changed);
+            Assert::IsTrue(current.available);Assert::AreEqual(35,current.bounds.top);Assert::AreEqual(505,current.bounds.bottom);
+            Assert::IsFalse(ProposeSourcePictureFromCoarseColor(before.Source(AnalysisLumaRange::Unknown)).available);
+        }
+
+        TEST_METHOD(SourcePictureColorFastPathRejectsNativeGapsHiddenBetweenCoarseSamples)
+        {
+            for(int period:{8,64}) {
+                SourcePictureFrame frame(960,540);frame.Fill(0,70,960,411,300);
+                // Native disconnected glyph-like islands. Their one-pixel gaps
+                // can all fall between regularly spaced coarse sample centers.
+                for(int y=412;y<532;y+=period)for(int x=104;x<856;x+=period)
+                    frame.Fill(x,y,std::min(856,x+period-1),std::min(532,y+period-1),850);
+                const auto proposal=ProposeSourcePictureFromCoarseColor(frame.Source());
+                Assert::IsFalse(proposal.available,
+                    L"A conservative enclosing crop is not evidence that disconnected caption/UI pixels enlarge the physical picture.");
+                Assert::IsTrue(proposal.physicalContinuityContradicted);
+                const auto measured=DetectSourcePictureForWorker(frame.Source());
+                Assert::IsFalse(measured.evidence.physicalEdges.estimateAvailable,
+                    L"Neither coarse nor fallback geometry may promote a physical rectangle contradicted by current native gaps.");
+                Assert::IsFalse(measured.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsTrue(std::string(measured.evidence.reason)=="source-color-native-discontinuity");
+            }
+        }
+
+        TEST_METHOD(SourcePictureColorFastPathSeparatesPhysicalTransitionFromCurrentGuard)
+        {
+            SourcePictureFrame frame(960,540);frame.Fill(0,70,960,470,300);
+            frame.Fill(0,67,960,68,68);frame.Fill(0,68,960,69,72);frame.Fill(0,69,960,70,192);
+            frame.Fill(0,470,960,471,192);frame.Fill(0,471,960,472,72);frame.Fill(0,472,960,473,68);
+            const auto proposal=ProposeSourcePictureFromCoarseColor(frame.Source());
+            Assert::IsTrue(proposal.available);
+            Assert::IsTrue(proposal.verificationBounds.top<=67 && proposal.verificationBounds.bottom>=473,
+                L"The low-level filtered collar remains inside the current verification guard.");
+            const auto measured=DetectSourcePictureForWorker(frame.Source());
+            Assert::IsTrue(measured.evidence.sourceCandidateVerificationComplete);
+            Assert::IsTrue(measured.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            const auto& physical=measured.evidence.physicalEdges;
+            Assert::IsTrue(physical.estimateAvailable);
+            Assert::IsTrue(physical.confidence==PhysicalPictureEdgeConfidence::BOUNDED_FILTERED_EDGE);
+            Assert::IsTrue(physical.conservativeBounds.top<=67 && physical.conservativeBounds.bottom>=473);
+            Assert::IsTrue(physical.positionMinimum[1]<=physical.estimate.top && physical.estimate.top<=physical.positionMaximum[1]);
+            Assert::IsTrue(physical.positionMinimum[3]<=physical.estimate.bottom && physical.estimate.bottom<=physical.positionMaximum[3]);
+            Assert::IsTrue(measured.observation->verificationBoundsAvailable);
+            Assert::IsFalse(measured.observation->transitionProfilesComplete,
+                L"The fast path must not fabricate per-ray native history certificates.");
+            frame.Fill(0,35,960,505,300);auto changed=frame.Source();changed.generation=8;
+            const auto current=DetectSourcePictureForWorker(changed);
+            Assert::IsTrue(current.evidence.physicalEdges.estimateAvailable);
+            Assert::AreEqual(uint64_t(8),current.evidence.physicalEdges.sourceGeneration);
+            Assert::AreEqual(35,current.evidence.physicalEdges.estimate.top);
+            Assert::AreEqual(505,current.evidence.physicalEdges.estimate.bottom);
+        }
+
         TEST_METHOD(SourcePictureOverlappingQuantizedRayIntervalsKeepCurrentEdgeAcrossPhases)
         {
             constexpr int width=960,height=540,coreTop=96,bottom=480;

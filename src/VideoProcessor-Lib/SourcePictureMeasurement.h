@@ -39,6 +39,10 @@ struct SourcePictureObservation {
     // Independent sampled source reference survives inconclusive geometry.
     ActivePictureBlackReference blackReference;
     ActivePictureBounds measuredBounds;
+    // Optional outward current-source sampling guard, distinct from the
+    // measured physical transition center. Never derive this from retained AR.
+    bool verificationBoundsAvailable=false;
+    ActivePictureBounds verificationBounds;
     std::array<std::vector<SourcePictureEdgeCandidate>,4> edges;
     std::vector<SourcePictureComponent> components;
     // Bounded current sample windows for selected boundaries. Overflow disables
