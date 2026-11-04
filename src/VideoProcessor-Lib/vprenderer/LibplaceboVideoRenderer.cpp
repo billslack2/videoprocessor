@@ -9679,6 +9679,14 @@ struct LibplaceboVideoRenderer::Impl
         currentCueTemplateRevision.store(0,std::memory_order_release);
     }
 
+    // Resolve returns a full lookahead snapshot. Keep its return temporary out
+    // of RenderLocked's frame, which later nests the larger tracker calls.
+    // The caller's heap snapshot and all source-owner lifetimes are unchanged.
+    __declspec(noinline) static void ResolveSubtitlePreviewInto(SubtitleBoxPreview& destination,
+        const SubtitleBoxObservation* frames,size_t count,uint64_t policy,uint64_t continuity) {
+        destination=SubtitleBoxLookahead::Resolve(frames,count,policy,continuity);
+    }
+
     // Keep regression-only diagnostic storage out of RenderLocked's stack frame.
     __declspec(noinline) void TraceRegressionCurrentScan(const ActivePictureFrameIdentity& identity,
         uint32_t flags,uint64_t cue,int rawLines,int acceptedLines)
@@ -13867,6 +13875,7 @@ struct LibplaceboVideoRenderer::Impl
         // temporary preview on the stack, and preserve this call's ownership.
         struct SubtitlePreviewWorkspace {
             SubtitleBoxPreview early, current, rebound, live, proof;
+            SubtitleCurrentCueProofReceipt currentCueProofReceipt;
         };
         const auto subtitlePreviews=std::make_unique<SubtitlePreviewWorkspace>();
         auto& earlySubtitlePreview=subtitlePreviews->early;
@@ -13907,7 +13916,7 @@ struct LibplaceboVideoRenderer::Impl
                     shared,preparedQueued,{},false,
                     !repeatedTemporalOutput && !deferFullSubtitleScanForCueProof,
                     analysisCache,&ownedSubtitleScanWitness,ownedSubtitleTimelinePolicy);
-                earlySubtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
+                ResolveSubtitlePreviewInto(earlySubtitlePreview,&observed,1,
                     localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                 if (earlySubtitlePreview.available) subtitlePreview=&earlySubtitlePreview;
             }
@@ -14904,7 +14913,7 @@ struct LibplaceboVideoRenderer::Impl
         bool currentMeasuredCaptionAvailable = false;
         bool currentSubtitlePendingPixelsVerified = false;
         bool currentSubtitlePendingOperationApplied = false;
-        SubtitleCurrentCueProofReceipt currentCueProofReceipt;
+        auto& currentCueProofReceipt=subtitlePreviews->currentCueProofReceipt;
         bool currentCueProofConsumed=false;
         double currentCueProofPollBindMs=0.0;
         auto& currentSubtitlePreview=subtitlePreviews->current;
@@ -15036,7 +15045,7 @@ struct LibplaceboVideoRenderer::Impl
             for(unsigned i=0;i<currentSubtitlePreview.followingCount;++i)
                 if(!currentSubtitlePreview.following[i].sharedPicture.Matches(subtitleSharedPicture)) {
                     const auto current=currentSubtitlePreview.current;
-                    currentSubtitlePreview=SubtitleBoxLookahead::Resolve(&current,1,
+                    ResolveSubtitlePreviewInto(currentSubtitlePreview,&current,1,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                     break;
                 }
@@ -15230,7 +15239,7 @@ struct LibplaceboVideoRenderer::Impl
                         activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
                         subtitleSharedPicture,preparedQueued,{},subtitleBacklogRetirementOnly,true,
                         analysisCache,&ownedSubtitleScanWitness,ownedSubtitleTimelinePolicy);
-                    currentSubtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
+                    ResolveSubtitlePreviewInto(currentSubtitlePreview,&observed,1,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                     currentSubtitlePreview.newScanMs=0;currentSubtitlePreview.newScanFrames=0;
                 }

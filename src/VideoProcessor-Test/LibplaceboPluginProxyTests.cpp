@@ -193,9 +193,30 @@ namespace
         auto observed=record;observed.recordSequence=records.size()+1;
         records.push_back(observed);
     }
+    // Used only by the standalone native regression host; ordinary MSTest runs
+    // do not acquire or print stack metadata.
+    std::atomic<bool> nativeStackHostActive{false};
+    std::atomic<size_t> nativeStackHostSubmittedReserve{0};
+    __declspec(noinline) size_t NativeRegressionThreadStackReserve()
+    {
+        unsigned char stackAddress=0;
+        MEMORY_BASIC_INFORMATION region{};
+        ULONG_PTR low=0,high=0;
+        GetCurrentThreadStackLimits(&low,&high);
+        if(!VirtualQuery(&stackAddress,&region,sizeof(region)))return 0;
+        return size_t(high-reinterpret_cast<ULONG_PTR>(region.AllocationBase));
+    }
     void __cdecl ClassicPoseTestRecord(void*,const AnalysisDiagnosticRecordV1* record)
     {
         if(!record || record->structSize!=sizeof(*record))return;
+        if(nativeStackHostActive.load(std::memory_order_relaxed) &&
+            !strcmp(record->stage,"submitted-presentation") && (record->flags&1u) &&
+            !nativeStackHostSubmittedReserve.load(std::memory_order_relaxed)) {
+            const size_t reserve=NativeRegressionThreadStackReserve();
+            nativeStackHostSubmittedReserve.store(reserve,std::memory_order_relaxed);
+            fprintf(stderr,"NATIVE_RENDER_THREAD_STACK thread=%lu reserve=%zu\n",GetCurrentThreadId(),reserve);
+            fflush(stderr);
+        }
         std::lock_guard<std::mutex> guard(classicPoseLogMutex);
         const bool captureSubtitleAdmission=classicPoseCaptureSubtitleAdmissions.load(std::memory_order_relaxed) &&
             !strcmp(record->stage,"subtitle-canvas-admission");
@@ -6999,4 +7020,30 @@ namespace VideoProcessorTest
 			RemoveDirectoryW(root.c_str());
 		}
 	};
+}
+
+// Test-only ABI: reuses the exact fixture and assertions above. The production
+// renderer does not export this entry point or alter its thread stack reserve.
+extern "C" __declspec(dllexport) int __cdecl VpRunNativeRendererRegression(unsigned testCase)
+{
+    nativeStackHostActive.store(testCase<4,std::memory_order_relaxed);
+    nativeStackHostSubmittedReserve.store(0,std::memory_order_relaxed);
+    try {
+        if(testCase==98 || testCase==99) {
+            Logger::WriteMessage("Native host framework smoke");
+            Assert::IsTrue(testCase==98,L"Intentional native-host assertion smoke");
+        } else if(testCase<4) {
+            VideoProcessorTest::LibplaceboPluginProxyTests fixture;
+            fixture.VerifyCapturedV210CueCadence((testCase&1)!=0,false,false,true,false,testCase>=2);
+            Assert::AreEqual(size_t(1048576),nativeStackHostSubmittedReserve.load(),
+                L"The actual submitted-presentation callback must run on a 1 MiB renderer thread");
+        } else return 3;
+        nativeStackHostActive.store(false,std::memory_order_relaxed);
+        fprintf(stderr,"NATIVE_CASE_PASS case=%u\n",testCase);fflush(stderr);
+        return 0;
+    } catch(...) {
+        nativeStackHostActive.store(false,std::memory_order_relaxed);
+        fprintf(stderr,"NATIVE_CASE_ASSERT_OR_EXCEPTION case=%u\n",testCase);fflush(stderr);
+        return 2;
+    }
 }
