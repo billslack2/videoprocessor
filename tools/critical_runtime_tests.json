@@ -13,8 +13,10 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1109,
+  "minimumNativeTests": 1111,
   "requiredNativeMethods": [
+    "ContainedRawReconstructionPreservesConfiguredHorizontalFill",
+    "RawReconstructionConfiguredFillRejectsUnprovenOrConflictingPixels",
     "NativeBurstCapturesConsecutiveIdentitiesAt24And60WithoutStoppingTrace",
     "NativeBurstQueuePressureCannotExtendWindowOrRetainExtraOwners",
     "NativeBurstContextOrSourceResetStopsNativeOnly",

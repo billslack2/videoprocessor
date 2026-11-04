@@ -14830,6 +14830,7 @@ struct LibplaceboVideoRenderer::Impl
         auto& currentSubtitleCadence=*subtitleCadenceResult;
         currentSubtitleCadence.valid=false;
         bool currentNoCaptionConfirmed = false;
+        bool currentRawCandidateComplete = false;
         SubtitleBarStripClearance currentSubtitleBarStripClearance;
         std::string currentSubtitleScanReason="unavailable";
         AlphaSourceCrop::CaptionConfirmationPresentationAnchor renderedCaptionCandidate;
@@ -15630,6 +15631,7 @@ struct LibplaceboVideoRenderer::Impl
                     currentScan.ink && currentScan.ink->rawEvidenceComplete && currentScan.ink->paletteValid &&
                     rawAnalysis.detected && !rawAnalysis.held && !rawAnalysis.confirmationPending && !rawAnalysis.workLimit &&
                     rawAnalysis.topSearchComplete && rawAnalysis.bottomSearchComplete;
+                currentRawCandidateComplete=completeIndependentCurrentScan;
                 // Held tracker state can still be backed by a complete scan of
                 // this exact source. Partial worker receipts remain distinct.
                 trace.flags=(subtitleBoxResult.detected?1u:0u)|(subtitleBoxResult.held?2u:0u)|(subtitleCompositionSucceeded?4u:0u)|
@@ -16517,7 +16519,7 @@ struct LibplaceboVideoRenderer::Impl
              &rawSubtitleFallbackCurrent, &unprocessedCurrentSourceCurrent, &temporalOutputContract,
              &reviseSourcePresentation, &priorRevisionSnapshot, &revisedSourcePolicyTick, &currentSubtitlePreview,
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
-             currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
+             currentNoCaptionConfirmed, currentRawCandidateComplete, currentSubtitleScanReason, currentSubtitleBarStripClearance,
              currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof, currentSubtitleWorkIncomplete, &qualifiedHeldFinalPixels, &qualifiedPendingFinalPixels, cadenceCacheDiagnostic,
              currentCaptionFitWorkerBase, captionAnchorContextMatches, &state, &videoFrame,
              &renderedCaptionCandidate, &renderedCaptionHoldCandidate,
@@ -18239,6 +18241,7 @@ releaseDriftBaseRetention =
                 canvasObservation.analyzed && canvasObservation.text.detected && canvasObservation.text.bounds.Valid()) {
                 const auto& b=canvasObservation.text.bounds;
                 recoveryInput.currentTextCandidate={b.left,b.top,b.right,b.bottom,width,height,0.0,ActivePictureBounds::BarAxes::NONE};
+                recoveryInput.currentTextCandidateComplete=currentRawCandidateComplete;
             }
             recoveryInput.captionEdgeMarginPixels=scopeSubtitlePaddingPixels;
             auto fixedCanvasFill=configuredFillInput;

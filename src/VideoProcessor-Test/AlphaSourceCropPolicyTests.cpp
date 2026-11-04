@@ -20302,6 +20302,128 @@ public:
             r.crop=CanonicalSubtitleModeCropInput(r.crop,mode);
             return r;
         }
+        static FinalAspectLimitFillInput ContainedRawReconstructionFill(uint64_t sequence=1414,bool narrower=false)
+        {
+            auto c=Native(sequence);
+            c.geometry=narrower?ActivePictureBounds{0,256,3840,1904,3840,2160,3840.0/1648,ActivePictureBounds::BarAxes::TOP_BOTTOM}:
+                ActivePictureBounds{0,272,3840,1886,3840,2160,3840.0/1614,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            c.acceptedNativeCrop.bounds=c.geometry;
+            c.acceptedNativeCrop.acceptedSourceSequence=1300;
+            c=CanonicalSubtitleModeCropInput(c,SubtitlePreviewMode::GeneratedGrayBackground);
+            c.currentVisibleBoundsAvailable=true;c.currentVisibleBounds=c.geometry;c.currentVisibleBase=c.geometry;
+            c.currentVisibleSourceGeneration=c.frameSourceGeneration;c.currentVisibleSourceSequence=sequence;
+            auto r=Unknown(c,{});r.classicTranslationEnabled=false;r.subtitleCanvasMode=SubtitleCanvasMode::RECONSTRUCTION;
+            r.observation=c.geometry;r.currentTextCandidateComplete=true;r.captionEdgeMarginPixels=10;
+            // The detector's padded box crosses the native boundary, but exact
+            // current pixel inspection proves no visible pixels outside native.
+            r.currentTextCandidate={2478,1850,2538,c.geometry.bottom+8,3840,2160,0.0,ActivePictureBounds::BarAxes::NONE};
+            r.captionObservation={CaptionObservationState::UNKNOWN,c.frameSourceGeneration,sequence,
+                c.framePresentationEpoch,c.frameSourceFormatKey,c.frameAnalysisDomainKey};
+            SetCurrentSourceVisibility(r,c.geometry);
+            FinalAspectLimitFillInput f;f.crop=r.crop;f.evidence=r;
+            f.uncertainPicture=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+            f.presentation=f.uncertainPicture.presentation;
+            f.configuredScreenActive=true;f.configured.screenAspect=2.35;
+            f.configured.cropNarrowerContentToFillScreen=f.configured.narrowerLimitConfigured=true;
+            f.configured.cropWiderContentToFillScreen=f.configured.widerLimitConfigured=true;
+            f.configured.narrowerAspectLimit=2.32;f.configured.widerAspectLimit=2.42;
+            return f;
+        }
+        TEST_METHOD(ContainedRawReconstructionPreservesConfiguredHorizontalFill)
+        {
+            const auto raw=ContainedRawReconstructionFill();
+            Assert::IsTrue(raw.presentation.rawSubtitleFallback && raw.presentation.unprocessedSubtitleCanvas);
+            Assert::AreEqual(272,raw.presentation.sourceBounds.top);Assert::AreEqual(1886,raw.presentation.sourceBounds.bottom);
+            auto configured=raw.configured;configured.trustedContentAuthorityAccepted=true;
+            configured.sourceBounds=configured.contentReferenceBounds=raw.crop.geometry;configured.contentReferenceAvailable=true;
+            const auto expected=EvaluateAspectLimitFill(configured);
+            Assert::IsTrue(expected.applied);Assert::AreEqual(24,expected.sourceBounds.left);Assert::AreEqual(3816,expected.sourceBounds.right);
+            for(int state=0;state<4;++state) {
+                auto f=ContainedRawReconstructionFill(1413+state);
+                auto& r=f.evidence;
+                if(state==0 || state==3) {
+                    r.currentTextCandidate={};r.currentTextCandidateComplete=false;
+                    r.captionObservation.state=CaptionObservationState::ABSENT;
+                    r.crop.currentCaptionAbsenceConfirmed=true;
+                }
+                if(state==2) {
+                    r.crop.preparedSubtitle={true,r.crop.geometry,r.crop.frameSourceGeneration,
+                        r.crop.frameSourceSequence,r.crop.framePresentationEpoch};
+                }
+                f.crop=r.crop;f.uncertainPicture=ResolveUncertainPicturePresentation(r,Evaluate(r.crop));
+                f.presentation=f.uncertainPicture.presentation;
+                const auto actual=EvaluateFinalAspectLimitFill(f);
+                Assert::IsTrue(actual.applied,L"Contained raw subtitle inspection must not remove configured side fill for one current source.");
+                Assert::AreEqual(expected.sourceBounds.left,actual.sourceBounds.left);
+                Assert::AreEqual(expected.sourceBounds.top,actual.sourceBounds.top);
+                Assert::AreEqual(expected.sourceBounds.right,actual.sourceBounds.right);
+                Assert::AreEqual(expected.sourceBounds.bottom,actual.sourceBounds.bottom);
+                Assert::IsFalse(f.presentation.waitForSubtitleProcessing);
+                Assert::AreEqual(uint64_t(1413+state),f.crop.frameSourceSequence);
+                Assert::AreEqual(272,f.crop.geometry.top);Assert::AreEqual(1886,f.crop.geometry.bottom);
+                Assert::AreEqual(uint64_t(1300),f.crop.acceptedNativeCrop.acceptedSourceSequence);
+                if(state==1) {
+                    Assert::IsTrue(f.presentation.rawSubtitleFallback && f.presentation.unprocessedSubtitleCanvas);
+                    Assert::IsFalse(f.presentation.nativePresentation.available);
+                    Assert::IsFalse(f.presentation.confirmedFitOwnership.available);
+                    Assert::IsFalse(HasCurrentPreparedSubtitlePresentation(f.crop));
+                    Assert::IsFalse(f.crop.currentCaptionAbsenceConfirmed);
+                    Assert::IsFalse(CanRecordSubtitleOptionalAspectFill(f.crop,f.presentation,actual,
+                        SubtitlePreviewMode::GeneratedGrayBackground,false,false,false,false,false,
+                        ActivePictureAuthorityOrigin::NATIVE),
+                        L"Current raw fill is display-only, not a submitted native fill certificate.");
+                    auto priorNative=f.crop;
+                    priorNative.preparedSubtitle={true,priorNative.geometry,priorNative.frameSourceGeneration,
+                        priorNative.frameSourceSequence,priorNative.framePresentationEpoch};
+                    auto admission=AdmitCropPresentation({},priorNative,Evaluate(priorNative),priorNative.framePresentationEpoch).state;
+                    Assert::IsTrue(admission.available && admission.nativePresentation.available);
+                    admission.optionalFillApplied=true;
+                    const auto originalOrigin=admission.nativePresentation.origin;
+                    const auto qualified=QualifySubtitleConfiguredNativeFill(admission,f.crop,f.presentation,actual,false,false);
+                    Assert::IsTrue(qualified.nativePresentation.origin==originalOrigin,
+                        L"A raw decision cannot promote an existing admission into configured-native-fill authority.");
+                }
+            }
+        }
+        TEST_METHOD(RawReconstructionConfiguredFillRejectsUnprovenOrConflictingPixels)
+        {
+            for(int fault=0;fault<20;++fault) {
+                auto f=ContainedRawReconstructionFill();auto& r=f.evidence;
+                if(fault==0)r.currentTextCandidateComplete=false;
+                if(fault==1)r.currentTextCandidate.left=23;
+                if(fault==2)r.currentTextCandidate.right=3817;
+                if(fault==3)r.currentTextCandidate.left=33; // Inside crop, but its ten-pixel margin is not.
+                if(fault==4)r.currentSourceVisibility.available=false;
+                if(fault==5)--r.currentSourceVisibility.sourceSequence;
+                if(fault==6)++r.currentSourceVisibility.sourceGeneration;
+                if(fault==7)++r.currentSourceVisibility.sourceFormatKey;
+                if(fault==8)++r.currentSourceVisibility.analysisDomainKey;
+                if(fault==9)++r.currentSourceVisibility.presentationEpoch;
+                if(fault==10)r.currentSourceVisibility.nativeBase.top+=2;
+                if(fault==11)r.currentSourceVisibility.bounds.bottom=2026;
+                if(fault==12)f.presentation.sourceBounds.bottom=2026;
+                if(fault==13)--r.captionObservation.sourceSequence;
+                if(fault==14)f.configuredScreenActive=false;
+                if(fault==15)f.nlsOwnsPresentationGeometry=true;
+                if(fault==16)f.configured.cropWiderContentToFillScreen=false;
+                if(fault==17)f.configured.widerAspectLimit=2.37;
+                if(fault==18)r.currentTextCandidate={};
+                if(fault==19)f=ContainedRawReconstructionFill(1414,true);
+                if(fault==20)f.protectedCaptionFit=true;
+                if(fault==21)f.crop.movingPictureTransition=true;
+                if(fault==22)f.currentConfirmedPresentationConflict=true;
+                const auto before=f.presentation.sourceBounds;
+                const auto actual=EvaluateFinalAspectLimitFill(f);
+                const auto context=L"raw fill fault="+std::to_wstring(fault);
+                Assert::IsFalse(actual.applied,context.c_str());
+                Assert::AreEqual(before.left,actual.sourceBounds.left);Assert::AreEqual(before.top,actual.sourceBounds.top);
+                Assert::AreEqual(before.right,actual.sourceBounds.right);Assert::AreEqual(before.bottom,actual.sourceBounds.bottom);
+                Assert::IsTrue(f.presentation.rawSubtitleFallback);
+                Assert::IsFalse(f.presentation.nativePresentation.available);
+                Assert::IsFalse(f.presentation.waitForSubtitleProcessing);
+                Assert::AreEqual(uint64_t(1300),f.crop.acceptedNativeCrop.acceptedSourceSequence);
+            }
+        }
         TEST_METHOD(UnpreparedAdvancedOutputPreservesCurrentRawPixelsWithoutChangingNativeGeometry)
         {
             for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground})

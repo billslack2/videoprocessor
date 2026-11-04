@@ -70,7 +70,8 @@ inline bool CanRecordSubtitleOptionalAspectFill(const AlphaSourceCrop::Input& cr
     const bool advancedNativePicture=exactNativeBounds &&
         (crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::BLACK ||
          crop.subtitlePresentationMode==AlphaSourceCrop::PreparedNativeMode::RECONSTRUCTION);
-    return (!captionPresentationHeld || advancedNativePicture || fill.retainedSubmittedFill) && fill.applied && presentation.applyCrop &&
+    return !presentation.rawSubtitleFallback &&
+        (!captionPresentationHeld || advancedNativePicture || fill.retainedSubmittedFill) && fill.applied && presentation.applyCrop &&
         !fixedCropAspectConfigured && !nlsRequested && !protectedCaptionFit &&
         !presentation.outwardExpanded &&
         (!presentation.verticallyTranslated ||
@@ -114,7 +115,7 @@ inline AlphaSourceCrop::CropPresentationAdmissionState QualifySubtitleConfigured
         admission.nativePresentation.presentationEpoch==crop.framePresentationEpoch &&
         same(admission.nativePresentation.nativeBase,crop.geometry) &&
         same(admission.nativePresentation.approvedBounds,crop.geometry);
-    if(admission.available && admission.acceptedNativeCrop.available &&
+    if(!presentation.rawSubtitleFallback && admission.available && admission.acceptedNativeCrop.available &&
         admission.optionalFillApplied && (!fill.retainedSubmittedFill || retainedAdvancedNative) &&
         admission.nativePresentation.origin!=AlphaSourceCrop::NativePresentationOrigin::CONFIRMED_TRANSLATION &&
         admission.nativePresentation.origin!=AlphaSourceCrop::NativePresentationOrigin::TRANSLATED_CONFIGURED_FILL &&

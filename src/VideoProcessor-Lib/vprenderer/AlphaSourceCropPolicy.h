@@ -2000,6 +2000,8 @@ namespace AlphaSourceCrop
         ActivePictureBounds confirmedCaptionBounds;
         // Exact current raw candidate is preservation-only, never confirmation.
         ActivePictureBounds currentTextCandidate;
+        // Complete raw detector evidence for this exact current candidate; no semantic confirmation.
+        bool currentTextCandidateComplete=false;
         ActivePictureBounds fixedNativeViewport;
         int captionEdgeMarginPixels=0;
         // An exact current independently confirmed native expansion can own

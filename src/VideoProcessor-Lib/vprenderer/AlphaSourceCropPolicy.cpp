@@ -7838,6 +7838,54 @@ namespace AlphaSourceCrop
         return result;
     }
 
+    static bool TryFillContainedRawSubtitleCanvas(const FinalAspectLimitFillInput& input,
+        AspectLimitFillDecision& result)
+    {
+        const auto& c=input.crop;const auto& e=input.evidence;
+        const auto& observation=e.captionObservation;const auto& candidate=e.currentTextCandidate;
+        const bool advanced=(e.subtitleCanvasMode==SubtitleCanvasMode::BLACK &&
+            c.subtitlePresentationMode==PreparedNativeMode::BLACK) ||
+            (e.subtitleCanvasMode==SubtitleCanvasMode::RECONSTRUCTION &&
+             c.subtitlePresentationMode==PreparedNativeMode::RECONSTRUCTION);
+        if(!advanced || !input.configuredScreenActive || input.nlsOwnsPresentationGeometry ||
+            input.nlsPresentationFailOpen || input.currentConfirmedPresentationConflict ||
+            input.protectedCaptionFit || c.movingPictureTransition ||
+            !HasAcceptedNativeCrop(c) || c.fullRasterPresentationAuthoritative ||
+            !e.currentTextCandidateComplete || !ValidBounds(candidate,c.rasterWidth,c.rasterHeight) ||
+            e.crop.frameSourceGeneration!=c.frameSourceGeneration ||
+            e.crop.frameSourceSequence!=c.frameSourceSequence ||
+            e.crop.framePresentationEpoch!=c.framePresentationEpoch ||
+            e.crop.frameSourceFormatKey!=c.frameSourceFormatKey ||
+            e.crop.frameAnalysisDomainKey!=c.frameAnalysisDomainKey ||
+            observation.sourceGeneration!=c.frameSourceGeneration ||
+            observation.sourceSequence!=c.frameSourceSequence ||
+            observation.presentationEpoch!=c.framePresentationEpoch ||
+            observation.sourceFormatKey!=c.frameSourceFormatKey ||
+            observation.analysisDomainKey!=c.frameAnalysisDomainKey ||
+            !SameTrustedCropContract(e.crop.geometry,c.geometry) ||
+            !SameBounds(input.presentation.sourceBounds,c.geometry))return false;
+        ActivePictureBounds currentEnvelope;
+        if(!TryCurrentSourceVisibilityEnvelope(e,currentEnvelope) ||
+            !SameBounds(currentEnvelope,c.geometry))return false;
+
+        auto configured=input.configured;
+        configured.trustedContentAuthorityAccepted=true;
+        configured.contentReferenceAvailable=true;
+        configured.sourceBounds=configured.contentReferenceBounds=c.geometry;
+        auto filled=EvaluateAspectLimitFill(configured);
+        // Only side trim is justified here. Raw vertical occupancy has not
+        // acquired caption relocation or erasure permission. Detector padding
+        // below native therefore cannot resize an otherwise unchanged picture.
+        const int margin=std::max(0,e.captionEdgeMarginPixels);
+        if(!filled.applied || filled.sourceBounds.top!=c.geometry.top ||
+            filled.sourceBounds.bottom!=c.geometry.bottom ||
+            candidate.left-filled.sourceBounds.left<margin ||
+            filled.sourceBounds.right-candidate.right<margin)return false;
+        filled.reason="current contained raw caption preserves configured horizontal fill";
+        result=filled;
+        return true;
+    }
+
     AspectLimitFillDecision EvaluateFinalAspectLimitFill(const FinalAspectLimitFillInput& input)
     {
         AspectLimitFillDecision result;
@@ -7850,6 +7898,7 @@ namespace AlphaSourceCrop
             return EvaluateFixedAspectCrop(fixed);
         }
         if(input.presentation.rawSubtitleFallback) {
+            if(TryFillContainedRawSubtitleCanvas(input,result))return result;
             result.reason="raw subtitle fallback presents current source pixels without optional fill";return result;
         }
         if(input.presentation.nativePresentation.origin==NativePresentationOrigin::VISIBILITY_FALLBACK ||
