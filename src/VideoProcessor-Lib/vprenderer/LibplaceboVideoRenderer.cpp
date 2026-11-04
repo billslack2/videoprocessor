@@ -1,5 +1,5 @@
 #include <pch.h>
-#include <optional>
+#include <new>
 #include "../SubtitleProfileUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
 #include "ShaderCacheStorage.h"
@@ -27470,18 +27470,35 @@ void LibplaceboVideoRenderer::RenderLoop()
 {
     // Full current scans nest the tracker below this loop and RenderLocked.
     // One reusable heap slot keeps its large lookahead snapshot off that stack.
-    // optional.emplace/reset preserve the original per-iteration lifetime,
+    // In-place construction/reset preserves the original per-iteration lifetime,
     // including source-owner release on every continue and exception path.
-    std::unique_ptr<std::optional<SubtitleBoxPreview>> loopSubtitlePreview;
+    // The project is C++14; this slot is the small subset of optional we need.
+    struct LoopSubtitlePreviewSlot {
+        alignas(SubtitleBoxPreview) unsigned char storage[sizeof(SubtitleBoxPreview)];
+        bool active=false;
+        SubtitleBoxPreview& Emplace() {
+            auto* value=::new (static_cast<void*>(storage)) SubtitleBoxPreview();
+            active=true; // A throwing constructor must not leave a live-object claim.
+            return *value;
+        }
+        __declspec(noinline) void Reset() noexcept {
+            if(active) {
+                reinterpret_cast<SubtitleBoxPreview*>(storage)->~SubtitleBoxPreview();
+                active=false;
+            }
+        }
+        ~LoopSubtitlePreviewSlot() noexcept { Reset(); }
+    };
+    std::unique_ptr<LoopSubtitlePreviewSlot> loopSubtitlePreview;
     struct ResetLoopSubtitlePreview {
-        std::optional<SubtitleBoxPreview>& value;
-        __declspec(noinline) ~ResetLoopSubtitlePreview() noexcept { value.reset(); }
+        LoopSubtitlePreviewSlot& value;
+        ~ResetLoopSubtitlePreview() noexcept { value.Reset(); }
     };
 	unsigned int consecutiveFailures = 0;
     bool presentationPauseLogged=false;
 	try
 	{
-        loopSubtitlePreview=std::make_unique<std::optional<SubtitleBoxPreview>>();
+        loopSubtitlePreview=std::make_unique<LoopSubtitlePreviewSlot>();
 		{
 			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
 			if (!m_implInitialized.load(std::memory_order_acquire))
@@ -27683,7 +27700,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		bool activePicturePreviewIdentityMatches = false;
 		uint64_t activePictureCurrentPolicyGeneration = 0;
 		ActivePictureFrameDecision activePicturePreviewDecision;
-        auto& subtitlePreview=loopSubtitlePreview->emplace();
+        auto& subtitlePreview=loopSubtitlePreview->Emplace();
         ResetLoopSubtitlePreview resetSubtitlePreview{*loopSubtitlePreview};
         bool subtitlePreviewCurrent = false;
 		AlphaSourceCrop::BufferedPictureExpansionProof bufferedExpansion;
