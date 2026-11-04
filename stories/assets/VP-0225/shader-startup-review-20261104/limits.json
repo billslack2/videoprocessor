@@ -1,0 +1,13 @@
+{
+  "syntheticControls": [
+    "valid cache copied",
+    "different libplacebo skipped",
+    "unknown header skipped"
+  ],
+  "qualification": false,
+  "status": "Future-launch cache preservation prepared; production shader optimization pending",
+  "launcherExecuted": false,
+  "matchedRc4GpuTimingAvailable": false,
+  "launcherSha256": "26530C13A750B4454B7F8A66E0AB723E75BA517A1F2FD099872FD5236066640E",
+  "currentPlayerRestarted": false
+}
