@@ -1,0 +1,19 @@
+{
+  "matched": 702,
+  "allSupportVerified": true,
+  "supportBounds": {
+    "[0, 272, 3840, 2032]": 702
+  },
+  "supportAfterStart": 702,
+  "supportBeforeComplete": 702,
+  "rawPlanes": {
+    "[0, 1886]": 527,
+    "[275, 1886]": 175
+  },
+  "supportAfterStartMedianMs": 10.68485,
+  "supportAfterStartRangeMs": [
+    9.0613,
+    16.8272
+  ],
+  "workerMsMedian": 31.6016
+}

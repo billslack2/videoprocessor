@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "status": "completed",
+  "scope": "Actual89 current pixel/support proof; deterministic proof publication at production callback; CPU composition modeled. Callback elapsed is observed, not a cross-thread completion guarantee.",
+  "qualification": false,
+  "sourceAtStart": "56fd201e9ef10c2ff2a643cb02ca421ccca0ec36",
+  "dirtyAtStart": " M src/VideoProcessor-Lib/SubtitleBoxLookahead.h\n M src/VideoProcessor-Lib/SubtitleMeasurementWorker.h\n M src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp\n M src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp\n M tools/critical_runtime_tests.json\n",
+  "sourceAtEnd": "ae467d578c272b5a4aaa59d7d41a6e53df194659",
+  "buildExitCode": 0,
+  "runExitCode": 0,
+  "filesUnchanged": true,
+  "modes": {
+    "delayed": {
+      "sourceCount": 89,
+      "allOriginalIdentities": true,
+      "bytePhases": 4,
+      "allSupportVerified": true,
+      "reasons": {
+        "current-prepared-caption-erasure": 89
+      },
+      "callbackCount": 89,
+      "callbackFlags": {
+        "14": 89
+      },
+      "callbackElapsedMs": {
+        "min": 15.9529,
+        "p50": 17.4137,
+        "p95": 19.4205,
+        "max": 27.3094,
+        "belowLiveMin9_061ms": 0,
+        "belowLiveMax16_827ms": 23
+      },
+      "artifacts": [
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\delayed-results.jsonl",
+          "sha256": "79e9a3bc0330e5025ab4f5f2706762a133fee76750327f5d8cb80a6a918743bb"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\delayed-trace.jsonl",
+          "sha256": "9c2327984fc39b853d7575d6eaed253306d09af40ea29996c657c9e6dd3dd113"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\delayed-stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    "inspection-delayed": {
+      "sourceCount": 89,
+      "allOriginalIdentities": true,
+      "bytePhases": 4,
+      "allSupportVerified": false,
+      "reasons": {
+        "source-not-prepared": 22,
+        "inspection-candidate-is-not-picture-proof": 67
+      },
+      "callbackCount": 89,
+      "callbackFlags": {
+        "10": 88,
+        "8": 1
+      },
+      "callbackElapsedMs": {
+        "min": 16.544,
+        "p50": 18.3897,
+        "p95": 23.6599,
+        "max": 26.5742,
+        "belowLiveMin9_061ms": 0,
+        "belowLiveMax16_827ms": 4
+      },
+      "artifacts": [
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\inspection-delayed-results.jsonl",
+          "sha256": "f3145d955fbd2ec88dbb3c1a051947c070208111345d78b6aed143275acef1dd"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\inspection-delayed-trace.jsonl",
+          "sha256": "d352e21b41a65150ac95f77a40423a86a33d57cd58d543bef8b47efab24d78d4"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\inspection-delayed-stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    }
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\inputs.json",
+      "sha256": "5cb6b21fd6bb9e39c55f4be97472dcd26a7e1446d3b9b8346fd04cb407287499"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\consecutive-held-replay.cpp",
+      "sha256": "1bccefbeec9f09768b0e20180d8b8eb4ca8ee3290ff7db60ed6ead4149afd3de"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\consecutive-held-replay.vcxproj",
+      "sha256": "e201ff1e3866d138a9301e586cddc1b429bf3060e357b2889109a1212de2d08d"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\build.log",
+      "sha256": "73ef72fa7ebae5736bd518769d48e1a15bb6e6a393716069d360c59bc1f2cf66"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-115637\\late-support-replay\\build\\ConsecutiveHeldReplay.exe",
+      "sha256": "3ef8810facc04ddad206f3393aea3e4e773c5045859e7768c8bbc33531e123fb"
+    }
+  ],
+  "ordinaryFunctionalPass": true,
+  "inspectionPresentationRemainsUnresolved": true
+}
