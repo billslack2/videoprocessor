@@ -19401,10 +19401,12 @@ releaseDriftBaseRetention =
                 currentSupport->currentSupport.samplingBounds.rasterWidth==width &&
                 currentSupport->currentSupport.samplingBounds.rasterHeight==height &&
                 cropInput.automaticCropEnabled && !fixedCropAspectConfigured && !nlsRequested &&
+                // Support is a fallback only. A filtered physical observation
+                // must not replace an admitted native/caption crop or clear
+                // its configured fill on alternating source phases.
+                !cropDecision.applyCrop && !aspectLimitFill.applied &&
                 !subtitleCompositionSucceeded && !verticalTranslationActive &&
-                verticalTranslationPixels==0 && !captionPresentationHeld && !unknownCaptionHold.retained &&
-                (!cropInput.latestObservationSupportsCrop ||
-                 pixelMeasurements.PhysicalEdges().confidence==PhysicalPictureEdgeConfidence::BOUNDED_FILTERED_EDGE);
+                verticalTranslationPixels==0 && !captionPresentationHeld && !unknownCaptionHold.retained;
             if(supportPresentation) {
                 auto bounds=currentSupport->currentSupport.samplingBounds;
                 // Affirmative current caption/UI visibility is never discarded
