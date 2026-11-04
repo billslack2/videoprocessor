@@ -207,6 +207,7 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
     // Current support is optional presentation evidence. Budget failure here
     // cannot erase a completed current physical measurement above.
     auto supportResult=supportRequest?std::make_shared<SourcePictureSupportResult>():nullptr;
+    if(supportResult)supportResult->currentSupport.identity=identity; // Terminal negative attempts remain source-bound.
     if(supportRequest && result.evidence.currentSourceIdentityAvailable) {
         try {
             const auto* facts=result.observation.get();

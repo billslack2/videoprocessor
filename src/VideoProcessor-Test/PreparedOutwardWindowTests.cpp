@@ -18,6 +18,7 @@ namespace VideoProcessorTest
             uint64_t domainKey=0;
             ActivePictureEvidence evidence;
             ActivePictureArDarknessEvidence darkness;
+            std::shared_ptr<const SourcePictureSupportResult> sourcePictureSupport;
         };
         using WindowRequest = PreparedOutwardWindowRequest<WindowRawMeasurement>;
         using WindowWorker = OptionalAnalysisWorker<PreparedOutwardWindowResult>;
@@ -99,6 +100,110 @@ namespace VideoProcessorTest
     TEST_CLASS(PreparedOutwardWindowTests)
     {
     public:
+        TEST_METHOD(CompleteNativePublicationRetainsLateCurrentSupportInEitherProducerOrder)
+        {
+            OwnedWindow window(true);
+            const auto plain=window.PublishRaw(0);
+            const auto& frame=window.request.frames[0];const auto& identity=window.request.identities[0];
+            SourcePictureSupportRequest request;
+            const auto detected=DetectPreparedSourcePictureBounded(frame.source,identity,&request);
+            Assert::IsTrue(detected.support && detected.support->currentSupport.verified);
+            auto enriched=std::make_shared<WindowRawMeasurement>(*plain);
+            enriched->sourcePictureSupport=detected.support;
+            std::shared_ptr<const WindowRawMeasurement> rich=enriched;
+            const auto slot=window.request.rawSlots[0];
+            slot->completion=std::make_shared<AnalysisCompletionSignal>();
+            const auto before=slot->completion->Snapshot();
+            const auto selected=PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,identity,slot,plain,rich);
+            Assert::IsTrue(selected->sourcePictureSupport==detected.support,
+                L"A complete outward/native result must not suppress later exact-current sampling support.");
+            Assert::IsTrue(WindowRequest::RawWorker::Ready(slot)==selected);
+            Assert::IsTrue(slot->completion->Snapshot()>before);
+            Assert::AreEqual(plain->evidence.physicalEdges.estimate.top,selected->evidence.physicalEdges.estimate.top);
+            Assert::AreEqual(plain->evidence.trustedBounds.top,selected->evidence.trustedBounds.top);
+            const auto after=slot->completion->Snapshot();
+            Assert::IsTrue(PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,identity,slot,plain,plain)==selected);
+            Assert::IsTrue(slot->completion->Snapshot()==after);
+            // Reverse producer order is equally monotonic.
+            std::atomic_store(&slot->ready,rich);
+            Assert::IsTrue(PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,identity,slot,rich,plain)==rich);
+            // A valid independent support capability cannot rewrite established native geometry.
+            std::atomic_store(&slot->ready,plain);
+            auto different=std::make_shared<WindowRawMeasurement>(*enriched);
+            different->evidence.physicalEdges.estimate.top+=7;
+            different->evidence.trustedBounds.top+=7;
+            std::shared_ptr<const WindowRawMeasurement> other=different;
+            const auto preserved=PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,identity,slot,plain,other);
+            Assert::IsTrue(preserved->sourcePictureSupport==detected.support);
+            Assert::AreEqual(plain->evidence.physicalEdges.estimate.top,preserved->evidence.physicalEdges.estimate.top);
+            Assert::AreEqual(plain->evidence.trustedBounds.top,preserved->evidence.trustedBounds.top);
+            for(int invalid=0;invalid<7;++invalid) {
+                std::atomic_store(&slot->ready,plain);
+                auto bad=std::make_shared<WindowRawMeasurement>(*enriched);
+                auto proof=std::make_shared<SourcePictureSupportResult>(*detected.support);
+                if(invalid==0)++proof->currentSupport.identity.acceptedSequence;
+                if(invalid==1)++proof->currentSupport.identity.viewportGeneration;
+                if(invalid==2)proof->currentSupport.verified=false;
+                if(invalid==3)proof->currentSupport.verification.vertical=ActivePictureCandidateVerificationState::CONTRADICTED;
+                if(invalid==4)++bad->domainKey;
+                if(invalid==5)bad->source.backingOwner=std::make_shared<int>(9);
+                if(invalid==6)proof->currentSupport.samplingBounds.rasterWidth-=2;
+                bad->sourcePictureSupport=proof;
+                std::shared_ptr<const WindowRawMeasurement> rejected=bad;
+                PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,identity,slot,plain,rejected);
+                const auto final=WindowRequest::RawWorker::Ready(slot);
+                if(invalid==2) {
+                    Assert::IsTrue(final->sourcePictureSupport && !final->sourcePictureSupport->currentSupport.verified);
+                    Assert::IsTrue(PreparedNativeSupportWorkComplete(frame,identity,final));
+                } else Assert::IsTrue(final==plain,
+                    L"Foreign or malformed claimed-positive support cannot enrich the current slot.");
+            }
+        }
+
+        TEST_METHOD(NativeSupportAttemptCompletesOnceAfterOutwardPublicationWithoutRetryingNegatives)
+        {
+            OwnedWindow window(true);const auto plain=window.PublishRaw(0);
+            const auto& frame=window.request.frames[0];const auto& identity=window.request.identities[0];
+            const auto slot=window.request.rawSlots[0];
+            Assert::IsTrue(SourcePictureMeasurementWorkComplete(plain->evidence));
+            Assert::IsFalse(PreparedNativeSupportWorkComplete(frame,identity,plain));
+            unsigned attempts=0;
+            for(int admission=0;admission<3;++admission) {
+                const auto ready=WindowRequest::RawWorker::Ready(slot);
+                if(PreparedNativeSupportWorkComplete(frame,identity,ready))continue;
+                ++attempts;
+                auto completed=std::make_shared<WindowRawMeasurement>(*ready);
+                auto terminal=std::make_shared<SourcePictureSupportResult>();
+                terminal->currentSupport.identity=identity;
+                terminal->currentSupport.reason="current-support-budget-exhausted";
+                completed->sourcePictureSupport=terminal;
+                std::shared_ptr<const WindowRawMeasurement> result=completed;
+                PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,identity,slot,ready,result);
+            }
+            Assert::AreEqual(1u,attempts);
+            const auto negative=WindowRequest::RawWorker::Ready(slot);
+            Assert::IsTrue(PreparedNativeSupportWorkComplete(frame,identity,negative));
+            Assert::IsFalse(negative->sourcePictureSupport->currentSupport.verified);
+            // Support completion neither hides native facts nor grants crop proof.
+            Assert::AreEqual(plain->evidence.trustedBounds.top,negative->evidence.trustedBounds.top);
+            SourcePictureSupportRequest request;
+            const auto detected=DetectPreparedSourcePictureBounded(frame.source,identity,&request);
+            Assert::IsTrue(detected.support && detected.support->currentSupport.verified);
+            auto complete=std::make_shared<WindowRawMeasurement>(*negative);complete->sourcePictureSupport=detected.support;
+            std::shared_ptr<const WindowRawMeasurement> rich=complete;
+            const auto upgraded=PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,identity,slot,negative,rich);
+            Assert::IsTrue(upgraded->sourcePictureSupport->currentSupport.verified);
+            Assert::IsTrue(PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,identity,slot,negative,negative)==upgraded);
+            // A native completion racing later must retain already verified support.
+            auto incomplete=std::make_shared<WindowRawMeasurement>(*upgraded);
+            incomplete->evidence=MissingSourcePictureEvidence(frame.source);
+            std::shared_ptr<const WindowRawMeasurement> supportOnly=incomplete;
+            std::atomic_store(&slot->ready,supportOnly);
+            const auto combined=PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,identity,slot,supportOnly,plain);
+            Assert::IsTrue(SourcePictureMeasurementWorkComplete(combined->evidence));
+            Assert::IsTrue(combined->sourcePictureSupport==detected.support);
+        }
+
         TEST_METHOD(ColdOutwardPublicationCannotEraseARacingCurrentPhysicalObservation)
         {
             OwnedWindow window;

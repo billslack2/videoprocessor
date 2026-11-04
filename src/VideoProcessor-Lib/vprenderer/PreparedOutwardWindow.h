@@ -2,6 +2,7 @@
 #include "AsyncOutwardWindow.h"
 #include "PreparedPictureEvidence.h"
 #include <SourcePictureDetector.h>
+#include <AnalysisDiagnosticHooks.h>
 #include <array>
 #include <limits>
 
@@ -45,6 +46,59 @@ inline bool PreparedOutwardRawMeasurementCurrent(const PreparedAnalysisFrame& fr
     return SamePreparedPictureFrame(imported, frame);
 }
 
+// Support is a separately completed capability. A negative attempt is terminal
+// scheduling data, not crop permission. Positive proof still has its own exact
+// source and bounded-aperture contract; raw native completion cannot imply it.
+inline bool PreparedSourceSupportAttemptCurrent(const PreparedAnalysisFrame& frame,
+    const ActivePictureFrameIdentity& identity,const std::shared_ptr<const SourcePictureSupportResult>& result)
+{
+    if(!result || !SameAnalysisFrameIdentity(result->currentSupport.identity,identity))return false;
+    const auto& support=result->currentSupport;
+    if(!support.verified)return true;
+    if(!support.evaluated)return false;
+    const auto& b=support.samplingBounds;const auto& v=support.verification;
+    const auto valid=[&](const ActivePictureBounds& r) {
+        return r.rasterWidth==frame.source.width && r.rasterHeight==frame.source.height &&
+            r.left>=0 && r.top>=0 && r.right<=r.rasterWidth && r.bottom<=r.rasterHeight &&
+            r.left<r.right && r.top<r.bottom;
+    };
+    const bool full=b.left==0 && b.top==0 && b.right==frame.source.width && b.bottom==frame.source.height;
+    return valid(b) && valid(v.bounds) && v.bounds.left>=b.left && v.bounds.top>=b.top &&
+        v.bounds.right<=b.right && v.bounds.bottom<=b.bottom &&
+        (v.sourceGeneration==identity.transportGeneration || v.sourceGeneration==identity.sourceFormatGeneration) &&
+        v.vertical!=ActivePictureCandidateVerificationState::CONTRADICTED &&
+        v.horizontal!=ActivePictureCandidateVerificationState::CONTRADICTED &&
+        (full || v.vertical==ActivePictureCandidateVerificationState::VERIFIED ||
+            v.horizontal==ActivePictureCandidateVerificationState::VERIFIED);
+}
+template<class RawMeasurement>
+inline bool PreparedNativeSupportWorkComplete(const PreparedAnalysisFrame& frame,
+    const ActivePictureFrameIdentity& identity,const std::shared_ptr<const RawMeasurement>& raw)
+{
+    return PreparedOutwardRawMeasurementCurrent(frame,identity,raw) &&
+        SourcePictureMeasurementWorkComplete(raw->evidence) &&
+        PreparedSourceSupportAttemptCurrent(frame,identity,raw->sourcePictureSupport);
+}
+
+template<class RawMeasurement>
+inline void TracePreparedRawPublication(const PreparedAnalysisFrame& frame,const ActivePictureFrameIdentity& identity,
+    const char* reason,const std::shared_ptr<const RawMeasurement>& prior,
+    const std::shared_ptr<const RawMeasurement>& incoming,const std::shared_ptr<const RawMeasurement>& selected)
+{
+    auto trace=AnalysisTraceRecord(identity,nullptr,"source-raw-publication",reason);
+    const auto capabilities=[&](const std::shared_ptr<const RawMeasurement>& raw)->uint64_t {
+        if(!raw)return 0;
+        return (PreparedOutwardRawMeasurementCurrent(frame,identity,raw)?1u:0u) |
+            (SourcePictureMeasurementWorkComplete(raw->evidence)?2u:0u) | (raw->sourcePictureSupport?4u:0u) |
+            (PreparedSourceSupportAttemptCurrent(frame,identity,raw->sourcePictureSupport)?8u:0u) |
+            (raw->sourcePictureSupport && raw->sourcePictureSupport->currentSupport.verified?16u:0u);
+    };
+    trace.counters[0]=capabilities(prior);trace.counters[1]=capabilities(incoming);trace.counters[2]=capabilities(selected);
+    if(prior) {trace.counters[3]=prior->identity.acceptedSequence;trace.counters[4]=prior->domainKey;}
+    if(incoming) {trace.counters[5]=incoming->identity.acceptedSequence;trace.counters[6]=incoming->domainKey;}
+    AnalysisDiagnosticTrace::Emit(trace);
+}
+
 // A cold computation can race an independent producer completing the same
 // immutable source. Publication must not erase a newer physical observation.
 template<class RawMeasurement>
@@ -55,21 +109,43 @@ std::shared_ptr<const RawMeasurement> PublishPreparedOutwardRaw(
     std::shared_ptr<const RawMeasurement> computed)
 {
     auto expected=std::atomic_load(&slot->ready);
-    if(!PreparedOutwardRawMeasurementCurrent(frame,identity,computed))
-        return PreparedOutwardRawMeasurementCurrent(frame,identity,expected)?expected:computed;
+    if(!PreparedOutwardRawMeasurementCurrent(frame,identity,computed)) {
+        const auto selected=PreparedOutwardRawMeasurementCurrent(frame,identity,expected)?expected:computed;
+        TracePreparedRawPublication(frame,identity,"foreign-computation",expected,computed,selected);
+        return selected;
+    }
     for(;;) {
+        auto publication=computed;const char* reason="initial-publication";
         if(PreparedOutwardRawMeasurementCurrent(frame,identity,expected)) {
-            if(!SourcePictureMeasurementCanComplete(expected->evidence,computed->evidence))return expected;
+            const bool nativeUpgrade=SourcePictureMeasurementCanComplete(expected->evidence,computed->evidence);
+            const bool priorSupport=PreparedSourceSupportAttemptCurrent(frame,identity,expected->sourcePictureSupport);
+            const bool newSupport=PreparedSourceSupportAttemptCurrent(frame,identity,computed->sourcePictureSupport);
+            const bool supportUpgrade=newSupport && (!priorSupport ||
+                (!expected->sourcePictureSupport->currentSupport.verified && computed->sourcePictureSupport->currentSupport.verified));
+            if(!nativeUpgrade && !supportUpgrade) {
+                TracePreparedRawPublication(frame,identity,"kept-current-capabilities",expected,computed,expected);
+                return expected;
+            }
+            reason=nativeUpgrade?(supportUpgrade?"native-and-support-upgrade":"native-upgrade"):"support-upgrade";
+            const auto support=supportUpgrade?computed->sourcePictureSupport:
+                priorSupport?expected->sourcePictureSupport:std::shared_ptr<const SourcePictureSupportResult>{};
+            if(!nativeUpgrade || support!=computed->sourcePictureSupport) {
+                auto combined=std::make_shared<RawMeasurement>(nativeUpgrade?*computed:*expected);
+                combined->sourcePictureSupport=support;
+                publication=std::move(combined);
+            }
         } else if(expected!=initiallyReady) {
             // An old producer cannot overwrite a newer source/context owner.
+            TracePreparedRawPublication(frame,identity,"foreign-slot-owner",expected,computed,expected);
             return computed;
         }
-        if(std::atomic_compare_exchange_weak(&slot->ready,&expected,computed)) {
+        if(std::atomic_compare_exchange_weak(&slot->ready,&expected,publication)) {
             // Outward computation can complete this raw slot while its normal
             // worker is still running. Wake preparation at the common immutable
             // publication point, not only when that normal worker exits.
             if(slot->completion)slot->completion->Notify();
-            return computed;
+            TracePreparedRawPublication(frame,identity,reason,expected,computed,publication);
+            return publication;
         }
     }
 }

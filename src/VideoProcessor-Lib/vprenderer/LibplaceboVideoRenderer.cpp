@@ -312,6 +312,14 @@ namespace
         auto detected=DetectPreparedSourcePictureBounded(prepared.source,result.identity,ordered?&request:nullptr);
         if(ordered)episode.Complete(detected);
         result.sourcePictureSupport=std::move(detected.support);
+        if(!result.sourcePictureSupport) {
+            // Ordered episode rejection is a terminal negative support attempt,
+            // not a reason to repeatedly resubmit this immutable source.
+            auto terminal=std::make_shared<SourcePictureSupportResult>();
+            terminal->currentSupport.identity=result.identity;
+            terminal->currentSupport.reason="support-episode-not-admitted";
+            result.sourcePictureSupport=std::move(terminal);
+        }
         result.evidence=std::move(detected.evidence);
         result.sourcePictureObservation=std::move(detected.observation);
         result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
@@ -9531,9 +9539,28 @@ struct LibplaceboVideoRenderer::Impl
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
             const auto currentSupportProvider=[&]() -> std::shared_ptr<const CurrentSourceSupportEvidence> {
-                if(!analysisCache)return {};
-                const auto completed=QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
-                if(!CurrentLookaheadMeasurement(prepared,key.identity,completed) || !completed->sourcePictureSupport)return {};
+                const auto completed=analysisCache?QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead):
+                    std::shared_ptr<const QueuedFrame::LookaheadMeasurement>{};
+                const char* reason=!analysisCache?"payload-null":!completed?"slot-empty":
+                    !PreparedSourceDetectorCurrent(completed->evidence)?"detector-mismatch":
+                    completed->domainKey!=prepared.domainKey?"domain-mismatch":
+                    !SameAnalysisFrameIdentity(completed->identity,key.identity)?"identity-mismatch":
+                    !CurrentLookaheadMeasurement(prepared,key.identity,completed)?"pixel-view-mismatch":
+                    !completed->sourcePictureSupport?"support-absent":
+                    !PreparedSourceSupportAttemptCurrent(prepared,key.identity,completed->sourcePictureSupport)?"support-invalid":
+                    !completed->sourcePictureSupport->currentSupport.verified?"support-negative":"current-ready";
+                auto trace=AnalysisTraceRecord(key.identity,nullptr,"subtitle-support-read",reason);
+                trace.policyGeneration=key.policyGeneration;trace.continuityGeneration=key.continuityGeneration;
+                const bool current=CurrentLookaheadMeasurement(prepared,key.identity,completed);
+                trace.flags=(completed?1u:0u)|(current?2u:0u)|
+                    (completed && completed->sourcePictureSupport?4u:0u);
+                if(completed) {
+                    trace.counters[0]=completed->identity.acceptedSequence;trace.counters[1]=completed->domainKey;
+                    trace.counters[2]=completed->identity.viewportGeneration;
+                    if(completed->sourcePictureSupport)AnalysisTraceRect(trace.published,completed->sourcePictureSupport->currentSupport.samplingBounds);
+                }
+                AnalysisDiagnosticTrace::Emit(trace);
+                if(!current || !completed->sourcePictureSupport)return {};
                 return std::shared_ptr<const CurrentSourceSupportEvidence>(completed->sourcePictureSupport,
                     &completed->sourcePictureSupport->currentSupport);
             };
@@ -25912,11 +25939,11 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
     auto identity=queued.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
     const auto slot=queued.analysis->lookahead;const auto initial=QueuedFrame::LookaheadWorker::Ready(slot);
 
-    if(!CurrentLookaheadMeasurement(prepared,identity,initial) || !SourcePictureMeasurementWorkComplete(initial->evidence)) {
+    if(!PreparedNativeSupportWorkComplete(prepared,identity,initial)) {
         trace.nativeQueued=m_impl->lookaheadMeasurementWorker.Submit(slot,identity.transportGeneration,identity.acceptedSequence,
             minimumSequence,[prepared,identity,slot,episode=m_impl->sourcePictureSupportEpisode] {
                 const auto ready=QueuedFrame::LookaheadWorker::Ready(slot);
-                if(CurrentLookaheadMeasurement(prepared,identity,ready) && SourcePictureMeasurementWorkComplete(ready->evidence))return *ready;
+                if(PreparedNativeSupportWorkComplete(prepared,identity,ready))return *ready;
                 QueuedFrame::LookaheadMeasurement result;PopulateNativeSourceMeasurement(result,prepared,identity,*episode);return result;
             },[prepared,identity,slot,initial](std::shared_ptr<const QueuedFrame::LookaheadMeasurement> result) {
                 PublishPreparedOutwardRaw<QueuedFrame::LookaheadMeasurement>(prepared,identity,slot,initial,std::move(result));
@@ -26022,9 +26049,8 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
         const auto ready=QueuedFrame::LookaheadWorker::Ready(slot);
         const auto identity=queued.activePictureIdentity;
         auto currentExpected=identity;currentExpected.analysisDomainKey=prepared.domainKey;
-        const bool currentRaw=CurrentLookaheadMeasurement(prepared,currentExpected,ready);
-        const bool currentPhysical=currentRaw && SourcePictureMeasurementWorkComplete(ready->evidence);
-        if(currentPhysical || slot->pending.load(std::memory_order_acquire))continue;
+        const bool currentComplete=PreparedNativeSupportWorkComplete(prepared,currentExpected,ready);
+        if(currentComplete || slot->pending.load(std::memory_order_acquire))continue;
         if(SourcePictureDetectorEnabled()) {
             std::unique_lock<std::mutex> owner(m_queueMutex,std::try_to_lock);
             if(!owner.owns_lock() || policy!=m_activePictureTimeline.LookaheadPolicyGeneration() ||
@@ -26040,8 +26066,7 @@ void LibplaceboVideoRenderer::PrimeActivePictureMeasurements(
             identity.acceptedSequence,minimumSequence,[prepared,identity,slot,episode=m_impl->sourcePictureSupportEpisode] {
                 auto expected=identity;expected.analysisDomainKey=prepared.domainKey;
                 if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
-                    if (CurrentLookaheadMeasurement(prepared,expected,ready) &&
-                        SourcePictureMeasurementWorkComplete(ready->evidence))return *ready;
+                    if (PreparedNativeSupportWorkComplete(prepared,expected,ready))return *ready;
                 static thread_local const bool prioritySet=
                     SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
                 (void)prioritySet;
@@ -26624,14 +26649,12 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         // Fresh raster scans run independently. A missing result means no
         // lookahead proof for this window; playback continues with live rules.
         const auto measured=QueuedFrame::LookaheadWorker::Ready(queued.analysis->lookahead);
-        if(!CurrentLookaheadMeasurement(prepared,analysisIdentity,measured) ||
-            !SourcePictureMeasurementWorkComplete(measured->evidence)) {
-            if(allowBackgroundDispatch)m_impl->lookaheadMeasurementWorker.Submit(queued.analysis->lookahead,
+        if(!PreparedNativeSupportWorkComplete(prepared,analysisIdentity,measured) && allowBackgroundDispatch)
+            m_impl->lookaheadMeasurementWorker.Submit(queued.analysis->lookahead,
                 analysisIdentity.transportGeneration,analysisIdentity.acceptedSequence,
                 previewFrames.front().activePictureIdentity.acceptedSequence,[prepared,analysisIdentity,slot=queued.analysis->lookahead,episode=m_impl->sourcePictureSupportEpisode] {
                     if (const auto ready=QueuedFrame::LookaheadWorker::Ready(slot))
-                        if (CurrentLookaheadMeasurement(prepared,analysisIdentity,ready) &&
-                            SourcePictureMeasurementWorkComplete(ready->evidence))return *ready;
+                        if (PreparedNativeSupportWorkComplete(prepared,analysisIdentity,ready))return *ready;
                     // Optional CPU work yields to capture/presentation under load.
                     static thread_local const bool prioritySet=
                         SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL)!=FALSE;
@@ -26642,6 +26665,10 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 },[prepared,analysisIdentity,slot=queued.analysis->lookahead,measured](std::shared_ptr<const QueuedFrame::LookaheadMeasurement> result) {
                     PublishPreparedOutwardRaw<QueuedFrame::LookaheadMeasurement>(prepared,analysisIdentity,slot,measured,std::move(result));
                 });
+        // Native consumers retain their original completion contract. Missing
+        // auxiliary support schedules work without hiding completed native facts.
+        if(!CurrentLookaheadMeasurement(prepared,analysisIdentity,measured) ||
+            !SourcePictureMeasurementWorkComplete(measured->evidence)) {
             if(subtitlePreviewEnabled && allowBackgroundDispatch)
                 m_impl->QueueSubtitleMeasurement(queued.frame,state,analysisIdentity,
                     queued.frame.IsSourceDiscontinuity(),subtitleBarTrackingReference,
