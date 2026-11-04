@@ -1,4 +1,5 @@
 #include <pch.h>
+#include "LibplaceboRendererPluginApi.h"
 #include <new>
 #include "../SubtitleProfileUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
@@ -4521,8 +4522,34 @@ private:
 
 struct LibplaceboVideoRenderer::Impl
 {
-    explicit Impl(bool declineCueProof=false) : regressionDeclineCueProof(declineCueProof) {}
+    explicit Impl(bool declineCueProof=false,bool missingAnalysisWindow=false) :
+        regressionDeclineCueProof(declineCueProof),regressionMissingAnalysisWindow(missingAnalysisWindow) {}
     const bool regressionDeclineCueProof;
+    const bool regressionMissingAnalysisWindow;
+    std::atomic<uint64_t> regressionCurrentCueAnchor{0};
+    bool RegressionMissingRaw(uint64_t source) const {
+        if(!regressionMissingAnalysisWindow)return false;
+        const auto anchor=regressionCurrentCueAnchor.load(std::memory_order_acquire);
+        return anchor && source>=anchor && source-anchor>=VP_REGRESSION_RAW_MISSING_BEGIN &&
+            source-anchor<=VP_REGRESSION_RAW_MISSING_END;
+    }
+    bool RegressionMissingProof(uint64_t source) const {
+        if(!regressionMissingAnalysisWindow)return false;
+        const auto anchor=regressionCurrentCueAnchor.load(std::memory_order_acquire);
+        return anchor && source>=anchor && source-anchor>=VP_REGRESSION_BOTH_MISSING_BEGIN &&
+            source-anchor<=VP_REGRESSION_BOTH_MISSING_END;
+    }
+    __declspec(noinline) void TraceRegressionEvidenceWindow(const ActivePictureFrameIdentity& identity,
+        bool proofConsumed,bool rawAvailable) {
+        if(!regressionMissingAnalysisWindow)return;
+        const auto anchor=regressionCurrentCueAnchor.load(std::memory_order_acquire);
+        if(!anchor)return;
+        auto trace=AnalysisTraceRecord(identity,this,"regression-evidence-window","optional-receipts-withheld");
+        trace.counters[0]=anchor;
+        trace.flags=(RegressionMissingRaw(identity.acceptedSequence)?1u:0u)|
+            (RegressionMissingProof(identity.acceptedSequence)?2u:0u)|(proofConsumed?4u:0u)|(rawAvailable?8u:0u);
+        AnalysisDiagnosticTrace::Emit(trace);
+    }
 	SceneDetector sceneDetector;
 	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
 	AlphaPresentationTelemetry presentationTelemetry;
@@ -9489,18 +9516,6 @@ struct LibplaceboVideoRenderer::Impl
         return prepared;
     }
 
-    void LogOwnedSubtitleWindowRebind(const char* site,const ActivePictureFrameIdentity& current,
-        size_t owned,unsigned before,unsigned after,uint64_t oldContinuity,uint64_t newContinuity,
-        bool witnessed,bool available)
-    {
-        if(!SubtitleCadenceCacheDiagnosticsEnabled() ||
-            (current.acceptedSequence>128 && (!before || subtitleOwnedWindowDiagnosticTail>=64)))return;
-        if(current.acceptedSequence>128)++subtitleOwnedWindowDiagnosticTail;
-        DebugLog::Log("VP subtitle cadence cache: stage=window-rebind site=%s source=%llu owned_prefix=%zu following_before=%u following_after=%u old_continuity=%llu new_continuity=%llu witnessed=%d available=%d reason=%s",
-            site,current.acceptedSequence,owned,before,after,oldContinuity,newContinuity,witnessed?1:0,available?1:0,
-            available?"owned-current-pixels-recomputed":"no-qualified-owned-prefix");
-    }
-
     static void MakeSubtitleWorkerKeyInto(SubtitleBoxObservation& key,const VideoState& state,
         const ActivePictureFrameIdentity& identity,bool discontinuity,uint64_t policy,uint64_t continuity,
         int nearBar,int optimizationMode,SubtitleScriptHint scriptHint,const SubtitlePictureAuthority& shared,
@@ -9517,10 +9532,21 @@ struct LibplaceboVideoRenderer::Impl
         key.height=static_cast<int>(state.displayMode->FrameHeight());
     }
 
+    static bool BindSubtitleSourceTicket(SubtitleBoxObservation& key,
+        const std::shared_ptr<QueuedFrame::AnalysisPayload>& cache)
+    {
+        if(!cache)return false;
+        const auto ticket=SourceAnalysisTicket::Acquire(&cache->sourceTicket,key);
+        return ticket && ticket->BindRequest(key);
+    }
+
     static SubtitleMeasurementWorker::Work MakeSubtitleMeasurementWork(const PreparedAnalysisFrame& prepared,
         const SubtitleBoxObservation& key,const SubtitleBarTrackingReference& prior,double fps,
         const ActivePictureEvidence& nativeEvidence,const std::shared_ptr<QueuedFrame::AnalysisPayload>& analysisCache)
     {
+        // The closure owns the already ticket-bound request unchanged. Worker
+        // source-window pruning still retires stale work; ticket selection never
+        // turns an unfinished optional job into a completed negative.
         return [prepared,key,prior,fps,nativeEvidence,analysisCache](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
             // The native worker may finish after dispatch but before this job
             // starts. Reuse only its exact immutable source/owner/domain result;
@@ -9598,14 +9624,23 @@ struct LibplaceboVideoRenderer::Impl
         MakeSubtitleWorkerKeyInto(key,state,identity,discontinuity,policy,continuity,
             nearBar,optimizationMode,scriptHint,sharedPicture,prepared);
         if (!prepared.IsValid()) return key;
+        if(!BindSubtitleSourceTicket(key,analysisCache)) {
+            key.text.diagnosticReason="source-ticket-context-unavailable";
+            return key;
+        }
+        if(RegressionMissingRaw(identity.acceptedSequence)) {
+            key.text.diagnosticReason="regression-optional-raw-unavailable";
+            return key;
+        }
         SubtitleBoxObservation ready;
         const bool ownedRead=ownedWitness && subtitleMeasurementWorker.TryReadOwnedScan(
             key,ready,*ownedWitness,ownedTimelinePolicy);
         if(ownedWitness && !ownedRead && SubtitleCadenceCacheDiagnosticsEnabled() && identity.acceptedSequence<=128)
             DebugLog::Log("VP subtitle cadence cache: stage=worker-owned-reject source=%llu domain=%llu policy=%llu continuity=%llu owner_policy=%llu reason=complete-source-or-timeline-witness-unavailable",
                 key.identity.acceptedSequence,key.identity.analysisDomainKey,policy,continuity,ownedTimelinePolicy);
-        const bool readyRead=ownedRead || subtitleMeasurementWorker.TryRead(key,ready,backlogRetirementOnly);
-        if(readyRead) {
+        const bool readyRead=ownedRead || subtitleMeasurementWorker.TryRead(key,ready,false);
+        const auto ticket=std::atomic_load(&analysisCache->sourceTicket);
+        if(readyRead && ticket && ticket->Accepts(ready)) {
             if(SubtitleBoxLookahead::CanReuseMeasurement(ready,key.identity,key.width,key.height,
                 policy,continuity,discontinuity,prior,scriptHint)) {
                 if(completedCurrentNoCaptionScan)*completedCurrentNoCaptionScan=ready.analyzed && !ready.discontinuity &&
@@ -9696,6 +9731,21 @@ struct LibplaceboVideoRenderer::Impl
         AnalysisDiagnosticTrace::Emit(trace);
     }
 
+    __declspec(noinline) static void TraceSourceTicketSelection(
+        const ActivePictureFrameIdentity& identity,const SourceAnalysisTicket* ticket,
+        const SubtitleBoxPreview* preview,uint64_t policy,uint64_t continuity)
+    {
+        auto trace=AnalysisTraceRecord(identity,nullptr,"source-ticket-selection",
+            !ticket?"context-unavailable":!preview?"current-result-pending":
+            ticket->Accepts(preview->current)?"exact-source-result":"foreign-result-rejected");
+        trace.policyGeneration=policy;trace.continuityGeneration=continuity;
+        trace.flags=(ticket?1u:0u)|(preview?2u:0u)|
+            (ticket && preview && ticket->Accepts(preview->current)?4u:0u);
+        if(ticket)AnalysisTraceRect(trace.previous,ticket->Nomination().bounds);
+        if(preview)AnalysisTraceRect(trace.measured,preview->current.sharedPicture.bounds);
+        AnalysisDiagnosticTrace::Emit(trace);
+    }
+
     SubtitleCurrentCueProofStatus SubmitCurrentCueProof(
         const PreparedAnalysisFrame& prepared,const SubtitleBoxObservation& key,
         const ActivePictureBounds& offeredPhysicalBase,const ActivePictureFrameIdentity& renderHead,
@@ -9709,7 +9759,7 @@ struct LibplaceboVideoRenderer::Impl
         // Regression factory models an unavailable optional reuse task. Normal
         // accepted-source/prime/render callers retain their ordinary full-scan
         // fallback. Never stall, synthesize a failed pixel proof or retire a cue.
-        if(regressionDeclineCueProof) {
+        if(regressionDeclineCueProof || RegressionMissingProof(key.identity.acceptedSequence)) {
             auto trace=AnalysisTraceRecord(key.identity,this,"regression-cue-proof-declined","optional-reuse-unavailable");
             AnalysisTraceText(trace.detail,offerOrigin);
             AnalysisDiagnosticTrace::Emit(trace);
@@ -9798,7 +9848,7 @@ struct LibplaceboVideoRenderer::Impl
         request.eligibleTailSequence=eligibleTailSequence;
         request.templateRevision=revision;
         request.frameMs=frameMs;
-        request.fullScanDue=fullScanDue && !key.cadenceSkipped;
+        request.fullScanDue=fullScanDue && !key.cadenceSkipped && !RegressionMissingRaw(key.identity.acceptedSequence);
         if(request.fullScanDue)
             request.fullScanOnMiss=MakeSubtitleMeasurementWork(prepared,key,prior,fps,nativeEvidence,analysisCache);
         if(ownedWitness) {
@@ -14967,50 +15017,23 @@ struct LibplaceboVideoRenderer::Impl
         }
         else if (subtitleMeasurementEnabled)
         {
-            auto& reboundPreview=subtitlePreviews->rebound;
-            if(subtitlePreview && subtitlePreview->available) {
-                bool snapshotChanged=!subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture);
-                for(unsigned i=0;i<subtitlePreview->followingCount;++i)
-                    snapshotChanged|=!subtitlePreview->following[i].sharedPicture.Matches(subtitleSharedPicture);
-                if(snapshotChanged || subtitlePreview->continuityGeneration!=localBoundaryContinuityGeneration) {
-                    const auto oldContinuity=subtitlePreview->continuityGeneration;
-                    const auto oldFollowing=subtitlePreview->followingCount;
-                    const auto oldOwned=subtitlePreview->ownedWindow.Count();
-                    auto rebuilt=SubtitleBoxLookahead::RebindOwnedIndependentWindowHeap(*subtitlePreview,subtitleIdentity,
-                        subtitleSharedPicture,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
-                        &ownedSubtitleScanWitness,ownedSubtitleTimelinePolicy);
-                    const bool available=rebuilt->available;const auto following=rebuilt->followingCount;
-                    if(available){reboundPreview=std::move(*rebuilt);subtitlePreview=&reboundPreview;}
-                    LogOwnedSubtitleWindowRebind("render",subtitleIdentity,oldOwned,oldFollowing,following,
-                        oldContinuity,localBoundaryContinuityGeneration,
-                        ownedSubtitleScanWitness.Matches(subtitleIdentity,ownedSubtitleTimelinePolicy,oldContinuity,
-                            localBoundaryContinuityGeneration),available);
-                }
-            }
-            if (subtitlePreview && subtitlePreview->available &&
-                subtitlePreview->current.independentBarAnalysis &&
-                !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)) {
-                reboundPreview=*subtitlePreview;
-                SubtitleBoxLookahead::RebindIndependentPicture(reboundPreview.current,subtitleSharedPicture);
-                subtitlePreview=&reboundPreview;
-            }
-            if(subtitlePreview && subtitlePreview->available &&
-                subtitlePreview->continuityGeneration!=localBoundaryContinuityGeneration) {
-                auto observed=subtitlePreview->current;
-                if(SubtitleBoxLookahead::RebindIndependentMeasurement(observed,localBoundaryContinuityGeneration) ||
-                    SubtitleBoxLookahead::RebindCompletedIndependentScanAfterBacklog(
-                        observed,localBoundaryContinuityGeneration,subtitleBacklogRetirementOnly)) {
-                    // Resolve only CURRENT evidence; discarded-epoch future
-                    // votes must never survive with the independent pixels.
-                    reboundPreview=SubtitleBoxLookahead::Resolve(&observed,1,
-                        subtitlePreview->policyGeneration,localBoundaryContinuityGeneration);
-                    subtitlePreview=&reboundPreview;
-                }
-            }
-            if (subtitlePreview && !SubtitleBoxLookahead::IsCurrent(*subtitlePreview,
-                subtitleIdentity,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration) ||
-                (subtitlePreview && !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)))
-                subtitlePreview = nullptr;
+            // One exact-source request owns both dispatch and selection. A newly
+            // published native snapshot can add proof, but cannot invalidate or
+            // relabel a scan already made for this source's frozen nomination.
+            auto ticketRequest=std::make_unique<SubtitleBoxObservation>();
+            MakeSubtitleWorkerKeyInto(*ticketRequest,state,subtitleIdentity,
+                videoFrame.IsSourceDiscontinuity(),localBoundaryPolicyGeneration,
+                localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
+                activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
+                subtitleSharedPicture,preparedQueued);
+            const auto sourceTicket=analysisCache?
+                SourceAnalysisTicket::Acquire(&analysisCache->sourceTicket,*ticketRequest):nullptr;
+            TraceSourceTicketSelection(subtitleIdentity,sourceTicket.get(),subtitlePreview,
+                localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+            if(subtitlePreview && (!sourceTicket || !sourceTicket->Accepts(subtitlePreview->current) ||
+                !SubtitleBoxLookahead::IsCurrent(*subtitlePreview,subtitleIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration)))
+                subtitlePreview=nullptr;
             auto& livePreview=subtitlePreviews->live;
             bool renderCompleteNoCaptionScan=false;
             if (!subtitlePreview)
@@ -15019,7 +15042,7 @@ struct LibplaceboVideoRenderer::Impl
                     subtitleIdentity,analysisSource.width,analysisSource.height,
                     videoFrame.IsSourceDiscontinuity(),localBoundaryPolicyGeneration,
                     localBoundaryContinuityGeneration,livePreview,activeSettings.subtitleScriptHint) ||
-                    !livePreview.current.sharedPicture.Matches(subtitleSharedPicture))
+                    !sourceTicket || !sourceTicket->Accepts(livePreview.current))
                 {
                     const auto priorBar = subtitleBoxPresentation.BarTrackingReferenceFor(
                         subtitleIdentity,analysisSource.width,analysisSource.height,
@@ -15042,13 +15065,9 @@ struct LibplaceboVideoRenderer::Impl
             const double subtitleFrameMs=state.displayMode && state.displayMode->TimeScale()>0
                 ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0;
             currentSubtitlePreview=*subtitlePreview;
-            for(unsigned i=0;i<currentSubtitlePreview.followingCount;++i)
-                if(!currentSubtitlePreview.following[i].sharedPicture.Matches(subtitleSharedPicture)) {
-                    const auto current=currentSubtitlePreview.current;
-                    ResolveSubtitlePreviewInto(currentSubtitlePreview,&current,1,
-                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
-                    break;
-                }
+            // Each following observation was selected against its own frame
+            // ticket. Resolve checks their source order and measured planes;
+            // never rebind them to the render head's later nomination.
 
             // The old cue ledger is comparison-only. A passing proof is a
             // typed, exact-source receipt from the worker; a miss stays on the
@@ -15102,8 +15121,8 @@ struct LibplaceboVideoRenderer::Impl
                 if(BuildSubtitleCurrentCueProofKey(rawCurrentKey,subtitleIdentity,nlsGeometry,
                         nativeProofContext,exactKey)) {
                     const auto bindStarted=SteadyClock::now();
-                    auto cueStatus=subtitleMeasurementWorker.TryPeekCurrentCueProof(
-                        exactKey,currentCueProofReceipt);
+                    auto cueStatus=RegressionMissingProof(sourceSequence)?SubtitleCurrentCueProofStatus::NotEligible:
+                        subtitleMeasurementWorker.TryPeekCurrentCueProof(exactKey,currentCueProofReceipt);
                     if(sourceSequence<=128 || sourceSequence%60==0) {
                         auto poll=AnalysisTraceRecord(exactKey.identity,this,"subtitle-cue-proof-polled","render-current-source");
                         poll.policyGeneration=exactKey.policyGeneration;
@@ -15165,6 +15184,10 @@ struct LibplaceboVideoRenderer::Impl
                             proofPreview,currentCue)) {
                         currentSubtitlePreview=std::move(proofPreview);
                         currentCueProofConsumed=true;
+                        if(regressionMissingAnalysisWindow) {
+                            uint64_t unset=0;
+                            regressionCurrentCueAnchor.compare_exchange_strong(unset,sourceSequence,std::memory_order_acq_rel);
+                        }
                         currentSubtitlePendingPixelsVerified=true;
                         subtitleBoxResult=currentCue;
                         ++subtitlePerf.recovered;
@@ -15252,6 +15275,7 @@ struct LibplaceboVideoRenderer::Impl
                 currentSubtitlePreview.current.text={};currentSubtitlePreview.current.ink.reset();
             }
             subtitlePreview=&currentSubtitlePreview;
+            TraceRegressionEvidenceWindow(subtitleIdentity,currentCueProofConsumed,hasExactCurrentScan(currentSubtitlePreview));
 
             ++subtitlePerf.frames;
             bool& pendingCurrentPixelsVerified=currentSubtitlePendingPixelsVerified;
@@ -23568,13 +23592,14 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
 	VideoConversionOverride videoConversionOverride,
-    bool regressionDeclineCueProof) :
+    bool regressionDeclineCueProof, bool regressionMissingAnalysisWindow) :
 	m_callback(callback),
 	m_callbackGeneration(rendererGeneration),
 	m_videoHwnd(videoHwnd),
 	m_timingClock(timingClock),
 	m_useFrameQueue(useFrameQueue),
     m_regressionDeclineCueProof(regressionDeclineCueProof),
+    m_regressionMissingAnalysisWindow(regressionMissingAnalysisWindow),
 	m_videoConversionOverride(videoConversionOverride),
 	m_frameQueueDesiredDepth(AlphaQueuePolicy::NormalizeDesiredDepth(frameQueueMaxSize)),
 	m_frameQueueMaxSize(AlphaQueuePolicy::HardCapacity(frameQueueMaxSize))
@@ -24071,7 +24096,7 @@ void LibplaceboVideoRenderer::Build()
 	// D3D11 device/swapchain creation and persistent cache loading can enter the
 	// driver for seconds. Build only captures an immutable construction request;
 	// RenderLoop performs the actual initialization on its own thread.
-	m_impl.reset(new Impl(m_regressionDeclineCueProof));
+	m_impl.reset(new Impl(m_regressionDeclineCueProof,m_regressionMissingAnalysisWindow));
     m_impl->startupRendererGeneration=m_callbackGeneration;
 	m_impl->displayRefreshRate.SetEventSink(
 		[this](const std::string& event, double actualRefreshRate,
@@ -26027,6 +26052,10 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
             trace.subtitleReason=subtitleEligible?"eligible":"cadence-not-due";
         }
     }
+    if(subtitleContextEligible && !Impl::BindSubtitleSourceTicket(*key,queued.analysis)) {
+        subtitleContextEligible=false;subtitleEligible=false;
+        trace.subtitleReason="source-ticket-context-unavailable";
+    }
     const auto nativeReady=QueuedFrame::LookaheadWorker::Ready(slot);
     const bool nativeDependencyReady=CurrentLookaheadMeasurement(prepared,identity,nativeReady) &&
         SourcePictureMeasurementWorkComplete(nativeReady->evidence);
@@ -26047,7 +26076,7 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
     const bool cueProofOwnsSource=cueProofStatus==SubtitleCurrentCueProofStatus::Queued ||
         cueProofStatus==SubtitleCurrentCueProofStatus::Pending || cueProofStatus==SubtitleCurrentCueProofStatus::Ready ||
         cueProofStatus==SubtitleCurrentCueProofStatus::FallbackQueued;
-    if(subtitleEligible && !cueProofOwnsSource) {
+    if(subtitleEligible && !cueProofOwnsSource && !m_impl->RegressionMissingRaw(key->identity.acceptedSequence)) {
         trace.subtitleQueued=m_impl->subtitleMeasurementWorker.Submit(*key,Impl::MakeSubtitleMeasurementWork(prepared,*key,{},
             sourceFps,{},queued.analysis),nullptr,0,true,slot->completion);
     }
@@ -26055,7 +26084,8 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
         trace.subtitleQueued=true;
         trace.subtitleReason=cueProofStatus==SubtitleCurrentCueProofStatus::FallbackQueued?
             "current-cue-proof-fallback-queued":"current-cue-proof-queued";
-    } else if(subtitleEligible)trace.subtitleReason=trace.subtitleQueued?"submitted":"already-owned-or-worker-busy";
+    } else if(subtitleEligible)trace.subtitleReason=m_impl->RegressionMissingRaw(key->identity.acceptedSequence)?
+        "regression-optional-raw-unavailable":trace.subtitleQueued?"submitted":"already-owned-or-worker-busy";
     trace.reason="completed-dispatch";
 }
 
@@ -26719,32 +26749,14 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 },[prepared,analysisIdentity,slot=queued.analysis->lookahead,measured](std::shared_ptr<const QueuedFrame::LookaheadMeasurement> result) {
                     PublishPreparedOutwardRaw<QueuedFrame::LookaheadMeasurement>(prepared,analysisIdentity,slot,measured,std::move(result));
                 });
-        // Native consumers retain their original completion contract. Missing
-        // auxiliary support schedules work without hiding completed native facts.
-        if(!CurrentLookaheadMeasurement(prepared,analysisIdentity,measured) ||
-            !SourcePictureMeasurementWorkComplete(measured->evidence)) {
-            if(subtitlePreviewEnabled && allowBackgroundDispatch)
-                m_impl->QueueSubtitleMeasurement(queued.frame,state,analysisIdentity,
-                    queued.frame.IsSourceDiscontinuity(),subtitleBarTrackingReference,
-                    lookaheadPolicyGeneration,subtitleContinuityGeneration,subtitleNearBarDistance,
-                    subtitleDetectionOptimization,subtitleScriptHint,sharedPicture,prepared,{},false,true,queued.analysis);
-            readyPrefix.Admit(rememberedIndex,false);
-            subtitleBarTrackingReference={};
-            continue;
-        }
-        if(!readyPrefix.Admit(rememberedIndex,true)) continue;
-        attempt.ready=readyPrefix.Size();
-        ++attempt.retained;
-        const ActivePictureEvidence evidence=cachedPictureEvidence ?
-            queued.activePicturePreviewEvidence : measured->evidence;
-
+        // Subtitle completion is an independent capability of this source.
+        // A pending native job must not hide already completed current glyphs.
         if (rememberedIndex < subtitleObservations.size())
         {
-            auto cachedSubtitleObservation=queued.subtitleBoxObservation;
-            SubtitleBoxLookahead::RebindIndependentPicture(cachedSubtitleObservation,sharedPicture);
-            SubtitleBoxLookahead::RebindIndependentMeasurement(cachedSubtitleObservation,subtitleContinuityGeneration);
-            if (cachedSubtitleObservation.optimizationMode==subtitleDetectionOptimization && cachedSubtitleObservation.nearBarDistance==subtitleNearBarDistance &&
-                cachedSubtitleObservation.sharedPicture.Matches(sharedPicture) &&
+            const auto& cachedSubtitleObservation=queued.subtitleBoxObservation;
+            const auto ticket=std::atomic_load(&queued.analysis->sourceTicket);
+            if (ticket && ticket->Accepts(cachedSubtitleObservation) &&
+                cachedSubtitleObservation.optimizationMode==subtitleDetectionOptimization && cachedSubtitleObservation.nearBarDistance==subtitleNearBarDistance &&
                 SubtitleBoxLookahead::CanReuseMeasurement(cachedSubtitleObservation,
                 analysisIdentity,source.width,source.height,lookaheadPolicyGeneration,
                 subtitleContinuityGeneration,queued.frame.IsSourceDiscontinuity(),
@@ -26758,11 +26770,26 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     queued.frame,state,analysisIdentity,queued.frame.IsSourceDiscontinuity(),
                     subtitleBarTrackingReference,lookaheadPolicyGeneration,subtitleContinuityGeneration,
                     subtitleNearBarDistance,subtitleDetectionOptimization,subtitleScriptHint,
-                    sharedPicture,prepared,evidence,false,allowBackgroundDispatch,queued.analysis);
+                    sharedPicture,prepared,
+                    CurrentLookaheadMeasurement(prepared,analysisIdentity,measured)?measured->evidence:ActivePictureEvidence{},
+                    false,allowBackgroundDispatch,queued.analysis);
             }
             subtitleBarTrackingReference=SubtitleBoxLookahead::AdvanceBarTrackingReference(
                 subtitleObservations[rememberedIndex]);
         }
+        // Native consumers retain their original completion contract. Missing
+        // auxiliary support schedules work without hiding completed native facts.
+        if(!CurrentLookaheadMeasurement(prepared,analysisIdentity,measured) ||
+            !SourcePictureMeasurementWorkComplete(measured->evidence)) {
+            readyPrefix.Admit(rememberedIndex,false);
+            continue;
+        }
+        if(!readyPrefix.Admit(rememberedIndex,true)) continue;
+        attempt.ready=readyPrefix.Size();
+        ++attempt.retained;
+        const ActivePictureEvidence evidence=cachedPictureEvidence ?
+            queued.activePicturePreviewEvidence : measured->evidence;
+
         if (rememberedWindowTrace && rememberedIndex < rememberedWindowSamples.size())
         {
             auto& shadow = rememberedWindowSamples[rememberedIndex];
@@ -26926,7 +26953,6 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     // Publish only the ready prefix and reduce all proof lookahead metadata.
     queuedFutureFrames=(std::min)(queuedFutureFrames,completePrefix-1);
     availableLookahead=static_cast<uint8_t>(queuedFutureFrames);
-    if(subtitleObservations.size()>completePrefix) subtitleObservations.resize(completePrefix);
     if(rememberedWindowSamples.size()>completePrefix) rememberedWindowSamples.resize(completePrefix);
 
     if (rememberedWindowTrace)
@@ -28563,35 +28589,11 @@ void LibplaceboVideoRenderer::RenderLoop()
                             activePictureIdentity.captureTimestamp,previous.captureTimestamp);
                     }
                 }
-                if(subtitlePreview.available &&
-                    subtitlePreview.continuityGeneration!=m_impl->localBoundaryContinuityGeneration) {
-                    auto currentOwned=activePictureIdentity;currentOwned.analysisDomainKey=cachedQueuedDomain;
-                    const auto oldContinuity=subtitlePreview.continuityGeneration;
-                    const auto oldFollowing=subtitlePreview.followingCount;
-                    const auto oldOwned=subtitlePreview.ownedWindow.Count();
-                    auto rebuilt=SubtitleBoxLookahead::RebindOwnedIndependentWindowHeap(subtitlePreview,currentOwned,
-                        subtitlePreview.current.sharedPicture,m_impl->localBoundaryPolicyGeneration,
-                        m_impl->localBoundaryContinuityGeneration,&ownedSubtitleScanWitness,ownedSubtitleTimelinePolicy);
-                    const bool rebuiltAvailable=rebuilt->available;
-                    if(rebuiltAvailable)subtitlePreview=std::move(*rebuilt);
-                    else {
-                        auto observed=subtitlePreview.current;
-                        if(SubtitleBoxLookahead::RebindIndependentMeasurement(observed,m_impl->localBoundaryContinuityGeneration) ||
-                            SubtitleBoxLookahead::RebindCompletedIndependentScanAfterBacklog(observed,
-                                m_impl->localBoundaryContinuityGeneration,subtitleBacklogRetirementOnly))
-                            subtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
-                                subtitlePreview.policyGeneration,m_impl->localBoundaryContinuityGeneration);
-                    }
-                    const bool currentRebound=subtitlePreview.available &&
-                        subtitlePreview.continuityGeneration==m_impl->localBoundaryContinuityGeneration;
-                    m_impl->LogOwnedSubtitleWindowRebind("queue",currentOwned,oldOwned,oldFollowing,
-                        currentRebound?subtitlePreview.followingCount:0,oldContinuity,m_impl->localBoundaryContinuityGeneration,
-                        ownedSubtitleScanWitness.Matches(currentOwned,ownedSubtitleTimelinePolicy,oldContinuity,
-                            m_impl->localBoundaryContinuityGeneration),rebuiltAvailable);
-                }
-                subtitlePreviewCurrent = SubtitleBoxLookahead::IsCurrentTransport(subtitlePreview,
-                    activePictureIdentity,activePictureCurrentPolicyGeneration,
-                    m_impl->localBoundaryContinuityGeneration);
+                const auto selectedTicket=analysisCache?std::atomic_load(&analysisCache->sourceTicket):nullptr;
+                subtitlePreviewCurrent = selectedTicket && selectedTicket->Accepts(subtitlePreview.current) &&
+                    SubtitleBoxLookahead::IsCurrentTransport(subtitlePreview,
+                        activePictureIdentity,activePictureCurrentPolicyGeneration,
+                        m_impl->localBoundaryContinuityGeneration);
 				activePicturePreviewPolicyMatches =
 					activePicturePreviewDecisionAvailable &&
 					activePicturePreviewDecision.lookaheadPolicyGeneration ==

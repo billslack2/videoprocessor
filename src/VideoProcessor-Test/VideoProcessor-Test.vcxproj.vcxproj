@@ -410,5 +410,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="PreparedOutwardWindowTests.cpp" />
+    <ClCompile Include="SourceSynchronizedAnalysisTests.cpp" />
   </ItemGroup>
 </Project>

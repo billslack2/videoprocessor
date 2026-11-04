@@ -11,10 +11,17 @@
     "src/VideoProcessor-Test/PreparedOutwardWindowTests.cpp",
     "src/VideoProcessor-Test/SourcePictureMeasurementTests.cpp",
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
-    "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
+    "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
+    "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1147,
+  "minimumNativeTests": 1153,
   "requiredNativeMethods": [
+    "SourceTicketAdoptsOnlyWitnessedExactOwnedScanWithoutRewritingNativeProof",
+    "SourceTicketPairsMeasuredArAndCueWithoutAcceptingLateForeignPixels",
+    "SourceTicketMissingWorkDoesNotRenameRequestsOrGrantCurrentEvidence",
+    "PixelMeasuredVariableAspectTransitionsRespondInBothDirections",
+    "PixelMeasuredMenuAndInteriorDarkShapesDoNotBecomeEncodedBars",
+    "PixelMeasuredCaptionChangesRemainBoundToTheirOriginalSource",
     "OwnedPictureFactsRecurringAdmissionDoesNotPinCaptureOwnersOrTrustSignatures",
     "OwnedPictureFactsHistoryBoundsPrivateBytesAndEvictsLeastRecent",
     "OwnedPictureFactsRetainFourExactSourcePhases",
