@@ -4148,6 +4148,48 @@ namespace VideoProcessorTest
                     unchanged.proof.identity.acceptedSequence);
             }
         }
+        TEST_METHOD(QualifiedSubtitleRejectionDiagnosticsPreserveAdmissionAndLocateFailures)
+        {
+            LoggedRelocatedCaptionFixture f;
+            const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+            const auto good=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+            Assert::IsTrue(good.qualified);
+            Assert::AreEqual(int(SubtitlePresentationRejectionKind::None),int(good.rejection.kind));
+            const auto original=f.composition;
+            f.composition.glyphLines[0].bottom-=4;
+            const auto incomplete=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+            Assert::IsFalse(incomplete.qualified);
+            Assert::AreEqual("incomplete-current-glyph-capture",incomplete.reason);
+            Assert::AreEqual(int(SubtitlePresentationRejectionKind::GlyphCapture),int(incomplete.rejection.kind));
+            Assert::AreEqual(0,incomplete.rejection.rawLine);
+            Assert::AreEqual(original.glyphLines[0].bottom,incomplete.rejection.rawCapture.bottom);
+            Assert::AreEqual(32,int(incomplete.rejection.glyphFailures[0]));
+            Assert::AreEqual(0,int(incomplete.rejection.contentFailure));
+            Assert::AreEqual(0u,incomplete.rejection.physicalFailures);
+            f.composition=original;
+            Assert::IsTrue(EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input()).qualified,
+                L"Restoring the actual complete capture, not diagnostic facts, restores admission.");
+            f.composition.content.bottom=original.glyphLines[0].bottom-1;
+            const auto content=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+            Assert::IsFalse(content.qualified);
+            Assert::AreEqual(0,int(content.rejection.glyphFailures[0]));
+            Assert::AreEqual(32,int(content.rejection.contentFailure));
+            f.composition=original;
+            auto wrongRaw=raw;wrongRaw.analysisValid=false;++wrongRaw.excludedTop.barPixels;
+            const auto physical=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),wrongRaw,f.Input());
+            Assert::IsFalse(physical.qualified);
+            Assert::AreEqual("physical-base-mismatch",physical.reason);
+            Assert::AreEqual(int(SubtitlePresentationRejectionKind::PhysicalBase),int(physical.rejection.kind));
+            Assert::AreEqual((1u<<7)|(1u<<10),physical.rejection.physicalFailures);
+            Assert::IsTrue((physical.rejection.guardFacts&1u)!=0,L"Exact composed plane is independently reported.");
+            Assert::AreEqual(-1,physical.rejection.rawLine,L"Unevaluated line is not a passing line zero.");
+            f.observation.pictureTop-=10;
+            const auto edge=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,f.Input());
+            Assert::IsFalse(edge.qualified);
+            Assert::AreEqual("subtitle-observation-edge-mismatch",edge.reason);
+            Assert::AreEqual(int(SubtitlePresentationRejectionKind::ObservationEdge),int(edge.rejection.kind));
+            Assert::AreEqual(0u,edge.rejection.physicalFailures);
+        }
         TEST_METHOD(QualifiedRelocatedCaptionRejectsStalePendingIncompleteOrUnpreparedProof)
         {
             for(int scenario=0;scenario<22;++scenario) {

@@ -488,6 +488,25 @@ private:
     SubtitlePreviewMode m_mode=SubtitlePreviewMode::None;
     const SubtitleInkSnapshot* m_ink=nullptr;
 };
+// Diagnostic-only facts, filled at the existing rejection branch. Zero masks
+// are unevaluated unless kind identifies that branch; they grant no authority.
+enum class SubtitlePresentationRejectionKind : uint8_t { None, GlyphCapture, PhysicalBase, ObservationEdge };
+struct SubtitlePresentationRejectionFacts
+{
+    SubtitlePresentationRejectionKind kind=SubtitlePresentationRejectionKind::None;
+    int rawLine=-1;
+    SubtitleBoxRect rawCapture;
+    std::array<uint8_t,3> glyphFailures{};
+    uint8_t contentFailure=0;
+    uint32_t physicalFailures=0,guardFacts=0;
+};
+// Bits: invalid outer=1, invalid inner=2, left=4, top=8, right=16, bottom=32.
+inline uint8_t SubtitleCaptureContainmentFailures(const SubtitleBoxRect& outer,const SubtitleBoxRect& inner)
+{
+    return (!outer.Valid()?1u:0u)|(!inner.Valid()?2u:0u)|
+        (outer.left>inner.left?4u:0u)|(outer.top>inner.top?8u:0u)|
+        (outer.right<inner.right?16u:0u)|(outer.bottom<inner.bottom?32u:0u);
+}
 struct QualifiedSubtitlePresentationEvidence
 {
     ActivePicturePresentationRetentionEvidence retention;
@@ -503,6 +522,7 @@ struct QualifiedSubtitlePresentationEvidence
     bool renewsHold=false;
     // Current compositor output only; never native ownership or a renewable lease.
     bool preparedErasureOnly=false;
+    SubtitlePresentationRejectionFacts rejection;
     size_t ownershipSamples = 0;
     const char* reason = "not-qualified";
 };
@@ -533,6 +553,7 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
 {
     QualifiedSubtitlePresentationEvidence result;
     result.retention=raw;result.identity=input.currentIdentity;result.physicalBase=input.physicalBase;
+    result.rejection.guardFacts=preparedErasureOnly?4u:0u;
     const auto reject=[&](const char* reason,QualifiedSubtitlePresentationStatus status=QualifiedSubtitlePresentationStatus::Unknown) {
         result.reason=reason;result.status=status;return result;
     };
@@ -660,8 +681,14 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         bool captured=false;
         for(const auto& prepared:move.glyphLines)
             captured |= contains(prepared,measured);
-        if(!captured || !contains(move.content,measured))
+        if(!captured || !contains(move.content,measured)) {
+            result.rejection.kind=SubtitlePresentationRejectionKind::GlyphCapture;
+            result.rejection.rawLine=line;result.rejection.rawCapture=measured;
+            for(size_t i=0;i<move.glyphLines.size();++i)
+                result.rejection.glyphFailures[i]=SubtitleCaptureContainmentFailures(move.glyphLines[i],measured);
+            result.rejection.contentFailure=SubtitleCaptureContainmentFailures(move.content,measured);
             return reject("incomplete-current-glyph-capture");
+        }
     }
     // A strict AR profile can retain a small OUTWARD boundary guard while
     // the subtitle worker still measures the physical picture inside it. The
@@ -697,13 +724,44 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         !raw.analysisValid || !raw.presentationValid || raw.presentationBlackThreshold<=0 ||
         raw.excludedTop.barPixels!=base.top || raw.excludedBottom.barPixels!=source.height-base.bottom ||
         raw.excludedLeft.barPixels!=base.left || raw.excludedRight.barPixels!=source.width-base.right)
+    {
+        auto& diagnostic=result.rejection;
+        diagnostic.kind=SubtitlePresentationRejectionKind::PhysicalBase;
+        // All cheap scalar clauses are evaluated here, only after rejection.
+        // Bits0..13: source, generation, observation size, base raster, base
+        // coordinates, raw picture, composed/guard picture, raw analysis,
+        // raw presentation, black threshold, excluded top/bottom/left/right.
+        diagnostic.physicalFailures=(!source.IsValid()?1u:0u)|
+            (source.generation!=input.currentIdentity.transportGeneration?1u<<1:0u)|
+            (observation.width!=source.width || observation.height!=source.height?1u<<2:0u)|
+            (base.rasterWidth!=source.width || base.rasterHeight!=source.height?1u<<3:0u)|
+            (base.left<0 || base.top<0 || base.right>source.width || base.bottom>source.height ||
+                base.left>=base.right || base.top>=base.bottom?1u<<4:0u)|
+            (pictureTop<0 || pictureBottom>source.height || pictureTop>=pictureBottom?1u<<5:0u)|
+            (!exactComposedPicture && !preparedOutwardGuard?1u<<6:0u)|
+            (!raw.analysisValid?1u<<7:0u)|(!raw.presentationValid?1u<<8:0u)|
+            (raw.presentationBlackThreshold<=0?1u<<9:0u)|
+            (raw.excludedTop.barPixels!=base.top?1u<<10:0u)|
+            (raw.excludedBottom.barPixels!=source.height-base.bottom?1u<<11:0u)|
+            (raw.excludedLeft.barPixels!=base.left?1u<<12:0u)|
+            (raw.excludedRight.barPixels!=source.width-base.right?1u<<13:0u);
+        diagnostic.guardFacts=(exactComposedPicture?1u:0u)|(preparedOutwardGuard?2u:0u)|
+            (preparedErasureOnly?4u:0u)|
+            (display.AvailableFor(input.currentIdentity,source.width,source.height)?8u:0u)|
+            (SameAnalysisFrameIdentity(display.identity,input.currentIdentity)?16u:0u)|
+            (SameSubtitlePresentationBounds(display.bounds,base)?32u:0u)|
+            (observation.sharedPicture.Matches(display)?64u:0u);
         return reject("physical-base-mismatch");
+    }
     // Keep the existing tight agreement between measurement and sampling.
     // A certified outward display guard retains rows; it must not reclassify
     // those rows as physical bars or change the subtitle's extraction boundary.
     if(std::abs(pictureTop-move.pictureTop)>SubtitlePhysicalEdgeReconciliationTolerance ||
         std::abs(pictureBottom-move.pictureBottom)>SubtitlePhysicalEdgeReconciliationTolerance)
+    {
+        result.rejection.kind=SubtitlePresentationRejectionKind::ObservationEdge;
         return reject("subtitle-observation-edge-mismatch");
+    }
     const SubtitleBoxRect baseRect{base.left,base.top,base.right,base.bottom};
     if(!contains(baseRect,move.destination))return reject("destination-outside-picture");
     if(preparedErasureOnly) {

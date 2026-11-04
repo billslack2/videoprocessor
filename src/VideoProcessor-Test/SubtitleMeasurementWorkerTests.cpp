@@ -3893,6 +3893,26 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
                 std::to_string(scenario)+" reason="+proof.reason).c_str());
             Assert::AreEqual(scenario<4,proof.valid,
                 L"Only seed-bounded pixel noise may cross ink/core or destination contrast thresholds; both edge endpoints must match.");
+            Assert::AreEqual(!proof.valid,proof.pixelWitness.Valid());
+            if(scenario>=6) {
+                const auto& w=proof.pixelWitness;
+                Assert::IsTrue(w.stage==SubtitleCadenceGuard::PixelFailureStage::DestinationNovelty);
+                Assert::IsTrue(w.neighborX>=0 && w.neighborY>=0);
+                AnalysisLumaSample point,neighbor,oldPoint,oldNeighbor;
+                Assert::IsTrue(CadenceSource(currentPixels).Sample(w.x,w.y,point));
+                Assert::IsTrue(CadenceSource(currentPixels).Sample(w.neighborX,w.neighborY,neighbor));
+                Assert::IsTrue(CadenceSource(pixels).Sample(w.x,w.y,oldPoint));
+                Assert::IsTrue(CadenceSource(pixels).Sample(w.neighborX,w.neighborY,oldNeighbor));
+                Assert::AreEqual(int(point.luma),int(w.current.luma));
+                Assert::AreEqual(int(neighbor.luma),int(w.currentNeighbor.luma));
+                Assert::AreEqual(int(oldPoint.luma),int(w.seed.luma));
+                Assert::AreEqual(int(oldNeighbor.luma),int(w.seedNeighbor.luma));
+                Assert::IsTrue(w.currentDirections!=0);
+                if(scenario==7) {
+                    Assert::AreEqual(int(w.seed.luma),int(w.current.luma),L"Unchanged point must not conceal the changed neighbor.");
+                    Assert::IsFalse(SubtitleCadenceGuard::EncodingEquivalent(w.seedNeighbor,w.currentNeighbor));
+                }
+            }
         }
     }
     TEST_METHOD(CurrentFootprintSemanticPaddingRequiresStableBlackActualErasure) {
@@ -3984,6 +4004,44 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             L"Identical unrelated bar content is not owned or erased by the accepted subtitle operation.");
         Assert::AreEqual("new-current-bar-ink",reason);
         Assert::IsFalse(footprint->VerifiedFootprintSampleIsEncodingEquivalent(7,5,true));
+    }
+    TEST_METHOD(CurrentFootprintFailureWitnessPreservesImmutableBaselineAndTruthfulClasses) {
+        auto pixels=PixelsWithCurrentBars();pixels[80*160+42]=uint16_t(96<<6);
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,pixels);seed.text=seed.current.text;
+        seed.current.analysisStride=1;
+        SubtitleCutPasteGeometry g;g.valid=true;g.content=seed.text.bounds;
+        g.glyphLines=seed.text.lineBounds;g.pictureCapture=seed.text.capturePanel;
+        g.generatedCleanup=seed.text.sourcePanel;g.source=g.destination=g.content;
+        g.pictureTop=12;g.pictureBottom=78;const auto base=seed.current.sharedPicture.bounds;
+        auto guard=std::make_unique<SubtitleCadenceGuard>();
+        Assert::IsTrue(guard->RememberCurrentFootprint(seed,seed.text,CadenceSource(pixels),base,g));
+        auto noise=pixels;noise[80*160+42]=uint16_t(100<<6);
+        auto noiseKey=CompleteThreeLineScan(2,noise);
+        const auto passed=guard->VerifyCurrentFootprint(noiseKey,CadenceSource(noise),seed.current,seed.text,base);
+        Assert::IsTrue(passed.valid);Assert::IsFalse(passed.pixelWitness.Valid());
+        auto rearmed=Ready(3);rearmed.current=CompleteThreeLineScan(3,noise);rearmed.text=rearmed.current.text;
+        rearmed.current.analysisStride=1;
+        Assert::IsTrue(guard->RememberCurrentFootprint(rearmed,rearmed.text,CadenceSource(noise),base,g));
+        Assert::AreEqual("cadence-seed-rearmed",guard->DecisionReason());
+        auto changed=pixels;changed[80*160+42]=uint16_t(108<<6);
+        const auto key=CompleteThreeLineScan(4,changed);
+        const auto failed=guard->VerifyCurrentFootprint(key,CadenceSource(changed),rearmed.current,rearmed.text,base);
+        Assert::IsFalse(failed.valid);Assert::IsTrue(failed.actualPixelMismatch);
+        const auto& w=failed.pixelWitness;
+        Assert::IsTrue(w.stage==SubtitleCadenceGuard::PixelFailureStage::CleanupBlackTransition);
+        Assert::AreEqual(uint64_t(1),w.baselineIdentity.acceptedSequence,L"Rearm cannot relabel original pixels as source3.");
+        Assert::AreEqual(42,w.x);Assert::AreEqual(80,w.y);
+        Assert::AreEqual(96,int(w.seed.luma));Assert::AreEqual(108,int(w.current.luma));
+        Assert::AreEqual(96,w.blackLimit);Assert::IsTrue((w.seedClass&1u)!=0);
+        Assert::IsFalse((w.currentClass&1u)!=0);Assert::IsTrue((w.seedClass&16u)!=0);
+        Assert::IsTrue((w.zones&32u)!=0);Assert::AreEqual(-1,w.neighborX);
+        auto wrongContext=key;++wrongContext.identity.sourceFormatGeneration;
+        const auto unavailable=guard->VerifyCurrentFootprint(wrongContext,CadenceSource(changed),rearmed.current,rearmed.text,base);
+        Assert::IsFalse(unavailable.valid);Assert::IsFalse(unavailable.pixelWitness.Valid());
+        Assert::IsFalse(unavailable.actualPixelMismatch);
+        const auto again=CompleteThreeLineScan(5,pixels);
+        const auto clean=guard->VerifyCurrentFootprint(again,CadenceSource(pixels),rearmed.current,rearmed.text,base);
+        Assert::IsTrue(clean.valid);Assert::IsFalse(clean.pixelWitness.Valid());
     }
     TEST_METHOD(CurrentFootprintNearBlackNoisePreservesCurrentPixelsAndRejectsDrift) {
         auto pixels=PixelsWithCurrentBars();pixels[80*160+42]=uint16_t(96<<6);
@@ -4874,6 +4932,18 @@ TEST_METHOD(CurrentCueWorkerReplacesFailedPixelBaselineFromFreshIndependentScan)
         Assert::IsTrue(BuildSubtitleCurrentCueProofKey(raw,raw.identity,raw.sharedPicture.bounds,true,key));
         return key;
     };
+    struct WitnessTrace {
+        std::mutex mutex;std::vector<AnalysisDiagnosticRecordV1> records;
+        static void __cdecl Capture(void* opaque,const AnalysisDiagnosticRecordV1* record) {
+            if(!record || (std::strcmp(record->stage,"worker-cue-pixel-witness")!=0 &&
+                std::strcmp(record->stage,"worker-cue-pixel-seed")!=0))return;
+            auto& self=*static_cast<WitnessTrace*>(opaque);
+            std::lock_guard<std::mutex> lock(self.mutex);self.records.push_back(*record);
+        }
+    } witnessTrace;
+    AnalysisDiagnosticTrace::SetExternalSinks(&witnessTrace,&WitnessTrace::Capture,nullptr,nullptr);
+    struct ClearWitnessSink {~ClearWitnessSink(){AnalysisDiagnosticTrace::ClearExternalSinks();}} clearWitnessSink;
+    // Worker is destroyed/joined before its sink and captured storage.
     auto worker=std::make_unique<SubtitleMeasurementWorker>();
     const auto head=Identity(2);worker->AdvanceCurrentCueRenderWindow(head,8);
     const auto waitSeed=[&](const SubtitleCurrentCueTemplateInput& input,uint64_t revision) {
@@ -4921,6 +4991,25 @@ TEST_METHOD(CurrentCueWorkerReplacesFailedPixelBaselineFromFreshIndependentScan)
     Assert::IsTrue(waitProof(changedKey,oldRevision,rejected,true)==SubtitleCurrentCueProofStatus::Failed,
         L"The immutable pre-pause black sample cannot approve the later nonblack background.");
     Assert::IsFalse(rejected.Valid());
+    bool sawWitnessPair=false;
+    for(int attempt=0;attempt<1000 && !sawWitnessPair;++attempt) {
+        {std::lock_guard<std::mutex> lock(witnessTrace.mutex);sawWitnessPair=witnessTrace.records.size()>=2;}
+        if(!sawWitnessPair)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Assert::IsTrue(sawWitnessPair);
+    {std::lock_guard<std::mutex> lock(witnessTrace.mutex);
+        const auto& current=witnessTrace.records[0];const auto& baseline=witnessTrace.records[1];
+        Assert::AreEqual("worker-cue-pixel-witness",current.stage);
+        Assert::AreEqual("worker-cue-pixel-seed",baseline.stage);
+        Assert::AreEqual(uint64_t(3),current.acceptedSequence);
+        Assert::AreEqual(uint64_t(1),baseline.acceptedSequence);
+        Assert::AreEqual(changedKey.identity.sourceFrameNumber,current.sourceFrameNumber);
+        Assert::AreEqual(seedScan.identity.captureTimestamp,baseline.captureTimestamp);
+        Assert::AreEqual(oldRevision,current.counters[0]);Assert::AreEqual(oldRevision,baseline.counters[0]);
+        Assert::AreEqual(uint64_t(1),current.counters[1]);Assert::AreEqual(uint64_t(3),baseline.counters[1]);
+        Assert::AreEqual(64.0,current.metrics[4]);Assert::AreEqual(104.0,current.metrics[7]);
+    }
+
     SubtitleCurrentCueProofReceipt stillReady;
     Assert::IsTrue(worker->TryPeekCurrentCueProof(readyKey,stillReady)==SubtitleCurrentCueProofStatus::Ready,
         L"Retiring a working baseline must preserve an already verified exact-source receipt.");

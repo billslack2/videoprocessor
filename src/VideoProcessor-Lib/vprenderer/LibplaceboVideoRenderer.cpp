@@ -4699,6 +4699,7 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t subtitleUnknownLogTick=0;
     std::string subtitleUnknownLogReason;
     uint64_t subtitleOwnershipLogTick=0;
+    uint64_t subtitleRejectionLogTick=0,subtitleRejectionTotal=0,subtitleRejectionSuppressed=0;
     std::string subtitleOwnershipLogReason;
     struct SubtitlePresentationPacket {
         bool composed=false;
@@ -16790,10 +16791,66 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleIdentity,effectiveGeometry,displayCaptionProof,subtitlePreviewMode,
                 ownershipInput.pendingCurrentPixelsVerified,ownershipInput.sourcePrepared,
                 subtitleCompositionSucceeded,currentSubtitleWorkIncomplete);
+            // Sample detailed rejected operations at <=4 records/sec/instance.
+            // Lifetime totals include suppressed details; these are NOT every-frame
+            // records. Existing subtitle/canvas decisions retain the frame timeline.
+            if(displayCaptionProof.rejection.kind!=SubtitlePresentationRejectionKind::None) {
+                ++subtitleRejectionTotal;
+                const auto now=GetTickCount64();
+                if(subtitleRejectionLogTick && now-subtitleRejectionLogTick<250) {
+                    ++subtitleRejectionSuppressed;
+                } else {
+                    subtitleRejectionLogTick=now;
+                    const auto& facts=displayCaptionProof.rejection;
+                    const auto& observed=*ownershipInput.observation;
+                    const auto& move=*ownershipInput.composition;
+                    const auto& bars=observed.barEvidence;
+                    const auto& raw=displayCaptionProof.retention;
+                    auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-proof-rejection",displayCaptionProof.reason);
+                    trace.resultCode=static_cast<int>(facts.kind);
+                    AnalysisTraceRect(trace.subtitle,facts.rawCapture);
+                    AnalysisTraceRect(trace.previous,move.content);
+                    AnalysisTraceRect(trace.candidate,move.source);
+                    AnalysisTraceRect(trace.measured,observed.text.bounds);
+                    AnalysisTraceRect(trace.published,ownershipInput.physicalBase);
+                    AnalysisTraceRect(trace.displayed,ownershipInput.currentDisplayPicture.bounds);
+                    trace.counters[0]=ownershipInput.accepted->cue;
+                    trace.counters[1]=static_cast<uint64_t>(facts.rawLine+1);
+                    trace.counters[2]=facts.physicalFailures;
+                    trace.counters[3]=uint64_t(facts.glyphFailures[0])|(uint64_t(facts.glyphFailures[1])<<8)|
+                        (uint64_t(facts.glyphFailures[2])<<16);
+                    trace.counters[4]=facts.contentFailure;trace.counters[5]=facts.guardFacts;
+                    trace.counters[6]=subtitleRejectionTotal;trace.counters[7]=subtitleRejectionSuppressed;
+                    for(size_t line=0;line<move.glyphLines.size();++line) {
+                        const auto& rect=move.glyphLines[line];const auto n=line*4;
+                        trace.metrics[n]=rect.left;trace.metrics[n+1]=rect.top;
+                        trace.metrics[n+2]=rect.right;trace.metrics[n+3]=rect.bottom;
+                    }
+                    trace.metrics[12]=ownershipInput.continuation?ownershipInput.continuation->pictureTop:observed.pictureTop;
+                    trace.metrics[13]=ownershipInput.continuation?ownershipInput.continuation->pictureBottom:observed.pictureBottom;
+                    trace.metrics[14]=move.pictureTop;trace.metrics[15]=move.pictureBottom;
+                    trace.metrics[16]=bars.top;trace.metrics[17]=bars.bottom;
+                    trace.metrics[18]=bars.topDepth;trace.metrics[19]=bars.bottomDepth;
+                    trace.metrics[20]=bars.topSupport;trace.metrics[21]=bars.bottomSupport;
+                    trace.metrics[22]=static_cast<int>(raw.activePicture.axisEvidence.vertical.state);
+                    trace.metrics[23]=static_cast<int>(raw.activePicture.axisEvidence.vertical.reason);
+                    // Measured-edge presence mirrors ResolveCurrentSubtitleAnalysisBars;
+                    // absent top=0/bottom=height is UNKNOWN, never full-raster proof.
+                    trace.flags=(ownershipInput.accepted->held?1u:0u)|
+                        (ownershipInput.pendingCurrentPixelsVerified?2u:0u)|
+                        (facts.guardFacts&4u)| (bars.available?8u:0u)|
+                        (bars.available && bars.top>0 && bars.top<analysisSource.height?16u:0u)|
+                        (bars.available && bars.bottom>0 && bars.bottom<analysisSource.height?32u:0u)|
+                        (raw.analysisValid?64u:0u)|(raw.presentationValid?128u:0u)|
+                        (ownershipInput.continuation?256u:0u);
+                    AnalysisDiagnosticTrace::Emit(trace);
+                }
+            }
             if(SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 subtitleSourcePreparation.ownershipAccepted.detected) {
                 const auto proofLogNow=GetTickCount64();
-                if(subtitleOwnershipLogReason!=ownershipProof.reason || proofLogNow-subtitleOwnershipLogTick>=2000) {
+                if(proofLogNow-subtitleOwnershipLogTick>=2000 ||
+                    (subtitleOwnershipLogReason!=ownershipProof.reason && proofLogNow-subtitleOwnershipLogTick>=250)) {
                     subtitleOwnershipLogTick=proofLogNow;subtitleOwnershipLogReason=ownershipProof.reason;
                     DebugLog::Log("Alpha relocated caption evidence: generation=%llu sequence=%llu cue=%llu status=%d qualified=%d reason=%s cached=%d presentation_qualified=%d prepared_erasure=%d erasure_reason=%s samples=%zu cpu_ms=%.3f base=%d,%d-%d,%d raw_visible=%d:%d,%d-%d,%d erased=%d,%d-%d,%d",
                         frameGeneration,sourceSequence,subtitleSourcePreparation.ownershipAccepted.cue,
@@ -16844,8 +16901,7 @@ struct LibplaceboVideoRenderer::Impl
                             ownershipInput.composition?ownershipInput.composition->generatedCleanup.right:0,
                             ownershipInput.composition?ownershipInput.composition->generatedCleanup.bottom:0);
                     }
-                    if(ownershipInput.pendingCurrentPixelsVerified &&
-                        std::strcmp(displayCaptionProof.reason,"physical-base-mismatch")==0) {
+                    if(std::strcmp(displayCaptionProof.reason,"physical-base-mismatch")==0) {
                         const auto& observed=*ownershipInput.observation;
                         const auto& raw=latestCropRetentionEvidence;
                         const auto& base=ownershipInput.physicalBase;

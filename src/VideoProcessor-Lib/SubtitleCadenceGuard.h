@@ -58,6 +58,26 @@ public:
     }
     RearmRejectCode LastRearmRejectCode() const {return m_lastRearmRejectCode;}
     uint32_t LastGeometryMismatchBits() const {return m_lastGeometryMismatchBits;}
+    enum class PixelFailureStage : uint32_t {
+        None, GlyphOwnerOrFloor, GlyphComponentBudget, GlyphSurvivingCore,
+        GlyphStrongCore, CleanupBlackTransition, CleanupUnownedChange,
+        CleanupProjectionConflict, DestinationNovelty
+    };
+    // Diagnostic values only, copied from samples already read by verification.
+    // Category bits: black=1, ink=2, core=4, owned=8, erase=16.
+    // Zone bits: capture=1, content=2, cleanup=4, measured backing=8,
+    // destination probe=16, physical encoded bar=32.
+    struct PixelMismatchWitness {
+        PixelFailureStage stage=PixelFailureStage::None;
+        ActivePictureFrameIdentity baselineIdentity;
+        uint64_t baselinePolicy=0,baselineContinuity=0;
+        int x=-1,y=-1,neighborX=-1,neighborY=-1;
+        AnalysisLumaSample seed{},current{},seedNeighbor{},currentNeighbor{};
+        uint32_t seedClass=0,currentClass=0,seedNeighborClass=0,currentNeighborClass=0;
+        uint32_t zones=0,neighborZones=0,seedDirections=0,currentDirections=0;
+        int blackLimit=0,inkFloor=0,backingLimit=0;
+        bool Valid() const {return stage!=PixelFailureStage::None;}
+    };
     struct CurrentFootprintVerification {
         bool valid=false;
         size_t samples=0;
@@ -66,6 +86,7 @@ public:
         int protectedCleanupLeft=-1,protectedCleanupRight=-1;
         int protectedCleanupTop=-1,protectedCleanupBottom=-1;
         bool actualPixelMismatch=false;
+        PixelMismatchWitness pixelWitness;
     };
     // Native pixels, counted once across the exact extraction/erasure union.
     static constexpr unsigned SampleBudget=1048576;
@@ -73,7 +94,7 @@ public:
         m_lastRearmRejectCode=RearmRejectCode::NotAttempted;m_lastGeometryMismatchBits=0;
         ClearInPlace(*m_reference);m_source={};m_baseline.reset();m_detectorReference.reset();
         m_native.clear();m_currentPixels.clear();m_changedComponents.clear();m_index.clear();m_components.clear();
-        m_indivisibleBackingCard={};
+        m_indivisibleBackingCard={};m_pixelBaselineIdentity={};m_pixelBaselinePolicy=m_pixelBaselineContinuity=0;
         m_destinationProbe={};m_destinationSeedPixels.clear();m_destinationSeedDirections.clear();
         m_destinationCurrentPixels.clear();ClearInPlace(*m_cached); }
     bool HasReference() const {return m_valid;}
@@ -258,13 +279,13 @@ public:
         if(!verified.valid)return verified;
         size_t destinationSamples=0;int destinationMismatchX=-1,destinationMismatchY=-1;
         const char* destinationReason="current-destination-proof-unavailable";
-        bool destinationPixelMismatch=false;
+        bool destinationPixelMismatch=false;PixelMismatchWitness destinationWitness;
         if(!VerifyDestinationNovelty(source,sampler,destinationSamples,destinationMismatchX,
-            destinationMismatchY,destinationReason,verified,destinationPixelMismatch)) {
+            destinationMismatchY,destinationReason,verified,destinationPixelMismatch,destinationWitness)) {
             m_currentFootprintReceiptValid=false;
             CurrentFootprintVerification failed{false,verified.samples+destinationSamples,destinationReason,
                 destinationMismatchX,destinationMismatchY};
-            failed.actualPixelMismatch=destinationPixelMismatch;return failed;
+            failed.actualPixelMismatch=destinationPixelMismatch;failed.pixelWitness=destinationWitness;return failed;
         }
         verified.samples+=destinationSamples;
         m_currentFootprintReceiptValid=true;m_currentFootprintReceiptIdentity=current.identity;
@@ -507,6 +528,8 @@ private:
                 }
             if(owned<4)return fail("cadence-no-owned-glyphs");
         }
+        m_pixelBaselineIdentity=c.identity;m_pixelBaselinePolicy=c.policyGeneration;
+        m_pixelBaselineContinuity=c.continuityGeneration;
         BuildComponents(*c.ink);
         m_reference->current.ink=m_baseline;m_valid=true;m_reason="cadence-seeded";return true;
     }
@@ -1135,11 +1158,42 @@ private:
         }
         return haveGlyphLines && !insideGlyphLine;
     }
+    uint32_t PixelWitnessZones(int x,int y) const {
+        uint32_t bits=0;
+        for(const auto& r:m_capture)if(Inside(r,x,y))bits|=1u;
+        if(Inside(m_geometry.content,x,y))bits|=2u;
+        if(Inside(m_geometry.generatedCleanup,x,y))bits|=4u;
+        if(InAcceptedCaptionBackingFootprint(x,y))bits|=8u;
+        if(Inside(m_destinationProbe,x,y))bits|=16u;
+        if(y<m_base.top || y>=m_base.bottom)bits|=32u;
+        return bits;
+    }
+    uint32_t PixelWitnessClass(const AnalysisLumaSample& p,int x,int y,bool original) const {
+        uint32_t bits=(Black(p,*m_baseline)?1u:0u)|(Ink(p,*m_baseline)?2u:0u);
+        const int at=Index(x,y);
+        if(at>=0) {
+            const auto& seed=m_native[size_t(at)];
+            // Core/ownership/erase are immutable topology, not current classification.
+            if(original && seed.core)bits|=4u;
+            if(original && seed.component>=0 && m_components[size_t(seed.component)].owned)bits|=8u;
+            if(seed.erase)bits|=16u;
+        }
+        return bits;
+    }
+    PixelMismatchWitness PixelWitness(PixelFailureStage stage,int x,int y,
+        const AnalysisLumaSample& seed,const AnalysisLumaSample& current) const {
+        PixelMismatchWitness w;w.stage=stage;w.baselineIdentity=m_pixelBaselineIdentity;
+        w.baselinePolicy=m_pixelBaselinePolicy;w.baselineContinuity=m_pixelBaselineContinuity;
+        w.x=x;w.y=y;w.seed=seed;w.current=current;
+        w.seedClass=PixelWitnessClass(seed,x,y,true);w.currentClass=PixelWitnessClass(current,x,y,false);
+        w.zones=PixelWitnessZones(x,y);w.blackLimit=m_baseline->blackLimit;
+        w.inkFloor=m_baseline->inkFloor;w.backingLimit=m_baseline->captionBackingLimit;return w;
+    }
     bool VerifyDestinationNovelty(const AnalysisLumaSource& source,
         const ValidatedAnalysisLumaSampler& sampler,size_t& samples,
         int& mismatchX,int& mismatchY,const char*& reason,
-        const CurrentFootprintVerification& verified,bool& actualPixelMismatch) const {
-        samples=0;mismatchX=mismatchY=-1;actualPixelMismatch=false;
+        const CurrentFootprintVerification& verified,bool& actualPixelMismatch,PixelMismatchWitness& witness) const {
+        samples=0;mismatchX=mismatchY=-1;actualPixelMismatch=false;witness={};
         if(!m_destinationProbe.Valid())return true;
         const size_t area=size_t(m_destinationProbe.right-m_destinationProbe.left)*
             size_t(m_destinationProbe.bottom-m_destinationProbe.top);
@@ -1206,6 +1260,14 @@ private:
                         (dark && (!(m_destinationSeedDirections[at]&darkBit) ||
                             (!samePair && !knownDarkBackground)))) {
                         mismatchX=x;mismatchY=y;actualPixelMismatch=true;
+                        witness=PixelWitness(PixelFailureStage::DestinationNovelty,x,y,seedPoint,point);
+                        witness.neighborX=x+dx[direction];witness.neighborY=y+dy[direction];
+                        witness.seedNeighbor=seedNeighbor;witness.currentNeighbor=neighbor;
+                        witness.seedNeighborClass=PixelWitnessClass(seedNeighbor,witness.neighborX,witness.neighborY,true);
+                        witness.currentNeighborClass=PixelWitnessClass(neighbor,witness.neighborX,witness.neighborY,false);
+                        witness.neighborZones=PixelWitnessZones(witness.neighborX,witness.neighborY);
+                        witness.seedDirections=m_destinationSeedDirections[at];
+                        witness.currentDirections=(bright?brightBit:0u)|(alternate?alternateBit:0u)|(dark?darkBit:0u);
                         reason="current-destination-new-ink";return false;
                     }
                 }
@@ -1216,10 +1278,16 @@ private:
     CurrentFootprintVerification VerifyNativeFootprintPixels(const AnalysisLumaSource& source,
         const ValidatedAnalysisLumaSampler& sampler,
         bool allowProtectedCleanupProjection=false) const {
-        int mismatchX=-1,mismatchY=-1;
+        int mismatchX=-1,mismatchY=-1;PixelFailureStage failureStage=PixelFailureStage::None;
         const auto fail=[&](size_t samples,const char* reason,bool actualPixelMismatch=false) {
             CurrentFootprintVerification result{false,samples,reason,mismatchX,mismatchY};
-            result.actualPixelMismatch=actualPixelMismatch;return result;
+            result.actualPixelMismatch=actualPixelMismatch;
+            const int at=Index(mismatchX,mismatchY);
+            if(actualPixelMismatch && failureStage!=PixelFailureStage::None && at>=0 &&
+                size_t(at)<m_currentPixels.size())
+                result.pixelWitness=PixelWitness(failureStage,mismatchX,mismatchY,
+                    m_native[size_t(at)].pixel,m_currentPixels[size_t(at)].pixel);
+            return result;
         };
         if(m_native.empty() || !m_baseline || m_native.size()>SampleBudget)
             return fail(0,"current-footprint-sample-budget-or-empty");
@@ -1250,14 +1318,16 @@ private:
                 const int owner=oldPixel.fringeComponent;
                 if(owner<0 || !NearFloor(oldPixel.pixel,*m_baseline) || !NearFloor(now.pixel,*m_baseline)) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
-                    return fail(samples,"cadence-current-glyph-changed",true);
+                    failureStage=PixelFailureStage::GlyphOwnerOrFloor;
+                    return fail(samples, "cadence-current-glyph-changed",true);
                 }
                 const auto& component=m_components[owner];
                 if(component.area<16 || component.cores<4 ||
                     ++m_changedComponents[owner]>(std::min)(16u,(std::max)(2u,component.area/64)) ||
                     ++lineChanges[oldPixel.line]>32) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
-                    return fail(samples,"cadence-current-glyph-changed",true);
+                    failureStage=PixelFailureStage::GlyphComponentBudget;
+                    return fail(samples, "cadence-current-glyph-changed",true);
                 }
                 bool survivingCore=false;
                 for(const auto& d:Neighbours()) {
@@ -1269,7 +1339,8 @@ private:
                 }
                 if(!survivingCore) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
-                    return fail(samples,"cadence-current-glyph-changed",true);
+                    failureStage=PixelFailureStage::GlyphSurvivingCore;
+                    return fail(samples, "cadence-current-glyph-changed",true);
                 }
                 fringe=true;
             }
@@ -1277,11 +1348,13 @@ private:
             // core even if another edge gains the same number of pixels.
             if(oldPixel.core && (!now.ink || now.pixel.luma<m_baseline->inkFloor+16)) {
                 mismatchX=oldPixel.x;mismatchY=oldPixel.y;
+                failureStage=PixelFailureStage::GlyphStrongCore;
                 return fail(samples,"cadence-current-glyph-changed",true);
             }
             if(oldPixel.erase && !fringe) {
                 if(oldPixel.black && !now.black) {
                     mismatchX=oldPixel.x;mismatchY=oldPixel.y;
+                    failureStage=PixelFailureStage::CleanupBlackTransition;
                     return fail(samples,"cadence-current-cleanup-changed",true);
                 }
                 const bool owned=oldPixel.component>=0 && m_components[oldPixel.component].owned;
@@ -1298,6 +1371,7 @@ private:
                     if(!allowProtectedCleanupProjection || m_geometry.generatedCleanupRowCount ||
                         !Inside(m_geometry.generatedCleanup,oldPixel.x,oldPixel.y) ||
                         oldPixel.y<m_base.top || oldPixel.y>=m_base.bottom) {
+                        failureStage=PixelFailureStage::CleanupUnownedChange;
                         return fail(samples,"cadence-current-cleanup-changed",true);
                     }
                     if(m_cleanupChangedIndices.size()>=m_native.size())
@@ -1319,6 +1393,7 @@ private:
                 if(projectionConflictX>=0) {
                     mismatchX=projectionConflictX;mismatchY=projectionConflictY;
                 }
+                failureStage=PixelFailureStage::CleanupProjectionConflict;
                 return fail(samples,"current-cleanup-edge-not-protectable",true);
             }
         }
@@ -1356,6 +1431,8 @@ private:
     std::unique_ptr<SubtitleCadenceProof> m_cached=std::make_unique<SubtitleCadenceProof>();
     std::unique_ptr<SubtitleCadenceProof> m_work=std::make_unique<SubtitleCadenceProof>();
     ActivePictureBounds m_base;AnalysisLumaSource m_source;
+    ActivePictureFrameIdentity m_pixelBaselineIdentity;
+    uint64_t m_pixelBaselinePolicy=0,m_pixelBaselineContinuity=0;
     SubtitleCutPasteGeometry m_geometry;SubtitleBoxRect m_roi,m_cleanup,m_destinationProbe,m_indivisibleBackingCard;
     std::array<SubtitleBoxRect,3> m_capture{};
     std::vector<NativePixel> m_native;

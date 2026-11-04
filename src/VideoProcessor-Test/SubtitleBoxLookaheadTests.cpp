@@ -507,6 +507,34 @@ public:
                 L"No token, wrong source/context, another gap, or changed/unknown pixels cannot inherit retired-input adjacency.");
         }
     }
+    TEST_METHOD(CurrentHeldCertificateTelemetryPreservesShortCircuitFacts) {
+        using Fact=SubtitleBoxPresentation::CurrentPreparedCueDecision;
+        for(bool incomplete:{false,true}) {
+            auto tracker=std::make_unique<SubtitleBoxPresentation>();
+            auto seed=RetiredThreeLinePreview(1,false);
+            const auto acquired=tracker->Consume(seed,250,16.683);
+            Assert::IsTrue(acquired.detected&&!acquired.held);
+            auto current=RetiredThreeLinePreview(2,true);
+            if(incomplete)current.current.text.topSearchComplete=false;
+            const auto held=tracker->Consume(current,250,16.683);
+            Assert::IsTrue(held.detected&&held.held);
+            const auto& decision=tracker->PreparedCueDecision();
+            Assert::AreEqual(uint64_t(0),decision.failed&~decision.evaluated);
+            Assert::IsTrue((decision.evaluated&Fact::CompleteSearch)!=0);
+            Assert::AreEqual(!incomplete,decision.certified);
+            Assert::AreEqual(!incomplete,tracker->CurrentPreparedCueCertificate().Matches(
+                current.current,held,current.current.sharedPicture.bounds));
+            if(incomplete) {
+                Assert::AreEqual(uint64_t(Fact::CompleteSearch),decision.failed);
+                Assert::AreEqual(uint64_t(0),decision.evaluated&
+                    (Fact::CompleteInk|Fact::SameCurrentInk|Fact::NoNovelOwnedInk),
+                    L"Skipped downstream evidence must remain unknown in diagnostics.");
+            } else {
+                Assert::AreEqual(uint64_t(0),decision.failed);
+                Assert::IsTrue((decision.evaluated&Fact::NoNovelOwnedInk)!=0);
+            }
+        }
+    }
     TEST_METHOD(CurrentCompleteRawCueCertifiesConsecutiveHeldPosesWithoutRenewingAcceptance) {
         SubtitleBoxPresentation tracker;
         auto first=CurrentHeldProofCue(1),future=CurrentHeldProofCue(2);

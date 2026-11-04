@@ -7,6 +7,7 @@
 #include <SubtitleLocalGlyphProof.h>
 #include <SubtitleBarStripClearance.h>
 #include <SubtitleCurrentPreparedCueCertificate.h>
+#include <AnalysisDiagnosticHooks.h>
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -2427,9 +2428,29 @@ class SubtitleCurrentCueProofReceipt;
 class SubtitleBoxPresentation
 {
 public:
+    // Diagnostic-only. Failed bits are a subset of evaluated bits; short-circuit
+    // predicates after a failure remain unknown, never reported as failures.
+    struct CurrentPreparedCueDecision {
+        enum Fact : uint64_t {
+            HeldPose=1ull, CurrentTemplate=2ull, StrongPose=4ull, CurrentScan=8ull,
+            IndependentBars=16ull, UntrackedBars=32ull, UnrevalidatedBars=64ull,
+            UnmaskedBars=128ull, NonlocalScan=256ull, CurrentRawCue=512ull,
+            CompleteSearch=1024ull, CompleteInk=2048ull, SharedPicture=4096ull,
+            MeasuredEdges=8192ull, CurrentContext=16384ull, LineCoverage=32768ull,
+            SameCurrentInk=65536ull, NoNovelOwnedInk=131072ull
+        };
+        uint64_t evaluated=0,failed=0;
+        bool certified=false;
+        bool Check(Fact fact,bool passed) {
+            evaluated|=fact;if(!passed)failed|=fact;return passed;
+        }
+    };
+    const CurrentPreparedCueDecision& PreparedCueDecision() const {return m_preparedCueDecision;}
     void Reset() {
         m_acceptedCueSeedCertificate = {};
         m_currentPreparedCueCertificate = {};
+        m_preparedCueDecision = {};
+        m_lastHeldCertificateTrace=0;
         m_completeOutputRetirement = {};
         m_queueContinuation = {};
         m_currentCueProofComparison = {};
@@ -2686,6 +2707,7 @@ public:
         // Repeats, pending reuse and all early returns cannot renew a seed.
         m_acceptedCueSeedCertificate = {};
         m_currentPreparedCueCertificate = {};
+        m_preparedCueDecision = {};
         m_inkDiagnostic={};
         if (!preview.available) {
             // A queue-only gap can retain the template internally. Unknown
@@ -3430,26 +3452,101 @@ public:
             m_acceptedCueSeedCertificate.m_current=seedCurrent;
             m_acceptedCueSeedCertificate.m_accepted=result;
         }
-        if(templateHeld && currentTemplateEligible && currentTemplatePixelsMatch &&
-            result.detected && result.held && !result.revised && !result.confirmationPending && !result.workLimit &&
-            !weakTemplateEligible && !bridged && !hasNovelExtension && !extensionConfirmed &&
-            preview.available && preview.current.analyzed && !preview.current.discontinuity &&
-            !preview.current.analysisRefresh && !preview.current.pendingRefresh &&
-            preview.current.independentBarAnalysis && preview.current.barAuthority && preview.current.barEvidence.available &&
-            !preview.current.barTrackingAuthority && !preview.current.currentAnchorUsesTrackedEdge &&
-            !preview.current.barEvidence.topRevalidatedAtReference && !preview.current.barEvidence.topRevalidatedNearby &&
-            !preview.current.barEvidence.bottomRevalidatedAtReference && !preview.current.barEvidence.bottomRevalidatedNearby &&
-            !preview.current.barEvidence.captionBackedTop && !preview.current.barEvidence.captionBackedBottom &&
-            !preview.current.glyphLocalTop && !preview.current.glyphLocalBottom &&
-            preview.current.text.detected && !preview.current.text.held && !preview.current.text.confirmationPending &&
-            !preview.current.text.workLimit && preview.current.text.topSearchComplete && preview.current.text.bottomSearchComplete &&
-            preview.current.ink && preview.current.ink->paletteValid && preview.current.ink->rawEvidenceComplete &&
-            preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height) &&
-            preview.current.pictureTop==preview.current.barEvidence.top && preview.current.pictureBottom==preview.current.barEvidence.bottom &&
-            preview.current.policyGeneration==preview.policyGeneration && preview.current.continuityGeneration==preview.continuityGeneration &&
-            currentPreparedLineCoverage && SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,preview.current) &&
-            NoNewOwnedInkOutsideReference(preview.current,!currentRawCoversAccepted))
-            m_currentPreparedCueCertificate.Record(preview.current,result);
+        auto& certificateDecision=m_preparedCueDecision;
+        using CertificateFact=CurrentPreparedCueDecision;
+        const bool certifyCurrentHeld=
+            certificateDecision.Check(CertificateFact::HeldPose,templateHeld) &&
+            certificateDecision.Check(CertificateFact::CurrentTemplate,currentTemplateEligible && currentTemplatePixelsMatch) &&
+            certificateDecision.Check(CertificateFact::StrongPose,
+                result.detected && result.held && !result.revised && !result.confirmationPending && !result.workLimit &&
+                !weakTemplateEligible && !bridged && !hasNovelExtension && !extensionConfirmed) &&
+            certificateDecision.Check(CertificateFact::CurrentScan,
+                preview.available && preview.current.analyzed && !preview.current.discontinuity &&
+                !preview.current.analysisRefresh && !preview.current.pendingRefresh) &&
+            certificateDecision.Check(CertificateFact::IndependentBars,
+                preview.current.independentBarAnalysis && preview.current.barAuthority && preview.current.barEvidence.available) &&
+            certificateDecision.Check(CertificateFact::UntrackedBars,
+                !preview.current.barTrackingAuthority && !preview.current.currentAnchorUsesTrackedEdge) &&
+            certificateDecision.Check(CertificateFact::UnrevalidatedBars,
+                !preview.current.barEvidence.topRevalidatedAtReference && !preview.current.barEvidence.topRevalidatedNearby &&
+                !preview.current.barEvidence.bottomRevalidatedAtReference && !preview.current.barEvidence.bottomRevalidatedNearby) &&
+            certificateDecision.Check(CertificateFact::UnmaskedBars,
+                !preview.current.barEvidence.captionBackedTop && !preview.current.barEvidence.captionBackedBottom) &&
+            certificateDecision.Check(CertificateFact::NonlocalScan,
+                !preview.current.glyphLocalTop && !preview.current.glyphLocalBottom) &&
+            certificateDecision.Check(CertificateFact::CurrentRawCue,
+                preview.current.text.detected && !preview.current.text.held && !preview.current.text.confirmationPending &&
+                !preview.current.text.workLimit) &&
+            certificateDecision.Check(CertificateFact::CompleteSearch,
+                preview.current.text.topSearchComplete && preview.current.text.bottomSearchComplete) &&
+            certificateDecision.Check(CertificateFact::CompleteInk,
+                preview.current.ink && preview.current.ink->paletteValid && preview.current.ink->rawEvidenceComplete) &&
+            certificateDecision.Check(CertificateFact::SharedPicture,
+                preview.current.sharedPicture.AvailableFor(preview.current.identity,preview.current.width,preview.current.height)) &&
+            certificateDecision.Check(CertificateFact::MeasuredEdges,
+                preview.current.pictureTop==preview.current.barEvidence.top && preview.current.pictureBottom==preview.current.barEvidence.bottom) &&
+            certificateDecision.Check(CertificateFact::CurrentContext,
+                preview.current.policyGeneration==preview.policyGeneration && preview.current.continuityGeneration==preview.continuityGeneration) &&
+            certificateDecision.Check(CertificateFact::LineCoverage,currentPreparedLineCoverage) &&
+            certificateDecision.Check(CertificateFact::SameCurrentInk,
+                SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,preview.current)) &&
+            certificateDecision.Check(CertificateFact::NoNovelOwnedInk,
+                NoNewOwnedInkOutsideReference(preview.current,!currentRawCoversAccepted));
+        certificateDecision.certified=certifyCurrentHeld;
+        if(certifyCurrentHeld)m_currentPreparedCueCertificate.Record(preview.current,result);
+        if(templateHeld) {
+            const auto& raw=preview.current;
+            const uint32_t facts=(certifyCurrentHeld?1u:0u)|
+                (raw.barEvidence.available && raw.barEvidence.top>0 && raw.barEvidence.top<raw.height?2u:0u)|
+                (raw.barEvidence.available && raw.barEvidence.bottom>0 && raw.barEvidence.bottom<raw.height?4u:0u)|
+                (raw.text.topSearchComplete?8u:0u)|
+                (raw.text.bottomSearchComplete?16u:0u)|(raw.ink&&raw.ink->rawEvidenceComplete?32u:0u)|
+                (raw.independentBarAnalysis?64u:0u)|(raw.barAuthority?128u:0u)|
+                (raw.barEvidence.topRevalidatedAtReference?256u:0u)|(raw.barEvidence.bottomRevalidatedAtReference?512u:0u)|
+                (raw.barEvidence.topRevalidatedNearby?1024u:0u)|(raw.barEvidence.bottomRevalidatedNearby?2048u:0u);
+            uint64_t fingerprint=1469598103934665603ull;
+            const auto add=[&](uint64_t value){fingerprint=(fingerprint^value)*1099511628211ull;};
+            const auto addRect=[&](const SubtitleBoxRect& r){add(r.left);add(r.top);add(r.right);add(r.bottom);};
+            add(certificateDecision.evaluated);add(certificateDecision.failed);add(facts);add(result.cue);
+            add(m_inkReference.identity.acceptedSequence);add(raw.policyGeneration);add(raw.continuityGeneration);
+            add(raw.identity.transportGeneration);add(raw.identity.sourceFormatGeneration);
+            add(raw.identity.viewportGeneration);add(raw.identity.rendererGeneration);add(raw.identity.analysisDomainKey);
+            add(raw.text.lineCount);add(result.lineCount);add(raw.pictureTop);add(raw.pictureBottom);
+            for(size_t i=0;i<raw.text.lineBounds.size();++i) {
+                addRect(raw.text.lineBounds[i]);addRect(result.lineBounds[i]);
+                addRect(raw.text.lineCapturePanels[i]);addRect(result.lineCapturePanels[i]);
+            }
+            // Fixed-size transition records, plus a sparse heartbeat. No pixel
+            // reads, formatted per-frame log strings, or diagnostic authority.
+            if(fingerprint!=m_lastHeldCertificateTrace || raw.identity.acceptedSequence%60==0) {
+                m_lastHeldCertificateTrace=fingerprint;
+                auto trace=AnalysisTraceRecord(raw.identity,this,"subtitle-held-certificate",
+                    certifyCurrentHeld?"certified":"rejected");
+                trace.policyGeneration=raw.policyGeneration;trace.continuityGeneration=raw.continuityGeneration;
+                trace.flags=facts;trace.resultCode=result.lineCount;
+                trace.counters[0]=certificateDecision.evaluated;trace.counters[1]=certificateDecision.failed;
+                trace.counters[2]=result.cue;trace.counters[3]=m_inkReference.identity.acceptedSequence;
+                trace.counters[4]=m_inkReference.identity.sourceFrameNumber;trace.counters[5]=m_inkReference.identity.captureTimestamp;
+                trace.counters[6]=m_inkReference.identity.transportGeneration;trace.counters[7]=m_inkReference.identity.analysisDomainKey;
+                trace.metrics[0]=raw.pictureTop;trace.metrics[1]=raw.pictureBottom;
+                trace.metrics[2]=raw.barEvidence.top;trace.metrics[3]=raw.barEvidence.bottom;
+                AnalysisTraceRect(trace.measured,raw.text.bounds);AnalysisTraceRect(trace.previous,result.bounds);
+                AnalysisTraceRect(trace.candidate,raw.sharedPicture.bounds);AnalysisDiagnosticTrace::Emit(trace);
+                auto reference=AnalysisTraceRecord(m_inkReference.identity,this,"subtitle-held-reference","glyph-reference");
+                reference.policyGeneration=m_inkReference.policyGeneration;reference.continuityGeneration=m_inkReference.continuityGeneration;
+                reference.counters[0]=raw.identity.acceptedSequence;reference.counters[1]=raw.identity.sourceFrameNumber;
+                reference.counters[2]=result.cue;AnalysisDiagnosticTrace::Emit(reference);
+                for(int line=0;line<(std::min)(3,(std::max)(raw.text.lineCount,result.lineCount));++line) {
+                    auto geometry=AnalysisTraceRecord(raw.identity,this,"subtitle-held-line","measured-line-and-card");
+                    geometry.policyGeneration=raw.policyGeneration;geometry.continuityGeneration=raw.continuityGeneration;
+                    geometry.resultCode=line;geometry.counters[0]=result.cue;
+                    geometry.counters[1]=certificateDecision.evaluated;geometry.counters[2]=certificateDecision.failed;
+                    AnalysisTraceRect(geometry.measured,raw.text.lineBounds[line]);AnalysisTraceRect(geometry.previous,result.lineBounds[line]);
+                    AnalysisTraceRect(geometry.candidate,raw.text.lineCapturePanels[line]);AnalysisTraceRect(geometry.published,result.lineCapturePanels[line]);
+                    AnalysisDiagnosticTrace::Emit(geometry);
+                }
+            }
+        }
         // Only ordinary strong acceptance starts a fresh handoff allowance.
         // Weak/held/unknown results cannot restart the original two-source cap.
         if(result.detected && !result.held && !result.confirmationPending && !weakTemplateEligible &&
@@ -3541,6 +3638,8 @@ private:
     } m_queueContinuation;
     SubtitleAcceptedCueSeedCertificate m_acceptedCueSeedCertificate;
     SubtitleCurrentPreparedCueCertificate m_currentPreparedCueCertificate;
+    CurrentPreparedCueDecision m_preparedCueDecision;
+    uint64_t m_lastHeldCertificateTrace=0;
     // One-use proof adjacency only; no pixel snapshots or source owners.
     CurrentCueProofComparisonWitness m_currentCueProofComparison;
     SubtitleBoxObservation m_previousRawCrowded;

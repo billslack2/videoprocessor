@@ -80,3 +80,6 @@ ipch/
 # Generated packaging, installer tooling and test artifacts
 /artifacts/
 3rdparty/magewell/
+
+# Python diagnostic-tool bytecode
+__pycache__/

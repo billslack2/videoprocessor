@@ -13,8 +13,11 @@
     "src/VideoProcessor-Test/SourcePictureShadowPolicyTests.cpp",
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp"
   ],
-  "minimumNativeTests": 1098,
+  "minimumNativeTests": 1104,
   "requiredNativeMethods": [
+    "CurrentFootprintFailureWitnessPreservesImmutableBaselineAndTruthfulClasses",
+    "CurrentHeldCertificateTelemetryPreservesShortCircuitFacts",
+    "QualifiedSubtitleRejectionDiagnosticsPreserveAdmissionAndLocateFailures",
     "CurrentCueWorkerContextInvalidationRevokesReadyAndQueuedRevisions",
     "CurrentFootprintSemanticPaddingRequiresStableBlackActualErasure",
     "CurrentCueWorkerReadyReceiptsSurviveReplacementWithoutDestructivePolling",
@@ -437,6 +440,11 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {
+      "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
+      "class": "SubtitleBoxLookaheadTests",
+      "method": "CurrentHeldCertificateTelemetryPreservesShortCircuitFacts"
+    },
     {
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",

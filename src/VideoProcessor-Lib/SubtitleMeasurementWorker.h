@@ -1258,6 +1258,7 @@ public:
     enum class CurrentPixelVerificationFailure : uint8_t { None, PixelMismatch };
     struct Diagnostics {
         CurrentPixelVerificationFailure currentPixelFailure=CurrentPixelVerificationFailure::None;
+        SubtitleCadenceGuard::PixelMismatchWitness pixelWitness;
         ReadyRearmRejectCode readyRearmRejectCode=ReadyRearmRejectCode::NotAttempted;
         uint32_t readyRearmLayoutMismatchBits=0;
         uint32_t contextMismatch=0;
@@ -2229,6 +2230,7 @@ private:
                 current,source,old,m_reference.text,old.sharedPicture.bounds);
             footprintPhase.Stop();
             if(!verified.valid) {
+                m_diagnostics.pixelWitness=verified.pixelWitness;
                 m_diagnostics.glyphMismatchX=verified.mismatchX;
                 m_diagnostics.glyphMismatchY=verified.mismatchY;
                 m_diagnostics.currentBandSamplesChecked=verified.samples;
@@ -3211,7 +3213,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
 #endif
         {std::lock_guard<std::mutex> lock(m_mutex);entry->status=SubtitleCurrentCueProofStatus::Pending;}
         SubtitleCurrentCueProofReceipt receipt;const char* reason="current-cue-template-miss";
-        std::shared_ptr<SubtitleInkSnapshot> currentInk;bool verified=false;
+        std::shared_ptr<SubtitleInkSnapshot> currentInk;bool verified=false,pixelVerificationAttempted=false;
         SubtitleCutPasteGeometry operation=state->descriptor.operation;
         const auto& key=request.currentKey;
         bool stillCurrent=false;
@@ -3229,6 +3231,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         }
         if(stillCurrent) {
             const auto* footprint=request.sourceMode==SubtitlePreviewMode::None?nullptr:&state->footprint;
+            pixelVerificationAttempted=true;
             verified=state->pending.VerifyCurrentCuePixels(
                 key,request.source,footprint,currentInk,reason,true);
             if(verified && footprint && currentInk)
@@ -3398,6 +3401,41 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         trace.counters[5]=timeNs(queued);trace.counters[6]=timeNs(started);trace.counters[7]=timeNs(published);
         trace.flags=(verified?1u:0u)|(semanticRefreshDue?2u:0u)|
             (semanticRefreshQueued?4u:0u);AnalysisDiagnosticTrace::Emit(trace);
+        if(pixelVerificationAttempted && !verified && diagnostics.pixelWitness.Valid()) {
+            const auto& w=diagnostics.pixelWitness;
+            auto witness=AnalysisTraceRecord(key.identity,this,"worker-cue-pixel-witness",reason);
+            witness.kind=AnalysisDiagnosticRecordKindV1::Worker;
+            witness.policyGeneration=key.policyGeneration;witness.continuityGeneration=key.continuityGeneration;
+            witness.sourceWidth=key.width;witness.sourceHeight=key.height;
+            witness.resultCode=static_cast<int32_t>(w.stage);witness.flags=w.zones;
+            witness.counters[0]=entry->revision;witness.counters[1]=w.baselineIdentity.acceptedSequence;
+            witness.counters[2]=w.seedClass;witness.counters[3]=w.currentClass;
+            witness.counters[4]=w.seedNeighborClass;witness.counters[5]=w.currentNeighborClass;
+            witness.counters[6]=w.seedDirections;witness.counters[7]=w.currentDirections;
+            witness.metrics[0]=w.x;witness.metrics[1]=w.y;
+            witness.metrics[2]=w.neighborX;witness.metrics[3]=w.neighborY;
+            const AnalysisLumaSample samples[]={w.seed,w.current,w.seedNeighbor,w.currentNeighbor};
+            for(size_t i=0;i<4;++i) {
+                witness.metrics[4+i*3]=samples[i].luma;
+                witness.metrics[5+i*3]=samples[i].chromaU;
+                witness.metrics[6+i*3]=samples[i].chromaV;
+            }
+            witness.metrics[16]=w.blackLimit;witness.metrics[17]=w.inkFloor;
+            witness.metrics[18]=w.backingLimit;witness.metrics[19]=w.neighborZones;
+            witness.metrics[20]=SubtitleCadenceGuard::EncodingEquivalent(w.seed,w.current)?1:0;
+            witness.metrics[21]=w.neighborX>=0 && SubtitleCadenceGuard::EncodingEquivalent(w.seedNeighbor,w.currentNeighbor)?1:0;
+            AnalysisTraceRect(witness.measured,state->descriptor.operation.content);
+            AnalysisTraceRect(witness.candidate,state->descriptor.operation.generatedCleanup);
+            AnalysisTraceRect(witness.published,state->descriptor.operation.pictureCapture);
+            AnalysisTraceRect(witness.displayed,state->descriptor.operation.destination);
+            AnalysisDiagnosticTrace::Emit(witness);
+            // Full immutable baseline identity, including rearm provenance.
+            auto seedWitness=AnalysisTraceRecord(w.baselineIdentity,this,"worker-cue-pixel-seed",reason);
+            seedWitness.kind=AnalysisDiagnosticRecordKindV1::Worker;
+            seedWitness.policyGeneration=w.baselinePolicy;seedWitness.continuityGeneration=w.baselineContinuity;
+            seedWitness.counters[0]=entry->revision;seedWitness.counters[1]=key.identity.acceptedSequence;
+            seedWitness.resultCode=static_cast<int32_t>(w.stage);AnalysisDiagnosticTrace::Emit(seedWitness);
+        }
         AnalysisLumaSource retiredSource=std::move(request.source);
         Work retiredRequestScan=std::move(request.fullScanOnMiss);
     };
