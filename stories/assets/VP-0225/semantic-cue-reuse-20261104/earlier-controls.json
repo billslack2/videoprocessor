@@ -1,0 +1,30 @@
+{
+  "run": "20261104-131728-af098ca5",
+  "note": "Four existing controls passed; two new fixtures initially lacked near-bar eligibility and proper glyph capture metadata. Fixture corrected without weakening production qualifier.",
+  "results": [
+    {
+      "method": "CurrentCueWorkerDeferredAndLateScansKeepOriginalInspectionKey",
+      "outcome": "Passed"
+    },
+    {
+      "method": "CurrentCueWorkerRunsSemanticRefreshAtBoundedInputCadence",
+      "outcome": "Passed"
+    },
+    {
+      "method": "CurrentCueWorkerSeedsFreshRawScanBoundToHeldPresentation",
+      "outcome": "Passed"
+    },
+    {
+      "method": "CurrentCueWorkerPreparedSamplingBasisReusesCurrentPixelsAndRefreshesSemantics",
+      "outcome": "Failed"
+    },
+    {
+      "method": "CurrentCueWorkerRejectsNewBarInkAndForeignModePolicyOrBase",
+      "outcome": "Passed"
+    },
+    {
+      "method": "CurrentCueWorkerPreparedSamplingBasisRequiresExactQualifiedComposition",
+      "outcome": "Failed"
+    }
+  ]
+}

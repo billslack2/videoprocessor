@@ -1,0 +1,247 @@
+{
+  "scope": "CPU exact captured worker reuse; reference audit raw scans separate; GPU sourcePrepared modeled, no actual presentation/deadline claim",
+  "sourceAtBuild": {
+    "commit": "7cc909b368a5c866f589eeadb60a259061041f3f",
+    "dirty": [
+      " M src/VideoProcessor-Lib/SubtitleMeasurementWorker.h",
+      " M src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp",
+      " M src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp",
+      " M tools/critical_runtime_tests.json"
+    ]
+  },
+  "sourceAtSeal": {
+    "commit": "7cc909b368a5c866f589eeadb60a259061041f3f",
+    "dirty": [
+      " M src/VideoProcessor-Lib/SubtitleMeasurementWorker.h",
+      " M src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp",
+      " M src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp",
+      " M tools/critical_runtime_tests.json"
+    ]
+  },
+  "filesUnchanged": true,
+  "modes": {
+    "proof-only": {
+      "exitCode": 0,
+      "semanticSummary": [
+        {
+          "kind": "semantic-summary",
+          "ready": 92,
+          "consumed": 92,
+          "preparedQualified": 92,
+          "fullGroupingCallbacks": 0,
+          "scheduledRefreshJobs": 0,
+          "referenceAuditFullScans": 93
+        }
+      ],
+      "rows": 282
+    },
+    "periodic": {
+      "exitCode": 0,
+      "semanticSummary": [
+        {
+          "kind": "semantic-summary",
+          "ready": 92,
+          "consumed": 92,
+          "preparedQualified": 92,
+          "fullGroupingCallbacks": 0,
+          "scheduledRefreshJobs": 31,
+          "referenceAuditFullScans": 93
+        }
+      ],
+      "rows": 374
+    }
+  },
+  "passed": true,
+  "inputManifest": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\inputs.json",
+    "bytes": 115456,
+    "sha256": "70ad941555620dad3ea50dd60031e175e2aca2648b23b931b3d91d3b701838ae"
+  },
+  "artifacts": [
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\build.log",
+      "bytes": 520,
+      "sha256": "42ceba29b11eec3ce71047b5806561a0461230505f033d96e863c7fe3bc14993"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\consecutive-held-replay.cpp",
+      "bytes": 21386,
+      "sha256": "a09280513f18eb0d66efb35224b85ddb80f2713b75b883122276065754018991"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\consecutive-held-replay.vcxproj",
+      "bytes": 2205,
+      "sha256": "e201ff1e3866d138a9301e586cddc1b429bf3060e357b2889109a1212de2d08d"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\periodic-results.jsonl",
+      "bytes": 199973,
+      "sha256": "875612c1516060e753732d5ad1b26a54fa2704898997e8e20914fc398a9563c8"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\periodic-stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\periodic-trace.jsonl",
+      "bytes": 368442,
+      "sha256": "79f1c68a28c44d899d345f1953a3d33c4d6ad3aad558590c2e8ccd25b5aafc05"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\proof-only-results.jsonl",
+      "bytes": 192680,
+      "sha256": "2ef4a593903a7674a67c75eba4af75d554270968e9c50c63632a92183853f3b0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\proof-only-stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\proof-only-trace.jsonl",
+      "bytes": 293692,
+      "sha256": "31d4fe0a768461200f55eb0d29c57da326a29df422464ca832450b89efa8f319"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\run.py",
+      "bytes": 2772,
+      "sha256": "7136212d24d698e680f715b77435d22cf1d22ba01b5c2dd80c25ee33da7052ce"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\check-captured.py",
+      "bytes": 2574,
+      "sha256": "bd8f129d3083147a4ccdd594345f8d81293ac477223f66004dadc8e5215d3102"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\receipt-with-zero-burst-diagnostic.json",
+      "bytes": 7054,
+      "sha256": "465517d93202a5207d07ec5080e5a78c744f7d42210273197cc8d1d9d36b789b"
+    }
+  ],
+  "executable": {
+    "path": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\build\\ConsecutiveHeldReplay.exe",
+    "bytes": 1454080,
+    "sha256": "a9ac563beebdff0c81ffb45a0bf6c28aefc4f99a3aa95efe1af7372c6cfd5f62"
+  },
+  "exactCaptureChecks": {
+    "proof-only": {
+      "checks": {
+        "allOriginal93Identities": true,
+        "allFourPreservedBytePhases": true,
+        "all92CurrentProofs": true,
+        "immutableSeedIdentity": true,
+        "originalRawAuthorityPreserved": true,
+        "noPeriodicBurst": true
+      },
+      "workerMs": {
+        "min": 14.3332,
+        "p50": 17.4041,
+        "p95": 24.0844,
+        "max": 42.9706
+      },
+      "scheduledRefreshSources": [],
+      "refreshSourceGaps": {},
+      "referenceQualified": 90,
+      "savedSourceGaps": 4
+    },
+    "periodic": {
+      "checks": {
+        "allOriginal93Identities": true,
+        "allFourPreservedBytePhases": true,
+        "all92CurrentProofs": true,
+        "immutableSeedIdentity": true,
+        "originalRawAuthorityPreserved": true,
+        "noPeriodicBurst": false
+      },
+      "workerMs": {
+        "min": 14.1179,
+        "p50": 15.956,
+        "p95": 24.4865,
+        "max": 28.406
+      },
+      "scheduledRefreshSources": [
+        1282,
+        1285,
+        1286,
+        1289,
+        1292,
+        1295,
+        1298,
+        1301,
+        1304,
+        1307,
+        1310,
+        1313,
+        1316,
+        1319,
+        1322,
+        1325,
+        1328,
+        1331,
+        1334,
+        1337,
+        1340,
+        1343,
+        1346,
+        1349,
+        1352,
+        1355,
+        1358,
+        1361,
+        1364,
+        1367,
+        1370
+      ],
+      "refreshSourceGaps": {
+        "3": 29,
+        "1": 1
+      },
+      "referenceQualified": 92,
+      "savedSourceGaps": 4
+    }
+  },
+  "nativeInputScope": "Original native hashes from prior SHA-verified preservation manifest; all93 exact sidecar identities rechecked here. Native files were not copied or edited.",
+  "functionalContractPassed": true,
+  "cadenceScope": {
+    "scheduledRefreshJobs": 31,
+    "currentProofJobs": 92,
+    "preparedQualified": 92,
+    "fallbackGroupingCallbacks": 0,
+    "externalReferenceRawScans": 93,
+    "externalColdNativeBootstrapScans": 93,
+    "earlyRefreshIntervals": 1,
+    "earlyRefreshSourcePair": [
+      1285,
+      1286
+    ],
+    "remainingIntervalsSources": 3,
+    "strictZeroEarlyRefreshDiagnosticPassed": false,
+    "interpretation": "Existing semantic guard requested one initial early refresh. It is retained and disclosed; no scheduling threshold or source gap was changed. No live performance qualification."
+  },
+  "qualification": false,
+  "proofTraceCounters": {
+    "scope": "worker-cue-proof slots: revision, workerThreadId, currentFootprintSamplesChecked, barVisibilitySamplesChecked, verifiedLineCount, queuedNs, startedNs, publishedNs",
+    "count": 92,
+    "minimum": [
+      1,
+      65592,
+      475868,
+      130560,
+      1,
+      406591745741400,
+      406591745755500,
+      406591763449500
+    ],
+    "maximum": [
+      1,
+      65592,
+      475868,
+      130560,
+      1,
+      406603867895800,
+      406603867913300,
+      406603884552000
+    ]
+  }
+}

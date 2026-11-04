@@ -1,0 +1,38 @@
+{
+  "acceptance": "OPEN",
+  "qualification": false,
+  "source": "e726ab1ad9521a9d2f52650874793b53ac04f035",
+  "scope": "Focused Native controls and captured CPU worker replay; modeled composition; separate successful x64 Release isolated launch. No live deadline qualification.",
+  "assets": [
+    {
+      "sha256": "AAC69EB9E7592560C9CF752B5851A2AE51F87A400EBC719D230DC36153FE0C50",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-132214-4187fbd1\\iteration.json",
+      "file": "native4-iteration.json"
+    },
+    {
+      "sha256": "12D724E6336267A4F47FA495E6F6CA05D09EB149617ED8D6F67571A9BC363B68",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\qualification\\runs\\20261104-131728-af098ca5\\failed.json",
+      "file": "initial-fixture-failed.json"
+    },
+    {
+      "sha256": "6107DA099584DE569E0F1AEBC84F821594033CD53690B3FE32BEB2CC142B63C3",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\incident-20261104-125227\\semantic-worker-replay\\receipt.json",
+      "file": "captured93-receipt.json"
+    },
+    {
+      "sha256": "ECE20627E049B9D0A8F8F0DD3A9F5AB99B55A1E0B979880D681782792E8C03B0",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\build-20261104-133305-e726ab1a\\build-receipt.json",
+      "file": "build-e726.json"
+    },
+    {
+      "sha256": "808E160163805F6619FED12AC78EBB2667D0282C394DFA1B86A8935FCC43AC34",
+      "source": "E:\\codex\\videoprocessor\\previews\\ar-temporal-e726ab1ad9521a9d2f52650874793b53ac04f035\\preview-receipt.json",
+      "file": "preview-e726.json"
+    },
+    {
+      "sha256": "D3A8106DCCBD7F5D478DFE2558FD7D887590E16EF452E3A8E795543B7702B8F6",
+      "source": "E:\\codex\\videoprocessor\\reconstruction-crop-stability-20261104\\artifacts\\ar-preview-launch\\profile-cycle-131232\\report.md",
+      "file": "profile-transition-review.md"
+    }
+  ]
+}
