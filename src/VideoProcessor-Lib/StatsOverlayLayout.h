@@ -23,7 +23,8 @@ struct Row
     std::wstring label;
     std::wstring value;
     int gapBefore = 0;
-    bool wrap = false; // system diagnostics retain all values on continuation rows
+    bool wrap = false;
+    int lines = 1; // Fixed field height; telemetry never moves following labels.
 };
 
 inline int Height(const std::vector<Row>& rows)
@@ -66,8 +67,8 @@ inline std::wstring FitText(HDC dc, const std::wstring& text, int availableWidth
     return text.substr(0, low) + suffix;
 }
 // Arrange after selecting the actual production font. Long system diagnostics
-// wrap on word boundaries; operator-controlled labels retain a compact ellipsis
-// policy. The returned rows are used unchanged for height and drawing.
+// wrap inside fixed field slots; excess text is visibly ellipsized. Empty
+// continuation slots remain reserved. Height never depends on text contents.
 inline std::vector<Row> Arrange(HDC dc, const std::vector<Row>& input)
 {
     const int available = Width - Padding - ValueX(dc);
@@ -76,26 +77,38 @@ inline std::vector<Row> Arrange(HDC dc, const std::vector<Row>& input)
     {
         Row row = original;
         std::wstring remaining = row.value;
-        while (row.wrap && !remaining.empty() && FitText(dc, remaining, available) != remaining)
+        const int lines = (std::max)(1, original.lines);
+        for (int line = 0; line < lines; ++line)
         {
-            int count = 0;
-            SIZE extent{};
-            if (!GetTextExtentExPointW(dc, remaining.c_str(), static_cast<int>(remaining.size()),
-                available, &count, nullptr, &extent) || count <= 0) break;
-            size_t cut = remaining.find_last_of(L' ', static_cast<size_t>(count));
-            if (cut == std::wstring::npos || cut == 0) cut = static_cast<size_t>(count);
-            if (cut && remaining[cut - 1] >= 0xD800 && remaining[cut - 1] <= 0xDBFF) --cut;
-            if (!cut) break;
-            row.value = remaining.substr(0, cut);
-            while (!row.value.empty() && row.value.back() == L' ') row.value.pop_back();
+            row.value = remaining;
+            if (row.wrap && line + 1 < lines && !remaining.empty() &&
+                FitText(dc, remaining, available) != remaining)
+            {
+                int count = 0;
+                SIZE extent{};
+                if (GetTextExtentExPointW(dc, remaining.c_str(), static_cast<int>(remaining.size()),
+                    available, &count, nullptr, &extent) && count > 0)
+                {
+                    size_t cut = remaining.find_last_of(L' ', static_cast<size_t>(count));
+                    if (cut == std::wstring::npos || cut == 0) cut = static_cast<size_t>(count);
+                    if (cut && remaining[cut - 1] >= 0xD800 && remaining[cut - 1] <= 0xDBFF) --cut;
+                    if (cut)
+                    {
+                        row.value = remaining.substr(0, cut);
+                        remaining.erase(0, cut);
+                        remaining.erase(0, remaining.find_first_not_of(L' '));
+                        while (!row.value.empty() && row.value.back() == L' ') row.value.pop_back();
+                    }
+                    else remaining.clear();
+                }
+                else remaining.clear();
+            }
+            else remaining.clear();
+            // The final reserved line uses a visible ellipsis for excess text.
+            row.value = FitText(dc, row.value, available);
             rows.push_back(row);
-            remaining.erase(0, cut);
-            remaining.erase(0, remaining.find_first_not_of(L' '));
             row.label.clear(); row.gapBefore = 0;
         }
-        row.value = remaining;
-        if (!row.value.empty() || !row.label.empty() || original.value.empty())
-            rows.push_back(std::move(row));
     }
     return rows;
 }

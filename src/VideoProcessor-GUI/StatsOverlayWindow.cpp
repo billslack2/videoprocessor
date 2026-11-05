@@ -502,7 +502,12 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     std::vector<StatsOverlayLayout::Row> rows;
     int gap = 0;
     const auto add = [&](const wchar_t* label, const CString& value, bool wrap = true) {
-        rows.push_back({label, value.GetString(), gap, wrap}); gap = 0;
+        const std::wstring name(label);
+        const int lines = name == L"Detected AR:" ? 5 :
+            name == L"HDR10 (nits):" || name == L"Measured (nits):" ? 3 :
+            name == L"AR in use:" || name == L"- Display Rate:" ||
+            name == L"GPU frame:" || name == L"10s avg/max:" ? 2 : 1;
+        rows.push_back({label, value.GetString(), gap, wrap, lines}); gap = 0;
     };
     const auto present = [](const CString& value, const wchar_t* fallback = L"---") {
         return value.IsEmpty() ? CString(fallback) : value;
@@ -518,12 +523,12 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
         return end >= 0 ? value.Left(end) : value;
     };
     add(L"Renderer:", present(stats.rendererName));
-    if (!stats.outputSweep.IsEmpty()) add(L"OUTPUT SWEEP:", stats.outputSweep, false);
+    add(L"OUTPUT SWEEP:", present(stats.outputSweep, L"Inactive"), false);
     const auto resolution = DisplayRasterInfo::ResolutionLines(
         stats.resolution.GetString(), stats.outputMode.GetString());
-    for (size_t i = 0; i < resolution.size(); ++i)
+    for (size_t i = 0; i < 3; ++i)
     {
-        CString value(resolution[i].c_str()); value.TrimLeft();
+        CString value(i < resolution.size() ? resolution[i].c_str() : L""); value.TrimLeft();
         add(i == 0 ? L"Resolution:" : L"", value);
     }
     if (stats.isAlphaRenderer) {
@@ -537,16 +542,15 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     if (!stats.displayRefreshRateStatus.IsEmpty())
         displayRate.AppendFormat(L" (%s)", stats.displayRefreshRateStatus.GetString());
     add(L"- Display Rate:", displayRate);
-    if (stats.measuredRefreshRate > 0.0)
-    {
-        add(L"- Est. Rate:", format(L"%.6f Hz", stats.measuredRefreshRate));
-        add(L"- Est. PPM:", format(L"%+d ppm", stats.ppmDeviation));
-    }
+    add(L"- Est. Rate:", stats.measuredRefreshRate > 0.0 ? format(L"%.6f Hz", stats.measuredRefreshRate) : CString(L"---"));
+    add(L"- Est. PPM:", stats.measuredRefreshRate > 0.0 ? format(L"%+d ppm", stats.ppmDeviation) : CString(L"---"));
     if (stats.hasPPMCorrection || (!stats.ppmSource.IsEmpty() && stats.ppmSource != L"N/A"))
         add(L"- Applied PPM:", format(L"%+d ppm", stats.ppmCorrection));
+    else add(L"- Applied PPM:", L"---");
     if ((stats.method == L"Rational-Rational" || stats.method == L"Clock-Rational") && stats.hasPPMCorrection)
         add(L"- Delivery Rate:", format(L"%.6f Hz", stats.refreshRate *
             (1.0 - static_cast<double>(stats.ppmCorrection) / 1000000.0)));
+    else add(L"- Delivery Rate:", L"---");
     add(L"Input EOTF:", present(stats.eotf));
     add(L"Input Colorspace:", present(stats.colorspace));
     add(L"DTM Profile:", present(stats.dtmProfile), false);
@@ -577,7 +581,7 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
         const wchar_t* primaries = target.Find(L"BT.2020") >= 0 ? L"BT.2020" : L"Rec.709";
         add(L"Output:", format(L"%s / %s / %s", range, transfer.GetString(), primaries));
         const auto addDetail = [&](const wchar_t* label, const wchar_t* marker) {
-            const CString value = detail(marker); if (!value.IsEmpty()) add(label, value, false);
+            const CString value = detail(marker); add(label, present(value), false);
         };
         addDetail(L"Signal:", L" | SIGNAL: ");
         addDetail(L"Swapchain:", L" | SWAPCHAIN: ");
@@ -588,19 +592,26 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
         addDetail(L"Gamma:", L" | GAMMA: ");
         addDetail(L"Status:", L" | STATUS: ");
     }
-    if (!stats.displayLut.IsEmpty()) add(L"LUT:", stats.displayLut, false);
+    else
+        for (const auto* label : {L"Output:", L"Signal:", L"Swapchain:", L"Present:",
+            L"Presenter:", L"Contract:", L"Display:", L"Gamma:", L"Status:"}) add(label, L"---", false);
+    add(L"LUT:", present(stats.displayLut), false);
     add(L"Video Conv:", present(stats.videoConversion));
     add(L"Shader Rule:", present(stats.activeShaderRule, L"None"), false);
     add(L"Shaders:", stats.activeShaders.empty() ? CString(L"None")
         : format(L"%zu Active", stats.activeShaders.size()));
-    for (const CString& shader : stats.activeShaders)
-        add(L"", L"- " + shader, false);
+    // Fixed shader detail slots; a long list is explicit, never shifts metrics.
+    for (size_t i = 0; i < 3; ++i)
+        add(L"", i == 2 && stats.activeShaders.size() > 3
+            ? format(L"+ %zu more shaders", stats.activeShaders.size() - 2)
+            : i < stats.activeShaders.size() ? L"- " + stats.activeShaders[i] : CString(), false);
     if (stats.hasConversionData)
     {
         add(L"Conv Time:", format(L"%.2f ms", stats.currentConversionTimeUs / 1000.0));
         add(L"10s Avg/Max:", format(L"%.2f / %.2f ms", stats.avgConversionTime10s / 1000.0,
             stats.maxConversionTime10s / 1000.0));
     }
+    else { add(L"Conv Time:", L"---"); add(L"10s Avg/Max:", L"---"); }
     // A section gap only exists when its following section exists. Alpha omits
     // the entire DirectShow scheduling section, including its leading gap.
     if (!stats.isAlphaRenderer)
@@ -626,11 +637,10 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
     else
         add(L"Queue R/C/T:", format(L"%zu/%zu/%zu/%zu%s", stats.rawQueueSize,
             stats.convertedQueueSize, stats.currentQueueSize, stats.maxQueueSize, stats.isQueueFull ? L" [FULL]" : L""));
-    if (stats.renderLoadKnown)
     {
-        CString gpuTime(L"measuring...");
+        CString gpuTime(stats.renderLoadKnown ? L"measuring..." : L"unavailable");
         if (OsdTimingPolicy::WarmingEnabled && stats.renderLoadSettling) gpuTime = L"settling...";
-        else if (stats.renderLoadGpuValid) gpuTime = format(L"avg/max %.2f / %.2f ms; %zu/%zu async (10 s)",
+        else if (stats.renderLoadKnown && stats.renderLoadGpuValid) gpuTime = format(L"avg/max %.2f / %.2f ms; %zu/%zu async (10 s)",
             stats.renderLoadGpuAvgMs, stats.renderLoadGpuPeakMs,
             stats.renderLoadGpuFrames, stats.renderLoadFrames);
         add(L"GPU frame:", gpuTime);
@@ -676,9 +686,14 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
                 capture.recentMissedFrames, capture.windowSeconds)
             : format(L"%llu", stats.capturedDroppedFrames));
         add(L"Render dropped:", format(L"%llu", stats.queueDroppedFrames));
-        if(capture.losslessRgb24Capture) add(L"Capture packing:",L"RGB24 -> BGRA (lossless)");
     }
-    else add(L"Dropped:", format(L"%llu/%llu", stats.capturedDroppedFrames, stats.queueDroppedFrames));
+    else {
+        add(L"Capture fps:", L"unavailable");
+        add(L"Capture missed:", format(L"%llu", stats.capturedDroppedFrames));
+        add(L"Render dropped:", format(L"%llu", stats.queueDroppedFrames));
+    }
+    add(L"Capture packing:", stats.captureDeliverySupported && stats.captureDelivery.losslessRgb24Capture
+        ? CString(L"RGB24 -> BGRA (lossless)") : CString(L"---"));
     add(L"D/R estimate:", present(stats.cadenceIntervalEstimate, L"Unavailable"));
     add(L"Scene Mode:", present(stats.sceneDetectMode, L"Off"));
     CString sceneStatus;

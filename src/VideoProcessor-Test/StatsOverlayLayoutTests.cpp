@@ -55,8 +55,8 @@ TEST_CLASS(StatsOverlayLayoutTests)
         Assert::IsTrue(overlay.RenderBgra(pixels, width, height, stride));
         Assert::AreEqual(StatsOverlayLayout::Width, width); Assert::AreEqual(expected, height);
         Assert::AreEqual(width * 4, stride); Assert::AreEqual(size_t(stride) * height, pixels.size());
-        // Every real row draws ink inside its slot; no row is allocated solely
-        // because an optional detail marker was present without a value.
+        // Nonempty fields draw ink. Reserved continuation slots stay blank,
+        // so a shorter current reading cannot move any subsequent row.
         int y = StatsOverlayLayout::Padding;
         for (const auto& row : rows)
         {
@@ -68,7 +68,9 @@ TEST_CLASS(StatsOverlayLayoutTests)
                     const size_t offset = size_t(scan) * stride + x * 4;
                     hasInk |= pixels[offset] != 43 || pixels[offset + 1] != 43 || pixels[offset + 2] != 43;
                 }
-            Assert::IsTrue(hasInk, L"Native row was blank or clipped vertically");
+            if (!row.value.empty() || !row.label.empty())
+                Assert::IsTrue(hasInk, L"Native row was blank or clipped vertically");
+            else Assert::IsFalse(hasInk, L"Reserved slot contains stale text");
             y += StatsOverlayLayout::LineHeight;
         }
         Assert::AreEqual(height - StatsOverlayLayout::Padding, y);
@@ -82,6 +84,62 @@ TEST_CLASS(StatsOverlayLayoutTests)
                 Assert::AreEqual(uint8_t(43), pixels[size_t(scan) * stride + x * 4]);
     }
 public:
+    TEST_METHOD(TelemetryChangesKeepEveryLabelAndBitmapSlotFixed)
+    {
+        Graphics graphics; Assert::IsTrue(graphics.dc && graphics.font);
+        for (bool alpha : {false, true})
+        {
+            auto baseline = Example(alpha);
+            const auto expected = StatsOverlayLayout::Arrange(graphics.dc, StatsOverlayWindow::BuildStatsRows(baseline));
+            StatsOverlayWindow overlay;
+            for (int phase = 0; phase < 6; ++phase)
+            {
+                auto stats = Example(alpha);
+                stats.surfaceMode = phase % 2 ? L"Windowed" : L"Fullscreen";
+                stats.aspectDetected = phase % 2 ? L"Unknown (boundaries unresolved; source spatial)" :
+                    L"Current: 2.39:1 [0,275..3840,1884; bounded filtered edge] (source spatial); retained: 2.39:1 [0,275..3840,1884; stable] (source spatial)";
+                stats.aspectInUse = phase % 2 ? L"Unavailable" : L"2.39:1 (Scope; presentation)";
+                stats.outputMode = phase % 2 ? L"" : baseline.outputMode;
+                stats.renderLoadKnown = stats.hasConversionData = stats.captureDeliverySupported = phase % 2 == 0;
+                stats.renderLoadGpuValid = stats.cpuUsageKnown = stats.renderLoadGpuPercentValid = phase % 3 == 0;
+                stats.measuredRefreshRate = phase % 2 ? 0 : 59.940001;
+                stats.hasPPMCorrection = phase % 2 == 0;
+                stats.outputSweep = phase % 2 ? L"" : L"Testing output";
+                stats.displayLut = phase % 2 ? L"" : CString(std::wstring(300,L'W').c_str());
+                stats.activeShaders.clear();
+                for (int i = 0; i < phase * 5; ++i) stats.activeShaders.push_back(L"a very long arbitrary shader name with diagnostics");
+                const auto rows = StatsOverlayLayout::Arrange(graphics.dc, StatsOverlayWindow::BuildStatsRows(stats));
+                Assert::AreEqual(expected.size(), rows.size());
+                for (size_t i = 0; i < rows.size(); ++i)
+                {
+                    Assert::AreEqual(expected[i].label.c_str(), rows[i].label.c_str());
+                    Assert::AreEqual(expected[i].gapBefore, rows[i].gapBefore);
+                }
+                overlay.UpdateStats(stats);
+                std::vector<uint8_t> pixels; int width=0,height=0,stride=0;
+                Assert::IsTrue(overlay.RenderBgra(pixels,width,height,stride));
+                Assert::AreEqual(StatsOverlayLayout::Height(expected),height);
+                VerifyNative(stats);
+            }
+        }
+    }
+    TEST_METHOD(FixedWrappingPreservesArEvidenceAndMarksOverflowWithoutShiftingRows)
+    {
+        Graphics graphics; Assert::IsTrue(graphics.dc && graphics.font);
+        auto stats=Example(true);
+        stats.aspectDetected=L"Current: 2.39:1 [0,275..3840,1884; bounded filtered edge] (source spatial); retained: 2.39:1 [0,275..3840,1884; stable] (source spatial)";
+        auto rows=StatsOverlayLayout::Arrange(graphics.dc,StatsOverlayWindow::BuildStatsRows(stats));
+        const auto first=std::find_if(rows.begin(),rows.end(),[](const auto& r){return r.label==L"Detected AR:";});
+        Assert::IsTrue(first!=rows.end());
+        std::wstring restored;
+        for(auto i=first;i!=first+5;++i) if(!i->value.empty()) { if(!restored.empty())restored+=L" "; restored+=i->value; }
+        Assert::AreEqual(stats.aspectDetected.GetString(),restored.c_str());
+        std::vector<StatsOverlayLayout::Row> input{{L"Field:",std::wstring(1000,L'W'),0,true,2},{L"Next:",L"current",0,false,1}};
+        const auto overflow=StatsOverlayLayout::Arrange(graphics.dc,input);
+        Assert::AreEqual(size_t(3),overflow.size());
+        Assert::IsTrue(overflow[1].value.size()>=3 && overflow[1].value.substr(overflow[1].value.size()-3)==L"...");
+        Assert::AreEqual(L"Next:",overflow[2].label.c_str());
+    }
     TEST_METHOD(AspectRowsSeparateAppliedGeometryFromLiveMeasurementWithoutInputAr)
     {
         auto stats=Example(true);
@@ -138,7 +196,8 @@ public:
         // Unsupported backends retain the existing counters and layout.
         stats.captureDeliverySupported = false;
         rows = StatsOverlayWindow::BuildStatsRows(stats);
-        Assert::AreEqual(L"238/0", Find(rows,L"Dropped:").value.c_str());
+        Assert::AreEqual(L"238", Find(rows,L"Capture missed:").value.c_str());
+        Assert::AreEqual(L"0", Find(rows,L"Render dropped:").value.c_str());
     }
     TEST_METHOD(DeckLinkCaptureStatsRenderInBothOsdPathsWithoutMagewellPackingLabel)
     {
@@ -156,8 +215,9 @@ public:
             Assert::AreEqual(L"23 total; 0 last 5s", Find(rows, L"Capture missed:").value.c_str());
             Assert::AreEqual(L"2", Find(rows, L"Render dropped:").value.c_str());
             Assert::IsTrue(std::none_of(rows.begin(), rows.end(), [](const auto& row) {
-                return row.label == L"Capture packing:" || row.label == L"Dropped:";
+                return row.label == L"Dropped:";
             }));
+            Assert::AreEqual(L"---", Find(rows,L"Capture packing:").value.c_str());
             VerifyNative(stats);
         }
     }
@@ -170,7 +230,7 @@ public:
             stats.outputMode = L"Target SDR Rec.709 | Req A/A/A/A -> Flip/F/sRGB/709"
                 L" | GAMMA:  | DISPLAY:  | STATUS:  | SIGNAL:  | SWAPCHAIN:  | PRESENTER:  | CONTRACT: ";
             const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
-            Assert::AreEqual(baseline.size() + size_t(2), rows.size()); VerifyNative(stats);
+            Assert::AreEqual(baseline.size(), rows.size()); VerifyNative(stats);
         }
     }
     TEST_METHOD(RasterAndShaderContinuationRowsUseExplicitSharedValueColumn)
@@ -180,11 +240,11 @@ public:
         for (const auto& row : rows) if (row.label.empty())
         {
             ++continuationCount;
-            Assert::IsFalse(row.value.empty());
-            Assert::IsTrue(row.value.front() == L'[' || row.value.front() == L'-');
+            if (!row.value.empty())
+                Assert::IsTrue(row.value.front() == L'[' || row.value.front() == L'-');
             Assert::AreEqual(0, row.gapBefore);
         }
-        Assert::AreEqual(size_t(4), continuationCount);
+        Assert::AreEqual(size_t(5), continuationCount);
         Graphics graphics; Assert::IsTrue(graphics.dc && graphics.font);
         SIZE columns{}; const std::wstring spaces(StatsOverlayLayout::LabelColumns, L' ');
         Assert::IsTrue(GetTextExtentPoint32W(graphics.dc, spaces.c_str(), int(spaces.size()), &columns) != FALSE);
@@ -237,7 +297,7 @@ public:
                     std::wstring restored;
                     for (auto at = first; at != arranged.end() && (at == first || at->label.empty()); ++at)
                     {
-                        if (!restored.empty()) restored += L" "; restored += at->value;
+                        if (!restored.empty() && !at->value.empty()) restored += L" "; restored += at->value;
                         Assert::AreEqual(at->value.c_str(), StatsOverlayLayout::FitText(graphics.dc, at->value, available).c_str());
                     }
                     Assert::AreEqual(Find(raw, label).value.c_str(), restored.c_str());
@@ -283,7 +343,7 @@ public:
                 Find(rows, L"GPU frame:"); Find(rows, L"10s avg/max:");
                 Find(rows, L"Source interval:"); Find(rows, L"Render budget:");
                 Find(rows, alpha ? L"Queue:" : L"Queue R/C/T:");
-                Find(rows, L"VFrames:"); Find(rows, L"Dropped:"); Find(rows, L"D/R estimate:");
+                Find(rows, L"VFrames:"); Find(rows, L"Capture missed:"); Find(rows, L"Render dropped:"); Find(rows, L"D/R estimate:");
                 if (available)
                 {
                     Assert::IsTrue(Find(rows,L"GPU frame:").value.find(L"50/120 async (10 s)") != std::wstring::npos);

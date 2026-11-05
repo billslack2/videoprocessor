@@ -53,6 +53,9 @@ function New-VpCriticalNativeSourceList([string]$Root,[string]$Destination,[stri
     if('src/VideoProcessor-Test/MotionRendererTests.cpp' -in $sources) {
         $support+= '..\VideoProcessor-Lib\vprenderer\LibplaceboRenderParameters.cpp'
     }
+    if('src/VideoProcessor-Test/StatsOverlayLayoutTests.cpp' -in $sources) {
+        $support+= '..\VideoProcessor-GUI\StatsOverlayWindow.cpp'
+    }
     foreach($source in $support) {
         if(-not (Test-Path -LiteralPath (Join-Path (Join-Path $Root 'src/VideoProcessor-Test') $source) -PathType Leaf)) {
             throw "Critical Native support source is missing: $source"
