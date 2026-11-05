@@ -22044,12 +22044,19 @@ releaseDriftBaseRetention =
                 outputTrace.metrics[10]=renderImage.crop.x1;outputTrace.metrics[11]=renderImage.crop.y1;
                 outputTrace.metrics[12]=target.crop.x0;outputTrace.metrics[13]=target.crop.y0;
                 outputTrace.metrics[14]=target.crop.x1;outputTrace.metrics[15]=target.crop.y1;
-                // Regression-only facts from the final selected packet, never
-                // the mutable current cue. This envelope is not a glyph mask.
-                if(regressionWithholdEquivalenceWindow && packetMatches &&
-                    packet.composed && subtitleCompositionSucceeded && packet.geometry.valid) {
-                    AnalysisTraceRect(outputTrace.subtitle,packet.geometry.source);
-                    const auto& destination=packet.geometry.destination;
+                // Regression-only facts from the finalized selected operation.
+                // Temporal output was rebound to its exact packet above; direct
+                // output must still name this source. This is not a glyph mask.
+                const bool regressionOperationMatches=temporalSubtitleComposition
+                    ? packetMatches && packet.composed
+                    : scopeAnchorCommit.sourceGeneration==frameGeneration &&
+                        scopeAnchorCommit.sourceSequence==sourceSequence &&
+                        scopeAnchorCommit.presentationEpoch==viewportRequestSerial;
+                if(regressionWithholdEquivalenceWindow && regressionOperationMatches &&
+                    !rawSubtitleFallbackOutput && !unprocessedCurrentSourceOutput &&
+                    subtitleCompositionSucceeded && relocatedSubtitle.valid) {
+                    AnalysisTraceRect(outputTrace.subtitle,relocatedSubtitle.source);
+                    const auto& destination=relocatedSubtitle.destination;
                     outputTrace.metrics[16]=destination.left;outputTrace.metrics[17]=destination.top;
                     outputTrace.metrics[18]=destination.right;outputTrace.metrics[19]=destination.bottom;
                 }

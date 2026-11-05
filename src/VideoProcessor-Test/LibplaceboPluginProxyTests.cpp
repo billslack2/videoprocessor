@@ -5610,7 +5610,7 @@ namespace VideoProcessorTest
                         ++bothMissing;
                         if(missingCompositionWindow)
                             equivalentContract&=(w.flags&3u)==3u&&(w.flags&64u)&&
-                                !(w.flags&(4u|16u|32u)); // Truthful missing work: no ordinary or exact-byte proof.
+                                !(w.flags&(4u|8u|16u|32u)); // No selected raw scan, ordinary proof, or exact-byte proof.
                         else equivalentContract&=(w.flags&27u)==19u&&proofConsumed&&composed;
                     }
                     else if(inWindow) {
