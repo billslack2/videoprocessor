@@ -1,5 +1,8 @@
 #include "pch.h"
 #include <SourcePictureDetector.h>
+#include <bcrypt.h>
+#include <iomanip>
+#pragma comment(lib,"bcrypt.lib")
 #include "CppUnitTest.h"
 
 #include "../VideoProcessor-Lib/vprenderer/LibplaceboPluginVideoRenderer.h"
@@ -5151,6 +5154,8 @@ namespace VideoProcessorTest
         // portable manifest: select explicitly with VP_SUBTITLE_CAPTURE_ROOT set.
         // This runs the actual plugin, worker, queue, shader and submission path;
         // no caller supplies picture or successful composition authority.
+#include "GenericNativeCaptureRendererReplay.inl"
+
         void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false,bool missingEvidenceWindow=false,bool completedProofWindow=false,bool capturedTwoLine=false,bool missingCompositionWindow=false)
         {
             char* captureValue=nullptr;size_t captureSize=0;
@@ -7427,12 +7432,17 @@ namespace VideoProcessorTest
 // renderer does not export this entry point or alter its thread stack reserve.
 extern "C" __declspec(dllexport) int __cdecl VpRunNativeRendererRegression(unsigned testCase)
 {
-    nativeStackHostActive.store(testCase<20,std::memory_order_relaxed);
+    nativeStackHostActive.store(testCase<22,std::memory_order_relaxed);
     nativeStackHostSubmittedReserve.store(0,std::memory_order_relaxed);
     try {
         if(testCase==98 || testCase==99) {
             Logger::WriteMessage("Native host framework smoke");
             Assert::IsTrue(testCase==98,L"Intentional native-host assertion smoke");
+        } else if(testCase==20||testCase==21) {
+            VideoProcessorTest::LibplaceboPluginProxyTests fixture;
+            fixture.VerifyGenericNativeCaptureRenderer((testCase&1)!=0);
+            Assert::AreEqual(size_t(1048576),nativeStackHostSubmittedReserve.load(),
+                L"Generic replay must exercise an actual submitted renderer source on the normal 1 MiB thread");
         } else if(testCase>=16&&testCase<20) {
             VideoProcessorTest::LibplaceboPluginProxyTests fixture;
             fixture.VerifyCapturedV210CueCadence((testCase&1)!=0,false,false,true,
