@@ -24047,6 +24047,11 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
                     packet.analysisSampleRange=static_cast<uint32_t>(source.range);
                     packet.transportGeneration=id.transportGeneration;packet.acceptedSequence=id.acceptedSequence;
                     packet.sourceFrameNumber=id.sourceFrameNumber;packet.captureTimestamp=id.captureTimestamp;
+                    const auto clockHz=m_timingClock ? m_timingClock->TimingClockTicksPerSecond() : 0;
+                    if(clockHz>0) {
+                        packet.captureClockTicksPerSecond=static_cast<uint64_t>(clockHz);
+                        packet.captureClockProvenance=1; // Exact bound input clock; no rate inference.
+                    }
                     packet.sourceFormatGeneration=id.sourceFormatGeneration;packet.viewportGeneration=id.viewportGeneration;
                     packet.rendererGeneration=id.rendererGeneration;packet.analysisDomainKey=prepared.domainKey;
                     packet.policyGeneration=preparationPolicy;packet.continuityGeneration=preparationContinuity;

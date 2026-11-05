@@ -68,6 +68,8 @@ def export(capture, output):
                        'identity_v1': identity, 'identity': metadata, 'layout': layout,
                        'bytes': event['bytes'], 'sha256': files_by_index[number]['nativeSHA256'],
                        'sidecarSha256': files_by_index[number]['sidecarSHA256']})
+        if 'captureClock' in files_by_index[number]:
+            frames[-1]['captureClock'] = files_by_index[number]['captureClock']
     segments, gaps = [], []
     for frame in frames:
         reasons = []
@@ -76,6 +78,8 @@ def export(capture, output):
             a, b = previous['identity'], frame['identity']
             if any(a[k] != b[k] for k in CONTEXT) or previous['layout'][:7] != frame['layout'][:7] or previous['layout'][10] != frame['layout'][10] or a['rgbBitAlignment'] != b['rgbBitAlignment'] or a['frameDuration100ns'] != b['frameDuration100ns']:
                 reasons.append('context-or-layout-change')
+            if previous.get('captureClock') != frame.get('captureClock'):
+                reasons.append('capture-clock-change')
             if b['discontinuity'] or b['cadenceRepeat']:
                 reasons.append('declared-discontinuity-or-repeat')
             if b['acceptedSequence'] != a['acceptedSequence'] + 1:
@@ -99,10 +103,15 @@ def export(capture, output):
         segments[-1]['frames'].append(frame)
     if digest(index) != original_index_hash:
         raise ValueError('Capture index changed during export')
+    recorded_rates = {f.get('captureClock', {}).get('ticksPerSecond') for f in frames}
+    common_clock = next(iter(recorded_rates)) if len(recorded_rates) == 1 else None
     manifest = {'schema': 1, 'kind': 'native-ram-replay-inputs', 'captureRoot': str(capture),
                 'sourceIndex': str(index), 'sourceIndexSha256': original_index_hash,
                 'manifestFormat': 'count then original file index and sixteen identity_v1 integers',
-                'timing': {'captureTimestampUnits': 'original source clock ticks; tick frequency not recorded',
+                'timing': {'captureTimestampUnits': 'original renderer input timing-clock ticks',
+                           'captureClockTicksPerSecond': common_clock,
+                           'clockFrequencyProvenance': 'recorded renderer-bound ITimingClock' if common_clock else 'per-frame metadata; unknown or mixed',
+                           'unadjustedHardwareTimeClaim': False,
                            'nominalFrameDurationUnits': '100ns', 'timestampsRewritten': False,
                            'playbackScheduleGenerated': False},
                 'pictureBoundsAvailable': rows[0].get('pictureBoundsAvailable', False),
@@ -125,6 +134,7 @@ def export(capture, output):
         selected = segment['frames']
         manifest['segments'].append({'number': segment['number'], 'indices': [f['index'] for f in selected],
                                      'captureTimestampAvailable': all(f['identity']['captureTimestamp'] for f in selected),
+                                     'captureClock': selected[0].get('captureClock'),
                                      'manifest': write_list(f"segment-{segment['number']:04}.txt", selected)})
     # Preserve the complete original gap/eviction ledger verbatim, not just a summary.
     (output / 'native-window.jsonl').write_bytes(index.read_bytes())

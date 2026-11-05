@@ -191,6 +191,67 @@ namespace Tests
 	TEST_CLASS(AnalysisDiagnosticTraceTests)
 	{
 	public:
+        TEST_METHOD(NativeFrameClockExtensionPreservesLegacyPacketBoundary)
+        {
+            AnalysisDiagnosticFramePacketV1 source;source.structSize=sizeof(source);
+            source.acceptedSequence=17;source.captureTimestamp=123456789;
+            source.captureClockTicksPerSecond=1000000;source.captureClockProvenance=1;
+            AnalysisDiagnosticFramePacketV1 copy;
+            Assert::IsTrue(CopyAnalysisDiagnosticFramePacket(source,copy));
+            Assert::AreEqual(uint64_t(1000000),copy.captureClockTicksPerSecond);
+            Assert::AreEqual(uint64_t(123456789),copy.captureTimestamp);
+            SYSTEM_INFO system{};GetSystemInfo(&system);const size_t page=system.dwPageSize;
+            auto* allocation=static_cast<uint8_t*>(VirtualAlloc(nullptr,page*2,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE));
+            Assert::IsNotNull(allocation);
+            struct Release {void* p;~Release(){VirtualFree(p,0,MEM_RELEASE);}} release{allocation};
+            DWORD old=0;Assert::IsTrue(VirtualProtect(allocation+page,page,PAGE_NOACCESS,&old)!=FALSE);
+            auto* legacy=reinterpret_cast<AnalysisDiagnosticFramePacketV1*>(allocation+page-ANALYSIS_FRAME_PACKET_V1_PREFIX_SIZE);
+            std::memcpy(legacy,&source,ANALYSIS_FRAME_PACKET_V1_PREFIX_SIZE);
+            legacy->structSize=static_cast<uint32_t>(ANALYSIS_FRAME_PACKET_V1_PREFIX_SIZE);
+            Assert::IsTrue(CopyAnalysisDiagnosticFramePacket(*legacy,copy),L"Must not read the guarded extension page.");
+            Assert::AreEqual(uint64_t(17),copy.acceptedSequence);
+            Assert::AreEqual(uint64_t(123456789),copy.captureTimestamp);
+            Assert::AreEqual(uint64_t(0),copy.captureClockTicksPerSecond);
+            legacy->structSize=0;
+            Assert::IsTrue(CopyAnalysisDiagnosticFramePacket(*legacy,copy),L"Legacy zero-size convention cannot establish appended fields.");
+            Assert::AreEqual(uint32_t(0),copy.captureClockProvenance);
+            legacy->structSize=static_cast<uint32_t>(ANALYSIS_FRAME_PACKET_V1_PREFIX_SIZE-1);
+            Assert::IsFalse(CopyAnalysisDiagnosticFramePacket(*legacy,copy));
+            source.structSize=static_cast<uint32_t>(ANALYSIS_FRAME_PACKET_V1_PREFIX_SIZE+sizeof(uint64_t));
+            Assert::IsTrue(CopyAnalysisDiagnosticFramePacket(source,copy));
+            Assert::AreEqual(uint64_t(0),copy.captureClockTicksPerSecond,L"Frequency without provenance remains unknown.");
+            source.structSize=sizeof(source);source.captureClockProvenance=99;
+            Assert::IsTrue(CopyAnalysisDiagnosticFramePacket(source,copy));
+            Assert::AreEqual(uint64_t(0),copy.captureClockTicksPerSecond);
+            source.schemaVersion=2;
+            Assert::IsFalse(CopyAnalysisDiagnosticFramePacket(source,copy));
+        }
+        TEST_METHOD(NativeRamClockRoundTripStopsOnClockContextChange)
+        {
+            OwnerCounters counters;OwnerSource owner;
+            owner.bytes=std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{1,2,3,4});owner.counters=&counters;
+            TraceFixture fixture(true,2000);fixture.trace->SetProducerAvailable(true,true,true);
+            Assert::AreEqual(uint32_t(AnalysisDiagnosticCaptureResult::Started),uint32_t(
+                fixture.trace->StartCapture(true,AnalysisDiagnosticNativeSampling::RamWindow,12,1000)));
+            auto frame=BurstPacket(owner);frame.structSize=sizeof(frame);
+            frame.reserved0=AnalysisDiagnosticTrace::FRAME_ACCEPTED_INPUT;
+            frame.captureClockTicksPerSecond=1000000;frame.captureClockProvenance=1;
+            fixture.trace->SubmitFrame(frame);Assert::IsTrue(WaitReleased(counters,1));
+            ++frame.acceptedSequence;++frame.sourceFrameNumber;frame.captureTimestamp+=41708;
+            frame.captureClockTicksPerSecond=10000000;
+            fixture.trace->SubmitFrame(frame);Assert::IsTrue(WaitReleased(counters,2));
+            fixture.trace->StopCapture();Assert::IsTrue(WaitForWriter(*fixture.trace));
+            Assert::AreEqual(uint64_t(1),fixture.trace->Status().framesWritten);
+            const auto sidecar=ReadCaptureText(*fixture.trace,"frame-000001.txt");
+            Assert::IsTrue(sidecar.find("identity_v1 2 10 100 1000 ")!=std::string::npos);
+            Assert::IsTrue(sidecar.find("capture_clock_v1 1000000 1\n")!=std::string::npos);
+            const auto index=ReadCaptureText(*fixture.trace,"native-window.jsonl");
+            Assert::IsTrue(index.find("\"captureClockTicksPerSecond\":1000000,\"captureClockProvenance\":1")!=std::string::npos);
+            Assert::IsTrue(index.find("\"index\":2,\"outcome\":\"context-changed\"")!=std::string::npos);
+            Assert::IsTrue(index.find("\"captureClockTicksPerSecond\":10000000")!=std::string::npos);
+            Assert::AreEqual(std::string("\1\2\3\4",4),ReadCaptureText(*fixture.trace,"frame-000001.bin"));
+            Assert::AreEqual(counters.retained.load(),counters.released.load());
+        }
         TEST_METHOD(NativeRamWindowRetainsExactAcceptedSuffixAndExplicitEvictions)
         {
             OwnerCounters counters;OwnerSource owner;
@@ -230,6 +291,7 @@ namespace Tests
             Assert::IsTrue(index.find("\"unloggedOffers\":0")!=std::string::npos);
             Assert::AreEqual(std::string("\1\2\3\4",4),ReadCaptureText(*fixture.trace,"frame-000008.bin"));
             Assert::IsTrue(ReadCaptureText(*fixture.trace,"frame-000008.txt").find("identity_v1 2 17 109 ")!=std::string::npos);
+            Assert::IsTrue(ReadCaptureText(*fixture.trace,"frame-000008.txt").find("capture_clock_v1 0 0\n")!=std::string::npos,L"Legacy clock units remain unavailable.");
             Assert::IsTrue(ReadCaptureText(*fixture.trace,"frame-000001.bin").empty());
             Assert::AreEqual(counters.retained.load(),counters.released.load());
         }

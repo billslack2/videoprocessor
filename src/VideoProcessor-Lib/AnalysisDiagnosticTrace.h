@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <mutex>
 #include <memory>
 #include <iosfwd>
@@ -137,7 +138,39 @@ struct AnalysisDiagnosticFramePacketV1
 	// of a shared owner. releaseOwner consumes exactly that token.
 	void* (__cdecl* retainOwner)(const void* ownerContext) = nullptr;
 	void (__cdecl* releaseOwner)(void* retainedOwner) = nullptr;
+    // Optional size-gated extension. These units describe captureTimestamp,
+    // which is the renderer input timing timestamp (including any configured
+    // source offset), not an assertion of unadjusted hardware capture time.
+    uint64_t captureClockTicksPerSecond = 0;
+    uint32_t captureClockProvenance = 0; // 0 unavailable, 1 renderer-bound ITimingClock.
+    uint32_t reservedClock = 0;
 };
+
+constexpr size_t ANALYSIS_FRAME_PACKET_V1_PREFIX_SIZE =
+    offsetof(AnalysisDiagnosticFramePacketV1, captureClockTicksPerSecond);
+static_assert(ANALYSIS_FRAME_PACKET_V1_PREFIX_SIZE ==
+    offsetof(AnalysisDiagnosticFramePacketV1, releaseOwner) + sizeof(void (__cdecl*)(void*)),
+    "Legacy native packet prefix must retain its exact layout");
+
+inline bool CopyAnalysisDiagnosticFramePacket(const AnalysisDiagnosticFramePacketV1& source,
+    AnalysisDiagnosticFramePacketV1& destination) noexcept
+{
+    // Size zero was valid in old producers; it can establish only the old prefix.
+    const size_t bytes = source.structSize ? source.structSize : ANALYSIS_FRAME_PACKET_V1_PREFIX_SIZE;
+    if ((source.schemaVersion != 0 && source.schemaVersion != 1) ||
+        bytes < ANALYSIS_FRAME_PACKET_V1_PREFIX_SIZE) return false;
+    destination = {};
+    std::memcpy(&destination, &source, bytes < sizeof(destination) ? bytes : sizeof(destination));
+    destination.structSize = sizeof(destination);
+    if (bytes < offsetof(AnalysisDiagnosticFramePacketV1, reservedClock) ||
+        destination.captureClockProvenance != 1 || !destination.captureClockTicksPerSecond)
+    {
+        destination.captureClockTicksPerSecond = 0;
+        destination.captureClockProvenance = 0;
+    }
+    destination.reservedClock = 0;
+    return true;
+}
 
 enum class AnalysisDiagnosticCaptureResult : uint32_t
 {

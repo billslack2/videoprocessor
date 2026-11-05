@@ -7,9 +7,15 @@ supply sidecar picture rectangles as detection truth.
 
 ## Prepare and run
 
-First export a RAM recording with `export_native_ram_replay.py`. Supply the
-verified clock frequency from that capture device/build: timestamps alone do not
-establish their units. DeckLink and Magewell clocks may differ.
+First export a RAM recording with `export_native_ram_replay.py`. New recordings
+carry the frequency explicitly supplied by the renderer-bound input clock.
+The planner uses that recorded frequency separately for each segment. For older
+or explicitly unknown recordings, supply a verified `--capture-clock-hz` from
+the capture device/build; timestamp spacing does not establish its units.
+An explicit frequency conflicting with recorded metadata is rejected. DeckLink
+and Magewell clocks may differ. The original input timing timestamp may include
+a configured source offset; this tool does not reconstruct unadjusted hardware
+time or infer an offset.
 
 ```powershell
 python tools/replay_native_ram_renderer.py E:/capture-export/replay.json `
@@ -20,6 +26,7 @@ python tools/replay_native_ram_renderer.py E:/capture-export/replay.json `
   --plugin-root x64/Release
 ```
 
+Omit `--capture-clock-hz` when every retained segment has recorded clock metadata.
 Use `--prepare-only` for validation without GPU/process execution. The host must
 export regression cases 20/21 through the matching test DLL. Build that DLL in
 x64 Release; the fixture is test-only. `--variant beta` selects the Beta plugin.

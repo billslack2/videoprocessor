@@ -11,6 +11,27 @@ def digest(path):
     return h.hexdigest()
 
 
+
+def capture_clock(event, sidecar_lines):
+    """Validate optional clock metadata; legacy captures stay explicitly unknown."""
+    markers = [line.split() for line in sidecar_lines[2:] if line.startswith('capture_clock_v1')]
+    keys = ('captureClockTicksPerSecond', 'captureClockProvenance')
+    present = any(k in event for k in keys)
+    if not present and not markers:
+        return None
+    if not all(k in event for k in keys) or len(markers) != 1 or len(markers[0]) != 3 or markers[0][0] != 'capture_clock_v1':
+        raise ValueError('Incomplete capture clock metadata')
+    values = [event[k] for k in keys]
+    if any(type(v) is not int for v in values) or not 0 <= values[0] < 2**63 or values[1] not in (0, 1):
+        raise ValueError('Invalid capture clock metadata')
+    if (values[0] == 0) != (values[1] == 0) or list(map(int, markers[0][1:])) != values:
+        raise ValueError('Capture clock sidecar and event disagree')
+    return {'ticksPerSecond': values[0] or None,
+            'provenance': 'renderer-bound-ITimingClock' if values[1] else 'unavailable',
+            'timestampField': 'identity_v1.captureTimestamp',
+            'timestampDomain': 'renderer-input-timing-timestamp; configured source offset may be included',
+            'unadjustedHardwareTimeClaim': False}
+
 def inspect(directory):
     directory = directory.resolve(strict=True)
     rows = [json.loads(line) for line in (directory / 'native-window.jsonl').read_text().splitlines() if line]
@@ -40,9 +61,12 @@ def inspect(directory):
                      'policyGeneration', 'continuityGeneration']
             if lines[1].split()[0] != 'identity_v1' or identity[:10] != [event[n] for n in names]:
                 raise ValueError('Sidecar identity differs from event ledger')
+            clock = capture_clock(event, lines)
             files.append({'index': index, 'sourceFrameNumber': event['sourceFrameNumber'],
                           'acceptedSequence': event['acceptedSequence'], 'bytes': binary.stat().st_size,
                           'nativeSHA256': digest(binary), 'sidecarSHA256': digest(sidecar)})
+            if clock is not None:
+                files[-1]['captureClock'] = clock
         except (OSError, ValueError, IndexError) as error:
             errors.append({'index': index, 'error': str(error)})
     for before, after in zip(files, files[1:]):

@@ -38,6 +38,9 @@ class NativeRamReplayCliTests(unittest.TestCase):
             (self.capture / f'frame-{index:06}.bin').write_bytes(bytes([index % 256, 2, 3, 4]))
             identity = [e[n] for n in subtitle_causal_report.IDENTITY_FIELDS] + [0, 0, e['frameDuration100ns'], e['discontinuity'], 0, e['rgbBitAlignment']]
             (self.capture / f'frame-{index:06}.txt').write_text('2 2 2 0 0 0 0 0 0 0 0\nidentity_v1 ' + ' '.join(map(str, identity)) + '\n')
+            if 'captureClockTicksPerSecond' in e and 'captureClockProvenance' in e:
+                with (self.capture / f'frame-{index:06}.txt').open('a') as side:
+                    side.write(f"capture_clock_v1 {e['captureClockTicksPerSecond']} {e['captureClockProvenance']}\n")
         self.flush()
         return e
 
@@ -87,6 +90,47 @@ class NativeRamReplayCliTests(unittest.TestCase):
         self.assertFalse(r['completeStreamClaim'])
         self.assertFalse(r['pictureOrCaptionAuthoritySupplied'])
         self.assertFalse(r['timing']['timestampsRewritten'])
+
+    def test_recorded_clock_roundtrip_and_clock_change_split_without_inference(self):
+        tick = 2**60 + 19
+        self.add('written', 1, 1, tick, captureClockTicksPerSecond=1000000, captureClockProvenance=1)
+        self.add('written', 2, 2, tick+41708, captureClockTicksPerSecond=10000000, captureClockProvenance=1)
+        self.run_cli()
+        r = self.result()
+        self.assertEqual([[1], [2]], [s['indices'] for s in r['segments']])
+        self.assertEqual([1000000, 10000000], [f['captureClock']['ticksPerSecond'] for f in r['frames']])
+        self.assertIn('capture-clock-change', r['gaps'][0]['reasons'])
+        self.assertIsNone(r['timing']['captureClockTicksPerSecond'])
+        self.assertEqual([tick, tick+41708], [f['identity_v1'][3] for f in r['frames']])
+        self.assertFalse(r['frames'][0]['captureClock']['unadjustedHardwareTimeClaim'])
+        loaded = subtitle_causal_report.load_native(self.capture)
+        self.assertTrue(all(tuple(f['identity_v1'][:10]) in loaded for f in r['frames']))
+
+    def test_unknown_clock_stays_unknown_and_legacy_has_no_inferred_rate(self):
+        self.add('written', 1, 1, 100000)
+        self.add('written', 2, 2, 141708, captureClockTicksPerSecond=0, captureClockProvenance=0)
+        self.run_cli()
+        r = self.result()
+        self.assertNotIn('captureClock', r['frames'][0])
+        self.assertIsNone(r['frames'][1]['captureClock']['ticksPerSecond'])
+        self.assertEqual('unavailable', r['frames'][1]['captureClock']['provenance'])
+        self.assertIsNone(r['timing']['captureClockTicksPerSecond'])
+
+    def test_clock_sidecar_mismatch_or_incomplete_pair_rejects_export(self):
+        self.add('written', 1, 1, 100000, captureClockTicksPerSecond=1000000, captureClockProvenance=1)
+        side = self.capture/'frame-000001.txt'
+        original = side.read_text()
+        side.write_text(original.replace('capture_clock_v1 1000000', 'capture_clock_v1 10000000'))
+        self.run_cli(1)
+        self.assertFalse(self.output.exists())
+        side.write_text(original.replace('capture_clock_v1 ', 'capture_clock_v1invalid '))
+        self.run_cli(1)
+        self.assertFalse(self.output.exists())
+        side.write_text(original)
+        del self.events[0]['captureClockProvenance']
+        self.flush()
+        self.run_cli(1)
+        self.assertFalse(self.output.exists())
 
     def test_corrupt_written_file_fails_without_export(self):
         self.add('written', 10, 100, 100000)

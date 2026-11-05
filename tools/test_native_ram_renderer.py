@@ -26,7 +26,7 @@ class NativeRendererPlanTests(unittest.TestCase):
             binary = self.capture / f"frame-{event['index']:06}.bin"
             binary.write_bytes(bytes(stride*height))
             side = binary.with_suffix('.txt')
-            identity = side.read_text().splitlines()[1]
+            identity = '\n'.join(side.read_text().splitlines()[1:])
             side.write_text(f'{width} {height} {stride} 0 3 3 4 0 0 0 1\n' + identity + '\n')
             self.fixture.flush()
         return event
@@ -73,6 +73,29 @@ class NativeRendererPlanTests(unittest.TestCase):
         for value in (-1, 16385):
             with self.assertRaisesRegex(ValueError, 'preload MiB'):
                 prepare(manifest, self.root/f'bad-preload-{value}', 1000000, 'off', 2.35, value)
+
+    def test_recorded_per_segment_clocks_need_no_caller_guess(self):
+        self.add(1, 1, 1000000, captureClockTicksPerSecond=1000000, captureClockProvenance=1)
+        self.add(2, 2, 1041708, captureClockTicksPerSecond=10000000, captureClockProvenance=1)
+        with patch('subprocess.run', side_effect=AssertionError('Planner launched a process')):
+            plan = prepare(self.manifest(), self.root/'recorded', None, 'off', 2.35)
+        self.assertIsNone(plan['clockHz'])
+        self.assertEqual([1000000, 10000000], [s['clockHz'] for s in plan['segments']])
+        self.assertTrue(all(s['clockFrequencyProvenance'].startswith('recorded') for s in plan['segments']))
+        self.assertEqual([1000000, 1041708], [s['frames'][0]['identity_v1'][3] for s in plan['segments']])
+
+    def test_recorded_clock_conflicting_override_rejects_and_unknown_needs_override(self):
+        self.add(1, 1, 1000000, captureClockTicksPerSecond=1000000, captureClockProvenance=1)
+        self.add(2, 2, 1041708, captureClockTicksPerSecond=0, captureClockProvenance=0)
+        manifest = self.manifest()
+        with self.assertRaisesRegex(ValueError, 'conflicts'):
+            prepare(manifest, self.root/'conflict', 10000000, 'off', 2.35)
+        with self.assertRaisesRegex(ValueError, 'clock Hz'):
+            prepare(manifest, self.root/'unknown', None, 'off', 2.35)
+        plan = prepare(manifest, self.root/'explicit', 1000000, 'off', 2.35)
+        self.assertEqual(1000000, plan['clockHz'])
+        self.assertTrue(plan['segments'][0]['clockFrequencyProvenance'].startswith('recorded'))
+        self.assertTrue(plan['segments'][1]['clockFrequencyProvenance'].startswith('explicit'))
 
     def test_missing_timestamp_and_invalid_clock_are_not_invented(self):
         self.add(1, 1, 0)

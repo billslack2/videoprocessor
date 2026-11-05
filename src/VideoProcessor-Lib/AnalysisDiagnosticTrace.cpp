@@ -373,8 +373,13 @@ AnalysisDiagnosticRecordV1 AnalysisDiagnosticTrace::BoundaryChain(
 }
 
 void AnalysisDiagnosticTrace::SubmitFrame(
-	const AnalysisDiagnosticFramePacketV1& input) noexcept
+    const AnalysisDiagnosticFramePacketV1& rawInput) noexcept
 {
+    AnalysisDiagnosticFramePacketV1 input;
+    if (!CopyAnalysisDiagnosticFramePacket(rawInput, input)) {
+        m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
     const auto ram=std::atomic_load(&m_ramRecording);
     if(ram) {
         if((input.reserved0&FRAME_ACCEPTED_INPUT) && IsFrameCaptureActive())ram->Offer(input);
@@ -1237,6 +1242,8 @@ bool AnalysisDiagnosticTrace::WriteFrame(
 					<< frame.metadata.discontinuity << ' '
 					<< frame.metadata.cadenceRepeat << ' '
 					<< frame.metadata.rgbBitAlignment << '\n';
+                sidecar << "capture_clock_v1 " << frame.metadata.captureClockTicksPerSecond
+                    << ' ' << frame.metadata.captureClockProvenance << '\n';
 				sidecar.flush();
 				success = sidecar.good();sidecar.close();success=success && !sidecar.fail();
 			}

@@ -64,6 +64,8 @@ private:
             a.stride0==b.stride0 && a.stride1==b.stride1 && a.format==b.format && a.encoding==b.encoding &&
             a.colorspace==b.colorspace && a.analysisSampleRange==b.analysisSampleRange &&
             a.rgbBitAlignment==b.rgbBitAlignment && a.dataBytes==b.dataBytes &&
+            a.captureClockTicksPerSecond==b.captureClockTicksPerSecond &&
+            a.captureClockProvenance==b.captureClockProvenance &&
             a.frameDuration100ns==b.frameDuration100ns && a.scriptHint==b.scriptHint &&
             a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode &&
             (a.captureTimestamp!=0)==(b.captureTimestamp!=0);
@@ -208,7 +210,10 @@ public:
         for(size_t i=0;i<EventCountAfterJoin();++i){const auto& e=m_events[i];const auto& f=e.frame;
             out<<"{\"index\":"<<i+1<<",\"outcome\":\""<<Name(e.outcome)<<"\",\"transportGeneration\":"<<f.transportGeneration
                 <<",\"acceptedSequence\":"<<f.acceptedSequence<<",\"sourceFrameNumber\":"<<f.sourceFrameNumber
-                <<",\"captureTimestamp\":"<<f.captureTimestamp<<",\"sourceFormatGeneration\":"<<f.sourceFormatGeneration
+                <<",\"captureTimestamp\":"<<f.captureTimestamp
+                <<",\"captureClockTicksPerSecond\":"<<f.captureClockTicksPerSecond
+                <<",\"captureClockProvenance\":"<<f.captureClockProvenance
+                <<",\"sourceFormatGeneration\":"<<f.sourceFormatGeneration
                 <<",\"viewportGeneration\":"<<f.viewportGeneration<<",\"rendererGeneration\":"<<f.rendererGeneration
                 <<",\"analysisDomainKey\":"<<f.analysisDomainKey<<",\"policyGeneration\":"<<f.policyGeneration
                 <<",\"continuityGeneration\":"<<f.continuityGeneration<<",\"bytes\":"<<f.dataBytes

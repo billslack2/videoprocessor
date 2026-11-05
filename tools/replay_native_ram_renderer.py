@@ -1,6 +1,6 @@
 """Opt-in isolated renderer replay of verified native RAM capture segments.
 
-Requires explicit original source clock frequency and profile. Does not launch VP.
+Requires recorded or explicitly supplied original source clock frequency and an explicit profile. Does not launch VP.
 Uses the existing test-only renderer host and production plugin factory.
 """
 import argparse
@@ -21,7 +21,7 @@ PROFILES = ('off', 'classic', 'black', 'reconstruction')
 
 
 def prepare(manifest, output, clock_hz, profile, screen_aspect, preload_mib=0):
-    if not 0 < clock_hz <= 1000000000:
+    if clock_hz is not None and (type(clock_hz) is not int or not 0 < clock_hz <= 1000000000):
         raise ValueError('Explicit source clock Hz is required, between 1 and 1e9')
     if not 0 <= preload_mib <= 16384:
         raise ValueError('Native preload MiB must be between 0 and 16384; zero streams from disk')
@@ -42,16 +42,29 @@ def prepare(manifest, output, clock_hz, profile, screen_aspect, preload_mib=0):
         if [s['indices'] for s in original['segments']] != [s['indices'] for s in valid['segments']]:
             raise ValueError('Original continuity segmentation changed')
     frames = {f['index']: f for f in valid['frames']}
+    clocks = {}
     for f in frames.values():
+        recorded = f.get('captureClock', {}).get('ticksPerSecond')
+        if recorded is not None and clock_hz is not None and recorded != clock_hz:
+            raise ValueError('Explicit clock Hz conflicts with recorded source clock')
+        selected_hz = recorded if recorded is not None else clock_hz
+        if type(selected_hz) is not int or not 0 < selected_hz <= 1000000000:
+            raise ValueError('Recorded or explicit source clock Hz is required, between 1 and 1e9')
+        clocks[f['index']] = (selected_hz, 'recorded renderer-bound ITimingClock' if recorded is not None else 'explicit caller input; verify from capture device/build')
+    for f in frames.values():
+        frame_clock_hz = clocks[f['index']][0]
         l, identity = f['layout'], f['identity_v1']
         if not (0 < l[0] <= 8192 and 0 < l[1] <= 4320 and l[2] == ((l[0] + 47) // 48) * 128
                 and l[3:7] == [0, 3, 3, 4] and l[10] == 1):
             raise ValueError('Initial renderer replay supports limited-range SDR REC709 V210 only')
-        if not (identity[2] and 0 < identity[3] < 2**63 - clock_hz*124 and 0 < identity[12] <= 10000000):
+        if not (identity[2] and 0 < identity[3] < 2**63 - frame_clock_hz*124 and 0 < identity[12] <= 10000000):
             raise ValueError('Missing or unsupported original source counter/timing')
     for s in valid['segments']:
         selected = [frames[i] for i in s['indices']]
-        if len(selected) > 4096 or selected[-1]['identity_v1'][3] - selected[0]['identity_v1'][3] > clock_hz*120:
+        segment_rates = {clocks[f['index']][0] for f in selected}
+        if len(segment_rates) != 1:
+            raise ValueError('Clock changes must begin a new recorded segment')
+        if len(selected) > 4096 or selected[-1]['identity_v1'][3] - selected[0]['identity_v1'][3] > next(iter(segment_rates))*120:
             raise ValueError('Renderer segment exceeds 4096 frames or 120 seconds')
     output.mkdir(parents=True)
     (output / 'original-replay.json').write_bytes(manifest.read_bytes())
@@ -74,9 +87,12 @@ def prepare(manifest, output, clock_hz, profile, screen_aspect, preload_mib=0):
         inputs, pins = directory / 'inputs.txt', directory / 'pins.txt'
         inputs.write_text(str(len(selected)) + '\n' + ''.join(str(f['index']) + ' ' + ' '.join(map(str, f['identity_v1'])) + '\n' for f in selected))
         pins.write_text(''.join(f"{f['index']} {f['sha256']} {f['sidecarSha256']}\n" for f in selected))
-        segments.append(dict(number=segment['number'], directory=str(directory), inputs=str(inputs), pins=str(pins), frames=selected))
+        segments.append(dict(number=segment['number'], directory=str(directory), inputs=str(inputs), pins=str(pins), frames=selected,
+                             clockHz=clocks[selected[0]['index']][0], clockFrequencyProvenance=clocks[selected[0]['index']][1]))
     plan = dict(schema=1, manifest=str(manifest), manifestSha256=digest(manifest), captureRoot=valid['captureRoot'],
-                sourceIndexSha256=valid['sourceIndexSha256'], clockHz=clock_hz, clockFrequencyProvenance='explicit caller input; verify from capture device/build',
+                sourceIndexSha256=valid['sourceIndexSha256'],
+                clockHz=segments[0]['clockHz'] if len({s['clockHz'] for s in segments}) == 1 else None,
+                clockFrequencyProvenance='per-segment recorded or explicit input; never inferred',
                 profile=profile, screenAspect=screen_aspect, preloadMiB=preload_mib, config=str(config), configSha256=digest(config),
                 segments=segments, gaps=valid['gaps'], omissions=valid['omissions'],
                 sequenceCoverageUncertain=valid['sequenceCoverageUncertain'],
@@ -161,7 +177,7 @@ def execute(plan, host, test_dll, plugin_root, variant, output, visual=False):
         env = os.environ.copy()
         env.update(VP_GENERIC_CAPTURE_ROOT=plan['captureRoot'], VP_GENERIC_CAPTURE_MANIFEST=segment['inputs'],
                    VP_GENERIC_CAPTURE_PINS=segment['pins'], VP_GENERIC_CAPTURE_OUTPUT=str(directory),
-                   VP_GENERIC_CAPTURE_PRELOAD_MIB=str(plan.get('preloadMiB',0)), VP_GENERIC_CAPTURE_CLOCK_HZ=str(plan['clockHz']), VP_GENERIC_CAPTURE_PROFILE=plan['profile'],
+                   VP_GENERIC_CAPTURE_PRELOAD_MIB=str(plan.get('preloadMiB',0)), VP_GENERIC_CAPTURE_CLOCK_HZ=str(segment.get('clockHz', plan['clockHz'])), VP_GENERIC_CAPTURE_PROFILE=plan['profile'],
                    VP_GENERIC_CAPTURE_CONFIG=plan['config'], VP_RENDERER_REGRESSION_PLUGIN_ROOT=str(plugin_root),
                    VP_CADENCE_CACHE_DIAGNOSTICS='1', VP_GENERIC_CAPTURE_VISUAL='1' if visual else '0')
         with (directory / 'stdout.txt').open('w') as stdout, (directory / 'stderr.txt').open('w') as stderr:
@@ -225,7 +241,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('manifest', type=Path)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--capture-clock-hz', type=int, required=True)
+    parser.add_argument('--capture-clock-hz', type=int, help='Required only when recording lacks clock metadata; conflicts with a recorded rate are rejected')
     parser.add_argument('--profile', choices=PROFILES, required=True)
     parser.add_argument('--screen-aspect', type=float, default=2.35)
     parser.add_argument('--preload-mib', type=int, default=0, help='Opt-in bounded native preload before timed input; zero streams IO/hash on producer')

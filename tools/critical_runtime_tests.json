@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1211,
+  "minimumNativeTests": 1213,
   "requiredNativeMethods": [
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
     "QuestionMarkCannotBorrowAChainOfLowerNoiseDots",
@@ -76,6 +76,8 @@
     "CurrentSpatialNomineeMaskCannotAuthorizeConnectedPictureOrMenu",
     "ContainedRawReconstructionPreservesConfiguredHorizontalFill",
     "RawReconstructionConfiguredFillRejectsUnprovenOrConflictingPixels",
+    "NativeFrameClockExtensionPreservesLegacyPacketBoundary",
+    "NativeRamClockRoundTripStopsOnClockContextChange",
     "NativeRamWindowRetainsExactAcceptedSuffixAndExplicitEvictions",
     "NativeRamIngressPressureIsBoundedAndStopDoesNotJoinCopier",
     "NativeRamContextResetAndWriteFailureKeepTruthfulPriorWindow",
