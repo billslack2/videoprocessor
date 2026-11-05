@@ -4104,7 +4104,7 @@ inline void SubtitleMeasurementWorker::AdvanceCurrentCueRenderWindow(
     PublishCurrentCueWindow(head,tailSequence,advanceHead);
     {
         std::unique_lock<std::mutex> lock(m_mutex,std::try_to_lock);
-        if(!lock.owns_lock()) {m_changed.notify_all();return;}
+        if(!lock.owns_lock())return;
         const auto window=std::atomic_load(&m_currentCueSourceWindow);
         if(!window)return;
         const auto& effectiveHead=window->head;
@@ -4129,6 +4129,7 @@ inline void SubtitleMeasurementWorker::AdvanceCurrentCueRenderWindow(
             retiredEntries.push_back(std::move(m_currentCueTasks.front()));m_currentCueTasks.pop_front();
         }
     }
-    m_changed.notify_all();
+    // A window update creates no eligible job. Wake workers only when work or
+    // their execution context changes; waking here races the next try-lock offer.
     for(const auto& completion:completions)completion->Notify();
 }
