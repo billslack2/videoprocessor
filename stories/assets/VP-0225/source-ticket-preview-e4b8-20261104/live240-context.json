@@ -1,0 +1,27 @@
+{
+  "source": "e4b8c7d9371ff8549609e1f7618d2dd7e785d383",
+  "process": 16896,
+  "sources": 240,
+  "firstSource": 1405,
+  "lastSource": 1644,
+  "currentPhysicalKnown": 240,
+  "roundedPhysicalAspect": 2.39,
+  "profile": "Classic",
+  "detectedCaptions": 0,
+  "composedCaptions": 0,
+  "native": [
+    0,
+    272,
+    3840,
+    1886
+  ],
+  "actualSource": [
+    24,
+    272,
+    3816,
+    1886
+  ],
+  "sourceFramesArtifact": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\live-e4b8-1945\\frames.json",
+  "sourceFramesSha256": "7e8bb163b0074fb44b24000311dc630306d3358ad36e37dcaaf512dda2ab09af",
+  "limits": "This no-cue live window does not validate Reconstruction captions, scene transitions or moving-background missing-analysis fallback."
+}

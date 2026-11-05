@@ -1,0 +1,8 @@
+{
+  "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\x64\\Release\\VideoProcessor-GUI.exe",
+  "source": "e4b8c7d9371ff8549609e1f7618d2dd7e785d383",
+  "stackReserveBytes": 4194304,
+  "sha256": "a56bd82ee1410419b12492ef480447102bfb582b49e819715d082f04e4b084b1",
+  "expected": 4194304,
+  "passed": true
+}

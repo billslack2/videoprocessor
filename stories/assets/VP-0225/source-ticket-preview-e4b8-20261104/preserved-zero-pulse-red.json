@@ -1,0 +1,65 @@
+{
+  "source": "ac396bf6d9186f139713bc6dffbfc9652e09c406",
+  "status": "RED",
+  "fullQualification": false,
+  "nativeFocused": "183433-8fc90d55:8/8",
+  "matchingFocused": "183636-8cc8ce4b:2/2",
+  "actualExecuted": "Standard case4 only",
+  "notRun": [
+    "Beta case5",
+    "visual cases6/7",
+    "prior scripture cases0/1"
+  ],
+  "actualThreadStackBytes": 1048576,
+  "inputsOriginal": 93,
+  "currentSubmitted": 186,
+  "exactSource": true,
+  "maxSourceGap": 1,
+  "proofPositive": 62,
+  "bothMissing": 3,
+  "recovery": 16,
+  "exactRecoveryRawWorkerResults": 6,
+  "nativeBase": [
+    0,
+    272,
+    3840,
+    1886
+  ],
+  "pulseSources": [
+    59,
+    60,
+    61
+  ],
+  "actualExpandedSource": [
+    0,
+    272,
+    3840,
+    2046
+  ],
+  "geometryChanges": 2,
+  "fullRasterFallbacks": 0,
+  "cueOutputSequence": "1 -> 0/0/0 -> 1; output absence does not establish semantic history reset",
+  "failedAssertion": "stable mapping/current cue output at LibplaceboPluginProxyTests.cpp:5620",
+  "timingMetricsOnly": {
+    "lateLatencyMs": 134.908,
+    "maxSubmitGapMs": 54.0123,
+    "sourceHz": 23.9594,
+    "maxLatencyMs": 148.864,
+    "maxIngressMs": 0.3851,
+    "workSamples": 186,
+    "maxWorkMs": 14.1864,
+    "earlyLatencyMs": 134.083
+  },
+  "timingAssertionsExecuted": false,
+  "mainUnchanged": true,
+  "settingsUnchanged": true,
+  "initiallyAbsent": true,
+  "leftAbsent": true,
+  "visualPixelsVerified": false,
+  "evidence": [
+    "receipt.json",
+    "missing-analysis/receipt.json",
+    "missing-analysis/standard-host.stderr.log",
+    "missing-analysis/standard-decisions.tsv"
+  ]
+}

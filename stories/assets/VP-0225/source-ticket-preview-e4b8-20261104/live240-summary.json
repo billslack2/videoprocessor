@@ -1,0 +1,55 @@
+{
+  "count": 240,
+  "first": 1405,
+  "last": 1644,
+  "firstUtc": 1793839512456,
+  "lastUtc": 1793839522422,
+  "contexts": [
+    {
+      "Name": "1, 3, 2, 5, 1",
+      "Count": 240
+    }
+  ],
+  "maxSourceGap": 1.0,
+  "known": 240,
+  "physical": [
+    {
+      "Name": "0,275,3840,1883",
+      "Count": 60
+    },
+    {
+      "Name": "0,275,3840,1884",
+      "Count": 60
+    },
+    {
+      "Name": "0,276,3840,1883",
+      "Count": 120
+    }
+  ],
+  "actual": [
+    {
+      "Name": "24,272,3816,1886",
+      "Count": 240
+    }
+  ],
+  "native": [
+    {
+      "Name": "0,272,3840,1886",
+      "Count": 240
+    }
+  ],
+  "detected": 0,
+  "composed": 0,
+  "reasons": [
+    {
+      "Name": "no-bright-ink",
+      "Count": 240
+    }
+  ],
+  "prepareFailures": [
+    {
+      "Name": "1",
+      "Count": 240
+    }
+  ]
+}

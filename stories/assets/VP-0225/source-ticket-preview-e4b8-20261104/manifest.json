@@ -1,0 +1,92 @@
+{
+  "source": "e4b8c7d9371ff8549609e1f7618d2dd7e785d383",
+  "acceptance": "OPEN",
+  "fullQualification": false,
+  "scope": "Compact metadata only; native frames, output PNGs, full logs and dumps remain outside Git.",
+  "notes": [
+    "Native19 and DV4 ran on the pre-commit dirty candidate; their original identities are preserved. Clean e4b8 matching Release/CPU2 and actual6 ran afterward.",
+    "The launcher legacy testsSkippedForUserAuthorizedExperimentalPreview flag refers to bypassing broad qualification; it does not negate the separately recorded focused tests.",
+    "Paused exact-byte reuse is bounded evidence, not moving-background, initial-no-evidence or true scene-transition acceptance.",
+    "Production code is not net simplified."
+  ],
+  "files": [
+    {
+      "file": "native19-iteration.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-193054-7b55261e\\iteration.json",
+      "sha256": "3be649a67e0a7a68aa460f6f87267ac400e99db7e2f1b6fcd8c4c5807580a5f5",
+      "bytes": 2763
+    },
+    {
+      "file": "metadata-dv4-iteration.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-193224-17cb5e8b\\iteration.json",
+      "sha256": "80aebc465aa215c290c24a7e02bda28c731222c3e7e9022e7960f7d413632243",
+      "bytes": 2759
+    },
+    {
+      "file": "focused-release-build.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-193334-d63d230c\\iteration.json",
+      "sha256": "55117e81a2374467fe8d2d150a7621a0ea2a3d19d6cd780377ba7cdfe47b6569",
+      "bytes": 4741
+    },
+    {
+      "file": "actual6-receipt.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\receipt.json",
+      "sha256": "fe01faf8c739ad322ff7b2160ffee6f56aff19faf4acced9b138d998a6ef0a15",
+      "bytes": 14281
+    },
+    {
+      "file": "visual6-receipt.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\receipt.json",
+      "sha256": "de1c421a12ff7f70d65689274e69aec61c1a83b87015b41530843bc4047b7bb1",
+      "bytes": 10943
+    },
+    {
+      "file": "standard-stack-gate.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\standard-e4b8c7d9-gate.json",
+      "sha256": "847257b6eaa1b06cdd65ddf220c1f1171af5f7cb7adcb11891d9210915a22e2d",
+      "bytes": 1371
+    },
+    {
+      "file": "beta-stack-gate.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\beta-e4b8c7d9-gate.json",
+      "sha256": "31774f2a5d8b5d8a4f4157c97d1f72c207069b91d5583cd0708da4a94cc5b96d",
+      "bytes": 1376
+    },
+    {
+      "file": "gui-stack.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\gui-e4b8c7d9-stack.json",
+      "sha256": "1103b56a6c6b84289c9b9a7ad20d484f06641e9dc3c3404545963917ce87873e",
+      "bytes": 321
+    },
+    {
+      "file": "preview-launch.json",
+      "source": "E:\\codex\\videoprocessor\\previews\\ar-temporal-e4b8c7d9371ff8549609e1f7618d2dd7e785d383\\preview-receipt.json",
+      "sha256": "1b671595f941f7a9d227573c3088dd4a419a1ca68c893bff710024b6c04c157c",
+      "bytes": 11408
+    },
+    {
+      "file": "live240-summary.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\live-e4b8-1945\\summary.json",
+      "sha256": "b4170d0321ec1725c8f747dd2d27b34377d22b6a0c77e45e5b028ec436894a42",
+      "bytes": 860
+    },
+    {
+      "file": "preserved-zero-pulse-red.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-184037\\findings.json",
+      "sha256": "3b5847d0653e4c9ac194fc984a1319593eb743e259b2657acdf82d758f007e70",
+      "bytes": 1646
+    },
+    {
+      "file": "actual6-summary.json",
+      "source": "Derived verbatim summaries from three sealed pair receipts listed within the file.",
+      "sha256": "e4616471f2b55dc33c9c9e380224a7f93522be2c12784400d842ab2d33a3626e",
+      "bytes": 6506
+    },
+    {
+      "file": "live240-context.json",
+      "source": "Derived from sourceFramesArtifact, with SHA256 recorded.",
+      "sha256": "a397903dca9d9c4ac9a16f6237ba5243f648508ae7d4793dfeeb8cb2603c40e2",
+      "bytes": 781
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "missing-analysis": {
+    "sourceReceipt": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\missing-analysis\\receipt.json",
+    "sha256": "14782a0017919b6ca83147a7d63cafe09cf637fe6aef3037e7c29c5194c678af",
+    "passed": true,
+    "visualTimingQualified": null,
+    "results": [
+      {
+        "heldSummary": [],
+        "case": 4,
+        "variant": "standard",
+        "missingEvidenceSummary": [
+          "MISSING EVIDENCE SUMMARY: anchor=10 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=52.8227 proof_positive=62 both_missing=3 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9494 work_samples=186 max_work_ms=14.272 max_ingress_ms=0.2844 max_latency_ms=148.048 early_latency_ms=134.365 late_latency_ms=134.05"
+        ],
+        "exitCode": 0,
+        "actualThreadReserveVerified": true,
+        "cadenceSummary": [],
+        "inputMappings": 93,
+        "passed": true
+      },
+      {
+        "heldSummary": [],
+        "case": 5,
+        "variant": "beta",
+        "missingEvidenceSummary": [
+          "MISSING EVIDENCE SUMMARY: anchor=11 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=53.5648 proof_positive=62 both_missing=3 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9674 work_samples=186 max_work_ms=16.3372 max_ingress_ms=0.5958 max_latency_ms=151.446 early_latency_ms=134.121 late_latency_ms=135.388"
+        ],
+        "exitCode": 0,
+        "actualThreadReserveVerified": true,
+        "cadenceSummary": [],
+        "inputMappings": 93,
+        "passed": true
+      }
+    ]
+  },
+  "missing-visual": {
+    "sourceReceipt": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\missing-visual\\receipt.json",
+    "sha256": "baf18727cff31c940b775cb5958c1eb44d03e1b1382e9cab323ac2dae882b1ea",
+    "passed": true,
+    "visualTimingQualified": false,
+    "results": [
+      {
+        "heldSummary": [],
+        "case": 6,
+        "variant": "standard",
+        "missingEvidenceSummary": [
+          "MISSING EVIDENCE SUMMARY: anchor=10 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=80.3079 proof_positive=62 both_missing=3 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9652 work_samples=186 max_work_ms=13.9753 max_ingress_ms=0.3764 max_latency_ms=173.363 early_latency_ms=134.579 late_latency_ms=134.624"
+        ],
+        "exitCode": 0,
+        "actualThreadReserveVerified": true,
+        "cadenceSummary": [],
+        "inputMappings": 93,
+        "passed": true
+      },
+      {
+        "heldSummary": [],
+        "case": 7,
+        "variant": "beta",
+        "missingEvidenceSummary": [
+          "MISSING EVIDENCE SUMMARY: anchor=10 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=69.0414 proof_positive=62 both_missing=3 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9444 work_samples=186 max_work_ms=13.893 max_ingress_ms=0.4157 max_latency_ms=174.383 early_latency_ms=134.601 late_latency_ms=134.268"
+        ],
+        "exitCode": 0,
+        "actualThreadReserveVerified": true,
+        "cadenceSummary": [],
+        "inputMappings": 93,
+        "passed": true
+      }
+    ]
+  },
+  "scripture": {
+    "sourceReceipt": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\scripture\\receipt.json",
+    "sha256": "90f98a283e5bc152cb73a90d6498d1fe5f2f9a60fceed2dbb87eff0ce7cc58ab",
+    "passed": true,
+    "visualTimingQualified": null,
+    "results": [
+      {
+        "heldSummary": [
+          "SCRIPTURE NATURAL HELD: corpus_frames=83 sources=166 proof_declined=166 ordinary=43 held=123 exact_full_scans=166 unready=0 current_held_certificate=1 mapping_stable=1 visual_requests=0 reference_witnesses=3 preroll_reference=1"
+        ],
+        "case": 0,
+        "variant": "standard",
+        "missingEvidenceSummary": [],
+        "exitCode": 0,
+        "actualThreadReserveVerified": true,
+        "cadenceSummary": [
+          "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=166 phases=83 inspection_requests=0 templates=1 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9848 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=53.1146 max_latency_ms=149.872 early_latency_ms=136.585 late_latency_ms=136.323 work_samples=166 max_frame_work_ms=14.9904 max_ingress_ms=0.1887"
+        ],
+        "inputMappings": 83,
+        "passed": true
+      },
+      {
+        "heldSummary": [
+          "SCRIPTURE NATURAL HELD: corpus_frames=83 sources=166 proof_declined=166 ordinary=43 held=123 exact_full_scans=166 unready=0 current_held_certificate=1 mapping_stable=1 visual_requests=0 reference_witnesses=3 preroll_reference=1"
+        ],
+        "case": 1,
+        "variant": "beta",
+        "missingEvidenceSummary": [],
+        "exitCode": 0,
+        "actualThreadReserveVerified": true,
+        "cadenceSummary": [
+          "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=166 phases=83 inspection_requests=0 templates=1 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9648 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=55.0202 max_latency_ms=153.01 early_latency_ms=136.769 late_latency_ms=137.209 work_samples=166 max_frame_work_ms=17.255 max_ingress_ms=0.3524"
+        ],
+        "inputMappings": 83,
+        "passed": true
+      }
+    ]
+  }
+}

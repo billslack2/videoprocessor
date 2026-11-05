@@ -1,0 +1,333 @@
+{
+  "source": "e4b8c7d9371ff8549609e1f7618d2dd7e785d383",
+  "status": "passed",
+  "qualification": false,
+  "scope": "Actual paused-source renderer missing-analysis current proof/exact-byte reuse/recovery with zero geometry pulses, source-linked visual requests and prior scripture controls; moving-background fallback and full qualification remain open",
+  "previousRuntime": "C:\\Videoprocessor\\vp",
+  "restorationBaseline": "Actual installed bytes snapshotted before close; allowlist names reused, no inherited source claim",
+  "pairResults": [
+    {
+      "kind": "missing-analysis",
+      "exit": 0,
+      "status": "completed",
+      "passed": true,
+      "receipt": {
+        "sha256": "14782A0017919B6CA83147A7D63CAFE09CF637FE6AEF3037E7C29C5194C678AF",
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\missing-analysis\\receipt.json"
+      }
+    },
+    {
+      "kind": "missing-visual",
+      "exit": 0,
+      "status": "completed",
+      "passed": true,
+      "receipt": {
+        "sha256": "BAF18727CFF31C940B775CB5958C1EB44D03E1B1382E9CAB323AC2DAE882B1EA",
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\missing-visual\\receipt.json"
+      }
+    },
+    {
+      "kind": "scripture",
+      "exit": 0,
+      "status": "completed",
+      "passed": true,
+      "receipt": {
+        "sha256": "90F98A283E5BC152CB73A90D6498D1FE5F2F9A60FCEED2DBB87EFF0CE7CC58AB",
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\scripture\\receipt.json"
+      }
+    }
+  ],
+  "reopenedPid": null,
+  "error": null,
+  "buildReceipt": {
+    "sha256": "55117E81A2374467FE8D2D150A7621A0EA2A3D19D6CD780377BA7CDFE47B6569",
+    "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-193334-d63d230c\\iteration.json"
+  },
+  "stackGates": [
+    {
+      "sha256": "847257B6EAA1B06CDD65DDF220C1F1171AF5F7CB7ADCB11891D9210915A22E2D",
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\standard-e4b8c7d9-gate.json"
+    },
+    {
+      "sha256": "31774F2A5D8B5D8A4F4157C97D1F72C207069B91D5583CD0708DA4A94CC5B96D",
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\beta-e4b8c7d9-gate.json"
+    }
+  ],
+  "frameworkSmoke": {
+    "host": {
+      "sha256": "FB775794C0881B13C2C0E32A2561621AD1711C442F3FC23A08D227A3D7DB39C2",
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\native-renderer-host.exe"
+    },
+    "intentionalAssertionExit": 2,
+    "successExit": 0,
+    "testDll": {
+      "sha256": "8901FC24450D625B881BC89D3BE453D6D90CBD8C5B95C88AE526063812AD4313",
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\x64\\Release\\VideoProcessor-Test.dll"
+    }
+  },
+  "originalPid": null,
+  "initiallyAbsent": true,
+  "mainBefore": [
+    {
+      "sha256": "F9FFCF2583054A6EB953077EF37CFCA40A2EC5B041B45015C406FF4C0FBAE21C",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe"
+    },
+    {
+      "sha256": "5957BCB61FED257E18446E85DA4D4A35519315C4275A84A9A3D3AB64F771CCC8",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json"
+    },
+    {
+      "sha256": "5957BCB61FED257E18446E85DA4D4A35519315C4275A84A9A3D3AB64F771CCC8",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.exe.runtime.json"
+    },
+    {
+      "sha256": "ADCDF0B92823CEE37285077B1C111D03469FE2DF425141A0F03F0D0D2829DB54",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb"
+    },
+    {
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libdovi.dll"
+    },
+    {
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libgcc_s_seh-1.dll"
+    },
+    {
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\liblcms2-2.dll"
+    },
+    {
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll"
+    },
+    {
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libshaderc_shared.dll"
+    },
+    {
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libspirv-cross-c-shared.dll"
+    },
+    {
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libstdc++-6.dll"
+    },
+    {
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libwinpthread-1.dll"
+    },
+    {
+      "sha256": "85D38BF8D3C34CBFD8A541EED5E4A3F37CC3BB8A85A0318A4208D71D29B1F815",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\vulkan-1.dll"
+    },
+    {
+      "sha256": "496E13082E338BF0E19854D400973E0D2DFD84983A2D56AC2B96ECF9FB9410B7",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json"
+    },
+    {
+      "sha256": "C35DE2F9828336D3FB9C1B1A7513B6248539D9CB75578901C88CAD31061BB7F1",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb"
+    },
+    {
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libdovi.dll"
+    },
+    {
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libgcc_s_seh-1.dll"
+    },
+    {
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\liblcms2-2.dll"
+    },
+    {
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-388.dll"
+    },
+    {
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libshaderc_shared.dll"
+    },
+    {
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libspirv-cross-c-shared.dll"
+    },
+    {
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libstdc++-6.dll"
+    },
+    {
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libwinpthread-1.dll"
+    },
+    {
+      "sha256": "0D223C9BD53C5170455B58DE561A898421C6A8659E4B6C01C6CE05A527D1D726",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    },
+    {
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\vulkan-1.dll"
+    },
+    {
+      "sha256": "672C39B9D43B9441229C563F2FF3F556AFB1E795AD3F33BD28FB400E83B66D0A",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json"
+    },
+    {
+      "sha256": "5A75660A73DA404A5B452DB674B4C3110F5930943C7D169742D978793374EA59",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb"
+    }
+  ],
+  "settingsBefore": [
+    {
+      "sha256": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg"
+    },
+    {
+      "sha256": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state"
+    }
+  ],
+  "settingsAfterClose": [
+    {
+      "sha256": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg"
+    },
+    {
+      "sha256": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state"
+    }
+  ],
+  "mainAfter": [
+    {
+      "sha256": "F9FFCF2583054A6EB953077EF37CFCA40A2EC5B041B45015C406FF4C0FBAE21C",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe"
+    },
+    {
+      "sha256": "5957BCB61FED257E18446E85DA4D4A35519315C4275A84A9A3D3AB64F771CCC8",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json"
+    },
+    {
+      "sha256": "5957BCB61FED257E18446E85DA4D4A35519315C4275A84A9A3D3AB64F771CCC8",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.exe.runtime.json"
+    },
+    {
+      "sha256": "ADCDF0B92823CEE37285077B1C111D03469FE2DF425141A0F03F0D0D2829DB54",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor-GUI.pdb"
+    },
+    {
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libdovi.dll"
+    },
+    {
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libgcc_s_seh-1.dll"
+    },
+    {
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\liblcms2-2.dll"
+    },
+    {
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libplacebo-360.dll"
+    },
+    {
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libshaderc_shared.dll"
+    },
+    {
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libspirv-cross-c-shared.dll"
+    },
+    {
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libstdc++-6.dll"
+    },
+    {
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\libwinpthread-1.dll"
+    },
+    {
+      "sha256": "85D38BF8D3C34CBFD8A541EED5E4A3F37CC3BB8A85A0318A4208D71D29B1F815",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\vulkan-1.dll"
+    },
+    {
+      "sha256": "496E13082E338BF0E19854D400973E0D2DFD84983A2D56AC2B96ECF9FB9410B7",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.runtime.json"
+    },
+    {
+      "sha256": "C35DE2F9828336D3FB9C1B1A7513B6248539D9CB75578901C88CAD31061BB7F1",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.pdb"
+    },
+    {
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libdovi.dll"
+    },
+    {
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libgcc_s_seh-1.dll"
+    },
+    {
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\liblcms2-2.dll"
+    },
+    {
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libplacebo-388.dll"
+    },
+    {
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libshaderc_shared.dll"
+    },
+    {
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libspirv-cross-c-shared.dll"
+    },
+    {
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libstdc++-6.dll"
+    },
+    {
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\libwinpthread-1.dll"
+    },
+    {
+      "sha256": "0D223C9BD53C5170455B58DE561A898421C6A8659E4B6C01C6CE05A527D1D726",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll"
+    },
+    {
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\vulkan-1.dll"
+    },
+    {
+      "sha256": "672C39B9D43B9441229C563F2FF3F556AFB1E795AD3F33BD28FB400E83B66D0A",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll.runtime.json"
+    },
+    {
+      "sha256": "5A75660A73DA404A5B452DB674B4C3110F5930943C7D169742D978793374EA59",
+      "path": "C:\\Videoprocessor\\vp\\vprenderer-beta\\VideoProcessorVPRendererBeta.pdb"
+    }
+  ],
+  "mainUnchanged": true,
+  "settingsAfter": [
+    {
+      "sha256": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg"
+    },
+    {
+      "sha256": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0",
+      "path": "C:\\Videoprocessor\\vp\\VideoProcessor.state"
+    }
+  ],
+  "settingsNotModifiedByTests": true,
+  "leftInitiallyAbsent": true,
+  "leftClosedForAuthorizedCandidateLaunch": false,
+  "finishedUtc": "2026-11-05T00:41:17.9482481Z"
+}

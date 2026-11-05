@@ -1,0 +1,381 @@
+{
+  "source": "e4b8c7d9371ff8549609e1f7618d2dd7e785d383",
+  "passed": true,
+  "scope": "Six actual after-render-before-present PNGs joined to their later submitted source in each isolated renderer case; paused repeated93 captured-source corpus, not moving-background qualification.",
+  "visualInspection": "All six display the complete line I thought about taking over the minds, at the same position, with consistent dark backing and no duplicate raw line below the picture. No visible clipping or framing pulse in these six samples. This is visual inspection, not exhaustive per-pixel preservation proof.",
+  "timingQualified": false,
+  "frames": [
+    {
+      "variant": "standard",
+      "source": 42,
+      "anchor": 10,
+      "offset": 32,
+      "windowFlags": 5,
+      "instance": "{61D496C2-B0BA-46CD-B30E-FB2D332ECED7}",
+      "process": 59784,
+      "generation": 1,
+      "domain": 4768279117495752782,
+      "format": 15805081878477807578,
+      "policy": 2,
+      "continuity": 2,
+      "pngDimensions": [
+        2000,
+        1125
+      ],
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "caption": [
+        1038,
+        1926,
+        2810,
+        2042
+      ],
+      "destination": [
+        967,
+        1734,
+        2876,
+        1876
+      ],
+      "currentComposition": true,
+      "captureStage": "after-render-before-present",
+      "subsequentExactSourceSubmitted": true,
+      "brightNeutralCaptionPixelCount": 4886,
+      "brightNeutralCaptionBounds": [
+        682,
+        923,
+        1320,
+        959
+      ],
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194027-749-frame-42.json",
+          "sha256": "63d20fceb8f820b150ea9c0dcf04da5a20824b6ed5358c501e83246a9caab428"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194027-749-frame-42.png",
+          "sha256": "34252d341925021cc9aaabc5c348e9f63d494e2d9afced1ce08b4f337ab584c3"
+        }
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 59,
+      "anchor": 10,
+      "offset": 49,
+      "windowFlags": 23,
+      "instance": "{61D496C2-B0BA-46CD-B30E-FB2D332ECED7}",
+      "process": 59784,
+      "generation": 1,
+      "domain": 4768279117495752782,
+      "format": 15805081878477807578,
+      "policy": 2,
+      "continuity": 2,
+      "pngDimensions": [
+        2000,
+        1125
+      ],
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "caption": [
+        1038,
+        1926,
+        2810,
+        2042
+      ],
+      "destination": [
+        967,
+        1734,
+        2876,
+        1876
+      ],
+      "currentComposition": true,
+      "captureStage": "after-render-before-present",
+      "subsequentExactSourceSubmitted": true,
+      "brightNeutralCaptionPixelCount": 4890,
+      "brightNeutralCaptionBounds": [
+        682,
+        923,
+        1320,
+        959
+      ],
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194028-457-frame-59.json",
+          "sha256": "72e6108b8026ecc4cde3b6fce84043363b1630ebc1ec361e3fc03b736cbd4f06"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194028-457-frame-59.png",
+          "sha256": "bceedd2f685d14f24b17b48c87de3d84165585f6a9bd6a78d556932db0d0274a"
+        }
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 74,
+      "anchor": 10,
+      "offset": 64,
+      "windowFlags": 5,
+      "instance": "{61D496C2-B0BA-46CD-B30E-FB2D332ECED7}",
+      "process": 59784,
+      "generation": 1,
+      "domain": 4768279117495752782,
+      "format": 15805081878477807578,
+      "policy": 2,
+      "continuity": 2,
+      "pngDimensions": [
+        2000,
+        1125
+      ],
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "caption": [
+        1038,
+        1926,
+        2810,
+        2042
+      ],
+      "destination": [
+        967,
+        1734,
+        2876,
+        1876
+      ],
+      "currentComposition": true,
+      "captureStage": "after-render-before-present",
+      "subsequentExactSourceSubmitted": true,
+      "brightNeutralCaptionPixelCount": 4886,
+      "brightNeutralCaptionBounds": [
+        682,
+        923,
+        1320,
+        959
+      ],
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194029-085-frame-74.json",
+          "sha256": "fcc89ee466834cf850d9cdc8322414b1e95b0fedd1ab26141d3c847dc75893d4"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194029-085-frame-74.png",
+          "sha256": "34252d341925021cc9aaabc5c348e9f63d494e2d9afced1ce08b4f337ab584c3"
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 42,
+      "anchor": 10,
+      "offset": 32,
+      "windowFlags": 5,
+      "instance": "{39F57C45-C95C-4FFD-A65E-3808EF726834}",
+      "process": 49572,
+      "generation": 1,
+      "domain": 4768279117495752782,
+      "format": 15805081878477807578,
+      "policy": 2,
+      "continuity": 2,
+      "pngDimensions": [
+        2000,
+        1125
+      ],
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "caption": [
+        1038,
+        1926,
+        2810,
+        2042
+      ],
+      "destination": [
+        967,
+        1734,
+        2876,
+        1876
+      ],
+      "currentComposition": true,
+      "captureStage": "after-render-before-present",
+      "subsequentExactSourceSubmitted": true,
+      "brightNeutralCaptionPixelCount": 4878,
+      "brightNeutralCaptionBounds": [
+        682,
+        923,
+        1320,
+        958
+      ],
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194038-547-frame-42.json",
+          "sha256": "65c6c76238042d81eceb5913088bb50ba1601732eee60d9ea1ab2700da944d94"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194038-547-frame-42.png",
+          "sha256": "e076f0e9cd02acf35c3ef8a6d7c48f224595db11462a1028446232ab9ee0f178"
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 59,
+      "anchor": 10,
+      "offset": 49,
+      "windowFlags": 23,
+      "instance": "{39F57C45-C95C-4FFD-A65E-3808EF726834}",
+      "process": 49572,
+      "generation": 1,
+      "domain": 4768279117495752782,
+      "format": 15805081878477807578,
+      "policy": 2,
+      "continuity": 2,
+      "pngDimensions": [
+        2000,
+        1125
+      ],
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "caption": [
+        1038,
+        1926,
+        2810,
+        2042
+      ],
+      "destination": [
+        967,
+        1734,
+        2876,
+        1876
+      ],
+      "currentComposition": true,
+      "captureStage": "after-render-before-present",
+      "subsequentExactSourceSubmitted": true,
+      "brightNeutralCaptionPixelCount": 4882,
+      "brightNeutralCaptionBounds": [
+        682,
+        923,
+        1320,
+        958
+      ],
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194039-263-frame-59.json",
+          "sha256": "69212431fa52375fe161a706123e5a094ab61bddbf746eb0ba31cbe8803811be"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194039-263-frame-59.png",
+          "sha256": "46227ac76f5ea61fa51f7c5b1ac9a5f5c2fdb17b25f9cc7ddaf9e1f45530d56e"
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 74,
+      "anchor": 10,
+      "offset": 64,
+      "windowFlags": 5,
+      "instance": "{39F57C45-C95C-4FFD-A65E-3808EF726834}",
+      "process": 49572,
+      "generation": 1,
+      "domain": 4768279117495752782,
+      "format": 15805081878477807578,
+      "policy": 2,
+      "continuity": 2,
+      "pngDimensions": [
+        2000,
+        1125
+      ],
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "caption": [
+        1038,
+        1926,
+        2810,
+        2042
+      ],
+      "destination": [
+        967,
+        1734,
+        2876,
+        1876
+      ],
+      "currentComposition": true,
+      "captureStage": "after-render-before-present",
+      "subsequentExactSourceSubmitted": true,
+      "brightNeutralCaptionPixelCount": 4878,
+      "brightNeutralCaptionBounds": [
+        682,
+        923,
+        1320,
+        958
+      ],
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194039-889-frame-74.json",
+          "sha256": "cab023993d10c2d92bc3f6a740831bbaf7d471dbed747df93a66f4f85323f601"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\visual-review\\VP-rendered-20261104-194039-889-frame-74.png",
+          "sha256": "e076f0e9cd02acf35c3ef8a6d7c48f224595db11462a1028446232ab9ee0f178"
+        }
+      ]
+    }
+  ]
+}
