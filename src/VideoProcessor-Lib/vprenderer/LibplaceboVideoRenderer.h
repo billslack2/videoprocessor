@@ -48,7 +48,7 @@ public:
 		size_t frameQueueMaxSize,
 		VideoConversionOverride videoConversionOverride,
         bool regressionDeclineCueProof = false, bool regressionMissingAnalysisWindow = false,
-        bool regressionSourceTicketProofWindow = false);
+        bool regressionSourceTicketProofWindow = false, bool regressionWithholdEquivalenceWindow = false);
 	~LibplaceboVideoRenderer() override;
 
 	size_t GetConvertedQueueSize() override;
@@ -264,6 +264,7 @@ private:
     const bool m_regressionDeclineCueProof;
     const bool m_regressionMissingAnalysisWindow;
     const bool m_regressionSourceTicketProofWindow;
+    const bool m_regressionWithholdEquivalenceWindow;
 	VideoConversionOverride m_videoConversionOverride =
 		VideoConversionOverride::VIDEOCONVERSION_NONE;
 

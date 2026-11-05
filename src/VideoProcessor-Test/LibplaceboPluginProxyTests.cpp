@@ -5151,7 +5151,7 @@ namespace VideoProcessorTest
         // portable manifest: select explicitly with VP_SUBTITLE_CAPTURE_ROOT set.
         // This runs the actual plugin, worker, queue, shader and submission path;
         // no caller supplies picture or successful composition authority.
-        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false,bool missingEvidenceWindow=false,bool completedProofWindow=false,bool capturedTwoLine=false)
+        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false,bool missingEvidenceWindow=false,bool completedProofWindow=false,bool capturedTwoLine=false,bool missingCompositionWindow=false)
         {
             char* captureValue=nullptr;size_t captureSize=0;
             Assert::AreEqual(0,_dupenv_s(&captureValue,&captureSize,"VP_SUBTITLE_CAPTURE_ROOT"));
@@ -5165,7 +5165,10 @@ namespace VideoProcessorTest
             // The sidecar retains the live native base from earlier source history.
             // Fresh native acquisition includes the current edge ringing through
             // row1885; raw image transition is275..1884, not retained bottom1888.
-            const bool evidenceWindow=missingEvidenceWindow||completedProofWindow;
+            Assert::IsTrue(!missingCompositionWindow ||
+                (capturedTwoLine&&missingEvidenceWindow&&!completedProofWindow&&!profileCycle),
+                L"The truthful missing-composition case requires its original two-line corpus and separate window.");
+            const bool evidenceWindow=missingEvidenceWindow||completedProofWindow||missingCompositionWindow;
             const bool oppositeBarCorpus=profileCycle||evidenceWindow||capturedTwoLine;
             const int pictureTop=oppositeBarCorpus?272:((pausedRecovery||scriptureHeld)?274:272),pictureBottom=1886;
             constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
@@ -5337,7 +5340,8 @@ namespace VideoProcessorTest
                 EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&mode)!=FALSE&&mode.dmDisplayFrequency>1);
             const double outputHz=mode.dmDisplayFrequency;
             if(scriptureHeld) {
-                LibplaceboRegressionOptionsV1 options;options.flags=completedProofWindow?VP_REGRESSION_SOURCE_TICKET_PROOF_WINDOW:
+                LibplaceboRegressionOptionsV1 options;options.flags=missingCompositionWindow?
+                    (VP_REGRESSION_MISSING_ANALYSIS_WINDOW|VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW):completedProofWindow?VP_REGRESSION_SOURCE_TICKET_PROOF_WINDOW:
                     (missingEvidenceWindow?VP_REGRESSION_MISSING_ANALYSIS_WINDOW:
                     ((profileCycle||capturedTwoLine)?0:VP_REGRESSION_DECLINE_CUE_PROOF));
                 cleanup.renderer=createRegression(&callback,73,cleanup.window,&clock,true,10,
@@ -5604,7 +5608,10 @@ namespace VideoProcessorTest
                     NativeRendererFixtureLog(detail.str().c_str());
                     if(both) {
                         ++bothMissing;
-                        equivalentContract&=(w.flags&27u)==19u&&proofConsumed&&composed;
+                        if(missingCompositionWindow)
+                            equivalentContract&=(w.flags&3u)==3u&&(w.flags&64u)&&
+                                !(w.flags&(4u|16u|32u)); // Truthful missing work: no ordinary or exact-byte proof.
+                        else equivalentContract&=(w.flags&27u)==19u&&proofConsumed&&composed;
                     }
                     else if(inWindow) {
                         ++proofPositive;
@@ -5643,6 +5650,47 @@ namespace VideoProcessorTest
                     else if(!referenceCue)referenceCue=cue->second->counters[2];
                     else cueStable&=referenceCue==cue->second->counters[2];
                 }
+                // A changed crop alone is not necessarily visible motion: an expanded
+                // raw aperture may be compensated by its target. Check the actual
+                // affine movie map AND caption containment on the physical scope screen.
+                bool landmarksStable=true,captionInsideScreen=true,haveLandmarks=false;
+                std::array<double,4> landmarkReference{};unsigned landmarkChanges=0,glyphSources=0;
+                if(missingCompositionWindow) {
+                    const double screenTop=(1125.0-2000.0/2.35)*.5,screenBottom=1125.0-screenTop;
+                    for(const auto& item:outputs) {
+                        const auto& r=*item.second;
+                        if(r.sourceFrameNumber<steadyStart||r.sourceFrameNumber>steadyEnd)continue;
+                        const double sw=r.metrics[10]-r.metrics[8],sh=r.metrics[11]-r.metrics[9];
+                        if(sw<=0||sh<=0){landmarksStable=captionInsideScreen=false;continue;}
+                        const auto px=[&](double x){return r.metrics[12]+(x-r.metrics[8])*(r.metrics[14]-r.metrics[12])/sw;};
+                        const auto py=[&](double y){return r.metrics[13]+(y-r.metrics[9])*(r.metrics[15]-r.metrics[13])/sh;};
+                        // Interior source landmarks are independent of measured edge uncertainty.
+                        const std::array<double,4> landmarks{{px(960),py(720),px(2880),py(1440)}};
+                        bool changed=false;
+                        if(haveLandmarks)for(unsigned i=0;i<4;++i)changed|=std::abs(landmarks[i]-landmarkReference[i])>.001;
+                        else {landmarkReference=landmarks;haveLandmarks=true;}
+                        if(changed)++landmarkChanges;landmarksStable&=!changed;
+                        bool visible=true;const bool composed=(r.flags&2u)!=0;
+                        const auto inScreen=[&](double l,double t,double rr,double b){
+                            return px(l)>=-.001&&px(rr)<=2000.001&&py(t)>=screenTop-.001&&py(b)<=screenBottom+.001;
+                        };
+                        const auto& lines=currentLineExpectations.at(capturedPhaseBySource.at(r.sourceFrameNumber));
+                        if(composed) {
+                            // Test-only selected-output facts, not mutable latest tracker state.
+                            visible=r.metrics[18]>r.metrics[16]&&r.metrics[19]>r.metrics[17]&&
+                                inScreen(r.metrics[16],r.metrics[17],r.metrics[18],r.metrics[19]);
+                            for(const auto& line:lines)visible&=r.subtitle[0]<=line.left&&r.subtitle[1]<=line.top&&
+                                r.subtitle[2]>=line.right&&r.subtitle[3]>=line.bottom;
+                        } else for(const auto& line:lines)visible&=
+                            r.metrics[8]<=line.left&&r.metrics[9]<=line.top&&r.metrics[10]>=line.right&&r.metrics[11]>=line.bottom&&
+                            inScreen(line.left,line.top,line.right,line.bottom);
+                        captionInsideScreen&=visible;++glyphSources;
+                        std::ostringstream row;row<<"TEMPORAL MOVIE MAP: source="<<r.sourceFrameNumber<<" composed="<<composed
+                            <<" landmarks="<<landmarks[0]<<','<<landmarks[1]<<','<<landmarks[2]<<','<<landmarks[3]
+                            <<" changed="<<changed<<" current_caption_inside_physical_screen="<<visible;
+                        NativeRendererFixtureLog(row.str().c_str());
+                    }
+                }
                 const double maxWork=windowWork.empty()?0:*std::max_element(windowWork.begin(),windowWork.end());
                 const double maxIngress=ingressMs.empty()?0:*std::max_element(ingressMs.begin(),ingressMs.end());
                 double earlyLatency=0,lateLatency=0;
@@ -5657,6 +5705,8 @@ namespace VideoProcessorTest
                     <<" recovered="<<recovered<<" recovery_selected_raw_scans="<<recoverySelectedRawScans<<" recovery_raw_worker_results="<<recoveryRawWorkerResults<<" complete="<<complete<<" proof_contract="<<proofContract<<" exact_equivalence_contract="<<equivalentContract
                     <<" recovery_contract="<<recoveryContract<<" stable_mapping="<<mappingStable<<" stable_cue="<<cueStable
                     <<" geometry_changes_including_withheld="<<geometryChanges<<" full_raster="<<fullRaster
+                    <<" missing_composition_mode="<<missingCompositionWindow<<" landmark_changed_sources="<<landmarkChanges
+                    <<" current_caption_screen_sources="<<glyphSources<<" current_captions_inside_screen="<<captionInsideScreen
                     <<" source_fps="<<sourceFps<<" work_samples="<<windowWork.size()<<" max_work_ms="<<maxWork
                     <<" max_ingress_ms="<<maxIngress<<" max_latency_ms="<<maxLatencyMs
                     <<" early_latency_ms="<<earlyLatency<<" late_latency_ms="<<lateLatency;
@@ -5665,11 +5715,18 @@ namespace VideoProcessorTest
                     L"Every current input must advance; missing evidence cannot substitute old frame identities.");
                 Assert::IsTrue(proofPositive==(completedProofWindow?65u:62u)&&bothMissing==(completedProofWindow?0u:3u)&&
                     (!completedProofWindow||completedSlotSources==65)&&recovered==16&&recoveryRawWorkerResults>0&&proofContract&&equivalentContract&&recoveryContract,
-                    L"The declared current evidence route must compose every selected source, without substituting a legacy lookup or exact-byte fallback in the moving slot-only case; normal raw work must resume.");
+                    L"The declared current evidence route must remain truthful, with no fabricated ordinary or equivalent proof in the unavailable interval; normal raw work must resume.");
+                if(missingCompositionWindow) {
+                    Assert::IsTrue(haveLandmarks&&glyphSources==steadyCount&&captionInsideScreen,
+                        L"Current captions must remain inside the physical scope screen, not merely somewhere in the HDMI/backbuffer raster.");
+                    Assert::IsTrue(landmarksStable&&landmarkChanges==0,
+                        L"Optional work readiness must not pulse the submitted movie transform; crop compensation is allowed only while preserving current captions.");
+                } else {
                 Assert::IsTrue(haveMapping&&mappingStable&&cueStable,
                     L"Verified caption/picture mapping and cue must survive UNKNOWN without arbitrary full-raster fallback.");
                 Assert::AreEqual(0u,geometryChanges,
                     L"Missing optional evidence must preserve current caption pixels without pulsing the movie mapping, including both-missing sources.");
+                }
                 if(visualCapture)Assert::AreEqual(3u,visualRequests,
                     L"The separate visual run must request all three evidence-state captures; saved source/PNG verification remains mandatory.");
                 else {
@@ -6043,6 +6100,10 @@ namespace VideoProcessorTest
             Assert::IsTrue(ValidLibplaceboRegressionOptions(&options));
             options.flags=VP_REGRESSION_DECLINE_CUE_PROOF;
             Assert::IsTrue(ValidLibplaceboRegressionOptions(&options));
+            options.flags=VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW;
+            Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
+            options.flags=VP_REGRESSION_MISSING_ANALYSIS_WINDOW|VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW;
+            Assert::IsTrue(ValidLibplaceboRegressionOptions(&options));
             options.flags=2;Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
             options.flags=0;options.version=2;Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
             options.version=1;--options.size;Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
@@ -6063,6 +6124,14 @@ namespace VideoProcessorTest
         {VerifyCapturedV210CueCadence(false,false,false,true,false,false,true);}
         TEST_METHOD(BetaMissingAnalysisPreservesCurrentProofAndRecovers)
         {VerifyCapturedV210CueCadence(true,false,false,true,false,false,true);}
+        TEST_METHOD(StandardMissingCompositionPreservesMovieMapAndCurrentGlyphs)
+        {VerifyCapturedV210CueCadence(false,false,false,true,false,false,true,false,true,true);}
+        TEST_METHOD(BetaMissingCompositionPreservesMovieMapAndCurrentGlyphs)
+        {VerifyCapturedV210CueCadence(true,false,false,true,false,false,true,false,true,true);}
+        TEST_METHOD(StandardMissingCompositionVisualCheckpoints)
+        {VerifyCapturedV210CueCadence(false,false,false,true,true,false,true,false,true,true);}
+        TEST_METHOD(BetaMissingCompositionVisualCheckpoints)
+        {VerifyCapturedV210CueCadence(true,false,false,true,true,false,true,false,true,true);}
         TEST_METHOD(StandardCapturedTwoLineCueKeepsCurrentGlyphsAndGeometry)
         {VerifyCapturedV210CueCadence(false,false,false,true,false,false,false,false,true);}
         TEST_METHOD(BetaCapturedTwoLineCueKeepsCurrentGlyphsAndGeometry)
@@ -7358,12 +7427,18 @@ namespace VideoProcessorTest
 // renderer does not export this entry point or alter its thread stack reserve.
 extern "C" __declspec(dllexport) int __cdecl VpRunNativeRendererRegression(unsigned testCase)
 {
-    nativeStackHostActive.store(testCase<16,std::memory_order_relaxed);
+    nativeStackHostActive.store(testCase<20,std::memory_order_relaxed);
     nativeStackHostSubmittedReserve.store(0,std::memory_order_relaxed);
     try {
         if(testCase==98 || testCase==99) {
             Logger::WriteMessage("Native host framework smoke");
             Assert::IsTrue(testCase==98,L"Intentional native-host assertion smoke");
+        } else if(testCase>=16&&testCase<20) {
+            VideoProcessorTest::LibplaceboPluginProxyTests fixture;
+            fixture.VerifyCapturedV210CueCadence((testCase&1)!=0,false,false,true,
+                testCase>=18,false,true,false,true,true);
+            Assert::AreEqual(size_t(1048576),nativeStackHostSubmittedReserve.load(),
+                L"The actual submitted-presentation callback must run on a 1 MiB renderer thread");
         } else if(testCase<16) {
             VideoProcessorTest::LibplaceboPluginProxyTests fixture;
             fixture.VerifyCapturedV210CueCadence((testCase&1)!=0,false,false,true,
