@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1220,
+  "minimumNativeTests": 1226,
   "requiredNativeMethods": [
     "CurrentDestinationEquivalentSamplesRemainCurrentAndSeedBounded",
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
@@ -525,6 +525,12 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {"source": "src/VideoProcessor-Test/MotionRendererTests.cpp", "class": "MotionRendererTests", "method": "SubtitlePreparationVisitsOnlyRequestedGraphAndKeysReadinessByItsShape"},
+    {"source": "src/VideoProcessor-Test/MotionRendererTests.cpp", "class": "MotionRendererTests", "method": "SubtitleRequestedGraphPreparationRetainsWarmGraphWhileNewGraphIsPending"},
+    {"source": "src/VideoProcessor-Test/MotionRendererTests.cpp", "class": "MotionRendererTests", "method": "NlsPreparationOnlyNewestRequestCanActivate"},
+    {"source": "src/VideoProcessor-Test/MotionRendererTests.cpp", "class": "MotionRendererTests", "method": "NlsPreparedProfilesSurviveOffAndOtherSelections"},
+    {"source": "src/VideoProcessor-Test/MotionRendererTests.cpp", "class": "MotionRendererTests", "method": "NlsSelectionCancellationNeverRemembersSupersededCompletion"},
+    {"source": "src/VideoProcessor-Test/MotionRendererTests.cpp", "class": "MotionRendererTests", "method": "NlsPreparationFailureRemainsFailedAndCanRetry"},
     {"source": "src/VideoProcessor-Test/RendererResetPolicyTests.cpp", "class": "RendererResetPolicyTests", "method": "SubtitleConfigurationHoldRequiresExplicitIntentAndKeepsOnlySubmittedMapping"},
     {"source": "src/VideoProcessor-Test/RendererResetPolicyTests.cpp", "class": "RendererResetPolicyTests", "method": "SubtitleConfigurationReadyAndNewIntentCannotLeakIntoOrdinaryPlayback"},
     {"source": "src/VideoProcessor-Test/RendererResetPolicyTests.cpp", "class": "RendererResetPolicyTests", "method": "SubtitleConfigurationInputAndNativeTransitionsClearHeldAndCachedMappings"},

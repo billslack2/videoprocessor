@@ -4,6 +4,23 @@
 #include <SubtitleCutPasteShader.h>
 #include <chrono>
 
+// Graph identity excludes dynamic cue/style uniforms. The requested graph must
+// be ready before use; preparing Black must not advertise a blurred graph.
+inline std::string SubtitlePreparationGraphKey(int background,float blurPixels) {
+    const bool blur=background==5 && std::isfinite(blurPixels) && blurPixels>0;
+    return std::to_string(background)+"|"+std::to_string(blur?1:0);
+}
+template<class Visit>
+bool ForEachSubtitlePreparationGraph(int requestedBackground,float blurPixels,Visit visit) {
+    if(requestedBackground==3)return visit(3,false);
+    if(requestedBackground==5)return visit(5,std::isfinite(blurPixels) && blurPixels>0);
+    if(requestedBackground!=0)return false;
+    // Exhaustive preparation remains available to the cache regression suite.
+    for(int background:{3,5})for(bool blur:{false,true})
+        if(!visit(background,blur))return false;
+    return true;
+}
+
 // Reuses the generation-aware worker and CPU-only frame snapshot. Subtitle
 // hooks are private to this device; live nativePrepare callbacks never cross
 // the thread boundary.
@@ -17,11 +34,13 @@ struct SubtitlePipelinePreparationRequest {
     bool temporal = false;
     SubtitleGeneratedGrayStyle style;
     int spatialFill = 0;
+    int requestedBackground = 0;
 
     SubtitlePipelinePreparationRequest(const pl_frame& input,
         const pl_render_params& params, bool temporalComposition,
-        const SubtitleGeneratedGrayStyle& generated, int fill, const pl_frame* output = nullptr)
-        : temporal(temporalComposition), style(generated), spatialFill(fill) {
+        const SubtitleGeneratedGrayStyle& generated, int fill, const pl_frame* output = nullptr,
+        int background = 0)
+        : temporal(temporalComposition), style(generated), spatialFill(fill), requestedBackground(background) {
         source.Copy(input);
         if (output) { target.Copy(*output); warmPresentation = true; }
         options = pl_options_alloc(nullptr);
@@ -106,8 +125,8 @@ struct SubtitlePipelinePreparationRequest {
         if (fields) source.value.prev = source.value.next = &neighbor;
 
         // Normalization, full composition, cleanup, and independent-alpha
-        // layers are distinct graphs. Warm blur on/off for both selectable
-        // backgrounds; geometry and styling remain dynamic shader uniforms.
+        // layers are distinct graphs. Prepare only the requested background/blur
+        // graph; geometry and styling remain dynamic shader uniforms.
         for (int field = 0; field < (fields ? 2 : 1); ++field) {
             if (field) source.value.field = pl_field_other(source.value.field);
             pl_deinterlace_params deinterlace = options->params.deinterlace_params ?
@@ -121,7 +140,8 @@ struct SubtitlePipelinePreparationRequest {
                     return RenderSubtitleFullRaster(owned.renderer,gpu,source.value,nullptr,
                         &owned.surface,composed,temporal,false,false,deinterlacePtr,processingPtr);
                 }))return false;
-                for (int background : {3, 5}) for (bool blur : {false, true}) {
+                if(!ForEachSubtitlePreparationGraph(requestedBackground,style.blurPixels,
+                    [&](int background,bool blur) {
                     auto generated = style;
                     generated.blurPixels = blur ? (std::max)(1.0f, style.blurPixels) : 0.0f;
                     for (auto phase : {SubtitleCompositionPhase::All, SubtitleCompositionPhase::CleanupOnly}) {
@@ -147,7 +167,8 @@ struct SubtitlePipelinePreparationRequest {
                                 &owned.layer,composed,nullptr,processingPtr))return false;
                         pl_gpu_finish(gpu);return true;
                     }))return false;
-                }
+                    return true;
+                }))return false;
             }
         }
         if (warmPresentation) {

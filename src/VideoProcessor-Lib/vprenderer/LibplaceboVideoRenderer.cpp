@@ -10374,13 +10374,11 @@ struct LibplaceboVideoRenderer::Impl
                 0,generation,sourceFormat);
             return requested;
         }
-        // Decide once, before Begin, so all outputs from this capture use the
-        // same composition contract. Subtitle style and viewport geometry are
-        // dynamic uniforms, and preparation warms both backgrounds and blur
-        // on/off together. They must not revoke readiness when profiles cycle:
-        // doing so exposes original bar subtitles through the raw-frame fallback.
-        // Keep source/transport/processing settings in the identity so genuinely
-        // different normalization or output graphs still prepare independently.
+        // Select one requested shader graph before Begin. Cue geometry and
+        // paint values remain uniforms; changing blur activation or background
+        // needs its own readiness key while retaining the shared shader cache.
+        // An unprepared graph stays on current video fallback, never a cold
+        // compile on the live composition path.
         const auto& motion = activeSettings.motion;
         const bool knownOrder = motion.fieldOrder != "auto" || inputOrder != 0;
         const bool deinterlacing = std::isfinite(sourceHz) && sourceHz > 0.0 &&
@@ -10391,7 +10389,9 @@ struct LibplaceboVideoRenderer::Impl
         subtitlePipelinePreparationKey = std::to_string(generation) + "|" +
             std::to_string(sourceFormat) + "|" + std::to_string(deinterlacing) + "|" +
             std::to_string(mixing) + "|" + std::to_string(inputOrder) + "|" +
-            EffectiveSettingsFingerprint(activeSettings, false);
+            EffectiveSettingsFingerprint(activeSettings, false) + "|subtitle-graph|" +
+            SubtitlePreparationGraphKey(requested==SubtitlePreviewMode::BlackBackground?3:5,
+                activeSettings.subtitleGeneratedGray.blurPixels);
         auto state = subtitlePipelinePreparation.Get(subtitlePipelinePreparationKey);
         if (!previouslyRequested && state == NlsPipelinePreparation::Status::Failed) {
             subtitlePipelinePreparation.Invalidate();
@@ -10431,7 +10431,8 @@ struct LibplaceboVideoRenderer::Impl
             const auto input = temporalRenderer.NlsPreparationInput(source, params);
             auto request = std::make_shared<SubtitlePipelinePreparationRequest>(input, params,
                 temporalRenderer.Active(), activeSettings.subtitleGeneratedGray,
-                activeSettings.subtitleSpatialFill, &target);
+                activeSettings.subtitleSpatialFill, &target,
+                subtitlePreparationRequestedMode==SubtitlePreviewMode::BlackBackground?3:5);
             CComPtr<IDXGIDevice> dxgi;
             CComPtr<IDXGIAdapter> adapter;
             DXGI_ADAPTER_DESC description{};

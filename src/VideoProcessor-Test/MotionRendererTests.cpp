@@ -240,6 +240,55 @@ struct SubtitlePacketHoldFixture {
 };
 }
 TEST_CLASS(MotionRendererTests){public:
+    TEST_METHOD(SubtitlePreparationVisitsOnlyRequestedGraphAndKeysReadinessByItsShape) {
+        const auto collect=[](int background,float radius) {
+            std::vector<std::pair<int,bool>> calls;
+            const bool okay=ForEachSubtitlePreparationGraph(background,radius,[&](int b,bool blur){calls.emplace_back(b,blur);return true;});
+            Assert::IsTrue(okay);return calls;
+        };
+        for(float radius:{0.0f,1.0f,3.0f,30.0f}) {
+            const auto black=collect(3,radius);Assert::AreEqual(size_t(1),black.size());
+            Assert::AreEqual(3,black[0].first);Assert::IsFalse(black[0].second);
+            Assert::IsTrue(SubtitlePreparationGraphKey(3,radius)==SubtitlePreparationGraphKey(3,0));
+            const auto generated=collect(5,radius);Assert::AreEqual(size_t(1),generated.size());
+            Assert::AreEqual(5,generated[0].first);Assert::IsTrue(generated[0].second==(radius>0));
+            if(radius>0)Assert::IsTrue(SubtitlePreparationGraphKey(5,radius)==SubtitlePreparationGraphKey(5,1));
+        }
+        Assert::IsTrue(SubtitlePreparationGraphKey(5,0)!=SubtitlePreparationGraphKey(5,1),
+            L"Unblurred readiness must never activate a cold blurred graph.");
+        Assert::IsTrue(SubtitlePreparationGraphKey(3,0)!=SubtitlePreparationGraphKey(5,0));
+        Assert::AreEqual(size_t(4),collect(0,30).size(),L"The exhaustive cache regression retains every previous variant.");
+        int visits=0;Assert::IsFalse(ForEachSubtitlePreparationGraph(2,30,[&](int,bool){++visits;return true;}));
+        Assert::AreEqual(0,visits);
+        Assert::IsFalse(ForEachSubtitlePreparationGraph(5,30,[](int,bool){return false;}),
+            L"A failed requested compile cannot advertise readiness.");
+    }
+    TEST_METHOD(SubtitleRequestedGraphPreparationRetainsWarmGraphWhileNewGraphIsPending) {
+        NlsPipelinePreparation worker;
+        struct Gate {std::promise<void> release;~Gate(){try{release.set_value();}catch(...){}}} gate;
+        auto release=gate.release.get_future().share();auto entered=std::make_shared<std::promise<void>>();auto started=entered->get_future();
+        const auto black=SubtitlePreparationGraphKey(3,0),blur=SubtitlePreparationGraphKey(5,30);
+        auto calls=std::make_shared<std::atomic<unsigned>>(0);
+        Assert::IsTrue(worker.Submit(black,[calls]{return ForEachSubtitlePreparationGraph(3,30,[calls](int b,bool v){++*calls;return b==3&&!v;});}));
+        auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        while(worker.Get(black)==NlsPipelinePreparation::Status::Pending&&std::chrono::steady_clock::now()<deadline)std::this_thread::yield();
+        Assert::IsTrue(worker.Get(black)==NlsPipelinePreparation::Status::Ready);
+        Assert::IsTrue(worker.Get(blur)==NlsPipelinePreparation::Status::Missing);
+        Assert::IsTrue(worker.Submit(blur,[release,entered,calls]{entered->set_value();release.wait();return ForEachSubtitlePreparationGraph(5,30,[calls](int b,bool v){++*calls;return b==5&&v;});}));
+        Assert::IsTrue(started.wait_for(std::chrono::seconds(2))==std::future_status::ready);
+        Assert::IsTrue(worker.Get(blur)==NlsPipelinePreparation::Status::Pending);
+        Assert::IsTrue(worker.Get(black)==NlsPipelinePreparation::Status::Ready,
+            L"A different pending graph cannot revoke an already prepared selection.");
+        Assert::IsTrue(worker.Get(SubtitlePreparationGraphKey(5,0))==NlsPipelinePreparation::Status::Missing);
+        gate.release.set_value();deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        while(worker.Get(blur)==NlsPipelinePreparation::Status::Pending&&std::chrono::steady_clock::now()<deadline)std::this_thread::yield();
+        Assert::IsTrue(worker.Get(blur)==NlsPipelinePreparation::Status::Ready);
+        worker.Invalidate(false);
+        for(int toggle=0;toggle<20;++toggle)Assert::IsTrue(worker.Get(toggle%2?black:SubtitlePreparationGraphKey(5,1))==NlsPipelinePreparation::Status::Ready);
+        Assert::AreEqual(2u,calls->load(),L"Warm selections and uniform blur radii require no new compilation.");
+        worker.Stop();
+    }
+
     TEST_METHOD(SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases) {
         // One private, initially empty cache per test/dependency. The worker
         // must prepare every new scenario; compiled programs common to RGB,
