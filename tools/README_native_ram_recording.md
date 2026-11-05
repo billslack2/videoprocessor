@@ -13,3 +13,20 @@ A private RAM ring holds the newest fitting source frames. On overwrite, the ori
 Run `python tools/inspect_native_ram_recording.py <session-directory> --output <receipt.json>` after captureWriting becomes false. This validates all claimed-written files, identity sidecars, hashes, and retained source gaps. It does not interpolate missing frames or claim uninterrupted HDMI recording. Files from a failed write may exist without a successful index entry and must not be treated as complete frames.
 
 At 3840×2160 V210 (22,118,400 bytes/frame), 512 MiB retains 24 frames: approximately one second at 24 fps or 0.4 seconds at 60 fps. Longer windows require proportionally more explicitly requested RAM. Recorder tests and offline capacity measurements are not proof of live capture/display deadlines; real hardware omissions remain possible and must be reported.
+
+## Prepare offline replay inputs
+
+`python tools/export_native_ram_replay.py <session-directory> --output <new-export-directory>`
+
+Run only after `captureWriting` is false. The exporter verifies all claimed-written BINs and identity sidecars, rejects unfinished/corrupt inputs, and creates:
+
+- `capture-manifest.txt`: the existing native fixture input format—count followed by each original file index and all sixteen `identity_v1` integers.
+- `segment-0001.txt`, etc.: separate observed consecutive source runs, split on omitted events, context/layout changes, sequence gaps/resets, or unavailable/nonmonotonic timestamp changes.
+- `replay.json`: absolute original paths, hashes, original integer timestamps, segment boundaries and the complete omission/eviction records. Unknown event-overflow coverage remains explicitly uncertain.
+- A verbatim copy of `native-window.jsonl`.
+
+It does not copy or modify native inputs, renumber files or source identities, fill missing frames, loop the recording, or generate a presentation schedule. `captureRoot` remains the original session directory. Capture timestamps stay in their original source-clock units; the tick frequency was not recorded, so only `frameDuration100ns` has an explicit time unit. Consumers must verify the pinned hashes again before use and must not concatenate separated segments into purported continuous captured history.
+
+The text manifest matches `VP_PROFILE_CAPTURE_MANIFEST` syntax, but current private renderer fixtures impose their own exact corpus, resolution, frame count and picture-plane assertions. Exporting another recording does not satisfy those assertions or run the GPU. RAM captures intentionally have no supplied picture/semantic authority: a consumer must derive geometry from current source pixels, not replace the zero plane placeholders with guessed bounds.
+
+CLI regression tests: `python -m unittest discover -s tools -p test_native_ram_replay.py -v`.
