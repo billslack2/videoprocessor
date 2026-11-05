@@ -266,8 +266,6 @@ namespace AlphaSourceCrop
 			return "fit";
 		case DecisionOwner::VERTICAL_TRANSLATION:
 			return "translation";
-        case DecisionOwner::CURRENT_SOURCE_SUPPORT:
-            return "current-source-support";
 		case DecisionOwner::SUBMITTED_SCOPE_RETENTION:
 			return "submitted-scope-retention";
 		case DecisionOwner::FULL_RASTER:

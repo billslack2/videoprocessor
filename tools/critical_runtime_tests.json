@@ -14,8 +14,9 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1172,
+  "minimumNativeTests": 1173,
   "requiredNativeMethods": [
+    "CapturedOffAdSupportCannotAcquireUnownedPresentationCrop",
     "UnconfirmedExpandedGroupingMayBridgeButConfirmedNewTextWins",
     "FuturePictureCompanionRequiresCurrentOpaqueBacking",
     "RealNewSecondLineExpandsCurrentCueAndBlankFrameStopsIt",
@@ -52,7 +53,7 @@
     "CurrentVerifiedSamplingBasisPreservesRawUnknownAndHeldGlyphProof",
     "CurrentSamplingBasisRejectsForeignUnverifiedAndContradictoryEvidence",
     "CapturedCurrentSupportCannotReplaceAdmittedNativeFill",
-    "CurrentSupportFallbackRequiresVerifiedEligibilityAndNoAdmittedOperation",
+    "OrdinaryCropAndFillRequireTheirOwnCurrentAuthority",
     "PresentationTelemetryPinsFinalFillAndPhysicalFactsToSelectedSource",
     "LiveWriterRotatesBoundedSegmentsWithoutTouchingIncidentEvidence",
     "LiveWriterRotationFailureStopsGrowthAndPreservesLockedArchive",

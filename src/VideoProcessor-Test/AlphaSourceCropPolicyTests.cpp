@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <SourcePictureDetector.h>
 #include "CapturedCurrentSupport20261104.h"
+#include "CapturedOffSupport20261104.h"
 #include "CppUnitTest.h"
 
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
@@ -16634,15 +16635,17 @@ public:
         for(size_t i=0;i<sizeof(rows)/sizeof(rows[0]);++i) {
             const auto& row=rows[i];
             if(i)Assert::AreEqual(rows[i-1].sequence+1,row.sequence);
-            Decision admitted;admitted.applyCrop=row.admitted;admitted.owner=DecisionOwner::TRUSTED_CROP;
-            admitted.sourceBounds={row.native[0],row.native[1],row.native[2],row.native[3],3840,2160,
+            auto input=TrustedScopeCrop();input.frameSourceSequence=row.sequence;
+            input.sharedGeometryAvailable=row.admitted;
+            input.geometry={row.native[0],row.native[1],row.native[2],row.native[3],3840,2160,
                 double(row.native[2]-row.native[0])/(row.native[3]-row.native[1]),ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            const auto admitted=Evaluate(input);Assert::IsTrue(admitted.applyCrop);
             AspectLimitFillInput configured;configured.trustedContentAuthorityAccepted=true;
             configured.cropWiderContentToFillScreen=true;configured.widerLimitConfigured=true;
             configured.widerAspectLimit=2.42;configured.screenAspect=2.35;configured.sourceBounds=admitted.sourceBounds;
             const auto fill=EvaluateAspectLimitFill(configured);Assert::IsTrue(fill.applied);
-            const bool useSupport=CanApplyCurrentSourceSupportFallback(row.supportSelected,admitted,fill);
-            Assert::IsFalse(useSupport,L"Current support must not replace this source's admitted native fill.");
+            // Current support remains observational metadata. Final presentation
+            // follows ordinary native admission and configured fill only.
             const auto& selected=fill.sourceBounds;
             Assert::AreEqual(22,selected.left);Assert::AreEqual(3818,selected.right);
             Assert::AreEqual(row.native[1],selected.top);Assert::AreEqual(row.native[3],selected.bottom);
@@ -16655,16 +16658,68 @@ public:
         Assert::AreEqual(120u,observedChanges,L"Preserve the actual historical oscillation evidence.");
         Assert::AreEqual(64u,verifiedOverrides,L"Only explicit current-support selections certify old eligibility.");
     }
-    TEST_METHOD(CurrentSupportFallbackRequiresVerifiedEligibilityAndNoAdmittedOperation)
+    TEST_METHOD(CapturedOffAdSupportCannotAcquireUnownedPresentationCrop)
     {
-        Decision none;AspectLimitFillDecision noFill;
-        Assert::IsFalse(CanApplyCurrentSourceSupportFallback(false,none,noFill),L"No stale/missing/failed current proof.");
-        Assert::IsTrue(CanApplyCurrentSourceSupportFallback(true,none,noFill),L"Verified support still supplies a raw fallback.");
-        Decision crop;crop.applyCrop=true;
-        Assert::IsFalse(CanApplyCurrentSourceSupportFallback(true,crop,noFill),L"Preserve an admitted crop even without fill.");
-        AspectLimitFillDecision fill;fill.applied=true;
-        Assert::IsFalse(CanApplyCurrentSourceSupportFallback(true,none,fill),L"Preserve a configured fill even without native crop.");
-        Assert::IsFalse(CanApplyCurrentSourceSupportFallback(true,crop,fill));
+        using namespace CapturedOffSupport20261104;
+        static_assert(sizeof(rows)/sizeof(rows[0])==652,"Keep every submitted source in the bounded incident.");
+        unsigned historicalChanges=0,explicitOverrides=0,selectedChanges=0,inwardCrops=0;
+        ActivePictureBounds previous;
+        for(size_t i=0;i<sizeof(rows)/sizeof(rows[0]);++i) {
+            const auto& row=rows[i];
+            if(i) {
+                Assert::AreEqual(rows[i-1].sequence+1,row.sequence);
+                Assert::IsTrue(row.utcMs>=rows[i-1].utcMs);
+                const auto& old=rows[i-1].observed;
+                if(row.observed[0]!=old[0] || row.observed[1]!=old[1] ||
+                   row.observed[2]!=old[2] || row.observed[3]!=old[3])++historicalChanges;
+            }
+            Input input;input.automaticCropEnabled=true;input.rasterWidth=3840;input.rasterHeight=2160;
+            input.frameSourceGeneration=2;input.frameSourceSequence=row.sequence;
+            // Recorded absence of native authority is preserved. Do not manufacture
+            // a FULL_RASTER_TRUSTED measurement to make this timeline look stable.
+            Assert::IsFalse(input.sharedGeometryAvailable || input.fullRasterPresentationAuthoritative);
+            const auto admitted=Evaluate(input);AssertFullRaster(admitted);
+            AspectLimitFillInput configured;configured.sourceBounds=admitted.sourceBounds;
+            configured.trustedContentAuthorityAccepted=admitted.applyCrop;
+            configured.cropWiderContentToFillScreen=true;configured.widerLimitConfigured=true;
+            configured.widerAspectLimit=2.42;configured.screenAspect=2.35;
+            const auto fill=EvaluateAspectLimitFill(configured);Assert::IsFalse(fill.applied);
+            const auto selected=admitted.sourceBounds;
+            // Support availability is still counted honestly; it no longer owns
+            // final presentation outside ordinary native/caption admission.
+            if(row.supportSelected)++explicitOverrides;
+            if(selected.left!=0 || selected.top!=0 || selected.right!=3840 || selected.bottom!=2160)++inwardCrops;
+            if(i && (selected.left!=previous.left || selected.top!=previous.top ||
+                selected.right!=previous.right || selected.bottom!=previous.bottom))++selectedChanges;
+            previous=selected;
+        }
+        Assert::AreEqual(163u,historicalChanges,L"Preserve the actual incident's geometry changes.");
+        Assert::AreEqual(160u,explicitOverrides,L"Do not infer support proof on missing log rows.");
+        std::ostringstream detail;detail<<"OFF_AD sources=652 historical_changes="<<historicalChanges
+            <<" explicit_support_overrides="<<explicitOverrides<<" selected_changes="<<selectedChanges
+            <<" inward_crops="<<inwardCrops;Logger::WriteMessage(detail.str().c_str());
+        Assert::AreEqual(0u,inwardCrops,L"Sampling support cannot independently acquire an inward presentation crop.");
+        Assert::AreEqual(0u,selectedChanges,L"Off-mode fallback must not pulse when optional support arrives or disappears.");
+    }
+    TEST_METHOD(OrdinaryCropAndFillRequireTheirOwnCurrentAuthority)
+    {
+        Input unavailable;unavailable.automaticCropEnabled=true;
+        unavailable.rasterWidth=3840;unavailable.rasterHeight=2160;
+        const auto none=Evaluate(unavailable);AssertFullRaster(none);
+        const auto crop=Evaluate(TrustedScopeCrop());Assert::IsTrue(crop.applyCrop);
+        Assert::AreEqual(274,crop.sourceBounds.top);Assert::AreEqual(1884,crop.sourceBounds.bottom);
+        auto provisional=TrustedScopeCrop();provisional.classification=ActivePictureClassification::PROVISIONAL;
+        AssertFullRaster(Evaluate(provisional));
+        auto foreign=TrustedScopeCrop();++foreign.frameSourceGeneration;AssertFullRaster(Evaluate(foreign));
+        AspectLimitFillInput configured;configured.sourceBounds=crop.sourceBounds;
+        configured.cropWiderContentToFillScreen=true;configured.widerLimitConfigured=true;
+        configured.widerAspectLimit=2.42;configured.screenAspect=2.35;
+        Assert::IsFalse(EvaluateAspectLimitFill(configured).applied,L"Fill cannot manufacture accepted native authority.");
+        configured.trustedContentAuthorityAccepted=true;
+        const auto fill=EvaluateAspectLimitFill(configured);Assert::IsTrue(fill.applied);
+        Assert::AreEqual(crop.sourceBounds.top,fill.sourceBounds.top);
+        Assert::AreEqual(crop.sourceBounds.bottom,fill.sourceBounds.bottom);
+        Assert::IsTrue(fill.sourceBounds.left>crop.sourceBounds.left && fill.sourceBounds.right<crop.sourceBounds.right);
     }
     TEST_METHOD(Logged954955991992KeepsFillThroughRecoveryHold)
     {

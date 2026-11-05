@@ -19592,53 +19592,9 @@ releaseDriftBaseRetention =
                 ? aspectLimitFill.sourceBounds : ActivePictureBounds{};
             cropPresentationAdmission.optionalFillSourceSequence = sourceSequence;
             cropPresentationAdmission.optionalFillScreenAspect = configuredScreenAspect;
-            // Experimental current-pixel support is a presentation envelope,
-            // not a replacement physical boundary or native crop certificate.
-            // Keep existing prepared/translated/NLS operations unchanged.
-            const auto currentSupport=pixelMeasurements.CurrentSourceSupport();
-            const bool supportEligible=currentSupport && currentSupport->currentSupport.verified &&
-                currentSupport->currentSupport.samplingBounds.rasterWidth==width &&
-                currentSupport->currentSupport.samplingBounds.rasterHeight==height &&
-                cropInput.automaticCropEnabled && !fixedCropAspectConfigured && !nlsRequested &&
-                !subtitleCompositionSucceeded && !verticalTranslationActive &&
-                verticalTranslationPixels==0 && !captionPresentationHeld && !unknownCaptionHold.retained;
-            const bool fillApprovedBeforeSupport=aspectLimitFill.applied;
-            const bool supportPresentation=AlphaSourceCrop::CanApplyCurrentSourceSupportFallback(
-                supportEligible,cropDecision,aspectLimitFill);
-            if(supportPresentation) {
-                auto bounds=currentSupport->currentSupport.samplingBounds;
-                // Affirmative current caption/UI visibility is never discarded
-                // by the bounded sampled bar verifier. This outward extension
-                // is local to this presentation and cannot renew the episode.
-                if(currentMeasuredCaptionAvailable && currentConfirmedCaptionBounds.right>currentConfirmedCaptionBounds.left &&
-                    currentConfirmedCaptionBounds.bottom>currentConfirmedCaptionBounds.top) {
-                    bounds.left=std::min(bounds.left,currentConfirmedCaptionBounds.left);
-                    bounds.top=std::min(bounds.top,currentConfirmedCaptionBounds.top);
-                    bounds.right=std::max(bounds.right,currentConfirmedCaptionBounds.right);
-                    bounds.bottom=std::max(bounds.bottom,currentConfirmedCaptionBounds.bottom);
-                }
-                const auto& rawText=recoveryInput.currentTextCandidate;
-                if(rawText.rasterWidth==width && rawText.rasterHeight==height &&
-                    rawText.right>rawText.left && rawText.bottom>rawText.top) {
-                    bounds.left=std::min(bounds.left,rawText.left);bounds.top=std::min(bounds.top,rawText.top);
-                    bounds.right=std::max(bounds.right,rawText.right);bounds.bottom=std::max(bounds.bottom,rawText.bottom);
-                }
-                if(cropInput.currentVisibleBoundsAvailable &&
-                    cropInput.currentVisibleSourceGeneration==frameGeneration &&
-                    cropInput.currentVisibleSourceSequence==sourceSequence) {
-                    bounds.left=std::min(bounds.left,cropInput.currentVisibleBounds.left);
-                    bounds.top=std::min(bounds.top,cropInput.currentVisibleBounds.top);
-                    bounds.right=std::max(bounds.right,cropInput.currentVisibleBounds.right);
-                    bounds.bottom=std::max(bounds.bottom,cropInput.currentVisibleBounds.bottom);
-                }
-                bounds.aspectRatio=double(bounds.right-bounds.left)/double(bounds.bottom-bounds.top);
-                cropDecision={};cropDecision.sourceBounds=bounds;cropDecision.applyCrop=true;
-                cropDecision.owner=AlphaSourceCrop::DecisionOwner::CURRENT_SOURCE_SUPPORT;
-                cropDecision.reason="current-verified-source-support-presentation";
-                cropDecision.rawSubtitleFallback=true;cropDecision.unprocessedSubtitleCanvas=true;
-                aspectLimitFill={};cropPresentationAdmission={};
-                temporalPolicyPreFillBounds=bounds;temporalPolicyPreFillAvailable=true;
-            }
+            // Current support is a sampling/proof capability. Presentation
+            // geometry remains owned by the ordinary native/caption admission
+            // above; unavailable admission preserves the current raw raster.
 			const ActivePictureBounds& presentationCropBounds =
 				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
 				cropDecision.sourceBounds;
@@ -19646,9 +19602,9 @@ releaseDriftBaseRetention =
                 auto& f=temporalPolicyDecisionFacts;f.finalFactsAvailable=true;
                 f.finalOwner=AlphaSourceCrop::DecisionOwnerName(cropDecision.owner);
                 f.finalReason=aspectLimitFill.applied?aspectLimitFill.reason:cropDecision.reason;
-                f.fillApproved=fillApprovedBeforeSupport;f.fillApplied=aspectLimitFill.applied;
+                f.fillApproved=aspectLimitFill.applied;f.fillApplied=aspectLimitFill.applied;
                 f.fillApprovedSequence=f.fillApproved?sourceSequence:0;
-                f.supportOverrideApplied=supportPresentation;
+                f.supportOverrideApplied=false;
                 const bool currentPhysical=SameAnalysisFrameIdentity(latestPhysicalPictureIdentity,subtitleIdentity) &&
                     latestPhysicalPictureEdges.sourceGeneration==frameGeneration;
                 f.physicalSequence=currentPhysical?sourceSequence:0;
@@ -19666,7 +19622,7 @@ releaseDriftBaseRetention =
             // Certify the final translated pose after either configured fill axis.
             cropPresentationAdmission = AlphaSourceCrop::QualifyTranslatedNativePresentation(
                 cropPresentationAdmission, finalFillInput, aspectLimitFill);
-            const bool captionAnchorEligible = !supportPresentation && !unknownCaptionHold.retained &&
+            const bool captionAnchorEligible = !unknownCaptionHold.retained &&
                 (captionPresentationHeld ||
                  (cropDecision.applyCrop && !cropDecision.verticallyTranslated &&
                   !verticalTranslationConfirmationPending && !verticalFitConfirmationPending &&
@@ -20180,7 +20136,7 @@ releaseDriftBaseRetention =
 					presentationCropBounds.right);
 				source.crop.y1 = static_cast<float>(
 					presentationCropBounds.bottom);
-				if (trustedActivePicture && !captionPresentationHeld && !supportPresentation)
+				if (trustedActivePicture && !captionPresentationHeld)
 					*trustedActivePicture = true;
 			}
 			// This is the sole per-frame NLS authority. Derive every mapping input
