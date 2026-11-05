@@ -9,6 +9,7 @@
 #include <SubtitleGeneratedGrayStyle.h>
 #include <fstream>
 #include <cstring>
+#include "CapturedTerminalRow20261104.h"
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace Tests {
 TEST_CLASS(SubtitleBoxDetectorTests) {
@@ -2154,6 +2155,193 @@ public:
             source.rowBytes=source.chromaRowBytes=w*2;
             SubtitleBoxDetector detector;
             Assert::IsFalse(detector.Analyze(source,top,bottom,1,1).detected);
+        }
+    }
+    TEST_METHOD(NativeTerminalOwnershipUsesActualSampleRowInterval) {
+        // Terminal-head silhouette from the paused two-line incident, not movie pixels.
+        // Native head starts at 1934; body sampling starts at 1936 with prior row 1932.
+        static constexpr const char* head[] = {
+            ".......###############...........",
+            "....####################.........",
+            "..########################.......",
+            "############################.....",
+            ".############################....",
+            ".#############################...",
+            "..############################...",
+            "..#######.........#############..",
+            "...####.............###########..",
+            "...##................###########.",
+            "......................##########.",
+            ".......................#########.",
+            ".......................##########",
+            ".......................##########",
+            "........................#########",
+            "........................#########",
+            "........................#########",
+            "........................#########",
+            ".......................##########",
+            ".......................#########.",
+            ".......................#########.",
+            "......................##########.",
+            ".....................##########..",
+            ".....................##########..",
+            "....................##########...",
+            "...................###########...",
+            "..................###########....",
+            "..................##########.....",
+            ".................##########......",
+            "................##########.......",
+            "...............###########.......",
+            "..............###########........",
+            ".............###########.........",
+            ".............##########..........",
+            "............##########...........",
+            "...........##########............",
+            "...........#########.............",
+            "..........#########..............",
+            "..........#########..............",
+            "..........########...............",
+            ".........#########...............",
+            ".........########................",
+            ".........########................",
+            ".........#######.................",
+            ".........#######.................",
+            "........########.................",
+            "........########.................",
+            ".........#######.................",
+            ".........#######.................",
+            ".........#######.................",
+            ".........#######.................",
+            "..........######.................",
+            "..........######.................",
+        };
+        const int w=3840,h=2160;
+        std::vector<uint16_t> f(size_t(w)*h*3/2,uint16_t(512<<6));
+        auto fill=[&](int l,int t,int r,int b,int v) {
+            for(int y=t;y<b;++y)for(int x=l;x<r;++x)f[size_t(y)*w+x]=uint16_t(v<<6);
+        };
+        fill(0,0,w,h,64);fill(0,272,w,1886,200);
+        size_t pixel=0;
+        for(const auto& run:terminal_row_fixture::runs)for(unsigned n=0;n<run[0];++n,++pixel)
+            f[size_t(1933+pixel/1199)*w+1319+pixel%1199]=uint16_t(run[1]<<6);
+        Assert::AreEqual(size_t(1199*99),pixel);
+        auto source=Source(f);source.width=w;source.height=h;
+        source.rowBytes=source.chromaRowBytes=w*2;
+        SubtitleBoxDetector detector;
+        const auto result=detector.Analyze(source,272,1886,1,1);
+        Assert::IsTrue(result.detected,L"procedural caption must be detected before ownership check");
+        const auto ink=detector.InkSnapshot();Assert::IsNotNull(ink.get());
+        Assert::AreEqual(4,ink->step);
+        unsigned terminalSamples=0,owned=0;
+        for(size_t row=0;row<ink->sourceRows.size();++row) {
+            const int y=ink->sourceRows[row];if(y<1934 || y>=1987)continue;
+            for(int x=2488;x<2518;x+=4)if(head[y-1934][x-2485]=='#') {
+                ++terminalSamples;if(ink->Get(x/4,int(row),true))++owned;
+            }
+        }
+        Logger::WriteMessage(("terminal sampled="+std::to_string(terminalSamples)+
+            " owned="+std::to_string(owned)+" bounds="+std::to_string(result.bounds.top)+
+            ","+std::to_string(result.bounds.right)).c_str());
+        Assert::IsTrue(terminalSamples>0);
+        Assert::AreEqual(terminalSamples,owned,L"current terminal head inside actual sampled-row uncertainty must own its sampled pixels");
+    }
+    TEST_METHOD(NativeTerminalRowIntervalRejectsUnrelatedOrUnsupportedComponents) {
+        static constexpr const char* head[] = {
+            ".......###############...........",
+            "....####################.........",
+            "..########################.......",
+            "############################.....",
+            ".############################....",
+            ".#############################...",
+            "..############################...",
+            "..#######.........#############..",
+            "...####.............###########..",
+            "...##................###########.",
+            "......................##########.",
+            ".......................#########.",
+            ".......................##########",
+            ".......................##########",
+            "........................#########",
+            "........................#########",
+            "........................#########",
+            "........................#########",
+            ".......................##########",
+            ".......................#########.",
+            ".......................#########.",
+            "......................##########.",
+            ".....................##########..",
+            ".....................##########..",
+            "....................##########...",
+            "...................###########...",
+            "..................###########....",
+            "..................##########.....",
+            ".................##########......",
+            "................##########.......",
+            "...............###########.......",
+            "..............###########........",
+            ".............###########.........",
+            ".............##########..........",
+            "............##########...........",
+            "...........##########............",
+            "...........#########.............",
+            "..........#########..............",
+            "..........#########..............",
+            "..........########...............",
+            ".........#########...............",
+            ".........########................",
+            ".........########................",
+            ".........#######.................",
+            ".........#######.................",
+            "........########.................",
+            "........########.................",
+            ".........#######.................",
+            ".........#######.................",
+            ".........#######.................",
+            ".........#######.................",
+            "..........######.................",
+            "..........######.................",
+        };
+        const int w=3840,h=2160;
+        for(int fault=0;fault<4;++fault) {
+            std::vector<uint16_t> f(size_t(w)*h*3/2,uint16_t(512<<6));
+            auto fill=[&](int l,int t,int r,int b,int v) {
+                for(int y=t;y<b;++y)for(int x=l;x<r;++x)f[size_t(y)*w+x]=uint16_t(v<<6);
+            };
+            fill(0,0,w,h,64);fill(0,272,w,1886,200);
+            size_t pixel=0;
+            for(const auto& run:terminal_row_fixture::runs)for(unsigned n=0;n<run[0];++n,++pixel)
+                f[size_t(1933+pixel/1199)*w+1319+pixel%1199]=uint16_t(run[1]<<6);
+            const int left=fault==3?2565:2485;
+            const int top=fault==0?1931:1934;
+            if(fault==0 || fault==3) {
+                fill(2485,1934,2518,1987,64);
+                for(int y=0;y<53;++y)for(int x=0;x<33;++x)
+                    if(head[y][x]=='#')fill(left+x,top+y,left+x+1,top+y+1,940);
+            }
+            if(fault==1)for(int y=1932;y<1988;y+=2)for(int x=2484;x<2520;x+=2)
+                f[size_t(w)*h+size_t(y/2)*w+x]=uint16_t(700<<6);
+            if(fault==2) {
+                fill(2483,1932,2520,1934,400);fill(2483,1987,2520,1989,400);
+                fill(2483,1934,2485,1987,400);fill(2518,1934,2520,1987,400);
+            }
+            auto source=Source(f);source.width=w;source.height=h;
+            source.rowBytes=source.chromaRowBytes=w*2;
+            SubtitleBoxDetector detector;
+            const auto result=detector.Analyze(source,272,1886,1,1);
+            Assert::IsTrue(result.detected,L"unrelated terminal must not erase the genuine caption");
+            const auto ink=detector.InkSnapshot();Assert::IsNotNull(ink.get());
+            Assert::AreEqual(4,ink->step);
+            unsigned sampled=0,owned=0;
+            for(size_t row=0;row<ink->sourceRows.size();++row) {
+                const int y=ink->sourceRows[row];if(y<top || y>=top+53)continue;
+                for(int x=((left+3)/4)*4;x<left+33;x+=4)if(head[y-top][x-left]=='#') {
+                    ++sampled;if(ink->Get(x/4,int(row),true))++owned;
+                }
+            }
+            Logger::WriteMessage(("terminal negative="+std::to_string(fault)+" sampled="+
+                std::to_string(sampled)+" owned="+std::to_string(owned)).c_str());
+            Assert::IsTrue(sampled>0);
+            Assert::AreEqual(0u,owned,(L"terminal must remain unowned, fault="+std::to_wstring(fault)).c_str());
         }
     }
     TEST_METHOD(DetachedQuestionMarkHeadAndDotJoinTheSameTextLine) {

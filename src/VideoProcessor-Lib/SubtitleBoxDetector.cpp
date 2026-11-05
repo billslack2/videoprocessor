@@ -2249,7 +2249,14 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             bool terminalAttachedGlyph=!strongSearch && attached && terminalInMeasuredBar &&
                 (extendsLeft!=extendsRight) && terminalExtension>0 &&
                 terminalExtension<=(std::max)(2*step,seedHeight/4) &&
-                component.top>=seed.top && component.bottom<=seed.bottom &&
+                // A sampled row locates the native edge only between the
+                // preceding and following sample positions. Complete native
+                // glyphs may occupy that interval; all component, palette,
+                // backing and unique-row checks below still apply.
+                component.top>=(std::min)(seed.top,coarse.top>0 ?
+                    evidence.sourceRows[size_t(coarse.top-1)]+1 : 0) &&
+                component.bottom<=(std::max)(seed.bottom,coarse.bottom<h ?
+                    evidence.sourceRows[size_t(coarse.bottom)] : source.height) &&
                 cw<=seedHeight && ch<=seedHeight && rowOverlap>=ch/2 &&
                 m_flood.size()>=size_t((std::max)(3,ch/2)) &&
                 m_flood.size()*100>=size_t(cw)*ch*2 &&

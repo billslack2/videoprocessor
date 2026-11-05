@@ -14,8 +14,12 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1173,
+  "minimumNativeTests": 1177,
   "requiredNativeMethods": [
+    "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
+    "QuestionMarkCannotBorrowAChainOfLowerNoiseDots",
+    "NativeTerminalRowIntervalRejectsUnrelatedOrUnsupportedComponents",
+    "NativeTerminalOwnershipUsesActualSampleRowInterval",
     "CapturedOffAdSupportCannotAcquireUnownedPresentationCrop",
     "UnconfirmedExpandedGroupingMayBridgeButConfirmedNewTextWins",
     "FuturePictureCompanionRequiresCurrentOpaqueBacking",
@@ -512,6 +516,10 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    { "source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq" },
+    { "source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "QuestionMarkCannotBorrowAChainOfLowerNoiseDots" },
+    { "source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "NativeTerminalRowIntervalRejectsUnrelatedOrUnsupportedComponents" },
+    { "source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "NativeTerminalOwnershipUsesActualSampleRowInterval" },
     { "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "UnconfirmedExpandedGroupingMayBridgeButConfirmedNewTextWins" },
     { "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "FuturePictureCompanionRequiresCurrentOpaqueBacking" },
     { "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "RealNewSecondLineExpandsCurrentCueAndBlankFrameStopsIt" },
