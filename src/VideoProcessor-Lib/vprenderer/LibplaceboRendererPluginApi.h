@@ -1,4 +1,5 @@
 #pragma once
+#include <SourceQueueDisposition.h>
 
 #include <IRenderer.h>
 #include <StartupPresentationReadiness.h>
@@ -102,3 +103,7 @@ using VideoProcessorLibplaceboCreateRegressionRendererFn = IVideoRenderer* (__cd
     IRendererCallback*, uint32_t, HWND, ITimingClock*, bool, size_t,
     VideoConversionOverride, const char*, VideoProcessorLibplaceboLogSink,
     const LibplaceboRegressionOptionsV1*);
+
+// Optional diagnostic extension; existing vtables and shared layouts unchanged.
+static constexpr const char* VP_LIBPLACEBO_QUEUE_DISPOSITION_EXPORT =
+    "VideoProcessorLibplaceboGetProcessQueueDispositionsV1";

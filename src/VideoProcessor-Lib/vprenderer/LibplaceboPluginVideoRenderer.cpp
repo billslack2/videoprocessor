@@ -15,6 +15,8 @@
 namespace
 {
     std::atomic<unsigned> activeDiagnosticProducers{0};
+    std::atomic<SourceQueueDispositionQueryV1> queueDispositionQueries[2]{};
+    std::atomic<bool> queueDispositionModulesLoaded[2]{};
 	struct PluginExports
 	{
 		HMODULE module = nullptr;
@@ -147,6 +149,9 @@ namespace
 			"Optional VP Renderer plugin loaded: API=%u path=%ls",
 			apiVersion,
 			pluginPath.c_str());
+        queueDispositionQueries[beta?1:0].store(reinterpret_cast<SourceQueueDispositionQueryV1>(
+            GetProcAddress(result.module,VP_LIBPLACEBO_QUEUE_DISPOSITION_EXPORT)),std::memory_order_relaxed);
+        queueDispositionModulesLoaded[beta?1:0].store(true,std::memory_order_release);
 		return result;
 	}
 
@@ -667,4 +672,12 @@ bool LibplaceboPluginVideoRenderer::GetDolbyVisionLuminanceStatus(
 {
 	status = {};
 	return m_renderer && m_renderer->GetDolbyVisionLuminanceStatus(status);
+}
+
+SourceQueueDispositionSnapshotV1 LibplaceboPluginVideoRenderer::ReadProcessSourceQueueDispositions()
+{
+    SourceQueueDispositionSnapshotV1 total;
+    for(unsigned i=0;i<2;++i)if(queueDispositionModulesLoaded[i].load(std::memory_order_acquire))
+        AddSourceQueueDispositionModule(total,queueDispositionQueries[i].load(std::memory_order_relaxed));
+    return total;
 }

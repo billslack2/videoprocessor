@@ -16941,6 +16941,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	OsdTelemetryText::ApplyFallback(stats.displayLut, lutHandled,
 		sameStatsTelemetryGeneration, m_lastStatsData ? &m_lastStatsData->displayLut : nullptr);
 
+	stats.sourceQueueDispositions = LibplaceboPluginVideoRenderer::ReadProcessSourceQueueDispositions();
+
 	// Capture device frame counts
 	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING && m_captureDevice)
 	{

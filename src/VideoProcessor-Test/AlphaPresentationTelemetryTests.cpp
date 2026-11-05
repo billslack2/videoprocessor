@@ -2,6 +2,9 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/AlphaPresentationTelemetry.h>
+#include <SourceQueueDisposition.h>
+#include <thread>
+#include <vector>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -10,6 +13,78 @@ namespace Tests
 	TEST_CLASS(AlphaPresentationTelemetryTests)
 	{
 	public:
+        TEST_METHOD(SourceQueueDispositionsRetainAllInstancesAndExcludeRepeatCopies)
+        {
+            SourceQueueDispositionMeter process;
+            const unsigned omissions[5]={2,2774,894,206,2};
+            const unsigned capacity[5]={0,7,11,0,0};
+            for(unsigned instance=0;instance<5;++instance) {
+                // Real saved five-instance totals. A new renderer/continuity
+                // does not recreate this process-owned meter or subtract IDs.
+                for(unsigned n=0;n<omissions[instance];++n)
+                    process.Retire(n<capacity[instance]?SourceQueueDisposition::Capacity:SourceQueueDisposition::Recovery);
+                process.Retire(SourceQueueDisposition::Lifecycle,true);
+                process.Retire(SourceQueueDisposition::Recovery,true);
+            }
+            auto result=process.Read();
+            Assert::AreEqual(uint64_t(3878),result.RetiredSources());
+            Assert::AreEqual(uint64_t(3860),result.recovery);
+            Assert::AreEqual(uint64_t(18),result.capacity);
+            Assert::AreEqual(uint64_t(10),result.repeatCopies);
+            // Retirement after the final HUD poll still contributes; later
+            // polls, resync/clock discontinuities and renderer recreation do not.
+            process.Retire(SourceQueueDisposition::Lifecycle);
+            process.Retire(SourceQueueDisposition::Lifecycle);
+            process.Retire(SourceQueueDisposition::DueSource);
+            for(unsigned poll=0;poll<100;++poll) {
+                result=process.Read();
+                Assert::AreEqual(uint64_t(3881),result.RetiredSources());
+                Assert::AreEqual(uint64_t(2),result.lifecycle);
+                Assert::AreEqual(uint64_t(1),result.dueSource);
+            }
+        }
+        TEST_METHOD(SourceQueueDispositionsAreAtomicAcrossCaptureAndRetirement)
+        {
+            SourceQueueDispositionMeter process;
+            std::vector<std::thread> producers;
+            for(unsigned t=0;t<4;++t)producers.emplace_back([&] {
+                for(unsigned n=0;n<2000;++n) {
+                    process.Retire(SourceQueueDisposition::Recovery);
+                    process.Retire(SourceQueueDisposition::Lifecycle,true);
+                }
+            });
+            for(auto& t:producers)t.join();
+            Assert::AreEqual(uint64_t(8000),process.Read().RetiredSources());
+            Assert::AreEqual(uint64_t(8000),process.Read().repeatCopies);
+        }
+        TEST_METHOD(OptionalQueueDispositionSnapshotsDoNotInventOrAccumulatePolls)
+        {
+            SourceQueueDispositionSnapshotV1 current;current.reportingModules=1;current.recovery=10;
+            auto wrong=current;wrong.version=2;
+            Assert::IsFalse(CopySourceQueueDispositionSnapshot(current,&wrong));
+            Assert::AreEqual(uint32_t(2),wrong.version);
+            wrong=current;--wrong.size;
+            Assert::IsFalse(CopySourceQueueDispositionSnapshot(current,&wrong));
+            Assert::IsFalse(CopySourceQueueDispositionSnapshot(current,nullptr));
+            const auto supported=+[](SourceQueueDispositionSnapshotV1* out)->bool {
+                SourceQueueDispositionSnapshotV1 value;value.reportingModules=1;value.recovery=10;
+                return CopySourceQueueDispositionSnapshot(value,out);
+            };
+            const auto unsupported=+[](SourceQueueDispositionSnapshotV1* out)->bool {
+                out->version=2;out->recovery=999;return true;
+            };
+            for(unsigned poll=0;poll<100;++poll) {
+                SourceQueueDispositionSnapshotV1 total;
+                AddSourceQueueDispositionModule(total,supported);
+                AddSourceQueueDispositionModule(total,supported);
+                Assert::AreEqual(uint64_t(20),total.RetiredSources());
+                Assert::AreEqual(uint32_t(2),total.reportingModules);
+                AddSourceQueueDispositionModule(total,nullptr);
+                AddSourceQueueDispositionModule(total,unsupported);
+                Assert::AreEqual(uint32_t(2),total.unavailableModules);
+                Assert::AreEqual(uint64_t(20),total.RetiredSources());
+            }
+        }
         TEST_METHOD(PresentTimingMeasuresOneCallWithoutChangingItsResult)
         {
             AlphaPresentationCallTiming timing;

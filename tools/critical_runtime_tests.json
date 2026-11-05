@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1193,
+  "minimumNativeTests": 1197,
   "requiredNativeMethods": [
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
     "QuestionMarkCannotBorrowAChainOfLowerNoiseDots",
@@ -516,6 +516,10 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {"source": "src/VideoProcessor-Test/AlphaPresentationTelemetryTests.cpp", "class": "AlphaPresentationTelemetryTests", "method": "SourceQueueDispositionsRetainAllInstancesAndExcludeRepeatCopies"},
+    {"source": "src/VideoProcessor-Test/AlphaPresentationTelemetryTests.cpp", "class": "AlphaPresentationTelemetryTests", "method": "SourceQueueDispositionsAreAtomicAcrossCaptureAndRetirement"},
+    {"source": "src/VideoProcessor-Test/AlphaPresentationTelemetryTests.cpp", "class": "AlphaPresentationTelemetryTests", "method": "OptionalQueueDispositionSnapshotsDoNotInventOrAccumulatePolls"},
+    {"source": "src/VideoProcessor-Test/StatsOverlayLayoutTests.cpp", "class": "StatsOverlayLayoutTests", "method": "QueueDispositionRowsSeparateProcessScopeFromRendererAndDisplayDrops"},
     {"source": "src/VideoProcessor-Test/StatsOverlayLayoutTests.cpp", "class": "StatsOverlayLayoutTests", "method": "TelemetryChangesKeepEveryLabelAndBitmapSlotFixed"},
     {"source": "src/VideoProcessor-Test/StatsOverlayLayoutTests.cpp", "class": "StatsOverlayLayoutTests", "method": "FixedWrappingPreservesArEvidenceAndMarksOverflowWithoutShiftingRows"},
     {"source": "src/VideoProcessor-Test/StatsOverlayLayoutTests.cpp", "class": "StatsOverlayLayoutTests", "method": "AspectRowsSeparateAppliedGeometryFromLiveMeasurementWithoutInputAr"},

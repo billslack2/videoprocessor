@@ -1,6 +1,7 @@
 #pragma once
 
 #include <IRenderer.h>
+#include <SourceQueueDisposition.h>
 #include <StartupPresentationReadiness.h>
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
@@ -12,6 +13,8 @@ class LibplaceboPluginVideoRenderer final : public IVideoRenderer
 {
 public:
 	static bool IsAvailable(bool beta = false);
+    // Queries only modules already loaded; never loads a renderer or creates UI.
+    static SourceQueueDispositionSnapshotV1 ReadProcessSourceQueueDispositions();
 
 	LibplaceboPluginVideoRenderer(
 		IRendererCallback& callback,

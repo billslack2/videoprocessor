@@ -14,6 +14,7 @@
 #include <StatsOverlayLayout.h>
 #include <RendererLiveness.h>
 #include <CaptureDeliveryStats.h>
+#include <SourceQueueDisposition.h>
 #include <mutex>
 #include <vector>
 
@@ -91,7 +92,8 @@ struct StatsData
 	uint64_t capturedDroppedFrames = 0;
     bool captureDeliverySupported = false;
     CaptureDeliveryStats captureDelivery;
-	uint64_t queueDroppedFrames = 0;
+	uint64_t queueDroppedFrames = 0; // Current renderer instance, includes cadence policy.
+    SourceQueueDispositionSnapshotV1 sourceQueueDispositions;
 	uint64_t sceneDetectCorrectionDrops = 0;
 	uint64_t sceneDetectCorrectionRepeats = 0;
 	uint64_t sceneDetectDetected = 0;

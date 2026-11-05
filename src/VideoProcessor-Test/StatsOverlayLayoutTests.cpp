@@ -104,6 +104,8 @@ public:
                 stats.renderLoadGpuValid = stats.cpuUsageKnown = stats.renderLoadGpuPercentValid = phase % 3 == 0;
                 stats.measuredRefreshRate = phase % 2 ? 0 : 59.940001;
                 stats.hasPPMCorrection = phase % 2 == 0;
+                stats.sourceQueueDispositions.reportingModules=phase%2;
+                stats.sourceQueueDispositions.recovery=3878;
                 stats.outputSweep = phase % 2 ? L"" : L"Testing output";
                 stats.displayLut = phase % 2 ? L"" : CString(std::wstring(300,L'W').c_str());
                 stats.activeShaders.clear();
@@ -139,6 +141,24 @@ public:
         Assert::AreEqual(size_t(3),overflow.size());
         Assert::IsTrue(overflow[1].value.size()>=3 && overflow[1].value.substr(overflow[1].value.size()-3)==L"...");
         Assert::AreEqual(L"Next:",overflow[2].label.c_str());
+    }
+    TEST_METHOD(QueueDispositionRowsSeparateProcessScopeFromRendererAndDisplayDrops)
+    {
+        auto stats=Example(true);stats.queueDroppedFrames=2;
+        auto rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"unavailable",Find(rows,L"VP queue retired:").value.c_str());
+        Assert::AreEqual(L"2 (renderer)",Find(rows,L"Render dropped:").value.c_str());
+        stats.sourceQueueDispositions.reportingModules=1;
+        stats.sourceQueueDispositions.recovery=3860;stats.sourceQueueDispositions.capacity=18;
+        rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"3878 (process)",Find(rows,L"VP queue retired:").value.c_str());
+        Assert::AreEqual(L"3860 / 18",Find(rows,L"- Recovery/cap:").value.c_str());
+        Assert::AreEqual(L"0",Find(rows,L"- Reset/stop:").value.c_str());
+        Assert::AreEqual(L"0",Find(rows,L"- Due source:").value.c_str());
+        stats.sourceQueueDispositions.unavailableModules=1;
+        rows=StatsOverlayWindow::BuildStatsRows(stats);
+        Assert::AreEqual(L"3878 (partial process)",Find(rows,L"VP queue retired:").value.c_str());
+        VerifyNative(stats);
     }
     TEST_METHOD(AspectRowsSeparateAppliedGeometryFromLiveMeasurementWithoutInputAr)
     {
@@ -184,7 +204,7 @@ public:
         auto rows = StatsOverlayWindow::BuildStatsRows(stats);
         Assert::AreEqual(L"46.10 / 50.00 expected (5s)", Find(rows,L"Capture fps:").value.c_str());
         Assert::AreEqual(L"238 total; 19 last 5s", Find(rows,L"Capture missed:").value.c_str());
-        Assert::AreEqual(L"0", Find(rows,L"Render dropped:").value.c_str());
+        Assert::AreEqual(L"0 (renderer)", Find(rows,L"Render dropped:").value.c_str());
         Assert::AreEqual(L"RGB24 -> BGRA (lossless)", Find(rows,L"Capture packing:").value.c_str());
         VerifyNative(stats);
         stats.captureDelivery = {};
@@ -197,7 +217,7 @@ public:
         stats.captureDeliverySupported = false;
         rows = StatsOverlayWindow::BuildStatsRows(stats);
         Assert::AreEqual(L"238", Find(rows,L"Capture missed:").value.c_str());
-        Assert::AreEqual(L"0", Find(rows,L"Render dropped:").value.c_str());
+        Assert::AreEqual(L"0 (renderer)", Find(rows,L"Render dropped:").value.c_str());
     }
     TEST_METHOD(DeckLinkCaptureStatsRenderInBothOsdPathsWithoutMagewellPackingLabel)
     {
@@ -213,7 +233,7 @@ public:
             const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
             Assert::AreEqual(L"59.94 / 59.94 expected (5s)", Find(rows, L"Capture fps:").value.c_str());
             Assert::AreEqual(L"23 total; 0 last 5s", Find(rows, L"Capture missed:").value.c_str());
-            Assert::AreEqual(L"2", Find(rows, L"Render dropped:").value.c_str());
+            Assert::AreEqual(L"2 (renderer)", Find(rows, L"Render dropped:").value.c_str());
             Assert::IsTrue(std::none_of(rows.begin(), rows.end(), [](const auto& row) {
                 return row.label == L"Dropped:";
             }));

@@ -1,5 +1,6 @@
 #pragma once
 #include "PreparedPictureEvidence.h"
+#include <SourceQueueDisposition.h>
 #include "PreparedOutwardWindow.h"
 
 #include <IRenderer.h>
@@ -39,6 +40,7 @@ struct SourcePictureSupportResult;
 class LibplaceboVideoRenderer final : public IVideoRenderer
 {
 public:
+    static SourceQueueDispositionSnapshotV1 ProcessSourceQueueDispositions() noexcept;
 	LibplaceboVideoRenderer(
 		IRendererCallback& callback,
 		uint32_t rendererGeneration,

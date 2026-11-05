@@ -141,3 +141,9 @@ VideoProcessorLibplaceboCreateRendererForRegressionV1(
     }
     return nullptr;
 }
+
+extern "C" __declspec(dllexport) bool __cdecl
+VideoProcessorLibplaceboGetProcessQueueDispositionsV1(SourceQueueDispositionSnapshotV1* out)
+{
+    return CopySourceQueueDispositionSnapshot(LibplaceboVideoRenderer::ProcessSourceQueueDispositions(),out);
+}

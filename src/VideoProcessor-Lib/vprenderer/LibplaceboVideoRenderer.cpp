@@ -142,6 +142,8 @@
 
 namespace
 {
+    // Intentionally outlives every renderer instance; never affects policy.
+    SourceQueueDispositionMeter processSourceQueueDispositions;
     using LookaheadPerf = LookaheadPerformanceWindow;
     using PictureKind = PreparedPictureEvidenceKind;
 
@@ -23948,6 +23950,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 				dropCandidate->activePictureIdentity,
 				dropCandidate->frame.GetCounter(),
                 ActivePictureDiscardReason::QueueCapacityOverflow);
+            processSourceQueueDispositions.Retire(SourceQueueDisposition::Capacity,dropCandidate->cadenceRepeat);
 			dropCandidate->frame.SourceBufferRelease();
 			m_frameQueue.erase(dropCandidate);
 		}
@@ -25126,6 +25129,7 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 			m_activePictureTimeline.MarkDiscarded(
 				m_frameQueue.front().activePictureIdentity,
 				m_frameQueue.front().frame.GetCounter());
+			processSourceQueueDispositions.Retire(SourceQueueDisposition::Capacity,m_frameQueue.front().cadenceRepeat);
 			m_frameQueue.front().frame.SourceBufferRelease();
 			m_frameQueue.pop_front();
 			++purgedFrames;
@@ -25267,6 +25271,9 @@ double LibplaceboVideoRenderer::ExitLatencyMs() const
 	return m_exitLatencyMs.load(std::memory_order_relaxed);
 }
 
+
+SourceQueueDispositionSnapshotV1 LibplaceboVideoRenderer::ProcessSourceQueueDispositions() noexcept
+{ return processSourceQueueDispositions.Read(); }
 
 uint64_t LibplaceboVideoRenderer::DroppedFrameCount() const
 {
@@ -27911,6 +27918,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                         m_activePictureTimeline.MarkDiscarded(
                             m_frameQueue.front().activePictureIdentity,
                             m_frameQueue.front().frame.GetCounter(), ActivePictureDiscardReason::BacklogRecovery);
+                        processSourceQueueDispositions.Retire(SourceQueueDisposition::DueSource,m_frameQueue.front().cadenceRepeat);
                         m_frameQueue.front().frame.SourceBufferRelease();
                         m_frameQueue.pop_front();
                         m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
@@ -28917,6 +28925,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 									m_frameQueue.front().activePictureIdentity,
 									m_frameQueue.front().frame.GetCounter(),
                                     ActivePictureDiscardReason::BacklogRecovery);
+								processSourceQueueDispositions.Retire(SourceQueueDisposition::Recovery,m_frameQueue.front().cadenceRepeat);
 								m_frameQueue.front().frame.SourceBufferRelease();
 								m_frameQueue.pop_front();
 								++droppedFrames;
@@ -29490,6 +29499,7 @@ void LibplaceboVideoRenderer::ClearQueueLocked(const char* reason)
 						std::memory_order_relaxed)),
 				reason ? reason : "unknown");
 		}
+		processSourceQueueDispositions.Retire(SourceQueueDisposition::Lifecycle,queuedFrame.cadenceRepeat);
 		queuedFrame.frame.SourceBufferRelease();
 	}
 	m_frameQueue.clear();

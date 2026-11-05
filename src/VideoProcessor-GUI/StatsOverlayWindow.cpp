@@ -685,15 +685,24 @@ std::vector<StatsOverlayLayout::Row> StatsOverlayWindow::BuildStatsRows(const St
             ? format(L"%llu total; %llu last %.0fs", stats.capturedDroppedFrames,
                 capture.recentMissedFrames, capture.windowSeconds)
             : format(L"%llu", stats.capturedDroppedFrames));
-        add(L"Render dropped:", format(L"%llu", stats.queueDroppedFrames));
+        add(L"Render dropped:", format(L"%llu (renderer)", stats.queueDroppedFrames));
     }
     else {
         add(L"Capture fps:", L"unavailable");
         add(L"Capture missed:", format(L"%llu", stats.capturedDroppedFrames));
-        add(L"Render dropped:", format(L"%llu", stats.queueDroppedFrames));
+        add(L"Render dropped:", format(L"%llu (renderer)", stats.queueDroppedFrames));
     }
     add(L"Capture packing:", stats.captureDeliverySupported && stats.captureDelivery.losslessRgb24Capture
         ? CString(L"RGB24 -> BGRA (lossless)") : CString(L"---"));
+    const auto& disposition=stats.sourceQueueDispositions;
+    const bool known=disposition.reportingModules>0;
+    add(L"VP queue retired:", known ? format(L"%llu (%sprocess)", disposition.RetiredSources(),
+        disposition.unavailableModules?L"partial ":L"") : CString(L"unavailable"));
+    add(L"- Recovery/cap:", known ? format(L"%llu / %llu", disposition.recovery,disposition.capacity) : CString(L"---"));
+    add(L"- Reset/stop:", known ? format(L"%llu",disposition.lifecycle) : CString(L"---"));
+    add(L"- Due source:", known ? format(L"%llu",disposition.dueSource) : CString(L"---"));
+    // Queue retirements do not assert scanout loss. Repeat-copy cancellation is
+    // excluded; intentional due-source cadence is shown separately above.
     add(L"D/R estimate:", present(stats.cadenceIntervalEstimate, L"Unavailable"));
     add(L"Scene Mode:", present(stats.sceneDetectMode, L"Off"));
     CString sceneStatus;
