@@ -3290,7 +3290,37 @@ public:
               }
             }
         }
-        const bool templateHeld=!backlogReassociation && templateStillVisible &&
+        // A larger current grouping already confirmed by lookahead can
+        // refresh extraction while the acquired glyphs still pass their current
+        // pixel proof. Exact containment of an older quantized line is not a
+        // reason to trap that newer grouping behind the held-layout path.
+        // Keep picture-side capture authority current; layout/ink replacement
+        // then follows the normal confirmed-result path below.
+        const bool confirmedCurrentGrouping=[&] {
+            const auto& current=preview.current;
+            if(!currentTemplateEligible || weakTemplateEligible ||
+                (groupingMatches && captureContainsReference) || !preview.available ||
+                !preview.futureAvailable || !preview.currentLinesConfirmed || preview.matchingFrames<2 ||
+                !current.analyzed || current.discontinuity || current.pendingRefresh || current.analysisRefresh ||
+                current.cadenceSkipped || !current.ink || !current.ink->rawEvidenceComplete ||
+                !current.text.detected || current.text.workLimit || current.text.confirmationPending ||
+                !current.text.topSearchComplete || !current.text.bottomSearchComplete ||
+                !preview.text.detected || preview.text.workLimit ||
+                current.text.lineCount<=m_result.lineCount || current.text.lineCount<1 || current.text.lineCount>3 ||
+                preview.text.lineCount!=current.text.lineCount)return false;
+            for(int line=0;line<current.text.lineCount;++line) {
+                const auto& glyph=current.text.lineBounds[line];
+                if(!glyph.Valid())return false;
+                const SubtitleBoxRect inside{glyph.left,(std::max)(glyph.top,current.pictureTop),
+                    glyph.right,(std::min)(glyph.bottom,current.pictureBottom)};
+                if(!inside.Valid())continue;
+                const auto& card=current.text.lineCapturePanels[line];
+                if(!current.text.capturePanelMeasured || !card.Valid() || card.left>inside.left ||
+                    card.top>inside.top || card.right<inside.right || card.bottom<inside.bottom)return false;
+            }
+            return true;
+        }();
+        const bool templateHeld=!backlogReassociation && templateStillVisible && !confirmedCurrentGrouping &&
             (weakTemplateEligible || !groupingMatches || !captureContainsReference ||
                 preview.current.text.lineCount<m_result.lineCount || preview.text.lineCount<m_result.lineCount);
         if (templateStillVisible) same=true;
@@ -3454,6 +3484,7 @@ public:
         m_decisionReason = result.detected
             ? (pendingBacklogReassociation ? "backlog-pending-current-pixels" :
                 completedBacklogReassociation ? "backlog-current-cue-reassociated" :
+                confirmedCurrentGrouping ? "current-confirmed-grouping" :
                 newPictureGlyphCandidate && acquisitionConfirmation.confirmed ? acquisitionConfirmation.reason :
                 preview.current.pendingRefresh ? "worker-pending-current-pixels" : weakTemplateEligible ? (workLimitCurrentPixelsMatch ? "grace-resource-limit-current-ink" : backedPartialEligible ? "grace-black-panel-partial-ink" : "grace-current-ink") : bridged ? "lookahead-bridge" : templateHeld ? "strict-current-ink" : "detected")
             : newPictureGlyphCandidate && !acquisitionConfirmation.confirmed ? acquisitionConfirmation.reason

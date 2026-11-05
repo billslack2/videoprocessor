@@ -3147,6 +3147,90 @@ public:
             Assert::IsTrue(SubtitleBoxLookahead::SameLine(acquired.bounds,result.bounds,0));
         }
     }
+    TEST_METHOD(ConfirmedCurrentGroupedSupersetEscapesHeldCaptureContraction) {
+        for(int fault=0;fault<7;++fault) {
+        auto pixels=Pixels();
+        Fill(pixels,165,294,470,346,64);
+        Text(pixels,175,300,22);Text(pixels,240,326,12);
+        auto first=Measure(pixels,1),second=Measure(pixels,2);
+        auto current=Measure(pixels,2),future=Measure(pixels,3);
+        Assert::AreEqual(2,current.text.lineCount,L"Real current pixels must yield both grouped caption rows.");
+        Assert::IsTrue(current.ink && current.ink->rawEvidenceComplete && current.text.capturePanelMeasured);
+        int lower=0;
+        if(first.text.lineBounds[1].top>first.text.lineBounds[0].top)lower=1;
+        const auto seedOnlyLower=[&](SubtitleBoxObservation& o) {
+            // Model the observed initial grouping omission only. All raw/owned
+            // samples and measured backing still come from the real two-line pixels.
+            o.text.lineBounds[0]=o.text.lineBounds[lower];
+            o.text.lineSignatures[0]=o.text.lineSignatures[lower];
+            o.text.linePanels[0]=o.text.linePanels[lower];
+            o.text.lineCapturePanels[0]=o.text.lineCapturePanels[lower];
+            --o.text.lineBounds[0].top;
+            o.text.lineCount=1;o.text.bounds=o.text.lineBounds[0];
+            o.text.anchor=o.text.lineBounds[0];
+        };
+        if(fault==6) { --first.text.lineBounds[lower].top;--second.text.lineBounds[lower].top; }
+        else { seedOnlyLower(first);seedOnlyLower(second); }
+        SubtitleBoxPresentation tracker;
+        const auto acquired=tracker.Consume(Resolve({first,second}));
+        Assert::IsTrue(acquired.detected);Assert::AreEqual(fault==6?2:1,acquired.lineCount);
+        auto changed=pixels;
+        if(fault==2) {
+            Fill(changed,165,294,470,318,64); // Current upper glyphs absent; future alone cannot supply them.
+            current=Measure(changed,2);
+        }
+        if(fault==3) {
+            for(int y=294;y<315;++y)for(int x=165;x<470;++x)
+                if(changed[y*640+x] != uint16_t(700<<6))changed[y*640+x]=uint16_t(300<<6);
+            current=Measure(changed,2); // Current in-picture opaque card is genuinely absent.
+        }
+        if(fault==4) {
+            Text(changed,240,326,12,true);
+            current=Measure(changed,2);future=Measure(changed,3);
+        }
+        if(fault==5) {
+            ++current.identity.rendererGeneration;++future.identity.rendererGeneration;
+        }
+        if(fault<4)Assert::IsTrue(SubtitleBoxLookahead::SameInkAtReference(first,current),
+            L"The old lower glyphs must still be proved by current sampled pixels.");
+        const auto preview=fault==1?Resolve({current}):Resolve({current,future});
+        Logger::WriteMessage((std::string("Grouped superset: fault="+std::to_string(fault)+" current=")+std::to_string(current.text.lineCount)+
+            " preview="+std::to_string(preview.text.lineCount)+" confirmed="+
+            std::to_string(preview.currentLinesConfirmed)+" matching="+std::to_string(preview.matchingFrames)+
+            " oldTop="+std::to_string(acquired.lineBounds[0].top)+" lowerTop="+
+            std::to_string(current.text.lineBounds[lower].top)).c_str());
+        if(fault==0 || fault==6)Assert::IsTrue(preview.currentLinesConfirmed && preview.matchingFrames>=2);
+        const auto result=tracker.Consume(preview);
+        Logger::WriteMessage((std::string("Tracked superset: lines=")+std::to_string(result.lineCount)+
+            " held="+std::to_string(result.held)+" reason="+result.diagnosticReason).c_str());
+        if(fault==0 || fault==6) {
+            Assert::AreEqual(2,result.lineCount,
+                L"Complete confirmed current grouping must promote the already-present upper row despite one-cell lower capture contraction.");
+            if(fault==0)Assert::IsFalse(result.held);
+            else {
+                Assert::IsTrue(result.held,L"An equal-count inset keeps the existing held pose, not a new semantic acquisition.");
+                Assert::AreEqual(acquired.observations,result.observations);
+            }
+            Assert::AreEqual(acquired.cue,result.cue);
+            SubtitleCutPastePresentation placement;
+            const auto operation=placement.Consume(result,preview);
+            Assert::IsTrue(operation.valid);
+            for(int line=0;line<current.text.lineCount;++line) {
+                const auto& glyph=current.text.lineBounds[line];bool captured=false;
+                for(const auto& capture:operation.glyphLines)
+                    captured|=capture.Valid() && capture.left<=glyph.left && capture.top<=glyph.top &&
+                        capture.right>=glyph.right && capture.bottom>=glyph.bottom;
+                Assert::IsTrue(captured,L"Actual current operation must capture every confirmed glyph row.");
+            }
+        } else if(fault<=3) {
+            Assert::IsTrue(!result.detected || result.lineCount<2,
+                L"Unconfirmed future grouping or missing current glyph/backing cannot promote two rows.");
+        } else {
+            Assert::IsTrue(!result.detected || result.cue!=acquired.cue,
+                L"Changed old glyphs or a real context reset cannot continue the previous cue identity.");
+        }
+        }
+    }
     TEST_METHOD(RealNewSecondLineExpandsCurrentCueAndBlankFrameStopsIt) {
         auto single=Pixels();Text(single,175,307,22);
         auto doubleLine=single;Text(doubleLine,240,336,12);

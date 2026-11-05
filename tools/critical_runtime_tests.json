@@ -14,8 +14,12 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1168,
+  "minimumNativeTests": 1172,
   "requiredNativeMethods": [
+    "UnconfirmedExpandedGroupingMayBridgeButConfirmedNewTextWins",
+    "FuturePictureCompanionRequiresCurrentOpaqueBacking",
+    "RealNewSecondLineExpandsCurrentCueAndBlankFrameStopsIt",
+    "ConfirmedCurrentGroupedSupersetEscapesHeldCaptureContraction",
     "SubtitleContinuationDistinguishesCurrentPhysicalEdgesFromVerifiedGuard",
     "IncidentCaptureCommitsOnlyRealSubmittedOutputsAndPreservesFollowup",
     "CurrentCueEquivalentSourceRejectsRetirementDuringPublication",
@@ -507,6 +511,10 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    { "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "UnconfirmedExpandedGroupingMayBridgeButConfirmedNewTextWins" },
+    { "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "FuturePictureCompanionRequiresCurrentOpaqueBacking" },
+    { "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "RealNewSecondLineExpandsCurrentCueAndBlankFrameStopsIt" },
+    { "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "ConfirmedCurrentGroupedSupersetEscapesHeldCaptureContraction" },
     {
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
