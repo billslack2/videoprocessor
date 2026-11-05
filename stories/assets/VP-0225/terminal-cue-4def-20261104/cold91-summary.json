@@ -1,0 +1,44 @@
+{
+  "scope": "Final tracked production Detector from matching Native6 library, CPU cold current-frame sampler+maskednative verifier. No private detector/class rename, no sidecarplanes/history/authority injection.",
+  "inputFrames": 91,
+  "observations": 182,
+  "accepted": 182,
+  "physical": [
+    0,
+    275,
+    3840,
+    1884
+  ],
+  "guard": [
+    0,
+    272,
+    3840,
+    1886
+  ],
+  "timingMs": {
+    "scanAndMaskedProofAll": {
+      "count": 182,
+      "minimum": 17.4062,
+      "median": 18.9168,
+      "p95": 21.7851,
+      "maximum": 29.6598
+    },
+    "supportAbsent": {
+      "count": 91,
+      "minimum": 17.5951,
+      "median": 19.0927,
+      "p95": 21.7562,
+      "maximum": 29.6598
+    },
+    "supportReady": {
+      "count": 91,
+      "minimum": 17.4062,
+      "median": 18.6344,
+      "p95": 21.7851,
+      "maximum": 24.7645
+    }
+  },
+  "originalReceipt": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\incident-20261104-213039\\current-paused-214152\\cold-detector-4a9\\terminal-production-final\\receipt.json",
+  "originalSha256": "a9585378da10431efce6651d769c8a12859d13d3ebabab6f3ddcfb91d445ac13",
+  "noPrivateFramesCopied": true
+}

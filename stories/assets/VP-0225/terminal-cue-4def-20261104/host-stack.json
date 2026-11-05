@@ -1,0 +1,18 @@
+{
+  "source": "4def430fae64bd0ea48f38ef0758f55127335f54",
+  "passed": true,
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "0079a5c7cc39de4badfec2aa59a82ad0ae6b8d6511ee6466142f74b4541a497a",
+      "machine": "0x8664",
+      "stackReserve": 4194304
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\native-renderer-host.exe",
+      "sha256": "fb775794c0881b13c2c0e32a2561621ad1711c442f3fc23a08d227a3d7db39c2",
+      "machine": "0x8664",
+      "stackReserve": 1048576
+    }
+  ]
+}

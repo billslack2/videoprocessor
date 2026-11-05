@@ -1,0 +1,22 @@
+{
+  "pid": 35320,
+  "runtimeFilesVerified": 28,
+  "verifiedAt": "2026-11-04T23:27:29.5049589-05:00",
+  "status": {
+    "process": 35320,
+    "executable": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+    "action": "Status",
+    "result": "Status",
+    "recording": false,
+    "captureWriting": false,
+    "producerConnected": true,
+    "frameCaptureSupported": true,
+    "writerReady": true,
+    "includeFrames": false,
+    "requestedUtc": "2026-11-05T04:27:29.4957586Z"
+  },
+  "source": "4def430fae64bd0ea48f38ef0758f55127335f54",
+  "outerShellNote": "Deployment script completed and emitted successful receipt; subsequent caller tested stale LASTEXITCODE. Independently reverified all runtime/settings/shader hashes and live process.",
+  "settingsPreserved": true,
+  "shaderFilesVerified": 14
+}

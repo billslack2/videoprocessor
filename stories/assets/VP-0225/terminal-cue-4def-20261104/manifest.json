@@ -1,0 +1,69 @@
+{
+  "source": "4def430fae64bd0ea48f38ef0758f55127335f54",
+  "scope": "Metadata-only focused validation and authorized installed deployment; no movie/native/screenshot pixels.",
+  "files": [
+    {
+      "name": "installed-deployment.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\deployment-4def-tested\\deployment.json",
+      "sha256": "b6b3c0ca5ca952ca9caabe4314deddc94abd681e7f63b63e6f5d3de8a02afd55"
+    },
+    {
+      "name": "installed-reopened.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\deployment-4def-tested\\reopened.json",
+      "sha256": "199184b26dd76500ddffbb00f91c300f48f65ab11a6b11236236f05c6c2f57c6"
+    },
+    {
+      "name": "focused-release-build.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-231525-3b6840e2\\iteration.json",
+      "sha256": "2dd2a7a229abe1bfdf5df6327c0ffea87e78eaaef0fc7540a54e7ca750bc56b0"
+    },
+    {
+      "name": "native6-terminal.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-231059-3288a218\\iteration.json",
+      "sha256": "72615596474f9b4b6e64137aa3ae6e9a8b608e83e1c72e3461c80b92c153c3c4"
+    },
+    {
+      "name": "native6-ad-policy.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-221242-4374a435\\iteration.json",
+      "sha256": "50aaac9d2a862c7e6791c210b8c5fda2522dd8790f53ac78cf86385a6794f6ab"
+    },
+    {
+      "name": "native7-cue-superset.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-215650-5a6eea93\\iteration.json",
+      "sha256": "943b9bd17513b44fa14f3bbf202b5aa55408fbc8a16624d137c9685fff475699"
+    },
+    {
+      "name": "actual6-summary.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\focused-summary.json",
+      "sha256": "9dc9323fcfca17dc1c4cba8deeae217c14c030a23f49a6d50f4e2775f3f639ab"
+    },
+    {
+      "name": "visual10-review.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\receipt.json",
+      "sha256": "18f679bfebad9c5bfe4d83418b27a740a39ae014524b35b4cc052c3031cda0f3"
+    },
+    {
+      "name": "host-stack.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\host-stack-4def430f.json",
+      "sha256": "483190f224bf3999fa59565681409618baa6fac2ac65e8a607c8c035a52d6b26"
+    },
+    {
+      "name": "standard-stack.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\standard-4def430f-gate.json",
+      "sha256": "9359ed79563091efd9165550733e5c1f96bbe5a331a17b6e67afb3c2e01e09b5"
+    },
+    {
+      "name": "beta-stack.json",
+      "original": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\beta-4def430f-gate.json",
+      "sha256": "393240998265b1982cb75425b6945021b99d3295838ffdb5d07f04ff65615fae"
+    }
+  ],
+  "acceptance": "OPEN",
+  "unqualified": [
+    "No-lookahead current cue update/acquisition and missing-work behavior",
+    "Arbitrary moving scenes when both current optional jobs are unfinished",
+    "Ad Off-mode native/video pixel replay (captured decisions only)",
+    "Full1177 native inventory and full runtime qualification",
+    "General scene/menu/variable-aspect transitions and user playback acceptance"
+  ]
+}

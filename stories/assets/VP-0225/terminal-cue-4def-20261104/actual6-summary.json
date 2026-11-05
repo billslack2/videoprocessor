@@ -1,0 +1,87 @@
+{
+  "source": "4def430fae64bd0ea48f38ef0758f55127335f54",
+  "scope": "Focused natural captured91 two-line acquisition/composition and controlled genuine three-frame moving proof delivery; no full qualification or both-unfinished moving guarantee.",
+  "actualAssertionsPassed": 6,
+  "caseIds": [
+    12,
+    13,
+    14,
+    15,
+    8,
+    9
+  ],
+  "nativeHostReserveBytes": 1048576,
+  "guiReserveBytes": 4194304,
+  "build": {
+    "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-231525-3b6840e2\\iteration.json",
+    "sha256": "2dd2a7a229abe1bfdf5df6327c0ffea87e78eaaef0fc7540a54e7ca750bc56b0"
+  },
+  "native6": {
+    "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-231059-3288a218\\iteration.json",
+    "sha256": "72615596474f9b4b6e64137aa3ae6e9a8b608e83e1c72e3461c80b92c153c3c4"
+  },
+  "twoLineFunctional": {
+    "receipt": {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-231845\\two-line\\receipt.json",
+      "sha256": "7632d8375dcce881e7f47d9b8ead671f354faf7cba08315d1e796707be2bc74a"
+    },
+    "originalWrapperGuardFailed": true,
+    "reason": "Artifact input manifest omitted all sidecarSha256 fields; actual native/sidecar bytes independently match original preservation. Failed receipt retained.",
+    "independentOriginal182HashAudit": {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-231845\\input-stability-audit.json",
+      "sha256": "65b970a4bd7f1f993021bc7219109bd8e29756d85601832e1101a7865f7a8d88"
+    },
+    "summaries": [
+      [
+        "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=182 submitted=182 distinct=182 composed=182 phases=91 inspection_requests=0 templates=0 proofs=182 consumed=182 scans=61 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.984 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=53.8246 max_latency_ms=151.235 early_latency_ms=133.916 late_latency_ms=134.744 work_samples=182 max_frame_work_ms=13.3195 max_ingress_ms=0.2988"
+      ],
+      [
+        "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=182 submitted=182 distinct=182 composed=182 phases=91 inspection_requests=0 templates=0 proofs=182 consumed=182 scans=63 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9827 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=53.2131 max_latency_ms=151.267 early_latency_ms=133.723 late_latency_ms=134.921 work_samples=182 max_frame_work_ms=13.7404 max_ingress_ms=0.276"
+      ]
+    ]
+  },
+  "twoLineVisual": {
+    "functionalReceipt": {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\two-line-visual\\receipt.json",
+      "sha256": "cf033005ab6e19315fa34cef8996c5e1520760d29dd3dc4add45f557ebe942a0"
+    },
+    "expectedImages": 10,
+    "independentVisualReview": {
+      "passed": true,
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\receipt.json",
+      "sha256": "18f679bfebad9c5bfe4d83418b27a740a39ae014524b35b4cc052c3031cda0f3",
+      "frames": 10,
+      "scope": "Ten actual after-render-before-present PNGs joined to their exact later submitted source/context; natural acquisition of original91 paused two-line native capture. Five outputs per variant span all four distinct native byte phases.",
+      "inspection": "All ten outputs visibly show both complete lines (who can tell me / what an apex predator is?), including the question mark, with consistent dark backing. No visible glyph clipping, duplicate raw caption, picture-edge movement or sidebars in these samples. All actual source/target mappings agree. This is independent visual inspection, not exhaustive per-pixel preservation proof."
+    }
+  },
+  "movingCompletedProof": {
+    "receipt": {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\completed-proof\\receipt.json",
+      "sha256": "45b45db7280cb6111f3e913a9f9029c30f06f3537b165d76dbc57a584adf6208"
+    },
+    "summaries": [
+      [
+        "MISSING EVIDENCE SUMMARY: anchor=12 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=51.5326 proof_positive=65 both_missing=0 completed_slot_mode=1 completed_slot_sources=65 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9589 work_samples=186 max_work_ms=13.3032 max_ingress_ms=0.3614 max_latency_ms=151.358 early_latency_ms=133.369 late_latency_ms=134.06"
+      ],
+      [
+        "MISSING EVIDENCE SUMMARY: anchor=12 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=52.0548 proof_positive=65 both_missing=0 completed_slot_mode=1 completed_slot_sources=65 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9936 work_samples=186 max_work_ms=12.5171 max_ingress_ms=0.3573 max_latency_ms=146.728 early_latency_ms=133.832 late_latency_ms=133.974"
+      ]
+    ]
+  },
+  "restoration": {
+    "receipt": {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\receipt.json",
+      "sha256": "6ca02f1923fd8877dac57723626a8852cbabd6fe43464dd0e9f182acdf78bf0a"
+    },
+    "installedPid": 28612,
+    "runtimeUnchanged": true,
+    "settingsUnchanged": true
+  },
+  "limitations": [
+    "Original source IDs and gaps retained in manifests; runtime replay identities are fresh and explicit.",
+    "Visual runs do not qualify timing. Timed contract is input23.976Hz with output configured59Hz; not a claim all presentation ticks measured.",
+    "Moving corpus is a controlled loop of three distinct original rasters, not whole-film or both-jobs-unfinished coverage.",
+    "No deployment performed."
+  ]
+}

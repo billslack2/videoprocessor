@@ -1,0 +1,784 @@
+{
+  "source": "4def430fae64bd0ea48f38ef0758f55127335f54",
+  "passed": true,
+  "scope": "Ten actual after-render-before-present PNGs joined to their exact later submitted source/context; natural acquisition of original91 paused two-line native capture. Five outputs per variant span all four distinct native byte phases.",
+  "visualInspection": "All ten outputs visibly show both complete lines (who can tell me / what an apex predator is?), including the question mark, with consistent dark backing. No visible glyph clipping, duplicate raw caption, picture-edge movement or sidebars in these samples. All actual source/target mappings agree. This is independent visual inspection, not exhaustive per-pixel preservation proof.",
+  "timingQualified": false,
+  "oldHistoricalSeedReconstructed": false,
+  "offAdPixelsExercised": false,
+  "movingBackgroundVisualClaim": false,
+  "actualSource": [
+    0,
+    272,
+    3840,
+    1886
+  ],
+  "physicalPicture": [
+    0,
+    275,
+    3840,
+    1884
+  ],
+  "frames": [
+    {
+      "variant": "standard",
+      "source": 63,
+      "originalIndex": 8,
+      "originalIdentity": [
+        2,
+        11015,
+        22687,
+        436372681830,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "5428F0630055F7E3A018CD625B5609226EDCAB1D1454CF94749B56D5ED67FC6D",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4423814895419,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232201-994-frame-63.json",
+          "sha256": "a83c2f33fcfffa53c2cca63efe65d8a861386c30af02e6fe0c731a60dafc633f"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232201-994-frame-63.png",
+          "sha256": "d77fc1f322907a3f335721d746a0b6aedc6bc129b604bf4ee3428efa96a675cd"
+        }
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 94,
+      "originalIndex": 39,
+      "originalIdentity": [
+        2,
+        11046,
+        22718,
+        436373974770,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "3E1B5CD8EA82ED3C64DA531068F90BC38EC117C4CF5384F2983935113A018F38",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4423827825003,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232203-293-frame-94.json",
+          "sha256": "b613a754b26f2720e21d14f6daf6f4703ad38a9cf8e3940169fc363da24e9fef"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232203-293-frame-94.png",
+          "sha256": "c04e4de65b102df7bfade7fdfb9f6d7a8fcfb1f630c0e10047be462c45a9e0a2"
+        }
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 125,
+      "originalIndex": 70,
+      "originalIdentity": [
+        2,
+        11077,
+        22749,
+        436375267710,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "03FE99EFF3667A0A6B5E2C47F45CEC3B7E4B5AD2974A4037D23CC7AE482E625E",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4423840754586,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232204-586-frame-125.json",
+          "sha256": "78f6f9899cb8772e9d18318cf3a5b236e4e1b90bd69a10e444f70c98a072b944"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232204-586-frame-125.png",
+          "sha256": "3b09c7db795fbf85e37c28b22aa273e659fd9968259cca1ecc47041ca2d5f930"
+        }
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 156,
+      "originalIndex": 10,
+      "originalIdentity": [
+        2,
+        11017,
+        22689,
+        436372765250,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "03FE99EFF3667A0A6B5E2C47F45CEC3B7E4B5AD2974A4037D23CC7AE482E625E",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4423853684169,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232205-878-frame-156.json",
+          "sha256": "7c74231545fbfb77e021c47b5e19fdfe730f1a4b3037ea3aa17f8836aa7a312d"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232205-878-frame-156.png",
+          "sha256": "3b09c7db795fbf85e37c28b22aa273e659fd9968259cca1ecc47041ca2d5f930"
+        }
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 187,
+      "originalIndex": 41,
+      "originalIdentity": [
+        2,
+        11048,
+        22720,
+        436374058180,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "0E3BFDBFBB97A04ED135993AA12A408301A7A1466F41836EC88C5D68B5A5F29D",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4423866613753,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232207-179-frame-187.json",
+          "sha256": "c0af60d96939c08eef698a4efe818d3e7a639c3dcf723233536f54f955a22eb4"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232207-179-frame-187.png",
+          "sha256": "e809b91741c9b526b1dba87ffec6ca77e3dcc447dc357ffe8d2b30a1562cca68"
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 63,
+      "originalIndex": 8,
+      "originalIdentity": [
+        2,
+        11015,
+        22687,
+        436372681830,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "5428F0630055F7E3A018CD625B5609226EDCAB1D1454CF94749B56D5ED67FC6D",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4423956787113,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232216-187-frame-63.json",
+          "sha256": "106f9b9363981de185556f3b8ace61a5a045180fcf70e70192d494e405186fc6"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232216-187-frame-63.png",
+          "sha256": "b09aceae6805d715f6029f83a81f90a8928fe5c60ad0a487e12652157f621396"
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 94,
+      "originalIndex": 39,
+      "originalIdentity": [
+        2,
+        11046,
+        22718,
+        436373974770,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "3E1B5CD8EA82ED3C64DA531068F90BC38EC117C4CF5384F2983935113A018F38",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4423969716697,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232217-487-frame-94.json",
+          "sha256": "a56e81f06672334dab0919188abedd4b93bd60704296b37db2bafd7250728f59"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232217-487-frame-94.png",
+          "sha256": "0c3dc9e55dc19fd8bf3b3849f7fcb368c3eea1a9f2d538cc8a795f0a2c481706"
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 125,
+      "originalIndex": 70,
+      "originalIdentity": [
+        2,
+        11077,
+        22749,
+        436375267710,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "03FE99EFF3667A0A6B5E2C47F45CEC3B7E4B5AD2974A4037D23CC7AE482E625E",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4423982646280,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232218-769-frame-125.json",
+          "sha256": "7ea789ac2b0aff08d86ac412b1730f78a6b7e95d40122915d07f26ccbc8e1687"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232218-769-frame-125.png",
+          "sha256": "e3f9e758ed9b4657cacea513e8ae221833a3c3b7c0cc3495f1249d7658bf96c2"
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 156,
+      "originalIndex": 10,
+      "originalIdentity": [
+        2,
+        11017,
+        22689,
+        436372765250,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "03FE99EFF3667A0A6B5E2C47F45CEC3B7E4B5AD2974A4037D23CC7AE482E625E",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4423995575863,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232220-066-frame-156.json",
+          "sha256": "864a1a8f78b60beb15aeac90bf7d89877102af837e0023ba1fd0fa0a9fcdc223"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232220-066-frame-156.png",
+          "sha256": "e3f9e758ed9b4657cacea513e8ae221833a3c3b7c0cc3495f1249d7658bf96c2"
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 187,
+      "originalIndex": 41,
+      "originalIdentity": [
+        2,
+        11048,
+        22720,
+        436374058180,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "0E3BFDBFBB97A04ED135993AA12A408301A7A1466F41836EC88C5D68B5A5F29D",
+      "transport": 1,
+      "format": 15805081878477807578,
+      "viewport": 0,
+      "renderer": 1,
+      "domain": 4768279117495752782,
+      "policy": 2,
+      "continuity": 2,
+      "timestamp": 4424008505447,
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "currentComposition": true,
+      "laterExactSourceSubmitted": true,
+      "captureStage": "after-render-before-present",
+      "files": [
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232221-360-frame-187.json",
+          "sha256": "e1c940b9c53ccf77281f57326ebe62c6a2acd9837206c525217030b78341473c"
+        },
+        {
+          "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\VP-rendered-20261104-232221-360-frame-187.png",
+          "sha256": "27834dcae31deab576a48f1b60f552b55248809c7d0a631065adb609088919e9"
+        }
+      ]
+    }
+  ],
+  "contactSheets": [
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\caption-contact-sheet.png",
+      "sha256": "680cfc6629dc289dfe3f56aa8902313a48383510104a3868b1923e641b66b75c"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-232149\\visual-review\\full-frame-contact-sheet.png",
+      "sha256": "4f4bd413aee654fb76bd0caa166b33c7689ecf96b36bd5d1993c676f14e0d284"
+    }
+  ]
+}

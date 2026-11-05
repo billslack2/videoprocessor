@@ -1,0 +1,15 @@
+{
+  "scope": "Independent post-run original preservation verification; original failed receipt retained unchanged. No GPU rerun.",
+  "cause": "All91 manifest entries omitted sidecarSha256; final guard compared actual hashes with null.",
+  "nativeAndSidecarsVerified": 182,
+  "originalPreservation": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\incident-20261104-213039\\current-paused-214152\\preservation.json",
+  "originalPreservationSha256": "b12a8b084fd6ace193527ab464736a26ed935cb3fdf5d3042dc810c3fd5d50ad",
+  "preRunManifestSha256": "3e19d9176f773ebb9ec76a085bf5fcdbfb309faedbea182f85ac21d8afc29006",
+  "functionalCasesPassed": [
+    12,
+    13
+  ],
+  "visualAndMovingNotRun": true,
+  "allOriginalHashChecksPass": true,
+  "originalAuditSha256": "65b970a4bd7f1f993021bc7219109bd8e29756d85601832e1101a7865f7a8d88"
+}
