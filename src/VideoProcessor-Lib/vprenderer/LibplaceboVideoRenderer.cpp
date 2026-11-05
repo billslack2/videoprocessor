@@ -9472,30 +9472,35 @@ struct LibplaceboVideoRenderer::Impl
         const std::shared_ptr<const QueuedFrame::ConvertedPayload>& converted,
         const std::shared_ptr<QueuedFrame::AnalysisPayload>& cache,
         AnalysisSourceProfile profile, uint64_t generation,
-        bool rendererUsesNative = false, bool converted422 = false,bool nonblocking=false)
+        bool rendererUsesNative = false, bool converted422 = false,bool nonblocking=true,bool bypassCache=false)
     {
         if (!cache || !state.displayMode) return {};
         std::unique_lock<std::mutex> guard(cache->mutex,std::defer_lock);
-        if(nonblocking) {if(!guard.try_lock())return {};}else guard.lock();
-        auto& stored = profile == AnalysisSourceProfile::LiveRenderer ? cache->live : cache->queued;
-        const bool sameSelection = profile == AnalysisSourceProfile::QueuedCapture ||
-            (cache->liveNative == rendererUsesNative && cache->live422 == converted422);
-        if (stored.IsValid() && sameSelection) {
-            auto result = stored;
-            result.source.generation = generation;
-            return result;
+        if(!bypassCache) {if(nonblocking)guard.try_lock();else guard.lock();}
+        if(guard.owns_lock()) {
+            const auto& stored=profile==AnalysisSourceProfile::LiveRenderer?cache->live:cache->queued;
+            const bool sameSelection=profile==AnalysisSourceProfile::QueuedCapture ||
+                (cache->liveNative==rendererUsesNative && cache->live422==converted422);
+            if(stored.IsValid() && sameSelection) {
+                auto result=stored;result.source.generation=generation;return result;
+            }
         }
-        if (!cache->nativeOwner && frame.GetData()) {
+        // Busy optional metadata is not a source decode failure. Reconstruct
+        // the same immutable source view, using one atomically shared owner;
+        // no pixels are scanned/converted and no cached evidence is invented.
+        auto nativeOwner=std::atomic_load(&cache->nativeOwner);
+        if (!nativeOwner && frame.GetData()) {
             auto owner = std::shared_ptr<VideoFrame>(new VideoFrame(frame),
                 [](VideoFrame* p) { p->SourceBufferRelease(); delete p; });
             owner->SourceBufferAddRef();
-            cache->nativeOwner = owner;
+            std::shared_ptr<const void> proposed=owner;
+            if(std::atomic_compare_exchange_strong(&cache->nativeOwner,&nativeOwner,proposed))nativeOwner=std::move(proposed);
         }
         AnalysisFrameInput input;
         input.nativeData = reinterpret_cast<const uint8_t*>(frame.GetData());
         input.nativeBytes = static_cast<size_t>(state.BytesPerFrame());
         input.nativeRowBytes = static_cast<size_t>(state.BytesPerRow());
-        input.nativeOwner = cache->nativeOwner;
+        input.nativeOwner = std::move(nativeOwner);
         input.width = static_cast<int>(state.displayMode->FrameWidth());
         input.height = static_cast<int>(state.displayMode->FrameHeight());
         input.encoding = state.videoFrameEncoding;
@@ -9516,6 +9521,8 @@ struct LibplaceboVideoRenderer::Impl
         }
         auto prepared = PrepareAnalysisFrame(input);
         if (!prepared.IsValid()) return {}; // Pending conversion is never cached as evidence.
+        if(!guard.owns_lock())return prepared;
+        auto& stored=profile==AnalysisSourceProfile::LiveRenderer?cache->live:cache->queued;
         const auto& other = profile == AnalysisSourceProfile::LiveRenderer ? cache->queued : cache->live;
         if (other.IsValid() && other.domainKey == prepared.domainKey) {
             prepared = other;
@@ -9633,7 +9640,7 @@ struct LibplaceboVideoRenderer::Impl
     {
         if(completedCurrentNoCaptionScan)*completedCurrentNoCaptionScan=false;
         const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
-        subtitleMeasurementWorker.SetInputRateHz(fps);
+        if(allowSubmit)subtitleMeasurementWorker.SetInputRateHz(fps,true);
         auto keyStorage=std::make_unique<SubtitleBoxObservation>();auto& key=*keyStorage;
         MakeSubtitleWorkerKeyInto(key,state,identity,discontinuity,policy,continuity,
             nearBar,optimizationMode,scriptHint,sharedPicture,prepared);
@@ -9648,11 +9655,11 @@ struct LibplaceboVideoRenderer::Impl
         }
         SubtitleBoxObservation ready;
         const bool ownedRead=ownedWitness && subtitleMeasurementWorker.TryReadOwnedScan(
-            key,ready,*ownedWitness,ownedTimelinePolicy);
+            key,ready,*ownedWitness,ownedTimelinePolicy,true);
         if(ownedWitness && !ownedRead && SubtitleCadenceCacheDiagnosticsEnabled() && identity.acceptedSequence<=128)
             DebugLog::Log("VP subtitle cadence cache: stage=worker-owned-reject source=%llu domain=%llu policy=%llu continuity=%llu owner_policy=%llu reason=complete-source-or-timeline-witness-unavailable",
                 key.identity.acceptedSequence,key.identity.analysisDomainKey,policy,continuity,ownedTimelinePolicy);
-        const bool readyRead=ownedRead || subtitleMeasurementWorker.TryRead(key,ready,false);
+        const bool readyRead=ownedRead || subtitleMeasurementWorker.TryRead(key,ready,false,true);
         const auto ticket=std::atomic_load(&analysisCache->sourceTicket);
         if(readyRead && ticket && ticket->Accepts(ready)) {
             if(SubtitleBoxLookahead::CanReuseMeasurement(ready,key.identity,key.width,key.height,
@@ -9714,7 +9721,7 @@ struct LibplaceboVideoRenderer::Impl
             return key;
         }
         subtitleMeasurementWorker.Submit(key,MakeSubtitleMeasurementWork(prepared,key,prior,fps,nativeEvidence,analysisCache),
-            ownedWitness,ownedTimelinePolicy,false,analysisCache?analysisCache->lookahead->completion:nullptr);
+            ownedWitness,ownedTimelinePolicy,true,analysisCache?analysisCache->lookahead->completion:nullptr);
         return key;
     }
 
@@ -9871,7 +9878,7 @@ struct LibplaceboVideoRenderer::Impl
         }
         request.completion=analysisCache?analysisCache->lookahead->completion:nullptr;
         const auto started=SteadyClock::now();
-        const auto status=subtitleMeasurementWorker.SubmitCurrentCueProof(std::move(request));
+        const auto status=subtitleMeasurementWorker.SubmitCurrentCueProof(std::move(request),true);
         offerTrace(status,statusName(status),originalSourceGeneration,key.identity.transportGeneration,
             std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count());
         return status;
@@ -13699,9 +13706,9 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
         const auto preparedLive = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
-            analysisCache,AnalysisSourceProfile::LiveRenderer,frameGeneration,nativeRgbUpload || nativePlanarUpload,lossless422Upload);
+            analysisCache,AnalysisSourceProfile::LiveRenderer,frameGeneration,nativeRgbUpload || nativePlanarUpload,lossless422Upload,true,RegressionMissingProof(sourceSequence));
         const auto preparedQueued = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
-            analysisCache,AnalysisSourceProfile::QueuedCapture,AlphaSourceFormatKey(state),false,lossless422Upload);
+            analysisCache,AnalysisSourceProfile::QueuedCapture,AlphaSourceFormatKey(state),false,lossless422Upload,true,RegressionMissingProof(sourceSequence));
         analysisSource = preparedLive.source;
         {
             auto id=activePictureIdentity;id.analysisDomainKey=preparedLive.domainKey;
@@ -15136,7 +15143,7 @@ struct LibplaceboVideoRenderer::Impl
                         nativeProofContext,exactKey)) {
                     const auto bindStarted=SteadyClock::now();
                     auto cueStatus=RegressionMissingProof(sourceSequence)?SubtitleCurrentCueProofStatus::NotEligible:
-                        subtitleMeasurementWorker.TryPeekCurrentCueProof(exactKey,currentCueProofReceipt);
+                        subtitleMeasurementWorker.TryPeekCurrentCueProof(exactKey,currentCueProofReceipt,true);
                     if(sourceSequence<=128 || sourceSequence%60==0) {
                         auto poll=AnalysisTraceRecord(exactKey.identity,this,"subtitle-cue-proof-polled","render-current-source");
                         poll.policyGeneration=exactKey.policyGeneration;
@@ -15147,24 +15154,9 @@ struct LibplaceboVideoRenderer::Impl
                             SteadyClock::now().time_since_epoch()).count());
                         AnalysisDiagnosticTrace::Emit(poll);
                     }
-                    if(cueStatus!=SubtitleCurrentCueProofStatus::Ready && !currentHasFullPositiveScan) {
-                        const auto priorBar=subtitleBoxPresentation.BarTrackingReferenceFor(
-                            subtitleIdentity,exactKey.width,exactKey.height,localBoundaryPolicyGeneration,
-                            localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint);
-                        const auto nativeReady=analysisCache?QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead):nullptr;
-                        const auto nativeEvidence=nativeReady && CurrentLookaheadMeasurement(
-                            preparedQueued,exactKey.identity,nativeReady)?nativeReady->evidence:ActivePictureEvidence{};
-                        const double proofFps=state.displayMode?state.displayMode->RefreshRateHz():60.0;
-                        const double proofFrameMs=state.displayMode && state.displayMode->TimeScale()>0?
-                            1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale():1000.0/60.0;
-                        cueStatus=SubmitCurrentCueProof(preparedQueued,rawCurrentKey,
-                            exactKey.sharedPicture.bounds,activePictureIdentity,sourceSequence,
-                            sourceSubtitleMode,subtitleCutPasteBackground,proofFrameMs,proofFps,
-                            !exactKey.cadenceSkipped,priorBar,nativeEvidence,analysisCache);
-                        if(cueStatus==SubtitleCurrentCueProofStatus::Ready)
-                            cueStatus=subtitleMeasurementWorker.TryPeekCurrentCueProof(
-                                exactKey,currentCueProofReceipt);
-                    }
+                    // Accepted-source dispatch and lookahead priming own job
+                    // submission. The render head only consumes ready current
+                    // work or exact-current equivalence; it never waits to offer.
                     if(cueStatus!=SubtitleCurrentCueProofStatus::Ready && !currentHasFullPositiveScan && sourceTicket) {
                         const auto support=CurrentSourceSupport(preparedQueued,subtitleIdentity,analysisCache);
                         if(support && subtitleMeasurementWorker.TryReadCurrentEquivalentCue(*sourceTicket,
@@ -16068,7 +16060,7 @@ struct LibplaceboVideoRenderer::Impl
                 uint64_t revision=0;
                 const auto seedSubmitStarted=SteadyClock::now();
                 const auto seedStatus=subtitleMeasurementWorker.SubmitCurrentCueTemplateOwned(
-                    std::move(seed),revision);
+                    std::move(seed),revision,true);
                 const double seedSubmitMs=std::chrono::duration<double,std::milli>(
                     SteadyClock::now()-seedSubmitStarted).count();
                 if(revision)currentCueTemplateRevision.store(revision,std::memory_order_release);
@@ -16315,9 +16307,9 @@ struct LibplaceboVideoRenderer::Impl
 
         const auto subtitlePerfNow=GetTickCount64();
         if(!subtitlePerfTick)subtitlePerfTick=subtitlePerfNow;
-        if(subtitlePerfNow-subtitlePerfTick>=5000) {
+        SubtitleMeasurementWorker::Diagnostics worker;
+        if(subtitlePerfNow-subtitlePerfTick>=5000 && subtitleMeasurementWorker.TryTakeDiagnostics(worker)) {
             const double seconds=(subtitlePerfNow-subtitlePerfTick)/1000.0;
-            const auto worker=subtitleMeasurementWorker.TakeDiagnostics();
             const auto jobs=worker.fullScans+worker.refreshes+worker.failed;
             DebugLog::Log("SUBTITLE DISPATCH: window_s=%.3f calls=%llu requests=%llu avg_ms=%.3f peak_ms=%.3f submitted=%llu exact_reads=%llu deduplicated=%llu expired_jobs=%llu ready_seen=%llu published_future=%llu missing=%llu",
                 seconds,subtitlePrimeCalls,subtitlePrimeRequests,
@@ -16900,7 +16892,7 @@ struct LibplaceboVideoRenderer::Impl
                     ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0;
                 seed->holdMs=activeSettings.subtitleHoldMs;
                 uint64_t revision=0;const auto started=SteadyClock::now();
-                const auto status=subtitleMeasurementWorker.SubmitCurrentCueTemplateOwned(std::move(seed),revision);
+                const auto status=subtitleMeasurementWorker.SubmitCurrentCueTemplateOwned(std::move(seed),revision,true);
                 if(revision)currentCueTemplateRevision.store(revision,std::memory_order_release);
                 auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-cue-template-offered",
                     status==SubtitleCurrentCueProofStatus::Queued?"prepared-sampling-queued":
@@ -26105,7 +26097,7 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
     const double sourceFps=queued.state->displayMode->RefreshRateHz();
     const double sourceFrameMs=queued.state->displayMode->FrameDuration()>0?
         1000.0*queued.state->displayMode->FrameDuration()/queued.state->displayMode->TimeScale():1000.0/60.0;
-    m_impl->subtitleMeasurementWorker.SetInputRateHz(sourceFps);
+    m_impl->subtitleMeasurementWorker.SetInputRateHz(sourceFps,true);
     auto cueProofStatus=SubtitleCurrentCueProofStatus::NoTemplate;
     if(subtitleContextEligible)
         cueProofStatus=m_impl->SubmitCurrentCueProof(prepared,*key,key->sharedPicture.bounds,
@@ -26270,7 +26262,7 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         backgroundMode=m_impl->SubtitleCutPasteBackground(m_impl->activeSettings);
     }
     const auto started=SteadyClock::now();
-    if(!harvestOnly)m_impl->subtitleMeasurementWorker.BeginSourceWindow(frames.front().activePictureIdentity);
+    if(!harvestOnly)m_impl->subtitleMeasurementWorker.BeginSourceWindow(frames.front().activePictureIdentity,true);
     unsigned requests=0;
     const size_t count=(std::min)(frames.size(),SubtitleBoxLookahead::MaxFrames);
     uint64_t eligibleTailSequence=headIdentity.acceptedSequence;
@@ -26330,9 +26322,9 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         Impl::MakeSubtitleWorkerKeyInto(*keyStorage,*queued.state,identity,queued.frame.IsSourceDiscontinuity(),
             policy,continuity,nearBar,optimization,script,picture,prepared);
         OwnedScanBacklogWitness ownedWitness;uint64_t oldContinuity=0,ownerPolicy=0;
-        const bool completed=m_impl->subtitleMeasurementWorker.PeekIndependentContinuity(key,oldContinuity);
+        const bool completed=m_impl->subtitleMeasurementWorker.PeekIndependentContinuity(key,oldContinuity,true);
         const bool pendingOwnedWork=!completed &&
-            m_impl->subtitleMeasurementWorker.PeekOwnedWorkContinuity(key,oldContinuity);
+            m_impl->subtitleMeasurementWorker.PeekOwnedWorkContinuity(key,oldContinuity,true);
         if((completed || pendingOwnedWork) && oldContinuity!=continuity) {
             std::unique_lock<std::mutex> guard(m_queueMutex,std::try_to_lock);
             if(guard.owns_lock() && policy==m_activePictureTimeline.LookaheadPolicyGeneration() &&
@@ -28514,7 +28506,7 @@ void LibplaceboVideoRenderer::RenderLoop()
                 ? Impl::PrepareFrameAnalysis(frame,*state,convertedPayload,analysisCache,
                     AnalysisSourceProfile::QueuedCapture,
                     activePictureIdentity.sourceFormatGeneration,false,
-                    state->dolbyVisionTunnel)
+                    state->dolbyVisionTunnel,true)
                 : PreparedAnalysisFrame{};
             const uint64_t cachedQueuedDomain=currentQueuedAnalysis.IsValid()
                 ? currentQueuedAnalysis.domainKey : 0;
@@ -28589,8 +28581,8 @@ void LibplaceboVideoRenderer::RenderLoop()
                         m_impl->localBoundaryPolicyGeneration,m_impl->localBoundaryContinuityGeneration,
                         m_impl->activeSettings.subtitleNearBarDistance,m_impl->activeSettings.subtitleDetectionOptimization,
                         m_impl->activeSettings.subtitleScriptHint,workerPicture,currentQueuedAnalysis);
-                    if(!m_impl->subtitleMeasurementWorker.PeekIndependentContinuity(*keyStorage,observedContinuity))
-                        m_impl->subtitleMeasurementWorker.PeekOwnedWorkContinuity(*keyStorage,observedContinuity);
+                    if(!m_impl->subtitleMeasurementWorker.PeekIndependentContinuity(*keyStorage,observedContinuity,true))
+                        m_impl->subtitleMeasurementWorker.PeekOwnedWorkContinuity(*keyStorage,observedContinuity,true);
                     if(!observedContinuity && subtitlePreview.available)
                         observedContinuity=subtitlePreview.continuityGeneration;
                     if(observedContinuity && observedContinuity!=m_impl->localBoundaryContinuityGeneration)

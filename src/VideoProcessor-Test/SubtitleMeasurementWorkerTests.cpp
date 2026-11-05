@@ -5130,19 +5130,66 @@ TEST_METHOD(CurrentCueEquivalentSourceRequiresConsumedQualifiedCurrentPixels) {
     } readTrace;
     AnalysisDiagnosticTrace::SetExternalSinks(&readTrace,&ReadTrace::Capture,nullptr,nullptr);
     struct ClearReadSink {~ClearReadSink(){AnalysisDiagnosticTrace::ClearExternalSinks();}} clearReadSink;
-    f->worker.AdvanceCurrentCueRenderWindow(key.identity,3);
     SubtitleCurrentCueProofReceipt receipt;
     std::thread occupiedWorker([&]{SubtitleBoxObservation ignored;f->worker.TryRead(key,ignored);});
     bool entered=false;
     {std::unique_lock<std::mutex> lock(readTrace.mutex);
         entered=readTrace.changed.wait_for(lock,std::chrono::seconds(2),[&]{return readTrace.entered;});}
-    const bool rebound=entered && f->worker.TryReadCurrentEquivalentCue(ticket,token,key,f->seed->physicalBase,f->seed->sourceMode,3,f->revision,support.get(),false,receipt);
+    SubtitleCurrentCueProofReceipt peekReceipt;
+    auto peekStatus=SubtitleCurrentCueProofStatus::NoTask;
+    bool rebound=false,rawBusy=false,ownedBusy=false,independentBusy=false,ownedContinuityBusy=false,diagnosticsBusy=false;
+    auto seedStatus=SubtitleCurrentCueProofStatus::Ready;uint64_t busySeedRevision=999;
+    auto offeredProof=SubtitleCurrentCueProofStatus::Ready;bool snapshotKeyReady=false,rawOfferDeclined=false;
+    auto unexpectedRawRuns=std::make_shared<std::atomic_uint>(0);
+    if(entered) {
+        // Exercise the actual render-side window/peek/equivalence order while
+        // ordinary worker bookkeeping owns its mutex. No production wait/retry.
+        f->worker.AdvanceCurrentCueRenderWindow(key.identity,3);
+        f->worker.BeginSourceWindow(key.identity,true);
+        f->worker.SetInputRateHz(25,true);
+        SubtitleBoxObservation snapshotKey;ActivePictureBounds snapshotBase;uint64_t snapshotRevision=0;
+        snapshotKeyReady=f->worker.MakeCurrentCueProofKey(current->observation,f->seed->sourceMode,3,snapshotKey,snapshotBase,snapshotRevision);
+        auto request=std::make_unique<SubtitleCurrentCueProofRequest>();request->currentKey=key;
+        request->fullScanKey=current->observation;request->hasFullScanKey=true;request->source=f->source;
+        request->physicalBase=f->seed->physicalBase;request->sourceMode=f->seed->sourceMode;request->backgroundMode=3;
+        request->templateRevision=f->revision;request->frameMs=40;request->eligibleRenderHead=key.identity;
+        request->eligibleTailSequence=3;request->fullScanDue=false;
+        offeredProof=f->worker.SubmitCurrentCueProof(std::move(*request),true);
+        rawOfferDeclined=!f->worker.Submit(key,[key,unexpectedRawRuns](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            ++*unexpectedRawRuns;return key;
+        },nullptr,0,true);
+        peekStatus=f->worker.TryPeekCurrentCueProof(key,peekReceipt,true);
+        SubtitleBoxObservation ignored;uint64_t continuity=999;SubtitleMeasurementWorker::Diagnostics diagnostics;
+        rawBusy=!f->worker.TryRead(key,ignored,false,true);
+        ownedBusy=!f->worker.TryReadOwnedScan(key,ignored,OwnedScanBacklogWitness{},key.policyGeneration,true);
+        independentBusy=!f->worker.PeekIndependentContinuity(key,continuity,true);
+        ownedContinuityBusy=!f->worker.PeekOwnedWorkContinuity(key,continuity,true);
+        diagnosticsBusy=!f->worker.TryTakeDiagnostics(diagnostics);
+        auto newEpisode=std::make_unique<SubtitleCurrentCueTemplateInput>(*f->seed);
+        ++newEpisode->acceptedCue.cue;++newEpisode->observation.text.cue;
+        seedStatus=f->worker.SubmitCurrentCueTemplateOwned(std::move(newEpisode),busySeedRevision,true);
+        rebound=f->worker.TryReadCurrentEquivalentCue(ticket,token,key,f->seed->physicalBase,f->seed->sourceMode,3,f->revision,support.get(),false,receipt);
+    }
     bool completedWhileJobMutexHeld=false;
     {std::lock_guard<std::mutex> lock(readTrace.mutex);
         completedWhileJobMutexHeld=entered && !readTrace.expired;readTrace.release=true;}
     readTrace.changed.notify_all();occupiedWorker.join();
     Assert::IsTrue(entered,L"The test must occupy the actual worker job mutex through its existing diagnostic callback.");
-    Assert::IsTrue(completedWhileJobMutexHeld,L"Equivalent current receipt lookup must not wait for the worker job mutex.");
+    Assert::IsTrue(completedWhileJobMutexHeld,L"The complete render window/peek/equivalence path must not wait for the worker job mutex.");
+    Assert::IsTrue(peekStatus==SubtitleCurrentCueProofStatus::Pending && !peekReceipt.Valid(),
+        L"Busy optional proof lookup must return pending without inventing a receipt.");
+    Assert::IsTrue(snapshotKeyReady,L"Current template metadata remains available without worker job locking.");
+    Assert::IsTrue(rawOfferDeclined && WaitForWorkerIdle(f->worker),L"A busy raw offer must decline without queued orphan work.");
+    Assert::AreEqual(0u,unexpectedRawRuns->load(),L"Declined raw work must never execute after the lock is released.");
+    Assert::IsTrue(offeredProof==SubtitleCurrentCueProofStatus::NotEligible,
+        L"Busy optional proof admission must decline without scheduling an orphan task.");
+    Assert::IsTrue(rawBusy && ownedBusy && independentBusy && ownedContinuityBusy && diagnosticsBusy,
+        L"Optional raw/continuity/diagnostic readers must return unavailable while job bookkeeping owns its mutex.");
+    Assert::IsTrue(seedStatus==SubtitleCurrentCueProofStatus::NotEligible && busySeedRevision==0,
+        L"Busy optional seed offer must decline without replacing or invalidating the existing cue.");
+    uint64_t afterBusyRevision=0;
+    Assert::IsTrue(f->worker.SubmitCurrentCueTemplate(*f->seed,afterBusyRevision)==SubtitleCurrentCueProofStatus::Ready && afterBusyRevision==f->revision,
+        L"The declined seed offer must leave the current template reusable.");
     if(!rebound) {
         std::ostringstream diagnostic;diagnostic<<"equivalent read rejected: candidateCopies="<<readTrace.candidates
             <<" reason="<<receipt.Reason()<<" priorValid="<<f->receipt.Valid()<<" tokenValid="<<token.Valid()<<" currentValid="<<receipt.Valid()
@@ -6084,8 +6131,8 @@ TEST_METHOD(CurrentCueWorkerReplacesFailedPixelBaselineFromFreshIndependentScan)
         worker.reset();
     }
     TEST_METHOD(CurrentCueWorkerDeferredAndLateScansKeepOriginalInspectionKey) {
-        for(int route=0;route<3;++route) {
-            const bool late=route==1,ordinary=route==2;
+        for(int route=0;route<4;++route) {
+            const bool late=route==1 || route==3,ordinary=route==2;
             auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
             auto seed=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(1,*pixels));
             auto worker=std::make_unique<SubtitleMeasurementWorker>();
@@ -6166,7 +6213,12 @@ TEST_METHOD(CurrentCueWorkerReplacesFailedPixelBaselineFromFreshIndependentScan)
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
             Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Ready);
-            if(late)worker->SubmitCurrentCueProof(makeRequest(true));
+            if(late) {
+                if(route==3)Assert::IsTrue(WaitForWorkerIdle(*worker),L"Isolate the duplicate-ready callback contract from optional admission contention.");
+                const auto duplicate=worker->SubmitCurrentCueProof(makeRequest(true),route==3);
+                Assert::IsTrue(duplicate==SubtitleCurrentCueProofStatus::Ready,
+                    L"A late duplicate current proof remains ready while its newly supplied original-key scan is preserved.");
+            }
             Assert::IsTrue(WaitForEntered(*scans,1));
             Assert::AreEqual(1u,sink.starts.load(std::memory_order_acquire));
             const auto flags=sink.flags.load(std::memory_order_acquire);
