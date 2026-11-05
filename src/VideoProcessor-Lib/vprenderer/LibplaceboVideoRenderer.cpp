@@ -86,6 +86,7 @@
 #include <SubtitleBackingLip.h>
 #include <SubtitleBackingPresentation.h>
 #include <SubtitleMeasurementWorker.h>
+#include "SubtitleConfigurationFraming.h"
 #include <SubtitleCurrentCuePresentation.h>
 #include <SubtitleCadenceGuard.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
@@ -4961,6 +4962,17 @@ struct LibplaceboVideoRenderer::Impl
         RecordPresentationDecision(o,force);PollIncidentScreenshots();
     }
 
+    struct SubtitleConfigurationMapping {
+        pl_rect2df source{},target{},linear{};
+        NlsMappingDecision nls{};
+        MadVRActivePictureGeometry nlsGeometry{};
+        double nlsTargetAspect=0;
+        bool nlsGeometryAvailable=false,nlsHookActive=false,nativeAvailable=false;
+        uint64_t nlsSignature=0,nativeSequence=0,generation=0,sequence=0;
+        PresentationDecisionTelemetry::Rect native{};
+    };
+    SubtitleConfigurationFraming<SubtitleConfigurationMapping> subtitleConfigurationFraming;
+    SubtitleConfigurationMapping currentConfigurationMapping;
     PresentationDecisionTelemetry::Output lastSubmittedDecisionOutput;
     void RecordPresentationDecision(const PresentationDecisionTelemetry::Output& output,bool force=false) {
         (void)force;
@@ -4971,7 +4983,23 @@ struct LibplaceboVideoRenderer::Impl
         if(DebugLog::IsEnhancedLoggingEnabled()) {
             recentPresentationDecisions.push_back(json);if(recentPresentationDecisions.size()>512)recentPresentationDecisions.pop_front();
         } else recentPresentationDecisions.clear();
-        if(output.rendered && output.submitted)lastSubmittedDecisionOutput=output;
+        if(output.rendered && output.submitted) {
+            lastSubmittedDecisionOutput=output;
+            const auto& f=output.facts;
+            if(f.available && f.generation==output.generation && f.sequence==output.selectedSequence &&
+                currentConfigurationMapping.generation==output.generation &&
+                currentConfigurationMapping.sequence==output.selectedSequence) {
+                SubtitleConfigurationFrameContext c;
+                c.generation=output.generation;c.format=f.format;c.domain=f.domain;c.viewport=f.viewport;
+                c.width=f.width;c.height=f.height;
+                auto mapping=currentConfigurationMapping;
+                mapping.source={float(output.source.left),float(output.source.top),float(output.source.right),float(output.source.bottom)};
+                mapping.target={float(output.target.left),float(output.target.top),float(output.target.right),float(output.target.bottom)};
+                mapping.nls=nlsDecision;
+                mapping.nlsHookActive=mapping.nlsHookActive && nlsDecision.mode==NlsMappingMode::ACTIVE;
+                subtitleConfigurationFraming.Submitted(c,mapping);
+            }
+        }
     }
     struct TemporalPresentationSnapshot {
         PresentationDecisionTelemetry::Facts decisionFacts;
@@ -10133,6 +10161,8 @@ struct LibplaceboVideoRenderer::Impl
         const bool subtitleOnly = pending.viewportRequestSerial == renderViewportRequestSerial &&
             IsSubtitlePresentationOnlyUpdate(activeSettings, pending.settings,
                 [](const RendererSettings& value) { return EffectiveSettingsFingerprint(value); });
+        const bool configurationChanged=EffectiveSettingsFingerprint(activeSettings)!=
+            EffectiveSettingsFingerprint(pending.settings);
 		if (!ApplyProfileSettingsLiveLocked(pending.settings))
 		{
 			DebugLog::Log(
@@ -10141,6 +10171,8 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		else
 		{
+            if(configurationChanged)subtitleConfigurationFraming.Request(subtitleOnly,
+                SubtitlePreviewOverridesClassicHandling(pending.settings.subtitleMode));
 			renderLoadMeter.ResetForPipelineChange();
 			coreRenderLoadMeter.ResetForPipelineChange();
 			originalPrRenderLoadMeter.ResetForPipelineChange();
@@ -21502,6 +21534,67 @@ releaseDriftBaseRetention =
 			target.num_overlays = overlayCount;
 		}
 		};
+        // The user permits transient caption clipping while a newly requested
+        // subtitle configuration initializes. Hold ONLY submitted mapping metadata;
+        // renderImage remains the selected current source/field and is never replayed.
+        auto& configurationFacts=selectedPresentationValid?
+            selectedPresentationForCommit.decisionFacts:temporalPolicyDecisionFacts;
+        SubtitleConfigurationFrameContext configurationContext;
+        configurationContext.generation=frameGeneration;configurationContext.format=AlphaSourceFormatKey(state);
+        configurationContext.domain=queuedAnalysisDomainKey;configurationContext.viewport=viewportRequestSerial;
+        configurationContext.width=width;configurationContext.height=height;
+        const auto* pendingConfiguration=subtitleConfigurationFraming.Pending();
+        bool confirmedConfigurationPictureChange=false;
+        if(pendingConfiguration) {
+            confirmedConfigurationPictureChange=
+                configurationFacts.nativeAvailable &&
+                (!pendingConfiguration->nativeAvailable ||
+                 (configurationFacts.nativeAcceptedSequence>pendingConfiguration->nativeSequence &&
+                  configurationFacts.native!=pendingConfiguration->native));
+            const bool currentFullRaster=fullRasterPresentationAuthorityAvailable &&
+                fullRasterPresentationAuthoritySourceGeneration==frameGeneration &&
+                latestActivePictureEvidenceFrame==sourceSequence && configurationFacts.sequence==sourceSequence &&
+                latestActivePictureEvidenceClassification==ActivePictureClassification::FULL_RASTER_TRUSTED;
+            confirmedConfigurationPictureChange |= currentFullRaster &&
+                (pendingConfiguration->source.x0>0 || pendingConfiguration->source.y0>0 ||
+                 pendingConfiguration->source.x1<width || pendingConfiguration->source.y1<height);
+        }
+        // A composed full scan can precede queued template initialization. Finish
+        // the handoff on the current proof of the latest offered recipe (or a
+        // complete current absence), without waiting or adding confirmation frames.
+        const bool configurationReady=!rawSubtitleFallbackOutput &&
+            configurationFacts.available && configurationFacts.generation==frameGeneration &&
+            configurationFacts.sequence==(selectedPresentationValid?
+                selectedPresentationForCommit.sourceSequence:sourceSequence) &&
+            (configurationFacts.absence ||
+             (currentCueProofConsumed && configurationFacts.currentComposition &&
+              currentCueProofReceipt.TemplateRevision()==currentCueTemplateRevision.load(std::memory_order_acquire)));
+        const auto* configurationHold=subtitleConfigurationFraming.Select(configurationContext,
+            videoFrame.IsSourceDiscontinuity(),configurationReady,confirmedConfigurationPictureChange);
+        if(configurationHold && configurationHold->nlsHookActive &&
+            (!nlsHook || nlsHook->signature!=configurationHold->nlsSignature)) {
+            subtitleConfigurationFraming.Request(false,false);configurationHold=nullptr;
+        }
+        if(configurationHold) {
+            renderImage.crop=configurationHold->source;target.crop=configurationHold->target;
+            linearFallbackCrop=configurationHold->linear;nlsDecision=configurationHold->nls;
+            trustedActivePicture=false;hdrTrustedPicture={};
+            renderedCaptionCandidate={};renderedCaptionHoldCandidate={};
+            renderParams.hooks=nullptr;renderParams.num_hooks=0;
+            if(nlsRequested) {
+                MadVRShaderLoader::SetRuntimeNlsTargetAspect(configurationHold->nlsTargetAspect);
+                MadVRShaderLoader::SetRuntimeNlsDecision(configurationHold->nls);
+                MadVRShaderLoader::SetRuntimeActivePictureGeometry(configurationHold->nlsGeometryAvailable?
+                    configurationHold->nlsGeometry:MadVRActivePictureGeometry{});
+                MadVRShaderLoader::SetRuntimeShaderSelection(requestedShaderSelector,requestedShaderSelector,
+                    configurationHold->nls.mode);
+                if(configurationHold->nlsHookActive){renderParams.hooks=&nlsHook;renderParams.num_hooks=1;}
+            }
+            configurationFacts.finalOwner="subtitle-config-transition";
+            configurationFacts.finalReason="current-source-framing-held-caption-clipping-permitted";
+
+        }
+
 		assembleOverlays();
         if(lastMotionStatus!=temporalRenderer.status) {
             lastMotionStatus=temporalRenderer.status;
@@ -21530,6 +21623,39 @@ releaseDriftBaseRetention =
 			nlsPreparationPending.store(false, std::memory_order_release);
         nlsPreparationFailed.store(false, std::memory_order_release);
 		}
+        if(configurationHold) {
+            auto trace=AnalysisTraceRecord(subtitleIdentity,this,"subtitle-config-framing",
+                "current-source-mapping-held-caption-clipping-permitted");
+            const bool heldNlsReady=!configurationHold->nlsHookActive ||
+                (renderParams.num_hooks==1 && renderParams.hooks[0]==nlsHook);
+            trace.flags=heldNlsReady?1u:2u;
+            if(!heldNlsReady)AnalysisTraceText(trace.reason,"configuration-NLS-unready-current-linear-fallback");trace.policyGeneration=localBoundaryPolicyGeneration;
+            trace.continuityGeneration=localBoundaryContinuityGeneration;
+            trace.metrics[0]=renderImage.crop.x0;trace.metrics[1]=renderImage.crop.y0;
+            trace.metrics[2]=renderImage.crop.x1;trace.metrics[3]=renderImage.crop.y1;
+            trace.metrics[4]=target.crop.x0;trace.metrics[5]=target.crop.y0;
+            trace.metrics[6]=target.crop.x1;trace.metrics[7]=target.crop.y1;
+            trace.counters[0]=configurationHold->sequence;
+            trace.counters[1]=currentCueTemplateRevision.load(std::memory_order_acquire);
+            AnalysisDiagnosticTrace::Emit(trace);
+        }
+        currentConfigurationMapping={};
+        currentConfigurationMapping.source=renderImage.crop;currentConfigurationMapping.target=target.crop;
+        currentConfigurationMapping.linear=linearFallbackCrop;currentConfigurationMapping.nls=nlsDecision;
+        currentConfigurationMapping.nlsGeometry=configurationHold?configurationHold->nlsGeometry:
+            (selectedPresentationValid?selectedPresentationForCommit.nlsGeometry:temporalRuntimeNlsGeometry);
+        currentConfigurationMapping.nlsGeometryAvailable=configurationHold?configurationHold->nlsGeometryAvailable:
+            (selectedPresentationValid?selectedPresentationForCommit.nlsGeometryAvailable:temporalRuntimeNlsGeometryAvailable);
+        currentConfigurationMapping.nlsTargetAspect=configurationHold?configurationHold->nlsTargetAspect:
+            (selectedPresentationValid?selectedPresentationForCommit.nlsTargetAspect:temporalRuntimeNlsTargetAspect);
+        currentConfigurationMapping.nlsHookActive=renderParams.num_hooks==1 && renderParams.hooks[0]==nlsHook;
+        currentConfigurationMapping.nlsSignature=currentConfigurationMapping.nlsHookActive?nlsHook->signature:0;
+        currentConfigurationMapping.nativeAvailable=configurationFacts.nativeAvailable;
+        currentConfigurationMapping.native=configurationFacts.native;
+        currentConfigurationMapping.nativeSequence=configurationFacts.nativeAcceptedSequence;
+        currentConfigurationMapping.generation=frameGeneration;
+        currentConfigurationMapping.sequence=selectedPresentationValid?
+            selectedPresentationForCommit.sourceSequence:sourceSequence;
 		const SteadyClock::time_point renderStart = SteadyClock::now();
         const auto directHdrSource=FrameHdrStatus::Source(renderImage,sourceSequence,frameDvLuminance);
 		const bool targetLutApplied =

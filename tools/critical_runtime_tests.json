@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1214,
+  "minimumNativeTests": 1220,
   "requiredNativeMethods": [
     "CurrentDestinationEquivalentSamplesRemainCurrentAndSeedBounded",
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
@@ -525,6 +525,12 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {"source": "src/VideoProcessor-Test/RendererResetPolicyTests.cpp", "class": "RendererResetPolicyTests", "method": "SubtitleConfigurationHoldRequiresExplicitIntentAndKeepsOnlySubmittedMapping"},
+    {"source": "src/VideoProcessor-Test/RendererResetPolicyTests.cpp", "class": "RendererResetPolicyTests", "method": "SubtitleConfigurationReadyAndNewIntentCannotLeakIntoOrdinaryPlayback"},
+    {"source": "src/VideoProcessor-Test/RendererResetPolicyTests.cpp", "class": "RendererResetPolicyTests", "method": "SubtitleConfigurationInputAndNativeTransitionsClearHeldAndCachedMappings"},
+    {"source": "src/VideoProcessor-Test/RendererResetPolicyTests.cpp", "class": "RendererResetPolicyTests", "method": "SubtitleOffClassicBlackAndReconstructionTransitionsArePresentationOnly"},
+    {"source": "src/VideoProcessor-Test/RendererResetPolicyTests.cpp", "class": "RendererResetPolicyTests", "method": "SubtitleUpdateRejectsDetectorFormatUnknownAndNoChange"},
+    {"source": "src/VideoProcessor-Test/RendererResetPolicyTests.cpp", "class": "RendererResetPolicyTests", "method": "SubtitleUpdateRequiresCommittedViewportEvenAfterMailboxConsumption"},
     {"source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "NativeRgbAndP210HaveEquivalentBoxes"},
     {"source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "V210GroupingMatchesLosslessPlanarEvidenceAcrossCurrentContentAndContexts"},
     {"source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "V210GroupingPreservesNativeTerminalOwnershipAndRecoversFromInvalidViews"},

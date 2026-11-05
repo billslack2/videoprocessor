@@ -5,6 +5,9 @@
 #include <MadVRShaderTransactionPolicy.h>
 #include <RendererResetPolicy.h>
 #include <SubtitleProfileUpdatePolicy.h>
+#include <SubtitleConfigurationFraming.h>
+#include <array>
+#include <type_traits>
 #include <sstream>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -104,9 +107,84 @@ namespace Tests
         }
     };
 
+
+    struct ConfigurationMappingFixture {
+        std::array<int,4> crop{},target{},native{};
+        double nls=0;
+        bool operator==(const ConfigurationMappingFixture& b) const {
+            return crop==b.crop && target==b.target && native==b.native && nls==b.nls;
+        }
+    };
+    static_assert(std::is_trivially_copyable<ConfigurationMappingFixture>::value,
+        "Configuration continuity stores mapping metadata, never source pixels or ownership.");
+    static SubtitleConfigurationFrameContext ConfigurationContext() {return {1,2,3,4,3840,2160};}
+    static ConfigurationMappingFixture ScopeMapping() {
+        return {{{0,272,3840,1886}},{{0,0,2000,1125}},{{0,272,3840,1886}},0.3};
+    }
+    static ConfigurationMappingFixture FullMapping() {
+        return {{{0,0,3840,2160}},{{100,0,1900,1125}},{{0,0,3840,2160}},0.1};
+    }
+
 	TEST_CLASS(RendererResetPolicyTests)
 	{
 	public:
+
+        TEST_METHOD(SubtitleConfigurationHoldRequiresExplicitIntentAndKeepsOnlySubmittedMapping)
+        {
+            SubtitleConfigurationFraming<ConfigurationMappingFixture> state;
+            const auto context=ConfigurationContext();const auto original=ScopeMapping(),later=FullMapping();
+            Assert::IsNull(state.Select(context,false,false,false));
+            state.Request(true,true);Assert::IsFalse(state.Armed());
+            state.Submitted(context,original);Assert::IsNull(state.Select(context,false,false,false));
+            state.Request(true,true);Assert::IsTrue(state.Armed());
+            // No elapsed-time or source-age expiry. This metadata selection does
+            // not own a video frame, prove current caption pixels, or gate video.
+            for(unsigned selection=0;selection<100000;++selection) {
+                const auto* held=state.Select(context,false,false,false);
+                Assert::IsNotNull(held);Assert::IsTrue(*held==original);
+                if(selection==50000)state.Submitted(context,later);
+            }
+            Assert::IsTrue(*state.Pending()==original,
+                L"Subsequent submissions cannot mutate an already armed configuration snapshot.");
+        }
+        TEST_METHOD(SubtitleConfigurationReadyAndNewIntentCannotLeakIntoOrdinaryPlayback)
+        {
+            SubtitleConfigurationFraming<ConfigurationMappingFixture> state;
+            const auto context=ConfigurationContext();const auto original=ScopeMapping(),later=FullMapping();
+            state.Submitted(context,original);state.Request(true,true);
+            Assert::IsNull(state.Select(context,false,true,false));Assert::IsFalse(state.Armed());
+            Assert::IsNull(state.Select(context,false,false,false),
+                L"A later unrelated missing proof cannot rearm configuration continuity.");
+            state.Submitted(context,later);state.Request(true,true);
+            Assert::IsNotNull(state.Pending());Assert::IsTrue(*state.Pending()==later);
+            state.Request(true,false);Assert::IsFalse(state.Armed()); // Off/Classic.
+            state.Request(true,true);state.Request(false,true);Assert::IsFalse(state.Armed());
+            state.Request(true,true);state.Reset();state.Request(true,true);Assert::IsFalse(state.Armed());
+        }
+        TEST_METHOD(SubtitleConfigurationInputAndNativeTransitionsClearHeldAndCachedMappings)
+        {
+            using State=SubtitleConfigurationFraming<ConfigurationMappingFixture>;
+            const auto context=ConfigurationContext();const auto original=ScopeMapping(),full=FullMapping();
+            for(int active=0;active<2;++active)for(int field=0;field<7;++field) {
+                State state;state.Submitted(context,original);if(active)state.Request(true,true);
+                auto changed=context;
+                if(field==0)++changed.generation;if(field==1)++changed.format;
+                if(field==2)++changed.domain;if(field==3)++changed.viewport;
+                if(field==4)++changed.width;if(field==5)++changed.height;
+                Assert::IsNull(state.Select(changed,field==6,false,false));
+                state.Request(true,true);Assert::IsFalse(state.Armed(),
+                    L"A genuine input change or resync clears stale cached mapping even while inactive.");
+            }
+            State native;native.Submitted(context,original);native.Request(true,true);
+            Assert::IsNull(native.Select(context,false,false,true),
+                L"Confirmed native expansion, full raster, or first trusted native geometry bypasses the hold.");
+            native.Request(true,true);Assert::IsFalse(native.Armed());
+            native.Submitted(context,full);native.Request(true,true);
+            Assert::IsNotNull(native.Pending());Assert::IsTrue(*native.Pending()==full);
+            State invalid;invalid.Submitted({},original);invalid.Request(true,true);Assert::IsFalse(invalid.Armed());
+            invalid.Submitted(context,original);invalid.Request(true,true);
+            Assert::IsNull(invalid.Select({},false,false,false));invalid.Request(true,true);Assert::IsFalse(invalid.Armed());
+        }
         TEST_METHOD(SubtitlePresentationFieldsPreservePictureContractOnly)
         {
             using S = SubtitleUpdateSettingsFixture;
