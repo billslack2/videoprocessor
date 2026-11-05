@@ -4848,6 +4848,7 @@ struct LibplaceboVideoRenderer::Impl
             DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=readback-or-writer-expired",pending.decision.outputId);
             pendingIncidentScreenshots.pop_front();return;
         }
+        if(!pending.decision.submitted)return; // Present completion owns admission to the writer.
         if(incidentScreenshotWriterBusy.load(std::memory_order_acquire))return;
         CComPtr<ID3D11DeviceContext> context;d3d11->device->GetImmediateContext(&context);
         const HRESULT ready=context->GetData(pending.ready,nullptr,0,D3D11_ASYNC_GETDATA_DONOTFLUSH);
@@ -4898,7 +4899,7 @@ struct LibplaceboVideoRenderer::Impl
     }
     bool QueueIncidentScreenshot(ID3D11Texture2D* backbuffer,const PresentationDecisionTelemetry::Output& o) {
         PollIncidentScreenshots();
-        const auto request=presentationIncidentPolicy.Plan(o,DebugLog::IsEnhancedLoggingEnabled() && activeSettings.incidentScreenshots);
+        const auto request=presentationIncidentPolicy.Preview(o,DebugLog::IsEnhancedLoggingEnabled() && activeSettings.incidentScreenshots);
         if(!request.capture){if(request.phase[0])DebugLog::Log("VP presentation incident: action=%s output=%llu reason=%s",request.phase,o.outputId,request.reason);return false;}
         if(pendingIncidentScreenshots.size()>=2) {
             DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=readback-queue-full",o.outputId);return true;
@@ -4910,6 +4911,10 @@ struct LibplaceboVideoRenderer::Impl
         }
         if(!texture){DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=no-backbuffer",o.outputId);return true;}
         PendingIncidentScreenshot pending;texture->GetDesc(&pending.desc);pending.decision=o;
+        if(!PresentationIncident::UsableCaptureExtent(pending.desc.Width,pending.desc.Height)) {
+            DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=placeholder-backbuffer width=%u height=%u",
+                o.outputId,pending.desc.Width,pending.desc.Height);return true;
+        }
         pending.incident=request.incident;pending.phase=request.phase;pending.reason=request.reason;
         pending.context.assign(recentPresentationDecisions.begin(),recentPresentationDecisions.end());
         pending.context.push_back(PresentationDecisionTelemetry::Json(o));
@@ -4926,8 +4931,18 @@ struct LibplaceboVideoRenderer::Impl
         return true;
     }
     void CompleteDiagnosticOutput(PresentationDecisionTelemetry::Output& o,bool force=false) {
-        for(auto& pending:pendingIncidentScreenshots)if(pending.decision.outputId==o.outputId)pending.decision.submitted=o.submitted;
-        presentationIncidentPolicy.Submitted(o);RecordPresentationDecision(o,force);PollIncidentScreenshots();
+        uint64_t queuedOutputId=0;
+        for(auto it=pendingIncidentScreenshots.begin();it!=pendingIncidentScreenshots.end();) {
+            if(it->decision.outputId!=o.outputId){++it;continue;}
+            const bool exact=it->decision.generation==o.generation && it->decision.selectedSequence==o.selectedSequence;
+            if(!o.rendered || !o.submitted || !exact) {
+                DebugLog::Log("VP presentation incident: action=capture-dropped output=%llu reason=output-not-submitted",o.outputId);
+                it=pendingIncidentScreenshots.erase(it);continue;
+            }
+            it->decision.submitted=true;queuedOutputId=o.outputId;++it;
+        }
+        presentationIncidentPolicy.CompleteSubmitted(o,DebugLog::IsEnhancedLoggingEnabled() && activeSettings.incidentScreenshots,queuedOutputId);
+        RecordPresentationDecision(o,force);PollIncidentScreenshots();
     }
 
     PresentationDecisionTelemetry::Output lastSubmittedDecisionOutput;

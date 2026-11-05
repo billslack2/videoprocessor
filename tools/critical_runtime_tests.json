@@ -14,8 +14,9 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1162,
+  "minimumNativeTests": 1163,
   "requiredNativeMethods": [
+    "IncidentCaptureCommitsOnlyRealSubmittedOutputsAndPreservesFollowup",
     "CurrentCueEquivalentSourceRejectsRetirementDuringPublication",
     "CurrentCueEquivalentSourceRequiresConsumedQualifiedCurrentPixels",
     "CurrentCueEquivalentSourceRejectsChangedPixelsSupportAndContext",

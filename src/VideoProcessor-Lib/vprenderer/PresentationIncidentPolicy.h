@@ -13,6 +13,7 @@ inline std::string Timecode(const Output& o) {
 }
 inline bool Current(const Output& o){return o.facts.available && o.facts.generation==o.generation && o.facts.sequence==o.selectedSequence;}
 inline double Area(const Rect& r){return (std::max)(0.0,r.right-r.left)*(std::max)(0.0,r.bottom-r.top);}
+inline bool UsableCaptureExtent(unsigned width,unsigned height){return width>1 && height>1;}
 struct Request {bool capture=false;uint64_t incident=0;const char* phase="";const char* reason="";};
 class Policy {
     Output previous_;bool have_=false;uint64_t lastIncident_=0,followupAt_=0,incident_=0;unsigned captures_=0;
@@ -60,6 +61,19 @@ public:
             std::abs(Area(o.facts.native)-Area(o.facts.measured))<=Area(o.facts.native)*0.03)mismatchCaptured_=false;
         previous_=o;have_=true;
     }}
+    // Planning happens before Present. A failed/internal output must not consume
+    // a reservation or the pending after-image; commit only the exact submitted output.
+    Request Preview(const Output& o,bool enabled) const {
+        if(!enabled || !o.rendered || !Current(o))return {};
+        auto next=*this;return next.Plan(o,enabled);
+    }
+    void CompleteSubmitted(const Output& o,bool enabled,uint64_t queuedOutputId) {
+        if(!o.rendered || !o.submitted || !Current(o))return;
+        if(!enabled){Submitted(o);return;}
+        auto next=*this;const auto request=next.Plan(o,enabled);
+        if(!request.capture || (queuedOutputId!=0 && queuedOutputId==o.outputId))*this=std::move(next);
+        Submitted(o);
+    }
     unsigned CapturesReserved()const{return captures_;}
 };
 }

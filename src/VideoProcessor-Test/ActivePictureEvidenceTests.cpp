@@ -3387,6 +3387,44 @@ namespace VideoProcessorTest
             Assert::IsTrue(recorder.Observe(o).emit);++o.outputId;
             Assert::IsFalse(recorder.Observe(o).emit);Assert::IsTrue(recorder.Observe(o,true).emit);
         }
+        TEST_METHOD(IncidentCaptureCommitsOnlyRealSubmittedOutputsAndPreservesFollowup)
+        {
+            using namespace PresentationIncident;
+            Output o;o.generation=1;o.outputId=1;o.selectedSequence=1;o.rendered=o.submitted=true;o.tickMs=100;
+            o.facts.available=true;o.facts.generation=1;o.facts.sequence=1;o.facts.nativeAvailable=true;
+            o.facts.native=o.source={0,263,3840,1897};
+            Policy policy;policy.CompleteSubmitted(o,true,0);
+            o.outputId=2;o.tickMs=200;o.source={0,202,3840,1998};o.submitted=false;
+            const auto failure=policy.Preview(o,true);Assert::IsTrue(failure.capture);
+            policy.CompleteSubmitted(o,true,o.outputId);
+            Assert::AreEqual(0u,policy.CapturesReserved(),L"Pre-present readback is not a submitted incident.");
+            ++o.outputId;o.submitted=true;
+            policy.CompleteSubmitted(o,true,o.outputId-1);
+            Assert::AreEqual(0u,policy.CapturesReserved(),L"A different output's readback cannot commit this request.");
+            // Restore the actual baseline; the unsubmitted failure did not consume cooldown.
+            o.source=o.facts.native;policy.CompleteSubmitted(o,true,0);
+            o.source={0,202,3840,1998};++o.outputId;
+            Assert::IsTrue(policy.Preview(o,true).capture);policy.CompleteSubmitted(o,true,o.outputId);
+            Assert::AreEqual(1u,policy.CapturesReserved());
+            o.tickMs=2200;++o.outputId;
+            Assert::AreEqual(std::string("after"),std::string(policy.Preview(o,true).phase));
+            Assert::IsFalse(UsableCaptureExtent(1,1));Assert::IsFalse(UsableCaptureExtent(1000,1));
+            Assert::IsFalse(UsableCaptureExtent(0,563));Assert::IsTrue(UsableCaptureExtent(1000,563));
+            policy.CompleteSubmitted(o,true,0); // Tiny/unavailable surface: no queued readback.
+            Assert::AreEqual(1u,policy.CapturesReserved());
+            ++o.outputId;o.submitted=false;policy.CompleteSubmitted(o,true,o.outputId);
+            Assert::AreEqual(1u,policy.CapturesReserved());
+            ++o.outputId;o.submitted=true;
+            const auto after=policy.Preview(o,true);Assert::IsTrue(after.capture);
+            Assert::AreEqual(failure.incident,after.incident);Assert::AreEqual(std::string("after"),std::string(after.phase));
+            policy.CompleteSubmitted(o,true,o.outputId);Assert::AreEqual(2u,policy.CapturesReserved());
+            ++o.outputId;Assert::IsFalse(policy.Preview(o,true).capture);
+            // A real context change cancels the old request, rather than capturing old-context pixels.
+            Policy changed;auto baseline=o;baseline.source=baseline.facts.native;changed.CompleteSubmitted(baseline,true,0);
+            o.tickMs+=21000;changed.CompleteSubmitted(o,true,o.outputId);++o.facts.viewport;++o.outputId;o.tickMs+=2000;
+            Assert::IsFalse(changed.Preview(o,true).capture);changed.CompleteSubmitted(o,true,0);
+            Assert::AreEqual(1u,changed.CapturesReserved());
+        }
         TEST_METHOD(IncidentCaptureBoundsFailuresAndIncludesAfterContext)
         {
             using namespace PresentationIncident;
