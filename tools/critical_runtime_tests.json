@@ -14,8 +14,9 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1213,
+  "minimumNativeTests": 1214,
   "requiredNativeMethods": [
+    "CurrentDestinationEquivalentSamplesRemainCurrentAndSeedBounded",
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
     "QuestionMarkCannotBorrowAChainOfLowerNoiseDots",
     "NativeTerminalRowIntervalRejectsUnrelatedOrUnsupportedComponents",

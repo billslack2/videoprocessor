@@ -1208,6 +1208,7 @@ private:
             reason="current-destination-proof-unavailable";return false;
         }
         const size_t width=size_t(m_destinationProbe.right-m_destinationProbe.left);
+        bool allDestinationEquivalent=true;
         for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y) {
             const size_t rowBase=size_t(y-m_destinationProbe.top)*width;
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
@@ -1216,8 +1217,14 @@ private:
                     mismatchX=x;mismatchY=y;reason="current-destination-source-unavailable";return false;
                 }
                 ++samples;
+                allDestinationEquivalent=allDestinationEquivalent &&
+                    EncodingEquivalent(m_destinationCurrentPixels[at],m_destinationSeedPixels[at].pixel);
             }
         }
+        // Every current destination sample is retained above. If every endpoint
+        // remains within the immutable seed's encoding envelope, each candidate
+        // edge below takes its existing equivalent-endpoints exemption.
+        if(allDestinationEquivalent)return true;
         constexpr int dx[4]={-1,1,0,0},dy[4]={0,0,-1,1};
         for(int y=m_destinationProbe.top;y<m_destinationProbe.bottom;++y) {
             const size_t rowBase=size_t(y-m_destinationProbe.top)*width;

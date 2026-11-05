@@ -4092,6 +4092,71 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             }
         }
     }
+    TEST_METHOD(CurrentDestinationEquivalentSamplesRemainCurrentAndSeedBounded) {
+        auto pixels=PixelsWithCurrentBars();
+        pixels[30*160+60]=uint16_t(344<<6);
+        pixels[41*160+117]=uint16_t(344<<6);
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,pixels);seed.text=seed.current.text;
+        seed.current.analysisStride=1;
+        SubtitleCutPasteGeometry operation;operation.valid=true;
+        operation.content=seed.text.bounds;operation.glyphLines=seed.text.lineBounds;
+        operation.pictureCapture=seed.text.capturePanel;operation.generatedCleanup=seed.text.sourcePanel;
+        operation.source=operation.content;operation.destination={50,20,110,40};
+        operation.pictureTop=12;operation.pictureBottom=78;
+        const auto base=seed.current.sharedPicture.bounds;
+        auto guard=std::make_unique<SubtitleCadenceGuard>();
+        Assert::IsTrue(guard->RememberCurrentFootprint(seed,seed.text,CadenceSource(pixels),base,operation));
+        const auto unchanged=CompleteThreeLineScan(2,pixels);
+        const auto original=guard->VerifyCurrentFootprint(unchanged,CadenceSource(pixels),seed.current,seed.text,base);
+        Assert::IsTrue(original.valid);
+        // The complete shader destination probe (8 horizontal/2 vertical AA
+        // pixels) is above the native glyph/cleanup footprint in this fixture.
+        const SubtitleBoxRect probe{42,18,118,42};
+        auto currentPixels=pixels;
+        for(int y=probe.top;y<probe.bottom;++y)for(int x=probe.left;x<probe.right;++x)
+            currentPixels[y*160+x]=uint16_t(((pixels[y*160+x]>>6)+4)<<6);
+        // Both endpoints retain the original image's encoding envelope, even
+        // though these44-code seed edges cross the48-code contrast threshold.
+        currentPixels[30*160+61]=uint16_t(296<<6);
+        currentPixels[41*160+116]=uint16_t(296<<6);
+        const auto untouched=currentPixels;
+        const auto current=CompleteThreeLineScan(3,currentPixels);
+        const auto proof=guard->VerifyCurrentFootprint(current,CadenceSource(currentPixels),seed.current,seed.text,base);
+        Assert::IsTrue(proof.valid);
+        Assert::AreEqual(original.samples,proof.samples,L"An equivalent destination still samples the full current region.");
+        Assert::IsTrue(proof.samples>=size_t((probe.right-probe.left)*(probe.bottom-probe.top)));
+        for(int y=probe.top;y<probe.bottom;++y)for(int x=probe.left;x<probe.right;++x) {
+            AnalysisLumaSample oldPixel,now,cached;
+            Assert::IsTrue(CadenceSource(pixels).Sample(x,y,oldPixel));
+            Assert::IsTrue(CadenceSource(currentPixels).Sample(x,y,now));
+            Assert::IsTrue(SubtitleCadenceGuard::EncodingEquivalent(oldPixel,now));
+            Assert::IsTrue(guard->TryGetVerifiedCurrentSample(current,base,x,y,cached));
+            Assert::AreEqual(int(now.luma),int(cached.luma));
+            Assert::AreEqual(int(now.chromaU),int(cached.chromaU));
+            Assert::AreEqual(int(now.chromaV),int(cached.chromaV));
+        }
+        Assert::IsTrue(currentPixels==untouched,L"Verification cannot rewrite current source pixels.");
+        auto foreign=current;++foreign.identity.acceptedSequence;
+        AnalysisLumaSample ignored;
+        Assert::IsFalse(guard->TryGetVerifiedCurrentSample(foreign,base,probe.left,probe.top,ignored));
+        for(int fault=0;fault<3;++fault) {
+            auto changed=currentPixels;
+            const int x=fault?probe.right-1:60,y=fault?probe.bottom-1:30;
+            changed[y*160+x]=uint16_t((fault==2?940:353)<<6); // Small drift and a large new endpoint both leave the immutable seed envelope.
+            const auto key=CompleteThreeLineScan(uint64_t(4+fault),changed);
+            const auto rejected=guard->VerifyCurrentFootprint(key,CadenceSource(changed),seed.current,seed.text,base);
+            Assert::IsFalse(rejected.valid,L"A changed endpoint must run the original novelty rules, including the final sampled pixel.");
+            Assert::AreEqual(proof.samples,rejected.samples);
+            Assert::IsTrue(rejected.actualPixelMismatch && rejected.pixelWitness.Valid());
+            Assert::IsTrue(rejected.pixelWitness.stage==SubtitleCadenceGuard::PixelFailureStage::DestinationNovelty);
+            Assert::AreEqual("current-destination-new-ink",rejected.reason);
+            Assert::IsFalse(guard->TryGetVerifiedCurrentSample(key,base,probe.left,probe.top,ignored));
+        }
+        const auto recovered=CompleteThreeLineScan(7,currentPixels);
+        const auto restored=guard->VerifyCurrentFootprint(recovered,CadenceSource(currentPixels),seed.current,seed.text,base);
+        Assert::IsTrue(restored.valid,L"The original immutable seed remains usable after rejected current sources.");
+        Assert::AreEqual(proof.samples,restored.samples);
+    }
     TEST_METHOD(CurrentFootprintV210ReaderPreservesGlyphAndDestinationDecisions) {
         // Pack the established canonical fixture into independent padded V210 storage.
         // The existing nine accepted-noise / changed-glyph / destination cases remain unchanged.
