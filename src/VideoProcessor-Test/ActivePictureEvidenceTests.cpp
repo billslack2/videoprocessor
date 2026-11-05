@@ -2915,6 +2915,79 @@ namespace VideoProcessorTest
                 L"Fresh physical-band inspection must cover the one-row reconciliation; log proximity alone is insufficient.");
             }
         }
+        TEST_METHOD(SubtitleContinuationDistinguishesCurrentPhysicalEdgesFromVerifiedGuard)
+        {
+            for(bool p210:{false,true}) {
+                P010Frame frame(3840,2160,32,p210);
+                frame.BlackOutside(0,275,3840,1883);
+                auto source=p210?frame.P210Source():frame.P010Source();
+                const auto identity=MakeSubtitleProofIdentity(source,4661);
+                const auto base=ScopePresentation(3840,2160,272,1886);
+                const auto guard=ScopePresentation(3840,2160,272,1890);
+                const auto measured=DetectPreparedSourcePictureBounded(source,identity).evidence;
+                Assert::IsTrue(measured.currentSourceIdentityAvailable && measured.physicalEdges.estimateAvailable);
+                Assert::IsTrue(measured.detector==ActivePictureDetectorKind::SourceSpatialMeasured);
+                const auto verified=VerifySuppliedActivePictureCandidate(source,guard);
+                Assert::IsTrue(verified.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                    L"The larger aperture must independently verify against these same current pixels.");
+                // Same-source producer composition: retain the actual measured
+                // physical observation while using the independently verified
+                // supplied aperture. Neither result is fabricated from the other.
+                auto picture=verified;
+                picture.detector=measured.detector;picture.physicalEdges=measured.physicalEdges;
+                picture.currentSourceIdentityAvailable=measured.currentSourceIdentityAvailable;
+                picture.currentSourceIdentity=measured.currentSourceIdentity;
+                Logger::WriteMessage((std::string("Current physical/guard: physical=")+
+                    std::to_string(picture.physicalEdges.estimate.top)+","+
+                    std::to_string(picture.physicalEdges.estimate.bottom)+" interval="+
+                    std::to_string(picture.physicalEdges.positionMinimum[1])+","+
+                    std::to_string(picture.physicalEdges.positionMaximum[3])+" guard="+
+                    std::to_string(picture.trustedBounds.top)+","+
+                    std::to_string(picture.trustedBounds.bottom)).c_str());
+                Assert::IsFalse(CurrentPictureRejectsSubtitleContinuation(picture,base,&identity),
+                    L"Four extra verified matte rows are not a current physical picture expansion.");
+                Assert::IsTrue(CurrentPictureRejectsSubtitleContinuation(picture,base),
+                    L"A caller without exact current identity retains the conservative legacy veto.");
+                for(int fault=0;fault<19;++fault) {
+                    auto wrong=picture;
+                    switch(fault) {
+                    case 0: wrong.currentSourceIdentityAvailable=false;break;
+                    case 1: ++wrong.currentSourceIdentity.acceptedSequence;break;
+                    case 2: ++wrong.currentSourceIdentity.analysisDomainKey;break;
+                    case 3: wrong.physicalEdges.estimateAvailable=false;break;
+                    case 4: wrong.physicalEdges.confidence=PhysicalPictureEdgeConfidence::UNKNOWN;break;
+                    case 5: wrong.physicalEdges.sourceGeneration=99;break;
+                    case 6: wrong.physicalEdges.positionMinimum[1]=wrong.physicalEdges.positionMaximum[1]+1;break;
+                    case 7: wrong.candidateVerification.sourceGeneration=99;break;
+                    case 8: wrong.candidateVerification.vertical=ActivePictureCandidateVerificationState::UNKNOWN;break;
+                    case 9: wrong.physicalEdges.positionMinimum[1]=base.top-4;break;
+                    case 10: wrong.physicalEdges.positionMaximum[3]=base.bottom+4;break;
+                    case 11: wrong.physicalEdges.confidence=PhysicalPictureEdgeConfidence::SOURCE_CANVAS_ESTIMATE;break;
+                    case 12: ++wrong.currentSourceIdentity.transportGeneration;break;
+                    case 13: ++wrong.currentSourceIdentity.sourceFormatGeneration;break;
+                    case 14: ++wrong.currentSourceIdentity.captureTimestamp;break;
+                    case 15: ++wrong.currentSourceIdentity.rendererGeneration;break;
+                    case 16: ++wrong.currentSourceIdentity.viewportGeneration;break;
+                    case 17: ++wrong.physicalEdges.estimate.rasterWidth;break;
+                    case 18: ++wrong.currentSourceIdentity.sourceFrameNumber;break;
+                    }
+                    Assert::IsTrue(CurrentPictureRejectsSubtitleContinuation(wrong,base,&identity),
+                        L"Missing, foreign or malformed physical/current verification cannot excuse an expanded aperture.");
+                }
+                // Actual new picture rows, not a changed rectangle label.
+                frame.FillRectangle(0,1883,3840,1900,300);
+                auto next=identity;++next.acceptedSequence;++next.sourceFrameNumber;++next.captureTimestamp;
+                const auto expanded=DetectPreparedSourcePictureBounded(source,next).evidence;
+                Assert::IsTrue(expanded.physicalEdges.estimateAvailable && expanded.physicalEdges.estimate.bottom>=1898);
+                Assert::IsTrue(CurrentPictureRejectsSubtitleContinuation(expanded,base,&next),
+                    L"Genuine current picture expansion still rejects the previous caption plane.");
+                frame.Fill(300,512,512);
+                ++next.acceptedSequence;++next.sourceFrameNumber;++next.captureTimestamp;
+                const auto full=DetectPreparedSourcePictureBounded(source,next).evidence;
+                Assert::IsTrue(full.classification==ActivePictureClassification::FULL_RASTER_TRUSTED);
+                Assert::IsTrue(CurrentPictureRejectsSubtitleContinuation(full,base,&next));
+            }
+        }
         TEST_METHOD(SubtitleContinuationVetoRequiresAffirmativeNativeExpansion)
         {
             const auto base=ScopePresentation(3840,2160,274,1884);

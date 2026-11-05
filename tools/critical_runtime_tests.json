@@ -14,8 +14,9 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1167,
+  "minimumNativeTests": 1168,
   "requiredNativeMethods": [
+    "SubtitleContinuationDistinguishesCurrentPhysicalEdgesFromVerifiedGuard",
     "IncidentCaptureCommitsOnlyRealSubmittedOutputsAndPreservesFollowup",
     "CurrentCueEquivalentSourceRejectsRetirementDuringPublication",
     "CurrentCueEquivalentSourceRequiresConsumedQualifiedCurrentPixels",

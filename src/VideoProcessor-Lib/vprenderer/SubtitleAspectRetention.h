@@ -535,13 +535,42 @@ inline bool SameSubtitlePresentationBounds(const ActivePictureBounds& a,const Ac
 // Only affirmative, independently measured picture expansion can veto a cue
 // continuation. A missing detector edge is not evidence of expansion.
 inline bool CurrentPictureRejectsSubtitleContinuation(const ActivePictureEvidence& picture,
-    const ActivePictureBounds& base)
+    const ActivePictureBounds& base, const ActivePictureFrameIdentity* expectedCurrent=nullptr)
 {
     if(!picture.available || picture.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE)
         return false;
     if(picture.classification==ActivePictureClassification::FULL_RASTER_TRUSTED)
         return true;
-    const auto& observed=picture.trustedBounds;
+    auto observed=picture.trustedBounds;
+    // Verifying an outward crop aperture proves its excluded bands, not that
+    // the picture grew to that aperture. When the same source also has measured
+    // physical edges, use their full uncertainty interval for this veto only.
+    // This does not change the crop base or authorize erasing any source pixels.
+    const auto& physical=picture.physicalEdges;
+    const auto& verification=picture.candidateVerification;
+    const auto currentGeneration=[&](uint64_t generation) {
+        return expectedCurrent && generation &&
+            (generation==expectedCurrent->transportGeneration || generation==expectedCurrent->sourceFormatGeneration);
+    };
+    if(expectedCurrent && picture.detector==ActivePictureDetectorKind::SourceSpatialMeasured &&
+        picture.currentSourceIdentityAvailable && SameAnalysisFrameIdentity(picture.currentSourceIdentity,*expectedCurrent) &&
+        physical.evaluated && physical.estimateAvailable && currentGeneration(physical.sourceGeneration) &&
+        (physical.confidence==PhysicalPictureEdgeConfidence::STRONG_ABRUPT_EDGE ||
+         physical.confidence==PhysicalPictureEdgeConfidence::BOUNDED_FILTERED_EDGE) &&
+        picture.sourceCandidateVerificationComplete && currentGeneration(verification.sourceGeneration) &&
+        verification.vertical==ActivePictureCandidateVerificationState::VERIFIED &&
+        SameSubtitlePresentationBounds(verification.bounds,picture.trustedBounds) &&
+        physical.estimate.rasterWidth==base.rasterWidth && physical.estimate.rasterHeight==base.rasterHeight &&
+        physical.estimate.left>=0 && physical.estimate.right<=base.rasterWidth &&
+        physical.estimate.left<physical.estimate.right && physical.estimate.top<physical.estimate.bottom &&
+        physical.positionMinimum[1]>=0 && physical.positionMinimum[1]<=physical.estimate.top &&
+        physical.estimate.top<=physical.positionMaximum[1] &&
+        physical.positionMaximum[1]<physical.positionMinimum[3] &&
+        physical.positionMinimum[3]<=physical.estimate.bottom &&
+        physical.estimate.bottom<=physical.positionMaximum[3] && physical.positionMaximum[3]<=base.rasterHeight) {
+        observed.top=physical.positionMinimum[1];
+        observed.bottom=physical.positionMaximum[3];
+    }
     return picture.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
         observed.rasterWidth==base.rasterWidth && observed.rasterHeight==base.rasterHeight &&
         observed.left<observed.right && observed.top<observed.bottom &&
@@ -592,7 +621,7 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(continuation && continuation->localGlyphsOnly)
         return reject("local-glyph-continuation-is-not-picture-proof");
     if((continuation || preparedErasureOnly) &&
-        CurrentPictureRejectsSubtitleContinuation(raw.activePicture,base))
+        CurrentPictureRejectsSubtitleContinuation(raw.activePicture,base,&input.currentIdentity))
         return reject("independent-picture-expansion",QualifiedSubtitlePresentationStatus::Conflict);
     // A verified existing cue supplies only current local glyph ownership. The
     // worker observation and raw picture evidence remain the measurement of this

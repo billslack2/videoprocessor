@@ -15157,7 +15157,7 @@ struct LibplaceboVideoRenderer::Impl
                     latestActivePictureEvidenceClassification==ActivePictureClassification::FULL_RASTER_TRUSTED;
                 const bool currentPictureRejectsProof=latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
                     latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
-                    CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry);
+                    CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry,&subtitleIdentity);
                 const bool nativeProofContext=!inwardCaptionProtected && !inspectionRecoveryBlocked &&
                     !currentFullRasterProofContext && !currentPictureRejectsProof && nlsGeometryAvailable &&
                     nlsGeometrySourceGeneration==frameGeneration &&
@@ -15344,7 +15344,7 @@ struct LibplaceboVideoRenderer::Impl
                 nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
                 !(latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
                   latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
-                  CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry));
+                  CurrentPictureRejectsSubtitleContinuation(latestCropRetentionEvidence.activePicture,nlsGeometry,&subtitleIdentity));
             // Current pixel verification belongs to the exact-source worker
             // lane. On a miss this source remains raw; the presentation thread
             // neither reuses a prior cue nor performs a second verification.
