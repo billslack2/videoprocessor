@@ -1,0 +1,185 @@
+{
+  "source": "c0fd123fea32ed1187ad4d90a342781ee1641514",
+  "baseline": "e4b8c7d9371ff8549609e1f7618d2dd7e785d383",
+  "scope": "Separate actual renderer runs of same93 paused corpus/protocol. Optional worker costs, not mandatory path times. Host scheduling differs; paired CPU benchmark is separate. No moving-scene or universal worst-case claim.",
+  "variants": [
+    {
+      "variant": "standard",
+      "beforeAfter": [
+        {
+          "run": "193950",
+          "trace": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\missing-analysis\\standard-decisions.tsv",
+          "sha256": "7b3e17a65e655fe1e7dbf47cade2858a64c110d5dac5a56d2d39558671a1cc1e",
+          "proofCount": 193,
+          "samples": [
+            [
+              "475868",
+              "130560"
+            ]
+          ],
+          "total": {
+            "median": 16.2374,
+            "p95": 18.7983,
+            "maximum": 22.6547
+          },
+          "footprint": {
+            "median": 11.5491,
+            "p95": 14.0406,
+            "maximum": 17.673
+          },
+          "currentPixel": {
+            "median": 3.6897,
+            "p95": 4.1276,
+            "maximum": 6.961
+          },
+          "bar": {
+            "median": 0.8445,
+            "p95": 1.0064,
+            "maximum": 2.1166
+          },
+          "queue": {
+            "median": 0.0165,
+            "p95": 0.0265,
+            "maximum": 16.3636
+          },
+          "queuedToPublished": {
+            "median": 16.2623,
+            "p95": 19.1343,
+            "maximum": 30.1609
+          }
+        },
+        {
+          "run": "201221",
+          "trace": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-201221\\missing-analysis\\standard-decisions.tsv",
+          "sha256": "80485a077674300e1f8d143e031d809f0219b60f0770d69d8e923b019ce653f7",
+          "proofCount": 193,
+          "samples": [
+            [
+              "475868",
+              "130560"
+            ]
+          ],
+          "total": {
+            "median": 14.8635,
+            "p95": 18.7811,
+            "maximum": 24.0684
+          },
+          "footprint": {
+            "median": 10.0401,
+            "p95": 13.8428,
+            "maximum": 16.2801
+          },
+          "currentPixel": {
+            "median": 3.7531,
+            "p95": 4.7574,
+            "maximum": 6.8921
+          },
+          "bar": {
+            "median": 0.8367,
+            "p95": 1.0179,
+            "maximum": 1.5976
+          },
+          "queue": {
+            "median": 0.0179,
+            "p95": 0.0316,
+            "maximum": 21.8653
+          },
+          "queuedToPublished": {
+            "median": 14.8963,
+            "p95": 18.9317,
+            "maximum": 35.5215
+          }
+        }
+      ]
+    },
+    {
+      "variant": "beta",
+      "beforeAfter": [
+        {
+          "run": "193950",
+          "trace": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-193950\\missing-analysis\\beta-decisions.tsv",
+          "sha256": "3a5728a3ac7a3c59de4f545ae8883d378ec8a6e7191a60294c09803a9f9a22aa",
+          "proofCount": 193,
+          "samples": [
+            [
+              "475868",
+              "130560"
+            ]
+          ],
+          "total": {
+            "median": 16.2261,
+            "p95": 20.441,
+            "maximum": 26.7389
+          },
+          "footprint": {
+            "median": 11.5612,
+            "p95": 15.1746,
+            "maximum": 18.5276
+          },
+          "currentPixel": {
+            "median": 3.6489,
+            "p95": 4.3548,
+            "maximum": 6.8631
+          },
+          "bar": {
+            "median": 0.85,
+            "p95": 1.1769,
+            "maximum": 1.6551
+          },
+          "queue": {
+            "median": 0.0164,
+            "p95": 0.0261,
+            "maximum": 16.7146
+          },
+          "queuedToPublished": {
+            "median": 16.2549,
+            "p95": 20.9133,
+            "maximum": 30.8814
+          }
+        },
+        {
+          "run": "201221",
+          "trace": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-201221\\missing-analysis\\beta-decisions.tsv",
+          "sha256": "d3f1d4226bdc820a9a26d846a05beb9cfe2492b02d65488f4a119d2288bf3d2d",
+          "proofCount": 193,
+          "samples": [
+            [
+              "475868",
+              "130560"
+            ]
+          ],
+          "total": {
+            "median": 14.4746,
+            "p95": 17.643,
+            "maximum": 21.64
+          },
+          "footprint": {
+            "median": 9.9957,
+            "p95": 12.6231,
+            "maximum": 16.4915
+          },
+          "currentPixel": {
+            "median": 3.5507,
+            "p95": 3.7494,
+            "maximum": 6.3421
+          },
+          "bar": {
+            "median": 0.8415,
+            "p95": 1.0069,
+            "maximum": 1.8031
+          },
+          "queue": {
+            "median": 0.0164,
+            "p95": 0.0258,
+            "maximum": 16.1795
+          },
+          "queuedToPublished": {
+            "median": 14.5072,
+            "p95": 17.742,
+            "maximum": 28.9796
+          }
+        }
+      ]
+    }
+  ]
+}

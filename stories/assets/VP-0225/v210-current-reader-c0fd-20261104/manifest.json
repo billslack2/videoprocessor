@@ -1,0 +1,80 @@
+{
+  "source": "c0fd123fea32ed1187ad4d90a342781ee1641514",
+  "acceptance": "OPEN",
+  "fullQualification": false,
+  "scope": "Compact receipt metadata only. Native frames, rendered PNGs, video, full traces and private capture payloads remain outside Git.",
+  "notes": [
+    "Native11 and paired full-worker replay are precommit candidate evidence; their original dirty identity is preserved. Clean matching Release and actual6 follow.",
+    "Launcher legacy testsSkippedForUserAuthorizedExperimentalPreview means broad qualification bypass, not that the separately recorded focused tests were skipped.",
+    "Moving-background both-missing fallback, first-no-evidence and genuine scene/variable-AR transitions remain unresolved.",
+    "Production code is not net simplified. Failure-heavy genuine changing-frame maximum worsened in the paired CPU sample; no universal speedup claim."
+  ],
+  "files": [
+    {
+      "file": "native11-iteration.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-200159-8ec89a58\\iteration.json",
+      "sha256": "7f0d7d3e92d319ca3b79d2a98f8a24607a3de46bd754cf453d1c1468409e3611",
+      "bytes": 2762
+    },
+    {
+      "file": "focused-release-build.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-200849-334c6b73\\iteration.json",
+      "sha256": "898f9a1dc842a7fdc9e37e86df208df59aaed48e03178d557bc4b5813d44a0d6",
+      "bytes": 4744
+    },
+    {
+      "file": "full-worker-receipt.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\full-worker-receipt.json",
+      "sha256": "36b2299103107aabc04e5bb05105ef124365400478c798a6c745869b67c5fcfd",
+      "bytes": 21705
+    },
+    {
+      "file": "visual6-receipt.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-201221\\visual-review\\receipt.json",
+      "sha256": "ef81440c6989071bb5256ed75893d634a39cc418ca3f0fbcbf55529f37124f6e",
+      "bytes": 10943
+    },
+    {
+      "file": "current-proof-renderer-comparison.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-201221\\current-proof-renderer-comparison.json",
+      "sha256": "da53c243da433b7522340a6fdd702d73b67f66d79f6041d5f7d60bc75ae995cd",
+      "bytes": 5479
+    },
+    {
+      "file": "preview-launch.json",
+      "source": "E:\\codex\\videoprocessor\\previews\\ar-temporal-c0fd123fea32ed1187ad4d90a342781ee1641514\\preview-receipt.json",
+      "sha256": "21b74b1c5685e3e2f3d3dce899d44669f6378aa2a91af721c772eebf17a60194",
+      "bytes": 11671
+    },
+    {
+      "file": "gui-stack.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\gui-c0fd123f-stack.json",
+      "sha256": "6e226d58849c44b21f0e50539884fa219204b7912300030ba4cc763e28d3d4dc",
+      "bytes": 321
+    },
+    {
+      "file": "standard-stack.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\standard-c0fd123f-gate.json",
+      "sha256": "87b8a6df04a4ff0307c764594b0d8e5b55b52bdc508a86903e2eef60eb3bf418",
+      "bytes": 1371
+    },
+    {
+      "file": "beta-stack.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\beta-c0fd123f-gate.json",
+      "sha256": "dbee981a331a8e50834a8684a7e32966ef979f02d50eebcd7c8e030457b98d1f",
+      "bytes": 1376
+    },
+    {
+      "file": "preserved-test-build-failure.json",
+      "source": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-200101-14482d41\\failed.json",
+      "sha256": "fc2f61032cbf04c3d3e3778d6434059ee6f9a4e03f8ecd06a37d28ead033422b",
+      "bytes": 1068
+    },
+    {
+      "file": "actual6-summary.json",
+      "source": "Derived metadata from the hash-bound original receipts; no frames included",
+      "sha256": "c09b8416355cc2758613d599df585647a2421cb8c5127b3747ebec482c2d59cc",
+      "bytes": 8290
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "source": "c0fd123fea32ed1187ad4d90a342781ee1641514",
+  "status": "passed",
+  "qualification": false,
+  "scope": "Actual paused-source renderer missing-analysis current proof/exact-byte reuse/recovery with zero geometry pulses, source-linked visual requests and prior scripture controls; moving-background fallback and full qualification remain open",
+  "previousRuntime": "E:\\codex\\videoprocessor\\previews\\ar-temporal-e4b8c7d9371ff8549609e1f7618d2dd7e785d383",
+  "originalPid": 16896,
+  "reopenedPid": 16356,
+  "mainUnchanged": true,
+  "settingsNotModifiedByTests": true,
+  "finishedUtc": "2026-11-05T01:14:13.0123234Z",
+  "originalReceipt": {
+    "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261104-201221\\receipt.json",
+    "sha256": "2710b8fdb76524cfc3d6ece0d395a23de5beee3f9052a2e8b0ded64db197a2ea"
+  },
+  "pairs": [
+    {
+      "kind": "missing-analysis",
+      "passed": true,
+      "receiptSha256": "56ef4ceba462ca5f000a2cd0ba7dd0693d7c4de2de03ddca3a82f1a7bef0dd41",
+      "results": [
+        {
+          "heldSummary": [],
+          "visualRequests": [],
+          "case": 4,
+          "variant": "standard",
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=11 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=53.0758 proof_positive=62 both_missing=3 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9944 work_samples=186 max_work_ms=13.9827 max_ingress_ms=0.2869 max_latency_ms=151.916 early_latency_ms=134.543 late_latency_ms=134.426"
+          ],
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "cadenceSummary": [],
+          "inputMappings": 93,
+          "passed": true
+        },
+        {
+          "heldSummary": [],
+          "visualRequests": [],
+          "case": 5,
+          "variant": "beta",
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=11 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=54.0758 proof_positive=62 both_missing=3 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.965 work_samples=186 max_work_ms=14.4015 max_ingress_ms=0.8386 max_latency_ms=150.958 early_latency_ms=134.321 late_latency_ms=133.833"
+          ],
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "cadenceSummary": [],
+          "inputMappings": 93,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "missing-visual",
+      "passed": true,
+      "receiptSha256": "47e5f82cc0c303dbc4f795922ae570b41dfe17a6b65c82e2c26abca93c926f7b",
+      "results": [
+        {
+          "heldSummary": [],
+          "visualRequests": [
+            "MISSING EVIDENCE VISUAL REQUEST: ordinal=1 target_source=43 last_submitted=42 next_input=46; actual captured source must be verified from its JSON",
+            "MISSING EVIDENCE VISUAL REQUEST: ordinal=2 target_source=60 last_submitted=59 next_input=63; actual captured source must be verified from its JSON",
+            "MISSING EVIDENCE VISUAL REQUEST: ordinal=3 target_source=75 last_submitted=74 next_input=78; actual captured source must be verified from its JSON"
+          ],
+          "case": 6,
+          "variant": "standard",
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=11 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=85.2131 proof_positive=62 both_missing=3 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9742 work_samples=186 max_work_ms=14.2171 max_ingress_ms=0.3695 max_latency_ms=176.398 early_latency_ms=133.312 late_latency_ms=134.301"
+          ],
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "cadenceSummary": [],
+          "inputMappings": 93,
+          "passed": true
+        },
+        {
+          "heldSummary": [],
+          "visualRequests": [
+            "MISSING EVIDENCE VISUAL REQUEST: ordinal=1 target_source=43 last_submitted=42 next_input=46; actual captured source must be verified from its JSON",
+            "MISSING EVIDENCE VISUAL REQUEST: ordinal=2 target_source=60 last_submitted=59 next_input=63; actual captured source must be verified from its JSON",
+            "MISSING EVIDENCE VISUAL REQUEST: ordinal=3 target_source=75 last_submitted=74 next_input=78; actual captured source must be verified from its JSON"
+          ],
+          "case": 7,
+          "variant": "beta",
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=11 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=78.3694 proof_positive=62 both_missing=3 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9715 work_samples=186 max_work_ms=14.1698 max_ingress_ms=1.0748 max_latency_ms=176.322 early_latency_ms=133.467 late_latency_ms=134.27"
+          ],
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "cadenceSummary": [],
+          "inputMappings": 93,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "kind": "scripture",
+      "passed": true,
+      "receiptSha256": "a86ed5019faaa7b4eaeae8114cc92d898c1f5e441acf550df0669fc013019bab",
+      "results": [
+        {
+          "heldSummary": [
+            "SCRIPTURE NATURAL HELD: corpus_frames=83 sources=166 proof_declined=166 ordinary=43 held=123 exact_full_scans=166 unready=0 current_held_certificate=1 mapping_stable=1 visual_requests=0 reference_witnesses=3 preroll_reference=1"
+          ],
+          "visualRequests": [],
+          "case": 0,
+          "variant": "standard",
+          "missingEvidenceSummary": [],
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "cadenceSummary": [
+            "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=166 phases=83 inspection_requests=0 templates=1 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9649 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=53.5047 max_latency_ms=150.241 early_latency_ms=136.388 late_latency_ms=136.491 work_samples=166 max_frame_work_ms=15.0923 max_ingress_ms=0.1928"
+          ],
+          "inputMappings": 83,
+          "passed": true
+        },
+        {
+          "heldSummary": [
+            "SCRIPTURE NATURAL HELD: corpus_frames=83 sources=166 proof_declined=166 ordinary=43 held=123 exact_full_scans=166 unready=0 current_held_certificate=1 mapping_stable=1 visual_requests=0 reference_witnesses=3 preroll_reference=1"
+          ],
+          "visualRequests": [],
+          "case": 1,
+          "variant": "beta",
+          "missingEvidenceSummary": [],
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "cadenceSummary": [
+            "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=166 phases=83 inspection_requests=0 templates=1 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.964 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=54.9201 max_latency_ms=149.465 early_latency_ms=135.378 late_latency_ms=137.047 work_samples=166 max_frame_work_ms=15.7233 max_ingress_ms=0.1768"
+          ],
+          "inputMappings": 83,
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

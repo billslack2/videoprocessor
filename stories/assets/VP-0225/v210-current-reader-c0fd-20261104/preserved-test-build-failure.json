@@ -1,0 +1,29 @@
+{
+  "status": "Failed",
+  "source": {
+    "commit": "e4b8c7d9371ff8549609e1f7618d2dd7e785d383",
+    "dirty": true,
+    "fingerprint": "f03dd9e222679109e46975ea9dd4606e1536fe3a14d085f6f5c804197e8b03d5",
+    "label": "e4b8c7d9371f-dirty-f03dd9e22267",
+    "build": "e4b8c7d9371ff8549609e1f7618d2dd7e785d383-dirty-f03dd9e222679109e46975ea9dd4606e1536fe3a14d085f6f5c804197e8b03d5"
+  },
+  "testEnvironment": {
+    "sourcePictureDetector": true,
+    "legacyDetectorEnvironment": null,
+    "sourcePictureShadow": null
+  },
+  "builds": [
+    {
+      "name": "native-library",
+      "project": "src\\VideoProcessor-Lib\\VideoProcessor-Lib.vcxproj",
+      "exit": 0,
+      "seconds": 0.691,
+      "log": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261104-200101-14482d41\\native-library-build.log",
+      "PSComputerName": "localhost",
+      "RunspaceId": "22b6ba1a-4728-47c2-9ad0-092e108727e4",
+      "PSShowComputerName": false
+    }
+  ],
+  "runs": [],
+  "finished": "2026-11-04T20:01:10.5457468-05:00"
+}

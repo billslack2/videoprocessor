@@ -1,0 +1,581 @@
+{
+  "passed": true,
+  "source": {
+    "commit": "e4b8c7d9371ff8549609e1f7618d2dd7e785d383",
+    "dirty": [
+      " M src/VideoProcessor-Lib/SubtitleCadenceGuard.h",
+      " M src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      " M src/VideoProcessor-Test/SubtitleMeasurementWorkerTests.cpp",
+      " M tools/critical_runtime_tests.json"
+    ]
+  },
+  "sourcesAndBinariesStable": true,
+  "exactDecisionsSamplesAndWitnessesEqual": true,
+  "scope": "Full production worker proof jobs, fresh source-bound receipts and CPU prepared qualification; moving corpus uses original recorded base with unchanged current qualifier after cold-model bootstrap was unavailable; GPU completion is modeled. Original capture IDs/gaps unchanged. Scalar uses current worker with only HEAD pre-optimization guard shadowed and unique inline class names. Three runs with alternating variant order; no runtime/GPU deadline claim. Changing16 uses fresh identical genuine initial-cue seed for each source to observe actual changed-cue rejections after the first failure retires a normal worker. Setup, full raw acquisition and disk loading excluded from job timings. Periodic grouping deliberately not requested; this isolates complete proof job, not production routing cadence.",
+  "summaries": [
+    {
+      "case": "paused93",
+      "variant": "scalar",
+      "ready": 276,
+      "proofResults": 276,
+      "workerTraceCount": 276,
+      "workerMs": {
+        "n": 276,
+        "median": 14.13455,
+        "p95": 16.3228,
+        "max": 21.74
+      },
+      "footprintMs": {
+        "n": 276,
+        "median": 9.3874,
+        "p95": 11.1578,
+        "max": 16.3403
+      },
+      "pixelMs": {
+        "n": 276,
+        "median": 3.71215,
+        "p95": 5.3037,
+        "max": 7.488
+      },
+      "barMs": {
+        "n": 276,
+        "median": 0.833,
+        "p95": 1.2613,
+        "max": 1.8196
+      },
+      "queueMs": {
+        "n": 276,
+        "median": 0.0112,
+        "p95": 0.0252,
+        "max": 0.0825
+      },
+      "publishLatencyMs": {
+        "n": 276,
+        "median": 14.15645,
+        "p95": 16.3456,
+        "max": 21.7718
+      },
+      "pollWallMs": {
+        "n": 276,
+        "median": 24.7209,
+        "p95": 28.3841,
+        "max": 31.4208
+      },
+      "sampleCounts": [
+        [
+          475868,
+          130560
+        ]
+      ]
+    },
+    {
+      "case": "paused93",
+      "variant": "current",
+      "ready": 276,
+      "proofResults": 276,
+      "workerTraceCount": 276,
+      "workerMs": {
+        "n": 276,
+        "median": 12.67075,
+        "p95": 15.2209,
+        "max": 16.9424
+      },
+      "footprintMs": {
+        "n": 276,
+        "median": 7.80675,
+        "p95": 9.6622,
+        "max": 11.8398
+      },
+      "pixelMs": {
+        "n": 276,
+        "median": 3.8417,
+        "p95": 5.1204,
+        "max": 7.1712
+      },
+      "barMs": {
+        "n": 276,
+        "median": 0.83005,
+        "p95": 1.437,
+        "max": 2.2646
+      },
+      "queueMs": {
+        "n": 276,
+        "median": 0.01115,
+        "p95": 0.0205,
+        "max": 0.0681
+      },
+      "publishLatencyMs": {
+        "n": 276,
+        "median": 12.69015,
+        "p95": 15.2653,
+        "max": 16.9615
+      },
+      "pollWallMs": {
+        "n": 276,
+        "median": 24.80545,
+        "p95": 28.1011,
+        "max": 30.6731
+      },
+      "sampleCounts": [
+        [
+          475868,
+          130560
+        ]
+      ]
+    },
+    {
+      "case": "genuine16",
+      "variant": "scalar",
+      "ready": 6,
+      "proofResults": 45,
+      "workerTraceCount": 45,
+      "workerMs": {
+        "n": 45,
+        "median": 0.164,
+        "p95": 5.9377,
+        "max": 7.1655
+      },
+      "footprintMs": {
+        "n": 45,
+        "median": 0.1599,
+        "p95": 1.0885,
+        "max": 1.165
+      },
+      "pixelMs": {
+        "n": 45,
+        "median": 0,
+        "p95": 4.0473,
+        "max": 5.2206
+      },
+      "barMs": {
+        "n": 45,
+        "median": 0,
+        "p95": 0.7804,
+        "max": 0.7857
+      },
+      "queueMs": {
+        "n": 45,
+        "median": 0.0126,
+        "p95": 0.02,
+        "max": 0.0229
+      },
+      "publishLatencyMs": {
+        "n": 45,
+        "median": 0.1824,
+        "p95": 5.9579,
+        "max": 7.1989
+      },
+      "pollWallMs": {
+        "n": 45,
+        "median": 13.6567,
+        "p95": 16.1549,
+        "max": 16.4895
+      },
+      "sampleCounts": [
+        [
+          0,
+          0
+        ],
+        [
+          47680,
+          130560
+        ]
+      ]
+    },
+    {
+      "case": "genuine16",
+      "variant": "current",
+      "ready": 6,
+      "proofResults": 45,
+      "workerTraceCount": 45,
+      "workerMs": {
+        "n": 45,
+        "median": 0.1262,
+        "p95": 5.7623,
+        "max": 10.0096
+      },
+      "footprintMs": {
+        "n": 45,
+        "median": 0.1217,
+        "p95": 1.0314,
+        "max": 2.2001
+      },
+      "pixelMs": {
+        "n": 45,
+        "median": 0,
+        "p95": 3.9754,
+        "max": 6.9704
+      },
+      "barMs": {
+        "n": 45,
+        "median": 0,
+        "p95": 0.7744,
+        "max": 0.8107
+      },
+      "queueMs": {
+        "n": 45,
+        "median": 0.0119,
+        "p95": 0.0453,
+        "max": 0.0629
+      },
+      "publishLatencyMs": {
+        "n": 45,
+        "median": 0.1431,
+        "p95": 5.7848,
+        "max": 10.0686
+      },
+      "pollWallMs": {
+        "n": 45,
+        "median": 13.2769,
+        "p95": 16.3295,
+        "max": 16.6552
+      },
+      "sampleCounts": [
+        [
+          0,
+          0
+        ],
+        [
+          47680,
+          130560
+        ]
+      ]
+    }
+  ],
+  "inputs": {
+    "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\full-inputs.json",
+    "sha256": "93b9c0c9819734ad18a230e72a119e8e84e0206607567d890344cc03f905bdd8",
+    "bytes": 62895
+  },
+  "sourcesAndBinaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\src\\VideoProcessor-Lib\\SubtitleCadenceGuard.h",
+      "sha256": "bb3e3291b0d1fe961625e196a928e7655163d8c6e4e536b03a53545a8ee7c4fe",
+      "bytes": 98800
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\src\\VideoProcessor-Lib\\SubtitleMeasurementWorker.h",
+      "sha256": "9bd363a087e838d66e28243b62d2a0f8e7976ea3e792b16464ee99beb1a4a72e",
+      "bytes": 273726
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\src\\VideoProcessor-Lib\\AnalysisLumaSource.cpp",
+      "sha256": "4b1859f941001182c260dedb8e0515631df867dc3f0486da8fd28c2e9e968138",
+      "bytes": 18638
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\src\\VideoProcessor-Lib\\AnalysisLumaSource.h",
+      "sha256": "b022f98b215eaf4ad8adfe1a2d78054baf2be4193ba7739580d5254552b3a9ca",
+      "bytes": 4087
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\x64\\Release\\VideoProcessor-Lib.lib",
+      "sha256": "48173403bea6ee9bf2a84ebea08f2fa753d3c5695f521e1a617c3c79945a45d4",
+      "bytes": 133416120
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\worker.cpp",
+      "sha256": "36d4e8c0bdea314e8f94b5e135d6a56d2ff2e8a014526eefe4e921aa35f732ef",
+      "bytes": 14322
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\scalar.cpp",
+      "sha256": "3ed8f9e7a2d6fe45c69d5d6f0964cdab6e52d4747fb02db369f6bfaedec28bf3",
+      "bytes": 14657
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\scalar\\SubtitleCadenceGuard.h",
+      "sha256": "047469417d5f42632ee2c4cd790ca1cbbf926f02593bea5fe095a06f4ee11341",
+      "bytes": 95253
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\build-current\\WorkerCostcurrent.exe",
+      "sha256": "ce8dac0c7d141717131b36fc8aae73ec9e58bf2e05d3aaec90478f571dc74ccc",
+      "bytes": 1483264
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\build-scalar\\WorkerCostscalar.exe",
+      "sha256": "d96224ed426f5111e885e1aba129be3000641c544b9d4ea7edfa846a6d9cb93a",
+      "bytes": 1481728
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\moving-worker.cpp",
+      "sha256": "335ff47f945a9613331e2a3cfc1be763bd8feac2b5231da33f9615e60fab7db4",
+      "bytes": 14326
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\moving-scalar.cpp",
+      "sha256": "04ea5a55e68f19c1ec3b6eeb20d7e66256aee73ce85c7cde806b60ad6d951dbb",
+      "bytes": 14661
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\build-moving-current\\WorkerCostmovingcurrent.exe",
+      "sha256": "f8636b0d03973cd043b1b343162f86f25fdfc30c225368d5fb517e0019c112c6",
+      "bytes": 1483264
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\build-moving-scalar\\WorkerCostmovingscalar.exe",
+      "sha256": "4706272c224eb00b4e7ff2ed125d2a022e9ac6847b24dc407766a92a6dd6c24e",
+      "bytes": 1481728
+    }
+  ],
+  "preservedFailedBootstrap": {
+    "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\changing16-scalar-0.stderr",
+    "sha256": "21a4e32917dea5e8511b703da415b68b8770b3150586758290b1ef4e0d198db8",
+    "bytes": 51
+  },
+  "runs": [
+    {
+      "case": "paused93",
+      "variant": "scalar",
+      "rep": 0,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-scalar-0.jsonl",
+        "sha256": "3de4b04c49891078622bdabb24592ddfaa8ee8e383aab087ce268c45086fafcc",
+        "bytes": 28417
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-scalar-0-trace.jsonl",
+        "sha256": "ea65499618ac97c127ab59e10de4993b3048ce0e7c7d8a3d6f459f43cc75927b",
+        "bytes": 78066
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-scalar-0.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "paused93",
+      "variant": "current",
+      "rep": 0,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-current-0.jsonl",
+        "sha256": "56715338a8fb5dbed02e4b6ef231c82891fcae1a73d5d6c44687d8aa21a5cf86",
+        "bytes": 28415
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-current-0-trace.jsonl",
+        "sha256": "ccbeb4e0b73f60581d3fccdbb9d7e134261700d6eda8ea70a407769675d27e5b",
+        "bytes": 78038
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-current-0.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "paused93",
+      "variant": "current",
+      "rep": 1,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-current-1.jsonl",
+        "sha256": "3a40ce450cf2c16c29be1ed6786dd0da35f1ccfdbc6b324c5def3edb03e1f5b0",
+        "bytes": 28421
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-current-1-trace.jsonl",
+        "sha256": "16e6abac5792d240a5d249a8cbed37f8cc84e3ce8f5aa17284d1033230f1944e",
+        "bytes": 78049
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-current-1.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "paused93",
+      "variant": "scalar",
+      "rep": 1,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-scalar-1.jsonl",
+        "sha256": "b52129663a914712acc998996a6b9a329a32cd1f183501ce824c9dbbb707b2c2",
+        "bytes": 28414
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-scalar-1-trace.jsonl",
+        "sha256": "c704dbf4e62797882bc127bb5abafbc5ae30fe10624a3ccf26e4ecae3689322f",
+        "bytes": 78061
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-scalar-1.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "paused93",
+      "variant": "scalar",
+      "rep": 2,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-scalar-2.jsonl",
+        "sha256": "389e2b2ca8ed7c64d29f99521e2ec150b5804ecfb639d10769b0be39b440ba17",
+        "bytes": 28408
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-scalar-2-trace.jsonl",
+        "sha256": "29d7ec396f12f203da329d01dc7b1b32c61bb59208595e3b3f24cdbeaf63596a",
+        "bytes": 78063
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-scalar-2.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "paused93",
+      "variant": "current",
+      "rep": 2,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-current-2.jsonl",
+        "sha256": "31cc4ce55166e8ddf47f167074ed24a5cb4df34b97ca2694b34d829c16cf7d85",
+        "bytes": 28412
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-current-2-trace.jsonl",
+        "sha256": "a06d357a8664b9a349e644629dac86c385f900a0cc14ec192f5b8d61d859f7d7",
+        "bytes": 78051
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\paused93-current-2.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "genuine16",
+      "variant": "scalar",
+      "rep": 0,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-scalar-0.jsonl",
+        "sha256": "e6d3902cb07397a9dab25852a1f20551ba79fbcd1ed5ad761ae238663df002b3",
+        "bytes": 4434
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-scalar-0-trace.jsonl",
+        "sha256": "03aacb0ebce27fbbc621040304f97c2201a2b63dca1968167025346e575f3598",
+        "bytes": 28286
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-scalar-0.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "genuine16",
+      "variant": "current",
+      "rep": 0,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-current-0.jsonl",
+        "sha256": "8cea3d224639c8278ccc385de6613bc570848013d775876fe7bea50a7d01e492",
+        "bytes": 4432
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-current-0-trace.jsonl",
+        "sha256": "96bd786280f4e181068ae957eff33dce771572534b6930e6ba7a4ec1bf339ad0",
+        "bytes": 28293
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-current-0.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "genuine16",
+      "variant": "current",
+      "rep": 1,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-current-1.jsonl",
+        "sha256": "96a464fc2dad8eebdb49aa9313dc09e00f48a782cb724ac379bcb13c3156ab02",
+        "bytes": 4432
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-current-1-trace.jsonl",
+        "sha256": "4c76d7fc1430b9fcaf3d9e6e18c2e906ece060894ef248ce0e28fdab9eb30a48",
+        "bytes": 28294
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-current-1.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "genuine16",
+      "variant": "scalar",
+      "rep": 1,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-scalar-1.jsonl",
+        "sha256": "ffec587426a54e96e297b160726893b405d5db081a713ccd97059f776e42abbe",
+        "bytes": 4430
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-scalar-1-trace.jsonl",
+        "sha256": "b110644a390f6faec7d1f882e5c2cb95665336ce4f4fa040a9851f545e80d370",
+        "bytes": 28286
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-scalar-1.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "genuine16",
+      "variant": "scalar",
+      "rep": 2,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-scalar-2.jsonl",
+        "sha256": "fb94d09e34289cddc60cd3ceef74b6dfe7466ab4a60d6b8a8d44ac768e03ad55",
+        "bytes": 4433
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-scalar-2-trace.jsonl",
+        "sha256": "1a400f3fdad0f7e0195e9dbc9f04408fabde654cec60a1e6a86a0af50565edd6",
+        "bytes": 28286
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-scalar-2.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "case": "genuine16",
+      "variant": "current",
+      "rep": 2,
+      "exitCode": 0,
+      "output": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-current-2.jsonl",
+        "sha256": "b66a2ba4c8eca601bb70b4bcec9a578859624dce8c1012435c83706516e0aea9",
+        "bytes": 4432
+      },
+      "trace": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-current-2-trace.jsonl",
+        "sha256": "587ba5c20400b27705accc77675a9df639356921d4d1196dc047ef6d3630ab92",
+        "bytes": 28296
+      },
+      "stderr": {
+        "path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\moving-verifier-locality\\full-worker\\genuine16-current-2.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    }
+  ]
+}
