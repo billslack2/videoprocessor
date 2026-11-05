@@ -2854,12 +2854,11 @@ inline bool SameSourceLayout(const AnalysisLumaSource& a,const AnalysisLumaSourc
         a.rowBytes==b.rowBytes && a.chromaRowBytes==b.chromaRowBytes &&
         a.generation==b.generation && a.rgbBitAlignment==b.rgbBitAlignment;
 }
-inline bool SameCue(const SubtitleBoxResult& a,const SubtitleBoxResult& b,bool compareSampleSummaries=true) {
+inline bool SameCue(const SubtitleBoxResult& a,const SubtitleBoxResult& b) {
     if(a.cue!=b.cue || a.lineCount!=b.lineCount || a.detected!=b.detected ||
         a.held!=b.held || a.confirmationPending!=b.confirmationPending || a.revised!=b.revised ||
-        a.workLimit!=b.workLimit || a.anchorSignature!=b.anchorSignature ||
-        (compareSampleSummaries && (a.signature!=b.signature || a.lineSignatures!=b.lineSignatures)) ||
-        a.capturePanelMeasured!=b.capturePanelMeasured ||
+        a.workLimit!=b.workLimit || a.signature!=b.signature || a.anchorSignature!=b.anchorSignature ||
+        a.lineSignatures!=b.lineSignatures || a.capturePanelMeasured!=b.capturePanelMeasured ||
         !SameRect(a.bounds,b.bounds) || !SameRect(a.anchor,b.anchor) ||
         !SameRect(a.sourcePanel,b.sourcePanel) || !SameRect(a.provenSourcePanel,b.provenSourcePanel) ||
         !SameRect(a.capturePanel,b.capturePanel))return false;
@@ -2955,8 +2954,8 @@ inline SubtitleCurrentCueTemplateDescriptor Describe(const SubtitleCurrentCueTem
     out.backgroundMode=input.backgroundMode;out.valid=true;return out;
 }
 inline bool SameDescriptor(const SubtitleCurrentCueTemplateDescriptor& a,
-    const SubtitleCurrentCueTemplateDescriptor& b,bool compareSampleSummaries=true) {
-    return a.valid && b.valid && SameContext(a.context,b.context) && SameCue(a.cue,b.cue,compareSampleSummaries) &&
+    const SubtitleCurrentCueTemplateDescriptor& b) {
+    return a.valid && b.valid && SameContext(a.context,b.context) && SameCue(a.cue,b.cue) &&
         SameBounds(a.physicalBase,b.physicalBase) && SameOperation(a.operation,b.operation) &&
         SameSourceLayout(a.sourceLayout,b.sourceLayout) && a.sourceMode==b.sourceMode &&
         a.backgroundMode==b.backgroundMode;
@@ -3405,16 +3404,12 @@ __declspec(noinline) inline SubtitleCurrentCueProofStatus SubtitleMeasurementWor
     input.observation.sharedPicture=presentationKey.sharedPicture;
     auto descriptor=Describe(input);
     // A stable healthy template is read from the immutable publication before
-    // allocating a replacement. Sample summaries can vary between scans with
-    // identical semantic geometry/operation. Keep the healthy comparison seed;
-    // every source still needs its own pixel proof. Pixel failure invalidates
-    // this reuse and permits fresh independently qualified acquisition below.
-    // Strict summary comparison remains in semantic-scan and pending-job tests.
+    // allocating a replacement. This is metadata, never current output proof.
     const auto readyView=std::atomic_load(&m_currentCueReadView);
     if(readyView && readyView->descriptor && readyView->descriptor->valid && readyView->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
         ((retainedPresentation && readyView->descriptor->cue.cue==descriptor.cue.cue &&
           SameProofInterpretation(*readyView->descriptor,descriptor) && SameOperation(readyView->descriptor->operation,descriptor.operation)) ||
-         SameDescriptor(*readyView->descriptor,descriptor,false)) && std::atomic_load(&m_currentCueReadView)==readyView) {
+         SameDescriptor(*readyView->descriptor,descriptor)) && std::atomic_load(&m_currentCueReadView)==readyView) {
         templateRevision=readyView->revision;return SubtitleCurrentCueProofStatus::Ready;
     }
     auto state=std::make_shared<SubtitleCurrentCueWorkerState>();
@@ -3506,7 +3501,7 @@ __declspec(noinline) inline SubtitleCurrentCueProofStatus SubtitleMeasurementWor
             templateRevision=m_currentCueState->descriptor.revision;
             return SubtitleCurrentCueProofStatus::Ready;
         }
-        if(HasCurrentCueProofContextLocked() && SameDescriptor(m_currentCueState->descriptor,descriptor,false)) {
+        if(HasCurrentCueProofContextLocked() && SameDescriptor(m_currentCueState->descriptor,descriptor)) {
             templateRevision=m_currentCueState->descriptor.revision;
             return SubtitleCurrentCueProofStatus::Ready;
         }

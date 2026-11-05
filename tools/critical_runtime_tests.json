@@ -14,11 +14,8 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1214,
+  "minimumNativeTests": 1211,
   "requiredNativeMethods": [
-    "CurrentCueSummaryReuseKeepsAnchorOperationAndContextExact",
-    "CurrentCueSummaryReuseImmediatelyRecoversChangedCurrentGlyphs",
-    "CurrentCueHealthyTemplateIgnoresOnlySampleSummaryChanges",
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
     "QuestionMarkCannotBorrowAChainOfLowerNoiseDots",
     "NativeTerminalRowIntervalRejectsUnrelatedOrUnsupportedComponents",
