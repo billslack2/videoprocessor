@@ -5859,6 +5859,7 @@ namespace VideoProcessorTest
                 Assert::IsTrue(stableStarted&&stableSamples>=144&&stable,L"Accepted physical measurement changed or became unavailable.");
                 Assert::IsTrue(distinct.size()==144&&haveMapping&&mappingStable,L"Every expected current source must retain one caption/picture mapping through all captured inputs.");
             }
+            traceDump.Write(); // Preserve exact-source diagnostics before framework SEH can bypass destructors.
             Assert::IsTrue(outputs>=136&&distinct.size()>=136&&phaseCoverage.size()==phaseCount,L"Missing steady current-source coverage.");
             Assert::IsTrue(exact,L"Subtitle readiness held/replayed or mismatched an otherwise eligible current source.");
             Assert::IsTrue(native,L"Measured native geometry changed or fallback gained native authority.");
