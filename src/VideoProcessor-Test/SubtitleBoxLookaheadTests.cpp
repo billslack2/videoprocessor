@@ -701,6 +701,87 @@ public:
         auto bare=raw;bare.samplingBasis={};
         Assert::IsFalse(tracker->CurrentPreparedCueCertificate().Matches(bare,held,base));
     }
+    TEST_METHOD(InspectionScanDerivesCurrentSupportBeforeSamplingWithoutFutureWork) {
+        auto pixels=Pixels();Text(pixels,200,318,16);const auto source=Source(pixels);
+        SubtitleBoxObservation key;key.identity=Identity(1);key.identity.analysisDomainKey=17;
+        key.policyGeneration=7;key.continuityGeneration=9;
+        key.sharedPicture.required=true;key.sharedPicture.identity=key.identity;
+        ActivePictureBounds extent{0,45,640,350,640,360,640.0/305,ActivePictureBounds::BarAxes::NONE};
+        const auto support=VerifyCurrentSourceSupport(source,key.identity,&extent,nullptr);
+        Assert::IsTrue(support.evaluated&&support.verified);
+        auto& nominee=key.sharedPicture.inspectionCandidate;
+        nominee.valid=true;nominee.nativeGeometryRevision=1;nominee.originIdentity=key.identity;
+        nominee.policyGeneration=key.policyGeneration;nominee.continuityGeneration=key.continuityGeneration;
+        nominee.bounds={0,support.samplingBounds.top,640,315,640,360,
+            640.0/(315-support.samplingBounds.top),ActivePictureBounds::BarAxes::NONE};
+        SubtitleMeasurementSampler referenceSampler;
+        const auto reference=referenceSampler.Measure(source,key,{},60,{},
+            std::make_shared<CurrentSourceSupportEvidence>(support));
+        Assert::IsTrue(reference.samplingBasis.Matches(reference));
+        for(int fault=0;fault<5;++fault) {
+            SubtitleMeasurementSampler sampler;unsigned harvests=0;
+            auto supplied=std::make_shared<CurrentSourceSupportEvidence>(support);
+            if(fault==1)supplied->verified=false;
+            if(fault==2)supplied->evaluated=false;
+            if(fault==3)++supplied->identity.acceptedSequence;
+            if(fault==4)++supplied->identity.analysisDomainKey;
+            const auto observation=sampler.Measure(source,key,{},60,{}, {},[&]() ->
+                std::shared_ptr<const CurrentSourceSupportEvidence> {
+                ++harvests;return fault==0?nullptr:supplied;
+            });
+            Assert::AreEqual(1u,harvests);
+            Assert::IsTrue(observation.analyzed&&observation.text.detected);
+            Assert::IsTrue(observation.inspectionCandidateUsed);
+            Assert::IsTrue(observation.samplingBasis.Matches(observation),L"Current pixels must supply the missing support before final grouping.");
+            Assert::IsFalse(observation.sharedPicture.AvailableFor(observation.identity,observation.width,observation.height),L"Sampling support is not native picture authority.");
+            Assert::IsTrue(observation.ink&&observation.ink->rawEvidenceComplete);
+            Assert::IsTrue(observation.ink->sourceRows==reference.ink->sourceRows);
+            Assert::IsTrue(observation.ink->rawInk==reference.ink->rawInk);
+            Assert::IsTrue(observation.ink->ownedInk==reference.ink->ownedInk);
+            Assert::AreEqual(reference.pictureTop,observation.pictureTop);
+            Assert::AreEqual(reference.pictureBottom,observation.pictureBottom);
+            const auto currentOnly=SubtitleBoxLookahead::Resolve(&observation,1,7,9);
+            Assert::IsTrue(currentOnly.current.analyzed);
+            Assert::IsFalse(currentOnly.futureAvailable,L"This scan needs neither future observations nor another worker completion.");
+        }
+    }
+    TEST_METHOD(InspectionLocalSupportTracksChangedPixelsAndRejectsForeignNominees) {
+        auto original=Pixels();Text(original,200,318,16);
+        SubtitleBoxObservation key;key.identity=Identity(1);key.identity.analysisDomainKey=17;
+        key.policyGeneration=7;key.continuityGeneration=9;
+        key.sharedPicture.required=true;key.sharedPicture.identity=key.identity;
+        ActivePictureBounds extent{0,45,640,350,640,360,640.0/305,ActivePictureBounds::BarAxes::NONE};
+        const auto measured=VerifyCurrentSourceSupport(Source(original),key.identity,&extent,nullptr);
+        Assert::IsTrue(measured.verified);
+        auto& n=key.sharedPicture.inspectionCandidate;n.valid=true;n.nativeGeometryRevision=1;
+        n.originIdentity=key.identity;n.policyGeneration=7;n.continuityGeneration=9;
+        n.bounds={0,measured.samplingBounds.top,640,315,640,360,
+            640.0/(315-measured.samplingBounds.top),ActivePictureBounds::BarAxes::NONE};
+        SubtitleMeasurementSampler initialSampler;
+        const auto initial=initialSampler.Measure(Source(original),key,{},60);
+        Assert::IsTrue(initial.samplingBasis.Matches(initial));
+        for(int fault=0;fault<7;++fault) {
+            auto pixels=original;auto request=key;
+            if(fault==0)Text(pixels,200,318,16,true); // Actual changed glyph strokes.
+            if(fault==1)Fill(pixels,0,0,640,45,300); // Real picture expansion into the old top bar.
+            if(fault==2)Fill(pixels,80,8,560,30,700); // Current upper-bar UI, not retained absence.
+            if(fault==3)++request.sharedPicture.inspectionCandidate.originIdentity.analysisDomainKey;
+            if(fault==4)++request.sharedPicture.inspectionCandidate.policyGeneration;
+            if(fault==5)++request.sharedPicture.inspectionCandidate.continuityGeneration;
+            if(fault==6)request.sharedPicture.inspectionCandidate.valid=false;
+            SubtitleMeasurementSampler sampler;
+            const auto current=sampler.Measure(Source(pixels),request,{},60);
+            Assert::IsTrue(current.analyzed);
+            Assert::IsFalse(current.sharedPicture.AvailableFor(current.identity,current.width,current.height));
+            if(fault==0) {
+                Assert::IsTrue(current.text.detected&&current.ink&&current.ink->rawEvidenceComplete);
+                Assert::IsTrue(current.ink->rawInk!=initial.ink->rawInk,L"The fresh scan must expose changed current glyphs rather than reuse an old cue mask.");
+            } else {
+                Assert::IsFalse(current.samplingBasis.Matches(current),L"Changed exterior pixels or a foreign nominee cannot supply the old sampling basis.");
+                if(fault>=3)Assert::IsFalse(current.inspectionCandidateUsed);
+            }
+        }
+    }
     TEST_METHOD(CurrentSamplingBasisHarvestsLateExactSupportBeforeFinalScanWithoutWaiting) {
         auto pixels=Pixels();Text(pixels,200,318,16);const auto source=Source(pixels);
         auto key=CurrentHeldProofCue(1);key.identity.analysisDomainKey=17;

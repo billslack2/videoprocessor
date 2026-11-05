@@ -4673,7 +4673,6 @@ struct LibplaceboVideoRenderer::Impl
     LookaheadPerformanceWindow lookaheadPerformance;
     PreparedPictureEvidenceWorker::Metrics previousPictureProofMetrics;
     QueuedFrame::LookaheadWorker lookaheadMeasurementWorker;
-    std::shared_ptr<const int> subtitleNativeHandoffLifetime=std::make_shared<const int>(0);
     std::shared_ptr<SourcePictureSupportEpisode> sourcePictureSupportEpisode=std::make_shared<SourcePictureSupportEpisode>();
     QueuedFrame::OutwardWindowWorker outwardWindowWorker;
     uint64_t outwardAsyncReady=0, outwardAsyncLate=0, outwardAsyncStale=0;
@@ -6000,8 +5999,6 @@ struct LibplaceboVideoRenderer::Impl
         InvalidateHdrStatus(true);
 		if (!outputResourcesRetired)
 		{
-            // Native completion callbacks are joined below before subtitle worker/Impl destruction.
-            std::atomic_store(&subtitleNativeHandoffLifetime,std::shared_ptr<const int>{});
             TimedRetirementPhase("nls-preparation-stop",[&]{nlsPreparation.Stop();});
             TimedRetirementPhase("subtitle-preparation-stop",[&]{subtitlePipelinePreparation.Stop();});
             TimedRetirementPhase("picture-proof-stop",[&]{pictureProofWorker.Stop();});
@@ -9594,35 +9591,6 @@ struct LibplaceboVideoRenderer::Impl
         return ticket && ticket->BindRequest(key);
     }
 
-    // Order only optional grouping behind an already admitted native attempt.
-    // Completion means scheduling may proceed, never that any evidence is valid.
-    // No new queue, wait or source identity is introduced. A failed queue offer
-    // stays in this frame-owned slot for the ordinary prime traversal to retry.
-    bool OfferSubtitleAfterNative(const std::shared_ptr<QueuedFrame::AnalysisPayload>& cache,
-        const SubtitleBoxObservation& key,
-        std::function<bool(const std::shared_ptr<QueuedFrame::AnalysisPayload>&)> offer)
-    {
-        if(!cache || !cache->lookahead)return false;
-        const auto slot=cache->lookahead;
-        QueuedFrame::LookaheadWorker::RetryAfterAttempt(slot);
-        if(!slot->pending.load(std::memory_order_acquire))return false;
-        if(std::atomic_load(&slot->afterAttempt))return true;
-        const auto ticket=std::atomic_load(&cache->sourceTicket);
-        if(!ticket || !ticket->MatchesRequestContext(key))return false;
-        const std::weak_ptr<QueuedFrame::AnalysisPayload> weakCache=cache;
-        const std::weak_ptr<const int> lifetime=std::atomic_load(&subtitleNativeHandoffLifetime);
-        QueuedFrame::LookaheadWorker::AfterAttempt(slot,[weakCache,lifetime,ticket,offer=std::move(offer)] {
-            // Weak payload avoids slot -> closure -> payload ownership cycles.
-            // The lifetime marker prevents late entry; RetireOutput joins the
-            // native worker before destroying the subtitle worker and Impl.
-            const auto alive=lifetime.lock();
-            const auto current=weakCache.lock();
-            if(!alive || !current || std::atomic_load(&current->sourceTicket)!=ticket)return true;
-            return offer(current);
-        });
-        return true;
-    }
-
     static SubtitleMeasurementWorker::Work MakeSubtitleMeasurementWork(const PreparedAnalysisFrame& prepared,
         const SubtitleBoxObservation& key,const SubtitleBarTrackingReference& prior,double fps,
         const ActivePictureEvidence& nativeEvidence,const std::shared_ptr<QueuedFrame::AnalysisPayload>& analysisCache)
@@ -9782,17 +9750,6 @@ struct LibplaceboVideoRenderer::Impl
                 "input-cadence-not-analyzed" : "current-analysis-submission-disabled";
             return key;
         }
-        const auto witness=ownedWitness?*ownedWitness:OwnedScanBacklogWitness{};
-        const bool hasWitness=ownedWitness!=nullptr;
-        if(OfferSubtitleAfterNative(analysisCache,key,
-            [this,prepared,key,prior,fps,nativeEvidence,witness,hasWitness,ownedTimelinePolicy](const auto& current) {
-                return subtitleMeasurementWorker.Submit(key,
-                    MakeSubtitleMeasurementWork(prepared,key,prior,fps,nativeEvidence,current),
-                    hasWitness?&witness:nullptr,ownedTimelinePolicy,true,current->lookahead->completion);
-            })) {
-            key.text.diagnosticReason="awaiting-native-attempt";
-            return key;
-        }
         subtitleMeasurementWorker.Submit(key,MakeSubtitleMeasurementWork(prepared,key,prior,fps,nativeEvidence,analysisCache),
             ownedWitness,ownedTimelinePolicy,true,analysisCache?analysisCache->lookahead->completion:nullptr);
         return key;
@@ -9804,14 +9761,6 @@ struct LibplaceboVideoRenderer::Impl
         // geometry remain identical. Revoke the worker's old interpretation as
         // well as this advisory offer marker; ordinary template rollover does
         // not cross this reset boundary.
-        // Pending completion offers belong to this interpretation. Never let
-        // a retired style/viewport request revive merely because its native job
-        // finishes later. In-flight old work still faces exact-key consumption.
-        auto previous=std::atomic_load(&subtitleNativeHandoffLifetime);
-        if(previous) {
-            const auto next=std::make_shared<const int>(0);
-            std::atomic_compare_exchange_strong(&subtitleNativeHandoffLifetime,&previous,next);
-        }
         subtitleMeasurementWorker.InvalidateCurrentCueProofContext();
         currentCueTemplateRevision.store(0,std::memory_order_release);
     }
@@ -9858,22 +9807,6 @@ struct LibplaceboVideoRenderer::Impl
         const OwnedScanBacklogWitness* ownedWitness=nullptr,uint64_t ownedTimelinePolicy=0,
         const char* offerOrigin="render")
     {
-        // Reuse proof remains immediately eligible. Only its optional full scan
-        // waits for the already admitted native job, whose completion publishes
-        // exact-source support before the sampler's one support harvest.
-        if(fullScanDue && !key.cadenceSkipped && !RegressionMissingRaw(key.identity.acceptedSequence)) {
-            const auto witness=ownedWitness?*ownedWitness:OwnedScanBacklogWitness{};
-            const bool hasWitness=ownedWitness!=nullptr;
-            if(OfferSubtitleAfterNative(analysisCache,key,
-                [this,prepared,key,fps,prior,nativeEvidence,witness,hasWitness,ownedTimelinePolicy](const auto& current) {
-                    // The existing ordinary route attaches to a pending proof
-                    // or applies its verified refresh cadence. No second proof
-                    // request or captured old render window is needed.
-                    return subtitleMeasurementWorker.Submit(key,
-                        MakeSubtitleMeasurementWork(prepared,key,prior,fps,nativeEvidence,current),
-                        hasWitness?&witness:nullptr,ownedTimelinePolicy,true,current->lookahead->completion);
-                }))fullScanDue=false;
-        }
         // Regression factory models an unavailable optional reuse task. Normal
         // accepted-source/prime/render callers retain their ordinary full-scan
         // fallback. Never stall, synthesize a failed pixel proof or retire a cue.
@@ -26244,14 +26177,8 @@ void LibplaceboVideoRenderer::DispatchAcceptedSourcePreparation(const QueuedFram
         cueProofStatus==SubtitleCurrentCueProofStatus::Pending || cueProofStatus==SubtitleCurrentCueProofStatus::Ready ||
         cueProofStatus==SubtitleCurrentCueProofStatus::FallbackQueued;
     if(subtitleEligible && !cueProofOwnsSource && !m_impl->RegressionMissingRaw(key->identity.acceptedSequence)) {
-        const auto request=*key;
-        trace.subtitleQueued=m_impl->OfferSubtitleAfterNative(queued.analysis,request,
-            [impl=m_impl.get(),prepared,request,sourceFps](const auto& current) {
-                return impl->subtitleMeasurementWorker.Submit(request,Impl::MakeSubtitleMeasurementWork(prepared,request,{},
-                    sourceFps,{},current),nullptr,0,true,current->lookahead->completion);
-            });
-        if(!trace.subtitleQueued)trace.subtitleQueued=m_impl->subtitleMeasurementWorker.Submit(*key,
-            Impl::MakeSubtitleMeasurementWork(prepared,*key,{},sourceFps,{},queued.analysis),nullptr,0,true,slot->completion);
+        trace.subtitleQueued=m_impl->subtitleMeasurementWorker.Submit(*key,Impl::MakeSubtitleMeasurementWork(prepared,*key,{},
+            sourceFps,{},queued.analysis),nullptr,0,true,slot->completion);
     }
     if(cueProofOwnsSource) {
         trace.subtitleQueued=true;
@@ -26436,9 +26363,8 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         } // Pending DV conversion is never raw RGB evidence.
         auto identity=queued.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
         preparedDomains[i]=prepared.domainKey;observations[i].identity=identity;
-        // Current reuse proofs may run immediately. Full grouping is offered
-        // directly by native completion, retaining lookahead lead without a wait
-        // or a later traversal being required for successful queue admission.
+        // Current glyph work is independent of native-worker readiness. The
+        // sampler verifies any missing inspection support from this source.
         const auto nativeReady=QueuedFrame::LookaheadWorker::Ready(queued.analysis->lookahead);
         if(i==0) {
             std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);

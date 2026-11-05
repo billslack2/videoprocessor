@@ -683,6 +683,22 @@ namespace SubtitleBoxLookahead
                     auto completed=currentSupportProvider();
                     if(completed)currentSupport=std::move(completed);
                 }
+                // Resolved current bars nominate support; the unchanged native
+                // verifier proves the excluded bands. Do this only for an
+                // inspection-only request whose native worker was not ready.
+                // Final glyph sampling then uses the existing typed basis, with
+                // no finished-scan rebase or dependency on another worker.
+                if(result.inspectionCandidateUsed &&
+                    (!currentSupport || !currentSupport->evaluated || !currentSupport->verified ||
+                     !SameAnalysisFrameIdentity(currentSupport->identity,identity)) &&
+                    bars.available && !result.glyphLocalTop && !result.glyphLocalBottom &&
+                    bars.top>=0 && bars.bottom<=source.height && bars.top<bars.bottom) {
+                    const ActivePictureBounds currentBars{0,bars.top,source.width,bars.bottom,
+                        source.width,source.height,double(source.width)/(bars.bottom-bars.top),
+                        ActivePictureBounds::BarAxes::NONE};
+                    currentSupport=std::make_shared<CurrentSourceSupportEvidence>(
+                        VerifyCurrentSourceSupport(source,identity,&currentBars,nullptr));
+                }
                 const bool finalSupportAvailable=currentSupport && currentSupport->verified &&
                     SameAnalysisFrameIdentity(currentSupport->identity,identity);
                 auto basisTrace=AnalysisTraceRecord(identity,nullptr,"subtitle-sampling-basis",

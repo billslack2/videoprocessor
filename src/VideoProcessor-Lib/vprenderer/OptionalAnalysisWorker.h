@@ -22,10 +22,6 @@ public:
         std::shared_ptr<const Result> ready;
         std::shared_ptr<AnalysisCompletionSignal> completion;
         std::atomic<bool> pending{false};
-        // Scheduling only: a terminal attempt may have no usable evidence.
-        std::atomic<bool> attemptFinished{false};
-        std::shared_ptr<const std::function<bool()>> afterAttempt;
-        std::atomic_flag notifyingDependent=ATOMIC_FLAG_INIT;
     };
     struct Metrics {
         uint64_t submitted=0,completed=0,failed=0,duplicate=0,contended=0,full=0,cancelled=0;
@@ -76,7 +72,6 @@ public:
                 // source must not be rejected merely because future work is full.
                 jobs.back().slot->pending.store(false);++cancelled;jobs.pop_back();
             }
-            slot->attemptFinished.store(false,std::memory_order_release);
             ++submitted;queued.store(jobs.size(),std::memory_order_relaxed);
             Peak(queueHighWater,jobs.size());
         } catch (...) { slot->pending.store(false); return false; }
@@ -85,38 +80,6 @@ public:
     }
     static std::shared_ptr<const Result> Ready(const std::shared_ptr<Slot>& slot) {
         return slot ? std::atomic_load(&slot->ready) : nullptr;
-    }
-    // A dependent owns its original immutable source/key. True means admitted
-    // or retired; false keeps only this bounded slot callback for a later retry.
-    // No caller waits for either worker or a native result.
-    static void RetryAfterAttempt(const std::shared_ptr<Slot>& slot) {
-        if(!slot || !slot->attemptFinished.load(std::memory_order_acquire) ||
-            slot->pending.load(std::memory_order_acquire))return;
-        const auto current=std::atomic_load(&slot->afterAttempt);
-        if(!current || slot->notifyingDependent.test_and_set(std::memory_order_acquire))return;
-        // A competing retry may have consumed/replaced the callback before we
-        // acquired this one-shot claim, or a new native attempt may have begun.
-        if(std::atomic_load(&slot->afterAttempt)!=current ||
-            slot->pending.load(std::memory_order_acquire) ||
-            !slot->attemptFinished.load(std::memory_order_acquire)) {
-            slot->notifyingDependent.clear(std::memory_order_release);
-            return;
-        }
-        bool done=false;
-        try {done=(*current)();} catch(...) {} // Optional offer remains retryable.
-        if(done) {
-            auto expected=current;
-            std::atomic_compare_exchange_strong(&slot->afterAttempt,&expected,
-                std::shared_ptr<const std::function<bool()>>{});
-        }
-        slot->notifyingDependent.clear(std::memory_order_release);
-    }
-    static void AfterAttempt(const std::shared_ptr<Slot>& slot,std::function<bool()> offer) {
-        if(!slot || !offer)return;
-        std::shared_ptr<const std::function<bool()>> empty;
-        auto next=std::make_shared<const std::function<bool()>>(std::move(offer));
-        std::atomic_compare_exchange_strong(&slot->afterAttempt,&empty,next);
-        RetryAfterAttempt(slot);
     }
     void Stop() {
         {
@@ -180,9 +143,7 @@ private:
                 cpuUs.fetch_add(cpuEnd-cpuStart,std::memory_order_relaxed);++cpuSamples;
             }
             activeStartUs.store(0,std::memory_order_relaxed);++completed;
-            job.slot->attemptFinished.store(true,std::memory_order_release);
             job.slot->pending.store(false);
-            RetryAfterAttempt(job.slot);
             if(job.slot->completion)job.slot->completion->Notify();
         }
     }
