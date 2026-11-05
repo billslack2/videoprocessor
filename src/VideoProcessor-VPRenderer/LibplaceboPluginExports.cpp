@@ -142,7 +142,8 @@ VideoProcessorLibplaceboCreateRendererForRegressionV1(
             (options->flags & VP_REGRESSION_DECLINE_CUE_PROOF) != 0,
             (options->flags & VP_REGRESSION_MISSING_ANALYSIS_WINDOW) != 0,
             (options->flags & VP_REGRESSION_SOURCE_TICKET_PROOF_WINDOW) != 0,
-            (options->flags & VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW) != 0);
+            (options->flags & VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW) != 0,
+            (options->flags & VP_REGRESSION_OUTPUT_GEOMETRY) != 0);
     } catch (const std::exception& e) {
         DebugLog::Log("libplacebo regression factory failed: %s", e.what());
     } catch (...) {

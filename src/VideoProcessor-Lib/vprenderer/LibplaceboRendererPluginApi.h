@@ -92,6 +92,8 @@ static constexpr uint32_t VP_REGRESSION_MISSING_ANALYSIS_WINDOW = 4u;
 static constexpr uint32_t VP_REGRESSION_SOURCE_TICKET_PROOF_WINDOW = 8u;
 // Remove the exact-byte escape only in the existing both-missing test interval.
 static constexpr uint32_t VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW = 16u;
+// Observe final current operation/profile only; never withhold work or change output.
+static constexpr uint32_t VP_REGRESSION_OUTPUT_GEOMETRY = 32u;
 // Relative to the first genuinely consumed current cue receipt, never wall time.
 static constexpr uint64_t VP_REGRESSION_RAW_MISSING_BEGIN = 16;
 static constexpr uint64_t VP_REGRESSION_RAW_MISSING_END = 80;
@@ -99,7 +101,7 @@ static constexpr uint64_t VP_REGRESSION_BOTH_MISSING_BEGIN = 48;
 static constexpr uint64_t VP_REGRESSION_BOTH_MISSING_END = 50;
 inline bool ValidLibplaceboRegressionOptions(const LibplaceboRegressionOptionsV1* options) {
     return options && options->size == sizeof(LibplaceboRegressionOptionsV1) &&
-        options->version == 1 && !(options->flags & ~(VP_REGRESSION_DECLINE_CUE_PROOF | VP_REGRESSION_MISSING_ANALYSIS_WINDOW | VP_REGRESSION_SOURCE_TICKET_PROOF_WINDOW | VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW)) &&
+        options->version == 1 && !(options->flags & ~(VP_REGRESSION_DECLINE_CUE_PROOF | VP_REGRESSION_MISSING_ANALYSIS_WINDOW | VP_REGRESSION_SOURCE_TICKET_PROOF_WINDOW | VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW | VP_REGRESSION_OUTPUT_GEOMETRY)) &&
         (!(options->flags & VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW) ||
             (options->flags & VP_REGRESSION_MISSING_ANALYSIS_WINDOW));
 }

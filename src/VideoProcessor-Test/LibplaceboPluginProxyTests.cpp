@@ -5156,7 +5156,7 @@ namespace VideoProcessorTest
         // no caller supplies picture or successful composition authority.
 #include "GenericNativeCaptureRendererReplay.inl"
 
-        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false,bool missingEvidenceWindow=false,bool completedProofWindow=false,bool capturedTwoLine=false,bool missingCompositionWindow=false)
+        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false,bool missingEvidenceWindow=false,bool completedProofWindow=false,bool capturedTwoLine=false,bool missingCompositionWindow=false,bool sixtyHzProfileStress=false)
         {
             char* captureValue=nullptr;size_t captureSize=0;
             Assert::AreEqual(0,_dupenv_s(&captureValue,&captureSize,"VP_SUBTITLE_CAPTURE_ROOT"));
@@ -5176,7 +5176,11 @@ namespace VideoProcessorTest
             const bool evidenceWindow=missingEvidenceWindow||completedProofWindow||missingCompositionWindow;
             const bool oppositeBarCorpus=profileCycle||evidenceWindow||capturedTwoLine;
             const int pictureTop=oppositeBarCorpus?272:((pausedRecovery||scriptureHeld)?274:272),pictureBottom=1886;
-            constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
+            Assert::IsTrue(!sixtyHzProfileStress || (profileCycle&&capturedTwoLine&&!evidenceWindow),
+                L"The60Hz stress has its own natural two-line/profile contract, without withheld proof or invented authority.");
+            const unsigned inputScale=sixtyHzProfileStress?60u:24000u,inputDuration=sixtyHzProfileStress?1u:1001u;
+            const double inputHz=double(inputScale)/inputDuration,periodMs=1000.0/inputHz;
+            const unsigned profileBlock=sixtyHzProfileStress?120u:48u;
             std::vector<unsigned> profileCaptureIndices;
             std::vector<std::array<uint64_t,16>> profileCaptureIdentities;
             if(oppositeBarCorpus) {
@@ -5198,7 +5202,8 @@ namespace VideoProcessorTest
             const unsigned phaseCount=oppositeBarCorpus?unsigned(profileCaptureIndices.size()):(scriptureHeld?83u:(pausedNative?46u:4u));
             if(completedProofWindow)NativeRendererFixtureLog(
                 "MOVING COMPLETED-PROOF SCOPE: three unedited distinct captured full rasters with original sidecar gaps; repeated controlled loop with fresh test identities, not uninterrupted moving-film history. Current ordinary proof worker remains active; only mutex lookup/raw grouping and exact-byte fallback are withheld in offsets16..80.");
-            const unsigned steadyCount=capturedTwoLine?182u:(evidenceWindow?186u:(profileCycle?288u:(scriptureHeld?166u:144u)));
+            const unsigned steadyCount=sixtyHzProfileStress?6u*profileBlock:(capturedTwoLine?182u:(evidenceWindow?186u:(profileCycle?288u:(scriptureHeld?166u:144u))));
+            if(sixtyHzProfileStress)NativeRendererFixtureLog("PROFILE60 SCOPE: unchanged original91 captured23.976Hz rasters replayed in ordered loops on fresh synthetic60Hz transport. Original16-field sidecars/gaps remain unchanged. This is accelerated captured-pixel stress, not a genuine60Hz HDMI recording or60Hz scanout claim. Every submitted prefix counts, including transitions and unavailable composition.");
             std::vector<std::vector<BYTE>> phases(phaseCount);
             std::vector<std::array<SubtitleBoxRect,2>> currentLineExpectations;
             for(unsigned phase=0;phase<phaseCount;++phase) {
@@ -5345,7 +5350,7 @@ namespace VideoProcessorTest
                 EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&mode)!=FALSE&&mode.dmDisplayFrequency>1);
             const double outputHz=mode.dmDisplayFrequency;
             if(scriptureHeld) {
-                LibplaceboRegressionOptionsV1 options;options.flags=missingCompositionWindow?
+                LibplaceboRegressionOptionsV1 options;options.flags=sixtyHzProfileStress?VP_REGRESSION_OUTPUT_GEOMETRY:missingCompositionWindow?
                     (VP_REGRESSION_MISSING_ANALYSIS_WINDOW|VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW):completedProofWindow?VP_REGRESSION_SOURCE_TICKET_PROOF_WINDOW:
                     (missingEvidenceWindow?VP_REGRESSION_MISSING_ANALYSIS_WINDOW:
                     ((profileCycle||capturedTwoLine)?0:VP_REGRESSION_DECLINE_CUE_PROOF));
@@ -5362,7 +5367,7 @@ namespace VideoProcessorTest
                     if(it->find("Alpha queue policy:")!=std::string::npos){NativeRendererFixtureLog(it->c_str());break;}}
 
             VideoStateComPtr state=new VideoState();state->valid=true;state->videoFrameEncoding=VideoFrameEncoding::V210;
-            state->displayMode=std::make_shared<DisplayMode>(width,height,false,24000,1001);
+            state->displayMode=std::make_shared<DisplayMode>(width,height,false,inputScale,inputDuration);
             state->eotf=EOTF::SDR;state->colorspace=ColorSpace::REC_709;
             Assert::IsTrue(cleanup.renderer->OnVideoState(state));cleanup.renderer->Build();
             cleanup.renderer->SetRenderLoadDisplayRefreshRate(outputHz);cleanup.renderer->Start();
@@ -5373,8 +5378,14 @@ namespace VideoProcessorTest
             bool scripturePreroll=scriptureHeld;
             const unsigned ScriptureAcquisitionPhase=oppositeBarCorpus?0:1; // Untouched declared original frame, not generated pixels.
             std::map<uint64_t,unsigned> capturedPhaseBySource;
+            struct StressPacingTimer {HANDLE handle=nullptr;~StressPacingTimer(){if(handle)CloseHandle(handle);}} stressPacing;
+            if(sixtyHzProfileStress) {
+                stressPacing.handle=CreateWaitableTimerExW(nullptr,nullptr,0x00000002,TIMER_ALL_ACCESS);
+                Assert::IsNotNull(stressPacing.handle,L"The60Hz fixture requires a high-resolution timer; no rounded Sleep fallback or global timer-resolution change.");
+            }
             const auto captureOrigin=clock.TimingClockNow();auto next=std::chrono::steady_clock::now();
-            std::vector<double> ingressMs;std::vector<AnalysisDiagnosticRecordV1> observed;
+            std::vector<double> ingressMs;std::map<uint64_t,double> ingressBySource;std::vector<AnalysisDiagnosticRecordV1> observed;
+            std::map<uint64_t,double> stressOfferLateness;
             struct TraceDump {
                 const std::vector<AnalysisDiagnosticRecordV1>& records;bool beta;
                 ~TraceDump() {Write();}
@@ -5426,17 +5437,28 @@ namespace VideoProcessorTest
             const auto pump=[&] {
                 MSG msg;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){TranslateMessage(&msg);DispatchMessageW(&msg);}
                 if(callback.state==RENDERSTATE_RENDERING) {
-                    const auto stamp=captureOrigin+timingclocktime_t((sequence-1)*uint64_t(clock.TimingClockTicksPerSecond())*1001/24000);
+                    if(sixtyHzProfileStress&&steadyStart)stressOfferLateness.emplace(sequence,
+                        (std::max)(0.0,std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-next).count()));
+                    const auto stamp=captureOrigin+timingclocktime_t((sequence-1)*uint64_t(clock.TimingClockTicksPerSecond())*inputDuration/inputScale);
                     const auto start=wallNs();inputs.emplace(sequence,std::make_pair(stamp,start));
                     const unsigned phase=scriptureHeld ? (scripturePreroll?ScriptureAcquisitionPhase:
                         unsigned((sequence-scriptureCorpusStart)%phaseCount)) : unsigned((sequence-1)%phaseCount);
                     capturedPhaseBySource.emplace(sequence,phase);
                     const auto* pixels=usePriorBackground?priorBackground.data():phases[phase].data();
                     VideoFrame frame(pixels,sequence++,stamp,&buffer);cleanup.renderer->OnVideoFrame(frame);
-                    if(steadyStart)ingressMs.push_back(double(wallNs()-start)/1e6);
+                    if(steadyStart) {const double elapsed=double(wallNs()-start)/1e6;ingressMs.push_back(elapsed);ingressBySource.emplace(sequence-1,elapsed);}
                 }
                 next+=std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1/inputHz));
-                std::this_thread::sleep_until(next);drain();
+                if(sixtyHzProfileStress) {
+                    for(;;) {
+                        const auto remaining=std::chrono::duration_cast<std::chrono::nanoseconds>(next-std::chrono::steady_clock::now()).count();
+                        if(remaining<=0)break;
+                        LARGE_INTEGER due{};due.QuadPart=-(std::max)(int64_t(1),int64_t((remaining+99)/100));
+                        Assert::IsTrue(SetWaitableTimer(stressPacing.handle,&due,0,nullptr,nullptr,FALSE)!=FALSE);
+                        Assert::AreEqual(DWORD(WAIT_OBJECT_0),WaitForSingleObject(stressPacing.handle,1000));
+                    }
+                } else std::this_thread::sleep_until(next);
+                drain();
                 if(pausedNative) {
                     DetectedPictureAspect reading;Assert::IsTrue(cleanup.renderer->GetDetectedPictureAspect(reading));
                     if(reading.presentedSequence&&reading.presentedSequence!=lastPhysicalPresented) {
@@ -5502,9 +5524,53 @@ namespace VideoProcessorTest
             }
             steadyStart=sequence;
             const uint64_t steadyEnd=steadyStart+steadyCount-1;
+            SourceQueueDispositionSnapshotV1 stressQueueBefore,stressQueueAfter;
+            const auto stressQueueQuery=reinterpret_cast<SourceQueueDispositionQueryV1>(
+                GetProcAddress(plugin,VP_LIBPLACEBO_QUEUE_DISPOSITION_EXPORT));
+            std::array<double,4> stressLandmarks{};bool stressHaveBaseline=false;
+            if(sixtyHzProfileStress) {
+                Assert::IsTrue(stressQueueQuery&&stressQueueQuery(&stressQueueBefore));
+                for(auto i=observed.rbegin();i!=observed.rend();++i)if(!strcmp(i->stage,"submitted-presentation")&&
+                    (i->flags&3u)==3u&&i->metrics[10]>i->metrics[8]&&i->metrics[11]>i->metrics[9]) {
+                    const auto px=[&](double x){return i->metrics[12]+(x-i->metrics[8])*(i->metrics[14]-i->metrics[12])/(i->metrics[10]-i->metrics[8]);};
+                    const auto py=[&](double y){return i->metrics[13]+(y-i->metrics[9])*(i->metrics[15]-i->metrics[13])/(i->metrics[11]-i->metrics[9]);};
+                    stressLandmarks={{px(960),py(720),px(2880),py(1440)}};stressHaveBaseline=true;break;
+                }
+                Assert::IsTrue(stressHaveBaseline,L"Stress begins only after genuine current composition; no guessed crop baseline.");
+            }
+            // Keep input pacing independent of the profile-control caller.
+            std::atomic<int> stressRequestedPhase{-1};std::atomic_bool stressStop{false},stressProfileOkay{true};
+            std::atomic_uint stressAppliedProfiles{0};std::array<double,6> stressApplyMs{};
+            std::thread stressProfileThread;
+            struct StressProfileCleanup {std::atomic_bool& stop;std::thread& thread;
+                ~StressProfileCleanup(){stop=true;if(thread.joinable())thread.join();}} stressProfileCleanup{stressStop,stressProfileThread};
+            if(sixtyHzProfileStress)stressProfileThread=std::thread([&] {
+                const HRESULT apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+                static const char* profiles[]={"black","reconstruction","classic","off","black","reconstruction"};
+                try {for(unsigned phase=0;phase<6;++phase) {
+                    while(!stressStop && stressRequestedPhase.load()<int(phase))std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    if(stressStop)break;
+                    const auto started=wallNs();UnifiedProfileRuntime::SelectionResult selection;std::string failure;
+                    bool selected=runtime.SelectProfile("subtitles",profiles[phase],true,{},selection,failure);
+                    bool profileRestart=false,profileReset=false;CString profileName;
+                    const bool applied=selected&&selection.snapshot&&cleanup.renderer->ApplyApplicationState(*selection.snapshot,
+                        profileName,profileRestart,profileReset);
+                    stressApplyMs[phase]=double(wallNs()-started)/1e6;
+                    if(!applied||profileRestart)stressProfileOkay=false;
+                    ++stressAppliedProfiles;
+                    std::ostringstream row;row<<"PROFILE60 REQUEST: phase="<<phase<<" profile="<<profiles[phase]
+                        <<" triggering_input="<<steadyStart+phase*profileBlock<<" application_call_ms="<<stressApplyMs[phase]
+                        <<" applied_request="<<applied<<" restart="<<profileRestart
+                        <<"; request acknowledgement is not selected output profile evidence";
+                    NativeRendererFixtureLog(row.str().c_str());
+                }}catch(...) {stressProfileOkay=false;}
+                if(SUCCEEDED(apartment))CoUninitialize();
+            });
             unsigned visualRequests=0;
             while(sequence<=steadyEnd+10) {
-                if(profileCycle && sequence<=steadyEnd && (sequence-steadyStart)%48==0) {
+                if(sixtyHzProfileStress&&sequence<=steadyEnd&&(sequence-steadyStart)%profileBlock==0)
+                    stressRequestedPhase=int((sequence-steadyStart)/profileBlock);
+                if(profileCycle && !sixtyHzProfileStress && sequence<=steadyEnd && (sequence-steadyStart)%48==0) {
                     static const char* profiles[]={"black","reconstruction","classic","off","black","reconstruction"};
                     const auto phase=unsigned((sequence-steadyStart)/48);
                     UnifiedProfileRuntime::SelectionResult selection;
@@ -5547,7 +5613,14 @@ namespace VideoProcessorTest
                 }
                 pump();
             }
+            stressStop=true;if(stressProfileThread.joinable())stressProfileThread.join();
+            if(sixtyHzProfileStress)Assert::IsTrue(stressQueueQuery(&stressQueueAfter));
             cleanup.renderer->Stop();cleanup.stopped=true;drain();
+            if(sixtyHzProfileStress) {
+                traceDump.Write();
+#include "CapturedProfile60Stress.inl"
+                return;
+            }
             if(evidenceWindow) {
                 traceDump.Write(); // Persist every source before framework SEH assertions.
                 uint64_t anchor=0;bool oneAnchor=true;
@@ -6110,6 +6183,8 @@ namespace VideoProcessorTest
             options.flags=VP_REGRESSION_MISSING_ANALYSIS_WINDOW|VP_REGRESSION_WITHHOLD_EQUIVALENCE_WINDOW;
             Assert::IsTrue(ValidLibplaceboRegressionOptions(&options));
             options.flags=2;Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
+            options.flags=VP_REGRESSION_OUTPUT_GEOMETRY;Assert::IsTrue(ValidLibplaceboRegressionOptions(&options));
+            options.flags=64;Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
             options.flags=0;options.version=2;Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
             options.version=1;--options.size;Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
         }
@@ -7432,12 +7507,17 @@ namespace VideoProcessorTest
 // renderer does not export this entry point or alter its thread stack reserve.
 extern "C" __declspec(dllexport) int __cdecl VpRunNativeRendererRegression(unsigned testCase)
 {
-    nativeStackHostActive.store(testCase<22,std::memory_order_relaxed);
+    nativeStackHostActive.store(testCase<24,std::memory_order_relaxed);
     nativeStackHostSubmittedReserve.store(0,std::memory_order_relaxed);
     try {
         if(testCase==98 || testCase==99) {
             Logger::WriteMessage("Native host framework smoke");
             Assert::IsTrue(testCase==98,L"Intentional native-host assertion smoke");
+        } else if(testCase==22||testCase==23) {
+            VideoProcessorTest::LibplaceboPluginProxyTests fixture;
+            fixture.VerifyCapturedV210CueCadence((testCase&1)!=0,false,false,true,false,true,false,false,true,false,true);
+            Assert::AreEqual(size_t(1048576),nativeStackHostSubmittedReserve.load(),
+                L"The60Hz captured-input stress must submit from the actual1MiB renderer thread");
         } else if(testCase==20||testCase==21) {
             VideoProcessorTest::LibplaceboPluginProxyTests fixture;
             fixture.VerifyGenericNativeCaptureRenderer((testCase&1)!=0);

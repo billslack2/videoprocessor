@@ -4525,14 +4525,15 @@ private:
 struct LibplaceboVideoRenderer::Impl
 {
     explicit Impl(bool declineCueProof=false,bool missingAnalysisWindow=false,bool sourceTicketProofWindow=false,
-        bool withholdEquivalenceWindow=false) :
+        bool withholdEquivalenceWindow=false,bool outputGeometry=false) :
         regressionDeclineCueProof(declineCueProof),regressionMissingAnalysisWindow(missingAnalysisWindow),
         regressionSourceTicketProofWindow(sourceTicketProofWindow),
-        regressionWithholdEquivalenceWindow(withholdEquivalenceWindow) {}
+        regressionWithholdEquivalenceWindow(withholdEquivalenceWindow),regressionOutputGeometry(outputGeometry) {}
     const bool regressionDeclineCueProof;
     const bool regressionMissingAnalysisWindow;
     const bool regressionSourceTicketProofWindow;
     const bool regressionWithholdEquivalenceWindow;
+    const bool regressionOutputGeometry;
     std::atomic<uint64_t> regressionCurrentCueAnchor{0};
     std::shared_ptr<const SourcePictureSupportResult> CurrentSourceSupport(const PreparedAnalysisFrame& prepared,
         const ActivePictureFrameIdentity& identity,const std::shared_ptr<QueuedFrame::AnalysisPayload>& cache) const {
@@ -22062,13 +22063,28 @@ releaseDriftBaseRetention =
                     : scopeAnchorCommit.sourceGeneration==frameGeneration &&
                         scopeAnchorCommit.sourceSequence==sourceSequence &&
                         scopeAnchorCommit.presentationEpoch==viewportRequestSerial;
-                if(regressionWithholdEquivalenceWindow && regressionOperationMatches &&
+                if((regressionWithholdEquivalenceWindow || regressionOutputGeometry) && regressionOperationMatches &&
                     !rawSubtitleFallbackOutput && !unprocessedCurrentSourceOutput &&
                     subtitleCompositionSucceeded && relocatedSubtitle.valid) {
                     AnalysisTraceRect(outputTrace.subtitle,relocatedSubtitle.source);
                     const auto& destination=relocatedSubtitle.destination;
                     outputTrace.metrics[16]=destination.left;outputTrace.metrics[17]=destination.top;
                     outputTrace.metrics[18]=destination.right;outputTrace.metrics[19]=destination.bottom;
+                }
+                if(regressionOutputGeometry) {
+                    const auto& selectedFacts=selectedPresentationValid
+                        ? selectedPresentationForCommit.decisionFacts:temporalPolicyDecisionFacts;
+                    const bool selectedFactsCurrent=selectedFacts.available &&
+                        selectedFacts.generation==outputIdentity.transportGeneration &&
+                        selectedFacts.sequence==outputIdentity.acceptedSequence &&
+                        selectedFacts.viewport==outputIdentity.viewportGeneration &&
+                        selectedFacts.format==outputIdentity.sourceFormatGeneration &&
+                        selectedFacts.domain==outputIdentity.analysisDomainKey &&
+                        selectedFacts.policy==outputTrace.policyGeneration &&
+                        selectedFacts.continuity==outputTrace.continuityGeneration;
+                    // OFF/CLASSIC/BLACK/RECONSTRUCTION from the selected output,
+                    // not the requested input block or a later mutable setting.
+                    outputTrace.metrics[20]=selectedFactsCurrent?selectedFacts.processingProfile:-1;
                 }
                 // A submitted warmup image is complete final pixels, although
                 // caption erasure is intentionally unavailable while building.
@@ -23655,7 +23671,7 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	size_t frameQueueMaxSize,
 	VideoConversionOverride videoConversionOverride,
     bool regressionDeclineCueProof, bool regressionMissingAnalysisWindow, bool regressionSourceTicketProofWindow,
-    bool regressionWithholdEquivalenceWindow) :
+    bool regressionWithholdEquivalenceWindow, bool regressionOutputGeometry) :
 	m_callback(callback),
 	m_callbackGeneration(rendererGeneration),
 	m_videoHwnd(videoHwnd),
@@ -23665,6 +23681,7 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
     m_regressionMissingAnalysisWindow(regressionMissingAnalysisWindow),
     m_regressionSourceTicketProofWindow(regressionSourceTicketProofWindow),
     m_regressionWithholdEquivalenceWindow(regressionWithholdEquivalenceWindow),
+    m_regressionOutputGeometry(regressionOutputGeometry),
 	m_videoConversionOverride(videoConversionOverride),
 	m_frameQueueDesiredDepth(AlphaQueuePolicy::NormalizeDesiredDepth(frameQueueMaxSize)),
 	m_frameQueueMaxSize(AlphaQueuePolicy::HardCapacity(frameQueueMaxSize))
@@ -24196,7 +24213,7 @@ void LibplaceboVideoRenderer::Build()
 	// driver for seconds. Build only captures an immutable construction request;
 	// RenderLoop performs the actual initialization on its own thread.
 	m_impl.reset(new Impl(m_regressionDeclineCueProof,m_regressionMissingAnalysisWindow,m_regressionSourceTicketProofWindow,
-        m_regressionWithholdEquivalenceWindow));
+        m_regressionWithholdEquivalenceWindow,m_regressionOutputGeometry));
     m_impl->startupRendererGeneration=m_callbackGeneration;
 	m_impl->displayRefreshRate.SetEventSink(
 		[this](const std::string& event, double actualRefreshRate,
