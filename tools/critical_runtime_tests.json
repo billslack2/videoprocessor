@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1190,
+  "minimumNativeTests": 1193,
   "requiredNativeMethods": [
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
     "QuestionMarkCannotBorrowAChainOfLowerNoiseDots",
@@ -529,6 +529,9 @@
     {"source": "src/VideoProcessor-Test/StatsOverlayLayoutTests.cpp", "class": "StatsOverlayLayoutTests", "method": "SectionGapsFollowExistingSectionsWithoutDoubleAlphaGap"},
     {"source": "src/VideoProcessor-Test/StatsOverlayLayoutTests.cpp", "class": "StatsOverlayLayoutTests", "method": "PausedProcessingRowsPreserveLegacyStatsWithAvailableOrUnavailableData"},
     {"source": "src/VideoProcessor-Test/StatsOverlayLayoutTests.cpp", "class": "StatsOverlayLayoutTests", "method": "WarmupAndUnavailableStatusesRemainVisibleAndDoNotFabricateNumbers"},
+    {"source": "src/VideoProcessor-Test/AlphaPresentationTelemetryTests.cpp", "class": "AlphaPresentationTelemetryTests", "method": "PresentTimingMeasuresOneCallWithoutChangingItsResult"},
+    {"source": "src/VideoProcessor-Test/AlphaPresentationTelemetryTests.cpp", "class": "AlphaPresentationTelemetryTests", "method": "CorrelatesPresentIdAndReportsSequenceDebt"},
+    {"source": "src/VideoProcessor-Test/AlphaPresentationTelemetryTests.cpp", "class": "AlphaPresentationTelemetryTests", "method": "ReportsTimingApiFailureSeparatelyFromUnsupportedMode"},
     { "source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq" },
     { "source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "QuestionMarkCannotBorrowAChainOfLowerNoiseDots" },
     { "source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "NativeTerminalRowIntervalRejectsUnrelatedOrUnsupportedComponents" },

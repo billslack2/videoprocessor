@@ -10,6 +10,29 @@ namespace Tests
 	TEST_CLASS(AlphaPresentationTelemetryTests)
 	{
 	public:
+        TEST_METHOD(PresentTimingMeasuresOneCallWithoutChangingItsResult)
+        {
+            AlphaPresentationCallTiming timing;
+            int calls=0,clocks=0;
+            const int32_t failed=static_cast<int32_t>(0x887A0001u);
+            const auto invoke=[&]{++calls;return failed;};
+            const auto clock=[&]() -> int64_t {return ++clocks==1?1100:1394;};
+            Assert::AreEqual(failed,MeasureAlphaPresentationCall(invoke,clock,&timing));
+            Assert::AreEqual(1,calls);Assert::AreEqual(2,clocks);
+            Assert::AreEqual(failed,timing.result);
+            Assert::IsTrue(timing.Within(1000,1400,1000));
+            Assert::AreEqual(int64_t(100),timing.startedQpc-1000);
+            Assert::AreEqual(int64_t(294),timing.endedQpc-timing.startedQpc);
+            Assert::AreEqual(int64_t(6),1400-timing.endedQpc);
+            Assert::IsFalse(timing.Within(1200,1400,1000));
+            Assert::IsFalse(timing.Within(1000,1300,1000));
+            Assert::IsFalse(timing.Within(1000,1400,0));
+            Assert::IsFalse(AlphaPresentationCallTiming{}.Within(1000,1400,1000));
+            calls=clocks=0;
+            Assert::AreEqual(failed,MeasureAlphaPresentationCall(invoke,clock,nullptr));
+            Assert::AreEqual(1,calls);Assert::AreEqual(0,clocks);
+        }
+
 		static AlphaPresentationRecord Record(
 			uint64_t sequence, uint64_t generation = 1)
 		{

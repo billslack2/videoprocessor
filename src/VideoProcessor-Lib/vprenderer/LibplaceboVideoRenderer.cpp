@@ -21702,6 +21702,7 @@ releaseDriftBaseRetention =
         const bool manualScreenshot=rendered && renderedOutputCaptureRequested.exchange(false,std::memory_order_acq_rel);
         bool incidentScreenshot=false;
 		const int64_t swapStartQpc = PerformanceCounterNow();
+        AlphaPresentationCallTiming presentCallTiming;
 		bool submitted = false;
 		if (vpOwnedSwapchain)
 		{
@@ -21726,7 +21727,9 @@ releaseDriftBaseRetention =
 			vpOwnedBackbuffer.Release();
 			if (rendered)
 			{
-				const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
+				const HRESULT presentResult = MeasureAlphaPresentationCall(
+                    [&]{return vpOwnedSwapchain->Present(1,0);},
+                    []{return PerformanceCounterNow();},&presentCallTiming);
 				submitted = presentResult == S_OK;
 				if (!submitted && vpOwnedPresentFailureLoggedGeneration !=
 					vpOwnedSwapchainGeneration)
@@ -21766,7 +21769,7 @@ releaseDriftBaseRetention =
                     sourceSequence, frameGeneration, hookRender.retried ? 1 : 0);
             }
             targetLease.started=false; // Submit consumes the library frame even on failure.
-            submitted = SubmitLibplaceboFrameChecked();
+            submitted = SubmitLibplaceboFrameChecked(&presentCallTiming);
 		}
         {
             decisionOutput.submitted=submitted;
@@ -21781,6 +21784,11 @@ releaseDriftBaseRetention =
 				? static_cast<double>(swapEndQpc - swapStartQpc) * 1000.0 /
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
+        const bool presentTimingValid=presentCallTiming.Within(swapStartQpc,swapEndQpc,qpcFrequency.QuadPart);
+        const double presentTickMs=qpcFrequency.QuadPart>0?1000.0/qpcFrequency.QuadPart:0.0;
+        const double prePresentMs=presentTimingValid?(presentCallTiming.startedQpc-swapStartQpc)*presentTickMs:0.0;
+        const double presentCallMs=presentTimingValid?(presentCallTiming.endedQpc-presentCallTiming.startedQpc)*presentTickMs:0.0;
+        const double postPresentMs=presentTimingValid?(swapEndQpc-presentCallTiming.endedQpc)*presentTickMs:0.0;
         PublishHdrStatus(renderedHdrStatus,hdrPublicationToken,rendered,submitted);
         if (!rendered && submitted) {
             // The fallback submitted a black clear, not the previous picture.
@@ -22669,7 +22677,7 @@ releaseDriftBaseRetention =
 			{
 				nextFramePacingTraceTick = pacingTraceTick + 2000;
 				DebugLog::Log(
-					"Alpha frame pacing trace: generation=%llu source=%llu source_frame=%llu reason=%s cadence_repeat=%d submit_gap_ms=%.3f threshold_ms=%.3f callback_gap_ms=%.3f enqueue_gap_ms=%.3f callback_to_enqueue_ms=%.3f preview_wait_ms=%.3f dequeue_wait_ms=%.3f lookahead_ms=%.3f pre_render_active_ms=%.3f render_lock_wait_ms=%.3f native_rgb=%d conversion_ms=%.3f conversion_ready_age_ms=%.3f source_upload_cpu_ms=%.3f render_ms=%.3f swap_ms=%.3f queue_after=%zu oldest_ms=%.3f callback_qpc=%lld enqueue_qpc=%lld conversion_end_qpc=%lld dequeue_qpc=%lld swap_start_qpc=%lld swap_end_qpc=%lld qpc_hz=%lld present_id=%u stats_available=%d stats_disjoint=%d stats_hr=0x%08lX stats_present=%u stats_present_refresh=%u stats_sync_refresh=%u stats_sync_qpc=%lld stats_present_delta=%u stats_refresh_delta=%u expected_max_refreshes=%u",
+					"Alpha frame pacing trace: generation=%llu source=%llu source_frame=%llu reason=%s cadence_repeat=%d submit_gap_ms=%.3f threshold_ms=%.3f callback_gap_ms=%.3f enqueue_gap_ms=%.3f callback_to_enqueue_ms=%.3f preview_wait_ms=%.3f dequeue_wait_ms=%.3f lookahead_ms=%.3f pre_render_active_ms=%.3f render_lock_wait_ms=%.3f native_rgb=%d conversion_ms=%.3f conversion_ready_age_ms=%.3f source_upload_cpu_ms=%.3f render_ms=%.3f swap_ms=%.3f queue_after=%zu oldest_ms=%.3f callback_qpc=%lld enqueue_qpc=%lld conversion_end_qpc=%lld dequeue_qpc=%lld swap_start_qpc=%lld swap_end_qpc=%lld qpc_hz=%lld present_id=%u stats_available=%d stats_disjoint=%d stats_hr=0x%08lX stats_present=%u stats_present_refresh=%u stats_sync_refresh=%u stats_sync_qpc=%lld stats_present_delta=%u stats_refresh_delta=%u expected_max_refreshes=%u present_timing_valid=%d present_attempted=%d present_owner=%s present_call_ms=%.3f pre_present_ms=%.3f post_present_ms=%.3f present_hr=0x%08X",
 					static_cast<unsigned long long>(frameGeneration),
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(videoFrame.GetCounter()),
@@ -22707,7 +22715,9 @@ releaseDriftBaseRetention =
 					sample.syncRefreshCount,
 					static_cast<long long>(sample.syncQpc),
 					statsPresentDelta, statsRefreshDelta,
-					expectedMaximumRefreshes);
+                    expectedMaximumRefreshes,presentTimingValid?1:0,presentCallTiming.attempted?1:0,
+                    vpOwnedSwapchain?"VP":"libplacebo",presentCallMs,prePresentMs,postPresentMs,
+                    static_cast<unsigned>(presentCallTiming.result));
 				const auto& recent = presentationTelemetry.RecentRecords();
 				const size_t first = recent.size() > 8 ? recent.size() - 8 : 0;
 				const int64_t baseQpc = recent[first].callbackQpc > 0 ?
@@ -23169,9 +23179,12 @@ releaseDriftBaseRetention =
     bool lastRenderPresentationPaused=false;
     HRESULT lastUnavailablePresentResult=S_OK;
     uint64_t lastUnavailablePresentLogTick=0;
-    bool PresentNativeChecked(IDXGISwapChain* chain)
+    bool PresentNativeChecked(IDXGISwapChain* chain,AlphaPresentationCallTiming* timing=nullptr)
     {
-        const HRESULT result = chain ? chain->Present(1, 0) : E_POINTER;
+        if(!chain && timing)timing->result=static_cast<int32_t>(E_POINTER);
+        const HRESULT result = chain ? MeasureAlphaPresentationCall(
+            [&]{return chain->Present(1,0);},
+            []{return PerformanceCounterNow();},timing) : E_POINTER;
         presentationAttempt.Presented(result == DXGI_STATUS_OCCLUDED);
         if (result == S_OK) return true;
         displayRepeatValid = false;
@@ -23186,14 +23199,14 @@ releaseDriftBaseRetention =
         }
         return false;
     }
-    bool SubmitLibplaceboFrameChecked()
+    bool SubmitLibplaceboFrameChecked(AlphaPresentationCallTiming* timing=nullptr)
     {
         // submit consumes start_frame's lock/backbuffer even on failure.
         if (!pl_swapchain_submit_frame(swapchain)) return false;
         CComPtr<IDXGISwapChain> native;
         native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
         // Do not also call pl_swapchain_swap_buffers: D3D11 would Present twice.
-        return PresentNativeChecked(native);
+        return PresentNativeChecked(native,timing);
     }
 
     void EvaluateSourceCadenceCorrection(uint64_t frameGeneration,uint64_t sourceSequence,

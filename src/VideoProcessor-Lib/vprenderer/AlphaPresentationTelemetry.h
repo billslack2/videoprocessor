@@ -4,6 +4,30 @@
 #include <cstdint>
 #include <deque>
 
+// One actual Present call, separate from flush/readback/diagnostics in the
+// surrounding swap envelope. Diagnostic values carry no presentation authority.
+struct AlphaPresentationCallTiming
+{
+    int64_t startedQpc=0, endedQpc=0;
+    int32_t result=0;
+    bool attempted=false;
+    bool Within(int64_t envelopeStart,int64_t envelopeEnd,int64_t frequency) const
+    { return attempted && frequency>0 && envelopeStart>0 && startedQpc>=envelopeStart &&
+        endedQpc>=startedQpc && envelopeEnd>=endedQpc; }
+};
+template<class Call,class Clock>
+auto MeasureAlphaPresentationCall(Call&& call,Clock&& clock,AlphaPresentationCallTiming* timing)
+    -> decltype(call())
+{
+    if(!timing)return call();
+    timing->startedQpc=clock();
+    const auto result=call();
+    timing->endedQpc=clock();
+    timing->result=static_cast<int32_t>(result);
+    timing->attempted=true;
+    return result;
+}
+
 enum class AlphaPresentationEvidence
 {
 	Unavailable,
