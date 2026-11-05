@@ -1,0 +1,794 @@
+{
+  "source": "89c9939f0b4eba3d222a585b4297d896ce28a7f2",
+  "passed": true,
+  "scope": "Ten after-render-before-present PNGs, each joined to an exact later submitted source/context and its original native input. Five samples per variant cover all four captured byte phases.",
+  "visualInspection": "All ten show both complete lines, including the final question mark, with consistent dark backing. No visible glyph clipping, duplicated raw caption, added sidebars, or picture-edge displacement in these samples. Actual source/target mappings agree across all ten.",
+  "timingQualified": false,
+  "limits": [
+    "Independent visual inspection, not exhaustive per-pixel preservation proof",
+    "Paused original91 corpus only; no moving-background all-missing-proof claim",
+    "Capture occurs before Present; exact later submitted trace is joined, not proof of physical display scanout",
+    "Observed test output refresh24Hz; no60Hz throughput qualification"
+  ],
+  "phasesPerVariant": {
+    "standard": 4,
+    "beta": 4
+  },
+  "frames": [
+    {
+      "variant": "standard",
+      "source": 73,
+      "originalIndex": 8,
+      "originalIdentity": [
+        2,
+        11015,
+        22687,
+        436372681830,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "5428F0630055F7E3A018CD625B5609226EDCAB1D1454CF94749B56D5ED67FC6D",
+      "currentIdentity": {
+        "source": "73",
+        "accepted": "73",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4479970302875"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005537-539-frame-73.png",
+      "pngSha256": "d77fc1f322907a3f335721d746a0b6aedc6bc129b604bf4ee3428efa96a675cd",
+      "json": "VP-rendered-20261105-005537-539-frame-73.json",
+      "jsonSha256": "cb184530367c170163a963cf9f2b5ef3b614f4b8be24cba9cfdc4866dece7996",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 104,
+      "originalIndex": 39,
+      "originalIdentity": [
+        2,
+        11046,
+        22718,
+        436373974770,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "3E1B5CD8EA82ED3C64DA531068F90BC38EC117C4CF5384F2983935113A018F38",
+      "currentIdentity": {
+        "source": "104",
+        "accepted": "104",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4479983232458"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005538-840-frame-104.png",
+      "pngSha256": "c04e4de65b102df7bfade7fdfb9f6d7a8fcfb1f630c0e10047be462c45a9e0a2",
+      "json": "VP-rendered-20261105-005538-840-frame-104.json",
+      "jsonSha256": "34148dc95083b268aad9c29d1ed33a5ed67e0f44695fc05d6cc34c121dfa1dfb",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 135,
+      "originalIndex": 70,
+      "originalIdentity": [
+        2,
+        11077,
+        22749,
+        436375267710,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "03FE99EFF3667A0A6B5E2C47F45CEC3B7E4B5AD2974A4037D23CC7AE482E625E",
+      "currentIdentity": {
+        "source": "135",
+        "accepted": "135",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4479996162041"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005540-131-frame-135.png",
+      "pngSha256": "3b09c7db795fbf85e37c28b22aa273e659fd9968259cca1ecc47041ca2d5f930",
+      "json": "VP-rendered-20261105-005540-131-frame-135.json",
+      "jsonSha256": "45ccd6a9148520f9c7c9bdf959ade7bb735032d7129fe446ec9b63ffec4ee930",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 166,
+      "originalIndex": 10,
+      "originalIdentity": [
+        2,
+        11017,
+        22689,
+        436372765250,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "03FE99EFF3667A0A6B5E2C47F45CEC3B7E4B5AD2974A4037D23CC7AE482E625E",
+      "currentIdentity": {
+        "source": "166",
+        "accepted": "166",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4480009091625"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005541-415-frame-166.png",
+      "pngSha256": "3b09c7db795fbf85e37c28b22aa273e659fd9968259cca1ecc47041ca2d5f930",
+      "json": "VP-rendered-20261105-005541-415-frame-166.json",
+      "jsonSha256": "ac439a07f32861d83444063fb63aad65e10558f99f0fbcee7250512c27fba300",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    },
+    {
+      "variant": "standard",
+      "source": 197,
+      "originalIndex": 41,
+      "originalIdentity": [
+        2,
+        11048,
+        22720,
+        436374058180,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "0E3BFDBFBB97A04ED135993AA12A408301A7A1466F41836EC88C5D68B5A5F29D",
+      "currentIdentity": {
+        "source": "197",
+        "accepted": "197",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4480022021208"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005542-716-frame-197.png",
+      "pngSha256": "e809b91741c9b526b1dba87ffec6ca77e3dcc447dc357ffe8d2b30a1562cca68",
+      "json": "VP-rendered-20261105-005542-716-frame-197.json",
+      "jsonSha256": "dece5a3a420c76737ae7c7bb1b62ea8e7a31e81d2ae705d81c4ac4162770111e",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 72,
+      "originalIndex": 8,
+      "originalIdentity": [
+        2,
+        11015,
+        22687,
+        436372681830,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "5428F0630055F7E3A018CD625B5609226EDCAB1D1454CF94749B56D5ED67FC6D",
+      "currentIdentity": {
+        "source": "72",
+        "accepted": "72",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4480116482801"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005552-186-frame-72.png",
+      "pngSha256": "b09aceae6805d715f6029f83a81f90a8928fe5c60ad0a487e12652157f621396",
+      "json": "VP-rendered-20261105-005552-186-frame-72.json",
+      "jsonSha256": "3dc76235fe269eddf00dc36c114ec6b7f7fb82aeb65e31baec7686314dbdee03",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 103,
+      "originalIndex": 39,
+      "originalIdentity": [
+        2,
+        11046,
+        22718,
+        436373974770,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "3E1B5CD8EA82ED3C64DA531068F90BC38EC117C4CF5384F2983935113A018F38",
+      "currentIdentity": {
+        "source": "103",
+        "accepted": "103",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4480129412385"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005553-471-frame-103.png",
+      "pngSha256": "0c3dc9e55dc19fd8bf3b3849f7fcb368c3eea1a9f2d538cc8a795f0a2c481706",
+      "json": "VP-rendered-20261105-005553-471-frame-103.json",
+      "jsonSha256": "d6de950049146f6d7a96ef92b54943964ba21f49790c9eade3322a37e3e1f244",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 134,
+      "originalIndex": 70,
+      "originalIdentity": [
+        2,
+        11077,
+        22749,
+        436375267710,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "03FE99EFF3667A0A6B5E2C47F45CEC3B7E4B5AD2974A4037D23CC7AE482E625E",
+      "currentIdentity": {
+        "source": "134",
+        "accepted": "134",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4480142341968"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005554-761-frame-134.png",
+      "pngSha256": "e3f9e758ed9b4657cacea513e8ae221833a3c3b7c0cc3495f1249d7658bf96c2",
+      "json": "VP-rendered-20261105-005554-761-frame-134.json",
+      "jsonSha256": "2f26df5beb45b99a60cec55f0487e4dc14f8fc839a765c446ff39c37e147a280",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 165,
+      "originalIndex": 10,
+      "originalIdentity": [
+        2,
+        11017,
+        22689,
+        436372765250,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "03FE99EFF3667A0A6B5E2C47F45CEC3B7E4B5AD2974A4037D23CC7AE482E625E",
+      "currentIdentity": {
+        "source": "165",
+        "accepted": "165",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4480155271551"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005556-058-frame-165.png",
+      "pngSha256": "e3f9e758ed9b4657cacea513e8ae221833a3c3b7c0cc3495f1249d7658bf96c2",
+      "json": "VP-rendered-20261105-005556-058-frame-165.json",
+      "jsonSha256": "4a294ad6371020a8bac3c5e67c31d50e9e0b8b8d9a11593cd0e9a93ad24770cf",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    },
+    {
+      "variant": "beta",
+      "source": 196,
+      "originalIndex": 41,
+      "originalIdentity": [
+        2,
+        11048,
+        22720,
+        436374058180,
+        15805081878477807578,
+        0,
+        2,
+        4768279117495752782,
+        2,
+        6,
+        20,
+        0,
+        417083,
+        0,
+        0,
+        0
+      ],
+      "originalNativeSha256": "0E3BFDBFBB97A04ED135993AA12A408301A7A1466F41836EC88C5D68B5A5F29D",
+      "currentIdentity": {
+        "source": "196",
+        "accepted": "196",
+        "transport": "1",
+        "format": "15805081878477807578",
+        "viewport": "0",
+        "renderer": "1",
+        "domain": "4768279117495752782",
+        "policy": "2",
+        "continuity": "2",
+        "timestamp": "4480168201135"
+      },
+      "actualSource": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "actualTarget": [
+        0,
+        142.1874847,
+        2000,
+        982.8125
+      ],
+      "physical": [
+        0,
+        275,
+        3840,
+        1884
+      ],
+      "caption": [
+        1306,
+        1778,
+        2530,
+        2042
+      ],
+      "destination": [
+        1238,
+        1633,
+        2594,
+        1876
+      ],
+      "submittedTraceFlags": 16777315,
+      "png": "VP-rendered-20261105-005557-354-frame-196.png",
+      "pngSha256": "27834dcae31deab576a48f1b60f552b55248809c7d0a631065adb609088919e9",
+      "json": "VP-rendered-20261105-005557-354-frame-196.json",
+      "jsonSha256": "ed2aefd16bdd441e726b87901f0b3e5b22c426b7c64b7ed58489be2eb56a066f",
+      "imageSize": [
+        2000,
+        1125
+      ]
+    }
+  ],
+  "hashes": {
+    "caption-contact-sheet.png": "ecbc280b63ab28df15ab1fda47ef74ab912ed78fef38aa1875cac909e2789fc0",
+    "full-frame-contact-sheet.png": "d3b29dd1417f33299ee5e60af46c0baff626988d61144ebdbe4fa8d82f91c932",
+    "source-joins.json": "35bcfbce750f2447ee9c24e130a11faa6b71e5d1a2c21ea3c7d95ad5f2916161",
+    "VP-rendered-20261105-005537-539-frame-73.json": "cb184530367c170163a963cf9f2b5ef3b614f4b8be24cba9cfdc4866dece7996",
+    "VP-rendered-20261105-005537-539-frame-73.png": "d77fc1f322907a3f335721d746a0b6aedc6bc129b604bf4ee3428efa96a675cd",
+    "VP-rendered-20261105-005538-840-frame-104.json": "34148dc95083b268aad9c29d1ed33a5ed67e0f44695fc05d6cc34c121dfa1dfb",
+    "VP-rendered-20261105-005538-840-frame-104.png": "c04e4de65b102df7bfade7fdfb9f6d7a8fcfb1f630c0e10047be462c45a9e0a2",
+    "VP-rendered-20261105-005540-131-frame-135.json": "45ccd6a9148520f9c7c9bdf959ade7bb735032d7129fe446ec9b63ffec4ee930",
+    "VP-rendered-20261105-005540-131-frame-135.png": "3b09c7db795fbf85e37c28b22aa273e659fd9968259cca1ecc47041ca2d5f930",
+    "VP-rendered-20261105-005541-415-frame-166.json": "ac439a07f32861d83444063fb63aad65e10558f99f0fbcee7250512c27fba300",
+    "VP-rendered-20261105-005541-415-frame-166.png": "3b09c7db795fbf85e37c28b22aa273e659fd9968259cca1ecc47041ca2d5f930",
+    "VP-rendered-20261105-005542-716-frame-197.json": "dece5a3a420c76737ae7c7bb1b62ea8e7a31e81d2ae705d81c4ac4162770111e",
+    "VP-rendered-20261105-005542-716-frame-197.png": "e809b91741c9b526b1dba87ffec6ca77e3dcc447dc357ffe8d2b30a1562cca68",
+    "VP-rendered-20261105-005552-186-frame-72.json": "3dc76235fe269eddf00dc36c114ec6b7f7fb82aeb65e31baec7686314dbdee03",
+    "VP-rendered-20261105-005552-186-frame-72.png": "b09aceae6805d715f6029f83a81f90a8928fe5c60ad0a487e12652157f621396",
+    "VP-rendered-20261105-005553-471-frame-103.json": "d6de950049146f6d7a96ef92b54943964ba21f49790c9eade3322a37e3e1f244",
+    "VP-rendered-20261105-005553-471-frame-103.png": "0c3dc9e55dc19fd8bf3b3849f7fcb368c3eea1a9f2d538cc8a795f0a2c481706",
+    "VP-rendered-20261105-005554-761-frame-134.json": "2f26df5beb45b99a60cec55f0487e4dc14f8fc839a765c446ff39c37e147a280",
+    "VP-rendered-20261105-005554-761-frame-134.png": "e3f9e758ed9b4657cacea513e8ae221833a3c3b7c0cc3495f1249d7658bf96c2",
+    "VP-rendered-20261105-005556-058-frame-165.json": "4a294ad6371020a8bac3c5e67c31d50e9e0b8b8d9a11593cd0e9a93ad24770cf",
+    "VP-rendered-20261105-005556-058-frame-165.png": "e3f9e758ed9b4657cacea513e8ae221833a3c3b7c0cc3495f1249d7658bf96c2",
+    "VP-rendered-20261105-005557-354-frame-196.json": "ed2aefd16bdd441e726b87901f0b3e5b22c426b7c64b7ed58489be2eb56a066f",
+    "VP-rendered-20261105-005557-354-frame-196.png": "27834dcae31deab576a48f1b60f552b55248809c7d0a631065adb609088919e9"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "sourceBase": "c719451e2d0fc1636f9bd652d7a76fd53828f82c",
+  "reviewOnly": true,
+  "playerLaunched": false,
+  "findings": [
+    "Within a fixed alpha/non-alpha layout, measured wrapping stays inside fixed row slots; unused continuation rows remain reserved and final overflow is visibly ellipsized.",
+    "Raster, shader detail, optional telemetry and queue disposition rows have fixed positions. Alpha/non-alpha layouts intentionally differ.",
+    "Native placement uniformly scales the full bitmap to fit the visible picture; no minimum readable font size is guaranteed. Small windows can make the complete panel unreadably small.",
+    "Nominal size derives from configured screen height, but containment and anchoring use current target.crop. Actual movie geometry changes can still move or shrink the entire panel.",
+    "Fixed slots cannot expose arbitrary-length values completely. Shader list shows bounded detail and a remaining-count summary. Ellipsis is intentional, not full-value disclosure."
+  ],
+  "improvementsWithoutTelemetryDrivenLabelMovement": [
+    "Use explicit user-selected compact/details layouts with stable row maps; do not automatically remove rows when values become unavailable.",
+    "Expose full truncated values in a separate inspector or diagnostic report; keep the existing panel fields fixed.",
+    "If a responsive layout is later needed, choose it only from viewport size with stable breakpoints rather than telemetry content; validate text readability and transition behavior separately."
+  ],
+  "currentValidation": [
+    "TelemetryChangesKeepEveryLabelAndBitmapSlotFixed",
+    "FixedWrappingPreservesArEvidenceAndMarksOverflowWithoutShiftingRows",
+    "QueueDispositionRowsSeparateProcessScopeFromRendererAndDisplayDrops"
+  ],
+  "limits": [
+    "Existing placement tests prove containment, not readable text at arbitrary window sizes.",
+    "No live windowed/fullscreen visual check or app launch was performed in this review.",
+    "No layout or presentation behavior was changed by this review."
+  ],
+  "validatedSource": "89c9939f0b4eba3d222a585b4297d896ce28a7f2",
+  "focusedBuildReceipt": "artifacts/qualification/runs/20261105-004759-db956d5e/iteration.json",
+  "focusedChecksPassed": 24,
+  "guiStackReserveBytes": 4194304,
+  "bothRendererOptionalQueueCounterExportsPresent": true
+}

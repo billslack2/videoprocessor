@@ -1,0 +1,6 @@
+{
+  "sealedReceiptSha256": "3dd39b4f1da890798be861e24ed4e2f621a0c64eda7b6ce78ee5b3d35853d250",
+  "productionChangeCommit": "89c9939f0b4eba3d222a585b4297d896ce28a7f2",
+  "runSourceState": "Tested handoff bytes before commit, on c719451e; unrelated recorder edits were present and later preserved outside the tree. Receipt pins exact relevant producer files and Native15 library hash rather than claiming a clean Release build.",
+  "qualification": "This component evidence is separate from the subsequent clean matching Release/actual renderer qualification."
+}

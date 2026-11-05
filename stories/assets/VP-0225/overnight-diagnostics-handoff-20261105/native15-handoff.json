@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "status": "NativePassed",
+  "qualification": false,
+  "lane": "Native",
+  "source": {
+    "commit": "c719451e2d0fc1636f9bd652d7a76fd53828f82c",
+    "dirty": true,
+    "fingerprint": "e241fe374f3b5fb38c11913639e2f7f4d25f754438515fb19729ae5416a8a581",
+    "label": "c719451e2d0f-dirty-e241fe374f3b",
+    "build": "c719451e2d0fc1636f9bd652d7a76fd53828f82c-dirty-e241fe374f3b5fb38c11913639e2f7f4d25f754438515fb19729ae5416a8a581"
+  },
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-Lib.lib",
+      "sha256": "ADBA29C06CCC60548C39C585CD3D367D1118C09787DA2D0DAC55F90360A63491"
+    },
+    {
+      "path": "x64/Release/tests-critical-native/VideoProcessor-CriticalNativeTests.dll",
+      "sha256": "5908D401C2454B7620D3B753CCAD4F978F3E7C012862FC1D3BEA87197432C9B7"
+    },
+    {
+      "path": "x64/Release/tests-critical-native/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\tests-critical-native\\VideoProcessor-CriticalNativeTests.dll",
+      "trx": "artifacts/qualification/runs/20261105-004100-d8d7b4fe/standard.trx",
+      "trxSha256": "8BB9997EACEE7193D3EC9173559CBDE13A4B4A9C437EBB1FA197CB48BC3DF7A0",
+      "executed": 15,
+      "native": 15,
+      "actualClassic": 0,
+      "seconds": 2.217
+    }
+  ],
+  "seconds": 68.02,
+  "finished": "2026-11-05T00:41:59.1461286-05:00"
+}

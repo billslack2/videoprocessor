@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "status": "FocusedPassed",
+  "qualification": false,
+  "lane": "Focused",
+  "source": {
+    "commit": "89c9939f0b4eba3d222a585b4297d896ce28a7f2",
+    "dirty": true,
+    "fingerprint": "3f35872f33a5a0bdef978779bfbff64ca1e27c3faac40a183d4ca1567ed62fec",
+    "label": "89c9939f0b4e-dirty-3f35872f33a5",
+    "build": "89c9939f0b4eba3d222a585b4297d896ce28a7f2-dirty-3f35872f33a5a0bdef978779bfbff64ca1e27c3faac40a183d4ca1567ed62fec"
+  },
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-Lib.lib",
+      "sha256": "69BC2E18AD36228F703195632C2E45DCED4D79BE0676C675CC68D106B3419D93"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "C1239B4A91C045F00DA38436C72EE714A97E9AF1FF6269113431C9B6F33A005B"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Test.dll",
+      "sha256": "BF1956E8CD7D797112FF83312894368DB48B53DD2F168B502A06C484061D9337"
+    },
+    {
+      "path": "x64/Release/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "2B934518FF9EB894D48E523C212F08A0DF53E6484031CF1217DA2616924BB77D"
+    },
+    {
+      "path": "x64/Release/vprenderer/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "47D01F84B75A0A9134B639BE0438BD655C74F716F1F8DDAB2D31520A720E4260"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\VideoProcessor-Test.dll",
+      "trx": "artifacts/qualification/runs/20261105-013332-b51ff6b9/standard.trx",
+      "trxSha256": "354E8C777AB23A492A4C3CF04CD5BB12A7762C093A04FEC069AA7B6746B6D3B7",
+      "executed": 8,
+      "native": 8,
+      "actualClassic": 0,
+      "seconds": 2.42
+    }
+  ],
+  "seconds": 149.485,
+  "finished": "2026-11-05T01:36:00.5197518-05:00"
+}

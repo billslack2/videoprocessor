@@ -1,0 +1,85 @@
+{
+  "status": "PERFORMANCE COMPARISON INCONCLUSIVE: external GPU contention",
+  "checkedAt": "2026-11-05T01:34:32.763924",
+  "vpLaunched": false,
+  "userConfigurationChanged": false,
+  "displayChanged": false,
+  "otherUserProcessesStopped": false,
+  "productionEdits": false,
+  "validEvidence": [
+    "Pinned RC4 API377/new388 independent compile and hardware device execution",
+    "Original three native input hashes and identities verified",
+    "Whole enclosing GPU timestamps and separate pass durations observed under unknown external workload",
+    "Output comparison from identical input/settings runs saved separately"
+  ],
+  "invalidClaims": [
+    "No isolated60Hz performance qualification",
+    "No causal RC4-to-current regression demonstrated",
+    "No causal dynamic-constant or tap-count speedup established",
+    "No proof ComfyUI was actively consuming GPU during historical4def incident"
+  ],
+  "externalObservation": "After all benchmark.exe processes exited, RTX3080 repeatedly94\u2013100% utilization,343\u2013367W,11785/12288MiB VRAM. CUDA process52584 ComfyUI python remains active. Process start2026-11-01 does not prove historical activity.",
+  "candidate": "Artifact-only three ortho2 tap-count literals prepared but UNBUILT/UNTESTED; no adoption recommended until idleGPU pairedmeasurement and cache/precision tests.",
+  "initialSmoke": "v1 target missing blit_dst validation; all initial rc4-uhd-whole results invalid, retained. v2+zero validation diagnostics.",
+  "pacing": "v2/v3 stdsleep jitter16/32ms; v4 local highresolutiontimer but measured workload dominated externalcontention. No60Hzpass claim.",
+  "outputComparisons": [
+    {
+      "width": 2000,
+      "pixels": 2250000,
+      "packedDifferent": 0,
+      "channels": [
+        {
+          "shift": 0,
+          "different": 0,
+          "maximumCodeDifference": 0,
+          "aboveOneCode": 0
+        },
+        {
+          "shift": 10,
+          "different": 0,
+          "maximumCodeDifference": 0,
+          "aboveOneCode": 0
+        },
+        {
+          "shift": 20,
+          "different": 0,
+          "maximumCodeDifference": 0,
+          "aboveOneCode": 0
+        }
+      ],
+      "fileHashes": {
+        "v4-new-2000-whole-baseline-last-rgb10.bin": "5f6113d9bf3b55d5bfc92bac19567ab78869ff7b891477b54546a42d8f48f9db",
+        "v4-new-2000-whole-static-last-rgb10.bin": "5f6113d9bf3b55d5bfc92bac19567ab78869ff7b891477b54546a42d8f48f9db"
+      }
+    },
+    {
+      "width": 3840,
+      "pixels": 8294400,
+      "packedDifferent": 2,
+      "channels": [
+        {
+          "shift": 0,
+          "different": 0,
+          "maximumCodeDifference": 0,
+          "aboveOneCode": 0
+        },
+        {
+          "shift": 10,
+          "different": 0,
+          "maximumCodeDifference": 0,
+          "aboveOneCode": 0
+        },
+        {
+          "shift": 20,
+          "different": 2,
+          "maximumCodeDifference": 1,
+          "aboveOneCode": 0
+        }
+      ],
+      "fileHashes": {
+        "v4-new-3840-whole-baseline-last-rgb10.bin": "965082b1f075eabfb6b21ea5f7d0744b104723f139cee89f4d43b54b7e3731e8",
+        "v4-new-3840-whole-static-last-rgb10.bin": "c3e1fb9513484a9e2892b393b9c2bd9cd41bd4a23e7e4ae8876e90fdec2debe0"
+      }
+    }
+  ]
+}

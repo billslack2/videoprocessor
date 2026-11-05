@@ -1,0 +1,82 @@
+{
+  "scope": "Compact evidence metadata only; no native/movie/PNG payloads or source edits. All listed source commits remain undeployed.",
+  "installedSource": "4def430fae64bd0ea48f38ef0758f55127335f54",
+  "playerState": "Deliberately closed by user; preserved absent",
+  "sourceCommits": {
+    "osd": "b826a4f8fe071b4b01b67041049f46ddc8b9327e",
+    "osdManifestNormalization": "23ea11746658d7156331f685b81f7fa501c116e1",
+    "presentTiming": "0843552ce8f4663a1a61b4a613454cf07b4ff67a",
+    "queueDisposition": "c719451e2d0fc1636f9bd652d7a76fd53828f82c",
+    "nativeSubtitleHandoff": "89c9939f0b4eba3d222a585b4297d896ce28a7f2",
+    "ramRecorder": "41f187170fa88599296298ac3ed1f7a98414a404"
+  },
+  "acceptance": "OPEN",
+  "artifactRoot": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts",
+  "files": [
+    {
+      "name": "actual8-89c.json",
+      "bytes": 11121,
+      "sha256": "263e8020cfc5022cb553f6cabce070129cc70c5c74788cbcd41921f52b68a023"
+    },
+    {
+      "name": "all-missing-red.json",
+      "bytes": 1857,
+      "sha256": "2c71599e22dbb3c107ccb5804752683573b290b2bf7db81146d176abc67488ae"
+    },
+    {
+      "name": "closed4def-queue-audit.json",
+      "bytes": 15795,
+      "sha256": "95f9a7fe4bcbad5d5c2eb6ee5db287b8f2ff7baece7205424f0cb12efcd50ab7"
+    },
+    {
+      "name": "focused24-89c.json",
+      "bytes": 2187,
+      "sha256": "94501e424f47510c0aebc67f4eccbe72c0a0ab18a31b177b681e8b0d654fe4ba"
+    },
+    {
+      "name": "focused8-ram-precommit.json",
+      "bytes": 2274,
+      "sha256": "6a3f331c754ef92ecf3988fbee33262a7a7fa3df8c45246d71e2e7fd77826a26"
+    },
+    {
+      "name": "gpu-comparison-inconclusive.json",
+      "bytes": 3333,
+      "sha256": "3c371a3007f807ed3371741494489b5e5afe10514ae59a5bcc2212fc14916f19"
+    },
+    {
+      "name": "handoff-worker-provenance.json",
+      "bytes": 567,
+      "sha256": "8bb8e298c0bd43800a54c965822b5e371bbab342ebb406556e9618f92a8f4b34"
+    },
+    {
+      "name": "handoff-worker91.json",
+      "bytes": 2701,
+      "sha256": "30fac8a84623727e6709398858723f15c5231ceec24b9797d00fe7432d5ce23a"
+    },
+    {
+      "name": "native15-handoff.json",
+      "bytes": 1548,
+      "sha256": "cbd4f6d6d4fccbfd2dcd0ae0aa045e6c207ad31a5bad6f5dbcaa2a23db62c90c"
+    },
+    {
+      "name": "native8-ram.json",
+      "bytes": 1547,
+      "sha256": "c748d5c53dd893abc947b3045ea5f37df2bd755f0c5139ba00bbcdca1ca3ed29"
+    },
+    {
+      "name": "osd-limits.json",
+      "bytes": 2364,
+      "sha256": "b0b089707dfb6a96371ca92a80d5b8e1ed313a689cc5cf82de62b830d49f1731"
+    },
+    {
+      "name": "ram-throughput-summary.json",
+      "bytes": 3371,
+      "sha256": "78c27a0ba65e68fa5e1c91b73303cf221bbdccf41714af43c8f98ee7c9547017"
+    },
+    {
+      "name": "visual10-89c.json",
+      "bytes": 20770,
+      "sha256": "c29a0ed91946fcab38de060a2c45d7e2bdd16386652b5c57ed767929f7b0eac4"
+    }
+  ]
+}

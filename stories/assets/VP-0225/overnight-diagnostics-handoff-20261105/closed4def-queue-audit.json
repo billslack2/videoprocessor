@@ -1,0 +1,456 @@
+{
+  "scope": "Saved closed deployed4def PID35320 logs only; no new run/capture. IDs count accepted source records omitted between outputs within same instance/input generation; continuity may change during queue retirement and is intentionally not a gap filter.",
+  "source": "4def430fae64bd0ea48f38ef0758f55127335f54",
+  "outputs": 62282,
+  "first": "04:27:11.748Z 1DB9AA6B G1 O1 S1",
+  "last": "04:46:26.306Z B3261287 G2 O1535 S1540",
+  "instances": {
+    "{1DB9AA6B-E449-43FF-95EF-7E7FF84166CF}": {
+      "first": "04:27:11.748Z 1DB9AA6B G1 O1 S1",
+      "last": "04:30:13.198Z 1DB9AA6B G2 O10870 S10880",
+      "outputs": 10870,
+      "sourceSkips": 2,
+      "maxCapacityDrops": 0,
+      "lastPreRenderSummary": "2026-11-04 23:30:11 | Alpha pre-render timing: generation=2 frames=300 preview_wait_max_ms=13.473 dequeue_wait_max_ms=0.001 lookahead_frames=300 lookahead_avg_ms=0.086 lookahead_max_ms=0.225 render_lock_wait_max_ms=0.000 pre_render_active_max_ms=0.759 renderer_dropped=2 capacity_drops=0 cadence_drops=0 cadence_repeats=0"
+    },
+    "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}": {
+      "first": "04:30:14.671Z 3D04F41C G1 O1 S1",
+      "last": "04:44:19.832Z 3D04F41C G2 O47879 S50662",
+      "outputs": 47879,
+      "sourceSkips": 2774,
+      "maxCapacityDrops": 7,
+      "lastPreRenderSummary": "2026-11-04 23:44:19 | Alpha pre-render timing: generation=2 frames=223 preview_wait_max_ms=0.003 dequeue_wait_max_ms=0.001 lookahead_frames=222 lookahead_avg_ms=0.115 lookahead_max_ms=0.494 render_lock_wait_max_ms=0.001 pre_render_active_max_ms=0.907 renderer_dropped=2774 capacity_drops=7 cadence_drops=0 cadence_repeats=0"
+    },
+    "{E96E7DBD-63D0-459A-AE82-E6C5DBB304C5}": {
+      "first": "04:44:20.952Z E96E7DBD G1 O1 S1",
+      "last": "04:44:54.221Z E96E7DBD G2 O1094 S1997",
+      "outputs": 1094,
+      "sourceSkips": 894,
+      "maxCapacityDrops": 11,
+      "lastPreRenderSummary": "2026-11-04 23:44:50 | Alpha pre-render timing: generation=2 frames=159 preview_wait_max_ms=0.070 dequeue_wait_max_ms=0.001 lookahead_frames=159 lookahead_avg_ms=0.219 lookahead_max_ms=0.629 render_lock_wait_max_ms=0.001 pre_render_active_max_ms=1.041 renderer_dropped=798 capacity_drops=11 cadence_drops=0 cadence_repeats=0"
+    },
+    "{DAF1AF13-5C9D-474B-BAC6-F083F047EA93}": {
+      "first": "04:44:59.145Z DAF1AF13 G1 O1 S1",
+      "last": "04:45:17.786Z DAF1AF13 G2 O904 S1121",
+      "outputs": 904,
+      "sourceSkips": 206,
+      "maxCapacityDrops": 0,
+      "lastPreRenderSummary": "2026-11-04 23:45:13 | Alpha pre-render timing: generation=2 frames=242 preview_wait_max_ms=0.002 dequeue_wait_max_ms=0.001 lookahead_frames=242 lookahead_avg_ms=0.111 lookahead_max_ms=0.340 render_lock_wait_max_ms=0.001 pre_render_active_max_ms=1.018 renderer_dropped=171 capacity_drops=0 cadence_drops=0 cadence_repeats=0"
+    },
+    "{B3261287-E881-4427-9F42-0CCDC720D6DB}": {
+      "first": "04:45:22.122Z B3261287 G1 O1 S1",
+      "last": "04:46:26.306Z B3261287 G2 O1535 S1540",
+      "outputs": 1535,
+      "sourceSkips": 2,
+      "maxCapacityDrops": 0,
+      "lastPreRenderSummary": "2026-11-04 23:46:21 | Alpha pre-render timing: generation=2 frames=120 preview_wait_max_ms=36.578 dequeue_wait_max_ms=0.002 lookahead_frames=120 lookahead_avg_ms=0.118 lookahead_max_ms=0.263 render_lock_wait_max_ms=0.001 pre_render_active_max_ms=1.210 renderer_dropped=2 capacity_drops=0 cadence_drops=0 cadence_repeats=0"
+    }
+  },
+  "skipEvents": 1694,
+  "skippedAcceptedSources": 3878,
+  "backlogRecoveryEvents": 1694,
+  "backlogDropped": 3860,
+  "capacityDrops": 18,
+  "dropTriggers": {
+    "render_stall": 309,
+    "stale_age": 3551
+  },
+  "accountingMatches": true,
+  "jitterIntervalsMoreThan8msBeyondCapture": 1256,
+  "geometryChangesWithinFullContext": 29,
+  "largestOutputGaps": [
+    {
+      "instance": "{E96E7DBD-63D0-459A-AE82-E6C5DBB304C5}",
+      "before": "04:44:50.066Z E96E7DBD G2 O966 S1747",
+      "after": "04:44:50.411Z E96E7DBD G2 O967 S1766",
+      "sourceBefore": 1747,
+      "sourceAfter": 1766,
+      "sourceDelta": 19,
+      "outputIntervalMs": 345,
+      "capturePtsIntervalMs": 316.9999999809079,
+      "excessMs": 28.000000019092113,
+      "continuity": [
+        776,
+        794
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:33:16.729Z 3D04F41C G2 O10810 S10915",
+      "after": "04:33:17.015Z 3D04F41C G2 O10811 S10930",
+      "sourceBefore": 10915,
+      "sourceAfter": 10930,
+      "sourceDelta": 15,
+      "outputIntervalMs": 286,
+      "capturePtsIntervalMs": 250.19999995129183,
+      "excessMs": 35.80000004870817,
+      "continuity": [
+        100,
+        114
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{B3261287-E881-4427-9F42-0CCDC720D6DB}",
+      "before": "04:45:22.213Z B3261287 G1 O4 S4",
+      "after": "04:45:22.336Z B3261287 G1 O5 S6",
+      "sourceBefore": 4,
+      "sourceAfter": 6,
+      "sourceDelta": 2,
+      "outputIntervalMs": 123,
+      "capturePtsIntervalMs": 83.39999994495884,
+      "excessMs": 39.600000055041164,
+      "continuity": [
+        2,
+        3
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:43:46.095Z 3D04F41C G2 O47054 S48638",
+      "after": "04:43:46.216Z 3D04F41C G2 O47055 S48645",
+      "sourceBefore": 48638,
+      "sourceAfter": 48645,
+      "sourceDelta": 7,
+      "outputIntervalMs": 121,
+      "capturePtsIntervalMs": 116.70000001322478,
+      "excessMs": 4.299999986775219,
+      "continuity": [
+        1579,
+        1585
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:44:07.446Z 3D04F41C G2 O47504 S49918",
+      "after": "04:44:07.558Z 3D04F41C G2 O47505 S49925",
+      "sourceBefore": 49918,
+      "sourceAfter": 49925,
+      "sourceDelta": 7,
+      "outputIntervalMs": 112,
+      "capturePtsIntervalMs": 116.70000001322478,
+      "excessMs": -4.700000013224781,
+      "continuity": [
+        2409,
+        2415
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:44:08.934Z 3D04F41C G2 O47528 S50008",
+      "after": "04:44:09.044Z 3D04F41C G2 O47529 S50014",
+      "sourceBefore": 50008,
+      "sourceAfter": 50014,
+      "sourceDelta": 6,
+      "outputIntervalMs": 110,
+      "capturePtsIntervalMs": 100.09999998146668,
+      "excessMs": 9.90000001853332,
+      "continuity": [
+        2475,
+        2480
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:43:47.620Z 3D04F41C G2 O47078 S48730",
+      "after": "04:43:47.728Z 3D04F41C G2 O47079 S48736",
+      "sourceBefore": 48730,
+      "sourceAfter": 48736,
+      "sourceDelta": 6,
+      "outputIntervalMs": 108,
+      "capturePtsIntervalMs": 100.09999998146668,
+      "excessMs": 7.900000018533319,
+      "continuity": [
+        1647,
+        1652
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:44:05.099Z 3D04F41C G2 O47454 S49778",
+      "after": "04:44:05.205Z 3D04F41C G2 O47455 S49784",
+      "sourceBefore": 49778,
+      "sourceAfter": 49784,
+      "sourceDelta": 6,
+      "outputIntervalMs": 106,
+      "capturePtsIntervalMs": 100.09999998146668,
+      "excessMs": 5.900000018533319,
+      "continuity": [
+        2319,
+        2324
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:44:08.729Z 3D04F41C G2 O47526 S49995",
+      "after": "04:44:08.835Z 3D04F41C G2 O47527 S50001",
+      "sourceBefore": 49995,
+      "sourceAfter": 50001,
+      "sourceDelta": 6,
+      "outputIntervalMs": 106,
+      "capturePtsIntervalMs": 100.09999998146668,
+      "excessMs": 5.900000018533319,
+      "continuity": [
+        2464,
+        2469
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:44:06.992Z 3D04F41C G2 O47490 S49892",
+      "after": "04:44:07.096Z 3D04F41C G2 O47491 S49897",
+      "sourceBefore": 49892,
+      "sourceAfter": 49897,
+      "sourceDelta": 5,
+      "outputIntervalMs": 104,
+      "capturePtsIntervalMs": 83.4000000031665,
+      "excessMs": 20.599999996833503,
+      "continuity": [
+        2397,
+        2401
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:44:09.126Z 3D04F41C G2 O47530 S50019",
+      "after": "04:44:09.230Z 3D04F41C G2 O47531 S50025",
+      "sourceBefore": 50019,
+      "sourceAfter": 50025,
+      "sourceDelta": 6,
+      "outputIntervalMs": 104,
+      "capturePtsIntervalMs": 100.09999998146668,
+      "excessMs": 3.9000000185333192,
+      "continuity": [
+        2484,
+        2489
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:43:46.307Z 3D04F41C G2 O47056 S48651",
+      "after": "04:43:46.410Z 3D04F41C G2 O47057 S48658",
+      "sourceBefore": 48651,
+      "sourceAfter": 48658,
+      "sourceDelta": 7,
+      "outputIntervalMs": 103,
+      "capturePtsIntervalMs": 116.80000001797453,
+      "excessMs": -13.800000017974526,
+      "continuity": [
+        1590,
+        1596
+      ],
+      "mode": 0
+    }
+  ],
+  "largestExcess": [
+    {
+      "instance": "{B3261287-E881-4427-9F42-0CCDC720D6DB}",
+      "before": "04:45:22.213Z B3261287 G1 O4 S4",
+      "after": "04:45:22.336Z B3261287 G1 O5 S6",
+      "sourceBefore": 4,
+      "sourceAfter": 6,
+      "sourceDelta": 2,
+      "outputIntervalMs": 123,
+      "capturePtsIntervalMs": 83.39999994495884,
+      "excessMs": 39.600000055041164,
+      "continuity": [
+        2,
+        3
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:33:16.729Z 3D04F41C G2 O10810 S10915",
+      "after": "04:33:17.015Z 3D04F41C G2 O10811 S10930",
+      "sourceBefore": 10915,
+      "sourceAfter": 10930,
+      "sourceDelta": 15,
+      "outputIntervalMs": 286,
+      "capturePtsIntervalMs": 250.19999995129183,
+      "excessMs": 35.80000004870817,
+      "continuity": [
+        100,
+        114
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:42:22.936Z 3D04F41C G2 O42984 S43655",
+      "after": "04:42:22.984Z 3D04F41C G2 O42985 S43656",
+      "sourceBefore": 43655,
+      "sourceAfter": 43656,
+      "sourceDelta": 1,
+      "outputIntervalMs": 48,
+      "capturePtsIntervalMs": 16.59999997355044,
+      "excessMs": 31.40000002644956,
+      "continuity": [
+        666,
+        666
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:34:05.414Z 3D04F41C G2 O13711 S13833",
+      "after": "04:34:05.461Z 3D04F41C G2 O13712 S13834",
+      "sourceBefore": 13833,
+      "sourceAfter": 13834,
+      "sourceDelta": 1,
+      "outputIntervalMs": 47,
+      "capturePtsIntervalMs": 16.699999978300184,
+      "excessMs": 30.300000021699816,
+      "continuity": [
+        117,
+        117
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:30:47.852Z 3D04F41C G2 O1942 S1991",
+      "after": "04:30:47.899Z 3D04F41C G2 O1943 S1992",
+      "sourceBefore": 1991,
+      "sourceAfter": 1992,
+      "sourceDelta": 1,
+      "outputIntervalMs": 47,
+      "capturePtsIntervalMs": 16.700000036507845,
+      "excessMs": 30.299999963492155,
+      "continuity": [
+        44,
+        44
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:43:59.249Z 3D04F41C G2 O47334 S49428",
+      "after": "04:43:59.294Z 3D04F41C G2 O47335 S49429",
+      "sourceBefore": 49428,
+      "sourceAfter": 49429,
+      "sourceDelta": 1,
+      "outputIntervalMs": 45,
+      "capturePtsIntervalMs": 16.6000000317581,
+      "excessMs": 28.3999999682419,
+      "continuity": [
+        2089,
+        2089
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:43:01.691Z 3D04F41C G2 O45135 S45978",
+      "after": "04:43:01.736Z 3D04F41C G2 O45136 S45979",
+      "sourceBefore": 45978,
+      "sourceAfter": 45979,
+      "sourceDelta": 1,
+      "outputIntervalMs": 45,
+      "capturePtsIntervalMs": 16.699999978300184,
+      "excessMs": 28.300000021699816,
+      "continuity": [
+        838,
+        838
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:43:57.114Z 3D04F41C G2 O47287 S49300",
+      "after": "04:43:57.159Z 3D04F41C G2 O47288 S49301",
+      "sourceBefore": 49300,
+      "sourceAfter": 49301,
+      "sourceDelta": 1,
+      "outputIntervalMs": 45,
+      "capturePtsIntervalMs": 16.699999978300184,
+      "excessMs": 28.300000021699816,
+      "continuity": [
+        2008,
+        2008
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:44:14.631Z 3D04F41C G2 O47650 S50350",
+      "after": "04:44:14.676Z 3D04F41C G2 O47651 S50351",
+      "sourceBefore": 50350,
+      "sourceAfter": 50351,
+      "sourceDelta": 1,
+      "outputIntervalMs": 45,
+      "capturePtsIntervalMs": 16.699999978300184,
+      "excessMs": 28.300000021699816,
+      "continuity": [
+        2695,
+        2695
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:44:15.264Z 3D04F41C G2 O47664 S50388",
+      "after": "04:44:15.309Z 3D04F41C G2 O47665 S50389",
+      "sourceBefore": 50388,
+      "sourceAfter": 50389,
+      "sourceDelta": 1,
+      "outputIntervalMs": 45,
+      "capturePtsIntervalMs": 16.699999978300184,
+      "excessMs": 28.300000021699816,
+      "continuity": [
+        2719,
+        2719
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{E96E7DBD-63D0-459A-AE82-E6C5DBB304C5}",
+      "before": "04:44:50.066Z E96E7DBD G2 O966 S1747",
+      "after": "04:44:50.411Z E96E7DBD G2 O967 S1766",
+      "sourceBefore": 1747,
+      "sourceAfter": 1766,
+      "sourceDelta": 19,
+      "outputIntervalMs": 345,
+      "capturePtsIntervalMs": 316.9999999809079,
+      "excessMs": 28.000000019092113,
+      "continuity": [
+        776,
+        794
+      ],
+      "mode": 0
+    },
+    {
+      "instance": "{3D04F41C-5E3E-4A27-B829-8DC8575EEBC8}",
+      "before": "04:42:11.526Z 3D04F41C G2 O42332 S42971",
+      "after": "04:42:11.570Z 3D04F41C G2 O42333 S42972",
+      "sourceBefore": 42971,
+      "sourceAfter": 42972,
+      "sourceDelta": 1,
+      "outputIntervalMs": 44,
+      "capturePtsIntervalMs": 16.6000000317581,
+      "excessMs": 27.3999999682419,
+      "continuity": [
+        634,
+        634
+      ],
+      "mode": 0
+    }
+  ],
+  "limitations": [
+    "Submitted=true records only describe successful outputs; they cannot enumerate omitted accepted frames without source-ID analysis.",
+    "24fps normal intervals are41.7ms, not treated as60Hz missed deadlines.",
+    "swap_ms is aggregate including flush/release/diagnostics/Present, not isolated DXGI call.",
+    "No matched RC4 run or native source corpus for this historical movie interval.",
+    "Scene/pixel content and physical display visibility cannot be established solely from logs."
+  ]
+}

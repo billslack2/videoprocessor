@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "status": "FocusedPassed",
+  "qualification": false,
+  "lane": "Focused",
+  "source": {
+    "commit": "89c9939f0b4eba3d222a585b4297d896ce28a7f2",
+    "dirty": false,
+    "fingerprint": "8cb6514e00142d49acca6af6b816b9475472ccd4a1b4a54962320d31674ecb6b",
+    "label": "89c9939f0b4e",
+    "build": "89c9939f0b4eba3d222a585b4297d896ce28a7f2"
+  },
+  "binaries": [
+    {
+      "path": "x64/Release/VideoProcessor-Lib.lib",
+      "sha256": "A8D72D62CA966785E9A9143BC9F0F487ED8989FCCD49AA477D86F8AC75E9DC9A"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-GUI.exe",
+      "sha256": "1DA1E54C7768050BAC0608B62072A853CE17A7AB13135CCBD08A9AA375D36002"
+    },
+    {
+      "path": "x64/Release/VideoProcessor-Test.dll",
+      "sha256": "E1510B7B4BFDDEBFE0D34E4A9297ECF9670760601CF810116CFD75CF8D977E72"
+    },
+    {
+      "path": "x64/Release/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/vprenderer/VideoProcessorVPRenderer.dll",
+      "sha256": "0294053632966900ACEE9077AF3C2E82C90C1A70CB99D270272E929800AF40EE"
+    },
+    {
+      "path": "x64/Release/vprenderer/libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "sha256": "002C626356BF30FE5C2B97B56CEB529502624BC59222585F61B978E5CB70F8D8"
+    },
+    {
+      "path": "x64/Release/vprenderer-beta/libplacebo-388.dll",
+      "sha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88"
+    }
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "x64\\Release\\VideoProcessor-Test.dll",
+      "trx": "artifacts/qualification/runs/20261105-004759-db956d5e/standard.trx",
+      "trxSha256": "81975751F96B95068B891E685940BF4326F2FDAECA4622D0F0FAC544188189A9",
+      "executed": 24,
+      "native": 24,
+      "actualClassic": 0,
+      "seconds": 2.95
+    }
+  ],
+  "seconds": 252.962,
+  "finished": "2026-11-05T00:52:03.9843662-05:00"
+}

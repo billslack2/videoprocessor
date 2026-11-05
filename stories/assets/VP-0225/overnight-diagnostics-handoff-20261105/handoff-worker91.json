@@ -1,0 +1,85 @@
+{
+  "scope": "Paired real native and subtitle worker component experiment; no GPU/presentation or all-missing-proof claim",
+  "producerStable": true,
+  "inputsMatchOriginal": true,
+  "inputFiles": 182,
+  "sourceIdsAndGapsPreserved": true,
+  "modes": {
+    "0": "concurrent raw/native offers",
+    "1": "raw offered through terminal native callback"
+  },
+  "summary": {
+    "0": {
+      "basis": 2,
+      "baseMatch": 2,
+      "harvestVerified": 2,
+      "nativeCaptionProof": 0,
+      "count": 90,
+      "twoLines": 90,
+      "nativeMs": {
+        "median": 3.5382,
+        "p95": 5.9943,
+        "max": 9.708
+      },
+      "scanMs": {
+        "median": 15.372250000000001,
+        "p95": 16.7676,
+        "max": 20.1319
+      },
+      "totalMs": {
+        "median": 15.78025,
+        "p95": 17.4968,
+        "max": 20.3797
+      },
+      "offerMs": {
+        "median": 0.0131,
+        "p95": 0.0155,
+        "max": 0.0201
+      }
+    },
+    "1": {
+      "basis": 90,
+      "baseMatch": 90,
+      "harvestVerified": 90,
+      "nativeCaptionProof": 0,
+      "count": 90,
+      "twoLines": 90,
+      "nativeMs": {
+        "median": 3.4766,
+        "p95": 5.9535,
+        "max": 9.3031
+      },
+      "scanMs": {
+        "median": 15.16965,
+        "p95": 15.7533,
+        "max": 16.4841
+      },
+      "totalMs": {
+        "median": 18.9332,
+        "p95": 21.1315,
+        "max": 24.4176
+      },
+      "offerMs": {
+        "median": 0.0109,
+        "p95": 0.0135,
+        "max": 0.0162
+      }
+    }
+  },
+  "limits": [
+    "One source outstanding per arm; no sustained live throughput claim",
+    "Actual sampler and current support basis only; no final GPU cleanup qualifier",
+    "First aggressive polling artifact failed and is preserved as invalid timing",
+    "Result wait is artifact-only completion notification, not a production wait"
+  ],
+  "hashes": {
+    "replay.cpp": "A15AB28CE3D11E263018C205C5FD0429365F481863844EAE007C7D87666512B5",
+    "replay.vcxproj": "1BFCE03A702F2CD7689DE98C5C596EB84DC29E5B2F91D59991243DFDBF7D2686",
+    "notified91.jsonl": "CD5EFFD6D5C16EAAC3D9FB79731864C7ABE2938FEDD924FB288D013867F79253",
+    "summary.json": "15414B6A4596BCBEE4667DC2233CDC70A4984549C6CDCF294D9CDC6427661ECD",
+    "producer-before.json": "12E3EB1FE1FCA9DE5435666C9F0CB372B309C0FE911B58FFE04BE7FDB2A92B77",
+    "producer-after.json": "EF8748A3567F9C3707F53669A0C312D87FECF7C0451029D695E0E8342D59179F",
+    "input-hashes.json": "89623CFD93F1905D569603014E2E07081A794919F1AAE00C6C5CBD3B4646D045",
+    "build/ProductionCoarseReplay.exe": "6CF127738AE96E60A92FCC864F803FA13A0887478F382E4AC3CD15F8F50A030B"
+  }
+}

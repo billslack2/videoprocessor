@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "scope": "Offline production RAM helper throughput and exact byte persistence; synthetic four high-entropy UHD-sized V210 payloads, no HDMI/GPU/player invocation",
+  "results": [
+    {
+      "rate": 24,
+      "offered": 48,
+      "copied": 48,
+      "missed": 0,
+      "ramEvicted": 24,
+      "written": 24,
+      "byteExactReadback": true,
+      "ownerPeak": 1,
+      "retainedOwners": 48,
+      "releasedOwners": 48,
+      "allocatedPixelBytes": 530841600,
+      "offerMedianMs": 0.0052,
+      "offerMaxMs": 0.0105,
+      "producerSchedulingLateMaxMs": 15.6743,
+      "acquisitionMs": 1967.46,
+      "postAcquisitionDiskMs": 2271.32,
+      "artificialPerFrameDiskDelayMs": 80,
+      "syntheticPayload": true,
+      "passed": true
+    },
+    {
+      "rate": 60,
+      "offered": 120,
+      "copied": 120,
+      "missed": 0,
+      "ramEvicted": 96,
+      "written": 24,
+      "byteExactReadback": true,
+      "ownerPeak": 1,
+      "retainedOwners": 120,
+      "releasedOwners": 120,
+      "allocatedPixelBytes": 530841600,
+      "offerMedianMs": 0.004,
+      "offerMaxMs": 0.0159,
+      "producerSchedulingLateMaxMs": 16.3636,
+      "acquisitionMs": 2000.2,
+      "postAcquisitionDiskMs": 2306.65,
+      "artificialPerFrameDiskDelayMs": 80,
+      "syntheticPayload": true,
+      "passed": true
+    }
+  ],
+  "producerFilesStable": true,
+  "producer": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\src\\VideoProcessor-Lib\\AnalysisNativeRamRecording.h",
+      "Hash": "5CFE607329169F17A4ECF9B78772A0D1A9707143B94FDB1E492F3B6558335F6A"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\src\\VideoProcessor-Lib\\AnalysisDiagnosticTrace.cpp",
+      "Hash": "48AE1E0DC52C1E01D57478D031D1D964219BAC3EFFDF6A6265CABC764F479E86"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\src\\VideoProcessor-Lib\\AnalysisDiagnosticTrace.h",
+      "Hash": "6F46C1E31296F4DD095A65C451167154992CD90C38AF6FDE680BAB856632719B"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\native-ram-production\\build\\NativeRamProductionBenchmark.exe",
+      "Hash": "12D77E5A79C16726289FE8A80CCD9F3DB19CB7A52F324318B96EABB810F0EB83"
+    }
+  ],
+  "native8Receipt": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261105-011532-86b10555\\iteration.json",
+  "native8ReceiptSHA256": "b06a94773d19e94b401c5e3b90e518e0c993bc6071f1fa554377ca12b0706134",
+  "inspectorSelfTest": {
+    "syntheticFixture": true,
+    "validExactFiles": true,
+    "originalGapReported": true,
+    "corruptFileRejected": true
+  },
+  "limitations": [
+    "Synthetic payloads and offered-rate schedule, not HDMI capture or mandatory-render deadline evidence.",
+    "Producer sleep scheduling lateness reached16.36ms; background machine load was not globally controlled.",
+    "Private RAM intentionally evicts old frames; no complete full-duration stream claim.",
+    "Benchmark calls production RAM helper directly; final accepted-input and host/IPC integration validated by compile, focused contracts and review, not a live capture.",
+    "Trace API gained additive RAM-only callback after benchmark; RAM helper source and frame packet layout remained unchanged."
+  ]
+}
