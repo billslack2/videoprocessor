@@ -1,5 +1,6 @@
 #pragma once
 #include <AnalysisCompletionSignal.h>
+#include <SubtitleCurrentCueProofSlot.h>
 #include <SourcePictureDetector.h>
 #include <SourceSynchronizedAnalysis.h>
 #include <SubtitleBoxLookahead.h>
@@ -387,6 +388,13 @@ public:
     const char* Reason() const {return m_reason;}
 };
 
+// The source ticket owns this immutable completion. Layout is metadata only;
+// neither the publication nor its slot retains the captured movie buffer.
+struct SubtitleCurrentCueProofPublication {
+    SubtitleCurrentCueProofReceipt receipt;
+    AnalysisLumaSource sourceLayout;
+};
+
 inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
     const SubtitleCurrentCueProofReceipt& receipt,SubtitleBoxPreview& outPreview,
     SubtitleBoxResult& outCue) {
@@ -580,6 +588,7 @@ struct SubtitleCurrentCueProofRequest {
     bool hasOwnedWitness=false;
     uint64_t ownedTimelinePolicy=0;
     std::shared_ptr<AnalysisCompletionSignal> completion;
+    std::shared_ptr<SubtitleCurrentCueProofSlot> completedProof;
 };
 
 struct SubtitleCurrentCueTemplateDescriptor;
@@ -673,6 +682,9 @@ public:
     // one-use token only after current operation/context validation succeeds.
     SubtitleCurrentCueProofStatus TryPeekCurrentCueProof(
         const SubtitleBoxObservation& exactKey,SubtitleCurrentCueProofReceipt& receipt,bool nonblocking=false);
+    SubtitleCurrentCueProofStatus TryReadCompletedCurrentCueProof(
+        const SubtitleBoxObservation& exactKey,const SubtitleCurrentCueProofSlot& slot,
+        SubtitleCurrentCueProofReceipt& receipt);
     bool AssociateQualifiedSource(const SourceAnalysisTicket&,const SourcePictureEquivalenceToken&,
         const SubtitleCurrentCueProofReceipt&,const QualifiedSubtitlePresentationEvidence&,
         const SubtitleCutPasteGeometry& actualOperation,bool temporalDonorPossible);
@@ -1028,6 +1040,8 @@ private:
     void PublishCurrentCueReadViewLocked();
     void PublishCurrentCueWindow(const ActivePictureFrameIdentity&,uint64_t,bool);
     bool InCurrentCueWindow(const ActivePictureFrameIdentity&) const;
+    void PublishCompletedCurrentCueProof(const std::shared_ptr<SubtitleCurrentCueProofSlot>&,
+        const std::shared_ptr<const SubtitleCurrentCueProofPublication>&);
     bool CurrentCueReadViewAccepts(const std::shared_ptr<const SubtitleCurrentCueReadView>&,
         const SubtitleBoxObservation&,uint64_t) const;
     SubtitleCurrentCueFullScanRoute RouteCurrentCueFullScan(const SubtitleBoxObservation& key,
@@ -2742,6 +2756,8 @@ struct SubtitleCurrentCueTaskEntry {
     uint64_t deferredTimelinePolicy=0;
     SubtitleCurrentCueProofStatus status=SubtitleCurrentCueProofStatus::Queued;
     SubtitleCurrentCueProofReceipt receipt;
+    std::shared_ptr<SubtitleCurrentCueProofSlot> completedProof;
+    std::shared_ptr<const SubtitleCurrentCueProofPublication> completedPublication;
     // Revisions proving the same exact source share the final consumption token.
     std::shared_ptr<std::atomic_bool> consumed;
     uint64_t revision=0;
@@ -2944,12 +2960,16 @@ inline bool SameDescriptor(const SubtitleCurrentCueTemplateDescriptor& a,
 // is still renderable. Its completed current-pixel proof retains its own cue
 // and operation; only interpretation/base changes invalidate that proof here.
 // The presentation adapter separately validates current semantic compatibility.
+inline bool SameProofInterpretation(const SubtitleBoxObservation& context,
+    const ActivePictureBounds& base,const AnalysisLumaSource& layout,
+    SubtitlePreviewMode mode,int background,const SubtitleCurrentCueTemplateDescriptor& current) {
+    // Working validity is separate from already completed exact-source proof.
+    return SameContext(context,current.context) && SameBounds(base,current.physicalBase) &&
+        SameSourceLayout(layout,current.sourceLayout) && mode==current.sourceMode && background==current.backgroundMode;
+}
 inline bool SameProofInterpretation(const SubtitleCurrentCueTemplateDescriptor& a,
     const SubtitleCurrentCueTemplateDescriptor& b) {
-    // Working validity is separate from already completed exact-source proof.
-    return SameContext(a.context,b.context) &&
-        SameBounds(a.physicalBase,b.physicalBase) && SameSourceLayout(a.sourceLayout,b.sourceLayout) &&
-        a.sourceMode==b.sourceMode && a.backgroundMode==b.backgroundMode;
+    return SameProofInterpretation(a.context,a.physicalBase,a.sourceLayout,a.sourceMode,a.backgroundMode,b);
 }
 inline bool CurrentMatches(const SubtitleCurrentCueTemplateDescriptor& seed,
     const SubtitleBoxObservation& current,const ActivePictureBounds& base,
@@ -2992,9 +3012,10 @@ inline bool SubtitleMeasurementWorker::HasCurrentCueProofContextLocked() const {
 
 inline void SubtitleMeasurementWorker::PublishCurrentCueReadViewLocked() {
     std::shared_ptr<const SubtitleCurrentCueReadView> next;
-    if(!m_stopping && HasCurrentCueProofContextLocked() && m_currentCueState->descriptor.valid) {
+    if(!m_stopping && HasCurrentCueProofContextLocked()) {
         const auto old=std::atomic_load(&m_currentCueReadView);
-        if(old && old->state==m_currentCueState && old->revision==m_currentCueState->descriptor.revision)return;
+        if(old && old->state==m_currentCueState && old->revision==m_currentCueState->descriptor.revision &&
+            old->descriptor->valid==m_currentCueState->descriptor.valid)return;
         auto view=std::make_shared<SubtitleCurrentCueReadView>();
         view->state=m_currentCueState;view->revision=m_currentCueState->descriptor.revision;
         view->descriptor=std::make_shared<const SubtitleCurrentCueTemplateDescriptor>(m_currentCueState->descriptor);
@@ -3006,7 +3027,8 @@ inline bool SubtitleMeasurementWorker::CurrentCueReadViewAccepts(
     const std::shared_ptr<const SubtitleCurrentCueReadView>& expected,
     const SubtitleBoxObservation& key,uint64_t revision) const {
     const auto current=std::atomic_load(&m_currentCueReadView);
-    return expected && current && current->state==expected->state && current->revision==revision &&
+    return expected && current && current->descriptor && current->descriptor->valid &&
+        current->state==expected->state && current->revision==revision &&
         revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
         InCurrentCueWindow(key.identity);
 }
@@ -3380,7 +3402,7 @@ __declspec(noinline) inline SubtitleCurrentCueProofStatus SubtitleMeasurementWor
     // A stable healthy template is read from the immutable publication before
     // allocating a replacement. This is metadata, never current output proof.
     const auto readyView=std::atomic_load(&m_currentCueReadView);
-    if(readyView && readyView->descriptor && readyView->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
+    if(readyView && readyView->descriptor && readyView->descriptor->valid && readyView->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
         ((retainedPresentation && readyView->descriptor->cue.cue==descriptor.cue.cue &&
           SameProofInterpretation(*readyView->descriptor,descriptor) && SameOperation(readyView->descriptor->operation,descriptor.operation)) ||
          SameDescriptor(*readyView->descriptor,descriptor)) && std::atomic_load(&m_currentCueReadView)==readyView) {
@@ -3550,6 +3572,10 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         for(const auto& old:m_currentCueTasks)
             if(!old->seedTask && old->revision==request.templateRevision && SameExactTaskKey(old->key,request.currentKey))
                 {duplicate=old;duplicateStatus=old->status;break;}
+        if(duplicate && request.completedProof) {
+            if(!duplicate->completedProof)duplicate->completedProof=request.completedProof;
+            PublishCompletedCurrentCueProof(request.completedProof,duplicate->completedPublication);
+        }
         if(duplicate && nonblocking && !duplicate->scanDecisionMade && request.fullScanDue &&
             request.fullScanOnMiss && !duplicate->deferredFullScan) {
             duplicate->deferredFullScan=std::move(request.fullScanOnMiss);
@@ -3565,6 +3591,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
             entry->scanKey=request.hasFullScanKey?request.fullScanKey:request.currentKey;
             entry->scanKey.ink.reset();
             entry->revision=request.templateRevision;entry->status=SubtitleCurrentCueProofStatus::Queued;
+            entry->completedProof=request.completedProof;
             entry->descriptor=descriptor;
             for(const auto& old:m_currentCueTasks)
                 if(!old->seedTask && old->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
@@ -3805,6 +3832,15 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                 std::lock_guard<std::mutex> lock(m_mutex);entry->fullScanQueued=false;
             }
         }
+        // Allocate/copy on the optional worker before its short commit lock.
+        // Keep only layout metadata, never a captured movie/background owner.
+        std::shared_ptr<const SubtitleCurrentCueProofPublication> completed;
+        if(verified) {
+            auto next=std::make_shared<SubtitleCurrentCueProofPublication>();
+            next->receipt=receipt;next->sourceLayout=request.source;
+            next->sourceLayout.data=nullptr;next->sourceLayout.dataBytes=0;next->sourceLayout.backingOwner.reset();
+            completed=std::move(next);
+        }
         // Publish the exact-source result before optional diagnostic callbacks.
         // Trace transport must not postpone an otherwise ready video decision.
         std::vector<std::shared_ptr<SubtitleCurrentCueTaskEntry>> retiredEntries;
@@ -3819,7 +3855,11 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                 // receipts; fresh independent evidence must replace this seed.
                 state->descriptor.valid=false;PublishCurrentCueReadViewLocked();
             }
-            if(verified) {entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;}
+            if(verified) {
+                entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;
+                entry->completedPublication=std::move(completed);
+                PublishCompletedCurrentCueProof(entry->completedProof,entry->completedPublication);
+            }
             else entry->status=(fallbackQueued || entry->fallbackQueued)?SubtitleCurrentCueProofStatus::FallbackQueued:
                 (stillCurrent?SubtitleCurrentCueProofStatus::Failed:SubtitleCurrentCueProofStatus::Expired);
             entry->key.ink.reset();
@@ -3968,6 +4008,57 @@ inline bool SubtitleMeasurementWorker::MakeCurrentCueProofKey(
         view->revision<m_currentCueMinimumRevision->load(std::memory_order_acquire)) {proofKey={};return false;}
     physicalBase=descriptor.physicalBase;templateRevision=descriptor.revision;
     return true;
+}
+
+inline void SubtitleMeasurementWorker::PublishCompletedCurrentCueProof(
+    const std::shared_ptr<SubtitleCurrentCueProofSlot>& slot,
+    const std::shared_ptr<const SubtitleCurrentCueProofPublication>& next) {
+    if(!slot || !next || !next->receipt.Valid() ||
+        next->receipt.m_minimumRevision!=m_currentCueMinimumRevision ||
+        !InCurrentCueWindow(next->receipt.CurrentKey().identity))return;
+    auto before=std::atomic_load(&slot->published);
+    for(unsigned attempt=0;attempt<2;++attempt) {
+        if(before && (!SubtitleCurrentCueWorkerDetail::SameExactTaskKey(
+                before->receipt.CurrentKey(),next->receipt.CurrentKey()) ||
+            before->receipt.m_minimumRevision!=m_currentCueMinimumRevision ||
+            before->receipt.TemplateRevision()>next->receipt.TemplateRevision()))return;
+        if(std::atomic_compare_exchange_strong(&slot->published,&before,next))return;
+    }
+}
+
+inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::TryReadCompletedCurrentCueProof(
+    const SubtitleBoxObservation& exactKey,const SubtitleCurrentCueProofSlot& slot,
+    SubtitleCurrentCueProofReceipt& out) {
+    using namespace SubtitleCurrentCueWorkerDetail;
+    // Do not create a large zero-value receipt temporary on the render stack.
+    out.m_valid=false;out.m_consumed.reset();out.m_sourceEquivalence={};
+    const auto completed=std::atomic_load(&slot.published);
+    if(!completed)return SubtitleCurrentCueProofStatus::NoTask;
+    const auto& receipt=completed->receipt;
+    if(receipt.m_minimumRevision!=m_currentCueMinimumRevision ||
+        !SameExactTaskKey(receipt.CurrentKey(),exactKey))return SubtitleCurrentCueProofStatus::NotEligible;
+    const auto compatible=[&](const std::shared_ptr<const SubtitleCurrentCueReadView>& view) {
+        // A later failed/changed cue does not revoke a completed earlier source.
+        // Preserve SameProofInterpretation, including compatible cue rollover;
+        // new work still requires the separate working-valid descriptor flag.
+        return view && view->descriptor &&
+            view->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
+            SameProofInterpretation(receipt.CurrentKey(),receipt.PhysicalBase(),completed->sourceLayout,
+                receipt.SourceMode(),receipt.BackgroundMode(),*view->descriptor);
+    };
+    if(!receipt.Valid() || !InCurrentCueWindow(exactKey.identity))return SubtitleCurrentCueProofStatus::Expired;
+    if(!compatible(std::atomic_load(&m_currentCueReadView)))return SubtitleCurrentCueProofStatus::NotEligible;
+    if(!receipt.m_consumed || receipt.m_consumed->load(std::memory_order_acquire))
+        return SubtitleCurrentCueProofStatus::Consumed;
+    out=receipt;
+    Trace(exactKey,"cue-completed-candidate","completed-source-copy-ready");
+    if(!out.Valid() || !InCurrentCueWindow(exactKey.identity) ||
+        !compatible(std::atomic_load(&m_currentCueReadView)) ||
+        out.m_consumed->load(std::memory_order_acquire)) {
+        out.m_valid=false;out.m_consumed.reset();out.m_sourceEquivalence={};
+        return SubtitleCurrentCueProofStatus::Expired;
+    }
+    return SubtitleCurrentCueProofStatus::Ready;
 }
 
 inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::TryPeekCurrentCueProof(

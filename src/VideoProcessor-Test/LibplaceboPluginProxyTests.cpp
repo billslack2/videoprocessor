@@ -5151,7 +5151,7 @@ namespace VideoProcessorTest
         // portable manifest: select explicitly with VP_SUBTITLE_CAPTURE_ROOT set.
         // This runs the actual plugin, worker, queue, shader and submission path;
         // no caller supplies picture or successful composition authority.
-        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false,bool missingEvidenceWindow=false)
+        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false,bool missingEvidenceWindow=false,bool completedProofWindow=false)
         {
             char* captureValue=nullptr;size_t captureSize=0;
             Assert::AreEqual(0,_dupenv_s(&captureValue,&captureSize,"VP_SUBTITLE_CAPTURE_ROOT"));
@@ -5165,7 +5165,8 @@ namespace VideoProcessorTest
             // The sidecar retains the live native base from earlier source history.
             // Fresh native acquisition includes the current edge ringing through
             // row1885; raw image transition is275..1884, not retained bottom1888.
-            const bool oppositeBarCorpus=profileCycle||missingEvidenceWindow;
+            const bool evidenceWindow=missingEvidenceWindow||completedProofWindow;
+            const bool oppositeBarCorpus=profileCycle||evidenceWindow;
             const int pictureTop=oppositeBarCorpus?272:((pausedRecovery||scriptureHeld)?274:272),pictureBottom=1886;
             constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
             std::vector<unsigned> profileCaptureIndices;
@@ -5176,7 +5177,7 @@ namespace VideoProcessorTest
                 std::unique_ptr<char,decltype(&std::free)> manifestOwner(manifestValue,&std::free);
                 Assert::IsTrue(manifestValue&&*manifestValue,L"Profile seed coverage requires the preserved opposite-bar-unknown corpus manifest.");
                 std::ifstream manifest(manifestValue);unsigned count=0;manifest>>count;
-                Assert::AreEqual(93u,count,L"Use the complete preserved93-source corpus, including its recorded gaps.");
+                Assert::AreEqual(completedProofWindow?3u:93u,count,L"Use the exact declared original corpus, including its recorded gaps.");
                 for(unsigned i=0;i<count;++i) {
                     unsigned index=0;std::array<uint64_t,16> identity{};manifest>>index;
                     for(auto& value:identity)manifest>>value;
@@ -5187,7 +5188,9 @@ namespace VideoProcessorTest
                 }
             }
             const unsigned phaseCount=oppositeBarCorpus?unsigned(profileCaptureIndices.size()):(scriptureHeld?83u:(pausedNative?46u:4u));
-            const unsigned steadyCount=missingEvidenceWindow?186u:(profileCycle?288u:(scriptureHeld?166u:144u));
+            if(completedProofWindow)NativeRendererFixtureLog(
+                "MOVING COMPLETED-PROOF SCOPE: three unedited distinct captured full rasters with original sidecar gaps; repeated controlled loop with fresh test identities, not uninterrupted moving-film history. Current ordinary proof worker remains active; only mutex lookup/raw grouping and exact-byte fallback are withheld in offsets16..80.");
+            const unsigned steadyCount=evidenceWindow?186u:(profileCycle?288u:(scriptureHeld?166u:144u));
             std::vector<std::vector<BYTE>> phases(phaseCount);
             for(unsigned phase=0;phase<phaseCount;++phase) {
                 const unsigned originalIndex=oppositeBarCorpus?profileCaptureIndices[phase]:phase+(scriptureHeld?3:(pausedNative?16:1));
@@ -5219,8 +5222,8 @@ namespace VideoProcessorTest
                 phases[phase].resize(size_t(rowBytes)*height);pixels.seekg(0);
                 pixels.read(reinterpret_cast<char*>(phases[phase].data()),phases[phase].size());
                 Assert::IsTrue(bool(pixels));
-                if(!pausedNative&&!scriptureHeld)for(unsigned previous=0;previous<phase;++previous)
-                    Assert::IsTrue(phases[previous]!=phases[phase],L"All four recorded quantization phases must be exercised.");
+                if(completedProofWindow||(!pausedNative&&!scriptureHeld))for(unsigned previous=0;previous<phase;++previous)
+                    Assert::IsTrue(phases[previous]!=phases[phase],L"Each declared source phase must contain genuinely different current pixel bytes.");
             }
             // The earlier live template pixels were not captured. This one-pixel
             // prior background is explicitly synthetic; all later phases are the
@@ -5265,7 +5268,7 @@ namespace VideoProcessorTest
             if(scriptureHeld)Assert::IsTrue(createRegression!=nullptr,
                 L"This fixture requires its explicit regression factory; absence is not coverage.");
             Assert::IsFalse(visualCapture&&!scriptureHeld,L"Visual readbacks belong only to the separate scripture visual method.");
-            if(visualCapture)NativeRendererFixtureLog(missingEvidenceWindow?
+            if(visualCapture)NativeRendererFixtureLog(evidenceWindow?
                 "MISSING EVIDENCE VISUAL ONLY: three source-linked capture requests; inspect actual capture identities and PNG pixels separately; no performance qualification.":
                 "SCRIPTURE VISUAL ONLY: five source-linked actual output captures; no performance qualification.");
             ScopedCadenceDiagnostics cadenceDiagnostics(true);
@@ -5308,8 +5311,9 @@ namespace VideoProcessorTest
                 EnumDisplaySettingsW(monitor.szDevice,ENUM_CURRENT_SETTINGS,&mode)!=FALSE&&mode.dmDisplayFrequency>1);
             const double outputHz=mode.dmDisplayFrequency;
             if(scriptureHeld) {
-                LibplaceboRegressionOptionsV1 options;options.flags=missingEvidenceWindow?VP_REGRESSION_MISSING_ANALYSIS_WINDOW:
-                    (profileCycle?0:VP_REGRESSION_DECLINE_CUE_PROOF);
+                LibplaceboRegressionOptionsV1 options;options.flags=completedProofWindow?VP_REGRESSION_SOURCE_TICKET_PROOF_WINDOW:
+                    (missingEvidenceWindow?VP_REGRESSION_MISSING_ANALYSIS_WINDOW:
+                    (profileCycle?0:VP_REGRESSION_DECLINE_CUE_PROOF));
                 cleanup.renderer=createRegression(&callback,73,cleanup.window,&clock,true,10,
                     VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog,&options);
             } else cleanup.renderer=create(&callback,73,cleanup.window,&clock,true,10,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
@@ -5427,7 +5431,7 @@ namespace VideoProcessorTest
             }
             Assert::IsTrue(acquired,L"Actual capture never produced a composed native-qualified source; no steady coverage claimed.");
             // Bounded warmup only; once steady observation begins every output counts.
-            for(unsigned i=0;i<(missingEvidenceWindow?0u:48u);++i)pump();
+            for(unsigned i=0;i<(evidenceWindow?0u:48u);++i)pump();
             if(scriptureHeld) {
                 // Explicit paused test-input preroll fixes acquisition phase.
                 // Every submission still has a fresh identity/timestamp; the
@@ -5468,7 +5472,7 @@ namespace VideoProcessorTest
                         <<" first_input="<<sequence<<" last_input="<<sequence+47;
                     NativeRendererFixtureLog(row.str().c_str());
                 }
-                if(visualCapture && missingEvidenceWindow && visualRequests<3) {
+                if(visualCapture && evidenceWindow && visualRequests<3) {
                     uint64_t windowAnchor=0,lastSubmitted=0;
                     for(auto it=observed.rbegin();it!=observed.rend();++it) {
                         if(!windowAnchor&&!strcmp(it->stage,"regression-evidence-window"))windowAnchor=it->counters[0];
@@ -5484,7 +5488,7 @@ namespace VideoProcessorTest
                         NativeRendererFixtureLog(row.str().c_str());++visualRequests;
                     }
                 }
-                if(visualCapture && !missingEvidenceWindow && sequence>=steadyStart+10 && sequence-steadyStart<150 &&
+                if(visualCapture && !evidenceWindow && sequence>=steadyStart+10 && sequence-steadyStart<150 &&
                     (sequence-steadyStart-10)%30==0) {
                     CString status;Assert::IsTrue(cleanup.renderer->RequestRenderedOutputCapture(status),
                         L"Could not request actual scripture output capture.");
@@ -5496,7 +5500,7 @@ namespace VideoProcessorTest
                 pump();
             }
             cleanup.renderer->Stop();cleanup.stopped=true;drain();
-            if(missingEvidenceWindow) {
+            if(evidenceWindow) {
                 traceDump.Write(); // Persist every source before framework SEH assertions.
                 uint64_t anchor=0;bool oneAnchor=true;
                 std::map<uint64_t,const AnalysisDiagnosticRecordV1*> windows,outputs,cues;
@@ -5534,7 +5538,7 @@ namespace VideoProcessorTest
                         }
                     }
                 }
-                unsigned proofPositive=0,bothMissing=0,recovered=0,recoverySelectedRawScans=0,recoveryRawWorkerResults=0,geometryChanges=0,fullRaster=0;
+                unsigned proofPositive=0,bothMissing=0,completedSlotSources=0,recovered=0,recoverySelectedRawScans=0,recoveryRawWorkerResults=0,geometryChanges=0,fullRaster=0;
                 bool complete=true,proofContract=true,equivalentContract=true,recoveryContract=true,mappingStable=true,cueStable=true;
                 bool haveMapping=false;std::array<double,8> mapping{};std::array<int32_t,4> nativeGuard{};
                 uint64_t referenceCue=0;std::array<double,8> previousMapping{};bool havePrevious=false;
@@ -5543,7 +5547,7 @@ namespace VideoProcessorTest
                     const auto out=outputs.find(source),window=windows.find(source);
                     if(!anchor||out==outputs.end()||window==windows.end()) {complete=false;continue;}
                     const auto& r=*out->second;const auto& w=*window->second;
-                    const bool both=offset>=48&&offset<=50;
+                    const bool both=!completedProofWindow&&offset>=48&&offset<=50;
                     const bool inWindow=offset<=80;
                     const bool composed=(r.flags&2u)!=0;
                     const bool proofConsumed=(w.flags&4u)!=0;
@@ -5563,7 +5567,13 @@ namespace VideoProcessorTest
                         ++bothMissing;
                         equivalentContract&=(w.flags&27u)==19u&&proofConsumed&&composed;
                     }
-                    else if(inWindow) {++proofPositive;proofContract&=(w.flags&11u)==1u&&proofConsumed&&composed;}
+                    else if(inWindow) {
+                        ++proofPositive;
+                        if(completedProofWindow) {
+                            if(w.flags&32u)++completedSlotSources;
+                            proofContract&=(w.flags&63u)==37u&&proofConsumed&&composed;
+                        } else proofContract&=(w.flags&11u)==1u&&proofConsumed&&composed;
+                    }
                     else {
                         ++recovered;if(w.flags&8u)++recoverySelectedRawScans;
                         recoveryContract&=(w.flags&3u)==0&&composed;
@@ -5604,6 +5614,7 @@ namespace VideoProcessorTest
                 std::ostringstream summary;summary<<"MISSING EVIDENCE SUMMARY: anchor="<<anchor<<" one_anchor="<<oneAnchor
                     <<" sources="<<steadySources.size()<<" expected="<<steadyCount<<" exact="<<exact<<" max_source_gap="<<maxSourceGap
                     <<" max_submit_gap_ms="<<maxSubmitGapMs<<" proof_positive="<<proofPositive<<" both_missing="<<bothMissing
+                    <<" completed_slot_mode="<<completedProofWindow<<" completed_slot_sources="<<completedSlotSources
                     <<" recovered="<<recovered<<" recovery_selected_raw_scans="<<recoverySelectedRawScans<<" recovery_raw_worker_results="<<recoveryRawWorkerResults<<" complete="<<complete<<" proof_contract="<<proofContract<<" exact_equivalence_contract="<<equivalentContract
                     <<" recovery_contract="<<recoveryContract<<" stable_mapping="<<mappingStable<<" stable_cue="<<cueStable
                     <<" geometry_changes_including_withheld="<<geometryChanges<<" full_raster="<<fullRaster
@@ -5613,8 +5624,9 @@ namespace VideoProcessorTest
                 NativeRendererFixtureLog(summary.str().c_str());
                 Assert::IsTrue(anchor&&oneAnchor&&complete&&steadySources.size()==steadyCount&&exact&&maxSourceGap==1,
                     L"Every current input must advance; missing evidence cannot substitute old frame identities.");
-                Assert::IsTrue(proofPositive==62&&bothMissing==3&&recovered==16&&recoveryRawWorkerResults>0&&proofContract&&equivalentContract&&recoveryContract,
-                    L"When ordinary scan and cue work are withheld, a genuine exact-current source capability must preserve composition; normal current work must resume.");
+                Assert::IsTrue(proofPositive==(completedProofWindow?65u:62u)&&bothMissing==(completedProofWindow?0u:3u)&&
+                    (!completedProofWindow||completedSlotSources==65)&&recovered==16&&recoveryRawWorkerResults>0&&proofContract&&equivalentContract&&recoveryContract,
+                    L"The declared current evidence route must compose every selected source, without substituting a legacy lookup or exact-byte fallback in the moving slot-only case; normal raw work must resume.");
                 Assert::IsTrue(haveMapping&&mappingStable&&cueStable,
                     L"Verified caption/picture mapping and cue must survive UNKNOWN without arbitrary full-raster fallback.");
                 Assert::AreEqual(0u,geometryChanges,
@@ -5950,6 +5962,14 @@ namespace VideoProcessorTest
             options.flags=0;options.version=2;Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
             options.version=1;--options.size;Assert::IsFalse(ValidLibplaceboRegressionOptions(&options));
         }
+        TEST_METHOD(StandardMovingCompletedProofKeepsCurrentPixelsWithoutJobLookup)
+        {VerifyCapturedV210CueCadence(false,false,false,true,false,false,false,true);}
+        TEST_METHOD(BetaMovingCompletedProofKeepsCurrentPixelsWithoutJobLookup)
+        {VerifyCapturedV210CueCadence(true,false,false,true,false,false,false,true);}
+        TEST_METHOD(StandardMovingCompletedProofCapturesCurrentGlyphEvidence)
+        {VerifyCapturedV210CueCadence(false,false,false,true,true,false,false,true);}
+        TEST_METHOD(BetaMovingCompletedProofCapturesCurrentGlyphEvidence)
+        {VerifyCapturedV210CueCadence(true,false,false,true,true,false,false,true);}
         TEST_METHOD(StandardMissingAnalysisCapturesCurrentGlyphEvidence)
         {VerifyCapturedV210CueCadence(false,false,false,true,true,false,true);}
         TEST_METHOD(BetaMissingAnalysisCapturesCurrentGlyphEvidence)
@@ -7245,15 +7265,16 @@ namespace VideoProcessorTest
 // renderer does not export this entry point or alter its thread stack reserve.
 extern "C" __declspec(dllexport) int __cdecl VpRunNativeRendererRegression(unsigned testCase)
 {
-    nativeStackHostActive.store(testCase<8,std::memory_order_relaxed);
+    nativeStackHostActive.store(testCase<12,std::memory_order_relaxed);
     nativeStackHostSubmittedReserve.store(0,std::memory_order_relaxed);
     try {
         if(testCase==98 || testCase==99) {
             Logger::WriteMessage("Native host framework smoke");
             Assert::IsTrue(testCase==98,L"Intentional native-host assertion smoke");
-        } else if(testCase<8) {
+        } else if(testCase<12) {
             VideoProcessorTest::LibplaceboPluginProxyTests fixture;
-            fixture.VerifyCapturedV210CueCadence((testCase&1)!=0,false,false,true,testCase>=6,testCase>=2&&testCase<4,testCase>=4);
+            fixture.VerifyCapturedV210CueCadence((testCase&1)!=0,false,false,true,
+                testCase>=10||(testCase>=6&&testCase<8),testCase>=2&&testCase<4,testCase>=4&&testCase<8,testCase>=8);
             Assert::AreEqual(size_t(1048576),nativeStackHostSubmittedReserve.load(),
                 L"The actual submitted-presentation callback must run on a 1 MiB renderer thread");
         } else return 3;

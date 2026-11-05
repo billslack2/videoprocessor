@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1163,
+  "minimumNativeTests": 1167,
   "requiredNativeMethods": [
     "IncidentCaptureCommitsOnlyRealSubmittedOutputsAndPreservesFollowup",
     "CurrentCueEquivalentSourceRejectsRetirementDuringPublication",
@@ -441,7 +441,11 @@
     "DecodedDvUnchangedCleanupFootprintPassesCurrentPhaseOnePixels",
     "CurrentV210GroupReaderMatchesCanonicalAcrossGroupsRowsAndPartialTails",
     "CurrentV210GroupReaderOwnsOneImmutableOperationAndRejectsInvalidViews",
-    "CurrentFootprintV210ReaderPreservesGlyphAndDestinationDecisions"
+    "CurrentFootprintV210ReaderPreservesGlyphAndDestinationDecisions",
+    "CompletedCurrentCueProofRemainsReadableDuringWorkerContentionOnMovingPixels",
+    "CompletedCurrentCueProofRejectsForeignSlotsContextsRetirementAndRevocation",
+    "CompletedCurrentCueProofSurvivesLaterPixelFailureWithoutHidingReset",
+    "CompletedCurrentCueProofRejectsRetirementDuringImmutableCopy"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",

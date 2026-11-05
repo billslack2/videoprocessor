@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include <SubtitleCurrentCueProofSlot.h>
 #include <atomic>
 #include <memory>
 
@@ -37,6 +38,9 @@ public:
     bool Accepts(const SubtitleBoxObservation& result) const {
         return MatchesRequestContext(result) && result.sharedPicture.Matches(m_nomination);
     }
+    // Completion is source-owned; replacing a context ticket also replaces its
+    // slot. The ticket itself still grants no measurement/presentation authority.
+    const std::shared_ptr<SubtitleCurrentCueProofSlot>& CompletedCueProof() const {return m_completedCueProof;}
     const SubtitlePictureAuthority& Nomination() const {return m_nomination;}
     // The slot belongs to one QueuedFrame. Bounded CAS publication does no pixel
     // work and never waits for optional workers. Context rollback cannot revive
@@ -59,6 +63,7 @@ public:
         return {};
     }
 private:
+    std::shared_ptr<SubtitleCurrentCueProofSlot> m_completedCueProof=std::make_shared<SubtitleCurrentCueProofSlot>();
     ActivePictureFrameIdentity m_identity;
     SubtitlePictureAuthority m_nomination;
     uint64_t m_policy=0,m_continuity=0;

@@ -172,6 +172,7 @@ public:
         auto revisedRequest=firstRequest;++revisedRequest.policyGeneration;
         const auto revisedTicket=SourceAnalysisTicket::Acquire(&firstSlot,revisedRequest);
         Assert::IsTrue(revisedTicket && revisedTicket!=firstTicket);
+        Assert::IsTrue(revisedTicket->CompletedCueProof()!=firstTicket->CompletedCueProof());
         Assert::IsFalse(revisedTicket->Accepts(lateCue));
         Assert::IsFalse(bool(SourceAnalysisTicket::Acquire(&firstSlot,firstRequest)),
             L"A late request cannot roll an exact-source policy revision backward.");
@@ -187,6 +188,7 @@ public:
             auto later=request;later.sharedPicture.required=false;
             const auto same=SourceAnalysisTicket::Acquire(&slot,later);
             Assert::IsTrue(same==ticket && same->BindRequest(later));
+            Assert::IsTrue(same->CompletedCueProof()==ticket->CompletedCueProof());
             Assert::IsTrue(later.sharedPicture.Matches(request.sharedPicture));
             Assert::IsFalse(later.analyzed || later.ink || later.barAuthority || later.text.detected);
         }
@@ -250,6 +252,7 @@ public:
         auto current=key;current.continuityGeneration=timeline.ContinuityGeneration();
         const auto currentTicket=SourceAnalysisTicket::Acquire(&slot,current);
         Assert::IsTrue(currentTicket && currentTicket!=originalTicket);
+        Assert::IsTrue(currentTicket->CompletedCueProof()!=originalTicket->CompletedCueProof());
         Assert::IsFalse(currentTicket->Accepts(original));
         const auto witness=timeline.QualifyOwnedScanBacklogWitness(current.identity,
             key.continuityGeneration,current.continuityGeneration);

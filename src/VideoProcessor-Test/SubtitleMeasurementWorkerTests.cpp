@@ -807,7 +807,7 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     Assert::AreEqual(uint64_t(93),positiveWorker->LastVerifiedIdentity().acceptedSequence,
         L"Only the current pixel-verified source advances the timeline.");
     Assert::AreEqual(5.0*(1000.0/60),positiveWorker->PendingElapsedMilliseconds(),0.01,
-        L"Source 88ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢93 spends the complete five-frame gap against the original hold lease.");
+        L"Source 88ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢93 spends the complete five-frame gap against the original hold lease.");
     Assert::IsFalse(positivePending->current.subtitleArProof.accepted,
         L"A footprint continuation is not current subtitle-to-native authority.");
     Assert::IsFalse(positivePending->current.independentBarAnalysis||positivePending->current.barAuthority||
@@ -1263,7 +1263,7 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
         const auto& certificate=tracker.AcceptedCueSeedCertificate();
         Assert::IsTrue(accepted.detected && accepted.lineCount==3 && !accepted.held && !accepted.confirmationPending);
         Assert::IsTrue(certificate.Matches(current,accepted),
-            L"A fresh exact-current certificate may retain the trackerÃ¢â‚¬â„¢s accepted cue through grouping pruning.");
+            L"A fresh exact-current certificate may retain the trackerÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢s accepted cue through grouping pruning.");
         const bool remembered=guard.RememberAccepted(current,accepted,source,frameMs,250,&certificate);
         if(!remembered)Logger::WriteMessage((std::string("certified continuity rearm: ")+guard.DecisionReason()).c_str());
         Assert::IsTrue(remembered);
@@ -5114,7 +5114,8 @@ struct WorkerEquivalentFixture {
     uint64_t revision=0;
 };
 static void PrepareWorkerEquivalentCurrent(WorkerEquivalentFixture& f,uint64_t proofSequence,
-    const std::shared_ptr<std::vector<uint16_t>>& pixels) {
+    const std::shared_ptr<std::vector<uint16_t>>& pixels,
+    std::shared_ptr<SubtitleCurrentCueProofSlot> completedProof={}) {
     f.pixels=pixels;
     f.current=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(proofSequence,f.pixels));
     Assert::IsTrue(BuildSubtitleCurrentCueProofKey(f.current->observation,f.current->observation.identity,
@@ -5125,6 +5126,7 @@ static void PrepareWorkerEquivalentCurrent(WorkerEquivalentFixture& f,uint64_t p
     request->source=f.source;request->physicalBase=f.seed->physicalBase;request->sourceMode=f.seed->sourceMode;
     request->backgroundMode=3;request->templateRevision=f.revision;request->frameMs=40;
     request->eligibleRenderHead=f.key.identity;request->eligibleTailSequence=proofSequence;request->fullScanDue=false;
+    request->completedProof=std::move(completedProof);
     f.worker.AdvanceCurrentCueRenderWindow(f.key.identity,proofSequence);
     Assert::IsTrue(f.worker.SubmitCurrentCueProof(std::move(*request))==SubtitleCurrentCueProofStatus::Queued);
     bool ready=false;for(int i=0;i<1000;++i) {
@@ -5168,6 +5170,153 @@ static std::shared_ptr<const CurrentSourceSupportEvidence> EquivalentSupport(con
     auto bounds=input.physicalBase;bounds.bottom=82;
     return std::make_shared<const CurrentSourceSupportEvidence>(VerifyCurrentSourceSupport(
         input.source,input.observation.identity,&bounds,nullptr));
+}
+static std::unique_ptr<WorkerEquivalentFixture> CompletedMovingCue(
+    const std::shared_ptr<SubtitleCurrentCueProofSlot>& slot) {
+    auto f=WorkerEquivalentSeed();
+    auto moving=std::make_shared<std::vector<uint16_t>>(*f->pixels);
+    (*moving)[30*160+150]=uint16_t(420<<6); // Real current movie change, outside the glyph/cleanup footprint.
+    Assert::IsTrue((*moving)[30*160+150]!=(*f->pixels)[30*160+150]);
+    PrepareWorkerEquivalentCurrent(*f,3,moving,slot);
+    Assert::IsTrue(f->receipt.Valid() && f->qualified.qualified);
+    Assert::IsTrue(f->receipt.Provenance()!=SubtitleCurrentCueProofProvenance::PresentationOnlyExactSourcePixels,
+        L"This fixture must produce an ordinary current worker proof, not paused-byte equivalence.");
+    return f;
+}
+TEST_METHOD(CompletedCurrentCueProofRemainsReadableDuringWorkerContentionOnMovingPixels) {
+    auto slot=std::make_shared<SubtitleCurrentCueProofSlot>();auto f=CompletedMovingCue(slot);
+    struct HeldJobMutex {
+        std::mutex mutex;std::condition_variable changed;bool entered=false,release=false,expired=false;
+        static void __cdecl Capture(void* opaque,const AnalysisDiagnosticRecordV1* record) {
+            if(!record || std::strcmp(record->stage,"worker-miss")!=0)return;
+            auto& self=*static_cast<HeldJobMutex*>(opaque);std::unique_lock<std::mutex> lock(self.mutex);
+            self.entered=true;self.changed.notify_all();
+            self.expired=!self.changed.wait_for(lock,std::chrono::seconds(2),[&]{return self.release;});
+        }
+    } held;
+    AnalysisDiagnosticTrace::SetExternalSinks(&held,&HeldJobMutex::Capture,nullptr,nullptr);
+    struct ClearSink {~ClearSink(){AnalysisDiagnosticTrace::ClearExternalSinks();}} clear;
+    std::thread occupied([&]{SubtitleBoxObservation ignored;f->worker.TryRead(f->key,ignored);});
+    bool entered=false;
+    {std::unique_lock<std::mutex> lock(held.mutex);entered=held.changed.wait_for(lock,std::chrono::seconds(2),[&]{return held.entered;});}
+    SubtitleCurrentCueProofReceipt legacy,current;
+    auto oldStatus=SubtitleCurrentCueProofStatus::NoTask,newStatus=SubtitleCurrentCueProofStatus::NoTask;
+    if(entered) {
+        oldStatus=f->worker.TryPeekCurrentCueProof(f->key,legacy,true);
+        newStatus=f->worker.TryReadCompletedCurrentCueProof(f->key,*slot,current);
+    }
+    bool completedWhileHeld=false;
+    {std::lock_guard<std::mutex> lock(held.mutex);completedWhileHeld=entered&&!held.expired;held.release=true;}
+    held.changed.notify_all();occupied.join();AnalysisDiagnosticTrace::ClearExternalSinks();
+    Logger::WriteMessage((std::string("completed moving proof oldStatus=")+std::to_string(int(oldStatus))+
+        " slotStatus="+std::to_string(int(newStatus))+" valid="+std::to_string(current.Valid())+
+        " completedWhileHeld="+std::to_string(completedWhileHeld)).c_str());
+    Assert::IsTrue(entered&&completedWhileHeld,L"Lookup must finish while the actual worker job mutex remains occupied.");
+    Assert::IsTrue(oldStatus==SubtitleCurrentCueProofStatus::Pending&&!legacy.Valid());
+    Assert::IsTrue(newStatus==SubtitleCurrentCueProofStatus::Ready&&current.Valid(),
+        L"Already completed exact-current moving-pixel proof must remain available without a mutex wait or test retry.");
+    Assert::IsTrue(SameAnalysisFrameIdentity(current.CurrentKey().identity,f->key.identity));
+    Assert::IsTrue(current.Provenance()!=SubtitleCurrentCueProofProvenance::PresentationOnlyExactSourcePixels);
+    auto tracker=std::make_unique<SubtitleBoxPresentation>();auto preview=std::make_unique<SubtitleBoxPreview>();SubtitleBoxResult cue;
+    Assert::IsTrue(tracker->ConsumeCurrentCueProof(current,*preview,cue));
+    Assert::IsFalse(tracker->ConsumeCurrentCueProof(current,*preview,cue));
+    QualifiedSubtitlePresentationInput q;q.mode=f->seed->sourceMode;q.currentIdentity=f->key.identity;
+    q.observation=&f->current->observation;q.accepted=&current.AcceptedCue();q.composition=&current.Operation();
+    q.physicalBase=f->seed->physicalBase;q.policyGeneration=11;q.continuityGeneration=21;q.sourcePrepared=true;
+    q.currentDisplayPicture.required=true;q.currentDisplayPicture.bounds=q.physicalBase;q.currentDisplayPicture.identity=q.currentIdentity;
+    const auto raw=EvaluateActivePicturePresentationRetention(f->source,q.physicalBase);
+    Assert::IsTrue(EvaluatePreparedSubtitlePresentationEvidence(f->source,raw,q).qualified,
+        L"The unchanged current-pixel qualifier must accept the genuinely moving source.");
+    SubtitleCurrentCueProofReceipt duplicate;
+    Assert::IsTrue(f->worker.TryReadCompletedCurrentCueProof(f->key,*slot,duplicate)!=SubtitleCurrentCueProofStatus::Ready);
+    Assert::IsFalse(duplicate.Valid());
+}
+TEST_METHOD(CompletedCurrentCueProofRejectsForeignSlotsContextsRetirementAndRevocation) {
+    auto slot=std::make_shared<SubtitleCurrentCueProofSlot>();auto f=CompletedMovingCue(slot);
+    SubtitleCurrentCueProofSlot empty;SubtitleCurrentCueProofReceipt result;
+    Assert::IsTrue(f->worker.TryReadCompletedCurrentCueProof(f->key,empty,result)!=SubtitleCurrentCueProofStatus::Ready);
+    Assert::IsFalse(result.Valid());
+    for(int fault=0;fault<11;++fault) {
+        auto key=f->key;
+        if(fault==0)++key.identity.acceptedSequence;
+        if(fault==1)++key.identity.sourceFrameNumber;
+        if(fault==2)++key.identity.captureTimestamp;
+        if(fault==3)++key.identity.transportGeneration;
+        if(fault==4)++key.identity.sourceFormatGeneration;
+        if(fault==5)++key.identity.viewportGeneration;
+        if(fault==6)++key.identity.analysisDomainKey;
+        if(fault==7)++key.policyGeneration;
+        if(fault==8)++key.continuityGeneration;
+        if(fault==9)++key.sharedPicture.bounds.top;
+        if(fault==10)++key.identity.rendererGeneration;
+        Assert::IsTrue(f->worker.TryReadCompletedCurrentCueProof(key,*slot,result)!=SubtitleCurrentCueProofStatus::Ready);
+        Assert::IsFalse(result.Valid());
+    }
+    auto foreignSlot=std::make_shared<SubtitleCurrentCueProofSlot>();auto foreign=CompletedMovingCue(foreignSlot);
+    Assert::IsTrue(f->worker.TryReadCompletedCurrentCueProof(f->key,*foreignSlot,result)!=SubtitleCurrentCueProofStatus::Ready,
+        L"Equal source numbers and numeric revisions in another worker do not own this lease.");
+    Assert::IsFalse(result.Valid());
+    Assert::IsTrue(f->worker.TryReadCompletedCurrentCueProof(f->key,*slot,result)==SubtitleCurrentCueProofStatus::Ready);
+    auto next=f->key.identity;++next.acceptedSequence;++next.sourceFrameNumber;++next.captureTimestamp;
+    f->worker.AdvanceCurrentCueRenderWindow(next,next.acceptedSequence);
+    Assert::IsTrue(f->worker.TryReadCompletedCurrentCueProof(f->key,*slot,result)!=SubtitleCurrentCueProofStatus::Ready);
+    Assert::IsFalse(result.Valid());
+    foreign->worker.InvalidateCurrentCueProofContext();
+    Assert::IsTrue(foreign->worker.TryReadCompletedCurrentCueProof(foreign->key,*foreignSlot,result)!=SubtitleCurrentCueProofStatus::Ready);
+    Assert::IsFalse(result.Valid());
+}
+TEST_METHOD(CompletedCurrentCueProofSurvivesLaterPixelFailureWithoutHidingReset) {
+    auto slot=std::make_shared<SubtitleCurrentCueProofSlot>();auto f=CompletedMovingCue(slot);
+    auto changed=std::make_shared<std::vector<uint16_t>>(*f->pixels);
+    (*changed)[50*160+50]=uint16_t(400<<6); // Current B really loses an owned glyph pixel.
+    auto raw=CompleteThreeLineScan(4,*changed);SubtitleBoxObservation key;
+    raw.identity.analysisDomainKey=f->key.identity.analysisDomainKey;raw.sharedPicture.identity=raw.identity;
+    Assert::IsTrue(BuildSubtitleCurrentCueProofKey(raw,raw.identity,f->seed->physicalBase,true,key));
+    auto request=std::make_unique<SubtitleCurrentCueProofRequest>();request->currentKey=key;
+    request->source=OwnedCadenceSource(changed);request->physicalBase=f->seed->physicalBase;
+    request->sourceMode=f->seed->sourceMode;request->backgroundMode=3;request->templateRevision=f->revision;
+    request->eligibleRenderHead=f->key.identity;request->eligibleTailSequence=4;request->frameMs=40;
+    request->fullScanDue=false;f->worker.AdvanceCurrentCueRenderWindow(f->key.identity,4);
+    Assert::IsTrue(f->worker.SubmitCurrentCueProof(std::move(*request))==SubtitleCurrentCueProofStatus::Queued);
+    SubtitleCurrentCueProofReceipt failed;auto status=SubtitleCurrentCueProofStatus::Queued;
+    for(int i=0;i<1000;++i) {
+        status=f->worker.TryTakeCurrentCueProof(key,f->revision,failed);
+        if(status==SubtitleCurrentCueProofStatus::Failed || status==SubtitleCurrentCueProofStatus::Expired ||
+            status==SubtitleCurrentCueProofStatus::Ready)break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Assert::IsTrue(status==SubtitleCurrentCueProofStatus::Failed&&!failed.Valid());
+    SubtitleCurrentCueProofReceipt legacy,current;
+    Assert::IsTrue(f->worker.TryPeekCurrentCueProof(f->key,legacy)==SubtitleCurrentCueProofStatus::Ready,
+        L"Preserve the established completed-A contract after later B fails current pixels.");
+    Assert::IsTrue(f->worker.TryReadCompletedCurrentCueProof(f->key,*slot,current)==SubtitleCurrentCueProofStatus::Ready);
+    Assert::IsTrue(current.Valid()&&SameAnalysisFrameIdentity(current.CurrentKey().identity,f->key.identity));
+    f->worker.InvalidateCurrentCueProofContext();
+    Assert::IsTrue(f->worker.TryReadCompletedCurrentCueProof(f->key,*slot,current)!=SubtitleCurrentCueProofStatus::Ready);
+    Assert::IsFalse(current.Valid());
+}
+TEST_METHOD(CompletedCurrentCueProofRejectsRetirementDuringImmutableCopy) {
+    for(int reset=0;reset<2;++reset) {
+        auto slot=std::make_shared<SubtitleCurrentCueProofSlot>();auto f=CompletedMovingCue(slot);
+        struct RetireDuringCopy {
+            SubtitleMeasurementWorker* worker;ActivePictureFrameIdentity next;bool reset;unsigned calls=0;
+            static void __cdecl Capture(void* opaque,const AnalysisDiagnosticRecordV1* record) {
+                if(!record || std::strcmp(record->stage,"cue-completed-candidate")!=0)return;
+                auto& self=*static_cast<RetireDuringCopy*>(opaque);++self.calls;
+                if(self.reset)self.worker->InvalidateCurrentCueProofContext();
+                else self.worker->AdvanceCurrentCueRenderWindow(self.next,self.next.acceptedSequence);
+            }
+        } retire{&f->worker,f->key.identity,reset!=0};
+        ++retire.next.acceptedSequence;++retire.next.sourceFrameNumber;++retire.next.captureTimestamp;
+        AnalysisDiagnosticTrace::SetExternalSinks(&retire,&RetireDuringCopy::Capture,nullptr,nullptr);
+        struct ClearSink {~ClearSink(){AnalysisDiagnosticTrace::ClearExternalSinks();}} clear;
+        SubtitleCurrentCueProofReceipt current;
+        const auto status=f->worker.TryReadCompletedCurrentCueProof(f->key,*slot,current);
+        AnalysisDiagnosticTrace::ClearExternalSinks();
+        Assert::AreEqual(1u,retire.calls,L"The real off-lock copy boundary must execute exactly once.");
+        Assert::IsTrue(status!=SubtitleCurrentCueProofStatus::Ready&&!current.Valid(),
+            L"A source/window or context reset during copying must revoke the completed result before return.");
+    }
 }
 TEST_METHOD(CurrentCueEquivalentSourceRequiresConsumedQualifiedCurrentPixels) {
     auto f=WorkerEquivalentSeed();SourceAnalysisTicket seedTicket(f->key);
@@ -6047,12 +6196,13 @@ TEST_METHOD(CurrentCueWorkerReplacesFailedPixelBaselineFromFreshIndependentScan)
             Assert::IsFalse(unavailable->sharedPicture.required,L"The RAW key remains unchanged.");
             Assert::IsFalse(key->analyzed || key->barAuthority || key->independentBarAnalysis);
             Assert::AreEqual(revision,activeRevision);
+            auto completedSlot=std::make_shared<SubtitleCurrentCueProofSlot>();
             const auto submitProof=[&](const SubtitleBoxObservation& current,uint64_t requestRevision) {
                 SubtitleCurrentCueProofRequest request;request.currentKey=current;request.source=OwnedSource(pixels);
                 request.physicalBase=base;request.templateRevision=requestRevision;
                 request.sourceMode=SubtitlePreviewMode::None;request.backgroundMode=3;
                 request.eligibleRenderHead=raw->identity;request.eligibleTailSequence=4;
-                request.frameMs=1000.0/rate;return worker->SubmitCurrentCueProof(std::move(request));
+                request.frameMs=1000.0/rate;request.completedProof=completedSlot;return worker->SubmitCurrentCueProof(std::move(request));
             };
             const auto waitProof=[&](const SubtitleBoxObservation& current,uint64_t expected,
                 SubtitleCurrentCueProofReceipt& receipt) {
@@ -6079,6 +6229,9 @@ TEST_METHOD(CurrentCueWorkerReplacesFailedPixelBaselineFromFreshIndependentScan)
             Assert::IsTrue(worker->TryPeekCurrentCueProof(*key,*repeated)==SubtitleCurrentCueProofStatus::Ready,
                 L"Compatible replacement cannot expire an exact source still inside the render window.");
             Assert::AreEqual(revision,repeated->TemplateRevision());
+            Assert::IsTrue(worker->TryReadCompletedCurrentCueProof(*key,*completedSlot,*repeated)==SubtitleCurrentCueProofStatus::Ready,
+                L"Completed source publication survives a compatible template revision while still in its render window.");
+            Assert::AreEqual(revision,repeated->TemplateRevision());
             auto foreign=std::make_unique<SubtitleBoxObservation>(*key);
             ++foreign->identity.captureTimestamp;
             Assert::IsTrue(worker->TryPeekCurrentCueProof(*foreign,*repeated)!=SubtitleCurrentCueProofStatus::Ready);
@@ -6102,6 +6255,7 @@ TEST_METHOD(CurrentCueWorkerReplacesFailedPixelBaselineFromFreshIndependentScan)
             Assert::IsTrue(worker->TryPeekCurrentCueProof(*key,*repeated)==SubtitleCurrentCueProofStatus::Consumed);
 
             auto next=std::make_unique<SubtitleBoxObservation>(CompleteThreeLineScan(4,*pixels));
+            completedSlot=std::make_shared<SubtitleCurrentCueProofSlot>(); // A new queued source owns its own slot.
             Assert::IsTrue(worker->MakeCurrentCueProofKey(*next,SubtitlePreviewMode::None,3,
                 *key,base,activeRevision));
             Assert::IsTrue(submitProof(*key,activeRevision)==SubtitleCurrentCueProofStatus::Queued);
@@ -6110,6 +6264,8 @@ TEST_METHOD(CurrentCueWorkerReplacesFailedPixelBaselineFromFreshIndependentScan)
             Assert::IsTrue(waitTemplate(*replacement,5,foreignRevision));
             Assert::IsTrue(worker->TryPeekCurrentCueProof(*key,*repeated)==SubtitleCurrentCueProofStatus::NotEligible,
                 L"A changed presentation interpretation invalidates prior receipts even for the same source.");
+            Assert::IsTrue(worker->TryReadCompletedCurrentCueProof(*key,*completedSlot,*repeated)!=SubtitleCurrentCueProofStatus::Ready);
+            Assert::IsFalse(repeated->Valid());
             auto expired=next->identity;++expired.acceptedSequence;++expired.sourceFrameNumber;
             expired.captureTimestamp+=1000;worker->AdvanceCurrentCueRenderWindow(expired,expired.acceptedSequence);
             Assert::IsTrue(worker->TryPeekCurrentCueProof(*key,*repeated)==SubtitleCurrentCueProofStatus::Expired);
