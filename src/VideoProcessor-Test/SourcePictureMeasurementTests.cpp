@@ -1625,6 +1625,75 @@ namespace VideoProcessorTest
             Assert::IsFalse(bool(cache.Find(samePadded,next,3)));
             Exact(MeasureSourcePicture(samePadded),Bounds(640,360,0,40,640,320));
         }
+        TEST_METHOD(OwnedPictureEquivalenceTokensRequireExactBytesAndRevokeWithEntries)
+        {
+            auto frame=std::make_shared<SourcePictureFrame>(640,360);frame->Fill(0,40,640,320,220);
+            auto source=frame->Source();source.backingOwner=frame;
+            auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(source));
+            Assert::IsTrue(facts->complete);
+            ActivePictureFrameIdentity id;id.transportGeneration=1;id.sourceFormatGeneration=7;
+            id.analysisDomainKey=11;id.viewportGeneration=2;id.rendererGeneration=3;
+            id.acceptedSequence=id.sourceFrameNumber=1;id.captureTimestamp=1000;
+            auto cache=std::make_unique<OwnedSourcePictureObservationCache>();SourcePictureEquivalenceToken token;
+            Assert::IsFalse(cache->Store(source,id,facts,3,true,&token));Assert::IsFalse(token.Valid());
+            id.acceptedSequence=id.sourceFrameNumber=2;id.captureTimestamp=2000;
+            Assert::IsTrue(cache->Store(source,id,facts,3,true,&token));Assert::IsTrue(token.MatchesSource(id));
+            auto fresh=std::make_shared<SourcePictureFrame>(*frame);std::weak_ptr<SourcePictureFrame> weak=frame;
+            source.backingOwner.reset();frame.reset();Assert::IsTrue(weak.expired(),L"Tokens/cache must not pin capture owners.");
+            auto now=fresh->Source();now.backingOwner=fresh;
+            id.acceptedSequence=id.sourceFrameNumber=3;id.captureTimestamp=3000;SourcePictureEquivalenceToken hit;
+            Assert::IsTrue(bool(cache->Find(now,id,3,&hit))&&hit.SameSnapshot(token)&&hit.MatchesSource(id));
+            for(unsigned field=0;field<8;++field) {
+                auto wrong=id;
+                if(field==0)++wrong.transportGeneration;if(field==1)++wrong.acceptedSequence;
+                if(field==2)++wrong.sourceFrameNumber;if(field==3)++wrong.captureTimestamp;
+                if(field==4)++wrong.sourceFormatGeneration;if(field==5)++wrong.viewportGeneration;
+                if(field==6)++wrong.rendererGeneration;if(field==7)++wrong.analysisDomainKey;
+                Assert::IsFalse(hit.MatchesSource(wrong),L"Every current-source identity field is binding.");
+            }
+            auto unassociated=now;unassociated.generation=99;SourcePictureEquivalenceToken noAssociation=hit;
+            Assert::IsTrue(bool(cache->Find(unassociated,id,3,&noAssociation)));
+            Assert::IsFalse(noAssociation.Valid(),L"Geometry facts alone cannot certify an unrelated source generation.");
+            auto foreign=id;++foreign.viewportGeneration;SourcePictureEquivalenceToken viewport;
+            Assert::IsTrue(bool(cache->Find(now,foreign,3,&viewport)));
+            Assert::IsFalse(viewport.SameSnapshot(token),L"Source facts may survive viewport changes; presentation equivalence may not.");
+            foreign=id;++foreign.rendererGeneration;SourcePictureEquivalenceToken renderer;
+            Assert::IsTrue(bool(cache->Find(now,foreign,3,&renderer)));Assert::IsFalse(renderer.SameSnapshot(token));
+            auto altered=std::make_shared<SourcePictureFrame>(*fresh);altered->bytes[9]^=1;
+            auto alteredSource=altered->Source();alteredSource.backingOwner=altered;
+            SourcePictureEquivalenceToken miss=hit;
+            Assert::IsFalse(bool(cache->Find(alteredSource,id,3,&miss)));Assert::IsFalse(miss.Valid());
+            Assert::IsTrue(hit.Valid(),L"A collision miss supplies no new token and does not mutate prior exact facts.");
+            std::array<std::shared_ptr<SourcePictureFrame>,4> phases;
+            std::array<SourcePictureEquivalenceToken,4> phaseTokens;
+            for(unsigned phase=1;phase<=4;++phase) {
+                auto next=std::make_shared<SourcePictureFrame>(*fresh);next->Fill(0,40,640,320,220+int(phase));
+                phases[phase-1]=next;
+                auto nextSource=next->Source();nextSource.backingOwner=next;
+                auto nextFacts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(nextSource));
+                id.acceptedSequence=id.sourceFrameNumber=3+phase;id.captureTimestamp=(3+phase)*1000;
+                Assert::IsTrue(cache->Store(nextSource,id,nextFacts,3,false,&phaseTokens[phase-1]));
+                Assert::IsTrue(phaseTokens[phase-1].MatchesSource(id));
+            }
+            for(unsigned phase=0;phase<4;++phase) {
+                auto phaseSource=phases[phase]->Source();phaseSource.backingOwner=phases[phase];
+                ++id.acceptedSequence;++id.sourceFrameNumber;id.captureTimestamp+=1000;
+                SourcePictureEquivalenceToken phaseHit;
+                Assert::IsTrue(bool(cache->Find(phaseSource,id,3,&phaseHit)));
+                for(unsigned other=0;other<4;++other)
+                    Assert::AreEqual(other==phase,phaseHit.SameSnapshot(phaseTokens[other]),L"Each exact byte phase has its own stable association.");
+            }
+            Assert::IsFalse(hit.Valid());Assert::IsFalse(token.Valid(),L"LRU eviction revokes every token from that byte snapshot.");
+            Assert::IsTrue(cache->Store(now,id,facts,3,false,&token));Assert::IsTrue(token.Valid());
+            auto changed=now;changed.generation=8;auto changedId=id;changedId.sourceFormatGeneration=8;
+            auto changedFacts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(changed));
+            SourcePictureEquivalenceToken newContext;
+            Assert::IsTrue(cache->Store(changed,changedId,changedFacts,4,false,&newContext));
+            Assert::IsFalse(token.Valid());Assert::IsTrue(newContext.MatchesSource(changedId));
+            cache->Clear();Assert::IsFalse(newContext.Valid(),L"Explicit reset revokes all outstanding associations.");
+            Assert::IsTrue(cache->Store(changed,changedId,changedFacts,4,false,&newContext));
+            cache.reset();Assert::IsFalse(newContext.Valid(),L"Cache destruction revokes weak tokens without retaining pixels.");
+        }
         TEST_METHOD(OwnedPictureFactsRetainFourExactSourcePhases)
         {
             std::array<std::shared_ptr<SourcePictureFrame>,4> frames;

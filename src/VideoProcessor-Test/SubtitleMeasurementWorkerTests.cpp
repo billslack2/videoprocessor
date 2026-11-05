@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleMeasurementWorker.h>
+#include <OwnedSourcePictureObservationCache.h>
+#include <SourceSynchronizedAnalysis.h>
 #include <SubtitleCadenceGuard.h>
 #include <vprenderer/SourceCadencePresentation.h>
 #include <atomic>
@@ -805,7 +807,7 @@ TEST_METHOD(CurrentFootprintUhdWorkerAcceptsBlackMotionAndRejectsNewInk) {
     Assert::AreEqual(uint64_t(93),positiveWorker->LastVerifiedIdentity().acceptedSequence,
         L"Only the current pixel-verified source advances the timeline.");
     Assert::AreEqual(5.0*(1000.0/60),positiveWorker->PendingElapsedMilliseconds(),0.01,
-        L"Source 88Ã¢â€ â€™93 spends the complete five-frame gap against the original hold lease.");
+        L"Source 88ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢93 spends the complete five-frame gap against the original hold lease.");
     Assert::IsFalse(positivePending->current.subtitleArProof.accepted,
         L"A footprint continuation is not current subtitle-to-native authority.");
     Assert::IsFalse(positivePending->current.independentBarAnalysis||positivePending->current.barAuthority||
@@ -5018,6 +5020,286 @@ static SubtitleCurrentCueTemplateInput PreparedSemanticSeed(uint64_t sequence,
     if(!proof->qualified)Logger::WriteMessage(proof->reason);
     Assert::IsTrue(proof->qualified,L"Modeled prepared output must pass the unchanged pixel qualifier.");
     input.preparedPresentation=std::move(proof);return input;
+}
+// Genuine current worker/byte/support producers; only successful GPU preparation
+// is modeled, as in PreparedSemanticSeed above. No token/receipt internals are forged.
+struct WorkerEquivalentFixture {
+    std::shared_ptr<std::vector<uint16_t>> pixels;
+    std::unique_ptr<SubtitleCurrentCueTemplateInput> seed,current;
+    SubtitleMeasurementWorker worker;
+    OwnedSourcePictureObservationCache cache;
+    SubtitleCurrentCueProofReceipt receipt;
+    SourcePictureEquivalenceToken token;
+    SubtitleBoxObservation key;
+    QualifiedSubtitlePresentationEvidence qualified;
+    AnalysisLumaSource source;
+    uint64_t revision=0;
+};
+static void PrepareWorkerEquivalentCurrent(WorkerEquivalentFixture& f,uint64_t proofSequence,
+    const std::shared_ptr<std::vector<uint16_t>>& pixels) {
+    f.pixels=pixels;
+    f.current=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(proofSequence,f.pixels));
+    Assert::IsTrue(BuildSubtitleCurrentCueProofKey(f.current->observation,f.current->observation.identity,
+        f.seed->physicalBase,true,f.key));
+    f.source=OwnedCadenceSource(f.pixels);
+    auto request=std::make_unique<SubtitleCurrentCueProofRequest>();request->currentKey=f.key;
+    request->fullScanKey=f.current->observation;request->hasFullScanKey=true;
+    request->source=f.source;request->physicalBase=f.seed->physicalBase;request->sourceMode=f.seed->sourceMode;
+    request->backgroundMode=3;request->templateRevision=f.revision;request->frameMs=40;
+    request->eligibleRenderHead=f.key.identity;request->eligibleTailSequence=proofSequence;request->fullScanDue=false;
+    f.worker.AdvanceCurrentCueRenderWindow(f.key.identity,proofSequence);
+    Assert::IsTrue(f.worker.SubmitCurrentCueProof(std::move(*request))==SubtitleCurrentCueProofStatus::Queued);
+    bool ready=false;for(int i=0;i<1000;++i) {
+        if(f.worker.TryPeekCurrentCueProof(f.key,f.receipt)==SubtitleCurrentCueProofStatus::Ready){ready=true;break;}
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Assert::IsTrue(ready&&f.receipt.Valid());
+    const auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(f.source));
+    Assert::IsTrue(facts->complete,L"Byte-token cache stores a genuinely completed native measurement.");
+    Assert::IsTrue(f.cache.Store(f.source,f.key.identity,facts,21,false,&f.token));
+    Assert::IsTrue(f.token.MatchesSource(f.key.identity));
+    QualifiedSubtitlePresentationInput q;q.mode=f.seed->sourceMode;q.currentIdentity=f.key.identity;
+    q.observation=&f.current->observation;q.accepted=&f.receipt.AcceptedCue();q.composition=&f.receipt.Operation();
+    q.physicalBase=f.seed->physicalBase;q.policyGeneration=11;q.continuityGeneration=21;q.sourcePrepared=true;
+    q.currentDisplayPicture.required=true;q.currentDisplayPicture.bounds=q.physicalBase;q.currentDisplayPicture.identity=q.currentIdentity;
+    const auto raw=EvaluateActivePicturePresentationRetention(f.source,q.physicalBase);
+    f.qualified=EvaluatePreparedSubtitlePresentationEvidence(f.source,raw,q);
+    if(!f.qualified.qualified)Logger::WriteMessage(f.qualified.reason);
+    Assert::IsTrue(f.qualified.qualified);
+ }
+static std::unique_ptr<WorkerEquivalentFixture> WorkerEquivalentSeed(uint64_t proofSequence=2,unsigned phase=0) {
+    auto f=std::make_unique<WorkerEquivalentFixture>();
+    f->pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+    (*f->pixels)[size_t(30)*160+150]=uint16_t((300+4*phase)<<6);
+    f->seed=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(proofSequence-1,f->pixels));
+    Assert::IsTrue(f->worker.SubmitCurrentCueTemplate(*f->seed,f->revision)==SubtitleCurrentCueProofStatus::Queued);
+    bool ready=false;for(int i=0;i<1000;++i) {
+        uint64_t revision=0;
+        if(f->worker.SubmitCurrentCueTemplate(*f->seed,revision)==SubtitleCurrentCueProofStatus::Ready){ready=true;break;}
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    Assert::IsTrue(ready);
+    PrepareWorkerEquivalentCurrent(*f,proofSequence,f->pixels);
+    return f;
+}
+static void ConsumeWorkerEquivalentSeed(WorkerEquivalentFixture& f) {
+    auto tracker=std::make_unique<SubtitleBoxPresentation>();auto preview=std::make_unique<SubtitleBoxPreview>();SubtitleBoxResult cue;
+    Assert::IsTrue(tracker->ConsumeCurrentCueProof(f.receipt,*preview,cue));
+}
+static std::shared_ptr<const CurrentSourceSupportEvidence> EquivalentSupport(const SubtitleCurrentCueTemplateInput& input) {
+    auto bounds=input.physicalBase;bounds.bottom=82;
+    return std::make_shared<const CurrentSourceSupportEvidence>(VerifyCurrentSourceSupport(
+        input.source,input.observation.identity,&bounds,nullptr));
+}
+TEST_METHOD(CurrentCueEquivalentSourceRequiresConsumedQualifiedCurrentPixels) {
+    auto f=WorkerEquivalentSeed();SourceAnalysisTicket seedTicket(f->key);
+    Assert::IsFalse(f->worker.AssociateQualifiedSource(seedTicket,f->token,f->receipt,f->qualified,f->receipt.Operation(),false));
+    ConsumeWorkerEquivalentSeed(*f);
+    Assert::IsFalse(f->worker.AssociateQualifiedSource(seedTicket,f->token,f->receipt,f->qualified,f->receipt.Operation(),true));
+    auto unqualified=f->qualified;unqualified.qualified=false;
+    Assert::IsFalse(f->worker.AssociateQualifiedSource(seedTicket,f->token,f->receipt,unqualified,f->receipt.Operation(),false));
+    auto changedOperation=f->receipt.Operation();++changedOperation.destination.left;
+    Assert::IsFalse(f->worker.AssociateQualifiedSource(seedTicket,f->token,f->receipt,f->qualified,changedOperation,false));
+    changedOperation=f->receipt.Operation();++changedOperation.content.right;
+    Assert::IsFalse(f->worker.AssociateQualifiedSource(seedTicket,f->token,f->receipt,f->qualified,changedOperation,false));
+    auto foreign=WorkerEquivalentSeed();ConsumeWorkerEquivalentSeed(*foreign);
+    Assert::IsFalse(f->worker.AssociateQualifiedSource(seedTicket,foreign->token,foreign->receipt,foreign->qualified,foreign->receipt.Operation(),false),
+        L"Equal numeric revisions in different workers do not own this cue state.");
+    Assert::IsTrue(f->worker.AssociateQualifiedSource(seedTicket,f->token,f->receipt,f->qualified,f->receipt.Operation(),false));
+    auto current=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(3,f->pixels));
+    SubtitleBoxObservation key;Assert::IsTrue(BuildSubtitleCurrentCueProofKey(current->observation,current->observation.identity,f->seed->physicalBase,true,key));
+    SourceAnalysisTicket ticket(key);SourcePictureEquivalenceToken token;
+    Assert::IsTrue(bool(f->cache.Find(f->source,key.identity,21,&token)));
+    const auto support=EquivalentSupport(*current);
+    Assert::IsTrue(support && support->evaluated && support->verified,L"Current support producer must independently succeed.");
+    Assert::IsTrue(token.MatchesSource(key.identity) && f->token.SameSnapshot(token),L"Current token must match the exact original encoding.");
+    struct ReadTrace {
+        unsigned candidates=0;
+        std::mutex mutex;std::condition_variable changed;
+        bool entered=false,release=false,expired=false;
+        static void __cdecl Capture(void* opaque,const AnalysisDiagnosticRecordV1* record) {
+            if(!record)return;
+            auto& self=*static_cast<ReadTrace*>(opaque);
+            if(std::strcmp(record->stage,"cue-equivalent-candidate")==0)++self.candidates;
+            if(std::strcmp(record->stage,"worker-miss")!=0)return;
+            // ReadReady emits this callback while holding its actual job mutex.
+            std::unique_lock<std::mutex> lock(self.mutex);
+            self.entered=true;self.changed.notify_all();
+            self.expired=!self.changed.wait_for(lock,std::chrono::seconds(2),[&]{return self.release;});
+        }
+    } readTrace;
+    AnalysisDiagnosticTrace::SetExternalSinks(&readTrace,&ReadTrace::Capture,nullptr,nullptr);
+    struct ClearReadSink {~ClearReadSink(){AnalysisDiagnosticTrace::ClearExternalSinks();}} clearReadSink;
+    f->worker.AdvanceCurrentCueRenderWindow(key.identity,3);
+    SubtitleCurrentCueProofReceipt receipt;
+    std::thread occupiedWorker([&]{SubtitleBoxObservation ignored;f->worker.TryRead(key,ignored);});
+    bool entered=false;
+    {std::unique_lock<std::mutex> lock(readTrace.mutex);
+        entered=readTrace.changed.wait_for(lock,std::chrono::seconds(2),[&]{return readTrace.entered;});}
+    const bool rebound=entered && f->worker.TryReadCurrentEquivalentCue(ticket,token,key,f->seed->physicalBase,f->seed->sourceMode,3,f->revision,support.get(),false,receipt);
+    bool completedWhileJobMutexHeld=false;
+    {std::lock_guard<std::mutex> lock(readTrace.mutex);
+        completedWhileJobMutexHeld=entered && !readTrace.expired;readTrace.release=true;}
+    readTrace.changed.notify_all();occupiedWorker.join();
+    Assert::IsTrue(entered,L"The test must occupy the actual worker job mutex through its existing diagnostic callback.");
+    Assert::IsTrue(completedWhileJobMutexHeld,L"Equivalent current receipt lookup must not wait for the worker job mutex.");
+    if(!rebound) {
+        std::ostringstream diagnostic;diagnostic<<"equivalent read rejected: candidateCopies="<<readTrace.candidates
+            <<" reason="<<receipt.Reason()<<" priorValid="<<f->receipt.Valid()<<" tokenValid="<<token.Valid()<<" currentValid="<<receipt.Valid()
+            <<" sameContext="<<SubtitleCurrentCueWorkerDetail::SameContext(f->receipt.CurrentKey(),key)
+            <<" shared="<<key.sharedPicture.AvailableFor(key.identity,key.width,key.height)
+            <<" bars="<<f->receipt.CropExcludedBarsVerified()<<" footprint="<<f->receipt.FootprintSamples()
+            <<" supportGen="<<support->verification.sourceGeneration<<" supportAxes="<<int(support->verification.vertical)<<","<<int(support->verification.horizontal);
+        Logger::WriteMessage(diagnostic.str().c_str());
+    }
+    Assert::IsTrue(rebound,L"Exact current byte/support evidence must produce a rebound receipt.");
+    Assert::IsTrue(receipt.Valid(),L"New equivalent receipt must remain valid before consumption.");
+    Assert::IsTrue(receipt.Provenance()==SubtitleCurrentCueProofProvenance::PresentationOnlyExactSourcePixels,L"Receipt provenance must identify current exact source bytes.");
+    Assert::IsTrue(SameAnalysisFrameIdentity(receipt.CurrentKey().identity,key.identity));
+    Assert::AreEqual(uint64_t(0),receipt.WorkerThreadId());
+    auto tracker=std::make_unique<SubtitleBoxPresentation>();auto preview=std::make_unique<SubtitleBoxPreview>();SubtitleBoxResult cue;
+    Assert::IsTrue(tracker->ConsumeCurrentCueProof(receipt,*preview,cue),L"A genuine equivalent receipt must pass the unchanged presentation consumer.");
+    Assert::IsFalse(tracker->ConsumeCurrentCueProof(receipt,*preview,cue));
+    SubtitleCurrentCueProofReceipt duplicate;
+    Assert::IsFalse(f->worker.TryReadCurrentEquivalentCue(ticket,token,key,f->seed->physicalBase,f->seed->sourceMode,3,f->revision,support.get(),false,duplicate));
+    Assert::IsFalse(duplicate.Valid());
+    f->cache.Clear();Assert::IsFalse(token.Valid());Assert::IsFalse(receipt.Valid(),L"Cache eviction must revoke issued equivalent receipt.");
+}
+TEST_METHOD(CurrentCueEquivalentSourceRejectsChangedPixelsSupportAndContext) {
+    auto f=WorkerEquivalentSeed();ConsumeWorkerEquivalentSeed(*f);SourceAnalysisTicket seedTicket(f->key);
+    Assert::IsTrue(f->worker.AssociateQualifiedSource(seedTicket,f->token,f->receipt,f->qualified,f->receipt.Operation(),false));
+    auto current=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(3,f->pixels));
+    SubtitleBoxObservation canonical;Assert::IsTrue(BuildSubtitleCurrentCueProofKey(current->observation,current->observation.identity,f->seed->physicalBase,true,canonical));
+    SourcePictureEquivalenceToken token;Assert::IsTrue(bool(f->cache.Find(f->source,canonical.identity,21,&token)));
+    f->worker.AdvanceCurrentCueRenderWindow(canonical.identity,3);
+    const auto genuineSupport=EquivalentSupport(*current);
+    Assert::IsTrue(genuineSupport && genuineSupport->verified);
+    for(unsigned fault=0;fault<16;++fault) {
+        auto key=canonical;auto support=*genuineSupport;const CurrentSourceSupportEvidence* currentSupport=&support;
+        auto base=f->seed->physicalBase;auto mode=f->seed->sourceMode;int background=3;uint64_t revision=f->revision;bool temporal=false;
+        switch(fault) {
+        case 0:currentSupport=nullptr;break;
+        case 1:support.verified=false;break;
+        case 2:support.evaluated=false;break;
+        case 3:++support.identity.acceptedSequence;break;
+        case 4:support.samplingBounds.top=base.top+1;break;
+        case 5:support.verification.vertical=ActivePictureCandidateVerificationState::CONTRADICTED;break;
+        case 6:++key.policyGeneration;break;
+        case 7:++key.continuityGeneration;break;
+        case 8:++base.top;break;
+        case 9:mode=SubtitlePreviewMode::GeneratedGrayBackground;break;
+        case 10:++background;break;
+        case 11:++revision;break;
+        case 12:++key.identity.viewportGeneration;break;
+        case 13:temporal=true;break;
+        case 14:++key.identity.analysisDomainKey;break;
+        case 15:support.verification.sourceGeneration+=100;break;
+        }
+        SourceAnalysisTicket ticket(key);SubtitleCurrentCueProofReceipt rejected;
+        Assert::IsFalse(f->worker.TryReadCurrentEquivalentCue(ticket,token,key,base,mode,background,revision,currentSupport,temporal,rejected));
+        Assert::IsFalse(rejected.Valid());
+    }
+    // Neither changed text nor a moving-background byte can borrow a paused
+    // equivalence association. These are real changed native buffers.
+    for(unsigned kind=0;kind<3;++kind) {
+        auto changed=std::make_shared<std::vector<uint16_t>>(*f->pixels);
+        const size_t pixel=kind==0?size_t(76)*160+125:(kind==1?size_t(20)*160+150:size_t(30)*160+150);
+        (*changed)[pixel]=uint16_t((kind==2?304:940)<<6);
+        if(kind==0)for(int y=74;y<80;++y)for(int x=120;x<146;++x)
+            if(x%7<3)(*changed)[size_t(y)*160+x]=uint16_t(940<<6);
+        auto source=OwnedCadenceSource(changed);auto key=canonical;key.identity=Identity(4+kind);key.identity.analysisDomainKey=17;key.sharedPicture.identity=key.identity;
+        SourcePictureEquivalenceToken changedToken;
+        Assert::IsFalse(bool(f->cache.Find(source,key.identity,21,&changedToken)));
+        const auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(source));
+        Assert::IsTrue(facts->complete && f->cache.Store(source,key.identity,facts,21,false,&changedToken));
+        Assert::IsTrue(changedToken.Valid());
+        auto supportBounds=f->seed->physicalBase;supportBounds.bottom=82;
+        const auto support=VerifyCurrentSourceSupport(source,key.identity,&supportBounds,nullptr);
+        f->worker.AdvanceCurrentCueRenderWindow(key.identity,key.identity.acceptedSequence);
+        SourceAnalysisTicket ticket(key);SubtitleCurrentCueProofReceipt rejected;
+        Assert::IsFalse(f->worker.TryReadCurrentEquivalentCue(ticket,changedToken,key,f->seed->physicalBase,f->seed->sourceMode,3,f->revision,&support,false,rejected));
+    }
+    f->worker.InvalidateCurrentCueProofContext();
+    SourceAnalysisTicket ticket(canonical);SubtitleCurrentCueProofReceipt rejected;
+    Assert::IsFalse(f->worker.TryReadCurrentEquivalentCue(ticket,token,canonical,f->seed->physicalBase,f->seed->sourceMode,3,f->revision,genuineSupport.get(),false,rejected));
+}
+TEST_METHOD(CurrentCueEquivalentSourceOrdersAllEncodingAssociationsAndRejectsRevocation) {
+    auto f=WorkerEquivalentSeed();ConsumeWorkerEquivalentSeed(*f);SourceAnalysisTicket firstTicket(f->key);
+    Assert::IsTrue(f->worker.AssociateQualifiedSource(firstTicket,f->token,f->receipt,f->qualified,f->receipt.Operation(),false));
+    const auto firstPixels=f->pixels;
+    auto secondPixels=std::make_shared<std::vector<uint16_t>>(*firstPixels);(*secondPixels)[size_t(30)*160+150]=uint16_t(304<<6);
+    PrepareWorkerEquivalentCurrent(*f,4,secondPixels);ConsumeWorkerEquivalentSeed(*f);SourceAnalysisTicket secondTicket(f->key);
+    Assert::IsTrue(f->worker.AssociateQualifiedSource(secondTicket,f->token,f->receipt,f->qualified,f->receipt.Operation(),false));
+    const auto read=[&](uint64_t sequence,const std::shared_ptr<std::vector<uint16_t>>& pixels,SubtitleCurrentCueProofReceipt& receipt) {
+        auto current=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(sequence,pixels));
+        SubtitleBoxObservation key;Assert::IsTrue(BuildSubtitleCurrentCueProofKey(current->observation,current->observation.identity,f->seed->physicalBase,true,key));
+        const auto source=OwnedCadenceSource(pixels);SourcePictureEquivalenceToken token;
+        Assert::IsTrue(bool(f->cache.Find(source,key.identity,21,&token)));
+        f->worker.AdvanceCurrentCueRenderWindow(key.identity,sequence);
+        SourceAnalysisTicket ticket(key);const auto support=EquivalentSupport(*current);
+        return f->worker.TryReadCurrentEquivalentCue(ticket,token,key,f->seed->physicalBase,f->seed->sourceMode,3,f->revision,support.get(),false,receipt);
+    };
+    SubtitleCurrentCueProofReceipt issued;
+    Assert::IsTrue(read(40,firstPixels,issued));Assert::IsTrue(issued.Valid());
+    Assert::IsFalse(read(39,secondPixels,issued));Assert::IsFalse(issued.Valid());
+    Assert::IsFalse(read(40,firstPixels,issued));
+    Assert::IsTrue(read(41,secondPixels,issued));
+    // The existing private snapshot's eviction revokes the association without
+    // retaining a capture-driver owner or creating a new cue-history object.
+    for(unsigned phase=2;phase<7;++phase) {
+        auto pixels=std::make_shared<std::vector<uint16_t>>(*firstPixels);(*pixels)[size_t(30)*160+150]=uint16_t((300+phase*4)<<6);
+        const auto source=OwnedCadenceSource(pixels);auto id=Identity(50+phase);id.analysisDomainKey=17;
+        const auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(source));
+        Assert::IsTrue(facts->complete && f->cache.Store(source,id,facts,21,false));
+    }
+    Assert::IsFalse(issued.Valid());
+}
+TEST_METHOD(CurrentCueEquivalentSourceRejectsRetirementDuringPublication) {
+    auto f=WorkerEquivalentSeed();ConsumeWorkerEquivalentSeed(*f);
+    struct RetireOnCopy {
+        SubtitleMeasurementWorker* worker=nullptr;
+        const char* stage=nullptr;
+        ActivePictureFrameIdentity next{};
+        unsigned calls=0;
+        static void __cdecl Capture(void* opaque,const AnalysisDiagnosticRecordV1* record) {
+            auto& self=*static_cast<RetireOnCopy*>(opaque);
+            if(!record || !self.stage || std::strcmp(record->stage,self.stage)!=0)return;
+            ++self.calls;
+            self.worker->AdvanceCurrentCueRenderWindow(self.next,self.next.acceptedSequence);
+        }
+    } sink;
+    sink.worker=&f->worker;sink.stage="cue-equivalent-association";
+    sink.next=Identity(3);sink.next.analysisDomainKey=17;
+    AnalysisDiagnosticTrace::SetExternalSinks(&sink,&RetireOnCopy::Capture,nullptr,nullptr);
+    struct ClearSink {~ClearSink(){AnalysisDiagnosticTrace::ClearExternalSinks();}} clearSink;
+    SourceAnalysisTicket oldTicket(f->key);
+    Assert::IsFalse(f->worker.AssociateQualifiedSource(oldTicket,f->token,f->receipt,f->qualified,f->receipt.Operation(),false),
+        L"Retirement during the unlocked association copy must prevent publication.");
+    Assert::AreEqual(1u,sink.calls,L"The actual off-lock association copy must be exercised.");
+    sink.stage=nullptr;
+    Assert::IsFalse(f->worker.AssociateQualifiedSource(oldTicket,f->token,f->receipt,f->qualified,f->receipt.Operation(),false),
+        L"An already retired qualified source must also fail the entry check.");
+    // A rejected old association must not poison subsequent current proof/state.
+    PrepareWorkerEquivalentCurrent(*f,3,f->pixels);ConsumeWorkerEquivalentSeed(*f);
+    SourceAnalysisTicket currentTicket(f->key);
+    Assert::IsTrue(f->worker.AssociateQualifiedSource(currentTicket,f->token,f->receipt,f->qualified,f->receipt.Operation(),false),
+        L"A later genuinely consumed/qualified current source can still associate.");
+    const auto read=[&](uint64_t sequence,SubtitleCurrentCueProofReceipt& receipt) {
+        auto current=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(sequence,f->pixels));
+        SubtitleBoxObservation key;Assert::IsTrue(BuildSubtitleCurrentCueProofKey(current->observation,current->observation.identity,f->seed->physicalBase,true,key));
+        SourcePictureEquivalenceToken token;Assert::IsTrue(bool(f->cache.Find(f->source,key.identity,21,&token)));
+        f->worker.AdvanceCurrentCueRenderWindow(key.identity,sequence);
+        SourceAnalysisTicket ticket(key);const auto support=EquivalentSupport(*current);
+        return f->worker.TryReadCurrentEquivalentCue(ticket,token,key,f->seed->physicalBase,f->seed->sourceMode,3,f->revision,support.get(),false,receipt);
+    };
+    sink.stage="cue-equivalent-candidate";sink.next=Identity(5);sink.next.analysisDomainKey=17;sink.calls=0;
+    SubtitleCurrentCueProofReceipt receipt;
+    Assert::IsFalse(read(4,receipt),L"Retirement during the unlocked receipt copy must prevent issuance.");
+    Assert::AreEqual(1u,sink.calls,L"The actual off-lock read copy must be exercised.");
+    Assert::IsFalse(receipt.Valid(),L"Rejected copied receipt must be unusable.");
+    sink.stage=nullptr;
+    Assert::IsTrue(read(5,receipt),L"Rejected retirement must not consume the later current issuance opportunity.");
+    Assert::IsTrue(receipt.Valid());
 }
 TEST_METHOD(CurrentCueWorkerPreparedSamplingBasisRequiresExactQualifiedComposition) {
     auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());

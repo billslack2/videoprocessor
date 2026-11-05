@@ -1,6 +1,7 @@
 #pragma once
 #include <AnalysisCompletionSignal.h>
 #include <SourcePictureDetector.h>
+#include <SourceSynchronizedAnalysis.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleCadenceGuard.h>
 #include <SubtitleCurrentCuePresentation.h>
@@ -327,7 +328,7 @@ enum class SubtitleCurrentCueProofStatus : uint8_t {
 };
 
 enum class SubtitleCurrentCueProofProvenance : uint8_t {
-    None, PresentationOnlyCurrentPixels
+    None, PresentationOnlyCurrentPixels, PresentationOnlyExactSourcePixels
 };
 
 // Typed presentation evidence. It is deliberately separate from the ordinary
@@ -337,6 +338,7 @@ class SubtitleCurrentCueProofReceipt {
     friend class SubtitleMeasurementWorker;
     friend class SubtitleBoxPresentation;
     bool m_valid=false;
+    SourcePictureEquivalenceToken m_sourceEquivalence;
     SubtitleCurrentCueProofProvenance m_provenance=SubtitleCurrentCueProofProvenance::None;
     uint64_t m_templateRevision=0;
     ActivePictureFrameIdentity m_seedIdentity;
@@ -359,7 +361,9 @@ class SubtitleCurrentCueProofReceipt {
 public:
     bool Valid() const {
         return m_valid && m_minimumRevision &&
-            m_templateRevision>=m_minimumRevision->load(std::memory_order_acquire);
+            m_templateRevision>=m_minimumRevision->load(std::memory_order_acquire) &&
+            (m_provenance!=SubtitleCurrentCueProofProvenance::PresentationOnlyExactSourcePixels ||
+                m_sourceEquivalence.MatchesSource(m_currentKey.identity));
     }
     SubtitleCurrentCueProofProvenance Provenance() const {return m_provenance;}
     uint64_t TemplateRevision() const {return m_templateRevision;}
@@ -387,8 +391,9 @@ inline bool SubtitleBoxPresentation::ConsumeCurrentCueProof(
     const SubtitleCurrentCueProofReceipt& receipt,SubtitleBoxPreview& outPreview,
     SubtitleBoxResult& outCue) {
     outPreview={};outCue={};
-    if(!receipt.Valid() || receipt.m_provenance!=
-            SubtitleCurrentCueProofProvenance::PresentationOnlyCurrentPixels ||
+    if(!receipt.Valid() || (receipt.m_provenance!=
+            SubtitleCurrentCueProofProvenance::PresentationOnlyCurrentPixels && receipt.m_provenance!=
+            SubtitleCurrentCueProofProvenance::PresentationOnlyExactSourcePixels) ||
         !receipt.m_templateRevision || !receipt.m_currentInk ||
         receipt.m_currentInk->rawEvidenceComplete || !receipt.m_currentInk->paletteValid ||
         !receipt.m_acceptedCue.detected || receipt.m_acceptedCue.held ||
@@ -580,6 +585,13 @@ struct SubtitleCurrentCueProofRequest {
 struct SubtitleCurrentCueWorkerState;
 struct SubtitleCurrentCueTaskEntry;
 struct SubtitleCurrentCueRefreshLease;
+// Small immutable publication of the EXISTING cue state and eligible source
+// window. Readers never take the worker job mutex or copy the cue descriptor.
+struct SubtitleCurrentCueReadView {
+    std::shared_ptr<SubtitleCurrentCueWorkerState> state;
+    ActivePictureFrameIdentity head;
+    uint64_t tail=0,revision=0;
+};
 
 enum class SubtitleCurrentCueFullScanRoute : uint8_t {
     Enqueue, Suppress, Deferred
@@ -646,6 +658,13 @@ public:
     // one-use token only after current operation/context validation succeeds.
     SubtitleCurrentCueProofStatus TryPeekCurrentCueProof(
         const SubtitleBoxObservation& exactKey,SubtitleCurrentCueProofReceipt& receipt);
+    bool AssociateQualifiedSource(const SourceAnalysisTicket&,const SourcePictureEquivalenceToken&,
+        const SubtitleCurrentCueProofReceipt&,const QualifiedSubtitlePresentationEvidence&,
+        const SubtitleCutPasteGeometry& actualOperation,bool temporalDonorPossible);
+    bool TryReadCurrentEquivalentCue(const SourceAnalysisTicket&,const SourcePictureEquivalenceToken&,
+        const SubtitleBoxObservation& key,const ActivePictureBounds& base,SubtitlePreviewMode mode,
+        int background,uint64_t revision,const CurrentSourceSupportEvidence* currentSupport,
+        bool temporalDonorPossible,SubtitleCurrentCueProofReceipt& out);
     bool MakeCurrentCueProofKey(const SubtitleBoxObservation& sourceKey,
         SubtitlePreviewMode sourceMode,int backgroundMode,SubtitleBoxObservation& proofKey,
         ActivePictureBounds& physicalBase,uint64_t& templateRevision);
@@ -980,12 +999,16 @@ public:
             retiredPending.swap(m_pending);retiredCuePending.swap(m_currentCuePending);
             retiredCueTasks.swap(m_currentCueTasks);retiredPastRaw.swap(m_pastRaw);
             retiredRawVersions.swap(m_rawVersions);retiredCueState=std::move(m_currentCueState);
+            PublishCurrentCueReadViewLocked();
         }
         m_changed.notify_all();
         for(auto& thread:m_threads)if(thread.joinable())thread.join();
     }
 private:
     bool HasCurrentCueProofContextLocked() const;
+    void PublishCurrentCueReadViewLocked();
+    bool CurrentCueReadViewAccepts(const std::shared_ptr<const SubtitleCurrentCueReadView>&,
+        const SubtitleBoxObservation&,uint64_t) const;
     SubtitleCurrentCueFullScanRoute RouteCurrentCueFullScan(const SubtitleBoxObservation& key,
         Work& work,const OwnedScanBacklogWitness* ownedWitness,uint64_t timelinePolicy,bool nonblocking,
         std::shared_ptr<SubtitleCurrentCueRefreshLease>& refreshLease);
@@ -1263,6 +1286,7 @@ private:
     std::deque<Job> m_currentCuePending;
     std::deque<std::shared_ptr<SubtitleCurrentCueTaskEntry>> m_currentCueTasks;
     std::shared_ptr<SubtitleCurrentCueWorkerState> m_currentCueState;
+    std::shared_ptr<const SubtitleCurrentCueReadView> m_currentCueReadView;
     ActivePictureFrameIdentity m_currentCueWindowHead;
     uint64_t m_currentCueWindowTail=0,m_nextCurrentCueRevision=0;
     std::shared_ptr<std::atomic_uint64_t> m_currentCueMinimumRevision=
@@ -2708,6 +2732,23 @@ struct SubtitleCurrentCueWorkerState {
     SubtitlePendingMeasurementGuard pending;
     SubtitleCadenceGuard footprint;
     SubtitleCurrentCueTemplateDescriptor descriptor;
+    // Qualified operation metadata belongs to this cue revision, not a second
+    // cue history. The weak cache stamps own no source/background/GPU pixels.
+    struct QualifiedEncoding {
+        SourcePictureEquivalenceToken token;
+        std::shared_ptr<const SubtitleCurrentCueProofReceipt> receipt;
+        uint64_t lastUse=0;
+        ActivePictureFrameIdentity lastIssued;
+    };
+    struct QualifiedAssociations {
+        std::array<QualifiedEncoding,4> encodings{};
+        uint64_t clock=0;
+        ActivePictureFrameIdentity lastIssued;
+        bool haveIssued=false;
+    };
+    // Only renderer qualification/issuance updates this immutable metadata via
+    // ordered CAS. Worker job bookkeeping cannot contend with these reads.
+    std::shared_ptr<const QualifiedAssociations> qualifiedAssociations;
     std::atomic_bool semanticRefreshInFlight{false};
     std::atomic_bool needsFullScanBurst{false};
     // Ordinary scan admission has no presentation-mode fields in its key.
@@ -2927,12 +2968,34 @@ inline bool SubtitleMeasurementWorker::HasCurrentCueProofContextLocked() const {
         m_currentCueMinimumRevision->load(std::memory_order_acquire);
 }
 
+inline void SubtitleMeasurementWorker::PublishCurrentCueReadViewLocked() {
+    std::shared_ptr<const SubtitleCurrentCueReadView> next;
+    if(!m_stopping && HasCurrentCueProofContextLocked() && m_currentCueState->descriptor.valid) {
+        const auto old=std::atomic_load(&m_currentCueReadView);
+        if(old && old->state==m_currentCueState && old->revision==m_currentCueState->descriptor.revision &&
+            SameAnalysisFrameIdentity(old->head,m_currentCueWindowHead) && old->tail==m_currentCueWindowTail)return;
+        auto view=std::make_shared<SubtitleCurrentCueReadView>();
+        view->state=m_currentCueState;view->revision=m_currentCueState->descriptor.revision;
+        view->head=m_currentCueWindowHead;view->tail=m_currentCueWindowTail;next=std::move(view);
+    }
+    std::atomic_store(&m_currentCueReadView,std::move(next));
+}
+inline bool SubtitleMeasurementWorker::CurrentCueReadViewAccepts(
+    const std::shared_ptr<const SubtitleCurrentCueReadView>& expected,
+    const SubtitleBoxObservation& key,uint64_t revision) const {
+    const auto current=std::atomic_load(&m_currentCueReadView);
+    return expected && current && current->state==expected->state && current->revision==revision &&
+        revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
+        SubtitleCurrentCueWorkerDetail::InWindow(current->head,current->tail,key.identity);
+}
+
 inline void SubtitleMeasurementWorker::InvalidateCurrentCueProofContext() {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         // Do not release cached arrays/source owners on the caller's presentation
         // path. Queued/running jobs retire themselves after checking this floor.
         m_currentCueMinimumRevision->store(m_nextCurrentCueRevision+1,std::memory_order_release);
+        PublishCurrentCueReadViewLocked();
     }
     m_changed.notify_all();
 }
@@ -3049,6 +3112,161 @@ inline void SubtitleMeasurementWorker::ObserveCurrentCueSemanticScan(
     }
     state->needsFullScanBurst.store(!confirms,std::memory_order_release);
 }
+
+namespace SubtitleCurrentCueWorkerDetail {
+inline bool SameSourceEpoch(const ActivePictureFrameIdentity& a,const ActivePictureFrameIdentity& b) {
+    return a.transportGeneration==b.transportGeneration && a.sourceFormatGeneration==b.sourceFormatGeneration &&
+        a.analysisDomainKey==b.analysisDomainKey && a.viewportGeneration==b.viewportGeneration &&
+        a.rendererGeneration==b.rendererGeneration;
+}
+}
+
+__declspec(noinline) inline bool SubtitleMeasurementWorker::AssociateQualifiedSource(
+        const SourceAnalysisTicket& ticket,const SourcePictureEquivalenceToken& token,
+        const SubtitleCurrentCueProofReceipt& receipt,
+        const QualifiedSubtitlePresentationEvidence& qualified,const SubtitleCutPasteGeometry& actualOperation,bool temporalDonorPossible) {
+        const auto& key=receipt.CurrentKey();
+        const auto& op=receipt.Operation();
+        if(temporalDonorPossible || !token.MatchesSource(key.identity) || !receipt.Valid() ||
+            receipt.Provenance()!=SubtitleCurrentCueProofProvenance::PresentationOnlyCurrentPixels ||
+            !receipt.m_consumed || !receipt.m_consumed->load(std::memory_order_acquire) ||
+            !SubtitlePreviewOverridesClassicHandling(receipt.SourceMode()) || !op.valid ||
+            !SubtitleCurrentCueWorkerDetail::SameOperation(op,actualOperation) ||
+            !qualified.qualified || qualified.status!=QualifiedSubtitlePresentationStatus::Qualified ||
+            !qualified.currentCompositionVerified || qualified.currentCompositionMode!=receipt.SourceMode() ||
+            !SameAnalysisFrameIdentity(qualified.identity,key.identity) ||
+            !SameSubtitlePresentationBounds(qualified.physicalBase,receipt.PhysicalBase()) ||
+            qualified.erasedSourceBounds.rasterWidth!=key.width || qualified.erasedSourceBounds.rasterHeight!=key.height ||
+            qualified.erasedSourceBounds.left!=op.content.left || qualified.erasedSourceBounds.top!=op.content.top ||
+            qualified.erasedSourceBounds.right!=op.content.right || qualified.erasedSourceBounds.bottom!=op.content.bottom)
+            return false;
+        if(!ticket.MatchesRequestContext(key))return false;
+        const auto view=std::atomic_load(&m_currentCueReadView);
+        if(receipt.m_minimumRevision!=m_currentCueMinimumRevision ||
+            !CurrentCueReadViewAccepts(view,key,receipt.TemplateRevision()))return false;
+        const auto state=view->state;
+        auto before=std::atomic_load(&state->qualifiedAssociations);
+        if(before && before->haveIssued &&
+            (!SubtitleCurrentCueWorkerDetail::SameSourceEpoch(before->lastIssued,key.identity) ||
+             (!SameAnalysisFrameIdentity(before->lastIssued,key.identity) &&
+              !(key.identity.acceptedSequence>before->lastIssued.acceptedSequence &&
+                key.identity.sourceFrameNumber>before->lastIssued.sourceFrameNumber &&
+                key.identity.captureTimestamp>before->lastIssued.captureTimestamp))))return false;
+        auto next=std::make_shared<SubtitleCurrentCueWorkerState::QualifiedAssociations>();
+        if(before)*next=*before; // Small metadata only; receipts/ink remain shared immutable objects.
+        auto& entries=next->encodings;
+        SubtitleCurrentCueWorkerState::QualifiedEncoding* slot=nullptr;
+        bool keepSeed=false;
+        for(auto& entry:entries)if(entry.receipt && entry.token.SameSnapshot(token)) {
+            if(entry.receipt->CurrentKey().identity.acceptedSequence>key.identity.acceptedSequence ||
+                entry.lastIssued.acceptedSequence>key.identity.acceptedSequence)return false;
+            const auto& existing=*entry.receipt;
+            keepSeed=existing.Valid() && existing.TemplateRevision()==receipt.TemplateRevision() &&
+                existing.SourceMode()==receipt.SourceMode() && existing.BackgroundMode()==receipt.BackgroundMode() &&
+                SubtitleCurrentCueWorkerDetail::SameContext(existing.CurrentKey(),key) &&
+                SameSubtitlePresentationBounds(existing.PhysicalBase(),receipt.PhysicalBase()) &&
+                SubtitleCurrentCueWorkerDetail::SameCue(existing.AcceptedCue(),receipt.AcceptedCue()) &&
+                SubtitleCurrentCueWorkerDetail::SameOperation(existing.Operation(),op);
+            slot=&entry;break;
+        }
+        if(!slot)for(auto& entry:entries)if(!entry.receipt || !entry.token.Valid() || !entry.receipt->Valid()) {slot=&entry;break;}
+        if(!slot)slot=&*std::min_element(entries.begin(),entries.end(),[](const SubtitleCurrentCueWorkerState::QualifiedEncoding& a,const SubtitleCurrentCueWorkerState::QualifiedEncoding& b){return a.lastUse<b.lastUse;});
+        if(!keepSeed) {slot->token=token;slot->receipt=std::make_shared<const SubtitleCurrentCueProofReceipt>(receipt);}
+        Trace(key,"cue-equivalent-association","qualified-operation-copy-ready");
+        if(!receipt.Valid() || !token.MatchesSource(key.identity) ||
+            !CurrentCueReadViewAccepts(view,key,receipt.TemplateRevision()))return false;
+        next->lastIssued=key.identity;next->haveIssued=true;
+        slot->lastIssued=key.identity;slot->lastUse=++next->clock;
+        std::shared_ptr<const SubtitleCurrentCueWorkerState::QualifiedAssociations> publish=std::move(next);
+        if(!std::atomic_compare_exchange_strong(&state->qualifiedAssociations,&before,publish))return false;
+        return CurrentCueReadViewAccepts(view,key,receipt.TemplateRevision());
+    }
+
+__declspec(noinline) inline bool SubtitleMeasurementWorker::TryReadCurrentEquivalentCue(
+        const SourceAnalysisTicket& ticket,const SourcePictureEquivalenceToken& token,
+        const SubtitleBoxObservation& key,const ActivePictureBounds& base,
+        SubtitlePreviewMode mode,int background,uint64_t revision,
+        const CurrentSourceSupportEvidence* currentSupport,bool temporalDonorPossible,SubtitleCurrentCueProofReceipt& out) {
+        // Invalidate without a large value temporary on the render stack.
+        out.m_valid=false;out.m_consumed.reset();out.m_sourceEquivalence={};out.m_reason="equivalence-ticket-context";
+        if(!ticket.MatchesRequestContext(key))return false;
+        out.m_reason="equivalence-worker-window";
+        const auto view=std::atomic_load(&m_currentCueReadView);
+        if(!CurrentCueReadViewAccepts(view,key,revision))return false;
+        const auto state=view->state;
+        auto before=std::atomic_load(&state->qualifiedAssociations);
+        if(!before)return false;
+        const auto& lastIssued_=before->lastIssued;const bool haveIssued_=before->haveIssued;
+        out.m_reason="equivalence-current-support-context";
+        if(!haveIssued_ || !SubtitleCurrentCueWorkerDetail::SameSourceEpoch(lastIssued_,key.identity) || !(key.identity.acceptedSequence>lastIssued_.acceptedSequence && key.identity.sourceFrameNumber>lastIssued_.sourceFrameNumber && key.identity.captureTimestamp>lastIssued_.captureTimestamp) ||
+            temporalDonorPossible || !token.MatchesSource(key.identity) || !currentSupport ||
+            !currentSupport->evaluated || !currentSupport->verified ||
+            !SameAnalysisFrameIdentity(currentSupport->identity,key.identity) ||
+            currentSupport->samplingBounds.rasterWidth!=key.width || currentSupport->samplingBounds.rasterHeight!=key.height ||
+            currentSupport->samplingBounds.left>base.left || currentSupport->samplingBounds.top>base.top ||
+            currentSupport->samplingBounds.right<base.right || currentSupport->samplingBounds.bottom<base.bottom ||
+            !revision || !SubtitlePreviewOverridesClassicHandling(mode) ||
+            !key.sharedPicture.AvailableFor(key.identity,key.width,key.height) ||
+            !SameSubtitlePresentationBounds(key.sharedPicture.bounds,base))return false;
+        out.m_reason="equivalence-current-support-verification";
+        const auto& support=currentSupport->samplingBounds;const auto& verified=currentSupport->verification;
+        if(support.left<0 || support.top<0 || support.right>key.width || support.bottom>key.height ||
+            support.left>=support.right || support.top>=support.bottom ||
+            verified.bounds.rasterWidth!=key.width || verified.bounds.rasterHeight!=key.height ||
+            verified.bounds.left<support.left || verified.bounds.top<support.top ||
+            verified.bounds.right>support.right || verified.bounds.bottom>support.bottom ||
+            verified.bounds.left>=verified.bounds.right || verified.bounds.top>=verified.bounds.bottom ||
+            (verified.sourceGeneration!=key.identity.transportGeneration && verified.sourceGeneration!=key.identity.sourceFormatGeneration) ||
+            verified.vertical==ActivePictureCandidateVerificationState::CONTRADICTED ||
+            verified.horizontal==ActivePictureCandidateVerificationState::CONTRADICTED ||
+            (verified.vertical!=ActivePictureCandidateVerificationState::VERIFIED &&
+             verified.horizontal!=ActivePictureCandidateVerificationState::VERIFIED))return false;
+        out.m_reason="equivalence-encoding-not-associated";
+        for(size_t index=0;index<before->encodings.size();++index) {
+            const auto& entry=before->encodings[index];
+            if(!entry.receipt || !entry.token.SameSnapshot(token))continue;
+            const auto& prior=*entry.receipt;
+            const auto& old=prior.CurrentKey();const auto& issued=entry.lastIssued;
+            out.m_reason="equivalence-source-order";
+            if(key.identity.acceptedSequence<=issued.acceptedSequence ||
+                key.identity.sourceFrameNumber<=issued.sourceFrameNumber || key.identity.captureTimestamp<=issued.captureTimestamp)return false;
+            out.m_reason="equivalence-prior-cue-context";
+            if(!prior.Valid() || prior.TemplateRevision()!=revision || prior.SourceMode()!=mode ||
+                prior.BackgroundMode()!=background || old.identity.acceptedSequence>=key.identity.acceptedSequence ||
+                old.identity.sourceFrameNumber>=key.identity.sourceFrameNumber || old.identity.captureTimestamp>=key.identity.captureTimestamp ||
+                !SubtitleCurrentCueWorkerDetail::SameContext(old,key) ||
+                !SameSubtitlePresentationBounds(prior.PhysicalBase(),base) || !prior.CurrentInk() ||
+                !prior.CropExcludedBarsVerified() || prior.VerifiedLineCount()<1 || !prior.FootprintSamples())return false;
+            // Full bytes were compared by the current native worker. Rebind only
+            // immutable verified semantics and the operation recipe; the GPU
+            // still reads the selected CURRENT source for all rendering/cleanup.
+            const auto saved=entry.receipt;
+            out=*saved;
+            out.m_currentKey=key;out.m_currentKey.text={};out.m_currentKey.ink.reset();
+            out.m_sourceEquivalence=token;
+            out.m_provenance=SubtitleCurrentCueProofProvenance::PresentationOnlyExactSourcePixels;
+            out.m_consumed=std::make_shared<std::atomic_bool>(false);
+            out.m_reason="current-exact-source-encoding";
+            out.m_workerThreadId=0;out.m_workerMilliseconds=0; // Old cue-worker cost/thread is not current work.
+            Trace(key,"cue-equivalent-candidate","current-equivalence-copy-ready");
+            if(!out.Valid() || out.m_minimumRevision!=m_currentCueMinimumRevision ||
+                !CurrentCueReadViewAccepts(view,key,revision)) {
+                out.m_valid=false;out.m_consumed.reset();out.m_sourceEquivalence={};
+                out.m_reason="equivalence-retired-during-copy";return false;
+            }
+            auto next=std::make_shared<SubtitleCurrentCueWorkerState::QualifiedAssociations>(*before);
+            next->lastIssued=key.identity;next->haveIssued=true;
+            next->encodings[index].lastIssued=key.identity;next->encodings[index].lastUse=++next->clock;
+            std::shared_ptr<const SubtitleCurrentCueWorkerState::QualifiedAssociations> publish=std::move(next);
+            if(!std::atomic_compare_exchange_strong(&state->qualifiedAssociations,&before,publish) ||
+                !CurrentCueReadViewAccepts(view,key,revision) || !out.Valid()) {
+                out.m_valid=false;out.m_consumed.reset();out.m_sourceEquivalence={};
+                out.m_reason="equivalence-issuance-superseded";return false;
+            }
+            return true;
+        }
+        return false;
+    }
 
 inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCueTemplate(
     const SubtitleCurrentCueTemplateInput& input,uint64_t& templateRevision) {
@@ -3184,7 +3402,7 @@ __declspec(noinline) inline SubtitleCurrentCueProofStatus SubtitleMeasurementWor
             std::lock_guard<std::mutex> lock(m_mutex);
             if(!m_stopping && entry->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
                 (!m_currentCueState || entry->revision>=m_currentCueState->descriptor.revision)) {
-                m_currentCueState=state;m_workerLimit=2;
+                m_currentCueState=state;m_workerLimit=2;PublishCurrentCueReadViewLocked();
                 if(!m_threads[1].joinable())m_threads[1]=std::thread([this]{Run(1);});
             } else {seeded=false;reason="current-cue-template-context-invalidated";}
         }
@@ -3263,6 +3481,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
         if(!m_currentCueWindowHead.transportGeneration) {
             m_currentCueWindowHead=request.eligibleRenderHead;
             m_currentCueWindowTail=request.eligibleTailSequence;
+            PublishCurrentCueReadViewLocked();
         }
         const bool inWindow=request.eligibleTailSequence<=m_currentCueWindowTail &&
             InWindow(m_currentCueWindowHead,m_currentCueWindowTail,request.eligibleRenderHead) &&
@@ -3524,7 +3743,7 @@ inline SubtitleCurrentCueProofStatus SubtitleMeasurementWorker::SubmitCurrentCue
                 diagnostics.currentPixelFailure==SubtitlePendingMeasurementGuard::CurrentPixelVerificationFailure::PixelMismatch) {
                 // Cue tasks run serially on worker0. Retain context and completed
                 // receipts; fresh independent evidence must replace this seed.
-                state->descriptor.valid=false;
+                state->descriptor.valid=false;PublishCurrentCueReadViewLocked();
             }
             if(verified) {entry->receipt=std::move(receipt);entry->status=SubtitleCurrentCueProofStatus::Ready;}
             else entry->status=(fallbackQueued || entry->fallbackQueued)?SubtitleCurrentCueProofStatus::FallbackQueued:
@@ -3744,6 +3963,7 @@ inline void SubtitleMeasurementWorker::AdvanceCurrentCueRenderWindow(
             m_currentCueWindowTail=(std::max)(m_currentCueWindowTail,
                 (std::min)(tailSequence,maxTail));
         }
+        PublishCurrentCueReadViewLocked();
         const auto& effectiveHead=m_currentCueWindowHead;
         for(auto i=m_currentCuePending.begin();i!=m_currentCuePending.end();) {
             if(!i->currentCueSeedTask && !InWindow(effectiveHead,m_currentCueWindowTail,i->key.identity)) {

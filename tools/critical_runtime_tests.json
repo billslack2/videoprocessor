@@ -14,8 +14,14 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1153,
+  "minimumNativeTests": 1159,
   "requiredNativeMethods": [
+    "CurrentCueEquivalentSourceRejectsRetirementDuringPublication",
+    "CurrentCueEquivalentSourceRequiresConsumedQualifiedCurrentPixels",
+    "CurrentCueEquivalentSourceRejectsChangedPixelsSupportAndContext",
+    "CurrentCueEquivalentSourceOrdersAllEncodingAssociationsAndRejectsRevocation",
+    "OwnedPictureEquivalenceTokensRequireExactBytesAndRevokeWithEntries",
+    "CurrentNativeSupportAndEquivalenceCapabilitiesMergeInEveryOrder",
     "SourceTicketAdoptsOnlyWitnessedExactOwnedScanWithoutRewritingNativeProof",
     "SourceTicketPairsMeasuredArAndCueWithoutAcceptingLateForeignPixels",
     "SourceTicketMissingWorkDoesNotRenameRequestsOrGrantCurrentEvidence",

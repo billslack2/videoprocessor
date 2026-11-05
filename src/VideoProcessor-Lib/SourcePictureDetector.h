@@ -1,5 +1,6 @@
 #pragma once
 #include <SourcePictureMeasurement.h>
+#include <SourcePictureEquivalenceToken.h>
 #include <memory>
 
 // Production uses one source measurement producer. Kept as a named policy
@@ -37,12 +38,14 @@ bool CurrentSourceTransitionSupportsHypothesis(const SourcePictureObservation&,
     const ActivePictureBounds&);
 
 struct SourcePictureSupportResult {
+    SourcePictureEquivalenceToken sourceEquivalence;
     CurrentSourceSupportEvidence currentSupport;
     std::shared_ptr<const SourcePictureBoundaryReference> boundaryReference;
     bool boundaryEncodingEquivalent=false,physicalHypothesisCompatible=false;
     ActivePictureBounds retainedPhysicalHypothesis;
 };
 struct SourcePictureDetectionResult {
+    SourcePictureEquivalenceToken sourceEquivalence;
     ActivePictureEvidence evidence;
     // Optional worker result; transport this pointer through existing results.
     // No sample planes or temporal state are copied into ActivePictureEvidence.

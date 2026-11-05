@@ -5535,7 +5535,7 @@ namespace VideoProcessorTest
                     }
                 }
                 unsigned proofPositive=0,bothMissing=0,recovered=0,recoverySelectedRawScans=0,recoveryRawWorkerResults=0,geometryChanges=0,fullRaster=0;
-                bool complete=true,proofContract=true,rawContract=true,recoveryContract=true,mappingStable=true,cueStable=true;
+                bool complete=true,proofContract=true,equivalentContract=true,recoveryContract=true,mappingStable=true,cueStable=true;
                 bool haveMapping=false;std::array<double,8> mapping{};std::array<int32_t,4> nativeGuard{};
                 uint64_t referenceCue=0;std::array<double,8> previousMapping{};bool havePrevious=false;
                 for(unsigned offset=16;offset<=96;++offset) {
@@ -5561,7 +5561,7 @@ namespace VideoProcessorTest
                     NativeRendererFixtureLog(detail.str().c_str());
                     if(both) {
                         ++bothMissing;
-                        rawContract&=(w.flags&11u)==3u&&!proofConsumed&&!composed;
+                        equivalentContract&=(w.flags&27u)==19u&&proofConsumed&&composed;
                     }
                     else if(inWindow) {++proofPositive;proofContract&=(w.flags&11u)==1u&&proofConsumed&&composed;}
                     else {
@@ -5604,7 +5604,7 @@ namespace VideoProcessorTest
                 std::ostringstream summary;summary<<"MISSING EVIDENCE SUMMARY: anchor="<<anchor<<" one_anchor="<<oneAnchor
                     <<" sources="<<steadySources.size()<<" expected="<<steadyCount<<" exact="<<exact<<" max_source_gap="<<maxSourceGap
                     <<" max_submit_gap_ms="<<maxSubmitGapMs<<" proof_positive="<<proofPositive<<" both_missing="<<bothMissing
-                    <<" recovered="<<recovered<<" recovery_selected_raw_scans="<<recoverySelectedRawScans<<" recovery_raw_worker_results="<<recoveryRawWorkerResults<<" complete="<<complete<<" proof_contract="<<proofContract<<" raw_contract="<<rawContract
+                    <<" recovered="<<recovered<<" recovery_selected_raw_scans="<<recoverySelectedRawScans<<" recovery_raw_worker_results="<<recoveryRawWorkerResults<<" complete="<<complete<<" proof_contract="<<proofContract<<" exact_equivalence_contract="<<equivalentContract
                     <<" recovery_contract="<<recoveryContract<<" stable_mapping="<<mappingStable<<" stable_cue="<<cueStable
                     <<" geometry_changes_including_withheld="<<geometryChanges<<" full_raster="<<fullRaster
                     <<" source_fps="<<sourceFps<<" work_samples="<<windowWork.size()<<" max_work_ms="<<maxWork
@@ -5613,8 +5613,8 @@ namespace VideoProcessorTest
                 NativeRendererFixtureLog(summary.str().c_str());
                 Assert::IsTrue(anchor&&oneAnchor&&complete&&steadySources.size()==steadyCount&&exact&&maxSourceGap==1,
                     L"Every current input must advance; missing evidence cannot substitute old frame identities.");
-                Assert::IsTrue(proofPositive==62&&bothMissing==3&&recovered==16&&recoveryRawWorkerResults>0&&proofContract&&rawContract&&recoveryContract,
-                    L"When both optional results are withheld, preserve the CURRENT raw source without fabricating a composed receipt; normal current work must resume.");
+                Assert::IsTrue(proofPositive==62&&bothMissing==3&&recovered==16&&recoveryRawWorkerResults>0&&proofContract&&equivalentContract&&recoveryContract,
+                    L"When ordinary scan and cue work are withheld, a genuine exact-current source capability must preserve composition; normal current work must resume.");
                 Assert::IsTrue(haveMapping&&mappingStable&&cueStable,
                     L"Verified caption/picture mapping and cue must survive UNKNOWN without arbitrary full-raster fallback.");
                 Assert::AreEqual(0u,geometryChanges,

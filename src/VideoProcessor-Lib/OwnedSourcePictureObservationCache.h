@@ -1,5 +1,6 @@
 #pragma once
 #include <SourcePictureMeasurement.h>
+#include <SourcePictureEquivalenceToken.h>
 #include <ActivePictureDecisionTimeline.h>
 #include <algorithm>
 #include <array>
@@ -17,14 +18,16 @@ public:
     static constexpr size_t MaximumRetainedBytes=128u*1024u*1024u;
     static constexpr size_t MaximumEntries=4;
     static constexpr size_t MaximumRecurringSourceBytes=MaximumRetainedBytes/MaximumEntries;
+    ~OwnedSourcePictureObservationCache() {Clear();}
     void Clear() {
-        for(auto& entry:entries_)entry=Entry{};
+        for(auto& entry:entries_) {Revoke(entry);entry=Entry{};}
         history_={};context_={};contextIdentity_={};contextKnown_=false;continuity_=0;
         retainedBytes_=0;clock_=0;
     }
     bool Store(const AnalysisLumaSource& source,const ActivePictureFrameIdentity& identity,
         std::shared_ptr<const SourcePictureObservation> facts,uint64_t continuityGeneration=0,
-        bool recurringOnly=false) {
+        bool recurringOnly=false,SourcePictureEquivalenceToken* token=nullptr) {
+        if(token)*token={};
         if(!Eligible(source,identity) || !facts || !facts->complete ||
             facts->outcome==SourcePictureOutcome::NotMeasured || facts->sourceGeneration!=source.generation ||
             facts->width!=source.width || facts->height!=source.height) {Clear();return false;}
@@ -58,13 +61,13 @@ public:
             // replace full-byte equality, including all source padding.
             if(std::memcmp(source.data,entry.pixels.get(),source.dataBytes)==0) {
                 if(identity.acceptedSequence<entry.identity.acceptedSequence)return false;
-                entry.identity=identity;entry.facts=std::move(facts);entry.lastUse=++clock_;return true;
+                entry.identity=identity;entry.facts=std::move(facts);entry.lastUse=++clock_;Issue(entry,source,identity,token);return true;
             }
         }
         // A moving source with a new signature does not allocate/copy. Repeated
         // signatures with different bytes cannot cause an endless copy stream.
         if(recurringOnly && !recurring)return false;
-        auto evict=[&](Entry& entry) {retainedBytes_-=entry.bytes;entry=Entry{};};
+        auto evict=[&](Entry& entry) {Revoke(entry);retainedBytes_-=entry.bytes;entry=Entry{};};
         while(retainedBytes_+source.dataBytes>MaximumRetainedBytes) {
             Entry* oldest=nullptr;
             for(auto& entry:entries_)if(entry.facts && (!oldest || entry.lastUse<oldest->lastUse))oldest=&entry;
@@ -79,12 +82,15 @@ public:
         std::unique_ptr<uint8_t[]> pixels(new(std::nothrow) uint8_t[source.dataBytes]);
         if(!pixels)return false;
         std::memcpy(pixels.get(),source.data,source.dataBytes);
+        slot->lifetime=std::make_shared<SourcePictureEquivalenceToken::EntryLifetime>();
         slot->pixels=std::move(pixels);slot->bytes=source.dataBytes;slot->identity=identity;
         slot->facts=std::move(facts);slot->signature=signature;slot->lastUse=++clock_;
-        retainedBytes_+=source.dataBytes;++snapshotCopies_;return true;
+        retainedBytes_+=source.dataBytes;++snapshotCopies_;Issue(*slot,source,identity,token);return true;
     }
     std::shared_ptr<const SourcePictureObservation> Find(const AnalysisLumaSource& source,
-        const ActivePictureFrameIdentity& identity,uint64_t continuityGeneration=0) const {
+        const ActivePictureFrameIdentity& identity,uint64_t continuityGeneration=0,
+        SourcePictureEquivalenceToken* token=nullptr) const {
+        if(token)*token={};
         if(!contextKnown_ || !Eligible(source,identity) || !CompatibleContext(source,identity,continuityGeneration))return {};
         const auto signature=QuickSignature(source);
         for(const auto& entry:entries_) {
@@ -93,7 +99,7 @@ public:
             entry.lastUse=++clock_;
             auto rebound=std::make_shared<SourcePictureObservation>(*entry.facts);
             rebound->sourceGeneration=source.generation;
-            return rebound;
+            Issue(entry,source,identity,token);return rebound;
         }
         return {};
     }
@@ -102,11 +108,21 @@ public:
     uint64_t SnapshotCopyCount() const {return snapshotCopies_;}
 private:
     struct Entry {
+        std::shared_ptr<SourcePictureEquivalenceToken::EntryLifetime> lifetime;
         std::unique_ptr<uint8_t[]> pixels;
         std::shared_ptr<const SourcePictureObservation> facts;
         ActivePictureFrameIdentity identity;
         size_t bytes=0;uint64_t signature=0;mutable uint64_t lastUse=0;
     };
+    static void Revoke(Entry& entry) {
+        if(entry.lifetime)entry.lifetime->active.store(false,std::memory_order_release);
+    }
+    static void Issue(const Entry& entry,const AnalysisLumaSource& source,
+        const ActivePictureFrameIdentity& identity,SourcePictureEquivalenceToken* token) {
+        if(!token || !entry.lifetime || (source.generation!=identity.transportGeneration &&
+            source.generation!=identity.sourceFormatGeneration))return;
+        token->entry_=entry.lifetime;token->identity_=identity;
+    }
     struct History {bool valid=false;uint64_t signature=0,sequence=0;};
     static bool Eligible(const AnalysisLumaSource& source,const ActivePictureFrameIdentity& identity) {
         return source.backingOwner && source.dataBytes && source.dataBytes<=MaximumSourceBytes && source.IsValid() && source.generation &&

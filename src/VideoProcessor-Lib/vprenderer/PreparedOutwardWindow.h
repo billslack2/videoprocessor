@@ -91,7 +91,8 @@ inline void TracePreparedRawPublication(const PreparedAnalysisFrame& frame,const
         return (PreparedOutwardRawMeasurementCurrent(frame,identity,raw)?1u:0u) |
             (SourcePictureMeasurementWorkComplete(raw->evidence)?2u:0u) | (raw->sourcePictureSupport?4u:0u) |
             (PreparedSourceSupportAttemptCurrent(frame,identity,raw->sourcePictureSupport)?8u:0u) |
-            (raw->sourcePictureSupport && raw->sourcePictureSupport->currentSupport.verified?16u:0u);
+            (raw->sourcePictureSupport && raw->sourcePictureSupport->currentSupport.verified?16u:0u) |
+            (raw->sourcePictureSupport && raw->sourcePictureSupport->sourceEquivalence.MatchesSource(identity)?32u:0u);
     };
     trace.counters[0]=capabilities(prior);trace.counters[1]=capabilities(incoming);trace.counters[2]=capabilities(selected);
     if(prior) {trace.counters[3]=prior->identity.acceptedSequence;trace.counters[4]=prior->domainKey;}
@@ -122,13 +123,26 @@ std::shared_ptr<const RawMeasurement> PublishPreparedOutwardRaw(
             const bool newSupport=PreparedSourceSupportAttemptCurrent(frame,identity,computed->sourcePictureSupport);
             const bool supportUpgrade=newSupport && (!priorSupport ||
                 (!expected->sourcePictureSupport->currentSupport.verified && computed->sourcePictureSupport->currentSupport.verified));
-            if(!nativeUpgrade && !supportUpgrade) {
+            // Merge independent capabilities monotonically. A byte token may
+            // finish before or after current support/native verification; it
+            // never replaces either proof or changes their chosen geometry.
+            const bool priorToken=priorSupport && expected->sourcePictureSupport->sourceEquivalence.MatchesSource(identity);
+            const bool newToken=newSupport && computed->sourcePictureSupport->sourceEquivalence.MatchesSource(identity);
+            const bool tokenUpgrade=newToken && !priorToken;
+            if(!nativeUpgrade && !supportUpgrade && !tokenUpgrade) {
                 TracePreparedRawPublication(frame,identity,"kept-current-capabilities",expected,computed,expected);
                 return expected;
             }
-            reason=nativeUpgrade?(supportUpgrade?"native-and-support-upgrade":"native-upgrade"):"support-upgrade";
-            const auto support=supportUpgrade?computed->sourcePictureSupport:
+            reason=tokenUpgrade?"independent-capabilities-upgrade":
+                nativeUpgrade?(supportUpgrade?"native-and-support-upgrade":"native-upgrade"):"support-upgrade";
+            auto support=supportUpgrade?computed->sourcePictureSupport:
                 priorSupport?expected->sourcePictureSupport:std::shared_ptr<const SourcePictureSupportResult>{};
+            if(support && !support->sourceEquivalence.MatchesSource(identity) && (priorToken || newToken)) {
+                auto combinedSupport=std::make_shared<SourcePictureSupportResult>(*support);
+                combinedSupport->sourceEquivalence=priorToken?expected->sourcePictureSupport->sourceEquivalence:
+                    computed->sourcePictureSupport->sourceEquivalence;
+                support=std::move(combinedSupport);
+            }
             if(!nativeUpgrade || support!=computed->sourcePictureSupport) {
                 auto combined=std::make_shared<RawMeasurement>(nativeUpgrade?*computed:*expected);
                 combined->sourcePictureSupport=support;

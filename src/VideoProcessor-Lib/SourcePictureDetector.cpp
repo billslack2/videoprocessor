@@ -236,17 +236,19 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
     static thread_local OwnedSourcePictureObservationCache factsCache;
     try {
         const auto lookupStarted=std::chrono::steady_clock::now();
-        auto ready=factsCache.Find(source,identity);
+        SourcePictureEquivalenceToken equivalence;
+        auto ready=factsCache.Find(source,identity,0,&equivalence);
         const double lookupMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-lookupStarted).count();
         if(ready) {
             // Byte equality proves only geometry facts. Current exclusion and
             // subtitle verification still run with this frame's own identity.
             result=VerifySourcePictureObservation(source,std::move(ready),&budget);
             result.geometryReused=true;
+            result.sourceEquivalence=std::move(equivalence);
         } else {
             result=DetectSourcePictureForWorker(source,&budget);
             if(result.observation && result.observation->complete)
-                factsCache.Store(source,identity,result.observation,0,true);
+                factsCache.Store(source,identity,result.observation,0,true,&result.sourceEquivalence);
         }
         result.geometryLookupMs=lookupMs;
     }
@@ -264,7 +266,10 @@ SourcePictureDetectionResult DetectPreparedSourcePictureBounded(const AnalysisLu
     // Current support is optional presentation evidence. Budget failure here
     // cannot erase a completed current physical measurement above.
     auto supportResult=supportRequest?std::make_shared<SourcePictureSupportResult>():nullptr;
-    if(supportResult)supportResult->currentSupport.identity=identity; // Terminal negative attempts remain source-bound.
+    if(supportResult) {
+        supportResult->currentSupport.identity=identity; // Terminal negative attempts remain source-bound.
+        supportResult->sourceEquivalence=result.sourceEquivalence;
+    }
     if(supportRequest && result.evidence.currentSourceIdentityAvailable) {
         try {
             const auto* facts=result.observation.get();

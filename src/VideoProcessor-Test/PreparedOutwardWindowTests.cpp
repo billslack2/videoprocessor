@@ -4,6 +4,7 @@
 #include <vprenderer/ActivePictureMeasurementCache.h>
 #include <vprenderer/PresentationAnalysisBudget.h>
 #include <vector>
+#include <OwnedSourcePictureObservationCache.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -158,6 +159,76 @@ namespace VideoProcessorTest
                 } else Assert::IsTrue(final==plain,
                     L"Foreign or malformed claimed-positive support cannot enrich the current slot.");
             }
+        }
+
+        TEST_METHOD(CurrentNativeSupportAndEquivalenceCapabilitiesMergeInEveryOrder)
+        {
+            OwnedWindow window(true);const auto plain=window.PublishRaw(0);
+            const auto& frame=window.request.frames[0];const auto& id=window.request.identities[0];
+            const auto slot=window.request.rawSlots[0];
+            SourcePictureSupportRequest request;
+            const auto detected=DetectPreparedSourcePictureBounded(frame.source,id,&request);
+            Assert::IsTrue(detected.support && detected.support->currentSupport.verified);
+            auto facts=std::make_shared<const SourcePictureObservation>(MeasureSourcePicture(frame.source));
+            OwnedSourcePictureObservationCache cache;SourcePictureEquivalenceToken token;
+            Assert::IsTrue(cache.Store(frame.source,id,facts,0,false,&token));
+            Assert::IsTrue(token.MatchesSource(id));
+            auto support=std::make_shared<SourcePictureSupportResult>(*detected.support);support->sourceEquivalence={};
+            auto supportRaw=std::make_shared<WindowRawMeasurement>(*plain);
+            supportRaw->evidence=MissingSourcePictureEvidence(frame.source);supportRaw->sourcePictureSupport=support;
+            auto tokenSupport=std::make_shared<SourcePictureSupportResult>();
+            tokenSupport->currentSupport.identity=id;tokenSupport->currentSupport.reason="support-not-yet-verified";
+            tokenSupport->sourceEquivalence=token;
+            auto tokenRaw=std::make_shared<WindowRawMeasurement>(*supportRaw);tokenRaw->sourcePictureSupport=tokenSupport;
+            std::array<std::shared_ptr<const WindowRawMeasurement>,3> producers{plain,supportRaw,tokenRaw};
+            std::array<unsigned,3> order{0,1,2};unsigned permutations=0;
+            do {
+                std::shared_ptr<const WindowRawMeasurement> empty;
+                std::atomic_store(&slot->ready,empty);
+                for(auto i:order)PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,id,slot,empty,producers[i]);
+                const auto ready=WindowRequest::RawWorker::Ready(slot);
+                Assert::IsTrue(SourcePictureMeasurementWorkComplete(ready->evidence));
+                Assert::AreEqual(plain->evidence.trustedBounds.top,ready->evidence.trustedBounds.top);
+                Assert::AreEqual(plain->evidence.trustedBounds.bottom,ready->evidence.trustedBounds.bottom);
+                Assert::IsTrue(ready->sourcePictureSupport && ready->sourcePictureSupport->currentSupport.verified);
+                Assert::IsTrue(ready->sourcePictureSupport->sourceEquivalence.SameSnapshot(token));
+                Assert::AreEqual(support->currentSupport.samplingBounds.top,ready->sourcePictureSupport->currentSupport.samplingBounds.top);
+                for(const auto& weaker:producers)
+                    Assert::IsTrue(PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,id,slot,empty,weaker)==ready);
+                ++permutations;
+            }while(std::next_permutation(order.begin(),order.end()));
+            Assert::AreEqual(6u,permutations);
+            // A foreign capability cannot enrich the current immutable slot.
+            for(unsigned fault=0;fault<4;++fault) {
+                std::atomic_store(&slot->ready,plain);
+                auto foreign=std::make_shared<WindowRawMeasurement>(*tokenRaw);
+                auto foreignSupport=std::make_shared<SourcePictureSupportResult>(*tokenSupport);
+                if(fault==0)++foreign->identity.acceptedSequence;
+                if(fault==1)++foreign->domainKey;
+                if(fault==2)++foreignSupport->currentSupport.identity.viewportGeneration;
+                if(fault==3) {
+                    auto other=id;++other.rendererGeneration;SourcePictureEquivalenceToken otherToken;
+                    Assert::IsTrue(bool(cache.Find(frame.source,other,0,&otherToken)));
+                    foreignSupport->sourceEquivalence=otherToken;
+                }
+                foreign->sourcePictureSupport=foreignSupport;
+                PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,id,slot,plain,foreign);
+                const auto result=WindowRequest::RawWorker::Ready(slot);
+                Assert::IsFalse(result->sourcePictureSupport && result->sourcePictureSupport->sourceEquivalence.MatchesSource(id));
+                Assert::AreEqual(plain->evidence.trustedBounds.top,result->evidence.trustedBounds.top);
+            }
+            // Expiration is never negative native/support evidence. A fresh
+            // exact-current token can enrich the same retained proof metadata.
+            std::atomic_store(&slot->ready,std::shared_ptr<const WindowRawMeasurement>(supportRaw));
+            auto rich=PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,id,slot,supportRaw,tokenRaw);
+            cache.Clear();Assert::IsFalse(rich->sourcePictureSupport->sourceEquivalence.Valid());
+            Assert::IsTrue(cache.Store(frame.source,id,facts,0,false,&token));
+            auto freshSupport=std::make_shared<SourcePictureSupportResult>(*tokenSupport);freshSupport->sourceEquivalence=token;
+            auto fresh=std::make_shared<WindowRawMeasurement>(*tokenRaw);fresh->sourcePictureSupport=freshSupport;
+            const auto renewed=PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,id,slot,rich,fresh);
+            Assert::IsTrue(renewed->sourcePictureSupport->currentSupport.verified);
+            Assert::IsTrue(renewed->sourcePictureSupport->sourceEquivalence.MatchesSource(id));
+            Assert::IsTrue(PublishPreparedOutwardRaw<WindowRawMeasurement>(frame,id,slot,rich,tokenRaw)==renewed);
         }
 
         TEST_METHOD(NativeSupportAttemptCompletesOnceAfterOutwardPublicationWithoutRetryingNegatives)
