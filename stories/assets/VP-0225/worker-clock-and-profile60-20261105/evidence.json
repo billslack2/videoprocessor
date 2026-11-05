@@ -1,0 +1,310 @@
+{
+  "asOf": "2026-11-05",
+  "status": "In Progress; acceptance OPEN",
+  "deployed": false,
+  "playerState": "User deliberately closed VP; preserved absent",
+  "lastVerifiedInstalledSource": "4def430fae64bd0ea48f38ef0758f55127335f54",
+  "sourcePins": {
+    "b826a4f8": "b826a4f8fe071b4b01b67041049f46ddc8b9327e",
+    "23ea1174": "23ea11746658d7156331f685b81f7fa501c116e1",
+    "0843552c": "0843552ce8f4663a1a61b4a613454cf07b4ff67a",
+    "c719451e": "c719451e2d0fc1636f9bd652d7a76fd53828f82c",
+    "89c9939f": "89c9939f0b4eba3d222a585b4297d896ce28a7f2",
+    "2e37c356": "2e37c356d3ba4a1fad2209f028c9d7e7d0ab76e4",
+    "8e04c55e": "8e04c55e9de3ff56dc353300d116491265a5d0c7",
+    "c49f7d92": "c49f7d927738db25a6df5f957c0eb83125eae2cc",
+    "e79efe7f": "e79efe7fcee4bb341d463fcc08b5b3d955701551",
+    "b6693c65": "b6693c65253aa20e13229a8a57d841f56c5ca3ad",
+    "f73f1165": "f73f116545257099a933dcc7423f86f4ecf0e8d4",
+    "ff00aab9": "ff00aab983433c79861c8a2613d73d8366c41ed4",
+    "d81395cf": "d81395cfcbe882412b41518cddb8468043a5e263",
+    "d5541d62": "d5541d6264e99b76ef83b831683fa5c9ee3b32b5"
+  },
+  "retainedChanges": {
+    "windowWake": "Only redundant source-window notifications removed; real enqueue/retirement/context wake contracts retained",
+    "rateWake": "Notify actual capacity changes, including seed1-to-2; deterministic queued-work wake and second-worker parking tests",
+    "native9And13Passed": true,
+    "cpuPacedCurrentProofs": {
+      "offered": 336,
+      "qualifiedByOneFrameDeadline": 336,
+      "scope": "Four short CPU optional-worker cases, captured phases and synthetic24/60Hz transport; no whole pipeline guarantee"
+    },
+    "b669ActualRendererCasesPassed": 8,
+    "actualInputHz": 23.976,
+    "actualReportedDisplayHz": 24,
+    "actualVisualSamples": 10,
+    "actualVisualScope": "Source-joined pre-present samples, not scanout or exhaustive glyph verification",
+    "handoffSuperseded": "2e37 replaces89c native-to-raw callback serialization with current scan local bounded support verification; no waiting for native dependency",
+    "v210Grouping": "8e04 reuses operation-local packed decoder, no pixel predicates changed"
+  },
+  "profile60": {
+    "fixtureSource": "f73f1165",
+    "input": "Original91 captured23.976Hz pixels, synthetic60Hz source submissions,24Hz reported display",
+    "baseline": {
+      "summary": "PROFILE60 SUMMARY: original_hz=23.976 synthetic_input_hz=60 actual_input_hz=60.0061 display_hz=24 submitted_hz=60.0169 distinct_hz=60.0169 inputs=720 outputs=720 distinct=720 repeats=0 max_source_gap=1 cadence_gap_limit=4 max_input_gap_ms=24.1268 max_offer_lateness_ms=7.78643 producer_pacing_qualified=0 max_submit_gap_ms=31.7033 exact=1 ordered=1 requested_profiles=6 profile_order=1 unknown_profile_outputs=0 composed=404 raw=316 all_prefix_movie_changes=316 all_prefix_caption_outside_screen=0 capacity_retirements=0 recovery_retirements=0 lifecycle_retirements=0 due_source_retirements=0 work_samples=720 distinct_work_sources=720 unsubmitted_input_sources=0 max_active_work_plus_ingress_ms=21.306 max_present_block_ms=19.963 max_work_present_ingress_ms=25.7945 max_latency_ms=76.1053 early_latency_ms=70.0534 late_latency_ms=67.8999 profile_call0_ms=0.9037 profile_call1_ms=0.9201 profile_call2_ms=1.0771 profile_call3_ms=0.9258 profile_call4_ms=0.8599 profile_call5_ms=1.1426 profile0_outputs=120 profile1_outputs=120 profile2_outputs=238 profile3_outputs=242",
+      "profileStatistics": {
+        "0": {
+          "count": 120,
+          "raw": 120,
+          "movieChanged": 120,
+          "captionOutside": 0
+        },
+        "1": {
+          "count": 120,
+          "raw": 120,
+          "movieChanged": 120,
+          "captionOutside": 0
+        },
+        "2": {
+          "count": 238,
+          "raw": 40,
+          "movieChanged": 40,
+          "captionOutside": 0
+        },
+        "3": {
+          "count": 242,
+          "raw": 36,
+          "movieChanged": 36,
+          "captionOutside": 0
+        }
+      },
+      "advancedRawPulses": 76,
+      "seedJobsTotal": 52,
+      "seedJobsSteady": 48,
+      "seedCostTotalSteadyMs": 1789.0844,
+      "seedCostMaxSteadyMs": 56.6859,
+      "proofJobsSteady": 350,
+      "proofVerifiedSteady": 336,
+      "sourceRange": [
+        62,
+        781
+      ],
+      "limits": [
+        "All advanced raw frames counted, including transition prefixes",
+        "Classic/Off geometry differs intentionally; separate from advanced raw pulses",
+        "Original23.976 captured pixels on synthetic60Hz transport,24Hz reported output, no physical scanout claim",
+        "No per-input arrival/lateness trace; producer qualification summarized separately"
+      ]
+    },
+    "candidate": {
+      "summary": "PROFILE60 SUMMARY: original_hz=23.976 synthetic_input_hz=60 actual_input_hz=60.0064 display_hz=24 submitted_hz=59.8958 distinct_hz=59.8958 inputs=720 outputs=720 distinct=720 repeats=0 max_source_gap=1 cadence_gap_limit=4 max_input_gap_ms=30.9298 max_offer_lateness_ms=14.7506 producer_pacing_qualified=0 max_submit_gap_ms=31.8954 exact=1 ordered=1 requested_profiles=6 profile_order=1 unknown_profile_outputs=0 composed=215 raw=505 all_prefix_movie_changes=505 all_prefix_caption_outside_screen=0 capacity_retirements=0 recovery_retirements=0 lifecycle_retirements=0 due_source_retirements=0 work_samples=720 distinct_work_sources=720 unsubmitted_input_sources=0 max_active_work_plus_ingress_ms=24.7599 max_present_block_ms=28.4697 max_work_present_ingress_ms=31.74 max_latency_ms=91.6725 early_latency_ms=59.4684 late_latency_ms=80.9346 profile_call0_ms=0.9028 profile_call1_ms=1.01 profile_call2_ms=1.4368 profile_call3_ms=0.8109 profile_call4_ms=0.7996 profile_call5_ms=0.8728 profile0_outputs=120 profile1_outputs=120 profile2_outputs=239 profile3_outputs=241",
+      "profileStatistics": {
+        "0": {
+          "count": 120,
+          "raw": 120,
+          "movieChanged": 120,
+          "captionOutside": 0
+        },
+        "1": {
+          "count": 120,
+          "raw": 120,
+          "movieChanged": 120,
+          "captionOutside": 0
+        },
+        "2": {
+          "count": 239,
+          "raw": 115,
+          "movieChanged": 115,
+          "captionOutside": 0
+        },
+        "3": {
+          "count": 241,
+          "raw": 150,
+          "movieChanged": 150,
+          "captionOutside": 0
+        }
+      },
+      "advancedRawPulses": 265,
+      "seedJobsTotal": 30,
+      "seedJobsSteady": 28,
+      "seedCostTotalSteadyMs": 1109.9542999999996,
+      "seedCostMaxSteadyMs": 47.6351,
+      "proofJobsSteady": 394,
+      "proofVerifiedSteady": 382,
+      "sourceRange": [
+        64,
+        783
+      ],
+      "limits": [
+        "All advanced raw frames counted, including transition prefixes",
+        "Classic/Off geometry differs intentionally; separate from advanced raw pulses",
+        "Original23.976 captured pixels on synthetic60Hz transport,24Hz reported output, no physical scanout claim",
+        "No per-input arrival/lateness trace; producer qualification summarized separately"
+      ]
+    },
+    "candidateSource": "ff00aab9",
+    "revertedBy": "d81395cf",
+    "candidateNativePassed": 10,
+    "revertNativePassed": 7,
+    "betaCase23Run": false,
+    "stopOnFirstFailure": true,
+    "candidateRawProofTraceOrder": {
+      "verifiedAfterSelection": 236,
+      "noCompletion": 22,
+      "failedOrRetired": 6,
+      "verifiedBeforeSelection": 1
+    },
+    "decision": "Candidate reduced seed work but did not demonstrate end-to-end benefit; revert preserved. Both runs failed producer pacing, so worsening is not causally attributed solely to code.",
+    "allCompositionMissingCase16": "Still RED; not fixed by these commits"
+  },
+  "genericReplay": {
+    "commit": "c49f7d92",
+    "sourcePixels": "Original76 preloaded, no repeated preroll or invented picture authority",
+    "clockHz": 1000000,
+    "clockProvenance": "Explicit replay input for old capture; not recorded frequency",
+    "scheduleQualified": true,
+    "maximumInputLatenessMs": 1.2082,
+    "offered": 76,
+    "distinctSubmitted": 71,
+    "foreignSubmitted": 0,
+    "queueRecovery": 2,
+    "queueLifecycleAtStop": 3,
+    "firstRenderWorkMs": 123.3815,
+    "stopJoinMs": 31789.8,
+    "coldShaderCompileMs": 36755.19,
+    "scope": "Cold start/EOF omissions explicit; not continuous user playback qualification"
+  },
+  "clockMetadata": {
+    "commit": "d5541d62",
+    "legacyPrefixRetained": true,
+    "frequencyInferred": false,
+    "timestampRescaled": false,
+    "units": "Renderer-bound ITimingClock; configured source offset may be included",
+    "unadjustedHardwareTimeClaim": false,
+    "offsetValueRecorded": false,
+    "unknownLegacyRequiresExplicitReplayOverride": true,
+    "clockChangeEndsRamSegment": true,
+    "nativeTestsPassed": 8,
+    "cleanReleaseFocusedTestsPassed": 8,
+    "toolTestCounts": [
+      9,
+      10,
+      13
+    ],
+    "liveCaptureRun": false
+  },
+  "gpuExperiments": {
+    "productionIntegrated": false,
+    "hierarchical": {
+      "orders": [
+        "baseline",
+        "candidate",
+        "candidate",
+        "baseline"
+      ],
+      "capturedCasesPerArm": 26,
+      "derivedRejectCasesPerArm": 8,
+      "parityPassed": true,
+      "latest91CasesPerArm": 7,
+      "reductionMedianMs": [
+        3.088,
+        0.931
+      ],
+      "observedPredicatePlusReductionMedianMs": [
+        5.764,
+        2.367
+      ],
+      "scope": "Component timer intervals; offline blocking oracle after dispatch; allocation/upload/compilation and full presentation not qualified; total change not solely attributed to reduction"
+    },
+    "conditional": {
+      "exactOutputCases": 11,
+      "status": "Stopped; no integration",
+      "matchedTotalMedianMs": [
+        51.223,
+        43.531
+      ],
+      "unsafeResourceCacheInteractionUnresolved": true,
+      "scope": "Intervals include CPU submission gaps/allocation/upload; not pure GPU time, both exceed16.67ms; no actual Present or sustained60Hz claim"
+    },
+    "priorRc4Comparison": "Earlier contention-contaminated comparison remains inconclusive, not a causal production optimization"
+  },
+  "compilerLifetime": {
+    "coldStopStillOpen": true,
+    "externalCpuPrototypeTests": 6,
+    "prototypeIntegrated": false,
+    "processExitBounded": false,
+    "cacheLogModuleLifetimeIntegrationTested": false,
+    "noUnsafeDetach": true
+  },
+  "scopeLimits": [
+    "No deployment or installed app launch",
+    "No private pixels, videos, raw logs or user configuration copied into tracker",
+    "Source queue retirement counters are not display drops",
+    "OSD fixed rows retain earlier documented small-window overflow/readability limits",
+    "Moving all-proof-missing, scene/menu transitions, captured ad-video,60Hz capture-to-display and user acceptance remain open"
+  ],
+  "evidence": {
+    "windowWake": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\current-proof-exact-endpoints\\window-wake-receipt.json",
+      "sha256": "6f897295984d574ee8973f3521b0e734d94a6cd2775f324e1231234ac6b45a8c"
+    },
+    "rateWake": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\current-proof-exact-endpoints\\final-rate-receipt.json",
+      "sha256": "a3a83aa3f495e368900a92a7af81681e4c18b1554335147eaedc60a9008f6831"
+    },
+    "rateCommitBinding": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\current-proof-exact-endpoints\\final-rate-commit-binding.json",
+      "sha256": "c2297a85788bd5d8982523684d0f08979d54c5268087b6995bdd57aa75206fde"
+    },
+    "b669Actual8": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261105-043145\\focused-summary.json",
+      "sha256": "357e0672ad949888e643da852c88dc67c69d78a57215b69203730fb0e06557cf"
+    },
+    "b669Visual10": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261105-043145\\visual-review\\receipt.json",
+      "sha256": "08f98a08e3c75d5badb79eceb8aad9acb4b21313f2487753ccbdcdef19cc729f"
+    },
+    "profile60Baseline": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261105-051148\\sealed-summary.json",
+      "sha256": "463a2a0c78c252c83a1d740929a6bbfcb27f120627c040b08c8d8c45640b0c12"
+    },
+    "profile60BaselineComparison": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261105-051148\\seed-reuse-comparison.json",
+      "sha256": "36f963aac5517a58fa9efb9e422e2aa0a9d8ac1820995279facbdcae5241805a"
+    },
+    "profile60Candidate": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\isolation-missing-evidence-20261105-054948\\sealed-summary.json",
+      "sha256": "21a9126a1c42dd64bda534b1a1a3f9a819b5d59a478a618749665c58ae5d5b60"
+    },
+    "candidateNative10": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261105-054312-b050b492\\iteration.json",
+      "sha256": "266063e78f04ad6886d73abc88d0632205b63608265112882c23106bbacf04f7"
+    },
+    "revertNative7": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261105-055402-fb8da6e9\\iteration.json",
+      "sha256": "1becae9476094c816bc595057bed0e720a098ec45fcae26f4bc284b0f9179cfc"
+    },
+    "generic76": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\native-ram-renderer\\original76-preloaded-final\\analysis.json",
+      "sha256": "82593fcbc60865f498958d97a38536e90a45248ae3ff0b20996cddc0ea6ffe04"
+    },
+    "generic76Producer": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\native-ram-renderer\\original76-preloaded-final\\receipt.json",
+      "sha256": "bc4d8d0ec07514794848804ddceb549117d40efe32e4f3e61136f3674cfa8698"
+    },
+    "clock": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\capture-clock-provenance\\receipt.json",
+      "sha256": "725621ab7c3181c02f3e30ab3b9409fbb47d8ac8913594727ab22a4a40cc7bc7"
+    },
+    "clockBuild": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\qualification\\runs\\20261105-061442-eceb3d02\\iteration.json",
+      "sha256": "cc67dd4ff7682942982c79c05f0ee8344a45427f038a15282edbb0afaf0ca5d1"
+    },
+    "hierarchicalGpu": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\gpu-current-pixel-parity\\hierarchical-paired-receipt.json",
+      "sha256": "839ef2ddc8b2de7c82cdd89bfc9c9b25706012766195b48da2e4de3c9e5bf611"
+    },
+    "conditionalStopped": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\gpu-current-pixel-parity\\predicated-stages-run1\\stopped-summary.json",
+      "sha256": "029a7246fae8ec13719d5afec1272ee5cce01434c4cc24601faab5389719d2bf"
+    },
+    "doubleRenderStopped": {
+      "localPath": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\gpu-current-pixel-parity\\matched-double-run1\\stopped-summary.json",
+      "sha256": "68a7167fa78ca9f9aa49564f5d37830b21606ffdea8f3c92d53e72354dab5173"
+    },
+    "compilerLifetimePrototype": {
+      "localPath": "E:\\codex\\videoprocessor\\preparation-lifetime-20261105\\receipt.json",
+      "sha256": "e0ec90f7f2cfdc413e5cb4e9e1c75f53a9fc43b102a3b0c106ed2d81eea0d7da"
+    }
+  }
+}
