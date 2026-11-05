@@ -3,6 +3,7 @@
 #include <AnalysisLumaSource.h>
 #include <ActivePictureEvidence.h>
 #include <SceneDetector.h>
+#include <SubtitleCadenceGuard.h>
 #include "CppUnitTest.h"
 
 #include <array>
@@ -517,5 +518,98 @@ namespace Tests
 				Assert::AreEqual(expectedV[x], static_cast<int>(sample.chromaV));
 			}
 		}
+
+        TEST_METHOD(CurrentV210GroupReaderMatchesCanonicalAcrossGroupsRowsAndPartialTails)
+        {
+            for (int width : {2, 4, 6, 8, 10, 14, 32})
+            for (auto range : {AnalysisLumaRange::Limited, AnalysisLumaRange::Full}) {
+                const int height=5;
+                const size_t pitch=((size_t(width)+5)/6)*16+7;
+                std::vector<uint8_t> bytes(1+pitch*height,0xA5);
+                uint32_t state=0x93f1a27u;
+                for(int y=0;y<height;++y)for(size_t group=0;group<(size_t(width)+5)/6;++group)
+                    for(int w=0;w<4;++w) {
+                        state=state*1664525u+1013904223u;
+                        const uint32_t value=state|0xc0000000u; // Unused high bits must be ignored.
+                        std::memcpy(bytes.data()+1+size_t(y)*pitch+group*16+w*4,&value,4);
+                    }
+                AnalysisLumaSource source{bytes.data()+1,bytes.size()-1,width,height,pitch,0,
+                    AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::V210,ColorSpace::REC_709,7};
+                source.range=range;
+                subtitle_detail::CurrentV210GroupReader reader(source);
+                Assert::IsTrue(reader.IsValid());
+                const auto check=[&](int x,int y) {
+                    AnalysisLumaSample expected,actual;
+                    const bool valid=source.Sample(x,y,expected);
+                    Assert::AreEqual(valid,reader.Sample(x,y,actual));
+                    if(valid) {
+                        Assert::AreEqual(int(expected.luma),int(actual.luma));
+                        Assert::AreEqual(int(expected.chromaU),int(actual.chromaU));
+                        Assert::AreEqual(int(expected.chromaV),int(actual.chromaV));
+                    }
+                };
+                for(int y=-1;y<=height;++y)for(int x=-1;x<=width;++x)check(x,y);
+                for(int i=0;i<1024;++i) {
+                    state=state*1664525u+1013904223u;
+                    const int x=int(state%unsigned(width));
+                    state=state*1664525u+1013904223u;
+                    const int y=int(state%unsigned(height));
+                    check(x,y);check(x,y); // Both miss and repeated-group hit.
+                }
+            }
+            const uint32_t words[]={0xc0000000u|(64u<<10)|(1023u<<20),
+                940u|(512u<<10)|(1u<<20),1023u|(2u<<10)|(3u<<20),4u|(5u<<10)|(6u<<20)};
+            AnalysisLumaSource golden{reinterpret_cast<const uint8_t*>(words),sizeof(words),6,1,16,0,
+                AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::V210,ColorSpace::BT_2020,1};
+            subtitle_detail::CurrentV210GroupReader reader(golden);
+            const int ys[]={64,940,1,2,4,6},us[]={0,0,512,512,3,3},vs[]={1023,1023,1023,1023,5,5};
+            for(int x=0;x<6;++x) {
+                AnalysisLumaSample sample;Assert::IsTrue(reader.Sample(x,0,sample));
+                Assert::AreEqual(ys[x],int(sample.luma));Assert::AreEqual(us[x],int(sample.chromaU));
+                Assert::AreEqual(vs[x],int(sample.chromaV));
+            }
+        }
+
+        TEST_METHOD(CurrentV210GroupReaderOwnsOneImmutableOperationAndRejectsInvalidViews)
+        {
+            auto owner=std::make_shared<std::vector<uint8_t>>(32,0);
+            (*owner)[2]=1; // First Y=64.
+            AnalysisLumaSource source{owner->data(),owner->size(),6,2,16,0,
+                AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::V210,ColorSpace::REC_709,17};
+            source.backingOwner=owner;
+            std::weak_ptr<std::vector<uint8_t>> lifetime=owner;
+            {
+                subtitle_detail::CurrentV210GroupReader reader(source);
+                source={};owner.reset();Assert::IsFalse(lifetime.expired());
+                AnalysisLumaSample sample;Assert::IsTrue(reader.Sample(0,0,sample));
+                Assert::AreEqual(64,int(sample.luma));
+                Assert::IsTrue(reader.Sample(0,1,sample));Assert::AreEqual(0,int(sample.luma));
+                Assert::IsTrue(reader.Sample(0,0,sample));Assert::AreEqual(64,int(sample.luma));
+                Assert::IsFalse(reader.Sample(6,0,sample));Assert::IsFalse(reader.Sample(0,2,sample));
+            }
+            Assert::IsTrue(lifetime.expired(),L"No source owner survives the verification operation.");
+            std::vector<uint8_t> next(128,0);next[2]=2;
+            AnalysisLumaSource valid{next.data(),next.size(),6,2,16,0,
+                AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::V210,ColorSpace::REC_709,18};
+            subtitle_detail::CurrentV210GroupReader fresh(valid);
+            AnalysisLumaSample sample;Assert::IsTrue(fresh.Sample(0,0,sample));
+            Assert::AreEqual(128,int(sample.luma),L"A new source operation must decode its own bytes.");
+            for(int fault=0;fault<10;++fault) {
+                auto bad=valid;
+                if(fault==0)bad.data=nullptr;
+                if(fault==1)bad.dataBytes=31;
+                if(fault==2)bad.rowBytes=15;
+                if(fault==3)bad.width=5;
+                if(fault==4)bad.encoding=VideoFrameEncoding::UYVY;
+                if(fault==5)bad.format=AnalysisLumaFormat::P010;
+                if(fault==6)bad.format=AnalysisLumaFormat::P210;
+                if(fault==7)bad.format=AnalysisLumaFormat::DecodedDolbyVision422;
+                if(fault==8)bad.format=AnalysisLumaFormat::NativeRgb;
+                if(fault==9)bad.height=0;
+                subtitle_detail::CurrentV210GroupReader invalid(bad);
+                Assert::IsFalse(invalid.IsValid());Assert::IsFalse(invalid.Sample(0,0,sample));
+            }
+        }
+
 	};
 }

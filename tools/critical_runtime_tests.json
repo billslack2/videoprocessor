@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1159,
+  "minimumNativeTests": 1162,
   "requiredNativeMethods": [
     "CurrentCueEquivalentSourceRejectsRetirementDuringPublication",
     "CurrentCueEquivalentSourceRequiresConsumedQualifiedCurrentPixels",
@@ -437,7 +437,10 @@
     "CurrentCueWorkerBurstsScansAfterFreshInsidePictureLineChange",
     "CurrentCueWorkerTailOnlyCaptureExtensionPreservesProofAndAcceptsSubsetHead",
     "CurrentCueWorkerRejectsNovelInkInsideAdvancedDestinationAndAllowsUniformMotion",
-    "DecodedDvUnchangedCleanupFootprintPassesCurrentPhaseOnePixels"
+    "DecodedDvUnchangedCleanupFootprintPassesCurrentPhaseOnePixels",
+    "CurrentV210GroupReaderMatchesCanonicalAcrossGroupsRowsAndPartialTails",
+    "CurrentV210GroupReaderOwnsOneImmutableOperationAndRejectsInvalidViews",
+    "CurrentFootprintV210ReaderPreservesGlyphAndDestinationDecisions"
   ],
   "actualSource": "src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp",
   "actualClass": "LibplaceboPluginProxyTests",
@@ -1127,6 +1130,16 @@
       "source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp",
       "class": "SubtitleBoxLookaheadTests",
       "method": "CurrentHeldGlyphThresholdNoiseUsesImmutableSamePointEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "CurrentV210GroupReaderMatchesCanonicalAcrossGroupsRowsAndPartialTails"
+    },
+    {
+      "source": "src/VideoProcessor-Test/NativeRgbAnalysisTests.cpp",
+      "class": "NativeRgbAnalysisTests",
+      "method": "CurrentV210GroupReaderOwnsOneImmutableOperationAndRejectsInvalidViews"
     }
   ]
 }

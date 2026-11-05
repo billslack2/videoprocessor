@@ -4046,6 +4046,84 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             }
         }
     }
+    TEST_METHOD(CurrentFootprintV210ReaderPreservesGlyphAndDestinationDecisions) {
+        // Pack the established canonical fixture into independent padded V210 storage.
+        // The existing nine accepted-noise / changed-glyph / destination cases remain unchanged.
+        const auto PackedCurrentSource=[](std::vector<uint16_t>& pixels) {
+            auto canonical=CadenceSource(pixels);
+            const size_t pitch=((size_t(canonical.width)+5)/6)*16+7;
+            auto bytes=std::make_shared<std::vector<uint8_t>>(1+pitch*canonical.height,0xA5);
+            const auto word=[](unsigned a,unsigned b,unsigned c) {
+                return uint32_t(a|(b<<10)|(c<<20)|0xc0000000u);
+            };
+            for(int y=0;y<canonical.height;++y)for(int x=0;x<canonical.width;x+=6) {
+                AnalysisLumaSample p[6];
+                for(int i=0;i<6;++i)if(x+i<canonical.width)
+                    Assert::IsTrue(canonical.Sample(x+i,y,p[i]));
+                const uint32_t words[]={word(p[0].chromaU,p[0].luma,p[0].chromaV),
+                    word(p[1].luma,p[2].chromaU,p[2].luma),
+                    word(p[2].chromaV,p[3].luma,p[4].chromaU),
+                    word(p[4].luma,p[4].chromaV,p[5].luma)};
+                std::memcpy(bytes->data()+1+size_t(y)*pitch+size_t(x/6)*16,words,16);
+            }
+            auto source=canonical;source.data=bytes->data()+1;source.dataBytes=bytes->size()-1;
+            source.rowBytes=pitch;source.chromaRowBytes=0;source.format=AnalysisLumaFormat::NativeYuv422;
+            source.encoding=VideoFrameEncoding::V210;source.backingOwner=bytes;
+            Assert::IsTrue(source.IsValid());return source;
+        };
+        auto pixels=PixelsWithCurrentBars();
+        pixels[51*160+54]=uint16_t(496<<6); // Near-floor unowned anti-alias sample.
+        pixels[52*160+50]=uint16_t(516<<6); // Accepted interior core at floor+16.
+        pixels[30*160+60]=uint16_t(344<<6); // Destination contrast 44 against its300 neighbors.
+        auto seed=Ready(1);seed.current=CompleteThreeLineScan(1,pixels);seed.text=seed.current.text;
+        seed.current.analysisStride=1;
+        SubtitleCutPasteGeometry geometry;geometry.valid=true;geometry.content=seed.text.bounds;
+        geometry.glyphLines=seed.text.lineBounds;geometry.pictureCapture=seed.text.capturePanel;
+        geometry.generatedCleanup=seed.text.sourcePanel;geometry.source=geometry.content;
+        geometry.destination={50,20,110,50};geometry.pictureTop=12;geometry.pictureBottom=78;
+        const auto base=seed.current.sharedPicture.bounds;
+        auto guard=std::make_unique<SubtitleCadenceGuard>();
+        Assert::IsTrue(guard->RememberCurrentFootprint(seed,seed.text,PackedCurrentSource(pixels),base,geometry));
+        for(int scenario=0;scenario<9;++scenario) {
+            auto currentPixels=pixels;
+            if(scenario==0)currentPixels[51*160+54]=uint16_t(500<<6);
+            if(scenario==1)currentPixels[52*160+50]=uint16_t(512<<6);
+            if(scenario==2 || scenario==3 || scenario==8)currentPixels[30*160+60]=uint16_t(348<<6);
+            if(scenario==3)currentPixels[30*160+61]=uint16_t(296<<6);
+            if(scenario==4)currentPixels[51*160+54]=uint16_t(505<<6);
+            if(scenario==5)currentPixels[52*160+50]=uint16_t(64<<6);
+            if(scenario==6)currentPixels[30*160+60]=uint16_t(353<<6);
+            if(scenario==7)currentPixels[30*160+61]=uint16_t(291<<6);
+            if(scenario==8)currentPixels[160*90+(30/2)*160+60]=uint16_t(521<<6);
+            const auto current=CompleteThreeLineScan(uint64_t(scenario+2),currentPixels);
+            const auto proof=guard->VerifyCurrentFootprint(current,PackedCurrentSource(currentPixels),
+                seed.current,seed.text,base);
+            if(proof.valid!=(scenario<4))Logger::WriteMessage((std::string("noise scenario=")+
+                std::to_string(scenario)+" reason="+proof.reason).c_str());
+            Assert::AreEqual(scenario<4,proof.valid,
+                L"Only seed-bounded pixel noise may cross ink/core or destination contrast thresholds; both edge endpoints must match.");
+            Assert::AreEqual(!proof.valid,proof.pixelWitness.Valid());
+            if(scenario>=6) {
+                const auto& w=proof.pixelWitness;
+                Assert::IsTrue(w.stage==SubtitleCadenceGuard::PixelFailureStage::DestinationNovelty);
+                Assert::IsTrue(w.neighborX>=0 && w.neighborY>=0);
+                AnalysisLumaSample point,neighbor,oldPoint,oldNeighbor;
+                Assert::IsTrue(PackedCurrentSource(currentPixels).Sample(w.x,w.y,point));
+                Assert::IsTrue(PackedCurrentSource(currentPixels).Sample(w.neighborX,w.neighborY,neighbor));
+                Assert::IsTrue(PackedCurrentSource(pixels).Sample(w.x,w.y,oldPoint));
+                Assert::IsTrue(PackedCurrentSource(pixels).Sample(w.neighborX,w.neighborY,oldNeighbor));
+                Assert::AreEqual(int(point.luma),int(w.current.luma));
+                Assert::AreEqual(int(neighbor.luma),int(w.currentNeighbor.luma));
+                Assert::AreEqual(int(oldPoint.luma),int(w.seed.luma));
+                Assert::AreEqual(int(oldNeighbor.luma),int(w.seedNeighbor.luma));
+                Assert::IsTrue(w.currentDirections!=0);
+                if(scenario==7) {
+                    Assert::AreEqual(int(w.seed.luma),int(w.current.luma),L"Unchanged point must not conceal the changed neighbor.");
+                    Assert::IsFalse(SubtitleCadenceGuard::EncodingEquivalent(w.seedNeighbor,w.currentNeighbor));
+                }
+            }
+        }
+    }
     TEST_METHOD(CurrentFootprintSemanticPaddingRequiresStableBlackActualErasure) {
         // A complete black strip below line0 is cleanup, but lies outside its
         // immutable glyph capture. The other three sides remain movie pixels.

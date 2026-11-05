@@ -2,6 +2,44 @@
 #include <SubtitleCutPaste.h>
 #include <cmath>
 #include <new>
+#include <cstring>
+
+
+namespace subtitle_detail {
+// One current verification owns this reader. Only packed decoding is reused;
+// source pixels, coordinates and all later glyph/cleanup predicates are unchanged.
+class CurrentV210GroupReader {
+public:
+    explicit CurrentV210GroupReader(const AnalysisLumaSource& source)
+        : source_(source),valid_(source.format==AnalysisLumaFormat::NativeYuv422 &&
+            source.encoding==VideoFrameEncoding::V210 && source.IsValid()) {}
+    bool IsValid() const {return valid_;}
+    bool Sample(int x,int y,AnalysisLumaSample& out) {
+        if(!valid_ || x<0 || y<0 || x>=source_.width || y>=source_.height)return false;
+        const auto* group=source_.data+size_t(y)*source_.rowBytes+size_t(x/6)*16;
+        if(group!=lastGroup_) {
+            // V210's four little-endian words contain six luma and three UV pairs.
+            uint32_t words[4];std::memcpy(words,group,sizeof(words));
+            const auto code=[&](unsigned word,unsigned shift) {
+                return uint16_t((words[word]>>shift)&0x3ffu);
+            };
+            pixels_[0]={code(0,10),code(0,0),code(0,20)};
+            pixels_[1]={code(1,0),code(0,0),code(0,20)};
+            pixels_[2]={code(1,20),code(1,10),code(2,0)};
+            pixels_[3]={code(2,10),code(1,10),code(2,0)};
+            pixels_[4]={code(3,0),code(2,20),code(3,10)};
+            pixels_[5]={code(3,20),code(2,20),code(3,10)};
+            lastGroup_=group;
+        }
+        out=pixels_[x%6];return true;
+    }
+private:
+    const AnalysisLumaSource source_;
+    const bool valid_;
+    const uint8_t* lastGroup_=nullptr;
+    AnalysisLumaSample pixels_[6];
+};
+}
 
 // A single deliberately unanalysed input between strong detector scans may
 // reuse established placement only after sampling its CURRENT source footprint.
@@ -275,13 +313,15 @@ public:
             return fail("current-footprint-context-changed");
         const ValidatedAnalysisLumaSampler sampler(source);
         if(!sampler.IsValid())return fail("current-footprint-sample-budget-or-empty");
-        auto verified=VerifyNativeFootprintPixels(source,sampler,true);
+        subtitle_detail::CurrentV210GroupReader groupReader(source);
+        auto* packed=groupReader.IsValid()?&groupReader:nullptr;
+        auto verified=VerifyNativeFootprintPixels(source,sampler,true,packed);
         if(!verified.valid)return verified;
         size_t destinationSamples=0;int destinationMismatchX=-1,destinationMismatchY=-1;
         const char* destinationReason="current-destination-proof-unavailable";
         bool destinationPixelMismatch=false;PixelMismatchWitness destinationWitness;
         if(!VerifyDestinationNovelty(source,sampler,destinationSamples,destinationMismatchX,
-            destinationMismatchY,destinationReason,verified,destinationPixelMismatch,destinationWitness)) {
+            destinationMismatchY,destinationReason,verified,destinationPixelMismatch,destinationWitness,packed)) {
             m_currentFootprintReceiptValid=false;
             CurrentFootprintVerification failed{false,verified.samples+destinationSamples,destinationReason,
                 destinationMismatchX,destinationMismatchY};
@@ -669,7 +709,8 @@ private:
         return uint16_t((uint16_t(p[0])|(uint16_t(p[1])<<8))>>6);
     }
     static bool SampleValidated(const AnalysisLumaSource& source,
-        const ValidatedAnalysisLumaSampler& sampler,int x,int y,AnalysisLumaSample& pixel) {
+        const ValidatedAnalysisLumaSampler& sampler,int x,int y,AnalysisLumaSample& pixel,
+        subtitle_detail::CurrentV210GroupReader* packed=nullptr) {
         // Preserve the direct planar path. Other formats use one validated
         // view per bounded operation, including V210, avoiding per-pixel
         // source.IsValid() while keeping the canonical sample decoder.
@@ -681,7 +722,7 @@ private:
             pixel.luma=ReadPlanar10(luma);pixel.chromaU=ReadPlanar10(chroma);pixel.chromaV=ReadPlanar10(chroma+2);
             return true;
         }
-        return sampler.Sample(x,y,pixel);
+        return packed?packed->Sample(x,y,pixel):sampler.Sample(x,y,pixel);
     }
     static bool SameRect(const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
         return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
@@ -1192,7 +1233,8 @@ private:
     bool VerifyDestinationNovelty(const AnalysisLumaSource& source,
         const ValidatedAnalysisLumaSampler& sampler,size_t& samples,
         int& mismatchX,int& mismatchY,const char*& reason,
-        const CurrentFootprintVerification& verified,bool& actualPixelMismatch,PixelMismatchWitness& witness) const {
+        const CurrentFootprintVerification& verified,bool& actualPixelMismatch,PixelMismatchWitness& witness,
+        subtitle_detail::CurrentV210GroupReader* packed=nullptr) const {
         samples=0;mismatchX=mismatchY=-1;actualPixelMismatch=false;witness={};
         if(!m_destinationProbe.Valid())return true;
         const size_t area=size_t(m_destinationProbe.right-m_destinationProbe.left)*
@@ -1206,7 +1248,7 @@ private:
             const size_t rowBase=size_t(y-m_destinationProbe.top)*width;
             for(int x=m_destinationProbe.left;x<m_destinationProbe.right;++x) {
                 const size_t at=rowBase+size_t(x-m_destinationProbe.left);
-                if(at>=area || !SampleValidated(source,sampler,x,y,m_destinationCurrentPixels[at])) {
+                if(at>=area || !SampleValidated(source,sampler,x,y,m_destinationCurrentPixels[at],packed)) {
                     mismatchX=x;mismatchY=y;reason="current-destination-source-unavailable";return false;
                 }
                 ++samples;
@@ -1277,7 +1319,8 @@ private:
     }
     CurrentFootprintVerification VerifyNativeFootprintPixels(const AnalysisLumaSource& source,
         const ValidatedAnalysisLumaSampler& sampler,
-        bool allowProtectedCleanupProjection=false) const {
+        bool allowProtectedCleanupProjection=false,
+        subtitle_detail::CurrentV210GroupReader* packed=nullptr) const {
         int mismatchX=-1,mismatchY=-1;PixelFailureStage failureStage=PixelFailureStage::None;
         const auto fail=[&](size_t samples,const char* reason,bool actualPixelMismatch=false) {
             CurrentFootprintVerification result{false,samples,reason,mismatchX,mismatchY};
@@ -1299,7 +1342,7 @@ private:
         size_t samples=0;
         for(size_t i=0;i<m_native.size();++i) {
             auto& pixel=m_currentPixels[i];const auto& location=m_native[i];
-            if(samples>=SampleBudget || !SampleValidated(source,sampler,location.x,location.y,pixel.pixel))
+            if(samples>=SampleBudget || !SampleValidated(source,sampler,location.x,location.y,pixel.pixel,packed))
                 return fail(samples,"cadence-sample-budget-or-source");
             ++samples;pixel.ink=Ink(pixel.pixel,*m_baseline);pixel.black=Black(pixel.pixel,*m_baseline);
         }
