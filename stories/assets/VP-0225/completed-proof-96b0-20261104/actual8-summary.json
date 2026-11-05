@@ -1,0 +1,174 @@
+{
+  "scope": "Controlled three-frame genuine moving-background completed-proof delivery, source-linked visual captures, paused missing-evidence and prior scripture regressions. Both-unfinished moving fallback and full qualification remain open.",
+  "restoredInstalledPid": 62352,
+  "overallPassed": false,
+  "pairs": [
+    {
+      "passed": true,
+      "kind": "completed-proof",
+      "error": null,
+      "receiptSHA256": "F3FE1260951F869992148445C95E12077FACFF7E15E615192698C871D564F53A",
+      "results": [
+        {
+          "case": 8,
+          "variant": "standard",
+          "passed": true,
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "inputMappings": 3,
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=12 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=53.1394 proof_positive=65 both_missing=0 completed_slot_mode=1 completed_slot_sources=65 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9354 work_samples=186 max_work_ms=12.6119 max_ingress_ms=0.849 max_latency_ms=149.193 early_latency_ms=134.564 late_latency_ms=133.952"
+          ],
+          "cadenceSummary": [],
+          "heldSummary": []
+        },
+        {
+          "case": 9,
+          "variant": "beta",
+          "passed": true,
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "inputMappings": 3,
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=12 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=51.6276 proof_positive=65 both_missing=0 completed_slot_mode=1 completed_slot_sources=65 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9583 work_samples=186 max_work_ms=13.3884 max_ingress_ms=0.2836 max_latency_ms=151.508 early_latency_ms=134.051 late_latency_ms=134.215"
+          ],
+          "cadenceSummary": [],
+          "heldSummary": []
+        }
+      ]
+    },
+    {
+      "passed": true,
+      "kind": "completed-visual",
+      "error": null,
+      "receiptSHA256": "78564EADFD65B0DC8FF8B7D1E59C1DC3B1BFD1E1D4A367AFBEED6AEE57F12CCC",
+      "results": [
+        {
+          "case": 10,
+          "variant": "standard",
+          "passed": true,
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "inputMappings": 3,
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=12 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=80.0998 proof_positive=65 both_missing=0 completed_slot_mode=1 completed_slot_sources=65 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=7 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9722 work_samples=186 max_work_ms=14.3689 max_ingress_ms=0.3197 max_latency_ms=171.673 early_latency_ms=134.456 late_latency_ms=134.161"
+          ],
+          "cadenceSummary": [],
+          "heldSummary": []
+        },
+        {
+          "case": 11,
+          "variant": "beta",
+          "passed": true,
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "inputMappings": 3,
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=12 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=85.2913 proof_positive=65 both_missing=0 completed_slot_mode=1 completed_slot_sources=65 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9979 work_samples=186 max_work_ms=13.4397 max_ingress_ms=0.4052 max_latency_ms=175.802 early_latency_ms=134.5 late_latency_ms=134.043"
+          ],
+          "cadenceSummary": [],
+          "heldSummary": []
+        }
+      ]
+    },
+    {
+      "passed": true,
+      "kind": "missing-analysis",
+      "error": null,
+      "receiptSHA256": "C54412F19263C22D1BAE9B0AD186E15B616F0D00E35BB0C0F5C31AB1DADEABAA",
+      "results": [
+        {
+          "case": 4,
+          "variant": "standard",
+          "passed": true,
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "inputMappings": 93,
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=10 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=53.5013 proof_positive=62 both_missing=3 completed_slot_mode=0 completed_slot_sources=0 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9634 work_samples=186 max_work_ms=13.9278 max_ingress_ms=0.3409 max_latency_ms=147.78 early_latency_ms=134.228 late_latency_ms=134.676"
+          ],
+          "cadenceSummary": [],
+          "heldSummary": []
+        },
+        {
+          "case": 5,
+          "variant": "beta",
+          "passed": true,
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "inputMappings": 93,
+          "missingEvidenceSummary": [
+            "MISSING EVIDENCE SUMMARY: anchor=11 one_anchor=1 sources=186 expected=186 exact=1 max_source_gap=1 max_submit_gap_ms=54.072 proof_positive=62 both_missing=3 completed_slot_mode=0 completed_slot_sources=0 recovered=16 recovery_selected_raw_scans=0 recovery_raw_worker_results=6 complete=1 proof_contract=1 exact_equivalence_contract=1 recovery_contract=1 stable_mapping=1 stable_cue=1 geometry_changes_including_withheld=0 full_raster=0 source_fps=23.9621 work_samples=186 max_work_ms=14.1587 max_ingress_ms=0.3334 max_latency_ms=148.183 early_latency_ms=134.974 late_latency_ms=134.733"
+          ],
+          "cadenceSummary": [],
+          "heldSummary": []
+        }
+      ]
+    },
+    {
+      "passed": false,
+      "kind": "scripture",
+      "error": "Native beta case1 failed; preserve evidence and do not retry.\r\nAt E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\run-evidence-pair.ps1:121 char:20\r\n+ ... ot $vpPass){throw \"Native $vpVariant case$vpCase failed; preserve evi ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : OperationStopped: (Native beta cas...d do not retry.:String) [], RuntimeException\r\n    + FullyQualifiedErrorId : Native beta case1 failed; preserve evidence and do not retry.\r\n \r\n",
+      "receiptSHA256": "8718ADA184759DDF75632B23B3140FDE7DCC4A2677B98DE1AAA68511962F4078",
+      "results": [
+        {
+          "case": 0,
+          "variant": "standard",
+          "passed": true,
+          "exitCode": 0,
+          "actualThreadReserveVerified": true,
+          "inputMappings": 83,
+          "missingEvidenceSummary": [],
+          "cadenceSummary": [
+            "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=166 phases=83 inspection_requests=0 templates=1 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=1 source_fps=23.9652 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=54.7366 max_latency_ms=151.021 early_latency_ms=136.057 late_latency_ms=136.314 work_samples=166 max_frame_work_ms=17.6812 max_ingress_ms=2.879"
+          ],
+          "heldSummary": [
+            "SCRIPTURE NATURAL HELD: corpus_frames=83 sources=166 proof_declined=166 ordinary=43 held=123 exact_full_scans=166 unready=0 current_held_certificate=1 mapping_stable=1 visual_requests=0 reference_witnesses=2 preroll_reference=1"
+          ]
+        },
+        {
+          "case": 1,
+          "variant": "beta",
+          "passed": false,
+          "exitCode": 2,
+          "actualThreadReserveVerified": true,
+          "inputMappings": 83,
+          "missingEvidenceSummary": [],
+          "cadenceSummary": [
+            "CAPTURED V210: input_hz=23.976 output_hz=59 steady_sources=166 submitted=166 distinct=166 composed=165 phases=83 inspection_requests=0 templates=2 proofs=0 consumed=0 scans=166 current_exact=1 native_stable=1 no_fallback=0 source_fps=23.9782 max_source_gap=1 max_processing_selection_lag=0 max_submit_gap_ms=54.631 max_latency_ms=149.964 early_latency_ms=136.947 late_latency_ms=136.863 work_samples=166 max_frame_work_ms=17.9477 max_ingress_ms=0.213"
+          ],
+          "heldSummary": []
+        }
+      ]
+    }
+  ],
+  "failed": 1,
+  "failure": {
+    "assertion": "composed == outputs && noFallback",
+    "variant": "Beta",
+    "native": [
+      0,
+      274,
+      3840,
+      1886
+    ],
+    "reason": "current raw visibility is not proven inside the advanced native canvas",
+    "source": 63,
+    "currentSources": 166,
+    "case": 1,
+    "traceLimitation": "Failure preceded general TSV flush; bounded stderr preserved. Test-only flush committed563ebc97160291646f59084d859d190498d90921; no rerun.",
+    "actual": [
+      0,
+      274,
+      3840,
+      2026
+    ],
+    "composed": 165
+  },
+  "passed": 7,
+  "source": "96b0cd94e9aa69a3cb8b9d01933e30781cedb6c1",
+  "settingsNotModifiedByTests": true,
+  "runtime": "C:\\Videoprocessor\\vp",
+  "outerReceiptSHA256": "8F2EF378B0A7478FF1E266D90B833CE0FE98805351173D9A89C086C7EA913128",
+  "mainUnchanged": true
+}

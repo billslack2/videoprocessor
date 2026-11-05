@@ -1,0 +1,31 @@
+{
+  "source": "96b0cd94e9aa69a3cb8b9d01933e30781cedb6c1",
+  "dll": "E:\\codex\\videoprocessor\\source-ticket-20261104\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+  "dllSha256": "17759bd2c7227c0522d87d657a816f0818111d85ca85689b866b093f2fb020e8",
+  "pdbSha256": "c4b25bb83783c427c63189603a14cf5cecf12b671ba6f3c4054c034373dca5d7",
+  "measurement": "E:\\codex\\videoprocessor\\source-ticket-20261104\\artifacts\\source-ticket-renderer\\standard-96b0cd94-stack.json",
+  "measurementSha256": "92885f7147405b26d8c7a2bb15b93d1f9a803fa94f33e80c8506e6cfbfb63061",
+  "threadReserveBytes": 1048576,
+  "unlistedLeafAllowanceBytes": 16384,
+  "minimumHeadroomBytes": 131072,
+  "knownChainReservationsBytes": {
+    "template_seed": 562128,
+    "tracker_consume": 593456,
+    "current_proof": 525536,
+    "resolve_snapshot": 464864,
+    "current_equivalence": 404048,
+    "qualified_association": 529120,
+    "completed_source_proof": 400144
+  },
+  "remainingHeadroomBytes": {
+    "template_seed": 470064,
+    "tracker_consume": 438736,
+    "current_proof": 506656,
+    "resolve_snapshot": 567328,
+    "current_equivalence": 628144,
+    "qualified_association": 503072,
+    "completed_source_proof": 632048
+  },
+  "passed": true,
+  "scope": "Compiled PE reservations for observed seed chain and known tracker/proof/resolve routes; actual 1MiB-thread execution still required. Executable reserve is validated separately."
+}

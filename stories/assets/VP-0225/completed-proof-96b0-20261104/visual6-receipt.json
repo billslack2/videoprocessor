@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "sourcePin": "96b0cd94e9aa69a3cb8b9d01933e30781cedb6c1",
+  "passed": true,
+  "overallSuitePassed": false,
+  "timingQualified": false,
+  "scope": "Six captured current-source outputs from a controlled loop of three distinct original moving rasters. Does not establish arbitrary moving-film or both-unfinished fallback continuity.",
+  "scriptureBlocker": "Beta source63 expanded current raw fallback; overall suite remains failed.",
+  "captures": [
+    {
+      "variant": "standard",
+      "source": 44,
+      "windowOffset": 32,
+      "dimensions": [
+        2000,
+        1125
+      ],
+      "sourceCrop": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "caption": [
+        1838,
+        1926,
+        1998,
+        2022
+      ],
+      "destination": [
+        1784,
+        1760,
+        2048,
+        1876
+      ],
+      "submittedTraceRows": 1,
+      "flags": 37,
+      "hashes": {
+        "VP-rendered-20261104-210409-170-frame-44.json": "6d186af7ee8483ede0ad138103e17817de8fddfa1021ff319e334e8c34b31726",
+        "VP-rendered-20261104-210409-170-frame-44.png": "17f097e0b5f068741993c6b01fb3eba29d52bac3bf610ba7c9546f1f558b8091"
+      },
+      "manualVisual": "Complete No. glyphs and dark backing visible; no clipping or duplicate below picture; current movie phases differ."
+    },
+    {
+      "variant": "standard",
+      "source": 61,
+      "windowOffset": 49,
+      "dimensions": [
+        2000,
+        1125
+      ],
+      "sourceCrop": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "caption": [
+        1838,
+        1926,
+        1998,
+        2022
+      ],
+      "destination": [
+        1784,
+        1760,
+        2048,
+        1876
+      ],
+      "submittedTraceRows": 1,
+      "flags": 37,
+      "hashes": {
+        "VP-rendered-20261104-210409-870-frame-61.json": "c2a0025b9a03fecf4bc8bfc96fa42832ac05b92b7bd24d3d6d45b446bec0d0aa",
+        "VP-rendered-20261104-210409-870-frame-61.png": "7889bb3c6d5554be2e822dc1149e9c9d1fd3c81a725afe32de37f288c5ff5fe0"
+      },
+      "manualVisual": "Complete No. glyphs and dark backing visible; no clipping or duplicate below picture; current movie phases differ."
+    },
+    {
+      "variant": "standard",
+      "source": 76,
+      "windowOffset": 64,
+      "dimensions": [
+        2000,
+        1125
+      ],
+      "sourceCrop": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "caption": [
+        1838,
+        1926,
+        1998,
+        2022
+      ],
+      "destination": [
+        1784,
+        1760,
+        2048,
+        1876
+      ],
+      "submittedTraceRows": 1,
+      "flags": 37,
+      "hashes": {
+        "VP-rendered-20261104-210410-502-frame-76.json": "cc35ebe5db37e530877e9b4c4ef0151a25c0ba2de20118264a6798cf55fa243d",
+        "VP-rendered-20261104-210410-502-frame-76.png": "7889bb3c6d5554be2e822dc1149e9c9d1fd3c81a725afe32de37f288c5ff5fe0"
+      },
+      "manualVisual": "Complete No. glyphs and dark backing visible; no clipping or duplicate below picture; current movie phases differ."
+    },
+    {
+      "variant": "beta",
+      "source": 44,
+      "windowOffset": 32,
+      "dimensions": [
+        2000,
+        1125
+      ],
+      "sourceCrop": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "caption": [
+        1838,
+        1926,
+        1998,
+        2022
+      ],
+      "destination": [
+        1784,
+        1760,
+        2048,
+        1876
+      ],
+      "submittedTraceRows": 1,
+      "flags": 37,
+      "hashes": {
+        "VP-rendered-20261104-210418-302-frame-44.json": "3f74b33e4007d2f7c7fad34c8e7a0dade2ac3caa9842f33ee6c6aeb4109b3a4e",
+        "VP-rendered-20261104-210418-302-frame-44.png": "1f686d8cebc441157f9ef22365ea456526703b9198334d6520a97d02b25c4f8f"
+      },
+      "manualVisual": "Complete No. glyphs and dark backing visible; no clipping or duplicate below picture; current movie phases differ."
+    },
+    {
+      "variant": "beta",
+      "source": 61,
+      "windowOffset": 49,
+      "dimensions": [
+        2000,
+        1125
+      ],
+      "sourceCrop": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "caption": [
+        1838,
+        1926,
+        1998,
+        2022
+      ],
+      "destination": [
+        1784,
+        1760,
+        2048,
+        1876
+      ],
+      "submittedTraceRows": 1,
+      "flags": 37,
+      "hashes": {
+        "VP-rendered-20261104-210419-016-frame-61.json": "6ddb7717032b973212a49a1877231ee0ac5d9019894de208e2b6f529a1d260a1",
+        "VP-rendered-20261104-210419-016-frame-61.png": "02dc218da6c394a05477f2253c3eb95a62e7ee3d3b6e82722aea681dd58acd45"
+      },
+      "manualVisual": "Complete No. glyphs and dark backing visible; no clipping or duplicate below picture; current movie phases differ."
+    },
+    {
+      "variant": "beta",
+      "source": 76,
+      "windowOffset": 64,
+      "dimensions": [
+        2000,
+        1125
+      ],
+      "sourceCrop": [
+        0,
+        272,
+        3840,
+        1886
+      ],
+      "caption": [
+        1838,
+        1926,
+        1998,
+        2022
+      ],
+      "destination": [
+        1784,
+        1760,
+        2048,
+        1876
+      ],
+      "submittedTraceRows": 1,
+      "flags": 37,
+      "hashes": {
+        "VP-rendered-20261104-210419-640-frame-76.json": "2db7b8b3e57ee35b7a57c4b55500c85ed4ecc027030d5b5608b3670a995b2407",
+        "VP-rendered-20261104-210419-640-frame-76.png": "02dc218da6c394a05477f2253c3eb95a62e7ee3d3b6e82722aea681dd58acd45"
+      },
+      "manualVisual": "Complete No. glyphs and dark backing visible; no clipping or duplicate below picture; current movie phases differ."
+    }
+  ]
+}

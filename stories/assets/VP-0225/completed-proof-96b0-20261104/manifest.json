@@ -1,0 +1,48 @@
+{
+  "acceptance": "OPEN",
+  "privatePixelsIncluded": false,
+  "schema": 1,
+  "source": "96b0cd94e9aa69a3cb8b9d01933e30781cedb6c1",
+  "files": [
+    {
+      "bytes": 10020,
+      "sha256": "E46987157837A324BEFFE19A3723256A2045EEE8CFF3195894880F5377A2DB0F",
+      "name": "actual8-summary.json"
+    },
+    {
+      "bytes": 1454,
+      "sha256": "321490209E90B74410DDDD30611D9A4E9AFB60EA3894246CFB9FF3A0E44AF2C7",
+      "name": "beta-stack.json"
+    },
+    {
+      "bytes": 4745,
+      "sha256": "F6B54D94DA9124431461A6E708F15CC8E894DB053ED88219FF84C954AB12570E",
+      "name": "focused-release-build.json"
+    },
+    {
+      "bytes": 321,
+      "sha256": "66C9930095F94544E53954D74BC9ECA1CC55D49F7CF7001D1D53F275B0389E13",
+      "name": "gui-stack.json"
+    },
+    {
+      "bytes": 2763,
+      "sha256": "1EB293A0CE18E411A2CD5FA4CEB0B477F73649BE3A91A562888F6068C19F9080",
+      "name": "native11-iteration.json"
+    },
+    {
+      "bytes": 4483,
+      "sha256": "F2D715A2192820BE78E1ABAFEA921D0EB972E45F7CB0A9A0CF8584A37FE7CFCA",
+      "name": "paused94-comparison.json"
+    },
+    {
+      "bytes": 1449,
+      "sha256": "98C70669DA5E8EE3E7F411434778876E990E9CCE8F7A905590E7C52EC09D83B5",
+      "name": "standard-stack.json"
+    },
+    {
+      "bytes": 5846,
+      "sha256": "052762811553EB2931C9B175B1E7F3DE2069C4D5F97F2D10FA79A251C5B5800E",
+      "name": "visual6-receipt.json"
+    }
+  ]
+}

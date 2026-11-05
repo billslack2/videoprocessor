@@ -1,0 +1,124 @@
+{
+  "limitations": "No private native/image payload copied. Cold offline current detector replay, not live deployment, temporal stability or exhaustive absence proof.",
+  "installed": {
+    "reasons": {
+      "insufficient-distributed-edge-support": 188
+    },
+    "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+    "build": "older installed1b0, not96b0 candidate",
+    "join": "All8 ActivePictureFrameIdentity fields exact. Old1b0 native trace leaves policy/continuity0; source sidecar policy2/continuity7 retained explicitly, not filled into trace.",
+    "matchedRecords": 188,
+    "perStage": {
+      "source-picture-active": 94,
+      "source-picture-job": 94
+    },
+    "pid": 62352,
+    "capturedSources": 94
+  },
+  "uniqueNativeBytePhases": 4,
+  "preservation": {
+    "allHashesMatch": true,
+    "summary": {
+      "schemaVersion": 1,
+      "includeFrames": true,
+      "session": {
+        "acceptedRecords": 21256,
+        "recordsWritten": 21256,
+        "framesWritten": 94,
+        "frameBytesWritten": 2079129600,
+        "nativeFramesOffered": 97,
+        "nativeSamplingSkipped": 0,
+        "nativeSelectedMissed": 3,
+        "nativeSamplingSourceStep": 1
+      },
+      "lifetime": {
+        "droppedRecords": 1222,
+        "droppedFrames": 3,
+        "historyOverwrites": 177103,
+        "writeFailures": 0
+      },
+      "limits": {
+        "preRollMs": 10000,
+        "captureMs": 20000,
+        "recordHistoryCapacity": 8192,
+        "maxCaptureRecords": 65536,
+        "maxFrameBytes": 134217728,
+        "maxCaptureFrameBytes": 2147483648,
+        "maxOutstandingFrames": 2
+      },
+      "lifetimeCounterMeaning": "Lifetime counters are cumulative since recorder construction and may include events outside this capture.",
+      "nativeSamplingMode": "consecutive-burst",
+      "nativeBurst": {
+        "targetFrames": 97,
+        "firstSource": 5876,
+        "lastSource": 5972,
+        "lastOfferedSource": 5972,
+        "lastOfferedAccepted": 5845,
+        "lastOfferedTimestamp": 434442332430,
+        "offeredUnique": 97,
+        "sourceGaps": 0,
+        "duplicateOffers": 0,
+        "lockAdmissionMisses": 0,
+        "admissionMisses": 3,
+        "sessionWriteFailures": 0,
+        "complete": false,
+        "windowEnded": true,
+        "sourceCounter": "sourceFrameNumber",
+        "endReason": "source-window-ended",
+        "firstIdentity": {
+          "transportGeneration": 2,
+          "acceptedSequence": 5749,
+          "sourceFrameNumber": 5876,
+          "captureTimestamp": 434438328490,
+          "sourceFormatGeneration": 15805081878477807578,
+          "viewportGeneration": 3,
+          "rendererGeneration": 2,
+          "analysisDomainKey": 4768279117495752782,
+          "policyGeneration": 2,
+          "continuityGeneration": 7
+        }
+      }
+    },
+    "count": 191
+  },
+  "receiptHashes": {
+    "installedJoin": "BFDF53AC9175EB5ABB6EA644BA99C0CEB8CEF31E85243FA8363DA4B8BEE2E5D8",
+    "nativePreservation": "7B03441644A81E56AD0E3B872AD83C4DB9675EB5EF94C16242542290932F8D14",
+    "detector": "02E334FFE60E82C586BC0981728AE9AE8469FB6966EB20303297180340968F50",
+    "pixelEvidence": "E9EE6E389EB4D8894B6D0A7FC68460DECAB4DA1EC2F7BF595F010B07522CC191"
+  },
+  "candidate": {
+    "filesStable": true,
+    "exitCode": 0,
+    "scope": "Independent cold current production detector per original frame; no temporal history, GPU, or installed-runtime change. Strict verifier is sampled, not exhaustive absence.",
+    "summary": {
+      "rows": 94,
+      "physicalAvailable": 94,
+      "supportVerified": 94,
+      "sourceBound": 94,
+      "physicalBounds": {
+        "[0, 276, 3840, 1883]": 71,
+        "[0, 275, 3840, 1883]": 23
+      },
+      "intervals": {
+        "[[0, 0], [273, 277], [3840, 3840], [1882, 1886]]": 47,
+        "[[0, 0], [273, 276], [3840, 3840], [1882, 1886]]": 47
+      },
+      "supportBounds": {
+        "[0, 272, 3840, 1886]": 94
+      },
+      "reasons": {
+        "supplied source candidate independently passes excluded-band verification": 94
+      },
+      "ms": {
+        "median": 2.0839999999999996,
+        "max": 9.7677
+      }
+    },
+    "source": "96b0cd94e9aa69a3cb8b9d01933e30781cedb6c1",
+    "dirtyAtReplay": [
+      " M src/VideoProcessor-Test/LibplaceboPluginProxyTests.cpp"
+    ]
+  },
+  "encoding": "V210 10-bit YUV422, REC709, Limited; native codes unnormalized"
+}
