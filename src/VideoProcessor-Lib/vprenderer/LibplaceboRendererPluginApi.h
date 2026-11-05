@@ -43,6 +43,12 @@ using VideoProcessorLibplaceboConfigureDiagnosticFn = void (__cdecl *)(void*,
     AnalysisDiagnosticTrace::RecordSink, AnalysisDiagnosticTrace::FrameSink,
     AnalysisDiagnosticTrace::FrameCaptureActiveCallback);
 
+// Additive recorder capability. V1 remains valid and never enables accepted-input preparation.
+static constexpr const char* VP_LIBPLACEBO_DIAGNOSTIC_V2_EXPORT = "VideoProcessorLibplaceboConfigureAnalysisDiagnosticSinkV2";
+using VideoProcessorLibplaceboConfigureDiagnosticV2Fn = void (__cdecl *)(void*,
+    AnalysisDiagnosticTrace::RecordSink, AnalysisDiagnosticTrace::FrameSink,
+    AnalysisDiagnosticTrace::FrameCaptureActiveCallback, AnalysisDiagnosticTrace::FrameCaptureActiveCallback);
+
 // Optional V1 side-channel. Its absence preserves API-29 reveal behavior; it
 // changes neither the factory nor any existing shared interface/snapshot.
 static constexpr const char* VP_LIBPLACEBO_STARTUP_READINESS_EXPORT =

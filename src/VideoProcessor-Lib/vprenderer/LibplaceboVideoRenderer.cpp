@@ -24077,6 +24077,39 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
     // Dispatch metadata for this already accepted owned source before waking
     // presentation. Workers scan independently; capture never waits for them.
     if(acceptedPreparation) {
+        // Opt-in native recording is offered before optional queue/context admission.
+        // Metadata preparation does not scan, upload, or copy pixels. The RAM sink
+        // alone retains at most two source owners and copies on its own worker.
+        if(AnalysisDiagnosticTrace::AcceptedFramesActive()) {
+            PreparedAnalysisFrame prepared;
+            try {
+                if(!frameState->dolbyVisionTunnel)prepared=Impl::PrepareFrameAnalysis(acceptedPreparation->frame,*frameState,
+                    acceptedPreparation->converted,acceptedPreparation->analysis,AnalysisSourceProfile::QueuedCapture,
+                    acceptedPreparation->activePictureIdentity.sourceFormatGeneration,false,false,true);
+            } catch(...) { /* Emit an identity-only invalid-source event below. */ }
+                {
+                    const auto& source=prepared.source;const auto& id=acceptedPreparation->activePictureIdentity;
+                    AnalysisDiagnosticFramePacketV1 packet;packet.structSize=sizeof(packet);
+                    packet.reserved0=AnalysisDiagnosticTrace::FRAME_ACCEPTED_INPUT;
+                    packet.width=source.width;packet.height=source.height;packet.stride0=source.rowBytes;packet.stride1=source.chromaRowBytes;
+                    packet.format=static_cast<uint32_t>(source.format);packet.encoding=static_cast<uint32_t>(source.encoding);
+                    packet.colorspace=static_cast<uint32_t>(source.colorspace);packet.rgbBitAlignment=source.rgbBitAlignment;
+                    packet.analysisSampleRange=static_cast<uint32_t>(source.range);
+                    packet.transportGeneration=id.transportGeneration;packet.acceptedSequence=id.acceptedSequence;
+                    packet.sourceFrameNumber=id.sourceFrameNumber;packet.captureTimestamp=id.captureTimestamp;
+                    packet.sourceFormatGeneration=id.sourceFormatGeneration;packet.viewportGeneration=id.viewportGeneration;
+                    packet.rendererGeneration=id.rendererGeneration;packet.analysisDomainKey=prepared.domainKey;
+                    packet.policyGeneration=preparationPolicy;packet.continuityGeneration=preparationContinuity;
+                    packet.frameDuration100ns=frameState->displayMode && frameState->displayMode->TimeScale()>0?
+                        static_cast<int64_t>(10000000.0*frameState->displayMode->FrameDuration()/frameState->displayMode->TimeScale()):0;
+                    packet.discontinuity=videoFrame.IsSourceDiscontinuity();
+                    packet.data=prepared.IsValid()?source.data:nullptr;packet.dataBytes=prepared.IsValid()?source.dataBytes:0;
+                    packet.ownerContext=&prepared.sourceOwner;packet.retainOwner=RetainAnalysisTraceOwner;packet.releaseOwner=ReleaseAnalysisTraceOwner;
+                    // Unknown picture/semantic settings stay zero. Unsupported/unprepared input emits
+                    // an identity-only invalid-source event; no canonical pixels are invented.
+                    AnalysisDiagnosticTrace::EmitFrame(packet);
+                }
+        }
         try {DispatchAcceptedSourcePreparation(*acceptedPreparation,preparationPolicy,preparationContinuity);}
         catch(const std::exception& error) {
             DebugLog::Log("VP accepted source preparation unavailable: %s; action=normal-render-prime",error.what());

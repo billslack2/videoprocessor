@@ -94,6 +94,15 @@ VideoProcessorLibplaceboConfigureAnalysisDiagnosticSink(void* context,
     AnalysisDiagnosticTrace::SetExternalSinks(context,records,frames,active);
 }
 
+extern "C" __declspec(dllexport) void __cdecl
+VideoProcessorLibplaceboConfigureAnalysisDiagnosticSinkV2(void* context,
+    AnalysisDiagnosticTrace::RecordSink records, AnalysisDiagnosticTrace::FrameSink frames,
+    AnalysisDiagnosticTrace::FrameCaptureActiveCallback active,
+    AnalysisDiagnosticTrace::FrameCaptureActiveCallback acceptedActive)
+{
+    AnalysisDiagnosticTrace::SetExternalSinks(context,records,frames,active,acceptedActive);
+}
+
 extern "C" __declspec(dllexport) uint32_t __cdecl
 VideoProcessorLibplaceboGetStartupPresentationReadinessV1(
     IVideoRenderer* renderer, StartupPresentation::SnapshotV1* snapshot)

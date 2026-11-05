@@ -20,6 +20,7 @@ namespace
 	struct PluginExports
 	{
 		HMODULE module = nullptr;
+        bool ramCaptureSupported=false;
 		VideoProcessorLibplaceboCreateRendererFn createRenderer = nullptr;
 		VideoProcessorLibplaceboDestroyRendererFn destroyRenderer = nullptr;
 		VideoProcessorLibplaceboGetStartupReadinessFn startupReadiness = nullptr;
@@ -34,6 +35,9 @@ namespace
     }
     bool __cdecl AnalysisFramesActive(void* context) {
         return static_cast<AnalysisDiagnosticTrace*>(context)->IsFrameCaptureActive();
+    }
+    bool __cdecl AnalysisAcceptedFramesActive(void* context) {
+        return static_cast<AnalysisDiagnosticTrace*>(context)->IsAcceptedFrameCaptureActive();
     }
     void TraceLifecycle(const char* text) {
         AnalysisDiagnosticRecordV1 r;r.kind=AnalysisDiagnosticRecordKindV1::Event;
@@ -143,7 +147,11 @@ namespace
             FreeLibrary(result.module);return PluginExports{};
         }
         auto& recorder=AnalysisDiagnosticTrace::Instance();
-        diagnostics(&recorder,ForwardAnalysisRecord,ForwardAnalysisFrame,AnalysisFramesActive);
+        const auto diagnosticsV2=reinterpret_cast<VideoProcessorLibplaceboConfigureDiagnosticV2Fn>(
+            GetProcAddress(result.module,VP_LIBPLACEBO_DIAGNOSTIC_V2_EXPORT));
+        result.ramCaptureSupported=diagnosticsV2!=nullptr;
+        if(diagnosticsV2)diagnosticsV2(&recorder,ForwardAnalysisRecord,ForwardAnalysisFrame,AnalysisFramesActive,AnalysisAcceptedFramesActive);
+        else diagnostics(&recorder,ForwardAnalysisRecord,ForwardAnalysisFrame,AnalysisFramesActive);
 
 		DebugLog::Log(
 			"Optional VP Renderer plugin loaded: API=%u path=%ls",
@@ -217,7 +225,7 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	m_startupReadiness = plugin.startupReadiness;
 	m_getHdrStatus = plugin.getHdrStatus;
     activeDiagnosticProducers.fetch_add(1, std::memory_order_relaxed);
-    AnalysisDiagnosticTrace::Instance().SetProducerAvailable(true,true);
+    AnalysisDiagnosticTrace::Instance().SetProducerAvailable(true,true,plugin.ramCaptureSupported);
 }
 
 

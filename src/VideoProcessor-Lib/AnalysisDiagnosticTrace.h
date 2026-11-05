@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <memory>
 #include <iosfwd>
 #include <string>
 #include <thread>
@@ -171,6 +172,7 @@ enum class AnalysisDiagnosticNativeSampling : uint32_t
 {
     Uniform = 0,
     ConsecutiveBurst = 1,
+    RamWindow = 2,
 };
 
 struct AnalysisDiagnosticTraceOptions
@@ -185,6 +187,8 @@ struct AnalysisDiagnosticTraceOptions
 	std::string outputRoot;
 };
 
+class AnalysisNativeRamRecording;
+
 class AnalysisDiagnosticTrace
 {
 public:
@@ -193,6 +197,7 @@ public:
 	using FrameCaptureActiveCallback = bool (__cdecl*)(void*);
 	static constexpr uint32_t RECORD_SCHEMA_VERSION = 1;
 	static constexpr uint32_t FRAME_SCHEMA_VERSION = 1;
+    static constexpr uint32_t FRAME_ACCEPTED_INPUT = 1;
 	static constexpr size_t RECORD_HISTORY_CAPACITY = 8192;
 	static constexpr size_t FRAME_QUEUE_CAPACITY = 2;
 	static constexpr size_t MAX_CAPTURE_RECORDS = 65536;
@@ -210,24 +215,28 @@ public:
 	// Plugin-local forwarding hooks. The host loader installs/removes these via
 	// the additive plugin export; they do not instantiate a recorder in the DLL.
 	static void SetExternalSinks(void* context, RecordSink recordSink,
-		FrameSink frameSink, FrameCaptureActiveCallback activeCallback) noexcept;
+		FrameSink frameSink, FrameCaptureActiveCallback activeCallback,
+        FrameCaptureActiveCallback acceptedCallback = nullptr) noexcept;
 	static void ClearExternalSinks() noexcept;
 	static void Emit(const AnalysisDiagnosticRecordV1& record) noexcept;
 	static void EmitFrame(const AnalysisDiagnosticFramePacketV1& frame) noexcept;
 	static bool FramesActive() noexcept;
+    static bool AcceptedFramesActive() noexcept;
 	static AnalysisDiagnosticRecordV1 BoundaryChain(const AnalysisDiagnosticRecordV1& current,
 		const AnalysisBoundaryChainFacts& facts) noexcept;
 
 	// Capability is set by the host loader. It intentionally survives renderer
 	// recreation and does not clear the rolling history or an active capture.
-	void SetProducerAvailable(bool connected, bool frameCaptureSupported) noexcept;
+	void SetProducerAvailable(bool connected, bool frameCaptureSupported, bool ramCaptureSupported = true) noexcept;
 	void Submit(const AnalysisDiagnosticRecordV1& record) noexcept;
 	void SubmitFrame(const AnalysisDiagnosticFramePacketV1& frame) noexcept;
 	bool IsFrameCaptureActive() const noexcept;
+    bool IsAcceptedFrameCaptureActive() const noexcept;
 	bool IsRecording() const noexcept;
 
 	AnalysisDiagnosticCaptureResult StartCapture(bool includeFrames = false,
-        AnalysisDiagnosticNativeSampling sampling = AnalysisDiagnosticNativeSampling::Uniform);
+        AnalysisDiagnosticNativeSampling sampling = AnalysisDiagnosticNativeSampling::Uniform,
+        uint64_t ramBytes = 0, uint32_t durationMs = 0);
 	void StopCapture() noexcept;
 	AnalysisDiagnosticTraceStatus Status() const;
 
@@ -255,12 +264,13 @@ private:
 		uint64_t firstSequence, uint64_t deadlineMs, bool includeFrames);
 	void WriteCaptureSummary(const std::string& directory, bool includeFrames) noexcept;
 	void WriteRecord(std::ostream& output, const AnalysisDiagnosticRecordV1& record);
-	void WriteFrame(std::ostream& metadata, const std::string& directory,
+	bool WriteFrame(std::ostream& metadata, const std::string& directory,
 		QueuedFrame& frame);
 	std::string MakeCaptureDirectory() const;
 	uint64_t NowMs() const noexcept;
 
-	const AnalysisDiagnosticTraceOptions m_options;
+	std::shared_ptr<AnalysisNativeRamRecording> m_ramRecording; // atomic shared_ptr access
+    const AnalysisDiagnosticTraceOptions m_options;
 	const size_t m_captureRecordLimit;
 	mutable std::mutex m_mutex;
 	std::condition_variable m_changed;
@@ -274,6 +284,8 @@ private:
 	uint64_t m_captureStopSequence = 0;
 	std::atomic<uint64_t> m_captureDeadlineMs{ 0 };
 	uint64_t m_captureFrameBytes = 0;
+    uint64_t m_ramBudgetBytes=0;
+    uint32_t m_requestedCaptureMs=0;
 	uint64_t m_captureFrameIndex = 0;
 	uint64_t m_captureFrameOffered = 0, m_captureFrameSamplingSkipped = 0;
 	uint64_t m_captureFrameMissed = 0, m_captureFrameSamplingStep = 1;
@@ -301,6 +313,7 @@ private:
 	uint32_t m_preRollMs = 0;
 	std::atomic<bool> m_producerConnected{ false };
 	std::atomic<bool> m_frameCaptureSupported{ false };
+    std::atomic<bool> m_ramCaptureSupported{ false };
 	std::atomic<bool> m_recording{ false };
 	std::atomic<bool> m_includeFrames{ false };
 	bool m_captureRequested = false;

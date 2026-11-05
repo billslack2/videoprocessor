@@ -8123,14 +8123,21 @@ void CVideoProcessorDlg::OnCommandCaptureRenderedOutput()
 LRESULT CVideoProcessorDlg::OnAnalysisCaptureControl(WPARAM request, LPARAM version)
 {
     constexpr uint32_t responseTag = 0x56500000;
-    if (version != 1 || request > 3)
+    // v2 is a scalar opt-in RAM request: low 8 bits action=4, next 8 seconds,
+    // next 16 RAM MiB. No process pointers or settings mutation.
+    const bool ramRequest=version==2 && (request&255u)==4u && (uint64_t(request)>>32)==0;
+    const uint32_t seconds=ramRequest?static_cast<uint32_t>((request>>8)&255u):0;
+    const uint32_t ramMiB=ramRequest?static_cast<uint32_t>((request>>16)&65535u):0;
+    if ((!ramRequest && (version != 1 || request > 3)) ||
+        (ramRequest && (!seconds || seconds>120 || !ramMiB || ramMiB>16384)))
         return responseTag | static_cast<uint32_t>(AnalysisDiagnosticCaptureResult::InvalidRequest);
     auto& trace = AnalysisDiagnosticTrace::Instance();
     uint32_t result = 6; // Status response; no capture requested.
     if (request != 3) {
         try {
-            result = static_cast<uint32_t>(trace.StartCapture(request != 0,
-                request == 2 ? AnalysisDiagnosticNativeSampling::ConsecutiveBurst :
+            result = static_cast<uint32_t>(ramRequest?
+                trace.StartCapture(true,AnalysisDiagnosticNativeSampling::RamWindow,uint64_t(ramMiB)*1024*1024,seconds*1000):
+                trace.StartCapture(request != 0,request == 2 ? AnalysisDiagnosticNativeSampling::ConsecutiveBurst :
                     AnalysisDiagnosticNativeSampling::Uniform));
         } catch (...) {
             DebugLog::Log("Analysis diagnostic control: capture request failed; video continues");

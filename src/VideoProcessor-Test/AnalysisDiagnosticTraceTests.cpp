@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <AnalysisDiagnosticTrace.h>
+#include <AnalysisNativeRamRecording.h>
 
 #include <atomic>
 #include <chrono>
@@ -190,6 +191,103 @@ namespace Tests
 	TEST_CLASS(AnalysisDiagnosticTraceTests)
 	{
 	public:
+        TEST_METHOD(NativeRamWindowRetainsExactAcceptedSuffixAndExplicitEvictions)
+        {
+            OwnerCounters counters;OwnerSource owner;
+            owner.bytes=std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{1,2,3,4});owner.counters=&counters;
+            TraceFixture fixture(true,2000);
+            fixture.trace->SetProducerAvailable(true,true,false);
+            Assert::AreEqual(uint32_t(AnalysisDiagnosticCaptureResult::FrameCaptureUnavailable),uint32_t(
+                fixture.trace->StartCapture(true,AnalysisDiagnosticNativeSampling::RamWindow,12,1000)));
+            fixture.trace->SetProducerAvailable(true,true,true);
+            auto active=+[](void* value){return static_cast<AnalysisDiagnosticTrace*>(value)->IsFrameCaptureActive();};
+            auto accepted=+[](void* value){return static_cast<AnalysisDiagnosticTrace*>(value)->IsAcceptedFrameCaptureActive();};
+            struct ClearSink {~ClearSink(){AnalysisDiagnosticTrace::ClearExternalSinks();}} clearSink;
+            AnalysisDiagnosticTrace::SetExternalSinks(fixture.trace.get(),nullptr,nullptr,active,accepted);
+            Assert::IsFalse(AnalysisDiagnosticTrace::AcceptedFramesActive());
+            Assert::AreEqual(uint32_t(AnalysisDiagnosticCaptureResult::InvalidRequest),uint32_t(
+                fixture.trace->StartCapture(true,AnalysisDiagnosticNativeSampling::RamWindow,0,1000)));
+            Assert::AreEqual(uint32_t(AnalysisDiagnosticCaptureResult::Started),uint32_t(
+                fixture.trace->StartCapture(true,AnalysisDiagnosticNativeSampling::RamWindow,12,1000)));
+            Assert::IsTrue(AnalysisDiagnosticTrace::AcceptedFramesActive());
+            AnalysisDiagnosticTrace::SetExternalSinks(fixture.trace.get(),nullptr,nullptr,active);
+            Assert::IsFalse(AnalysisDiagnosticTrace::AcceptedFramesActive(),L"V1 callback cannot enable a new tap.");
+            AnalysisDiagnosticTrace::SetExternalSinks(fixture.trace.get(),nullptr,nullptr,active,accepted);
+            auto frame=BurstPacket(owner);
+            fixture.trace->SubmitFrame(frame);Assert::AreEqual(0,counters.retained.load(),L"Rendered offers cannot enter an accepted-input window.");
+            frame.reserved0=AnalysisDiagnosticTrace::FRAME_ACCEPTED_INPUT;
+            for(unsigned i=0;i<8;++i) {
+                frame.acceptedSequence=10+i;frame.sourceFrameNumber=100+i+(i>=4?2:0);frame.captureTimestamp=1000+i*417083;
+                fixture.trace->SubmitFrame(frame);Assert::IsTrue(WaitReleased(counters,int(i+1)));
+            }
+            fixture.trace->StopCapture();Assert::IsTrue(WaitForWriter(*fixture.trace));
+            Assert::AreEqual(uint64_t(3),fixture.trace->Status().framesWritten);
+            Assert::AreEqual(uint64_t(12),fixture.trace->Status().frameBytesWritten);
+            const auto index=ReadCaptureText(*fixture.trace,"native-window.jsonl");
+            Assert::IsTrue(index.find("\"index\":5,\"outcome\":\"ram-evicted\"")!=std::string::npos);
+            Assert::IsTrue(index.find("\"index\":6,\"outcome\":\"written\"")!=std::string::npos);
+            Assert::IsTrue(index.find("\"sourceFrameNumber\":106")!=std::string::npos,L"Original source gap is never renumbered.");
+            Assert::IsTrue(index.find("\"unloggedOffers\":0")!=std::string::npos);
+            Assert::AreEqual(std::string("\1\2\3\4",4),ReadCaptureText(*fixture.trace,"frame-000008.bin"));
+            Assert::IsTrue(ReadCaptureText(*fixture.trace,"frame-000008.txt").find("identity_v1 2 17 109 ")!=std::string::npos);
+            Assert::IsTrue(ReadCaptureText(*fixture.trace,"frame-000001.bin").empty());
+            Assert::AreEqual(counters.retained.load(),counters.released.load());
+        }
+        TEST_METHOD(NativeRamIngressPressureIsBoundedAndStopDoesNotJoinCopier)
+        {
+            OwnerCounters counters;OwnerSource owner;
+            owner.bytes=std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{1,2,3,4});owner.counters=&counters;
+            AnalysisNativeRamRecording ram(12,4);
+            struct Unblock {OwnerCounters& c;~Unblock(){c.blockRelease.store(false);}} unblock{counters};
+            counters.blockRelease=true;auto frame=BurstPacket(owner);ram.Offer(frame);
+            const auto deadline=GetTickCount64()+1000;while(!counters.releaseEntered && GetTickCount64()<deadline)Sleep(1);
+            Assert::IsTrue(counters.releaseEntered.load());
+            ++frame.acceptedSequence;++frame.sourceFrameNumber;++frame.captureTimestamp;ram.Offer(frame);
+            ++frame.acceptedSequence;++frame.sourceFrameNumber;++frame.captureTimestamp;ram.Offer(frame);
+            ram.Stop();Assert::IsTrue(counters.blockRelease.load(),L"Stop returned while copier is deliberately blocked.");
+            Assert::AreEqual(uint64_t(2),ram.OwnerPeak());
+            counters.blockRelease=false;ram.Join();
+            Assert::AreEqual(size_t(3),ram.EventCountAfterJoin());
+            Assert::AreEqual(int(AnalysisNativeRamRecording::Outcome::IngressBusy),int(ram.EventAfterJoin(2).outcome));
+            Assert::AreEqual(uint64_t(102),ram.EventAfterJoin(2).frame.sourceFrameNumber);
+            Assert::AreEqual(counters.retained.load(),counters.released.load());
+            unsigned wrote=0;ram.DrainAfterJoin([&](const AnalysisDiagnosticFramePacketV1& f,size_t){
+                Assert::AreEqual(uint64_t(4),f.dataBytes);Assert::IsTrue(memcmp(f.data,owner.bytes->data(),4)==0);
+                ++wrote;return AnalysisNativeRamRecording::Outcome::Written;
+            });Assert::AreEqual(2u,wrote);
+        }
+        TEST_METHOD(NativeRamContextResetAndWriteFailureKeepTruthfulPriorWindow)
+        {
+            OwnerCounters counters;OwnerSource owner;
+            owner.bytes=std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{5,6,7,8});owner.counters=&counters;
+            AnalysisNativeRamRecording ram(12,4);auto frame=BurstPacket(owner);
+            ram.Offer(frame);Assert::IsTrue(WaitReleased(counters,1));
+            ++frame.acceptedSequence;++frame.sourceFrameNumber;++frame.captureTimestamp;ram.Offer(frame);Assert::IsTrue(WaitReleased(counters,2));
+            ++frame.acceptedSequence;++frame.sourceFrameNumber;++frame.viewportGeneration;ram.Offer(frame);Assert::IsTrue(WaitReleased(counters,3));
+            Assert::IsFalse(ram.Active());ram.Join();
+            Assert::AreEqual(int(AnalysisNativeRamRecording::Outcome::ContextChanged),int(ram.EventAfterJoin(2).outcome));
+            unsigned offers=0;ram.DrainAfterJoin([&](const AnalysisDiagnosticFramePacketV1& f,size_t){
+                ++offers;Assert::AreEqual(uint64_t(100),f.sourceFrameNumber);return AnalysisNativeRamRecording::Outcome::WriteFailed;
+            });
+            Assert::AreEqual(1u,offers);Assert::AreEqual(int(AnalysisNativeRamRecording::Outcome::WriteFailed),int(ram.EventAfterJoin(0).outcome));
+            Assert::AreEqual(int(AnalysisNativeRamRecording::Outcome::Cancelled),int(ram.EventAfterJoin(1).outcome));
+            Assert::AreEqual(counters.retained.load(),counters.released.load());
+        }
+        TEST_METHOD(NativeRamConcurrentShutdownReleasesOwnersAndRejectsInvalidBudget)
+        {
+            Assert::ExpectException<std::invalid_argument>([]{AnalysisNativeRamRecording bad(AnalysisNativeRamRecording::MaxBytes+1);});
+            for(unsigned trial=0;trial<20;++trial) {
+                OwnerCounters counters;OwnerSource owner;
+                owner.bytes=std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{1,2,3,4});owner.counters=&counters;
+                AnalysisNativeRamRecording ram(12,4);std::atomic<bool> started{false};
+                std::thread producer([&]{auto f=BurstPacket(owner);started=true;for(unsigned i=0;i<500;++i){++f.acceptedSequence;++f.sourceFrameNumber;++f.captureTimestamp;ram.Offer(f);}});
+                while(!started.load())std::this_thread::yield();ram.Cancel();producer.join();ram.Join();
+                Assert::IsTrue(ram.OwnerPeak()<=2);Assert::IsTrue(ram.AllocatedBytesAfterJoin()<=12);
+                Assert::AreEqual(counters.retained.load(),counters.released.load());
+                unsigned wrote=0;ram.DrainAfterJoin([&](const AnalysisDiagnosticFramePacketV1&,size_t){++wrote;return AnalysisNativeRamRecording::Outcome::Written;});
+                Assert::AreEqual(0u,wrote,L"Shutdown does not start a potentially large disk drain.");
+            }
+        }
 		TEST_METHOD(CaptureIncludesTenSecondStyleRollingHistoryAndPostTriggerRecords)
 		{
 			TraceFixture fixture(false, 1000);

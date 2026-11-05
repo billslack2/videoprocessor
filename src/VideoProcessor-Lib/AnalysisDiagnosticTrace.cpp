@@ -1,6 +1,7 @@
 #include <pch.h>
 
 #include "AnalysisDiagnosticTrace.h"
+#include "AnalysisNativeRamRecording.h"
 
 #include <algorithm>
 #include <chrono>
@@ -16,6 +17,7 @@ namespace
 	std::atomic<AnalysisDiagnosticTrace::RecordSink> g_recordSink{ nullptr };
 	std::atomic<AnalysisDiagnosticTrace::FrameSink> g_frameSink{ nullptr };
 	std::atomic<AnalysisDiagnosticTrace::FrameCaptureActiveCallback> g_activeCallback{ nullptr };
+	std::atomic<AnalysisDiagnosticTrace::FrameCaptureActiveCallback> g_acceptedCallback{ nullptr };
 	std::atomic<void*> g_sinkContext{ nullptr };
 	std::atomic<uint64_t> g_directorySequence{ 0 };
 
@@ -143,6 +145,7 @@ AnalysisDiagnosticTrace::AnalysisDiagnosticTrace(
 
 AnalysisDiagnosticTrace::~AnalysisDiagnosticTrace()
 {
+    if(auto ram=std::atomic_load(&m_ramRecording))ram->Cancel();
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		if (m_recording.exchange(false, std::memory_order_acq_rel))
@@ -179,11 +182,12 @@ void AnalysisDiagnosticTrace::SetExternalSinks(
 	void* context,
 	RecordSink recordSink,
 	FrameSink frameSink,
-	FrameCaptureActiveCallback activeCallback) noexcept
+	FrameCaptureActiveCallback activeCallback,FrameCaptureActiveCallback acceptedCallback) noexcept
 {
 	g_sinkContext.store(context, std::memory_order_release);
 	g_frameSink.store(frameSink, std::memory_order_release);
 	g_activeCallback.store(activeCallback, std::memory_order_release);
+    g_acceptedCallback.store(acceptedCallback,std::memory_order_release);
 	g_recordSink.store(recordSink, std::memory_order_release);
 }
 
@@ -192,6 +196,7 @@ void AnalysisDiagnosticTrace::ClearExternalSinks() noexcept
 	g_recordSink.store(nullptr, std::memory_order_release);
 	g_frameSink.store(nullptr, std::memory_order_release);
 	g_activeCallback.store(nullptr, std::memory_order_release);
+    g_acceptedCallback.store(nullptr,std::memory_order_release);
 	g_sinkContext.store(nullptr, std::memory_order_release);
 }
 
@@ -243,10 +248,20 @@ bool AnalysisDiagnosticTrace::FramesActive() noexcept
 	}
 }
 
+bool AnalysisDiagnosticTrace::AcceptedFramesActive() noexcept
+{
+    const auto active=g_acceptedCallback.load(std::memory_order_acquire);
+    if(!active)return false;
+    void* context=g_sinkContext.load(std::memory_order_acquire);
+    if(!context)return false;
+    try {return active(context);}catch(...){return false;}
+}
+
 void AnalysisDiagnosticTrace::SetProducerAvailable(
 	bool connected,
-	bool frameCaptureSupported) noexcept
+	bool frameCaptureSupported,bool ramCaptureSupported) noexcept
 {
+    m_ramCaptureSupported.store(connected && frameCaptureSupported && ramCaptureSupported,std::memory_order_release);
 	m_frameCaptureSupported.store(
 		connected && frameCaptureSupported, std::memory_order_release);
 	m_producerConnected.store(connected, std::memory_order_release);
@@ -360,6 +375,14 @@ AnalysisDiagnosticRecordV1 AnalysisDiagnosticTrace::BoundaryChain(
 void AnalysisDiagnosticTrace::SubmitFrame(
 	const AnalysisDiagnosticFramePacketV1& input) noexcept
 {
+    const auto ram=std::atomic_load(&m_ramRecording);
+    if(ram) {
+        if((input.reserved0&FRAME_ACCEPTED_INPUT) && IsFrameCaptureActive())ram->Offer(input);
+        return;
+    }
+    // Accepted-input offers are exclusively for the opt-in RAM mode.
+    if(input.reserved0&FRAME_ACCEPTED_INPUT)return;
+
 	if ((input.schemaVersion != 0 &&
 		input.schemaVersion != FRAME_SCHEMA_VERSION) ||
 		(input.structSize != 0 &&
@@ -556,8 +579,14 @@ bool AnalysisDiagnosticTrace::SameNativeBurstContext(const AnalysisDiagnosticFra
         (a.captureTimestamp!=0)==(b.captureTimestamp!=0);
 }
 
+bool AnalysisDiagnosticTrace::IsAcceptedFrameCaptureActive() const noexcept
+{
+    return m_nativeSampling.load(std::memory_order_acquire)==AnalysisDiagnosticNativeSampling::RamWindow && IsFrameCaptureActive();
+}
+
 bool AnalysisDiagnosticTrace::IsFrameCaptureActive() const noexcept
 {
+    if(auto ram=std::atomic_load(&m_ramRecording))if(!ram->Active())return false;
 	return m_recording.load(std::memory_order_acquire) &&
         !m_nativeFramesFinished.load(std::memory_order_acquire) &&
 		NowMs() < m_captureDeadlineMs.load(std::memory_order_acquire) &&
@@ -573,10 +602,11 @@ bool AnalysisDiagnosticTrace::IsRecording() const noexcept
 }
 
 AnalysisDiagnosticCaptureResult AnalysisDiagnosticTrace::StartCapture(
-	bool includeFrames,AnalysisDiagnosticNativeSampling sampling)
+	bool includeFrames,AnalysisDiagnosticNativeSampling sampling,uint64_t ramBytes,uint32_t durationMs)
 {
-    if((sampling!=AnalysisDiagnosticNativeSampling::Uniform && sampling!=AnalysisDiagnosticNativeSampling::ConsecutiveBurst) ||
-        (!includeFrames && sampling==AnalysisDiagnosticNativeSampling::ConsecutiveBurst))
+    if((sampling!=AnalysisDiagnosticNativeSampling::Uniform && sampling!=AnalysisDiagnosticNativeSampling::ConsecutiveBurst && sampling!=AnalysisDiagnosticNativeSampling::RamWindow) ||
+        (!includeFrames && sampling!=AnalysisDiagnosticNativeSampling::Uniform) ||
+        (sampling==AnalysisDiagnosticNativeSampling::RamWindow && (!ramBytes || ramBytes>AnalysisNativeRamRecording::MaxBytes || !durationMs || durationMs>120000)))
         return AnalysisDiagnosticCaptureResult::InvalidRequest;
 	std::lock_guard<std::mutex> lock(m_mutex);
 	const uint64_t now = NowMs();
@@ -595,8 +625,18 @@ AnalysisDiagnosticCaptureResult AnalysisDiagnosticTrace::StartCapture(
 	if (!m_producerConnected.load(std::memory_order_acquire))
 		return AnalysisDiagnosticCaptureResult::NoProducer;
 	if (includeFrames &&
-		!m_frameCaptureSupported.load(std::memory_order_acquire))
+		(!m_frameCaptureSupported.load(std::memory_order_acquire) ||
+            (sampling==AnalysisDiagnosticNativeSampling::RamWindow && !m_ramCaptureSupported.load(std::memory_order_acquire))))
 		return AnalysisDiagnosticCaptureResult::FrameCaptureUnavailable;
+
+    std::shared_ptr<AnalysisNativeRamRecording> ram;
+    if(sampling==AnalysisDiagnosticNativeSampling::RamWindow) {
+        try {ram=std::make_shared<AnalysisNativeRamRecording>(ramBytes,std::min(m_options.maxFrameBytes,MAX_FRAME_BYTES));}
+        catch(...){return AnalysisDiagnosticCaptureResult::InvalidRequest;}
+    }
+    std::atomic_store(&m_ramRecording,std::move(ram));
+    m_ramBudgetBytes=sampling==AnalysisDiagnosticNativeSampling::RamWindow?ramBytes:0;
+    m_requestedCaptureMs=m_ramBudgetBytes?durationMs:m_captureMs;
 
 	const uint64_t oldestAllowed = now > m_preRollMs ? now - m_preRollMs : 0;
 	m_preRoll.clear();
@@ -623,7 +663,7 @@ AnalysisDiagnosticCaptureResult AnalysisDiagnosticTrace::StartCapture(
 	m_captureDirectory = MakeCaptureDirectory();
 	m_captureStartSequence = m_nextSequence + 1;
 	m_captureStopSequence = 0;
-	m_captureDeadlineMs.store(now + m_captureMs, std::memory_order_release);
+	m_captureDeadlineMs.store(now + (sampling==AnalysisDiagnosticNativeSampling::RamWindow?durationMs:m_captureMs), std::memory_order_release);
 	m_captureAcceptedRecords = m_preRoll.size();
 	m_captureFrameBytes = 0;
 	m_captureFrameIndex = 0;
@@ -648,6 +688,7 @@ AnalysisDiagnosticCaptureResult AnalysisDiagnosticTrace::StartCapture(
 
 void AnalysisDiagnosticTrace::StopCapture() noexcept
 {
+    if(auto ram=std::atomic_load(&m_ramRecording))ram->Stop();
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
         FinishNativeBurstLocked("capture-stopped");
@@ -738,6 +779,7 @@ void AnalysisDiagnosticTrace::WriteCapture(
 	uint64_t deadlineMs,
 	bool includeFrames)
 {
+    const auto ram=std::atomic_load(&m_ramRecording);
 	std::ofstream records;
 	std::ofstream frameMetadata;
 	try
@@ -781,6 +823,7 @@ void AnalysisDiagnosticTrace::WriteCapture(
 			records.close();
 		if (frameMetadata.is_open())
 			frameMetadata.close();
+		if(ram){ram->Cancel();ram->Join();std::atomic_store(&m_ramRecording,std::shared_ptr<AnalysisNativeRamRecording>{});}
 		WriteCaptureSummary(directory, includeFrames);
 		return;
 	}
@@ -809,7 +852,7 @@ void AnalysisDiagnosticTrace::WriteCapture(
 		bool hasRecord = false;
 		{
 			std::unique_lock<std::mutex> lock(m_mutex);
-			if (m_recording.load(std::memory_order_acquire) && NowMs() >= deadlineMs)
+			if (m_recording.load(std::memory_order_acquire) && (NowMs() >= deadlineMs || (ram && !ram->Active())))
 			{
                 FinishNativeBurstLocked("capture-deadline");
 				m_recording.store(false, std::memory_order_release);
@@ -891,6 +934,31 @@ void AnalysisDiagnosticTrace::WriteCapture(
 		}
 	}
 
+    if(ram) {
+        ram->Join();
+        ram->DrainAfterJoin([&](const AnalysisDiagnosticFramePacketV1& packet,size_t index) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if(m_shutdownRequested)return AnalysisNativeRamRecording::Outcome::Cancelled;
+            }
+            QueuedFrame frame;frame.metadata=packet;frame.captureIndex=index;
+            return WriteFrame(frameMetadata,directory,frame)?AnalysisNativeRamRecording::Outcome::Written:
+                AnalysisNativeRamRecording::Outcome::WriteFailed;
+        });
+        std::ofstream index(directory+"\\native-window.jsonl",std::ios::binary|std::ios::trunc);
+        ram->WriteIndexAfterJoin(index);index.flush();
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_captureFrameOffered=ram->EventCountAfterJoin();
+            for(size_t i=0;i<ram->EventCountAfterJoin();++i) {
+                const auto outcome=ram->EventAfterJoin(i).outcome;
+                if(outcome!=AnalysisNativeRamRecording::Outcome::Written && outcome!=AnalysisNativeRamRecording::Outcome::Evicted)
+                    ++m_captureFrameMissed;
+            }
+        }
+        if(!index.good()){std::lock_guard<std::mutex> lock(m_mutex);++m_writeFailures;}
+        std::atomic_store(&m_ramRecording,std::shared_ptr<AnalysisNativeRamRecording>{});
+    }
 	records.flush();
 	if (includeFrames)
 		frameMetadata.flush();
@@ -944,7 +1012,7 @@ void AnalysisDiagnosticTrace::WriteCaptureSummary(
 		m_options.maxRecordHistory, RECORD_HISTORY_CAPACITY);
 	const uint64_t maxFrameBytes = std::min(
 		m_options.maxFrameBytes, MAX_FRAME_BYTES);
-	const uint64_t maxCaptureFrameBytes = std::min(
+	const uint64_t maxCaptureFrameBytes = m_ramBudgetBytes?m_ramBudgetBytes:std::min(
 		m_options.maxCaptureFrameBytes, MAX_CAPTURE_FRAME_BYTES);
 	const size_t maxOutstandingFrames = std::min(
 		m_options.maxOutstandingFrames, FRAME_QUEUE_CAPACITY);
@@ -977,7 +1045,7 @@ void AnalysisDiagnosticTrace::WriteCaptureSummary(
 			<< ",\"historyOverwrites\":" << lifetimeHistoryOverwrites
 			<< ",\"writeFailures\":" << lifetimeWriteFailures
 			<< "},\"limits\":{\"preRollMs\":" << m_preRollMs
-			<< ",\"captureMs\":" << m_captureMs
+			<< ",\"captureMs\":" << m_requestedCaptureMs
 			<< ",\"recordHistoryCapacity\":" << recordHistoryCapacity
 			<< ",\"maxCaptureRecords\":" << m_captureRecordLimit
 			<< ",\"maxFrameBytes\":" << maxFrameBytes
@@ -989,7 +1057,7 @@ void AnalysisDiagnosticTrace::WriteCaptureSummary(
 			"include events outside this capture.");
         summary << ",\"nativeSamplingMode\":";
         WriteJsonString(summary,m_nativeSampling.load(std::memory_order_relaxed)==AnalysisDiagnosticNativeSampling::ConsecutiveBurst?
-            "consecutive-burst":"uniform");
+            "consecutive-burst":m_nativeSampling.load(std::memory_order_relaxed)==AnalysisDiagnosticNativeSampling::RamWindow?"ram-window":"uniform");
         if(m_nativeSampling.load(std::memory_order_relaxed)==AnalysisDiagnosticNativeSampling::ConsecutiveBurst) {
             std::lock_guard<std::mutex> lock(m_mutex);
             const uint64_t lockMisses=m_nativeBurstLockMisses.load(std::memory_order_relaxed);
@@ -1115,7 +1183,7 @@ void AnalysisDiagnosticTrace::WriteRecord(
 	output << "}\n";
 }
 
-void AnalysisDiagnosticTrace::WriteFrame(
+bool AnalysisDiagnosticTrace::WriteFrame(
 	std::ostream& metadata,
 	const std::string& directory,
 	QueuedFrame& frame)
@@ -1137,7 +1205,7 @@ void AnalysisDiagnosticTrace::WriteFrame(
 				static_cast<std::streamsize>(frame.metadata.dataBytes));
 			pixels.flush();
 			success = pixels.good();
-			pixels.close();
+			pixels.close();success=success && !pixels.fail();
 		}
 		if (success)
 		{
@@ -1170,7 +1238,7 @@ void AnalysisDiagnosticTrace::WriteFrame(
 					<< frame.metadata.cadenceRepeat << ' '
 					<< frame.metadata.rgbBitAlignment << '\n';
 				sidecar.flush();
-				success = sidecar.good();
+				success = sidecar.good();sidecar.close();success=success && !sidecar.fail();
 			}
 			else
 				success = false;
@@ -1205,6 +1273,7 @@ void AnalysisDiagnosticTrace::WriteFrame(
 		++m_writeFailures;
 		m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
 	}
+    return success;
 }
 
 std::string AnalysisDiagnosticTrace::MakeCaptureDirectory() const
