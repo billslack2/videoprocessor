@@ -5151,7 +5151,7 @@ namespace VideoProcessorTest
         // portable manifest: select explicitly with VP_SUBTITLE_CAPTURE_ROOT set.
         // This runs the actual plugin, worker, queue, shader and submission path;
         // no caller supplies picture or successful composition authority.
-        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false,bool missingEvidenceWindow=false,bool completedProofWindow=false)
+        void VerifyCapturedV210CueCadence(bool beta,bool pausedRecovery=false,bool pausedNative=false,bool scriptureHeld=false,bool visualCapture=false,bool profileCycle=false,bool missingEvidenceWindow=false,bool completedProofWindow=false,bool capturedTwoLine=false)
         {
             char* captureValue=nullptr;size_t captureSize=0;
             Assert::AreEqual(0,_dupenv_s(&captureValue,&captureSize,"VP_SUBTITLE_CAPTURE_ROOT"));
@@ -5166,7 +5166,7 @@ namespace VideoProcessorTest
             // Fresh native acquisition includes the current edge ringing through
             // row1885; raw image transition is275..1884, not retained bottom1888.
             const bool evidenceWindow=missingEvidenceWindow||completedProofWindow;
-            const bool oppositeBarCorpus=profileCycle||evidenceWindow;
+            const bool oppositeBarCorpus=profileCycle||evidenceWindow||capturedTwoLine;
             const int pictureTop=oppositeBarCorpus?272:((pausedRecovery||scriptureHeld)?274:272),pictureBottom=1886;
             constexpr double inputHz=24000.0/1001,periodMs=1000.0/inputHz;
             std::vector<unsigned> profileCaptureIndices;
@@ -5177,7 +5177,7 @@ namespace VideoProcessorTest
                 std::unique_ptr<char,decltype(&std::free)> manifestOwner(manifestValue,&std::free);
                 Assert::IsTrue(manifestValue&&*manifestValue,L"Profile seed coverage requires the preserved opposite-bar-unknown corpus manifest.");
                 std::ifstream manifest(manifestValue);unsigned count=0;manifest>>count;
-                Assert::AreEqual(completedProofWindow?3u:93u,count,L"Use the exact declared original corpus, including its recorded gaps.");
+                Assert::AreEqual(capturedTwoLine?91u:(completedProofWindow?3u:93u),count,L"Use the exact declared original corpus, including its recorded gaps.");
                 for(unsigned i=0;i<count;++i) {
                     unsigned index=0;std::array<uint64_t,16> identity{};manifest>>index;
                     for(auto& value:identity)manifest>>value;
@@ -5190,8 +5190,9 @@ namespace VideoProcessorTest
             const unsigned phaseCount=oppositeBarCorpus?unsigned(profileCaptureIndices.size()):(scriptureHeld?83u:(pausedNative?46u:4u));
             if(completedProofWindow)NativeRendererFixtureLog(
                 "MOVING COMPLETED-PROOF SCOPE: three unedited distinct captured full rasters with original sidecar gaps; repeated controlled loop with fresh test identities, not uninterrupted moving-film history. Current ordinary proof worker remains active; only mutex lookup/raw grouping and exact-byte fallback are withheld in offsets16..80.");
-            const unsigned steadyCount=evidenceWindow?186u:(profileCycle?288u:(scriptureHeld?166u:144u));
+            const unsigned steadyCount=capturedTwoLine?182u:(evidenceWindow?186u:(profileCycle?288u:(scriptureHeld?166u:144u)));
             std::vector<std::vector<BYTE>> phases(phaseCount);
+            std::vector<std::array<SubtitleBoxRect,2>> currentLineExpectations;
             for(unsigned phase=0;phase<phaseCount;++phase) {
                 const unsigned originalIndex=oppositeBarCorpus?profileCaptureIndices[phase]:phase+(scriptureHeld?3:(pausedNative?16:1));
                 char stem[40];sprintf_s(stem,"\\frame-%06u",originalIndex);
@@ -5224,6 +5225,31 @@ namespace VideoProcessorTest
                 Assert::IsTrue(bool(pixels));
                 if(completedProofWindow||(!pausedNative&&!scriptureHeld))for(unsigned previous=0;previous<phase;++previous)
                     Assert::IsTrue(phases[previous]!=phases[phase],L"Each declared source phase must contain genuinely different current pixel bytes.");
+            }
+            if(capturedTwoLine) {
+                NativeRendererFixtureLog("TWO LINE SCOPE: original91 unmodified native rasters, natural complete-cue acquisition, two ordered loops with fresh test identities. Original sidecar gaps remain explicit. No historical lower-only template or supplied runtime crop authority.");
+                // Read source glyph extents BEFORE the timed/GPU run. Recorded
+                // sidecar planes select inspection only; none of these results
+                // or planes is supplied to the renderer as crop/caption proof.
+                auto scanner=std::make_unique<SubtitleBoxDetector>();
+                for(unsigned phase=0;phase<phaseCount;++phase) {
+                    scanner->Reset();scanner->SetScriptHint(SubtitleScriptHint::Latin);scanner->SetNearBarDistance(20);
+                    AnalysisLumaSource source;source.data=phases[phase].data();source.dataBytes=phases[phase].size();
+                    source.width=width;source.height=height;source.rowBytes=rowBytes;source.chromaRowBytes=0;
+                    source.format=AnalysisLumaFormat::NativeYuv422;source.encoding=VideoFrameEncoding::V210;
+                    source.colorspace=ColorSpace::REC_709;source.range=AnalysisLumaRange::Limited;
+                    source.generation=profileCaptureIdentities[phase][0];
+                    const auto raw=scanner->Analyze(source,pictureTop,pictureBottom,
+                        profileCaptureIdentities[phase][1],profileCaptureIdentities[phase][5]);
+                    std::ostringstream detail;detail<<"TWO LINE INPUT: phase="<<phase<<" original_index="<<profileCaptureIndices[phase]
+                        <<" original_source="<<profileCaptureIdentities[phase][1]<<" measured_lines="<<raw.lineCount;
+                    for(int line=0;line<raw.lineCount;++line)detail<<" line"<<line<<'='<<raw.lineBounds[line].left<<','
+                        <<raw.lineBounds[line].top<<','<<raw.lineBounds[line].right<<','<<raw.lineBounds[line].bottom;
+                    NativeRendererFixtureLog(detail.str().c_str());
+                    Assert::IsTrue(raw.detected&&raw.lineCount==2&&!raw.workLimit&&raw.topSearchComplete&&raw.bottomSearchComplete,
+                        L"Every original source must independently measure both glyph rows before this two-line fixture is valid.");
+                    currentLineExpectations.push_back({{raw.lineBounds[0],raw.lineBounds[1]}});
+                }
             }
             // The earlier live template pixels were not captured. This one-pixel
             // prior background is explicitly synthetic; all later phases are the
@@ -5313,7 +5339,7 @@ namespace VideoProcessorTest
             if(scriptureHeld) {
                 LibplaceboRegressionOptionsV1 options;options.flags=completedProofWindow?VP_REGRESSION_SOURCE_TICKET_PROOF_WINDOW:
                     (missingEvidenceWindow?VP_REGRESSION_MISSING_ANALYSIS_WINDOW:
-                    (profileCycle?0:VP_REGRESSION_DECLINE_CUE_PROOF));
+                    ((profileCycle||capturedTwoLine)?0:VP_REGRESSION_DECLINE_CUE_PROOF));
                 cleanup.renderer=createRegression(&callback,73,cleanup.window,&clock,true,10,
                     VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog,&options);
             } else cleanup.renderer=create(&callback,73,cleanup.window,&clock,true,10,VideoConversionOverride::VIDEOCONVERSION_NONE,configPath,ClassicPoseTestLog);
@@ -5349,7 +5375,7 @@ namespace VideoProcessorTest
                         if(!size||size>=32768)return;
                         std::ofstream out((std::wstring(path)+(beta?L"/beta-decisions.tsv":L"/standard-decisions.tsv")).c_str());
                         const auto clean=[](const char* text){std::string value(text);for(auto& ch:value)if(ch=='\t'||ch=='\r'||ch=='\n')ch=' ';return value;};
-                        out<<"source\taccepted\tstage\treason\tflags\tcounters\tmetrics\tpublished\tmeasured\tguard\tnomination\n";
+                        out<<"source\taccepted\tstage\treason\tflags\tcounters\tmetrics\tpublished\tmeasured\tguard\tnomination\tsubtitle\tresult_code\n";
                         for(const auto& r:records) {
                             out<<r.sourceFrameNumber<<'\t'<<r.acceptedSequence<<'\t'<<clean(r.stage)<<'\t'<<clean(r.reason)<<'\t'<<r.flags<<'\t';
                             for(const auto value:r.counters)out<<value<<',';out<<'\t';
@@ -5357,7 +5383,8 @@ namespace VideoProcessorTest
                             for(const auto value:r.published)out<<value<<',';out<<'\t';
                             for(const auto value:r.measured)out<<value<<',';out<<'\t';
                             for(const auto value:r.candidate)out<<value<<',';out<<'\t';
-                            for(const auto value:r.previous)out<<value<<',';out<<'\n';
+                            for(const auto value:r.previous)out<<value<<',';out<<'\t';
+                            for(const auto value:r.subtitle)out<<value<<',';out<<'\t'<<r.resultCode<<'\n';
                         }
                     } catch(...) {} // Diagnostic export cannot alter test behavior.
                 }
@@ -5489,7 +5516,7 @@ namespace VideoProcessorTest
                     }
                 }
                 if(visualCapture && !evidenceWindow && sequence>=steadyStart+10 && sequence-steadyStart<150 &&
-                    (sequence-steadyStart-10)%30==0) {
+                    (sequence-steadyStart-10)%(capturedTwoLine?31u:30u)==0) {
                     CString status;Assert::IsTrue(cleanup.renderer->RequestRenderedOutputCapture(status),
                         L"Could not request actual scripture output capture.");
                     ++visualRequests;
@@ -5882,6 +5909,51 @@ namespace VideoProcessorTest
                 Assert::IsTrue(proofs==144&&consumed==144&&verifiedSources.size()==144&&consumedSources.size()==144&&
                     revisions.size()==1&&templates==0&&offRenderThread&&priorSeed&&checkedPixels&&scans<outputs,
                     L"Every steady captured source must consume its exact current off-thread pixel proof from one prior template, with grouping below source cadence.");
+            } else if(capturedTwoLine) {
+                std::map<uint64_t,const AnalysisDiagnosticRecordV1*> captions;
+                for(const auto& r:observed)if(!strcmp(r.stage,"subtitle-output"))captions[r.sourceFrameNumber]=&r;
+                bool complete=true,mappingStable=true,haveMapping=false;std::array<double,8> mapping{};
+                unsigned bothLineSources=0;uint64_t previousCue=0;bool stableCue=true;
+                for(const auto& r:observed) {
+                    if(strcmp(r.stage,"submitted-presentation")||!(r.flags&1u)||
+                        r.sourceFrameNumber<steadyStart||r.sourceFrameNumber>steadyEnd)continue;
+                    const auto found=captions.find(r.sourceFrameNumber);
+                    if(found==captions.end()){complete=false;continue;}
+                    const auto& c=*found->second;
+                    const bool current=c.acceptedSequence==r.acceptedSequence&&c.sourceFrameNumber==r.sourceFrameNumber&&
+                        c.captureTimestamp==r.captureTimestamp&&c.transportGeneration==r.transportGeneration&&
+                        c.rendererGeneration==r.rendererGeneration&&c.viewportGeneration==r.viewportGeneration&&
+                        c.sourceFormatGeneration==r.sourceFormatGeneration&&c.analysisDomainKey==r.analysisDomainKey&&
+                        c.policyGeneration==r.policyGeneration&&c.continuityGeneration==r.continuityGeneration;
+                    bool covers=current&&c.resultCode==2&&(c.flags&1u);
+                    // This trace describes accepted semantic bounds, not the
+                    // shader's per-line capture. Test both row locations without
+                    // outlawing harmless one-cell extraction refinements. Fresh
+                    // final composition and mandatory PNG review cover rendering.
+                    for(const auto& line:currentLineExpectations.at(capturedPhaseBySource.at(r.sourceFrameNumber))) {
+                        const int x=line.left+(line.right-line.left)/2,y=line.top+(line.bottom-line.top)/2;
+                        covers&=c.subtitle[0]<=x&&x<c.subtitle[2]&&c.subtitle[1]<=y&&y<c.subtitle[3];
+                    }
+                    complete&=covers;if(covers)++bothLineSources;
+                    if(previousCue)stableCue&=previousCue==c.counters[2];previousCue=c.counters[2];
+                    for(unsigned i=0;i<8;++i) {
+                        if(haveMapping)mappingStable&=std::abs(mapping[i]-r.metrics[8+i])<.001;
+                        else mapping[i]=r.metrics[8+i];
+                    }
+                    haveMapping=true;
+                    std::ostringstream detail;detail<<"TWO LINE OUTPUT: source="<<r.sourceFrameNumber
+                        <<" original_index="<<profileCaptureIndices[capturedPhaseBySource.at(r.sourceFrameNumber)]
+                        <<" lines="<<c.resultCode<<" contains_current_row_centers="<<covers<<" caption="<<c.subtitle[0]<<','<<c.subtitle[1]<<','<<c.subtitle[2]<<','<<c.subtitle[3]<<" cue="<<c.counters[2]
+                        <<" composed="<<bool(r.flags&2u)<<" actual="<<r.metrics[8]<<','<<r.metrics[9]<<','<<r.metrics[10]<<','<<r.metrics[11];
+                    NativeRendererFixtureLog(detail.str().c_str());
+                }
+                std::ostringstream summary;summary<<"TWO LINE SUMMARY: original_frames=91 current_sources="<<distinct.size()
+                    <<" both_rows="<<bothLineSources<<" current_complete="<<complete<<" mapping_stable="<<mappingStable
+                    <<" stable_cue="<<stableCue<<" max_source_gap="<<maxSourceGap<<" visual_requests="<<visualRequests;
+                NativeRendererFixtureLog(summary.str().c_str());traceDump.Write();
+                Assert::IsTrue(distinct.size()==182&&bothLineSources==182&&complete&&haveMapping&&mappingStable&&stableCue&&maxSourceGap==1,
+                    L"Every current source must retain both measured glyph rows, one cue, and stable complete picture/caption mapping.");
+                if(visualCapture)Assert::AreEqual(5u,visualRequests,L"Separate visual review requires five real source-linked outputs with both complete glyph lines.");
             } else if(scriptureHeld) {
                 std::set<uint64_t> declined,ordinary,held,fullScans,unready;
                 bool genuineHeld=true,mappingStable=true,haveMapping=false,prerollReference=true;
@@ -5979,6 +6051,14 @@ namespace VideoProcessorTest
         {VerifyCapturedV210CueCadence(false,false,false,true,false,false,true);}
         TEST_METHOD(BetaMissingAnalysisPreservesCurrentProofAndRecovers)
         {VerifyCapturedV210CueCadence(true,false,false,true,false,false,true);}
+        TEST_METHOD(StandardCapturedTwoLineCueKeepsCurrentGlyphsAndGeometry)
+        {VerifyCapturedV210CueCadence(false,false,false,true,false,false,false,false,true);}
+        TEST_METHOD(BetaCapturedTwoLineCueKeepsCurrentGlyphsAndGeometry)
+        {VerifyCapturedV210CueCadence(true,false,false,true,false,false,false,false,true);}
+        TEST_METHOD(StandardCapturedTwoLineCueVisualCheckpoints)
+        {VerifyCapturedV210CueCadence(false,false,false,true,true,false,false,false,true);}
+        TEST_METHOD(BetaCapturedTwoLineCueVisualCheckpoints)
+        {VerifyCapturedV210CueCadence(true,false,false,true,true,false,false,false,true);}
         TEST_METHOD(StandardRendererScriptureHeldCaptionWithoutOptionalCueProof)
         {VerifyCapturedV210CueCadence(false,false,false,true);}
         TEST_METHOD(BetaRendererScriptureHeldCaptionWithoutOptionalCueProof)
@@ -7266,16 +7346,17 @@ namespace VideoProcessorTest
 // renderer does not export this entry point or alter its thread stack reserve.
 extern "C" __declspec(dllexport) int __cdecl VpRunNativeRendererRegression(unsigned testCase)
 {
-    nativeStackHostActive.store(testCase<12,std::memory_order_relaxed);
+    nativeStackHostActive.store(testCase<16,std::memory_order_relaxed);
     nativeStackHostSubmittedReserve.store(0,std::memory_order_relaxed);
     try {
         if(testCase==98 || testCase==99) {
             Logger::WriteMessage("Native host framework smoke");
             Assert::IsTrue(testCase==98,L"Intentional native-host assertion smoke");
-        } else if(testCase<12) {
+        } else if(testCase<16) {
             VideoProcessorTest::LibplaceboPluginProxyTests fixture;
             fixture.VerifyCapturedV210CueCadence((testCase&1)!=0,false,false,true,
-                testCase>=10||(testCase>=6&&testCase<8),testCase>=2&&testCase<4,testCase>=4&&testCase<8,testCase>=8);
+                testCase>=14||(testCase>=10&&testCase<12)||(testCase>=6&&testCase<8),
+                testCase>=2&&testCase<4,testCase>=4&&testCase<8,testCase>=8&&testCase<12,testCase>=12);
             Assert::AreEqual(size_t(1048576),nativeStackHostSubmittedReserve.load(),
                 L"The actual submitted-presentation callback must run on a 1 MiB renderer thread");
         } else return 3;
