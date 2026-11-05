@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1206,
+  "minimumNativeTests": 1209,
   "requiredNativeMethods": [
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
     "QuestionMarkCannotBorrowAChainOfLowerNoiseDots",
@@ -520,6 +520,9 @@
   "minimumOriginalNativeTests": 663,
   "minimumActualTests": 42,
   "explicitNativeMethods": [
+    {"source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "NativeRgbAndP210HaveEquivalentBoxes"},
+    {"source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "V210GroupingMatchesLosslessPlanarEvidenceAcrossCurrentContentAndContexts"},
+    {"source": "src/VideoProcessor-Test/SubtitleBoxDetectorTests.cpp", "class": "SubtitleBoxDetectorTests", "method": "V210GroupingPreservesNativeTerminalOwnershipAndRecoversFromInvalidViews"},
     {"source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "InspectionScanDerivesCurrentSupportBeforeSamplingWithoutFutureWork"},
     {"source": "src/VideoProcessor-Test/SubtitleBoxLookaheadTests.cpp", "class": "SubtitleBoxLookaheadTests", "method": "InspectionLocalSupportTracksChangedPixelsAndRejectsForeignNominees"},
     {"source": "src/VideoProcessor-Test/AlphaPresentationTelemetryTests.cpp", "class": "AlphaPresentationTelemetryTests", "method": "SourceQueueDispositionsRetainAllInstancesAndExcludeRepeatCopies"},

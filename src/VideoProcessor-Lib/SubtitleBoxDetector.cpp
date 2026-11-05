@@ -1,5 +1,6 @@
 #include "pch.h"
 #include <SubtitleBoxDetector.h>
+#include <CurrentV210GroupReader.h>
 #include <SubtitleOpaqueCardRefinement.h>
 #include <algorithm>
 #include <cmath>
@@ -118,6 +119,14 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     int pictureBottom, SubtitleBoxRect& box, int& lineCount,
     std::array<uint64_t,16>& signature, int nearBarDistance)
 {
+    // Reuse decoding only within this immutable current source operation. All
+    // coordinates and classification/ownership predicates remain unchanged.
+    const ValidatedAnalysisLumaSampler validatedSampler(source);
+    subtitle_detail::CurrentV210GroupReader packedSampler(source);
+    const auto sampleCurrent=[&](int x,int y,AnalysisLumaSample& value) {
+        return packedSampler.IsValid()?packedSampler.Sample(x,y,value):
+            validatedSampler.Sample(x,y,value);
+    };
     // Inspect every source frame. Spatial sampling bounds cost without an idle
     // frame cadence that could postpone subtitle onset. Full line search remains
     // active throughout a cue, so an initially missed companion can be recovered.
@@ -189,7 +198,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             else
             {
                 AnalysisLumaSample sample;
-                if(!source.Sample(sx,sy,sample)) return false;
+                if(!sampleCurrent(sx,sy,sample)) return false;
                 luma=sample.luma;u=sample.chromaU;v=sample.chromaV;
             }
             m_luma[static_cast<size_t>(y)*w+x]=luma;
@@ -410,7 +419,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         auto black=[&](int x,int y) {
             if(x<0 || x>=w || y<top || y>=bottom)return false;
             AnalysisLumaSample p;
-            return source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],p) &&
+            return sampleCurrent((std::min)(source.width-1,x*step),evidence.sourceRows[y],p) &&
                 p.luma<=componentCardLimit;
         };
         for(int x=r.left;x<r.right;++x)
@@ -534,7 +543,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         for(int y=std::max(0,sy-step+1);y<=std::min(source.height-1,sy+step-1) && !c.hasTextCore;++y)
             for(int x=std::max(0,sx-step+1);x<=std::min(source.width-1,sx+step-1);++x) {
                 AnalysisLumaSample value;
-                if(source.Sample(x,y,value) && value.luma>=coreThreshold &&
+                if(sampleCurrent(x,y,value) && value.luma>=coreThreshold &&
                     coreColor(value.chromaU,value.chromaV)) {
                     c.hasTextCore=true;break;
                 }
@@ -579,7 +588,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         auto sample=[&](int side,int x,int y) {
             if(x<0 || x>=w || y<top || y>=bottom) return;
             AnalysisLumaSample pixel;
-            if(!source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel)) return;
+            if(!sampleCurrent((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel)) return;
             ++samples[side];black[side]+=pixel.luma<=componentCardLimit;
         };
         for(int x=r.left;x<r.right;++x) {
@@ -762,7 +771,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             for(int x=0;x<w;++x) {
                 AnalysisLumaSample sample;
                 const int sx=(std::min)(source.width-1,x*step);
-                if(!source.Sample(sx,sy,sample)) {
+                if(!sampleCurrent(sx,sy,sample)) {
                     panelPixels[x]=0;panelInkPixels[x]=0;panelDarkPixels[x]=0;continue;
                 }
                 const bool dark=sample.luma<=panelDarkLimit;
@@ -866,7 +875,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     if(m_mask[i]) continue;
                     const int sx=(std::min)(source.width-1,x*step);
                     AnalysisLumaSample sample;
-                    if(!source.Sample(sx,sy,sample)) continue;
+                    if(!sampleCurrent(sx,sy,sample)) continue;
                     m_luma[i]=sample.luma;
                     if(sy==evidence.sourceRows[y] && sample.luma<=trackingBlackLimit)
                         evidence.blackBacking[size_t(i)/64]|=uint64_t{1}<<(size_t(i)%64);
@@ -1160,7 +1169,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 for(int y=startY;y<endY && !nativeDot;++y)
                     for(int x=c.box.left*step;x<std::min(source.width,c.box.right*step);++x) {
                         AnalysisLumaSample value;
-                        if(source.Sample(x,y,value) && value.luma>=coreThreshold &&
+                        if(sampleCurrent(x,y,value) && value.luma>=coreThreshold &&
                             coreColor(value.chromaU,value.chromaV)) {
                             nativeDot=true;break;
                         }
@@ -1245,7 +1254,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             for(int y:{marks.top-2,marks.bottom+1}) for(int x=marks.left;x<marks.right;++x) {
                 if(x<0 || x>=w || y<0 || y>=h) continue;
                 AnalysisLumaSample pixel;
-                if(!source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel))continue;
+                if(!sampleCurrent((std::min)(source.width-1,x*step),evidence.sourceRows[y],pixel))continue;
                 ++tested;dark+=pixel.luma<=componentCardLimit;
             }
             if(!tested || dark*100<tested*85) continue;
@@ -1418,7 +1427,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     auto darkSample=[&](int x,int y) {
         AnalysisLumaSample sample;
         return x>=0 && x<w && y>=0 && y<h &&
-            source.Sample((std::min)(source.width-1,x*step),
+            sampleCurrent((std::min)(source.width-1,x*step),
                 evidence.sourceRows[y],sample) && sample.luma<=cardDarkLimit;
     };
     auto onOpaqueCard=[&](const Line& candidate,size_t index) {
@@ -1606,7 +1615,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     const int edgeDarkLimit=bar+(std::max)(8,(ink-bar)/64);
     auto cardEdgePixel=[&](int x,int y) {
         AnalysisLumaSample sample;
-        return source.Sample((std::min)(source.width-1,x*step),evidence.sourceRows[y],sample) &&
+        return sampleCurrent((std::min)(source.width-1,x*step),evidence.sourceRows[y],sample) &&
             sample.luma<=edgeDarkLimit;
     };
     auto recordBackingDistance=[&](int unpaddedTop,int unpaddedBottom,bool topInferred,bool bottomInferred) {
@@ -1667,7 +1676,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             unsigned count=0,black=0;
             for(int x=r.left;x<r.right;++x) {
                 AnalysisLumaSample value;
-                if(!source.Sample((std::min)(source.width-1,x*step),y,value))return false;
+                if(!sampleCurrent((std::min)(source.width-1,x*step),y,value))return false;
                 ++count;black+=value.luma<=cardDarkLimit;
             }
             return count>=3 && black*100>=count*85;
@@ -1766,7 +1775,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     if(x>left*step && x<right*step-1)continue;
                     for(int y=firstY;y<lastY;++y) {
                         AnalysisLumaSample value;
-                        if(source.Sample(x,y,value) && value.luma>=coreThreshold &&
+                        if(sampleCurrent(x,y,value) && value.luma>=coreThreshold &&
                             coreColor(value.chromaU,value.chromaV))return true;
                     }
                 }
@@ -1892,7 +1901,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     if(++cardSamples>131072) {completeInk=false;break;}
                     const int sy=evidence.sourceRows[y];
                     AnalysisLumaSample value;
-                    if(!source.Sample(x*step,sy,value)) {completeInk=false;break;}
+                    if(!sampleCurrent(x*step,sy,value)) {completeInk=false;break;}
                     const size_t pixel=size_t(y)*w+x;
                     m_luma[pixel]=value.luma;
                     m_chroma[pixel]=uint32_t(value.chromaU)|(uint32_t(value.chromaV)<<16);
@@ -2000,7 +2009,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     x<(std::min)(w,(completedCard.right+step-1)/step);++x) {
                     const int sy=evidence.sourceRows[y];
                     if(sy<completedCard.top || sy>=completedCard.bottom)continue;
-                    AnalysisLumaSample value;if(!source.Sample(x*step,sy,value))continue;
+                    AnalysisLumaSample value;if(!sampleCurrent(x*step,sy,value))continue;
                     const size_t pixel=size_t(y)*w+x;
                     m_luma[pixel]=value.luma;
                     m_chroma[pixel]=uint32_t(value.chromaU)|(uint32_t(value.chromaV)<<16);
@@ -2129,7 +2138,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 if(nativeSamples>=NativeSampleLimit)return -1;
                 ++nativeSamples;
                 auto& value=m_nativeCardSamples[index];
-                const bool sampled=source.Sample(x,y,value);
+                const bool sampled=sampleCurrent(x,y,value);
                 bool bright=sampled && value.luma>=threshold &&
                     std::abs(int(value.chromaU)-inkU)<=80 && std::abs(int(value.chromaV)-inkV)<=80;
                 const bool boundaryRow=(y>=pictureBottom && y<pictureBottom+CardBoundaryUncertainty) ||

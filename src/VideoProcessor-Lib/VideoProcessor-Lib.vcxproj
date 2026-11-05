@@ -265,6 +265,7 @@
     <ClInclude Include="ActivePictureDecisionTimeline.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
 	<ClInclude Include="AnalysisLumaSource.h" />
+	<ClInclude Include="CurrentV210GroupReader.h" />
     <ClInclude Include="AnalysisFrame.h" />
     <ClInclude Include="AnalysisDiagnosticTrace.h" />
     <ClInclude Include="AnalysisDiagnosticHooks.h" />

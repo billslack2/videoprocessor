@@ -176,7 +176,145 @@ TEST_CLASS(SubtitleBoxDetectorTests) {
         observation.ink=detector.InkSnapshot();
         return observation;
     }
+    static AnalysisLumaSource PackGroupingV210(const AnalysisLumaSource& planar) {
+        const size_t pitch=((size_t(planar.width)+5)/6)*16+7;
+        auto bytes=std::make_shared<std::vector<uint8_t>>(1+pitch*planar.height,0xa5);
+        const auto word=[](unsigned a,unsigned b,unsigned c){return uint32_t(a|(b<<10)|(c<<20)|0xc0000000u);};
+        for(int y=0;y<planar.height;++y)for(int x=0;x<planar.width;x+=6) {
+            AnalysisLumaSample sample[6]{};
+            for(int i=0;i<6 && x+i<planar.width;++i)Assert::IsTrue(planar.Sample(x+i,y,sample[i]));
+            const uint32_t words[]={word(sample[0].chromaU,sample[0].luma,sample[0].chromaV),
+                word(sample[1].luma,sample[2].chromaU,sample[2].luma),
+                word(sample[2].chromaV,sample[3].luma,sample[4].chromaU),
+                word(sample[4].luma,sample[4].chromaV,sample[5].luma)};
+            std::memcpy(bytes->data()+1+size_t(y)*pitch+size_t(x/6)*16,words,sizeof(words));
+        }
+        auto packed=planar;packed.data=bytes->data()+1;packed.dataBytes=bytes->size()-1;
+        packed.rowBytes=pitch;packed.chromaRowBytes=0;packed.format=AnalysisLumaFormat::NativeYuv422;
+        packed.encoding=VideoFrameEncoding::V210;packed.backingOwner=bytes;
+        Assert::IsTrue(packed.IsValid());return packed;
+    }
+    static void SameGrouping(const SubtitleBoxResult& a,const SubtitleBoxResult& b,
+        const std::shared_ptr<const SubtitleInkSnapshot>& x,const std::shared_ptr<const SubtitleInkSnapshot>& y) {
+        const auto rect=[](const SubtitleBoxRect& l,const SubtitleBoxRect& r) {
+            Assert::IsTrue(l.left==r.left&&l.top==r.top&&l.right==r.right&&l.bottom==r.bottom);
+        };
+        Assert::AreEqual(a.detected,b.detected);Assert::AreEqual(a.held,b.held);
+        Assert::AreEqual(a.confirmationPending,b.confirmationPending);Assert::AreEqual(a.revised,b.revised);
+        Assert::AreEqual(a.lineCount,b.lineCount);Assert::AreEqual(a.cue,b.cue);Assert::AreEqual(a.observations,b.observations);
+        Assert::AreEqual(a.workLimit,b.workLimit);Assert::AreEqual(a.capturePanelMeasured,b.capturePanelMeasured);
+        Assert::AreEqual(a.nearBarEligibilityMeasured,b.nearBarEligibilityMeasured);Assert::AreEqual(a.nearBarEligible,b.nearBarEligible);
+        Assert::AreEqual(a.topSearchComplete,b.topSearchComplete);Assert::AreEqual(a.bottomSearchComplete,b.bottomSearchComplete);
+        Assert::IsTrue(std::string(a.diagnosticReason)==b.diagnosticReason);
+        Assert::AreEqual(a.diagnosticComponentCount,b.diagnosticComponentCount);
+        Assert::AreEqual(a.diagnosticCoreGlyphCount,b.diagnosticCoreGlyphCount);
+        Assert::AreEqual(a.diagnosticCoreGlyphHeight,b.diagnosticCoreGlyphHeight);
+        Assert::AreEqual(a.diagnosticInkDensityBasisPoints,b.diagnosticInkDensityBasisPoints);
+        Assert::AreEqual(a.diagnosticBaselineSupportBasisPoints,b.diagnosticBaselineSupportBasisPoints);
+        Assert::AreEqual(a.diagnosticNearBarGap,b.diagnosticNearBarGap);
+        Assert::AreEqual(a.diagnosticNearBarGapInferred,b.diagnosticNearBarGapInferred);
+        Assert::AreEqual(a.diagnosticPictureGlyphProofRequired,b.diagnosticPictureGlyphProofRequired);
+        Assert::IsTrue(std::string(a.diagnosticGlyphTopology)==b.diagnosticGlyphTopology);
+        Assert::IsTrue(a.signature==b.signature&&a.anchorSignature==b.anchorSignature&&a.lineSignatures==b.lineSignatures);
+        rect(a.bounds,b.bounds);rect(a.anchor,b.anchor);rect(a.sourcePanel,b.sourcePanel);
+        rect(a.provenSourcePanel,b.provenSourcePanel);rect(a.capturePanel,b.capturePanel);
+        for(size_t i=0;i<a.lineBounds.size();++i) {
+            rect(a.lineBounds[i],b.lineBounds[i]);rect(a.linePanels[i],b.linePanels[i]);
+            rect(a.provenLinePanels[i],b.provenLinePanels[i]);rect(a.lineCapturePanels[i],b.lineCapturePanels[i]);
+            Assert::AreEqual(a.panelTopEdges[i].y,b.panelTopEdges[i].y);
+            Assert::AreEqual(a.panelTopEdges[i].left,b.panelTopEdges[i].left);
+            Assert::AreEqual(a.panelTopEdges[i].right,b.panelTopEdges[i].right);
+            Assert::AreEqual(a.panelTopEdges[i].supportBasisPoints,b.panelTopEdges[i].supportBasisPoints);
+        }
+        Assert::AreEqual(bool(x),bool(y));if(!x)return;
+        Assert::AreEqual(x->rawEvidenceComplete,y->rawEvidenceComplete);Assert::AreEqual(x->paletteValid,y->paletteValid);
+        Assert::AreEqual(x->inkFloor,y->inkFloor);Assert::AreEqual(x->inkU,y->inkU);Assert::AreEqual(x->inkV,y->inkV);
+        Assert::AreEqual(x->blackLimit,y->blackLimit);Assert::AreEqual(x->captionBackingLimit,y->captionBackingLimit);
+        Assert::AreEqual(x->width,y->width);Assert::AreEqual(x->height,y->height);Assert::AreEqual(x->step,y->step);
+        Assert::IsTrue(x->sourceRows==y->sourceRows&&x->rawInk==y->rawInk&&x->ownedInk==y->ownedInk&&x->blackBacking==y->blackBacking);
+        const auto& l=x->thresholdEvidence;const auto& q=y->thresholdEvidence;
+        Assert::AreEqual(bool(l),bool(q));if(!l)return;
+        Assert::AreEqual(l->complete,q->complete);Assert::AreEqual(l->overflowed,q->overflowed);
+        Assert::AreEqual(l->generation,q->generation);Assert::AreEqual(l->sequence,q->sequence);Assert::AreEqual(l->viewport,q->viewport);
+        Assert::AreEqual(l->width,q->width);Assert::AreEqual(l->height,q->height);Assert::AreEqual(l->step,q->step);
+        Assert::AreEqual(l->inkFloor,q->inkFloor);Assert::AreEqual(l->inkU,q->inkU);Assert::AreEqual(l->inkV,q->inkV);
+        Assert::IsTrue(l->sourceRows==q->sourceRows);Assert::AreEqual(l->samples.size(),q->samples.size());
+        for(size_t i=0;i<l->samples.size();++i) {
+            Assert::AreEqual(l->samples[i].index,q->samples[i].index);Assert::AreEqual(l->samples[i].yuv,q->samples[i].yuv);
+        }
+    }
 public:
+    TEST_METHOD(V210GroupingMatchesLosslessPlanarEvidenceAcrossCurrentContentAndContexts) {
+        auto original=Frame();PanelToBar(original,100,285,520);Text(original,220,320,14);Text(original,210,295,16);
+        original.resize(size_t(W)*H*2,uint16_t(512<<6));
+        for(int y=0;y<H;++y)for(int x=0;x<W;x+=2) {
+            original[size_t(W)*H+size_t(y)*W+x]=uint16_t((509+(y+x/2)%7)<<6);
+            original[size_t(W)*H+size_t(y)*W+x+1]=uint16_t((509+(y*3+x/2)%7)<<6);
+        }
+        auto source=ScaledSource(original,1,true);source.colorspace=ColorSpace::REC_709;
+        SubtitleBoxDetector initial;Assert::IsTrue(initial.Analyze(source,45,315,1,1).detected);
+        Assert::IsNotNull(initial.InkSnapshot().get());
+        original[334*W+230]=uint16_t(initial.InkSnapshot()->inkFloor<<6); // Actual near-threshold witness.
+        for(int mode:{0,2}) {
+            SubtitleBoxDetector planar,packed;planar.SetOptimizationMode(mode);packed.SetOptimizationMode(mode);
+            std::shared_ptr<const SubtitleInkSnapshot> baseline;
+            for(int scenario=0;scenario<8;++scenario) {
+                auto pixels=original;int top=45,bottom=315;
+                if(scenario==1)Fill(pixels,222,322,228,330,700); // Changed current glyph core/hole.
+                if(scenario==2){Fill(pixels,70,20,560,38,700);Fill(pixels,40,265,100,290,700);} // UI.
+                if(scenario==3){top=20;bottom=340;Fill(pixels,0,top,W,45,200);Fill(pixels,0,315,W,bottom,200);}
+                if(scenario==4)Fill(pixels,0,285,W,H,64); // Current caption absence.
+                source=ScaledSource(pixels,1,true);source.colorspace=scenario==5?ColorSpace::BT_2020:ColorSpace::REC_709;
+                source.generation=scenario>=6?9:8;
+                const uint64_t sequence=scenario==7?1:uint64_t(scenario+1),viewport=scenario>=6?3:2;
+                const auto packedSource=PackGroupingV210(source);
+                const auto expected=planar.Analyze(source,top,bottom,sequence,viewport);
+                const auto actual=packed.Analyze(packedSource,top,bottom,sequence,viewport);
+                SameGrouping(expected,actual,planar.InkSnapshot(),packed.InkSnapshot());
+                Assert::AreEqual(planar.SharedSampleCount(),packed.SharedSampleCount());
+                if(scenario==0) {
+                    Assert::IsTrue(actual.detected&&actual.lineCount==2);baseline=packed.InkSnapshot();
+                    Assert::IsNotNull(baseline->thresholdEvidence.get());
+                    Assert::IsTrue(!baseline->thresholdEvidence->samples.empty());
+                }
+                if(scenario==1)Assert::IsTrue(packed.InkSnapshot()->rawInk!=baseline->rawInk,L"Changed current pixels cannot reuse the preceding grouping snapshot.");
+                if(scenario==4)Assert::IsFalse(actual.detected);
+            }
+        }
+    }
+    TEST_METHOD(V210GroupingPreservesNativeTerminalOwnershipAndRecoversFromInvalidViews) {
+        const int w=3840,h=2160;
+        std::vector<uint16_t> pixels(size_t(w)*h*2,uint16_t(512<<6));
+        for(int y=0;y<h;++y)for(int x=0;x<w;++x)pixels[size_t(y)*w+x]=uint16_t((y>=272&&y<1886?200:64)<<6);
+        size_t index=0;for(const auto& run:terminal_row_fixture::runs)for(unsigned n=0;n<run[0];++n,++index)
+            pixels[size_t(1933+index/1199)*w+1319+index%1199]=uint16_t(run[1]<<6);
+        Assert::AreEqual(size_t(1199*99),index);
+        auto planarSource=ScaledSource(pixels,6,true);planarSource.colorspace=ColorSpace::REC_709;
+        auto packedSource=PackGroupingV210(planarSource);std::weak_ptr<const void> owner=packedSource.backingOwner;
+        SubtitleBoxDetector planar,packed;
+        const auto expected=planar.Analyze(planarSource,272,1886,1,1);
+        auto actual=packed.Analyze(packedSource,272,1886,1,1);
+        SameGrouping(expected,actual,planar.InkSnapshot(),packed.InkSnapshot());
+        Assert::IsTrue(actual.detected);const auto ink=packed.InkSnapshot();Assert::AreEqual(4,ink->step);
+        unsigned terminal=0;
+        for(int y=0;y<ink->height;++y)if(ink->sourceRows[y]>=1934&&ink->sourceRows[y]<1987)
+            for(int x=622;x<=629;++x)if(ink->Get(x,y)) {++terminal;Assert::IsTrue(ink->Get(x,y,true));}
+        Assert::IsTrue(terminal>0,L"The real terminal-head raster must retain owned current ink.");
+        for(int fault=0;fault<5;++fault) {
+            auto invalid=packedSource;
+            if(fault==0)invalid.data=nullptr;
+            if(fault==1)invalid.dataBytes=15;
+            if(fault==2)invalid.rowBytes=15;
+            if(fault==3)--invalid.width;
+            if(fault==4)invalid.encoding=VideoFrameEncoding::UNKNOWN;
+            Assert::IsFalse(packed.Analyze(invalid,272,1886,uint64_t(fault+2),1).detected);
+            Assert::IsFalse(bool(packed.InkSnapshot()));
+            planar.Reset();const auto recovered=planar.Analyze(planarSource,272,1886,1,1);
+            actual=packed.Analyze(packedSource,272,1886,1,1);
+            SameGrouping(recovered,actual,planar.InkSnapshot(),packed.InkSnapshot());
+        }
+        packedSource={};Assert::IsTrue(owner.expired(),L"Neither grouping snapshots nor the operation-local reader retain source owners after Analyze returns.");
+    }
     TEST_METHOD(WhollyPictureStarsCannotAcquireFromDarkSceneryTouchingBar) {
         // Native incident pixels were not captured. These mechanism fixtures
         // model sparse point lights, diagonal dot chains, and tall star flares

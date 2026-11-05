@@ -436,6 +436,9 @@
 	<ClInclude Include="AnalysisLumaSource.h">
 	  <Filter>Header Files</Filter>
 	</ClInclude>
+	<ClInclude Include="CurrentV210GroupReader.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
     <ClInclude Include="MainConfigSchema.h">
       <Filter>Header Files</Filter>
     </ClInclude>
