@@ -1,0 +1,33 @@
+{
+  "source": "96b0cd94e9aa69a3cb8b9d01933e30781cedb6c1",
+  "deploymentReceiptSHA256": "578548C4611339D2DEA89001529994189ED8C712AEEEDC95EC4B6B7860C6C0A6",
+  "verifiedUtc": "2026-11-05T02:28:25.3270116Z",
+  "status": {
+    "process": 50076,
+    "executable": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+    "action": "Status",
+    "result": "Status",
+    "recording": false,
+    "captureWriting": false,
+    "producerConnected": true,
+    "frameCaptureSupported": true,
+    "writerReady": true,
+    "includeFrames": false,
+    "requestedUtc": "2026-11-05T02:28:25.2846651Z"
+  },
+  "pid": 50076,
+  "runtimeAll28Match": true,
+  "settings": [
+    {
+      "name": "VideoProcessor.cfg",
+      "before": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E",
+      "after": "5A549688243AA9A09596A49C42D42EFFC004059305CE9318F0931B696159167E"
+    },
+    {
+      "name": "VideoProcessor.state",
+      "before": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0",
+      "after": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0"
+    }
+  ],
+  "path": "C:\\Videoprocessor\\vp\\VideoProcessor.exe"
+}

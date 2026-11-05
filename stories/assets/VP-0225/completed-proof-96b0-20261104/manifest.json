@@ -25,6 +25,16 @@
       "name": "gui-stack.json"
     },
     {
+      "bytes": 12400,
+      "sha256": "578548C4611339D2DEA89001529994189ED8C712AEEEDC95EC4B6B7860C6C0A6",
+      "name": "installed-deployment.json"
+    },
+    {
+      "bytes": 1167,
+      "sha256": "C79C08BE65EF252BC8B43A72120F9ECA6E85D9FB8AF5CA1853E73F81A9EE1BFB",
+      "name": "installed-reopened.json"
+    },
+    {
       "bytes": 2763,
       "sha256": "1EB293A0CE18E411A2CD5FA4CEB0B477F73649BE3A91A562888F6068C19F9080",
       "name": "native11-iteration.json"
