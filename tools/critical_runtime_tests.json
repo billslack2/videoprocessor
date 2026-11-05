@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1209,
+  "minimumNativeTests": 1211,
   "requiredNativeMethods": [
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
     "QuestionMarkCannotBorrowAChainOfLowerNoiseDots",
@@ -307,6 +307,8 @@
     "CompletedOutwardRawIncludesPhysicalObservationWithoutCompetingRescan",
     "ColdOutwardPublicationCannotEraseARacingCurrentPhysicalObservation",
     "HighInputCadenceRunsTwoIndependentSamplersAndDeduplicatesBothActiveKeys",
+    "InputCadenceTransitionsWakeQueuedWorkAndParkSecondSampler",
+    "CurrentCueSeedCapacityIncreaseWakesAlreadyQueuedRawWork",
     "UnavailablePlaneWorkCoalescesCanonicalRequestWithoutDuplicatingActiveOrPendingScan",
     "CoalescedUnavailableWorkPreservesReadyEvidenceAndAllowsCanonicalRetry",
     "LowInputCadenceRetainsOneSerialSampler",

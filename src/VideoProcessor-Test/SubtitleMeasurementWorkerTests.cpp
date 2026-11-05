@@ -2047,6 +2047,52 @@ TEST_METHOD(UhdPendingCueVerifierReportsCoverageAndLatencyAcrossNativeFormats) {
             Assert::AreEqual(1u,replacements.load(),L"Unowned, changed settings, or incomplete old work must permit a real canonical scan.");
         }
     }
+    TEST_METHOD(InputCadenceTransitionsWakeQueuedWorkAndParkSecondSampler) {
+        std::atomic_bool releaseFirst{false},releaseSecond{false};
+        SubtitleMeasurementWorker worker;
+        struct ReleaseBoth {std::atomic_bool& first;std::atomic_bool& second;
+            ~ReleaseBoth(){first.store(true);second.store(true);}} unblock{releaseFirst,releaseSecond};
+        std::atomic_uint entered{0},thirdCalls{0};
+        const auto first=WorkerKey(1,0xA11CE),second=WorkerKey(2,0xA11CE),third=WorkerKey(3,0xA11CE);
+        const auto blocked=[&](SubtitleBoxObservation key,std::atomic_bool& release) {
+            return [&,key](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+                ++entered;while(!release.load(std::memory_order_acquire))
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                auto result=key;result.analyzed=true;return result;
+            };
+        };
+        worker.SetInputRateHz(24);
+        worker.Submit(first,blocked(first,releaseFirst));
+        const bool firstEntered=WaitForEntered(entered,1);
+        worker.Submit(second,blocked(second,releaseSecond));
+        worker.Submit(third,[&,third](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            ++thirdCalls;auto result=third;result.analyzed=true;return result;
+        });
+        // No new enqueue follows this increase: its notification must wake the
+        // already queued second source while the first source remains active.
+        worker.SetInputRateHz(60);
+        const bool secondEntered=WaitForEntered(entered,2);
+        worker.SetInputRateHz(24);
+        releaseSecond.store(true,std::memory_order_release);
+        SubtitleBoxObservation secondResult,thirdResult,firstResult;
+        const bool secondReady=WaitForTake(worker,second,secondResult);
+        const auto parkedUntil=std::chrono::steady_clock::now()+std::chrono::milliseconds(100);
+        while(std::chrono::steady_clock::now()<parkedUntil && !thirdCalls.load())
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        const bool remainedParked=thirdCalls.load()==0;
+        // A second real increase must wake pending work without a new Submit.
+        worker.SetInputRateHz(60);
+        const bool thirdReady=WaitForTake(worker,third,thirdResult);
+        releaseFirst.store(true,std::memory_order_release);
+        const bool firstReady=WaitForTake(worker,first,firstResult);
+        worker.Stop();
+        Assert::IsTrue(firstEntered&&secondEntered&&secondReady&&thirdReady&&firstReady);
+        Assert::IsTrue(remainedParked,L"A 2-to-1 capacity change parks sampler1 after its active job; it cannot consume the queued third source.");
+        Assert::AreEqual(1u,thirdCalls.load());
+        Assert::AreEqual(first.identity.acceptedSequence,firstResult.identity.acceptedSequence);
+        Assert::AreEqual(second.identity.acceptedSequence,secondResult.identity.acceptedSequence);
+        Assert::AreEqual(third.identity.acceptedSequence,thirdResult.identity.acceptedSequence);
+    }
     TEST_METHOD(LowInputCadenceRetainsOneSerialSampler) {
         for(double hz:{23.976,24.0,29.97,30.0}) {
             std::atomic_bool release{false};SubtitleMeasurementWorker worker;ReleaseBlockedWorkers unblock{release};
@@ -5098,6 +5144,61 @@ static SubtitleCurrentCueTemplateInput PreparedSemanticSeed(uint64_t sequence,
     if(!proof->qualified)Logger::WriteMessage(proof->reason);
     Assert::IsTrue(proof->qualified,L"Modeled prepared output must pass the unchanged pixel qualifier.");
     input.preparedPresentation=std::move(proof);return input;
+}
+TEST_METHOD(CurrentCueSeedCapacityIncreaseWakesAlreadyQueuedRawWork) {
+    auto pixels=std::make_shared<std::vector<uint16_t>>(PixelsWithCurrentBars());
+    auto first=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(1,pixels));
+    auto seed=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(2,pixels));
+    auto raw=std::make_unique<SubtitleCurrentCueTemplateInput>(PreparedSemanticSeed(3,pixels));
+    struct SeedGate {
+        std::atomic_bool firstEntered{false},releaseFirst{false},seedEntered{false},releaseSeed{false};
+        std::atomic_uint rawCalls{0},seedFlags{0};
+        std::atomic<DWORD> seedThread{0},rawThread{0};
+        static void __cdecl Capture(void* context,const AnalysisDiagnosticRecordV1* record) {
+            auto& gate=*static_cast<SeedGate*>(context);
+            if(!record || std::strcmp(record->stage,"worker-cue-template")!=0 ||
+                record->acceptedSequence!=2 || record->analysisDomainKey!=17)return;
+            gate.seedFlags=record->flags;gate.seedThread=GetCurrentThreadId();gate.seedEntered=true;
+            while(!gate.releaseSeed.load(std::memory_order_acquire))
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    } gate;
+    SubtitleMeasurementWorker worker;
+    struct Cleanup {SeedGate& gate;~Cleanup(){gate.releaseFirst=true;gate.releaseSeed=true;
+        AnalysisDiagnosticTrace::ClearExternalSinks();}} cleanup{gate};
+    worker.SetInputRateHz(24);
+    AnalysisDiagnosticTrace::SetExternalSinks(&gate,&SeedGate::Capture,nullptr,nullptr);
+    const auto firstResult=std::make_shared<SubtitleBoxObservation>(first->observation);
+    Assert::IsTrue(worker.Submit(*firstResult,[&,firstResult](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+        gate.firstEntered=true;
+        while(!gate.releaseFirst.load(std::memory_order_acquire))std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return *firstResult;
+    }));
+    for(int i=0;i<2000 && !gate.firstEntered;++i)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    Assert::IsTrue(gate.firstEntered.load());
+    uint64_t revision=0;
+    Assert::IsTrue(worker.SubmitCurrentCueTemplate(*seed,revision)==SubtitleCurrentCueProofStatus::Queued);
+    const auto rawResult=std::make_shared<SubtitleBoxObservation>(raw->observation);
+    Assert::IsTrue(worker.Submit(*rawResult,[&,rawResult](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+        gate.rawThread=GetCurrentThreadId();++gate.rawCalls;return *rawResult;
+    }));
+    // All enqueue notifications precede seed execution. The low-rate second
+    // sampler is ineligible while the first sampler remains at its barrier.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    const bool rawParked=gate.rawCalls==0;
+    gate.releaseFirst=true;
+    for(int i=0;i<2000 && !gate.seedEntered;++i)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    const bool seeded=gate.seedEntered && (gate.seedFlags.load()&1u)!=0;
+    // No Submit, rate update, window change, or other wake is permitted here.
+    // Worker0 is held after successful publication; only worker1 can run raw3.
+    SubtitleBoxObservation result;
+    const bool rawReady=WaitForTake(worker,*rawResult,result);
+    gate.releaseSeed=true;worker.Stop();AnalysisDiagnosticTrace::ClearExternalSinks();
+    Assert::IsTrue(rawParked && seeded,L"The genuine current-pixel seed must publish while raw work was parked at24Hz.");
+    Assert::IsTrue(rawReady,L"Successful seed1-to-2 capacity publication must wake the already queued raw sampler without another offer.");
+    Assert::AreEqual(1u,gate.rawCalls.load());
+    Assert::AreEqual(rawResult->identity.acceptedSequence,result.identity.acceptedSequence);
+    Assert::AreNotEqual(gate.seedThread.load(),gate.rawThread.load(),L"Raw work must progress while the seed worker is still held.");
 }
 // Genuine current worker/byte/support producers; only successful GPU preparation
 // is modeled, as in PreparedSemanticSeed above. No token/receipt internals are forged.

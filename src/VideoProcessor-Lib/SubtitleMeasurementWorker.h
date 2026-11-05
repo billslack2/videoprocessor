@@ -703,13 +703,17 @@ public:
     // cannot add workers or change source observations. A lower cadence parks
     // worker1 after its current independent job, without interrupting pixels.
     void SetInputRateHz(double inputHz,bool nonblocking=false) {
+        bool capacityChanged=false;
         {std::unique_lock<std::mutex> lock(m_mutex,std::defer_lock);
             if(nonblocking) {if(!lock.try_lock())return;}else lock.lock();
             if(m_stopping)return;
-            m_workerLimit=(std::isfinite(inputHz) && inputHz>30.0) || HasCurrentCueProofContextLocked()?2u:1u;
+            const size_t limit=(std::isfinite(inputHz) && inputHz>30.0) || HasCurrentCueProofContextLocked()?2u:1u;
+            capacityChanged=limit!=m_workerLimit;m_workerLimit=limit;
             if(m_workerLimit>1 && !m_threads[1].joinable())m_threads[1]=std::thread([this]{Run(1);});
         }
-        m_changed.notify_all();
+        // Repeated source-rate offers create no work; wake only on a real
+        // capacity transition so sleepers do not contend with the next offer.
+        if(capacityChanged)m_changed.notify_all();
     }
     ~SubtitleMeasurementWorker() { Stop(); }
     static bool SameKey(const SubtitleBoxObservation& a,const SubtitleBoxObservation& b) {
@@ -3449,14 +3453,19 @@ __declspec(noinline) inline SubtitleCurrentCueProofStatus SubtitleMeasurementWor
                 reason=advanced?"current-cue-template-footprint-seeded":"current-cue-template-seeded";
             } else {seeded=false;reason=state->pending.DecisionReason();}
         } else reason=state->footprint.DecisionReason();
+        bool capacityChanged=false;
         if(seeded) {
             std::lock_guard<std::mutex> lock(m_mutex);
             if(!m_stopping && entry->revision>=m_currentCueMinimumRevision->load(std::memory_order_acquire) &&
                 (!m_currentCueState || entry->revision>=m_currentCueState->descriptor.revision)) {
+                capacityChanged=m_workerLimit!=2;
                 m_currentCueState=state;m_workerLimit=2;PublishCurrentCueReadViewLocked();
                 if(!m_threads[1].joinable())m_threads[1]=std::thread([this]{Run(1);});
             } else {seeded=false;reason="current-cue-template-context-invalidated";}
         }
+        // The seed reserves worker0 for cue proofs and enables worker1 for
+        // already queued raw scans. No later source offer is required to wake it.
+        if(capacityChanged)m_changed.notify_all();
         const double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         auto trace=AnalysisTraceRecord(input.observation.identity,this,"worker-cue-template",reason);
         trace.kind=AnalysisDiagnosticRecordKindV1::Worker;trace.policyGeneration=input.observation.policyGeneration;
