@@ -5375,7 +5375,7 @@ namespace VideoProcessorTest
                         if(!size||size>=32768)return;
                         std::ofstream out((std::wstring(path)+(beta?L"/beta-decisions.tsv":L"/standard-decisions.tsv")).c_str());
                         const auto clean=[](const char* text){std::string value(text);for(auto& ch:value)if(ch=='\t'||ch=='\r'||ch=='\n')ch=' ';return value;};
-                        out<<"source\taccepted\tstage\treason\tflags\tcounters\tmetrics\tpublished\tmeasured\tguard\tnomination\tsubtitle\tresult_code\n";
+                        out<<"source\taccepted\tstage\treason\tflags\tcounters\tmetrics\tpublished\tmeasured\tguard\tnomination\tsubtitle\tresult_code\tdetail\ttransport\tformat\tviewport\trenderer\tdomain\tpolicy\tcontinuity\ttimestamp\n";
                         for(const auto& r:records) {
                             out<<r.sourceFrameNumber<<'\t'<<r.acceptedSequence<<'\t'<<clean(r.stage)<<'\t'<<clean(r.reason)<<'\t'<<r.flags<<'\t';
                             for(const auto value:r.counters)out<<value<<',';out<<'\t';
@@ -5384,7 +5384,10 @@ namespace VideoProcessorTest
                             for(const auto value:r.measured)out<<value<<',';out<<'\t';
                             for(const auto value:r.candidate)out<<value<<',';out<<'\t';
                             for(const auto value:r.previous)out<<value<<',';out<<'\t';
-                            for(const auto value:r.subtitle)out<<value<<',';out<<'\t'<<r.resultCode<<'\n';
+                            for(const auto value:r.subtitle)out<<value<<',';out<<'\t'<<r.resultCode<<'\t'<<clean(r.detail)<<'\t'
+                                <<r.transportGeneration<<'\t'<<r.sourceFormatGeneration<<'\t'<<r.viewportGeneration<<'\t'
+                                <<r.rendererGeneration<<'\t'<<r.analysisDomainKey<<'\t'<<r.policyGeneration<<'\t'
+                                <<r.continuityGeneration<<'\t'<<r.captureTimestamp<<'\n';
                         }
                     } catch(...) {} // Diagnostic export cannot alter test behavior.
                 }
@@ -5455,6 +5458,15 @@ namespace VideoProcessorTest
                             <<" stage="<<i->stage<<" reason="<<i->reason<<" flags="<<i->flags;
                         NativeRendererFixtureLog(detail.str().c_str());++emitted;
                     }
+            }
+            if(!acquired) {
+                traceDump.Write(); // Framework SEH bypasses destructors on acquisition failure too.
+                wchar_t path[32768]={};const auto size=GetEnvironmentVariableW(L"VP_PAUSED_REPLAY_TRACE_ROOT",path,32768);
+                if(size&&size<32768) {
+                    std::ofstream messages((std::wstring(path)+(beta?L"/beta-acquisition.log":L"/standard-acquisition.log")).c_str());
+                    std::lock_guard<std::mutex> lock(classicPoseLogMutex);
+                    for(const auto& message:classicPoseMessages)messages<<message<<'\n';
+                }
             }
             Assert::IsTrue(acquired,L"Actual capture never produced a composed native-qualified source; no steady coverage claimed.");
             // Bounded warmup only; once steady observation begins every output counts.
