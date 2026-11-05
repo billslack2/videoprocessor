@@ -14,7 +14,7 @@
     "src/VideoProcessor-Test/ActivePictureAnalyzerTests.cpp",
     "src/VideoProcessor-Test/SourceSynchronizedAnalysisTests.cpp"
   ],
-  "minimumNativeTests": 1197,
+  "minimumNativeTests": 1207,
   "requiredNativeMethods": [
     "ThinPictureGlyphNativeCoresSurviveEveryUhdPhaseAndLowPq",
     "QuestionMarkCannotBorrowAChainOfLowerNoiseDots",
@@ -1128,6 +1128,56 @@
       "source": "src/VideoProcessor-Test/AlphaQueuePolicyTests.cpp",
       "class": "AlphaQueuePolicyTests",
       "method": "CurrentSourcePreparationCompletesOrExpiresWithoutFutureVotes"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "DependentAttemptObservesPublicationForBothRegistrationOrders"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "DependentAttemptNegativeAndExceptionNeverCreateUsableEvidence"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "DependentAttemptQueuedCancellationNeverInvokesCancelledOffer"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "DependentAttemptSaturatedQueueRetriesOnceWithoutDuplicateAdmission"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "DependentAttemptReadmissionSuppressesOldTerminalRetryWhilePending"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "DependentAttemptRetiredSourceContextReleasesOwnerWithoutScheduling"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "DependentAttemptConcurrentRetriesAdmitOnlyOnce"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "NewGenerationCancelsQueuedOldGenerationButNotActiveMeasurement"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "FarOrEqualRequestOnFullQueueCannotEvictNearerWork"
+    },
+    {
+      "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
+      "class": "OptionalAnalysisWorkerTests",
+      "method": "ShutdownClearsPendingQueueAndWaitsOnlyForReleasedActiveJob"
     },
     {
       "source": "src/VideoProcessor-Test/OptionalAnalysisWorkerTests.cpp",
