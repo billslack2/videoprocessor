@@ -8623,7 +8623,10 @@ int main(int argc, char** argv)
         QStringLiteral("--test"))
         testNameFilter = QString::fromLocal8Bit(argv[2]);
     QApplication application(argc, argv);
-    if (!qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES").isEmpty())
+    // The offscreen platform has no system fonts and falls back to placeholder
+    // metrics about twice as wide as real text, which overflows rows that fit on screen.
+    if (!qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES").isEmpty() ||
+        QGuiApplication::platformName().compare(QStringLiteral("offscreen"), Qt::CaseInsensitive) == 0)
         QFontDatabase::addApplicationFont(QStringLiteral("C:/Windows/Fonts/segoeui.ttf"));
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
