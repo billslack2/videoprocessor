@@ -30,6 +30,7 @@
 
 
 class ConfigFile;
+namespace Calibration { struct PatternOutputInfo; struct PatternRequest; }   // AUTOCAL-HOOK
 
 // In-process D3D11 renderer. HDR input is color-managed and tone-mapped to
 // an SDR Rec.709 swapchain; this backend deliberately does not emit HDR.
@@ -296,6 +297,10 @@ private:
 	std::string m_buildManualRule;
 	std::map<std::string, std::string> m_buildManualUnifiedProfiles;
 	std::atomic_bool m_implInitialized{false};
+	// AUTOCAL-HOOK: automatic calibration patterns (src/VP-V/modules/output/calibration_lut/host).
+	std::atomic_bool m_calibrationPatternActive{false};
+	bool GetCalibrationOutput(Impl& impl, Calibration::PatternOutputInfo& info) const;
+	bool SetCalibrationPattern(Impl& impl, const Calibration::PatternRequest& request, std::string& reason);
 	std::atomic<double> m_entryLatencyMs{0.0};
 	std::atomic<double> m_exitLatencyMs{0.0};
 	std::atomic_bool m_presentationTargetTimingKnown{false};
