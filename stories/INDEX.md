@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0225`
-- Next root story number: `VP-0226`
-- Total indexed items: 243
+- Last assigned root story: `VP-0226`
+- Next root story number: `VP-0227`
+- Total indexed items: 244
 
 ## Story locations
 
@@ -289,6 +289,7 @@ they must not contain requirements that are absent from this file.
 | VP-0224 | Review | Auto-align the active picture to visible screen edges with signed pixel trim |
 
 | VP-0225 | In Progress | Review and optimize subtitle processing to eliminate repeatable playback stalls |
+| VP-0226 | Backlog | Trigger actions on confirmed active-picture aspect changes |
 
 ## Codex story workflow
 
