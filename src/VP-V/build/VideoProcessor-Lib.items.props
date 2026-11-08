@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright(C) 2026 VP-V contributors
+  SPDX-License-Identifier: GPL-3.0-only
+  output.calibration_lut items for VideoProcessor-Lib (pattern library + CPU calibration core).
+  Item paths are relative to the importing project directory.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\pattern_lib\CalibrationPattern.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\pattern_lib\ColorMath.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\pattern_lib\PatternCodes.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\pattern_lib\PatternPlan.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\AmbientCheck.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\ArgyllInstall.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationConfig.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationOutputs.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationRun.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationRunBase.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationSession.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationSimulation.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\DisplayModel.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\HdrVerify.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\LedCharacterize.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\Meter.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\MeterCatalog.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\SimulatedDisplay.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\SimulatedMeter.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\Spotread.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\Terminal.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\calibration\TranscriptRecorder.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\host\CalibrationPipe.h" />
+    <ClInclude Include="DisplayProfile.h" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\pattern_lib\ColorMath.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\pattern_lib\PatternCodes.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\pattern_lib\PatternPlan.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\AmbientCheck.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\ArgyllInstall.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationOutputs.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationRun.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationRunBase.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationSession.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\CalibrationSimulation.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\DisplayModel.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\HdrVerify.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\LedCharacterize.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\Meter.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\MeterCatalog.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\SimulatedDisplay.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\SimulatedMeter.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\Spotread.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\TranscriptRecorder.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\calibration\ConPtyTerminal.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\host\CalibrationPipe.cpp" />
+  </ItemGroup>
+</Project>

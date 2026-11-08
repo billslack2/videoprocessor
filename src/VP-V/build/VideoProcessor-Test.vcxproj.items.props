@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright(C) 2026 VP-V contributors
+  SPDX-License-Identifier: GPL-3.0-only
+  output.calibration_lut items for VideoProcessor-Test (meter / spotread / ConPTY tests, the pattern
+  host's pure policy, the calibration pipe and a simulated session to a .cube).
+  Item paths are relative to the importing project directory.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\tests\CalibrationTestSupport.h" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\tests\CalibrationMeterTests.cpp" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\tests\CalibrationPatternHostTests.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Build order only: CalibrationMeterTests runs x64/Release/test-tools/fake_spotread.exe. -->
+    <ProjectReference Include="..\VideoProcessor-FakeSpotread\VideoProcessor-FakeSpotread.vcxproj">
+      <Project>{6c1e2b7a-3f4d-4e8a-9b21-7d5c0a9e4f31}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemGroup>
+</Project>

@@ -377,6 +377,7 @@
       <Project>{85f8c0f9-ac94-470e-9302-16fc536e506f}</Project>
     </ProjectReference>
   </ItemGroup>
+  <Import Project="$(MSBuildThisFileDirectory)..\VP-V\build\$(MSBuildProjectName).items.props" Condition="Exists('$(MSBuildThisFileDirectory)..\VP-V\build\$(MSBuildProjectName).items.props')" />  <!-- AUTOCAL-HOOK -->
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
