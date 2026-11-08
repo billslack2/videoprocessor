@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration (the module README, "LUT maths"):
+// Automatic calibration, the LUT maths:
 // the display's forward model, the calibration target, the Gauss-Newton
 // inverse, the 3D LUT and its .cube file, and the dE2000 verify report.
 //
@@ -220,7 +220,7 @@ namespace Calibration
 	bool WriteCube(const Lut3D& lut, const std::string& path, const std::string& title,
 		const std::vector<std::string>& comments = {}, std::string* error = nullptr);
 
-	// Verify report (design "Verify"): dE2000 against the target, pass at
+	// Verify report: dE2000 against the target, pass at
 	// mean < 1.5 and max < 3.
 	struct VerifyEntry
 	{

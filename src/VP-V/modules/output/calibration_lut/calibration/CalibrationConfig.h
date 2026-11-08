@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration (the module README): the
+// Automatic calibration: the
 // [calibration] section. A plain application section, not a profile. Every
 // key has a control on the Config app's Calibration page (the schema-driven
 // coverage test, ConfigEditorWindowTests, lists these rules).

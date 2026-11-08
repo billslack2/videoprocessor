@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright(C) 2026 VP-V contributors
+  SPDX-License-Identifier: GPL-3.0-only
+-->
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!-- Test tool only (automatic calibration): a scripted stand-in for ArgyllCMS's spotread.
        Built into x64\Release\test-tools\, never packaged or deployed. -->

@@ -103,6 +103,7 @@ namespace CalibrationPatternHost
 			{
 				windowFallbackLogged.store(false, std::memory_order_release);
 				failureLogged.store(false, std::memory_order_release);
+				containerMismatchLogged.store(false, std::memory_order_release);
 				patternsActive.store(true, std::memory_order_release);
 				lifecycle.beginQueueGeneration("calibration patterns");
 				DebugLog::Log("Calibration patterns: started (video paused)");
@@ -288,6 +289,16 @@ namespace CalibrationPatternHost
 		}
 		if (!request.active)
 			return false;
+		// The request was checked against the output when it arrived; the swapchain may have been
+		// rebuilt since (e.g. 10-bit to 8-bit). Never present codes the current surface cannot hold.
+		if (!PatchFitsContainer(request.patch, request.background, ContainerBits(surface.format)))
+		{
+			if (!containerMismatchLogged.exchange(true, std::memory_order_acq_rel))
+				DebugLog::Log("Calibration patterns: patch codes do not fit the current swapchain (format=%d, %u-bit); "
+					"not presented until the session sends codes for this output", static_cast<int>(surface.format),
+					ContainerBits(surface.format));
+			return false;
+		}
 		bool filled = false;
 		bool presented = false;
 		bool windowFallback = false;

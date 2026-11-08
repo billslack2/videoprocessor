@@ -50,8 +50,8 @@ Existing files touched (every change marked `AUTOCAL-HOOK`; nothing reformatted)
 | `src/VideoProcessor-Lib/VideoProcessor-Lib.vcxproj` | one `<Import>` of `src/VP-V/build/VideoProcessor-Lib.items.props` |
 | `src/VideoProcessor-Test/VideoProcessor-Test.vcxproj.vcxproj` | one `<Import>` of its items props |
 | `src/VideoProcessor-VPRenderer/VideoProcessor-VPRenderer.vcxproj`, `...VPRendererBeta.vcxproj` | one `<Import>` each (the pattern host) |
-| `LVRH` (362 lines; +5) | LVRH 33: a forward declaration; LVRH 300-303: `m_calibrationPatternActive`; two private methods |
-| `LVR` (26524 lines; +88 -2) | the include and the call sites below |
+| `LVRH` (362 lines at base; +5) | LVRH 33: a forward declaration; LVRH 300-303: `m_calibrationPatternActive`; two private methods |
+| `LVR` (26524 lines at base; +88 -2) | the include and the call sites below |
 
 ### Renderer call sites (LVR)
 
@@ -73,8 +73,8 @@ patches show and are unchanged.
 ## 3. The renderer contract (the IVpvCalibration equivalent)
 
 The session never touches the GPU. It needs two calls; here they are `LibplaceboVideoRenderer` private methods
-served on the pipe thread (in VP-V the same two calls are an extension interface, `IVpvCalibration`; the
-`IVideoRenderer` and the plugin API are **not** changed by this integration).
+served on the pipe thread. `IVideoRenderer` and the plugin API are **not** changed by this integration; if a
+renderer-interface form is wanted later, the same two calls can become a small extension interface.
 
 ```cpp
 // pattern_lib/CalibrationPattern.h (POD)
@@ -117,10 +117,10 @@ Output facts (`OutputFacts`, filled in S8 under `renderMutex`): `negotiatedSwapc
 `renderLoadDisplayRefreshHz` (0 = unknown; the session does not need it), available = swapchain present and not
 retired.
 
-### The "proposed" GetOutputFacts view: resolved for this integration
+### No generic output-facts view
 
-VP-V's hook notes list a generic renderer view `GetOutputFacts()` as proposed. It is **not needed here**: the
-concrete contract is the `gather` lambda in `GetCalibrationOutput` (S8) returning `CalibrationPatternHost::OutputFacts`,
+A generic renderer view of these output facts (a `GetOutputFacts()` call) is **not needed here**: the concrete
+contract is the `gather` lambda in `GetCalibrationOutput` (S8) returning `CalibrationPatternHost::OutputFacts`,
 read with `renderMutex` held. A generic view is only worth adding when a second consumer needs the same facts.
 
 ## 4. The pipe
@@ -134,11 +134,16 @@ Access, since the pipe can put patterns on screen:
 - a per-session name (the Windows session id of the process), so other logon sessions do not find it; the CLI
   computes the same name in its own session;
 - one instance created with `FILE_FLAG_FIRST_PIPE_INSTANCE`, so nobody can pre-create the name to intercept it;
-  a second renderer that cannot create it logs `Calibration pipe: not started: ...`.
-- Run the CLI as the same Windows user as VideoProcessor, in the same session; if access is denied (the CLI reports
-  it as such), run both with the same elevation.
+  a second renderer that cannot create it logs `Calibration pipe: not started: ...`;
+- an elevated VideoProcessor adds the mandatory label `S:(ML;;NW;;;HI)` (high integrity, no write up), so a
+  non-elevated process of the same user cannot drive it;
+- the client connects with `SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION` (the server cannot impersonate it),
+  checks the server with `GetNamedPipeServerProcessId` and that process's token user SID, and refuses a server that
+  does not run as its own user ("refusing the calibration pipe: ...") before sending anything.
+- Run the CLI as the same Windows user as VideoProcessor, in the same session and with the same elevation; the CLI
+  reports access denied or a failed server check as such.
 
-Wire format: one request per connection (`CallNamedPipe`), message mode. Header: magic `VPCL`, version 1, op,
+Wire format: one request per connection (`TransactNamedPipe` after the server check), message mode. Header: magic `VPCL`, version 1, op,
 payload size; ops 1 GetOutput, 2 SetPattern. Every message is capped at 4096 bytes (a larger one is refused unread
 with an error reply). The two POD structs cross as raw bytes with their `sizeof` (the CLI and VP must come from the
 same build) and every field is validated before use (`ValidatePatternRequestBytes`, `ValidateOutputInfoBytes`):
@@ -171,8 +176,10 @@ Tests (CPU only):
 powershell -NoProfile -ExecutionPolicy Bypass -File src\VP-V\modules\output\calibration_lut\pattern_lib\run_pattern_lib_tests.ps1 -OutDir <scratch>
 vstest.console.exe x64\Release\VideoProcessor-Test.dll /Platform:x64 /Logger:"trx;LogFileName=cal.trx" /ResultsDirectory:<scratch> /TestCaseFilter:"FullyQualifiedName~CalibrationMeterTests|FullyQualifiedName~CalibrationPatternHostPolicyTests|FullyQualifiedName~CalibrationPipeTests|FullyQualifiedName~CalibrationCliPathTests"
 ```
-vstest prints no summary for this DLL: read the TRX `Counters` line. `CalibrationMeterTests` needs Windows 10 1809+
-and `fake_spotread.exe`. `CalibrationHardwareTests` (same file) skips unless its `VP_TEST_*` variables are set.
+vstest prints no summary for this DLL: read the TRX `Counters` line. Expected: 25 tests, all passed. Adding
+`|FullyQualifiedName~CalibrationHardwareTests` gives 25 + 1 hardware stub (`RealMeterReadsThroughSpotread`, which
+passes as a skip unless its `VP_TEST_*` variables and a meter are present). `CalibrationMeterTests` needs Windows 10
+1809+ and `fake_spotread.exe`.
 
 ## 6. Run the CLI driver
 
@@ -238,8 +245,9 @@ Not run before hand-over: everything below needs a GPU, a display and (from step
 
 ## 8. Known limits
 
-- Untested on a GPU, display or meter in this tree; only the CPU tests ran (section 5). The renderer code is the
-  same logic as VP-V's renderer adapter, which was GPU-tested there, re-cut for this tree.
+- Untested on a GPU, display or meter in this tree; only the CPU tests ran (section 5). The patch-presentation
+  logic was exercised on a GPU in an earlier renderer before it was adapted for this tree; that does not replace
+  the checks in section 7.
 - SDR LUT run only: the HDR (PQ) verify needs the renderer's tone curve (not reported here; `toneCurveCount` 0).
   This renderer outputs SDR encodings only, so the transfer is reported as SDR.
 - The LUT is the renderer's existing libplacebo target LUT (applied inside libplacebo's colour pipeline).

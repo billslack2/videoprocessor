@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration: writing a run (design "Outputs", "Safety and
-// config"). Files go to the run folder of CalibrationOutputs.h; the
+// Automatic calibration: writing a run (its outputs, and the safety rules for
+// the configuration). Files go to the run folder of CalibrationOutputs.h; the
 // configuration is changed only on Apply, key by key, after byte-for-byte
 // backups:
-//   <cfg folder>\<cfg name>.before-calibration.<yyyyMMdd-HHmmss>.bak   (AGENTS.md:
-//       a timestamped backup in the deployment folder before any edit)
+//   <cfg folder>\<cfg name>.before-calibration.<yyyyMMdd-HHmmss>.bak   (a timestamped
+//       backup next to the configuration, made before any edit)
 //   <run>\before\<cfg name>                                            (the run's copy)
 // then ConfigEditorCore validates the exact candidate and SaveSafely
 // replaces the file atomically. Only calibration_lut_enabled and the

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration (the module README, "LED projector
-// measurements"): fits for the LED values that are guesses today.
+// Automatic calibration, LED projector
+// measurements: fits for the LED values that are guesses today.
 //  - flux_table: LPW1 -> relative flux, measured in both directions so the
 //    up/down hysteresis is visible (the table is their mean).
 //  - CNTR curve: light against CNTR for a few codes; dmd_clip_cntr is where

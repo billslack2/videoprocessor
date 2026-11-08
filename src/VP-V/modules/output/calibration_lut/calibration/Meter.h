@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration: the meter (design "Meter and licence").
+// Automatic calibration: the meter (ArgyllCMS spotread as a separate process; never linked).
 //
 // IMeter is what the session measures with. SpotreadMeter drives ArgyllCMS's
 // spotread under a pseudo-console (Terminal.h): one long-lived process, a

@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <sddl.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -105,23 +106,51 @@ namespace CalibrationPipe
 
 	const char* EnableVariable() { return "VP_CALIBRATION_PIPE"; }
 
+	namespace
+	{
+		// The user SID of a process's token, as raw bytes. False when the token cannot be read.
+		bool ProcessUserSid(HANDLE process, std::vector<uint8_t>& sid)
+		{
+			HANDLE token = nullptr;
+			if (!OpenProcessToken(process, TOKEN_QUERY, &token))
+				return false;
+			DWORD size = 0;
+			GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+			std::vector<uint8_t> buffer(size > 0 && size < 4096 ? size : 0);
+			bool ok = !buffer.empty() && GetTokenInformation(token, TokenUser, buffer.data(), size, &size);
+			if (ok)
+			{
+				const PSID user = reinterpret_cast<TOKEN_USER*>(buffer.data())->User.Sid;
+				ok = IsValidSid(user) != FALSE;
+				if (ok)
+				{
+					const uint8_t* bytes = static_cast<const uint8_t*>(user);
+					sid.assign(bytes, bytes + GetLengthSid(user));
+				}
+			}
+			CloseHandle(token);
+			return ok;
+		}
+
+		bool ThisProcessElevated()
+		{
+			HANDLE token = nullptr;
+			if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+				return false;
+			TOKEN_ELEVATION elevation{};
+			DWORD size = 0;
+			const bool elevated = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size) &&
+				elevation.TokenIsElevated != 0;
+			CloseHandle(token);
+			return elevated;
+		}
+	}
+
 	bool PipeSecuritySddl(std::wstring& sddl, std::string& error)
 	{
-		HANDLE token = nullptr;
-		if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
-		{
-			error = "OpenProcessToken failed (" + std::to_string(GetLastError()) + ")";
-			return false;
-		}
-		DWORD size = 0;
-		GetTokenInformation(token, TokenUser, nullptr, 0, &size);
-		std::vector<uint8_t> buffer(size > 0 && size < 4096 ? size : 0);
+		std::vector<uint8_t> user;
 		LPWSTR sid = nullptr;
-		const bool ok = !buffer.empty() &&
-			GetTokenInformation(token, TokenUser, buffer.data(), size, &size) &&
-			ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(buffer.data())->User.Sid, &sid);
-		CloseHandle(token);
-		if (!ok)
+		if (!ProcessUserSid(GetCurrentProcess(), user) || !ConvertSidToStringSidW(reinterpret_cast<PSID>(user.data()), &sid))
 		{
 			error = "the process token's user could not be read (" + std::to_string(GetLastError()) + ")";
 			return false;
@@ -129,6 +158,39 @@ namespace CalibrationPipe
 		// D:P = protected DACL (no inherited entries); GA for the token user and LocalSystem only.
 		sddl = std::wstring(L"D:P(A;;GA;;;") + sid + L")(A;;GA;;;SY)";
 		LocalFree(sid);
+		// An elevated VideoProcessor labels the pipe high integrity, no write up: a non-elevated process
+		// of the same user cannot drive it.
+		if (ThisProcessElevated())
+			sddl += L"S:(ML;;NW;;;HI)";
+		return true;
+	}
+
+	bool SameUserProcess(uint32_t processId, std::string& why)
+	{
+		std::vector<uint8_t> mine, theirs;
+		if (!ProcessUserSid(GetCurrentProcess(), mine))
+		{
+			why = "this process's user could not be read";
+			return false;
+		}
+		HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(processId));
+		if (!process)
+		{
+			why = "the pipe server's process (" + std::to_string(processId) + ") cannot be inspected";
+			return false;
+		}
+		const bool read = ProcessUserSid(process, theirs);
+		CloseHandle(process);
+		if (!read)
+		{
+			why = "the pipe server's user cannot be verified (run this tool with the same elevation as VideoProcessor)";
+			return false;
+		}
+		if (mine.size() != theirs.size() || !EqualSid(reinterpret_cast<PSID>(mine.data()), reinterpret_cast<PSID>(theirs.data())))
+		{
+			why = "the pipe server (process " + std::to_string(processId) + ") runs as another user";
+			return false;
+		}
 		return true;
 	}
 
@@ -516,12 +578,23 @@ namespace CalibrationPipe
 
 	bool Client::Call(const std::vector<uint8_t>& request, Message& reply, std::string& error) const
 	{
-		std::vector<uint8_t> buffer(MaximumMessageBytes);
-		DWORD read = 0;
-		if (!CallNamedPipeW(name.c_str(), const_cast<uint8_t*>(request.data()), static_cast<DWORD>(request.size()),
-			buffer.data(), static_cast<DWORD>(buffer.size()), &read, timeoutMs))
+		// Connect with identification-level impersonation only (the server cannot act as this user),
+		// then verify that the server process runs as this user before sending anything.
+		const ULONGLONG deadline = GetTickCount64() + timeoutMs;
+		HANDLE pipe = INVALID_HANDLE_VALUE;
+		for (;;)
 		{
+			pipe = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+				FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr);
+			if (pipe != INVALID_HANDLE_VALUE)
+				break;
 			const DWORD status = GetLastError();
+			const ULONGLONG now = GetTickCount64();
+			if (status == ERROR_PIPE_BUSY && now < deadline)
+			{
+				WaitNamedPipeW(name.c_str(), static_cast<DWORD>((std::min)(deadline - now, static_cast<ULONGLONG>(1000))));
+				continue;
+			}
 			error = status == ERROR_FILE_NOT_FOUND ?
 				std::string("VideoProcessor's calibration pipe is not there: start VideoProcessor.exe with ") +
 					EnableVariable() + "=1 in its environment and a source rendering with the VP Renderer (same Windows "
@@ -529,6 +602,56 @@ namespace CalibrationPipe
 				status == ERROR_ACCESS_DENIED ?
 				std::string("the calibration pipe refused access: run this tool as the same user, with the same "
 					"elevation, as VideoProcessor") :
+				status == ERROR_PIPE_BUSY ? std::string("the calibration pipe stayed busy") :
+				"the calibration pipe could not be opened (" + std::to_string(status) + ")";
+			return false;
+		}
+		struct HandleCloser { HANDLE handle; ~HandleCloser() { CloseHandle(handle); } } pipeCloser{ pipe };
+
+		ULONG serverProcess = 0;
+		std::string why;
+		if (!GetNamedPipeServerProcessId(pipe, &serverProcess) || !SameUserProcess(serverProcess, why))
+		{
+			error = "refusing the calibration pipe: " + (why.empty() ? std::string("its server process is unknown") : why);
+			return false;
+		}
+		DWORD mode = PIPE_READMODE_MESSAGE;
+		if (!SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr))
+		{
+			error = "the calibration pipe could not be set to message mode (" + std::to_string(GetLastError()) + ")";
+			return false;
+		}
+
+		HANDLE done = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+		if (!done)
+		{
+			error = "CreateEvent failed";
+			return false;
+		}
+		struct HandleCloser eventCloser{ done };
+		std::vector<uint8_t> buffer(MaximumMessageBytes);
+		OVERLAPPED overlapped{};
+		overlapped.hEvent = done;
+		DWORD read = 0;
+		BOOL ok = TransactNamedPipe(pipe, const_cast<uint8_t*>(request.data()), static_cast<DWORD>(request.size()),
+			buffer.data(), static_cast<DWORD>(buffer.size()), &read, &overlapped);
+		if (!ok && GetLastError() == ERROR_IO_PENDING)
+		{
+			const ULONGLONG now = GetTickCount64();
+			const DWORD wait = now < deadline ? static_cast<DWORD>(deadline - now) : 0;
+			if (WaitForSingleObject(done, (std::max)(wait, static_cast<DWORD>(500))) != WAIT_OBJECT_0)
+			{
+				CancelIoEx(pipe, &overlapped);
+				GetOverlappedResult(pipe, &overlapped, &read, TRUE);
+				error = "VideoProcessor did not answer on the calibration pipe in time";
+				return false;
+			}
+			ok = GetOverlappedResult(pipe, &overlapped, &read, FALSE);
+		}
+		if (!ok)
+		{
+			const DWORD status = GetLastError();
+			error = status == ERROR_MORE_DATA ? std::string("the reply from VideoProcessor is too large") :
 				"the calibration pipe call failed (" + std::to_string(status) + ")";
 			return false;
 		}

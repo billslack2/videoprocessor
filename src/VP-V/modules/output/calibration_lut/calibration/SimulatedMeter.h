@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration (the module README, "Tests"): a
+// Automatic calibration: a
 // simulated colorimeter. The reading is E * XYZ (E: the colorimeter's matrix
 // error against the display's spectra, as an uncorrected CCSS/CCMX leaves
 // it) with proportional noise per component and an absolute low-light noise

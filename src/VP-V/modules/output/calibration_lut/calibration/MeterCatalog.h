@@ -3,7 +3,7 @@
 #pragma once
 
 // Automatic calibration: the meters VP drives through ArgyllCMS's spotread
-// (the module README, "Meters"). VP never links Argyll
+// (meter list: the module README). VP never links Argyll
 // (AGPLv3): spotread runs as a separate process. Any instrument Argyll
 // supports works; this catalogue only tunes VP's behaviour per family
 // (whether spotread asks for a sensor calibration, whether a CCSS spectral

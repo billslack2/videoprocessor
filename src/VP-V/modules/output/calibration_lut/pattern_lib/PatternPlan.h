@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration (the module README, "Measurements",
-// "Verify"): the patch sets a run measures and how long they take.
+// Automatic calibration, measurements and verification:
+// the patch sets a run measures and how long they take.
 //
 // Pure: no renderer or meter. A patch's rgb is a normalised signal triplet:
 //  - PatchSpace::Device: the display's input signal with the LUT bypassed,

@@ -301,6 +301,18 @@ public:
 		Assert::IsTrue(sddl.find(L"(A;;GA;;;SY)") != std::wstring::npos, L"SYSTEM");
 		for (const wchar_t* broad : { L";WD)", L";AU)", L";BU)", L";BA)", L";IU)", L";AN)" })
 			Assert::IsTrue(sddl.find(broad) == std::wstring::npos, broad);
+		// The high-integrity no-write-up label exactly when this process is elevated.
+		bool elevated = false;
+		{
+			HANDLE token = nullptr;
+			Assert::IsTrue(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) != FALSE);
+			TOKEN_ELEVATION elevation{};
+			DWORD size = 0;
+			elevated = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size) &&
+				elevation.TokenIsElevated != 0;
+			CloseHandle(token);
+		}
+		Assert::AreEqual(elevated, sddl.find(L"S:(ML;;NW;;;HI)") != std::wstring::npos, L"label iff elevated");
 
 		// The live pipe carries exactly that DACL: two allow entries, the token user and SYSTEM.
 		CalibrationPipe::Handlers handlers;
@@ -330,6 +342,32 @@ public:
 		// "D:P(A;;GA;;;" is 12 characters; the user's SID follows up to the first ')'.
 		const std::wstring userSid = sddl.substr(12, sddl.find(L")") - 12);
 		Assert::IsTrue(actual.find(L";;;" + userSid + L")") != std::wstring::npos, actual.c_str());
+	}
+
+	TEST_METHOD(ClientVerifiesTheServerRunsAsTheSameUser)
+	{
+		std::string why;
+		Assert::IsTrue(CalibrationPipe::SameUserProcess(GetCurrentProcessId(), why), std::wstring(why.begin(), why.end()).c_str());
+		why.clear();
+		Assert::IsFalse(CalibrationPipe::SameUserProcess(0, why), L"the idle process is not this user");
+		Assert::IsFalse(why.empty(), L"a reason is given");
+		why.clear();
+		Assert::IsFalse(CalibrationPipe::SameUserProcess(4, why), L"the System process is not this user");
+		Assert::IsFalse(why.empty());
+		// The client's full path (identification-only connect, server check, transaction) against a
+		// server in this process, which runs as this user.
+		CalibrationPipe::Handlers handlers;
+		handlers.getOutput = [](PatternOutputInfo& info) { info = TenBitLimited(); return true; };
+		const std::wstring name = UniquePipeName(L"verify");
+		CalibrationPipe::Server server(name, handlers);
+		std::string error;
+		Assert::IsTrue(server.Start(error));
+		CalibrationPipe::Client client(name);
+		PatternOutputInfo info;
+		bool ok = false;
+		Assert::IsTrue(client.GetOutput(info, ok, error), std::wstring(error.begin(), error.end()).c_str());
+		Assert::IsTrue(ok);
+		server.Stop();
 	}
 
 	TEST_METHOD(LivePipeRefusesOversizedMessagesAndKeepsServing)

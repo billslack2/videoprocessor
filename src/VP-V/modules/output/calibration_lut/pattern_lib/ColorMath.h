@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration (the module README): the small,
+// Automatic calibration: the small,
 // pure colour maths shared by the calibration core. Double precision
 // throughout; no renderer, GPU or libplacebo state.
 

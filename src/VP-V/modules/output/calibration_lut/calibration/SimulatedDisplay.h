@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration (the module README, "Tests"): a
+// Automatic calibration: a
 // simulated display for the CPU tests and for dry runs of the later session.
 //
 // Signal path, per channel, for a device triplet d (0 = code 16, 1 = 235):

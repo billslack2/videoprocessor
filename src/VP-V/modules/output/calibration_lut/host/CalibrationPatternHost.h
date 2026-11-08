@@ -140,6 +140,7 @@ namespace CalibrationPatternHost
 		pl_tex patchTexture = nullptr;
 		std::atomic<bool> windowFallbackLogged{ false };
 		std::atomic<bool> failureLogged{ false };
+		std::atomic<bool> containerMismatchLogged{ false };
 		mutable std::mutex outputCacheMutex;
 		Calibration::PatternOutputInfo outputCache;
 		std::atomic<uint64_t> readbackGeneration{ 0 };

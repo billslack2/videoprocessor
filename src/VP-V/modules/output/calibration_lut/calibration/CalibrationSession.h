@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration: the wizard's step machine (design "Wizard",
-// "Safety"). One session = one run:
+// Automatic calibration: the run's step machine and its safety rules.
+// One session = one run:
 //
 //   Idle -> OpeningMeter -> [MeterCalibration] -> Placement -> [WarmUp]
 //        -> Measuring -> Fitting -> [Verifying] -> Review -> Applied | Discarded

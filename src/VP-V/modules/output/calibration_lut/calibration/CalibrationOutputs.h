@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
-// Automatic calibration (the module README, "Outputs"):
+// Automatic calibration, the outputs of a run:
 // the versioned run folder, display_profile.cfg and key-only config edits.
 //
 //   <vp>\luts\calibration\index.json                 every run

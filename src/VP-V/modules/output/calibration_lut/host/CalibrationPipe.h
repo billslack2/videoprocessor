@@ -27,9 +27,12 @@
 //    administrators, no other users, no inherited entries);
 //  - a per-session name, \\.\pipe\VideoProcessor-Calibration-<session id>, so a process in
 //    another logon session does not even find it;
-//  - one instance (FILE_FLAG_FIRST_PIPE_INSTANCE: nobody can pre-create the name to intercept it).
+//  - one instance (FILE_FLAG_FIRST_PIPE_INSTANCE: nobody can pre-create the name to intercept it);
+//  - an elevated VideoProcessor adds a high-integrity, no-write-up label;
+//  - the client connects with identification-level impersonation only and refuses a server
+//    process that does not run as its own user (GetNamedPipeServerProcessId, token user SID).
 //
-// One request per connection (CallNamedPipe on the client). Both ends are built from the same
+// One request per connection (TransactNamedPipe on the client). Both ends are built from the same
 // headers for the same architecture, so the two POD structs cross as raw bytes; the header
 // carries their sizes and a mismatch is refused. Every message is capped at MaximumMessageBytes
 // and every field is validated before use (bool bytes 0 / 1, enum ranges, codes within 10 bits,
@@ -64,8 +67,11 @@ namespace CalibrationPipe
 	bool EnabledByEnvironment();               // VP_CALIBRATION_PIPE is "1"
 
 	// The pipe's security descriptor in SDDL: protected DACL, full access for the process's token
-	// user and SYSTEM only. False with error when the token cannot be read.
+	// user and SYSTEM only; an elevated process adds S:(ML;;NW;;;HI). False with error when the
+	// token cannot be read.
 	bool PipeSecuritySddl(std::wstring& sddl, std::string& error);
+	// The client's server check: true when process `processId` runs as this process's user.
+	bool SameUserProcess(uint32_t processId, std::string& why);
 
 	// ---- field validation (pure; CPU tests) -----------------------------------------------------
 	// Raw bytes of a PatternRequest as they came off the pipe: exact size, bool byte 0 / 1, codes
