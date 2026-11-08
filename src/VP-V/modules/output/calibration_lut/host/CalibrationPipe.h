@@ -19,13 +19,22 @@
 //   SetPattern(const PatternRequest&, reason&)   -> show a patch (active) or return to video
 //
 // The renderer DLL runs the server only when VP_CALIBRATION_PIPE=1 is set in VideoProcessor.exe's
-// environment; without it nothing listens and nothing changes. The pipe accepts local clients
-// only (PIPE_REJECT_REMOTE_CLIENTS) with the default pipe security (the same user, administrators
-// and SYSTEM can write to it).
+// environment; without it nothing listens and nothing changes.
+//
+// Access (a pipe that can put patterns on screen is locked down):
+//  - local clients only (PIPE_REJECT_REMOTE_CLIENTS);
+//  - an explicit protected DACL: the user running VideoProcessor and SYSTEM only (no
+//    administrators, no other users, no inherited entries);
+//  - a per-session name, \\.\pipe\VideoProcessor-Calibration-<session id>, so a process in
+//    another logon session does not even find it;
+//  - one instance (FILE_FLAG_FIRST_PIPE_INSTANCE: nobody can pre-create the name to intercept it).
 //
 // One request per connection (CallNamedPipe on the client). Both ends are built from the same
 // headers for the same architecture, so the two POD structs cross as raw bytes; the header
-// carries their sizes and a mismatch is refused.
+// carries their sizes and a mismatch is refused. Every message is capped at MaximumMessageBytes
+// and every field is validated before use (bool bytes 0 / 1, enum ranges, codes within 10 bits,
+// a finite window share in (0, 100], known flags only, bounded strings); nothing is allocated
+// from a length read off the pipe.
 //
 // Safety: if patches are on and no request arrives for idleSeconds (the client crashed or was
 // killed), the server ends the patches itself and video returns. The CLI driver sends a
@@ -35,8 +44,12 @@ namespace CalibrationPipe
 	constexpr uint32_t Magic = 0x4C435056u;   // "VPCL"
 	constexpr uint32_t Version = 1;
 	constexpr uint32_t HeaderBytes = 16;
-	constexpr uint32_t MaximumMessageBytes = 16 * 1024;
+	constexpr uint32_t MaximumMessageBytes = 4096;
+	constexpr uint32_t MaximumReasonBytes = 255;
+	constexpr uint32_t MaximumCode = 1023;      // the widest integer container (10-bit)
 	constexpr uint32_t ErrorFlag = 0x8000u;
+	static_assert(HeaderBytes + 8 + sizeof(Calibration::PatternOutputInfo) <= MaximumMessageBytes,
+		"the GetOutput reply must fit one message");
 
 	enum class Op : uint32_t
 	{
@@ -44,9 +57,23 @@ namespace CalibrationPipe
 		SetPattern = 2,
 	};
 
-	const wchar_t* DefaultPipeName();          // \\.\pipe\VideoProcessor-Calibration
+	// \\.\pipe\VideoProcessor-Calibration-<session id of this process>
+	std::wstring DefaultPipeName();
+	std::wstring PipeNameForSession(uint32_t sessionId);
 	const char* EnableVariable();              // VP_CALIBRATION_PIPE
 	bool EnabledByEnvironment();               // VP_CALIBRATION_PIPE is "1"
+
+	// The pipe's security descriptor in SDDL: protected DACL, full access for the process's token
+	// user and SYSTEM only. False with error when the token cannot be read.
+	bool PipeSecuritySddl(std::wstring& sddl, std::string& error);
+
+	// ---- field validation (pure; CPU tests) -----------------------------------------------------
+	// Raw bytes of a PatternRequest as they came off the pipe: exact size, bool byte 0 / 1, codes
+	// <= MaximumCode, a finite window share in (0, 100], known flags only.
+	bool ValidatePatternRequestBytes(const uint8_t* bytes, size_t size, Calibration::PatternRequest& request, std::string& why);
+	// Raw bytes of a PatternOutputInfo (the client side): exact size, bool bytes, the transfer enum,
+	// container / code bits, the tone-curve count; strings are terminated.
+	bool ValidateOutputInfoBytes(const uint8_t* bytes, size_t size, Calibration::PatternOutputInfo& info, std::string& why);
 
 	// ---- wire format (pure; CPU tests) ---------------------------------------------------------
 	struct Message
@@ -62,7 +89,7 @@ namespace CalibrationPipe
 	std::vector<uint8_t> EncodeOutputReply(bool ok, const Calibration::PatternOutputInfo& info);
 	std::vector<uint8_t> EncodePatternReply(bool ok, const std::string& reason);
 	std::vector<uint8_t> EncodeError(uint32_t op, const std::string& reason);
-	bool DecodeSetPatternRequest(const Message& message, Calibration::PatternRequest& request);
+	bool DecodeSetPatternRequest(const Message& message, Calibration::PatternRequest& request, std::string& why);
 	bool DecodeOutputReply(const Message& message, bool& ok, Calibration::PatternOutputInfo& info, std::string& error);
 	bool DecodePatternReply(const Message& message, bool& ok, std::string& reason, std::string& error);
 

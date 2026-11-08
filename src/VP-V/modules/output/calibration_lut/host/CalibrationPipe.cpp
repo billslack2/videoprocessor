@@ -6,10 +6,15 @@
 #include <DebugLog.h>
 
 #include <windows.h>
+#include <sddl.h>
 
 #include <chrono>
+#include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
+
+#pragma comment(lib, "advapi32.lib")
 
 namespace CalibrationPipe
 {
@@ -36,19 +41,24 @@ namespace CalibrationPipe
 			out.insert(out.end(), p, p + sizeof(T));
 		}
 
+		// The size-prefixed raw bytes of a POD at `cursor`: exactly sizeof(T) and nothing after them.
 		template <typename T>
-		bool GetPod(const std::vector<uint8_t>& in, size_t& cursor, T& value)
+		bool PodBytes(const std::vector<uint8_t>& in, size_t cursor, const uint8_t*& bytes)
 		{
-			if (in.size() < cursor + 4 || Get32(in.data() + cursor) != sizeof(T) || in.size() < cursor + 4 + sizeof(T))
+			if (in.size() < cursor + 4 || Get32(in.data() + cursor) != sizeof(T) || in.size() != cursor + 4 + sizeof(T))
 				return false;
-			std::memcpy(&value, in.data() + cursor + 4, sizeof(T));
-			cursor += 4 + sizeof(T);
+			bytes = in.data() + cursor + 4;
 			return true;
+		}
+
+		bool BoolByte(const uint8_t* bytes, size_t offset)
+		{
+			return bytes[offset] == 0 || bytes[offset] == 1;
 		}
 
 		void PutString(std::vector<uint8_t>& out, const std::string& text)
 		{
-			const std::string bounded = text.substr(0, 1024);
+			const std::string bounded = text.substr(0, MaximumReasonBytes);
 			Put32(out, static_cast<uint32_t>(bounded.size()));
 			out.insert(out.end(), bounded.begin(), bounded.end());
 		}
@@ -57,7 +67,7 @@ namespace CalibrationPipe
 		{
 			if (in.size() < cursor + 4) return false;
 			const uint32_t length = Get32(in.data() + cursor);
-			if (length > 1024 || in.size() < cursor + 4 + length) return false;
+			if (length > MaximumReasonBytes || in.size() < cursor + 4 + length) return false;
 			text.assign(reinterpret_cast<const char*>(in.data() + cursor + 4), length);
 			cursor += 4 + length;
 			return true;
@@ -80,8 +90,100 @@ namespace CalibrationPipe
 		}
 	}
 
-	const wchar_t* DefaultPipeName() { return L"\\\\.\\pipe\\VideoProcessor-Calibration"; }
+	std::wstring PipeNameForSession(uint32_t sessionId)
+	{
+		return L"\\\\.\\pipe\\VideoProcessor-Calibration-" + std::to_wstring(sessionId);
+	}
+
+	std::wstring DefaultPipeName()
+	{
+		DWORD session = 0;
+		if (!ProcessIdToSessionId(GetCurrentProcessId(), &session))
+			session = 0xFFFFFFFFu;   // never a real session: client and server then fail to meet, visibly
+		return PipeNameForSession(session);
+	}
+
 	const char* EnableVariable() { return "VP_CALIBRATION_PIPE"; }
+
+	bool PipeSecuritySddl(std::wstring& sddl, std::string& error)
+	{
+		HANDLE token = nullptr;
+		if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+		{
+			error = "OpenProcessToken failed (" + std::to_string(GetLastError()) + ")";
+			return false;
+		}
+		DWORD size = 0;
+		GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+		std::vector<uint8_t> buffer(size > 0 && size < 4096 ? size : 0);
+		LPWSTR sid = nullptr;
+		const bool ok = !buffer.empty() &&
+			GetTokenInformation(token, TokenUser, buffer.data(), size, &size) &&
+			ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(buffer.data())->User.Sid, &sid);
+		CloseHandle(token);
+		if (!ok)
+		{
+			error = "the process token's user could not be read (" + std::to_string(GetLastError()) + ")";
+			return false;
+		}
+		// D:P = protected DACL (no inherited entries); GA for the token user and LocalSystem only.
+		sddl = std::wstring(L"D:P(A;;GA;;;") + sid + L")(A;;GA;;;SY)";
+		LocalFree(sid);
+		return true;
+	}
+
+	// ---- field validation --------------------------------------------------------------------------
+
+	bool ValidatePatternRequestBytes(const uint8_t* bytes, size_t size, Calibration::PatternRequest& request, std::string& why)
+	{
+		using Calibration::PatternRequest;
+		if (!bytes || size != sizeof(PatternRequest)) { why = "PatternRequest has the wrong size"; return false; }
+		if (!BoolByte(bytes, offsetof(PatternRequest, active))) { why = "PatternRequest.active is not a bool"; return false; }
+		PatternRequest parsed;
+		std::memcpy(&parsed, bytes, sizeof(parsed));
+		for (int c = 0; c < 3; ++c)
+			if (parsed.patch[c] > MaximumCode || parsed.background[c] > MaximumCode)
+			{
+				why = "a patch code is above 1023";
+				return false;
+			}
+		if (!std::isfinite(parsed.windowAreaPercent) || !(parsed.windowAreaPercent > 0.0f) || parsed.windowAreaPercent > 100.0f)
+		{
+			why = "windowAreaPercent is outside (0, 100]";
+			return false;
+		}
+		if ((parsed.flags & ~Calibration::PatternReadback) != 0) { why = "unknown PatternRequest flags"; return false; }
+		request = parsed;
+		return true;
+	}
+
+	bool ValidateOutputInfoBytes(const uint8_t* bytes, size_t size, Calibration::PatternOutputInfo& info, std::string& why)
+	{
+		using Calibration::PatternOutputInfo;
+		if (!bytes || size != sizeof(PatternOutputInfo)) { why = "PatternOutputInfo has the wrong size"; return false; }
+		if (!BoolByte(bytes, offsetof(PatternOutputInfo, available)) || !BoolByte(bytes, offsetof(PatternOutputInfo, limitedRange)) ||
+			!BoolByte(bytes, offsetof(PatternOutputInfo, bt2020)) || !BoolByte(bytes, offsetof(PatternOutputInfo, toneMappingActive)))
+		{
+			why = "a PatternOutputInfo flag is not a bool";
+			return false;
+		}
+		int32_t transfer = 0;
+		std::memcpy(&transfer, bytes + offsetof(PatternOutputInfo, transfer), sizeof(transfer));
+		if (transfer < 0 || transfer > 2) { why = "PatternOutputInfo.transfer is out of range"; return false; }
+		PatternOutputInfo parsed;
+		std::memcpy(&parsed, bytes, sizeof(parsed));
+		parsed.reason[sizeof(parsed.reason) - 1] = '\0';
+		parsed.toneFunction[sizeof(parsed.toneFunction) - 1] = '\0';
+		const uint32_t container = parsed.containerBits;
+		if (!(container == 0 || container == 8 || container == 10 || container == 16) || parsed.codeBits > container ||
+			parsed.toneCurveCount > PatternOutputInfo::ToneCurveMax)
+		{
+			why = "PatternOutputInfo bit depths or tone-curve count are out of range";
+			return false;
+		}
+		info = parsed;
+		return true;
+	}
 
 	bool EnabledByEnvironment()
 	{
@@ -151,25 +253,34 @@ namespace CalibrationPipe
 		return Encode(message);
 	}
 
-	bool DecodeSetPatternRequest(const Message& message, Calibration::PatternRequest& request)
+	bool DecodeSetPatternRequest(const Message& message, Calibration::PatternRequest& request, std::string& why)
 	{
-		size_t cursor = 0;
-		return message.op == static_cast<uint32_t>(Op::SetPattern) && GetPod(message.payload, cursor, request) &&
-			cursor == message.payload.size();
+		const uint8_t* bytes = nullptr;
+		if (message.op != static_cast<uint32_t>(Op::SetPattern) ||
+			!PodBytes<Calibration::PatternRequest>(message.payload, 0, bytes))
+		{
+			why = "malformed SetPattern request (VP and the calibration tool must come from the same build)";
+			return false;
+		}
+		return ValidatePatternRequestBytes(bytes, sizeof(Calibration::PatternRequest), request, why);
 	}
 
 	bool DecodeOutputReply(const Message& message, bool& ok, Calibration::PatternOutputInfo& info, std::string& error)
 	{
 		if (ReplyError(message, error)) return false;
-		size_t cursor = 4;
+		const uint8_t* bytes = nullptr;
 		if (message.op != static_cast<uint32_t>(Op::GetOutput) || message.payload.size() < 4 ||
-			!GetPod(message.payload, cursor, info) || cursor != message.payload.size())
+			Get32(message.payload.data()) > 1 || !PodBytes<Calibration::PatternOutputInfo>(message.payload, 4, bytes))
 		{
 			error = "malformed GetOutput reply (VP and the calibration tool must come from the same build)";
 			return false;
 		}
-		info.reason[sizeof(info.reason) - 1] = '\0';
-		info.toneFunction[sizeof(info.toneFunction) - 1] = '\0';
+		std::string why;
+		if (!ValidateOutputInfoBytes(bytes, sizeof(Calibration::PatternOutputInfo), info, why))
+		{
+			error = "invalid GetOutput reply: " + why;
+			return false;
+		}
 		ok = Get32(message.payload.data()) != 0;
 		return true;
 	}
@@ -179,7 +290,7 @@ namespace CalibrationPipe
 		if (ReplyError(message, error)) return false;
 		size_t cursor = 4;
 		if (message.op != static_cast<uint32_t>(Op::SetPattern) || message.payload.size() < 4 ||
-			!GetString(message.payload, cursor, reason) || cursor != message.payload.size())
+			Get32(message.payload.data()) > 1 || !GetString(message.payload, cursor, reason) || cursor != message.payload.size())
 		{
 			error = "malformed SetPattern reply (VP and the calibration tool must come from the same build)";
 			return false;
@@ -199,13 +310,16 @@ namespace CalibrationPipe
 			const bool ok = handlers.getOutput ? handlers.getOutput(info) : false;
 			if (!handlers.getOutput)
 				strncpy_s(info.reason, sizeof(info.reason), "no renderer", _TRUNCATE);
+			info.reason[sizeof(info.reason) - 1] = '\0';
+			info.toneFunction[sizeof(info.toneFunction) - 1] = '\0';
 			return EncodeOutputReply(ok, info);
 		}
 		if (request.op == static_cast<uint32_t>(Op::SetPattern))
 		{
 			Calibration::PatternRequest pattern;
-			if (!DecodeSetPatternRequest(request, pattern))
-				return EncodeError(request.op, "malformed SetPattern request (VP and the calibration tool must come from the same build)");
+			std::string why;
+			if (!DecodeSetPatternRequest(request, pattern, why))
+				return EncodeError(request.op, why);
 			std::string reason;
 			const bool ok = handlers.setPattern ? handlers.setPattern(pattern, reason) : false;
 			if (!handlers.setPattern) reason = "no renderer";
@@ -227,10 +341,24 @@ namespace CalibrationPipe
 	bool Server::Start(std::string& error)
 	{
 		if (thread.joinable()) return true;
+		std::wstring sddl;
+		if (!PipeSecuritySddl(sddl, error))
+			return false;
+		PSECURITY_DESCRIPTOR descriptor = nullptr;
+		if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(), SDDL_REVISION_1, &descriptor, nullptr))
+		{
+			error = "the pipe's security descriptor could not be built (" + std::to_string(GetLastError()) + ")";
+			return false;
+		}
+		SECURITY_ATTRIBUTES attributes{};
+		attributes.nLength = sizeof(attributes);
+		attributes.lpSecurityDescriptor = descriptor;
+		attributes.bInheritHandle = FALSE;
 		HANDLE handle = CreateNamedPipeW(name.c_str(),
 			PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
 			PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-			1, MaximumMessageBytes, MaximumMessageBytes, 0, nullptr);
+			1, MaximumMessageBytes, MaximumMessageBytes, 0, &attributes);
+		LocalFree(descriptor);
 		if (handle == INVALID_HANDLE_VALUE)
 		{
 			error = "CreateNamedPipe failed (" + std::to_string(GetLastError()) +
@@ -341,12 +469,21 @@ namespace CalibrationPipe
 			overlapped.hEvent = ioEvent;
 			bytes = 0;
 			bool read = ReadFile(handle, buffer.data(), static_cast<DWORD>(buffer.size()), &bytes, &overlapped) != FALSE;
-			if (!read && GetLastError() == ERROR_IO_PENDING)
-				read = waitIo(overlapped, 2000, bytes, stopped);
-			if (read && bytes > 0)
+			bool oversized = !read && GetLastError() == ERROR_MORE_DATA;
+			if (!read && !oversized && GetLastError() == ERROR_IO_PENDING)
 			{
-				lastRequest = Clock::now();
-				const std::vector<uint8_t> reply = HandleRequest(buffer.data(), bytes, handlers, patternsActive);
+				read = waitIo(overlapped, 2000, bytes, stopped);
+				oversized = !read && !stopped && GetLastError() == ERROR_MORE_DATA;
+			}
+			if ((read && bytes > 0) || oversized)
+			{
+				// A message over MaximumMessageBytes is refused unread; only a well-formed request
+				// counts as the client being alive.
+				Message probe;
+				if (read && Decode(buffer.data(), bytes, probe))
+					lastRequest = Clock::now();
+				const std::vector<uint8_t> reply = oversized ?
+					EncodeError(0, "message too large") : HandleRequest(buffer.data(), bytes, handlers, patternsActive);
 				ResetEvent(ioEvent);
 				overlapped = OVERLAPPED{};
 				overlapped.hEvent = ioEvent;
@@ -387,7 +524,11 @@ namespace CalibrationPipe
 			const DWORD status = GetLastError();
 			error = status == ERROR_FILE_NOT_FOUND ?
 				std::string("VideoProcessor's calibration pipe is not there: start VideoProcessor.exe with ") +
-					EnableVariable() + "=1 in its environment and a source rendering with the VP Renderer" :
+					EnableVariable() + "=1 in its environment and a source rendering with the VP Renderer (same Windows "
+					"session as this tool)" :
+				status == ERROR_ACCESS_DENIED ?
+				std::string("the calibration pipe refused access: run this tool as the same user, with the same "
+					"elevation, as VideoProcessor") :
 				"the calibration pipe call failed (" + std::to_string(status) + ")";
 			return false;
 		}

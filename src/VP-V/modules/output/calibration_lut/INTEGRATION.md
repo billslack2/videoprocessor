@@ -125,12 +125,27 @@ read with `renderMutex` held. A generic view is only worth adding when a second 
 
 ## 4. The pipe
 
-`\\.\pipe\VideoProcessor-Calibration`, message mode, one instance, local clients only
-(`PIPE_REJECT_REMOTE_CLIENTS`), default pipe security (the same user, administrators and SYSTEM can write). One
-request per connection (`CallNamedPipe`). Header: magic `VPCL`, version 1, op, payload size; ops 1 GetOutput,
-2 SetPattern; the two POD structs cross as raw bytes with their `sizeof` (the CLI and VP must come from the same
-build; a mismatch is refused with a clear message). Started by S4 only with `VP_CALIBRATION_PIPE=1`; a second
-renderer instance that cannot create the pipe logs `Calibration pipe: not started: ...`.
+`\\.\pipe\VideoProcessor-Calibration-<session id>`, started by S4 only with `VP_CALIBRATION_PIPE=1`.
+
+Access, since the pipe can put patterns on screen:
+- local clients only (`PIPE_REJECT_REMOTE_CLIENTS`);
+- an explicit protected DACL `D:P(A;;GA;;;<user SID>)(A;;GA;;;SY)`: the user VideoProcessor runs as and SYSTEM
+  only; no administrators, other users or inherited entries (`PipeSecuritySddl`);
+- a per-session name (the Windows session id of the process), so other logon sessions do not find it; the CLI
+  computes the same name in its own session;
+- one instance created with `FILE_FLAG_FIRST_PIPE_INSTANCE`, so nobody can pre-create the name to intercept it;
+  a second renderer that cannot create it logs `Calibration pipe: not started: ...`.
+- Run the CLI as the same Windows user as VideoProcessor, in the same session; if access is denied (the CLI reports
+  it as such), run both with the same elevation.
+
+Wire format: one request per connection (`CallNamedPipe`), message mode. Header: magic `VPCL`, version 1, op,
+payload size; ops 1 GetOutput, 2 SetPattern. Every message is capped at 4096 bytes (a larger one is refused unread
+with an error reply). The two POD structs cross as raw bytes with their `sizeof` (the CLI and VP must come from the
+same build) and every field is validated before use (`ValidatePatternRequestBytes`, `ValidateOutputInfoBytes`):
+bool bytes 0 / 1, the transfer enum range, container / code bits, codes at most 1023, a finite window share in
+(0, 100], known flags only, the tone-curve count, terminated strings; reason strings are bounded to 255 bytes. No
+allocation follows a length read off the pipe. The host additionally refuses an active patch whose codes do not fit
+the current container (8-bit: 255; 10-bit: 1023) or before the output is known (`PatchFitsContainer`).
 
 Safety: if patches are on and no request arrives for 30 s (the CLI crashed or was killed), the server ends the
 patches itself and video returns (`Calibration pipe: patterns ended by the renderer (...)`). The CLI sends a
@@ -232,7 +247,8 @@ Not run before hand-over: everything below needs a GPU, a display and (from step
 - No GUI: the Config app has no calibration page here; the CLI is the host. `[calibration]` lives in a separate file.
 - The Dynamic Drive (LED projector) and ambient-light run kinds in `calibration/` are compiled but not reachable
   from the CLI.
-- One pipe server per machine session (fixed name); a second VP instance does not serve calibration.
+- One pipe server per Windows session (the name carries the session id); a second VP instance in the same
+  session does not serve calibration.
 
 ## 9. Licence
 

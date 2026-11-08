@@ -37,6 +37,20 @@ namespace CalibrationPatternHost
 			format == DXGI_FORMAT_R8G8B8A8_UNORM || format == DXGI_FORMAT_B8G8R8A8_UNORM ? 255.0 : 0.0;
 	}
 
+	// An active patch must be whole codes of the current integer container (8-bit: <= 255,
+	// 10-bit: <= 1023). Unknown (0) or float (16) containers take no patch; the session queries the
+	// output first, which fills the container the host checks against.
+	inline bool PatchFitsContainer(const uint16_t patch[3], const uint16_t background[3], uint32_t containerBits)
+	{
+		if (containerBits != 8 && containerBits != 10)
+			return false;
+		const uint16_t maxCode = containerBits == 8 ? 255 : 1023;
+		for (int c = 0; c < 3; ++c)
+			if (patch[c] > maxCode || background[c] > maxCode)
+				return false;
+		return true;
+	}
+
 	// The output query refreshes the render-thread format facts under renderMutex (try-lock with
 	// 2 ms sleeps). While patches show, the render loop holds renderMutex across each vsync-paced
 	// present and re-locks at once, so once the format is cached the query makes one try-lock and

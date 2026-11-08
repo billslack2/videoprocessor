@@ -11,6 +11,12 @@
 #include <vprenderer/LibplaceboDisplayLut.h>
 
 #include <windows.h>
+#include <aclapi.h>
+#include <sddl.h>
+
+#include <cmath>
+#include <cstddef>
+#include <functional>
 
 #include <atomic>
 #include <chrono>
@@ -87,6 +93,20 @@ public:
 		Assert::AreEqual(0.0, PatchMaxCode(DXGI_FORMAT_R16G16B16A16_FLOAT));
 	}
 
+	TEST_METHOD(PatchCodesMustFitTheContainer)
+	{
+		using namespace CalibrationPatternHost;
+		const uint16_t white8[3] = { 235, 235, 235 }, white10[3] = { 940, 940, 940 }, wtw10[3] = { 1023, 1023, 1023 };
+		const uint16_t black[3] = { 16, 16, 16 }, over8[3] = { 256, 0, 0 };
+		Assert::IsTrue(PatchFitsContainer(white8, black, 8));
+		Assert::IsTrue(PatchFitsContainer(white10, black, 10));
+		Assert::IsTrue(PatchFitsContainer(wtw10, black, 10), L"above-white codes are legal patches");
+		Assert::IsFalse(PatchFitsContainer(white10, black, 8), L"10-bit codes on an 8-bit swapchain");
+		Assert::IsFalse(PatchFitsContainer(white8, over8, 8), L"the background is checked too");
+		Assert::IsFalse(PatchFitsContainer(white8, black, 16), L"float swapchain");
+		Assert::IsFalse(PatchFitsContainer(white8, black, 0), L"output not known yet");
+	}
+
 	TEST_METHOD(OutputQueryDoesNotSpinWhilePatchesShow)
 	{
 		using namespace CalibrationPatternHost;
@@ -112,7 +132,8 @@ public:
 		CalibrationPipe::Message message;
 		Assert::IsTrue(CalibrationPipe::Decode(bytes.data(), bytes.size(), message));
 		PatternRequest decoded;
-		Assert::IsTrue(CalibrationPipe::DecodeSetPatternRequest(message, decoded));
+		std::string why;
+		Assert::IsTrue(CalibrationPipe::DecodeSetPatternRequest(message, decoded, why));
 		Assert::IsTrue(decoded.active);
 		Assert::AreEqual<uint64_t>(42, decoded.generation);
 		Assert::AreEqual<uint16_t>(940, decoded.patch[0]);
@@ -173,6 +194,168 @@ public:
 		Assert::IsTrue((message.op & CalibrationPipe::ErrorFlag) != 0);
 		Assert::IsFalse(called);
 		Assert::IsFalse(active);
+	}
+
+	TEST_METHOD(PatternRequestFieldsAreValidated)
+	{
+		// Builds a valid request, lets `corrupt` change the struct and then its raw bytes, validates.
+		const auto refused = [](const std::function<void(PatternRequest&, uint8_t*)>& corrupt) -> bool
+		{
+			PatternRequest request;
+			request.active = true;
+			request.patch[0] = 940;
+			uint8_t raw[sizeof(PatternRequest)];
+			corrupt(request, nullptr);
+			std::memcpy(raw, &request, sizeof(raw));
+			corrupt(request, raw);
+			PatternRequest out;
+			std::string why;
+			return !CalibrationPipe::ValidatePatternRequestBytes(raw, sizeof(raw), out, why) && !why.empty();
+		};
+		Assert::IsFalse(refused([](PatternRequest&, uint8_t*) {}), L"a valid request passes");
+		Assert::IsTrue(refused([](PatternRequest&, uint8_t* raw) { if (raw) raw[offsetof(PatternRequest, active)] = 2; }), L"bool byte 2");
+		Assert::IsTrue(refused([](PatternRequest& r, uint8_t*) { r.patch[1] = 1024; }), L"patch code above 10 bits");
+		Assert::IsTrue(refused([](PatternRequest& r, uint8_t*) { r.background[2] = 0xFFFF; }), L"background code");
+		Assert::IsTrue(refused([](PatternRequest& r, uint8_t*) { r.windowAreaPercent = 0.0f; }), L"window 0");
+		Assert::IsTrue(refused([](PatternRequest& r, uint8_t*) { r.windowAreaPercent = 100.5f; }), L"window over 100");
+		Assert::IsTrue(refused([](PatternRequest& r, uint8_t*) { r.windowAreaPercent = std::nanf(""); }), L"window NaN");
+		Assert::IsTrue(refused([](PatternRequest& r, uint8_t*) { r.flags = 0x80; }), L"unknown flag");
+		PatternRequest out;
+		std::string why;
+		uint8_t tooShort[8] = {};
+		Assert::IsFalse(CalibrationPipe::ValidatePatternRequestBytes(tooShort, sizeof(tooShort), out, why), L"short struct");
+	}
+
+	TEST_METHOD(OutputInfoRepliesAreValidated)
+	{
+		PatternOutputInfo info = TenBitLimited();
+		uint8_t raw[sizeof(PatternOutputInfo)];
+		std::memcpy(raw, &info, sizeof(raw));
+		PatternOutputInfo out;
+		std::string why;
+		Assert::IsTrue(CalibrationPipe::ValidateOutputInfoBytes(raw, sizeof(raw), out, why));
+		std::memset(raw + offsetof(PatternOutputInfo, reason), 'x', sizeof(info.reason));   // unterminated
+		Assert::IsTrue(CalibrationPipe::ValidateOutputInfoBytes(raw, sizeof(raw), out, why));
+		Assert::AreEqual(sizeof(info.reason) - 1, std::strlen(out.reason), L"the reason is terminated");
+		raw[offsetof(PatternOutputInfo, available)] = 7;
+		Assert::IsFalse(CalibrationPipe::ValidateOutputInfoBytes(raw, sizeof(raw), out, why), L"bool byte");
+		PatternOutputInfo bad = TenBitLimited();
+		bad.codeBits = 12;
+		std::memcpy(raw, &bad, sizeof(raw));
+		Assert::IsFalse(CalibrationPipe::ValidateOutputInfoBytes(raw, sizeof(raw), out, why), L"code bits above the container");
+		bad = TenBitLimited();
+		bad.toneCurveCount = 65;
+		std::memcpy(raw, &bad, sizeof(raw));
+		Assert::IsFalse(CalibrationPipe::ValidateOutputInfoBytes(raw, sizeof(raw), out, why), L"tone curve count");
+		bad = TenBitLimited();
+		std::memcpy(raw, &bad, sizeof(raw));
+		const int32_t transfer = 9;
+		std::memcpy(raw + offsetof(PatternOutputInfo, transfer), &transfer, sizeof(transfer));
+		Assert::IsFalse(CalibrationPipe::ValidateOutputInfoBytes(raw, sizeof(raw), out, why), L"transfer enum");
+	}
+
+	TEST_METHOD(GarbageAndOversizedInputIsRefused)
+	{
+		bool called = false;
+		CalibrationPipe::Handlers handlers;
+		handlers.getOutput = [&called](PatternOutputInfo&) { called = true; return true; };
+		handlers.setPattern = [&called](const PatternRequest&, std::string&) { called = true; return true; };
+		bool active = false;
+		CalibrationPipe::Message message;
+		uint32_t seed = 12345;
+		for (int round = 0; round < 500; ++round)
+		{
+			std::vector<uint8_t> garbage(1 + (seed % 600));
+			for (uint8_t& b : garbage) { seed = seed * 1664525u + 1013904223u; b = static_cast<uint8_t>(seed >> 24); }
+			const std::vector<uint8_t> reply = CalibrationPipe::HandleRequest(garbage.data(), garbage.size(), handlers, active);
+			Assert::IsTrue(CalibrationPipe::Decode(reply.data(), reply.size(), message), L"every answer is a well-formed message");
+			Assert::IsTrue((message.op & CalibrationPipe::ErrorFlag) != 0, L"garbage is an error reply");
+		}
+		// A valid header announcing a payload over the cap.
+		CalibrationPipe::Message big;
+		big.op = static_cast<uint32_t>(CalibrationPipe::Op::SetPattern);
+		big.payload.assign(CalibrationPipe::MaximumMessageBytes, 0);
+		const std::vector<uint8_t> oversized = CalibrationPipe::Encode(big);
+		Assert::IsFalse(CalibrationPipe::Decode(oversized.data(), oversized.size(), message), L"over the message cap");
+		CalibrationPipe::HandleRequest(oversized.data(), oversized.size(), handlers, active);
+		// A valid magic and version with a payload length that lies.
+		std::vector<uint8_t> liar = CalibrationPipe::EncodeGetOutputRequest();
+		const uint32_t huge = 0x7FFFFFFFu;
+		std::memcpy(liar.data() + 12, &huge, 4);
+		Assert::IsFalse(CalibrationPipe::Decode(liar.data(), liar.size(), message), L"payload length mismatch");
+		Assert::IsFalse(called, L"no handler ran for invalid input");
+		Assert::IsFalse(active);
+	}
+
+	TEST_METHOD(PipeNameIsPerSessionAndTheDaclIsUserAndSystemOnly)
+	{
+		DWORD session = 0;
+		Assert::IsTrue(ProcessIdToSessionId(GetCurrentProcessId(), &session) != FALSE);
+		Assert::IsTrue(CalibrationPipe::PipeNameForSession(session) == CalibrationPipe::DefaultPipeName());
+		Assert::IsTrue(CalibrationPipe::DefaultPipeName().find(L"VideoProcessor-Calibration-" + std::to_wstring(session)) !=
+			std::wstring::npos);
+		std::wstring sddl;
+		std::string error;
+		Assert::IsTrue(CalibrationPipe::PipeSecuritySddl(sddl, error));
+		Assert::AreEqual(0u, static_cast<unsigned>(sddl.find(L"D:P(A;;GA;;;S-1-")), L"protected DACL, the user's SID first");
+		Assert::IsTrue(sddl.find(L"(A;;GA;;;SY)") != std::wstring::npos, L"SYSTEM");
+		for (const wchar_t* broad : { L";WD)", L";AU)", L";BU)", L";BA)", L";IU)", L";AN)" })
+			Assert::IsTrue(sddl.find(broad) == std::wstring::npos, broad);
+
+		// The live pipe carries exactly that DACL: two allow entries, the token user and SYSTEM.
+		CalibrationPipe::Handlers handlers;
+		handlers.getOutput = [](PatternOutputInfo& info) { info = TenBitLimited(); return true; };
+		const std::wstring name = UniquePipeName(L"dacl");
+		CalibrationPipe::Server server(name, handlers);
+		Assert::IsTrue(server.Start(error));
+		Assert::IsTrue(WaitNamedPipeW(name.c_str(), 2000) != FALSE);
+		HANDLE client = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE | READ_CONTROL, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+		Assert::IsTrue(client != INVALID_HANDLE_VALUE);
+		PACL dacl = nullptr;
+		PSECURITY_DESCRIPTOR descriptor = nullptr;
+		const DWORD status = GetSecurityInfo(client, SE_KERNEL_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+			nullptr, nullptr, &dacl, nullptr, &descriptor);
+		Assert::IsTrue(status == ERROR_SUCCESS);
+		Assert::IsNotNull(dacl);
+		Assert::IsTrue(dacl->AceCount == 2, L"exactly two entries");
+		LPWSTR text = nullptr;
+		Assert::IsTrue(ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, SDDL_REVISION_1, DACL_SECURITY_INFORMATION,
+			&text, nullptr) != FALSE);
+		const std::wstring actual(text);
+		LocalFree(text);
+		LocalFree(descriptor);
+		CloseHandle(client);
+		server.Stop();
+		Assert::IsTrue(actual.find(L"SY)") != std::wstring::npos, actual.c_str());
+		// "D:P(A;;GA;;;" is 12 characters; the user's SID follows up to the first ')'.
+		const std::wstring userSid = sddl.substr(12, sddl.find(L")") - 12);
+		Assert::IsTrue(actual.find(L";;;" + userSid + L")") != std::wstring::npos, actual.c_str());
+	}
+
+	TEST_METHOD(LivePipeRefusesOversizedMessagesAndKeepsServing)
+	{
+		CalibrationPipe::Handlers handlers;
+		handlers.getOutput = [](PatternOutputInfo& info) { info = TenBitLimited(); return true; };
+		const std::wstring name = UniquePipeName(L"big");
+		CalibrationPipe::Server server(name, handlers);
+		std::string error;
+		Assert::IsTrue(server.Start(error));
+		std::vector<uint8_t> big(CalibrationPipe::MaximumMessageBytes * 4, 0xAB);
+		std::vector<uint8_t> reply(CalibrationPipe::MaximumMessageBytes);
+		DWORD read = 0;
+		if (CallNamedPipeW(name.c_str(), big.data(), static_cast<DWORD>(big.size()), reply.data(),
+			static_cast<DWORD>(reply.size()), &read, 3000))
+		{
+			CalibrationPipe::Message message;
+			Assert::IsTrue(CalibrationPipe::Decode(reply.data(), read, message));
+			Assert::IsTrue((message.op & CalibrationPipe::ErrorFlag) != 0, L"an oversized message gets an error reply");
+		}
+		CalibrationPipe::Client client(name);
+		PatternOutputInfo info;
+		bool ok = false;
+		Assert::IsTrue(client.GetOutput(info, ok, error), L"the server still answers after an oversized message");
+		Assert::IsTrue(ok);
+		server.Stop();
 	}
 
 	TEST_METHOD(HandlerTracksWhetherPatternsAreOn)

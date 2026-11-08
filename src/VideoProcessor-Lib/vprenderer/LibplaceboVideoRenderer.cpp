@@ -21877,7 +21877,7 @@ bool LibplaceboVideoRenderer::SetCalibrationPattern(Impl& impl, const Calibratio
 	CalibrationPatternHost::PatternLifecycle lifecycle;
 	lifecycle.beginQueueGeneration = [this](const char* why) { BeginQueueGeneration(why); };
 	lifecycle.notifyQueue = [this]() { m_queueChanged.notify_all(); };
-	return impl.calibrationHost.SetPatterns(request, m_calibrationPatternActive, lifecycle);
+	return impl.calibrationHost.SetPatterns(request, m_calibrationPatternActive, lifecycle, reason);
 }
 
 bool LibplaceboVideoRenderer::ApplyApplicationState(

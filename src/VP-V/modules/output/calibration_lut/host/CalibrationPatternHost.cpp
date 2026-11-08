@@ -79,10 +79,22 @@ namespace CalibrationPatternHost
 	}
 
 	bool Adapter::SetPatterns(const Calibration::PatternRequest& request, std::atomic_bool& patternsActive,
-		const PatternLifecycle& lifecycle)
+		const PatternLifecycle& lifecycle, std::string& reason)
 	{
 		if (request.active)
 		{
+			uint32_t containerBits = 0;
+			{
+				std::lock_guard<std::mutex> guard(outputCacheMutex);
+				containerBits = outputCache.containerBits;
+			}
+			if (!PatchFitsContainer(request.patch, request.background, containerBits))
+			{
+				reason = containerBits == 8 || containerBits == 10 ?
+					"a patch code does not fit the " + std::to_string(containerBits) + "-bit output" :
+					std::string("no integer output is known yet (query the output first; a float swapchain takes no patch)");
+				return false;
+			}
 			{
 				std::lock_guard<std::mutex> guard(patternMutex);
 				pattern = request;

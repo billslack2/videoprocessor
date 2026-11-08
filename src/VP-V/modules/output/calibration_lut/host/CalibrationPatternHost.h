@@ -107,9 +107,10 @@ namespace CalibrationPatternHost
 		void Retire(pl_gpu gpu);
 
 		// After the renderer's state checks: stores the request (active) or ends the session.
-		// `patternsActive` is the renderer's flag. Pipe thread.
+		// `patternsActive` is the renderer's flag. Pipe thread. An active patch whose codes do not fit
+		// the current integer container (or before the output is known) is refused with `reason`.
 		bool SetPatterns(const Calibration::PatternRequest& request, std::atomic_bool& patternsActive,
-			const PatternLifecycle& lifecycle);
+			const PatternLifecycle& lifecycle, std::string& reason);
 
 		// One refresh of the current patch (the caller holds renderMutex and has checked that the
 		// output exists). True when a patch was presented.
