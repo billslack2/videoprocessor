@@ -269,7 +269,11 @@ Not run before hand-over: everything below needs a GPU, a display and (from step
    `verify.json` prediction. Patches from the CLI bypass the LUT by design, so a second calibration run is **not** a
    re-measurement of the LUT.
 6. **Failure paths.** Kill the CLI during a run: within about 30 s VP returns to video
-   (`Calibration pipe: patterns ended by the renderer`). Stop the source during a run: the session fails with the
+   (`Calibration pipe: patterns ended by the renderer`). Without killing anything, the test aid
+   `--test-abandon-after <n>` (not listed in `--help`) makes the CLI terminate itself like a crash after n patches:
+   no End, no Discard, the OS closes its handles, the last patch stays on screen until the renderer's 30 s idle limit
+   ends it (exit code 5). Measured with the hidden-window host: the auto-end came 30 s after the CLI vanished, video
+   resumed, no present failures. Stop the source during a run: the session fails with the
    renderer's reason and VP recovers. Start the CLI without the variable: it says how to enable the pipe. Start a
    second CLI during a run: it exits at once with the "already running" message; the first run is unaffected.
 7. **Elevation matrix** (needs UAC prompts, so it is an owner / tester check; expected results):

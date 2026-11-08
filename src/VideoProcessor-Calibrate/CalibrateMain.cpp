@@ -66,6 +66,7 @@ namespace
 		bool yes = false;                    // answer Continue to every prompt
 		bool skipWarmup = false;
 		bool help = false;
+		int testAbandonAfter = 0;            // test aid (not in --help): terminate like a crash after n patches
 	};
 
 	void Usage()
@@ -122,6 +123,7 @@ namespace
 			else if (a == "--apply") o.apply = true;
 			else if (a == "--yes") o.yes = true;
 			else if (a == "--skip-warmup") o.skipWarmup = true;
+			else if (a == "--test-abandon-after") { if (!value(number)) return false; o.testAbandonAfter = std::atoi(number.c_str()); }
 			else if (a == "--help" || a == "-h" || a == "/?") o.help = true;
 			else { std::cerr << "unknown argument " << a << "\n"; return false; }
 		}
@@ -390,6 +392,13 @@ int wmain(int argc, wchar_t** argv)
 		session.Step();
 		const SessionStatus s = session.Status();
 		PrintStatus(s, lastLine);
+		// Test aid for the renderer's client-loss safety: vanish mid-run like a crash (no End, no Discard, no
+		// destructors; the OS closes the handles), leaving the patch on screen for the renderer to end.
+		if (options.testAbandonAfter > 0 && s.step == SessionStep::Measuring && s.patchIndex >= options.testAbandonAfter)
+		{
+			std::cout << "test: abandoning the run after " << s.patchIndex << " patches (process terminates now)" << std::endl;
+			TerminateProcess(GetCurrentProcess(), 5);
+		}
 		if (cancelSent) continue;
 		if (s.step == SessionStep::MeterCalibration || s.step == SessionStep::Placement || s.step == SessionStep::UserAction)
 		{
