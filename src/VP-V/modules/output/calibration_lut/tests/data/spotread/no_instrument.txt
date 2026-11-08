@@ -1,0 +1,4 @@
+# No meter connected.
+OUT
+OUT spotread: Error - No instrument found
+EXIT 1

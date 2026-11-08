@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright(C) 2026 VP-V contributors
+  SPDX-License-Identifier: GPL-3.0-only
+  output.calibration_lut items for the VP renderer DLLs (VideoProcessor-VPRenderer and, through
+  VideoProcessor-VPRendererBeta.items.props, VideoProcessor-VPRendererBeta): the pattern host the
+  renderer's AUTOCAL-HOOK call sites use. The pipe and the CPU core come from VideoProcessor-Lib.
+  Item paths are relative to the importing project directory.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\host\CalibrationPatternHost.h" />
+    <ClInclude Include="..\VP-V\modules\output\calibration_lut\host\CalibrationPatternPolicy.h" />
+    <ClCompile Include="..\VP-V\modules\output\calibration_lut\host\CalibrationPatternHost.cpp" />
+  </ItemGroup>
+</Project>

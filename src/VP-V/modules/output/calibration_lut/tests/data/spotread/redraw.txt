@@ -1,0 +1,11 @@
+# A pseudo-console redraw: VT cursor moves, colours, erase sequences and a
+# repeated (redrawn) result line that VP did not ask for.
+OUT \e[?25l\e[2J\e[HPlace instrument on spot to be measured,\e[K
+PROMPT \e[2;1HHit ESC or Q to exit, any other key to take a reading:\e[K
+KEY
+OUT \e[3;1H\e[1m Result is XYZ:\e[0m\e[1C12.500000 13.000000\e[1X14.000000, Yxy: 13.0 0.3 0.31\e[K
+OUT \e[4;1H Result is XYZ: 12.500000 13.000000 14.000000, Yxy: 13.0 0.3 0.31\e[K
+OUT \e[5;1HPlace instrument on spot to be measured,
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+EXIT 0

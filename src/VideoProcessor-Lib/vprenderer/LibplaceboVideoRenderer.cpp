@@ -3,6 +3,7 @@
 #include "SubtitleBarRecovery.h"
 
 #include "LibplaceboVideoRenderer.h"
+#include <VP-V/modules/output/calibration_lut/host/CalibrationPatternHost.h>   // AUTOCAL-HOOK
 #include "AnalysisPerformanceWindow.h"
 #include "ProcessingPerformanceWindow.h"
 #include "LookaheadPerformanceWindow.h"
@@ -5591,6 +5592,7 @@ struct LibplaceboVideoRenderer::Impl
 				for (pl_tex& texture : textures)
 					pl_tex_destroy(d3d11->gpu, &texture);
 			}
+			calibrationHost.Retire(d3d11 ? d3d11->gpu : nullptr);   // AUTOCAL-HOOK: pipe stopped, patch texture freed
 			pl_swapchain_destroy(&swapchain);
 			vpOwnedSwapchain.Release();
 			gpuFrameTimer.ReleaseResources();
@@ -5645,6 +5647,24 @@ struct LibplaceboVideoRenderer::Impl
 
 	bool outputResourcesRetired = false;
 	bool externalStateAbandonedForShutdown = false;
+
+	// AUTOCAL-HOOK: automatic calibration patterns (patch state, output-fact cache, local pipe).
+	CalibrationPatternHost::Adapter calibrationHost;
+
+	// AUTOCAL-HOOK: one refresh of the current calibration patch; caller holds renderMutex.
+	bool PresentCalibrationPattern()
+	{
+		if (!d3d11 || !d3d11->gpu || !swapchain || outputResourcesRetired)
+			return false;
+		CalibrationPatternHost::Surface surface;
+		surface.gpu = d3d11->gpu;
+		surface.vpOwned = vpOwnedSwapchain;
+		surface.swapchain = swapchain;
+		surface.format = negotiatedSwapchainFormat;
+		surface.readR10 = [this](ID3D11Texture2D* backbuffer, std::vector<uint32_t>& pixels,
+			D3D11_TEXTURE2D_DESC& desc, std::string& error) { return ReadR10Texture(backbuffer, pixels, desc, error); };
+		return calibrationHost.Present(surface);
+	}
 
 	bool dvTransitionBlackActive = false;
 
@@ -21230,6 +21250,8 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	const int64_t callbackQpc = PerformanceCounterNow();
 	if (m_state.load(std::memory_order_acquire) != RendererState::RENDERSTATE_RENDERING)
 		return;
+	if (CalibrationPatternHost::IsTakingOver(m_calibrationPatternActive))
+		return;   // AUTOCAL-HOOK: calibration patches replace video; frames are not queued
 
 	uint64_t enqueueGeneration = 0;
 	{
@@ -21812,6 +21834,50 @@ void LibplaceboVideoRenderer::RequestCalibrationLutReload()
 {
     if (m_impl)
         m_impl->displayLutApplyRequested.fetch_add(1, std::memory_order_release);
+}
+
+// AUTOCAL-HOOK: the two calls of the calibration contract, served on the calibration pipe's thread
+// (CalibrationPatternHost::Adapter::StartPipeIfEnabled). `impl` is the Impl that started the pipe;
+// its RetireOutput stops the pipe before the Impl goes.
+bool LibplaceboVideoRenderer::GetCalibrationOutput(Impl& impl, Calibration::PatternOutputInfo& info) const
+{
+	info = Calibration::PatternOutputInfo();
+	if (!m_implInitialized.load(std::memory_order_acquire))
+	{
+		strncpy_s(info.reason, sizeof(info.reason), "the VP Renderer is not running", _TRUNCATE);
+		return false;
+	}
+	if (m_state.load(std::memory_order_acquire) != RendererState::RENDERSTATE_RENDERING)
+	{
+		strncpy_s(info.reason, sizeof(info.reason), "the VP Renderer is not rendering (start a source)", _TRUNCATE);
+		return false;
+	}
+	return impl.calibrationHost.CollectOutputInfo(impl.renderMutex, m_calibrationPatternActive.load(std::memory_order_acquire),
+		[&impl]() -> CalibrationPatternHost::OutputFacts {   // runs with renderMutex held
+			CalibrationPatternHost::OutputFacts facts;
+			facts.format = impl.negotiatedSwapchainFormat;
+			facts.displayBitDepth = impl.activeSettings.displayBitDepth;
+			facts.limitedRange = Impl::EncodingLevels(impl.actualOutput.encoding) == PL_COLOR_LEVELS_LIMITED;
+			facts.transfer = static_cast<int>(Impl::EncodingTransfer(impl.actualOutput.encoding));
+			facts.bt2020 = impl.TargetIsBt2020() || facts.transfer == PL_COLOR_TRC_PQ || facts.transfer == PL_COLOR_TRC_HLG;
+			facts.refreshHz = impl.renderLoadDisplayRefreshHz.load(std::memory_order_acquire);
+			facts.available = impl.swapchain != nullptr && !impl.outputResourcesRetired;
+			return facts;
+		}, info);
+}
+
+bool LibplaceboVideoRenderer::SetCalibrationPattern(Impl& impl, const Calibration::PatternRequest& request, std::string& reason)
+{
+	reason.clear();
+	if (request.active && m_state.load(std::memory_order_acquire) != RendererState::RENDERSTATE_RENDERING)
+	{
+		reason = "the VP Renderer is not rendering (start a source)";
+		return false;
+	}
+	CalibrationPatternHost::PatternLifecycle lifecycle;
+	lifecycle.beginQueueGeneration = [this](const char* why) { BeginQueueGeneration(why); };
+	lifecycle.notifyQueue = [this]() { m_queueChanged.notify_all(); };
+	return impl.calibrationHost.SetPatterns(request, m_calibrationPatternActive, lifecycle, reason);
 }
 
 bool LibplaceboVideoRenderer::ApplyApplicationState(
@@ -24843,6 +24909,14 @@ void LibplaceboVideoRenderer::RenderLoop()
 				m_impl->renderConfiguredScreenActive =
 					m_impl->configuredScreenTarget;
 				m_implInitialized.store(true, std::memory_order_release);
+				{   // AUTOCAL-HOOK: the local calibration pipe (only with VP_CALIBRATION_PIPE=1)
+					Impl* impl = m_impl.get();
+					CalibrationPatternHost::PipeCalls calls;
+					calls.getOutput = [this, impl](Calibration::PatternOutputInfo& info) { return GetCalibrationOutput(*impl, info); };
+					calls.setPattern = [this, impl](const Calibration::PatternRequest& request, std::string& reason)
+						{ return SetCalibrationPattern(*impl, request, reason); };
+					m_impl->calibrationHost.StartPipeIfEnabled(calls, m_calibrationPatternActive);
+				}
                 RefreshOsdCacheLocked();
 			}
 			// A graph stop/run may follow an HDMI re-sync while retaining this
@@ -24891,6 +24965,14 @@ void LibplaceboVideoRenderer::RenderLoop()
 	double preRenderActiveMaxMs = 0.0;
 	for (;;)
 	{
+		if (CalibrationPatternHost::IsTakingOver(m_calibrationPatternActive))
+		{   // AUTOCAL-HOOK: calibration patches own the display (before the repeat-cadence path)
+			const auto takeOver = CalibrationPatternHost::TakeOverPresentation(m_calibrationPatternActive,
+				{ m_queueMutex, m_stopRequested, m_queueChanged, m_impl->renderMutex,
+				  [this]() { return m_impl->PresentCalibrationPattern(); } });
+			if (takeOver == CalibrationPatternHost::TakeOver::Stop) break;
+			if (takeOver == CalibrationPatternHost::TakeOver::Handled) continue;
+		}
         bool refreshRepeated = false;
         {
             std::unique_lock<std::mutex> renderGuard(m_impl->renderMutex);
@@ -25078,8 +25160,10 @@ void LibplaceboVideoRenderer::RenderLoop()
 		{
 			const auto waitStarted = SteadyClock::now();
 			std::unique_lock<std::mutex> previewLock(m_queueMutex);
-			m_queueChanged.wait(previewLock, [this]() { return m_stopRequested || CanDequeueLocked(); });
+			m_queueChanged.wait(previewLock, [this]() { return m_stopRequested || CanDequeueLocked() ||
+				CalibrationPatternHost::IsTakingOver(m_calibrationPatternActive); });   // AUTOCAL-HOOK: wake for patches
 			if (m_stopRequested) break;
+			if (CalibrationPatternHost::IsTakingOver(m_calibrationPatternActive)) continue;   // AUTOCAL-HOOK
 			previewWaitMs = std::chrono::duration<double, std::milli>(
 				SteadyClock::now() - waitStarted).count();
             const auto window = AlphaQueuePolicy::SelectActivePicturePreview(
@@ -25256,10 +25340,12 @@ void LibplaceboVideoRenderer::RenderLoop()
 			std::unique_lock<std::mutex> lock(m_queueMutex);
 			m_queueChanged.wait(lock, [this]()
 			{
-				return m_stopRequested || CanDequeueLocked();
+				return m_stopRequested || CanDequeueLocked() ||
+					CalibrationPatternHost::IsTakingOver(m_calibrationPatternActive);   // AUTOCAL-HOOK: wake for patches
 			});
 			if (m_stopRequested)
 				break;
+			if (CalibrationPatternHost::IsTakingOver(m_calibrationPatternActive)) continue;   // AUTOCAL-HOOK
 			dequeueWaitMs = std::chrono::duration<double, std::milli>(
 				SteadyClock::now() - waitStarted).count();
 			if (m_startupPrefillPending)

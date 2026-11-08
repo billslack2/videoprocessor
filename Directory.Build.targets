@@ -1,4 +1,10 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- VP-V: module code lives under src/VP-V and is included from the src root as <VP-V/...>. -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(MSBuildThisFileDirectory)src</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <!-- Preserve the actual toolset and binary identity for release prerequisite checks. -->
   <Target Name="RecordVpRuntimeRequirement" AfterTargets="Build"
           Condition="'$(Configuration)' == 'Release' and '$(Platform)' == 'x64' and ('$(ConfigurationType)' == 'Application' or '$(ConfigurationType)' == 'DynamicLibrary')">

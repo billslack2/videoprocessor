@@ -1,0 +1,5 @@
+# The instrument stops answering after the first key (the reported Plus HL hang).
+OUT Place instrument on spot to be measured,
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+HANG

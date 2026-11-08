@@ -1,0 +1,6 @@
+# spotread ends in the middle of a reading.
+OUT Place instrument on spot to be measured,
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+OUT Diagnostic: unexpected reply from instrument
+EXIT 3
