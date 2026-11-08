@@ -294,6 +294,16 @@ int wmain(int argc, wchar_t** argv)
 	std::unique_ptr<IPatternSink> sink;
 	CalibrationPipe::PipePatternSink* pipeSink = nullptr;
 	SimulatedScreen* screen = nullptr;
+	CalibrationPipe::SingleClientGuard singleClient;   // held until exit: one client per session
+	if (!options.simulate)
+	{
+		std::string why;
+		if (!singleClient.Acquire(CalibrationPipe::SingleClientGuard::DefaultName(), why))
+		{
+			std::cerr << why << "\n";
+			return 4;
+		}
+	}
 	if (options.simulate)
 	{
 		PatternOutputInfo format;

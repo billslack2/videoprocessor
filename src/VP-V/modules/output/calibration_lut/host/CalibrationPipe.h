@@ -72,6 +72,27 @@ namespace CalibrationPipe
 	bool PipeSecuritySddl(std::wstring& sddl, std::string& error);
 	// The client's server check: true when process `processId` runs as this process's user.
 	bool SameUserProcess(uint32_t processId, std::string& why);
+	bool ThisProcessIsElevated();
+	// The client's message for a failed connect (pure; CPU tests). Access denied for a non-elevated
+	// client means VideoProcessor is elevated (its pipe has the high-integrity label): the message
+	// says so explicitly, never a silent lockout.
+	std::string ConnectErrorText(uint32_t status, bool clientElevated);
+
+	// One calibration client per Windows session (a named mutex in Local\): a second
+	// VideoProcessor-Calibrate refuses to start instead of interleaving patches with the first.
+	class SingleClientGuard
+	{
+	public:
+		SingleClientGuard() = default;
+		~SingleClientGuard();
+		SingleClientGuard(const SingleClientGuard&) = delete;
+		SingleClientGuard& operator=(const SingleClientGuard&) = delete;
+		bool Acquire(const std::wstring& name, std::string& why);
+		static std::wstring DefaultName();
+
+	private:
+		void* mutex = nullptr;
+	};
 
 	// ---- field validation (pure; CPU tests) -----------------------------------------------------
 	// Raw bytes of a PatternRequest as they came off the pipe: exact size, bool byte 0 / 1, codes

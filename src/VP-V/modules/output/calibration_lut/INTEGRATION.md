@@ -140,8 +140,12 @@ Access, since the pipe can put patterns on screen:
 - the client connects with `SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION` (the server cannot impersonate it),
   checks the server with `GetNamedPipeServerProcessId` and that process's token user SID, and refuses a server that
   does not run as its own user ("refusing the calibration pipe: ...") before sending anything.
-- Run the CLI as the same Windows user as VideoProcessor, in the same session and with the same elevation; the CLI
-  reports access denied or a failed server check as such.
+- Run the CLI as the same Windows user as VideoProcessor, in the same session and with the same elevation. A
+  non-elevated CLI against an elevated VideoProcessor prints "VideoProcessor is running as administrator: run this
+  tool as administrator too" (`ConnectErrorText`); a failed server check prints "refusing the calibration pipe: ...".
+- One client per session: a second `VideoProcessor-Calibrate` started while one runs exits with "another
+  VideoProcessor-Calibrate is already running in this Windows session" (exit code 4; a `Local\` named mutex), so two
+  sessions never interleave patches.
 
 Wire format: one request per connection (`TransactNamedPipe` after the server check), message mode. Header: magic `VPCL`, version 1, op,
 payload size; ops 1 GetOutput, 2 SetPattern. Every message is capped at 4096 bytes (a larger one is refused unread
@@ -176,8 +180,8 @@ Tests (CPU only):
 powershell -NoProfile -ExecutionPolicy Bypass -File src\VP-V\modules\output\calibration_lut\pattern_lib\run_pattern_lib_tests.ps1 -OutDir <scratch>
 vstest.console.exe x64\Release\VideoProcessor-Test.dll /Platform:x64 /Logger:"trx;LogFileName=cal.trx" /ResultsDirectory:<scratch> /TestCaseFilter:"FullyQualifiedName~CalibrationMeterTests|FullyQualifiedName~CalibrationPatternHostPolicyTests|FullyQualifiedName~CalibrationPipeTests|FullyQualifiedName~CalibrationCliPathTests"
 ```
-vstest prints no summary for this DLL: read the TRX `Counters` line. Expected: 25 tests, all passed. Adding
-`|FullyQualifiedName~CalibrationHardwareTests` gives 25 + 1 hardware stub (`RealMeterReadsThroughSpotread`, which
+vstest prints no summary for this DLL: read the TRX `Counters` line. Expected: 27 tests, all passed. Adding
+`|FullyQualifiedName~CalibrationHardwareTests` gives 27 + 1 hardware stub (`RealMeterReadsThroughSpotread`, which
 passes as a skip unless its `VP_TEST_*` variables and a meter are present). `CalibrationMeterTests` needs Windows 10
 1809+ and `fake_spotread.exe`.
 
@@ -241,7 +245,37 @@ Not run before hand-over: everything below needs a GPU, a display and (from step
    re-measurement of the LUT.
 6. **Failure paths.** Kill the CLI during a run: within about 30 s VP returns to video
    (`Calibration pipe: patterns ended by the renderer`). Stop the source during a run: the session fails with the
-   renderer's reason and VP recovers. Start the CLI without the variable: it says how to enable the pipe.
+   renderer's reason and VP recovers. Start the CLI without the variable: it says how to enable the pipe. Start a
+   second CLI during a run: it exits at once with the "already running" message; the first run is unaffected.
+7. **Elevation matrix** (needs UAC prompts, so it is an owner / tester check; expected results):
+
+   | VideoProcessor | CLI | Expected |
+   |---|---|---|
+   | not elevated | not elevated | connects; runs |
+   | elevated | elevated | connects; runs |
+   | elevated | not elevated | refused at once: "VideoProcessor is running as administrator: run this tool as administrator too" |
+   | not elevated | elevated | connects (same user SID; the elevated client may open the medium pipe); runs |
+   | another user | any | "the calibration pipe is not there" (another session) or a refusal naming the other user |
+
+## HDR content tone-mapped to SDR
+
+From the renderer's code at `a591ad3b` (no change in this integration):
+- `ConfigureDisplayLutForTarget` (LVR 8319 at base; called at 15426 for every rendered frame) sets
+  `target.lut = displayLut; target.lut_type = PL_LUT_NORMALIZED`: the LUT applies to the gamma-encoded target RGB
+  **after** tone mapping (DTM) and gamut mapping and **before** range encoding.
+- `LoadDisplayLut` (LVR 8180 at base) picks the slot (`calibration_lut_bt709` / `_p3_d65` / `_bt2020`) from the
+  profile's `sdr_target_primaries`, not from the content.
+- So HDR content tone-mapped to SDR goes through **the same LUT slot as SDR content**: one calibration covers both.
+
+Calibrate in the SDR output mode you watch in: the same Color profile with the same `sdr_target_primaries`,
+`hdr_tone_map_target_gamma` and `sdr_lut_input_gamma`. A LUT measured under one of these settings and used under
+another is not valid.
+
+HDR passthrough output (no tone mapping, a PQ signal to the display) is **not covered**. Checked in the code at
+`a591ad3b`: this renderer does not offer that output mode. `LibplaceboOutput::DxgiEncoding` has only SDR encodings
+(gamma 2.2 / 2.4, BT.709 or BT.2020 primaries, full or limited), there is no PQ (G2084) swapchain colour space in
+LVR, and the header states that the backend "deliberately does not emit HDR". If a later renderer adds HDR output,
+it needs its own calibration (and the HDR verify, which needs the renderer's tone curve).
 
 ## 8. Known limits
 

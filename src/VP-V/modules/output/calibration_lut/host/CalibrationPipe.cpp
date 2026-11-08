@@ -132,18 +132,71 @@ namespace CalibrationPipe
 			return ok;
 		}
 
-		bool ThisProcessElevated()
+	}
+
+	bool ThisProcessIsElevated()
+	{
+		HANDLE token = nullptr;
+		if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+			return false;
+		TOKEN_ELEVATION elevation{};
+		DWORD size = 0;
+		const bool elevated = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size) &&
+			elevation.TokenIsElevated != 0;
+		CloseHandle(token);
+		return elevated;
+	}
+
+	std::string ConnectErrorText(uint32_t status, bool clientElevated)
+	{
+		switch (status)
 		{
-			HANDLE token = nullptr;
-			if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
-				return false;
-			TOKEN_ELEVATION elevation{};
-			DWORD size = 0;
-			const bool elevated = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size) &&
-				elevation.TokenIsElevated != 0;
-			CloseHandle(token);
-			return elevated;
+		case ERROR_FILE_NOT_FOUND:
+			return std::string("VideoProcessor's calibration pipe is not there: start VideoProcessor.exe with ") +
+				EnableVariable() + "=1 in its environment and a source rendering with the VP Renderer (same Windows "
+				"session as this tool)";
+		case ERROR_ACCESS_DENIED:
+			// The pipe admits only this user; with the same user, a refusal means VideoProcessor's pipe carries
+			// the high-integrity label of an elevated process.
+			return clientElevated ?
+				std::string("the calibration pipe refused access: VideoProcessor runs as another user; run this tool "
+					"as the same user as VideoProcessor") :
+				std::string("VideoProcessor is running as administrator: run this tool as administrator too");
+		case ERROR_PIPE_BUSY:
+			return "the calibration pipe stayed busy";
+		default:
+			return "the calibration pipe could not be opened (" + std::to_string(status) + ")";
 		}
+	}
+
+	SingleClientGuard::~SingleClientGuard()
+	{
+		if (mutex) CloseHandle(static_cast<HANDLE>(mutex));
+	}
+
+	bool SingleClientGuard::Acquire(const std::wstring& name, std::string& why)
+	{
+		if (mutex) return true;
+		HANDLE handle = CreateMutexW(nullptr, FALSE, name.c_str());
+		if (!handle)
+		{
+			why = "the single-instance lock could not be created (" + std::to_string(GetLastError()) + ")";
+			return false;
+		}
+		if (GetLastError() == ERROR_ALREADY_EXISTS)
+		{
+			CloseHandle(handle);
+			why = "another VideoProcessor-Calibrate is already running in this Windows session; finish or cancel it first";
+			return false;
+		}
+		mutex = handle;
+		return true;
+	}
+
+	std::wstring SingleClientGuard::DefaultName()
+	{
+		// Local\ is per session, like the pipe.
+		return L"Local\\VideoProcessor-Calibrate";
 	}
 
 	bool PipeSecuritySddl(std::wstring& sddl, std::string& error)
@@ -160,7 +213,7 @@ namespace CalibrationPipe
 		LocalFree(sid);
 		// An elevated VideoProcessor labels the pipe high integrity, no write up: a non-elevated process
 		// of the same user cannot drive it.
-		if (ThisProcessElevated())
+		if (ThisProcessIsElevated())
 			sddl += L"S:(ML;;NW;;;HI)";
 		return true;
 	}
@@ -595,15 +648,7 @@ namespace CalibrationPipe
 				WaitNamedPipeW(name.c_str(), static_cast<DWORD>((std::min)(deadline - now, static_cast<ULONGLONG>(1000))));
 				continue;
 			}
-			error = status == ERROR_FILE_NOT_FOUND ?
-				std::string("VideoProcessor's calibration pipe is not there: start VideoProcessor.exe with ") +
-					EnableVariable() + "=1 in its environment and a source rendering with the VP Renderer (same Windows "
-					"session as this tool)" :
-				status == ERROR_ACCESS_DENIED ?
-				std::string("the calibration pipe refused access: run this tool as the same user, with the same "
-					"elevation, as VideoProcessor") :
-				status == ERROR_PIPE_BUSY ? std::string("the calibration pipe stayed busy") :
-				"the calibration pipe could not be opened (" + std::to_string(status) + ")";
+			error = ConnectErrorText(status, ThisProcessIsElevated());
 			return false;
 		}
 		struct HandleCloser { HANDLE handle; ~HandleCloser() { CloseHandle(handle); } } pipeCloser{ pipe };

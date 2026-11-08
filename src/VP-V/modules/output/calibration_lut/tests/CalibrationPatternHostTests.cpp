@@ -344,6 +344,37 @@ public:
 		Assert::IsTrue(actual.find(L";;;" + userSid + L")") != std::wstring::npos, actual.c_str());
 	}
 
+	TEST_METHOD(ConnectFailuresAreExplicit)
+	{
+		// An elevated VideoProcessor (high-integrity pipe) seen from a non-elevated tool: never a silent lockout.
+		const std::string elevatedVp = CalibrationPipe::ConnectErrorText(ERROR_ACCESS_DENIED, false);
+		Assert::IsTrue(elevatedVp == "VideoProcessor is running as administrator: run this tool as administrator too",
+			std::wstring(elevatedVp.begin(), elevatedVp.end()).c_str());
+		const std::string otherUser = CalibrationPipe::ConnectErrorText(ERROR_ACCESS_DENIED, true);
+		Assert::IsTrue(otherUser.find("another user") != std::string::npos);
+		const std::string missing = CalibrationPipe::ConnectErrorText(ERROR_FILE_NOT_FOUND, false);
+		Assert::IsTrue(missing.find("VP_CALIBRATION_PIPE=1") != std::string::npos, L"says how to enable the pipe");
+		Assert::IsTrue(CalibrationPipe::ConnectErrorText(ERROR_PIPE_BUSY, false).find("busy") != std::string::npos);
+		Assert::IsTrue(CalibrationPipe::ConnectErrorText(1234, false).find("1234") != std::string::npos);
+	}
+
+	TEST_METHOD(OnlyOneClientPerSession)
+	{
+		const std::wstring name = L"Local\\VideoProcessor-Calibrate-test-" + std::to_wstring(GetCurrentProcessId()) +
+			L"-" + std::to_wstring(GetTickCount64());
+		std::string why;
+		{
+			CalibrationPipe::SingleClientGuard first;
+			Assert::IsTrue(first.Acquire(name, why));
+			CalibrationPipe::SingleClientGuard second;
+			Assert::IsFalse(second.Acquire(name, why), L"a second client in the same session is refused");
+			Assert::IsTrue(why.find("already running") != std::string::npos);
+		}
+		CalibrationPipe::SingleClientGuard after;
+		Assert::IsTrue(after.Acquire(name, why), L"free again once the first client exits");
+		Assert::IsTrue(CalibrationPipe::SingleClientGuard::DefaultName().find(L"Local\\") == 0, L"per session");
+	}
+
 	TEST_METHOD(ClientVerifiesTheServerRunsAsTheSameUser)
 	{
 		std::string why;
