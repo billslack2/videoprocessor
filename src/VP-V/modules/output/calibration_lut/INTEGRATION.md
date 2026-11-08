@@ -185,6 +185,31 @@ vstest prints no summary for this DLL: read the TRX `Counters` line. Expected: 2
 passes as a skip unless its `VP_TEST_*` variables and a meter are present). `CalibrationMeterTests` needs Windows 10
 1809+ and `fake_spotread.exe`.
 
+### Cross-process test without capture hardware
+
+VideoProcessor.exe creates its renderer (and so the pipe) only when a DeckLink or Magewell device delivers a
+signal. Without one, `src/VideoProcessor-CalibrationHost` (a test tool; not in the solution, never packaged) hosts
+the real renderer DLL the way `LibplaceboPluginProxyTests` does: a hidden 320x180 popup window (never shown), a
+synthetic SDR BGRA state, `VP_CALIBRATION_PIPE=1` in its own environment. Build it after the solution:
+
+```
+MSBuild.exe src\VideoProcessor-CalibrationHost\VideoProcessor-CalibrationHost.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir=<repo>\ /p:MagewellSdkRoot=<MWCaptureSDK>\SDKv3
+```
+
+Run it from a scratch folder holding a copy of the runtime (`VideoProcessor-CalibrationHost.exe`,
+`VideoProcessor-Calibrate.exe`, `vprenderer\`), because VP resolves `VideoProcessor.cfg`, `logs\` and caches from the
+executable's folder and up to two parents. Put a renderer config there with `switch_refresh_rate: never`, then:
+
+```
+VideoProcessor-CalibrationHost.exe --config <scratch>\VideoProcessorRenderer.cfg --seconds 300
+VideoProcessor-Calibrate.exe --config <scratch>\VideoProcessor.cfg --yes --skip-warmup     (second console)
+```
+
+with a `calibration.cfg` such as `meter_model: simulated`, `plan: quick`, `lut_size: 17`, `patch_window_percent: 1`,
+`settle_ms: 40`, `warmup_minutes: 0`, `verify_after: false`. The host prints `host: rendering pid=... pipe=...` and
+the renderer's `Calibration ...` log lines. This proves the cross-process path (pipe, server check, output facts,
+patch take-over, return to video); it does not show the patches on a display.
+
 ## 6. Run the CLI driver
 
 1. CPU dry run, no VP, no GPU, no meter (a minute):
