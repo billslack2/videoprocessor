@@ -1,0 +1,2 @@
+# Never answers and never reads a key (RunCaptured timeout test).
+HANG

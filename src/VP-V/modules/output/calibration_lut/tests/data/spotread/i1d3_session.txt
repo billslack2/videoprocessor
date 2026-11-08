@@ -1,0 +1,27 @@
+# A colorimeter (i1Display Pro family): no sensor calibration, three readings, then q.
+OUT
+OUT Place instrument on spot to be measured,
+OUT and hit [A-Z] to read white and setup FWA compensation (keyed to letter)
+OUT [a-z] or space to read, 'r' to set reference, 's' to save spectrum,
+OUT 'h' to toggle high res., 'k' to do a calibration
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+SLEEP 50
+READ 95.047 100.000 108.883
+OUT                           CCT = 6504K (Delta E 0.012345)
+OUT
+OUT Place instrument on spot to be measured,
+OUT and hit [A-Z] to read white and setup FWA compensation (keyed to letter)
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+READ 41.24 21.26 1.93
+OUT
+OUT Place instrument on spot to be measured,
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+READ 0.0123 0.0130 0.0141
+OUT
+OUT Place instrument on spot to be measured,
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+EXIT 0

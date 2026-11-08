@@ -1,0 +1,4 @@
+# The meter is there but does not start (driver / USB).
+OUT Setting up the instrument
+OUT Instrument initialisation failed with 'Instrument Access Failed' (Opening USB port failed)!
+EXIT 1

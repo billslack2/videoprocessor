@@ -1,0 +1,15 @@
+# A reading that fails (too dark), then a good one.
+OUT Place instrument on spot to be measured,
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+OUT
+OUT Spot read failed due to misread (Too dark to read)
+OUT
+OUT Place instrument on spot to be measured,
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+READ 0.0450 0.0470 0.0520
+OUT Place instrument on spot to be measured,
+PROMPT Hit ESC or Q to exit, any other key to take a reading:
+KEY
+EXIT 0

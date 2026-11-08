@@ -1,0 +1,23 @@
+# A spectro (i1Pro): asks for a white-tile calibration first, then reads.
+OUT Setting up the instrument
+OUT
+OUT Instrument needs a calibration before continuing
+OUT Place instrument on white calibration reference,
+OUT  and then hit any key to continue,
+PROMPT  or hit Esc or Q to abort:
+KEY
+SLEEP 100
+OUT
+OUT Calibration complete
+OUT
+OUT Place instrument on spot to be measured,
+OUT and hit [A-Z] to read white and setup FWA compensation (keyed to letter)
+OUT [a-z] or space to read, 'r' to set reference, 's' to save spectrum,
+PROMPT 'h' to toggle high res., 'k' to do a calibration
+KEY
+READ 48.10 50.00 54.20
+OUT
+OUT Place instrument on spot to be measured,
+PROMPT [a-z] or space to read:
+KEY
+EXIT 0
