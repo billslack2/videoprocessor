@@ -132,7 +132,13 @@ namespace LibplaceboRenderParameters
 	void ApplySourceLuminance(bool inputIsSdr, pl_color_space& source)
 	{
 		if (inputIsSdr)
+		{
+			// Only the luminance is reset. The mastering primaries describe the
+			// source's colours, so they stay with it as they do for HDR.
+			const pl_raw_primaries primaries = source.hdr.prim;
 			SetSdrReference(source);
+			source.hdr.prim = primaries;
+		}
 	}
 
 	void ApplyTargetLuminance(bool inputIsSdr, float targetNits, float blackNits,
