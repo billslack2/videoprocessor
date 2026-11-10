@@ -32,6 +32,8 @@ HDRData::HDRData(const HDRData& other)
 
 	maxCll = other.maxCll;
 	maxFall = other.maxFall;
+
+	primariesFilledByVp = other.primariesFilledByVp;
 }
 
 
@@ -52,7 +54,9 @@ bool HDRData::operator == (const HDRData& other) const
 		LumenEqual(masteringDisplayMinLuminance, other.masteringDisplayMinLuminance) &&
 
 		LumenEqual(maxCll, other.maxCll) &&
-		LumenEqual(maxFall, other.maxFall);
+		LumenEqual(maxFall, other.maxFall) &&
+
+		primariesFilledByVp == other.primariesFilledByVp;
 }
 
 

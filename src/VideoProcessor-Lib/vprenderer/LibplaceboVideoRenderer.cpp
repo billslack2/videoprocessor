@@ -782,6 +782,67 @@ namespace
 		return result;
 	}
 
+	// assume_p3_mastering: when a PQ source declares no mastering primaries,
+	// treat it as a P3-D65 master (Dolby Vision: L9's preset when present).
+	// Only primaries change; luminance is left as it is. Returns the outcome
+	// for the log line; empty when the rule does not apply (not PQ, or the
+	// tunnel's SDR fallback).
+	std::string ApplyAssumedMasteringPrimaries(const VideoState& state,
+		const DolbyVisionTunnelFrameMetadata& dolby, bool tunnelSdrFallback,
+		bool assumeP3, struct pl_color_space& color)
+	{
+		if (state.eotf != EOTF::PQ || tunnelSdrFallback)
+			return {};
+		const auto use = [&color](enum pl_color_primaries primaries)
+		{
+			color.hdr.prim = *pl_raw_primaries_get(primaries);
+		};
+		const HDRData* hdr = state.hdrData.get();
+		if (state.dolbyVisionTunnel)
+		{
+			if (!hdr || !hdr->primariesFilledByVp)
+				return "forced (Dolby Vision)";
+			const std::string l9 = dolby.hasSourcePrimaries ?
+				"L9 index " + std::to_string(dolby.sourcePrimaryIndex) : "no L9";
+			if (!assumeP3)
+				return "VP default BT.2020 (Dolby Vision, " + l9 + ")";
+			if (!dolby.hasSourcePrimaries)
+			{
+				use(PL_COLOR_PRIM_DISPLAY_P3);
+				return "assumed P3-D65 (Dolby Vision, no L9)";
+			}
+			// dovi_tool's preset table: 0 DCI-P3 D65, 1 BT.709, 2 BT.2020.
+			switch (dolby.sourcePrimaryIndex)
+			{
+			case 0: use(PL_COLOR_PRIM_DISPLAY_P3); return l9 + ", P3-D65";
+			case 1: use(PL_COLOR_PRIM_BT_709); return l9 + ", BT.709";
+			case 2: use(PL_COLOR_PRIM_BT_2020); return l9 + ", BT.2020";
+			default: return "L9 not used (index " +
+				std::to_string(dolby.sourcePrimaryIndex) + "), VP default BT.2020";
+			}
+		}
+		if (hdr && hdr->IsValid())
+			return "declared";
+		const bool forced = hdr && hdr->displayPrimaryRedX > 0 &&
+			hdr->displayPrimaryRedY > 0 && hdr->displayPrimaryGreenX > 0 &&
+			hdr->displayPrimaryGreenY > 0 && hdr->displayPrimaryBlueX > 0 &&
+			hdr->displayPrimaryBlueY > 0 && hdr->whitePointX > 0 &&
+			hdr->whitePointY > 0;
+		if (!assumeP3)
+			return forced ? "container (forced primaries without luminance ignored)" :
+				"container (no block)";
+		if (forced)
+		{
+			SetCiePoint(color.hdr.prim.red, hdr->displayPrimaryRedX, hdr->displayPrimaryRedY);
+			SetCiePoint(color.hdr.prim.green, hdr->displayPrimaryGreenX, hdr->displayPrimaryGreenY);
+			SetCiePoint(color.hdr.prim.blue, hdr->displayPrimaryBlueX, hdr->displayPrimaryBlueY);
+			SetCiePoint(color.hdr.prim.white, hdr->whitePointX, hdr->whitePointY);
+			return "forced (no luminance)";
+		}
+		use(PL_COLOR_PRIM_DISPLAY_P3);
+		return "assumed P3-D65 (no block)";
+	}
+
 	bool IsNativeRgbUpload(VideoFrameEncoding encoding,
 		VideoConversionOverride videoConversionOverride, bool dolbyVisionTunnel)
 	{
@@ -960,6 +1021,10 @@ namespace
         std::string configurationPath;
 		std::string sdrTargetPrimaries = "rec709";
 		bool reportBt2020ToDisplay = false;
+		// Colour profile: HDR10 without mastering primaries and Dolby Vision
+		// without L9 are treated as P3-D65 masters.
+		bool assumeP3Mastering = false;
+		std::string assumeP3MasteringRule; // the profile rule that set it; log only
 
 		std::string sdrInputTransfer = "2.4";
 		// SDR gamma conversion is opt-in and independent of HDR tone mapping.
@@ -1088,7 +1153,7 @@ namespace
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
 			<< settings.outputTransportGamma << '|' << settings.outputGamma << '|'
 			<< settings.sdrTargetPrimaries << '|'
-			<< settings.reportBt2020ToDisplay << '|' << settings.hdrToneMapTargetGamma << '|' << settings.sdrLutInputGamma << '|' << settings.sdrInputTransfer << '|'
+			<< settings.reportBt2020ToDisplay << '|' << settings.assumeP3Mastering << '|' << settings.hdrToneMapTargetGamma << '|' << settings.sdrLutInputGamma << '|' << settings.sdrInputTransfer << '|'
 			<< settings.sdrAdjustGamma << '|'
 			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
             ;
@@ -2010,6 +2075,13 @@ namespace
 			config.TryGetString(rule.section, "report_bt2020_to_display", raw))
 		{
 			DebugLog::Log("display rule '%s': invalid report_bt2020_to_display value '%s'; retaining base setting", rule.name.c_str(), raw.c_str());
+		}
+		if (config.TryGetBool(rule.section, "assume_p3_mastering",
+			settings.assumeP3Mastering))
+			settings.assumeP3MasteringRule = rule.name;
+		else if (config.TryGetString(rule.section, "assume_p3_mastering", raw))
+		{
+			DebugLog::Log("display rule '%s': invalid assume_p3_mastering value '%s'; retaining base setting", rule.name.c_str(), raw.c_str());
 		}
 		readChoice("sdr_lut_input_gamma", settings.sdrLutInputGamma,
             { "passthrough", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
@@ -4734,6 +4806,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool sourceLuminanceObserved = false;
 	uint64_t sourceLuminanceQueueGeneration = 0;
 	uint64_t nextSourceLuminanceLogTick = 0;
+	std::string lastSourcePrimariesOutcome; // render thread; log on change only
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
     TemporalRenderer temporalRenderer;
@@ -8907,6 +8980,8 @@ struct LibplaceboVideoRenderer::Impl
 		changed(current.sdrTargetPrimaries != next.sdrTargetPrimaries ||
 			current.reportBt2020ToDisplay != next.reportBt2020ToDisplay,
 			"sdr_display_target");
+		changed(current.assumeP3Mastering != next.assumeP3Mastering,
+			"assume_p3_mastering");
 		changed(current.outputDiagnostics != next.outputDiagnostics,
 			"output_diagnostics");
 		changed(current.calibrationLutEnabled != next.calibrationLutEnabled ||
@@ -14014,6 +14089,25 @@ struct LibplaceboVideoRenderer::Impl
 			// comparison with other renderers. It changes how captured SDR code
 			// values are decoded, independently of the output transfer curve.
 			image.color.transfer = sdrInputTransfer;
+		}
+		{
+			// After the Dolby Vision luminance step, with this state's Colour
+			// profile in force: only the primaries can change here.
+			static const DolbyVisionTunnelFrameMetadata noDolby{};
+			const std::string primariesOutcome = ApplyAssumedMasteringPrimaries(
+				state, state.dolbyVisionTunnel && !tunnelRgbFallback ?
+					convertedPayload->dolby : noDolby,
+				tunnelRgbFallback, activeSettings.assumeP3Mastering, image.color);
+			if (primariesOutcome != lastSourcePrimariesOutcome)
+			{
+				if (!primariesOutcome.empty())
+					DebugLog::Log("Source mastering primaries: %s; assume_p3_mastering %s (colour profile '%s')",
+						primariesOutcome.c_str(),
+						activeSettings.assumeP3Mastering ? "on" : "off",
+						activeSettings.assumeP3MasteringRule.empty() ? "not set" :
+							activeSettings.assumeP3MasteringRule.c_str());
+				lastSourcePrimariesOutcome = primariesOutcome;
+			}
 		}
 		const enum pl_color_transfer declaredSourceTransfer =
 			image.color.transfer;

@@ -192,6 +192,7 @@ vprenderer.color.sdr_adjust_gamma	vprenderer-sdr-adjust-gamma	Color / Output	yes
 vprenderer.color.target_primaries	vprenderer-target-primaries	Color / Output	no
 vprenderer.color.sdr_target_primaries	vprenderer-sdr-target-primaries	Color / Output	no
 vprenderer.color.report_bt2020_to_display	vprenderer-report-bt2020	Color / Output	no
+vprenderer.color.assume_p3_mastering	vprenderer-assume-p3-mastering	Color / Output	no
 vprenderer.color.hdr_tone_map_target_gamma	vprenderer-hdr-tone-map-target-gamma	Color / Output	no
 vprenderer.scaling.upscaler	vprenderer-upscaler	Scaling	yes
 vprenderer.scaling.downscaler	vprenderer-downscaler	Scaling	yes
