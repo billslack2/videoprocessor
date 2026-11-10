@@ -184,6 +184,13 @@ namespace
 				parsed.sceneMaxPq = sceneMax;
 				parsed.sceneAvgPq = sceneAvg;
 			}
+			else if (level == 9 && (payloadLength == 1 || payloadLength == 17))
+			{
+				// Source primaries: a preset index, optionally followed by
+				// eight 16-bit custom primaries, which are not used.
+				parsed.hasSourcePrimaries = true;
+				parsed.sourcePrimaryIndex = dm[extension + 5];
+			}
 			extension = end;
 		}
 		result.metadata = parsed;
@@ -487,8 +494,12 @@ bool CRGBDolbyVisionTunnelFormatter::FormatVideoFrame(
 		{
 			if (extensionLevels[level] && !m_seenExtensionLevels[level])
 			{
-				DebugLog::Log("Dolby Vision RGB tunnel: extension L%zu %s",
-					level, level == 1 ? "scene PQ values applied" : "recognized in transport; not applied");
+				if (level == 9 && parsed.metadata.hasSourcePrimaries)
+					DebugLog::Log("Dolby Vision RGB tunnel: extension L9 source primaries index %u recognized; used only with assume_p3_mastering",
+						static_cast<unsigned>(parsed.metadata.sourcePrimaryIndex));
+				else
+					DebugLog::Log("Dolby Vision RGB tunnel: extension L%zu %s",
+						level, level == 1 ? "scene PQ values applied" : "recognized in transport; not applied");
 				m_seenExtensionLevels[level] = true;
 			}
 		}

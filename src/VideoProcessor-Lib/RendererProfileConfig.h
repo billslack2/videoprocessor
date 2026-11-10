@@ -725,6 +725,7 @@ namespace RendererProfileConfig
 			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "target_primaries" || key == "sdr_target_primaries") return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
 			if (key == "report_bt2020_to_display") return IsBoolean(value);
+			if (key == "assume_p3_mastering") return IsBoolean(value);
 			expected = "a display-owned setting"; return false;
 		}
 		if (group == "output_display")
@@ -1022,7 +1023,7 @@ namespace RendererProfileConfig
 	{
 		static const std::set<std::string> colorKeys = {
 			"target_primaries", "sdr_target_primaries", "output_gamma",
-			"report_bt2020_to_display", "sdr_adjust_gamma",
+			"report_bt2020_to_display", "assume_p3_mastering", "sdr_adjust_gamma",
 			"sdr_input_transfer", "calibration_lut_input_gamma", "calibration_lut_input_transfer",
             "calibration_lut_enabled", "calibration_lut_bt709", "calibration_lut_p3_d65",
             "calibration_lut_bt2020", "hdr_tone_map_target_gamma", "sdr_lut_input_gamma" };

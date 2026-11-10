@@ -136,6 +136,7 @@ QString RenderingBuiltInDefault(const QString& key)
     if (const char* preset = QualityProfileMigration::PresetValue("high", key.toStdString()))
         return QString::fromLatin1(preset);
     if (key == QStringLiteral("report_bt2020_to_display") ||
+        key == QStringLiteral("assume_p3_mastering") ||
         key == QStringLiteral("output_diagnostics") ||
         key == QStringLiteral("diagnostic_disable_shader_cache") ||
         key == QStringLiteral("diagnostic_disable_compute") ||
@@ -1941,6 +1942,7 @@ void ConfigEditorWindow::seedCalibratedProfile(const QString& root, const QStrin
         set("sdr_input_transfer", "2.4"); set("sdr_adjust_gamma", "passthrough");
         set("sdr_lut_input_gamma", "passthrough");
         set("report_bt2020_to_display", "false");
+        set("assume_p3_mastering", "false");
         set("output_range", "full"); set("output_transport_gamma", "2.2");
         set("output_presentation", "auto"); set("diagnostic_allow_limited_g22", "false");
     }
@@ -6620,6 +6622,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("report_bt2020_to_display"))->setToolTip(QStringLiteral(
                 "Request BT.2020 signalling to the display. This does not change the rendering gamut."));
 
+        addBoolean(QStringLiteral("Assume P3 mastering when untagged"),
+            QStringLiteral("assume_p3_mastering"))->setToolTip(QStringLiteral(
+                "HDR10 with no mastering primaries and Dolby Vision without L9 are treated as "
+                "P3-D65 masters. Off: the BT.2020 container is used, as before."));
+
         form = addCollapsibleSection(QStringLiteral("outputExperiments"),
             QStringLiteral("Output Experiments (beta)"), QStringLiteral(
                 "Implementation diagnostics for repeatable renderer testing. "
@@ -8019,6 +8026,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("sdr_input_transfer")) return QStringLiteral("2.4");
                 if (key == QStringLiteral("sdr_lut_input_gamma")) return QStringLiteral("passthrough");
                 if (key == QStringLiteral("report_bt2020_to_display")) return QStringLiteral("false");
+                if (key == QStringLiteral("assume_p3_mastering")) return QStringLiteral("false");
                 if (key == QStringLiteral("hdr_tone_map_target_gamma")) return QStringLiteral("2.2");
                 if (key == QStringLiteral("calibration_lut_enabled")) return QStringLiteral("false");
                 if (key.startsWith(QStringLiteral("calibration_lut_"))) return QStringLiteral("none");
