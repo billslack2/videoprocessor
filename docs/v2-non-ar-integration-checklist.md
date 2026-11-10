@@ -62,3 +62,10 @@ Reviewed in detached worktree E:\codex\videoprocessor\v2-capture-merge-review-20
 
 - [x] Beta libplacebo-388: 12 selected tests passed, including real-renderer RGB8 decode, GPU mixer/upload and subtitle-packet reuse. Both renderer DLLs loaded together with API 31 and their intended dependencies.
 - [ ] Combined standard and beta subtitle/motion scripts stalled and were interrupted. Individually bounded standard ReconstructionMotionTests, SubtitleCutPasteShaderTests and MotionRendererTests exceeded 45 seconds. Representative Reconstruction and shader tests also timed out at 20 seconds on the unchanged prior integration build and this candidate. This is unresolved, not a passing suite or proof of no regression. Other isolated standard classes passed: source-upload 5, temporal-cleanup 1, subtitle-placement 89 and renderer-dependency 1.
+
+
+## RGB8 GPU test retry (2026-11-10)
+
+- [x] With a 90-second per-test limit, RoundedNativeLipStaysRepairedAcrossMixedAndRepeatedOutputs passed on standard (40.58 s) and beta (40.77 s). UhdNativeCueUsesOneCompletePreparationAcrossInsertedOutputs passed on standard (20.25 s) and beta (20.18 s). Earlier 20-second timeouts did not establish failure.
+- [ ] BlackAndReconstructionLayersPreserveAlphaAndComposition exceeded 90 seconds on both variants. Both runs were terminated at the timeout; neither produced an assertion failure or a passing result. The cause is unresolved.
+- All these fixtures generated their own frames and used D3D11/libplacebo; the HDMI source was off and live capture was not involved. Logs are under artifacts/rgb8-retry-20261110 (local, not committed). These results do not replace live capture, output cadence or mandatory frame-budget checks.
