@@ -307,13 +307,19 @@ namespace Tests
                                 const bool ink = offset < 8 && (offset < 2 || offset >= 6 || y < 328 || y >= 338);
                                 if (ink) value = range == TunnelSdrRgbRange::Limited ? 200 : 220;
                             }
+                            // A slight picture tint exercises relative chroma
+                            // as well as brightness; bars and text stay neutral.
+                            const bool picturePixel = y >= top && y < bottom;
+                            const uint8_t red = picturePixel ? uint8_t(value + 3) : value;
+                            const uint8_t green = value;
+                            const uint8_t blue = picturePixel ? uint8_t(value - 2) : value;
                             const size_t off = (size_t(y) * width + x) * 4;
                             if (encoding == VideoFrameEncoding::R210)
-                                Write32Be(*raw, off, (uint32_t(value) << 20) | (uint32_t(value) << 10) | value);
+                                Write32Be(*raw, off, (uint32_t(red) << 20) | (uint32_t(green) << 10) | blue);
                             else if (encoding == VideoFrameEncoding::ARGB_8BIT)
-                                { (*raw)[off] = 255; (*raw)[off+1] = (*raw)[off+2] = (*raw)[off+3] = value; }
+                                { (*raw)[off] = 255; (*raw)[off+1] = red; (*raw)[off+2] = green; (*raw)[off+3] = blue; }
                             else
-                                { (*raw)[off] = (*raw)[off+1] = (*raw)[off+2] = value; (*raw)[off+3] = 255; }
+                                { (*raw)[off] = blue; (*raw)[off+1] = green; (*raw)[off+2] = red; (*raw)[off+3] = 255; }
                         }
                     auto input = MakeSdrFallbackInput(raw, width, height, 2);
                     input.encoding = encoding; input.tunnelSdrRgbRange = range;

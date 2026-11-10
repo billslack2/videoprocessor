@@ -341,11 +341,12 @@ bool CRGBDolbyVisionTunnelFormatter::FormatVideoFrame(
 	// known-wrong layout on every picture. Only CRC can confirm the tunnel.
     ByteAlignment firstCandidate = m_alignment == ByteAlignment::RIGHT ?
         ByteAlignment::RIGHT : ByteAlignment::LEFT;
-    if (m_encoding == VideoFrameEncoding::R210 && m_alignment == ByteAlignment::UNKNOWN)
+    if (m_encoding == VideoFrameEncoding::R210)
     {
         // A uniform letterbox can make both r210 bit alignments yield the
-        // same CRC-valid header. Sample across the source, not only the
-        // metadata rows, to prioritize a uniquely compatible alignment.
+        // same CRC-valid header. Sample across each current source frame,
+        // not only the metadata rows, to prioritize a uniquely compatible
+        // alignment even if the packing changes without a format reset.
         // This changes probe order only; CRC and metadata checks still decide.
         const size_t pixels = static_cast<size_t>(m_width) * m_height;
         const size_t count = (std::min)(pixels, size_t(4096));
@@ -360,9 +361,13 @@ bool CRGBDolbyVisionTunnelFormatter::FormatVideoFrame(
             highCompatible += ((r | g | b) & 3U) == 0;
             lowCompatible += ((r | g | b) & 0x300U) == 0;
         }
-        if (count && highCompatible * 100 >= count * 98 && highCompatible > lowCompatible * 2)
+        const bool highEligible = count && highCompatible * 100 >= count * 98;
+        const bool lowEligible = count && lowCompatible * 100 >= count * 98;
+        // The other interpretation need only be ruled out, not be less
+        // than half as common: most of a dark picture may fit both layouts.
+        if (highEligible && !lowEligible)
             firstCandidate = ByteAlignment::LEFT;
-        else if (count && lowCompatible * 100 >= count * 98 && lowCompatible > highCompatible * 2)
+        else if (lowEligible && !highEligible)
             firstCandidate = ByteAlignment::RIGHT;
     }
 	for (const ByteAlignment candidate : { firstCandidate,
@@ -489,7 +494,13 @@ bool CRGBDolbyVisionTunnelFormatter::FormatVideoFrame(
 		}
 		parsed.metadata.rgbBitAlignment = candidate == ByteAlignment::LEFT ? 1 : 2;
 		if (parsed.noMetadata)
-			++m_noMetadataFrames; // Healthy transport; active DM remains valid.
+        {
+            ++m_noMetadataFrames; // Healthy transport; active DM remains valid.
+            // Retained DM describes current decoded pixels; its capture
+            // alignment must follow this frame's independently checked header.
+            if (m_metadata.valid)
+                m_metadata.rgbBitAlignment = parsed.metadata.rgbBitAlignment;
+        }
 		else if (parsed.affectedId == parsed.currentId)
 		{
 			m_metadata = parsed.metadata;

@@ -145,6 +145,62 @@ namespace Tests
             }
         }
 
+        TEST_METHOD(SmallLitRegionDisambiguatesDarkR210Tunnel)
+        {
+            constexpr int width = 640, height = 360;
+            for (bool high : { false, true })
+            {
+                SenderPicture picture(high, width, height, VideoFrameEncoding::R210);
+                for (int y = 0; y < height; ++y)
+                    for (int x = 0; x < width; ++x)
+                    {
+                        const size_t pixel = size_t(y) * width + x;
+                        // Only ~17% of the frame reveals alignment; all packet
+                        // rows and the rest of the picture are uniform dark.
+                        picture.intensity[pixel] = uint16_t((y >= 40 && x >= 520 ? 200 : 64) * 4);
+                        picture.chroma[pixel] = 2048;
+                        picture.Pack(pixel);
+                    }
+                picture.Embed(Packetize(DmBody(3072, false)));
+                Formatter formatter; formatter.OnVideoState(picture.state);
+                std::vector<BYTE> decoded;
+                const auto metadata = Deliver(formatter, picture, 1, &decoded);
+                Assert::IsTrue(metadata.valid);
+                Assert::AreEqual(high ? 1U : 2U, static_cast<unsigned>(metadata.rgbBitAlignment),
+                    L"A minority of unambiguous picture pixels must guide the CRC-checked probe.");
+                AssertExactSamples(picture, decoded);
+            }
+        }
+
+        TEST_METHOD(DarkTunnelAlignmentChangeKeepsCurrentPixelsAndMetadataInSync)
+        {
+            constexpr int width = 640, height = 360;
+            SenderPicture high(true, width, height, VideoFrameEncoding::R210);
+            SenderPicture low(false, width, height, VideoFrameEncoding::R210);
+            for (auto* picture : { &high, &low })
+                for (int y = 0; y < height; ++y)
+                    for (int x = 0; x < width; ++x)
+                    {
+                        const size_t pixel = size_t(y) * width + x;
+                        picture->intensity[pixel] = uint16_t((y >= 40 && x >= 520 ? 200 : 64) * 4);
+                        picture->chroma[pixel] = 2048;
+                        picture->Pack(pixel);
+                    }
+            high.Embed(Packetize(DmBody(3072, false)));
+            low.Embed(Packetize({}, 3, 3, true));
+            Formatter formatter; formatter.OnVideoState(high.state);
+            std::vector<BYTE> decoded;
+            auto metadata = Deliver(formatter, high, 1, &decoded);
+            Assert::IsTrue(metadata.valid);
+            Assert::AreEqual(1U, static_cast<unsigned>(metadata.rgbBitAlignment));
+            AssertExactSamples(high, decoded);
+            metadata = Deliver(formatter, low, 2, &decoded);
+            Assert::IsTrue(metadata.valid);
+            Assert::AreEqual(2U, static_cast<unsigned>(metadata.rgbBitAlignment),
+                L"Current alignment must follow the freshly decoded frame even when DM is retained.");
+            AssertExactSamples(low, decoded);
+        }
+
         TEST_METHOD(UhdTunnelConversionReportsColdAndSteadyFrameCost)
         {
             // Diagnostic timing, not a hardware presentation or pass/fail deadline.
