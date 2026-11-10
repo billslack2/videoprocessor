@@ -120,6 +120,21 @@ struct SampleContext
 		v = sample.chromaV;
 		++chromaSamples;
 	}
+
+	bool Sample(int x, int y, AnalysisLumaSample& value)
+	{
+		Checkpoint();
+		if (IsErasedOverlay(x, y) || IsResidualOverlay(x, y))
+		{
+			value = { static_cast<uint16_t>(erasedBlackFloor), 512, 512 };
+			return true;
+		}
+		if (!source.Sample(x, y, value))
+			return false;
+		++lumaSamples;
+		++chromaSamples;
+		return true;
+	}
 };
 
 // Qualify a constant source matte over the entire rough-nominated band,
@@ -189,6 +204,109 @@ ActivePictureMatteReference InspectRaisedMatteReference(
     return result;
 }
 
+
+struct EdgeMatteReference
+{
+	bool valid = false;
+	AnalysisLumaSample center;
+	int rgbNoiseTolerance = 4;
+	int pictureContrast = 0;
+};
+
+double RgbEquivalentMaxDelta(const AnalysisLumaSource& source,
+	const AnalysisLumaSample& pixel, const AnalysisLumaSample& matte)
+{
+	const bool limitedRgb = source.format == AnalysisLumaFormat::NativeRgb &&
+		(source.encoding == VideoFrameEncoding::R210 ||
+		 source.encoding == VideoFrameEncoding::R10b ||
+		 source.encoding == VideoFrameEncoding::R10l);
+	const bool fullRange = source.range == AnalysisLumaRange::Full ||
+		(source.range == AnalysisLumaRange::Unknown &&
+		 (source.format == AnalysisLumaFormat::NativeRgb ||
+		  source.format == AnalysisLumaFormat::SdrTunnelRgb) && !limitedRgb);
+	const double yScale = fullRange ? 1.0 : 1023.0 / 876.0;
+	const double cScale = fullRange ? 1.0 : 1023.0 / 896.0;
+	const bool bt2020 = source.colorspace == ColorSpace::BT_2020;
+	const double dy = (static_cast<int>(pixel.luma) - matte.luma) * yScale;
+	const double du = (static_cast<int>(pixel.chromaU) - matte.chromaU) * cScale;
+	const double dv = (static_cast<int>(pixel.chromaV) - matte.chromaV) * cScale;
+	const double red = dy + (bt2020 ? 1.4746 : 1.5748) * dv;
+	const double green = dy + (bt2020 ? -0.16455 : -0.1873) * du +
+		(bt2020 ? -0.57135 : -0.4681) * dv;
+	const double blue = dy + (bt2020 ? 1.8814 : 1.8556) * du;
+	// Existing edge thresholds are expressed in source luma-code units. Convert
+	// the RGB maximum back to that same unit so range expansion alone cannot
+	// make weak luma contrast look stronger than the legacy threshold.
+	return std::max({ std::abs(red), std::abs(green), std::abs(blue) }) / yScale;
+}
+
+int MatteSignalThreshold(const EdgeMatteReference& reference)
+{
+	// Keep weak departures in the noise/encoding band attached to the matte,
+	// but scale that band to this frame's measured matte-to-picture contrast.
+	// A low-contrast image must not disappear into its own black reference.
+	const int noiseFloor = reference.rgbNoiseTolerance +
+		(std::max)(4, reference.rgbNoiseTolerance / 2);
+	return (std::max)(noiseFloor,
+		(std::min)(16, reference.pictureContrast / 6));
+}
+
+EdgeMatteReference MeasureEdgeMatteReference(
+	SampleContext& samples, bool horizontal, bool reverse,
+	int observedLow, int blackThreshold)
+{
+	EdgeMatteReference result;
+	const auto& source = samples.source;
+	if (!source.IsValid() || source.width < 64 || source.height < 48)
+		return result;
+	const int extent = horizontal ? source.height : source.width;
+	const int across = horizontal ? source.width : source.height;
+	const int step = (std::max)(1, extent / 540);
+	std::vector<AnalysisLumaSample> edgeSamples;
+	std::vector<int> ys, us, vs;
+	edgeSamples.reserve(192);
+	ys.reserve(192); us.reserve(192); vs.reserve(192);
+	for (int depth = 0; depth < 3; ++depth)
+	{
+		const int coordinate = reverse ? extent - 1 - depth * step : depth * step;
+		for (int i = 0; i < 64; ++i)
+		{
+			const int position = (across * (256 + 96 * (2 * i + 1))) / 12800;
+			AnalysisLumaSample sample;
+			if (!samples.Sample(horizontal ? position : coordinate,
+				horizontal ? coordinate : position, sample))
+				return result;
+			edgeSamples.push_back(sample);
+			ys.push_back(sample.luma);
+			us.push_back(sample.chromaU);
+			vs.push_back(sample.chromaV);
+		}
+	}
+	result.center = {
+		static_cast<uint16_t>(Percentile(ys, 0.50)),
+		static_cast<uint16_t>(Percentile(us, 0.50)),
+		static_cast<uint16_t>(Percentile(vs, 0.50)) };
+	std::vector<int> rgbNoise;
+	rgbNoise.reserve(edgeSamples.size());
+	for (const auto& sample : edgeSamples)
+		rgbNoise.push_back(static_cast<int>(std::ceil(
+			RgbEquivalentMaxDelta(source, sample, result.center))));
+	const int ySpread = static_cast<int>(Percentile(ys, 0.90) - Percentile(ys, 0.10));
+	const int uSpread = static_cast<int>(Percentile(us, 0.90) - Percentile(us, 0.10));
+	const int vSpread = static_cast<int>(Percentile(vs, 0.90) - Percentile(vs, 0.10));
+	const int noise90 = static_cast<int>(Percentile(rgbNoise, 0.90));
+	result.rgbNoiseTolerance = (std::max)(4, (std::min)(24, noise90 + 2));
+	// Keep this allowance tied to measured edge noise, but cap it so a dark
+	// picture extending to a raster side cannot become its own black reference.
+	const int matteAgreement = (std::min)(7, (std::max)(5, noise90 / 2 + 2));
+	result.valid = result.center.luma <= blackThreshold + matteAgreement &&
+		std::abs(static_cast<int>(result.center.luma) - observedLow) <= matteAgreement &&
+		std::abs(static_cast<int>(result.center.chromaU) - 512) <= 32 &&
+		std::abs(static_cast<int>(result.center.chromaV) - 512) <= 32 &&
+		ySpread <= 24 && uSpread <= 24 && vSpread <= 24 && noise90 <= 24;
+	return result;
+}
+
 struct EdgeScan
 {
 	bool complete = false;
@@ -196,7 +314,8 @@ struct EdgeScan
     bool nominalOuterContentSupported = false;
 };
 bool ScanBlackLine(SampleContext& samples, bool row, int coordinate, int threshold,
-	bool& contentSupported, bool* nominalContentSupported = nullptr)
+	bool& contentSupported, bool* nominalContentSupported = nullptr,
+	const EdgeMatteReference* matteReference = nullptr)
 {
 	int black = 0;
 	int supported[4] = {};
@@ -205,14 +324,36 @@ bool ScanBlackLine(SampleContext& samples, bool row, int coordinate, int thresho
 	{
 		const int position = ((i * 2 + 1) * (row ? samples.source.width : samples.source.height)) /
 			(kLineSamples * 2);
-		const int luma = row ? samples.Luma(position, coordinate) : samples.Luma(coordinate, position);
-		black += luma <= threshold;
-		supported[i / 12] += luma > threshold + 24;
+		int luma = 0;
+		bool relativeSample = matteReference && matteReference->valid;
+		double colorDelta = 0.0;
+		if (relativeSample)
+		{
+			AnalysisLumaSample sample;
+			if (!samples.Sample(row ? position : coordinate,
+				row ? coordinate : position, sample))
+				return false;
+			luma = sample.luma;
+			colorDelta = RgbEquivalentMaxDelta(samples.source, sample, matteReference->center);
+			// The interval between measured noise and reliable picture contrast
+			// is ambiguous. Keep it on the matte side for coarse line scanning;
+			// edge inspection and the native guard profile still decide crop authority.
+			black += colorDelta <= MatteSignalThreshold(*matteReference);
+			supported[i / 12] += colorDelta > MatteSignalThreshold(*matteReference);
+		}
+		else
+		{
+			luma = row ? samples.Luma(position, coordinate) :
+				samples.Luma(coordinate, position);
+			black += luma <= threshold;
+			supported[i / 12] += luma > threshold + 24;
+		}
         if (nominalContentSupported) nominalSupported[i / 12] += luma > 48;
 	}
-	// Distributed broad-picture support is separate from the few bright pixels
-	// sufficient to stop a black-line search. It also vetoes conflicting symmetry.
-	contentSupported = supported[0] >= 6 && supported[1] >= 6 && supported[2] >= 6 && supported[3] >= 6;
+	// Relative matte distance helps nominate dark, colored picture, while
+	// distributed support and the existing edge inspection still decide authority.
+	contentSupported = supported[0] >= 6 && supported[1] >= 6 &&
+		supported[2] >= 6 && supported[3] >= 6;
     if (nominalContentSupported)
         *nominalContentSupported = nominalSupported[0] >= 6 && nominalSupported[1] >= 6 &&
             nominalSupported[2] >= 6 && nominalSupported[3] >= 6;
@@ -388,7 +529,8 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 }
 
 ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
-	int barPixels, int boundary, int blackFloor, int blackThreshold, int outerOffset = 0)
+	int barPixels, int boundary, int blackFloor, int blackThreshold, int outerOffset = 0,
+	const EdgeMatteReference* matteReference = nullptr)
 {
 	ActivePictureEdgeEvidence evidence;
 	evidence.barPixels = barPixels;
@@ -397,6 +539,9 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 
 	std::vector<int> luma;
 	luma.reserve(kEdgeDepthSamples * kLineSamples);
+	std::vector<int> outerRgbDeltas, innerRgbDeltas;
+	outerRgbDeltas.reserve(kEdgeDepthSamples * kLineSamples);
+	innerRgbDeltas.reserve(kLineSamples);
 	int black = 0;
 	int neutral = 0;
 	int continuousLines = 0;
@@ -415,17 +560,34 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 		{
 			const int x = ((i * 2 + 1) * samples.source.width) /
 				(kLineSamples * 2);
-			const int value = samples.Luma(x, y);
+			int value = 0, u = 0, v = 0;
+			bool isBlack = false;
+			if (matteReference && matteReference->valid)
+			{
+				AnalysisLumaSample sample;
+				if (!samples.Sample(x, y, sample)) return evidence;
+				value = sample.luma; u = sample.chromaU; v = sample.chromaV;
+				const double colorDelta = RgbEquivalentMaxDelta(samples.source, sample,
+					matteReference->center);
+				isBlack = colorDelta <= matteReference->rgbNoiseTolerance;
+				outerRgbDeltas.push_back(static_cast<int>(std::ceil(colorDelta)));
+				if (colorDelta > MatteSignalThreshold(*matteReference))
+					++aboveNearBlack[i / (kLineSamples / 4)];
+			}
+			else
+			{
+				value = samples.Luma(x, y);
+				samples.Chroma(x, y, u, v);
+				isBlack = value <= blackThreshold;
+				if (value > blackThreshold)
+					++aboveNearBlack[i / (kLineSamples / 4)];
+			}
 			luma.push_back(value);
-			black += value <= blackThreshold;
-			lineBlack += value <= blackThreshold;
-			if (value > blackThreshold)
-				++aboveNearBlack[i / (kLineSamples / 4)];
+			black += isBlack;
+			lineBlack += isBlack;
 			if (previous >= 0)
 				texture += std::abs(value - previous);
 			previous = value;
-			int u = 0, v = 0;
-			samples.Chroma(x, y, u, v);
             if (inspectMatte)
             {
                 const size_t index = d * kLineSamples + i;
@@ -453,7 +615,16 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 			(kLineSamples * 2);
 		const int y = Bounded(top ? boundary + 2 : boundary - 3,
 			0, samples.source.height - 1);
-		innerMean += samples.Luma(x, y);
+		if (matteReference && matteReference->valid)
+		{
+			AnalysisLumaSample sample;
+			if (!samples.Sample(x, y, sample)) return evidence;
+			innerMean += sample.luma;
+			innerRgbDeltas.push_back(static_cast<int>(std::ceil(
+				RgbEquivalentMaxDelta(samples.source, sample, matteReference->center))));
+		}
+		else
+			innerMean += samples.Luma(x, y);
 	}
 	innerMean /= kLineSamples;
 	evidence.blackFraction = static_cast<double>(black) / luma.size();
@@ -466,28 +637,37 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 	evidence.neutralChromaFraction =
 		static_cast<double>(neutral) / luma.size();
 	evidence.innerBoundaryContrast = innerMean - outerMean;
+	if (matteReference && matteReference->valid && !outerRgbDeltas.empty() &&
+		!innerRgbDeltas.empty())
+		evidence.rgbBoundaryContrast = (std::max)(0.0,
+			Percentile(innerRgbDeltas, 0.75) - Percentile(outerRgbDeltas, 0.75));
 	evidence.continuity =
 		static_cast<double>(continuousLines) / kEdgeDepthSamples;
 	const bool isSmall = barPixels < samples.source.height / 20;
 	const double requiredContrast = isSmall ? 18.0 : 10.0;
+	const double observedContrast = (std::max)(evidence.innerBoundaryContrast,
+		evidence.rgbBoundaryContrast);
 	evidence.trusted = evidence.blackFraction >= 0.95 &&
-		evidence.lumaP90 <= blackThreshold &&
+		evidence.lumaP90 <= (matteReference && matteReference->valid ?
+			matteReference->center.luma + matteReference->rgbNoiseTolerance :
+			blackThreshold) &&
 		evidence.lumaDispersion <= 24.0 &&
 		evidence.texture <= 8.0 &&
 		evidence.neutralChromaFraction >= 0.90 &&
-		evidence.innerBoundaryContrast >= requiredContrast &&
+		observedContrast >= requiredContrast &&
 		evidence.continuity >= 0.99;
 	evidence.confidence = Bounded(
 		0.30 * evidence.blackFraction +
 		0.20 * evidence.neutralChromaFraction +
 		0.20 * evidence.continuity +
-		0.30 * Bounded(evidence.innerBoundaryContrast / 48.0, 0.0, 1.0),
+		0.30 * Bounded(observedContrast / 48.0, 0.0, 1.0),
 		0.0, 1.0);
 	return evidence;
 }
 
 ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
-	int barPixels, int boundary, int blackFloor, int blackThreshold, int outerOffset = 0)
+	int barPixels, int boundary, int blackFloor, int blackThreshold, int outerOffset = 0,
+	const EdgeMatteReference* matteReference = nullptr)
 {
 	ActivePictureEdgeEvidence evidence;
 	evidence.barPixels = barPixels;
@@ -496,6 +676,9 @@ ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 
 	std::vector<int> luma;
 	luma.reserve(kEdgeDepthSamples * kLineSamples);
+	std::vector<int> outerRgbDeltas, innerRgbDeltas;
+	outerRgbDeltas.reserve(kEdgeDepthSamples * kLineSamples);
+	innerRgbDeltas.reserve(kLineSamples);
 	int black = 0;
 	int neutral = 0;
 	int continuousLines = 0;
@@ -514,17 +697,34 @@ ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 		{
 			const int y = ((i * 2 + 1) * samples.source.height) /
 				(kLineSamples * 2);
-			const int value = samples.Luma(x, y);
+			int value = 0, u = 0, v = 0;
+			bool isBlack = false;
+			if (matteReference && matteReference->valid)
+			{
+				AnalysisLumaSample sample;
+				if (!samples.Sample(x, y, sample)) return evidence;
+				value = sample.luma; u = sample.chromaU; v = sample.chromaV;
+				const double colorDelta = RgbEquivalentMaxDelta(samples.source, sample,
+					matteReference->center);
+				isBlack = colorDelta <= matteReference->rgbNoiseTolerance;
+				outerRgbDeltas.push_back(static_cast<int>(std::ceil(colorDelta)));
+				if (colorDelta > MatteSignalThreshold(*matteReference))
+					++aboveNearBlack[i / (kLineSamples / 4)];
+			}
+			else
+			{
+				value = samples.Luma(x, y);
+				samples.Chroma(x, y, u, v);
+				isBlack = value <= blackThreshold;
+				if (value > blackThreshold)
+					++aboveNearBlack[i / (kLineSamples / 4)];
+			}
 			luma.push_back(value);
-			black += value <= blackThreshold;
-			lineBlack += value <= blackThreshold;
-			if (value > blackThreshold)
-				++aboveNearBlack[i / (kLineSamples / 4)];
+			black += isBlack;
+			lineBlack += isBlack;
 			if (previous >= 0)
 				texture += std::abs(value - previous);
 			previous = value;
-			int u = 0, v = 0;
-			samples.Chroma(x, y, u, v);
             if (inspectMatte)
             {
                 const size_t index = d * kLineSamples + i;
@@ -552,7 +752,16 @@ ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 			(kLineSamples * 2);
 		const int x = Bounded(left ? boundary + 2 : boundary - 3,
 			0, samples.source.width - 1);
-		innerMean += samples.Luma(x, y);
+		if (matteReference && matteReference->valid)
+		{
+			AnalysisLumaSample sample;
+			if (!samples.Sample(x, y, sample)) return evidence;
+			innerMean += sample.luma;
+			innerRgbDeltas.push_back(static_cast<int>(std::ceil(
+				RgbEquivalentMaxDelta(samples.source, sample, matteReference->center))));
+		}
+		else
+			innerMean += samples.Luma(x, y);
 	}
 	innerMean /= kLineSamples;
 	evidence.blackFraction = static_cast<double>(black) / luma.size();
@@ -565,22 +774,30 @@ ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 	evidence.neutralChromaFraction =
 		static_cast<double>(neutral) / luma.size();
 	evidence.innerBoundaryContrast = innerMean - outerMean;
+	if (matteReference && matteReference->valid && !outerRgbDeltas.empty() &&
+		!innerRgbDeltas.empty())
+		evidence.rgbBoundaryContrast = (std::max)(0.0,
+			Percentile(innerRgbDeltas, 0.75) - Percentile(outerRgbDeltas, 0.75));
 	evidence.continuity =
 		static_cast<double>(continuousLines) / kEdgeDepthSamples;
 	const bool isSmall = barPixels < samples.source.width / 20;
 	const double requiredContrast = isSmall ? 18.0 : 10.0;
+	const double observedContrast = (std::max)(evidence.innerBoundaryContrast,
+		evidence.rgbBoundaryContrast);
 	evidence.trusted = evidence.blackFraction >= 0.95 &&
-		evidence.lumaP90 <= blackThreshold &&
+		evidence.lumaP90 <= (matteReference && matteReference->valid ?
+			matteReference->center.luma + matteReference->rgbNoiseTolerance :
+			blackThreshold) &&
 		evidence.lumaDispersion <= 24.0 &&
 		evidence.texture <= 8.0 &&
 		evidence.neutralChromaFraction >= 0.90 &&
-		evidence.innerBoundaryContrast >= requiredContrast &&
+		observedContrast >= requiredContrast &&
 		evidence.continuity >= 0.99;
 	evidence.confidence = Bounded(
 		0.30 * evidence.blackFraction +
 		0.20 * evidence.neutralChromaFraction +
 		0.20 * evidence.continuity +
-		0.30 * Bounded(evidence.innerBoundaryContrast / 48.0, 0.0, 1.0),
+		0.30 * Bounded(observedContrast / 48.0, 0.0, 1.0),
 		0.0, 1.0);
 	return evidence;
 }
@@ -1074,7 +1291,72 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 	const bool fullRange = source.range == AnalysisLumaRange::Full;
     const int blackFloor = observedLow < 32 ? 0 :
         fullRange ? std::min(observedLow, 80) : Bounded(observedLow, 48, 80);
-    const int blackThreshold = std::min(104, blackFloor + 24);
+	const int blackThreshold = std::min(104, blackFloor + 24);
+	EdgeMatteReference topMatte = MeasureEdgeMatteReference(samples, true, false,
+		observedLow, blackThreshold);
+	EdgeMatteReference bottomMatte = MeasureEdgeMatteReference(samples, true, true,
+		observedLow, blackThreshold);
+	EdgeMatteReference leftMatte = MeasureEdgeMatteReference(samples, false, false,
+		observedLow, blackThreshold);
+	EdgeMatteReference rightMatte = MeasureEdgeMatteReference(samples, false, true,
+		observedLow, blackThreshold);
+	// Compare each measured edge matte with a shared sparse sample of interior
+	// picture. This keeps the weak-signal allowance relative to this frame while
+	// adding only 16 bounded samples across all formats and all four edges.
+	std::array<AnalysisLumaSample, 16> pictureSamples{};
+	bool pictureSamplesValid = true;
+	for (int y = 0; y < 4 && pictureSamplesValid; ++y)
+		for (int x = 0; x < 4; ++x)
+		{
+			const int sampleX = source.width * (5 + 2 * x) / 16;
+			const int sampleY = source.height * (5 + 2 * y) / 16;
+			if (!samples.Sample(sampleX, sampleY, pictureSamples[y * 4 + x]))
+			{
+				pictureSamplesValid = false;
+				break;
+			}
+		}
+	auto estimatePictureContrast = [&](EdgeMatteReference& matte) {
+		if (!pictureSamplesValid || !matte.valid) return;
+		std::array<int, 16> deltas{};
+		size_t index = 0;
+		for (const auto& sample : pictureSamples)
+			deltas[index++] = static_cast<int>(std::ceil(
+				RgbEquivalentMaxDelta(source, sample, matte.center)));
+		constexpr size_t upperQuartile = 11; // floor(0.75 * (16 - 1))
+		std::nth_element(deltas.begin(), deltas.begin() + upperQuartile, deltas.end());
+		matte.pictureContrast = deltas[upperQuartile];
+	};
+	estimatePictureContrast(topMatte);
+	estimatePictureContrast(bottomMatte);
+	estimatePictureContrast(leftMatte);
+	estimatePictureContrast(rightMatte);
+	auto matteForEdge = [&](bool horizontal, bool leading)
+		-> const EdgeMatteReference* {
+		const EdgeMatteReference* direct = horizontal ?
+			(leading ? &topMatte : &bottomMatte) :
+			(leading ? &leftMatte : &rightMatte);
+		if (direct->valid) return direct;
+		const EdgeMatteReference* opposite = horizontal ?
+			(leading ? &bottomMatte : &topMatte) :
+			(leading ? &rightMatte : &leftMatte);
+		if (opposite->valid) return opposite;
+		const EdgeMatteReference* perpendicular = horizontal ?
+			(leftMatte.valid ? &leftMatte : &rightMatte) :
+			(topMatte.valid ? &topMatte : &bottomMatte);
+		return perpendicular->valid ? perpendicular : nullptr;
+	};
+	auto matteForScan = [&](bool horizontal, bool leading)
+		-> const EdgeMatteReference* {
+		const EdgeMatteReference* direct = horizontal ?
+			(leading ? &topMatte : &bottomMatte) :
+			(leading ? &leftMatte : &rightMatte);
+		if (direct->valid) return direct;
+		const EdgeMatteReference* opposite = horizontal ?
+			(leading ? &bottomMatte : &topMatte) :
+			(leading ? &rightMatte : &leftMatte);
+		return opposite->valid ? opposite : nullptr;
+	};
     auto& reference = result.blackReference;
     reference.evaluated = true;
     reference.observedFloor = reference.floor = blackFloor;
@@ -1096,8 +1378,11 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 		--scanLinesRemaining;
 		bool supported = false;
 		const bool outer = coordinate == 0 || coordinate == (row ? source.height : source.width) - 1;
+		const EdgeMatteReference* matte = row ?
+			matteForScan(true, coordinate < source.height / 2) :
+			matteForScan(false, coordinate < source.width / 2);
         const bool black = ScanBlackLine(samples, row, coordinate, blackThreshold, supported,
-            fullRange && outer ? &scan.nominalOuterContentSupported : nullptr);
+            fullRange && outer ? &scan.nominalOuterContentSupported : nullptr, matte);
 		if (coordinate == 0 || coordinate == (row ? source.height : source.width) - 1)
 			scan.outerContentSupported = supported;
 		if (!black) scan.complete = true;
@@ -1144,7 +1429,9 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 			if (refinementLinesRemaining <= 0) return false;
 			--refinementLinesRemaining;
 			bool supported = false;
-			if (!ScanBlackLine(samples, row, coordinate, blackThreshold, supported))
+			const EdgeMatteReference* matte = matteForScan(row, leading);
+			if (!ScanBlackLine(samples, row, coordinate, blackThreshold, supported,
+				nullptr, matte))
 			{
 				boundary = leading ? coordinate : coordinate + 1;
 				break;
@@ -1265,9 +1552,9 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 	if (hasVertical)
 	{
 		result.top = InspectHorizontalEdge(samples, true, topBar, top,
-			blackFloor, blackThreshold);
+			blackFloor, blackThreshold, 0, matteForEdge(true, true));
 		result.bottom = InspectHorizontalEdge(samples, false, bottomBar, bottom,
-			blackFloor, blackThreshold);
+			blackFloor, blackThreshold, 0, matteForEdge(true, false));
         const bool topContinues = result.top.trusted &&
             HasHorizontalPictureContinuation(samples, true, top, blackThreshold);
         const bool bottomContinues = result.bottom.trusted &&
@@ -1293,9 +1580,9 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 	if (hasHorizontal)
 	{
 		result.left = InspectVerticalEdge(samples, true, leftBar, left,
-			blackFloor, blackThreshold);
+			blackFloor, blackThreshold, 0, matteForEdge(false, true));
 		result.right = InspectVerticalEdge(samples, false, rightBar, right,
-			blackFloor, blackThreshold);
+			blackFloor, blackThreshold, 0, matteForEdge(false, false));
 		const int symmetryTolerance = std::max(xStep * 2, source.width / 360);
 		horizontalTrusted = result.left.trusted && result.right.trusted &&
 			std::abs(leftBar - rightBar) <= symmetryTolerance;

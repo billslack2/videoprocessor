@@ -79,6 +79,7 @@ struct ActivePictureEdgeEvidence
 	double texture = 0.0;
 	double neutralChromaFraction = 0.0;
 	double innerBoundaryContrast = 0.0;
+	double rgbBoundaryContrast = 0.0;
 	double continuity = 0.0;
 	double confidence = 0.0;
 	bool trusted = false;

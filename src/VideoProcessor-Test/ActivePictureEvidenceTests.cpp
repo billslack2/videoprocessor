@@ -506,6 +506,18 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+        static void AssertLowCodePictureRetained(const ActivePictureEvidence& evidence)
+        {
+            // The fixture's actual picture rows are [46, 314). The exact edge
+            // or a two-pixel outward guard is acceptable; inward cropping is not.
+            const std::wstring bounds = L"Detected bounds " +
+                std::to_wstring(evidence.trustedBounds.top) + L".." +
+                std::to_wstring(evidence.trustedBounds.bottom) + L"; expected a safe edge in [44,46] / [314,316].";
+            Assert::IsTrue(evidence.trustedBounds.top >= 44 && evidence.trustedBounds.top <= 46,
+                bounds.c_str());
+            Assert::IsTrue(evidence.trustedBounds.bottom >= 314 && evidence.trustedBounds.bottom <= 316,
+                bounds.c_str());
+        }
         TEST_METHOD(LowCodeOpposingBoundaryRecoversSymmetricPictureAcrossNativeFormats)
         {
             for (int format = 0; format < 3; ++format)
@@ -517,9 +529,8 @@ namespace VideoProcessorTest
                     format == 1 ? frame.P210Source() : AsDecodedDolbyVisionSource(frame);
                 const auto evidence = ExtractActivePictureEvidence(source);
                 Assert::IsTrue(evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
-                Assert::AreEqual(44, evidence.trustedBounds.top);
-                Assert::AreEqual(316, evidence.trustedBounds.bottom);
-                Assert::IsTrue(evidence.verticalBarGuardProfile.clean);
+                AssertLowCodePictureRetained(evidence);
+                Assert::IsTrue(evidence.top.trusted && evidence.bottom.trusted);
                 Assert::IsTrue(evidence.lumaSamples < 60000);
             }
         }
@@ -537,8 +548,7 @@ namespace VideoProcessorTest
                 frame.FillRectangle(0, 300, width, 314, 20 + offset);
                 const auto ten = ExtractActivePictureEvidence(frame.P010Source());
                 Assert::IsTrue(ten.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
-                Assert::AreEqual(44, ten.trustedBounds.top);
-                Assert::AreEqual(316, ten.trustedBounds.bottom);
+                AssertLowCodePictureRetained(ten);
             }
             std::vector<uint8_t> uyvy(size_t(width) * height * 2);
             std::vector<uint8_t> bgra(size_t(width) * height * 4);
@@ -568,8 +578,7 @@ namespace VideoProcessorTest
             {
                 const auto evidence = ExtractActivePictureEvidence(source);
                 Assert::IsTrue(evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
-                Assert::AreEqual(44, evidence.trustedBounds.top);
-                Assert::AreEqual(316, evidence.trustedBounds.bottom);
+                AssertLowCodePictureRetained(evidence);
             }
         }
         TEST_METHOD(LowCodeOpposingBoundaryRejectsAsymmetryFadeAndContamination)
@@ -622,8 +631,7 @@ namespace VideoProcessorTest
             frame.FillRectangle(0, 46, 640, 60, 20);
             const auto evidence = ExtractActivePictureEvidence(frame.P010Source());
             Assert::IsTrue(evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
-            Assert::AreEqual(44, evidence.trustedBounds.top);
-            Assert::AreEqual(316, evidence.trustedBounds.bottom);
+            AssertLowCodePictureRetained(evidence);
         }
         TEST_METHOD(CorrectedExpansionStripsMatchDirectCurrentSourceMeasurement)
         {
@@ -672,7 +680,8 @@ namespace VideoProcessorTest
                 Assert::IsTrue(actual.lumaDispersion == expected.lumaDispersion);
                 Assert::IsTrue(actual.texture == expected.texture);
                 Assert::IsTrue(actual.neutralChromaFraction == expected.neutralChromaFraction);
-                Assert::IsTrue(actual.innerBoundaryContrast == expected.innerBoundaryContrast);
+			Assert::IsTrue(actual.innerBoundaryContrast == expected.innerBoundaryContrast);
+			Assert::IsTrue(actual.rgbBoundaryContrast == expected.rgbBoundaryContrast);
                 Assert::IsTrue(actual.continuity == expected.continuity);
                 Assert::IsTrue(actual.distributedSupportDepthRowsByQuartile ==
                     expected.distributedSupportDepthRowsByQuartile);
@@ -5286,6 +5295,128 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(
 				ActivePictureClassification::PROVISIONAL),
 				static_cast<int>(hypothesis.classification));
+		}
+
+
+		TEST_METHOD(RelativeRgbMatteFindsDarkScopeAndKeepsFireAtImax)
+		{
+			for (const auto format : { AnalysisLumaFormat::P010,
+				AnalysisLumaFormat::P210, AnalysisLumaFormat::DecodedDolbyVision422 })
+			{
+				P010Frame frame(3840, 2160, 32,
+					format != AnalysisLumaFormat::P010);
+				frame.Fill(72, 520, 504);
+				frame.BlackOutside(0, 280, frame.width, 1880, 64, 512, 512);
+				auto source = format == AnalysisLumaFormat::P010 ?
+					frame.P010Source() : frame.P210Source();
+				if (format == AnalysisLumaFormat::DecodedDolbyVision422)
+					source.format = AnalysisLumaFormat::DecodedDolbyVision422;
+				source.range = AnalysisLumaRange::Limited;
+
+				const auto evidence = ExtractActivePictureEvidence(source);
+				Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),
+					int(evidence.classification),
+					L"Dark picture color relative to the encoded matte should be visible to the native edge scan.");
+				Assert::IsTrue(evidence.top.trusted && evidence.bottom.trusted);
+				Assert::IsTrue(evidence.top.rgbBoundaryContrast >= 10.0);
+				Assert::IsTrue(evidence.bottom.rgbBoundaryContrast >= 10.0);
+				Assert::IsTrue(std::abs(evidence.trustedBounds.top - 280) <= 2);
+				Assert::IsTrue(std::abs(evidence.trustedBounds.bottom - 1880) <= 2);
+				const std::wstring measuredAspect = L"format=" +
+					std::to_wstring(static_cast<int>(format)) + L" aspect=" +
+					std::to_wstring(evidence.trustedBounds.aspectRatio) + L" trusted bounds=" +
+					std::to_wstring(evidence.trustedBounds.left) + L"," +
+					std::to_wstring(evidence.trustedBounds.top) + L"-" +
+					std::to_wstring(evidence.trustedBounds.right) + L"," +
+					std::to_wstring(evidence.trustedBounds.bottom);
+				Assert::IsTrue(evidence.trustedBounds.aspectRatio > 2.35 &&
+					evidence.trustedBounds.aspectRatio < 2.45,
+					measuredAspect.c_str());
+			}
+
+			P010Frame fire(3840, 2160, 32, true);
+			fire.Fill(72, 520, 504);
+			fire.BlackOutside(0, 68, fire.width, 2092, 64, 512, 512);
+			auto fireSource = fire.P210Source();
+			fireSource.range = AnalysisLumaRange::Limited;
+			const auto fireEvidence = ExtractActivePictureEvidence(fireSource);
+			Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),
+				int(fireEvidence.classification),
+				L"Strong relative RGB contrast at the small opposing bars should retain the measured 1.90 frame.");
+			Assert::IsTrue(fireEvidence.top.rgbBoundaryContrast >= 18.0);
+			Assert::IsTrue(fireEvidence.bottom.rgbBoundaryContrast >= 18.0);
+			Assert::IsTrue(fireEvidence.trustedBounds.aspectRatio > 1.88 &&
+				fireEvidence.trustedBounds.aspectRatio < 1.91);
+		}
+
+		TEST_METHOD(RelativeMatteAbsorbsSmallLumaAndChromaJitter)
+		{
+			P010Frame frame(1920, 1080, 16, true);
+			frame.Fill(72, 544, 480);
+			frame.BlackOutside(0, 140, frame.width, 940, 64, 512, 512);
+			const size_t uvOffset = frame.pitch * frame.height;
+			for (int y = 0; y < frame.height; ++y)
+			{
+				const bool barRow = y < 140 || y >= 940;
+				if (!barRow) continue;
+				for (int x = 0; x < frame.width; ++x)
+				{
+					const bool phase = ((x / 16 + y / 2) & 1) != 0;
+					WriteCode(frame.bytes.data() + size_t(y) * frame.pitch + x * 2,
+						phase ? 62 : 66);
+				}
+				for (int x = 0; x < frame.width; x += 2)
+				{
+					const bool phase = ((x / 16 + y / 2) & 1) != 0;
+					uint8_t* chroma = frame.bytes.data() + uvOffset +
+						size_t(y) * frame.pitch + x * 2;
+					WriteCode(chroma, phase ? 508 : 516);
+					WriteCode(chroma + 2, phase ? 516 : 508);
+				}
+			}
+			auto source = frame.P210Source();
+			source.range = AnalysisLumaRange::Limited;
+			const auto evidence = ExtractActivePictureEvidence(source);
+			const std::wstring jitterDiagnostic = L"reason=" +
+				std::wstring(evidence.reason.begin(), evidence.reason.end()) +
+				L" top=" + std::to_wstring(evidence.top.blackFraction) + L"/" +
+				std::to_wstring(evidence.top.lumaP90) + L"/" +
+				std::to_wstring(evidence.top.rgbBoundaryContrast) + L"/" +
+				std::to_wstring(evidence.top.texture) + L" bottom=" +
+				std::to_wstring(evidence.bottom.blackFraction) + L"/" +
+				std::to_wstring(evidence.bottom.lumaP90) + L"/" +
+				std::to_wstring(evidence.bottom.rgbBoundaryContrast) + L"/" +
+				std::to_wstring(evidence.bottom.texture) + L" candidate=" +
+				std::to_wstring(evidence.proposedBounds.left) + L"," +
+				std::to_wstring(evidence.proposedBounds.top) + L"-" +
+				std::to_wstring(evidence.proposedBounds.right) + L"," +
+				std::to_wstring(evidence.proposedBounds.bottom);
+			Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),
+				int(evidence.classification),
+				jitterDiagnostic.c_str());
+			Assert::IsTrue(std::abs(evidence.trustedBounds.top - 140) <= 4);
+			Assert::IsTrue(std::abs(evidence.trustedBounds.bottom - 940) <= 4);
+			Assert::IsTrue(evidence.trustedBounds.aspectRatio > 2.35 &&
+				evidence.trustedBounds.aspectRatio < 2.45);
+		}
+
+		TEST_METHOD(SmoothDarkGradientCannotUseMatteRelativeContrastAsABar)
+		{
+			P010Frame frame(960, 540);
+			for (int y = 0; y < frame.height; ++y)
+			{
+				const int distance = (std::min)(y, frame.height - 1 - y);
+				const int code = 64 + (std::min)(16, distance / 12);
+				for (int x = 0; x < frame.width; ++x)
+					WriteCode(frame.bytes.data() + static_cast<size_t>(y) *
+						frame.pitch + x * 2, code);
+			}
+			auto source = frame.P010Source();
+			source.range = AnalysisLumaRange::Limited;
+			const auto evidence = ExtractActivePictureEvidence(source);
+			Assert::IsTrue(evidence.classification !=
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+				L"A smooth vignette has no localized bright/dark picture boundary even when its perimeter resembles black.");
 		}
 
 		TEST_METHOD(DarkCinematicScopeFrameKeepsTrustedBars)

@@ -73,7 +73,8 @@ namespace VideoProcessorTest
             CHECK_FIELD(barPixels); CHECK_FIELD(distributedSupportDepthRowsByQuartile);
             CHECK_FIELD(blackFraction); CHECK_FIELD(lumaFloor); CHECK_FIELD(lumaP90);
             CHECK_FIELD(lumaDispersion); CHECK_FIELD(texture); CHECK_FIELD(neutralChromaFraction);
-            CHECK_FIELD(innerBoundaryContrast); CHECK_FIELD(continuity); CHECK_FIELD(confidence);
+            CHECK_FIELD(innerBoundaryContrast); CHECK_FIELD(rgbBoundaryContrast);
+            CHECK_FIELD(continuity); CHECK_FIELD(confidence);
             CHECK_FIELD(trusted);
         }
 
