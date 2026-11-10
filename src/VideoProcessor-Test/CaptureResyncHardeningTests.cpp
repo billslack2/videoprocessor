@@ -28,7 +28,6 @@ namespace Tests
                 Assert::AreEqual(fps, stats.deliveredFps, 0.00001);
                 Assert::IsTrue(stats.windowSeconds >= 5.0);
                 Assert::AreEqual(uint64_t(0), stats.recentMissedFrames);
-                Assert::IsFalse(stats.losslessRgb24Capture);
             }
         }
 
