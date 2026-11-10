@@ -126,4 +126,3 @@
   `vp-update.json` for automatic updates. Never apply the EDID automatically.
 - Do not upload SHA/checksum files, manifest sidecars, build receipts, or other
   JSON evidence. Keep hashes and qualification records internal.
-
