@@ -35,3 +35,15 @@ Reviewed in detached worktree E:\codex\videoprocessor\v2-capture-merge-review-20
 - Magewell watchdog recovery (e656dde1, 955a8d54) applied without conflict after the capture chain. Validate latency, callback/worker lifetimes and device recovery with a card.
 - madVR NLS (a5769e53) passed a direct patch applicability check; it was not included in the build simulation. It changes NLS crop geometry authority and removes a full-raster fallback, so it is geometry behavior that needs explicit product review and madVR playback testing.
 - The capture simulation x64 Release solution build succeeded and 354 focused capture-format, telemetry, AR and subtitle tests passed. This is not a final integration verification: one OSD test conflict was temporarily resolved in favor of 2.0, tests use mocks/fixtures, and DeckLink and Magewell hardware playback/cadence were not measured.
+
+
+## Local test build: items 1–6
+
+- [x] Updater beta/stable policy, optional manual Vertex2 EDID, NLS pipeline reuse, DeckLink delivery statistics and Magewell stall recovery selectively integrated. Shared telemetry was adapted without importing newer Magewell format/packing features.
+- [x] madVR-only NLS crop feedback integrated. It uses madVR videoCropRect and intentionally enters NLS waiting/native passthrough if feedback is unavailable, instead of full-raster fallback. Live madVR validation remains open.
+- [x] Source commit 549b665f: full x64 Release rebuild passed; 479 focused native tests and 37 updater checks passed; both renderer variants loaded successfully.
+- [ ] Full interactive Config suite: focus/scroll and slider timing failures occurred while other heavy tests ran; the suite was stopped to avoid interfering with live playback. Needs quiet isolated reruns.
+- [ ] Dual-library GPU/motion run interrupted during standard tests to avoid competing with live playback; beta not run. This is incomplete, not a test assertion failure or a passing result.
+- [ ] Live capture, source cadence and frame-budget validation on DeckLink; repeat with Magewell after swapping cards. Magewell recovery is only proven by mocks so far.
+- [x] Separate test folder C:\Videoprocessor\vp\v2-merge-test-20261110 staged from Release build with the prior test configuration; existing installations/configurations preserved.
+- [ ] Merge or push to remote beta remains outstanding.

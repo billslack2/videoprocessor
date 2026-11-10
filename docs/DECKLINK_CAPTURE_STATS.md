@@ -1,6 +1,6 @@
 # DeckLink capture delivery statistics
 
-DeckLink supplies the same Capture fps, Capture missed and Render dropped OSD rows as Magewell, with either VP Renderer or DirectShow. The statistics apply to SDR, HDR and DV capture; they are not conditional on DV metadata.
+DeckLink supplies Capture fps, Capture missed and Render dropped OSD rows with either VP Renderer or DirectShow. The separate Magewell delivery-statistics implementation is not part of this selective integration. The statistics apply to SDR, HDR and DV capture; they are not conditional on DV metadata.
 
 Capture fps counts received valid-input video frames over completed five-second monotonic wall-clock windows. Expected fps comes from the detected input mode. Hardware timestamp gaps estimate skipped input frames independently of renderer queue drops. The existing VFrames/source sequence keeps its timestamp-interval meaning; it is not the delivered-fps numerator. Audio-only callbacks and no-signal frames do not contribute to delivery statistics.
 
