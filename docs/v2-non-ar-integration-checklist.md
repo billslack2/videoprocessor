@@ -47,3 +47,15 @@ Reviewed in detached worktree E:\codex\videoprocessor\v2-capture-merge-review-20
 - [ ] Live capture, source cadence and frame-budget validation on DeckLink; repeat with Magewell after swapping cards. Magewell recovery is only proven by mocks so far.
 - [x] Separate test folder C:\Videoprocessor\vp\v2-merge-test-20261110 staged from Release build with the prior test configuration; existing installations/configurations preserved.
 - [ ] Merge or push to remote beta remains outstanding.
+
+
+## RGB8 Dolby Vision integration: item 8
+
+- [x] Original byte-preserving RGB8 tunnel, renderer ABI and Magewell BGRA fixes selectively integrated on codex/v2-rgb8-dv-integration-20261110, based on the 97e2dc66 integration. Magewell watchdog and raw capture transitions were reconciled and exercised together.
+- [x] Decoded 12-bit DV analysis, full/limited SDR fallback, actual expected bars and subtitle detection agree across r210/ARGB/BGRA; a saved LOTR decoded frame also agrees across layouts and the subtitle is acquired. That replay reuses already-decoded pixels and is not an actual RGB8 card capture.
+- [x] Correct a shadow-only color diagnostic that incorrectly classified decoded 12-bit DV as 8-bit precision based on its RGB8 carrier. No change to active bar thresholds or aspect/subtitle transition policy.
+- [x] A dark-bar encoded fixture found a pre-existing r210 startup ambiguity: two alignments can produce a CRC-valid header while decoding different pixels. When distributed frame samples uniquely support one packing, prioritize its probe; actual packet CRC and metadata validation remain mandatory. Controlled tests cover both r210 alignments and RGB8 packed formats.
+- [ ] Remaining alignment limitation: if distributed pixels and CRC permit both r210 layouts, this bounded change retains legacy probe order and does not prove the correct alignment. Further investigation is needed before claiming universal correctness; physical transport and timing must be validated.
+- [x] x64 Release solution built and 538 selected native/renderer/capture/subtitle tests passed before the timing diagnostic was added. Local DeckLink and Magewell hardware, end-to-end frame deadline and actual RGB8 transport byte preservation remain unverified.
+- [ ] Run standard and beta subtitle/motion GPU regression and uncontended UHD decoder timing; run real capture and presentation/cadence with appropriate cards before release.
+- [ ] Earlier Config editor focus and timing failures from the 1–6 integration remain unresolved. This feature has not been merged or deployed.

@@ -3357,7 +3357,16 @@ FullRasterColorEvidence EvaluateFullRasterColorEvidence(
     // An 8-bit input expanded into a 10-bit plane has not acquired precision.
     // Unknown provenance also abstains: a plane format alone proves nothing
     // about the precision of the original capture.
-    switch (source.encoding)
+    // RGB8 is only the carrier for validated DV, whose converted picture
+    // has twelve-bit YCbCr samples. Do not confuse that with native RGB8
+    // or the eight-bit SDR tunnel fallback, which must still abstain.
+    const bool decodedRgb8Tunnel =
+        source.format == AnalysisLumaFormat::DecodedDolbyVision422 &&
+        (source.encoding == VideoFrameEncoding::ARGB_8BIT ||
+         source.encoding == VideoFrameEncoding::BGRA_8BIT);
+    if (decodedRgb8Tunnel)
+        result.precisionSupported = true;
+    else switch (source.encoding)
     {
     case VideoFrameEncoding::V210:
     case VideoFrameEncoding::R210:

@@ -1044,6 +1044,56 @@ namespace Tests
 		}
 
 
+        TEST_METHOD(RawRgbWatchdogRecoveryPreservesBytesAndRestoresRange)
+        {
+            using namespace DolbyVisionTestSender;
+            signalMode = 5; resumeOnRestart = true;
+            inputRangeSetting = MWCAP_VIDEO_QUANTIZATION_LIMITED;
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
+            picture.Embed(Packetize(DmBody())); rgbSenderBytes = &picture.input;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info = {};
+            QueueCallback callback; callback.goal = 2;
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true); device.StartCapture(1);
+            const bool resumed = callback.Wait([&] { return callback.frames.size() >= 2 || !callback.errors.empty(); });
+            const int activeRange = inputRangeSetting.load();
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(resumed && callback.errors.empty());
+            Assert::IsTrue(callback.invalidStates >= 1 && callback.validStates >= 2);
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_FULL), activeRange);
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_LIMITED), inputRangeSetting.load());
+            Assert::IsTrue(callback.frames.front()->GetData() != callback.frames[1]->GetData());
+            for (size_t i = 0; i < 2; ++i)
+                Assert::IsTrue(std::equal(picture.input.begin(), picture.input.end(),
+                    static_cast<const BYTE*>(callback.frames[i]->GetData())));
+        }
+
+        TEST_METHOD(RawModeChangeDuringWatchdogBackoffRestoresRangePromptly)
+        {
+            using namespace DolbyVisionTestSender;
+            signalMode = 5; failRecoveryStart = true;
+            inputRangeSetting = MWCAP_VIDEO_QUANTIZATION_LIMITED;
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
+            picture.Embed(Packetize(DmBody())); rgbSenderBytes = &picture.input;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info = {};
+            QueueCallback callback; callback.goal = 2;
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true); device.StartCapture(1);
+            const bool invalidated = callback.Wait([&] { return callback.invalidStates >= 1 || !callback.errors.empty(); });
+            // Two failed 250-ms retries enter the ten-second recovery tier.
+            Sleep(1400);
+            const int attempts = startCalls.load();
+            failRecoveryStart = false;
+            const auto start = std::chrono::steady_clock::now();
+            device.SetRawRgbTunnelCapture(false);
+            const bool switched = callback.Wait([&] { return callback.validStates >= 2 || !callback.errors.empty(); });
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(invalidated && attempts >= 4 && switched && callback.errors.empty());
+            Assert::IsTrue(elapsed < std::chrono::seconds(4), L"Mode change must not wait for ten-second stall backoff.");
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_LIMITED), inputRangeSetting.load());
+        }
+
         TEST_METHOD(LostFrameNotificationsRestartCaptureWithoutModalError)
         {
             QueueCallback callback;callback.goal=2;resumeOnRestart=true;

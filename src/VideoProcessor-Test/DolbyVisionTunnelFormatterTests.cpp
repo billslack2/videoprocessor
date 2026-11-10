@@ -8,6 +8,9 @@
 #include <VideoState.h>
 #include <CpuFeatures.h>
 #include <DolbyVisionTunnelInput.h>
+#include <AnalysisFrame.h>
+#include <ActivePictureEvidence.h>
+#include <SubtitleBoxDetector.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <video_frame_formatter/CRGBDolbyVisionTunnelFormatter.h>
 #include <algorithm>
@@ -53,6 +56,125 @@ namespace Tests
     {
     public:
 
+
+        TEST_METHOD(EncodedRgbTunnelFeedsActualPictureAndSubtitleAnalysis)
+        {
+            constexpr int width = 640, height = 360, top = 45, bottom = 315;
+            for (bool full : { false, true })
+            for (bool subtitle : { false, true })
+            {
+                ActivePictureEvidence reference;
+                SubtitleBoxResult referenceCue;
+                bool first = true;
+                struct Layout { VideoFrameEncoding encoding; bool high; };
+                for (const auto layout : { Layout{VideoFrameEncoding::R210, false},
+                    Layout{VideoFrameEncoding::R210, true}, Layout{VideoFrameEncoding::ARGB_8BIT, false},
+                    Layout{VideoFrameEncoding::BGRA_8BIT, false} })
+                {
+                    const auto encoding = layout.encoding;
+                    SenderPicture picture(layout.high, width, height, encoding);
+                    const int black = full ? 0 : 64;
+                    for (int y = 0; y < height; ++y)
+                        for (int x = 0; x < width; ++x)
+                        {
+                            const size_t pixel = size_t(y) * width + x;
+                            int value = y >= top && y < bottom ? black + 140 : black;
+                            if (subtitle && y >= 326 && y < 340 && x >= 200 && x < 395)
+                            {
+                                const int offset = (x - 200) % 13;
+                                const bool ink = offset < 8 && (offset < 2 || offset >= 6 || y < 328 || y >= 338);
+                                if (ink) value = 510;
+                            }
+                            picture.intensity[pixel] = uint16_t(value * 4);
+                            picture.chroma[pixel] = 2048;
+                            picture.Pack(pixel);
+                        }
+                    picture.Embed(Packetize(DmBody(3072, full)));
+                    Formatter formatter; formatter.OnVideoState(picture.state);
+                    auto decoded = std::make_shared<std::vector<BYTE>>();
+                    const auto metadata = Deliver(formatter, picture, 1, decoded.get());
+                    Assert::IsTrue(metadata.valid);
+                    Assert::AreEqual(layout.high ? 1U : 2U, static_cast<unsigned>(metadata.rgbBitAlignment),
+                        L"Confirmed r210 alignment must match independent sender pixels.");
+                    AssertExactSamples(picture, *decoded);
+                    auto native = std::make_shared<std::vector<BYTE>>(picture.input);
+                    AnalysisFrameInput input;
+                    input.nativeData = native->data(); input.nativeBytes = native->size();
+                    input.nativeRowBytes = picture.state->BytesPerRow(); input.nativeOwner = native;
+                    input.convertedData = decoded->data(); input.convertedBytes = decoded->size();
+                    input.convertedOwner = decoded; input.convertedContract = formatter.GetOutputContract();
+                    input.dolby = metadata; input.width = width; input.height = height;
+                    input.encoding = encoding; input.colorspace = ColorSpace::BT_2020;
+                    input.sourceGeneration = 1; input.converted422 = true; input.dolbyVisionTunnel = true;
+                    const auto frame = PrepareAnalysisFrame(input);
+                    Assert::IsTrue(frame.IsValid() && frame.usesConverted);
+                    const auto evidence = ExtractActivePictureEvidence(frame.source);
+                    SubtitleBoxDetector detector; SubtitleBoxResult cue;
+                    for (int i = 0; i < 4; ++i) cue = detector.Analyze(frame.source, top, bottom, i + 1, 1);
+                    Assert::AreEqual(subtitle, cue.detected);
+                    if (!subtitle) {
+                        AnalysisLumaSample outer, inner;
+                        Assert::IsTrue(frame.source.Sample(10, 0, outer) && frame.source.Sample(10, top, inner));
+                        const auto detail = L"full=" + std::to_wstring(full) + L" encoding=" +
+                            std::to_wstring(int(encoding)) + L" reason=" +
+                            std::wstring(evidence.reason.begin(), evidence.reason.end()) +
+                            L" proposal=" + std::to_wstring(evidence.proposedBounds.top) + L"-" +
+                            std::to_wstring(evidence.proposedBounds.bottom) + L" edge=" +
+                            std::to_wstring(evidence.top.rgbBoundaryContrast) + L"/" +
+                            std::to_wstring(evidence.bottom.rgbBoundaryContrast) + L" pixels=" +
+                            std::to_wstring(outer.luma) + L"/" + std::to_wstring(outer.chromaU) + L"/" +
+                            std::to_wstring(outer.chromaV) + L"," + std::to_wstring(inner.luma) + L"/" +
+                            std::to_wstring(inner.chromaU) + L"/" + std::to_wstring(inner.chromaV) +
+                            L" top-black=" + std::to_wstring(evidence.top.blackFraction) +
+                            L" neutral=" + std::to_wstring(evidence.top.neutralChromaFraction) +
+                            L" contrast=" + std::to_wstring(evidence.top.innerBoundaryContrast);
+                        Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED), int(evidence.classification), detail.c_str());
+                        Assert::IsTrue(std::abs(evidence.trustedBounds.top - top) <= 4 &&
+                            std::abs(evidence.trustedBounds.bottom - bottom) <= 4);
+                    }
+                    if (first) { reference = evidence; referenceCue = cue; first = false; }
+                    else {
+                        Assert::AreEqual(int(reference.classification), int(evidence.classification));
+                        Assert::AreEqual(reference.proposedBounds.top, evidence.proposedBounds.top);
+                        Assert::AreEqual(reference.proposedBounds.bottom, evidence.proposedBounds.bottom);
+                        Assert::AreEqual(referenceCue.detected, cue.detected);
+                        Assert::AreEqual(referenceCue.bounds.left, cue.bounds.left);
+                        Assert::AreEqual(referenceCue.bounds.bottom, cue.bounds.bottom);
+                    }
+                }
+            }
+        }
+
+        TEST_METHOD(UhdTunnelConversionReportsColdAndSteadyFrameCost)
+        {
+            // Diagnostic timing, not a hardware presentation or pass/fail deadline.
+            for (const auto encoding : { VideoFrameEncoding::R210, VideoFrameEncoding::BGRA_8BIT })
+            {
+                SenderPicture picture(false, 3840, 2160, encoding);
+                picture.Embed(Packetize(DmBody()));
+                Formatter formatter; formatter.OnVideoState(picture.state);
+                std::vector<BYTE> output(size_t(formatter.GetOutFrameSize()));
+                double coldMs = 0.0, totalMs = 0.0, maximumMs = 0.0;
+                constexpr int frames = 9;
+                for (int i = 0; i < frames; ++i)
+                {
+                    VideoFrame frame(picture.input.data(), uint64_t(i + 1), 0, nullptr);
+                    const auto start = std::chrono::steady_clock::now();
+                    Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+                    const double elapsed = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - start).count();
+                    if (i == 0) coldMs = elapsed;
+                    else { totalMs += elapsed; maximumMs = (std::max)(maximumMs, elapsed); }
+                }
+                Assert::IsTrue(formatter.GetDolbyVisionTunnelMetadata().valid);
+                const auto message = std::wstring(L"UHD tunnel conversion, format=") +
+                    (encoding == VideoFrameEncoding::R210 ? L"r210" : L"BGRA") +
+                    L" cold_ms=" + std::to_wstring(coldMs) + L" warm_avg_ms=" +
+                    std::to_wstring(totalMs / (frames - 1)) + L" warm_max_ms=" +
+                    std::to_wstring(maximumMs) + L"; excludes capture, analysis, GPU and present.";
+                Logger::WriteMessage(message.c_str());
+            }
+        }
 
         TEST_METHOD(RealRendererDecodesRgb8WithNativeUploadEnabled)
         {

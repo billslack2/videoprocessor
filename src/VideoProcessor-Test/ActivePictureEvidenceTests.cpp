@@ -7644,6 +7644,35 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(DecodedDolbyPrecisionIsIndependentOfRgbTunnelLayout)
+        {
+            P010Frame frame(384, 216, 16, true);
+            frame.Fill(87, 510, 514);
+            for (int y = 0; y < frame.height; ++y)
+                for (int x = 0; x < frame.width; ++x)
+                    WriteCode(frame.bytes.data() + size_t(y) * frame.pitch + x * 2,
+                        84 + ((x * 13 + y * 7) % 9));
+            auto source = AsDecodedDolbyVisionSource(frame);
+            source.encoding = VideoFrameEncoding::R210;
+            const auto reference = EvaluateFullRasterColorEvidence(source);
+            Assert::IsTrue(reference.evaluated && reference.precisionSupported);
+            for (auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            {
+                source.encoding = encoding;
+                const auto actual = EvaluateFullRasterColorEvidence(source);
+                Assert::IsTrue(actual.evaluated && actual.precisionSupported,
+                    L"Decoded 12-bit picture evidence must not inherit its 8-bit tunnel label.");
+                Assert::AreEqual(reference.candidateSupported, actual.candidateSupported);
+                Assert::AreEqual(reference.sampleCount, actual.sampleCount);
+                for (int edge = 0; edge < 4; ++edge)
+                {
+                    Assert::AreEqual(reference.edges[edge].medianY, actual.edges[edge].medianY);
+                    Assert::AreEqual(reference.edges[edge].dispersionY, actual.edges[edge].dispersionY);
+                    Assert::AreEqual(reference.edges[edge].supportedCells, actual.edges[edge].supportedCells);
+                }
+            }
+        }
+
         TEST_METHOD(ColorCorroborationRejectsInvalidSourceAndCentralLogo)
         {
             Assert::IsFalse(EvaluateFullRasterColorEvidence({}).evaluated);

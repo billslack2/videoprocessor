@@ -339,8 +339,32 @@ bool CRGBDolbyVisionTunnelFormatter::FormatVideoFrame(
 
 	// Prefer the current alignment so normal low8 capture does not probe a
 	// known-wrong layout on every picture. Only CRC can confirm the tunnel.
-	const ByteAlignment firstCandidate = m_alignment == ByteAlignment::RIGHT ?
-		ByteAlignment::RIGHT : ByteAlignment::LEFT;
+    ByteAlignment firstCandidate = m_alignment == ByteAlignment::RIGHT ?
+        ByteAlignment::RIGHT : ByteAlignment::LEFT;
+    if (m_encoding == VideoFrameEncoding::R210 && m_alignment == ByteAlignment::UNKNOWN)
+    {
+        // A uniform letterbox can make both r210 bit alignments yield the
+        // same CRC-valid header. Sample across the source, not only the
+        // metadata rows, to prioritize a uniquely compatible alignment.
+        // This changes probe order only; CRC and metadata checks still decide.
+        const size_t pixels = static_cast<size_t>(m_width) * m_height;
+        const size_t count = (std::min)(pixels, size_t(4096));
+        size_t highCompatible = 0, lowCompatible = 0;
+        for (size_t i = 0; i < count; ++i)
+        {
+            const size_t position = count > 1 ? i * (pixels - 1) / (count - 1) : 0;
+            const uint32_t word = readWord(position);
+            const uint32_t r = (word >> 20) & 0x3ffU;
+            const uint32_t g = (word >> 10) & 0x3ffU;
+            const uint32_t b = word & 0x3ffU;
+            highCompatible += ((r | g | b) & 3U) == 0;
+            lowCompatible += ((r | g | b) & 0x300U) == 0;
+        }
+        if (count && highCompatible * 100 >= count * 98 && highCompatible > lowCompatible * 2)
+            firstCandidate = ByteAlignment::LEFT;
+        else if (count && lowCompatible * 100 >= count * 98 && lowCompatible > highCompatible * 2)
+            firstCandidate = ByteAlignment::RIGHT;
+    }
 	for (const ByteAlignment candidate : { firstCandidate,
 		firstCandidate == ByteAlignment::LEFT ? ByteAlignment::RIGHT : ByteAlignment::LEFT })
 	{
