@@ -231,13 +231,16 @@ namespace ConfigurationRpcProtocol
 		std::string zoom;
         std::string subtitles;
         std::string outputDisplay;
+        std::string motion;
 		bool shaderAvailable = false;
 		std::vector<std::string> shaders;
+        std::vector<std::string> profiles;
 	};
 
-	constexpr uint8_t LiveProfileStatusVersion = 3;
+	constexpr uint8_t LiveProfileStatusVersion = 5;
 	constexpr size_t MaximumProfileSectionBytes = 96;
 	constexpr size_t MaximumProfileShaders = 16;
+    constexpr size_t MaximumActiveProfiles = 32;
 
 	inline bool BuildLiveProfileStatus(const LiveProfileStatus& status,
 		std::vector<uint8_t>& payload)
@@ -248,7 +251,7 @@ namespace ConfigurationRpcProtocol
 		const std::string* const sections[] = { &status.queue,
 			&status.renderer, &status.color, &status.scaling,
 			&status.output, &status.viewport, &status.zoom, &status.subtitles,
-            &status.outputDisplay };
+            &status.outputDisplay, &status.motion };
 		for (const auto* section : sections)
 			if (section->size() > MaximumProfileSectionBytes ||
 				!WriteString(payload, *section)) return false;
@@ -258,7 +261,12 @@ namespace ConfigurationRpcProtocol
 		for (const auto& shader : status.shaders)
 			if (shader.size() > MaximumProfileSectionBytes ||
 				!WriteString(payload, shader)) return false;
-		return true;
+        if (status.profiles.size() > MaximumActiveProfiles) return false;
+        Write32(payload, static_cast<uint32_t>(status.profiles.size()));
+        for (const auto& profile : status.profiles)
+            if (profile.size() > MaximumProfileSectionBytes ||
+                !WriteString(payload, profile)) return false;
+        return true;
 	}
 
 	inline bool ParseLiveProfileStatus(const std::vector<uint8_t>& payload,
@@ -283,6 +291,7 @@ namespace ConfigurationRpcProtocol
 				section->size() > MaximumProfileSectionBytes) return false;
         if(payload[0]>=2 && (!ReadString(payload,cursor,parsed.subtitles) || parsed.subtitles.size()>MaximumProfileSectionBytes)) return false;
         if(payload[0]>=3 && (!ReadString(payload,cursor,parsed.outputDisplay) || parsed.outputDisplay.size()>MaximumProfileSectionBytes)) return false;
+        if(payload[0]>=4 && (!ReadString(payload,cursor,parsed.motion) || parsed.motion.size()>MaximumProfileSectionBytes)) return false;
 		if (cursor > payload.size() || payload.size() - cursor < 5 ||
 			payload[cursor] > 1) return false;
 		parsed.shaderAvailable = payload[cursor++] != 0;
@@ -296,8 +305,31 @@ namespace ConfigurationRpcProtocol
 				section.size() > MaximumProfileSectionBytes) return false;
 			parsed.shaders.push_back(std::move(section));
 		}
-		if (cursor != payload.size()) return false;
-		status = std::move(parsed);
+        if (payload[0] >= 5)
+        {
+            if (cursor > payload.size() || payload.size() - cursor < 4) return false;
+            const uint32_t profiles = Read32(payload.data() + cursor);
+            cursor += 4;
+            if (profiles > MaximumActiveProfiles) return false;
+            for (uint32_t index = 0; index < profiles; ++index)
+            {
+                std::string section;
+                if (!ReadString(payload, cursor, section) ||
+                    section.size() > MaximumProfileSectionBytes) return false;
+                parsed.profiles.push_back(std::move(section));
+            }
+        }
+        else
+        {
+            // Older peers only publish these legacy fields. Never infer DV or
+            // input activation when their status was not sent.
+            for (const auto* section : { &parsed.queue, &parsed.renderer, &parsed.color,
+                &parsed.scaling, &parsed.output, &parsed.viewport, &parsed.zoom,
+                &parsed.subtitles, &parsed.outputDisplay, &parsed.motion })
+                if (!section->empty()) parsed.profiles.push_back(*section);
+        }
+        if (cursor != payload.size()) return false;
+        status = std::move(parsed);
 		return true;
 	}
 

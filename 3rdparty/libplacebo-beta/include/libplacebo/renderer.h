@@ -167,7 +167,7 @@ struct pl_render_params {
     const struct pl_filter_config *frame_mixer;
 
     // Configures the settings used to deband source textures. Leaving this as
-    // NULL disables debanding.
+    // NULL, or setting both `iterations` and `grain` to 0, disables debanding.
     //
     // Note: The `deband_params.grain` setting is automatically adjusted to
     // prevent blowing up on HDR sources. The user need not account for this.
@@ -202,7 +202,7 @@ struct pl_render_params {
     const struct pl_error_diffusion_kernel *error_diffusion;
 
     // Configures the settings used to simulate color blindness, if desired.
-    // If NULL, this feature is disabled.
+    // If NULL, or if no cones are affected, this feature is disabled.
     const struct pl_cone_params *cone_params;
 
     // Configures output blending. When rendering to the final target, the
@@ -274,6 +274,12 @@ struct pl_render_params {
     // indicates the relative fraction of the side length to round - a value
     // of 1.0 rounds the corners as much as possible.
     float corner_rounding;
+
+    // Transparency of the image itself, multiplied on top of any alpha
+    // channel it already has. 0.0 for opaque (the default), 1.0 for fully
+    // transparent. Like `corner_rounding`, this only affects the image, not
+    // the `border` around it.
+    float transparency;
 
     // --- Performance / quality trade-off options:
     // These should generally be left off where quality is desired, as they can
@@ -576,6 +582,14 @@ struct pl_frame {
     void (*release)(pl_gpu gpu, struct pl_frame *frame);
 
     // Color representation / encoding / semantics of this frame.
+    //
+    // Note: For PL_COLOR_SYSTEM_XYZ, `color.primaries` denotes the RGB color
+    // space that the XYZ tristimulus values are decoded into (or encoded
+    // from), which decides the white point treated as neutral. Unless the
+    // frame is explicitly tagged as PL_COLOR_TRC_LINEAR, XYZ is assumed to be
+    // DCDM X'Y'Z' (SMPTE ST 428-1), i.e. ST 428-1 encoded DCI-P3, and any
+    // tagged primaries/transfer are ignored. Linear light XYZ honors the
+    // tagged primaries, defaulting to BT.2020 (D65) if unknown.
     struct pl_color_repr repr;
     struct pl_color_space color;
 
@@ -671,6 +685,9 @@ PL_API void pl_frame_set_chroma_location(struct pl_frame *frame,
 PL_API void pl_frame_from_swapchain(struct pl_frame *out_frame,
                                     const struct pl_swapchain_frame *frame);
 
+// Helper function to get the canonical / reference size of a frame.
+PL_API void pl_frame_size(const struct pl_frame *frame, int *w, int *h);
+
 // Helper function to determine if a frame is logically cropped or not. In
 // particular, this is useful in determining whether or not an output frame
 // needs to be cleared before rendering or not.
@@ -747,6 +764,12 @@ PL_API bool pl_render_image(pl_renderer rr, const struct pl_frame *image,
 // so calling it is a good idea if the content source is expected to change
 // dramatically (e.g. when switching to a different file).
 PL_API void pl_renderer_flush_cache(pl_renderer rr);
+
+// Releases *all* GPU resources held by this renderer, including intermediate
+// textures not affected by `pl_renderer_flush_cache()`.
+//
+// Resources will be recreated as needed on subsequent use.
+PL_API void pl_renderer_reset(pl_renderer rr);
 
 // Mirrors `pl_get_detected_hdr_metadata`, giving you the current internal peak
 // detection HDR metadata (when peak detection is active). Returns false if no

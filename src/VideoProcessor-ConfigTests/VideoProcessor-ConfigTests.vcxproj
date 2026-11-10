@@ -62,6 +62,7 @@ copy /Y "$(QtRoot)\plugins\platforms\qoffscreen.dll" "$(TargetDir)platforms\qoff
     <ClCompile Include="..\VideoProcessor-Lib\DisplayRefreshRatePolicy.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ToneChartIntegrationTests.inc" />
     <ClInclude Include="..\VideoProcessor-Config\ConfigEditorWindow.h" />
     <ClInclude Include="..\VideoProcessor-Config\VpTheme.h" />
     <ClInclude Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.h" />

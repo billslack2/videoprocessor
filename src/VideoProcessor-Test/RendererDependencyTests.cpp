@@ -8,9 +8,9 @@ namespace Tests {
 TEST_CLASS(RendererDependencyTests) { public:
     TEST_METHOD(GpuTestsLoadTheSelectedRendererDependency) {
 #ifdef VP_LIBPLACEBO_BETA
-        static_assert(PL_API_VER == 377, "Beta tests need the beta headers");
-        const auto module=L"libplacebo-377.dll";
-        const auto version="7.377";
+        static_assert(PL_API_VER == 388, "Beta tests need the beta headers");
+        const auto module=L"libplacebo-388.dll";
+        const auto version="7.388";
 #else
         static_assert(PL_API_VER == 360, "Standard tests need the standard headers");
         const auto module=L"libplacebo-360.dll";

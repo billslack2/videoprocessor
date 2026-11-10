@@ -9,11 +9,12 @@
   This reconstructs the original bundled source archive, including the timer
   allocation/suspension patches absent from the previously published branch.
 - **VP Renderer (Beta)**: upstream master pinned to
-  `1dd022687b9ac1dd996855b51433bf770ae76aab`, with VP analysis crop,
+  `a83aaeb4e60fdd7ed01619885f4f42bb0ef34eaa`, with VP analysis crop,
   master scene-statistics crop support, timer controls, dynamic-target toggle,
   and opt-in experimental gamut overflow correction.
   [codex/vp-master-beta](https://github.com/billslack2/libplacebo/tree/codex/vp-master-beta),
-  commit `8bccd6578c9e845f77205cec9e85fdb97bf36ed7`, API **377**.
+  commit `a89f8241bfd6c5f5affaa9c3ce39fa2b1767b8c7`, API **388**. The shipped translated subtitle ROI-copy
+  optimization is now committed in the fork.
 
 Both branches belong to `billslack2/libplacebo`. Upstream updates should be
 explicitly pinned and tested on the Beta branch. Do not automatically rebuild
@@ -70,7 +71,7 @@ mastering_clip: AUTO
 
 Stable uses `vprenderer/VideoProcessorVPRenderer.dll` with `libplacebo-360.dll`.
 Beta uses `vprenderer-beta/VideoProcessorVPRendererBeta.dll` with
-`libplacebo-377.dll`. Headers, import libraries, object directories, exported
+`libplacebo-388.dll`. Headers, import libraries, object directories, exported
 parameter reads and persistent shader caches are separate. Plugin API 25 also
 checks a renderer-flavor export, rejecting a plugin placed under the wrong name.
 All eight shared transitive runtime DLLs are currently byte-identical. This is
@@ -94,6 +95,22 @@ the shared DLL's version stale. Confirm `pl_version()` before bundling.
 
 The existing SDR swapchain hint workaround is retained. The master-specific
 transfer-hint change does not justify removing this compatibility policy.
+
+## Upstream refresh (2026-10-29)
+
+The beta dependency is rebuilt from the clean fork commit above against upstream
+API 387, with fork API 388 to distinguish the extended ABI. Current build,
+loader, chart and packaging references use libplacebo-388.dll and its matching
+headers/import library. Stable 7.360.1 remains unchanged. Earlier validation and
+probe commands below refer to their historical source versions.
+
+Upstream ed5d8d70 prevents 16-bit gamut LUT conversion wraparound; 4828f628
+corrects the neutral chroma offset. These fix LUT encoding before our optional
+physical-target residual correction. That correction remains default Off.
+The translated subtitle ROI-copy patch is preserved as committed source.
+All 15 native library suites pass, including GPU correction restoration and
+exact-pixel/cache ROI regressions. Real-content gamut comparison and physical
+HDMI qualification have not been rerun for this refresh.
 
 ## Previous Beta integration validation (2026-10-11)
 

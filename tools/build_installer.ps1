@@ -148,6 +148,13 @@ try {
             Set-Content -LiteralPath ($zip + '.sha256') -Encoding ASCII
         $distributionFiles += @($zip, ($zip + '.sha256'))
     }
+    # Publish the optional Vertex2 EDID beside every Setup/portable release.
+    # It is applied manually to the HDMI device, never to the VP installation.
+    $edid = Join-Path $output 'vertex2-lg-dv30-hdr10bit.bin'
+    Copy-Item -LiteralPath (Join-Path $root 'docs\edid\vertex2-lg-dv30-hdr10bit.bin') -Destination $edid
+    "$((Get-FileHash -LiteralPath $edid -Algorithm SHA256).Hash)  $([IO.Path]::GetFileName($edid))" |
+        Set-Content -LiteralPath ($edid + '.sha256') -Encoding ASCII
+    $distributionFiles += @($edid, ($edid + '.sha256'))
     $after = Get-VpSourceIdentity $root
     if ($after.build -ne $identity.build -or $after.fingerprint -ne $identity.fingerprint) {
         # Keep an interrupted package out of the distributable output directory.

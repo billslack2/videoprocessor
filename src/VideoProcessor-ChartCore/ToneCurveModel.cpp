@@ -13,7 +13,7 @@
 
 // Samples the tone curve as VP Renderer (Beta) builds it, on a grey scene.
 // Nothing links libplacebo: its functions and data are found by name in VP
-// Renderer (Beta)'s copy, libplacebo-377.dll. Every curve value comes from
+// Renderer (Beta)'s copy, libplacebo-388.dll. Every curve value comes from
 // pl_tone_map_sample.
 //
 // ColorMap() copies the tone part of LibplaceboRenderParameters::Build()
@@ -24,7 +24,7 @@
 // directly. If its mapping changes, change this copy.
 //
 // Map() then repeats what pl_shader_color_map_ex() in his fork's
-// src/shaders/colorspace.c (codex/vp-master-beta 8bccd657) computes and does
+// src/shaders/colorspace.c (codex/vp-master-beta a89f8241) computes and does
 // not export, in its order, citing its lines: the source's metadata with what
 // peak detection reports, its nominal luminance, infer, round near-equal
 // peaks, the signal black, the input peak, the dynamic target and the
@@ -53,7 +53,7 @@ namespace
         library.nominalLuma = reinterpret_cast<decltype(library.nominalLuma)>(ToneCurveRuntime::Find("pl_color_space_nominal_luma_ex"));
         if (library.infer && library.sample && library.rescale && library.inferSpace && library.nominalLuma)
             return true;
-        error = L"libplacebo-377.dll is missing a tone-mapping function";
+        error = L"libplacebo-388.dll is missing a tone-mapping function";
         return false;
     }
 
@@ -62,7 +62,7 @@ namespace
     {
         const T* value = static_cast<const T*>(ToneCurveRuntime::Find(exportName));
         if (!value)
-            error = L"libplacebo-377.dll is missing " + std::wstring(exportName, exportName + strlen(exportName));
+            error = L"libplacebo-388.dll is missing " + std::wstring(exportName, exportName + strlen(exportName));
         return value;
     }
 
@@ -421,7 +421,7 @@ namespace
         bind(colour.gamutClip, "pl_gamut_map_clip");
         if (found)
             return true;
-        error = L"libplacebo-377.dll is missing a colour function";
+        error = L"libplacebo-388.dll is missing a colour function";
         return false;
     }
 

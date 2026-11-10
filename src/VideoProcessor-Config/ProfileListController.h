@@ -2,6 +2,7 @@
 
 #include <QAbstractItemModel>
 #include <QListWidget>
+#include <QLabel>
 #include <QMessageBox>
 #include <QObject>
 #include <QPushButton>
@@ -35,6 +36,39 @@ struct ProfileListPolicy
 class ProfileListController final : public QObject
 {
 public:
+    static constexpr int ActiveProfileRole = Qt::UserRole + 12;
+
+    static int UpdateActiveStatus(QListWidget* list, bool available,
+        const QStringList& sections)
+    {
+        int activeRow = -1;
+        for (int index = 0; list && index < list->count(); ++index)
+        {
+            auto* item = list->item(index);
+            const QString section = item->data(Qt::UserRole).toString();
+            const bool active = available && !section.isEmpty() &&
+                sections.contains(section, Qt::CaseInsensitive);
+            // Avoid invalidating an unchanged model on each polling tick.
+            if (item->data(ActiveProfileRole).toBool() != active)
+                item->setData(ActiveProfileRole, active);
+            if (active) activeRow = index;
+        }
+        return activeRow;
+    }
+
+    static void UpdateSelectedStatus(QListWidgetItem* current, QLabel* label,
+        bool available)
+    {
+        if (!current || !label) return;
+        const QString display = current->data(Qt::UserRole + 1).toString();
+        const QString title = !available ?
+            QStringLiteral("%1 (Live status unavailable)").arg(display) :
+            current->data(ActiveProfileRole).toBool() ?
+                QStringLiteral("%1 (Active)").arg(display) :
+                QStringLiteral("%1 (Not active)").arg(display);
+        if (label->text() != title) label->setText(title);
+    }
+
     ProfileListController(QObject* context, QWidget* dialogParent,
         QListWidget* list, QPushButton* add, QPushButton* remove,
         QPushButton* up, QPushButton* down, ProfileListPolicy policy)

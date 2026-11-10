@@ -4,6 +4,11 @@
 #include <windows.h>
 
 #include "ConfigEditorWindow.h"
+#include "../VideoProcessor-Config/ToneChartPanel.h"
+#include <QElapsedTimer>
+#include <QImage>
+#include <QDynamicPropertyChangeEvent>
+#include <QThread>
 #include "../VideoProcessor-Config/UpdatePanel.h"
 #include "../VideoProcessor-Config/AdaptiveWorkspace.h"
 #include "ConfigEditorCore.h"
@@ -30,6 +35,8 @@
 #include <QDialog>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QImage>
+#include <QDynamicPropertyChangeEvent>
 #include <QFile>
 #include <QFileSystemWatcher>
 #include <QFileInfo>
@@ -46,6 +53,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QListWidget>
+#include <QStyledItemDelegate>
 #include <QListView>
 #include <QMessageBox>
 #include <QMenu>
@@ -510,6 +518,141 @@ void testSubtitleCutPasteSurvivesConfigSaveAndReopen()
             require(readBytes(path).contains(QByteArray::fromStdString(expected.first+": "+expected.second)),"Ignored legacy configuration was not preserved");
         }
     }
+}
+
+
+namespace ChartWorkerTest {
+std::atomic_int calls{0};
+std::mutex sampleMutex;
+std::map<double,int> samplesByTarget;
+int targetCalls(double target) {
+    std::lock_guard<std::mutex> lock(sampleMutex);return samplesByTarget[target];
+}
+std::atomic_bool blocked{false}, release{false}, colourBlocked{false}, releaseColour{false};
+double toPq(double nits) { return nits/10000.0; }
+double toNits(double pq) { return pq*10000.0; }
+bool sample(const ToneCurveProvider::Request& request, ToneCurveProvider::Result& result, std::wstring&) {
+    ++calls;
+    {std::lock_guard<std::mutex> lock(sampleMutex);++samplesByTarget[request.targetNits];}
+    if(request.targetNits==101||request.targetNits==104) {
+        blocked=true;
+        for(int i=0;i<2000&&!release.load();++i) QThread::msleep(1);
+    }
+    result.profilePq=request.sourcePq;result.defaultPq=request.sourcePq;
+    result.inputMaxPq=1;result.outputMaxPq=toPq(request.targetNits);
+    result.scenePeakPq=toPq(request.scenePeakNits);result.kneePq=toPq(13);
+    return true;
+}
+bool colour(const ToneCurveProvider::Request& request,bool,ToneCurveProvider::Gamut,
+    const std::vector<ToneCurveProvider::ColourSample>& samples,
+    std::vector<ToneCurveProvider::ColourPoint>& points,std::wstring&) {
+    if(request.targetNits==105) {
+        colourBlocked=true;
+        for(int i=0;i<3000&&!releaseColour.load();++i)QThread::msleep(1);
+    }
+    points.resize(samples.size());for(auto& point:points){point.valid=true;point.u=.2;point.v=.4;}
+    return true;
+}
+bool corners(ToneCurveProvider::Gamut,ToneCurveProvider::GamutCorners& out) {
+    for(int i=0;i<4;++i){out.u[i]=.1*i;out.v[i]=.2*i;}return true;
+}
+struct Applied : QObject {
+    std::vector<double> targets;
+    bool eventFilter(QObject* object,QEvent* event) override {
+        if(event->type()==QEvent::DynamicPropertyChange &&
+            static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName()=="toneCharts.readyTargetNits")
+            targets.push_back(object->property("toneCharts.readyTargetNits").toDouble());
+        return false;
+    }
+};
+struct Provider {
+    ToneCurveProvider::Functions previous;
+    Provider() {
+        ToneChartWork::Service::Get().drain();
+        previous=ToneCurveProvider::Registered();samplesByTarget.clear();calls=0;blocked=false;release=false;colourBlocked=false;releaseColour=false;
+        ToneCurveProvider::Registered()={sample,toPq,toNits,colour,corners};
+    }
+    ~Provider(){release=true;releaseColour=true;ToneChartWork::Service::Get().drain();ToneCurveProvider::Registered()=previous;}
+};
+template<class F> bool wait(F condition) {
+    QElapsedTimer timer;timer.start();
+    while(!condition()&&timer.elapsed()<5000){QApplication::processEvents();QThread::msleep(1);}
+    return condition();
+}
+}
+
+void testToneChartsBackgroundWarmAndLatestRequest()
+{
+    ChartWorkerTest::Provider provider;
+    QString selected="first";
+    ToneCurveProvider::Request request;request.betaRenderer=true;request.targetNits=101;
+    ToneChartPanel panel;
+    ChartWorkerTest::Applied applied;panel.installEventFilter(&applied);
+    panel.setCompareSources({
+        []{return std::vector<std::pair<QString,QString>>{{"first","First"},{"second","Second"},{"third","Third"}};},
+        [&]{return selected;},
+        [&](const QString& section){auto value=request;value.targetNits=section=="first"?101:section=="second"?202:303;return value;},
+        [&](const std::map<QString,QString>&){return request;}});
+    QElapsedTimer timer;timer.start();panel.setRequest(request);
+    require(timer.elapsed()<100,"Chart request blocks the UI while sampling");
+    require(ChartWorkerTest::wait([]{return ChartWorkerTest::blocked.load();}),"Worker never started");
+    selected="second";request.targetNits=202;panel.setRequest(request);
+    require(!panel.property("toneCharts.readyTargetNits").isValid(),"Blocked result was applied early");
+    ChartWorkerTest::release=true;
+    require(ChartWorkerTest::wait([&]{return panel.property("toneCharts.readyTargetNits").toDouble()==202;}),
+        "Latest profile was not applied after the blocked request");
+    require(applied.targets==std::vector<double>{202},"An obsolete profile result was displayed");
+    ToneChartWork::Service::Get().drain();
+    const int calls=ChartWorkerTest::calls.load();
+    require(calls==3,"Profiles were not warmed once each");
+    selected="third";request.targetNits=303;panel.setRequest(request);
+    require(ChartWorkerTest::wait([&]{return panel.property("toneCharts.readyTargetNits").toDouble()==303;}),
+        "Warmed profile did not become ready");
+    ToneChartWork::Service::Get().drain();
+    require(ChartWorkerTest::calls==calls,"Selecting a warmed profile sampled the engine again");
+    require(panel.property("toneCharts.readyGeneration")==panel.property("toneCharts.requestedGeneration"),
+        "Stale chart generation is visible");
+    std::cout<<"  background profiles sampled once: "<<calls<<std::endl;
+}
+
+void testToneChartsCloseWithWorkPending()
+{
+    ChartWorkerTest::Provider provider;
+    auto panel=std::make_unique<ToneChartPanel>();
+    ToneCurveProvider::Request request;request.betaRenderer=true;request.targetNits=104;
+    panel->setRequest(request);
+    require(ChartWorkerTest::wait([]{return ChartWorkerTest::blocked.load();}),"Worker never started");
+    panel.reset();
+    ChartWorkerTest::release=true;
+    ToneChartWork::Service::Get().drain();QApplication::processEvents();
+}
+
+void testToneChartsStayInteractiveWhileUpdating()
+{
+    ChartWorkerTest::Provider provider;
+    ToneChartPanel panel;panel.resize(1100,1100);panel.show();
+    ToneCurveProvider::Request request;request.betaRenderer=true;request.targetNits=205;
+    panel.setRequest(request);
+    require(ChartWorkerTest::wait([&]{return panel.property("toneCharts.readyTargetNits").toDouble()==205;}),"Initial chart never appeared");
+    QApplication::processEvents();
+    auto* pages=requireControl<QStackedWidget>(panel,"toneChartsPages");
+    const auto geometry=pages->geometry();
+    request.targetNits=105;panel.setRequest(request);
+    require(ChartWorkerTest::wait([]{return ChartWorkerTest::colourBlocked.load();}),"Colour worker never blocked");
+    const auto generation=panel.property("toneCharts.requestedGeneration");
+    for(int i=0;i<20;++i)panel.setRequest(request);
+    require(panel.property("toneCharts.requestedGeneration")==generation,"Identical refreshes invalidate unfinished charts");
+    QApplication::processEvents();
+    require(pages->geometry()==geometry,"Background calculation moved the chart layout");
+    auto* scene=requireControl<QPushButton>(panel,"toneCharts.scene.Bright");
+    require(scene->isEnabled(),"Scene control disabled while worker is running");
+    for(auto* label:panel.findChildren<QLabel*>())
+        require(!label->isVisible()||!label->text().contains("Updating charts"),"A loading label is shown");
+    scene->click();
+    require(panel.property("toneCharts.requestedGeneration")!=generation,"Scene click was ignored during calculation");
+    request.targetNits=206;panel.setRequest(request);
+    ChartWorkerTest::releaseColour=true;
+    require(ChartWorkerTest::wait([&]{return panel.property("toneCharts.readyTargetNits").toDouble()==206;}),"Latest edit never appeared after slow Colour calculation");
 }
 
 void testToneSliderDragPerformance()
@@ -3973,10 +4116,94 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 		"Disabling calibration did not gate its selectors");
 }
 
+void testAllProfileListsShareActiveStatus()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QFile file(path);
+    require(file.open(QIODevice::Append), "Cannot append profile status fixture");
+    file.write("\n[lldv.StatusDefault]\ndolby_vision_tunnel: true\n[lldv.StatusOther]\ndolby_vision_tunnel: false\n"
+        "[vprenderer.input.StatusDefault]\nlabel: First\n[vprenderer.input.StatusOther]\nlabel: Second\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    auto* dv = requireControl<QListWidget>(window, "config.lldv.profiles");
+    auto* dvTitle = requireControl<QLabel>(window, "config.lldv.selected_profile_status");
+    require(dv->count() >= 2, "DV fixture lacks two profiles");
+    // Every editor list must have the active-state delegate and consume the
+    // same generic section collection; no per-page status allowlist is used.
+    int tested = 0;
+    for (const auto& group : ProfileGroups::Definitions())
+    {
+        const QString root = QString::fromLatin1(group.section);
+        auto* list = window.findChild<QListWidget*>("config." + root + ".profiles");
+        if (!list && group.shader)
+            list = window.findChild<QListWidget*>("config." + root + ".modes");
+        if (!list || list->count() == 0) continue;
+        ++tested;
+        require(typeid(*list->itemDelegate()) != typeid(QStyledItemDelegate),
+            "Profile list still uses a plain delegate");
+        const int last = list->count() - 1;
+        list->setCurrentRow(last);
+        const QString first = list->item(0)->data(Qt::UserRole).toString();
+        const QString other = list->item(last)->data(Qt::UserRole).toString();
+        auto publish = [&](const QString& section) {
+            window.setActiveProfileSectionsForTesting(group.shader ? QStringList() : QStringList{section},
+                group.shader ? QStringList{section} : QStringList());
+        };
+        publish(first);
+        require(list->item(0)->data(Qt::UserRole + 12).toBool(), "Profile group has no default active marker");
+        publish(other.toUpper());
+        require(list->item(last)->data(Qt::UserRole + 12).toBool(), "Profile marker did not follow activation");
+        if (last > 0) require(!list->item(0)->data(Qt::UserRole + 12).toBool(), "Previous marker did not clear");
+        window.setActiveProfileSectionsForTesting({}, {}, false, false);
+        require(!list->item(last)->data(Qt::UserRole + 12).toBool(), "Unavailable live status retained a stale marker");
+    }
+    require(tested >= 9, "Shared status regression skipped profile groups");
+    const int last = dv->count() - 1;
+    dv->setCurrentRow(last);
+    const QString selected = dv->item(last)->data(Qt::UserRole).toString();
+    window.setActiveProfileSectionsForTesting({selected});
+    require(dvTitle->text().contains("(Active)"), "DV title does not use shared activation status");
+    window.setActiveProfileSectionsForTesting({dv->item(0)->data(Qt::UserRole).toString()});
+    require(dv->currentRow() == last && dvTitle->text().contains("(Not active)"),
+        "DV activation changed the profile being edited or left its title active");
+}
+
+void testMotionProfileMarkerFollowsActivation()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QFile file(path);
+    require(file.open(QIODevice::Append), "Cannot append motion profile fixture");
+    file.write("\n[vprenderer.motion.ActivationDefault]\nsmooth_motion: auto\nframe_mixer: oversample\n[vprenderer.motion.ActivationTest]\nsmooth_motion: always\nframe_mixer: linear\ndeinterlace: off\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    auto* list = requireControl<QListWidget>(window, "config.vprenderer.motion.profiles");
+    auto* title = requireControl<QLabel>(window, "config.vprenderer.motion.selected_profile_status");
+    require(list->count() >= 2, "Motion fixture must contain two profiles");
+    const int last = list->count() - 1;
+    const QString first = list->item(0)->data(Qt::UserRole).toString();
+    const QString test = list->item(last)->data(Qt::UserRole).toString();
+    auto publish = [&](const QString& section) {
+        window.setActiveProfileStatusForTesting({}, {}, {}, {}, {}, false, {}, {}, {}, {}, {}, section);
+    };
+    list->setCurrentRow(last);
+    publish(first);
+    require(list->item(0)->data(Qt::UserRole + 12).toBool(), "Default Motion profile has no active marker");
+    require(title->text().contains("Not active"), "Motion edit selection is confused with activation");
+    publish(test.toUpper());
+    require(list->item(last)->data(Qt::UserRole + 12).toBool() &&
+        !list->item(0)->data(Qt::UserRole + 12).toBool(), "Motion marker did not follow activation");
+    require(title->text().contains("(Active)"), "Activated Motion profile is still labelled inactive");
+    publish({});
+    require(!list->item(last)->data(Qt::UserRole + 12).toBool(), "Stale Motion marker survived missing status");
+}
+
 void testActiveProfileMarkersCoverRelevantLists()
 {
     QTemporaryDir directory;
     ConfigEditorWindow window(copyFixture(directory), 0, true);
+    auto* motion = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.motion.profiles"));
     auto* queue = requireControl<QListWidget>(window, QStringLiteral("config.queue.profiles"));
     auto* renderer = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.profiles"));
     auto* scaling = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.scaling.profiles"));
@@ -3993,8 +4220,10 @@ void testActiveProfileMarkersCoverRelevantLists()
         viewport->item(0)->data(Qt::UserRole).toString(),
         { shader->item(0)->data(Qt::UserRole).toString() }, true, {},
         scaling->item(0)->data(Qt::UserRole).toString(),
-        output->item(0)->data(Qt::UserRole).toString());
-    require(queue->item(0)->data(Qt::UserRole + 12).toBool() &&
+        output->item(0)->data(Qt::UserRole).toString(), {}, {},
+        motion->item(0)->data(Qt::UserRole).toString());
+    require(motion->item(0)->data(Qt::UserRole + 12).toBool() &&
+        queue->item(0)->data(Qt::UserRole + 12).toBool() &&
         renderer->item(0)->data(Qt::UserRole + 12).toBool() &&
         scaling->item(0)->data(Qt::UserRole + 12).toBool() &&
         color->item(0)->data(Qt::UserRole + 12).toBool() &&
@@ -8358,6 +8587,8 @@ void testRenderingMenuDuplicateExportImportPreservesLegacyOwner()
     require(!saved.HasSection("vprenderer.scaling.imported"),"Import created an independently selected processing copy");
 }
 
+#include "ToneChartIntegrationTests.inc"
+
 int run(const char* name, const std::function<void()>& test)
 {
     if (!testNameFilter.isEmpty() &&
@@ -8397,6 +8628,14 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    if (testNameFilter == "Tone charts real editor updates")
+        failures += run("Tone charts real editor updates",testToneChartsRealEditorUpdates);
+    if (testNameFilter == "Tone charts real configured profiles")
+        failures += run("Tone charts real configured profiles",testToneChartsRealConfiguredProfiles);
+    failures += run("Tone charts real editor warms other profiles",testToneChartsRealEditorWarmsOtherProfiles);
+    failures += run("Tone charts background warm and latest request",testToneChartsBackgroundWarmAndLatestRequest);
+    failures += run("Tone charts close with work pending",testToneChartsCloseWithWorkPending);
+    failures += run("Tone charts stay interactive while updating",testToneChartsStayInteractiveWhileUpdating);
     failures += run("concrete video choices and canonical Scaling", testConcreteVideoChoicesAndCanonicalScaling);
     failures += run("responsive workspaces preserve edits and fit", testResponsiveWorkspacesPreserveEditsAndFit);
     failures += run("left docks restore manual choices and drawer editing", testLeftDocksRestoreManualChoicesAndDrawerEditing);
@@ -8494,6 +8733,8 @@ int main(int argc, char** argv)
     failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
     failures += run("queue units and LUT controls use consistent rows",
         testQueueUnitsAndLutControlsUseConsistentRows);
+    failures += run("all profile lists share active status", testAllProfileListsShareActiveStatus);
+    failures += run("Motion profile marker follows activation", testMotionProfileMarkerFollowsActivation);
     failures += run("active profile markers cover relevant lists", testActiveProfileMarkersCoverRelevantLists);
     failures += run("active profile opens selected after late status and preserves edits",
         testActiveProfileOpensSelectedAfterLateStatusAndPreservesEdits);

@@ -2,6 +2,7 @@
 
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
+#include <microsoft_directshow/MadVRNlsSourceGeometry.h>
 #include <microsoft_directshow/video_renderers/DirectShowViewportPlacement.h>
 #include <ShortcutRepeatGuard.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
@@ -21,6 +22,42 @@ namespace VideoProcessorTest
 {
 	namespace
 	{
+		class MadVRInfoStub : public IMadVRInfo
+		{
+		public:
+			SIZE size{1920, 1080};
+			RECT crop{0, 0, 1920, 1080};
+			bool failSize = false, failCrop = false;
+			bool tearSize = false, tearCrop = false;
+			int sizeReads = 0, cropReads = 0, unexpectedReads = 0;
+			HRESULT STDMETHODCALLTYPE QueryInterface(REFIID, void** out) override
+			{ *out = nullptr; return E_NOINTERFACE; }
+			ULONG STDMETHODCALLTYPE AddRef() override { return 1; }
+			ULONG STDMETHODCALLTYPE Release() override { return 1; }
+			HRESULT STDMETHODCALLTYPE GetSize(LPCSTR field, SIZE* out) override
+			{
+				if (std::string(field) != "originalVideoSize")
+				{ ++unexpectedReads; return E_NOTIMPL; }
+				*out = size;
+				if (++sizeReads % 2 == 0 && tearSize) ++out->cx;
+				return failSize ? E_FAIL : S_OK;
+			}
+			HRESULT STDMETHODCALLTYPE GetRect(LPCSTR field, RECT* out) override
+			{
+				if (std::string(field) != "videoCropRect")
+				{ ++unexpectedReads; return E_NOTIMPL; }
+				*out = crop;
+				if (++cropReads % 2 == 0 && tearCrop) ++out->top;
+				return failCrop ? E_FAIL : S_OK;
+			}
+			HRESULT STDMETHODCALLTYPE GetBool(LPCSTR, bool*) override { return E_NOTIMPL; }
+			HRESULT STDMETHODCALLTYPE GetInt(LPCSTR, int*) override { return E_NOTIMPL; }
+			HRESULT STDMETHODCALLTYPE GetUlonglong(LPCSTR, ULONGLONG*) override { return E_NOTIMPL; }
+			HRESULT STDMETHODCALLTYPE GetDouble(LPCSTR, double*) override { return E_NOTIMPL; }
+			HRESULT STDMETHODCALLTYPE GetString(LPCSTR, LPWSTR*, int*) override { return E_NOTIMPL; }
+			HRESULT STDMETHODCALLTYPE GetBin(LPCSTR, LPVOID*, int*) override { return E_NOTIMPL; }
+		};
+
 		std::string LoadNlsHlsl()
 		{
 			std::string path = __FILE__;
@@ -78,6 +115,156 @@ namespace VideoProcessorTest
 	TEST_CLASS(MadVRShaderRuntimeStateTests)
 	{
 	public:
+		TEST_METHOD(MadVRScopeFeedbackPassesThroughMatchingTarget)
+		{
+			MadVRInfoStub info;
+			info.crop = {0, 132, 1920, 949};
+			const auto source = ReadMadVRNlsSourceGeometry(&info, 1920, 1080);
+			Assert::IsTrue(source.valid);
+			const auto decision = EvaluateNlsMapping(source.valid, source.aspect,
+				2.35, 5.0, 0.0, NlsAspectDirection::NARROWER_ONLY, 1.4);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::LINEAR_PASSTHROUGH),
+				static_cast<int>(decision.mode));
+			Assert::AreEqual(132, source.top);
+			Assert::AreEqual(949, source.bottom);
+		}
+
+		TEST_METHOD(MadVRFullRasterIsAllowedOnlyAsExplicitSuccessfulFeedback)
+		{
+			MadVRInfoStub info;
+			const auto source = ReadMadVRNlsSourceGeometry(&info, 1920, 1080);
+			const auto decision = EvaluateNlsMapping(source.valid, source.aspect,
+				2.35, 5.0, 0.0, NlsAspectDirection::NARROWER_ONLY, 1.4);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::ACTIVE),
+				static_cast<int>(decision.mode));
+			const auto missing = ReadMadVRNlsSourceGeometry(nullptr, 1920, 1080);
+			Assert::IsFalse(missing.valid);
+			const auto waiting = EvaluateNlsMapping(missing.valid, missing.aspect,
+				2.35, 5.0, 0.0, NlsAspectDirection::NARROWER_ONLY, 1.4);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::WAITING),
+				static_cast<int>(waiting.mode));
+		}
+
+		TEST_METHOD(MadVRAsymmetricAndPillarboxFeedbackPreservesSourceCoordinates)
+		{
+			MadVRInfoStub info;
+			info.crop = {240, 0, 1680, 1080};
+			auto source = ReadMadVRNlsSourceGeometry(&info, 1920, 1080);
+			Assert::AreEqual(4.0 / 3.0, source.aspect, 0.000001);
+			const auto limited = EvaluateNlsMapping(true, source.aspect,
+				2.35, 5.0, 0.0, NlsAspectDirection::NARROWER_ONLY, 1.4);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::SAFE_FIT),
+				static_cast<int>(limited.mode));
+			info.crop = {30, 100, 1890, 900};
+			source = ReadMadVRNlsSourceGeometry(&info, 1920, 1080);
+			Assert::IsTrue(source.valid);
+			MadVRActivePictureGeometry geometry{source.aspect,
+				source.left / 1920.0, source.top / 1080.0,
+				source.right / 1920.0, source.bottom / 1080.0, 1, 1, true};
+			const auto decision = EvaluateNlsMapping(true, source.aspect,
+				1.85, 5.0, 0.0, NlsAspectDirection::ANY, 1.4);
+			const auto plan = ResolveMadVRNlsPresentationPlan(decision, geometry);
+			Assert::IsTrue(plan.customShader);
+			Assert::AreEqual(30.0 / 1920.0, plan.shaderGeometry.left, 0.000001);
+			Assert::AreEqual(900.0 / 1080.0, plan.shaderGeometry.bottom, 0.000001);
+			Assert::AreEqual(1.85, plan.rasterAspect *
+				(geometry.right - geometry.left) / (geometry.bottom - geometry.top),
+				0.000001);
+			const auto narrowerOnly = EvaluateNlsMapping(true, source.aspect,
+				1.85, 5.0, 0.0, NlsAspectDirection::NARROWER_ONLY, 1.4);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::LINEAR_PASSTHROUGH),
+				static_cast<int>(narrowerOnly.mode));
+		}
+
+		TEST_METHOD(MadVRFailedAndMalformedFeedbackNeverGuessesGeometry)
+		{
+			MadVRInfoStub info;
+			info.failSize = true;
+			Assert::IsFalse(ReadMadVRNlsSourceGeometry(&info, 1920, 1080).valid);
+			info.failSize = false; info.failCrop = true;
+			Assert::IsFalse(ReadMadVRNlsSourceGeometry(&info, 1920, 1080).valid);
+			info.failCrop = false;
+			Assert::IsFalse(ReadMadVRNlsSourceGeometry(&info, 3840, 2160).valid);
+			Assert::IsFalse(ReadMadVRNlsSourceGeometry(&info, 0, 1080).valid);
+			for (const RECT crop : {RECT{0,0,0,0}, RECT{-1,0,1920,1080},
+				RECT{0,-1,1920,1080}, RECT{0,0,1921,1080},
+				RECT{0,0,1920,1081}, RECT{1920,0,0,1080}, RECT{0,900,1920,100}})
+			{
+				info.crop = crop;
+				Assert::IsFalse(ReadMadVRNlsSourceGeometry(&info, 1920, 1080).valid);
+			}
+		}
+
+		TEST_METHOD(MadVRFeedbackRejectsGeometryChangingDuringQuery)
+		{
+			MadVRInfoStub info;
+			info.tearSize = true;
+			Assert::IsFalse(ReadMadVRNlsSourceGeometry(&info, 1920, 1080).valid);
+			info.tearSize = false; info.tearCrop = true;
+			Assert::IsFalse(ReadMadVRNlsSourceGeometry(&info, 1920, 1080).valid);
+		}
+
+		TEST_METHOD(MadVRSourceFeedbackIsIndependentOfNlsOutputDar)
+		{
+			MadVRInfoStub info;
+			info.crop = {0, 60, 1920, 1020};
+			const auto source = ReadMadVRNlsSourceGeometry(&info, 1920, 1080);
+			MadVRActivePictureGeometry geometry{source.aspect, 0.0, 60.0/1080.0,
+				1.0, 1020.0/1080.0, 1, 1, true};
+			for (const double target : {2.35, 2.39, 2.40, 1.85})
+			{
+				const auto decision = EvaluateNlsMapping(true, source.aspect,
+					target, 5.0, 0.0, NlsAspectDirection::ANY, 1.4);
+				ResolveMadVRNlsPresentationPlan(decision, geometry);
+				const auto refreshed = ReadMadVRNlsSourceGeometry(&info, 1920, 1080);
+				Assert::AreEqual(source.aspect, refreshed.aspect, 0.000001);
+			}
+			Assert::AreEqual(0, info.unexpectedReads);
+		}
+
+		TEST_METHOD(MadVRFeedbackLossWithdrawsGeometryAndReacquiresNewGeneration)
+		{
+			MadVRInfoStub info;
+			MadVRNlsSourceGeometryState observer;
+			auto source = ReadMadVRNlsSourceGeometry(&info, 1920, 1080);
+			const auto first = observer.Update(source);
+			Assert::AreEqual(first, observer.Update(source));
+			info.failCrop = true;
+			const auto lost = observer.Update(ReadMadVRNlsSourceGeometry(&info, 1920, 1080));
+			Assert::IsTrue(lost > first);
+			info.failCrop = false;
+			info.crop = {0,132,1920,949};
+			source = ReadMadVRNlsSourceGeometry(&info, 1920, 1080);
+			const auto scope = observer.Update(source);
+			Assert::IsTrue(scope > lost);
+			Assert::AreEqual(scope, observer.Update(source));
+			// Same aspect but moved bounds still require a new shader rectangle.
+			info.crop = {0, 140, 1920, 957};
+			source = ReadMadVRNlsSourceGeometry(&info, 1920, 1080);
+			const auto moved = observer.Update(source);
+			Assert::IsTrue(moved > scope);
+			observer.Reset();
+			Assert::IsTrue(observer.Update(source) > moved);
+		}
+
+		TEST_METHOD(MadVRFeedbackLossClearsShaderAndOutputContract)
+		{
+			MadVRShaderRuntimeState state;
+			const auto renderer = state.BeginRendererGeneration();
+			state.SetRuleSelection("nls", "nls", MadVRNlsMappingMode::ACTIVE);
+			Assert::IsTrue(state.SetActiveGeometry({16.0/9.0, 0, 0, 1, 1, 1, renderer, true}));
+			Assert::IsTrue(MadVRNlsOutputContractIsPrepared(state.GetSnapshot()));
+			state.SetRuleSelection("nls", "nls", MadVRNlsMappingMode::WAITING);
+			const auto snapshot = state.GetSnapshot();
+			Assert::IsFalse(snapshot.activeGeometry.stable);
+			Assert::IsFalse(MadVRNlsOutputContractIsPrepared(snapshot));
+			const auto plan = ResolveMadVRNlsPresentationPlan(snapshot.nlsDecision,
+				snapshot.activeGeometry);
+			Assert::IsFalse(plan.customShader);
+			Assert::AreEqual(0UL, plan.aspectX);
+			Assert::AreEqual(0UL, plan.aspectY);
+		}
+
 		TEST_METHOD(ConfiguredShaderRuleRetainsHistoricalAnyDirectionDefault)
 		{
 			const ConfiguredShaderRule rule;

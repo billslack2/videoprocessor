@@ -13,6 +13,7 @@
 #include <ProfileChangeOverlay.h>
 #include <StatsOverlayLayout.h>
 #include <RendererLiveness.h>
+#include <CaptureDeliveryStats.h>
 #include <mutex>
 #include <vector>
 
@@ -88,6 +89,8 @@ struct StatsData
 	uint64_t capturedFrames = 0;
 	uint64_t rendererCapturedFrames = 0;
 	uint64_t capturedDroppedFrames = 0;
+    bool captureDeliverySupported = false;
+    CaptureDeliveryStats captureDelivery;
 	uint64_t queueDroppedFrames = 0;
 	uint64_t sceneDetectCorrectionDrops = 0;
 	uint64_t sceneDetectCorrectionRepeats = 0;

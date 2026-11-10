@@ -336,6 +336,8 @@ PL_LIBAV_API void pl_map_hdr_metadata(struct pl_hdr_metadata *out,
                 .white.x = av_q2d(data->mdm->white_point[0]),
                 .white.y = av_q2d(data->mdm->white_point[1]),
             };
+            if (!pl_primaries_valid(&out->prim))
+                out->prim = (struct pl_raw_primaries) {0}; /* sanity */
         }
     }
 
@@ -828,11 +830,27 @@ PL_LIBAV_API void pl_frame_from_avframe(struct pl_frame *out,
         out->repr.sys = PL_COLOR_SYSTEM_RGB;
         out->repr.levels = PL_COLOR_LEVELS_FULL; // libav* ignores levels for RGB
 
+        // AVCOL_PRI_SMPTE428 (H.273 value 10) tags the channels as CIE 1931
+        // XYZ tristimulus values rather than an RGB primary set, e.g. for
+        // scene-linear XYZ delivered in a float RGB pixel format.
+        if (frame->color_primaries == AVCOL_PRI_SMPTE428)
+            out->repr.sys = PL_COLOR_SYSTEM_XYZ;
+
     } else if (!pl_color_system_is_ycbcr_like(out->repr.sys)) {
         // libav* likes leaving this as UNKNOWN (or even RGB) for YCbCr frames,
         // which confuses libplacebo since we infer UNKNOWN as RGB. To get
         // around this, explicitly infer a suitable colorspace.
         out->repr.sys = pl_color_system_guess_ycbcr(frame->width, frame->height);
+    }
+
+    // For XYZ data, "XYZ primaries" say nothing about the RGB space the data
+    // is referenced to (which decides the white point), so don't carry over
+    // lavu's mapping of them to CIE 1931 RGB. Instead, leave the primaries
+    // unset for the renderer to infer. See `pl_frame.color`.
+    if (out->repr.sys == PL_COLOR_SYSTEM_XYZ &&
+        frame->color_primaries == AVCOL_PRI_SMPTE428)
+    {
+        out->color.primaries = PL_COLOR_PRIM_UNKNOWN;
     }
 
     if ((sd = av_frame_get_side_data(frame, AV_FRAME_DATA_ICC_PROFILE))) {
@@ -964,7 +982,7 @@ PL_LIBAV_API void pl_map_dovi_metadata(struct pl_dovi_metadata *out,
         struct pl_reshape_data *cdst = &out->comp[c];
         cdst->num_pivots = csrc->num_pivots;
         for (int i = 0; i < csrc->num_pivots; i++) {
-            const float scale = 1.0f / ((1 << header->bl_bit_depth) - 1);
+            const float scale = 1.0f / (1 << header->bl_bit_depth);
             cdst->pivots[i] = scale * csrc->pivots[i];
         }
         for (int i = 0; i < csrc->num_pivots - 1; i++) {
@@ -997,24 +1015,14 @@ PL_LIBAV_API void pl_map_dovi_metadata(struct pl_dovi_metadata *out,
                       mapping->nlq_method_idc == AV_DOVI_NLQ_LINEAR_DZ &&
                       !pl_avdovi_mapping_nlq_is_trivial(header, mapping);
     if (out->nlq_active) {
-        const float el_scale = 1.0f / ((1 << header->el_bit_depth) - 1);
-        // Use double for `coef_scale_d` math to preserve numerical stability.
-        const double coef_scale_d  = 1.0 / (1ULL << header->coef_log2_denom);
-        // DV LINEAR_DZ dequantization: for residual code rr,
-        //   r_norm = sign(rr) * ((|rr| - 0.5) * S_norm + T_norm)
-        // where S_norm, T_norm are coef_log2_denom-normalized. To let the
-        // shader operate on el_centered in [-1, 1] / (2^eld - 1) space, we
-        // pre-fold (2^eld - 1) into slope and -0.5*S into threshold.
-        const double slope_scale_d = ((1ULL << header->el_bit_depth) - 1)
-                                   * coef_scale_d;
+        const double coef_scale = 1.0 / (1ULL << header->coef_log2_denom);
         for (int c = 0; c < 3; c++) {
             const AVDOVINLQParams *src = &mapping->nlq[c];
             struct pl_dovi_nlq_data *dst = &out->nlq[c];
-            const double S = src->linear_deadzone_slope;
-            const double T = src->linear_deadzone_threshold;
-            dst->offset = el_scale * src->nlq_offset;
-            dst->deadzone_slope = slope_scale_d * S;
-            dst->deadzone_threshold = coef_scale_d * (T - 0.5 * S);
+            dst->offset = src->nlq_offset;
+            dst->deadzone_slope = coef_scale * src->linear_deadzone_slope;
+            dst->deadzone_threshold = coef_scale * src->linear_deadzone_threshold;
+            dst->hdr_in_max = coef_scale * src->vdr_in_max;
         }
     }
 }
