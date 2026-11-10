@@ -104,12 +104,14 @@ public:
         stats.captureDelivery.deliveredFps = 46.1;
         stats.captureDelivery.windowSeconds = 5.0;
         stats.captureDelivery.recentMissedFrames = 19;
+        stats.captureDelivery.losslessRgb24Capture = true;
         stats.capturedDroppedFrames = 238;
         stats.queueDroppedFrames = 0;
         auto rows = StatsOverlayWindow::BuildStatsRows(stats);
         Assert::AreEqual(L"46.10 / 50.00 expected (5s)", Find(rows,L"Capture fps:").value.c_str());
         Assert::AreEqual(L"238 total; 19 last 5s", Find(rows,L"Capture missed:").value.c_str());
         Assert::AreEqual(L"0", Find(rows,L"Render dropped:").value.c_str());
+        Assert::AreEqual(L"RGB24 -> BGRA (lossless)", Find(rows,L"Capture packing:").value.c_str());
         VerifyNative(stats);
         stats.captureDelivery = {};
         rows = StatsOverlayWindow::BuildStatsRows(stats);
@@ -265,6 +267,37 @@ public:
         Assert::IsTrue(Find(rows,L"Prep CPU/wait:").value==L"no calls in window");
         Assert::IsTrue(Find(rows,L"New CPU/wait:").value.find(L"0.00 / 0.00")!=std::wstring::npos);
         VerifyNative(stats);
+        for (const bool alpha : {false, true})
+            for (const bool available : {false, true})
+            {
+                auto stats = Example(alpha);
+                stats.renderLoadKnown = true; stats.renderLoadGpuValid = available;
+                stats.renderLoadGpuAvgMs = 5; stats.renderLoadGpuPeakMs = 9;
+                stats.renderLoadGpuFrames = 50; stats.renderLoadFrames = 120;
+                stats.cpuUsageKnown = available;
+                stats.cpuUsageAvgPercent = 12; stats.cpuUsagePeakPercent = 34;
+                stats.renderLoadGpuPercentValid = available;
+                stats.renderLoadGpuAvgPercent = 16; stats.renderLoadGpuPercent = 20;
+                stats.measuredRefreshRate = 59.94;
+                stats.renderLoadFramePeriodMs = 16.68;
+                stats.renderLoadFramePeriodFromRenderCadence = true;
+                stats.processingPerformance.available = available;
+                stats.processingPerformance.windowMilliseconds = 2000;
+                stats.processingPerformance.sourceDraws = 48;
+                const auto rows = StatsOverlayWindow::BuildStatsRows(stats);
+                Find(rows, L"GPU frame:"); Find(rows, L"10s avg/max:");
+                Find(rows, L"Source interval:"); Find(rows, L"Render budget:");
+                Find(rows, alpha ? L"Queue:" : L"Queue R/C/T:");
+                Find(rows, L"VFrames:"); Find(rows, L"Dropped:"); Find(rows, L"D/R estimate:");
+                if (available)
+                {
+                    Assert::IsTrue(Find(rows,L"GPU frame:").value.find(L"50/120 async (10 s)") != std::wstring::npos);
+                    Assert::IsTrue(Find(rows,L"10s avg/max:").value == L"CPU 12/34%, GPU output load 16/20%");
+                    Assert::IsTrue(Find(rows,L"Source interval:").value.find(L"59.940 fps") != std::wstring::npos);
+                    Assert::IsTrue(Find(rows,L"Render budget:").value.find(L"16.68 ms") != std::wstring::npos);
+                }
+                VerifyNative(stats);
+            }
     }
     TEST_METHOD(WarmupAndUnavailableStatusesRemainVisibleAndDoNotFabricateNumbers)
     {

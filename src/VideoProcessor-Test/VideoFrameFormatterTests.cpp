@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include <VideoFrame.h>
 #include <VideoState.h>
+#include <P210FrameLayout.h>
 
 #include <ConfigFile.h>
 #include <MainConfigSchema.h>
@@ -313,6 +314,47 @@ namespace Tests
 	TEST_CLASS(VideoFrameFormatterTests)
 	{
 	public:
+        TEST_METHOD(NativeP210LayoutUsesTwoFullHeightPlanesAndRejectsTruncation)
+        {
+            for (const unsigned width : {2u, 102u, 1922u, 2048u, 3840u, 4096u})
+            for (const unsigned height : {1u, 3u, 101u, 2160u})
+            {
+                P210FrameLayout layout;
+                Assert::IsTrue(GetP210FrameLayout(width, height, layout));
+                Assert::AreEqual<size_t>(width*2, layout.rowBytes);
+                Assert::AreEqual<size_t>(width*height*4, layout.frameBytes);
+                if (width >= 100 && height >= 100) // DisplayMode's accepted raster range.
+                {
+                    VideoStateComPtr state = new VideoState();
+                    state->videoFrameEncoding = VideoFrameEncoding::P210;
+                    state->displayMode = std::make_shared<DisplayMode>(width, height, false, 24000, 1001);
+                    Assert::AreEqual(width*2, state->BytesPerRow());
+                    Assert::AreEqual(width*height*4, state->BytesPerFrame());
+                }
+                std::vector<uint8_t> pixels(layout.frameBytes);
+                P210PlaneView view;
+                Assert::IsTrue(GetP210PlaneView(pixels.data(), pixels.size(), width, height, view));
+                Assert::IsTrue(view.y == pixels.data());
+                Assert::IsTrue(view.uv == pixels.data() + width*height*2);
+                Assert::IsFalse(GetP210PlaneView(pixels.data(), pixels.size()-1, width, height, view));
+                Assert::IsNull(view.y); Assert::IsNull(view.uv);
+            }
+            P210FrameLayout layout;
+            for (const auto size : {std::pair<uint32_t,uint32_t>{0,2}, {2,0}, {3,2},
+                {0xfffffffeu, 1}, {2, 0xffffffffu}, {0xfffffffeu, 0xffffffffu}})
+                Assert::IsFalse(GetP210FrameLayout(size.first, size.second, layout));
+            VideoStateComPtr invalid = new VideoState();
+            invalid->videoFrameEncoding = VideoFrameEncoding::P210;
+            invalid->displayMode = std::make_shared<DisplayMode>(103, 101, false, 24000, 1001);
+            Assert::ExpectException<std::runtime_error>([&]() { invalid->BytesPerFrame(); });
+            P210PlaneView view;
+            Assert::IsFalse(GetP210PlaneView(nullptr, 16, 2, 2, view));
+            Assert::IsTrue(AlphaUsesP210Ingress(VideoFrameEncoding::P210,
+                VideoConversionOverride::VIDEOCONVERSION_NONE));
+            Assert::IsFalse(AlphaUsesP210Ingress(VideoFrameEncoding::P210,
+                VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010));
+        }
+
 		TEST_METHOD(MadVRPackedTwelveBitIngressUsesP010Policy)
 		{
 			const auto automatic =

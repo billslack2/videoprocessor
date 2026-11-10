@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AnalysisFrame.h"
+#include <DolbyVisionTunnelInput.h>
 
 #include <algorithm>
 #include <utility>
@@ -43,7 +44,8 @@ namespace
     {
         return encoding == VideoFrameEncoding::UYVY ||
             encoding == VideoFrameEncoding::HDYC ||
-            encoding == VideoFrameEncoding::V210;
+            encoding == VideoFrameEncoding::V210 ||
+            encoding == VideoFrameEncoding::P210 || encoding == VideoFrameEncoding::P010;
     }
 
     void NativeContract(PreparedAnalysisFrame& result,
@@ -56,7 +58,7 @@ namespace
         const bool yuv8 = encoding == VideoFrameEncoding::UYVY ||
             encoding == VideoFrameEncoding::HDYC;
         result.colorDepth = rgb12 ? 12 : ((rgb8 || yuv8) ? 8 : 10);
-        result.bitShift = 0;
+        result.bitShift = (encoding == VideoFrameEncoding::P210 || encoding == VideoFrameEncoding::P010) ? 6 : 0;
         result.sampleRange = (rgb8 || rgb12) ? VideoFrameSampleRange::FULL :
             VideoFrameSampleRange::LIMITED;
     }
@@ -120,7 +122,7 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
             return result;
         if (input.dolby.valid)
         {
-            if (input.encoding != VideoFrameEncoding::R210 ||
+            if (!DolbyVisionTunnelEncodingSupported(input.encoding) ||
                 !input.convertedOwner || !input.converted422 ||
                 !input.convertedContract.IsValid() ||
                 input.convertedContract.colorDepth != 12 ||
@@ -142,10 +144,10 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
         {
             // A missing/invalid packet cannot unlock the packed RGB transport.
             // The formatter alone can authorize a proven SDR alignment.
-            if (!input.dolby.allowSdrFallback ||
+            if (!input.dolby.allowSdrFallback || input.tunnelSdrRgbRange == TunnelSdrRgbRange::Unknown ||
                 (input.dolby.rgbBitAlignment != 1 &&
                     input.dolby.rgbBitAlignment != 2) ||
-                input.encoding != VideoFrameEncoding::R210 ||
+                !DolbyVisionTunnelEncodingSupported(input.encoding) ||
                 !input.nativeOwner)
                 return result;
             backing = native(AnalysisLumaFormat::SdrTunnelRgb,
@@ -153,7 +155,8 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
             backing.rgbBitAlignment = input.dolby.rgbBitAlignment;
             result.domain = AnalysisFrameDomain::SdrTunnelRgb;
             result.sourceOwner = input.nativeOwner;
-            result.sampleRange = VideoFrameSampleRange::FULL;
+            result.sampleRange = input.tunnelSdrRgbRange == TunnelSdrRgbRange::Limited ?
+                VideoFrameSampleRange::LIMITED : VideoFrameSampleRange::FULL;
             result.colorDepth = 8;
             result.rgbBitAlignment = input.dolby.rgbBitAlignment;
         }
@@ -176,9 +179,13 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
         }
         else
         {
-            backing = native(AnalysisLumaFormat::NativeYuv422,
+            backing = native(input.encoding == VideoFrameEncoding::P210 ? AnalysisLumaFormat::P210 :
+                input.encoding == VideoFrameEncoding::P010 ? AnalysisLumaFormat::P010 : AnalysisLumaFormat::NativeYuv422,
                 input.colorspace);
-            result.domain = AnalysisFrameDomain::NativeYuv422;
+            if (input.encoding == VideoFrameEncoding::P210 || input.encoding == VideoFrameEncoding::P010)
+                backing.chromaRowBytes = input.nativeRowBytes;
+            result.domain = input.encoding == VideoFrameEncoding::P010 ?
+                AnalysisFrameDomain::NativeYuv420 : AnalysisFrameDomain::NativeYuv422;
         }
         result.sourceOwner = input.nativeOwner;
         NativeContract(result, input.encoding);

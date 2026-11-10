@@ -194,6 +194,8 @@
     <ClInclude Include="magewell\MagewellBackend.h" />
     <ClInclude Include="magewell\MagewellInput.h" />
     <ClInclude Include="magewell\MagewellCaptureDevice.h" />
+    <ClInclude Include="magewell\MagewellRgb24Packing.h" />
+    <ClInclude Include="magewell\MagewellPackingWorker.h" />
     <ClInclude Include="magewell\MagewellCaptureDeviceDiscoverer.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkTranslate.h" />
@@ -340,11 +342,15 @@
     <ClInclude Include="VideoFrame.h" />
     <ClInclude Include="VideoFrameEncoding.h" />
     <ClInclude Include="CaptureDeliveryStats.h" />
+    <ClInclude Include="P210FrameLayout.h" />
     <ClInclude Include="VideoState.h" />
     <ClInclude Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.h" />
-    <ClInclude Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.h" />
+    <ClInclude Include="magewell\MagewellRgbTunnelRange.h" />
+    <ClInclude Include="magewell\MagewellCaptureFormatPolicy.h" />
+    <ClInclude Include="DolbyVisionTunnelInput.h" />
+    <ClInclude Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.h" />
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CNoopVideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h" />
@@ -384,6 +390,12 @@
     <ClCompile Include="magewell\MagewellSdkApi.cpp" />
     <ClCompile Include="magewell\MagewellBackend.cpp" />
     <ClCompile Include="magewell\MagewellCaptureDevice.cpp" />
+    <ClCompile Include="magewell\MagewellRgb24Packing.cpp" />
+    <ClCompile Include="magewell\MagewellRgb24Packing.AVX2.cpp">
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="magewell\MagewellCaptureDeviceDiscoverer.cpp" />
     <ClCompile Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.cpp" />
     <ClCompile Include="blackmagic_decklink\BlackMagicDeckLinkTranslate.cpp" />
@@ -484,7 +496,7 @@
     <ClCompile Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.cpp" />
-    <ClCompile Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.cpp" />
+    <ClCompile Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CNoopVideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.cpp" />
@@ -554,7 +566,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.Common.h" />
-    <ClCompile Include="video_frame_formatter\CR210DolbyVisionTunnelFormatter.AVX2.cpp">
+    <ClCompile Include="video_frame_formatter\CRGBDolbyVisionTunnelFormatter.AVX2.cpp">
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>

@@ -70,13 +70,14 @@ inline bool GetAlphaNativeRgbLayout(VideoFrameEncoding encoding,
 	}
 }
 
-inline bool AlphaCanUseNativeRgbUpload(VideoFrameEncoding encoding)
+inline bool AlphaCanUseNativeRgbUpload(VideoFrameEncoding encoding,
+	bool dolbyVisionTunnel = false)
 {
 	AlphaNativeRgbLayout layout;
 	// libplacebo's generic limited-RGB representation uses conventional
 	// 10-bit 64-940 levels. DeckLink r210 has a distinct 64-960 interval, so
 	// normalize it through the range-aware P010 formatter instead.
-	return encoding != VideoFrameEncoding::R210 &&
+	return !dolbyVisionTunnel && encoding != VideoFrameEncoding::R210 &&
 		GetAlphaNativeRgbLayout(encoding, layout);
 }
 
@@ -87,5 +88,6 @@ inline bool AlphaUsesP210Ingress(VideoFrameEncoding encoding,
 			VideoConversionOverride::VIDEOCONVERSION_NONE &&
 		(encoding == VideoFrameEncoding::UYVY ||
 			encoding == VideoFrameEncoding::HDYC ||
-			encoding == VideoFrameEncoding::V210);
+			encoding == VideoFrameEncoding::V210 ||
+			encoding == VideoFrameEncoding::P210);
 }

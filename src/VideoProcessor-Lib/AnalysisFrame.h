@@ -1,4 +1,5 @@
 #pragma once
+#include <VideoFrameEncoding.h>
 
 #include <AnalysisLumaSource.h>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
@@ -25,6 +26,7 @@ enum class AnalysisFrameDomain : uint8_t
     ConvertedP210,
     DecodedDolbyVision422,
     SdrTunnelRgb,
+    NativeYuv420,
 };
 
 struct AnalysisFrameInput
@@ -52,6 +54,7 @@ struct AnalysisFrameInput
     bool rendererUsesNative = false;
     bool converted422 = false;
     bool dolbyVisionTunnel = false;
+    TunnelSdrRgbRange tunnelSdrRgbRange = TunnelSdrRgbRange::Full;
 };
 
 // The prepared source retains the selected frame pixels while sampling them

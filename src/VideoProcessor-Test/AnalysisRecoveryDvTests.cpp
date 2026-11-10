@@ -2,12 +2,17 @@
 #include "CppUnitTest.h"
 
 #include <AnalysisFrame.h>
+#include <ActivePictureEvidence.h>
+#include <SubtitleBoxDetector.h>
 #include <ActivePictureDecisionTimeline.h>
 #include <VideoFrame.h>
 #include <VideoState.h>
-#include <video_frame_formatter/CR210DolbyVisionTunnelFormatter.h>
+#include <video_frame_formatter/CRGBDolbyVisionTunnelFormatter.h>
 
 #include <cstdint>
+#include <fstream>
+#include <cstdlib>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -134,6 +139,288 @@ namespace Tests
 	TEST_CLASS(AnalysisRecoveryDvTests)
 	{
 	public:
+
+
+        TEST_METHOD(TunnelSdrFallbackPreservesLimitedAndFullBlackWhiteAndDomain)
+        {
+            for (const auto encoding : { VideoFrameEncoding::R210, VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            for (const auto profile : { AnalysisSourceProfile::LiveRenderer, AnalysisSourceProfile::QueuedCapture })
+            {
+                auto pixels = MakeR210Rgb8(4, 2, 2, 16);
+                if (encoding != VideoFrameEncoding::R210)
+                    std::fill(pixels->begin(), pixels->end(), 16);
+                auto input = MakeSdrFallbackInput(pixels, 4, 2, 2, profile);
+                input.encoding = encoding; input.tunnelSdrRgbRange = TunnelSdrRgbRange::Limited;
+                auto limited = PrepareAnalysisFrame(input);
+                Assert::IsTrue(limited.IsValid());
+                Assert::IsTrue(limited.sampleRange == VideoFrameSampleRange::LIMITED);
+                Assert::AreEqual(64, int(SampleAt(limited, 0, 0).luma));
+                if (encoding == VideoFrameEncoding::R210)
+                    pixels = MakeR210Rgb8(4, 2, 2, 235);
+                else
+                    std::fill(pixels->begin(), pixels->end(), 235);
+                input.nativeData = pixels->data(); input.nativeOwner = pixels;
+                limited = PrepareAnalysisFrame(input);
+                Assert::AreEqual(940, int(SampleAt(limited, 0, 0).luma));
+                input.tunnelSdrRgbRange = TunnelSdrRgbRange::Full;
+                const auto full = PrepareAnalysisFrame(input);
+                Assert::IsTrue(full.IsValid());
+                Assert::AreNotEqual(static_cast<unsigned long long>(limited.domainKey),
+                    static_cast<unsigned long long>(full.domainKey));
+                input.tunnelSdrRgbRange = TunnelSdrRgbRange::Unknown;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+            }
+        }
+
+        TEST_METHOD(Rgb8TunnelUsesDecodedEvidenceAndExplicitSdrAcrossBothConsumers)
+        {
+            for (const auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            for (const auto profile : { AnalysisSourceProfile::LiveRenderer, AnalysisSourceProfile::QueuedCapture })
+            {
+                auto decoded = MakeDecoded12Bit422(4, 2);
+                auto raw = std::make_shared<std::vector<uint8_t>>(32, 0);
+                for (size_t i = 0; i < raw->size(); i += 4)
+                {
+                    if (encoding == VideoFrameEncoding::ARGB_8BIT)
+                    { (*raw)[i] = 99; (*raw)[i+1] = 255; (*raw)[i+2] = 128; (*raw)[i+3] = 64; }
+                    else
+                    { (*raw)[i] = 64; (*raw)[i+1] = 128; (*raw)[i+2] = 255; (*raw)[i+3] = 99; }
+                }
+                auto input = MakeDvInput(decoded, raw, 4, 2, profile);
+                input.encoding = encoding; input.dolby.rgbBitAlignment = 2;
+                const auto dv = PrepareAnalysisFrame(input);
+                Assert::IsTrue(dv.IsValid() && dv.usesConverted);
+                Assert::IsTrue(dv.source.data == decoded->data());
+                Assert::AreEqual(687, int(SampleAt(dv, 0, 1).luma));
+                input.dolby.requiresBlackFrame = true;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+                input.dolby.requiresBlackFrame = false; input.dolby.valid = false;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+                input.dolby.allowSdrFallback = true;
+                const auto sdr = PrepareAnalysisFrame(input);
+                Assert::IsTrue(sdr.IsValid() && !sdr.usesConverted);
+                Assert::IsTrue(sdr.source.data == raw->data());
+                Assert::AreNotEqual(static_cast<unsigned long long>(dv.domainKey),
+                    static_cast<unsigned long long>(sdr.domainKey));
+                input.dolbyVisionTunnel = false;
+                const auto native = PrepareAnalysisFrame(input);
+                Assert::IsTrue(native.IsValid());
+                const auto a = SampleAt(sdr, 0, 0), b = SampleAt(native, 0, 0);
+                Assert::AreEqual(int(a.luma), int(b.luma));
+                Assert::AreEqual(int(a.chromaU), int(b.chromaU));
+                Assert::AreEqual(int(a.chromaV), int(b.chromaV));
+                input.dolbyVisionTunnel = true; input.dolby.rgbBitAlignment = 1;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+                input.dolby.rgbBitAlignment = 2; input.nativeRowBytes = 15;
+                Assert::IsFalse(PrepareAnalysisFrame(input).IsValid());
+            }
+        }
+
+        TEST_METHOD(DecodedPictureAndCaptionEvidenceAgreeAcrossRgbTunnelLayouts)
+        {
+            constexpr int width = 640, height = 360, top = 45, bottom = 315;
+            const size_t pixels = size_t(width) * height;
+            for (bool subtitle : { false, true })
+            {
+                auto decoded = std::make_shared<std::vector<uint8_t>>(pixels * 4, 0);
+                for (int y = 0; y < height; ++y)
+                    for (int x = 0; x < width; ++x)
+                    {
+                        const int level = y >= top && y < bottom ? 200 : 64;
+                        Write16Le(*decoded, (size_t(y) * width + x) * 2, uint16_t(level << 6));
+                        Write16Le(*decoded, (pixels + size_t(y) * width + x) * 2, uint16_t(512 << 6));
+                    }
+                if (subtitle)
+                    for (int n = 0; n < 15; ++n)
+                    {
+                        const int left = 200 + n * 13;
+                        for (int y = 326; y < 340; ++y)
+                            for (int x = left; x < left + 8; ++x)
+                            {
+                                const bool ink = x < left + 2 || x >= left + 6 || y < 328 || y >= 338;
+                                Write16Le(*decoded, (size_t(y) * width + x) * 2,
+                                    uint16_t((ink ? 510 : 64) << 6));
+                            }
+                    }
+                auto raw = std::make_shared<std::vector<uint8_t>>(pixels * 4, 0);
+                ActivePictureEvidence reference;
+                SubtitleBoxResult referenceSubtitle;
+                bool first = true;
+                for (const auto encoding : { VideoFrameEncoding::R210, VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+                for (const auto profile : { AnalysisSourceProfile::LiveRenderer, AnalysisSourceProfile::QueuedCapture })
+                {
+                    auto input = MakeDvInput(decoded, raw, width, height, profile);
+                    input.encoding = encoding;
+                    input.dolby.rgbBitAlignment = encoding == VideoFrameEncoding::R210 ? 1 : 2;
+                    input.dolby.fullRange = false;
+                    input.convertedContract.sampleRange = VideoFrameSampleRange::LIMITED;
+                    auto frame = PrepareAnalysisFrame(input);
+                    Assert::IsTrue(frame.IsValid() && frame.usesConverted);
+                    const auto evidence = ExtractActivePictureEvidence(frame.source);
+                    if (!subtitle) {
+                        Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),
+                            int(evidence.classification), L"Clean bars must be detected, not merely agree across formats.");
+                        Assert::IsTrue(std::abs(evidence.trustedBounds.top - top) <= 4 &&
+                            std::abs(evidence.trustedBounds.bottom - bottom) <= 4,
+                            L"The detected picture boundary must match the fixture, not just another encoding.");
+                    }
+                    SubtitleBoxDetector detector;
+                    SubtitleBoxResult cue;
+                    for (int i = 0; i < 4; ++i)
+                        cue = detector.Analyze(frame.source, top, bottom, i + 1, 1);
+                    if (first) { reference = evidence; referenceSubtitle = cue; first = false; }
+                    else {
+                        Assert::AreEqual(int(reference.classification), int(evidence.classification));
+                        Assert::AreEqual(reference.proposedBounds.top, evidence.proposedBounds.top);
+                        Assert::AreEqual(reference.proposedBounds.bottom, evidence.proposedBounds.bottom);
+                        Assert::AreEqual(reference.top.rgbBoundaryContrast, evidence.top.rgbBoundaryContrast, 0.001);
+                        Assert::AreEqual(reference.bottom.rgbBoundaryContrast, evidence.bottom.rgbBoundaryContrast, 0.001);
+                        Assert::AreEqual(referenceSubtitle.detected, cue.detected);
+                        Assert::AreEqual(referenceSubtitle.bounds.left, cue.bounds.left);
+                        Assert::AreEqual(referenceSubtitle.bounds.bottom, cue.bounds.bottom);
+                    }
+                    Assert::AreEqual(subtitle, cue.detected, L"The reference cue must exercise real caption acquisition.");
+                }
+            }
+        }
+
+        TEST_METHOD(SdrTunnelRangeAndSubtitleEvidenceAgreeAcrossRgbLayouts)
+        {
+            constexpr int width = 640, height = 360, top = 45, bottom = 315;
+            for (const auto range : { TunnelSdrRgbRange::Full, TunnelSdrRgbRange::Limited })
+            for (bool subtitle : { false, true })
+            {
+                ActivePictureEvidence reference;
+                SubtitleBoxResult referenceCue;
+                bool first = true;
+                for (const auto encoding : { VideoFrameEncoding::R210, VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+                {
+                    auto raw = std::make_shared<std::vector<uint8_t>>(size_t(width) * height * 4, 0);
+                    const uint8_t black = range == TunnelSdrRgbRange::Limited ? 16 : 0;
+                    for (int y = 0; y < height; ++y)
+                        for (int x = 0; x < width; ++x)
+                        {
+                            uint8_t value = y >= top && y < bottom ? uint8_t(black + 35) : black;
+                            if (subtitle && y >= 326 && y < 340 && x >= 200 && x < 395)
+                            {
+                                const int offset = (x - 200) % 13;
+                                const bool ink = offset < 8 && (offset < 2 || offset >= 6 || y < 328 || y >= 338);
+                                if (ink) value = range == TunnelSdrRgbRange::Limited ? 200 : 220;
+                            }
+                            // A slight picture tint exercises relative chroma
+                            // as well as brightness; bars and text stay neutral.
+                            const bool picturePixel = y >= top && y < bottom;
+                            const uint8_t red = picturePixel ? uint8_t(value + 3) : value;
+                            const uint8_t green = value;
+                            const uint8_t blue = picturePixel ? uint8_t(value - 2) : value;
+                            const size_t off = (size_t(y) * width + x) * 4;
+                            if (encoding == VideoFrameEncoding::R210)
+                                Write32Be(*raw, off, (uint32_t(red) << 20) | (uint32_t(green) << 10) | blue);
+                            else if (encoding == VideoFrameEncoding::ARGB_8BIT)
+                                { (*raw)[off] = 255; (*raw)[off+1] = red; (*raw)[off+2] = green; (*raw)[off+3] = blue; }
+                            else
+                                { (*raw)[off] = blue; (*raw)[off+1] = green; (*raw)[off+2] = red; (*raw)[off+3] = 255; }
+                        }
+                    auto input = MakeSdrFallbackInput(raw, width, height, 2);
+                    input.encoding = encoding; input.tunnelSdrRgbRange = range;
+                    const auto frame = PrepareAnalysisFrame(input);
+                    Assert::IsTrue(frame.IsValid() && !frame.usesConverted);
+                    Assert::AreEqual(range == TunnelSdrRgbRange::Limited ? 64 : 0,
+                        int(SampleAt(frame, 0, 0).luma));
+                    const auto evidence = ExtractActivePictureEvidence(frame.source);
+                    if (!subtitle) {
+                        Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),
+                            int(evidence.classification), L"Clean bars must be detected, not merely agree across formats.");
+                        Assert::IsTrue(std::abs(evidence.trustedBounds.top - top) <= 4 &&
+                            std::abs(evidence.trustedBounds.bottom - bottom) <= 4,
+                            L"The detected picture boundary must match the fixture, not just another encoding.");
+                    }
+                    SubtitleBoxDetector detector;
+                    SubtitleBoxResult cue;
+                    for (int i = 0; i < 4; ++i)
+                        cue = detector.Analyze(frame.source, top, bottom, i + 1, 1);
+                    if (first) { reference = evidence; referenceCue = cue; first = false; }
+                    else {
+                        Assert::AreEqual(int(reference.classification), int(evidence.classification));
+                        Assert::AreEqual(reference.proposedBounds.top, evidence.proposedBounds.top);
+                        Assert::AreEqual(reference.proposedBounds.bottom, evidence.proposedBounds.bottom);
+                        Assert::AreEqual(reference.top.rgbBoundaryContrast, evidence.top.rgbBoundaryContrast, 0.001);
+                        Assert::AreEqual(reference.bottom.rgbBoundaryContrast, evidence.bottom.rgbBoundaryContrast, 0.001);
+                        Assert::AreEqual(referenceCue.detected, cue.detected);
+                        Assert::AreEqual(referenceCue.bounds.left, cue.bounds.left);
+                        Assert::AreEqual(referenceCue.bounds.bottom, cue.bounds.bottom);
+                    }
+                    Assert::AreEqual(subtitle, cue.detected, L"The fixture must exercise real subtitle acquisition.");
+                }
+            }
+        }
+
+        TEST_METHOD(OptionalCapturedDecodedPictureHasRgbTunnelAnalysisParity)
+        {
+            char* path = nullptr; size_t size = 0;
+            _dupenv_s(&path, &size, "VP_RGB8_DV_REPLAY_FRAME");
+            const std::string filename = path ? path : "";
+            std::free(path);
+            if (filename.empty()) {
+                Logger::WriteMessage(L"Set VP_RGB8_DV_REPLAY_FRAME to run the captured decoded frame parity check.");
+                return;
+            }
+            std::ifstream meta(filename + ".txt");
+            if (!meta) {
+                meta.clear();
+                const auto dot = filename.find_last_of('.');
+                if (dot != std::string::npos) meta.open(filename.substr(0, dot) + ".txt");
+            }
+            int width = 0, height = 0, format = 0, oldEncoding = 0, color = 0;
+            int top = 0, bottom = 0, script = 0; size_t row = 0, chromaRow = 0;
+            meta >> width >> height >> row >> chromaRow >> format >> oldEncoding >> color >> top >> bottom >> script;
+            Assert::IsTrue(bool(meta) && format == int(AnalysisLumaFormat::DecodedDolbyVision422));
+            std::ifstream inputFile(filename, std::ios::binary | std::ios::ate);
+            Assert::IsTrue(bool(inputFile));
+            const auto length = inputFile.tellg();
+            Assert::IsTrue(length > 0);
+            auto decoded = std::make_shared<std::vector<uint8_t>>(size_t(length));
+            inputFile.seekg(0); inputFile.read(reinterpret_cast<char*>(decoded->data()), length);
+            Assert::IsTrue(bool(inputFile));
+            auto raw = std::make_shared<std::vector<uint8_t>>(size_t(width) * height * 4, 0);
+            for (bool full : { false, true })
+            {
+                ActivePictureEvidence reference;
+                SubtitleBoxResult referenceCue;
+                bool first = true;
+                for (const auto encoding : { VideoFrameEncoding::R210, VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+                for (const auto profile : { AnalysisSourceProfile::LiveRenderer, AnalysisSourceProfile::QueuedCapture })
+                {
+                    auto input = MakeDvInput(decoded, raw, width, height, profile);
+                    input.encoding = encoding; input.colorspace = static_cast<ColorSpace>(color);
+                    input.convertedRowBytes = row; input.convertedChromaRowBytes = chromaRow;
+                    input.dolby.rgbBitAlignment = encoding == VideoFrameEncoding::R210 ? 1 : 2;
+                    input.dolby.fullRange = full;
+                    input.convertedContract.sampleRange = full ? VideoFrameSampleRange::FULL : VideoFrameSampleRange::LIMITED;
+                    const auto frame = PrepareAnalysisFrame(input);
+                    Assert::IsTrue(frame.IsValid());
+                    const auto evidence = ExtractActivePictureEvidence(frame.source);
+                    SubtitleBoxDetector detector;
+                    detector.SetScriptHint(static_cast<SubtitleScriptHint>(script));
+                    SubtitleBoxResult cue;
+                    for (int i = 0; i < 4; ++i) cue = detector.Analyze(frame.source, top, bottom, i + 1, 1);
+                    if (first) { reference = evidence; referenceCue = cue; first = false; }
+                    else {
+                        Assert::AreEqual(int(reference.classification), int(evidence.classification));
+                        Assert::AreEqual(reference.proposedBounds.top, evidence.proposedBounds.top);
+                        Assert::AreEqual(reference.proposedBounds.bottom, evidence.proposedBounds.bottom);
+                        Assert::AreEqual(reference.top.rgbBoundaryContrast, evidence.top.rgbBoundaryContrast, 0.001);
+                        Assert::AreEqual(reference.bottom.rgbBoundaryContrast, evidence.bottom.rgbBoundaryContrast, 0.001);
+                        Assert::AreEqual(referenceCue.detected, cue.detected);
+                        Assert::AreEqual(referenceCue.bounds.left, cue.bounds.left);
+                        Assert::AreEqual(referenceCue.bounds.bottom, cue.bounds.bottom);
+                    }
+                }
+                Logger::WriteMessage(referenceCue.detected ? L"Captured decoded frame: subtitle acquired." :
+                    L"Captured decoded frame: subtitle not acquired; parity only, no detection claim.");
+            }
+        }
+
 		TEST_METHOD(DecodedDolbyVisionKeepsTwelveBitStorageAndLegacyUpperTenEvidence)
 		{
 			auto decoded = MakeDecoded12Bit422(4, 2);
@@ -248,7 +535,7 @@ namespace Tests
 				state->colorspace = ColorSpace::REC_709;
 				state->dolbyVisionTunnel = true;
 
-				CR210DolbyVisionTunnelFormatter formatter;
+				CRGBDolbyVisionTunnelFormatter formatter;
 				formatter.OnVideoState(state);
 				VideoFrame frame(rgb->data(), 1, 0, nullptr);
 				std::vector<BYTE> output(

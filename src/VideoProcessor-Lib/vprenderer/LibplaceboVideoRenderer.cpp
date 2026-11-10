@@ -40,6 +40,7 @@
 #include <vprenderer/AlphaD3D11FrameGpuTimer.h>
 #include <vprenderer/AlphaRenderLoadMeter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
+#include <P210FrameLayout.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/SubtitleAspectRetention.h>
 #include <vprenderer/GradualPictureBoundaryRetention.h>
@@ -82,7 +83,8 @@
 #include <vprenderer/LibplaceboRenderParameters.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
-#include <video_frame_formatter/CR210DolbyVisionTunnelFormatter.h>
+#include <video_frame_formatter/CRGBDolbyVisionTunnelFormatter.h>
+#include <DolbyVisionTunnelInput.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP210VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
@@ -781,11 +783,18 @@ namespace
 	}
 
 	bool IsNativeRgbUpload(VideoFrameEncoding encoding,
-		VideoConversionOverride videoConversionOverride)
+		VideoConversionOverride videoConversionOverride, bool dolbyVisionTunnel)
 	{
 		return videoConversionOverride ==
 			VideoConversionOverride::VIDEOCONVERSION_NONE &&
-			AlphaCanUseNativeRgbUpload(encoding);
+			AlphaCanUseNativeRgbUpload(encoding, dolbyVisionTunnel);
+	}
+
+	bool IsNativePlanarUpload(VideoFrameEncoding encoding,
+		VideoConversionOverride conversion, bool dolbyVisionTunnel)
+	{
+		return (encoding == VideoFrameEncoding::P210 || encoding == VideoFrameEncoding::P010) && !dolbyVisionTunnel &&
+			conversion == VideoConversionOverride::VIDEOCONVERSION_NONE;
 	}
 
 	std::unique_ptr<IVideoFrameFormatter> CreateAlphaFormatter(
@@ -793,6 +802,12 @@ namespace
 		VideoConversionOverride videoConversionOverride,
 		bool dolbyVisionTunnel)
 	{
+		if (dolbyVisionTunnel)
+		{
+			if (!DolbyVisionTunnelEncodingSupported(encoding))
+				throw std::runtime_error("Unsupported Dolby Vision RGB tunnel layout");
+			return std::unique_ptr<IVideoFrameFormatter>(new CRGBDolbyVisionTunnelFormatter());
+		}
 		switch (encoding)
 		{
 		case VideoFrameEncoding::V210:
@@ -822,9 +837,6 @@ namespace
 		case VideoFrameEncoding::R10b:
 		case VideoFrameEncoding::R10l:
 		case VideoFrameEncoding::R210:
-			if (dolbyVisionTunnel)
-				return std::unique_ptr<IVideoFrameFormatter>(
-					new CR210DolbyVisionTunnelFormatter());
 			return std::unique_ptr<IVideoFrameFormatter>(
 				new CDeckLinkRGBToP010VideoFrameFormatter());
 		case VideoFrameEncoding::R12B:
@@ -8625,7 +8637,8 @@ struct LibplaceboVideoRenderer::Impl
 		if (!renderer)
 			throw std::runtime_error("Failed to create libplacebo renderer");
 
-		if (!IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride))
+		if (!IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) &&
+			!IsNativePlanarUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel))
 		{
 			std::lock_guard<std::mutex> formatterGuard(formatterMutex);
 			formatter = CreateAlphaFormatter(state->videoFrameEncoding,
@@ -8638,8 +8651,11 @@ struct LibplaceboVideoRenderer::Impl
 
 		DebugLog::Log(
 			"libplacebo initialized: D3D11, %s upload, SDR target request=%s %.1f nits",
-			IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride) ?
+			IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) ?
 				"native RGB" :
+			IsNativePlanarUpload(state->videoFrameEncoding, videoConversionOverride, state->dolbyVisionTunnel) ?
+				(state->videoFrameEncoding == VideoFrameEncoding::P010 ?
+                    "native P010 10-bit 4:2:0 (no CPU repack)" : "native P210 (no CPU repack)") :
 			((state->videoFrameEncoding == VideoFrameEncoding::V210 ||
 				state->videoFrameEncoding == VideoFrameEncoding::UYVY ||
 				state->videoFrameEncoding == VideoFrameEncoding::HDYC) &&
@@ -9055,6 +9071,7 @@ struct LibplaceboVideoRenderer::Impl
         input.rendererUsesNative = rendererUsesNative;
         input.converted422 = converted422;
         input.dolbyVisionTunnel = state.dolbyVisionTunnel;
+        input.tunnelSdrRgbRange = state.tunnelSdrRgbRange;
         if (converted) {
             input.convertedData = converted->pixels.data();
             input.convertedBytes = converted->pixels.size();
@@ -12792,7 +12809,7 @@ struct LibplaceboVideoRenderer::Impl
 		DolbyVisionLuminanceStatus frameDvLuminance;
 		AlphaNativeRgbLayout nativeRgbLayout;
 		const bool tunnelRgbFallback = state.dolbyVisionTunnel &&
-			state.videoFrameEncoding == VideoFrameEncoding::R210 &&
+			DolbyVisionTunnelEncodingSupported(state.videoFrameEncoding) &&
 			convertedPayload && !convertedPayload->dolby.valid &&
 			convertedPayload->dolby.allowSdrFallback &&
 			(convertedPayload->dolby.rgbBitAlignment == 1 ||
@@ -12846,12 +12863,10 @@ struct LibplaceboVideoRenderer::Impl
 				AlphaCanUseNativeRgbUpload(state.videoFrameEncoding) &&
 				GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout));
 		const bool nativeRgb8Upload = nativeRgbLayout.bitDepth == 8;
+		const bool nativePlanarUpload = IsNativePlanarUpload(
+			state.videoFrameEncoding, videoConversionOverride, state.dolbyVisionTunnel);
 		const bool lossless422Upload = state.dolbyVisionTunnel ||
-			((state.videoFrameEncoding == VideoFrameEncoding::V210 ||
-				state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
-				state.videoFrameEncoding == VideoFrameEncoding::HDYC) &&
-			videoConversionOverride ==
-				VideoConversionOverride::VIDEOCONVERSION_NONE);
+			AlphaUsesP210Ingress(state.videoFrameEncoding, videoConversionOverride);
 		const size_t p010RowBytes =
 			static_cast<size_t>(width) * sizeof(uint16_t);
 		const int chromaHeight = lossless422Upload ? height : (height + 1) / 2;
@@ -12862,7 +12877,19 @@ struct LibplaceboVideoRenderer::Impl
 		bool logFormatterContract = false;
 		const double conversionCpuMs = convertedPayload ?
 			convertedPayload->conversionCpuMs : 0.0;
-		if (!nativeRgbUpload)
+		if (nativePlanarUpload)
+		{
+			P210PlaneView view;
+            const bool validPlanes = state.videoFrameEncoding == VideoFrameEncoding::P010
+                ? GetNativeP010PlaneView(videoFrame.GetData(), state.BytesPerFrame(), width, height, view)
+                : GetP210PlaneView(videoFrame.GetData(), state.BytesPerFrame(), width, height, view);
+            if (!validPlanes)
+				return false;
+			yPixels = view.y;
+			uvPixels = view.uv;
+			formattedContract = { VideoFrameSampleRange::LIMITED, 10, 6 };
+		}
+		else if (!nativeRgbUpload)
 		{
 			if (!convertedPayload || convertedPayload->pixels.empty())
 				return false;
@@ -12899,7 +12926,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
         const auto preparedLive = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
-            analysisCache,AnalysisSourceProfile::LiveRenderer,frameGeneration,nativeRgbUpload,lossless422Upload);
+            analysisCache,AnalysisSourceProfile::LiveRenderer,frameGeneration,nativeRgbUpload || nativePlanarUpload,lossless422Upload);
         const auto preparedQueued = PrepareFrameAnalysis(videoFrame,state,convertedPayload,
             analysisCache,AnalysisSourceProfile::QueuedCapture,AlphaSourceFormatKey(state),false,lossless422Upload);
         analysisSource = preparedLive.source;
@@ -13852,8 +13879,13 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				switch (state.videoFrameEncoding)
 				{
+				case VideoFrameEncoding::ARGB_8BIT:
+				case VideoFrameEncoding::BGRA_8BIT:
 				case VideoFrameEncoding::R210:
 					setIngressStatus("Dolby Vision RGB tunnel (12-bit 4:2:2)");
+					break;
+				case VideoFrameEncoding::P210:
+					setIngressStatus("P210 (native capture; no CPU repack)");
 					break;
 				case VideoFrameEncoding::V210:
 					setIngressStatus("P210 (lossless v210 4:2:2)");
@@ -13866,6 +13898,8 @@ struct LibplaceboVideoRenderer::Impl
 					break;
 				}
 			}
+            else if (state.videoFrameEncoding == VideoFrameEncoding::P010)
+                setIngressStatus("P010 (card capture; 10-bit 4:2:0; no CPU repack)");
 			else
 				setIngressStatus(videoConversionOverride ==
 					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010 ?
@@ -13887,7 +13921,8 @@ struct LibplaceboVideoRenderer::Impl
 			(nativeRgbUpload ? PL_COLOR_SYSTEM_RGB :
 				TranslateSystem(state.colorspace));
 		image.repr.levels = nativeRgbUpload ?
-			(tunnelRgbFallback ? PL_COLOR_LEVELS_FULL :
+			(tunnelRgbFallback ? (state.tunnelSdrRgbRange == TunnelSdrRgbRange::Limited ?
+                PL_COLOR_LEVELS_LIMITED : PL_COLOR_LEVELS_FULL) :
 				(nativeRgbLayout.limitedRange ? PL_COLOR_LEVELS_LIMITED :
 				PL_COLOR_LEVELS_FULL)) :
 			(formattedContract.sampleRange == VideoFrameSampleRange::FULL ?
@@ -20985,6 +21020,11 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 	if (!videoState)
 		throw std::runtime_error("null video state is invalid");
 
+	if (videoState->valid && (videoState->videoFrameEncoding == VideoFrameEncoding::P210 ||
+        videoState->videoFrameEncoding == VideoFrameEncoding::P010) &&
+		!IsNativePlanarUpload(videoState->videoFrameEncoding, m_videoConversionOverride, videoState->dolbyVisionTunnel))
+		return false;
+
 	std::lock_guard<std::mutex> guard(m_stateMutex);
 	const bool materialSourceTransition = m_videoState &&
 		(videoState->valid == false ||
@@ -20993,6 +21033,7 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		 *videoState->displayMode != *m_videoState->displayMode ||
 		 videoState->videoFrameEncoding != m_videoState->videoFrameEncoding ||
 		 videoState->dolbyVisionTunnel != m_videoState->dolbyVisionTunnel ||
+         videoState->tunnelSdrRgbRange != m_videoState->tunnelSdrRgbRange ||
 		 videoState->eotf != m_videoState->eotf ||
 		 videoState->colorspace != m_videoState->colorspace);
 	if (materialSourceTransition && m_impl)
@@ -21017,7 +21058,8 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		 !m_videoState->displayMode ||
 		 *videoState->displayMode != *m_videoState->displayMode ||
 		 videoState->videoFrameEncoding != m_videoState->videoFrameEncoding ||
-		 videoState->dolbyVisionTunnel != m_videoState->dolbyVisionTunnel))
+		 videoState->dolbyVisionTunnel != m_videoState->dolbyVisionTunnel ||
+         videoState->tunnelSdrRgbRange != m_videoState->tunnelSdrRgbRange))
 	{
 		return false;
 	}

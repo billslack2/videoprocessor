@@ -137,6 +137,10 @@ public:
 	bool CanCapture() override;
 	void StartCapture(CaptureRunToken captureRunToken) override;
 	void StopCapture() override;
+	void SetRawRgbTunnelCapture(bool enabled) override
+	{ m_rawRgbTunnelRequested.store(enabled, std::memory_order_release); }
+	void SetNativeP210Capture(bool enabled) override
+	{ m_nativeP210Requested.store(enabled, std::memory_order_release); }
 	CaptureInputId CurrentCaptureInputId() override;
 	CaptureInputs SupportedCaptureInputs() override;
 	void SetCaptureInput(const CaptureInputId) override;
@@ -145,6 +149,12 @@ public:
 	double HardwareLatencyMs() const override { return m_hardwareLatencyMs; }
 	uint64_t VideoFrameCapturedCount() const override { return m_capturedVideoFrameCount; }
 	uint64_t VideoFrameMissedCount() const override { return m_missedVideoFrameCount; }
+    bool GetCaptureDeliveryStats(CaptureDeliveryStats& stats) const override
+    {
+        std::lock_guard<std::mutex> lock(m_deliveryStatsMutex);
+        stats = m_deliveryStats;
+        return true;
+    }
 
 	// ITimingClock
 	timingclocktime_t TimingClockNow() override;
@@ -163,6 +173,10 @@ private:
 	struct SignalDescription
 	{
 		bool locked = false;
+		bool rawRgbTunnel = false;
+		bool nativeP210 = false;
+		bool wireRgbRangeKnown = false;
+		TunnelSdrRgbRange tunnelSdrRange = TunnelSdrRgbRange::Full;
 		unsigned int width = 0;
 		unsigned int height = 0;
 		bool interlaced = false;
@@ -194,12 +208,13 @@ private:
 	// Parses the HDMI HDR InfoFrame into VP's HDR metadata.
 	bool ReadHdrInfoFrame(HCHANNEL channel, SignalDescription& signal) const;
 
-	// Chooses only formats the card reports as supported. RGB8 uses ARGB,
-	// RGB10 is repacked into R10l, and YCbCr uses P210 repacked into V210.
+	// Chooses only formats the card reports as supported. RGB8 uses ARGB or BGRA,
+	// RGB10 is repacked into R10l. P210 is delivered natively to compatible
+	// consumers and repacked into V210 for legacy consumers.
 	static void ChooseCaptureFormat(
 		const SignalDescription& signal,
 		const std::vector<DWORD>& supportedFormats,
-		DWORD& fourcc, VideoFrameEncoding& encoding);
+		DWORD& fourcc, VideoFrameEncoding& encoding, bool nativeP210 = false);
 	static void RepackRGB10ToR10l(
 		const uint8_t* source, uint32_t sourceStride,
 		uint8_t* destination, uint32_t destinationStride,
@@ -208,9 +223,10 @@ private:
 	static uint32_t BytesPerRowFor(
 		VideoFrameEncoding encoding, unsigned int width);
 
-	// The card cannot output v210. It can output P210, which carries the
-	// same 10-bit 4:2:2 samples, so frames are captured as P210 and repacked
-	// into v210 here. P210 stores MSB-aligned 10-bit codes in 16-bit samples;
+	// The SDK P210 route carries the
+	// same 10-bit 4:2:2 samples. Compatible VP Renderer consumers retain
+	// native P210; legacy consumers require this v210 repack. P210 stores
+	// MSB-aligned 10-bit codes in 16-bit samples;
 	// V210 packs those same codes into 32-bit words. The UV order matches, so
 	// this is a pure bit repack with no colour conversion and no loss.
 	static void RepackP210ToV210(
@@ -249,6 +265,8 @@ private:
 
 	std::thread m_captureThread;
 	std::atomic_bool m_captureThreadRunning{ false };
+	std::atomic_bool m_rawRgbTunnelRequested{ false };
+	std::atomic_bool m_nativeP210Requested{ false };
 	std::atomic_bool m_outputCaptureData{ false };
 
 	std::atomic<timingclocktime_t> m_frameOffsetTicks{ 0 };
@@ -263,6 +281,8 @@ private:
 	std::atomic<double> m_hardwareLatencyMs{ 0 };
 	std::atomic<uint64_t> m_capturedVideoFrameCount{ 0 };
 	std::atomic<uint64_t> m_missedVideoFrameCount{ 0 };
+    mutable std::mutex m_deliveryStatsMutex;
+    CaptureDeliveryStats m_deliveryStats;
 	// Shared with every buffer so renderer-held frames remain charged after a
 	// format change or Stop. This cap applies only to Magewell capture memory.
 	std::shared_ptr<MagewellCaptureMemoryBudget> m_memoryBudget =

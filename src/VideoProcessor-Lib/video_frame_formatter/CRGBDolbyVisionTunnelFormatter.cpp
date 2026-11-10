@@ -6,7 +6,8 @@
 #include <VideoFrame.h>
 #include <VideoState.h>
 #include <CpuFeatures.h>
-#include "CR210DolbyVisionTunnelFormatter.h"
+#include <DolbyVisionTunnelInput.h>
+#include "CRGBDolbyVisionTunnelFormatter.h"
 
 #include <array>
 #include <limits>
@@ -80,7 +81,7 @@ namespace
 
 	// Equivalent to the original RGB8 unpack and 12-bit I/C reconstruction.
 	// Keep each shift constant inside the hot loop for the scalar fallback.
-	template<unsigned Shift>
+	template<unsigned Shift, VideoFrameEncoding Encoding = VideoFrameEncoding::R210>
 	void ConvertRowsScalar(const uint8_t* source, uint16_t* output,
 		uint32_t width, uint32_t height, uint32_t stride,
 		uint32_t firstRow, uint32_t rowCount)
@@ -93,7 +94,8 @@ namespace
 			uint16_t* uv = output + planePixels + static_cast<size_t>(row) * width;
 			for (uint32_t x = 0; x < width; ++x)
 			{
-				const uint32_t p = ReadBigEndian32(input + static_cast<size_t>(x) * 4);
+				const uint32_t p = ReadDolbyVisionTunnelWord(
+					input + static_cast<size_t>(x) * 4, Encoding);
 				y[x] = static_cast<uint16_t>(
 					((p >> (2 + Shift)) & 0xFF00U) |
 					((p << (4 - Shift)) & 0xF0U));
@@ -189,7 +191,7 @@ namespace
 	}
 }
 
-CR210DolbyVisionTunnelFormatter::CR210DolbyVisionTunnelFormatter()
+CRGBDolbyVisionTunnelFormatter::CRGBDolbyVisionTunnelFormatter()
 {
 	m_hasAVX2 = CpuFeatures::SupportsAvx2Kernels();
 	for (uint32_t i = 0; i < MAX_WORKERS; ++i)
@@ -201,7 +203,7 @@ CR210DolbyVisionTunnelFormatter::CR210DolbyVisionTunnelFormatter()
 	}
 }
 
-CR210DolbyVisionTunnelFormatter::~CR210DolbyVisionTunnelFormatter()
+CRGBDolbyVisionTunnelFormatter::~CRGBDolbyVisionTunnelFormatter()
 {
 	for (uint32_t i = 0; i < m_workerCount; ++i)
 	{
@@ -210,12 +212,12 @@ CR210DolbyVisionTunnelFormatter::~CR210DolbyVisionTunnelFormatter()
 	}
 }
 
-void CR210DolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
+void CRGBDolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
 {
 	if (!state || !state->displayMode ||
-		state->videoFrameEncoding != VideoFrameEncoding::R210 ||
-		!state->dolbyVisionTunnel)
-		throw std::runtime_error("Dolby Vision tunnel requires enabled R210 capture");
+		!DolbyVisionTunnelEncodingSupported(state->videoFrameEncoding) ||
+		!state->rgbTunnelBytesPreserved || !state->dolbyVisionTunnel)
+		throw std::runtime_error("Dolby Vision tunnel requires enabled byte-preserving ARGB, BGRA or R210 capture");
 	const auto width = state->displayMode->FrameWidth();
 	const auto height = state->displayMode->FrameHeight();
 	if (width <= 0 || height <= 0 || (width & 1) != 0)
@@ -224,13 +226,16 @@ void CR210DolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
 		static_cast<uint64_t>(width) * static_cast<uint64_t>(height) * 4U;
 	if (outputSize > static_cast<uint64_t>(std::numeric_limits<LONG>::max()))
 		throw std::runtime_error("Dolby Vision tunnel output frame too large");
+	m_encoding = state->videoFrameEncoding;
+	m_sdrRange = state->tunnelSdrRgbRange;
 	m_width = static_cast<uint32_t>(width);
 	m_height = static_cast<uint32_t>(height);
 	m_stride = state->BytesPerRow();
 	if (m_stride < m_width * 4U)
-		throw std::runtime_error("R210 stride is shorter than the active width");
+		throw std::runtime_error("RGB tunnel stride is shorter than the active width");
 	m_outputSize = static_cast<LONG>(outputSize);
-	m_alignment = ByteAlignment::UNKNOWN;
+	m_alignment = m_encoding == VideoFrameEncoding::R210 ?
+		ByteAlignment::UNKNOWN : ByteAlignment::RIGHT;
 	m_missingPacketFrames = 0;
 	m_missingPacketReported = false;
 	m_tunnelConfirmed = false;
@@ -260,7 +265,7 @@ void CR210DolbyVisionTunnelFormatter::OnVideoState(VideoStateComPtr& state)
 		m_hasAVX2 ? "AVX2" : "scalar", m_workerCount);
 }
 
-bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
+bool CRGBDolbyVisionTunnelFormatter::FormatVideoFrame(
 	const VideoFrame& frame, BYTE* output)
 {
 	if (!frame.GetData() || !output || m_outputSize <= 0)
@@ -294,7 +299,7 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 	{
 		const size_t y = pixel / m_width;
 		const size_t x = pixel % m_width;
-		return ReadBigEndian32(source + y * m_stride + x * 4);
+		return ReadDolbyVisionTunnelWord(source + y * m_stride + x * 4, m_encoding);
 	};
 
 	bool acceptedMetadata = false;
@@ -334,11 +339,44 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 
 	// Prefer the current alignment so normal low8 capture does not probe a
 	// known-wrong layout on every picture. Only CRC can confirm the tunnel.
-	const ByteAlignment firstCandidate = m_alignment == ByteAlignment::RIGHT ?
-		ByteAlignment::RIGHT : ByteAlignment::LEFT;
+    ByteAlignment firstCandidate = m_alignment == ByteAlignment::RIGHT ?
+        ByteAlignment::RIGHT : ByteAlignment::LEFT;
+    if (m_encoding == VideoFrameEncoding::R210)
+    {
+        // A uniform letterbox can make both r210 bit alignments yield the
+        // same CRC-valid header. Sample across each current source frame,
+        // not only the metadata rows, to prioritize a uniquely compatible
+        // alignment even if the packing changes without a format reset.
+        // This changes probe order only; CRC and metadata checks still decide.
+        const size_t pixels = static_cast<size_t>(m_width) * m_height;
+        const size_t count = (std::min)(pixels, size_t(4096));
+        size_t highCompatible = 0, lowCompatible = 0;
+        for (size_t i = 0; i < count; ++i)
+        {
+            const size_t position = count > 1 ? i * (pixels - 1) / (count - 1) : 0;
+            const uint32_t word = readWord(position);
+            const uint32_t r = (word >> 20) & 0x3ffU;
+            const uint32_t g = (word >> 10) & 0x3ffU;
+            const uint32_t b = word & 0x3ffU;
+            highCompatible += ((r | g | b) & 3U) == 0;
+            lowCompatible += ((r | g | b) & 0x300U) == 0;
+        }
+        const bool highEligible = count && highCompatible * 100 >= count * 98;
+        const bool lowEligible = count && lowCompatible * 100 >= count * 98;
+        // The other interpretation need only be ruled out, not be less
+        // than half as common: most of a dark picture may fit both layouts.
+        if (highEligible && !lowEligible)
+            firstCandidate = ByteAlignment::LEFT;
+        else if (lowEligible && !highEligible)
+            firstCandidate = ByteAlignment::RIGHT;
+    }
 	for (const ByteAlignment candidate : { firstCandidate,
 		firstCandidate == ByteAlignment::LEFT ? ByteAlignment::RIGHT : ByteAlignment::LEFT })
 	{
+		// Packed RGB8 has a fixed byte layout; probing high8 could falsely
+		// accept an unrelated parity pattern. Only r210 needs both alignments.
+		if (m_encoding != VideoFrameEncoding::R210 && candidate != ByteAlignment::RIGHT)
+			continue;
 		std::array<uint8_t, kPacketBytes> packet{};
 		ParsedPacket parsed;
 		if (!readPacket(0, candidate, packet) ||
@@ -352,7 +390,9 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 		m_lastAffectedId = parsed.affectedId;
 		m_haveDiagnosticIds = true;
 		if (!m_tunnelConfirmed || m_alignment != candidate)
-			DebugLog::Log("Dolby Vision RGB tunnel: CRC-validated r210 RGB8 alignment=%s",
+			DebugLog::Log("Dolby Vision RGB tunnel: CRC-validated %s RGB8 alignment=%s",
+				m_encoding == VideoFrameEncoding::R210 ? "r210" :
+					m_encoding == VideoFrameEncoding::ARGB_8BIT ? "ARGB" : "BGRA",
 				candidate == ByteAlignment::LEFT ? "high8" : "low8");
 		m_tunnelConfirmed = true;
 		m_alignment = candidate;
@@ -454,7 +494,13 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 		}
 		parsed.metadata.rgbBitAlignment = candidate == ByteAlignment::LEFT ? 1 : 2;
 		if (parsed.noMetadata)
-			++m_noMetadataFrames; // Healthy transport; active DM remains valid.
+        {
+            ++m_noMetadataFrames; // Healthy transport; active DM remains valid.
+            // Retained DM describes current decoded pixels; its capture
+            // alignment must follow this frame's independently checked header.
+            if (m_metadata.valid)
+                m_metadata.rgbBitAlignment = parsed.metadata.rgbBitAlignment;
+        }
 		else if (parsed.affectedId == parsed.currentId)
 		{
 			m_metadata = parsed.metadata;
@@ -571,7 +617,7 @@ bool CR210DolbyVisionTunnelFormatter::FormatVideoFrame(
 	return true;
 }
 
-void CR210DolbyVisionTunnelFormatter::ConvertRows(
+void CRGBDolbyVisionTunnelFormatter::ConvertRows(
 	const uint8_t* source, uint16_t* output, uint32_t firstRow,
 	uint32_t rowCount, bool leftAligned) const
 {
@@ -580,7 +626,13 @@ void CR210DolbyVisionTunnelFormatter::ConvertRows(
 		ConvertRowsAVX2(source, output, firstRow, rowCount, leftAligned);
 		return;
 	}
-	if (leftAligned)
+	if (m_encoding == VideoFrameEncoding::ARGB_8BIT)
+		ConvertRowsScalar<0, VideoFrameEncoding::ARGB_8BIT>(source, output,
+			m_width, m_height, m_stride, firstRow, rowCount);
+	else if (m_encoding == VideoFrameEncoding::BGRA_8BIT)
+		ConvertRowsScalar<0, VideoFrameEncoding::BGRA_8BIT>(source, output,
+			m_width, m_height, m_stride, firstRow, rowCount);
+	else if (leftAligned)
 		ConvertRowsScalar<2>(source, output, m_width, m_height, m_stride,
 			firstRow, rowCount);
 	else
@@ -588,10 +640,10 @@ void CR210DolbyVisionTunnelFormatter::ConvertRows(
 			firstRow, rowCount);
 }
 
-void CALLBACK CR210DolbyVisionTunnelFormatter::ConversionWorkCallback(
+void CALLBACK CRGBDolbyVisionTunnelFormatter::ConversionWorkCallback(
 	PTP_CALLBACK_INSTANCE, PVOID context, PTP_WORK work)
 {
-	auto* formatter = static_cast<CR210DolbyVisionTunnelFormatter*>(context);
+	auto* formatter = static_cast<CRGBDolbyVisionTunnelFormatter*>(context);
 	uint32_t index = 0;
 	while (index < formatter->m_workerCount &&
 		formatter->m_conversionWork[index] != work)

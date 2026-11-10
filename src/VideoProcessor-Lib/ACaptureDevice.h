@@ -163,6 +163,14 @@ public:
 	// Will throw if CanCapture() is false
 	virtual void StartCapture(CaptureRunToken captureRunToken) = 0;
 
+	// Request byte-preserving RGB8 capture for an explicitly selected DV tunnel.
+	// Backends without capture-side processing keep their existing behavior.
+	virtual void SetRawRgbTunnelCapture(bool enabled) {}
+
+	// Consumer capability: request native P210 instead of legacy v210 delivery.
+	// The default preserves every other backend's existing behavior.
+	virtual void SetNativeP210Capture(bool enabled) {}
+
 	// Stop capturing
 	// Idempotent
 	virtual void StopCapture() = 0;

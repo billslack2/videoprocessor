@@ -4,9 +4,15 @@
 #include <magewell/MagewellCaptureDevice.h>
 #include <MWFOURCC.h>
 #include <AnalysisLumaSource.h>
+#include <P210FrameLayout.h>
+#include <magewell/MagewellCaptureFormatPolicy.h>
+#include <magewell/MagewellRgb24Packing.h>
+#include <DolbyVisionTunnelInput.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <vprenderer/AlphaQueuePolicy.h>
 #include "MagewellSdkTestAccess.h"
+#include "DolbyVisionTunnelTestSender.h"
+#include <magewell/MagewellRgbTunnelRange.h>
 
 #include <array>
 #include <algorithm>
@@ -24,14 +30,49 @@ public:
 	static void Choose(MWCAP_VIDEO_COLOR_FORMAT color, BYTE depth,
 		const std::vector<DWORD>& formats,
 		DWORD& fourcc, VideoFrameEncoding& encoding,
-		unsigned int width = 1920)
+		unsigned int width = 1920, bool nativeP210 = false)
 	{
 		MagewellCaptureDevice::SignalDescription signal;
 		signal.colorFormat = color;
 		signal.bitDepth = depth;
 		signal.width = width;
-		MagewellCaptureDevice::ChooseCaptureFormat(signal, formats, fourcc, encoding);
+		MagewellCaptureDevice::ChooseCaptureFormat(signal, formats, fourcc, encoding, nativeP210);
 	}
+
+    static VideoFrameEncoding ChooseAuto(unsigned width, unsigned height, unsigned period,
+        const std::vector<DWORD>& formats, bool native = true, bool interlaced = false)
+    {
+        MagewellCaptureDevice::SignalDescription signal;
+        signal.colorFormat = MWCAP_VIDEO_COLOR_FORMAT_YUV709;
+        signal.bitDepth = 10; signal.width = width; signal.height = height;
+        signal.frameDuration100ns = period; signal.interlaced = interlaced;
+        DWORD fourcc = 0; VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
+        MagewellCaptureDevice::ChooseCaptureFormat(signal, formats, fourcc, encoding, native);
+        Assert::AreEqual(encoding == VideoFrameEncoding::P010 ? MWFOURCC_P010 : MWFOURCC_P210, fourcc);
+        return encoding;
+    }
+    static DWORD ChooseRawRgb(unsigned period,bool raw,bool interlaced=false,
+        const std::vector<DWORD>& formats={MWFOURCC_BGRA,MWFOURCC_BGR24})
+    {
+        MagewellCaptureDevice::SignalDescription signal;
+        signal.width=3840; signal.height=2160; signal.frameDuration100ns=period;
+        signal.colorFormat=MWCAP_VIDEO_COLOR_FORMAT_RGB; signal.bitDepth=8;
+        signal.rawRgbTunnel=raw; signal.interlaced=interlaced;
+        DWORD fourcc=0; VideoFrameEncoding encoding=VideoFrameEncoding::UNKNOWN;
+        MagewellCaptureDevice::ChooseCaptureFormat(signal,formats,fourcc,encoding);
+        Assert::IsTrue(encoding==VideoFrameEncoding::BGRA_8BIT);
+        return fourcc;
+    }
+	static void PublishRgb8(MagewellCaptureDevice& device,
+        MWCAP_VIDEO_QUANTIZATION_RANGE range,
+        VideoFrameEncoding encoding = VideoFrameEncoding::ARGB_8BIT)
+    {
+        MagewellCaptureDevice::SignalDescription signal;
+        signal.width = 130; signal.height = 128; signal.frameDuration100ns = 416667;
+        signal.colorFormat = MWCAP_VIDEO_COLOR_FORMAT_RGB;
+        signal.bitDepth = 8; signal.eotf = EOTF::SDR; signal.quantRange = range;
+        device.PublishVideoState(signal, encoding, 1);
+    }
 
 	static void RepackRgb(const uint8_t* source, uint32_t sourceStride,
 		uint8_t* destination, uint32_t destinationStride,
@@ -101,9 +142,62 @@ namespace Tests
 		std::atomic_bool failOpen{ false };
 		std::atomic_bool streamFrames{ false };
 		std::atomic_bool formatEventPending{ false };
+        std::vector<LONGLONG> fakeFrameTimes;
+        std::atomic<size_t> fakeFrameTimeIndex{0};
 		std::atomic<int> signalMode{ 0 }; // YUV, RGB12, invalid geometry, SDI RGB, unsupported RGB16.
 		std::atomic<int> sdiDepth{ SDI_BIT_DEPTH_10BIT };
+        const std::vector<BYTE>* rgbSenderBytes = nullptr;
+        bool rgb24Trial=false;
+        bool rgb24Sequence=false;
+        std::atomic<int> copyCount{0};
+        std::vector<const BYTE*> rgb24Destinations;
+        std::vector<DWORD> callbackThreads;
+        DWORD sdkCopyThread=0;
+        bool deferSecondRgb24Dma=false;
+        BYTE* deferredDmaTarget=nullptr;
+        int stoppedDeferredDma=0;
+        std::atomic<unsigned> rgb24Period{200000};
+        std::atomic<DWORD> rgbCaptureFourcc{MWFOURCC_ARGB};
+        std::vector<DWORD> rgbCaptureFormats{ MWFOURCC_ARGB };
+        // Exact list returned by the installed Pro Capture HDMI 4K+ driver.
+        const std::vector<DWORD> proCapture4kPlusFormats{
+            MWFOURCC_YUY2, MWFOURCC_YUYV, MWFOURCC_UYVY, MWFOURCC_NV12,
+            MWFOURCC_I420, MWFOURCC_YV12, MWFOURCC_V308, MWFOURCC_IYU2,
+            MWFOURCC_V408, MWFOURCC_V410, MWFOURCC_Y410, MWFOURCC_BGR24,
+            MWFOURCC_BGRA, MWFOURCC_I422, MWFOURCC_YV16, MWFOURCC_NV16,
+            MWFOURCC_NV61, MWFOURCC_P010, MWFOURCC_P210 };
+        std::atomic<int> rgbWireRange{MWCAP_VIDEO_QUANTIZATION_LIMITED};
+        std::atomic<int> inputRangeSetting{MWCAP_VIDEO_QUANTIZATION_UNKNOWN};
+        std::atomic<int> restoreWriteFailures{0};
+        std::atomic<int> rangeFailure{0}; // save failure, partial write failure, ignored write
+        MW_RESULT FakeGetRange(HCHANNEL, MWCAP_VIDEO_QUANTIZATION_RANGE* range)
+        {
+            if (rangeFailure == 1) return MW_FAILED;
+            *range = static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(inputRangeSetting.load());
+            if (rangeFailure == 3 && *range == MWCAP_VIDEO_QUANTIZATION_FULL)
+                *range = MWCAP_VIDEO_QUANTIZATION_LIMITED;
+            return MW_SUCCEEDED;
+        }
+        MW_RESULT FakeSetRange(HCHANNEL, MWCAP_VIDEO_QUANTIZATION_RANGE range)
+        {
+            if (range != MWCAP_VIDEO_QUANTIZATION_FULL && restoreWriteFailures > 0)
+            { --restoreWriteFailures; return MW_FAILED; }
+            inputRangeSetting = range;
+            return rangeFailure == 2 && range == MWCAP_VIDEO_QUANTIZATION_FULL ? MW_FAILED : MW_SUCCEEDED;
+        }
+        MW_RESULT FakeAviPacket(HCHANNEL, MWCAP_HDMI_INFOFRAME_ID id, HDMI_INFOFRAME_PACKET* packet)
+        {
+            if (id != MWCAP_HDMI_INFOFRAME_ID_AVI || signalMode != 5) return MW_FAILED;
+            *packet = {};
+            packet->aviInfoFramePayload.byRGB_YCbCr = HDMI_ENCODING_RGB_444;
+            packet->aviInfoFramePayload.byVIC = 16;
+            packet->aviInfoFramePayload.byRGBQuantizationRange =
+                rgbWireRange == MWCAP_VIDEO_QUANTIZATION_LIMITED ? 1 :
+                rgbWireRange == MWCAP_VIDEO_QUANTIZATION_FULL ? 2 : 3;
+            return MW_SUCCEEDED;
+        }
 		std::atomic_bool failCopies{ false };
+        std::atomic<const BYTE*> lastSdkCopyPointer{nullptr};
 		HANDLE fakeNotifyEvent = nullptr;
 		HANDLE fakeCaptureEvent = nullptr;
 		MWCAP_VIDEO_COLOR_FORMAT requestedColor = MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN;
@@ -288,7 +382,8 @@ namespace Tests
 		MW_RESULT FakeStop(HCHANNEL)
 		{
 			++stopCalls;
-			return MW_SUCCEEDED;
+            if(deferredDmaTarget){deferredDmaTarget[0]=123;deferredDmaTarget=nullptr;++stoppedDeferredDma;}
+            return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeDeviceTime(HCHANNEL, LONGLONG* value)
 		{
@@ -328,19 +423,26 @@ namespace Tests
 			signal->cy = 100;
 			signal->dwFrameDuration = 166667;
 			signal->colorFormat = MWCAP_VIDEO_COLOR_FORMAT_YUV601;
-			if (signalMode == 1 || signalMode == 3 || signalMode == 4)
+			if (signalMode == 1 || signalMode == 3 || signalMode == 4 || signalMode == 5)
 				signal->colorFormat = MWCAP_VIDEO_COLOR_FORMAT_RGB;
+            if (signalMode == 5)
+            {
+                signal->cx = rgb24Trial?3840:130; signal->cy = rgb24Trial?2160:128;
+                if(rgb24Trial) signal->dwFrameDuration=rgb24Period.load();
+                signal->quantRange = static_cast<MWCAP_VIDEO_QUANTIZATION_RANGE>(
+                    inputRangeSetting == MWCAP_VIDEO_QUANTIZATION_UNKNOWN ? rgbWireRange.load() : inputRangeSetting.load());
+            }
 			if (signalMode == 2) signal->cx = 0;
 			return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeInputSpecific(HCHANNEL, MWCAP_INPUT_SPECIFIC_STATUS* status)
 		{
-			if (signalMode == 1 || signalMode == 4)
+			if (signalMode == 1 || signalMode == 4 || signalMode == 5)
 			{
 				*status = {};
 				status->bValid = TRUE;
 				status->dwVideoInputType = MWCAP_VIDEO_INPUT_TYPE_HDMI;
-				status->hdmiStatus.byBitDepth = signalMode == 1 ? 12 : 16;
+				status->hdmiStatus.byBitDepth = signalMode == 5 ? 8 : signalMode == 1 ? 12 : 16;
 				return MW_SUCCEEDED;
 			}
 			if (signalMode == 3)
@@ -354,12 +456,19 @@ namespace Tests
 			}
 			return MW_FAILED;
 		}
-		MW_RESULT FakeHdrValid(HCHANNEL, DWORD*) { return MW_FAILED; }
+		MW_RESULT FakeHdrValid(HCHANNEL, DWORD* flags)
+        {
+            if (signalMode != 5) return MW_FAILED;
+            *flags = MWCAP_HDMI_INFOFRAME_MASK_AVI;
+            return MW_SUCCEEDED;
+        }
 		MW_RESULT FakeFamily(HCHANNEL, void*, DWORD) { return MW_FAILED; }
 		MW_RESULT FakeFormats(HCHANNEL, DWORD* formats, int* count)
 		{
-			if (formats) formats[0] = MWFOURCC_P210;
-			*count = 1;
+			const std::vector<DWORD> values = signalMode == 5 ? rgbCaptureFormats :
+				std::vector<DWORD>{ MWFOURCC_P210 };
+			if (formats) std::copy(values.begin(), values.end(), formats);
+			*count = static_cast<int>(values.size());
 			return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeCaptureStart(HCHANNEL, HANDLE eventHandle)
@@ -367,7 +476,8 @@ namespace Tests
 			fakeCaptureEvent = eventHandle;
             const int starts = ++startCalls;
             if (starts >= 3 && failRecoveryStart) return MW_FAILED;
-            if ((starts == 2 || (starts >= 3 && resumeOnRestart)) && fakeNotifyEvent)
+            if ((starts == 2 || signalMode == 5 ||
+                (starts >= 3 && resumeOnRestart)) && fakeNotifyEvent)
 				SetEvent(fakeNotifyEvent);
 			return MW_SUCCEEDED;
 		}
@@ -400,7 +510,8 @@ namespace Tests
 		MW_RESULT FakeFrameInfo(HCHANNEL, BYTE, MWCAP_VIDEO_FRAME_INFO* info)
 		{
 			*info = {};
-			info->allFieldStartTimes[0] = 1001000;
+            info->allFieldStartTimes[0] = fakeFrameTimes.empty() ? 1001000 :
+                fakeFrameTimes[(std::min)(fakeFrameTimeIndex.fetch_add(1), fakeFrameTimes.size()-1)];
 			return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeCopy(HCHANNEL, int, LPBYTE frame, DWORD frameBytes,
@@ -414,13 +525,43 @@ namespace Tests
 			MWCAP_VIDEO_QUANTIZATION_RANGE range,
 			MWCAP_VIDEO_SATURATION_RANGE)
 		{
-			requestedColor = color;
+			lastSdkCopyPointer = frame;
+            const int sequence=++copyCount; sdkCopyThread=GetCurrentThreadId();
+            if(rgb24Trial) rgb24Destinations.push_back(frame);
+            requestedColor = color;
 			requestedRange = range;
 			if (failCopies.load())
 			{
 				SetEvent(fakeNotifyEvent);
 				return MW_FAILED;
 			}
+            if (signalMode == 5)
+            {
+                const int expectedWidth=rgb24Trial?3840:130, expectedHeight=rgb24Trial?2160:128;
+                const bool bgr24=fourcc==MWFOURCC_BGR24;
+                const DWORD expectedStride=bgr24?((expectedWidth*3+3)&~3):expectedWidth*4;
+                if (!rgbSenderBytes || fourcc != rgbCaptureFourcc || stride != expectedStride ||
+                    frameBytes != expectedStride*expectedHeight || width != expectedWidth || height != expectedHeight ||
+                    color != MWCAP_VIDEO_COLOR_FORMAT_RGB || range != MWCAP_VIDEO_QUANTIZATION_FULL)
+                    return MW_FAILED;
+                if(bgr24) {
+                    for(int y=0;y<height;++y) for(int x=0;x<width;++x)
+                        memcpy(frame+size_t(y)*stride+x*3,rgbSenderBytes->data()+size_t(y)*width*4+x*4,3);
+                } else memcpy(frame, rgbSenderBytes->data(), frameBytes);
+                const int effectiveInputRange = inputRangeSetting == MWCAP_VIDEO_QUANTIZATION_UNKNOWN ?
+                    rgbWireRange.load() : inputRangeSetting.load();
+                if (effectiveInputRange == MWCAP_VIDEO_QUANTIZATION_LIMITED)
+                    for(int y=0;y<height;++y) for(int x=0;x<width;++x)
+                        for(size_t c=fourcc==MWFOURCC_ARGB?1:0,end=c+3;c<end;++c) {
+                            auto& code=frame[size_t(y)*stride+x*(bgr24?3:4)+c];
+                            code=BYTE(std::max(0,std::min(255,(int(code)-16)*255/219)));
+                        }
+                if(rgb24Sequence) frame[frameBytes-3]=BYTE(sequence);
+                if(deferSecondRgb24Dma&&sequence==2){deferredDmaTarget=frame;return MW_SUCCEEDED;}
+                SetEvent(fakeCaptureEvent);
+                if (streamFrames.load()) SetEvent(fakeNotifyEvent);
+                return MW_SUCCEEDED;
+            }
 			if (fourcc != MWFOURCC_P210 || frameBytes != 40800 ||
 				stride != 204 || width != 102 || height != 100)
 				return MW_FAILED;
@@ -451,8 +592,11 @@ namespace Tests
 			api.MWUnregisterNotify = &FakeUnregister;
 			api.MWGetNotifyStatus = &FakeNotify;
 			api.MWGetVideoSignalStatus = &FakeSignal;
+            api.MWGetVideoInputQuantizationRange = &FakeGetRange;
+            api.MWSetVideoInputQuantizationRange = &FakeSetRange;
 			api.MWGetInputSpecificStatus = &FakeInputSpecific;
 			api.MWGetHDMIInfoFrameValidFlag = &FakeHdrValid;
+            api.MWGetHDMIInfoFramePacket = &FakeAviPacket;
 			api.MWGetFamilyInfo = &FakeFamily;
 			api.MWGetVideoCaptureSupportColorFormat = &FakeFormats;
 			api.MWGetVideoBufferInfo = &FakeBufferInfo;
@@ -468,29 +612,41 @@ namespace Tests
 			std::mutex mutex;
 			std::condition_variable changed;
 			std::vector<std::unique_ptr<VideoFrame>> frames;
+            std::vector<VideoFrameEncoding> frameEncodings;
 			std::vector<CString> errors;
 			int validStates = 0, invalidStates = 0;
 			size_t goal = 34;
             unsigned callbackDelayMs = 0;
+            bool throwOnFrame=false;
+            int copiesOnFirstCallback=0;
+            size_t ordinaryFrames=0;
+            std::vector<BYTE> sequenceCodes;
 			bool failClockAfterFirstFrame = false;
 			~QueueCallback()
 			{
 				for (auto& frame : frames) frame->SourceBufferRelease();
 			}
+			VideoStateComPtr latestValidState;
 			void OnCaptureDeviceState(CaptureDeviceState) override {}
 			void OnCaptureDeviceCardStateChange(CaptureDeviceCardStateComPtr) override {}
 			void OnCaptureDeviceVideoStateChange(
 				ACaptureDevice*, CaptureRunToken, VideoStateComPtr state) override
 			{
 				std::lock_guard<std::mutex> lock(mutex);
-				if (state->valid) ++validStates; else ++invalidStates;
+				if (state->valid) { ++validStates; latestValidState = state; } else ++invalidStates;
 				changed.notify_all();
 			}
 			void OnCaptureDeviceVideoFrame(
 				ACaptureDevice*, CaptureRunToken, VideoFrame& frame) override
 			{
 				std::lock_guard<std::mutex> lock(mutex);
-				frames.emplace_back(new VideoFrame(frame));
+				if(frames.empty()) copiesOnFirstCallback=copyCount.load();
+                callbackThreads.push_back(GetCurrentThreadId());
+                if(throwOnFrame) throw std::runtime_error("frame callback failure");
+                if(rgb24Sequence) sequenceCodes.push_back(static_cast<const BYTE*>(frame.GetData())[(size_t(3840)*2160-1)*4]);
+                if(!latestValidState->rgbTunnelBytesPreserved) ++ordinaryFrames;
+                frameEncodings.push_back(latestValidState->videoFrameEncoding);
+                frames.emplace_back(new VideoFrame(frame));
 				frames.back()->SourceBufferAddRef();
 				if (frames.size() >= goal) streamFrames = false;
 				if (failClockAfterFirstFrame) failDeviceTime = true;
@@ -583,12 +739,296 @@ namespace Tests
 			stopCalls = unregisterCalls = notifyReads = startCalls = closeCalls = 0;
 			fakeDeviceTime = 1000000; resumeOnRestart=false;failRecoveryStart=false;
 			failDeviceTime = failOpen = streamFrames = formatEventPending = failCopies = false;
+            fakeFrameTimes.clear(); fakeFrameTimeIndex = 0;
 			selectedInput = 0;
 			scanEnabled = true;
 			signalMode = 0;
 			sdiDepth = SDI_BIT_DEPTH_10BIT;
+            inputRangeSetting = MWCAP_VIDEO_QUANTIZATION_UNKNOWN;
+            rgbWireRange = MWCAP_VIDEO_QUANTIZATION_LIMITED;
+            rangeFailure = 0; restoreWriteFailures = 0; rgbSenderBytes = nullptr;
+            rgb24Trial=false;rgb24Sequence=false;copyCount=0;rgb24Destinations.clear();callbackThreads.clear();sdkCopyThread=0;rgb24Period=200000;deferSecondRgb24Dma=false;deferredDmaTarget=nullptr;stoppedDeferredDma=0;
+            rgbCaptureFourcc = MWFOURCC_ARGB; rgbCaptureFormats = { MWFOURCC_ARGB };
 			fakeNotifyEvent = fakeCaptureEvent = nullptr;
+            lastSdkCopyPointer = nullptr;
 		}
+
+
+        TEST_METHOD(RawRangeRestorationRetriesTransientSdkFailure)
+        {
+            inputRangeSetting = MWCAP_VIDEO_QUANTIZATION_LIMITED;
+            const auto api = CaptureApi();
+            MagewellRgbTunnelRange lease(api, reinterpret_cast<HCHANNEL>(1));
+            lease.Enable();
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_FULL), inputRangeSetting.load());
+            restoreWriteFailures = 1;
+            Assert::IsTrue(lease.Restore());
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_LIMITED), inputRangeSetting.load());
+            Assert::IsFalse(lease.Active());
+        }
+
+        TEST_METHOD(PersistentRestoreFailureIsReportedInsteadOfClaimingOriginalSettings)
+        {
+            using namespace DolbyVisionTestSender;
+            signalMode = 5;
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
+            picture.Embed(Packetize(DmBody())); rgbSenderBytes = &picture.input;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info = {};
+            QueueCallback callback; callback.goal = 1;
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true); device.StartCapture(1);
+            Assert::IsTrue(callback.Wait([&]{ return !callback.frames.empty(); }));
+            restoreWriteFailures = 3;
+            device.StopCapture();
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_FULL), inputRangeSetting.load());
+            Assert::IsTrue(std::any_of(callback.errors.begin(), callback.errors.end(),
+                [](const CString& error){ return error.Find(L"restore the original input range") >= 0; }));
+            inputRangeSetting = MWCAP_VIDEO_QUANTIZATION_UNKNOWN; // reset the fake device only
+        }
+
+        TEST_METHOD(CaptureCopyFailureRestoresRawInputRangeAndPublishesInvalidState)
+        {
+            signalMode = 5; failCopies = true;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info = {};
+            QueueCallback callback;
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true); device.StartCapture(1);
+            Assert::IsTrue(callback.Wait([&]{ return !callback.errors.empty(); })); device.StopCapture();
+            Assert::IsTrue(callback.frames.empty());
+            Assert::IsTrue(callback.invalidStates >= 1);
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_UNKNOWN), inputRangeSetting.load());
+        }
+
+        TEST_METHOD(RawRgb24PolicyUsesSupportedPackingOnlyWhenRawUhdBandwidthNeedsIt)
+        {
+            for(unsigned period:{200000u,166833u,166667u})
+                Assert::AreEqual(MWFOURCC_BGR24,MagewellCaptureTestAccess::ChooseRawRgb(period,true));
+            Assert::AreEqual(MWFOURCC_BGRA,MagewellCaptureTestAccess::ChooseRawRgb(417083,true));
+            Assert::AreEqual(MWFOURCC_BGRA,MagewellCaptureTestAccess::ChooseRawRgb(200000,false));
+            Assert::AreEqual(MWFOURCC_BGRA,MagewellCaptureTestAccess::ChooseRawRgb(200000,true,true));
+            Assert::AreEqual(MWFOURCC_BGRA,MagewellCaptureTestAccess::ChooseRawRgb(200000,true,false,{MWFOURCC_BGRA}));
+        }
+
+        TEST_METHOD(RawRgb24SdkCapturePreservesEveryDvSampleAndRestoresLimitedInputRange)
+        {
+            using namespace DolbyVisionTestSender;
+            signalMode=5; rgb24Trial=true; rgbCaptureFourcc=MWFOURCC_BGR24;
+            rgbCaptureFormats=proCapture4kPlusFormats;
+            rgbWireRange=MWCAP_VIDEO_QUANTIZATION_LIMITED;
+            inputRangeSetting=MWCAP_VIDEO_QUANTIZATION_LIMITED;
+            SenderPicture picture(false,3840,2160,VideoFrameEncoding::BGRA_8BIT);
+            picture.Embed(Packetize(DmBody())); rgbSenderBytes=&picture.input;
+            const auto sdk=MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info={};
+            QueueCallback callback; callback.goal=1;
+            MagewellCaptureDevice device(sdk,L"fake",info,TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true); device.StartCapture(1);
+            const bool reached=callback.Wait([&]{return !callback.frames.empty() || !callback.errors.empty();});
+            CaptureDeliveryStats delivery; device.GetCaptureDeliveryStats(delivery);
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(reached && callback.errors.empty() && !callback.frames.empty());
+            Assert::IsTrue(delivery.losslessRgb24Capture);
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_LIMITED),inputRangeSetting.load());
+            const auto* actual=static_cast<const BYTE*>(callback.frames.front()->GetData());
+            for(size_t p=0;p<picture.intensity.size();++p) {
+                for(size_t c=0;c<3;++c) if(actual[p*4+c]!=picture.input[p*4+c]) Assert::Fail(L"RGB24 altered a tunnel byte");
+                if(actual[p*4+3]!=255) Assert::Fail(L"RGB24 alpha was not opaque");
+            }
+            auto state=callback.latestValidState; state->dolbyVisionTunnel=true;
+            Formatter formatter; formatter.OnVideoState(state);
+            std::vector<BYTE> decoded(formatter.GetOutFrameSize());
+            Assert::IsTrue(formatter.FormatVideoFrame(*callback.frames.front(),decoded.data()));
+            AssertPeak(formatter.GetDolbyVisionTunnelMetadata(),3072); AssertExactSamples(picture,decoded);
+        }
+
+        TEST_METHOD(Rgb24PipelineStartsNextDmaBeforeCallbackAndRetainsEveryFrameAcrossStop)
+        {
+            signalMode=5;rgb24Trial=rgb24Sequence=true;rgb24Period=166831;
+            rgbCaptureFourcc=MWFOURCC_BGR24;rgbCaptureFormats=proCapture4kPlusFormats;
+            std::vector<BYTE> picture(size_t(3840)*2160*4,61);rgbSenderBytes=&picture;
+            const auto sdk=MagewellSdkTestAccess::Create(CaptureApi());MWCAP_CHANNEL_INFO info={};
+            QueueCallback callback;callback.goal=10;streamFrames=true;
+            MagewellCaptureDevice device(sdk,L"fake",info,TEXT("fake"));
+            device.SetCallbackHandler(&callback);device.SetRawRgbTunnelCapture(true);device.StartCapture(1);
+            const bool arrived=callback.Wait([&]{return callback.frames.size()>=10||!callback.errors.empty();});
+            device.StopCapture();
+            Assert::IsTrue(arrived);Assert::IsTrue(callback.errors.empty());Assert::IsTrue(callback.frames.size()>=10);
+            Assert::IsTrue(callback.copiesOnFirstCallback>=2,L"Callback ran before the next DMA started");
+            Assert::IsTrue(rgb24Destinations.size()>=3);
+            Assert::IsTrue(rgb24Destinations[0]!=rgb24Destinations[1]);
+            Assert::IsTrue(rgb24Destinations[0]==rgb24Destinations[2],L"Raw slots should alternate with bounded storage");
+            for(size_t i=0;i<callback.frames.size();++i){
+                const auto* pixels=static_cast<const BYTE*>(callback.frames[i]->GetData());
+                Assert::AreEqual(BYTE(i+1),callback.sequenceCodes[i]);
+                Assert::AreEqual(BYTE(i+1),pixels[(size_t(3840)*2160-1)*4],L"Retained frame was overwritten");
+                Assert::AreEqual(BYTE(255),pixels[(size_t(3840)*2160-1)*4+3]);
+                Assert::AreEqual(sdkCopyThread,callbackThreads[i],L"Frame callbacks moved off the capture thread");
+            }
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_UNKNOWN),inputRangeSetting.load());
+        }
+
+        TEST_METHOD(Rgb24ThrowingFrameCallbackStopsNextDmaAndRestoresInputRange)
+        {
+            signalMode=5;rgb24Trial=true;rgbCaptureFourcc=MWFOURCC_BGR24;rgbCaptureFormats=proCapture4kPlusFormats;
+            std::vector<BYTE> picture(size_t(3840)*2160*4,61);rgbSenderBytes=&picture;
+            const auto sdk=MagewellSdkTestAccess::Create(CaptureApi());MWCAP_CHANNEL_INFO info={};
+            QueueCallback callback;callback.throwOnFrame=true;streamFrames=true;deferSecondRgb24Dma=true;
+            MagewellCaptureDevice device(sdk,L"fake",info,TEXT("fake"));
+            device.SetCallbackHandler(&callback);device.SetRawRgbTunnelCapture(true);device.StartCapture(1);
+            const bool failed=callback.Wait([&]{return !callback.errors.empty();});device.StopCapture();
+            Assert::IsTrue(failed);Assert::IsTrue(callback.copiesOnFirstCallback>=2);
+            Assert::IsTrue(stopCalls>=2&&unregisterCalls==1);Assert::IsTrue(callback.invalidStates>=1);
+            Assert::AreEqual(1,stoppedDeferredDma,L"The next DMA was not stopped before retiring scratch storage");
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_UNKNOWN),inputRangeSetting.load());
+        }
+
+        TEST_METHOD(Rgb24ModeChangeDrainsOldPackingBeforePublishingOrdinaryFrames)
+        {
+            signalMode=5;rgb24Trial=true;rgbCaptureFourcc=MWFOURCC_BGR24;rgbCaptureFormats=proCapture4kPlusFormats;
+            std::vector<BYTE> picture(size_t(3840)*2160*4,61);rgbSenderBytes=&picture;
+            const auto sdk=MagewellSdkTestAccess::Create(CaptureApi());MWCAP_CHANNEL_INFO info={};
+            QueueCallback callback;callback.goal=2;streamFrames=true;
+            MagewellCaptureDevice device(sdk,L"fake",info,TEXT("fake"));
+            device.SetCallbackHandler(&callback);device.SetRawRgbTunnelCapture(true);device.StartCapture(1);
+            const bool first=callback.Wait([&]{return callback.frames.size()>=2||!callback.errors.empty();});
+            rgbCaptureFourcc=MWFOURCC_BGRA;device.SetRawRgbTunnelCapture(false);
+            const bool changed=callback.Wait([&]{return callback.validStates>=2||!callback.errors.empty();});
+            SetEvent(fakeNotifyEvent);
+            const bool ordinary=callback.Wait([&]{return callback.ordinaryFrames>0||!callback.errors.empty();});
+            device.StopCapture();Assert::IsTrue(first&&changed&&ordinary);Assert::IsTrue(callback.errors.empty());
+            Assert::IsFalse(callback.latestValidState->rgbTunnelBytesPreserved);
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_UNKNOWN),inputRangeSetting.load());
+            Assert::AreEqual(BYTE(61),static_cast<const BYTE*>(callback.frames.front()->GetData())[0]);
+            Assert::AreEqual(BYTE((61-16)*255/219),static_cast<const BYTE*>(callback.frames.back()->GetData())[0],
+                L"Old raw frame crossed the ordinary video state barrier");
+        }
+
+        TEST_METHOD(RawMagewellCapturePreservesDvForFullLimitedAndUnknownWireRanges)
+        {
+            using namespace DolbyVisionTestSender;
+            for (const auto format : { MWFOURCC_ARGB, MWFOURCC_BGRA })
+            for (const auto wire : { MWCAP_VIDEO_QUANTIZATION_FULL,
+                MWCAP_VIDEO_QUANTIZATION_LIMITED, MWCAP_VIDEO_QUANTIZATION_UNKNOWN })
+            for (const auto original : { MWCAP_VIDEO_QUANTIZATION_UNKNOWN,
+                MWCAP_VIDEO_QUANTIZATION_LIMITED, MWCAP_VIDEO_QUANTIZATION_FULL })
+            {
+                ResetFakeCard(); signalMode = 5; rgbWireRange = wire; inputRangeSetting = original;
+                rgbCaptureFourcc = format;
+                rgbCaptureFormats = format == MWFOURCC_BGRA ? proCapture4kPlusFormats :
+                    std::vector<DWORD>{ MWFOURCC_ARGB };
+                const auto encoding = format == MWFOURCC_ARGB ?
+                    VideoFrameEncoding::ARGB_8BIT : VideoFrameEncoding::BGRA_8BIT;
+                SenderPicture picture(false, 130, 128, encoding);
+                picture.Embed(Packetize(DmBody())); rgbSenderBytes = &picture.input;
+                const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+                MWCAP_CHANNEL_INFO info = {};
+                QueueCallback callback; callback.goal = 1;
+                MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+                device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true);
+                device.StartCapture(1);
+                Assert::IsTrue(callback.Wait([&]{ return !callback.frames.empty() || !callback.errors.empty(); }));
+                device.StopCapture();
+                Assert::IsTrue(callback.errors.empty());
+                Assert::AreEqual(int(original), inputRangeSetting.load(), L"User input-range override was not restored");
+                Assert::IsTrue(!callback.frames.empty() && callback.latestValidState);
+                Assert::IsTrue(callback.latestValidState->videoFrameEncoding == encoding);
+                Assert::IsTrue(requestedColor == MWCAP_VIDEO_COLOR_FORMAT_RGB);
+                Assert::IsTrue(requestedRange == MWCAP_VIDEO_QUANTIZATION_FULL);
+                Assert::IsTrue(DolbyVisionTunnelCanEnable(true, true, *callback.latestValidState));
+                const auto expectedSdrRange = original == MWCAP_VIDEO_QUANTIZATION_UNKNOWN ? wire : original;
+                Assert::IsTrue(callback.latestValidState->tunnelSdrRgbRange ==
+                    (expectedSdrRange == MWCAP_VIDEO_QUANTIZATION_LIMITED ? TunnelSdrRgbRange::Limited :
+                     expectedSdrRange == MWCAP_VIDEO_QUANTIZATION_FULL ? TunnelSdrRgbRange::Full : TunnelSdrRgbRange::Unknown));
+                Assert::IsTrue(std::equal(picture.input.begin(), picture.input.end(),
+                    static_cast<const BYTE*>(callback.frames.front()->GetData())));
+                auto state = callback.latestValidState; state->dolbyVisionTunnel = true;
+                Formatter formatter; formatter.OnVideoState(state);
+                std::vector<BYTE> decoded(formatter.GetOutFrameSize());
+                Assert::IsTrue(formatter.FormatVideoFrame(*callback.frames.front(), decoded.data()));
+                AssertPeak(formatter.GetDolbyVisionTunnelMetadata(), 3072);
+                AssertExactSamples(picture, decoded);
+            }
+        }
+
+        TEST_METHOD(OrdinaryLimitedRgbConversionCorruptsTunnelAndCannotBeAdmitted)
+        {
+            using namespace DolbyVisionTestSender;
+            signalMode = 5;
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
+            picture.Embed(Packetize(DmBody())); rgbSenderBytes = &picture.input;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info = {};
+            QueueCallback callback; callback.goal = 1;
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.StartCapture(1);
+            Assert::IsTrue(callback.Wait([&]{ return !callback.frames.empty(); })); device.StopCapture();
+            Assert::IsFalse(DolbyVisionTunnelCanEnable(true, true, *callback.latestValidState));
+            Assert::IsFalse(std::equal(picture.input.begin(), picture.input.end(),
+                static_cast<const BYTE*>(callback.frames.front()->GetData())));
+            // Negative control: forcing those converted bytes through the decoder cannot pass CRC.
+            auto state = callback.latestValidState; state->rgbTunnelBytesPreserved = true; state->dolbyVisionTunnel = true;
+            Formatter formatter; formatter.OnVideoState(state);
+            std::vector<BYTE> output(formatter.GetOutFrameSize());
+            formatter.FormatVideoFrame(*callback.frames.front(), output.data());
+            Assert::IsFalse(formatter.GetDolbyVisionTunnelMetadata().valid);
+        }
+
+        TEST_METHOD(RawModeSwitchRestoresRangeAndPublishesNewStateBeforeOrdinaryFrames)
+        {
+            using namespace DolbyVisionTestSender;
+            signalMode = 5;
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
+            picture.Embed(Packetize(DmBody())); rgbSenderBytes = &picture.input;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info = {};
+            QueueCallback callback; callback.goal = 1;
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true); device.StartCapture(1);
+            Assert::IsTrue(callback.Wait([&]{ return !callback.frames.empty(); }));
+            device.SetRawRgbTunnelCapture(false);
+            Assert::IsTrue(callback.Wait([&]{ return callback.frames.size() >= 2 || !callback.errors.empty(); }));
+            device.StopCapture(); Assert::IsTrue(callback.errors.empty());
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_UNKNOWN), inputRangeSetting.load());
+            Assert::IsFalse(callback.latestValidState->rgbTunnelBytesPreserved);
+            Assert::IsTrue(callback.validStates >= 2 && callback.invalidStates >= 1);
+            Assert::IsFalse(std::equal(picture.input.begin(), picture.input.end(),
+                static_cast<const BYTE*>(callback.frames.back()->GetData())));
+        }
+
+        TEST_METHOD(RawRangeSetupFailuresNeverDeliverFramesAndRestorePartialWrites)
+        {
+            for (const int failure : { 1, 2, 3 })
+            {
+                ResetFakeCard(); signalMode = 5; rangeFailure = failure;
+                const auto sdk = MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info = {};
+                QueueCallback callback;
+                MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+                device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true); device.StartCapture(1);
+                Assert::IsTrue(callback.Wait([&]{ return !callback.errors.empty(); })); device.StopCapture();
+                Assert::IsTrue(callback.frames.empty());
+                Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_UNKNOWN), inputRangeSetting.load());
+            }
+        }
+
+        TEST_METHOD(OrdinaryMagewellRgb8RejectsRemappedTunnelBytes)
+        {
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            HoldingCallback callback;
+            device.SetCallbackHandler(&callback);
+            for (const auto encoding : { VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+            for (const auto range : { MWCAP_VIDEO_QUANTIZATION_FULL,
+                MWCAP_VIDEO_QUANTIZATION_LIMITED, MWCAP_VIDEO_QUANTIZATION_UNKNOWN })
+            {
+                MagewellCaptureTestAccess::PublishRgb8(device, range, encoding);
+                Assert::IsNotNull(callback.state.p);
+                Assert::IsTrue(callback.state->valid);
+                Assert::IsTrue(callback.state->videoFrameEncoding == encoding);
+                Assert::AreEqual(range == MWCAP_VIDEO_QUANTIZATION_FULL,
+                    callback.state->rgbTunnelBytesPreserved);
+                Assert::AreEqual(range == MWCAP_VIDEO_QUANTIZATION_FULL,
+                    DolbyVisionTunnelCanEnable(true, true, *callback.state));
+            }
+        }
+
 		TEST_METHOD(BufferOutlivesCapturePool)
 		{
 			auto buffer = std::make_shared<MagewellCaptureBuffer>(16);
@@ -602,6 +1042,24 @@ namespace Tests
 			Assert::IsTrue(weak.expired());
 		}
 
+        TEST_METHOD(AutoCaptureKeepsLowerRatesAndHdLosslessButUsesCardP010AtUhd60)
+        {
+            const std::vector<DWORD> formats{MWFOURCC_P210, MWFOURCC_P010};
+            for (const unsigned period : {416667u,400000u,333667u,333333u})
+                Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(3840,2160,period,formats)==VideoFrameEncoding::P210);
+            for (const unsigned period : {166830u,166667u,200000u})
+                Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(3840,2160,period,formats)==VideoFrameEncoding::P010);
+            Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(1920,1080,166667,formats)==VideoFrameEncoding::P210);
+            Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(3840,2160,166667,formats,false)==VideoFrameEncoding::V210);
+            Assert::IsTrue(MagewellCaptureTestAccess::ChooseAuto(1920,1080,166667,formats,true,true)==VideoFrameEncoding::P210);
+        }
+        TEST_METHOD(BandwidthPolicyNeverRequestsUnsupportedOrMalformedP010)
+        {
+            Assert::ExpectException<std::runtime_error>([]{MagewellCaptureTestAccess::ChooseAuto(3840,2160,166667,{MWFOURCC_P210});});
+            Assert::ExpectException<std::runtime_error>([]{MagewellCaptureTestAccess::ChooseAuto(3840,2161,166667,{MWFOURCC_P010,MWFOURCC_P210});});
+            // No bit-depth fallback when 10-bit capture cannot be supported.
+            Assert::ExpectException<std::runtime_error>([]{MagewellCaptureTestAccess::ChooseAuto(3840,2160,166667,{MWFOURCC_UYVY});});
+        }
 		TEST_METHOD(MemoryBudgetCountsRetiredFramesUntilLastRelease)
 		{
 			auto budget = std::make_shared<MagewellCaptureMemoryBudget>(48);
@@ -617,6 +1075,152 @@ namespace Tests
 			auto replacement = std::make_shared<MagewellCaptureBuffer>(32, budget);
 			Assert::AreEqual<uint32_t>(32, replacement->Size());
 		}
+
+        TEST_METHOD(NativeP210BorrowsSdkDestinationAndRetainsBothPlanesAcrossStop)
+        {
+            QueueCallback callback; callback.goal = 1;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback);
+            device.SetNativeP210Capture(true);
+            device.StartCapture(1);
+            const bool delivered = callback.Wait([&]() { return !callback.frames.empty() || !callback.errors.empty(); });
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(delivered && !callback.frames.empty());
+            Assert::IsTrue(callback.errors.empty());
+            const auto& state = callback.latestValidState;
+            Assert::IsTrue(state->videoFrameEncoding == VideoFrameEncoding::P210);
+            Assert::AreEqual(204u, state->BytesPerRow());
+            Assert::AreEqual(40800u, state->BytesPerFrame());
+            Assert::IsTrue(callback.frames.front()->GetData() == lastSdkCopyPointer.load(),
+                L"Native capture must deliver the SDK destination, without a scratch copy");
+            P210PlaneView view;
+            Assert::IsTrue(GetP210PlaneView(callback.frames.front()->GetData(), state->BytesPerFrame(), 102, 100, view));
+            const uint16_t ys[] = {64,128,192,256,320,384}, uvs[] = {704,768,832,896,960,1024};
+            Assert::IsTrue(memcmp(view.y, ys, sizeof(ys)) == 0);
+            Assert::IsTrue(memcmp(view.uv, uvs, sizeof(uvs)) == 0);
+            Assert::IsTrue(requestedColor == MWCAP_VIDEO_COLOR_FORMAT_YUV601);
+            Assert::IsTrue(requestedRange == MWCAP_VIDEO_QUANTIZATION_LIMITED);
+        }
+
+        TEST_METHOD(NativeP210SwitchesToLegacyV210AndBackWithoutReusingRetainedBuffers)
+        {
+            QueueCallback callback; callback.goal = 1;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetNativeP210Capture(true);
+            device.StartCapture(1);
+            const bool first = callback.Wait([&]() { return !callback.frames.empty(); });
+            bool legacy = false, nativeAgain = false;
+            if (first)
+            {
+                device.SetNativeP210Capture(false);
+                // Deliberately do not send a driver format event: consumer
+                // changes must renegotiate even with an unchanged HDMI signal.
+                legacy = callback.Wait([&]() { return callback.validStates >= 2; });
+                if (legacy)
+                {
+                    SetEvent(fakeNotifyEvent);
+                    legacy = callback.Wait([&]() { return callback.frames.size() >= 2; });
+                    device.SetNativeP210Capture(true);
+                    nativeAgain = callback.Wait([&]() { return callback.validStates >= 3; });
+                    if (nativeAgain)
+                    {
+                        SetEvent(fakeNotifyEvent);
+                        nativeAgain = callback.Wait([&]() { return callback.frames.size() >= 3; });
+                    }
+                }
+            }
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(first && legacy && nativeAgain);
+            Assert::IsTrue(callback.errors.empty());
+            Assert::IsTrue(callback.invalidStates >= 2);
+            Assert::IsTrue(callback.frameEncodings[0] == VideoFrameEncoding::P210);
+            Assert::IsTrue(callback.frameEncodings[1] == VideoFrameEncoding::V210);
+            Assert::IsTrue(callback.frameEncodings[2] == VideoFrameEncoding::P210);
+            Assert::IsTrue(callback.frames[0]->GetData() != callback.frames[2]->GetData());
+            const auto* words = static_cast<const uint16_t*>(callback.frames[0]->GetData());
+            Assert::AreEqual(64, int(words[0]));
+            Assert::AreEqual(704, int(words[102*100]));
+            Assert::AreEqual<uint32_t>(11u | (1u << 10) | (12u << 20),
+                static_cast<const uint32_t*>(callback.frames[1]->GetData())[0]);
+        }
+
+        TEST_METHOD(NativeP210CopyFailureInvalidatesAndDoesNotPublishPartialPlanes)
+        {
+            QueueCallback callback;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetNativeP210Capture(true);
+            failCopies = true; device.StartCapture(1);
+            const bool failed = callback.Wait([&]() { return !callback.errors.empty(); });
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(failed && callback.invalidStates > 0);
+            Assert::IsTrue(callback.frames.empty());
+        }
+
+        TEST_METHOD(NativeP210CapabilityPreservesRgbByteLayoutsAndRejectsMissingPlaneFormat)
+        {
+            DWORD fourcc = 0; VideoFrameEncoding encoding;
+            for (const BYTE depth : {BYTE(8), BYTE(10), BYTE(12)})
+            {
+                MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_YUV709, depth,
+                    proCapture4kPlusFormats, fourcc, encoding, 1922, true);
+                Assert::IsTrue(encoding == VideoFrameEncoding::P210);
+                Assert::AreEqual<DWORD>(MWFOURCC_P210, fourcc);
+            }
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB, 8,
+                proCapture4kPlusFormats, fourcc, encoding, 1920, true);
+            Assert::IsTrue(encoding == VideoFrameEncoding::BGRA_8BIT);
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB, 10,
+                {MWFOURCC_RGB10, MWFOURCC_P210}, fourcc, encoding, 1920, true);
+            Assert::IsTrue(encoding == VideoFrameEncoding::R10l);
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB, 12,
+                proCapture4kPlusFormats, fourcc, encoding, 1920, true);
+            Assert::IsTrue(encoding == VideoFrameEncoding::P210);
+            Assert::ExpectException<std::runtime_error>([&]() {
+                MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_YUV709, 10,
+                    {MWFOURCC_P010}, fourcc, encoding, 1920, true); });
+        }
+
+        TEST_METHOD(ObservedSdkTimestampGapsReachTheOsdCaptureMissedCounter)
+        {
+            QueueCallback callback; callback.goal = 4;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+            MWCAP_CHANNEL_INFO info = {};
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback);
+            // Four deliveries cover six source pictures: two input pictures lost.
+            fakeFrameTimes = {1001000, 1167667, 1667668, 1834335};
+            streamFrames = true; device.StartCapture(1);
+            const bool reached = callback.Wait([&] { return callback.frames.size() >= 4 || !callback.errors.empty(); });
+            const auto missed = device.VideoFrameMissedCount();
+            CaptureDeliveryStats beforeStop;
+            Assert::IsTrue(device.GetCaptureDeliveryStats(beforeStop));
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(reached && callback.errors.empty());
+            Assert::AreEqual(uint64_t(2), missed);
+            Assert::IsTrue(callback.frames.size() >= 4);
+            Assert::IsTrue(beforeStop.expectedFps > 59.9);
+            Assert::AreEqual(0.0, beforeStop.windowSeconds);
+            CaptureDeliveryStats afterStop;
+            Assert::IsTrue(device.GetCaptureDeliveryStats(afterStop));
+            Assert::AreEqual(0.0, afterStop.expectedFps);
+            Assert::AreEqual(0.0, afterStop.windowSeconds);
+        }
+
+        TEST_METHOD(CaptureMissesIgnoreInitialDuplicateBackwardsAndJitteredTimestamps)
+        {
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(0, 9000000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 1000000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 900000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 1205000, 200000));
+            Assert::AreEqual(uint64_t(3), CaptureMissedInputFrames(1000000, 1800000, 200000));
+            Assert::AreEqual(uint64_t(0), CaptureMissedInputFrames(1000000, 1800000, 0));
+        }
 
 		TEST_METHOD(CaptureFillsDeepQueueAndEightFrameAnalysisLookahead)
 		{
@@ -775,6 +1379,56 @@ namespace Tests
 			Assert::AreEqual<size_t>(1, callback.errors.size());
 		}
 
+
+        TEST_METHOD(RawRgbWatchdogRecoveryPreservesBytesAndRestoresRange)
+        {
+            using namespace DolbyVisionTestSender;
+            signalMode = 5; resumeOnRestart = true;
+            inputRangeSetting = MWCAP_VIDEO_QUANTIZATION_LIMITED;
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
+            picture.Embed(Packetize(DmBody())); rgbSenderBytes = &picture.input;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info = {};
+            QueueCallback callback; callback.goal = 2;
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true); device.StartCapture(1);
+            const bool resumed = callback.Wait([&] { return callback.frames.size() >= 2 || !callback.errors.empty(); });
+            const int activeRange = inputRangeSetting.load();
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(resumed && callback.errors.empty());
+            Assert::IsTrue(callback.invalidStates >= 1 && callback.validStates >= 2);
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_FULL), activeRange);
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_LIMITED), inputRangeSetting.load());
+            Assert::IsTrue(callback.frames.front()->GetData() != callback.frames[1]->GetData());
+            for (size_t i = 0; i < 2; ++i)
+                Assert::IsTrue(std::equal(picture.input.begin(), picture.input.end(),
+                    static_cast<const BYTE*>(callback.frames[i]->GetData())));
+        }
+
+        TEST_METHOD(RawModeChangeDuringWatchdogBackoffRestoresRangePromptly)
+        {
+            using namespace DolbyVisionTestSender;
+            signalMode = 5; failRecoveryStart = true;
+            inputRangeSetting = MWCAP_VIDEO_QUANTIZATION_LIMITED;
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
+            picture.Embed(Packetize(DmBody())); rgbSenderBytes = &picture.input;
+            const auto sdk = MagewellSdkTestAccess::Create(CaptureApi()); MWCAP_CHANNEL_INFO info = {};
+            QueueCallback callback; callback.goal = 2;
+            MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+            device.SetCallbackHandler(&callback); device.SetRawRgbTunnelCapture(true); device.StartCapture(1);
+            const bool invalidated = callback.Wait([&] { return callback.invalidStates >= 1 || !callback.errors.empty(); });
+            // Two failed 250-ms retries enter the ten-second recovery tier.
+            Sleep(1400);
+            const int attempts = startCalls.load();
+            failRecoveryStart = false;
+            const auto start = std::chrono::steady_clock::now();
+            device.SetRawRgbTunnelCapture(false);
+            const bool switched = callback.Wait([&] { return callback.validStates >= 2 || !callback.errors.empty(); });
+            const auto elapsed = std::chrono::steady_clock::now() - start;
+            device.StopCapture(); device.SetCallbackHandler(nullptr);
+            Assert::IsTrue(invalidated && attempts >= 4 && switched && callback.errors.empty());
+            Assert::IsTrue(elapsed < std::chrono::seconds(4), L"Mode change must not wait for ten-second stall backoff.");
+            Assert::AreEqual(int(MWCAP_VIDEO_QUANTIZATION_LIMITED), inputRangeSetting.load());
+        }
 
         TEST_METHOD(LostFrameNotificationsRestartCaptureWithoutModalError)
         {
@@ -971,8 +1625,11 @@ namespace Tests
 			api.MWUnregisterNotify = &FakeUnregister;
 			api.MWGetNotifyStatus = &FakeNotify;
 			api.MWGetVideoSignalStatus = &FakeSignal;
+            api.MWGetVideoInputQuantizationRange = &FakeGetRange;
+            api.MWSetVideoInputQuantizationRange = &FakeSetRange;
 			api.MWGetInputSpecificStatus = &FakeInputSpecific;
 			api.MWGetHDMIInfoFrameValidFlag = &FakeHdrValid;
+            api.MWGetHDMIInfoFramePacket = &FakeAviPacket;
 			api.MWGetFamilyInfo = &FakeFamily;
 			api.MWGetVideoCaptureSupportColorFormat = &FakeFormats;
 			api.MWGetVideoBufferInfo = &FakeBufferInfo;
@@ -1056,6 +1713,27 @@ namespace Tests
 					10, formats, fourcc, encoding, 1919);
 			});
 		}
+
+        TEST_METHOD(ProCapture4kPlusAdvertisedFormatsSelectBgraByteOrder)
+        {
+            DWORD fourcc = 0;
+            VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+                8, proCapture4kPlusFormats, fourcc, encoding);
+            Assert::AreEqual<DWORD>(MWFOURCC_BGRA, fourcc);
+            Assert::IsTrue(encoding == VideoFrameEncoding::BGRA_8BIT);
+            // Independent SDK memory layout: B,G,R,A, not A,R,G,B.
+            const uint8_t pixel[] = { 0x12, 0x34, 0x56, 0xE7 };
+            Assert::AreEqual(uint32_t((0x56u << 20) | (0x34u << 10) | 0x12u),
+                ReadDolbyVisionTunnelWord(pixel, encoding));
+            Assert::ExpectException<std::runtime_error>([&] {
+                MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+                    8, { MWFOURCC_P210, MWFOURCC_BGR24 }, fourcc, encoding);
+            });
+            MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+                8, { MWFOURCC_ARGB, MWFOURCC_BGRA }, fourcc, encoding);
+            Assert::AreEqual<DWORD>(MWFOURCC_ARGB, fourcc);
+        }
 
 		TEST_METHOD(Rgb12CompatibilityRequiresP210AndEvenWidth)
 		{
