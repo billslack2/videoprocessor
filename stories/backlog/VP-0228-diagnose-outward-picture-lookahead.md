@@ -6,6 +6,15 @@ Backlog
 
 Requested 2026-11-10. Next: inspect the then-current remote beta and reproduce the Eternals scope-to-IMAX transition using its recorded source frames and live trace. Add diagnostic-only visibility to the existing lookahead and outward-proof preparation, identify the actual limiting gates, then evaluate a narrowly scoped improvement. No source change, configuration change, or deployment is implied by creating this story.
 
+## Investigation checkpoint (2026-11-10)
+
+Remote `v2.0.1-beta` was fetched at `4f687eb07ae358e51bacfd33712b66bec5078da0`, matching the recorded integration base; default branch is `v2.0.0-beta`. Clean detached source worktree: `E:\codex\videoprocessor\vp-0228-lookahead-20261110`. The incident integration commit `549b665f` was not available in that fetch, so its changes have not been compared. No source, configuration, or deployment change was made in this checkpoint.
+
+In beta, `PrimeBufferedOutwardWindow` snapshots up to three next non-repeat sources. Its silent return gates include window size/analysis, try-lock, policy/continuity, native trusted geometry, transition/near-black state, unowned or matching translated base, reference identity, per-frame conversion/storage/identity/domain/sequence, proof slots, cache try-lock, and duplicate work. Existing incident telemetry cannot distinguish these gates. The 08:20 log records translation ownership and deferred outward/presentation admission at sequence 5924; this does not prove which priming gate fired. Do not relax any gate without measuring it.
+
+Fixture provenance: dense capture `analysis-20261110-081917-55748-2` has original source 16730/16731/16732 as `frame-000017.bin`/`000018`/`000019`, accepted sequences 4837/4838/4839, analysis domain `3440028774926749422`. SHA-256 respectively `084b1bf21ba651a9731a3fae1fc807a0bfb1ccb08d7665d0459545d6c6931d92`, `01746407bc1cdffd375ad77a61cf25a5a766e26e2d5b032054bcbb1ccf1f993b`, `be4b4b1019c234547d8a30127328557685e55edf4928110d9721167b19eee77e`. Its `frames.jsonl` SHA-256 is `16c5b91e0db3744610a27f5362dc7bfc32280c2f844764c97c28e34df570a174`; `analysis.jsonl` is `ccdbac9a6528eea73d31a10f0dfb3765404c3624314d67daf9e349c89fca3fec`. Recorder reports 64 saved frames; lifetime drop counts are cumulative and not incident-specific. The sparse 08:20 capture has only ten saved frames and skips 17817–17820; it cannot reconstruct the transition window or live readiness/owner scheduling from pixels. Neither capture alone establishes worker completion deadlines or presentation continuity.
+
+Next: implement bounded gate/lifecycle diagnostics and obtain a controlled owner-matched capture; reproduce and validate as specified below. No candidate or safe improvement has been demonstrated. This checkpoint is not acceptance, performance validation, or a reason to increase buffering.
 ## User story
 
 As a viewer of live HDMI video, I want VP to use already-buffered source frames effectively so that a correctly evidenced change in active picture can take effect as early as safely possible, while preserving captions, avoiding false aspect changes from overlays, and maintaining normal video cadence.
