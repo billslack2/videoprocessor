@@ -41,6 +41,10 @@ public:
 	TunnelSdrRgbRange tunnelSdrRgbRange = TunnelSdrRgbRange::Full;
 	// TV-led Dolby Vision HDMI RGB tunnel in a supported raw RGB layout.
 	bool dolbyVisionTunnel = false;
+	// The source generates this signal and states it exactly (a test pattern
+	// generator). VP takes it as stated: no LLDV inference, no Dolby Vision
+	// RGB tunnel. Capture cards leave it false.
+	bool exactSignal = false;
 
 	// Will be non-null if valid
 	HDRDataSharedPtr hdrData = nullptr;
