@@ -142,6 +142,8 @@ namespace Tests
 		std::atomic_bool failOpen{ false };
 		std::atomic_bool streamFrames{ false };
 		std::atomic_bool formatEventPending{ false };
+        std::vector<LONGLONG> fakeFrameTimes;
+        std::atomic<size_t> fakeFrameTimeIndex{0};
 		std::atomic<int> signalMode{ 0 }; // YUV, RGB12, invalid geometry, SDI RGB, unsupported RGB16.
 		std::atomic<int> sdiDepth{ SDI_BIT_DEPTH_10BIT };
         const std::vector<BYTE>* rgbSenderBytes = nullptr;
@@ -508,7 +510,8 @@ namespace Tests
 		MW_RESULT FakeFrameInfo(HCHANNEL, BYTE, MWCAP_VIDEO_FRAME_INFO* info)
 		{
 			*info = {};
-			info->allFieldStartTimes[0] = 1001000;
+            info->allFieldStartTimes[0] = fakeFrameTimes.empty() ? 1001000 :
+                fakeFrameTimes[(std::min)(fakeFrameTimeIndex.fetch_add(1), fakeFrameTimes.size()-1)];
 			return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeCopy(HCHANNEL, int, LPBYTE frame, DWORD frameBytes,
@@ -736,6 +739,7 @@ namespace Tests
 			stopCalls = unregisterCalls = notifyReads = startCalls = closeCalls = 0;
 			fakeDeviceTime = 1000000; resumeOnRestart=false;failRecoveryStart=false;
 			failDeviceTime = failOpen = streamFrames = formatEventPending = failCopies = false;
+            fakeFrameTimes.clear(); fakeFrameTimeIndex = 0;
 			selectedInput = 0;
 			scanEnabled = true;
 			signalMode = 0;

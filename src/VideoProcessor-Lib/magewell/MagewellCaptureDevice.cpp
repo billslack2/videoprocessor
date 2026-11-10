@@ -303,6 +303,7 @@ void MagewellCaptureDevice::StartCapture(CaptureRunToken captureRunToken)
 		}
 		m_capturedVideoFrameCount = 0;
 		m_missedVideoFrameCount = 0;
+        { std::lock_guard<std::mutex> lock(m_deliveryStatsMutex); m_deliveryStats = {}; }
 		m_captureThreadRunning.store(true, std::memory_order_release);
 		m_outputCaptureData.store(true, std::memory_order_release);
 		m_captureThread = std::thread(
@@ -994,6 +995,7 @@ bool MagewellCaptureDevice::PublishVideoState(
 void MagewellCaptureDevice::PublishInvalidVideoState(
 	CaptureRunToken captureRunToken)
 {
+    { std::lock_guard<std::mutex> lock(m_deliveryStatsMutex); m_deliveryStats = {}; }
 	if (!m_callback)
 		return;
 	VideoStateComPtr invalidState = new VideoState();
@@ -1172,6 +1174,9 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
                 throw std::runtime_error("Magewell could not safely stop capture for recovery");
             capturing = false;
         }
+        // A queued RGB24 picture belongs to the old capture epoch. Drain its
+        // packing before invalidating state; never deliver it after recovery.
+        flushRgb24(false);
         const bool hadState = haveState;
         haveState = false;
         if (hadState) PublishInvalidVideoState(captureRunToken);
@@ -1693,11 +1698,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		}
 
 
-        if (lastDeliveredTicks && rawCaptureTicks > lastDeliveredTicks && current.frameDuration100ns)
-        {
-            const auto intervals = static_cast<uint64_t>(std::llround(double(rawCaptureTicks-lastDeliveredTicks)/current.frameDuration100ns));
-            if (intervals > 1) skippedInputFrames += intervals - 1;
-        }
+        const uint64_t missed = CaptureMissedInputFrames(lastDeliveredTicks,
+            rawCaptureTicks, current.frameDuration100ns);
+        skippedInputFrames += missed;
+        if (missed) m_missedVideoFrameCount.fetch_add(missed, std::memory_order_relaxed);
         lastDeliveredTicks = rawCaptureTicks;
 		const uint64_t counter = ++m_capturedVideoFrameCount;
 

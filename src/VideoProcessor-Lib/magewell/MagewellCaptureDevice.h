@@ -149,6 +149,12 @@ public:
 	double HardwareLatencyMs() const override { return m_hardwareLatencyMs; }
 	uint64_t VideoFrameCapturedCount() const override { return m_capturedVideoFrameCount; }
 	uint64_t VideoFrameMissedCount() const override { return m_missedVideoFrameCount; }
+    bool GetCaptureDeliveryStats(CaptureDeliveryStats& stats) const override
+    {
+        std::lock_guard<std::mutex> lock(m_deliveryStatsMutex);
+        stats = m_deliveryStats;
+        return true;
+    }
 
 	// ITimingClock
 	timingclocktime_t TimingClockNow() override;
@@ -275,6 +281,8 @@ private:
 	std::atomic<double> m_hardwareLatencyMs{ 0 };
 	std::atomic<uint64_t> m_capturedVideoFrameCount{ 0 };
 	std::atomic<uint64_t> m_missedVideoFrameCount{ 0 };
+    mutable std::mutex m_deliveryStatsMutex;
+    CaptureDeliveryStats m_deliveryStats;
 	// Shared with every buffer so renderer-held frames remain charged after a
 	// format change or Stop. This cap applies only to Magewell capture memory.
 	std::shared_ptr<MagewellCaptureMemoryBudget> m_memoryBudget =
