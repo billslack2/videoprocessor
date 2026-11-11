@@ -11,6 +11,11 @@ public:
         for (auto a:{Alignment::TOP,Alignment::BOTTOM}) {
             auto screen=FitScreen(true,true,2.35,1,output,a,280);
             auto legacy=FitScreen(false,true,2.35,1,output,a,0);
+            auto legacyNegative=FitScreen(false,true,2.35,1,output,a,-12);
+            auto legacyPositive=FitScreen(false,true,2.35,1,output,a,12);
+            Assert::AreEqual(legacy.rect.top,legacyNegative.rect.top);
+            Assert::AreEqual(0,legacyNegative.effectivePadding);
+            Assert::AreEqual(legacy.rect.top+(a==Alignment::TOP?12:-12),legacyPositive.rect.top);
             Assert::IsTrue(std::abs(screen.rect.top-legacy.rect.top)>100);
             auto fit=AnamorphicPresentation::FitPicture(2.4,1,screen,a);
             ActivePicture active{{0,140,1920,940},true,false};

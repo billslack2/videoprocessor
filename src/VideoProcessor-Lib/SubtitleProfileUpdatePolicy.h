@@ -15,7 +15,6 @@ bool SameSubtitlePictureContext(const Settings& current, const Settings& next)
         current.verticalAlignment == next.verticalAlignment &&
         current.screenEdgePadding == next.screenEdgePadding &&
         current.autoPictureAlignment == next.autoPictureAlignment &&
-        current.pictureOffsetPixels == next.pictureOffsetPixels &&
         current.anamorphicScale == next.anamorphicScale &&
         current.automaticSourceCropRequested == next.automaticSourceCropRequested &&
         current.automaticSourceCrop == next.automaticSourceCrop &&

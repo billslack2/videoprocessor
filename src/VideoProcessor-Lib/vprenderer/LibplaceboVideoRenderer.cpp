@@ -1020,7 +1020,6 @@ namespace
 		std::string verticalAlignment = "center";
 		int screenEdgePadding = 0;
         bool autoPictureAlignment = false;
-        int pictureOffsetPixels = 0;
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
 		bool automaticSourceCropRequested = false;
@@ -1166,7 +1165,7 @@ namespace
 			stream
 				<< settings.configuredScreenAspect << '|' << settings.configuredScreenTarget << '|'
 				<< settings.verticalAlignment << '|' << settings.screenEdgePadding << '|'
-                << settings.autoPictureAlignment << '|' << settings.pictureOffsetPixels << '|'
+                << settings.autoPictureAlignment << '|'
 				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCropRequested << '|'
 				<< settings.automaticSourceCrop << '|'
@@ -2121,11 +2120,9 @@ namespace
 		}
         if (readViewportString("picture_alignment_mode", raw))
             settings.autoPictureAlignment = ConfigFile::NormalizeName(raw) == "auto";
-        if (readViewportString("picture_offset_pixels", raw))
-            ParseInteger(raw, -100000, 100000, settings.pictureOffsetPixels);
 		int parsedScreenEdgePadding = 0;
 		if (readViewportString("screen_edge_padding", raw) &&
-			ParseInteger(raw, 0, 100000, parsedScreenEdgePadding))
+			ParseInteger(raw, -100000, 100000, parsedScreenEdgePadding))
 			settings.screenEdgePadding = parsedScreenEdgePadding;
 		if (config.TryGetString(rule.section, "anamorphic_scale", raw))
 		{
@@ -2533,11 +2530,8 @@ namespace
 			"vertical_alignment", "center", { "top", "center", "bottom" });
         if (TryGetDisplayString(config, "picture_alignment_mode", rawValue))
             settings.autoPictureAlignment = ConfigFile::NormalizeName(rawValue) == "auto";
-        if (TryGetDisplayString(config, "picture_offset_pixels", rawValue) &&
-            !ParseInteger(rawValue, -100000, 100000, settings.pictureOffsetPixels))
-            settings.pictureOffsetPixels = 0;
 		if (TryGetDisplayString(config, "screen_edge_padding", rawValue) &&
-			!ParseInteger(rawValue, 0, 100000, settings.screenEdgePadding))
+			!ParseInteger(rawValue, -100000, 100000, settings.screenEdgePadding))
 			settings.screenEdgePadding = 0;
 		if (TryGetDisplayString(config, "calibration_lut_enabled", rawValue) &&
 			!TryGetDisplayBool(config, "calibration_lut_enabled",
@@ -4933,7 +4927,6 @@ struct LibplaceboVideoRenderer::Impl
 	std::string verticalAlignment = "center";
 	int screenEdgePadding = 0;
         bool autoPictureAlignment = false;
-        int pictureOffsetPixels = 0;
 	double anamorphicScale = 1.0;
 	bool automaticSourceCrop = false;
 	bool automaticSourceCropRequested = false;
@@ -8616,7 +8609,6 @@ struct LibplaceboVideoRenderer::Impl
 		verticalAlignment = settings.verticalAlignment;
 		screenEdgePadding = settings.screenEdgePadding;
         autoPictureAlignment = settings.autoPictureAlignment;
-        pictureOffsetPixels = settings.pictureOffsetPixels;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCropRequested = settings.automaticSourceCropRequested;
 		automaticSourceCrop = settings.automaticSourceCrop;
@@ -8751,7 +8743,6 @@ struct LibplaceboVideoRenderer::Impl
 			verticalAlignment != settings.verticalAlignment ||
 			screenEdgePadding != settings.screenEdgePadding ||
             autoPictureAlignment != settings.autoPictureAlignment ||
-            pictureOffsetPixels != settings.pictureOffsetPixels ||
 			anamorphicScale != settings.anamorphicScale ||
 			automaticSourceCropRequested != settings.automaticSourceCropRequested ||
 			automaticSourceCrop != settings.automaticSourceCrop ||
@@ -8789,7 +8780,6 @@ struct LibplaceboVideoRenderer::Impl
 		verticalAlignment = settings.verticalAlignment;
 		screenEdgePadding = settings.screenEdgePadding;
         autoPictureAlignment = settings.autoPictureAlignment;
-        pictureOffsetPixels = settings.pictureOffsetPixels;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCropRequested = settings.automaticSourceCropRequested;
 		automaticSourceCrop = settings.automaticSourceCrop;
@@ -8826,7 +8816,6 @@ struct LibplaceboVideoRenderer::Impl
 		activeSettings.verticalAlignment = settings.verticalAlignment;
 		activeSettings.screenEdgePadding = settings.screenEdgePadding;
         activeSettings.autoPictureAlignment = settings.autoPictureAlignment;
-        activeSettings.pictureOffsetPixels = settings.pictureOffsetPixels;
         activeSettings.configurationIdentity = settings.configurationIdentity;
         activeSettings.placementConfigurationContract = settings.placementConfigurationContract;
 		activeSettings.anamorphicScale = settings.anamorphicScale;
@@ -8889,7 +8878,8 @@ struct LibplaceboVideoRenderer::Impl
 		RendererSettings currentTransport = current;
 		RendererSettings nextTransport = next;
         currentTransport.autoPictureAlignment = next.autoPictureAlignment;
-        currentTransport.pictureOffsetPixels = next.pictureOffsetPixels;
+        if (next.autoPictureAlignment)
+            currentTransport.screenEdgePadding = next.screenEdgePadding;
 		currentTransport.switchRefreshRate = next.switchRefreshRate;
 		currentTransport.refreshRateSwitchMode = next.refreshRateSwitchMode;
 		currentTransport.sdrTargetNits = next.sdrTargetNits;
@@ -19113,14 +19103,14 @@ releaseDriftBaseRetention =
                     warp.protection=AutoPictureAlignment::Bound(parameter(plus?"vertical_center_protection":"center_protection",0),0,0.45);
             }
             const auto alignment=ResolveVerticalPictureAlignment(verticalAlignment);
-            const auto placed=AutoPictureAlignment::Place(true,alignment,pictureOffsetPixels,
+            const auto placed=AutoPictureAlignment::Place(true,alignment,screenEdgePadding,
                 output,screen.rect,rect(renderImage.crop),rect(unalignedTargetCrop),alignmentPicture,warp);
             target.crop=assign(placed.picture);
-            const auto fallback=AutoPictureAlignment::Place(true,alignment,pictureOffsetPixels,
+            const auto fallback=AutoPictureAlignment::Place(true,alignment,screenEdgePadding,
                 output,screen.rect,rect(renderImage.crop),rect(unalignedLinearFallbackCrop),alignmentPicture);
             linearFallbackCrop=assign(fallback.picture);
             std::ostringstream policy;
-            policy << int(alignment) << '|' << pictureOffsetPixels << '|' << placed.reason
+            policy << int(alignment) << '|' << screenEdgePadding << '|' << placed.reason
                 << '|' << renderImage.crop.y0 << '|' << renderImage.crop.y1
                 << '|' << alignmentPicture.bounds.top << '|' << alignmentPicture.bounds.bottom
                 << '|' << screen.rect.top << '|' << screen.rect.bottom
@@ -19134,7 +19124,7 @@ releaseDriftBaseRetention =
                     verticalAlignment.c_str(),width,height,output.left,output.top,output.right,output.bottom,
                     screen.rect.left,screen.rect.top,screen.rect.right,screen.rect.bottom,
                     alignmentPicture.bounds.left,alignmentPicture.bounds.top,alignmentPicture.bounds.right,alignmentPicture.bounds.bottom,
-                    placed.baseline,pictureOffsetPixels,placed.effectiveTrim,placed.effectiveShift,
+                    placed.baseline,screenEdgePadding,placed.effectiveTrim,placed.effectiveShift,
                     placed.picture.left,placed.picture.top,placed.picture.right,placed.picture.bottom,placed.reason);
             }
         };

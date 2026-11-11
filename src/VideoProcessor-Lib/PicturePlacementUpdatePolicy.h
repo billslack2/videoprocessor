@@ -14,7 +14,7 @@ inline std::string PicturePlacementConfigurationContract(const ConfigFile& confi
         if (!values) continue;
         const bool screen=section=="vprenderer.viewport" || section.find("vprenderer.viewport.")==0;
         for (const auto& value : *values) {
-            if (screen && (value.first=="picture_alignment_mode" || value.first=="picture_offset_pixels")) continue;
+            if (screen && (value.first=="picture_alignment_mode" || value.first=="screen_edge_padding")) continue;
             out << 'K' << value.first.size() << ':' << value.first << value.second.size() << ':' << value.second;
         }
         out << 'E';
@@ -27,11 +27,12 @@ bool IsPicturePlacementOnlyUpdate(const Settings& current, const Settings& next,
     Fingerprint fingerprint)
 {
     if (current.autoPictureAlignment==next.autoPictureAlignment &&
-        current.pictureOffsetPixels==next.pictureOffsetPixels) return false;
+        current.screenEdgePadding==next.screenEdgePadding) return false;
     if (current.placementConfigurationContract!=next.placementConfigurationContract) return false;
     auto normalized=next;
     normalized.autoPictureAlignment=current.autoPictureAlignment;
-    normalized.pictureOffsetPixels=current.pictureOffsetPixels;
+    // Raster padding is part of the existing viewport layout and uses its update path.
+    if (next.autoPictureAlignment) normalized.screenEdgePadding=current.screenEdgePadding;
     normalized.configurationIdentity=current.configurationIdentity;
     return fingerprint(current)==fingerprint(normalized);
 }

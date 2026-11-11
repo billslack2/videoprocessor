@@ -31,7 +31,7 @@ namespace Tests
         int configuredScreenTarget = 0;
         int verticalAlignment = 0;
         int screenEdgePadding = 0;
-        int autoPictureAlignment = 0, pictureOffsetPixels = 0;
+        int autoPictureAlignment = 0;
         uint64_t configurationIdentity=0;
         std::string placementConfigurationContract;
         int anamorphicScale = 0;
@@ -78,7 +78,7 @@ namespace Tests
             out << s.configuredScreenAspect << '|';
             out << s.configuredScreenTarget << '|';
             out << s.verticalAlignment << '|';
-            out << s.screenEdgePadding << '|' << s.autoPictureAlignment << '|' << s.pictureOffsetPixels << '|';
+            out << s.screenEdgePadding << '|' << s.autoPictureAlignment << '|';
             out << s.anamorphicScale << '|';
             out << s.automaticSourceCropRequested << '|';
             out << s.automaticSourceCrop << '|';
@@ -116,9 +116,16 @@ namespace Tests
         {
             using S=SubtitleUpdateSettingsFixture; S before,after;
             Assert::IsFalse(IsPicturePlacementOnlyUpdate(before,after,S::Fingerprint));
-            after.autoPictureAlignment=1; after.pictureOffsetPixels=-12; after.configurationIdentity=7;
+            after.autoPictureAlignment=1; after.screenEdgePadding=-12; after.configurationIdentity=7;
             Assert::IsTrue(IsPicturePlacementOnlyUpdate(before,after,S::Fingerprint));
             Assert::IsFalse(IsSubtitlePresentationOnlyUpdate(before,after,S::Fingerprint));
+            auto screenTrim = after;
+            screenTrim.screenEdgePadding = 24;
+            Assert::IsTrue(IsPicturePlacementOnlyUpdate(after,screenTrim,S::Fingerprint));
+            auto rasterPadding = before;
+            rasterPadding.screenEdgePadding = 24;
+            Assert::IsFalse(IsPicturePlacementOnlyUpdate(before,rasterPadding,S::Fingerprint));
+            Assert::IsFalse(IsPicturePlacementOnlyUpdate(after,rasterPadding,S::Fingerprint));
             auto unmodeled=after; unmodeled.placementConfigurationContract="changed-detector-key";
             Assert::IsFalse(IsPicturePlacementOnlyUpdate(before,unmodeled,S::Fingerprint));
             int S::* blocked[]={&S::detector,&S::viewport,&S::format,&S::futureSetting,
