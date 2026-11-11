@@ -18,6 +18,7 @@
 #include <math.h>
 
 #include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
+#include <blackmagic_decklink/DeckLinkEotfPolicy.h>
 #include <cie.h>
 #include <StringUtils.h>
 #include <WallClock.h>
@@ -794,11 +795,20 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			// EOTF
 			IF_S_OK(metadataExtensions->GetInt(bmdDeckLinkFrameMetadataHDRElectroOpticalTransferFunc, &intValue))
 			{
-				if (m_videoEotf != intValue)
+				// CTA-861.3 defines 0-3 and reserves 4-7. Ignore a value outside
+				// 0-3 so the last valid EOTF stays in force.
+				const auto eotf = BlackMagicDeckLinkEotfPolicy::Observe(
+					{ m_videoEotf, m_ignoredVideoEotf },
+					static_cast<int64_t>(intValue));
+				m_videoEotf = eotf.next.acceptedValue;
+				m_ignoredVideoEotf = eotf.next.lastIgnoredValue;
+				if (eotf.logIgnoredValue)
 				{
-					m_videoEotf = intValue;
-					videoStateChanged = true;
+					DebugLog::Log("BlackMagic: ignoring reserved HDR EOTF value %lld, keeping the last valid EOTF",
+						static_cast<long long>(intValue));
 				}
+				if (eotf.videoStateChanged)
+					videoStateChanged = true;
 			}
 
 			// Color space
@@ -1082,6 +1092,7 @@ void BlackMagicDeckLinkCaptureDevice::ResetVideoState()
 	m_bmdDisplayMode = BMD_DISPLAY_MODE_INVALID;
 	m_videoHasInputSource = false;
 	m_videoEotf = BMD_EOTF_INVALID;
+	m_ignoredVideoEotf = BMD_EOTF_INVALID;
 	m_videoColorSpace = BMD_COLOR_SPACE_INVALID;
 	m_videoHasHdrData = false;
 

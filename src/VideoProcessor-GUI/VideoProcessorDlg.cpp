@@ -6393,7 +6393,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lP
 	CString error(*(CString*)wParam);
 	delete (CString*)wParam;
 
-	// TODO: DO something with the error
+	DebugLog::Log("Capture error: %s", CStringA(error).GetString());
 	::MessageBox(nullptr, error, TEXT("Capture error"), MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
 
 	return 0;

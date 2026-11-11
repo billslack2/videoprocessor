@@ -125,6 +125,7 @@ private:
 	bool m_videoHasInputSource = false;
 	bool m_videoInvertedVertical = false;
 	LONGLONG m_videoEotf = BMD_EOTF_INVALID;
+	LONGLONG m_ignoredVideoEotf = BMD_EOTF_INVALID;
 	LONGLONG m_videoColorSpace = BMD_COLOR_SPACE_INVALID;
 	bool m_videoHasHdrData = false;
 	HDRData m_videoHdrData;
