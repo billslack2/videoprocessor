@@ -12,6 +12,8 @@ Requested 2026-11-10. Next: inspect the then-current remote beta and reproduce t
 
 2026-11-11: Deployed the verified x64 Release diagnostic host and standard VP Renderer pair to C:\Videoprocessor\vp. SHA-256 host 1C2E156CCF06F4D0EFED19698FA6B4135623EF1B4A098CD3F9EFD9EF2D4F7A0B, renderer 4A2370B6BAFB908959DED60E668E609969C00A8FA8E13FAB258238F30DFCA88A. Both prior binaries are backed up in C:\Videoprocessor\vp\backup-vp0228-diagnostics-20261111-073042. Player was closed during deployment. Next is the live Eternals metadata capture.
 
+2026-11-11: Metadata capture analysis-20261111-115112-22504-1 reproduced a four-source-frame delay (34992 measured to 34996 submitted). Active libplacebo API 388 used the previous beta renderer, so the capture lacked the new per-attempt records. With VP closed, backed up and deployed the matching x64 Release beta renderer, SHA-256 CF9F2AB7E4F758B8E4E981EAFCD41C4BAA1DDA06A740F5FEDF17434846BB378E. Backup is in the same rollback folder listed above. Verified the host and both renderer DLLs match the diagnostic build. Next is a repeat metadata capture with the updated beta renderer.
+
 ## Investigation checkpoint (2026-11-10)
 
 Remote `v2.0.1-beta` was fetched at `4f687eb07ae358e51bacfd33712b66bec5078da0`, matching the recorded integration base; default branch is `v2.0.0-beta`. Clean detached source worktree: `E:\codex\videoprocessor\vp-0228-lookahead-20261110`. The incident integration commit `549b665f` was not available in that fetch, so its changes have not been compared. No source, configuration, or deployment change was made in this checkpoint.
