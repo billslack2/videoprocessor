@@ -291,7 +291,7 @@ they must not contain requirements that are absent from this file.
 | VP-0225 | In Progress | Review and optimize subtitle processing to eliminate repeatable playback stalls |
 | VP-0226 | Backlog | Trigger actions on confirmed active-picture aspect changes |
 | VP-0227 | Backlog | Stabilize closely related aspect-ratio families |
-| VP-0228 | Backlog | Diagnose and improve timely outward-picture lookahead |
+| VP-0228 | In Progress | Diagnose and improve timely outward-picture lookahead |
 | VP-0229 | Backlog | Resolve ambiguous r210 Dolby Vision tunnel alignment |
 
 ## Codex story workflow
