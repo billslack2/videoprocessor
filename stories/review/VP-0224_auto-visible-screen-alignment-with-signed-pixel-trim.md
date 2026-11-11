@@ -12,7 +12,9 @@ The rebased PR head is `8fbad4d9938ae404f3931e689af3836553d623ac`.
 The x64 Release solution build passed. All 48 focused native tests passed,
 including GPU pixel readback, manual geometry, configuration inventory and
 renderer reset policy. Both focused Config UI tests passed. Live scope-screen
-acceptance and merge remain pending.
+acceptance and merge remain pending. The motion and subtitle suites passed 208/208 on
+each libplacebo variant. All three beta-dependency Auto readback and dependency
+identity tests passed.
 
 Logs and TRX files are under
 `E:\codex\videoprocessor\vp-0224-beta203\TestResults`.
