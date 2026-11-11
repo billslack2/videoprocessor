@@ -4,6 +4,19 @@
 
 Review
 
+2026-11-10: Rebased PR #244 onto the current `v2.0.3-beta` tip
+`cc96d66b229f387e9ffa6dd5a3eb69d1daee438e`. The three VP-0224 patches
+replayed without conflicts and match the prior patches in `git range-diff`.
+The rebased PR head is `8fbad4d9938ae404f3931e689af3836553d623ac`.
+
+The x64 Release solution build passed. All 48 focused native tests passed,
+including GPU pixel readback, manual geometry, configuration inventory and
+renderer reset policy. Both focused Config UI tests passed. Live scope-screen
+acceptance and merge remain pending.
+
+Logs and TRX files are under
+`E:\codex\videoprocessor\vp-0224-beta203\TestResults`.
+
 2026-11-01: Implementation is complete and pushed at
 `a1a9aa3a5adbba00eee99fdbb2662ff1c82d5e86` on
 `codex/vp-0224-auto-screen-alignment`.
