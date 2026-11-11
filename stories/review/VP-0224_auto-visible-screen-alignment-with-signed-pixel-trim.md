@@ -4,6 +4,14 @@
 
 Review
 
+2026-11-10: PR #244 now exposes **Align to** with **Raster edge** (default)
+and **Screen edge**. Both use one **Edge padding** control and the existing
+`screen_edge_padding` key. Switching the anchor keeps that value. The final
+head is `cabdcd9ea589682f9f9dbd6cc7314aa5d5c15d37`. The x64 Release build,
+48 focused native tests, and both Config UI tests passed. See
+`TestResults/vp0224-shared-padding-verified.trx` in the rebased worktree.
+Live scope-screen acceptance remains pending.
+
 2026-11-10: Rebased PR #244 onto the current `v2.0.3-beta` tip
 `cc96d66b229f387e9ffa6dd5a3eb69d1daee438e`. The three VP-0224 patches
 replayed without conflicts and match the prior patches in `git range-diff`.
@@ -109,7 +117,7 @@ Evidence: `../assets/VP-0224/validation.json`,
 `../assets/VP-0224/inventory-fixed.trx`. Full original and focused TRX/logs are
 retained in the feature and baseline worktrees' `TestResults` directories.
 
-## Implementation progress (2026-10-31)
+## Initial implementation (2026-10-31)
 
 - Added per-Screen `picture_alignment_mode` (Manual default / Auto) and signed
   `picture_offset_pixels`; Manual padding is retained independently.
@@ -157,25 +165,19 @@ Reference screenshot: `../assets/VP-0224/screen-picture-alignment.png`.
 
 ## Required behavior
 
-1. Add an explicit Manual / Auto alignment mode to Screen geometry, alongside
-   the existing Top / Center / Bottom choice. Manual preserves current behavior,
-   including existing raster-relative placement and pixel padding. Existing
-   configurations default to Manual and render identically after upgrade.
-2. Auto computes the resting placement of the detected active picture against
-   the selected visible screen edge. Top pins its top edge to the visible top;
-   Bottom pins its bottom edge to the visible bottom. Use measured bounds and
-   existing source-to-output mapping, not only an AR label: asymmetric encoded
-   bars must not be treated as centered. Derive the screen rectangle from the
-   configured geometry; never assume the entire output raster is visible.
-3. Apply a separately retained signed pixel trim after the Auto baseline. Use
-   output-pixel units with an explicit sign convention: positive moves down,
-   negative moves up, for both Top and Bottom. Zero means exact edge alignment.
-   The Auto baseline must not be stored as or added a second time to the old
-   manual padding. Switching modes preserves each mode's saved adjustment.
-4. Center retains existing centered presentation; edge pinning and its Auto
-   trim are inactive, with retained values and clear UI help. Explain the
-   selected alignment reference, pixel units, and sign convention in the UI
-   and configuration reference. Reset behavior must be explicit and tested.
+1. Add **Align to** with **Raster edge** and **Screen edge** alongside the
+   existing Top, Center and Bottom choice. Raster edge is the default and
+   preserves existing raster-relative placement and inward padding.
+2. Screen edge pins the detected active picture to the selected edge of the
+   configured visible screen. Use measured bounds and existing source-to-output
+   mapping so asymmetric encoded bars align correctly.
+3. Both choices share one **Edge padding** value in output pixels. For Raster
+   edge, positive padding moves inward and negative values act as zero. For
+   Screen edge, positive moves down and negative moves up from the calculated
+   alignment. Zero pins to the nearest output pixel. Switching the anchor keeps
+   the saved value.
+4. Center ignores padding. Reset restores the inherited anchor or Raster edge
+   when no override is inherited. Both preserve the shared padding value.
 5. Recalculate the baseline when trusted active bounds, input/output raster,
    selected Screen profile, or relevant presentation geometry changes. Use
    authoritative settled detector output and existing transition policy;
@@ -221,7 +223,7 @@ Reference screenshot: `../assets/VP-0224/screen-picture-alignment.png`.
   placement-only mode/trim change; distinguish baseline from temporary offsets.
 - Verify legacy configuration migration/defaults, profile inheritance,
   save/reload, mode switching with value retention, Center, Reset and live Apply.
-  Existing Manual profiles, including the screenshot's 280 px value, retain
+  Existing Raster edge profiles, including the screenshot's 280 px value, retain
   their behavior without automatic conversion or configuration replacement.
 - Relevant geometry/configuration regressions and an x64 Release build pass.
   Record visual checks on the configured scope screen for Top/Bottom, zero and
