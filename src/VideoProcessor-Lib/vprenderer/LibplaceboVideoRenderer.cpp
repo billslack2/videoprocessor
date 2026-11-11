@@ -12816,6 +12816,9 @@ struct LibplaceboVideoRenderer::Impl
 				convertedPayload->dolby.rgbBitAlignment == 2);
 		const bool tunnelActive =
 			state.dolbyVisionTunnel && !tunnelRgbFallback;
+		// A tunnel frame without a valid packet is the SDR picture it carries,
+		// so it follows every SDR rule below.
+		const bool sdrInput = state.eotf == EOTF::SDR || tunnelRgbFallback;
 		if (tunnelActive && (!convertedPayload ||
 			!convertedPayload->dolby.valid || convertedPayload->dolby.requiresBlackFrame))
 		{
@@ -13941,7 +13944,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			image.color = {};
 			image.color.primaries = PL_COLOR_PRIM_BT_709;
-			image.color.transfer = PL_COLOR_TRC_BT_1886;
+			image.color.transfer = TranslateTransfer(EOTF::SDR);
 		}
 		if (state.dolbyVisionTunnel && !tunnelRgbFallback)
 		{
@@ -14007,7 +14010,7 @@ struct LibplaceboVideoRenderer::Impl
 				}
 			}
 		}
-		if (state.eotf == EOTF::SDR &&
+		if (sdrInput &&
 			sdrInputTransfer != PL_COLOR_TRC_UNKNOWN)
 		{
 			// This is an explicit interpretation override used for controlled
@@ -14023,7 +14026,7 @@ struct LibplaceboVideoRenderer::Impl
         // Resolve the active LUT before interpreting SDR. Missing/disabled LUTs
         // always fall back to physical display encoding, never a stale LUT domain.
         const auto calibrationTransfer = LibplaceboOutput::ResolveCalibrationTransfers(
-            state.eotf == EOTF::SDR, actualOutput.safeToRender, displayLutParsed && displayLut,
+            sdrInput, actualOutput.safeToRender, displayLutParsed && displayLut,
             sdrAdjustGamma, LibplaceboOutput::ParseGamma(activeSettings.outputGamma),
             LibplaceboOutput::ParseGamma(activeSettings.hdrToneMapTargetGamma),
             ToSdrTransfer(declaredSourceTransfer), ToSdrTransfer(acceptedOutputTransfer),
@@ -14077,7 +14080,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		// SDR never inherits the HDR tone-map destination or its black level.
 		LibplaceboRenderParameters::ApplySourceLuminance(
-			state.eotf == EOTF::SDR, image.color);
+			sdrInput, image.color);
 		image.crop.x0 = 0.0f;
 		image.crop.y0 = 0.0f;
 		image.crop.x1 = static_cast<float>(width);
@@ -15352,7 +15355,7 @@ struct LibplaceboVideoRenderer::Impl
             baseTarget.color.transfer = renderTargetTransfer;
 		baseTarget.color.primaries = TargetPlPrimaries();
 		LibplaceboRenderParameters::ApplyTargetLuminance(
-			state.eotf == EOTF::SDR, static_cast<float>(sdrTargetNits),
+			sdrInput, static_cast<float>(sdrTargetNits),
 			static_cast<float>(sdrBlackNits), baseTarget.color);
 		std::ostringstream luminanceSignature;
 		luminanceSignature << static_cast<int>(state.eotf) << '|'
@@ -15367,7 +15370,7 @@ struct LibplaceboVideoRenderer::Impl
 			lastLuminanceSignature = luminanceSignature.str();
 			DebugLog::Log(
 				"LUMINANCE_CONTRACT input_sdr=%d source_transfer=%s source_luma=%.7g..%.2f source_effective_hdr=%d target_transfer=%s target_luma=%.7g..%.2f target_effective_hdr=%d hdr_destination=%.7g..%.2f format=%s dxgi=%s peak_eligible=%d",
-				state.eotf == EOTF::SDR ? 1 : 0,
+				sdrInput ? 1 : 0,
 				pl_color_transfer_name(image.color.transfer),
 				image.color.hdr.min_luma, image.color.hdr.max_luma,
 				pl_color_space_is_hdr(&image.color) ? 1 : 0,
