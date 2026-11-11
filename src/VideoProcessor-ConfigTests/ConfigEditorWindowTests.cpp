@@ -3848,38 +3848,38 @@ void testAutoPictureAlignmentRoundTrips()
         auto* alignment=requireControl<QComboBox>(window,"config.vprenderer.viewport.vertical_alignment");
         auto* mode=requireControl<QComboBox>(window,"config.vprenderer.viewport.picture_alignment_mode");
         auto* padding=requireControl<QLineEdit>(window,"config.vprenderer.viewport.screen_edge_padding");
-        auto* trim=requireControl<QLineEdit>(window,"config.vprenderer.viewport.picture_offset_pixels");
-        require(mode->currentData().toString()=="manual","Legacy config did not default to Manual");
-        selectData(alignment,"bottom"); padding->setText("280");
-        require(padding->isEnabled() && !trim->isEnabled(),"Manual controls have wrong enablement");
-        selectData(mode,"auto"); trim->setText("-12");
-        require(mode->currentText()=="Auto","Auto uses an unrelated generic label");
-        require(!padding->isEnabled() && trim->isEnabled(),"Auto controls have wrong enablement");
-        selectData(alignment,"center");
-        require(!padding->isEnabled() && !trim->isEnabled(),"Center enables edge controls");
-        require(trim->text()=="-12" && padding->text()=="280","Center lost retained values");
-        selectData(alignment,"bottom"); selectData(mode,"manual");
-        require(padding->text()=="280" && !trim->isEnabled(),"Manual value not retained");
+        require(mode->currentData().toString()=="manual" && mode->currentText()=="Raster edge",
+            "Legacy config did not default to Raster edge");
+        selectData(alignment,"bottom");
+        padding->setText("280");
+        require(padding->isEnabled(),"Raster edge padding disabled");
         selectData(mode,"auto");
+        require(mode->currentText()=="Screen edge" && padding->isEnabled() && padding->text()=="280",
+            "Screen edge did not use the same padding");
+        padding->setText("-12");
+        selectData(alignment,"center");
+        require(!padding->isEnabled() && padding->text()=="-12","Center lost padding or allowed edits");
+        selectData(alignment,"bottom");
         requireControl<QPushButton>(window,"config.vprenderer.viewport.picture_alignment_mode.reset_override")->click();
         QCoreApplication::processEvents();
-        require(mode->currentData().toString()=="manual" && trim->text()=="-12" && padding->text()=="280",
-            "Mode Reset did not restore Manual while retaining independent pixel values");
-        selectData(mode,"auto"); save(window);
+        require(mode->currentText()=="Raster edge" && padding->isEnabled() && padding->text()=="-12",
+            "Reset changed shared padding");
+        selectData(mode,"auto");
+        save(window);
         const auto bytes=readBytes(path);
-        require(bytes.contains("picture_alignment_mode: auto") && bytes.contains("picture_offset_pixels: -12") &&
-            bytes.contains("screen_edge_padding: 280"),"Auto/Manual settings did not persist independently");
+        require(bytes.contains("picture_alignment_mode: auto") && bytes.contains("screen_edge_padding: -12") &&
+            !bytes.contains("picture_offset_pixels"),"Alignment did not save one padding value");
         const QString images=qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
         if (!images.isEmpty()) { window.resize(1120,960); window.show(); QCoreApplication::processEvents();
-            for(QWidget* parent=trim->parentWidget();parent;parent=parent->parentWidget())
+            for(QWidget* parent=padding->parentWidget();parent;parent=parent->parentWidget())
                 if(auto* scroll=qobject_cast<QScrollArea*>(parent)) { scroll->ensureWidgetVisible(mode,0,30); scroll->ensureWidgetVisible(padding,0,80); break; }
             QCoreApplication::processEvents();
             require(window.grab().save(QDir(images).filePath("auto-picture-alignment.png")),"Cannot capture Auto controls"); }
     }
     ConfigEditorWindow reopened(path,0,true); reopened.selectPage(4);
     require(requireControl<QComboBox>(reopened,"config.vprenderer.viewport.picture_alignment_mode")->currentData().toString()=="auto","Auto mode not restored");
-    require(requireControl<QLineEdit>(reopened,"config.vprenderer.viewport.picture_offset_pixels")->text()=="-12","Signed trim not restored");
-    require(!requireControl<QLineEdit>(reopened,"config.vprenderer.viewport.screen_edge_padding")->isEnabled(),"Reload enabled manual padding in Auto");
+    auto* padding=requireControl<QLineEdit>(reopened,"config.vprenderer.viewport.screen_edge_padding");
+    require(padding->isEnabled() && padding->text()=="-12","Signed padding not restored");
 }
 
 void testScreenConfigSectionsAndInlineUnits()
