@@ -4,7 +4,7 @@
 
 In Progress
 
-2026-11-10: Implemented first-gate diagnostics for early outward-window priming on beta 3247ea13 in E:\codex\videoprocessor\vp-0228-lookahead-20261110. The existing two-second reporting interval now emits reason counts with representative source/sequence, contributor, policy, and continuity. Next: validate the diagnostic build and capture the same translated-owner transition; correlate the gate with the selected and ready prefixes before considering behavior changes.
+2026-11-10: Implemented first-gate diagnostics for early outward-window priming on beta 3247ea13 in E:\codex\videoprocessor\vp-0228-lookahead-20261110. The existing two-second reporting interval now emits reason counts with representative source/sequence, contributor, policy, and continuity. The x64 Release solution build and 74 existing queue/outward-proof tests passed. The diagnostics have not been exercised in live playback. Next: capture the same translated-owner transition; correlate the gate with the selected and ready prefixes before considering behavior changes.
 
 Requested 2026-11-10. Next: inspect the then-current remote beta and reproduce the Eternals scope-to-IMAX transition using its recorded source frames and live trace. Add diagnostic-only visibility to the existing lookahead and outward-proof preparation, identify the actual limiting gates, then evaluate a narrowly scoped improvement. No source change, configuration change, or deployment is implied by creating this story.
 
