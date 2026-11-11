@@ -334,6 +334,7 @@ namespace VideoProcessorTest
 				{
 					pl_color_space source = *NativeData<pl_color_space>("pl_color_space_hdr10");
 					source.transfer = transfer;
+					const pl_raw_primaries sourcePrimaries = source.hdr.prim;
 					source.hdr.scene_avg = 800.0f;
 					pl_color_space target = source;
 					ApplySourceLuminance(true, source);
@@ -344,8 +345,32 @@ namespace VideoProcessorTest
 					Assert::AreEqual(0.203f, source.hdr.min_luma);
 					Assert::AreEqual(0.0f, source.hdr.scene_avg);
 					Assert::AreEqual(static_cast<int>(transfer), static_cast<int>(source.transfer));
-					AssertSameData(&source, &target, sizeof(source), L"SDR endpoints must match");
+					AssertSameData(&sourcePrimaries, &source.hdr.prim, sizeof(sourcePrimaries),
+						L"SDR source mastering primaries must be retained");
+					const pl_raw_primaries noPrimaries{};
+					AssertSameData(&noPrimaries, &target.hdr.prim, sizeof(noPrimaries),
+						L"SDR target must clear stale mastering primaries");
+					pl_color_space expectedTarget = source;
+					expectedTarget.hdr.prim = noPrimaries;
+					AssertSameData(&expectedTarget, &target, sizeof(target),
+						L"SDR endpoints must match except for source mastering primaries");
 				}
+		}
+
+		TEST_METHOD(SdrSourceWithoutMasteringPrimariesRemainsUntagged)
+		{
+			pl_color_space source = *NativeData<pl_color_space>("pl_color_space_hdr10");
+			source.transfer = PL_COLOR_TRC_SRGB;
+			source.hdr.prim = {};
+			const pl_raw_primaries noPrimaries{};
+
+			ApplySourceLuminance(true, source);
+
+			AssertSameData(&noPrimaries, &source.hdr.prim, sizeof(noPrimaries),
+				L"SDR source without mastering primaries must remain untagged");
+			Assert::AreEqual(203.0f, source.hdr.max_luma);
+			Assert::AreEqual(0.203f, source.hdr.min_luma);
+			Assert::AreEqual(0.0f, source.hdr.scene_avg);
 		}
 
 		TEST_METHOD(HdrLuminanceRetainsSourceMetadataAndConfiguredDestination)
