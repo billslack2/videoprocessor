@@ -141,6 +141,7 @@ private:
 	static constexpr double RATE_FILTER_ALPHA = 1.0 / 600.0;
 	static constexpr double MINIMUM_PREDICTION_PPM = 1.0;
 	static constexpr double DIRECTION_REVERSAL_PPM = 2.0;
+	static constexpr uint32_t SURPLUS_CONFIRM_FRAMES = 120;
 
 	uint64_t m_generation = 0;
 	double m_phaseFrames = 0.0;
@@ -157,4 +158,5 @@ private:
 	bool m_lastVerificationSucceeded = false;
 	double m_filteredPhasePerFrame = 0.0;
 	AlphaCadenceAction m_predictionDirection = AlphaCadenceAction::None;
+	uint32_t m_surplusFrames = 0;
 };
