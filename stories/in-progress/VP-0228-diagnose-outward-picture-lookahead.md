@@ -10,6 +10,8 @@ Requested 2026-11-10. Next: inspect the then-current remote beta and reproduce t
 
 2026-11-11: Added metadata records to the existing Capture analysis diagnostics menu path. outward-prime records carry the queue head, queue depth, contributor source/sequence pairs, and named outcome. lookahead-prefix-stop records carry the first blocked contributor, reason, ready prefix and deadline/observation QPC. Compare these with existing proof and presentation records. x64 Release build passed and all 83 selected existing tests passed. Live capture and worker lifecycle timestamps remain unverified or unimplemented respectively.
 
+2026-11-11: Deployed the verified x64 Release diagnostic host and standard VP Renderer pair to C:\Videoprocessor\vp. SHA-256 host 1C2E156CCF06F4D0EFED19698FA6B4135623EF1B4A098CD3F9EFD9EF2D4F7A0B, renderer 4A2370B6BAFB908959DED60E668E609969C00A8FA8E13FAB258238F30DFCA88A. Both prior binaries are backed up in C:\Videoprocessor\vp\backup-vp0228-diagnostics-20261111-073042. Player was closed during deployment. Next is the live Eternals metadata capture.
+
 ## Investigation checkpoint (2026-11-10)
 
 Remote `v2.0.1-beta` was fetched at `4f687eb07ae358e51bacfd33712b66bec5078da0`, matching the recorded integration base; default branch is `v2.0.0-beta`. Clean detached source worktree: `E:\codex\videoprocessor\vp-0228-lookahead-20261110`. The incident integration commit `549b665f` was not available in that fetch, so its changes have not been compared. No source, configuration, or deployment change was made in this checkpoint.
