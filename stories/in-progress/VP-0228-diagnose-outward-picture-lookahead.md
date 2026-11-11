@@ -8,6 +8,8 @@ In Progress
 
 Requested 2026-11-10. Next: inspect the then-current remote beta and reproduce the Eternals scope-to-IMAX transition using its recorded source frames and live trace. Add diagnostic-only visibility to the existing lookahead and outward-proof preparation, identify the actual limiting gates, then evaluate a narrowly scoped improvement. No source change, configuration change, or deployment is implied by creating this story.
 
+2026-11-11: Added metadata records to the existing Capture analysis diagnostics menu path. outward-prime records carry the queue head, queue depth, contributor source/sequence pairs, and named outcome. lookahead-prefix-stop records carry the first blocked contributor, reason, ready prefix and deadline/observation QPC. Compare these with existing proof and presentation records. x64 Release build passed and all 83 selected existing tests passed. Live capture and worker lifecycle timestamps remain unverified or unimplemented respectively.
+
 ## Investigation checkpoint (2026-11-10)
 
 Remote `v2.0.1-beta` was fetched at `4f687eb07ae358e51bacfd33712b66bec5078da0`, matching the recorded integration base; default branch is `v2.0.0-beta`. Clean detached source worktree: `E:\codex\videoprocessor\vp-0228-lookahead-20261110`. The incident integration commit `549b665f` was not available in that fetch, so its changes have not been compared. No source, configuration, or deployment change was made in this checkpoint.
