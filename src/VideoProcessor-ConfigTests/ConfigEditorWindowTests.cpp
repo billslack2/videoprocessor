@@ -3840,6 +3840,48 @@ void testOutputDiagnosticPresetCanInherit()
         "Selecting inherited diagnostics persisted an invalid empty output-path profile");
 }
 
+void testAutoPictureAlignmentRoundTrips()
+{
+    QTemporaryDir directory; const QString path=copyFixture(directory);
+    {
+        ConfigEditorWindow window(path,0,true); window.selectPage(4);
+        auto* alignment=requireControl<QComboBox>(window,"config.vprenderer.viewport.vertical_alignment");
+        auto* mode=requireControl<QComboBox>(window,"config.vprenderer.viewport.picture_alignment_mode");
+        auto* padding=requireControl<QLineEdit>(window,"config.vprenderer.viewport.screen_edge_padding");
+        require(mode->currentData().toString()=="manual" && mode->currentText()=="Raster edge",
+            "Legacy config did not default to Raster edge");
+        selectData(alignment,"bottom");
+        padding->setText("280");
+        require(padding->isEnabled(),"Raster edge padding disabled");
+        selectData(mode,"auto");
+        require(mode->currentText()=="Screen edge" && padding->isEnabled() && padding->text()=="280",
+            "Screen edge did not use the same padding");
+        padding->setText("-12");
+        selectData(alignment,"center");
+        require(!padding->isEnabled() && padding->text()=="-12","Center lost padding or allowed edits");
+        selectData(alignment,"bottom");
+        requireControl<QPushButton>(window,"config.vprenderer.viewport.picture_alignment_mode.reset_override")->click();
+        QCoreApplication::processEvents();
+        require(mode->currentText()=="Raster edge" && padding->isEnabled() && padding->text()=="-12",
+            "Reset changed shared padding");
+        selectData(mode,"auto");
+        save(window);
+        const auto bytes=readBytes(path);
+        require(bytes.contains("picture_alignment_mode: auto") && bytes.contains("screen_edge_padding: -12") &&
+            !bytes.contains("picture_offset_pixels"),"Alignment did not save one padding value");
+        const QString images=qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+        if (!images.isEmpty()) { window.resize(1120,960); window.show(); QCoreApplication::processEvents();
+            for(QWidget* parent=padding->parentWidget();parent;parent=parent->parentWidget())
+                if(auto* scroll=qobject_cast<QScrollArea*>(parent)) { scroll->ensureWidgetVisible(mode,0,30); scroll->ensureWidgetVisible(padding,0,80); break; }
+            QCoreApplication::processEvents();
+            require(window.grab().save(QDir(images).filePath("auto-picture-alignment.png")),"Cannot capture Auto controls"); }
+    }
+    ConfigEditorWindow reopened(path,0,true); reopened.selectPage(4);
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.viewport.picture_alignment_mode")->currentData().toString()=="auto","Auto mode not restored");
+    auto* padding=requireControl<QLineEdit>(reopened,"config.vprenderer.viewport.screen_edge_padding");
+    require(padding->isEnabled() && padding->text()=="-12","Signed padding not restored");
+}
+
 void testScreenConfigSectionsAndInlineUnits()
 {
     QTemporaryDir directory;
@@ -8730,6 +8772,7 @@ int main(int argc, char** argv)
         testOutputExperimentsPersistAndRestoreDefaults);
     failures += run("output diagnostic preset can inherit",
         testOutputDiagnosticPresetCanInherit);
+    failures += run("Auto picture alignment round trips", testAutoPictureAlignmentRoundTrips);
     failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
     failures += run("queue units and LUT controls use consistent rows",
         testQueueUnitsAndLutControlsUseConsistentRows);

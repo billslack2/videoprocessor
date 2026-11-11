@@ -7694,23 +7694,22 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Top and Bottom support one-sided masking. Center preserves the "
             "current presentation. Enabled subtitle fitting can still move "
             "the picture upward or downward as required.")));
-		auto* screenEdgePadding = addText(QStringLiteral("Screen edge padding"),
-			QStringLiteral("screen_edge_padding"), QStringLiteral("px"));
-		screenEdgePadding->setValidator(new QIntValidator(0, 100000,
-			screenEdgePadding));
-		screenEdgePadding->setToolTip(QStringLiteral(
-			"Reserves empty output space at the selected top or bottom screen edge. "
-			"It does not add content padding, crop the picture, or change its scale."));
-		form->addRow(QString(), helpLabel(QStringLiteral(
-			"Uses existing vertical slack only; Center disables this setting.")));
-		auto updateScreenEdgePadding = [verticalAlignment, screenEdgePadding]()
-		{
-			screenEdgePadding->setEnabled(
-				verticalAlignment->currentData().toString() != QStringLiteral("center"));
-		};
-		connect(verticalAlignment, qOverload<int>(&QComboBox::currentIndexChanged),
-			this, [updateScreenEdgePadding](int) { updateScreenEdgePadding(); });
-		updateScreenEdgePadding();
+        auto* alignmentMode = addChoice(QStringLiteral("Align to"),
+            QStringLiteral("picture_alignment_mode"), { QStringLiteral("manual"), QStringLiteral("auto") });
+        alignmentMode->setItemText(alignmentMode->findData(QStringLiteral("manual")), QStringLiteral("Raster edge"));
+        alignmentMode->setItemText(alignmentMode->findData(QStringLiteral("auto")), QStringLiteral("Screen edge"));
+        alignmentMode->setToolTip(QStringLiteral("Align to the full output raster or to the configured visible screen."));
+        auto* padding = addText(QStringLiteral("Edge padding"),
+            QStringLiteral("screen_edge_padding"), QStringLiteral("px"));
+        padding->setValidator(new QIntValidator(-100000, 100000, padding));
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "Raster edge: positive padding moves inward. Negative padding acts as zero. "
+            "Screen edge: positive moves down and negative moves up. "
+            "Center ignores padding.")));
+        connect(verticalAlignment, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [verticalAlignment, padding](int) {
+                padding->setEnabled(verticalAlignment->currentData().toString() != QStringLiteral("center"));
+            });
         anamorphicEnabled = new QCheckBox(QStringLiteral("Enable anamorphic lens compensation"));
         anamorphicEnabled->setObjectName(controlName(sectionPrefix,
             QStringLiteral("anamorphic_enabled")));
@@ -8041,7 +8040,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 if (key == QStringLiteral("screen_aspect")) return QString();
                 if (key == QStringLiteral("vertical_alignment")) return QStringLiteral("center");
-				if (key == QStringLiteral("screen_edge_padding")) return QStringLiteral("0");
+				if (key == QStringLiteral("picture_alignment_mode")) return QStringLiteral("manual");
+                if (key == QStringLiteral("screen_edge_padding")) return QStringLiteral("0");
             }
             if (sectionPrefix == QStringLiteral("vprenderer.subtitles")) {
                 if (key.startsWith(QStringLiteral("hdr_peak_analysis_"))) {
@@ -8506,9 +8506,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				controlName(sectionPrefix, QStringLiteral("vertical_alignment")));
 			auto* padding = profileFields->findChild<QLineEdit*>(
 				controlName(sectionPrefix, QStringLiteral("screen_edge_padding")));
-			if (alignment && padding)
-				padding->setEnabled(alignment->currentData().toString() !=
-					QStringLiteral("center"));
+            if (padding) padding->setEnabled(alignment &&
+                alignment->currentData().toString() != QStringLiteral("center"));
 		}
         refreshLimitedTransportControls();
         refreshCalibrationControls();
