@@ -13,3 +13,8 @@ ZIP SHA256: 433686C39EF7168F96023EF2B46BC537510F87E26D6A4F30B0B29C6D7401297C
 
 Full suite evidence: E:/codex/videoprocessor/updater-process-hardening-20261111/artifacts/release-verification-04e4d5d9c5484df483167687678627b6
 Installer lifecycle evidence: artifacts/e2e-000134ee (231 passing assertions).
+
+## Authorized manual test distribution
+
+User explicitly approved generation after disclosure of the 22 identical baseline failures. Verified setup, portable ZIP and optional EDID were copied to C:/Users/bslac/Documents/ChatGPT/Done/VP-2.0.4-beta-updater1-69c9dfcf443b with READ-ME-FIRST.txt documenting the limitation and unsigned status. Final copied hashes match source sidecars; Defender scan found no threats. No tests were changed or skipped, no Google Drive upload performed, and no public release published. This authorization supersedes the fully-passing-suite export gate for this test distribution only.
+
