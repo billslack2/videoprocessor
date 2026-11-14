@@ -1,32 +1,40 @@
 ﻿[CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][string]$InstallerPath,
     [Parameter(Mandatory=$true)][string]$PayloadRoot,
-    [string]$PreviousInstallerPath, [string]$PreviousManifestPath
+    [Parameter(Mandatory=$true)][string]$IsccPath,
+    [string]$PreviousPayloadRoot, [string]$PreviousManifestPath
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $root=Split-Path -Parent $PSScriptRoot
-$registry='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{42D852F1-70E9-43ED-8739-D61752106D59}_is1'
-if(Test-Path $registry){throw 'An existing installer registration is present. Use a disposable Windows account for these tests.'}
-$InstallerPath=(Resolve-Path -LiteralPath $InstallerPath).Path
+. (Join-Path $PSScriptRoot 'installer_test_helpers.ps1')
+. (Join-Path $PSScriptRoot 'installer_build_identity.ps1')
 $PayloadRoot=(Resolve-Path -LiteralPath $PayloadRoot).Path
-$testRoot=Join-Path $root ('artifacts\installer-e2e-'+[guid]::NewGuid().ToString('N'))
-$target=Join-Path $testRoot 'Custom VP space'
-$null=New-Item -ItemType Directory -Path $target -Force
-$script:checks=0
-$script:ActiveInstaller=$InstallerPath
-$script:ExpectedManifest=Join-Path $PayloadRoot 'INSTALL-MANIFEST.json'
-if ($PreviousInstallerPath -or $PreviousManifestPath) {
- if (-not $PreviousInstallerPath -or -not $PreviousManifestPath) { throw 'Supply both previous build inputs.' }
- $PreviousInstallerPath=(Resolve-Path -LiteralPath $PreviousInstallerPath).Path
+$IsccPath=(Resolve-Path -LiteralPath $IsccPath).Path
+$testRoot=Join-Path $root ('artifacts\e2e-'+[guid]::NewGuid().ToString('N').Substring(0,8))
+$null=New-Item -ItemType Directory -Path $testRoot -Force
+$target=Join-Path $env:TEMP ('vpe2e-'+[guid]::NewGuid().ToString('N').Substring(0,8))
+$displayLabel='VideoProcessor QA E2E '+[guid]::NewGuid().ToString('N').Substring(0,8)
+$fixture=& (Join-Path $PSScriptRoot 'prepare_installer_fixture.ps1') -PayloadRoot $PayloadRoot -OutputDirectory (Join-Path $testRoot 'B') -IsccPath $IsccPath -Flavor full -DisplayLabel $displayLabel
+$script:LatestInstaller=$fixture.InstallerPath
+$script:ActiveInstaller=$script:LatestInstaller
+$script:ExpectedManifest=$fixture.ManifestPath
+$script:PreviousInstaller=$null
+$registry='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{0B37C49A-79D2-4D5D-9A7E-C99B31A2F001}_is1'
+if(Test-VpTestRegistration '0B37C49A-79D2-4D5D-9A7E-C99B31A2F001'){throw 'An existing isolated fixture registration is present; refusing to touch it.'}
+if ($PreviousPayloadRoot -or $PreviousManifestPath) {
+ if (-not $PreviousPayloadRoot -or -not $PreviousManifestPath) { throw 'Supply both previous payload root and previous manifest.' }
+ $PreviousPayloadRoot=(Resolve-Path -LiteralPath $PreviousPayloadRoot).Path
  $PreviousManifestPath=(Resolve-Path -LiteralPath $PreviousManifestPath).Path
  $a=Get-Content $PreviousManifestPath -Raw | ConvertFrom-Json
- $b=Get-Content $script:ExpectedManifest -Raw | ConvertFrom-Json
+ $b=Get-Content (Join-Path $PayloadRoot 'INSTALL-MANIFEST.json') -Raw | ConvertFrom-Json
  if ($a.build -eq $b.build -or $a.coreVersion -ne $b.coreVersion) { throw 'A and B must be distinct commits with the same core version.' }
- $script:ActiveInstaller=$PreviousInstallerPath
- $script:ExpectedManifest=$PreviousManifestPath
+ $previousFixture=& (Join-Path $PSScriptRoot 'prepare_installer_fixture.ps1') -PayloadRoot $PreviousPayloadRoot -OutputDirectory (Join-Path $testRoot 'A') -IsccPath $IsccPath -Flavor full -DisplayLabel $displayLabel
+ $script:PreviousInstaller=$previousFixture.InstallerPath
+ $script:ActiveInstaller=$script:PreviousInstaller
+ $script:ExpectedManifest=$previousFixture.ManifestPath
 }
+$script:checks=0
 function Assert([bool]$Condition,[string]$Message){
  if(-not $Condition){throw $Message};$script:checks++;Write-Host "PASS $Message"
 }
@@ -85,7 +93,7 @@ function RunSetup([string]$Label,[bool]$SelectDirectory){
  }
  AssertDesktop
  $keys=@(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-    Where-Object PSChildName -like '*42D852F1-70E9-43ED-8739-D61752106D59*')
+    Where-Object PSChildName -like '*0B37C49A-79D2-4D5D-9A7E-C99B31A2F001*')
  Assert ($keys.Count -eq 1) "actual installer $Label has one uninstall entry"
 }
 RunSetup 'fresh' $true
@@ -118,9 +126,9 @@ foreach($relative in $sentinels.Keys){
  [IO.File]::WriteAllText($file,$sentinels[$relative])
  $before[$relative]=(Get-FileHash -LiteralPath $file).Hash
 }
-if ($PreviousInstallerPath) {
- $script:ActiveInstaller=$InstallerPath
- $script:ExpectedManifest=Join-Path $PayloadRoot 'INSTALL-MANIFEST.json'
+if ($PreviousPayloadRoot) {
+ $script:ActiveInstaller=$script:LatestInstaller
+ $script:ExpectedManifest=$fixture.ManifestPath
  RunSetup 'upgrade-same-core-version' $false
  foreach($relative in $before.Keys){
   Assert ((Get-FileHash -LiteralPath (Join-Path $target $relative)).Hash -eq $before[$relative]) "same-core upgrade preserves $relative"
@@ -177,21 +185,21 @@ if($current.PSObject.Properties['runtimeMode'] -and $current.runtimeMode -eq 'ap
 foreach($relative in $before.Keys){
  Assert ((Get-FileHash -LiteralPath (Join-Path $target $relative)).Hash -eq $before[$relative]) "actual reinstall preserves $relative"
 }
-if ($PreviousInstallerPath) {
- $script:ActiveInstaller=$PreviousInstallerPath
- $script:ExpectedManifest=$PreviousManifestPath
+if ($PreviousPayloadRoot) {
+ $script:ActiveInstaller=$script:PreviousInstaller
+ $script:ExpectedManifest=$previousFixture.ManifestPath
  RunSetup 'rollback-older-commit' $false
  foreach($relative in $before.Keys){
   Assert ((Get-FileHash -LiteralPath (Join-Path $target $relative)).Hash -eq $before[$relative]) "rollback preserves $relative"
  }
- $script:ActiveInstaller=$InstallerPath
- $script:ExpectedManifest=Join-Path $PayloadRoot 'INSTALL-MANIFEST.json'
+ $script:ActiveInstaller=$script:LatestInstaller
+ $script:ExpectedManifest=$fixture.ManifestPath
  RunSetup 'upgrade-after-rollback' $false
 }
 $uninstaller=Get-Uninstaller
 $process=Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+(Join-Path $testRoot 'uninstall.log')+'"')) -WindowStyle Hidden -Wait -PassThru
 Assert ($process.ExitCode -eq 0) 'actual uninstall exit zero'
-Assert (-not (Test-Path $registry)) 'actual uninstall removes registration'
+Assert (-not (Test-VpTestRegistration '0B37C49A-79D2-4D5D-9A7E-C99B31A2F001')) 'actual uninstall removes registration'
 Assert (-not (Test-Path -LiteralPath (Join-Path $target 'VideoProcessor.exe'))) 'actual uninstall removes managed host'
 Assert (-not (Test-Path -LiteralPath (Join-Path $target 'Uninstall VideoProcessor.lnk'))) 'actual uninstall removes its friendly shortcut'
 foreach($relative in $before.Keys){
@@ -203,9 +211,9 @@ foreach($relative in $before.Keys){
 }
 # Only delete this disposable test folder. Retain all test operator data outside it.
 $safeTarget=[IO.Path]::GetFullPath($target)
-$safeTestRoot=[IO.Path]::GetFullPath($testRoot)
-if(-not $safeTestRoot.StartsWith([IO.Path]::GetFullPath((Join-Path $root 'artifacts'))+'\',[StringComparison]::OrdinalIgnoreCase) -or
-   -not $safeTarget.StartsWith($safeTestRoot+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Unsafe deletion fixture'}
+$tempRoot=[IO.Path]::GetFullPath($env:TEMP).TrimEnd('\')+'\'
+if(-not $safeTarget.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase) -or
+   [IO.Path]::GetFileName($safeTarget) -notmatch '^vpe2e-[0-9a-f]{8}$'){throw 'Unsafe deletion fixture'}
 Copy-Item -LiteralPath $target -Destination (Join-Path $testRoot 'before-manual-deletion') -Recurse
 Remove-Item -LiteralPath $safeTarget -Recurse -Force
 Assert (Test-Path -LiteralPath $registry) 'manual folder deletion leaves remembered registration'
@@ -213,5 +221,5 @@ RunSetup 'repair-manually-deleted-folder' $false
 Assert (Test-Path -LiteralPath (Join-Path $target 'VideoProcessor.cfg')) 'repair seeds configuration when no file survives'
 $uninstaller=Get-Uninstaller
 $process=Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -WindowStyle Hidden -Wait -PassThru
-Assert ($process.ExitCode -eq 0 -and -not (Test-Path $registry)) 'test installation registration cleaned up'
+Assert ($process.ExitCode -eq 0 -and -not (Test-VpTestRegistration '0B37C49A-79D2-4D5D-9A7E-C99B31A2F001')) 'test installation registration cleaned up'
 Write-Host "$checks actual-installer checks passed. Logs and retained data: $testRoot"

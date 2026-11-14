@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <windows.h>
+#include <tlhelp32.h>
 
 #include "ConfigEditorWindow.h"
 #include "../VideoProcessor-Config/ToneChartPanel.h"
@@ -61,6 +62,7 @@
 #include "../VideoProcessor-Config/ToneProfileFile.h"
 #include <QPlainTextEdit>
 #include <QProgressBar>
+#include <QSet>
 #include <QPushButton>
 #include <QRect>
 #include <QScrollArea>
@@ -2937,6 +2939,127 @@ void testIntegratedUpdatesRespectLocalPackage()
     state["busy"] = false; panel.applyState(state);
     require(mode->isEnabled(), "Healthy helper response did not recover the page");
 
+}
+
+void testPersistentUpdatePanelBridge()
+{
+    const QString helperSource = qEnvironmentVariable("VP_UPDATE_HELPER_PATH");
+    require(!helperSource.isEmpty() && QFileInfo::exists(helperSource),
+        "Set VP_UPDATE_HELPER_PATH to a compiled updater to run the bridge integration test");
+    QTemporaryDir directory;
+    require(directory.isValid(), "Could not create an isolated updater root");
+    const QString rootListPath = qEnvironmentVariable("VP_UPDATE_TEST_ROOT_LIST");
+    if (!rootListPath.isEmpty())
+    {
+        QFile rootList(rootListPath);
+        require(rootList.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text),
+            "Could not record the isolated updater root for exact cache cleanup");
+        rootList.write(directory.path().toUtf8()); rootList.write("\n");
+    }
+    const QString helper = directory.filePath(QStringLiteral("VideoProcessorUpdate.exe"));
+    require(QFile::copy(helperSource, helper), "Could not copy the updater into the isolated root");
+    QFile manifest(directory.filePath(QStringLiteral("INSTALL-MANIFEST.json")));
+    require(manifest.open(QIODevice::WriteOnly), "Could not create the isolated install manifest");
+    manifest.write("{\"schemaVersion\":1,\"applicationId\":\"VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59\",\"flavor\":\"full\",\"coreVersion\":\"panel-bridge-test\",\"rpcVersion\":2,\"configurationVersion\":1,\"files\":[]}");
+    manifest.close();
+
+    auto updaterProcessIds = [&]()
+    {
+        QSet<DWORD> processIds;
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snapshot == INVALID_HANDLE_VALUE) return processIds;
+        PROCESSENTRY32W entry{}; entry.dwSize = sizeof(entry);
+        if (Process32FirstW(snapshot, &entry))
+        {
+            do
+            {
+                HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID);
+                if (!process) continue;
+                wchar_t path[32768]{}; DWORD length = 32768;
+                if (QueryFullProcessImageNameW(process, 0, path, &length) &&
+                    QDir::cleanPath(QDir::fromNativeSeparators(QString::fromWCharArray(path, static_cast<int>(length))))
+                        .compare(QDir::cleanPath(QDir::fromNativeSeparators(helper)), Qt::CaseInsensitive) == 0)
+                    processIds.insert(entry.th32ProcessID);
+                CloseHandle(process);
+            } while (Process32NextW(snapshot, &entry));
+        }
+        CloseHandle(snapshot);
+        return processIds;
+    };
+    auto countUpdaterProcesses = [&]() { return updaterProcessIds().size(); };
+    auto waitFor = [&](const std::function<bool()>& predicate, int timeoutMs)
+    {
+        QElapsedTimer timer; timer.start();
+        while (timer.elapsed() < timeoutMs)
+        {
+            QApplication::processEvents(QEventLoop::AllEvents, 50);
+            if (predicate()) return true;
+            QThread::msleep(20);
+        }
+        QApplication::processEvents(QEventLoop::AllEvents, 50);
+        return predicate();
+    };
+
+    UpdatePanel panel(directory.path(), nullptr, true);
+    auto* status = panel.findChild<QLabel*>("updates.status");
+    require(status, "Update panel status label was not created");
+    auto* mode = panel.findChild<QComboBox*>("updates.mode");
+    require(mode, "Update mode control was not created");
+    const int notifyIndex = mode->findData(QStringLiteral("notify"));
+    const int manualIndex = mode->findData(QStringLiteral("manual"));
+    require(notifyIndex >= 0 && manualIndex >= 0, "Manual or notify mode is missing from the mode selector");
+    panel.show();
+    // Queue two changes while the just-started persistent bridge is connecting.
+    // Only the latest nondefault value should be saved.
+    mode->setCurrentIndex(notifyIndex);
+    mode->setCurrentIndex(manualIndex);
+    if (!waitFor([&] { return status->text().contains(QStringLiteral("preferences saved"), Qt::CaseInsensitive) &&
+        mode->currentData().toString() == QStringLiteral("manual"); }, 12000))
+        throw std::runtime_error("Cold-start settings request was lost before the persistent bridge connected: status=" +
+            status->text().toStdString() + "; mode=" + mode->currentData().toString().toStdString() +
+            "; lastFrame=" + status->property("updaterLastFrame").toString().toStdString() +
+            "; failure=" + status->property("updaterLastFailure").toString().toStdString() +
+            "; lastSent=" + status->property("updaterLastSent").toString().toStdString() +
+            "; lastSettings=" + status->property("updaterLastSettingsRequested").toString().toStdString() +
+            "; lastPending=" + status->property("updaterLastPendingSettings").toString().toStdString() +
+            "; timeoutState=" + status->property("updaterTimeoutState").toString().toStdString() +
+            "; bytesToWrite=" + status->property("updaterBytesToWriteAfterSend").toString().toStdString() +
+            "; bridge=" + status->property("updaterBridgeExit").toString().toStdString());
+
+    QProcess stateProbe;
+    stateProbe.start(helper, {"--root", directory.path(), "--control", "{\"command\":\"state\"}"});
+    require(stateProbe.waitForFinished(10000), "Independent updater state probe timed out");
+    const auto persisted = QJsonDocument::fromJson(stateProbe.readAllStandardOutput()).object();
+    if (persisted.value("mode").toString() != QStringLiteral("manual"))
+        throw std::runtime_error("Cold-start preference was not retained by the updater worker: " +
+            QJsonDocument(persisted).toJson(QJsonDocument::Compact).toStdString());
+
+    require(waitFor([&] { return countUpdaterProcesses() == 2; }, 6000),
+        "Expected one updater worker and one persistent Config bridge process");
+    const auto steadyProcesses = updaterProcessIds();
+    require(steadyProcesses.size() == 2, "Could not identify the updater worker and Config bridge processes");
+    QSet<DWORD> observedProcesses = steadyProcesses;
+    QElapsedTimer pollingDuration; pollingDuration.start();
+    while (pollingDuration.elapsed() < 7000)
+    {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        observedProcesses.unite(updaterProcessIds());
+        QThread::msleep(20);
+    }
+    require(observedProcesses == steadyProcesses,
+        "Repeated state polls launched extra helper processes instead of reusing one bridge");
+    require(updaterProcessIds() == steadyProcesses,
+        "The updater worker or Config bridge process changed during repeated state polls");
+
+    panel.hide();
+    require(waitFor([&] { return countUpdaterProcesses() == 0; }, 10000),
+        "Hiding Config did not detach and release its idle updater worker");
+    panel.show();
+    require(waitFor([&] { return countUpdaterProcesses() == 2; }, 12000),
+        "Reopening Config did not reconnect to a fresh worker and bridge");
+    panel.hide();
+    require(waitFor([&] { return countUpdaterProcesses() == 0; }, 10000),
+        "Second Config close left an idle updater process behind");
 }
 
 void testUpdateShutdownDiscardsEditsWithoutPrompt()
@@ -8651,6 +8774,8 @@ int main(int argc, char** argv)
     failures += run("subtitle retired temporal fill preserves saved profiles", testSubtitleRetiredTemporalFillPreservesSavedProfiles);
     failures += run("Motion and chroma controls persist and expose new tab",testMotionAndChromaControlsPersistAndExposeNewTab);
     failures += run("integrated updates respect local package", testIntegratedUpdatesRespectLocalPackage);
+    if (!qEnvironmentVariable("VP_UPDATE_HELPER_PATH").isEmpty())
+        failures += run("persistent update panel bridge", testPersistentUpdatePanelBridge);
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("Tone slider drag performance", testToneSliderDragPerformance);
     failures += run("Tone mapping controls round trip", testToneMappingControls);

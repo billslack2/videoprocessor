@@ -1,4 +1,4 @@
-#if Ver != EncodeVer(6, 7, 3)
+﻿#if Ver != EncodeVer(6, 7, 3)
   #error Use the qualified Inno Setup 6.7.3 compiler.
 #endif
 ; Identity and payload include are supplied by tools/build_installer.ps1.
@@ -65,7 +65,7 @@ UninstallAppFullTitle=Uninstall {#AppDisplay}
 
 [Files]
 ; Helpers run from setup's private temporary directory, never from the target.
-Source: "{#PayloadRoot}\setup\install-support.ps1"; Flags: dontcopy
+Source: "{#PayloadRoot}\setup\install-support.exe"; Flags: dontcopy
 Source: "{#PayloadRoot}\INSTALL-MANIFEST.json"; Flags: dontcopy
 #include PayloadInclude
 ; Verify before shortcuts and registration. Script exceptions do not roll back Inno.
@@ -139,16 +139,14 @@ var
 begin
   ResultFile := ExpandConstant('{tmp}\vp-installer-result.txt');
   DeleteFile(ResultFile);
-  Args := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' +
-    ExpandConstant('{tmp}\install-support.ps1') + '" -Action ' + Action +
-    ' -ApplicationId "{#AppProduct}" -InstallRoot "' + ExpandConstant('{app}') +
-    '" -PayloadManifest "' + ExpandConstant('{tmp}\INSTALL-MANIFEST.json') +
-    '" -ResultPath "' + ResultFile + '"';
-  if PortableUpdate then Args := Args + ' -PortableUpdate';
-  if BackupPath <> '' then Args := Args + ' -BackupDirectory "' + BackupPath + '"';
-  Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-    Args, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) and (ExitCode = 0);
-  HelperMessage := 'Setup could not run its verification helper. Check Windows script policy and the setup log.';
+  Args := '--action "' + Action + '" --application-id "{#AppProduct}" --install-root "' +
+    ExpandConstant('{app}') + '" --payload-manifest "' +
+    ExpandConstant('{tmp}\INSTALL-MANIFEST.json') + '" --result-path "' + ResultFile + '"';
+  if PortableUpdate then Args := Args + ' --portable-update';
+  if BackupPath <> '' then Args := Args + ' --backup-directory "' + BackupPath + '"';
+  Result := Exec(ExpandConstant('{tmp}\install-support.exe'),
+    Args, ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) and (ExitCode = 0);
+  HelperMessage := 'Setup could not run its compiled verification helper. Check the setup log.';
   if LoadStringFromFile(ResultFile, Output) then HelperMessage := Utf8Decode(Output);
   Log(Action + ': ' + HelperMessage);
 end;
@@ -186,7 +184,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
-  ExtractTemporaryFile('install-support.ps1');
+  ExtractTemporaryFile('install-support.exe');
   ExtractTemporaryFile('INSTALL-MANIFEST.json');
   if not RunHelper('Check') then begin
     Result := HelperMessage + #13#10 + 'Correct the issue and click Retry, or cancel setup.';

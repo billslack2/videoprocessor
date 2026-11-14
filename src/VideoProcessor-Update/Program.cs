@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
 using System.Management;
 using System.Net;
@@ -20,12 +21,14 @@ namespace VideoProcessor.Update
     {
         [STAThread] public static int Main(string[] args)
         {
+            if (InstallHandoff.HasInstallChildArguments(args)) return InstallHandoff.RunChild(args);
             bool service = args.Contains("--service");
             bool control = args.Contains("--control");
-            bool background = args.Contains("--background") || service || control;
+            bool controlSession = args.Contains("--control-session");
+            bool background = args.Contains("--background") || service || control || controlSession;
             try
             {
-                if (control) Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
+                if (control || controlSession) Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false, true)) { AutoFlush = true });
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
                 Application.EnableVisualStyles();
                 string root = AppDomain.CurrentDomain.BaseDirectory;
@@ -34,53 +37,121 @@ namespace VideoProcessor.Update
                 root = UpdateCore.CanonicalRoot(root);
 
                 string id = UpdateCore.Hash(Encoding.UTF8.GetBytes(WindowsIdentity.GetCurrent().User.Value + "|" + root.ToLowerInvariant()));
+                InstallHandoff.EnsureNoInstallInProgress(id);
+                InstallHandoff.CleanupTerminalHandoffs();
+                if (controlSession) { UpdateCore.ReadInstalled(root); UpdateControl.RunSession(id); return 0; }
                 if (control)
                 {
                     int requestIndex = Array.IndexOf(args, "--control");
                     if (requestIndex + 1 >= args.Length) throw new ArgumentException("Missing update command.");
-                    UpdateCore.ReadInstalled(root);
-                    Console.WriteLine(UpdateControl.Send(id, args[requestIndex + 1])); return 0;
+                    try { Console.WriteLine(UpdateControl.Send(id, args[requestIndex + 1])); return 0; }
+                    catch { UpdateCore.ReadInstalled(root); throw; }
                 }
-                var installed = UpdateCore.ReadInstalled(root);
                 if (!background)
                 {
+                    UpdateCore.ReadInstalled(root);
                     Process.Start(new ProcessStartInfo(Path.Combine(root, "config", "VideoProcessorConfig.exe"), "--updates") { UseShellExecute = false, WorkingDirectory = root });
                     return 0;
                 }
                 string cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VideoProcessor", "Updates", id);
-                Directory.CreateDirectory(cache);
                 if (!args.Contains("--worker"))
                 {
-                    string runner = Path.Combine(cache, "runner", Guid.NewGuid().ToString("N"));
-                    Directory.CreateDirectory(runner);
-                    string copy = Path.Combine(runner, "VideoProcessorUpdate.exe");
-                    File.Copy(Application.ExecutablePath, copy);
-                    Process.Start(new ProcessStartInfo(copy, "--worker --root " + Quote(root) + (background ? " --background" : "") + (service ? " --service" : "")) { UseShellExecute = false, WorkingDirectory = runner });
+                    StartWorker(id, root, service, args.Contains("--background"));
                     return 0;
                 }
-                bool created;
-                using (var mutex = new Mutex(true, "Local\\VideoProcessor.Update." + id, out created))
+                Directory.CreateDirectory(cache);
+                var installed = UpdateCore.ReadInstalled(root);
+                bool ownsMutex = false;
+                using (var mutex = new Mutex(false, "Local\\VideoProcessor.Update." + id))
                 using (var show = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\VideoProcessor.Update.Show." + id))
                 {
-                    if (!created)
+                    try { ownsMutex = mutex.WaitOne(0); }
+                    catch (AbandonedMutexException) { ownsMutex = true; }
+                    if (!ownsMutex)
                     {
-                        if (!service) { try { UpdateControl.Send(id, "{\"command\":\"background\"}"); } catch { } }
+                        try { UpdateControl.Send(id, service ? "{\"command\":\"state\"}" : "{\"command\":\"background\"}"); } catch { }
                         return 0;
                     }
                     try {
                         using (var window = new UpdateWindow(root, cache, installed, background, show, service))
                         using (var channel = new UpdateControl(id, window)) Application.Run(window);
                     }
-                    finally { mutex.ReleaseMutex(); }
+                    finally { if (ownsMutex) mutex.ReleaseMutex(); }
                 }
                 return 0;
             }
             catch (Exception ex)
             {
-                if (control) Console.WriteLine(UpdateCore.Serialize(new { error = ex.Message, connectionError = ex is IOException || ex is TimeoutException }));
+                if (control || controlSession) Console.WriteLine(UpdateCore.Serialize(new { error = ex.Message, connectionError = ex is IOException || ex is TimeoutException }));
                 else if (!background) MessageBox.Show(ex.Message, "VideoProcessor updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                else Console.Error.WriteLine(ex.ToString());
                 return 1;
             }
+        }
+
+        static void StartWorker(string id, string root, bool service, bool requestedBackground)
+        {
+            string command = service ? "{\"command\":\"state\"}" : "{\"command\":\"background\"}";
+            if (TrySend(id, command)) return;
+
+            bool ownsStartGate = false;
+            using (var startGate = new Mutex(false, "Local\\VideoProcessor.Update.Start." + id))
+            {
+                try { ownsStartGate = startGate.WaitOne(0); }
+                catch (AbandonedMutexException) { ownsStartGate = true; }
+                if (!ownsStartGate)
+                {
+                    DateTime deadline = DateTime.UtcNow.AddSeconds(8);
+                    while (DateTime.UtcNow < deadline)
+                    {
+                        if (TrySend(id, command)) return;
+                        Thread.Sleep(100);
+                    }
+                    throw new IOException("The updater worker is starting but did not become available.");
+                }
+
+                try
+                {
+                    if (TrySend(id, command)) return;
+                    InstallHandoff.EnsureNoInstallInProgress(id);
+                    string workerArgs = "--worker --root " + Quote(root);
+                    if (requestedBackground || service) workerArgs += " --background";
+                    if (service) workerArgs += " --service";
+                    using (var worker = Process.Start(new ProcessStartInfo(Application.ExecutablePath, workerArgs)
+                    { UseShellExecute = false, WorkingDirectory = root, CreateNoWindow = true, RedirectStandardError = true }))
+                    {
+                        if (worker == null) throw new IOException("Could not start the updater worker.");
+                        var workerDiagnostics = new StringBuilder();
+                        worker.ErrorDataReceived += (sender, args) => { if (!string.IsNullOrEmpty(args.Data)) lock (workerDiagnostics) workerDiagnostics.AppendLine(args.Data); };
+                        worker.BeginErrorReadLine();
+                        DateTime deadline = DateTime.UtcNow.AddSeconds(8);
+                        while (DateTime.UtcNow < deadline)
+                        {
+                            if (UpdateControl.Probe(id, 250)) return;
+                            if (worker.HasExited)
+                            {
+                                string diagnostic;
+                                lock (workerDiagnostics) diagnostic = workerDiagnostics.ToString().Trim();
+                                throw new IOException("The updater worker exited during startup." + (string.IsNullOrWhiteSpace(diagnostic) ? "" : " " + diagnostic));
+                            }
+                            Thread.Sleep(100);
+                        }
+                        worker.WaitForExit(250);
+                        string details;
+                        lock (workerDiagnostics) details = workerDiagnostics.ToString().Trim();
+                        throw new IOException(worker.HasExited ? "The updater worker exited during startup." : "The updater worker did not become available." +
+                            (string.IsNullOrWhiteSpace(details) ? "" : " " + details));
+                    }
+                }
+                finally { if (ownsStartGate) startGate.ReleaseMutex(); }
+            }
+        }
+
+        static bool TrySend(string id, string command)
+        {
+            try { UpdateControl.Send(id, command); return true; }
+            catch (IOException) { return false; }
+            catch (TimeoutException) { return false; }
         }
         public static string Quote(string argument)
         {
@@ -165,6 +236,17 @@ namespace VideoProcessor.Update
             foreach (var app in apps.OrderBy(a => a.config))
                 Process.Start(new ProcessStartInfo(app.file, RestartArguments(app)) { UseShellExecute = false, WorkingDirectory = root });
         }
+        public static void RelaunchClosed(List<RunningApp> apps, string root)
+        {
+            var active = Find(root);
+            try
+            {
+            foreach (var app in apps.OrderBy(a => a.config))
+                if (app.process.HasExited && !active.Any(current => string.Equals(current.file, app.file, StringComparison.OrdinalIgnoreCase)))
+                    Process.Start(new ProcessStartInfo(app.file, RestartArguments(app)) { UseShellExecute = false, WorkingDirectory = root });
+            }
+            finally { foreach (var app in active) app.process.Dispose(); }
+        }
     }
     public sealed class UpdateWindow : Form
     {
@@ -172,9 +254,13 @@ namespace VideoProcessor.Update
         readonly Installed installed;
         readonly EventWaitHandle showEvent;
         readonly bool background;
-        bool hosted;
+        readonly Dictionary<string, NamedPipeServerStream> clientSessions = new Dictionary<string, NamedPipeServerStream>(StringComparer.Ordinal);
+        bool hosted { get { return clientSessions.Count != 0; } }
+        readonly bool serviceWorker;
+        DateTime serviceGraceUntil = DateTime.MinValue;
         Preferences preferences;
         Release release;
+        byte[] signedEnvelope;
         Package package;
         string downloaded;
         bool visibleRequested, busy;
@@ -184,6 +270,7 @@ namespace VideoProcessor.Update
         readonly ComboBox updateMode = new ComboBox();
         readonly CheckBox allowRestart = new CheckBox();
         readonly System.Windows.Forms.Timer autoTimer = new System.Windows.Forms.Timer();
+        readonly System.Windows.Forms.Timer serviceGrace = new System.Windows.Forms.Timer();
         bool autoPending;
         readonly Button check = new Button(), action = new Button(), skip = new Button();
         readonly ProgressBar progress = new ProgressBar();
@@ -191,7 +278,8 @@ namespace VideoProcessor.Update
         readonly System.Windows.Forms.Timer showTimer = new System.Windows.Forms.Timer();
         public UpdateWindow(string installRoot, string cacheRoot, Installed identity, bool quiet, EventWaitHandle show, bool service = false)
         {
-            hosted = service; root = installRoot; cache = cacheRoot; installed = identity; background = quiet; showEvent = show;
+            serviceWorker = service; root = installRoot; cache = cacheRoot; installed = identity; background = quiet; showEvent = show;
+            if (serviceWorker) serviceGraceUntil = DateTime.UtcNow.AddSeconds(10);
             preferencesPath = Path.Combine(cache, "preferences.json");
             try { preferences = File.Exists(preferencesPath) ? UpdateCore.Json<Preferences>(File.ReadAllText(preferencesPath)) : null; } catch { preferences = null; }
             if (preferences == null) preferences = new Preferences { channel = installed.updateChannel == "stable" ? "stable" : "beta" };
@@ -237,12 +325,18 @@ namespace VideoProcessor.Update
                 status.Text = "Preference saved. Click Check now to apply it to available updates.";
             };
             allowRestart.CheckedChanged += (sender, args) => { preferences.allowPlaybackRestart = allowRestart.Checked; SavePreferences(); };
-            channel.SelectedIndexChanged += (sender, args) => { autoPending = false; preferences.channel = channel.SelectedIndex == 0 ? "stable" : "beta"; release = null; package = null; downloaded = null; action.Enabled = skip.Enabled = false; status.Text = "Click Check now for the selected channel."; SavePreferences(); };
+            channel.SelectedIndexChanged += (sender, args) => { autoPending = false; preferences.channel = channel.SelectedIndex == 0 ? "stable" : "beta"; release = null; signedEnvelope = null; package = null; downloaded = null; action.Enabled = skip.Enabled = false; status.Text = "Click Check now for the selected channel."; SavePreferences(); };
             tray.Icon = SystemIcons.Information; tray.Text = "VideoProcessor update available";
             tray.BalloonTipClicked += (sender, args) => Reveal(); tray.DoubleClick += (sender, args) => Reveal();
             var menu = new ContextMenuStrip(); menu.Items.Add("View update", null, (sender, args) => Reveal()); menu.Items.Add("Later", null, (sender, args) => Close()); tray.ContextMenuStrip = menu;
             showTimer.Interval = 500; showTimer.Tick += (sender, args) => { if (showEvent.WaitOne(0)) Reveal(); }; showTimer.Start();
-            autoTimer.Interval = 60000; autoTimer.Tick += async (sender, args) => { if (autoPending && !busy) await TryAutomatic(); else if (!hosted && !busy && release == null) Close(); }; autoTimer.Start();
+            autoTimer.Interval = 1000; autoTimer.Tick += async (sender, args) => {
+                if (autoPending && !busy) await TryAutomatic();
+                else if (!hosted && !busy && !autoPending && DateTime.UtcNow >= serviceGraceUntil && !KeepBackgroundNotification()) Close();
+            }; autoTimer.Start();
+            serviceGrace.Interval = 10000;
+            serviceGrace.Tick += (sender, args) => { serviceGrace.Stop(); if (!hosted && !busy && !autoPending && !KeepBackgroundNotification()) Close(); };
+            if (serviceWorker) serviceGrace.Start();
             FormClosing += (sender, args) => { if (busy) { args.Cancel = true; status.Text = "Wait for the current operation to finish."; } };
             visibleRequested = false;
             // Start even when SetVisibleCore keeps the background window hidden.
@@ -252,30 +346,54 @@ namespace VideoProcessor.Update
         protected override void SetVisibleCore(bool value) { base.SetVisibleCore(value && visibleRequested); }
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { tray.Dispose(); showTimer.Dispose(); autoTimer.Dispose(); } base.Dispose(disposing);
+            if (disposing) { tray.Dispose(); showTimer.Dispose(); autoTimer.Dispose(); serviceGrace.Dispose(); } base.Dispose(disposing);
         }
         void Reveal()
         {
             string config = Path.Combine(root, "config", "VideoProcessorConfig.exe");
             if (File.Exists(config)) Process.Start(new ProcessStartInfo(config, "--updates") { UseShellExecute = false, WorkingDirectory = root });
         }
-        public string ControlRequest(string json)
+        bool KeepBackgroundNotification()
+        {
+            return background && !serviceWorker && release != null && tray.Visible;
+        }
+        void ScheduleIdleClose()
+        {
+            if (!hosted && !busy && !autoPending && !KeepBackgroundNotification() && DateTime.UtcNow >= serviceGraceUntil)
+            {
+                var exit = new System.Windows.Forms.Timer { Interval = 250 };
+                exit.Tick += (sender, args) => { exit.Stop(); exit.Dispose(); if (!hosted && !busy && !autoPending && !KeepBackgroundNotification()) Close(); };
+                exit.Start();
+            }
+        }
+        public void ControlSessionDisconnected(string sessionId, NamedPipeServerStream pipe)
+        {
+            NamedPipeServerStream current;
+            if (clientSessions.TryGetValue(sessionId, out current) && ReferenceEquals(current, pipe))
+                clientSessions.Remove(sessionId);
+            ScheduleIdleClose();
+        }
+        public string ControlRequest(string json, NamedPipeServerStream pipe)
         {
             var request = UpdateCore.Json<UpdateCommand>(json);
             if (request == null) throw new InvalidDataException("Invalid update request.");
-            if (request.command != "detach" && request.command != "background") hosted = true;
-            if (request.command != "state" && request.command != "detach" && request.command != "background" && busy) throw new InvalidOperationException("An update operation is already running.");
+            if (request.command != "state" && request.command != "detach" && request.command != "attach" && request.command != "background" && busy) throw new InvalidOperationException("An update operation is already running.");
             switch (request.command)
             {
                 case "state": break;
+                case "attach":
+                    Guid session;
+                    if (!Guid.TryParseExact(request.sessionId, "N", out session)) throw new InvalidDataException("Update control session identity is invalid.");
+                    NamedPipeServerStream existing;
+                    if (clientSessions.TryGetValue(request.sessionId, out existing) && !ReferenceEquals(existing, pipe))
+                        throw new InvalidDataException("Update control session is already attached to another connection.");
+                    clientSessions[request.sessionId] = pipe;
+                    serviceGrace.Stop(); serviceGraceUntil = DateTime.MinValue;
+                    break;
                 case "background": if (!busy && !autoPending) RunControl("background"); break;
                 case "detach":
-                    hosted = false;
-                    if (!busy && !autoPending && release == null)
-                    {
-                        var exit = new System.Windows.Forms.Timer { Interval = 200 };
-                        exit.Tick += (sender, args) => { exit.Stop(); exit.Dispose(); if (!hosted && !busy && !autoPending) Close(); }; exit.Start();
-                    }
+                    if (string.IsNullOrEmpty(request.sessionId)) throw new InvalidDataException("Update control session identity is missing.");
+                    ControlSessionDisconnected(request.sessionId, pipe);
                     break;
                 case "settings":
                     if ((request.mode != "manual" && request.mode != "notify" && request.mode != "auto") ||
@@ -332,7 +450,8 @@ namespace VideoProcessor.Update
             {
                 UpdateCore.IsPortableRoot(root, installed.flavor);
                 preferences.lastCheckUtc = DateTime.UtcNow.ToString("o"); SavePreferences();
-                release = await Task.Run(() => UpdateCore.Discover(installed, preferences));
+                var discovered = await Task.Run(() => UpdateCore.DiscoverVerified(installed, preferences));
+                release = discovered.release; signedEnvelope = discovered.signedEnvelope;
                 SavePreferences(); package = release == null ? null : release.packages.First(p => p.flavor == installed.flavor);
                 downloaded = null; action.Text = "Download update";
                 if (release == null) { status.Text = "No newer signed release is available on this channel."; }
@@ -351,7 +470,7 @@ namespace VideoProcessor.Update
             }
             catch (Exception ex)
             {
-                package = null; release = null; status.Text = ex.Message;
+                package = null; release = null; signedEnvelope = null; status.Text = ex.Message;
                 if (quiet && !hosted && !visibleRequested) { File.WriteAllText(Path.Combine(cache, "last-error.txt"), DateTime.UtcNow.ToString("o") + " " + ex.Message); Busy(false); Close(); return; }
             }
             finally { Busy(false); }
@@ -409,40 +528,7 @@ namespace VideoProcessor.Update
             Busy(true); status.Text = "Preparing installation. Closing Config and VP.";
             try
             {
-                await Task.Run(() =>
-                {
-                    bool portable = UpdateCore.IsPortableRoot(root, installed.flavor);
-                    // Keep a non-write-sharing handle open through execution, including app shutdown.
-                    using (var locked = new FileStream(downloaded, FileMode.Open, FileAccess.Read, FileShare.Read))
-                    {
-                        if (locked.Length != package.size || !string.Equals(UpdateCore.FileHash(downloaded), package.sha256, StringComparison.OrdinalIgnoreCase))
-                            throw new InvalidDataException("Downloaded installer changed. Download it again.");
-                        using (var gate = new FileStream(UpdateCore.SafeFile(root, ".vp-update.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
-                        {
-                        var apps = AppLifecycle.Find(root);
-                        try
-                        {
-                            if (unattended && !UpdateCore.CanAutoInstall(preferences, release, installed, apps.Any(a => !a.config && !a.process.HasExited)))
-                                throw new InvalidOperationException("Automatic update deferred because VP started or the update preference changed.");
-                            AppLifecycle.Close(apps);
-                            var remaining = AppLifecycle.Find(root);
-                            try { if (remaining.Count != 0) throw new IOException("An application restarted before setup. Close it and retry."); }
-                            finally { foreach (var app in remaining) app.process.Dispose(); }
-                            string log = Path.Combine(Path.GetDirectoryName(downloaded), "setup.log");
-                            string args = (portable ? "/PORTABLEUPDATE=1 " : "") + (unattended ? "/VERYSILENT /SUPPRESSMSGBOXES " : "/SILENT ") + "/SP- /NORESTART /NORESTARTAPPLICATIONS /NOCLOSEAPPLICATIONS /DIR=" + Program.Quote(root) + " /LOG=" + Program.Quote(log);
-                            using (var setup = Process.Start(new ProcessStartInfo(downloaded, args) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(downloaded) }))
-                            {
-                                setup.WaitForExit();
-                                if (setup.ExitCode != 0) throw new IOException("Setup did not complete (" + setup.ExitCode + "). Check " + log + ". Rerun setup to recover before starting VP.");
-                            }
-                            UpdateCore.VerifyInstalled(root, release, package);
-                            gate.Dispose();
-                            AppLifecycle.Relaunch(apps, root);
-                        }
-                        finally { foreach (var app in apps) app.process.Dispose(); }
-                        }
-                    }
-                });
+                await Task.Run(() => InstallHandoff.StartCoordinator(root, installed, signedEnvelope, package, downloaded, unattended));
                 autoPending = false; Busy(false); Close();
             }
             catch (Exception ex) { autoPending = false; status.Text = ex.Message; if (unattended) Notify("Update needs attention", ex.Message); }

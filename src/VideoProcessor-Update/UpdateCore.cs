@@ -27,6 +27,11 @@ namespace VideoProcessor.Update
         public string version, commit, channel, architecture, expiresUtc, notes;
         public Package[] packages;
     }
+    public sealed class VerifiedRelease
+    {
+        public Release release;
+        public byte[] signedEnvelope;
+    }
     public sealed class Installed
     {
         public int schemaVersion, rpcVersion, configurationVersion;
@@ -241,9 +246,10 @@ namespace VideoProcessor.Update
                 return output.ToArray();
             }
         }
-        public static Release Discover(Installed installed, Preferences preferences)
+        public static VerifiedRelease DiscoverVerified(Installed installed, Preferences preferences)
         {
             Release selected = null;
+            byte[] selectedEnvelope = null;
             int badSignatures = 0;
             for (int page = 1; page <= 5; page++)
             {
@@ -262,19 +268,26 @@ namespace VideoProcessor.Update
                         string url = (string)asset["browser_download_url"];
                         if (!IsAssetUrl(url)) continue;
                         Release offered;
-                        try { offered = Verify(Encoding.UTF8.GetString(GetBytes(url, MetadataLimit)), PublicKey(), DateTime.UtcNow); }
+                        byte[] envelope;
+                        try
+                        {
+                            envelope = GetBytes(url, MetadataLimit);
+                            offered = Verify(new UTF8Encoding(false, true).GetString(envelope), PublicKey(), DateTime.UtcNow);
+                        }
                         catch (Exception)
                         { badSignatures++; continue; }
                         long highest; preferences.highest.TryGetValue(preferences.channel, out highest);
-                        if (IsNewer(offered, installed, preferences.channel, highest) && (selected == null || offered.sequence > selected.sequence)) selected = offered;
+                        if (IsNewer(offered, installed, preferences.channel, highest) && (selected == null || offered.sequence > selected.sequence))
+                        { selected = offered; selectedEnvelope = envelope; }
                     }
                 }
                 if (releases.Count < 30) break;
             }
             if (selected == null && badSignatures != 0) throw new InvalidDataException("Some releases could not be verified or were expired. No eligible update was found.");
             if (selected != null) preferences.highest[preferences.channel] = selected.sequence;
-            return selected;
+            return new VerifiedRelease { release = selected, signedEnvelope = selectedEnvelope };
         }
+        public static Release Discover(Installed installed, Preferences preferences) { return DiscoverVerified(installed, preferences).release; }
         public static void Download(Package package, string destination, Action<int> progress)
         {
             string partial = destination + ".partial";
