@@ -817,7 +817,8 @@ public:
             m_continuity==preview.continuityGeneration && m_padding==padding && m_gap==gap &&
             m_relativeDisplay==(displayBounds!=nullptr) &&
             SubtitleCueContinuation::SameRect(displayBounds?*displayBounds:text.bounds,m_cachedDisplay) &&
-            cueContinuation->MatchesCachedGlyphPicture(m_geometry.pictureTop,m_geometry.pictureBottom) &&
+            (cueContinuation->MatchesCachedGlyphPicture(m_geometry.pictureTop,m_geometry.pictureBottom) ||
+                LocalCueSideSamplingJitter(m_geometry,*cueContinuation,m_sourcePanel,m_stablePanel)) &&
             // Source padding is a display envelope; current glyph extraction
             // and erasure are limited to content and the measured cleanup card.
             SubtitleCueContinuation::Contains(cueContinuation->sampledBounds,m_geometry.content) &&
@@ -1080,6 +1081,21 @@ private:
             !g.pictureCapture.Valid() && !g.generatedCleanup.Valid() &&
             !g.generatedCleanupRowCount && !g.generatedCleanupExclusion.Valid() &&
             !g.cleanupLimit.Valid() && !g.layoutCoverage.Valid();
+    }
+    static bool LocalCueSideSamplingJitter(const SubtitleCutPasteGeometry& g,
+        const SubtitleCueContinuation& proof,const SubtitleBoxRect& sourcePanel,
+        const SubtitleBoxRect& stablePanel) {
+        if(!proof.localGlyphsOnly || proof.backingVerifiedBounds.Valid() ||
+            sourcePanel.Valid() || stablePanel.Valid() || !CoordinateOnlyGeometry(g) ||
+            !SubtitleCueContinuation::Contains(proof.sampledBounds,g.source) ||
+            !LocalContentAndGlyphsStayInProvenBar(g,proof)) return false;
+        const int tolerance=SubtitleBoxDetector::SamplingStep(
+            proof.physicalBase.rasterWidth,proof.physicalBase.rasterHeight);
+        if(g.fromTopBar)
+            return g.pictureBottom==proof.pictureBottom &&
+                std::abs(g.pictureTop-proof.pictureTop)<=tolerance;
+        return g.pictureTop==proof.pictureTop &&
+            std::abs(g.pictureBottom-proof.pictureBottom)<=tolerance;
     }
     static bool LocalContentAndGlyphsStayInProvenBar(const SubtitleCutPasteGeometry& g,
         const SubtitleCueContinuation& proof) {
