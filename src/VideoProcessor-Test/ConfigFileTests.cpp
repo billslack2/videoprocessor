@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <PicturePlacementUpdatePolicy.h>
 #include "BackendInputConfig.h"
 
 #include <ApplicationInterface.h>
@@ -62,6 +63,61 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigurationReadCacheTests)
 	{
 	public:
+        TEST_METHOD(PlacementConfigContractRetainsUnknownDetectorKeysAndOrder)
+        {
+            CachedConfigTestFile file; std::string contract;
+            for (const std::string trim : {"", "picture_alignment_mode: auto\nscreen_edge_padding: -30\n"}) {
+                std::ofstream(file.path) << "[general]\npersist_profile_selection: false\n[ar.test]\nfuture_detector_key: 10\n"
+                    "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n" << trim;
+                ConfigFile config; Assert::IsTrue(config.Load(file.path));
+                auto next=PicturePlacementConfigurationContract(config);
+                if (contract.empty()) contract=next; else Assert::AreEqual(contract,next);
+            }
+            std::ofstream(file.path) << "[general]\npersist_profile_selection: false\n[ar.test]\nfuture_detector_key: 11\n"
+                "[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\npicture_alignment_mode: auto\n";
+            ConfigFile changed; Assert::IsTrue(changed.Load(file.path));
+            Assert::IsTrue(contract!=PicturePlacementConfigurationContract(changed));
+            CachedConfigTestFile splitFile, joinedFile;
+            std::ofstream(splitFile.path) << "[s]\na: b\n[x]\ny: z\n";
+            ConfigFile split; Assert::IsTrue(split.Load(splitFile.path));
+            std::ofstream(joinedFile.path) << "[s]\na: b\nx: y\n[z]\n";
+            ConfigFile joined; Assert::IsTrue(joined.Load(joinedFile.path));
+            Assert::IsTrue(PicturePlacementConfigurationContract(split)!=PicturePlacementConfigurationContract(joined));
+        }
+
+        TEST_METHOD(AutoPictureAlignmentConfigurationDefaultsInheritanceAndValidation)
+        {
+            CachedConfigTestFile file;
+            for (const bool screenEdge : {false, true}) {
+                std::ofstream(file.path) << "[general]\npersist_profile_selection: false\n"
+                    "[vprenderer.viewport.scope]\nscreen_aspect: 47:20\nvertical_alignment: bottom\n" <<
+                    (screenEdge ? "picture_alignment_mode: auto\nscreen_edge_padding: -24\n" : "screen_edge_padding: 280\n");
+                ConfigFile config; Assert::IsTrue(config.Load(file.path)); std::string error;
+                Assert::IsTrue(MainConfigSchema::Validate(config,error));
+                UnifiedProfileRuntime::Runtime runtime; Assert::IsTrue(runtime.Initialize(config,{},error));
+                auto snapshot=runtime.GetSnapshot(); Assert::IsTrue(snapshot!=nullptr);
+                Assert::AreEqual(screenEdge,snapshot->viewport.autoPictureAlignment);
+                Assert::AreEqual(screenEdge ? -24 : 280,snapshot->viewport.screenEdgePadding);
+            }
+            {
+                std::ofstream(file.path) << "[general]\npersist_profile_selection: false\n"
+                    "[vprenderer.viewport.baseline_scope]\nscreen_aspect: 2.35:1\npicture_alignment_mode: auto\nscreen_edge_padding: -19\n"
+                    "[vprenderer.viewport.inherited]\nvertical_alignment: top\n";
+                ConfigFile config; Assert::IsTrue(config.Load(file.path)); std::string error;
+                UnifiedProfileRuntime::Runtime runtime; Assert::IsTrue(runtime.Initialize(config,{},error));
+                UnifiedProfileRuntime::SelectionResult selected;
+                Assert::IsTrue(runtime.SelectProfile("viewport","inherited",true,{},selected,error));
+                Assert::IsTrue(selected.snapshot->viewport.autoPictureAlignment);
+                Assert::AreEqual(-19,selected.snapshot->viewport.screenEdgePadding);
+            }
+            for (const std::string setting : {"picture_alignment_mode: bad", "screen_edge_padding: 100001", "screen_edge_padding: -100001", "screen_edge_padding: 1.5"}) {
+                std::ofstream(file.path) << "[vprenderer.viewport.scope]\n" << setting << "\n";
+                ConfigFile config; Assert::IsTrue(config.Load(file.path)); std::string error;
+                UnifiedProfileRuntime::Runtime runtime;
+                Assert::IsFalse(runtime.Initialize(config,{},error),std::wstring(setting.begin(),setting.end()).c_str());
+            }
+        }
+
         TEST_METHOD(CurrentBetaScreenEdgePaddingSurvivesAcceptedConfiguration)
         {
             CachedConfigTestFile file;

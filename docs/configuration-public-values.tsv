@@ -393,3 +393,5 @@ general.presentation_queue_depth	5
 general.presentation_queue_depth	6
 general.presentation_queue_depth	7
 general.presentation_queue_depth	8
+vprenderer.viewport.<variant>.picture_alignment_mode	manual
+vprenderer.viewport.<variant>.picture_alignment_mode	auto
