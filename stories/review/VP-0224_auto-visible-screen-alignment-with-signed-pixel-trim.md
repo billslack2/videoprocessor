@@ -4,6 +4,15 @@
 
 Review
 
+2026-11-15: Rebased PR #244 onto the default v2.0.5-beta-aspect-ratio at
+974550da. Deployed x64 Release commit 61a5cd65 to C:\Videoprocessor\vp for
+user testing. The host, both renderer variants, Config, and updater match the
+build hashes. Active configuration and profile state were preserved. All
+49 focused native tests and both Config tests passed. The deployment receipt
+is under backups\vp0224-20261115-153416-61a5cd65. The original installed files
+are in backups\vp0224-20261115-153013-badd805b, with the original updater in
+the second backup. Live scope-screen acceptance remains pending.
+
 2026-11-10: PR #244 now exposes **Align to** with **Raster edge** (default)
 and **Screen edge**. Both use one **Edge padding** control and the existing
 `screen_edge_padding` key. Switching the anchor keeps that value. The final
