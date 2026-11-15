@@ -412,5 +412,169 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
 				static_cast<int>(policy.Evaluate(input).action));
 		}
+
+		TEST_METHOD(IncompatibleRatesDiscardSurplusConfirmation)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input =
+				Input(60.0 * (1.0 + 14.6e-6));
+			input.queueDepth = input.desiredQueueDepth;
+			Advance(policy, input, 718); // 600 rate samples, then 118 surplus samples.
+
+			// A valid but grossly incompatible mode invalidates the partial
+			// surplus confirmation immediately, without using the invalid-rate
+			// input gate that also resets the rate filter.
+			input.captureRateHz = 240.0;
+			const auto incompatible = policy.Evaluate(input);
+			Assert::IsFalse(incompatible.ratesCompatible);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::RateMismatchTooLarge),
+				Reason(incompatible.blockReason));
+
+			input.captureRateHz = 60.0 * (1.0 + 14.6e-6);
+			input.safeSceneBoundary = false;
+			input.sceneEventId = 0;
+			bool recovered = false;
+			for (uint32_t frame = 0; frame < 5000; ++frame)
+			{
+				const auto decision = policy.Evaluate(input);
+				if (decision.ratesCompatible)
+				{
+					recovered = true;
+					break;
+				}
+			}
+			Assert::IsTrue(recovered,
+				L"Compatible cadence rates did not recover after the mode change");
+
+			// The first compatible evaluation counted as stable sample one.
+			// Complete the 120-sample stabilization, then present a fresh cut
+			// while the queue still has exactly one surplus source.
+			Advance(policy, input, 119);
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 7;
+			const auto recoveredCut = policy.Evaluate(input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+				static_cast<int>(recoveredCut.action));
+			Assert::IsFalse(recoveredCut.due);
+			Assert::IsTrue(recoveredCut.phaseFrames < 1.0);
+		}
+
+		TEST_METHOD(UnavailableEvidenceDiscardsSurplusConfirmation)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input =
+				Input(60.0 * (1.0 + 14.6e-6));
+			input.queueDepth = input.desiredQueueDepth;
+			Advance(policy, input, 718); // 600 rate samples, then 118 surplus samples.
+
+			input.presentationEvidence = AlphaPresentationEvidence::Unavailable;
+			const auto unavailable = policy.Evaluate(input);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::PresentationEvidenceUnavailable),
+				Reason(unavailable.blockReason));
+
+			input.presentationEvidence = AlphaPresentationEvidence::Stable;
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 8;
+			for (uint32_t frame = 0; frame < 600; ++frame)
+			{
+				const auto decision = policy.Evaluate(input);
+				if (frame == 599)
+				{
+					Assert::IsTrue(decision.ratesCompatible);
+					Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+						static_cast<int>(decision.action));
+					Assert::IsFalse(decision.due);
+					Assert::IsTrue(decision.phaseFrames < 1.0);
+				}
+			}
+		}
+
+		TEST_METHOD(QueueSurplusConfirmationRestartsAfterQueueDip)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input =
+				Input(60.0 * (1.0 + 14.6e-6));
+			input.queueDepth = input.desiredQueueDepth;
+			Advance(policy, input, 718); // 600 rate samples, then 118 surplus samples.
+
+			input.queueDepth = input.desiredQueueDepth - 1;
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 1;
+			const auto atRest = policy.Evaluate(input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+				static_cast<int>(atRest.action));
+			Assert::IsFalse(atRest.due);
+
+			input.queueDepth = input.desiredQueueDepth;
+			input.sceneEventId = 2;
+			const auto firstNewSurplus = policy.Evaluate(input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+				static_cast<int>(firstNewSurplus.action));
+			Assert::IsFalse(firstNewSurplus.due);
+			Assert::IsTrue(firstNewSurplus.phaseFrames < 1.0);
+		}
+
+		TEST_METHOD(CooldownAndFreshSceneGateTheNextCorrection)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(60.009);
+			input.queueDepth = input.desiredQueueDepth - 1;
+			input.presentationDebt = 1;
+
+			const auto due = AdvanceUntilDue(policy, input);
+			Assert::IsTrue(due.due);
+			input.queueDepth = input.desiredQueueDepth;
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 7;
+			const auto firstDrop = policy.Evaluate(input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(firstDrop.action));
+
+			// Reflect one new present with the expected one-unit debt reduction.
+			input.queueDepth = input.desiredQueueDepth - 1;
+			input.safeSceneBoundary = false;
+			input.lastPresentId = 1;
+			input.presentationDebt = 0;
+			const auto verified = policy.Evaluate(input);
+			Assert::IsTrue(verified.verificationCompleted);
+			Assert::IsTrue(verified.lastVerificationSucceeded);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::Cooldown),
+				Reason(verified.blockReason));
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+				static_cast<int>(verified.action));
+			for (uint32_t frame = 0; frame < 119; ++frame)
+			{
+				const auto cooldown = policy.Evaluate(input);
+				Assert::AreEqual(
+					Reason(AlphaCadenceBlockReason::Cooldown),
+					Reason(cooldown.blockReason));
+				Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+					static_cast<int>(cooldown.action));
+			}
+
+			input.presentationDebt = 1;
+			// Let real phase drift reach the next due point at a resting queue.
+			const auto nextDue = AdvanceUntilDue(policy, input);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::DropQueueNotAboveDesired),
+				Reason(nextDue.blockReason));
+			input.queueDepth = input.desiredQueueDepth;
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 7;
+			const auto repeatedScene = policy.Evaluate(input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+				static_cast<int>(repeatedScene.action));
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::DropFallbackQueueTooYoung),
+				Reason(repeatedScene.blockReason));
+
+			input.sceneEventId = 8;
+			const auto freshScene = policy.Evaluate(input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(freshScene.action));
+		}
 	};
 }
