@@ -420,6 +420,54 @@ public:
             Assert::AreEqual(f.base.bottom,proof.physicalBase.bottom);
         }
     }
+    TEST_METHOD(BenHurCueRemainsVisibleWhenOppositeEdgeReturns) {
+        NativeBarCueFixture f(AnalysisLumaFormat::DecodedDolbyVision422);
+        f.base={0,384,3840,1778,3840,2160};
+        f.acquired.current.sharedPicture.bounds=f.base;
+        f.acquired.current.pictureTop=0;f.acquired.current.barEvidence.top=0;
+        f.acquired.current.pictureBottom=1778;f.acquired.current.barEvidence.bottom=1778;
+        SubtitleBoxPresentation tracker;
+        const auto first=tracker.Consume(f.acquired,250,41.708);
+        Assert::IsTrue(first.detected);
+        auto next=f.acquired;
+        next.current.identity=Identity(2);next.current.identity.transportGeneration=2;
+        next.current.sharedPicture.identity=next.current.identity;
+        next.futureAvailable=true;next.currentLinesConfirmed=false;next.matchingFrames=1;
+        const auto second=tracker.Consume(next,250,41.708);
+        Assert::IsTrue(second.detected);
+        auto restored=next;
+        restored.current.identity=Identity(3);restored.current.identity.transportGeneration=2;
+        restored.current.sharedPicture.identity=restored.current.identity;
+        restored.current.pictureTop=384;restored.current.barEvidence.top=384;
+        auto changedTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
+        auto changed=restored;
+        auto altered=std::make_shared<SubtitleInkSnapshot>(*changed.current.ink);
+        std::fill(altered->rawInk.begin(),altered->rawInk.end(),0);
+        changed.current.ink=altered;
+        Assert::IsFalse(changedTracker->Consume(changed,250,41.708).detected,
+            L"A returned edge cannot retain missing current glyphs.");
+        auto changedDomainTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
+        auto changedDomain=restored;
+        ++changedDomain.current.identity.analysisDomainKey;
+        changedDomain.current.sharedPicture.identity=changedDomain.current.identity;
+        Assert::IsFalse(changedDomainTracker->Consume(changedDomain,250,41.708).detected,
+            L"The continuation must not cross an analysis context change.");
+        auto gapTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
+        auto gap=restored;
+        ++gap.current.identity.sourceFrameNumber;
+        gap.current.sharedPicture.identity=gap.current.identity;
+        Assert::IsFalse(gapTracker->Consume(gap,250,41.708).detected,
+            L"A source-frame gap cannot use the returning-edge exception.");
+        auto changedBaseTracker=std::make_unique<SubtitleBoxPresentation>(tracker);
+        auto changedBase=restored;
+        changedBase.current.sharedPicture.bounds.top+=30;
+        Assert::IsFalse(changedBaseTracker->Consume(changedBase,250,41.708).detected,
+            L"The cue comparison cannot substitute a different shared picture base.");
+        const auto third=tracker.Consume(restored,250,41.708);
+        Assert::IsTrue(third.detected,L"A returning opposite edge must not hide unchanged, current subtitle pixels.");
+        Assert::AreEqual(second.cue,third.cue);
+        Assert::AreEqual(384,restored.current.pictureTop);
+    }
     TEST_METHOD(NativeBarCueContinuityKeepsRawPositiveCueWhenOnlyOppositeEdgeIsUnknown) {
         for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422}) {
         NativeBarCueFixture f(format);SubtitleCueContinuationGuard guard;SubtitleBoxPresentation tracker;
@@ -495,6 +543,54 @@ public:
                 Assert::AreEqual(0,current.current.pictureTop);Assert::AreEqual(388,current.current.sharedPicture.bounds.top);
             }
         }
+    }
+    TEST_METHOD(BenHurLocalProofSurvivesCueSideTwoPixelJitter) {
+        NativeBarCueFixture f(AnalysisLumaFormat::DecodedDolbyVision422);
+        f.base={0,384,3840,1778,3840,2160};f.acquired.current.sharedPicture.bounds=f.base;
+        SubtitleBoxPresentation tracker;SubtitleCueContinuationGuard guard;
+        SubtitlePaddingGuard padding;SubtitleCutPastePresentation compositor;
+        SubtitlePaddingPolicy policy;policy.glyphRelative=true;
+        const SubtitleBoxPadding requested{72,34,24};
+        const auto first=tracker.Consume(f.acquired,250,41.708);
+        Assert::IsTrue(first.detected);
+        const auto p1=padding.Consume(first,f.acquired,requested,policy);
+        const auto d1=padding.DisplayBounds();
+        const auto initial=compositor.Consume(first,f.acquired,p1,25,&d1);
+        Assert::IsTrue(initial.valid);Assert::AreEqual(1776,initial.pictureBottom);
+        auto jitter=f.acquired;
+        jitter.current.identity=Identity(2);jitter.current.identity.transportGeneration=2;
+        jitter.current.sharedPicture.identity=jitter.current.identity;
+        jitter.current.pictureBottom=1778;jitter.current.barEvidence.bottom=1778;
+        const auto strong=tracker.Consume(jitter,250,41.708);
+        Assert::IsTrue(strong.detected);
+        Assert::IsTrue(guard.Remember(jitter,strong,f.base,f.Native()));
+        const auto p2=padding.Consume(strong,jitter,requested,policy);
+        const auto d2=padding.DisplayBounds();
+        const auto stable=compositor.Consume(strong,jitter,p2,25,&d2);
+        Assert::IsTrue(stable.valid);Assert::AreEqual(1776,stable.pictureBottom);
+        auto missing=jitter;
+        missing.current.identity=Identity(3);missing.current.identity.transportGeneration=2;
+        missing.current.sharedPicture.identity=missing.current.identity;
+        missing.current.pictureTop=0;missing.current.barEvidence.top=0;
+        missing.futureAvailable=true;missing.currentLinesConfirmed=false;missing.matchingFrames=1;
+        const auto proof=guard.Prepare(missing,f.Native(),f.base,250,41.708);
+        Assert::IsTrue(proof.valid && proof.localGlyphsOnly);
+        const auto held=tracker.Consume(missing,250,41.708,nullptr,false,false,&proof);
+        Assert::IsTrue(held.detected && held.held);
+        const auto p3=padding.Consume(held,missing,requested,policy,&proof);
+        const auto d3=padding.DisplayBounds();
+        auto largeShift=proof;largeShift.pictureBottom=1782;
+        auto shiftedCompositor=compositor;
+        Assert::IsFalse(shiftedCompositor.Consume(held,missing,p3,25,&d3,&largeShift).valid,
+            L"A cue-side movement beyond one sampling step cannot use the jitter exception.");
+        auto stale=proof;--stale.identity.acceptedSequence;
+        auto staleCompositor=compositor;
+        Assert::IsFalse(staleCompositor.Consume(held,missing,p3,25,&d3,&stale).valid,
+            L"A certificate from another source cannot preserve placement.");
+        const auto retained=compositor.Consume(held,missing,p3,25,&d3,&proof);
+        Assert::IsTrue(retained.valid,L"Current verified bar glyphs must keep their prepared placement when the cue-side plane changes by two pixels.");
+        Assert::IsFalse(retained.generatedCleanup.Valid());
+        Assert::AreEqual(0,missing.current.pictureTop);
     }
     TEST_METHOD(NativeBarCuePipelineKeepsCachedGlyphGeometryAfterStrongOppositeEdgeJitter) {
         for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422}) {
