@@ -18,3 +18,10 @@ Installer lifecycle evidence: artifacts/e2e-000134ee (231 passing assertions).
 
 User explicitly approved generation after disclosure of the 22 identical baseline failures. Verified setup, portable ZIP and optional EDID were copied to C:/Users/bslac/Documents/ChatGPT/Done/VP-2.0.4-beta-updater1-69c9dfcf443b with READ-ME-FIRST.txt documenting the limitation and unsigned status. Final copied hashes match source sidecars; Defender scan found no threats. No tests were changed or skipped, no Google Drive upload performed, and no public release published. This authorization supersedes the fully-passing-suite export gate for this test distribution only.
 
+
+## November 15: merged into both requested targets
+
+User authorized both merges and confirmed the renamed AR target. PR #261 merged into v2.0.4-beta at 445a09639ff7f32f92fef2873f25d441e650ec06: https://github.com/billslack2/videoprocessor/pull/261 . PR #262 merged into v2.0.5-beta-aspect-ratio at 974550da7cc7f05a09f55115f0dc930978e8801d: https://github.com/billslack2/videoprocessor/pull/262 . Remote ancestry verified for feature69c9dfcf on both. No deployment.
+
+AR integration94f79c90 preserves base34f752fe runtime/AR/ConfigCore/ConfigEditorWindow sources. Fresh updater core37, control62 and all3 compiled Qt bridge checks passed. Updater/install-support/UpdatePanel/packaging/tools exactly match the previously tested feature. Current support and handoff fixture reruns were environment-limited by an inaccessible pre-existing Config process (PID22656, started09:59 before task). Exact support stack: Process.HasExited -> AssertApplicationsClosed -> Access denied. Original feature support reproduced the same failure. No unrelated process stopped or safety checks relaxed; prior handoff57/support64/lifecycle231 evidence retained. Both PRs were mergeable with no pending/failed GitHub checks and exact head/base pins verified.
+
