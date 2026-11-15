@@ -644,6 +644,29 @@ namespace ConfigEditorCore
 			error = ToWide(config.GetWarnings().front());
 			return false;
 		}
+		for (const std::string& section : config.GetSectionNames())
+		{
+			const std::string normalizedSection =
+				ConfigFile::NormalizeName(section);
+			if (normalizedSection != "vprenderer.viewport" &&
+				normalizedSection.rfind("vprenderer.viewport.", 0) != 0)
+				continue;
+			const auto* values = config.GetSectionValues(normalizedSection);
+			if (!values) continue;
+			const auto setting = values->find(
+				"subtitle_in_picture_aspect_max");
+			if (setting == values->end()) continue;
+			std::string expected =
+				"none or a ratio from 1.0 through 4.0";
+			if (!RendererProfileConfig::ValidateProfileSetting(
+				"viewport", setting->first, setting->second, expected))
+			{
+				error = ToWide("[" + normalizedSection +
+					"] key 'subtitle_in_picture_aspect_max' has invalid value '" +
+					setting->second + "'; expected " + expected);
+				return false;
+			}
+		}
 		std::string schemaError;
 		RendererProfileConfig::Model rendererModel;
 		if (!RendererProfileConfig::ValidateOwnedSections(config, schemaError) ||

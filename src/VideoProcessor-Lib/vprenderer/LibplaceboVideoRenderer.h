@@ -1,3 +1,4 @@
+struct AnalysisDiagnosticRecordV1;
 #pragma once
 #include "PreparedPictureEvidence.h"
 #include "PreparedOutwardWindow.h"
@@ -225,7 +226,8 @@ private:
     void PrimeActivePictureMeasurements(const std::vector<QueuedFrame>& frames,
         uint64_t policyGeneration, uint64_t continuityGeneration);
     void PrimeBufferedOutwardWindow(const std::vector<QueuedFrame>& futureFrames,
-        uint64_t policyGeneration, uint64_t continuityGeneration);
+        uint64_t policyGeneration, uint64_t continuityGeneration,
+        size_t& gateIndex, size_t& gateContributor, AnalysisDiagnosticRecordV1& gateTrace);
 	bool AnalyzeActivePictureLookahead(
 		std::vector<QueuedFrame>& previewFrames,
 		size_t queuedFutureFrames,

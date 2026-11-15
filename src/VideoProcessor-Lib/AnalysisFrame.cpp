@@ -84,13 +84,17 @@ bool AnalysisNativeRgbSupported(VideoFrameEncoding encoding)
     }
 }
 
-PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
+PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input, const char** failureReason)
 {
     PreparedAnalysisFrame result;
+    const auto fail=[&](const char* reason, bool clearResult=false) {
+        if (failureReason) *failureReason=reason;
+        return clearResult?PreparedAnalysisFrame{}:result;
+    };
     result.profile = input.profile;
     result.transferKey = input.transferKey;
     if (input.width <= 0 || input.height <= 0)
-        return result;
+        return fail("invalid-dimensions");
 
     auto native = [&](AnalysisLumaFormat format, ColorSpace colorspace)
     {
@@ -119,7 +123,7 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
     if (input.dolbyVisionTunnel)
     {
         if (input.dolby.requiresBlackFrame)
-            return result;
+            return fail("dolby-black-frame-required");
         if (input.dolby.valid)
         {
             if (!DolbyVisionTunnelEncodingSupported(input.encoding) ||
@@ -130,7 +134,7 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
                 input.convertedContract.sampleRange !=
                     (input.dolby.fullRange ? VideoFrameSampleRange::FULL :
                         VideoFrameSampleRange::LIMITED))
-                return result;
+                return fail("dolby-converted-contract-invalid");
             backing = converted(AnalysisLumaFormat::DecodedDolbyVision422);
             result.domain = AnalysisFrameDomain::DecodedDolbyVision422;
             result.sourceOwner = input.convertedOwner;
@@ -149,7 +153,7 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
                     input.dolby.rgbBitAlignment != 2) ||
                 !DolbyVisionTunnelEncodingSupported(input.encoding) ||
                 !input.nativeOwner)
-                return result;
+                return fail(input.convertedOwner?"dolby-sdr-fallback-unavailable":"dolby-converted-payload-missing");
             backing = native(AnalysisLumaFormat::SdrTunnelRgb,
                 ColorSpace::REC_709);
             backing.rgbBitAlignment = input.dolby.rgbBitAlignment;
@@ -170,7 +174,7 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
         const bool nativeRgb = AnalysisNativeRgbSupported(input.encoding);
         const bool nativeYuv = NativeQueuedYuvSupported(input.encoding);
         if (!nativeRgb && !nativeYuv)
-            return result;
+            return fail("native-encoding-unsupported");
         if (nativeRgb)
         {
             backing = native(AnalysisLumaFormat::NativeRgb,
@@ -192,7 +196,7 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
     }
 
     if (!result.sourceOwner || !backing.IsValid())
-        return {};
+        return fail("source-owner-or-storage-invalid",true);
     backing.backingOwner = result.sourceOwner;
     switch (result.sampleRange)
     {
@@ -208,7 +212,7 @@ PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input)
     }
     result.source = std::move(backing);
     if (!result.source.IsValid())
-        return {};
+        return fail("final-source-invalid",true);
     result.domainKey = DomainKey(result);
     return result;
 }

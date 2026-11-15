@@ -247,6 +247,35 @@ namespace Tests
 	TEST_CLASS(LookaheadOutwardProofTests)
 	{
 	public:
+        TEST_METHOD(TwoNativeFramesCanAdvanceOnlyOptedInSnap)
+        {
+            const std::array<BufferedPixelSample,3> frames{};
+            auto samples=BufferedSamples(frames);
+            const auto proof=BuildBufferedFastSnap(samples.data(),2,BufferedScope(),1,1,19,23,1.9);
+            Assert::IsTrue(proof.valid && proof.fastSnap);
+            Assert::AreEqual(uint8_t(2),proof.decision.proofFrameCount);
+            auto live=BufferedLiveInput(frames[0]);
+            Assert::IsTrue(ValidateBufferedFastSnap(proof,samples[0].identity,live,true,1.9));
+            // A stale scope subtitle owner is released only after adoption.
+            live.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+            Assert::IsTrue(ValidateBufferedFastSnap(proof,samples[0].identity,live,true,1.9));
+            Assert::IsFalse(ValidateBufferedPictureExpansion(proof,samples[0].identity,live,true));
+            Assert::IsFalse(ValidateBufferedFastSnap(proof,samples[0].identity,live,true,0));
+            Assert::IsFalse(BuildBufferedFastSnap(samples.data(),2,BufferedScope(),1,1,19,23,0).valid);
+            Assert::IsFalse(BuildBufferedFastSnap(samples.data(),2,BufferedScope(),1,0,19,23,1.9).valid);
+            auto changed=samples;changed[1].identity.acceptedSequence++;
+            Assert::IsFalse(BuildBufferedFastSnap(changed.data(),2,BufferedScope(),1,1,19,23,1.9).valid);
+            changed=samples;changed[1].observation.bounds.top++;
+            Assert::IsFalse(BuildBufferedFastSnap(changed.data(),2,BufferedScope(),1,1,19,23,1.9).valid);
+            changed=samples;changed[0].observation.classification=ActivePictureClassification::PROVISIONAL;
+            Assert::IsFalse(BuildBufferedFastSnap(changed.data(),2,BufferedScope(),1,1,19,23,1.9).valid);
+            changed=samples;changed[0].retention.expandingTop.blackFraction=1;
+            changed[0].retention.expandingTop.distributedSupportDepthRowsByQuartile={0,0,0,0};
+            Assert::IsFalse(BuildBufferedFastSnap(changed.data(),2,BufferedScope(),1,1,19,23,1.9).valid);
+            changed=samples;changed[0].retention.expansionCandidate=BufferedScope();
+            Assert::IsFalse(BuildBufferedFastSnap(changed.data(),2,BufferedScope(),1,1,19,23,1.9).valid);
+        }
+
         TEST_METHOD(RelativeBufferedDarkExpansionRequiresIndependentQueuedProof)
         {
             const std::array<BufferedPixelSample,3> frames;

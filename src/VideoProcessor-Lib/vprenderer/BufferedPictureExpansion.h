@@ -118,6 +118,7 @@ namespace AlphaSourceCrop
     {
         bool valid = false;
         bool relativeContrast = false;
+        bool fastSnap = false; // Exact two-frame opt-in certificate; no retained state.
         // Complete current/future native proof of bounded progressive edges.
         // This can defer current publication, never grant a crop or motion lease.
         bool progressiveNativeEdges = false;
@@ -158,6 +159,15 @@ namespace AlphaSourceCrop
         const ActivePictureBounds& base, uint8_t configuredLookahead,
         uint8_t availableLookahead, uint64_t continuityGeneration,
         uint64_t policyGeneration, BufferedPictureExpansionDiagnostic* diagnostic = nullptr);
+
+    BufferedPictureExpansionProof BuildBufferedFastSnap(
+        const BufferedPictureExpansionSample* samples, size_t count,
+        const ActivePictureBounds& base, uint8_t configuredLookahead,
+        uint8_t availableLookahead, uint64_t continuityGeneration,
+        uint64_t policyGeneration, double maximumAspect);
+    bool ValidateBufferedFastSnap(const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current, bool modelWouldAdmit, double maximumAspect);
 
     // Self-contained inward proof from the current live model. Pending live
     // candidates are discarded; every contributing frame must have identical

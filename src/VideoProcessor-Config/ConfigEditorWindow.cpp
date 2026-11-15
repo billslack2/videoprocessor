@@ -2064,7 +2064,8 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
         QStringLiteral("screen_aspect"),
         QStringLiteral("vertical_alignment"),
         QStringLiteral("anamorphic_enabled"),
-        QStringLiteral("anamorphic_scale") };
+        QStringLiteral("anamorphic_scale"),
+        QStringLiteral("subtitle_in_picture_aspect_max") };
 
     bool migrated = false;
     for (const QString& legacySection : legacySections)
@@ -7728,6 +7729,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
             markDirty();
         });
+        auto* subtitleAspectMax = addText(
+            QStringLiteral("Maximum assumed in-picture subtitle aspect"),
+            QStringLiteral("subtitle_in_picture_aspect_max"));
+        subtitleAspectMax->setPlaceholderText(QStringLiteral("Inherit / off"));
+        subtitleAspectMax->setToolTip(QStringLiteral(
+            "For a verified snap to this measured aspect or narrower, assume subtitles are inside the picture during the transition. Normal steady-state handling is unchanged. Enter none to disable an inherited value."));
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "Optional ratio from 1.0 to 4.0. Enter none to explicitly disable an inherited value.")));
 		}
 		if (showZoom && !showGeometry)
 			form = addPlainForm();

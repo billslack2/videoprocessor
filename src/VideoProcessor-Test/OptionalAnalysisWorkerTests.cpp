@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "CppUnitTest.h"
 #include <vprenderer/OptionalAnalysisWorker.h>
 #include <chrono>
@@ -194,6 +194,31 @@ namespace VideoProcessorTest
             Assert::AreEqual(uint64_t(2),held.worker.Snapshot().cancelled);
             held.Open();Assert::IsTrue(held.Ready(c));held.worker.Stop();
             ExpectOrder({1,25,30},held.order);
+        }
+
+        TEST_METHOD(SpareQueueAdmissionCannotStartOrReplaceRegularWork)
+        {
+            HeldWorker<2> held;
+            using Worker=HeldWorker<2>::Worker;
+            auto spare=std::make_shared<HeldWorker<2>::Slot>();
+            const auto submitSpare=[&](uint64_t generation) {
+                return held.worker.Submit(spare,generation,4,1,[] {return 4;},
+                    Worker::Admission::SpareQueue);
+            };
+            Assert::IsFalse(submitSpare(1));
+            Assert::IsFalse(spare->pending.load());
+            Assert::IsTrue(held.Start());Assert::IsTrue(held.Entered());
+            Assert::IsFalse(submitSpare(2));
+            Assert::IsTrue(submitSpare(1));
+            auto regular=std::make_shared<HeldWorker<2>::Slot>();
+            Assert::IsTrue(held.Submit(regular,2,1,1,2));
+            Assert::IsFalse(spare->pending.load());
+            Assert::IsFalse(submitSpare(1));
+            Assert::IsFalse(submitSpare(2));
+            Assert::IsFalse(spare->pending.load());
+            Assert::IsTrue(regular->pending.load());
+            held.Open();Assert::IsTrue(held.Ready(regular));held.worker.Stop();
+            ExpectOrder({1,2},held.order);
         }
 
         TEST_METHOD(ShutdownClearsPendingQueueAndWaitsOnlyForReleasedActiveJob)

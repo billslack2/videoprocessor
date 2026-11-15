@@ -190,21 +190,21 @@ namespace AlphaSourceCrop
             const TransitionAdmissionInput& current, bool modelWouldAdmit)
         {
             const auto& decision = proof.decision;
+            const uint8_t required = proof.fastSnap ? 2 : OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
             if (!proof.valid || !modelWouldAdmit || !current.compatiblePresentation ||
                 !current.trustedGeometryAvailable || current.sourceGeneration == 0 ||
                 current.trustedGeneration != current.sourceGeneration ||
                 current.sourceGeneration != currentIdentity.transportGeneration ||
                 current.sourceSequence != currentIdentity.acceptedSequence ||
-                decision.proofFrameCount != OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED ||
+                decision.proofFrameCount != required ||
                 decision.association != ActivePictureDecisionAssociation::OUTWARD ||
                 decision.transition.clearTransition ||
                 decision.transition.authoritativeClassification != ActivePictureClassification::BAR_CROP_TRUSTED ||
-                decision.effectiveIdentity.acceptedSequence > UINT64_MAX - (OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED - 1) ||
-                decision.observationIdentity.acceptedSequence != decision.effectiveIdentity.acceptedSequence +
-                    OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED - 1 ||
+                decision.effectiveIdentity.acceptedSequence > UINT64_MAX - (required - 1) ||
+                decision.observationIdentity.acceptedSequence != decision.effectiveIdentity.acceptedSequence + required - 1 ||
                 decision.configuredLookahead > ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES ||
                 decision.effectiveLookahead != (std::min)(decision.configuredLookahead, decision.availableLookahead) ||
-                decision.effectiveLookahead < OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED - 1 ||
+                decision.effectiveLookahead < required - 1 ||
                 decision.continuityGeneration == 0 || decision.lookaheadPolicyGeneration == 0 ||
                 !SameBounds(decision.transition.stableBounds, current.presentationBeforeObservation) ||
                 !SameBounds(decision.transition.stableBounds, current.trustedGeometry) ||
@@ -736,6 +736,78 @@ namespace AlphaSourceCrop
         return proof;
     }
 
+    // Opt-in only: two distinct current/future native observations prove a
+    // snapped scope-to-in-picture expansion. Nothing is retained after the
+    // existing model commits, and this path never waits for optional work.
+    BufferedPictureExpansionProof BuildBufferedFastSnap(
+        const BufferedPictureExpansionSample* samples, size_t count,
+        const ActivePictureBounds& base, uint8_t configuredLookahead,
+        uint8_t availableLookahead, uint64_t continuityGeneration,
+        uint64_t policyGeneration, double maximumAspect)
+    {
+        BufferedPictureExpansionProof proof;
+        if (!samples || count < 2 || configuredLookahead < 1 || availableLookahead < 1 ||
+            !continuityGeneration || !policyGeneration || !std::isfinite(maximumAspect) ||
+            maximumAspect < 1.0 || maximumAspect > 4.0) return proof;
+        const auto& first=samples[0];const auto& b=first.observation.bounds;
+        if (!first.identity.transportGeneration || !first.identity.sourceFormatGeneration ||
+            !first.identity.acceptedSequence || first.identity.acceptedSequence==UINT64_MAX ||
+            !ValidVerticalBarPicture(base) || !ValidVerticalBarPicture(b) ||
+            base.rasterWidth!=b.rasterWidth || base.rasterHeight!=b.rasterHeight ||
+            base.left!=0 || b.left!=0 || base.right!=base.rasterWidth || b.right!=b.rasterWidth ||
+            double(base.right-base.left)/double(base.bottom-base.top)<=maximumAspect ||
+            double(b.right-b.left)/double(b.bottom-b.top)>maximumAspect ||
+            base.top-b.top<=(std::max)(4,b.rasterHeight/100) ||
+            b.bottom-base.bottom<=(std::max)(4,b.rasterHeight/100)) return proof;
+        for (size_t i=0;i<2;++i) {
+            const auto& sample=samples[i];const auto& observation=sample.observation;
+            if (!SameContext(first.identity,sample.identity) ||
+                sample.identity.acceptedSequence!=first.identity.acceptedSequence+i ||
+                observation.frameNumber!=sample.identity.acceptedSequence ||
+                !SameBounds(observation.bounds,b) || !sample.nearBlackEvaluated ||
+                !observation.available || observation.transitionDeferred ||
+                observation.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+                observation.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+                sample.retention.EffectiveArNearBlack()) return proof;
+            if (i && ((samples[0].identity.sourceFrameNumber || sample.identity.sourceFrameNumber) &&
+                (samples[0].identity.sourceFrameNumber==UINT64_MAX ||
+                 sample.identity.sourceFrameNumber!=samples[0].identity.sourceFrameNumber+1))) return proof;
+            if (i && ((samples[0].identity.captureTimestamp || sample.identity.captureTimestamp) &&
+                sample.identity.captureTimestamp<=samples[0].identity.captureTimestamp)) return proof;
+            const auto evidence=ConfirmOutwardPictureTransition({},base,b,sample.retention,
+                first.identity.transportGeneration,sample.identity.acceptedSequence);
+            if (!evidence.broadOpposingPicture && !evidence.nativeDistributedPicture) return proof;
+        }
+        proof.valid=true;proof.fastSnap=true;
+        auto& d=proof.decision;d.observationIdentity=samples[1].identity;d.effectiveIdentity=first.identity;
+        d.configuredLookahead=(std::min)(configuredLookahead,ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES);
+        d.availableLookahead=availableLookahead;d.effectiveLookahead=(std::min)(d.configuredLookahead,availableLookahead);
+        d.proofFrameCount=2;d.continuityGeneration=continuityGeneration;d.lookaheadPolicyGeneration=policyGeneration;
+        d.association=ActivePictureDecisionAssociation::OUTWARD;
+        auto& t=d.transition;t.state=ActivePictureTransitionState::STABLE;t.bounds=b;t.stableBounds=base;
+        t.publish=t.stable=t.diagnostic=true;t.clearTransition=false;
+        t.authoritativeClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+        t.matchingCandidates=t.contradictoryCandidates=2;t.confidence=1.0;
+        t.firstContradictoryFrame=first.observation.frameNumber;t.decisionLatencyFrames=1;
+        t.reason="two-frame native snapped outward picture confirmed";return proof;
+    }
+    bool ValidateBufferedFastSnap(const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current,bool modelWouldAdmit,double maximumAspect)
+    {
+        if (!proof.fastSnap || proof.relativeContrast || !std::isfinite(maximumAspect) ||
+            maximumAspect<1.0 || maximumAspect>4.0 ||
+            !CurrentScheduledExpansion(proof,currentIdentity,current,modelWouldAdmit)) return false;
+        const auto& b=current.evidence.trustedBounds;const auto& base=current.trustedGeometry;
+        if (!ValidVerticalBarPicture(b) || !ValidVerticalBarPicture(base) ||
+            double(b.right-b.left)/double(b.bottom-b.top)>maximumAspect ||
+            double(base.right-base.left)/double(base.bottom-base.top)<=maximumAspect ||
+            EvaluateTransitionAdmission(current).deferPartialComposition) return false;
+        const auto evidence=ConfirmOutwardPictureTransition({},current.trustedGeometry,b,current.retention,
+            current.sourceGeneration,current.sourceSequence);
+        return evidence.broadOpposingPicture || evidence.nativeDistributedPicture;
+    }
+
     BufferedPictureExpansionDiagnostic InspectBufferedPictureExpansion(
         const BufferedPictureExpansionSample* samples, size_t count,
         const ActivePictureBounds& base, uint8_t configuredLookahead,
@@ -889,7 +961,7 @@ namespace AlphaSourceCrop
         bool modelWouldAdmit)
     {
         const auto& decision = proof.decision;
-        if (proof.relativeContrast ||
+        if (proof.fastSnap || proof.relativeContrast ||
             !CurrentScheduledExpansion(proof, currentIdentity, current, modelWouldAdmit) ||
             current.presentation.action != VerticalBarPresentationAction::NONE ||
             current.translationDriftActive || current.previousOutward.verticalPresentationSeen)

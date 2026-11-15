@@ -39,12 +39,22 @@ public:
         return m;
     }
     ~OptionalAnalysisWorker() { Stop(); }
+    enum class Admission { Regular, SpareQueue };
     bool Submit(const std::shared_ptr<Slot>& slot, uint64_t generation,
-        uint64_t sequence, uint64_t minimumSequence, std::function<Result()> measure) {
+        uint64_t sequence, uint64_t minimumSequence, std::function<Result()> measure,
+        Admission admission = Admission::Regular) {
         if (!slot || !generation || sequence < minimumSequence) return false;
         if(slot->pending.exchange(true)){++duplicate;return false;}
         std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);
         if (!lock.owns_lock() || stopping) { ++contended;slot->pending.store(false); return false; }
+        // A secondary producer may use spare capacity in the established
+        // generation. It cannot start the worker, retire jobs or displace work.
+        if (admission == Admission::SpareQueue &&
+            (!worker.joinable() || generation != regularGeneration || !jobs.empty())) {
+            slot->pending.store(false);
+            return false;
+        }
+        if (admission == Admission::Regular) regularGeneration=generation;
         for (auto it = jobs.begin(); it != jobs.end();) {
             if (it->generation != generation || it->sequence < minimumSequence) {
                 ++cancelled;it->slot->pending.store(false); it = jobs.erase(it);
@@ -113,6 +123,7 @@ private:
     std::deque<Job> jobs;
     std::thread worker;
     bool stopping = false;
+    uint64_t regularGeneration = 0;
     void Run() {
         for (;;) {
             Job job;

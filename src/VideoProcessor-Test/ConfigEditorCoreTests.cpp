@@ -936,6 +936,44 @@ namespace VideoProcessorTest
 				std::string(ConfigurationApplyPolicy::ActionLabel(Action::RestartCapture)));
 		}
 
+		TEST_METHOD(ConfigEditorCoreRoundTripsSubtitleInPictureAspectAssumption)
+		{
+			const std::wstring path = MakeTemporaryConfigPath(L"vps");
+			Assert::IsFalse(path.empty());
+			WriteBytes(path,
+				"[general]\nrenderer: VP Renderer\n"
+				"[vprenderer.viewport.scope]\nscreen_aspect: 2.35:1\n");
+			ConfigEditorCore::ConfigDocument document;
+			std::wstring error;
+			Assert::IsTrue(document.Load(path, error), error.c_str());
+			Assert::IsTrue(document.SetKnown("vprenderer.viewport.scope",
+				"subtitle_in_picture_aspect_max", "1.9"));
+			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error),
+				error.c_str());
+			ConfigEditorCore::SaveResult saved;
+			Assert::IsTrue(ConfigEditorCore::SaveSafely(document, saved, error),
+				error.c_str());
+			ConfigEditorCore::ConfigDocument reloaded;
+			Assert::IsTrue(reloaded.Load(path, error), error.c_str());
+			Assert::AreEqual(std::string("1.9"), reloaded.Get(
+				"vprenderer.viewport.scope", "subtitle_in_picture_aspect_max"));
+			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(reloaded, error),
+				error.c_str());
+			for (const char* invalid : { "0.9", "4.1", "invalid" })
+			{
+				Assert::IsTrue(reloaded.SetKnown(
+					"vprenderer.viewport.scope",
+					"subtitle_in_picture_aspect_max", invalid));
+				Assert::IsFalse(ConfigEditorCore::ValidateCandidate(
+					reloaded, error));
+				Assert::IsFalse(error.empty());
+			}
+			Assert::IsTrue(reloaded.SetKnown("vprenderer.viewport.scope",
+				"subtitle_in_picture_aspect_max", "none"));
+			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(reloaded, error),
+				error.c_str());
+			DeleteFileW(path.c_str());
+		}
 		TEST_METHOD(ConfigEditorCoreLoadsAndValidatesCurrentDeployedFixture)
 		{
 			std::string sourcePath = __FILE__;
@@ -952,8 +990,8 @@ namespace VideoProcessorTest
 			ConfigEditorCore::ConfigDocument document;
 			std::wstring error;
 			Assert::IsTrue(document.Load(path, error), error.c_str());
-			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error),
-				error.c_str());
+			const bool valid = ConfigEditorCore::ValidateCandidate(document, error);
+			Assert::IsTrue(valid, error.c_str());
 		}
 
 		TEST_METHOD(ConfigEditorCorePreservesCommentsUnknownLinesAndTerminalEnding)

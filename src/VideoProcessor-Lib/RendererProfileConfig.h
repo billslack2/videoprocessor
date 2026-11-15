@@ -775,6 +775,8 @@ namespace RendererProfileConfig
 			}
 			if (screenGroup && key == "anamorphic_scale")
 				return IsAspectInRange(value, 0.5, 2.0);
+			if (screenGroup && key == "subtitle_in_picture_aspect_max")
+				return ConfigFile::NormalizeName(value) == "none" || IsAspectInRange(value, 1.0, 4.0);
 			if (key == "automatic_crop" || key == "subtitle_fit" ||
 				key == "hdr_peak_analysis_picture_only" ||
 				key == "hdr_peak_analysis_motion_compensation" ||
@@ -1005,7 +1007,7 @@ namespace RendererProfileConfig
         if (CalibrationProfileMigration::IsKey(key)) return false;
 		// automatic_crop is viewport-owned. Reject it from renderer/display
 		// variants so the same setting cannot acquire two owners.
-		if (key == "automatic_crop" ||
+		if (key == "automatic_crop" || key == "subtitle_in_picture_aspect_max" ||
 			key == "crop_narrower_content_to_fill_screen" ||
 			key == "crop_narrower_content_aspect_limit" ||
 			key == "crop_wider_content_to_fill_screen" ||

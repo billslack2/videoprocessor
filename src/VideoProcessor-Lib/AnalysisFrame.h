@@ -86,4 +86,5 @@ struct PreparedAnalysisFrame
 };
 
 bool AnalysisNativeRgbSupported(VideoFrameEncoding encoding);
-PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input);
+PreparedAnalysisFrame PrepareAnalysisFrame(const AnalysisFrameInput& input,
+    const char** failureReason = nullptr);
