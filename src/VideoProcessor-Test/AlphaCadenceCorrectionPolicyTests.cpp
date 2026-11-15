@@ -260,7 +260,7 @@ namespace Tests
 		{
 			AlphaCadenceCorrectionPolicy queuePolicy;
 			AlphaCadenceCorrectionInput queueInput = Input(60.012);
-			queueInput.queueDepth = queueInput.desiredQueueDepth;
+			queueInput.queueDepth = queueInput.desiredQueueDepth - 1;
 			const auto queueBlocked =
 				AdvanceUntilDue(queuePolicy, queueInput);
 			Assert::AreEqual(
@@ -338,6 +338,79 @@ namespace Tests
 			Assert::IsFalse(ambiguous.lastVerificationSucceeded);
 			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
 				static_cast<int>(ambiguous.action));
+		}
+
+		TEST_METHOD(OneSurplusSourceDropsAtFreshScene)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(60.012);
+			input.queueDepth = input.desiredQueueDepth;
+			input.presentationDebt = 1;
+			const auto due = AdvanceUntilDue(policy, input);
+			Assert::AreNotEqual(
+				Reason(AlphaCadenceBlockReason::DropQueueNotAboveDesired),
+				Reason(due.blockReason));
+
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 5;
+			const auto decision = policy.Evaluate(input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(static_cast<uint64_t>(5), decision.sceneEventId);
+		}
+
+		TEST_METHOD(HeldSurplusBringsSlowForecastDue)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(60.0 * (1.0 + 14.6e-6));
+			input.queueDepth = input.desiredQueueDepth;
+
+			const auto due = AdvanceUntilDue(policy, input, 720);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(due.predictedAction));
+			Assert::IsTrue(due.phaseFrames >= 1.0);
+		}
+
+		TEST_METHOD(RestingQueueAtZeroPpmNeverBecomesDue)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(60.0);
+			input.queueDepth = input.desiredQueueDepth - 1;
+			input.safeSceneBoundary = true;
+
+			for (uint32_t frame = 0; frame < 10000; ++frame)
+			{
+				input.sceneEventId = frame + 1;
+				const auto decision = policy.Evaluate(input);
+				Assert::IsFalse(decision.due);
+				Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+					static_cast<int>(decision.action));
+			}
+		}
+
+		TEST_METHOD(SurplusLeftAfterResetBecomesDueAgain)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(60.0 * (1.0 + 14.6e-6));
+			input.queueDepth = input.desiredQueueDepth;
+			AdvanceUntilDue(policy, input, 720);
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 1;
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(policy.Evaluate(input).action));
+
+			input.generation = 2;
+			input.safeSceneBoundary = false;
+			input.sceneEventId = 0;
+			const auto due = AdvanceUntilDue(policy, input, 120 + 600 + 120);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::DropFallbackQueueTooYoung),
+				Reason(due.blockReason));
+
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 2;
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(policy.Evaluate(input).action));
 		}
 	};
 }

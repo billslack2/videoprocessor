@@ -22,6 +22,7 @@ void AlphaCadenceCorrectionPolicy::Reset(uint64_t generation)
 	m_lastVerificationSucceeded = false;
 	m_filteredPhasePerFrame = 0.0;
 	m_predictionDirection = AlphaCadenceAction::None;
+	m_surplusFrames = 0;
 }
 
 void AlphaCadenceCorrectionPolicy::CancelPendingAction()
@@ -174,6 +175,27 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		m_predictionDirection = AlphaCadenceAction::Drop;
 	}
 
+	const size_t desired = std::max<size_t>(1, input.desiredQueueDepth);
+	if (m_rateFilterSamples >= MINIMUM_PREDICTION_SAMPLES &&
+		m_predictionDirection != AlphaCadenceAction::Repeat &&
+		input.queueDepth >= desired)
+	{
+		if (m_surplusFrames < SURPLUS_CONFIRM_FRAMES)
+			++m_surplusFrames;
+	}
+	else
+		m_surplusFrames = 0;
+	if (m_surplusFrames >= SURPLUS_CONFIRM_FRAMES && !m_verificationPending &&
+		m_phaseFrames < ACTION_PHASE_FRAMES)
+	{
+		// The queue has held a surplus source for SURPLUS_CONFIRM_FRAMES
+		// evaluations: the forecast is behind the queue (a reset while a
+		// surplus was queued, or the sub-frame phase at start). Bring the
+		// phase to the action point; the queue and scene gates still decide.
+		m_phaseFrames = ACTION_PHASE_FRAMES;
+		m_plannedFrames = std::max(m_plannedFrames, m_surplusFrames);
+	}
+
 	const bool predictionDirectionAgrees =
 		(m_predictionDirection == AlphaCadenceAction::Drop &&
 			signedFilteredPpm >= MINIMUM_PREDICTION_PPM) ||
@@ -248,7 +270,6 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		return decision;
 	}
 
-	const size_t desired = std::max<size_t>(1, input.desiredQueueDepth);
 	const uint32_t fallbackFrames = static_cast<uint32_t>(std::max(
 		1.0, std::ceil(MAXIMUM_QUEUE_AGE_MS * input.displayRateHz / 1000.0)));
 	decision.diagnostic.fallbackFrames = fallbackFrames;
@@ -267,8 +288,10 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 			input.oldestQueuedAgeMs >= MAXIMUM_QUEUE_AGE_MS);
 	decision.diagnostic.fallbackEligible = deadlineAuthorized;
 
+	// queueDepth is measured after the dequeue, which rests at desired - 1;
+	// depth == desired is already one surplus source.
 	if (requested == AlphaCadenceAction::Drop &&
-		input.queueDepth <= desired)
+		input.queueDepth < desired)
 	{
 		decision.phaseFrames = m_phaseFrames;
 		decision.blockReason =
