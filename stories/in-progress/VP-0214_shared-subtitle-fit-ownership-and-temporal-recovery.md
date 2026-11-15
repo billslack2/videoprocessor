@@ -8,6 +8,11 @@ In Progress
 for VP-0213. Investigation/implementation of shared subtitle behavior is not
 part of VP-0213; no Classic/reconstruction policy change is made by that repair.
 
+## Requested 2.0.4 and 2.0.5 integration — 2026-11-15
+
+The user explicitly requested merging the Ben-Hur subtitle candidate into both integration branches. [PR #263](https://github.com/billslack2/videoprocessor/pull/263) targets `v2.0.5-beta-aspect-ratio`, with source `fd3fc2db82655e2b9036f9c86fe457fd48e58f53` based on exact tip `a841a405e490e5008ee74c0062bb8ec0189a2630`. [PR #264](https://github.com/billslack2/videoprocessor/pull/264) targets `v2.0.4-beta`, with cherry-pick `1529b6dd706492843668329856b75b956766e5b2` based on `445a09639ff7f32f92fef2873f25d441e650ec06`; its three-file patch ID is identical to the 2.0.5 change, and the affected baseline files matched across both targets. No unrelated 2.0.5 changes are included in the 2.0.4 backport. Both PRs were prepared; neither is merged yet. The 2.0.4 x64 Release build and the previously incomplete 2.0.5 full motion suite are running; do not infer live subtitle acceptance or real-time qualification from the user's merge request.
+
+The unmodified VP release helper rejected the actual default `v2.0.5-beta-aspect-ratio` because its strict version regex recognized only beta names ending exactly in `-beta`, misidentifying `v2.0.4-beta` as latest. For the user's two explicitly named targets, a task-local helper copy recognizes the suffix and accepts only those two target names while retaining default/latest agreement, clean checkout, pinned source/base, PR identity and check gates. The installed skill was not modified.
 ## Ben-Hur flashing incident — 2026-11-15
 
 The user reports flashing subtitles across all selected alignments on ultra-wide Ben-Hur (approximately 2.76:1), with text near the picture/bar boundary. They request a small measured correction and no re-architecture. Treat the location as a hypothesis until confirmed in pixels; retain accurate source-derived picture bounds and real-time current-frame presentation.
