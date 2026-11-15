@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "installRoot": "__INSTALL_ROOT__",
+  "status": "pending",
+  "build": "rc6-literal-compatibility-fixture",
+  "files": [
+    {
+      "path": "VideoProcessor.exe",
+      "existed": true,
+      "sha256": "2F41572B9AED5D530F9A66D159F41740A6D0F59E6B57392DCA7D3A06BC88C957"
+    },
+    {
+      "path": "vprenderer/VideoProcessorVPRenderer.dll",
+      "existed": true,
+      "sha256": "435710513154C8DDB0F4F3D62642B1E961960B8DEAA1B4E058A4420F4F2F54A7"
+    }
+  ]
+}

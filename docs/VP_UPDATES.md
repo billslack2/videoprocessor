@@ -62,7 +62,11 @@ VP process fails conservatively.
   unsaved edits. The install confirmation describes this behavior.
   Apps are asked to exit; they are never forcibly terminated.
 - A root-scoped file lock prevents these new apps from starting during install.
-  The helper runs from a user-local cache so setup can replace its installed EXE.
+  Routine checks, downloads and polling run the installed updater without copying
+  it. Only installation stages a content-addressed copy. The child independently
+  verifies the signed release, package and installation, then acknowledges readiness
+  while holding the install lock. The installed coordinator exits before setup
+  starts, allowing its executable to be replaced without a file-lock conflict.
 - Existing Inno transactional install/recovery is reused. The helper verifies the
   exact new inventory and every managed file before restarting the applications
   that were running, with their original command-line arguments. User settings,
@@ -83,9 +87,13 @@ it updates full VP or only Config; no running/local VP is required for Config-on
 The shared helper retains signed metadata verification, download checks, local
 process shutdown and installer recovery. It stays alive through Config shutdown.
 
-The panel uses asynchronous `QProcess` control clients. They communicate with the
-single helper through a bounded, current-user-only Windows named pipe scoped to
-the installation. This does not expose a LAN listener. Commands return state,
+Each visible panel uses one persistent asynchronous `QProcess` bridge, rather
+than starting a client for every poll. It communicates with the single helper
+through a bounded, current-user-only Windows named pipe scoped to the installation;
+network logons are explicitly denied. Connection-owned session leases release on
+EOF or bridge failure. A failed connection never replays an uncertain command.
+The stdin stream matches the inherited handle's synchronous/overlapped mode so
+both Qt and direct process clients support paced requests. Commands return state,
 change validated preferences, check, download, skip, or install a verified package.
 The Qt UI confirms manual installation; the helper never shows a second updater
 window. Polls run only while the panel exists; closing it does not cancel an
@@ -195,14 +203,30 @@ of this implementation.
   idle shutdown; temporary inventories require no VP executable.
 - `VideoProcessorConfigTests.exe --test "integrated updates respect local package"`:
   native panel package identity, preferences, busy state and helper errors.
+- `tools/test_update_panel_bridge.ps1`: x64 Release Qt integration, queued
+  preferences, independent persisted-state verification, stable bridge/worker
+  process identities across polling, hide/reopen cleanup and existing panel/exit checks.
+- `tools/test_update_handoff.ps1`: isolated test-signed staged replacement,
+  tamper rejection, parent/child timeouts, duplicate rejection, setup failure
+  without relaunch and terminal cleanup with retained diagnostics.
+- `tools/test_installer_lifecycle_fixture.ps1 -IsccPath <ISCC>`: real Inno
+  fresh install, upgrade, corrupt-hash rollback, uninstall and reinstall using
+  isolated product identities and byte-preserved configuration/state.
 - Compile the full x64 Release solution, the helper, and both Inno flavors.
 
 Release qualification still needs a disposable-machine end-to-end download,
 setup replacement, restart, failure/recovery and second-computer compatibility
 run using published signed assets. No live apps are stopped by these unit tests.
-Cache downloads and logs are retained under
-`%LOCALAPPDATA%\VideoProcessor\Updates` for diagnosis; automatic cache pruning is
-not yet implemented.
+Downloads and diagnostics are retained under
+`%LOCALAPPDATA%\VideoProcessor\Updates`. Normal startup removes verified terminal
+handoff stages after preserving the result and a bounded setup-log tail in the
+root-specific cache. Unknown or linked stage contents are retained. General
+release-download cache pruning is not implemented.
+
+These changes remove runtime PowerShell execution, routine self-copying and
+per-poll process creation. They do not establish the cause of a particular
+Defender detection or guarantee that a future package will be accepted. Release
+qualification still requires scanning and clean-machine installation testing.
 
 On successful updates, VP restarts if it was running immediately before setup.
 Config returns to its actual pre-update visibility: an open window reopens, while
