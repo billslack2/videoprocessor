@@ -91,3 +91,31 @@ inline bool AlphaUsesP210Ingress(VideoFrameEncoding encoding,
 			encoding == VideoFrameEncoding::V210 ||
 			encoding == VideoFrameEncoding::P210);
 }
+
+// Bit position of a mask's lowest set bit; 0 for an empty mask.
+inline int AlphaNativeRgbMaskShift(uint64_t mask) noexcept
+{
+	if (!mask)
+		return 0;
+	int shift = 0;
+	while (!(mask & 1u))
+	{
+		mask >>= 1;
+		++shift;
+	}
+	return shift;
+}
+
+// libplacebo's generic uploader matches a packed layout against the GPU's
+// texture formats bit for bit, padding included. D3D11's one packed 10-bit
+// format, R10G10B10A2, has its three components from bit 0 and the pad on top.
+// The DeckLink 10-bit RGB words (R10l, R10b) put their two pad bits at the
+// bottom, so no format matches them and the generic upload fails on every
+// frame. Such a layout reports its low pad here; the renderer then uploads the
+// words unchanged and rebuilds the components on the GPU. BGRA and ARGB have
+// no low pad and use the generic upload.
+inline int AlphaNativeRgbLowPadBits(const AlphaNativeRgbLayout& layout) noexcept
+{
+	return AlphaNativeRgbMaskShift(layout.masks[0] | layout.masks[1] |
+		layout.masks[2] | layout.masks[3]);
+}

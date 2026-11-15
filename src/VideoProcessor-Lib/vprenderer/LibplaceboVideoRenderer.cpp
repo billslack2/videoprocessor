@@ -94,9 +94,11 @@
 #pragma warning(disable: 4244) // conversion warning in an upstream inline helper
 #include <libplacebo/cache.h>
 #include <libplacebo/d3d11.h>
+#include <libplacebo/dispatch.h>
 #include <libplacebo/options.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/shaders/custom.h>
+#include <libplacebo/shaders/sampling.h>
 #include <libplacebo/utils/upload.h>
 #pragma warning(pop)
 
@@ -4477,6 +4479,10 @@ struct LibplaceboVideoRenderer::Impl
     };
 
 	pl_tex textures[2] = { nullptr, nullptr };
+	// R10l/R10b words upload unchanged into this texture; a GPU pass rebuilds
+	// their components into textures[0] (AlphaNativeRgbIngress.h).
+	pl_tex nativeRgbPackedTexture = nullptr;
+	pl_dispatch nativeRgbDispatch = nullptr;
 	double sourceUploadCpuLastMs = 0.0;
 	double sourceUploadCpuIntervalTotalMs = 0.0;
 	double sourceUploadCpuIntervalPeakMs = 0.0;
@@ -5575,6 +5581,8 @@ struct LibplaceboVideoRenderer::Impl
             displayLutCache.Clear();
 			if (d3d11)
 			{
+				pl_dispatch_destroy(&nativeRgbDispatch);
+				pl_tex_destroy(d3d11->gpu, &nativeRgbPackedTexture);
 				pl_tex_destroy(d3d11->gpu, &subtitleBoxTexture);
                 displayFrameCache.Clear();
                 pl_tex_destroy(d3d11->gpu, &subtitleCompositionTexture);
@@ -12594,6 +12602,82 @@ struct LibplaceboVideoRenderer::Impl
 		}
 	}
 
+	// Uploads a packed RGB frame whose pad sits in the low bits (R10l, R10b),
+	// which no D3D11 texture format matches (AlphaNativeRgbIngress.h). The
+	// 32-bit words upload unchanged into an R10G10B10A2 texture, read there as
+	// plain bit fields; a GPU pass reassembles each word, byte-swaps it for
+	// R10b, and writes the R, G and B components into textures[0]. No CPU copy.
+	bool UploadLowPadNativeRgb(const pl_plane_data& source,
+		const AlphaNativeRgbLayout& layout, pl_plane& out)
+	{
+		pl_gpu gpu = d3d11->gpu;
+		struct pl_plane_data packed = source;
+		packed.swapped = false;
+		uint64_t wordFields[4] = { 0x000003FFu, 0x000FFC00u, 0x3FF00000u, 0xC0000000u };
+		pl_plane_data_from_mask(&packed, wordFields);
+		struct pl_plane packedPlane{};
+		if (!pl_upload_plane(gpu, &packedPlane, &nativeRgbPackedTexture, &packed))
+			return false;
+
+		const pl_fmt format = nativeRgbPackedTexture->params.format;
+		struct pl_tex_params target{};
+		target.w = source.width;
+		target.h = source.height;
+		target.format = format;
+		target.sampleable = true;
+		target.renderable = true;
+		target.storable = (format->caps & PL_FMT_CAP_STORABLE) != 0;
+		if (!pl_tex_recreate(gpu, &textures[0], &target))
+			return false;
+
+		if (!nativeRgbDispatch)
+			nativeRgbDispatch = pl_dispatch_create(log, gpu);
+		if (!nativeRgbDispatch)
+			return false;
+		pl_shader sh = pl_dispatch_begin(nativeRgbDispatch);
+		struct pl_sample_src sample{};
+		sample.tex = nativeRgbPackedTexture;
+		std::string body =
+			"uvec4 field = uvec4(round(color * vec4(1023.0, 1023.0, 1023.0, 3.0)));\n"
+			"uint word = field.x | (field.y << 10u) | (field.z << 20u) | (field.w << 30u);\n";
+		if (layout.swapped)
+			body += "word = (word >> 24u) | ((word >> 8u) & 0xFF00u) | "
+				"((word << 8u) & 0xFF0000u) | (word << 24u);\n";
+		std::string components;
+		for (int c = 0; c < 3; ++c)
+		{
+			const uint64_t mask = layout.masks[c] >> AlphaNativeRgbMaskShift(layout.masks[c]);
+			const std::string max = std::to_string(mask) + "u";
+			components += (c ? ", " : "") + std::string("float((word >> ") +
+				std::to_string(AlphaNativeRgbMaskShift(layout.masks[c])) + "u) & " + max +
+				") / " + std::to_string(mask) + ".0";
+		}
+		body += "color = vec4(" + components + ", 1.0);\n";
+		struct pl_custom_shader unpack{};
+		unpack.description = "packed RGB unpack";
+		unpack.body = body.c_str();
+		unpack.input = PL_SHADER_SIG_COLOR;
+		unpack.output = PL_SHADER_SIG_COLOR;
+		if (!pl_shader_sample_nearest(sh, &sample) || !pl_shader_custom(sh, &unpack))
+		{
+			pl_dispatch_abort(nativeRgbDispatch, &sh);
+			return false;
+		}
+		struct pl_dispatch_params run{};
+		run.shader = &sh;
+		run.target = textures[0];
+		if (!pl_dispatch_finish(nativeRgbDispatch, &run))
+			return false;
+
+		out = {};
+		out.texture = textures[0];
+		out.components = 3;
+		out.component_mapping[0] = PL_CHANNEL_R;
+		out.component_mapping[1] = PL_CHANNEL_G;
+		out.component_mapping[2] = PL_CHANNEL_B;
+		return true;
+	}
+
 	// The caller holds renderMutex. Queue-generation validation and rendering
 	// share that lock so a frame removed before a reset cannot cross the reset
 	// boundary while waiting to enter libplacebo.
@@ -13817,10 +13901,12 @@ struct LibplaceboVideoRenderer::Impl
 			plane.pixels = videoFrame.GetData();
 			plane.swapped = nativeRgbLayout.swapped;
 			pl_plane_data_from_mask(&plane, nativeRgbLayout.masks);
+			const bool lowPadWords = AlphaNativeRgbLowPadBits(nativeRgbLayout) > 0;
 			frameGpuTiming.BeginStage(
 				AlphaD3D11FrameGpuTimer::Stage::SourceUpload);
-			const bool sourceUploaded = pl_upload_plane(d3d11->gpu,
-				&image.planes[0], &textures[0], &plane);
+			const bool sourceUploaded = lowPadWords ?
+				UploadLowPadNativeRgb(plane, nativeRgbLayout, image.planes[0]) :
+				pl_upload_plane(d3d11->gpu, &image.planes[0], &textures[0], &plane);
 			frameGpuTiming.EndStage();
 			if (!sourceUploaded)
 				return false;
