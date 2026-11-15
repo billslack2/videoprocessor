@@ -55,6 +55,15 @@ try {
     if ($afterBuild.build -ne $identity.build -or $afterBuild.fingerprint -ne $identity.fingerprint) {
         throw 'Sources changed during the build.'
     }
+    $supportBuild = Join-Path $artifactRoot 'installer-support\VideoProcessorInstallSupport.exe'
+    & (Join-Path $PSScriptRoot 'build_installer_support.ps1') -OutputPath $supportBuild
+    if ($LASTEXITCODE -ne 0) { throw 'x64 Release installer support helper build failed.' }
+    $installerSupport = [ordered]@{
+        path='setup/install-support.exe'; architecture='x64'; configuration='Release'
+        targetFramework='.NET Framework 4.0'; sha256=(Get-FileHash -LiteralPath $supportBuild -Algorithm SHA256).Hash
+    }
+    $receipt | Add-Member -NotePropertyName installerSupport -NotePropertyValue $installerSupport -Force
+    $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
     & (Join-Path $PSScriptRoot 'package_release.ps1') -VcRedistPath $VcRedistPath
     $payload = Join-Path $artifactRoot 'release\VideoProcessor'
     $localRuntime = & (Join-Path $PSScriptRoot 'stage_app_local_runtime.ps1') -PayloadRoot $payload -RuntimeDirectories $RuntimeDirectories
@@ -62,7 +71,8 @@ try {
     # Stage it after native dependency closure, so it is not treated as a VC binary.
     & (Join-Path $PSScriptRoot 'build_updater.ps1') -OutputPath (Join-Path $payload 'VideoProcessorUpdate.exe')
     $null = New-Item -ItemType Directory -Path (Join-Path $payload 'setup') -Force
-    Copy-Item -LiteralPath (Join-Path $root 'packaging\installer\install-support.ps1') -Destination (Join-Path $payload 'setup')
+    Copy-Item -LiteralPath $supportBuild -Destination (Join-Path $payload 'setup\install-support.exe')
+    if ((Get-FileHash -LiteralPath (Join-Path $payload 'setup\install-support.exe') -Algorithm SHA256).Hash -ne $installerSupport.sha256) { throw 'Staged installer helper hash does not match build evidence.' }
     Copy-Item -LiteralPath (Join-Path $root 'docs\VP-0192_INSTALLER.md') -Destination (Join-Path $payload 'setup\RECOVERY.md')
     # This is only the distributable default; Inno seeds it only when absent.
     Copy-Item -LiteralPath (Join-Path $payload 'VideoProcessor.cfg.example') -Destination (Join-Path $payload 'VideoProcessor.cfg')
@@ -74,6 +84,8 @@ try {
         'docs/VP-0174-config-ui.md'
     )
     $cleanupFiles = @()
+    # Retire the prior setup helper only when an old ownership hash still matches.
+    $cleanupFiles += [ordered]@{ path='setup/install-support.ps1'; sha256='AD78B0967E2F180FEC1833869B86D811C4D3E5608B1BF1351CE730045C043A64' }
     $files = @(Get-ChildItem -LiteralPath $payload -Recurse -File | Sort-Object FullName | ForEach-Object {
         $relative = $_.FullName.Substring($payload.Length + 1)
         $portablePath = $relative.Replace('\','/')
@@ -93,7 +105,7 @@ try {
     $configurationVersion = [int]$Matches[1]
     [ordered]@{
         schemaVersion=1; applicationId=$(if ($Flavor -eq 'full') { 'VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59' } else { 'VideoProcessorConfig-BA15DBE8-210F-42AA-AE86-B4628395E77F' }); flavor=$Flavor; updateSequence=$ReleaseSequence; updateChannel=$UpdateChannel; rpcVersion=$rpcVersion; configurationVersion=$configurationVersion
-        coreVersion=$CoreVersion; build=$identity.build; sourceCommit=$commit; sourceFingerprint=$identity.fingerprint; dirty=$identity.dirty; uninstallEntryPoint=$(if ($Flavor -eq 'full') { 'Uninstall VideoProcessor.lnk' } else { 'Uninstall VideoProcessor Config.lnk' }); runtimeMode='app-local'; appLocalRuntime=$localRuntime; compiler='Inno Setup 6.7.3'; files=$files; cleanupFiles=$cleanupFiles
+        coreVersion=$CoreVersion; build=$identity.build; sourceCommit=$commit; sourceFingerprint=$identity.fingerprint; dirty=$identity.dirty; uninstallEntryPoint=$(if ($Flavor -eq 'full') { 'Uninstall VideoProcessor.lnk' } else { 'Uninstall VideoProcessor Config.lnk' }); runtimeMode='app-local'; appLocalRuntime=$localRuntime; installerSupport=$installerSupport; compiler='Inno Setup 6.7.3'; files=$files; cleanupFiles=$cleanupFiles
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'INSTALL-MANIFEST.json') -Encoding UTF8
     $include = Join-Path $artifactRoot ('installer-payload-' + $Flavor + '.iss')
     $lines = @(foreach ($entry in $files) {

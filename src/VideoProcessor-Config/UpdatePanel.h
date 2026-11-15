@@ -62,7 +62,7 @@ public:
         install_ = new QPushButton("Install and restart", this); skip_ = new QPushButton("Skip release", this);
         install_->setProperty("primary", true);
         for (auto* button : {check_, download_, install_, skip_}) actions->addWidget(button);
-        actions->addStretch(); available->addLayout(actions); setAvailable(false);
+        actions->addStretch(); available->addLayout(actions); setActionAvailable(false); setSettingsAvailable(connected_);
         connect(check_, &QPushButton::clicked, this, [this] { if (connectionLost_) { startHelper(); request("state"); } else request("check"); });
         connect(download_, &QPushButton::clicked, this, [this] { request("download"); });
         connect(skip_, &QPushButton::clicked, this, [this] { request("skip"); });
@@ -73,50 +73,112 @@ public:
         connect(channel_, &QComboBox::currentIndexChanged, this, [this] { saveSettings(); });
         connect(restart_, &QCheckBox::toggled, this, [this] { saveSettings(); });
         process_ = new QProcess(this);
+        process_->setObjectName("updates.bridgeProcess");
+        connect(process_, &QProcess::started, this, [this] {
+            sessionReady_ = true;
+            if (!pending_.isEmpty()) { const auto command = pending_; pending_ = {}; sendRequest(command); }
+        });
+        connect(process_, &QProcess::readyReadStandardOutput, this, [this] { consumeOutput(); });
         connect(process_, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
-            timeout_.stop();
-            const auto reply = QJsonDocument::fromJson(process_->readAllStandardOutput().trimmed());
-            if (!reply.isObject()) { connectionFailed(); return; }
-            applyState(reply.object());
-            if (!pending_.isEmpty())
+            consumeOutput();
+            const QString bridgeStderr = QString::fromUtf8(process_->readAllStandardError());
+            status_->setProperty("updaterBridgeExit", QString("code=%1 status=%2 stderr=%3")
+                .arg(process_->exitCode())
+                .arg(process_->exitStatus() == QProcess::NormalExit ? "normal" : "crash")
+                .arg(bridgeStderr));
+            const bool preserveFinalError = finalServerError_;
+            const bool partialFinalFrame = !responseBuffer_.isEmpty();
+            const bool wasLost = connectionLost_;
+            timeout_.stop(); sessionReady_ = false; awaiting_ = false; responseBuffer_.clear();
+            bool wasClosing = closingSession_;
+            closingSession_ = false;
+            if (wasClosing) serviceActive_ = false;
+            else if (preserveFinalError)
             {
-                const auto command = pending_; pending_ = {};
-                QTimer::singleShot(0, this, [this, command] { request(command.value("command").toString(), command); });
+                connectionLost_ = true; setAvailable(false); check_->setText("Reconnect");
+                if (isVisible())
+                {
+                    if (!wasLost) startHelper();
+                    if (!reconnect_.isActive()) reconnect_.start();
+                }
+            }
+            else
+            {
+                const QString exitReason = QString("Updater bridge exited (code %1, status %2): %3")
+                    .arg(process_->exitCode())
+                    .arg(process_->exitStatus() == QProcess::NormalExit ? "normal" : "crash")
+                    .arg(process_->errorString());
+                connectionFailed(exitReason);
+                if (partialFinalFrame) status_->setText("The updater exited before completing its response. Reconnecting…");
+            }
+            finalServerError_ = false;
+            if (restartSessionAfterExit_ && isVisible())
+            {
+                restartSessionAfterExit_ = false;
+                QTimer::singleShot(250, this, [this] { startControlSession(); });
             }
         });
-        connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) { connectionFailed(); });
+        connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+            if (error == QProcess::FailedToStart) connectionFailed("Updater bridge failed to start: " + process_->errorString());
+        });
         timeout_.setSingleShot(true); timeout_.setInterval(8000);
-        connect(&timeout_, &QTimer::timeout, this, [this] { process_->kill(); });
+        connect(&timeout_, &QTimer::timeout, this, [this] {
+            // The request may already have reached the worker. Drop it and never replay it.
+            const QString timeoutState = QString("generation=%1 awaiting=%2 pending=%3 bytesToWrite=%4")
+                .arg(sessionGeneration_).arg(awaiting_).arg(pending_.value("command").toString()).arg(process_->bytesToWrite());
+            status_->setProperty("updaterTimeoutState", timeoutState);
+            pending_ = {}; awaiting_ = false; connectionFailed("Updater request timed out.");
+            if (process_->state() != QProcess::NotRunning) process_->kill();
+        });
+        reconnect_.setSingleShot(true); reconnect_.setInterval(3000);
+        connect(&reconnect_, &QTimer::timeout, this, [this] {
+            if (isVisible() && connectionLost_)
+            {
+                restartClock_.invalidate(); startHelper(); reconnect_.start();
+            }
+        });
         poll_.setInterval(1500); connect(&poll_, &QTimer::timeout, this, [this] { request("state"); });
 
     }
     ~UpdatePanel() override
     {
-        // Only the short-lived control client belongs to this panel. Never stop
-        // the detached helper: it must finish installing after Config exits.
-        if (process_->state() != QProcess::NotRunning) { process_->kill(); process_->waitForFinished(1000); }
-        if (serviceActive_)
-            QProcess::startDetached(helper_, {"--root", root_, "--control", "{\"command\":\"detach\"}"}, root_);
+        // Closing the bridge stdin sends an explicit detach request to the worker.
+        poll_.stop(); reconnect_.stop();
+        if (process_->state() != QProcess::NotRunning)
+        {
+            closingSession_ = true; process_->closeWriteChannel();
+            if (!process_->waitForFinished(6500)) { process_->kill(); process_->waitForFinished(1000); }
+        }
     }
     void applyState(const QJsonObject& state)
     {
         if (state.contains("error")) {
             if (state.value("connectionError").toBool()) connectionFailed();
-            else status_->setText(state.value("error").toString());
+            else { settingsPending_ = false; settingsExpected_ = {}; status_->setText(state.value("error").toString()); }
             return;
         }
         connectionLost_ = false; check_->setText("Check now");
-        QSignalBlocker modeBlock(mode_), channelBlock(channel_), restartBlock(restart_);
-        mode_->setCurrentIndex(mode_->findData(state.value("mode").toString()));
-        channel_->setCurrentIndex(channel_->findData(state.value("channel").toString()));
-        restart_->setChecked(state.value("allowPlaybackRestart").toBool()); restart_->setVisible(mode_->currentData() == "auto");
+        const bool preferencesSaved = state.value("status").toString().contains("preferences saved", Qt::CaseInsensitive);
+        const bool matchesPendingSettings = preferencesSaved &&
+            state.value("mode").toString() == settingsExpected_.value("mode").toString() &&
+            state.value("channel").toString() == settingsExpected_.value("channel").toString() &&
+            state.value("allowPlaybackRestart").toBool() == settingsExpected_.value("allowPlaybackRestart").toBool();
+        if (settingsPending_ && matchesPendingSettings) { settingsPending_ = false; settingsExpected_ = {}; }
+        if (!settingsPending_)
+        {
+            QSignalBlocker modeBlock(mode_), channelBlock(channel_), restartBlock(restart_);
+            mode_->setCurrentIndex(mode_->findData(state.value("mode").toString()));
+            channel_->setCurrentIndex(channel_->findData(state.value("channel").toString()));
+            restart_->setChecked(state.value("allowPlaybackRestart").toBool()); restart_->setVisible(mode_->currentData() == "auto");
+        }
         identity_->setText(QString("%1 · %2\n%3").arg(state.value("flavor").toString() == "config" ? "VideoProcessor Config only" : "VideoProcessor and Config", state.value("version").toString(), root_));
-        status_->setText(state.value("status").toString());
+        status_->setText(settingsPending_ && preferencesSaved ? "Saving update preferences…" : state.value("status").toString());
         const auto text = state.value("notes").toString(); if (notes_->toPlainText() != text) notes_->setPlainText(text);
         notes_->setVisible(!text.isEmpty());
         progress_->setValue(state.value("progress").toInt());
         progress_->setVisible(state.value("busy").toBool() && progress_->value() > 0);
-        setAvailable(!state.value("busy").toBool());
+        setActionAvailable(!state.value("busy").toBool() && !settingsPending_);
+        setSettingsAvailable(!state.value("busy").toBool());
         download_->setEnabled(state.value("canDownload").toBool()); install_->setEnabled(state.value("canInstall").toBool()); skip_->setEnabled(state.value("canSkip").toBool());
     }
 protected:
@@ -124,52 +186,162 @@ protected:
     {
         QWidget::showEvent(event);
         if (!connected_) return;
-        if (!QFileInfo::exists(helper_)) { status_->setText("This copy does not include the updater. Install a current full or Config-only package."); return; }
-        startHelper(); poll_.start();
+        if (!QFileInfo::exists(helper_)) { setAvailable(false); status_->setText("This copy does not include the updater. Install a current full or Config-only package."); return; }
+        reconnect_.stop(); startHelper(); startControlSession(); poll_.start();
         QTimer::singleShot(500, this, [this] { if (isVisible()) request("state"); });
     }
     void hideEvent(QHideEvent* event) override
     {
-        poll_.stop();
-        if (serviceActive_) QProcess::startDetached(helper_, {"--root", root_, "--control", "{\"command\":\"detach\"}"}, root_);
-        serviceActive_ = false; QWidget::hideEvent(event);
+        poll_.stop(); reconnect_.stop(); restartClock_.invalidate();
+        closeSessionInput();
+        QWidget::hideEvent(event);
     }
 
 private:
     void startHelper()
     {
         if (!connected_ || !QFileInfo::exists(helper_)) return;
-        if (restartClock_.isValid() && restartClock_.elapsed() < 10000) return;
+        if (restartClock_.isValid() && restartClock_.elapsed() < 1000) return;
         restartClock_.start();
         serviceActive_ = QProcess::startDetached(helper_, {"--root", root_, "--service"}, root_);
     }
-    void connectionFailed()
+    void startControlSession()
     {
+        if (!connected_ || !QFileInfo::exists(helper_)) return;
+        if (process_->state() != QProcess::NotRunning)
+        {
+            if (closingSession_) restartSessionAfterExit_ = true;
+            return;
+        }
+        closingSession_ = false; sessionReady_ = false; awaiting_ = false;
+        responseBuffer_.clear(); finalServerError_ = false; ++sessionGeneration_;
+        process_->start(helper_, {"--root", root_, "--control-session"});
+    }
+    void closeSessionInput()
+    {
+        if (process_->state() == QProcess::NotRunning || closingSession_) return;
+        closingSession_ = true;
+        const int generation = sessionGeneration_;
+        process_->closeWriteChannel();
+        QTimer::singleShot(8000, this, [this, generation] {
+            if (closingSession_ && generation == sessionGeneration_ && process_->state() != QProcess::NotRunning) process_->kill();
+        });
+    }
+    void connectionFailed(const QString& reason = {})
+    {
+        const bool wasLost = connectionLost_;
+        status_->setProperty("updaterLastFailure", reason);
         connectionLost_ = true; pending_ = {}; // Never replay a possibly completed install or preference change.
-        status_->setText("Connection to the updater was interrupted. Reconnecting…");
+        settingsPending_ = false; settingsExpected_ = {};
+        status_->setText(reason.isEmpty() ? "Connection to the updater was interrupted. Reconnecting…" :
+            "Connection to the updater was interrupted. " + reason + " Reconnecting…");
         setAvailable(false); check_->setText("Reconnect"); check_->setEnabled(true);
-        if (isVisible()) startHelper();
+        if (isVisible())
+        {
+            if (!wasLost) startHelper();
+            if (!reconnect_.isActive()) reconnect_.start();
+        }
+    }
+    void consumeOutput()
+    {
+        responseBuffer_ += process_->readAllStandardOutput();
+        int newline = -1;
+        while ((newline = responseBuffer_.indexOf('\n')) >= 0)
+        {
+            const auto line = responseBuffer_.left(newline).trimmed();
+            responseBuffer_.remove(0, newline + 1);
+            status_->setProperty("updaterLastFrame", QString::fromUtf8(line));
+            if (line.size() > 1024 * 1024) { connectionFailed(); process_->kill(); return; }
+            const auto reply = QJsonDocument::fromJson(line);
+            if (!reply.isObject()) { connectionFailed(); continue; }
+            const auto object = reply.object();
+            finalServerError_ = object.contains("error") && !object.value("connectionError").toBool();
+            timeout_.stop(); awaiting_ = false;
+            if (object.value("connectionError").toBool())
+            {
+                connectionFailed(object.value("error").toString());
+                continue;
+            }
+            applyState(object);
+            if (!pending_.isEmpty()) { const auto command = pending_; pending_ = {}; sendRequest(command); }
+        }
+        if (responseBuffer_.size() > 1024 * 1024) { connectionFailed(); process_->kill(); }
     }
     void setAvailable(bool available) { for (auto* button : {check_, download_, install_, skip_}) button->setEnabled(available); mode_->setEnabled(available); channel_->setEnabled(available); restart_->setEnabled(available); }
+    void setActionAvailable(bool available) { for (auto* button : {check_, download_, install_, skip_}) button->setEnabled(available); }
+    void setSettingsAvailable(bool available) { mode_->setEnabled(available); channel_->setEnabled(available); restart_->setEnabled(available); }
     void request(const QString& command, QJsonObject object = {})
     {
         if (!connected_) return;
         object["command"] = command;
-        if (process_->state() != QProcess::NotRunning)
+        const bool settingChange = command == "settings";
+        if (closingSession_)
         {
-            if (command != "state") { pending_ = object; setAvailable(false); }
+            if (command != "state") { pending_ = object; if (settingChange) setActionAvailable(false); else setAvailable(false); }
+            restartSessionAfterExit_ = true;
             return;
         }
-        if (command != "state") setAvailable(false);
-        process_->start(helper_, {"--root", root_, "--control", QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact))}); timeout_.start();
+        if (process_->state() == QProcess::NotRunning)
+        {
+            pending_ = object;
+            if (settingChange) status_->setProperty("updaterLastPendingSettings", QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact)));
+            if (settingChange) setActionAvailable(false); else if (command != "state") setAvailable(false);
+            startControlSession();
+            return;
+        }
+        if (!sessionReady_)
+        {
+            if (command != "state") { pending_ = object; if (settingChange) status_->setProperty("updaterLastPendingSettings", QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact))); if (settingChange) setActionAvailable(false); else setAvailable(false); }
+            return;
+        }
+        if (awaiting_)
+        {
+            if (command != "state") { pending_ = object; if (settingChange) status_->setProperty("updaterLastPendingSettings", QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact))); if (settingChange) setActionAvailable(false); else setAvailable(false); }
+            return;
+        }
+        sendRequest(object);
     }
-    void saveSettings() { request("settings", {{"mode", mode_->currentData().toString()}, {"channel", channel_->currentData().toString()}, {"allowPlaybackRestart", restart_->isChecked()}}); }
+    void sendRequest(const QJsonObject& object)
+    {
+        if (!sessionReady_ || process_->state() == QProcess::NotRunning) return;
+        QByteArray bytes = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        if (bytes.size() > 8192) { status_->setText("Update request is too large."); return; }
+        status_->setProperty("updaterLastSent", QString::fromUtf8(bytes));
+        bytes.append('\n');
+        awaiting_ = true;
+        if (object.value("command").toString() == "settings") setActionAvailable(false);
+        else if (object.value("command").toString() != "state") setAvailable(false);
+        if (process_->write(bytes) != bytes.size())
+        {
+            awaiting_ = false; pending_ = {}; connectionFailed(); return;
+        }
+        status_->setProperty("updaterBytesToWriteAfterSend", process_->bytesToWrite());
+        timeout_.start();
+    }
+    void saveSettings()
+    {
+        settingsExpected_ = {{"mode", mode_->currentData().toString()}, {"channel", channel_->currentData().toString()},
+            {"allowPlaybackRestart", restart_->isChecked()}};
+        status_->setProperty("updaterLastSettingsRequested", QString::fromUtf8(QJsonDocument(settingsExpected_).toJson(QJsonDocument::Compact)));
+        settingsPending_ = true;
+        status_->setText("Saving update preferences…");
+        request("settings", settingsExpected_);
+    }
     QString root_, helper_;
     bool connected_;
     bool serviceActive_ = false;
     bool connectionLost_ = false;
+    bool sessionReady_ = false;
+    bool awaiting_ = false;
+    bool closingSession_ = false;
+    bool restartSessionAfterExit_ = false;
+    bool finalServerError_ = false;
+    bool settingsPending_ = false;
+    int sessionGeneration_ = 0;
+    QByteArray responseBuffer_;
     QElapsedTimer restartClock_;
     QJsonObject pending_;
+    QJsonObject settingsExpected_;
     QLabel *identity_, *status_;
     QComboBox *mode_, *channel_;
     QCheckBox* restart_;
@@ -177,5 +349,5 @@ private:
     QProgressBar* progress_;
     QPushButton *check_, *download_, *install_, *skip_;
     QProcess* process_;
-    QTimer poll_, timeout_;
+    QTimer poll_, timeout_, reconnect_;
 };

@@ -1,5 +1,6 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root=Split-Path -Parent $PSScriptRoot
 $fixture=Join-Path $root ('artifacts\portable-config-tests-'+[guid]::NewGuid().ToString('N'))

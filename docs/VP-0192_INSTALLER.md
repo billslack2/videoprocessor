@@ -52,8 +52,12 @@ is needed, so setup does not edit or back up configuration.
 
 The installed application contains its runtime dependencies, default shaders,
 the configuration HTML/NLS PDF user guides, and required licenses/provenance.
-The repair helper runs only from setup's private temporary directory, which
-Inno removes on exit. No redistributable installer is embedded or executed. The application folder receives no
+The x64 optimized .NET Framework 4.0 C# install-support helper is compiled as
+part of the release build. Its SHA-256 is recorded in the build receipt and
+package manifest. Inno extracts it to setup's private temporary directory,
+launches it hidden for transaction checks and recovery, then removes it on
+exit. Customer setup does not launch `powershell.exe` or use an execution-policy
+bypass. No redistributable installer is embedded or executed. The application folder receives no
 prerequisites or setup directory, ZIP setup instructions, development/story
 notes, release-layout docs, portable release inventory, or duplicate cfg.example.
 
@@ -119,6 +123,8 @@ For a release, use a clean checkout of the selected source commit:
 ~~~powershell
 .\tools\build_installer.ps1 -CoreVersion '1.3.005-beta' -VcRedistPath 'C:\path\vc_redist.x64.exe' -IsccPath 'C:\path\ISCC.exe' -PortableZip
 .\tools\test_installer_support.ps1
+.\tools\test_installer_lifecycle_fixture.ps1 -IsccPath 'C:\path\ISCC.exe'
+.\tools\test_portable_update.ps1 -IsccPath 'C:\path\ISCC.exe'
 .\tools\test_installer_identity.ps1
 .\tools\test_runtime_packaging.ps1 -VcRedistPath 'C:\path\vc_redist.x64.exe'
 ~~~
@@ -190,19 +196,24 @@ Developer-machine or helper-fixture success does not qualify clean-machine runti
 | Interruption / disk or hash failure | Backup recovered; complete old or selected payload |
 | Uninstall / reinstall | Operator data retained; private runtime removed/reinstalled; usable config |
 
-For automated lifecycle checks on an account without an existing VP installer
-registration (the test creates and removes a disposable registered installation):
+The support test compiles and invokes the C# helper as a black box. Inno fixture
+tests compile QA installers with fixed, isolated product IDs; they refuse to
+run when those exact QA IDs are already registered. They do not use or remove
+the production product IDs. Run tests in a disposable Windows account when
+possible, and inspect fixture logs before cleanup if a test is interrupted.
 
 ~~~powershell
-.\tools\test_installer_e2e.ps1 -InstallerPath '<build-B-Setup.exe>' -PayloadRoot '.\artifacts\release\VideoProcessor' -PreviousInstallerPath '<build-A-Setup.exe>' -PreviousManifestPath '<saved-build-A-INSTALL-MANIFEST.json>'
-.\tools\test_installer_zip_adoption.ps1 -InstallerPath '<build-B-Setup.exe>' -PortableRoot '<previous-portable-tree>' -PayloadRoot '.\artifacts\release\VideoProcessor'
-.\tools\test_installer_failure.ps1 -PayloadRoot '.\artifacts\release\VideoProcessor' -IsccPath '<ISCC.exe>'
+.\tools\test_installer_e2e.ps1 -PayloadRoot '.\artifacts\release\VideoProcessor' -IsccPath 'C:\path\ISCC.exe'
+.\tools\test_installer_e2e.ps1 -PayloadRoot '<build-B-payload>' -PreviousPayloadRoot '<build-A-payload>' -PreviousManifestPath '<saved-build-A-INSTALL-MANIFEST.json>' -IsccPath 'C:\path\ISCC.exe'
+.\tools\test_installer_zip_adoption.ps1 -PortableRoot '<previous-portable-tree>' -PayloadRoot '.\artifacts\release\VideoProcessor' -IsccPath 'C:\path\ISCC.exe'
+.\tools\test_installer_failure.ps1 -PayloadRoot '.\artifacts\release\VideoProcessor' -IsccPath 'C:\path\ISCC.exe'
 ~~~
 
-The optional previous-build inputs exercise A -> B -> B -> A at one core version.
-The failure test builds an intentionally invalid QA-only executable. Never
-distribute anything named DO-NOT-DISTRIBUTE. Tests refuse an existing registered
-installation and keep their evidence under artifacts.
+The optional previous-payload inputs exercise A -> B -> B -> A at one core version.
+The lifecycle fixture separately exercises fresh A, A -> B, a corrupt-hash
+rollback, uninstall and reinstall using tiny payloads. The failure test builds
+an intentionally invalid QA-only executable. Never distribute anything named
+DO-NOT-DISTRIBUTE. Tests keep evidence under `artifacts`.
 
 Record OS builds, privilege level, runtime versions, installer hashes and logs.
 Missing clean-machine or interactive coverage remains an acceptance gap.
