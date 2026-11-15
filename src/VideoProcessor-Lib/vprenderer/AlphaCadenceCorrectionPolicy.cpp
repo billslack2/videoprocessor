@@ -114,6 +114,7 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	{
 		m_stableSamples = 0;
 		m_plannedFrames = 0;
+		m_surplusFrames = 0;
 		m_verificationPending = false;
 		m_lastVerificationValid = false;
 		decision.phaseFrames = m_phaseFrames;
