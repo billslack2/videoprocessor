@@ -8,6 +8,15 @@ In Progress
 for VP-0213. Investigation/implementation of shared subtitle behavior is not
 part of VP-0213; no Classic/reconstruction policy change is made by that repair.
 
+## Ben-Hur flashing incident — 2026-11-15
+
+The user reports flashing subtitles across all selected alignments on ultra-wide Ben-Hur (approximately 2.76:1), with text near the picture/bar boundary. They request a small measured correction and no re-architecture. Treat the location as a hypothesis until confirmed in pixels; retain accurate source-derived picture bounds and real-time current-frame presentation.
+
+The user captured `C:/Videoprocessor/vp/logs/analysis-20261115-154925-19564-1`: 12,783 metadata records and 64 native decoded-DV frames, with source-identity gaps. Session reports no write failures; lifetime drop counters are cumulative, not capture-specific. Selected live profile at inspection: Reconstruction, Scope viewport and zoom; this is not proof of every setting throughout the capture. Runtime exe SHA-256 `1A48752877BD850A5348FB5014338F50FE417CB1DEED30C8B62CC342F8830E2B`; renderer DLL `126B6C07A392AAC74514916B61CC43A99E267E4EFACA5F8B00F297E21F6A567F`. Install manifest is older and does not establish current runtime source identity.
+
+For source 2149 (accepted 2002), the worker detects text at 1306,1926–2526,2038, but the subtitle output reports no line. The log shows `context_mask=0x500`, `pixels_compared=0`, and output loss; accepted 2003 reacquires the same bounds after 41.7 ms. The subtitle bounding rectangle's luma samples in captured sources 2148, 2149 and 2150 are byte-identical, though the full frames differ. The mask indicates missing/present top edge and a top-boundary difference; it does not prove why edge evidence changed. Another incident at accepted 1998 shows current-local cue proof succeeded but `move_valid=0` and visible output was lost, so fixing tracker acceptance alone may not resolve all flashes. Avoid treating pending analysis as absence or old picture pixels as current proof.
+
+Investigation worktree `E:/codex/videoprocessor/benhur-subtitle-flicker-20261115`, branch `codex/benhur-subtitle-flicker-20261115`, starts at freshly fetched current beta `a841a405e490e5008ee74c0062bb8ec0189a2630`. No code change, build, deployment, or user acceptance yet. Reproduce the exact ordered native incident against beta, trace both acceptance and composition, then test the smallest safe change against current pixels, cue changes, missing/contradictory boundaries, UI overlays and real-time cadence. Do not claim the whole capture's undetected frames are flicker without inspecting source pixels.
 ## Focused backing-sliver dropout — 2026-10-27
 
 User clarifies that AR and reconstructed subtitles remain stable; only the small
