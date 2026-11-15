@@ -4,6 +4,9 @@
 
 Review
 
+2026-11-15: PR #244 merged into v2.0.5-beta-aspect-ratio at a841a405.
+Review remains open for live scope-screen acceptance.
+
 2026-11-15: Rebased PR #244 onto the default v2.0.5-beta-aspect-ratio at
 974550da. Deployed x64 Release commit 61a5cd65 to C:\Videoprocessor\vp for
 user testing. The host, both renderer variants, Config, and updater match the
