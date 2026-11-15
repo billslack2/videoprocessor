@@ -19,6 +19,8 @@
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <mutex>
+#include <string>
 #include <thread>
 #include <array>
 #include <cstdint>
@@ -34,6 +36,24 @@ namespace Tests
         using Formatter = CRGBDolbyVisionTunnelFormatter;
 
         void __cdecl TunnelRendererLog(const char*) {}
+        std::mutex fallbackLogMutex;
+        std::string fallbackLog;
+        void __cdecl CaptureFallbackLog(const char* message)
+        {
+            std::lock_guard<std::mutex> guard(fallbackLogMutex);
+            fallbackLog += message;
+            fallbackLog += '\n';
+        }
+        void ClearFallbackLog()
+        {
+            std::lock_guard<std::mutex> guard(fallbackLogMutex);
+            fallbackLog.clear();
+        }
+        bool FallbackLogContains(const char* expected)
+        {
+            std::lock_guard<std::mutex> guard(fallbackLogMutex);
+            return fallbackLog.find(expected) != std::string::npos;
+        }
         struct TunnelRendererCallback : IRendererCallback
         {
             std::atomic<RendererState> state{ RENDERSTATE_UNKNOWN };
@@ -317,6 +337,100 @@ namespace Tests
         }
 
 
+        TEST_METHOD(RealRendererTunnelFallbackUsesSdrContractAndReturnsToDolby)
+        {
+            HMODULE module = nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&TunnelRendererLog), &module) != FALSE);
+            wchar_t modulePath[MAX_PATH] = {};
+            GetModuleFileNameW(module, modulePath, MAX_PATH);
+            std::wstring path(modulePath);
+            path.resize(path.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            path += L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
+#else
+            path += L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+#endif
+            HMODULE plugin = LoadLibraryExW(path.c_str(), nullptr,
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct PluginCleanup { HMODULE plugin; ~PluginCleanup(){ FreeLibrary(plugin); } } pluginCleanup{plugin};
+            const auto version = reinterpret_cast<VideoProcessorLibplaceboGetApiVersionFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_VERSION_EXPORT));
+            const auto create = reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy = reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_DESTROY_EXPORT));
+            Assert::IsTrue(version && create && destroy);
+            Assert::AreEqual(VP_LIBPLACEBO_PLUGIN_API_VERSION, version());
+
+            for (const char* inputTransfer : { "auto", "2.2" })
+            {
+                char temporary[MAX_PATH] = {}, configPath[MAX_PATH] = {};
+                Assert::IsTrue(GetTempPathA(MAX_PATH, temporary) != 0);
+                Assert::IsTrue(GetTempFileNameA(temporary, "dvs", 0, configPath) != 0);
+                std::ofstream(configPath) << "[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                    "[vprenderer]\nquality: fast\nsdr_adjust_gamma: on\nsdr_input_transfer: " << inputTransfer << "\n";
+                TunnelRendererCallback callback;
+                BorrowedTunnelBuffer buffer;
+                SenderPicture sdr(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+                SenderPicture dolby(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+                SenderPicture eos(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+                sdr.state->eotf = EOTF::PQ; sdr.state->colorspace = ColorSpace::BT_2020;
+                sdr.state->tunnelSdrRgbRange = TunnelSdrRgbRange::Limited;
+                dolby.Embed(Packetize(DmBody(), 3, 3));
+                eos.Embed(Packetize({}, 3, 3, true, true));
+                struct Cleanup
+                {
+                    HWND window; IVideoRenderer* renderer; VideoProcessorLibplaceboDestroyRendererFn destroy;
+                    const char* config;
+                    ~Cleanup(){ if(renderer){ renderer->Stop(); destroy(renderer); }
+                        if(window) DestroyWindow(window); DeleteFileA(config); }
+                } cleanup{CreateWindowExW(0, L"STATIC", L"DV fallback fixture", WS_POPUP,
+                    0, 0, 320, 180, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr), nullptr, destroy, configPath};
+                Assert::IsNotNull(cleanup.window);
+                ClearFallbackLog();
+                cleanup.renderer = create(&callback, 1, cleanup.window, nullptr, false, 1,
+                    VideoConversionOverride::VIDEOCONVERSION_NONE, configPath, CaptureFallbackLog);
+                Assert::IsNotNull(cleanup.renderer);
+                Assert::IsTrue(cleanup.renderer->OnVideoState(sdr.state));
+                cleanup.renderer->Build(); cleanup.renderer->Start();
+                uint64_t sequence = 1;
+                auto deliverUntil = [&](SenderPicture& picture, const char* expected) {
+                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+                    while (std::chrono::steady_clock::now() < deadline && callback.state != RENDERSTATE_FAILED)
+                    {
+                        MSG message;
+                        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
+                        { TranslateMessage(&message); DispatchMessageW(&message); }
+                        if (callback.state == RENDERSTATE_RENDERING)
+                        {
+                            VideoFrame frame(picture.input.data(), sequence++, 0, &buffer);
+                            cleanup.renderer->OnVideoFrame(frame);
+                            if (FallbackLogContains(expected)) return true;
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                    }
+                    return false;
+                };
+                Assert::IsTrue(deliverUntil(sdr, "LUMINANCE_CONTRACT input_sdr=1"),
+                    L"A packetless RGB frame must render through the SDR luminance contract.");
+                Assert::IsTrue(FallbackLogContains(inputTransfer[0] == 'a' ?
+                    "source_declared=GAMMA24" : "source_declared=GAMMA22"),
+                    L"Fallback must use ordinary SDR's default transfer or the configured override.");
+                ClearFallbackLog();
+                Assert::IsTrue(deliverUntil(dolby, "LUMINANCE_CONTRACT input_sdr=0"),
+                    L"A validated Dolby frame must return to the HDR contract.");
+                // Submit EOS once. The following packetless picture must return to SDR.
+                VideoFrame eosFrame(eos.input.data(), sequence++, 0, &buffer);
+                cleanup.renderer->OnVideoFrame(eosFrame);
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                ClearFallbackLog();
+                Assert::IsTrue(deliverUntil(sdr, "LUMINANCE_CONTRACT input_sdr=1"),
+                    L"A packetless frame after end-of-stream must return to the SDR contract.");
+            }
+        }
         TEST_METHOD(UnknownWireRangePermitsValidatedDvButNeverGuessesSdr)
         {
             SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
