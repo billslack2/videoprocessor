@@ -1,4 +1,5 @@
 # Public accepted values, including legacy compatibility spellings.
+# vprenderer.color.assume_p3_mastering defaults false; Dolby Vision L9 supports presets 0-8 and custom index 255. Malformed/unsupported L9 does not invalidate valid DM/L1 and suppresses P3 inference for that frame.
 general.fullscreen	true
 general.fullscreen	false
 general.windowed_fullscreen_mode	true
@@ -253,6 +254,8 @@ vprenderer.color.sdr_target_primaries	p3_d65
 vprenderer.color.sdr_target_primaries	bt2020
 vprenderer.color.report_bt2020_to_display	true
 vprenderer.color.report_bt2020_to_display	false
+vprenderer.color.assume_p3_mastering	true
+vprenderer.color.assume_p3_mastering	false
 vprenderer.color.hdr_tone_map_target_gamma	bt1886
 vprenderer.color.hdr_tone_map_target_gamma	srgb
 vprenderer.color.hdr_tone_map_target_gamma	1.8

@@ -96,6 +96,29 @@ using Formatter = CRGBDolbyVisionTunnelFormatter;
             return dm;
         }
 
+        void AppendExtension(std::vector<uint8_t>& dm, uint8_t level,
+            const std::vector<uint8_t>& payload)
+        {
+            ++dm[70];
+            const size_t at = dm.size();
+            dm.resize(at + 5 + payload.size());
+            Put32(dm.data() + at, static_cast<uint32_t>(payload.size()));
+            dm[at + 4] = level;
+            std::copy(payload.begin(), payload.end(), dm.begin() + at + 5);
+        }
+
+        std::vector<uint8_t> WithLevel9(std::vector<uint8_t> dm,
+            uint8_t index, const std::array<uint16_t, 8>* custom = nullptr)
+        {
+            std::vector<uint8_t> payload(custom ? 17 : 1, 0);
+            payload[0] = index;
+            if (custom)
+                for (size_t i = 0; i < custom->size(); ++i)
+                    Put16(payload, 1 + i * 2, (*custom)[i]);
+            AppendExtension(dm, 9, payload);
+            return dm;
+        }
+
         std::vector<Packet> Packetize(const std::vector<uint8_t>& body,
             uint8_t current = 3, uint8_t affected = 3,
             bool noMetadata = false, bool eos = false)

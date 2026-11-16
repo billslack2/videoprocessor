@@ -65,6 +65,17 @@ struct DolbyVisionTunnelFrameMetadata
     uint16_t sceneMinPq = 0;
     uint16_t sceneMaxPq = 0;
     uint16_t sceneAvgPq = 0;
+    // Extension level 9: source (mastering) primaries. Preset indexes 0-8
+    // are discrete choices; 255 carries custom coordinates.
+    bool hasSourcePrimaries = false;
+    // An L9 block was present but malformed or unsupported. Keep this distinct
+    // from absence so optional P3 inference cannot override ambiguous metadata.
+    bool sourcePrimariesMalformed = false;
+    uint8_t sourcePrimaryIndex = 0;
+    // Present only for custom index 255, in the encoded 1/32767 scale and
+    // red/green/blue/white xy order.
+    bool hasCustomSourcePrimaries = false;
+    uint16_t sourcePrimaryCoordinates[8] = {};
 };
 
 /**

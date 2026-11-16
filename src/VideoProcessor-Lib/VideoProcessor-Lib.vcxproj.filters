@@ -136,6 +136,9 @@
     <ClInclude Include="vprenderer\\LibplaceboRendererPluginApi.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
+    <ClInclude Include="vprenderer\\SourceMasteringPrimariesPolicy.h">
+      <Filter>Header Files\libplacebo</Filter>
+    </ClInclude>
     <ClInclude Include="framework.h">
       <Filter>Header Files</Filter>
     </ClInclude>

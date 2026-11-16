@@ -16,6 +16,7 @@ inline bool DolbyVisionTunnelCanEnable(bool requested, bool compatibleRenderer,
     const VideoState& capture)
 {
     return requested && compatibleRenderer && capture.valid &&
+        !capture.exactSignal &&
         capture.eotf == EOTF::SDR && capture.rgbTunnelBytesPreserved &&
         DolbyVisionTunnelEncodingSupported(capture.videoFrameEncoding);
 }

@@ -166,10 +166,23 @@ namespace
 				return false;
 			const uint32_t payloadLength = ReadBigEndian32(dm + extension);
 			const uint8_t level = dm[extension + 4];
-			if (payloadLength > length - extension - 5)
-				return false;
-			const size_t end = extension + 5 + payloadLength;
 			extensionLevels[level] = true;
+			if (payloadLength > length - extension - 5)
+			{
+				if (level != 9)
+					return false;
+				// The L9 header is intact but its optional payload overruns the DM.
+				// Keep core DM and extensions already validated (including L1),
+				// discard L9 and stop because no later boundary is trustworthy.
+				parsed.hasSourcePrimaries = false;
+				parsed.hasCustomSourcePrimaries = false;
+				parsed.sourcePrimaryIndex = 0;
+				for (auto& coordinate : parsed.sourcePrimaryCoordinates)
+					coordinate = 0;
+				parsed.sourcePrimariesMalformed = true;
+				break;
+			}
+			const size_t end = extension + 5 + payloadLength;
 			if (level == 1)
 			{
 				if (payloadLength != 6)
@@ -183,6 +196,46 @@ namespace
 				parsed.sceneMinPq = sceneMin;
 				parsed.sceneMaxPq = sceneMax;
 				parsed.sceneAvgPq = sceneAvg;
+			}
+			else if (level == 9)
+			{
+				// L9 is optional source-color metadata. A bad L9 must not reject
+				// otherwise valid per-frame DM or L1 scene values. If any L9 in
+				// this body is malformed, discard all L9 choices to avoid applying
+				// ambiguous or stale primaries.
+				bool validL9 = payloadLength == 1 || payloadLength == 17;
+				uint8_t index = payloadLength ? dm[extension + 5] : 0;
+				validL9 = validL9 &&
+					((payloadLength == 1 && index <= 8) ||
+					 (payloadLength == 17 && index == 255));
+				std::array<uint16_t, 8> coordinates{};
+				if (validL9 && payloadLength == 17)
+				{
+					for (size_t coordinate = 0; coordinate < coordinates.size(); ++coordinate)
+					{
+						coordinates[coordinate] = ReadUnsigned16(
+							dm + extension + 6 + coordinate * 2);
+						if (coordinates[coordinate] == 0)
+							validL9 = false;
+					}
+				}
+				if (!validL9)
+				{
+					parsed.hasSourcePrimaries = false;
+					parsed.hasCustomSourcePrimaries = false;
+					parsed.sourcePrimaryIndex = 0;
+					for (auto& coordinate : parsed.sourcePrimaryCoordinates)
+						coordinate = 0;
+					parsed.sourcePrimariesMalformed = true;
+				}
+				else if (!parsed.sourcePrimariesMalformed)
+				{
+					parsed.sourcePrimaryIndex = index;
+					parsed.hasSourcePrimaries = true;
+					parsed.hasCustomSourcePrimaries = payloadLength == 17;
+					for (size_t coordinate = 0; coordinate < coordinates.size(); ++coordinate)
+						parsed.sourcePrimaryCoordinates[coordinate] = coordinates[coordinate];
+				}
 			}
 			extension = end;
 		}
@@ -487,8 +540,14 @@ bool CRGBDolbyVisionTunnelFormatter::FormatVideoFrame(
 		{
 			if (extensionLevels[level] && !m_seenExtensionLevels[level])
 			{
-				DebugLog::Log("Dolby Vision RGB tunnel: extension L%zu %s",
-					level, level == 1 ? "scene PQ values applied" : "recognized in transport; not applied");
+				if (level == 9 && parsed.metadata.sourcePrimariesMalformed)
+					DebugLog::Log("Dolby Vision RGB tunnel: malformed/unsupported L9 ignored; valid DM retained");
+				else if (level == 9 && parsed.metadata.hasSourcePrimaries)
+					DebugLog::Log("Dolby Vision RGB tunnel: extension L9 source primaries index %u recognized; used only with assume_p3_mastering",
+						static_cast<unsigned>(parsed.metadata.sourcePrimaryIndex));
+				else
+					DebugLog::Log("Dolby Vision RGB tunnel: extension L%zu %s",
+						level, level == 1 ? "scene PQ values applied" : "recognized in transport; not applied");
 				m_seenExtensionLevels[level] = true;
 			}
 		}

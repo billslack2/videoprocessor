@@ -10,6 +10,8 @@
 #include <vprenderer/QueueNativeContinuity.h>
 #include <vprenderer/ViewportIntentMailbox.h>
 #include <vprenderer/NvidiaBt2020Reporter.h>
+#include <vprenderer/SourceMasteringPrimariesPolicy.h>
+#include <cstring>
 
 #include <ConfigFile.h>
 #include <DisplayRefreshRatePolicy.h>
@@ -803,6 +805,44 @@ namespace
 		return result;
 	}
 
+	// Apply the source metadata decision to libplacebo. The pure policy is
+	// shared with tests; it changes primaries only and leaves luminance alone.
+	const char* ApplyAssumedMasteringPrimaries(const VideoState& state,
+		const DolbyVisionTunnelFrameMetadata& dolby, bool tunnelSdrFallback,
+		bool assumeP3, struct pl_color_space& color)
+	{
+		const auto decision = SourceMasteringPrimariesPolicy::Resolve(
+			state, dolby, tunnelSdrFallback, assumeP3);
+		switch (decision.selection)
+		{
+		case SourceMasteringPrimariesPolicy::Selection::DisplayP3D65:
+			color.hdr.prim = *pl_raw_primaries_get(PL_COLOR_PRIM_DISPLAY_P3);
+			break;
+		case SourceMasteringPrimariesPolicy::Selection::Bt709:
+			color.hdr.prim = *pl_raw_primaries_get(PL_COLOR_PRIM_BT_709);
+			break;
+		case SourceMasteringPrimariesPolicy::Selection::Bt2020:
+			color.hdr.prim = *pl_raw_primaries_get(PL_COLOR_PRIM_BT_2020);
+			break;
+		case SourceMasteringPrimariesPolicy::Selection::Cie:
+		{
+			struct pl_raw_primaries candidate{};
+			SetCiePoint(candidate.red, decision.cie[0], decision.cie[1]);
+			SetCiePoint(candidate.green, decision.cie[2], decision.cie[3]);
+			SetCiePoint(candidate.blue, decision.cie[4], decision.cie[5]);
+			SetCiePoint(candidate.white, decision.cie[6], decision.cie[7]);
+			if (pl_primaries_valid(&candidate))
+				color.hdr.prim = candidate;
+			else
+				return "Invalid source primaries ignored; current primaries retained";
+			break;
+		}
+		case SourceMasteringPrimariesPolicy::Selection::Keep:
+			break;
+		}
+		return decision.outcome;
+	}
+
 	bool IsNativeRgbUpload(VideoFrameEncoding encoding,
 		VideoConversionOverride videoConversionOverride, bool dolbyVisionTunnel)
 	{
@@ -982,6 +1022,10 @@ namespace
         std::string configurationPath;
 		std::string sdrTargetPrimaries = "rec709";
 		bool reportBt2020ToDisplay = false;
+		// Colour profile: HDR10 without mastering primaries and Dolby Vision
+		// without L9 are treated as P3-D65 masters.
+		bool assumeP3Mastering = false;
+		std::string assumeP3MasteringRule; // the profile rule that set it; log only
 
 		std::string sdrInputTransfer = "2.4";
 		// SDR gamma conversion is opt-in and independent of HDR tone mapping.
@@ -1112,7 +1156,7 @@ namespace
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
 			<< settings.outputTransportGamma << '|' << settings.outputGamma << '|'
 			<< settings.sdrTargetPrimaries << '|'
-			<< settings.reportBt2020ToDisplay << '|' << settings.hdrToneMapTargetGamma << '|' << settings.sdrLutInputGamma << '|' << settings.sdrInputTransfer << '|'
+			<< settings.reportBt2020ToDisplay << '|' << settings.assumeP3Mastering << '|' << settings.hdrToneMapTargetGamma << '|' << settings.sdrLutInputGamma << '|' << settings.sdrInputTransfer << '|'
 			<< settings.sdrAdjustGamma << '|'
 			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
             ;
@@ -2036,6 +2080,13 @@ namespace
 			config.TryGetString(rule.section, "report_bt2020_to_display", raw))
 		{
 			DebugLog::Log("display rule '%s': invalid report_bt2020_to_display value '%s'; retaining base setting", rule.name.c_str(), raw.c_str());
+		}
+		if (config.TryGetBool(rule.section, "assume_p3_mastering",
+			settings.assumeP3Mastering))
+			settings.assumeP3MasteringRule = rule.name;
+		else if (config.TryGetString(rule.section, "assume_p3_mastering", raw))
+		{
+			DebugLog::Log("display rule '%s': invalid assume_p3_mastering value '%s'; retaining base setting", rule.name.c_str(), raw.c_str());
 		}
 		readChoice("sdr_lut_input_gamma", settings.sdrLutInputGamma,
             { "passthrough", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
@@ -4780,6 +4831,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool sourceLuminanceObserved = false;
 	uint64_t sourceLuminanceQueueGeneration = 0;
 	uint64_t nextSourceLuminanceLogTick = 0;
+	std::string lastSourcePrimariesOutcome; // render thread; log on change only
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
     TemporalRenderer temporalRenderer;
@@ -8967,6 +9019,8 @@ struct LibplaceboVideoRenderer::Impl
 		changed(current.sdrTargetPrimaries != next.sdrTargetPrimaries ||
 			current.reportBt2020ToDisplay != next.reportBt2020ToDisplay,
 			"sdr_display_target");
+		changed(current.assumeP3Mastering != next.assumeP3Mastering,
+			"assume_p3_mastering");
 		changed(current.outputDiagnostics != next.outputDiagnostics,
 			"output_diagnostics");
 		changed(current.calibrationLutEnabled != next.calibrationLutEnabled ||
@@ -12894,6 +12948,9 @@ struct LibplaceboVideoRenderer::Impl
 				convertedPayload->dolby.rgbBitAlignment == 2);
 		const bool tunnelActive =
 			state.dolbyVisionTunnel && !tunnelRgbFallback;
+		// A tunnel frame without a valid packet is the SDR picture it carries,
+		// so it follows every SDR rule below.
+		const bool sdrInput = state.eotf == EOTF::SDR || tunnelRgbFallback;
 		if (tunnelActive && (!convertedPayload ||
 			!convertedPayload->dolby.valid || convertedPayload->dolby.requiresBlackFrame))
 		{
@@ -14019,7 +14076,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			image.color = {};
 			image.color.primaries = PL_COLOR_PRIM_BT_709;
-			image.color.transfer = PL_COLOR_TRC_BT_1886;
+			image.color.transfer = TranslateTransfer(EOTF::SDR);
 		}
 		if (state.dolbyVisionTunnel && !tunnelRgbFallback)
 		{
@@ -14085,13 +14142,32 @@ struct LibplaceboVideoRenderer::Impl
 				}
 			}
 		}
-		if (state.eotf == EOTF::SDR &&
+		if (sdrInput &&
 			sdrInputTransfer != PL_COLOR_TRC_UNKNOWN)
 		{
 			// This is an explicit interpretation override used for controlled
 			// comparison with other renderers. It changes how captured SDR code
 			// values are decoded, independently of the output transfer curve.
 			image.color.transfer = sdrInputTransfer;
+		}
+		{
+			// After the Dolby Vision luminance step, with this state's Colour
+			// profile in force: only the primaries can change here.
+			static const DolbyVisionTunnelFrameMetadata noDolby{};
+			const char* primariesOutcome = ApplyAssumedMasteringPrimaries(
+				state, state.dolbyVisionTunnel && !tunnelRgbFallback ?
+					convertedPayload->dolby : noDolby,
+				tunnelRgbFallback, activeSettings.assumeP3Mastering, image.color);
+			if (strcmp(primariesOutcome, lastSourcePrimariesOutcome.c_str()) != 0)
+			{
+				if (primariesOutcome[0] != '\0')
+					DebugLog::Log("Source mastering primaries: %s; assume_p3_mastering %s (colour profile '%s')",
+						primariesOutcome,
+						activeSettings.assumeP3Mastering ? "on" : "off",
+						activeSettings.assumeP3MasteringRule.empty() ? "not set" :
+							activeSettings.assumeP3MasteringRule.c_str());
+				lastSourcePrimariesOutcome = primariesOutcome;
+			}
 		}
 		const enum pl_color_transfer declaredSourceTransfer =
 			image.color.transfer;
@@ -14101,7 +14177,7 @@ struct LibplaceboVideoRenderer::Impl
         // Resolve the active LUT before interpreting SDR. Missing/disabled LUTs
         // always fall back to physical display encoding, never a stale LUT domain.
         const auto calibrationTransfer = LibplaceboOutput::ResolveCalibrationTransfers(
-            state.eotf == EOTF::SDR, actualOutput.safeToRender, displayLutParsed && displayLut,
+            sdrInput, actualOutput.safeToRender, displayLutParsed && displayLut,
             sdrAdjustGamma, LibplaceboOutput::ParseGamma(activeSettings.outputGamma),
             LibplaceboOutput::ParseGamma(activeSettings.hdrToneMapTargetGamma),
             ToSdrTransfer(declaredSourceTransfer), ToSdrTransfer(acceptedOutputTransfer),
@@ -14155,7 +14231,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		// SDR never inherits the HDR tone-map destination or its black level.
 		LibplaceboRenderParameters::ApplySourceLuminance(
-			state.eotf == EOTF::SDR, image.color);
+			sdrInput, image.color);
 		image.crop.x0 = 0.0f;
 		image.crop.y0 = 0.0f;
 		image.crop.x1 = static_cast<float>(width);
@@ -15431,7 +15507,7 @@ struct LibplaceboVideoRenderer::Impl
             baseTarget.color.transfer = renderTargetTransfer;
 		baseTarget.color.primaries = TargetPlPrimaries();
 		LibplaceboRenderParameters::ApplyTargetLuminance(
-			state.eotf == EOTF::SDR, static_cast<float>(sdrTargetNits),
+			sdrInput, static_cast<float>(sdrTargetNits),
 			static_cast<float>(sdrBlackNits), baseTarget.color);
 		std::ostringstream luminanceSignature;
 		luminanceSignature << static_cast<int>(state.eotf) << '|'
@@ -15446,7 +15522,7 @@ struct LibplaceboVideoRenderer::Impl
 			lastLuminanceSignature = luminanceSignature.str();
 			DebugLog::Log(
 				"LUMINANCE_CONTRACT input_sdr=%d source_transfer=%s source_luma=%.7g..%.2f source_effective_hdr=%d target_transfer=%s target_luma=%.7g..%.2f target_effective_hdr=%d hdr_destination=%.7g..%.2f format=%s dxgi=%s peak_eligible=%d",
-				state.eotf == EOTF::SDR ? 1 : 0,
+				sdrInput ? 1 : 0,
 				pl_color_transfer_name(image.color.transfer),
 				image.color.hdr.min_luma, image.color.hdr.max_luma,
 				pl_color_space_is_hdr(&image.color) ? 1 : 0,

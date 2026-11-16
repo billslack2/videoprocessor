@@ -8,6 +8,8 @@
 #include <VideoState.h>
 #include <CpuFeatures.h>
 #include <DolbyVisionTunnelInput.h>
+#include <CaptureVideoStatePolicy.h>
+#include <vprenderer/SourceMasteringPrimariesPolicy.h>
 #include <AnalysisFrame.h>
 #include <ActivePictureEvidence.h>
 #include <SubtitleBoxDetector.h>
@@ -19,6 +21,8 @@
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <mutex>
+#include <string>
 #include <thread>
 #include <array>
 #include <cstdint>
@@ -34,6 +38,24 @@ namespace Tests
         using Formatter = CRGBDolbyVisionTunnelFormatter;
 
         void __cdecl TunnelRendererLog(const char*) {}
+        std::mutex fallbackLogMutex;
+        std::string fallbackLog;
+        void __cdecl CaptureFallbackLog(const char* message)
+        {
+            std::lock_guard<std::mutex> guard(fallbackLogMutex);
+            fallbackLog += message;
+            fallbackLog += '\n';
+        }
+        void ClearFallbackLog()
+        {
+            std::lock_guard<std::mutex> guard(fallbackLogMutex);
+            fallbackLog.clear();
+        }
+        bool FallbackLogContains(const char* expected)
+        {
+            std::lock_guard<std::mutex> guard(fallbackLogMutex);
+            return fallbackLog.find(expected) != std::string::npos;
+        }
         struct TunnelRendererCallback : IRendererCallback
         {
             std::atomic<RendererState> state{ RENDERSTATE_UNKNOWN };
@@ -317,6 +339,100 @@ namespace Tests
         }
 
 
+        TEST_METHOD(RealRendererTunnelFallbackUsesSdrContractAndReturnsToDolby)
+        {
+            HMODULE module = nullptr;
+            Assert::IsTrue(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(&TunnelRendererLog), &module) != FALSE);
+            wchar_t modulePath[MAX_PATH] = {};
+            GetModuleFileNameW(module, modulePath, MAX_PATH);
+            std::wstring path(modulePath);
+            path.resize(path.find_last_of(L"\\/"));
+#ifdef VP_LIBPLACEBO_BETA
+            path += L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
+#else
+            path += L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+#endif
+            HMODULE plugin = LoadLibraryExW(path.c_str(), nullptr,
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+            Assert::IsNotNull(plugin);
+            struct PluginCleanup { HMODULE plugin; ~PluginCleanup(){ FreeLibrary(plugin); } } pluginCleanup{plugin};
+            const auto version = reinterpret_cast<VideoProcessorLibplaceboGetApiVersionFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_VERSION_EXPORT));
+            const auto create = reinterpret_cast<VideoProcessorLibplaceboCreateRendererFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_CREATE_EXPORT));
+            const auto destroy = reinterpret_cast<VideoProcessorLibplaceboDestroyRendererFn>(
+                GetProcAddress(plugin, VP_LIBPLACEBO_DESTROY_EXPORT));
+            Assert::IsTrue(version && create && destroy);
+            Assert::AreEqual(VP_LIBPLACEBO_PLUGIN_API_VERSION, version());
+
+            for (const char* inputTransfer : { "auto", "2.2" })
+            {
+                char temporary[MAX_PATH] = {}, configPath[MAX_PATH] = {};
+                Assert::IsTrue(GetTempPathA(MAX_PATH, temporary) != 0);
+                Assert::IsTrue(GetTempFileNameA(temporary, "dvs", 0, configPath) != 0);
+                std::ofstream(configPath) << "[general]\npersist_profile_selection: false\nswitch_refresh_rate: never\n"
+                    "[vprenderer]\nquality: fast\nsdr_adjust_gamma: on\nsdr_input_transfer: " << inputTransfer << "\n";
+                TunnelRendererCallback callback;
+                BorrowedTunnelBuffer buffer;
+                SenderPicture sdr(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+                SenderPicture dolby(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+                SenderPicture eos(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+                sdr.state->eotf = EOTF::PQ; sdr.state->colorspace = ColorSpace::BT_2020;
+                sdr.state->tunnelSdrRgbRange = TunnelSdrRgbRange::Limited;
+                dolby.Embed(Packetize(DmBody(), 3, 3));
+                eos.Embed(Packetize({}, 3, 3, true, true));
+                struct Cleanup
+                {
+                    HWND window; IVideoRenderer* renderer; VideoProcessorLibplaceboDestroyRendererFn destroy;
+                    const char* config;
+                    ~Cleanup(){ if(renderer){ renderer->Stop(); destroy(renderer); }
+                        if(window) DestroyWindow(window); DeleteFileA(config); }
+                } cleanup{CreateWindowExW(0, L"STATIC", L"DV fallback fixture", WS_POPUP,
+                    0, 0, 320, 180, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr), nullptr, destroy, configPath};
+                Assert::IsNotNull(cleanup.window);
+                ClearFallbackLog();
+                cleanup.renderer = create(&callback, 1, cleanup.window, nullptr, false, 1,
+                    VideoConversionOverride::VIDEOCONVERSION_NONE, configPath, CaptureFallbackLog);
+                Assert::IsNotNull(cleanup.renderer);
+                Assert::IsTrue(cleanup.renderer->OnVideoState(sdr.state));
+                cleanup.renderer->Build(); cleanup.renderer->Start();
+                uint64_t sequence = 1;
+                auto deliverUntil = [&](SenderPicture& picture, const char* expected) {
+                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+                    while (std::chrono::steady_clock::now() < deadline && callback.state != RENDERSTATE_FAILED)
+                    {
+                        MSG message;
+                        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
+                        { TranslateMessage(&message); DispatchMessageW(&message); }
+                        if (callback.state == RENDERSTATE_RENDERING)
+                        {
+                            VideoFrame frame(picture.input.data(), sequence++, 0, &buffer);
+                            cleanup.renderer->OnVideoFrame(frame);
+                            if (FallbackLogContains(expected)) return true;
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                    }
+                    return false;
+                };
+                Assert::IsTrue(deliverUntil(sdr, "LUMINANCE_CONTRACT input_sdr=1"),
+                    L"A packetless RGB frame must render through the SDR luminance contract.");
+                Assert::IsTrue(FallbackLogContains(inputTransfer[0] == 'a' ?
+                    "source_declared=GAMMA24" : "source_declared=GAMMA22"),
+                    L"Fallback must use ordinary SDR's default transfer or the configured override.");
+                ClearFallbackLog();
+                Assert::IsTrue(deliverUntil(dolby, "LUMINANCE_CONTRACT input_sdr=0"),
+                    L"A validated Dolby frame must return to the HDR contract.");
+                // Submit EOS once. The following packetless picture must return to SDR.
+                VideoFrame eosFrame(eos.input.data(), sequence++, 0, &buffer);
+                cleanup.renderer->OnVideoFrame(eosFrame);
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                ClearFallbackLog();
+                Assert::IsTrue(deliverUntil(sdr, "LUMINANCE_CONTRACT input_sdr=1"),
+                    L"A packetless frame after end-of-stream must return to the SDR contract.");
+            }
+        }
         TEST_METHOD(UnknownWireRangePermitsValidatedDvButNeverGuessesSdr)
         {
             SenderPicture picture(false, 130, 128, VideoFrameEncoding::ARGB_8BIT);
@@ -492,6 +608,140 @@ namespace Tests
                 Formatter formatter;
                 Assert::ExpectException<std::runtime_error>([&] { formatter.OnVideoState(state); });
             }
+        }
+
+        TEST_METHOD(LevelNineParsesPresetAndCustomSourcePrimaries)
+        {
+            for (uint8_t index = 0; index <= 8; ++index)
+            {
+                SenderPicture picture(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+                picture.Embed(Packetize(WithLevel9(DmBody(), index)));
+                Formatter formatter;
+                formatter.OnVideoState(picture.state);
+                const auto metadata = Deliver(formatter, picture, 1);
+                Assert::IsTrue(metadata.valid && metadata.hasSourcePrimaries);
+                Assert::AreEqual(static_cast<unsigned>(index),
+                    static_cast<unsigned>(metadata.sourcePrimaryIndex));
+                Assert::IsFalse(metadata.hasCustomSourcePrimaries);
+            }
+
+            const std::array<uint16_t, 8> custom = {
+                22282, 10485, 8683, 32768, 4915, 1966, 10240, 10780
+            };
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+            picture.Embed(Packetize(WithLevel9(DmBody(), 255, &custom)));
+            Formatter formatter;
+            formatter.OnVideoState(picture.state);
+            const auto metadata = Deliver(formatter, picture, 1);
+            Assert::IsTrue(metadata.valid && metadata.hasSourcePrimaries &&
+                metadata.hasCustomSourcePrimaries);
+            Assert::AreEqual(255U, static_cast<unsigned>(metadata.sourcePrimaryIndex));
+            for (size_t i = 0; i < custom.size(); ++i)
+                Assert::AreEqual(static_cast<unsigned>(custom[i]),
+                    static_cast<unsigned>(metadata.sourcePrimaryCoordinates[i]));
+        }
+
+        TEST_METHOD(LevelNineMalformedOptionalDataRetainsDmAndRecovers)
+        {
+            const std::array<uint16_t, 8> invalidCoordinates = {
+                22282, 10485, 8683, 22609, 4915, 1966, 0, 10780
+            };
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+            Formatter formatter;
+            formatter.OnVideoState(picture.state);
+
+            // Bad optional L9 cannot veto valid per-frame DM or L1 scene data.
+            picture.Embed(Packetize(WithLevel9(DmBody(), 255, &invalidCoordinates)));
+            std::vector<BYTE> converted;
+            const auto malformed = Deliver(formatter, picture, 1, &converted);
+            AssertExactSamples(picture, converted);
+            Assert::IsTrue(malformed.valid);
+            Assert::IsTrue(malformed.hasSceneMetadata);
+            Assert::AreEqual(3072U, static_cast<unsigned>(malformed.sceneMaxPq));
+            Assert::IsTrue(malformed.sourcePrimariesMalformed);
+            Assert::IsFalse(malformed.hasSourcePrimaries);
+            Assert::IsFalse(malformed.hasCustomSourcePrimaries);
+
+            // Optional metadata failure must not change the existing default-off
+            // primaries selection or trigger P3 inference when explicitly enabled.
+            VideoState state;
+            state.eotf = EOTF::PQ;
+            state.dolbyVisionTunnel = true;
+            state.hdrData = std::make_shared<HDRData>();
+            state.hdrData->primariesFilledByVp = true;
+            const auto off = SourceMasteringPrimariesPolicy::Resolve(
+                state, malformed, false, false);
+            const auto on = SourceMasteringPrimariesPolicy::Resolve(
+                state, malformed, false, true);
+            Assert::AreEqual(static_cast<int>(SourceMasteringPrimariesPolicy::Selection::Keep),
+                static_cast<int>(off.selection));
+            Assert::AreEqual(static_cast<int>(SourceMasteringPrimariesPolicy::Selection::Keep),
+                static_cast<int>(on.selection));
+
+            // A readable L9 header whose declared payload overruns the DM is
+            // also optional: retain validated core/L1 data and convert this
+            // exact current picture instead of rejecting the DM packet.
+            auto overrunBody = DmBody(2560);
+            const std::vector<uint8_t> shortL9 = { 255 };
+            AppendExtension(overrunBody, 9, shortL9);
+            const size_t overrunHeader = overrunBody.size() - shortL9.size() - 5;
+            Put32(overrunBody.data() + overrunHeader, 8);
+            picture.Embed(Packetize(overrunBody));
+            const auto overrun = Deliver(formatter, picture, 2, &converted);
+            AssertExactSamples(picture, converted);
+            Assert::IsTrue(overrun.valid && overrun.hasSceneMetadata);
+            Assert::AreEqual(2560U, static_cast<unsigned>(overrun.sceneMaxPq));
+            Assert::IsTrue(overrun.sourcePrimariesMalformed);
+            Assert::IsFalse(overrun.hasSourcePrimaries);
+            for (bool assume : { false, true })
+            {
+                const auto ignored = SourceMasteringPrimariesPolicy::Resolve(
+                    state, overrun, false, assume);
+                Assert::AreEqual(static_cast<int>(SourceMasteringPrimariesPolicy::Selection::Keep),
+                    static_cast<int>(ignored.selection));
+            }
+
+            // A fresh valid L9 on the next source frame becomes authoritative
+            // immediately; malformed state is not carried across frames.
+            picture.Embed(Packetize(WithLevel9(DmBody(2048), 1)));
+            const auto recovered = Deliver(formatter, picture, 3, &converted);
+            AssertExactSamples(picture, converted);
+            Assert::IsTrue(recovered.valid && recovered.hasSceneMetadata);
+            Assert::IsFalse(recovered.sourcePrimariesMalformed);
+            Assert::IsTrue(recovered.hasSourcePrimaries);
+            Assert::AreEqual(1U, static_cast<unsigned>(recovered.sourcePrimaryIndex));
+            Assert::AreEqual(2048U, static_cast<unsigned>(recovered.sceneMaxPq));
+            const auto recoveredOn = SourceMasteringPrimariesPolicy::Resolve(
+                state, recovered, false, true);
+            Assert::AreEqual(static_cast<int>(SourceMasteringPrimariesPolicy::Selection::Bt709),
+                static_cast<int>(recoveredOn.selection));
+        }
+
+        TEST_METHOD(ExactSignalCopyAndTransitionsDisableInference)
+        {
+            VideoStateComPtr captureCard = new VideoState();
+            captureCard->valid = true;
+            captureCard->eotf = EOTF::SDR;
+            captureCard->videoFrameEncoding = VideoFrameEncoding::BGRA_8BIT;
+            captureCard->rgbTunnelBytesPreserved = true;
+            Assert::IsTrue(DolbyVisionTunnelCanEnable(true, true, *captureCard));
+
+            VideoStateComPtr exactSource = new VideoState(*captureCard);
+            exactSource->exactSignal = true;
+            Assert::IsTrue(exactSource->exactSignal);
+            Assert::IsFalse(HasSameMaterialCaptureContract(*captureCard, *exactSource));
+            const auto forward = ClassifyCaptureVideoStateChange(
+                captureCard, *exactSource);
+            Assert::AreEqual(static_cast<int>(CaptureVideoStateChangeClass::MaterialSignal),
+                static_cast<int>(forward));
+            Assert::IsFalse(CaptureStateChangeMayRetainRendererIngress(forward));
+            Assert::IsFalse(DolbyVisionTunnelCanEnable(true, true, *exactSource));
+
+            const auto reverse = ClassifyCaptureVideoStateChange(
+                exactSource, *captureCard);
+            Assert::AreEqual(static_cast<int>(CaptureVideoStateChangeClass::MaterialSignal),
+                static_cast<int>(reverse));
+            Assert::IsFalse(CaptureStateChangeMayRetainRendererIngress(reverse));
         }
 
         TEST_METHOD(IndependentSenderHasKnownCrcAndPackingAnchors)
