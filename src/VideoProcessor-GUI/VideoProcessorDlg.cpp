@@ -11582,6 +11582,7 @@ bool CVideoProcessorDlg::UpdateNewLldvCandidate()
 	}
 
 	const bool isCandidate =
+		!m_captureDeviceVideoState->exactSignal &&
 		m_captureDeviceVideoState->colorspace == ColorSpace::BT_2020 &&
 		m_captureDeviceVideoState->eotf == EOTF::SDR &&
 		!m_captureDeviceVideoState->hdrData;
@@ -11700,6 +11701,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	const bool enableDolbyVisionTunnel = m_profileDolbyVisionTunnelOverride >= 0
 		? m_profileDolbyVisionTunnelOverride != 0 : m_enableDolbyVisionTunnel;
 	const bool isHDFuryLLDV = m_profileDolbyVisionTunnelOverride != 1 &&
+		!m_captureDeviceVideoState->exactSignal &&
 		(m_useNewLldvHeuristic
 			? (m_newLldvCandidateConfirmed && IsNewLldvModeSelected())
 			: isLegacyHDFuryLLDV);
@@ -11711,6 +11713,10 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	if (!m_captureDeviceVideoState->valid)
 	{
 		lldvDecisionReason = "rejected: capture state is invalid";
+	}
+	else if (m_captureDeviceVideoState->exactSignal)
+	{
+		lldvDecisionReason = "rejected: the source states its signal exactly";
 	}
 	else if (m_useNewLldvHeuristic)
 	{

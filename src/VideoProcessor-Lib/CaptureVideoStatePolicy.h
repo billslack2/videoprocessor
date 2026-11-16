@@ -52,7 +52,8 @@ inline bool HasSameMaterialCaptureContract(
 		previous.colorspace == current.colorspace &&
 		previous.invertedVertical == current.invertedVertical &&
 		previous.rgbTunnelBytesPreserved == current.rgbTunnelBytesPreserved &&
-		previous.tunnelSdrRgbRange == current.tunnelSdrRgbRange;
+		previous.tunnelSdrRgbRange == current.tunnelSdrRgbRange &&
+		previous.exactSignal == current.exactSignal;
 }
 
 
