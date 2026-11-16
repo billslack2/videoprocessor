@@ -66,6 +66,7 @@ static UINT vpUpdateExitMessage = RegisterWindowMessageW(L"VideoProcessor.Update
 #include <ConfigurationRpcProtocol.h>
 #include <CaptureVideoStatePolicy.h>
 #include <DolbyVisionTunnelInput.h>
+#include <DeckLinkShortcutSelection.h>
 #include <ActiveProfileStatus.h>
 #include <ActiveOutputSweepPolicy.h>
 #include <EventActionLauncher.h>
@@ -8890,10 +8891,23 @@ void CVideoProcessorDlg::OnSelectCaptureDevice(UINT nID)
 
 void CVideoProcessorDlg::SelectCaptureDevice(int n)
 {
-	// Logic to select the capture device
-	CString captureDeviceName;
-	captureDeviceName.Format(_T(".*?DeckLink.*?\\(%d\\)"), n);
-	SelectCaptureDevice(captureDeviceName);
+	std::vector<std::wstring> deviceNames;
+	const int itemCount = m_captureDeviceCombo.GetCount();
+	for (int i = 0; i < itemCount; ++i)
+	{
+		CString itemText;
+		m_captureDeviceCombo.GetLBText(i, itemText);
+		deviceNames.emplace_back((LPCWSTR)itemText);
+	}
+
+	const int index = DeckLinkShortcutIndex(deviceNames, n);
+	if (index < 0)
+	{
+		DebugLog::Log("Capture shortcut %d: no matching DeckLink input; selection unchanged", n);
+		return;
+	}
+	m_captureDeviceCombo.SetCurSel(index);
+	OnCaptureDeviceSelected();
 }
 
 void CVideoProcessorDlg::SelectCaptureDevice(CString& captureDeviceName)
