@@ -344,6 +344,7 @@
 	<ClCompile Include="InvalidCaptureStateGraceTests.cpp" />
 	<ClCompile Include="EotfTransitionStabilizerTests.cpp" />
     <ClCompile Include="NativeRgbAnalysisTests.cpp" />
+    <ClCompile Include="DeckLinkShortcutSelectionTests.cpp" />
     <ClCompile Include="RendererIdTests.cpp" />
     <ClCompile Include="RendererResetPolicyTests.cpp" />
     <ClCompile Include="RendererResetCoordinatorTests.cpp" />
