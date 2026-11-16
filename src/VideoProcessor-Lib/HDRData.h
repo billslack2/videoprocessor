@@ -36,6 +36,11 @@ public:
 	double maxCll = 0;
 	double maxFall = 0;
 
+	// True only when VP wrote the primaries itself because the source sent
+	// none (the Dolby Vision tunnel's BT.2020 fill), not the source or a
+	// forced "HDR color space" choice.
+	bool primariesFilledByVp = false;
+
 	bool operator == (const HDRData& other) const;
 	bool operator != (const HDRData& other) const;
 

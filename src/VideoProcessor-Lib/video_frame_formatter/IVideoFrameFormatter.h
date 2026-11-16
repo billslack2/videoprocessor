@@ -65,6 +65,9 @@ struct DolbyVisionTunnelFrameMetadata
     uint16_t sceneMinPq = 0;
     uint16_t sceneMaxPq = 0;
     uint16_t sceneAvgPq = 0;
+    // Extension level 9: the source (mastering) primaries preset index.
+    bool hasSourcePrimaries = false;
+    uint8_t sourcePrimaryIndex = 0;
 };
 
 /**

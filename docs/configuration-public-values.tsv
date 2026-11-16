@@ -253,6 +253,8 @@ vprenderer.color.sdr_target_primaries	p3_d65
 vprenderer.color.sdr_target_primaries	bt2020
 vprenderer.color.report_bt2020_to_display	true
 vprenderer.color.report_bt2020_to_display	false
+vprenderer.color.assume_p3_mastering	true
+vprenderer.color.assume_p3_mastering	false
 vprenderer.color.hdr_tone_map_target_gamma	bt1886
 vprenderer.color.hdr_tone_map_target_gamma	srgb
 vprenderer.color.hdr_tone_map_target_gamma	1.8

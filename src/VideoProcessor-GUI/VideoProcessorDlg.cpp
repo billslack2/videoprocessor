@@ -11973,6 +11973,8 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 			hdr.displayPrimaryBlueY = ColorSpaceToCie1931BlueY(ColorSpace::BT_2020);
 			hdr.whitePointX = ColorSpaceToCie1931WpX(ColorSpace::BT_2020);
 			hdr.whitePointY = ColorSpaceToCie1931WpY(ColorSpace::BT_2020);
+			// The renderer's assume_p3_mastering rule may replace this fill.
+			hdr.primariesFilledByVp = true;
 		}
 		if (hdr.masteringDisplayMaxLuminance <= 0)
 			hdr.masteringDisplayMaxLuminance = 1000;
