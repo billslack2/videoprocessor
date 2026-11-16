@@ -2262,6 +2262,53 @@ public:
             NoNewInkOutsideReference(preview.current) &&
             NoNewOwnedInkOutsideReference(preview.current) && ExpansionStillVisible(preview);
         const bool backlogReassociation=completedBacklogReassociation || pendingBacklogReassociation;
+        // A cue acquired while its opposite edge was unavailable can still
+        // be compared when that edge returns. This normalizes local comparison
+        // copies only: the current measurement and crop authority stay intact.
+        auto previousForCue=m_previous.current;
+        auto referenceForCue=m_reference;
+        auto inkReferenceForCue=m_inkReference;
+        const auto& currentCue=preview.current;
+        const auto sharedMatches=[&](const SubtitleBoxObservation& old) {
+            const auto& a=old.sharedPicture; const auto& b=currentCue.sharedPicture;
+            return a.AvailableFor(old.identity,old.width,old.height) &&
+                b.AvailableFor(currentCue.identity,currentCue.width,currentCue.height) &&
+                a.bounds.left==b.bounds.left && a.bounds.top==b.bounds.top &&
+                a.bounds.right==b.bounds.right && a.bounds.bottom==b.bounds.bottom &&
+                a.bounds.rasterWidth==b.bounds.rasterWidth && a.bounds.rasterHeight==b.bounds.rasterHeight;
+        };
+        const auto normalizeOpposite=[&](SubtitleBoxObservation& old) {
+            if(!sharedMatches(old) || !old.text.detected || !currentCue.text.detected ||
+                old.text.sourcePanel.Valid() || old.text.capturePanel.Valid() ||
+                old.text.lineCount<1 || old.text.lineCount>3) return;
+            bool top=true,bottom=true;
+            for(int i=0;i<old.text.lineCount;++i) {
+                const auto& line=old.text.lineBounds[i];
+                if(!line.Valid() || old.text.linePanels[i].Valid() || old.text.lineCapturePanels[i].Valid()) return;
+                top &= line.bottom<=currentCue.sharedPicture.bounds.top &&
+                    line.bottom<=old.pictureTop && line.bottom<=currentCue.pictureTop;
+                bottom &= line.top>=currentCue.sharedPicture.bounds.bottom &&
+                    line.top>=old.pictureBottom && line.top>=currentCue.pictureBottom;
+            }
+            if(bottom && !top && old.pictureTop==0 && currentCue.pictureTop>0)
+                old.pictureTop=currentCue.pictureTop;
+            else if(top && !bottom && old.pictureBottom==old.height && currentCue.pictureBottom<currentCue.height)
+                old.pictureBottom=currentCue.pictureBottom;
+        };
+        if(m_hasPrevious && m_result.detected && !currentCue.discontinuity &&
+            !currentCue.pendingRefresh && !currentCue.analysisRefresh &&
+            currentCue.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1 &&
+            m_previous.current.identity.sourceFrameNumber>0 &&
+            m_previous.current.identity.sourceFrameNumber!=UINT64_MAX &&
+            currentCue.identity.sourceFrameNumber==m_previous.current.identity.sourceFrameNumber+1 &&
+            m_previous.current.identity.captureTimestamp>0 &&
+            currentCue.identity.captureTimestamp>m_previous.current.identity.captureTimestamp &&
+            preview.policyGeneration==m_previous.policyGeneration &&
+            preview.continuityGeneration==m_previous.continuityGeneration) {
+            normalizeOpposite(previousForCue);
+            normalizeOpposite(referenceForCue);
+            normalizeOpposite(inkReferenceForCue);
+        }
         const bool followsPrevious=m_hasPrevious &&
             (preview.current.identity.acceptedSequence==m_previous.current.identity.acceptedSequence+1 ||
              (preview.current.pendingRefresh &&
@@ -2272,8 +2319,8 @@ public:
             (m_previous.continuityGeneration == preview.continuityGeneration ||
                 backlogReassociation) &&
             followsPrevious &&
-            SubtitleBoxLookahead::SameCue(m_previous.current,preview.current) &&
-            SubtitleBoxLookahead::SameCue(m_reference,preview.current) &&
+            SubtitleBoxLookahead::SameCue(previousForCue,preview.current) &&
+            SubtitleBoxLookahead::SameCue(referenceForCue,preview.current) &&
             preview.text.lineCount >= m_result.lineCount && m_result.detected &&
             ((preview.text.lineCount > m_result.lineCount &&
                 (!preview.futureAvailable || preview.currentLinesConfirmed ||
@@ -2281,11 +2328,11 @@ public:
                 (std::max)(4,preview.current.height/180)))) ||
                 SubtitleBoxLookahead::ContainsCurrentInk(m_result.bounds,preview.current.text));
         const bool currentTemplatePixelsMatch=
-            SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,continuity,&m_inkDiagnostic);
+            SubtitleBoxLookahead::ConfidentSameInk(inkReferenceForCue,continuity,&m_inkDiagnostic);
         // Coarse grouping signatures preserve geometry, but cannot overrule a
         // changed local glyph at the fixed acquisition coordinates.
         if(m_hasPrevious && m_result.detected && m_inkReference.ink && !currentTemplatePixelsMatch)same=false;
-        const bool groupingMatches=SubtitleBoxLookahead::SameCue(m_reference,preview.current);
+        const bool groupingMatches=SubtitleBoxLookahead::SameCue(referenceForCue,preview.current);
         const bool expansionStillVisible=ExpansionStillVisible(continuityPreview);
         bool workLimitCurrentPixelsMatch=SubtitleBoxLookahead::WorkLimitHasCurrentCuePixels(m_inkReference,continuity);
         // Learned extensions also need current pixels: the resource-limit path
@@ -2300,7 +2347,7 @@ public:
             m_previous.policyGeneration==preview.policyGeneration &&
             (m_previous.continuityGeneration==preview.continuityGeneration ||
                 backlogReassociation) &&
-            SubtitleBoxLookahead::SameContext(m_inkReference,preview.current) &&
+            SubtitleBoxLookahead::SameContext(inkReferenceForCue,preview.current) &&
             (!preview.current.text.workLimit || workLimitCurrentPixelsMatch) && expansionStillVisible;
         const bool currentTemplateEligible=continuationContextEligible && currentTemplatePixelsMatch;
         // Segmentation can lose a few sampled glyph pixels for several frames.
@@ -2310,7 +2357,7 @@ public:
         const bool detectedSubset=preview.current.text.detected &&
             preview.current.text.lineCount>0 &&
             preview.current.text.lineCount<=m_inkReference.text.lineCount &&
-            SubtitleBoxLookahead::SameCue(m_inkReference,preview.current) &&
+            SubtitleBoxLookahead::SameCue(inkReferenceForCue,preview.current) &&
             SubtitleBoxLookahead::ContainsCurrentInk(m_result.bounds,preview.current.text);
         // Count source time, not renderer refreshes. Repeated presentations return
         // above without spending or renewing the grace period. Only strict current
@@ -2326,7 +2373,7 @@ public:
             preview.current.text.lineCount==m_inkReference.text.lineCount &&
             SubtitleBoxLookahead::SameLine(preview.current.text.bounds,m_inkReference.text.bounds,
                 (std::max)(4,preview.current.height/180)) &&
-            !SubtitleBoxLookahead::SameCue(m_inkReference,preview.current);
+            !SubtitleBoxLookahead::SameCue(inkReferenceForCue,preview.current);
         const bool backedPartialEligible=continuationContextEligible && !currentTemplatePixelsMatch &&
             !confirmedReplacement &&
             (!preview.current.text.detected || SubtitleBoxLookahead::ContainsCurrentInk(m_result.bounds,preview.current.text)) &&
@@ -2335,7 +2382,7 @@ public:
             m_weakTemplateMilliseconds+frameMs<=holdMs+0.000001 && continuationContextEligible &&
             !currentTemplatePixelsMatch &&
             (((!preview.current.text.detected || detectedSubset) &&
-                SubtitleBoxLookahead::SameInkAtReference(m_inkReference,continuity,90)) ||
+                SubtitleBoxLookahead::SameInkAtReference(inkReferenceForCue,continuity,90)) ||
                 backedPartialEligible || workLimitCurrentPixelsMatch) &&
             NoNewInkOutsideReference(continuity);
         SubtitleBoxRect novelExtension,confirmedExtension;
