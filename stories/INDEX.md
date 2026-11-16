@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0231`
-- Next root story number: `VP-0232`
-- Total indexed items: 249
+- Last assigned root story: `VP-0232`
+- Next root story number: `VP-0233`
+- Total indexed items: 250
 
 ## Story locations
 
@@ -295,6 +295,7 @@ they must not contain requirements that are absent from this file.
 | VP-0229 | Backlog | Resolve ambiguous r210 Dolby Vision tunnel alignment |
 | VP-0230 | Backlog | Detect active picture using adaptive matte contrast, geometry and recent history |
 | VP-0231 | In Progress | Research and prevent disappearing top-edge measurements in stable Ben-Hur footage |
+| VP-0232 | Backlog | Move subtitle verification off the renderer thread |
 
 ## Codex story workflow
 
