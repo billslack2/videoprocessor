@@ -260,7 +260,7 @@ they must not contain requirements that are absent from this file.
 | VP-0199 | Backlog | Remove residual subtitle backing at the picture boundary for small fonts |
 
 | VP-0200 | In Progress | Profile-based resolution and refresh-rate configuration |
-| VP-0201 | Review | Settle startup framing and acquire scope with prepared subtitles |
+| VP-0201 | In Progress | Settle startup framing and acquire scope with prepared subtitles |
 | VP-0202 | Done | Prevent long-uptime DirectShow reference-clock overflow |
 | VP-0203 | Review | Load calibration LUT disk changes only on explicit Config Apply |
 | VP-0204 | Review | Bound render-thread diagnostics and picture-proof work |

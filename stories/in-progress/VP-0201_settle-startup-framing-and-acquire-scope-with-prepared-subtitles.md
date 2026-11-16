@@ -2,6 +2,14 @@
 
 ## Status
 
+In Progress — reopened 2026-11-16 after the user reported startup picture-position flashing. Live acceptance remains open.
+
+## Startup report and investigation — 2026-11-16
+
+The user reports the Ben-Hur picture flashing back and forth in position at startup, even if only briefly. They want stable positioning without interrupting advancing live video. The previous session's `C:/Videoprocessor/vp/logs/vp.log` supplies a plausible but not yet visually synchronized event: at 23:49:05 ET generation 1 source 103 submitted native active picture `0,380–3840,1778` (about 2.75:1). A refresh-transition live-queue reset at 23:49:06 cleared presentation/native authority; generation 2 source 121 submitted the full 3840×2160 input raster, and source 124 returned to `0,382–3840,1778` approximately 125 ms later. Current raw observation at source 121 was `0,382–3840,1778` but shared trusted authority was unavailable; full-raster current-source fallback was used. The log does not establish that the user saw this exact event. Later viewport/profile cycles at 23:49:07 onward are separate and cannot automatically be treated as a malfunction. Investigate why queue-only native continuity was not admitted and whether the reset may be safely bridged using exact-current-source worker evidence. Preserve source-derived physical aspect, picture and captions, advancing frame cadence, bounded critical-path time, and genuine source/format/scene changes; do not hold old frames, treat fallback as detection authority, force a standard aspect, or trust stale picture geometry. Coordinate with the separately active VP-0231 edge-dropout work.
+
+## Previous review — 2026-10-23
+
 Review (2026-10-23). User-authorized [PR #188](https://github.com/billslack2/videoprocessor/pull/188) merged into `v1.4.02-beta` at `f7c7a8204f7a2cace68b3b40774406680af6c0d8` after retesting against current beta `fcc33fc9`. The exact integration head `5d3db5f230b05dab3e0b8e1a7b59218ff81c9a80` passed a full x64 Release solution build, all 1,563 targeted native tests and two Config saved-profile checks; the fetched merge tree is identical. Live startup/subtitle playback acceptance remains unreported. Prior deployment `05e59c91` is recorded below; no deployment or configuration changes were made by this merge request.
 
 ## Readiness review
