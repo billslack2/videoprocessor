@@ -26,6 +26,9 @@
     <ClInclude Include="DisplayRasterInfo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DeckLinkShortcutSelection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="DisplayWindowGeometry.h">
       <Filter>Header Files</Filter>
     </ClInclude>
