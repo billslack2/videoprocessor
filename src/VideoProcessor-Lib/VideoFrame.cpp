@@ -33,6 +33,7 @@ VideoFrame::VideoFrame(const VideoFrame& videoFrame) :
 	m_captureTimingTimestamp(videoFrame.m_captureTimingTimestamp),
 	m_captureArrivalTick(videoFrame.m_captureArrivalTick),
 	m_sourceDiscontinuity(videoFrame.m_sourceDiscontinuity),
+	m_sourceCadenceRestart(videoFrame.m_sourceCadenceRestart),
 	m_sourceBuffer(videoFrame.m_sourceBuffer)
 {
 }
@@ -66,6 +67,7 @@ VideoFrame& VideoFrame::operator= (const VideoFrame& videoFrame)
 	m_captureTimingTimestamp = videoFrame.m_captureTimingTimestamp;
 	m_captureArrivalTick = videoFrame.m_captureArrivalTick;
 	m_sourceDiscontinuity = videoFrame.m_sourceDiscontinuity;
+	m_sourceCadenceRestart = videoFrame.m_sourceCadenceRestart;
 	m_sourceBuffer = videoFrame.m_sourceBuffer;
 
 	return *this;

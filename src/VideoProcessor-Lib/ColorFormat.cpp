@@ -23,6 +23,9 @@ const TCHAR* ToString(const ColorFormat encoding)
 
 	case ColorFormat::RGB444:
 		return TEXT("RGB 4:4:4");
+
+	case ColorFormat::YCbCr420:
+		return TEXT("YCbCr 4:2:0");
 	}
 
 	throw std::runtime_error("ColorFormat ToString() failed, value not recognized");

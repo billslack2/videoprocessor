@@ -18,7 +18,8 @@ enum class ColorFormat
 {
 	UNKNOWN,
 	YCbCr422,
-	RGB444
+	RGB444,
+	YCbCr420  // Source plugins only; appended so existing values keep their numbers
 };
 
 

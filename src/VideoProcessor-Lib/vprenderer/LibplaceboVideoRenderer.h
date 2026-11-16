@@ -16,6 +16,7 @@
 #include <vprenderer/AsyncOutwardWindow.h>
 #include <vprenderer/AlphaConversionTimingWindow.h>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
+#include <SourceCue.h>
 
 #include <array>
 #include <atomic>
@@ -154,6 +155,7 @@ private:
 			std::vector<BYTE> pixels;
 			VideoFrameFormatterOutputContract contract;
 			DolbyVisionTunnelFrameMetadata dolby;
+			SourceCues cues;  // shared references, not copies
 			double conversionCpuMs = 0.0;
 			int64_t completedQpc = 0;
 		};
@@ -239,7 +241,8 @@ private:
 	void SetState(RendererState state);
 	void ApplyViewportTarget(bool configured, double aspect,
 		const char* reason);
-	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
+	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp,
+		bool sourceCadenceRestart);
 	void ResetFrameRateAndPPM();
 	void ApplyPendingShaderSelectionLocked();
 	bool FormatOutputModeInfoLocked(CString& details) const;

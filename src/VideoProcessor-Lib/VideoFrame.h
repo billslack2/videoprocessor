@@ -69,9 +69,23 @@ public:
 		m_sourceDiscontinuity = discontinuity;
 	}
 
+	// The source marks the frame where its own timing has settled, e.g. once a
+	// player's start-up or post-seek correction is over. The renderer restarts
+	// its cadence estimate here so the settling is not folded into it. This is
+	// independent of the discontinuity marker; setting one never changes the other.
+	bool IsSourceCadenceRestart() const { return m_sourceCadenceRestart; }
+	void SetSourceCadenceRestart(bool restart)
+	{
+		m_sourceCadenceRestart = restart;
+	}
+
 	// Memory functions to hold onto the video buffer for longer
 	void SourceBufferAddRef();
 	void SourceBufferRelease();
+
+	// The buffer the frame's data lives in (may be null). Query it for more
+	// about the frame, e.g. ISourceCueCarrier.
+	IUnknown* GetSourceBuffer() const { return m_sourceBuffer; }
 
 	VideoFrame& operator= (const VideoFrame& videoFrame);
 
@@ -82,5 +96,8 @@ private:
 	timingclocktime_t m_captureTimingTimestamp = TIMING_CLOCK_TIME_INVALID;
 	uint64_t m_captureArrivalTick = 0;
 	bool m_sourceDiscontinuity = false;
+	// Beside m_sourceDiscontinuity so it takes existing padding and no field
+	// shared with the renderer plugin moves.
+	bool m_sourceCadenceRestart = false;
 	IUnknown* m_sourceBuffer;
 };

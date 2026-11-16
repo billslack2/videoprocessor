@@ -40,6 +40,7 @@ namespace MainConfigSchema
 			section == "logging" ||
 			section == "decklink" ||
 			section == "shortcuts" ||
+			section == "player" ||
 			section == "p010_conversion" ||
 			section == "ppm_correction" ||
 			section == "display_refresh_rate_override" ||
