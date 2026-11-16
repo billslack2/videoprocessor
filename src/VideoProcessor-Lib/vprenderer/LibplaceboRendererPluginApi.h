@@ -13,7 +13,11 @@
 // Increment whenever the factory signature or any shared interface vtable
 // or shared snapshot layout changes. The executable and optional renderer DLL are deployed separately,
 // so this is the fail-closed ABI boundary for a mismatched pair.
-static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 33;
+static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 34;
+inline bool IsCompatibleLibplaceboPluginApiVersion(uint32_t actual) noexcept
+{
+	return actual == VP_LIBPLACEBO_PLUGIN_API_VERSION;
+}
 static constexpr const char* VP_LIBPLACEBO_FLAVOR_EXPORT = "VideoProcessorLibplaceboIsBeta";
 static constexpr const char* VP_LIBPLACEBO_VERSION_EXPORT =
 	"VideoProcessorLibplaceboGetApiVersion";

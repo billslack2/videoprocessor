@@ -6625,8 +6625,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
         addBoolean(QStringLiteral("Assume P3 mastering when untagged"),
             QStringLiteral("assume_p3_mastering"))->setToolTip(QStringLiteral(
-                "HDR10 with no mastering primaries and Dolby Vision without L9 are treated as "
-                "P3-D65 masters. Off: the BT.2020 container is used, as before."));
+                "PQ HDR10 without valid mastering metadata uses P3-D65. Dolby Vision L9 "
+                "presets 0-8 or custom index 255 supply source primaries; malformed L9 is "
+                "ignored without invalidating DM and does not trigger P3 inference. "
+                "Off by default: preserve existing source/container primaries."));
+
 
         form = addCollapsibleSection(QStringLiteral("outputExperiments"),
             QStringLiteral("Output Experiments (beta)"), QStringLiteral(

@@ -122,7 +122,7 @@ namespace
         result.startupReadiness = reinterpret_cast<VideoProcessorLibplaceboGetStartupReadinessFn>(
             GetProcAddress(result.module, VP_LIBPLACEBO_STARTUP_READINESS_EXPORT));
         const uint32_t apiVersion = getApiVersion();
-		if (apiVersion != VP_LIBPLACEBO_PLUGIN_API_VERSION)
+		if (!IsCompatibleLibplaceboPluginApiVersion(apiVersion))
 		{
 			DebugLog::Log(
 				"Optional libplacebo renderer plugin API mismatch: expected=%u actual=%u",

@@ -193,6 +193,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="DolbyVisionTunnelTestSender.h" />
+    <ClInclude Include="..\\VideoProcessor-Lib\\vprenderer\\SourceMasteringPrimariesPolicy.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FullscreenActivationTests.cpp" />

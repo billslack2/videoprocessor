@@ -6097,6 +6097,50 @@ namespace VideoProcessorTest
             Assert::IsFalse(RendererProfileConfig::ValidateColorConfigSetting("target_primaries", "auto"));
         }
 
+        TEST_METHOD(P3MasteringSwitchValidatesAndColorProfileSelectionOverridesBaseline)
+        {
+            Assert::IsTrue(RendererProfileConfig::ValidateColorConfigSetting(
+                "assume_p3_mastering", "true"));
+            Assert::IsTrue(RendererProfileConfig::ValidateColorConfigSetting(
+                "assume_p3_mastering", "false"));
+            Assert::IsFalse(RendererProfileConfig::ValidateColorConfigSetting(
+                "assume_p3_mastering", "maybe"));
+
+            CachedConfigTestFile file;
+            {
+                std::ofstream output(file.path);
+                output << "[vprenderer.Default]\nquality: high\n"
+                    "[vprenderer.color]\nassume_p3_mastering: true\n"
+                    "[vprenderer.color.Scope]\nwhen: ${width} > 0\n"
+                    "assume_p3_mastering: false\n"
+                    "[vprenderer.color.Inherited]\nwhen: ${width} < 0\n"
+                    "output_gamma: 2.2\n";
+            }
+            ConfigFile config;
+            Assert::IsTrue(config.Load(file.path));
+            RendererProfileConfig::Model model;
+            std::string error;
+            Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            Assert::AreEqual(std::string("true"),
+                model.profiles.at("color.inherited").settings.at("assume_p3_mastering"));
+            Assert::AreEqual(std::string("false"),
+                model.profiles.at("color.scope").settings.at("assume_p3_mastering"));
+            std::vector<RendererProfileConfig::AutomaticSelection> selected;
+            Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
+                [](const std::string& key, std::string& value)
+                { if (key != "width") return false; value = "3840"; return true; },
+                selected, error));
+            bool found = false;
+            for (const auto& item : selected)
+                if (item.group == "color")
+                {
+                    Assert::AreEqual(std::string("scope"), item.profiles.front());
+                    found = true;
+                }
+            Assert::IsTrue(found);
+        }
+
         TEST_METHOD(ColorCalibrationAliasesResolveBeforeInheritance)
         {
             char directory[MAX_PATH] = {};

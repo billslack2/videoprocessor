@@ -10,6 +10,8 @@
 #include <vprenderer/QueueNativeContinuity.h>
 #include <vprenderer/ViewportIntentMailbox.h>
 #include <vprenderer/NvidiaBt2020Reporter.h>
+#include <vprenderer/SourceMasteringPrimariesPolicy.h>
+#include <cstring>
 
 #include <ConfigFile.h>
 #include <DisplayRefreshRatePolicy.h>
@@ -803,65 +805,42 @@ namespace
 		return result;
 	}
 
-	// assume_p3_mastering: when a PQ source declares no mastering primaries,
-	// treat it as a P3-D65 master (Dolby Vision: L9's preset when present).
-	// Only primaries change; luminance is left as it is. Returns the outcome
-	// for the log line; empty when the rule does not apply (not PQ, or the
-	// tunnel's SDR fallback).
-	std::string ApplyAssumedMasteringPrimaries(const VideoState& state,
+	// Apply the source metadata decision to libplacebo. The pure policy is
+	// shared with tests; it changes primaries only and leaves luminance alone.
+	const char* ApplyAssumedMasteringPrimaries(const VideoState& state,
 		const DolbyVisionTunnelFrameMetadata& dolby, bool tunnelSdrFallback,
 		bool assumeP3, struct pl_color_space& color)
 	{
-		if (state.eotf != EOTF::PQ || tunnelSdrFallback)
-			return {};
-		const auto use = [&color](enum pl_color_primaries primaries)
+		const auto decision = SourceMasteringPrimariesPolicy::Resolve(
+			state, dolby, tunnelSdrFallback, assumeP3);
+		switch (decision.selection)
 		{
-			color.hdr.prim = *pl_raw_primaries_get(primaries);
-		};
-		const HDRData* hdr = state.hdrData.get();
-		if (state.dolbyVisionTunnel)
+		case SourceMasteringPrimariesPolicy::Selection::DisplayP3D65:
+			color.hdr.prim = *pl_raw_primaries_get(PL_COLOR_PRIM_DISPLAY_P3);
+			break;
+		case SourceMasteringPrimariesPolicy::Selection::Bt709:
+			color.hdr.prim = *pl_raw_primaries_get(PL_COLOR_PRIM_BT_709);
+			break;
+		case SourceMasteringPrimariesPolicy::Selection::Bt2020:
+			color.hdr.prim = *pl_raw_primaries_get(PL_COLOR_PRIM_BT_2020);
+			break;
+		case SourceMasteringPrimariesPolicy::Selection::Cie:
 		{
-			if (!hdr || !hdr->primariesFilledByVp)
-				return "forced (Dolby Vision)";
-			const std::string l9 = dolby.hasSourcePrimaries ?
-				"L9 index " + std::to_string(dolby.sourcePrimaryIndex) : "no L9";
-			if (!assumeP3)
-				return "VP default BT.2020 (Dolby Vision, " + l9 + ")";
-			if (!dolby.hasSourcePrimaries)
-			{
-				use(PL_COLOR_PRIM_DISPLAY_P3);
-				return "assumed P3-D65 (Dolby Vision, no L9)";
-			}
-			// dovi_tool's preset table: 0 DCI-P3 D65, 1 BT.709, 2 BT.2020.
-			switch (dolby.sourcePrimaryIndex)
-			{
-			case 0: use(PL_COLOR_PRIM_DISPLAY_P3); return l9 + ", P3-D65";
-			case 1: use(PL_COLOR_PRIM_BT_709); return l9 + ", BT.709";
-			case 2: use(PL_COLOR_PRIM_BT_2020); return l9 + ", BT.2020";
-			default: return "L9 not used (index " +
-				std::to_string(dolby.sourcePrimaryIndex) + "), VP default BT.2020";
-			}
+			struct pl_raw_primaries candidate{};
+			SetCiePoint(candidate.red, decision.cie[0], decision.cie[1]);
+			SetCiePoint(candidate.green, decision.cie[2], decision.cie[3]);
+			SetCiePoint(candidate.blue, decision.cie[4], decision.cie[5]);
+			SetCiePoint(candidate.white, decision.cie[6], decision.cie[7]);
+			if (pl_primaries_valid(&candidate))
+				color.hdr.prim = candidate;
+			else
+				return "Invalid source primaries ignored; current primaries retained";
+			break;
 		}
-		if (hdr && hdr->IsValid())
-			return "declared";
-		const bool forced = hdr && hdr->displayPrimaryRedX > 0 &&
-			hdr->displayPrimaryRedY > 0 && hdr->displayPrimaryGreenX > 0 &&
-			hdr->displayPrimaryGreenY > 0 && hdr->displayPrimaryBlueX > 0 &&
-			hdr->displayPrimaryBlueY > 0 && hdr->whitePointX > 0 &&
-			hdr->whitePointY > 0;
-		if (!assumeP3)
-			return forced ? "container (forced primaries without luminance ignored)" :
-				"container (no block)";
-		if (forced)
-		{
-			SetCiePoint(color.hdr.prim.red, hdr->displayPrimaryRedX, hdr->displayPrimaryRedY);
-			SetCiePoint(color.hdr.prim.green, hdr->displayPrimaryGreenX, hdr->displayPrimaryGreenY);
-			SetCiePoint(color.hdr.prim.blue, hdr->displayPrimaryBlueX, hdr->displayPrimaryBlueY);
-			SetCiePoint(color.hdr.prim.white, hdr->whitePointX, hdr->whitePointY);
-			return "forced (no luminance)";
+		case SourceMasteringPrimariesPolicy::Selection::Keep:
+			break;
 		}
-		use(PL_COLOR_PRIM_DISPLAY_P3);
-		return "assumed P3-D65 (no block)";
+		return decision.outcome;
 	}
 
 	bool IsNativeRgbUpload(VideoFrameEncoding encoding,
@@ -14175,15 +14154,15 @@ struct LibplaceboVideoRenderer::Impl
 			// After the Dolby Vision luminance step, with this state's Colour
 			// profile in force: only the primaries can change here.
 			static const DolbyVisionTunnelFrameMetadata noDolby{};
-			const std::string primariesOutcome = ApplyAssumedMasteringPrimaries(
+			const char* primariesOutcome = ApplyAssumedMasteringPrimaries(
 				state, state.dolbyVisionTunnel && !tunnelRgbFallback ?
 					convertedPayload->dolby : noDolby,
 				tunnelRgbFallback, activeSettings.assumeP3Mastering, image.color);
-			if (primariesOutcome != lastSourcePrimariesOutcome)
+			if (strcmp(primariesOutcome, lastSourcePrimariesOutcome.c_str()) != 0)
 			{
-				if (!primariesOutcome.empty())
+				if (primariesOutcome[0] != '\0')
 					DebugLog::Log("Source mastering primaries: %s; assume_p3_mastering %s (colour profile '%s')",
-						primariesOutcome.c_str(),
+						primariesOutcome,
 						activeSettings.assumeP3Mastering ? "on" : "off",
 						activeSettings.assumeP3MasteringRule.empty() ? "not set" :
 							activeSettings.assumeP3MasteringRule.c_str());

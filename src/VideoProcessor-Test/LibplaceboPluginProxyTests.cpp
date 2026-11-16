@@ -53,6 +53,15 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboPluginProxyTests)
 	{
 	public:
+        TEST_METHOD(PluginApiVersionCompatibilityFailsClosed)
+        {
+            Assert::AreEqual(uint32_t(34), VP_LIBPLACEBO_PLUGIN_API_VERSION);
+            Assert::IsTrue(IsCompatibleLibplaceboPluginApiVersion(34));
+            Assert::IsFalse(IsCompatibleLibplaceboPluginApiVersion(33));
+            Assert::IsFalse(IsCompatibleLibplaceboPluginApiVersion(35));
+            Assert::IsFalse(IsCompatibleLibplaceboPluginApiVersion(0));
+        }
+
         TEST_METHOD(BetaUsesSeparatePluginAndRuntimeNames)
         {
             using namespace OptionalRendererLayout;

@@ -8,6 +8,8 @@
 #include <VideoState.h>
 #include <CpuFeatures.h>
 #include <DolbyVisionTunnelInput.h>
+#include <CaptureVideoStatePolicy.h>
+#include <vprenderer/SourceMasteringPrimariesPolicy.h>
 #include <AnalysisFrame.h>
 #include <ActivePictureEvidence.h>
 #include <SubtitleBoxDetector.h>
@@ -606,6 +608,140 @@ namespace Tests
                 Formatter formatter;
                 Assert::ExpectException<std::runtime_error>([&] { formatter.OnVideoState(state); });
             }
+        }
+
+        TEST_METHOD(LevelNineParsesPresetAndCustomSourcePrimaries)
+        {
+            for (uint8_t index = 0; index <= 8; ++index)
+            {
+                SenderPicture picture(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+                picture.Embed(Packetize(WithLevel9(DmBody(), index)));
+                Formatter formatter;
+                formatter.OnVideoState(picture.state);
+                const auto metadata = Deliver(formatter, picture, 1);
+                Assert::IsTrue(metadata.valid && metadata.hasSourcePrimaries);
+                Assert::AreEqual(static_cast<unsigned>(index),
+                    static_cast<unsigned>(metadata.sourcePrimaryIndex));
+                Assert::IsFalse(metadata.hasCustomSourcePrimaries);
+            }
+
+            const std::array<uint16_t, 8> custom = {
+                22282, 10485, 8683, 32768, 4915, 1966, 10240, 10780
+            };
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+            picture.Embed(Packetize(WithLevel9(DmBody(), 255, &custom)));
+            Formatter formatter;
+            formatter.OnVideoState(picture.state);
+            const auto metadata = Deliver(formatter, picture, 1);
+            Assert::IsTrue(metadata.valid && metadata.hasSourcePrimaries &&
+                metadata.hasCustomSourcePrimaries);
+            Assert::AreEqual(255U, static_cast<unsigned>(metadata.sourcePrimaryIndex));
+            for (size_t i = 0; i < custom.size(); ++i)
+                Assert::AreEqual(static_cast<unsigned>(custom[i]),
+                    static_cast<unsigned>(metadata.sourcePrimaryCoordinates[i]));
+        }
+
+        TEST_METHOD(LevelNineMalformedOptionalDataRetainsDmAndRecovers)
+        {
+            const std::array<uint16_t, 8> invalidCoordinates = {
+                22282, 10485, 8683, 22609, 4915, 1966, 0, 10780
+            };
+            SenderPicture picture(false, 130, 128, VideoFrameEncoding::BGRA_8BIT);
+            Formatter formatter;
+            formatter.OnVideoState(picture.state);
+
+            // Bad optional L9 cannot veto valid per-frame DM or L1 scene data.
+            picture.Embed(Packetize(WithLevel9(DmBody(), 255, &invalidCoordinates)));
+            std::vector<BYTE> converted;
+            const auto malformed = Deliver(formatter, picture, 1, &converted);
+            AssertExactSamples(picture, converted);
+            Assert::IsTrue(malformed.valid);
+            Assert::IsTrue(malformed.hasSceneMetadata);
+            Assert::AreEqual(3072U, static_cast<unsigned>(malformed.sceneMaxPq));
+            Assert::IsTrue(malformed.sourcePrimariesMalformed);
+            Assert::IsFalse(malformed.hasSourcePrimaries);
+            Assert::IsFalse(malformed.hasCustomSourcePrimaries);
+
+            // Optional metadata failure must not change the existing default-off
+            // primaries selection or trigger P3 inference when explicitly enabled.
+            VideoState state;
+            state.eotf = EOTF::PQ;
+            state.dolbyVisionTunnel = true;
+            state.hdrData = std::make_shared<HDRData>();
+            state.hdrData->primariesFilledByVp = true;
+            const auto off = SourceMasteringPrimariesPolicy::Resolve(
+                state, malformed, false, false);
+            const auto on = SourceMasteringPrimariesPolicy::Resolve(
+                state, malformed, false, true);
+            Assert::AreEqual(static_cast<int>(SourceMasteringPrimariesPolicy::Selection::Keep),
+                static_cast<int>(off.selection));
+            Assert::AreEqual(static_cast<int>(SourceMasteringPrimariesPolicy::Selection::Keep),
+                static_cast<int>(on.selection));
+
+            // A readable L9 header whose declared payload overruns the DM is
+            // also optional: retain validated core/L1 data and convert this
+            // exact current picture instead of rejecting the DM packet.
+            auto overrunBody = DmBody(2560);
+            const std::vector<uint8_t> shortL9 = { 255 };
+            AppendExtension(overrunBody, 9, shortL9);
+            const size_t overrunHeader = overrunBody.size() - shortL9.size() - 5;
+            Put32(overrunBody.data() + overrunHeader, 8);
+            picture.Embed(Packetize(overrunBody));
+            const auto overrun = Deliver(formatter, picture, 2, &converted);
+            AssertExactSamples(picture, converted);
+            Assert::IsTrue(overrun.valid && overrun.hasSceneMetadata);
+            Assert::AreEqual(2560U, static_cast<unsigned>(overrun.sceneMaxPq));
+            Assert::IsTrue(overrun.sourcePrimariesMalformed);
+            Assert::IsFalse(overrun.hasSourcePrimaries);
+            for (bool assume : { false, true })
+            {
+                const auto ignored = SourceMasteringPrimariesPolicy::Resolve(
+                    state, overrun, false, assume);
+                Assert::AreEqual(static_cast<int>(SourceMasteringPrimariesPolicy::Selection::Keep),
+                    static_cast<int>(ignored.selection));
+            }
+
+            // A fresh valid L9 on the next source frame becomes authoritative
+            // immediately; malformed state is not carried across frames.
+            picture.Embed(Packetize(WithLevel9(DmBody(2048), 1)));
+            const auto recovered = Deliver(formatter, picture, 3, &converted);
+            AssertExactSamples(picture, converted);
+            Assert::IsTrue(recovered.valid && recovered.hasSceneMetadata);
+            Assert::IsFalse(recovered.sourcePrimariesMalformed);
+            Assert::IsTrue(recovered.hasSourcePrimaries);
+            Assert::AreEqual(1U, static_cast<unsigned>(recovered.sourcePrimaryIndex));
+            Assert::AreEqual(2048U, static_cast<unsigned>(recovered.sceneMaxPq));
+            const auto recoveredOn = SourceMasteringPrimariesPolicy::Resolve(
+                state, recovered, false, true);
+            Assert::AreEqual(static_cast<int>(SourceMasteringPrimariesPolicy::Selection::Bt709),
+                static_cast<int>(recoveredOn.selection));
+        }
+
+        TEST_METHOD(ExactSignalCopyAndTransitionsDisableInference)
+        {
+            VideoStateComPtr captureCard = new VideoState();
+            captureCard->valid = true;
+            captureCard->eotf = EOTF::SDR;
+            captureCard->videoFrameEncoding = VideoFrameEncoding::BGRA_8BIT;
+            captureCard->rgbTunnelBytesPreserved = true;
+            Assert::IsTrue(DolbyVisionTunnelCanEnable(true, true, *captureCard));
+
+            VideoStateComPtr exactSource = new VideoState(*captureCard);
+            exactSource->exactSignal = true;
+            Assert::IsTrue(exactSource->exactSignal);
+            Assert::IsFalse(HasSameMaterialCaptureContract(*captureCard, *exactSource));
+            const auto forward = ClassifyCaptureVideoStateChange(
+                captureCard, *exactSource);
+            Assert::AreEqual(static_cast<int>(CaptureVideoStateChangeClass::MaterialSignal),
+                static_cast<int>(forward));
+            Assert::IsFalse(CaptureStateChangeMayRetainRendererIngress(forward));
+            Assert::IsFalse(DolbyVisionTunnelCanEnable(true, true, *exactSource));
+
+            const auto reverse = ClassifyCaptureVideoStateChange(
+                exactSource, *captureCard);
+            Assert::AreEqual(static_cast<int>(CaptureVideoStateChangeClass::MaterialSignal),
+                static_cast<int>(reverse));
+            Assert::IsFalse(CaptureStateChangeMayRetainRendererIngress(reverse));
         }
 
         TEST_METHOD(IndependentSenderHasKnownCrcAndPackingAnchors)

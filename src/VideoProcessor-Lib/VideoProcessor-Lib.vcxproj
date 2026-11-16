@@ -298,6 +298,7 @@
     <ClInclude Include="vprenderer\\HdrPeakAnalysisCrop.h" />
     <ClInclude Include="vprenderer\\LibplaceboPluginVideoRenderer.h" />
     <ClInclude Include="vprenderer\\LibplaceboRendererPluginApi.h" />
+    <ClInclude Include="vprenderer\\SourceMasteringPrimariesPolicy.h" />
     <ClInclude Include="vprenderer\\OptionalRendererLayout.h" />
     <ClInclude Include="ITimingClock.h" />
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h" />
