@@ -2,9 +2,13 @@
 
 ## Status
 
-Backlog
+In Progress
 
-Requested 2026-11-15. The user observes that the Ben-Hur scene is visually consistent and its top picture edge should not disappear to zero. First determine exactly where and why the zero originates using current native pixels; then make the smallest evidence-supported correction and validate it. No implementation, deployment, or live acceptance is claimed by this story. Coordinate with VP-0214 and VP-0230 before touching shared code.
+Requested 2026-11-15. The user observes that the Ben-Hur scene is visually consistent and its top picture edge should not disappear to zero. First determine exactly where and why the zero originates using current native pixels; then make the smallest evidence-supported correction and validate it. No deployment or live acceptance is claimed by this story. Coordinate with VP-0214 and VP-0230 before touching shared code.
+
+## Implementation underway — 2026-11-15
+
+At the user's request, investigating both the current-pixel weak-edge rejection and subtitle continuity/placement after the prior fix. Integration worktree starts from freshly fetched 2.0.6 beta acdb89bfb5e1796cda6359aa2f89632b78204a5b, which contains fd3fc2db. No new build, deployment or live acceptance is claimed yet. Coordinate with VP-0214 and VP-0230; preserve real-time current-source video and pixel evidence.
 
 ## User story
 

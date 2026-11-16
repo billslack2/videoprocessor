@@ -294,7 +294,7 @@ they must not contain requirements that are absent from this file.
 | VP-0228 | In Progress | Diagnose and improve timely outward-picture lookahead |
 | VP-0229 | Backlog | Resolve ambiguous r210 Dolby Vision tunnel alignment |
 | VP-0230 | Backlog | Detect active picture using adaptive matte contrast, geometry and recent history |
-| VP-0231 | Backlog | Research and prevent disappearing top-edge measurements in stable Ben-Hur footage |
+| VP-0231 | In Progress | Research and prevent disappearing top-edge measurements in stable Ben-Hur footage |
 
 ## Codex story workflow
 
