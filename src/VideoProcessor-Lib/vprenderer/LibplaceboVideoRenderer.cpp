@@ -17316,6 +17316,47 @@ releaseDriftBaseRetention =
             coldCaptionInput.cadenceRepeat = cadenceRepeat;
             coldCaptionInput.framesPerSecond = episodeInput.framesPerSecond;
             const auto coldCaptionDecision = AlphaSourceCrop::BuildColdMaskedCaptionPresentation(coldCaptionInput);
+            // Capture the actual inputs at both bounded-presentation decisions.
+            // These are snapshots, not claims that a particular bit alone caused
+            // rejection. Reuse already computed evidence; never inspect pixels here.
+            if (nearBlackPresentationEpisode.mode != AlphaSourceCrop::NearBlackPresentationMode::INACTIVE) {
+                auto gate = AnalysisTraceRecord(subtitleIdentity, this, "nearblack-gate-inputs", coldCaptionDecision.reason);
+                gate.kind = AnalysisDiagnosticRecordKindV1::Event;
+                gate.policyGeneration = localBoundaryPolicyGeneration;
+                gate.continuityGeneration = localBoundaryContinuityGeneration;
+                AnalysisTraceRect(gate.previous, nearBlackPresentationEpisode.entryTrustedCrop);
+                AnalysisTraceRect(gate.measured, coldCaptionInput.currentObservation);
+                AnalysisTraceRect(gate.candidate, nearBlackPresentationEpisode.boundedPresentation);
+                AnalysisTraceRect(gate.published, cropInput.geometry);
+                AnalysisTraceRect(gate.displayed, nearBlackBoundedDecision.presentation.sourceBounds);
+                AnalysisTraceRect(gate.subtitle, coldCaptionInput.captionBounds);
+                gate.flags = (nearBlackBoundedDecision.boundedPresentation ? 1u : 0u) |
+                    (nearBlackBoundedDecision.retainedScopeFallback ? 2u : 0u) |
+                    (coldCaptionDecision.available ? 4u : 0u) | (coldCaptionDecision.held ? 8u : 0u) |
+                    (coldCaptionDecision.releasedToBase ? 16u : 0u) | (coldCaptionDecision.nativeCleanBase ? 32u : 0u);
+                const auto& b = nearBlackBoundedInput.crop;
+                gate.counters[0] = (b.verticalTranslationActive ? 1u : 0u) |
+                    (b.verticalTranslationConfirmationPending ? 2u : 0u) | (b.verticalFitConfirmationPending ? 4u : 0u) |
+                    (b.verticalInspectionPending ? 8u : 0u) | (b.presentationFailOpen ? 16u : 0u) |
+                    (b.fullRasterPresentationAuthoritative ? 32u : 0u) | (b.movingPictureTransition ? 64u : 0u) |
+                    (b.latestObservationIsUnavailable ? 128u : 0u);
+                gate.counters[1] = (coldCaptionInput.strictProofCurrent ? 1u : 0u) |
+                    (coldCaptionInput.captionConfirmed ? 2u : 0u) | (coldCaptionInput.captionMeasured ? 4u : 0u) |
+                    (coldCaptionInput.captionAbsenceConfirmed ? 8u : 0u) | (coldCaptionInput.currentObservationAvailable ? 16u : 0u) |
+                    (coldCaptionInput.currentRetentionEvaluated ? 32u : 0u) | (coldCaptionInput.currentRetentionSafe ? 64u : 0u) |
+                    (coldCaptionInput.currentExcludedBandsPixelSafe ? 128u : 0u) | (coldCaptionInput.currentOutwardVisible ? 256u : 0u) |
+                    (coldCaptionInput.currentNativeTrusted ? 512u : 0u) | (coldCaptionInput.sceneBoundary ? 1024u : 0u);
+                gate.counters[2] = coldCaptionInput.proofSourceSequence;
+                gate.counters[3] = coldCaptionInput.captionSourceSequence;
+                gate.counters[4] = coldCaptionInput.observationSourceSequence;
+                gate.counters[5] = coldCaptionInput.retentionSourceSequence;
+                gate.counters[6] = nearBlackPresentationEpisode.boundedPresentationSequence;
+                gate.counters[7] = nearBlackPresentationEpisode.boundedPresentationPresentedSequence;
+                gate.resultCode = static_cast<int32_t>(nearBlackPresentationEpisode.mode);
+                gate.metrics[0] = latestActivePictureGlobalLumaP90;
+                AnalysisTraceText(gate.detail, "v1 flags=bounded,scope,cold,held,released,clean c0=translate,trans_wait,fit_wait,inspect,fail,full,moving,no_obs c1=proof,caption,measured,absent,obs,retention,safe,bands,outward,native,scene");
+                AnalysisDiagnosticTrace::Emit(gate);
+            }
             // Source-rate clean votes are evidence only. Display ownership changes
             // below only after the selected output has actually been submitted.
             nearBlackPresentationEpisode = coldCaptionDecision.episodeState;
