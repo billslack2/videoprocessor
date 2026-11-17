@@ -184,7 +184,7 @@ namespace Tests
 				static_cast<int>(decision.action));
 		}
 
-		TEST_METHOD(QueueDirectionDisagreementBlocksAction)
+		TEST_METHOD(DueDropGoesAtFreshSceneBelowDesiredQueue)
 		{
 			AlphaCadenceCorrectionPolicy policy;
 			AlphaCadenceCorrectionInput input = Input(60.012);
@@ -194,11 +194,9 @@ namespace Tests
 			input.sceneEventId = 3;
 
 			const auto decision = policy.Evaluate(input);
-			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
 				static_cast<int>(decision.action));
-			Assert::AreEqual(
-				Reason(AlphaCadenceBlockReason::DropQueueNotAboveDesired),
-				Reason(decision.blockReason));
+			Assert::AreEqual(static_cast<uint64_t>(3), decision.sceneEventId);
 		}
 
 		TEST_METHOD(DueForecastPublishesSignedOverdueTime)
@@ -256,17 +254,8 @@ namespace Tests
 				debtBlocked.diagnostic.fallbackEligible);
 		}
 
-		TEST_METHOD(DueDropDistinguishesQueueDebtAndFallbackAgeBlockers)
+		TEST_METHOD(DueDropDistinguishesDebtAndFallbackAgeBlockers)
 		{
-			AlphaCadenceCorrectionPolicy queuePolicy;
-			AlphaCadenceCorrectionInput queueInput = Input(60.012);
-			queueInput.queueDepth = queueInput.desiredQueueDepth - 1;
-			const auto queueBlocked =
-				AdvanceUntilDue(queuePolicy, queueInput);
-			Assert::AreEqual(
-				Reason(AlphaCadenceBlockReason::DropQueueNotAboveDesired),
-				Reason(queueBlocked.blockReason));
-
 			AlphaCadenceCorrectionPolicy debtPolicy;
 			AlphaCadenceCorrectionInput debtInput = Input(60.012);
 			debtInput.presentationDebt = 0;
@@ -559,7 +548,7 @@ namespace Tests
 			// Let real phase drift reach the next due point at a resting queue.
 			const auto nextDue = AdvanceUntilDue(policy, input);
 			Assert::AreEqual(
-				Reason(AlphaCadenceBlockReason::DropQueueNotAboveDesired),
+				Reason(AlphaCadenceBlockReason::DropFallbackQueueTooYoung),
 				Reason(nextDue.blockReason));
 			input.queueDepth = input.desiredQueueDepth;
 			input.safeSceneBoundary = true;
