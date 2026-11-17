@@ -16,7 +16,7 @@ supplies the compressed pixel geometry for the physical lens. A regular monitor
 will show compressed proportions until the optical expansion is accounted for.
 
 ## Diagnostic records
-Existing debug logging emits `VP anamorphic layout: schema=1` for initial layout,
+Existing debug logging emits `VP anamorphic layout: schema=2` for initial layout,
 changes (maximum four per second), and every ten seconds with an active lens.
 The record includes source sequence/generation and viewport serial, input/output
 sizes, selected source crop, content aspect, physical and raster screen aspects,
@@ -57,3 +57,10 @@ The automated D3D11 WARP tests exercise the shipped libplacebo DLL and shaders,
 coordinate-field readback, fractional source crops, both overlay coordinate modes,
 and deliberately failing runtime hooks. Real projector/GPU-driver acceptance is
 still required before marking the story Done.
+
+The schema 2 `content_aspect` is the aspect of the render source crop, not
+an independent detected-picture measurement. `physical_screen` and
+`raster_screen` describe the configured screen and output geometry. The
+change-only `VP submitted geometry` record reports accepted submission, not
+confirmed scanout; its current-analysis snapshot is not necessarily the
+selected temporal packet.

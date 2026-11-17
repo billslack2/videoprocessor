@@ -138,6 +138,79 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
         return guard.Resolve(preview,source,frameMs,holdMs);
     }
 public:
+    TEST_METHOD(DetectorTelemetryCountsRetryPassesAndSameFrameReuseSeparately) {
+        auto pixels=Pixels();
+        std::fill(pixels.begin(),pixels.begin()+160*90,uint16_t(64<<6));
+        const auto source=Source(pixels);
+        SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+        const auto first=detector.Analyze(source,12,78,17,1);
+        const auto reused=detector.Analyze(source,12,78,17,1);
+        Assert::IsFalse(first.detected);Assert::IsFalse(reused.detected);
+        // Reset must not erase work already done in this diagnostic interval.
+        detector.Reset();
+        const auto work=detector.TakeDiagnostics();
+        Assert::AreEqual<uint64_t>(2,work.analyzeCalls);
+        Assert::AreEqual<uint64_t>(2,work.detectPasses);
+        Assert::AreEqual<uint64_t>(1,work.sameFrameReuses);
+        Assert::AreEqual<uint64_t>(0,work.rejectedInputs);
+        Assert::IsTrue(work.analyzeElapsedMs>=work.detectElapsedMs);
+        Assert::IsTrue(work.analyzeElapsedMs>=work.analyzePeakMs);
+        Assert::IsTrue(work.detectElapsedMs>=work.detectPeakMs);
+        detector.Analyze({},12,78,18,1);
+        const auto rejected=detector.TakeDiagnostics();
+        Assert::AreEqual<uint64_t>(1,rejected.analyzeCalls);
+        Assert::AreEqual<uint64_t>(0,rejected.detectPasses);
+        Assert::AreEqual<uint64_t>(1,rejected.rejectedInputs);
+        Assert::AreEqual<uint64_t>(0,detector.TakeDiagnostics().analyzeCalls);
+    }
+    TEST_METHOD(WorkerTelemetryDistinguishesCompletedJobsFromDetectorWorkAndFailures) {
+        SubtitleMeasurementWorker worker;
+        const auto key=WorkerKey(17,0xA11CE);
+        worker.Submit(key,[key](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&) {
+            auto result=key;result.analyzed=true;return result;
+        });
+        SubtitleBoxObservation ready;
+        Assert::IsTrue(WaitForTake(worker,key,ready));
+        const auto completed=worker.TakeDiagnostics();
+        Assert::AreEqual<uint64_t>(1,completed.completedJobs);
+        Assert::AreEqual<uint64_t>(1,completed.successfulJobs);
+        Assert::AreEqual<uint64_t>(1,completed.jobsWithoutAnalyze);
+        Assert::AreEqual<uint64_t>(0,completed.analyzeCalls);
+        Assert::AreEqual<uint64_t>(0,completed.detectPasses);
+        Assert::AreEqual<uint64_t>(0,completed.failed);
+        auto failedKey=key;failedKey.identity.acceptedSequence++;
+        worker.Submit(failedKey,[](SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&)
+            -> SubtitleBoxObservation {throw 1;});
+        Assert::IsTrue(WaitForTake(worker,failedKey,ready));
+        const auto failed=worker.TakeDiagnostics();
+        Assert::AreEqual<uint64_t>(1,failed.completedJobs);
+        Assert::AreEqual<uint64_t>(0,failed.successfulJobs);
+        Assert::AreEqual<uint64_t>(1,failed.failed);
+        Assert::AreEqual<uint64_t>(1,failed.jobsWithoutAnalyze);
+        Assert::AreEqual(failed.jobElapsedMs,failed.failedJobElapsedMs);
+        Assert::AreEqual(failed.jobElapsedMs,failed.jobPeakMs);
+        Assert::AreEqual<uint64_t>(0,worker.TakeDiagnostics().completedJobs);
+    }
+    TEST_METHOD(WorkerTelemetryAggregatesMultipleMeasurementsPerJob) {
+        SubtitleMeasurementWorker worker;
+        auto pixels=PixelsWithCurrentBars();
+        const auto source=Source(pixels);
+        const auto key=Ready(17).current;
+        worker.Submit(key,[key,source](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference& prior) {
+            sampler.Measure(source,key,prior,24);
+            return sampler.Measure(source,key,prior,24);
+        });
+        SubtitleBoxObservation ready;
+        Assert::IsTrue(WaitForTake(worker,key,ready));
+        const auto work=worker.TakeDiagnostics();
+        Assert::AreEqual<uint64_t>(1,work.completedJobs);
+        Assert::AreEqual<uint64_t>(1,work.successfulJobs);
+        Assert::AreEqual<uint64_t>(0,work.jobsWithoutAnalyze);
+        Assert::IsTrue(work.analyzeCalls>=2);
+        Assert::IsTrue(work.detectPasses>=work.analyzeCalls);
+        Assert::IsTrue(work.jobElapsedMs>=work.analyzeElapsedMs);
+        Assert::IsTrue(work.analyzeElapsedMs>=work.detectElapsedMs);
+    }
     TEST_METHOD(FaultCapturePredicateRequiresCurrentSharedFailureAndBoundedSource) {
         auto pixels=Pixels();
         auto source=Source(pixels);

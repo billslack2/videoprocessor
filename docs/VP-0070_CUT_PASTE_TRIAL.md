@@ -306,13 +306,16 @@ screen profile's `subtitle_fit` and associated picture-shift settings still
 govern normal mode. Queue profiles' `active_picture_lookahead_frames` controls
 available lookahead (the deployed VP profiles currently specify five).
 
-`SUBTITLE STABILITY` in `C:\Videoprocessor\vp\logs\vp.log` records transitions only: detector
-loss/recovery, visible-output loss/recovery, hold start/end, decision reason,
-grace duration, cue/box, lookahead confirmation, geometry validity and counters.
-`suspected_flash=1` means matching cue evidence reappeared after at most 500 ms
-of missing output. It is a diagnostic heuristic, not proof of an incorrect
-source disappearance. Repeated source frames do not generate duplicate events;
-discontinuities reset tracking. No screenshot or text recognition is logged.
+`SUBTITLE STABILITY` schema 2 records transitions in a renderer-side cue
+indicator before frame submission. `raw_text_detected` is the current detector
+candidate; `cue_indicator` means the tracker accepted a cue and, in composition
+mode, a subtitle hook was bound. Neither field measures visible screen pixels.
+`cue_indicator_lost` and `cue_indicator_regained` describe this indicator;
+`heuristic_flash` is a tracker heuristic, not a scanout or observed-flash result.
+Repeated source frames do not generate duplicate events. Discontinuities reset
+tracking. No screenshot or text recognition is logged. Earlier schema 1 called
+these fields `visible`, `output_lost`, `output_regained` and `suspected_flash`;
+those names did not prove what was displayed.
 
 
 ### Black-backed partial tracking
@@ -482,21 +485,26 @@ playback and GPU pacing still require verification on the deployed build.
 
 ### Subtitle performance telemetry (2026-10-07)
 
-Five-second `SUBTITLE PERFORMANCE CPU` windows report full scans and cheap
-fingerprint refreshes separately: counts, actual Hz, average/peak wall-clock
-execution cost, completed worker busy milliseconds, queue wait, dropped jobs,
-request misses, and verified pending frames. Request misses include lookahead
-queries; they are not dropped video frames. Render-thread consume timing includes
-current-pixel pending checks and display geometry, but excludes composition.
+Five-second `SUBTITLE PERFORMANCE CPU` schema 2 reports completed worker
+jobs separately from actual detector `Analyze` calls and detector search passes.
+A job may run no detector, one search, or multiple searches. Job and detector
+timings are elapsed wall times attributed to jobs completed in the window;
+search time is inside Analyze time, which is inside job time. They are not CPU
+utilization and must not be added. An unanalyzed result is not necessarily an
+exception. Lookup misses and missing subtitle observations are not dropped video
+frames. Renderer `partial_cue` timing covers only part of cue preparation and
+selected current-pixel verification, not the total subtitle or presentation path.
 
-`SUBTITLE PERFORMANCE GPU` reports black and generated-gray composition separately,
-including reconstruction, blur and full-source intermediate rendering. GPU timestamps
-use the existing delayed nonblocking D3D11 query ring and alternating-frame sampling;
-only successful matched presentations enter the aggregate. `gpu_samples=0` means no
-measurement, not a zero-cost pass. Query completion can fall in the next window.
-The overall GPU stage sum now includes subtitle composition. CPU submission elapsed
-time is separate and must not be mistaken for GPU execution time. No detector cadence,
-blur, configuration or image-processing behavior is intentionally changed here.
+Earlier schema 1 mislabeled completed non-refresh jobs `full_scans`, and
+`worker_busy_ms` summed only successful job durations, not worker utilization.
+Its `consume_ms` covered only a subset of renderer subtitle work. These legacy
+fields cannot establish the number of detector searches, the full frame cost,
+or a missed video presentation.
+
+`SUBTITLE PERFORMANCE GPU` schema 2 counts composition attempts and asynchronous
+GPU timestamp samples separately. A missing sample is unknown, not zero GPU
+cost; query completion can fall in the next window. GPU times cover the
+instrumented stage and use the existing nonblocking query ring, not scanout.
 
 
 ### Detection optimization A/B modes (2026-10-07)
@@ -517,10 +525,11 @@ extra first-pass writes, so improvement is workload dependent. No speedup is
 assumed until measured. The mode is part of the worker key and settings identity;
 CPU performance lines include `optimization=...`.
 
-For clean comparisons, edit the active VideoProcessor.cfg setting, restart VP,
-and replay the same sequence once per mode. Compare full_scan_hz/refresh_hz,
-full_avg_ms/full_peak_ms, worker_busy_ms, and consume_avg_ms. GPU timing should
-be unaffected. Baseline remains the active deployment default.
+For a controlled comparison, replay the same source and settings for each mode.
+Compare completed jobs, actual detector calls and search passes, their nested
+elapsed times, renderer partial cue time, GPU samples, and end-to-end presentation
+measurements. Do not treat lookup misses as dropped video frames or add nested
+job/detector timings. Preserve the active user configuration.
 
 Differential tests compare exact result geometry, ownership/backing masks,
 line signatures, frame changes and sampling boundaries for P010/native RGB at

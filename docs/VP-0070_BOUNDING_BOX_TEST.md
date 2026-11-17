@@ -43,19 +43,21 @@ observation versus held state, geometry revisions, current bar availability,
 CPU cost and detected/held totals. A revision can be a real new cue or a late
 correction; compare recording and source frames. Early means the first eligible
 frame with qualified current bar evidence and available cue confirmation.
-`bar_authority`, `picture` and `bar_reason` describe the geometry used for this
-frame. `bar_depth`, `bar_support`, `bar_black_fraction` and `bar_samples` expose
-the proposed edge depths, supporting columns, verified flat-band fractions and
-sampling work. A valid opposite edge can remain usable after one edge fails;
-`picture` identifies which bounds actually received authority.
+In `SUBTITLE BBOX` schema 2, `subtitle_bar_authority`,
+`subtitle_analysis_picture` and `bar_reason` describe the bounds used by
+subtitle analysis, not physical-aspect or final-crop authority. Bar support and
+black-fraction fields are sampled diagnostics, not full-pixel proof.
 
-`current_scan_ms` reports the source observation cost, including diagnostic bar
-proof and text detection. `window_new_scan_ms` and `window_new_scans` report
-newly measured frames in the queue window. Cached frames and cadence repeats do
-not add observations. `consume_ms` and `peak_consume_ms` cover render-time
-tracking only. `future_available` and `matching_frames` distinguish queued
-confirmation from immediate current-frame fallback. `analysis_step` and
-`work_limit` expose spatial sampling and the bounded-component guard.
+`current_observation_wall_ms` is the source observation's elapsed analysis
+time, including its bar and subtitle work. `synchronous_measurement_wall_ms`
+and `synchronous_measurements` cover only newly measured synchronous work in
+the queue window. `tracker_partial_elapsed_ms` and `tracker_partial_peak_ms`
+cover part of renderer-side tracking, not the full subtitle or frame path.
+`future_available` and `matching_frames` distinguish queued confirmation from
+immediate current-frame fallback. `analysis_step` and `work_limit` expose
+spatial sampling and the bounded-component guard. Schema 1 used the less
+specific names `bar_authority`, `picture`, `current_scan_ms`, `consume_ms`
+and `observed`; its `observed` was tracker detection, not actual visibility.
 
 Per-line 64x16 ink-density signatures distinguish changed strokes even when a
 long line retains the same outer bounds. Signatures include only pixels of

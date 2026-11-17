@@ -157,6 +157,52 @@ namespace VideoProcessorTest
 			Assert::IsTrue(osd.Update(reading, 16600).name == L"Digital IMAX");
 		}
 
+		TEST_METHOD(AspectOsdDiagnosticsSeparateRawLabelAndReportHeldReads)
+		{
+			AspectRatioOsd osd;
+			DetectedPictureAspect reading{ 7, 3, 2.345, true };
+			Assert::IsTrue(osd.Update(reading, 1000).ratio == L"2.35:1");
+			auto state = osd.GetDiagnosticState(1100);
+			Assert::IsTrue(state.readStatus == AspectRatioOsd::ReadStatus::AVAILABLE);
+			Assert::AreEqual(2.345, state.lastReading.ratio, 1e-12);
+			Assert::IsTrue(state.displayedLabel.ratio == L"2.35:1");
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::CURRENT);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
+			Assert::IsFalse(osd.ShouldLogDiagnostic(osd.GetDiagnosticState(1200)));
+
+			reading.publicationGeneration = 4;
+			reading.ratio = 2.40;
+			osd.Update(reading, 1300);
+			state = osd.GetDiagnosticState(1600);
+			Assert::AreEqual(2.40, state.lastReading.ratio, 1e-12);
+			Assert::IsTrue(state.displayedLabel.ratio == L"2.35:1");
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::HELD_AMBIGUOUS);
+			Assert::AreEqual(uint64_t(300), state.holdAgeMs);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
+
+			osd.MarkReadBusy(1700);
+			state = osd.GetDiagnosticState(1800);
+			Assert::IsTrue(state.readStatus == AspectRatioOsd::ReadStatus::BUSY);
+			Assert::AreEqual(uint64_t(500), state.lastReadAgeMs);
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::HELD_BUSY);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
+			Assert::IsFalse(osd.ShouldLogDiagnostic(osd.GetDiagnosticState(1900)));
+
+			reading.available = false;
+			reading.ratio = 0.0;
+			osd.Update(reading, 2000);
+			state = osd.GetDiagnosticState(2500);
+			Assert::IsTrue(state.readStatus == AspectRatioOsd::ReadStatus::UNAVAILABLE);
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::HELD_UNAVAILABLE);
+			Assert::AreEqual(uint64_t(500), state.holdAgeMs);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
+			osd.Update(reading, 12000);
+			state = osd.GetDiagnosticState(12000);
+			Assert::IsTrue(state.displayedLabel.ratio == L"---");
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::UNKNOWN);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
+		}
+
 		TEST_METHOD(RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads)
 		{
 			// Exercise the real renderer DLL and D3D initialization without capture hardware.

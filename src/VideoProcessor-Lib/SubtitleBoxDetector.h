@@ -111,6 +111,13 @@ enum class SubtitleScriptHint : int
 class SubtitleBoxDetector
 {
 public:
+    // Diagnostic counters are independent of detection state and survive Reset.
+    // Analyze elapsed includes nested Detect elapsed; these are wall durations.
+    struct Diagnostics {
+        uint64_t analyzeCalls=0,detectPasses=0,rejectedInputs=0,sameFrameReuses=0;
+        double analyzeElapsedMs=0,analyzePeakMs=0,detectElapsedMs=0,detectPeakMs=0;
+    };
+    Diagnostics TakeDiagnostics() {auto out=m_diagnostics;m_diagnostics={};return out;}
     SubtitleBoxResult Analyze(const AnalysisLumaSource& source, int pictureTop,
         int pictureBottom, uint64_t sequence, uint64_t viewportGeneration);
     void Reset();
@@ -128,6 +135,7 @@ public:
     // UHD is sampled at 960x540: one quarter per axis, one sixteenth of pixels.
     static int SamplingStep(int width, int height);
 private:
+    Diagnostics m_diagnostics;
     struct Line {
         SubtitleBoxRect box;
         int ink = 0, components = 0, topBarInk = 0, bottomBarInk = 0;

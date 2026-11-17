@@ -56,6 +56,7 @@ inline std::atomic_bool& SubtitleDiagnosticCaptureClaimed()
 // sampled-pixel/buffer reuse remains controlled by the detector's existing mode.
 class SubtitleMeasurementSampler {
 public:
+    SubtitleBoxDetector::Diagnostics TakeDetectorDiagnostics() {return m_scanner.TakeDiagnostics();}
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/,
         const ActivePictureEvidence& nativeEvidence = {}) {
@@ -196,6 +197,13 @@ private:
 class SubtitleMeasurementWorker {
 public:
     struct Diagnostics {
+        // Completed-job cohort totals, not CPU time or exact wall-window utilization.
+        // Detect duration is nested in Analyze, which is nested in job elapsed.
+        uint64_t completedJobs=0,successfulJobs=0,jobsWithoutAnalyze=0;
+        uint64_t analyzeCalls=0,detectPasses=0,rejectedInputs=0,sameFrameReuses=0;
+        double analyzeElapsedMs=0,analyzePeakMs=0,detectElapsedMs=0,detectPeakMs=0;
+        double jobElapsedMs=0,jobPeakMs=0,failedJobElapsedMs=0;
+        // Legacy completion classifications retained for older callers only.
         uint64_t fullScans=0,refreshes=0,failed=0,dropped=0,requestMisses=0;
         uint64_t submitted=0,exactReads=0,deduplicated=0,expired=0;
         double fullMs=0,fullPeakMs=0,refreshMs=0,refreshPeakMs=0,queueWaitMs=0,queueWaitPeakMs=0;
@@ -416,9 +424,24 @@ private:
             const double waited=std::chrono::duration<double,std::milli>(workStart-job.queued).count();
             SubtitleBoxObservation result=job.key;
             try {result=job.work(scanner,previous);previous=SubtitleBoxLookahead::AdvanceBarTrackingReference(result);} catch(...) {result.analyzed=false;}
+            const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
+            const auto detector=scanner.TakeDetectorDiagnostics();
             Trace(result,"worker-complete",result.analyzed?result.text.diagnosticReason:"analysis-failed");
             {std::lock_guard<std::mutex> lock(m_mutex);
-                const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
+                ++m_diagnostics.completedJobs;
+                if(result.analyzed)++m_diagnostics.successfulJobs;
+                else m_diagnostics.failedJobElapsedMs+=ms;
+                if(!detector.analyzeCalls)++m_diagnostics.jobsWithoutAnalyze;
+                m_diagnostics.analyzeCalls+=detector.analyzeCalls;
+                m_diagnostics.detectPasses+=detector.detectPasses;
+                m_diagnostics.rejectedInputs+=detector.rejectedInputs;
+                m_diagnostics.sameFrameReuses+=detector.sameFrameReuses;
+                m_diagnostics.analyzeElapsedMs+=detector.analyzeElapsedMs;
+                m_diagnostics.analyzePeakMs=(std::max)(m_diagnostics.analyzePeakMs,detector.analyzePeakMs);
+                m_diagnostics.detectElapsedMs+=detector.detectElapsedMs;
+                m_diagnostics.detectPeakMs=(std::max)(m_diagnostics.detectPeakMs,detector.detectPeakMs);
+                m_diagnostics.jobElapsedMs+=ms;
+                m_diagnostics.jobPeakMs=(std::max)(m_diagnostics.jobPeakMs,ms);
                 m_diagnostics.queueWaitMs+=waited;m_diagnostics.queueWaitPeakMs=(std::max)(m_diagnostics.queueWaitPeakMs,waited);
                 if(!result.analyzed)++m_diagnostics.failed;
                 else if(result.analysisRefresh){++m_diagnostics.refreshes;m_diagnostics.refreshMs+=ms;m_diagnostics.refreshPeakMs=(std::max)(m_diagnostics.refreshPeakMs,ms);}
