@@ -993,6 +993,25 @@ public:
         Assert::IsFalse(ApplyCurrentSubtitleBackingLip(geometry,changed,
             Identity(7),7,8).generatedCleanup.Valid());
     }
+    TEST_METHOD(EdgeWobbleReacquiresCurrentBackingWithoutOneFrameCleanupGap) {
+        for(auto format:{Format::P010,Format::P210,Format::DecodedDv}) {
+            Frame frame(6,format,false,0);frame.Lip(30,true);
+            auto cue=AcquireOnHeap(frame,20);auto geometry=Geometry(*cue);
+            SubtitleBackingLipContinuity state;
+            auto first=state.Consume(frame.Source(),cue->preview,cue->accepted,Identity(2),7,8,65536,&geometry);
+            Assert::IsTrue(first.valid);
+            auto shallow=cue->preview;shallow.current.identity=Identity(3);
+            shallow.current.pictureBottom=1773;shallow.current.barEvidence.bottom=1773;
+            auto clipped=state.Consume(frame.Source(),shallow,cue->accepted,Identity(3),7,8,65536,&geometry);
+            Assert::IsTrue(clipped.valid);Assert::AreEqual(1773,clipped.measured.bottom);
+            auto restored=cue->preview;restored.current.identity=Identity(4);
+            const auto current=state.Consume(frame.Source(),restored,cue->accepted,Identity(4),7,8,65536,&geometry);
+            Assert::IsTrue(current.valid,L"A clipped remembered outline must not suppress a fresh current backing proof.");
+            Assert::AreEqual(1776,current.measured.bottom);
+            Assert::IsTrue(current.samples<=65536);AssertCurrentCleanupRows(current,frame);
+            AssertGeometryExceptCleanup(geometry,ApplyCurrentSubtitleBackingLip(geometry,current,Identity(4),7,8));
+        }
+    }
     TEST_METHOD(RememberedLipCannotSurviveRealPictureExpansionOverFiniteDarkObject) {
         Frame frame(6,Format::P210,false,64);
         frame.pictureBottom=1774;
@@ -1038,6 +1057,9 @@ public:
         const auto rejected=ProveCurrentSubtitleBackingLip(source,preview,text,
             Identity(3),7,8,65536,&first,&geometry);
         Assert::IsFalse(rejected.valid);
+        const auto currentRejected=continuity.Consume(source,preview,text,Identity(3),7,8,65536,&geometry);
+        Assert::IsFalse(currentRejected.valid,L"Cold reacquisition must not erase a detached dark scene object after real expansion.");
+        Assert::IsTrue(currentRejected.samples<=65536);
         Assert::AreEqual("lip-outline-edge-expansion-not-bar",rejected.reason);
         Assert::IsTrue(rejected.pixelInspectionPerformed && rejected.samples<=65536);
         Assert::IsFalse(ApplyCurrentSubtitleBackingLip(geometry,rejected,Identity(3),7,8).generatedCleanup.Valid());

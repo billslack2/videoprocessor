@@ -874,6 +874,20 @@ public:
         const bool matches=m_outline.valid && candidateMismatch==0;
         auto proof=ProveCurrentSubtitleBackingLip(source,preview,text,identity,policy,continuity,
             maxSamples,matches?&m_outline:nullptr,composition,glyphContinuity);
+        // A clipped prior outline can fail the outward-edge test even when
+        // the unchanged current card has a fully provable finite boundary.
+        // Reacquire from this source, not the remembered body, using only the
+        // unspent portion of the existing budget. Real expansion, changed ink
+        // and ambiguous black objects still face every cold-acquisition check.
+        if(matches && !proof.valid && proof.reason &&
+            std::strcmp(proof.reason,"lip-outline-edge-expansion-not-bar")==0 &&
+            proof.samples<maxSamples) {
+            const auto spent=proof.samples;
+            proof=ProveCurrentSubtitleBackingLip(source,preview,text,identity,policy,continuity,
+                maxSamples-spent,nullptr,composition,glyphContinuity);
+            proof.samples+=spent;
+            if(proof.valid)proof.reason="current-reacquired-backing-after-edge-wobble";
+        }
         proof.candidatePresent=m_outline.valid;
         proof.candidateMatched=matches && proof.candidateMatched;
         proof.candidateMismatchMask|=candidateMismatch;
