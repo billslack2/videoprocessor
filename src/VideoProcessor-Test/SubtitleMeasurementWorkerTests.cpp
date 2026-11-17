@@ -13,6 +13,169 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
     static ActivePictureFrameIdentity Identity(uint64_t sequence) {
         return {1,sequence,sequence,sequence*1000,2,3,4};
     }
+    struct CrossingCue {
+        std::vector<uint16_t> pixels;
+        CrossingCue():pixels(size_t(3840)*2160*3/2,uint16_t(512<<6)) {
+            std::fill(pixels.begin(),pixels.begin()+3840*2160,uint16_t(64<<6));
+            for(int y=262;y<1898;++y)for(int x=0;x<3840;++x)pixels[size_t(y)*3840+x]=uint16_t(300<<6);
+            for(int y=1826;y<1898;++y)for(int x=1400;x<2440;++x)pixels[size_t(y)*3840+x]=uint16_t(64<<6);
+            for(int y=1862;y<1978;++y)for(int x=1440;x<2404;++x)
+                if((x-1440)%28<12)pixels[size_t(y)*3840+x]=uint16_t(700<<6);
+        }
+        AnalysisLumaSource Source() {
+            AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+            source.dataBytes=pixels.size()*2;source.width=3840;source.height=2160;
+            source.rowBytes=source.chromaRowBytes=7680;source.format=AnalysisLumaFormat::P010;source.generation=1;return source;
+        }
+        SubtitleBoxObservation Observation(uint64_t sequence,int bottom) {
+            SubtitleBoxObservation o;o.identity=Identity(sequence);o.width=3840;o.height=2160;
+            o.policyGeneration=11;o.continuityGeneration=21;o.analyzed=o.barAuthority=o.independentBarAnalysis=true;
+            o.pictureTop=262;o.pictureBottom=bottom;o.barEvidence.available=true;
+            o.barEvidence.top=262;o.barEvidence.bottom=bottom;o.nearBarDistance=20;
+            o.sharedPicture.required=true;o.sharedPicture.identity=o.identity;
+            o.sharedPicture.bounds={0,262,3840,1898,3840,2160};
+            auto& t=o.text;t.detected=true;t.lineCount=1;t.observations=1;t.bounds={1434,1862,2414,1978};
+            t.lineBounds[0]={1440,1862,2404,1978};t.sourcePanel=t.capturePanel=t.provenSourcePanel={1400,1826,2440,1898};
+            t.capturePanelMeasured=true;t.nearBarEligibilityMeasured=t.nearBarEligible=true;
+            t.signature.fill(0x55);t.anchorSignature.fill(0x55);t.lineSignatures[0].fill(0x55);
+            auto ink=std::make_shared<SubtitleInkSnapshot>();ink->width=960;ink->height=540;ink->step=4;
+            ink->sourceRows.resize(540);ink->rawInk.resize(8100);ink->ownedInk.resize(8100);ink->blackBacking.resize(8100);
+            ink->paletteValid=ink->rawEvidenceComplete=true;ink->inkFloor=500;ink->blackLimit=96;
+            for(int y=0;y<540;++y) {
+                const int sy=y==65?261:(y==(bottom+3)/4?bottom:4*y);ink->sourceRows[y]=sy;
+                for(int x=0;x<960;++x) {
+                    const size_t i=size_t(y)*960+x;const auto bit=uint64_t(1)<<(i%64);
+                    const int value=pixels[size_t(sy)*3840+x*4]>>6;
+                    if(value>=500){ink->rawInk[i/64]|=bit;ink->ownedInk[i/64]|=bit;}
+                    if(value<=96)ink->blackBacking[i/64]|=bit;
+                }
+            }
+            o.ink=ink;AttachCanonicalSubtitleContinuityInk(o,Source());return o;
+        }
+    };
+    TEST_METHOD(StableCrossingCueSurvivesMultiPixelBoundarySamplingWobble) {
+        CrossingCue f;auto a=f.Observation(1,1895),b=f.Observation(2,1896);
+        Assert::IsTrue(bool(a.continuityEvidence)&&bool(b.continuityEvidence));
+        Assert::IsFalse(a.ink->sourceRows==b.ink->sourceRows);
+        Assert::IsTrue(a.continuityEvidence->comparison->sourceRows==b.continuityEvidence->comparison->sourceRows);
+        auto rawA=a,rawB=b;rawA.continuityEvidence.reset();rawB.continuityEvidence.reset();
+        Assert::IsFalse(SubtitleBoxLookahead::SameLinePixels(rawA,0,rawB,0),L"The old boundary-sensitive grid cannot confirm these identical source glyphs.");
+        SubtitleBoxPresentation oldGrid;
+        const auto oldFirst=oldGrid.Consume(SubtitleBoxLookahead::Resolve(&rawA,1,11,21));
+        const auto oldNext=oldGrid.Consume(SubtitleBoxLookahead::Resolve(&rawB,1,11,21));
+        Assert::IsTrue(oldFirst.detected);
+        Assert::IsTrue(!oldNext.detected || oldNext.cue!=oldFirst.cue,L"Control reproduces state loss/reacquisition without stable worker evidence.");
+        Assert::IsTrue(SubtitleBoxLookahead::SameLinePixels(a,0,b,0));
+        std::array<SubtitleBoxObservation,2> first{a,b};
+        auto preview=SubtitleBoxLookahead::Resolve(first.data(),first.size(),11,21);
+        SubtitleBoxPresentation tracker;auto accepted=tracker.Consume(preview);
+        Assert::IsTrue(accepted.detected);const auto cue=accepted.cue;
+        SubtitleBoxPreview repeated;
+        Assert::IsTrue(tracker.ReusePreviewForRepeatedSourceFrame(a.identity,3840,2160,false,11,21,repeated));
+        Assert::IsTrue(repeated.current.ink==a.ink,L"Repeated output must export the original detector snapshot.");
+        Assert::IsTrue(repeated.following[0].ink==b.ink);
+        uint64_t seq=2;
+        for(int edge:{1893,1896,1897,1894,1895,1898,1893,1897}) {
+            auto current=f.Observation(seq++,edge);auto next=f.Observation(seq,edge==1893?1896:1893);
+            std::array<SubtitleBoxObservation,2> window{current,next};
+            preview=SubtitleBoxLookahead::Resolve(window.data(),window.size(),11,21);
+            Assert::IsTrue(tracker.RefreshReferencePixels(preview,f.Source()));
+            Assert::AreEqual(0u,tracker.ReferenceSampleCount(),L"Worker current pixels must not trigger native render-thread resampling.");
+            accepted=tracker.Consume(preview);
+            Assert::IsTrue(accepted.detected,L"Small edge changes must not discard an unchanged crossing cue.");
+            Assert::AreEqual(cue,accepted.cue);
+            Assert::AreEqual(edge,preview.current.pictureBottom,L"Raw geometry remains measured.");
+        }
+        auto changed=f.Observation(seq++,1895);
+        for(int y=1862;y<1978;++y)for(int x=1440;x<1480;++x)f.pixels[size_t(y)*3840+x]=uint16_t(64<<6);
+        changed=f.Observation(seq,1896);preview=SubtitleBoxLookahead::Resolve(&changed,1,11,21);
+        const auto result=tracker.Consume(preview);
+        Assert::IsTrue(!result.detected||result.cue!=cue,L"A real glyph removal cannot reuse the established cue identity.");
+    }
+    TEST_METHOD(CanonicalComparisonPreservesRawEvidenceAndRejectsUnprovedOwnership) {
+        CrossingCue f;auto o=f.Observation(1,1893);const auto raw=o.ink;
+        Assert::IsTrue(bool(o.continuityEvidence));
+        Assert::AreEqual(1893,raw->sourceRows[474]);Assert::AreEqual(1896,o.continuityEvidence->comparison->sourceRows[474]);
+        Assert::IsFalse(bool(BuildCanonicalSubtitleContinuityInk(o,f.Source(),1)),L"No over-budget proof.");
+        auto invalid=f.Source();invalid.dataBytes=0;
+        Assert::IsFalse(bool(BuildCanonicalSubtitleContinuityInk(o,invalid)));
+        // A fresh bright sample not owned by the current detector stays raw,
+        // even though it lies within the line's broad bounding rectangle.
+        f.pixels[size_t(1896)*3840+1460]=uint16_t(700<<6);
+        auto extra=BuildCanonicalSubtitleContinuityInk(o,f.Source());Assert::IsTrue(bool(extra));
+        Assert::IsTrue(extra->Get(365,474));Assert::IsFalse(extra->Get(365,474,true));
+        Assert::IsTrue(o.ink==raw);Assert::IsFalse(raw->Get(365,474));
+        // Never bridge a current dark hole between two bright endpoints.
+        f.pixels[size_t(1894)*3840+1440]=uint16_t(64<<6);
+        auto broken=BuildCanonicalSubtitleContinuityInk(o,f.Source());Assert::IsTrue(bool(broken));
+        Assert::IsTrue(broken->Get(360,474));Assert::IsFalse(broken->Get(360,474,true));
+        auto isolated=std::make_shared<SubtitleInkSnapshot>(*raw);
+        const size_t index=size_t(474)*960+365;const auto bit=uint64_t(1)<<(index%64);
+        isolated->rawInk[index/64]|=bit;isolated->ownedInk[index/64]|=bit;
+        o.ink=isolated;f.pixels[size_t(1893)*3840+1460]=uint16_t(700<<6);
+        f.pixels[size_t(1896)*3840+1460]=uint16_t(64<<6);
+        Assert::IsFalse(bool(BuildCanonicalSubtitleContinuityInk(o,f.Source())),L"An isolated boundary-only dot cannot silently disappear.");
+    }
+    TEST_METHOD(CanonicalEvidenceCannotCrossSourcesContextsOrSpecializedMasks) {
+        CrossingCue f;auto a=f.Observation(1,1893);auto b=f.Observation(2,1895);
+        Assert::IsTrue(SubtitleBoxLookahead::HasCanonicalContinuity(a));
+        auto copied=a;copied.identity=Identity(2);
+        Assert::IsFalse(SubtitleBoxLookahead::HasCanonicalContinuity(copied));
+        copied=a;copied.analyzed=false;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCanonicalContinuity(copied));
+        copied=a;copied.pendingRefresh=true;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCanonicalContinuity(copied));
+        copied=a;++copied.policyGeneration;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCanonicalContinuity(copied));
+        copied=a;++copied.continuityGeneration;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCanonicalContinuity(copied));
+        copied=a;copied.ink=std::make_shared<SubtitleInkSnapshot>(*a.ink);
+        Assert::IsFalse(SubtitleBoxLookahead::HasCanonicalContinuity(copied),L"Specialized exact-pixel proofs cannot be bypassed by inherited worker metadata.");
+        Assert::IsTrue(&SubtitleBoxLookahead::ComparisonInk(copied,b)==copied.ink.get());
+        copied=a;copied.ink.reset();
+        Assert::IsFalse(SubtitleBoxLookahead::HasCanonicalContinuity(copied));
+    }
+    TEST_METHOD(CurrentOwnedHandoffToleratesBoundedEdgeWobbleWithoutNativeDrift) {
+        CrossingCue f;const auto reference=f.Observation(1,1895);
+        for(int y=1862;y<1978;++y)for(int x=2000;x<2404;++x)f.pixels[size_t(y)*3840+x]=uint16_t(64<<6);
+        auto current=f.Observation(2,1893);current.text.lineBounds[0].right=1994;current.text.bounds.right=2004;
+        AttachCanonicalSubtitleContinuityInk(current,f.Source());
+        auto proof=SubtitleBoxLookahead::ProveCurrentOwnedContraction(reference,current);
+        Assert::IsTrue(proof.valid,L"Current prefix ownership must survive a minor analysis-edge change.");
+        Assert::IsTrue(proof.inspectedSamples<=65536);
+        auto nearby=current;nearby.pictureBottom=1909;nearby.barEvidence.bottom=1909;
+        nearby.sharedPicture.bounds.bottom=1909;
+        Assert::IsTrue(SubtitleBoxLookahead::StableNativeSubtitleGeometry(reference,nearby));
+        Assert::IsTrue(SubtitleBoxLookahead::StableNativeSubtitleGeometry(nearby,reference));
+        Assert::IsTrue(SubtitleBoxLookahead::SameContext(reference,nearby));
+        Assert::IsTrue(SubtitleBoxLookahead::SameContext(nearby,reference));
+        Assert::IsTrue(SubtitleBoxLookahead::ProveCurrentOwnedContraction(reference,nearby).valid,
+            L"The whole fixed native band is continuity tolerance, not exact previous-plane equality.");
+        auto drift=nearby;drift.pictureBottom=1910;drift.barEvidence.bottom=1910;drift.sharedPicture.bounds.bottom=1910;
+        Assert::IsFalse(SubtitleBoxLookahead::StableNativeSubtitleGeometry(reference,drift),L"The acquisition anchor prevents cumulative small shifts from drifting beyond its band.");
+        Assert::IsFalse(SubtitleBoxLookahead::ProveCurrentOwnedContraction(reference,drift).valid);
+        auto wrongContext=current;++wrongContext.policyGeneration;
+        Assert::IsFalse(SubtitleBoxLookahead::ProveCurrentOwnedContraction(reference,wrongContext).valid);
+        // A genuinely added current glyph inside the retained prefix still fails.
+        f.pixels[size_t(1880)*3840+1460]=uint16_t(700<<6);
+        auto changed=f.Observation(3,1893);changed.text.lineBounds[0].right=1994;changed.text.bounds.right=2004;
+        AttachCanonicalSubtitleContinuityInk(changed,f.Source());
+        Assert::IsFalse(SubtitleBoxLookahead::ProveCurrentOwnedContraction(reference,changed).valid);
+    }
+    TEST_METHOD(UncertifiedBoundaryGlyphCannotHideBehindCanonicalReference) {
+        CrossingCue f;auto reference=f.Observation(1,1895);auto current=f.Observation(2,1893);
+        // Add a detector-owned isolated dot at the exact substituted row,
+        // with no corresponding canonical-row pixel/vertical path.
+        auto mask=std::make_shared<SubtitleInkSnapshot>(*current.ink);
+        const size_t index=size_t(474)*960+365;const auto bit=uint64_t(1)<<(index%64);
+        mask->rawInk[index/64]|=bit;mask->ownedInk[index/64]|=bit;
+        current.ink=mask;f.pixels[size_t(1893)*3840+1460]=uint16_t(700<<6);
+        AttachCanonicalSubtitleContinuityInk(current,f.Source());
+        Assert::IsFalse(bool(current.continuityEvidence));
+        SubtitleBoxLookahead::InkMatchDiagnostics diagnostic;
+        Assert::IsFalse(SubtitleBoxLookahead::SameInkAtReference(reference,current,95,false,&diagnostic));
+        Assert::AreEqual("continuity-grid-certification-unavailable",diagnostic.reason);
+    }
     static SubtitleBoxPreview Ready(uint64_t sequence) {
         SubtitleBoxPreview preview;preview.available=true;
         preview.policyGeneration=11;preview.continuityGeneration=21;

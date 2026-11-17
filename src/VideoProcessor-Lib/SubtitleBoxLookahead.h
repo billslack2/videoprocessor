@@ -101,6 +101,12 @@ struct SubtitlePictureAuthority {
 };
 
 // A measurement belongs to source pixels, never retained presentation geometry.
+struct SubtitleContinuityEvidence {
+    ActivePictureFrameIdentity identity;
+    uint64_t policyGeneration=0,continuityGeneration=0;
+    std::shared_ptr<const SubtitleInkSnapshot> detector,comparison;
+};
+
 struct SubtitleBoxObservation
 {
     SubtitlePictureAuthority sharedPicture;
@@ -153,6 +159,9 @@ struct SubtitleBoxObservation
     SubtitleBarEvidence barEvidence;
     SubtitleBarStripClearance barStripClearance;
     std::shared_ptr<const SubtitleInkSnapshot> ink;
+    // Worker-certified current pixels on the stable y*step comparison grid.
+    // The original ink remains the detector/capture/cleanup authority.
+    std::shared_ptr<const SubtitleContinuityEvidence> continuityEvidence;
 };
 
 struct SubtitleBoxPreview
@@ -228,6 +237,34 @@ private:
 namespace SubtitleBoxLookahead
 {
     constexpr size_t MaxFrames = 8;
+    inline bool HasCanonicalContinuity(const SubtitleBoxObservation& a) {
+        const auto& e=a.continuityEvidence;
+        return e && a.analyzed && a.ink && e->detector && e->comparison && !a.pendingRefresh && !a.analysisRefresh &&
+            !a.discontinuity && SameAnalysisFrameIdentity(e->identity,a.identity) &&
+            e->policyGeneration==a.policyGeneration && e->continuityGeneration==a.continuityGeneration &&
+            (a.ink==e->detector || a.ink==e->comparison);
+    }
+    inline const SubtitleInkSnapshot& ComparisonInk(const SubtitleBoxObservation& a,
+        const SubtitleBoxObservation& b) {
+        return *(HasCanonicalContinuity(a) && HasCanonicalContinuity(b) ?
+            a.continuityEvidence->comparison : a.ink);
+    }
+    inline bool StableNativeSubtitleGeometry(const SubtitleBoxObservation& a,
+        const SubtitleBoxObservation& b) {
+        if(!SameAnalysisFrameIdentity(a.sharedPicture.identity,a.identity) ||
+            !SameAnalysisFrameIdentity(b.sharedPicture.identity,b.identity) ||
+            !a.sharedPicture.AvailableFor(a.identity,a.width,a.height) ||
+            !b.sharedPicture.AvailableFor(b.identity,b.width,b.height))return false;
+        const auto& x=a.sharedPicture.bounds;const auto& y=b.sharedPicture.bounds;
+        const auto& anchor=a.identity.acceptedSequence<=b.identity.acceptedSequence?x:y;
+        const int tolerance=(std::max)(4,a.height/180);
+        return a.width==b.width && a.height==b.height &&
+            x.left==y.left && x.right==y.right &&
+            std::abs(x.top-y.top)<tolerance && std::abs(x.bottom-y.bottom)<tolerance &&
+            a.pictureTop>0 && b.pictureTop>0 && a.pictureBottom<a.height && b.pictureBottom<b.height &&
+            std::abs(a.pictureTop-anchor.top)<tolerance && std::abs(b.pictureTop-anchor.top)<tolerance &&
+            std::abs(a.pictureBottom-anchor.bottom)<tolerance && std::abs(b.pictureBottom-anchor.bottom)<tolerance;
+    }
     inline bool NeedsCurrentSubtitleBarStripClearance(
         const SubtitleBoxObservation& observation)
     {
@@ -767,6 +804,10 @@ namespace SubtitleBoxLookahead
         if(std::abs(a.pictureTop-b.pictureTop)>=(std::max)(1,a.height/180))mask|=1024u;
         if(std::abs(a.pictureBottom-b.pictureBottom)>=(std::max)(1,a.height/180))mask|=2048u;
         if(!HasBarEvidence(a) || !HasBarEvidence(b))mask|=4096u;
+        // Stable native geometry bounds the whole cue's sampling excursion.
+        // Two noisy estimates inside that fixed band are not a context reset.
+        // All format/source/policy/bar-presence constraints remain independent.
+        if(StableNativeSubtitleGeometry(a,b))mask&=~(1024u|2048u);
         return mask;
     }
     inline bool SameContext(const SubtitleBoxObservation& a, const SubtitleBoxObservation& b)
@@ -885,7 +926,7 @@ namespace SubtitleBoxLookahead
     {
         if (!SameContext(a,b) || !a.ink || !b.ink || aLine<0 || bLine<0 ||
             aLine>=a.text.lineCount || bLine>=b.text.lineCount) return false;
-        const auto& old=*a.ink; const auto& now=*b.ink;
+        const auto& old=ComparisonInk(a,b); const auto& now=ComparisonInk(b,a);
         if (old.width!=now.width || old.height!=now.height || old.step<=0 ||
             old.step!=now.step || old.sourceRows!=now.sourceRows) return false;
         const auto& ar=a.text.lineBounds[aLine]; const auto& br=b.text.lineBounds[bLine];
@@ -917,7 +958,7 @@ namespace SubtitleBoxLookahead
     {
         if(!SameContext(reference,current) || !reference.ink || !current.ink || line<0 ||
             line>=reference.text.lineCount) return 0.0;
-        const auto& old=*reference.ink;const auto& now=*current.ink;
+        const auto& old=ComparisonInk(reference,current);const auto& now=ComparisonInk(current,reference);
         if(old.width!=now.width || old.height!=now.height || old.step<=0 || old.step!=now.step ||
             old.sourceRows!=now.sourceRows) return 0.0;
         const auto& bounds=reference.text.lineBounds[line];
@@ -1106,7 +1147,10 @@ namespace SubtitleBoxLookahead
         if(reference.text.lineCount<1 || reference.text.lineCount>3)prerequisites|=32u;
         if(diagnostic) {diagnostic->contextMismatch=contextMismatch;diagnostic->preconditionFailure=prerequisites;}
         if(contextMismatch || prerequisites)return reject("context-or-pixel-proof");
-        const auto& old=*reference.ink; const auto& now=*current.ink;
+        if(HasCanonicalContinuity(reference)!=HasCanonicalContinuity(current) &&
+            reference.ink->sourceRows!=current.ink->sourceRows)
+            return reject("continuity-grid-certification-unavailable");
+        const auto& old=ComparisonInk(reference,current); const auto& now=ComparisonInk(current,reference);
         const size_t words=(size_t(old.width)*old.height+63)/64;
         if (old.width<=0 || old.height<=0 || old.width>960 || old.height>540 || old.step<=0 ||
             old.width!=now.width || old.height!=now.height || old.step!=now.step ||
@@ -1320,7 +1364,7 @@ namespace SubtitleBoxLookahead
     {
         if(!SameContext(reference,current) || !reference.ink || !current.ink ||
             reference.text.lineCount<1 || reference.text.lineCount>3)return false;
-        const auto& old=*reference.ink;const auto& now=*current.ink;
+        const auto& old=ComparisonInk(reference,current);const auto& now=ComparisonInk(current,reference);
         const size_t words=(size_t(old.width)*old.height+63)/64;
         if(old.width<=0 || old.height<=0 || old.step<=0 || old.width!=now.width ||
             old.height!=now.height || old.step!=now.step || old.sourceRows!=now.sourceRows ||
@@ -1496,7 +1540,8 @@ namespace SubtitleBoxLookahead
         if(!SameContext(reference,current) || reference.optimizationMode!=current.optimizationMode ||
             reference.policyGeneration!=current.policyGeneration ||
             reference.continuityGeneration!=current.continuityGeneration ||
-            reference.pictureTop!=current.pictureTop || reference.pictureBottom!=current.pictureBottom ||
+            ((reference.pictureTop!=current.pictureTop || reference.pictureBottom!=current.pictureBottom) &&
+                !StableNativeSubtitleGeometry(reference,current)) ||
             !reference.identity.acceptedSequence ||
             current.identity.acceptedSequence<=reference.identity.acceptedSequence ||
             current.identity.sourceFrameNumber<=reference.identity.sourceFrameNumber ||
@@ -1519,7 +1564,7 @@ namespace SubtitleBoxLookahead
             if(!contained(reference.text.linePanels[line],current.text.linePanels[line]) ||
                 !contained(reference.text.lineCapturePanels[line],current.text.lineCapturePanels[line]))
                 return reject("contraction-line-footprint-grew");
-        const auto& old=*reference.ink;const auto& now=*current.ink;
+        const auto& old=ComparisonInk(reference,current);const auto& now=ComparisonInk(current,reference);
         const size_t words=(size_t(old.width)*old.height+63)/64;
         if(old.width<1 || old.height<1 || old.width>960 || old.height>540 || old.step<1 || old.step>8 ||
             old.width!=now.width || old.height!=now.height || old.step!=now.step ||
@@ -2029,7 +2074,7 @@ class SubtitleBoxPresentation
 public:
     void Reset() {
         m_acceptedCueSeedCertificate = {};
-        m_previous = {}; m_reference = {}; m_inkReference = {}; m_result = {};
+        m_previous = {}; m_rawCurrentInk.reset();m_rawFollowingInk={}; m_reference = {}; m_inkReference = {}; m_result = {};
         m_barTrackingReference = {};
         m_pendingPictureGlyphAcquisition = {};
         m_hasPendingPictureGlyphAcquisition = false;
@@ -2082,6 +2127,13 @@ public:
             !SubtitleBoxLookahead::SameContext(m_inkReference,preview.current) ||
             !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
             !m_inkReference.ink || !m_inkReference.ink->paletteValid)return false;
+        if(SubtitleBoxLookahead::HasCanonicalContinuity(m_inkReference) &&
+            SubtitleBoxLookahead::HasCanonicalContinuity(preview.current)) {
+            // Current pixels have already been sampled by the bounded worker.
+            // Do not repeat glyph verification sampling on the render thread.
+            m_referenceRefresh="worker-canonical-current-pixels";
+            return true;
+        }
         const auto& palette=*m_inkReference.ink;
         if(!preview.current.ink || preview.current.ink->width!=palette.width ||
             preview.current.ink->height!=palette.height || preview.current.ink->step!=palette.step ||
@@ -2135,17 +2187,34 @@ public:
             m_previous.continuityGeneration != continuityGeneration ||
             m_previous.current.scriptHint != scriptHint) return false;
         preview = m_previous;
+        // Internal comparison masks never escape as detector/extraction proof.
+        preview.current.ink=m_rawCurrentInk;
+        for(unsigned i=0;i<preview.followingCount;++i)preview.following[i].ink=m_rawFollowingInk[i];
         preview.newScanMs = 0.0;
         preview.newScanFrames = 0;
         return true;
     }
-    SubtitleBoxResult Consume(const SubtitleBoxPreview& preview, int holdMilliseconds = 250,
+    SubtitleBoxResult Consume(const SubtitleBoxPreview& inputPreview, int holdMilliseconds = 250,
         double sourceFrameMilliseconds = 1000.0/60.0,
         const ActivePictureFrameIdentity* backlogTemplateIdentity = nullptr,
         bool backlogRetirementOnly = false,
         bool backlogPendingPixelsVerified = false,
         const SubtitleCueContinuation* cueContinuation = nullptr)
     {
+        // Pin a certified comparison grid at acquisition. Never reinterpret a
+        // legacy acquired mask on a different grid midway through its cue.
+        const bool canonical=SubtitleBoxLookahead::HasCanonicalContinuity(inputPreview.current) &&
+            (!m_result.detected || SubtitleBoxLookahead::HasCanonicalContinuity(m_inkReference));
+        std::unique_ptr<SubtitleBoxPreview> comparisonPreview;
+        if(canonical) {
+            comparisonPreview=std::make_unique<SubtitleBoxPreview>(inputPreview);
+            comparisonPreview->current.ink=comparisonPreview->current.continuityEvidence->comparison;
+            for(unsigned i=0;i<comparisonPreview->followingCount;++i)
+                if(SubtitleBoxLookahead::HasCanonicalContinuity(comparisonPreview->following[i]))
+                    comparisonPreview->following[i].ink=comparisonPreview->following[i].continuityEvidence->comparison;
+                else comparisonPreview->following[i].ink.reset();
+        }
+        const auto& preview=comparisonPreview?*comparisonPreview:inputPreview;
         // Certificates belong to one completed current-source Consume call.
         // Repeats, pending reuse and all early returns cannot renew a seed.
         m_acceptedCueSeedCertificate = {};
@@ -2188,7 +2257,7 @@ public:
             // Explicit current proof retains geometry only; do not renew the
             // acquisition template, bar tracking, or ordinary weak-ink lease.
             m_result=cueContinuation->accepted;
-            m_previous=preview;m_previous.current.text=m_result;
+            m_previous=preview;RememberRawInk(inputPreview);m_previous.current.text=m_result;
             m_decisionReason=cueContinuation->localGlyphsOnly?"current-local-cue-missing-edge":"current-cue-missing-edge";
             m_inkDiagnostic.contextMismatch=SubtitleBoxLookahead::ContextMismatchMask(m_inkReference,preview.current);
             m_inkDiagnostic.pixelComparisonPerformed=true;
@@ -2460,6 +2529,10 @@ public:
         const bool trackedCueConfirmed = preview.current.barTrackingAuthority &&
             preview.current.text.detected && preview.matchingFrames >= 2 &&
             preview.currentLinesConfirmed;
+        const bool currentCueAwaitingConfirmation=!same && !templateStillVisible &&
+            preview.current.analyzed && !preview.current.discontinuity && preview.current.text.detected &&
+            !preview.current.text.workLimit && SubtitleBoxLookahead::HasBarEvidence(preview.current) &&
+            preview.futureAvailable && (preview.matchingFrames<2 || !preview.currentLinesConfirmed);
         if (!SubtitleBoxLookahead::HasBarEvidence(preview.current) ||
             (!preview.current.text.detected && !templateStillVisible) ||
             (!preview.current.barAuthority && !same && !trackedCueConfirmed) ||
@@ -2519,7 +2592,7 @@ public:
                     provisional.confirmationPending=true;
                     ++m_handoffSources;m_handoffMilliseconds+=frameMs;
                     m_handoffResult=provisional;m_handoffActive=true;
-                    m_previous=preview;m_hasPrevious=true;
+                    m_previous=preview;RememberRawInk(inputPreview);m_hasPrevious=true;
                     m_decisionReason="current-owned-suffix-contraction";
                     m_diagnosticWeakMs=m_handoffMilliseconds;
                     return provisional;
@@ -2617,6 +2690,7 @@ public:
                 newPictureGlyphCandidate && acquisitionConfirmation.confirmed ? acquisitionConfirmation.reason :
                 preview.current.pendingRefresh ? "worker-pending-current-pixels" : weakTemplateEligible ? (workLimitCurrentPixelsMatch ? "grace-resource-limit-current-ink" : backedPartialEligible ? "grace-black-panel-partial-ink" : "grace-current-ink") : bridged ? "lookahead-bridge" : templateHeld ? "strict-current-ink" : "detected")
             : newPictureGlyphCandidate && !acquisitionConfirmation.confirmed ? acquisitionConfirmation.reason
+            : currentCueAwaitingConfirmation ? "current-cue-await-lookahead-confirmation"
             : preview.current.discontinuity ? "discontinuity"
             : !SubtitleBoxLookahead::HasBarEvidence(preview.current) ? "bar-evidence-lost"
             : preview.current.text.workLimit ? "analysis-work-limit"
@@ -2639,7 +2713,7 @@ public:
             !result.held && !result.revised && !result.workLimit &&
             preview.current.ink && preview.current.ink->rawEvidenceComplete) {
             m_acceptedCueSeedCertificate.m_valid=true;
-            m_acceptedCueSeedCertificate.m_current=preview.current;
+            m_acceptedCueSeedCertificate.m_current=inputPreview.current;
             m_acceptedCueSeedCertificate.m_accepted=result;
         }
         // Only ordinary strong acceptance starts a fresh handoff allowance.
@@ -2648,7 +2722,7 @@ public:
             !bridged && !templateHeld && (currentTemplatePixelsMatch || !same)) {
             m_handoffSources=0;m_handoffMilliseconds=0;
         }
-        m_previous = preview;
+        m_previous = preview;RememberRawInk(inputPreview);
         // Keep only accepted cue evidence as the temporal reference. Rejected
         // transient companions must not poison the next frame's comparison.
         m_previous.current.text = result;
@@ -3075,6 +3149,14 @@ private:
         return true;
     }
     SubtitleBoxPreview m_previous;
+    std::shared_ptr<const SubtitleInkSnapshot> m_rawCurrentInk;
+    std::array<std::shared_ptr<const SubtitleInkSnapshot>,
+        std::tuple_size<decltype(SubtitleBoxPreview::following)>::value> m_rawFollowingInk;
+    void RememberRawInk(const SubtitleBoxPreview& raw) {
+        m_rawCurrentInk=raw.current.ink;
+        for(size_t i=0;i<m_rawFollowingInk.size();++i)
+            m_rawFollowingInk[i]=i<raw.followingCount?raw.following[i].ink:nullptr;
+    }
     SubtitleBoxObservation m_reference, m_inkReference;
     std::vector<ExpansionEvidence> m_expansionEvidence;
     unsigned m_bridgedFrames = 0;

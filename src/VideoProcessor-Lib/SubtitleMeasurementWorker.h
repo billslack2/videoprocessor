@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include <SubtitleContinuitySampling.h>
 #include <AnalysisDiagnosticHooks.h>
 #include <DebugLog.h>
 #include <algorithm>
@@ -183,6 +184,7 @@ public:
                     static_cast<unsigned long long>(key.identity.analysisDomainKey));
             }
         }
+        AttachCanonicalSubtitleContinuityInk(result,source);
         result.analysisMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         return result;
     }
