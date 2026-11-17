@@ -269,7 +269,8 @@ public:
 			const double difference =
 				std::abs(ratio - targets[i].value) / targets[i].value;
 			// Strict comparison breaks exact ties toward the lower target.
-			if (difference <= 0.01 + 1e-12 &&
+			const double tolerance = targets[i].value == 2.35 ? 0.011 : 0.01;
+			if (difference <= tolerance + 1e-12 &&
 				difference < bestDifference - 1e-12)
 			{
 				best = i;
