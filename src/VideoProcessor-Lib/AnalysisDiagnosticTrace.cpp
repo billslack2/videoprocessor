@@ -1,6 +1,7 @@
 #include <pch.h>
 
 #include "AnalysisDiagnosticTrace.h"
+#include <DebugLog.h>
 
 #include <algorithm>
 #include <chrono>
@@ -317,6 +318,13 @@ void AnalysisDiagnosticTrace::Submit(
 	slot.record = record;
 	slot.receivedMs = NowMs();
 	slot.captureEligible = captureEligible;
+	if (m_autoRasterCapture.load(std::memory_order_acquire) &&
+		strcmp(record.stage, "auto-raster-incident") == 0 &&
+		!m_recording.load(std::memory_order_acquire) &&
+		!m_captureInProgress.load(std::memory_order_acquire) &&
+		m_autoRasterCount < 3 &&
+		(m_autoRasterLastMs == 0 || NowMs() - m_autoRasterLastMs >= 60000))
+		m_autoRasterPending = true;
 	lock.unlock();
 	m_changed.notify_one();
 }
@@ -537,10 +545,23 @@ void AnalysisDiagnosticTrace::WriterThreadProc()
 		{
 			std::unique_lock<std::mutex> lock(m_mutex);
 			m_changed.wait(lock, [this]() {
-				return m_captureRequested || m_shutdownRequested;
+				return m_captureRequested || m_autoRasterPending || m_shutdownRequested;
 			});
 			if (m_shutdownRequested && !m_captureRequested)
 				break;
+			if (m_autoRasterPending && !m_captureRequested) {
+				m_autoRasterPending = false;
+				lock.unlock();
+				const auto result = StartCapture(false);
+				lock.lock();
+				if (result == AnalysisDiagnosticCaptureResult::Started) {
+					m_autoRasterLastMs = NowMs(); ++m_autoRasterCount;
+					DebugLog::Log("Automatic raster diagnostic: started metadata_only=1 path=%s count=%u", m_captureDirectory.c_str(), m_autoRasterCount);
+				} else {
+					DebugLog::Log("Automatic raster diagnostic: start_failed=%u", static_cast<unsigned>(result));
+				}
+				continue;
+			}
 			m_captureRequested = false;
 			directory = m_captureDirectory;
 			preRoll.swap(m_preRoll);

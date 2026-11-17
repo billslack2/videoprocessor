@@ -13,6 +13,7 @@
 #include <winnt.h>
 #include <VideoProcessorDlg.h>
 #include <DebugLog.h>
+#include <AnalysisDiagnosticTrace.h>
 #include <CpuFeatures.h>
 #include <ConfigFile.h>
 #include <QueueConfiguration.h>
@@ -1388,6 +1389,13 @@ BOOL CVideoProcessorApp::InitInstance()
         if (!cpuCheckRequested && !avx2ProbeRequested)
             LogStartupPlatformInventory();
 	}
+
+    if (!cpuCheckRequested && !avx2ProbeRequested) {
+        ConfigFile config; bool enabled = false;
+        if (config.Load()) config.TryGetBool("logging", "auto_raster_diagnostics", enabled);
+        AnalysisDiagnosticTrace::Instance().SetAutoRasterCapture(enabled);
+        DebugLog::Log("Automatic raster diagnostic: enabled=%d metadata_only=1 cooldown_s=60 max_captures=3", enabled ? 1 : 0);
+    }
 
     if (cpuCheckRequested || avx2ProbeRequested)
     {

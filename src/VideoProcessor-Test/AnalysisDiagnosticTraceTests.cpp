@@ -167,6 +167,37 @@ namespace Tests
 	TEST_CLASS(AnalysisDiagnosticTraceTests)
 	{
 	public:
+        TEST_METHOD(AutomaticRasterCaptureIsOptInAndMetadataOnly)
+        {
+            TraceFixture fixture(false, 200);
+            auto incident=Event("trusted-picture-full-raster-submitted");
+            strncpy_s(incident.stage, "auto-raster-incident", _TRUNCATE);
+            fixture.trace->Submit(incident);
+            Sleep(30);
+            Assert::IsFalse(fixture.trace->Status().recording);
+            Assert::IsTrue(CapturePath(*fixture.trace).empty());
+            fixture.trace->SetAutoRasterCapture(true);
+            fixture.trace->Submit(Event("before-auto-incident"));
+            fixture.trace->Submit(incident);
+            const auto deadline=GetTickCount64()+2000;
+            while (CapturePath(*fixture.trace).empty() && GetTickCount64()<deadline) Sleep(5);
+            Assert::IsFalse(CapturePath(*fixture.trace).empty());
+            fixture.trace->Submit(Event("after-auto-incident"));
+            Assert::IsTrue(WaitForWriter(*fixture.trace));
+            const auto path=CapturePath(*fixture.trace);
+            std::ifstream input(path+"\\analysis.jsonl",std::ios::binary);
+            const std::string records((std::istreambuf_iterator<char>(input)),std::istreambuf_iterator<char>());
+            Assert::IsTrue(records.find("auto-raster-incident")!=std::string::npos);
+            Assert::IsTrue(records.find("before-auto-incident")!=std::string::npos);
+            std::ifstream summaryFile(path+"\\capture-summary.json",std::ios::binary);
+            const std::string summary((std::istreambuf_iterator<char>(summaryFile)),std::istreambuf_iterator<char>());
+            Assert::IsTrue(summary.find("\"includeFrames\":false")!=std::string::npos);
+            fixture.trace->Submit(incident);
+            Sleep(30);
+            Assert::IsFalse(fixture.trace->Status().recording);
+            Assert::IsTrue(CapturePath(*fixture.trace)==path);
+        }
+
 		TEST_METHOD(CaptureIncludesTenSecondStyleRollingHistoryAndPostTriggerRecords)
 		{
 			TraceFixture fixture(false, 1000);

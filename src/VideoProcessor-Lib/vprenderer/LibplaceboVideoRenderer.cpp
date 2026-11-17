@@ -4573,6 +4573,7 @@ struct LibplaceboVideoRenderer::Impl
     uint64_t sourceUploadReuseIntervalSamples = 0;
 	pl_tex subtitleBoxTexture = nullptr;
 	SubtitleMeasurementWorker subtitleMeasurementWorker;
+    bool autoRasterIncidentActive = false;
     uint64_t lookaheadProofCancellations=0,lookaheadDiagnosticSkips=0;
     PreparedPictureEvidenceWorker pictureProofWorker;
     LookaheadPerformanceWindow lookaheadPerformance;
@@ -19981,6 +19982,37 @@ releaseDriftBaseRetention =
                 static_cast<int>(std::lround(renderImage.crop.x1)),
                 static_cast<int>(std::lround(renderImage.crop.y1)),
                 width, height, 0.0, ActivePictureBounds::BarAxes::NONE};
+            // Successful current output only: preserve the selected packet identity and
+            // distinguish measured picture from the full-raster presentation.
+            const auto submittedMode = selectedPresentationValid ? selectedPresentationForCommit.subtitleMode : subtitlePreviewMode;
+            const bool autoRasterIncident = SubtitlePreviewOverridesClassicHandling(submittedMode) &&
+                nlsGeometryAvailable && nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                nlsGeometrySourceGeneration == frameGeneration &&
+                (nlsGeometry.top > 0 || nlsGeometry.bottom < height || nlsGeometry.left > 0 || nlsGeometry.right < width) &&
+                scopeAnchorCommit.submittedBounds.left == 0 && scopeAnchorCommit.submittedBounds.top == 0 &&
+                scopeAnchorCommit.submittedBounds.right == width && scopeAnchorCommit.submittedBounds.bottom == height;
+            const bool autoRasterStarted = autoRasterIncident && !autoRasterIncidentActive;
+            autoRasterIncidentActive = autoRasterIncident;
+            if (autoRasterStarted) {
+                auto incident = AnalysisTraceRecord(submittedCaptionIdentity, this, "auto-raster-incident", "trusted-picture-full-raster-submitted");
+                incident.kind = AnalysisDiagnosticRecordKindV1::Event;
+                incident.sourceWidth = width; incident.sourceHeight = height;
+                incident.policyGeneration = localBoundaryPolicyGeneration; incident.continuityGeneration = localBoundaryContinuityGeneration;
+                AnalysisTraceRect(incident.previous, nlsGeometry);
+                AnalysisTraceRect(incident.measured, latestActivePictureEvidenceBounds);
+                AnalysisTraceRect(incident.displayed, scopeAnchorCommit.submittedBounds);
+                incident.counters[0] = sourceSequence; incident.counters[1] = scopeAnchorCommit.sourceSequence;
+                incident.counters[2] = latestActivePictureEvidenceFrame;
+                incident.counters[3] = static_cast<uint64_t>(latestActivePictureEvidenceClassification);
+                incident.counters[4] = static_cast<uint64_t>(scopeAnchorCommit.selectedOwner);
+                incident.counters[5] = static_cast<uint64_t>(submittedMode);
+                incident.flags = (latestActivePictureEvidenceAvailable ? 1u : 0u) | (scopeAnchorCommit.fullRasterAuthority ? 2u : 0u);
+                incident.metrics[0] = temporalRenderer.currentPts; incident.metrics[1] = temporalRenderer.outputPts;
+                incident.metrics[2] = target.crop.x0; incident.metrics[3] = target.crop.y0;
+                incident.metrics[4] = target.crop.x1; incident.metrics[5] = target.crop.y1;
+                AnalysisTraceText(incident.detail, "previous=trusted-picture measured=current-analysis displayed=submitted-crop metrics=source-pts,output-pts,target-rect scanout=unverified");
+                AnalysisDiagnosticTrace::Emit(incident);
+            }
             StartupPresentation::SubmissionInput startupSubmission;
             startupSubmission.context=startupContext;
             startupSubmission.selectedSequence=scopeAnchorCommit.sourceSequence;

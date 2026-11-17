@@ -198,6 +198,7 @@ public:
 	// recreation and does not clear the rolling history or an active capture.
 	void SetProducerAvailable(bool connected, bool frameCaptureSupported) noexcept;
 	void Submit(const AnalysisDiagnosticRecordV1& record) noexcept;
+	void SetAutoRasterCapture(bool enabled) noexcept { m_autoRasterCapture.store(enabled, std::memory_order_release); }
 	void SubmitFrame(const AnalysisDiagnosticFramePacketV1& frame) noexcept;
 	bool IsFrameCaptureActive() const noexcept;
 	bool IsRecording() const noexcept;
@@ -260,6 +261,10 @@ private:
 	uint32_t m_preRollMs = 0;
 	std::atomic<bool> m_producerConnected{ false };
 	std::atomic<bool> m_frameCaptureSupported{ false };
+	std::atomic<bool> m_autoRasterCapture{ false };
+	bool m_autoRasterPending = false;
+	uint64_t m_autoRasterLastMs = 0;
+	unsigned m_autoRasterCount = 0;
 	std::atomic<bool> m_recording{ false };
 	std::atomic<bool> m_includeFrames{ false };
 	bool m_captureRequested = false;
