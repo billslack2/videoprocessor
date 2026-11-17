@@ -16,6 +16,8 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+#include <experimental/filesystem>
 #include <iterator>
 #include <utility>
 #include <cstring>
@@ -467,6 +469,253 @@ public:
         Assert::IsTrue(third.detected,L"A returning opposite edge must not hide unchanged, current subtitle pixels.");
         Assert::AreEqual(second.cue,third.cue);
         Assert::AreEqual(384,restored.current.pictureTop);
+    }
+    TEST_METHOD(BottomCueSurvivesUnknownOppositeEdgeOnlyWithCurrentEvidence) {
+        NativeBarCueFixture f(AnalysisLumaFormat::DecodedDolbyVision422);
+        f.base={0,384,3840,1778,3840,2160};
+        f.acquired.current.sharedPicture.bounds=f.base;
+        f.acquired.current.pictureBottom=1778;
+        f.acquired.current.barEvidence.bottom=1778;
+        SubtitleBoxPresentation tracker;
+        const auto first=tracker.Consume(f.acquired,250,41.708);
+        Assert::IsTrue(first.detected);
+        auto next=f.OppositeMissing(2);
+        next.current.sharedPicture.bounds=f.base;
+        next.current.pictureBottom=1778;next.current.barEvidence.bottom=1778;
+        next.futureAvailable=false;next.currentLinesConfirmed=false;next.matchingFrames=0;
+        auto before=std::make_unique<SubtitleBoxPresentation>(tracker);
+        const auto second=tracker.Consume(next,250,41.708);
+        Assert::IsTrue(second.detected,
+            L"Unchanged current glyphs and the verified bottom bar must survive an unknown top edge.");
+        Assert::AreEqual(first.cue,second.cue);
+        {
+            auto changed=next;auto missing=std::make_shared<SubtitleInkSnapshot>(*next.current.ink);
+            std::fill(missing->rawInk.begin(),missing->rawInk.end(),0);changed.current.ink=missing;
+            auto changedTracker=std::make_unique<SubtitleBoxPresentation>(*before);
+            const auto changedResult=changedTracker->Consume(changed,250,41.708);
+            Assert::IsFalse(changedResult.detected && changedResult.cue==first.cue,
+                L"Missing current glyphs cannot continue the established cue.");
+        }
+        {
+            auto changed=next;changed.current.pictureBottom=2160;changed.current.barEvidence.bottom=2160;
+            auto changedTracker=std::make_unique<SubtitleBoxPresentation>(*before);
+            const auto changedResult=changedTracker->Consume(changed,250,41.708);
+            Assert::IsFalse(changedResult.detected && changedResult.cue==first.cue,
+                L"Lost bottom-edge proof cannot continue the established cue.");
+        }
+        {
+            auto changed=next;changed.current.sharedPicture.bounds.top+=30;
+            auto changedTracker=std::make_unique<SubtitleBoxPresentation>(*before);
+            const auto changedResult=changedTracker->Consume(changed,250,41.708);
+            Assert::IsFalse(changedResult.detected && changedResult.cue==first.cue,
+                L"A different picture base cannot continue the established cue.");
+        }
+        for(bool tracked:{false,true}) {
+            auto changed=next;
+            if(tracked)changed.current.barTrackingAuthority=true;
+            else changed.current.barEvidence.captionBackedBottom=true;
+            auto changedTracker=std::make_unique<SubtitleBoxPresentation>(*before);
+            const auto changedResult=changedTracker->Consume(changed,250,41.708);
+            Assert::IsFalse(changedResult.detected && changedResult.cue==first.cue,
+                L"Tracked or caption-backed bottom edges cannot use this exception.");
+        }
+        {
+            auto changed=next;
+            changed.current.text.provenSourcePanel={1306,1926,2526,2038};
+            changed.text=changed.current.text;
+            auto changedTracker=std::make_unique<SubtitleBoxPresentation>(*before);
+            const auto changedResult=changedTracker->Consume(changed,250,41.708);
+            Assert::IsFalse(changedResult.detected && changedResult.cue==first.cue,
+                L"New backing proof cannot use the plain-glyph exception.");
+        }
+        {
+            auto changed=next;++changed.current.identity.analysisDomainKey;
+            changed.current.sharedPicture.identity=changed.current.identity;
+            auto changedTracker=std::make_unique<SubtitleBoxPresentation>(*before);
+            const auto changedResult=changedTracker->Consume(changed,250,41.708);
+            Assert::IsFalse(changedResult.detected && changedResult.cue==first.cue,
+                L"A changed source context cannot continue the established cue.");
+        }
+        Assert::AreEqual(0,next.current.pictureTop);
+        Assert::AreEqual(384,next.current.sharedPicture.bounds.top);
+        Assert::IsFalse(next.current.subtitleArProof.accepted);
+    }
+    TEST_METHOD(CurrentPixelBottomCueDoesNotFlashWhenTopProofDrops) {
+        NativeBarCueFixture f(AnalysisLumaFormat::DecodedDolbyVision422);
+        f.AddRoundedLipAndHollowGlyphs();
+        f.base={0,384,3840,1778,3840,2160};
+        f.acquired.current.sharedPicture.bounds=f.base;
+        auto first=f.Measure(1);
+        Assert::IsTrue(first.text.detected && first.pictureTop>0);
+        auto firstPreview=SubtitleBoxLookahead::Resolve(&first,1,7,9);
+        SubtitleBoxPresentation tracker;
+        tracker.RefreshReferencePixels(firstPreview,f.Native());
+        const auto accepted=tracker.Consume(firstPreview,250,41.708);
+        Assert::IsTrue(accepted.detected);
+        std::array<SubtitleBoxObservation,2> observations{f.Measure(2),f.Measure(3)};
+        auto& current=observations[0];
+        Assert::IsTrue(current.text.detected && current.pictureBottom==current.barEvidence.bottom);
+        // Simulate a current measurement that could not verify only the top.
+        // The frame's actual pixels and its current lower-bar proof are intact.
+        current.pictureTop=0;current.barEvidence.top=0;
+        current.barEvidence.topRevalidatedAtReference=false;
+        current.barEvidence.topRevalidatedNearby=false;
+        current.independentBarAnalysis=false;
+        auto preview=SubtitleBoxLookahead::Resolve(observations.data(),observations.size(),7,9);
+        Assert::IsTrue(preview.available && preview.futureAvailable);
+        tracker.RefreshReferencePixels(preview,f.Native());
+        const auto shown=tracker.Consume(preview,250,41.708);
+        Assert::IsTrue(shown.detected,L"Current subtitle pixels must not disappear because the opposite edge is unknown.");
+        Assert::AreEqual(accepted.cue,shown.cue);
+        Assert::AreEqual(0,preview.current.pictureTop);
+        Assert::AreEqual(384,preview.current.sharedPicture.bounds.top);
+        Assert::IsFalse(preview.current.subtitleArProof.accepted);
+    }
+    TEST_METHOD(OptionalBenHur61NativeCueReplayKeepsCurrentPlacement) {
+        wchar_t* value=nullptr;size_t length=0;
+        _wdupenv_s(&value,&length,L"VP_BENHUR_61_REPLAY_DIRECTORY");
+        const std::experimental::filesystem::path directory(value?value:L"");std::free(value);
+        if(directory.empty())return;
+        Assert::IsTrue(std::experimental::filesystem::is_directory(directory));
+        struct CapturedFrame {
+            std::shared_ptr<std::vector<uint8_t>> pixels;
+            AnalysisLumaSource source;
+            ActivePictureFrameIdentity identity;
+            uint64_t policy=0,continuity=0,frameDuration100ns=0;
+            int top=0,bottom=0,nearBarDistance=0,optimizationMode=0,script=0;
+            bool discontinuity=false;
+        };
+        const auto load=[&](uint64_t captureIndex) {
+            std::wstring name=L"frame-";
+            auto digits=std::to_wstring(captureIndex);
+            name.append(digits.size()<6?6-digits.size():0,L'0');name+=digits;name+=L".bin";
+            const auto path=directory/name;
+            auto sidecar=path;sidecar.replace_extension(L".txt");
+            CapturedFrame frame;
+            std::ifstream metadata(sidecar);
+            int format=0,encoding=0,colorSpace=0,range=0,alignment=0,repeat=0;
+            std::string headerLine,version;
+            std::getline(metadata,headerLine);std::istringstream header(headerLine);
+            header>>frame.source.width>>frame.source.height>>frame.source.rowBytes>>
+                frame.source.chromaRowBytes>>format>>encoding>>colorSpace>>frame.top>>
+                frame.bottom>>frame.script>>range;
+            Assert::IsTrue(bool(header)&&bool(metadata),L"Ben-Hur native-frame sidecar must parse.");
+            metadata>>version>>frame.identity.transportGeneration>>frame.identity.acceptedSequence>>
+                frame.identity.sourceFrameNumber>>frame.identity.captureTimestamp>>
+                frame.identity.sourceFormatGeneration>>frame.identity.viewportGeneration>>
+                frame.identity.rendererGeneration>>frame.identity.analysisDomainKey>>
+                frame.policy>>frame.continuity>>frame.nearBarDistance>>frame.optimizationMode>>
+                frame.frameDuration100ns>>frame.discontinuity>>repeat>>alignment;
+            Assert::IsTrue(bool(metadata)&&version=="identity_v1",
+                L"Replay uses the capture's exact source identity.");
+            frame.source.format=static_cast<AnalysisLumaFormat>(format);
+            frame.source.encoding=static_cast<VideoFrameEncoding>(encoding);
+            frame.source.colorspace=static_cast<ColorSpace>(colorSpace);
+            frame.source.range=static_cast<AnalysisLumaRange>(range);
+            frame.source.rgbBitAlignment=static_cast<uint8_t>(alignment);
+            frame.source.generation=frame.identity.transportGeneration;
+            std::ifstream input(path,std::ios::binary|std::ios::ate);
+            Assert::IsTrue(bool(input));const auto size=input.tellg();
+            Assert::IsTrue(size>0 && size<=std::streamoff(128ull*1024*1024));
+            frame.pixels=std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(size));
+            input.seekg(0);input.read(reinterpret_cast<char*>(frame.pixels->data()),
+                static_cast<std::streamsize>(size));Assert::IsTrue(bool(input));
+            frame.source.data=frame.pixels->data();frame.source.dataBytes=frame.pixels->size();
+            frame.source.backingOwner=frame.pixels;Assert::IsTrue(frame.source.IsValid());
+            return frame;
+        };
+
+        SubtitleMeasurementSampler sampler;
+        SubtitleBarTrackingReference tracking;
+        SubtitleBoxPresentation presentation;
+        SubtitlePaddingGuard padding;
+        SubtitleCutPastePresentation compositor;
+        SubtitlePaddingPolicy paddingPolicy;paddingPolicy.glyphRelative=true;
+        const SubtitleBoxPadding requested{72,34,24};
+        SubtitleCutPasteGeometry firstGeometry{};
+        size_t emitted=0;
+        uint64_t establishedCue=0;
+        for(uint64_t index=0;index<61;++index) {
+            auto frame=load(index+3);
+            Assert::AreEqual(uint64_t(2147)+index,frame.identity.sourceFrameNumber);
+            Assert::AreEqual(uint64_t(2000)+index,frame.identity.acceptedSequence);
+            Assert::AreEqual(384,frame.top);Assert::AreEqual(1778,frame.bottom);
+            SubtitleBoxObservation key;
+            key.identity=frame.identity;key.width=frame.source.width;key.height=frame.source.height;
+            key.policyGeneration=frame.policy;key.continuityGeneration=frame.continuity;
+            key.nearBarDistance=frame.nearBarDistance;key.optimizationMode=frame.optimizationMode;
+            key.scriptHint=static_cast<SubtitleScriptHint>(frame.script);
+            key.discontinuity=frame.discontinuity;key.sharedPicture.required=true;
+            key.sharedPicture.identity=frame.identity;
+            key.sharedPicture.bounds={0,frame.top,frame.source.width,frame.bottom,
+                frame.source.width,frame.source.height,0.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            key.sharedPicture.bounds.aspectRatio=double(frame.source.width)/
+                double(frame.bottom-frame.top);
+            const double fps=10000000.0/double(frame.frameDuration100ns);
+            const auto raw=ExtractActivePictureEvidence(frame.source);
+            const auto observed=sampler.Measure(frame.source,key,tracking,fps,raw);
+            Assert::IsTrue(observed.analyzed && observed.barAuthority);
+            if(frame.identity.sourceFrameNumber==2149)
+                Assert::AreEqual(384,observed.pictureTop,
+                    L"The strict current-pixel top edge remains measurable on source 2149.");
+            if(frame.identity.sourceFrameNumber==2150) {
+                Assert::AreEqual(0,observed.pictureTop,
+                    L"Without gradual-top proof, source 2150 stays top-unknown.");
+                Assert::AreEqual(1778,observed.pictureBottom);
+                Assert::IsTrue(observed.barAuthority && observed.barEvidence.available &&
+                    observed.barEvidence.bottom==1778 && !observed.glyphLocalBottom &&
+                    !observed.barTrackingAuthority && !observed.currentAnchorUsesTrackedEdge,
+                    L"The bottom edge remains a fresh current-pixel cue-side proof.");
+                Assert::IsFalse(observed.subtitleArProof.accepted,
+                    L"A missing top cannot promote the subtitle observation to AR authority.");
+            }
+            tracking=SubtitleBoxLookahead::AdvanceBarTrackingReference(observed);
+            auto preview=SubtitleBoxLookahead::Resolve(&observed,1,frame.policy,frame.continuity);
+            presentation.RefreshReferencePixels(preview,frame.source);
+            const auto text=presentation.Consume(preview,250,
+                double(frame.frameDuration100ns)/10000.0);
+            const bool captionExpected=frame.identity.sourceFrameNumber<=2186;
+            Assert::AreEqual(captionExpected,text.detected,
+                L"Every fresh Ben-Hur caption remains present, and captions do not extend past their current pixels.");
+            if(captionExpected) {
+                ++emitted;
+                if(!establishedCue)establishedCue=text.cue;
+                const std::wstring cueDetail=L"Cue identity changed at source "+
+                    std::to_wstring(frame.identity.sourceFrameNumber);
+                Assert::AreEqual(establishedCue,text.cue,cueDetail.c_str());
+                const SubtitleBoxRect expected{1306,1926,2526,2038};
+                Assert::IsTrue(SubtitleCueContinuation::SameRect(expected,text.bounds));
+                const auto safe=padding.Consume(text,preview,requested,paddingPolicy);
+                const auto display=padding.DisplayBounds();
+                const auto rawGeometry=compositor.Consume(text,preview,safe,25,&display);
+                Assert::IsTrue(rawGeometry.valid,
+                    L"Current source caption pixels must produce a presentable composition geometry.");
+                const auto shared=preview.current.sharedPicture.bounds;
+                const auto geometry=FitSubtitleToVisiblePicture(rawGeometry,
+                    {shared.left,shared.top,shared.right,shared.bottom},25);
+                Assert::IsTrue(geometry.valid,
+                    L"The normal shared-picture fit must keep the moved cue inside the same physical base.");
+                Assert::IsFalse(geometry.generatedCleanup.Valid(),
+                    L"No earlier frame may lend cleanup pixels to this source.");
+                if(!firstGeometry.valid)firstGeometry=geometry;
+                else {
+                    Assert::IsTrue(SubtitleCueContinuation::SameRect(firstGeometry.source,geometry.source));
+                    Assert::IsTrue(SubtitleCueContinuation::SameRect(firstGeometry.content,geometry.content));
+                    const auto& firstDestination=firstGeometry.destination;
+                    const auto& currentDestination=geometry.destination;
+                    const std::wstring placementDetail=L"native destination changed at source "+
+                        std::to_wstring(frame.identity.sourceFrameNumber)+L": first=["+
+                        std::to_wstring(firstDestination.left)+L","+std::to_wstring(firstDestination.top)+
+                        L","+std::to_wstring(firstDestination.right)+L","+std::to_wstring(firstDestination.bottom)+
+                        L"] current=["+std::to_wstring(currentDestination.left)+L","+
+                        std::to_wstring(currentDestination.top)+L","+std::to_wstring(currentDestination.right)+
+                        L","+std::to_wstring(currentDestination.bottom)+L"]";
+                    Assert::IsTrue(SubtitleCueContinuation::SameRect(firstDestination,currentDestination),
+                        placementDetail.c_str());
+                }
+            }
+        }
+        Assert::AreEqual(size_t(40),emitted);
     }
     TEST_METHOD(NativeBarCueContinuityKeepsRawPositiveCueWhenOnlyOppositeEdgeIsUnknown) {
         for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422}) {

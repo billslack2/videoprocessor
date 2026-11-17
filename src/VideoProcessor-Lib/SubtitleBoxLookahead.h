@@ -2281,16 +2281,32 @@ public:
             if(!sharedMatches(old) || !old.text.detected || !currentCue.text.detected ||
                 old.text.sourcePanel.Valid() || old.text.capturePanel.Valid() ||
                 old.text.lineCount<1 || old.text.lineCount>3) return;
-            bool top=true,bottom=true;
+            bool top=true,bottom=true,currentHasPanel=false;
             for(int i=0;i<old.text.lineCount;++i) {
                 const auto& line=old.text.lineBounds[i];
                 if(!line.Valid() || old.text.linePanels[i].Valid() || old.text.lineCapturePanels[i].Valid()) return;
+                currentHasPanel |= currentCue.text.linePanels[i].Valid() ||
+                    currentCue.text.lineCapturePanels[i].Valid();
                 top &= line.bottom<=currentCue.sharedPicture.bounds.top &&
                     line.bottom<=old.pictureTop && line.bottom<=currentCue.pictureTop;
                 bottom &= line.top>=currentCue.sharedPicture.bounds.bottom &&
                     line.top>=old.pictureBottom && line.top>=currentCue.pictureBottom;
             }
             if(bottom && !top && old.pictureTop==0 && currentCue.pictureTop>0)
+                old.pictureTop=currentCue.pictureTop;
+            else if(bottom && !top && !currentHasPanel && old.pictureTop>0 && currentCue.pictureTop==0 &&
+                currentCue.text.lineCount==old.text.lineCount &&
+                !old.text.provenSourcePanel.Valid() &&
+                !currentCue.text.sourcePanel.Valid() && !currentCue.text.capturePanel.Valid() &&
+                !currentCue.text.provenSourcePanel.Valid() &&
+                currentCue.barAuthority && currentCue.barEvidence.available &&
+                currentCue.pictureBottom>0 && currentCue.pictureBottom<currentCue.height &&
+                currentCue.pictureBottom==currentCue.barEvidence.bottom &&
+                !currentCue.barTrackingAuthority && !currentCue.currentAnchorUsesTrackedEdge &&
+                !currentCue.glyphLocalBottom && !currentCue.barEvidence.captionBackedBottom)
+                // The missing top is unknown, not a new picture coordinate.
+                // Normalize comparison only; current glyph checks and the
+                // current-pixel-verified bottom edge still decide continuity.
                 old.pictureTop=currentCue.pictureTop;
             else if(top && !bottom && old.pictureBottom==old.height && currentCue.pictureBottom<currentCue.height)
                 old.pictureBottom=currentCue.pictureBottom;
