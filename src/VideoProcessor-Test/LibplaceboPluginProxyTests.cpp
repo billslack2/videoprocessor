@@ -83,7 +83,6 @@ namespace VideoProcessorTest
 				{ 1.90, L"1.90:1", L"Digital IMAX" },
 				{ 2.00, L"2.00:1", L"Univisium" },
 				{ 2.20, L"2.20:1", L"70mm / Todd-AO" },
-				{ 21.0 / 9.0, L"21:9", L"Consumer ultrawide" },
 				{ 2.35, L"2.35:1", L"CinemaScope" },
 				{ 2.39, L"2.39:1", L"Scope" },
 				{ 2.40, L"2.40:1", L"Scope" },
@@ -127,6 +126,8 @@ namespace VideoProcessorTest
 			Assert::IsTrue(AspectRatioOsd::Classify(
 				2.0 * 2.39 * 2.40 / (2.39 + 2.40)).ratio == L"2.39:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.345).ratio == L"2.35:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(21.0 / 9.0).ratio == L"2.35:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(2.324455).ratio == L"2.324:1");
 			AspectRatioOsd osd;
 			DetectedPictureAspect reading{1, 1, 2.39, true};
 			Assert::IsTrue(osd.Update(reading, 1000).ratio == L"2.39:1");
