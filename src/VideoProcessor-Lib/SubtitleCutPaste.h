@@ -818,18 +818,19 @@ public:
             m_relativeDisplay==(displayBounds!=nullptr) &&
             SubtitleCueContinuation::SameRect(displayBounds?*displayBounds:text.bounds,m_cachedDisplay) &&
             (cueContinuation->MatchesCachedGlyphPicture(m_geometry.pictureTop,m_geometry.pictureBottom) ||
-                LocalCueSideSamplingJitter(m_geometry,*cueContinuation,m_sourcePanel,m_stablePanel)) &&
+                LocalCueSideSamplingJitter(m_geometry,*cueContinuation,current,m_sourcePanel,m_stablePanel)) &&
             // Source padding is a display envelope; current glyph extraction
             // and erasure are limited to content and the measured cleanup card.
             SubtitleCueContinuation::Contains(cueContinuation->sampledBounds,m_geometry.content) &&
             SubtitleCueContinuation::Contains(cueContinuation->backingVerifiedBounds,m_sourcePanel) &&
             SubtitleCueContinuation::Contains(cueContinuation->backingVerifiedBounds,m_geometry.generatedCleanup)) {
-            m_backingReason="current-cue-missing-edge";
+            m_backingReason=cueContinuation->MatchesCachedGlyphPicture(m_geometry.pictureTop,m_geometry.pictureBottom)
+                ? "current-cue-missing-edge" : "current-cue-edge-sampling-jitter";
             return m_geometry;
         }
         if(cueContinuation && cueContinuation->valid) {
             // A certificate cannot authorize new padding, backing or placement.
-            Reset();return {};
+            Reset();m_backingReason="current-cue-geometry-rejected";return {};
         }
         bool sameDisplayCue=!glyphLocal && !m_reference.glyphLocalTop && !m_reference.glyphLocalBottom && m_relativeDisplay==(displayBounds!=nullptr) && m_geometry.valid && !current.discontinuity && m_cue==text.cue &&
             m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
@@ -1083,18 +1084,24 @@ private:
             !g.cleanupLimit.Valid() && !g.layoutCoverage.Valid();
     }
     static bool LocalCueSideSamplingJitter(const SubtitleCutPasteGeometry& g,
-        const SubtitleCueContinuation& proof,const SubtitleBoxRect& sourcePanel,
-        const SubtitleBoxRect& stablePanel) {
+        const SubtitleCueContinuation& proof,const SubtitleBoxObservation& current,
+        const SubtitleBoxRect& sourcePanel,const SubtitleBoxRect& stablePanel) {
         if(!proof.localGlyphsOnly || proof.backingVerifiedBounds.Valid() ||
             sourcePanel.Valid() || stablePanel.Valid() || !CoordinateOnlyGeometry(g) ||
             !SubtitleCueContinuation::Contains(proof.sampledBounds,g.source) ||
             !LocalContentAndGlyphsStayInProvenBar(g,proof)) return false;
         const int tolerance=SubtitleBoxDetector::SamplingStep(
             proof.physicalBase.rasterWidth,proof.physicalBase.rasterHeight);
+        // The cached geometry can predate small changes on BOTH sampled
+        // planes. Keep the existing opposite-plane freedom while reconciling
+        // only one sampling step on the independently current cue side.
+        // This retains coordinates, never picture/capture/cleanup authority.
         if(g.fromTopBar)
-            return g.pictureBottom==proof.pictureBottom &&
+            return current.pictureTop==proof.pictureTop &&
+                proof.MatchesCachedGlyphPicture(proof.pictureTop,g.pictureBottom) &&
                 std::abs(g.pictureTop-proof.pictureTop)<=tolerance;
-        return g.pictureTop==proof.pictureTop &&
+        return current.pictureBottom==proof.pictureBottom &&
+            proof.MatchesCachedGlyphPicture(g.pictureTop,proof.pictureBottom) &&
             std::abs(g.pictureBottom-proof.pictureBottom)<=tolerance;
     }
     static bool LocalContentAndGlyphsStayInProvenBar(const SubtitleCutPasteGeometry& g,

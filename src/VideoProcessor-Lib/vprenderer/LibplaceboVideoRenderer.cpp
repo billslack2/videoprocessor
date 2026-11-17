@@ -14492,6 +14492,7 @@ struct LibplaceboVideoRenderer::Impl
                 const auto now=GetTickCount64();
                 if(std::strcmp(currentCueContinuation.reason,"not-eligible")!=0 &&
                     (subtitleContinuationLogReason!=currentCueContinuation.reason ||
+                     (currentCueContinuation.valid && !subtitleContinuationStateLastHeld) ||
                      now-subtitleContinuationLogTick>=2000)) {
                     subtitleContinuationLogReason=currentCueContinuation.reason;
                     subtitleContinuationLogTick=now;
@@ -14505,6 +14506,42 @@ struct LibplaceboVideoRenderer::Impl
                         currentCueContinuation.physicalBase.top,currentCueContinuation.physicalBase.bottom,
                         currentCueContinuation.mismatchX,currentCueContinuation.mismatchY,
                         currentCueContinuation.mismatchBandMask,currentCueContinuation.mismatchPixelMask);
+                    // Preserve the edge decision's existing measurements at the
+                    // loss itself; the periodic BBOX sample can miss one frame.
+                    const auto& observed=currentSubtitlePreview.current;
+                    const auto& bars=observed.barEvidence;
+                    DebugLog::Log("SUBTITLE CONTINUATION EDGES: frame=%llu reason=%s measured=%d-%d authority=%d tracking=%d independent=%d floor=%d/%d depth=%d/%d run_support=%d/%d sharp_support=%d/%d max_intrusion=%d/%d black_fraction=%.4f/%.4f reference_proof=%d/%d nearby_proof=%d/%d reference_sharp_support=%d/%d reference_max_intrusion=%d/%d reference_black_fraction=%.4f/%.4f nearby_probes=%u samples=%zu",
+                        sourceSequence,bars.reason,bars.top,bars.bottom,observed.barAuthority?1:0,
+                        observed.barTrackingAuthority?1:0,observed.independentBarAnalysis?1:0,
+                        bars.topFloor,bars.bottomFloor,bars.topDepth,bars.bottomDepth,
+                        bars.topSupport,bars.bottomSupport,bars.topBoundarySupport,bars.bottomBoundarySupport,
+                        bars.topMaxIntrusion,bars.bottomMaxIntrusion,bars.topBlackFraction,bars.bottomBlackFraction,
+                        bars.topRevalidatedAtReference?1:0,bars.bottomRevalidatedAtReference?1:0,
+                        bars.topRevalidatedNearby?1:0,bars.bottomRevalidatedNearby?1:0,
+                        bars.topReferenceBoundarySupport,bars.bottomReferenceBoundarySupport,
+                        bars.topReferenceMaxIntrusion,bars.bottomReferenceMaxIntrusion,
+                        bars.topReferenceBlackFraction,bars.bottomReferenceBlackFraction,bars.nearbyProbes,bars.samples);
+                    auto edgeTrace=AnalysisTraceRecord(observed.identity,this,"subtitle-edge-proof",bars.reason);
+                    AnalysisTraceRect(edgeTrace.measured,SubtitleBoxRect{0,bars.top,observed.width,bars.bottom});
+                    AnalysisTraceRect(edgeTrace.published,observed.sharedPicture.bounds);
+                    edgeTrace.sourceWidth=observed.width;edgeTrace.sourceHeight=observed.height;
+                    edgeTrace.policyGeneration=currentSubtitlePreview.policyGeneration;
+                    edgeTrace.continuityGeneration=currentSubtitlePreview.continuityGeneration;
+                    edgeTrace.counters[0]=bars.nearbyProbes;edgeTrace.counters[1]=bars.samples;
+                    const double edgeMetrics[]={double(bars.topFloor),double(bars.bottomFloor),
+                        double(bars.topDepth),double(bars.bottomDepth),double(bars.topSupport),double(bars.bottomSupport),
+                        double(bars.topBoundarySupport),double(bars.bottomBoundarySupport),
+                        double(bars.topMaxIntrusion),double(bars.bottomMaxIntrusion),bars.topBlackFraction,bars.bottomBlackFraction,
+                        double(bars.topReferenceBoundarySupport),double(bars.bottomReferenceBoundarySupport),
+                        double(bars.topReferenceMaxIntrusion),double(bars.bottomReferenceMaxIntrusion),
+                        bars.topReferenceBlackFraction,bars.bottomReferenceBlackFraction};
+                    for(size_t i=0;i<sizeof(edgeMetrics)/sizeof(edgeMetrics[0]);++i)edgeTrace.metrics[i]=edgeMetrics[i];
+                    edgeTrace.flags=(observed.barAuthority?1u:0u)|(observed.barTrackingAuthority?2u:0u)|
+                        (observed.independentBarAnalysis?4u:0u)|(bars.topRevalidatedAtReference?8u:0u)|
+                        (bars.bottomRevalidatedAtReference?16u:0u)|(bars.topRevalidatedNearby?32u:0u)|
+                        (bars.bottomRevalidatedNearby?64u:0u);
+                    strncpy_s(edgeTrace.detail,"m:floorT,B,depthT,B,runT,B,sharpT,B,intrusionT,B,blackT,B,refSharpT,B,refIntrusionT,B,refBlackT,B;c:probes,samples;f:authority,tracking,independent,refT,refB,nearT,nearB",_TRUNCATE);
+                    AnalysisDiagnosticTrace::Emit(edgeTrace);
                 }
             }
             const auto* cueContinuation=currentCueContinuation.valid?&currentCueContinuation:nullptr;
