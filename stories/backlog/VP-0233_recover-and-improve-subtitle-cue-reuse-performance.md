@@ -4,7 +4,7 @@
 
 Backlog
 
-Requested 2026-11-16 after the user reported that the focused VP-0231 beta-based subtitle checkpoint looked correct during live playback. The current checkpoint is source commit `f7979b623fa66c735b682fd0404c3c45a567c093` on base `acdb89bfb5e1796cda6359aa2f89632b78204a5b`; its merge status must be checked on GitHub. This story is for a focused subtitle performance improvement, not an aspect-ratio or framing redesign.
+Requested 2026-11-16 after the user reported that the focused VP-0231 beta-based subtitle checkpoint looked correct during live playback. The current checkpoint is source commit `f7979b623fa66c735b682fd0404c3c45a567c093` on base `acdb89bfb5e1796cda6359aa2f89632b78204a5b`; its merge status must be checked on GitHub. After the initial positive subtitle check, the user reported a serious full-raster framing regression during Three Body Problem playback. The checkpoint is not accepted for merging; do not alter core aspect-ratio or crop logic as part of this story. Investigate any subtitle-side interaction separately and preserve the working picture. This story is for a focused subtitle performance improvement, not an aspect-ratio or framing redesign.
 
 ## User story
 
