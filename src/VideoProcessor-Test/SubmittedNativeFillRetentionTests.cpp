@@ -148,7 +148,85 @@ TEST_CLASS(SubmittedNativeFillRetentionTests)
             Assert::AreEqual(uint64_t(100),anchor.submittedOptionalFillSourceSequence);
         }
     };
+    static SubmittedNativeScopeAnchorUpdateInput LoggedVerticalFill()
+    {
+        Fixture fixture;
+        auto frame = fixture.Frame(32431);
+        frame.crop.geometry = {0,262,3840,1898,3840,2160,3840.0/1636.0,
+            ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        frame.presentation = Evaluate(frame.crop);
+        const auto fill = EvaluateFinalAspectLimitFill(frame);
+        Assert::IsTrue(fill.applied);
+        Assert::AreEqual(262,fill.sourceBounds.top);
+        Assert::AreEqual(1896,fill.sourceBounds.bottom);
+        return fixture.Selected(frame,fill,true,SubtitlePreviewMode::GeneratedGrayBackground);
+    }
 public:
+    TEST_METHOD(LoggedTwoRowVerticalFillRecordsNativePictureContinuity)
+    {
+        const auto selected = LoggedVerticalFill();
+        const auto anchor = CommitSubmittedNativeScopeAnchor(selected);
+        Assert::IsTrue(anchor.available);
+        AssertSameBounds(selected.nativeCrop,anchor.crop);
+        Assert::AreEqual(selected.sourceSequence,anchor.lastSubmittedSourceSequence);
+        Assert::IsFalse(anchor.submittedOptionalFillAvailable,
+            L"This native continuity witness does not grant retention of a vertical picture trim.");
+    }
+    TEST_METHOD(VerticalFillRejectsStaleShiftedUnselectedAndFailedSubmissions)
+    {
+        for (int variant=0;variant<11;++variant)
+        {
+            auto selected = LoggedVerticalFill();
+            if (variant==0) --selected.selectedAdmission.optionalFillSourceSequence;
+            if (variant==1) ++selected.selectedAdmission.sourceGeneration;
+            if (variant==2) ++selected.selectedAdmission.presentationEpoch;
+            if (variant==3) selected.selectedAdmission.optionalFillApplied=false;
+            if (variant==4) selected.frameSubmitted=false;
+            if (variant==5) selected.selectedAdmission.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
+            if (variant==6) selected.selectedAdmission.optionalFillScreenAspect=std::numeric_limits<double>::quiet_NaN();
+            if (variant==7) selected.selectedAdmission.trustedCrop.top+=2;
+            if (variant==8) selected.selectedOwner=DecisionOwner::VERTICAL_TRANSLATION;
+            if (variant==9) selected.selectedAdmission.optionalFillRetained=true;
+            if (variant==10) {
+                selected.submittedBounds.top+=2;selected.submittedBounds.bottom+=2;
+                selected.selectedAdmission.optionalFillSourceBounds=selected.submittedBounds;
+            }
+            Assert::IsFalse(CommitSubmittedNativeScopeAnchor(selected).available);
+        }
+    }
+    TEST_METHOD(VerticalFillAnchorPreservesSubmittedCaptionEnvelopeAcrossMissingObservation)
+    {
+        auto selected = LoggedVerticalFill();
+        selected.previous = CommitSubmittedNativeScopeAnchor(selected);
+        Assert::IsTrue(selected.previous.available);
+        ++selected.sourceSequence;
+        selected.selectedOwner=DecisionOwner::OUTWARD_FIT;
+        selected.selectedAdmission.optionalFillApplied=false;
+        selected.submittedBounds=selected.nativeCrop;
+        selected.submittedBounds.bottom=1982;
+        auto anchor=CommitSubmittedNativeScopeAnchor(selected);
+        Assert::IsTrue(anchor.submittedEnvelopeAvailable);
+
+        Fixture fixture;
+        auto frame=fixture.Frame(selected.sourceSequence+1,true,true);
+        auto& evidence=frame.evidence;
+        evidence.crop.geometry=selected.nativeCrop;
+        evidence.crop.latestObservationSupportsCrop=false;
+        evidence.crop.nearBlackEpisodeRetainCrop=false;
+        evidence.crop.nearBlackEpisodeFullRaster=true;
+        evidence.submittedScopeAnchor=anchor;
+        const auto fallback=ResolveUncertainPicturePresentation(evidence,Evaluate(evidence.crop));
+        Assert::IsTrue(fallback.retained);
+        Assert::AreEqual(262,fallback.presentation.sourceBounds.top);
+        Assert::AreEqual(1982,fallback.presentation.sourceBounds.bottom);
+        AssertSameBounds(selected.nativeCrop,fallback.nativeCrop);
+
+        evidence.crop.fullRasterPresentationAuthoritative=true;
+        Assert::IsFalse(ResolveUncertainPicturePresentation(evidence,Evaluate(evidence.crop)).retained);
+        evidence.crop.fullRasterPresentationAuthoritative=false;
+        ++evidence.crop.frameSourceGeneration;
+        Assert::IsFalse(ResolveUncertainPicturePresentation(evidence,Evaluate(evidence.crop)).retained);
+    }
     TEST_METHOD(LoggedNativeFillSurvivesThreeMeasuredSkippedNearBlackCyclesWithoutRenewingAr)
     {
         Fixture fixture;fixture.Seed();
