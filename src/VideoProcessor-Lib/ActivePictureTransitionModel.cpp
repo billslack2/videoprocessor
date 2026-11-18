@@ -694,8 +694,8 @@ bool ActivePictureTransitionModel::ValidCurrentSpatialExpansion(
         m_stableClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
         observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
         observation.classification == ActivePictureClassification::BAR_CROP_TRUSTED && HasCropAuthority(observation) &&
-        SameBounds(proof.base, m_stable) && proof.base.trustedBarAxes == m_stable.trustedBarAxes &&
-        SameBounds(proof.candidate, candidate) && proof.candidate.trustedBarAxes == candidate.trustedBarAxes &&
+        ExactSparseBounds(proof.base, m_stable) && proof.base.trustedBarAxes == m_stable.trustedBarAxes &&
+        ExactSparseBounds(proof.candidate, candidate) && proof.candidate.trustedBarAxes == candidate.trustedBarAxes &&
         m_stable.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
         candidate.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
         m_stable.left == 0 && m_stable.right == m_stable.rasterWidth &&
