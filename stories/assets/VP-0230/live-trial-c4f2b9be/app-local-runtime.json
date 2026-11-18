@@ -1,0 +1,92 @@
+{
+  "mode": "app-local",
+  "architecture": "x64",
+  "crtMinimum": "14.44.35211.0",
+  "mfcMinimum": "14.29.30133",
+  "files": [
+    {
+      "path": "vcruntime140_1.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E"
+    },
+    {
+      "path": "vcruntime140.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "D1F4225DF2CD877DBF130D5668A021DCE3F94118455FF5EC952061C30AFC9CE7"
+    },
+    {
+      "path": "mfc140u.dll",
+      "version": "14.29.30139.0",
+      "minimumVersion": "14.29.30133",
+      "sha256": "E06C4BD078F4690AA8874A3DEB38E802B2A16CCB602A7EDC2E077E98C05B5807"
+    },
+    {
+      "path": "msvcp140.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "7C26614E1D733892C2DEAC7E245CE115504B1D80592DD0A01B08E3E5A55F89CA"
+    },
+    {
+      "path": "config/vcruntime140_1.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E"
+    },
+    {
+      "path": "config/vcruntime140.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "D1F4225DF2CD877DBF130D5668A021DCE3F94118455FF5EC952061C30AFC9CE7"
+    },
+    {
+      "path": "config/msvcp140.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "7C26614E1D733892C2DEAC7E245CE115504B1D80592DD0A01B08E3E5A55F89CA"
+    },
+    {
+      "path": "config/msvcp140_1.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "206C931BF90FDAD8816DE3B5E2EF80B2BCAA9406C89ECC05FE6FDDFFE251E982"
+    },
+    {
+      "path": "config/msvcp140_2.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "D50D7883F20D1DC6191768D3746F52DD9CAC89C346FFAED5BE1F110C2F34A838"
+    },
+    {
+      "path": "config/mfc140u.dll",
+      "version": "14.29.30139.0",
+      "minimumVersion": "14.29.30133",
+      "sha256": "E06C4BD078F4690AA8874A3DEB38E802B2A16CCB602A7EDC2E077E98C05B5807"
+    },
+    {
+      "path": "vprenderer/vcruntime140_1.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E"
+    },
+    {
+      "path": "vprenderer/vcruntime140.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "D1F4225DF2CD877DBF130D5668A021DCE3F94118455FF5EC952061C30AFC9CE7"
+    },
+    {
+      "path": "vprenderer/mfc140u.dll",
+      "version": "14.29.30139.0",
+      "minimumVersion": "14.29.30133",
+      "sha256": "E06C4BD078F4690AA8874A3DEB38E802B2A16CCB602A7EDC2E077E98C05B5807"
+    },
+    {
+      "path": "vprenderer/msvcp140.dll",
+      "version": "14.51.36247.0",
+      "minimumVersion": "14.44.35211.0",
+      "sha256": "7C26614E1D733892C2DEAC7E245CE115504B1D80592DD0A01B08E3E5A55F89CA"
+    }
+  ]
+}

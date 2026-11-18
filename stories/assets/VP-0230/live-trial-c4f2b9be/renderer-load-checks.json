@@ -1,0 +1,12 @@
+[
+  {
+    "library": "E:\\codex\\videoprocessor\\ar-retry-test-c4f2b9be\\vprenderer\\VideoProcessorVPRenderer.dll",
+    "loaded": true,
+    "sha256": "B5AFA82B6B99A60583465D49B561E2D8952A297F1B07EB526C1C8B814E958565"
+  },
+  {
+    "library": "E:\\codex\\videoprocessor\\ar-retry-test-c4f2b9be\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+    "loaded": true,
+    "sha256": "848B7B3B08FC7020F700FBACFE59B274B4D6579E32F1BF51AE76C3AED34D89FD"
+  }
+]

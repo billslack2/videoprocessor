@@ -1,0 +1,11 @@
+{
+  "source": "c4f2b9beb2607e81692d02711ecbaacd3b11b390",
+  "sourceWorktree": "E:\\codex\\videoprocessor\\ar-bounded-retry-20261118",
+  "librarySha256": "95A46A947A5C67DB3D44240A239F372DC1A3E937B45624B8FE35B735606DAC2A",
+  "compiler": "VS2019 v142 x64 Release /O2 /MD",
+  "comparedFrames": 76,
+  "baseline": "c1b130a2 observed candidate",
+  "comparison": "new/current kinds, bounds, reasons and samples; 24k sample ceiling with and without 2ms wall deadline",
+  "differences": 0,
+  "limits": "12 older and64 latest native captures; no superiority claim, no live latency or enabled crop/subtitle presentation qualification; fixed measurement order"
+}

@@ -1,0 +1,14 @@
+{
+  "source": "c4f2b9beb2607e81692d02711ecbaacd3b11b390",
+  "configuration": "Release",
+  "architecture": "x64",
+  "focusedPassed": 46,
+  "nativePassed": 421,
+  "standardGpuPassed": 102,
+  "betaGpuPassed": 102,
+  "pairedRealFrames": 76,
+  "pairedDifferences": 0,
+  "rendererLoadChecks": "both passed",
+  "livePlayback": "pending",
+  "finished": "2026-11-18T12:44:20.8703388-05:00"
+}

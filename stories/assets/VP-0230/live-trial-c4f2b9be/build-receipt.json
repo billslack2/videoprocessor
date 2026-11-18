@@ -1,0 +1,55 @@
+{
+  "source": "c4f2b9beb2607e81692d02711ecbaacd3b11b390",
+  "base": "c1b130a2b1ff301038788735892351a5b8a4c040",
+  "configuration": "Release",
+  "architecture": "x64",
+  "mode": "opt-in active bounded AR alternative refinement",
+  "binaries": [
+    {
+      "file": "VideoProcessor.exe",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "CA36CCC8B6DC7FC52C31CC2BA78D488082ABD0DD16A09178CEE29D53709FD10E"
+    },
+    {
+      "file": "config/VideoProcessorConfig.exe",
+      "toolsetVersion": "14.44.35207",
+      "sha256": "61F7091253728EF630EF1951656426E9703F2F927422A88D682E3513642D7A36"
+    },
+    {
+      "file": "config/VideoProcessorConfigDiscovery.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "A030E5028A0265CD237DB35848A6AFF551DD35C38FEDDE6DCBE6A591415D5E7B"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "B5AFA82B6B99A60583465D49B561E2D8952A297F1B07EB526C1C8B814E958565"
+    },
+    {
+      "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "848B7B3B08FC7020F700FBACFE59B274B4D6579E32F1BF51AE76C3AED34D89FD"
+    }
+  ],
+  "rebuiltFiles": [
+    "VideoProcessor.exe",
+    "vprenderer/VideoProcessorVPRenderer.dll",
+    "vprenderer-beta/VideoProcessorVPRendererBeta.dll"
+  ],
+  "unchangedCompanionFrom": "E:\\codex\\videoprocessor\\ar-active-test-c1b130a2",
+  "settings": [
+    {
+      "file": "VideoProcessor.cfg",
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-active-test-c1b130a2",
+      "sha256": "5776D89CC7BF98337C1A9EEBD97286250B41326975372DBC5773BC718F78821C"
+    },
+    {
+      "file": "VideoProcessor.state",
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-active-test-c1b130a2",
+      "sha256": "5303D8EFDC01C22691273542ACC74C55FC343754D538D6B346FFBA8C32C79FCE"
+    }
+  ],
+  "tests": "46 focused detector/worker checks; 421 native AR/queue/subtitle-worker regressions; 102 targeted GPU/cue/motion cases per renderer dependency (204 total), all passed. Paired 76 real frames retain identical kinds, bounds, reasons and sample counts. Not an exhaustive GPU suite or live accuracy/performance qualification.",
+  "livePlayback": "Not yet tested",
+  "created": "2026-11-18T12:36:51.2544546-05:00"
+}
