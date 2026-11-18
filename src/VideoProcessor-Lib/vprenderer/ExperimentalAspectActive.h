@@ -61,7 +61,7 @@ inline ActivePictureEvidence EvidenceFromMeasurement(const AnalysisLumaSource& s
     for(int side=0;side<4;++side){auto& e=*edges[side];const auto& m=measured.edges[side];
         const bool cropped=(side==0||side==2)?horizontal:vertical;
         if(cropped){e.barPixels=m.depth;e.continuity=m.support;e.innerBoundaryContrast=m.contrast;
-            e.lumaDispersion=m.noise;e.confidence=m.score;e.trusted=true;}
+            e.lumaFloor=m.matte;e.lumaP90=m.matteP90;e.lumaDispersion=m.noise;e.confidence=m.score;e.trusted=true;}
     }
     auto axis=[&](bool cropped,bool alongX){
         ActivePictureAxisEvidence e;e.scanComplete=true;e.barCandidate=cropped;

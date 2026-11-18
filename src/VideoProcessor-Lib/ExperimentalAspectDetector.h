@@ -6,7 +6,7 @@
 #include <cstddef>
 namespace ExperimentalAspect {
 enum class Kind { Unknown, Bars, FullRaster };
-struct Edge { int depth=0, uncertainty=0; double support=0,contrast=0,noise=0,darkness=0,score=0; };
+struct Edge { int depth=0, uncertainty=0, matte=0, matteP90=0; double support=0,contrast=0,noise=0,darkness=0,score=0; };
 struct Prior { int width=0,height=0,left=0,top=0,right=0,bottom=0; bool valid=false; };
 struct Result {
     Kind kind=Kind::Unknown;
@@ -51,7 +51,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
     for(int side=0;side<4&&!failed;++side){
         const int extent=(side==1||side==3)?height:width;
         const int step=(std::max)(2,extent/192),count=(std::min)(96,extent/3/step);steps[side]=step;
-        std::array<std::array<int,96>,9> lines{},noise{},matte{},contrast{};
+        std::array<std::array<int,96>,9> lines{},noise{},matte{},high{},contrast{};
         int full=0;
         for(int lane=0;lane<9&&!failed;++lane){
             auto& line=lines[lane];
@@ -61,7 +61,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             std::array<int,96> sorted{};
             for(int i=0;i<count;++i){
                 if(i>=2&&i<count-2){
-                    matte[lane][i]=sorted[i/2];noise[lane][i]=sorted[i*9/10]-sorted[i/10];
+                    matte[lane][i]=sorted[i/2];high[lane][i]=sorted[i*9/10];noise[lane][i]=sorted[i*9/10]-sorted[i/10];
                     contrast[lane][i]=(line[i]+line[i+1]-line[i-1]-line[i-2])/2;
                 }
                 int j=i;while(j>0&&sorted[j-1]>line[i]){sorted[j]=sorted[j-1];--j;}sorted[j]=line[i];
@@ -71,17 +71,18 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         std::array<Candidate,96> options{};int n=0;
         for(int i=2;i<count-2&&!failed;++i){
             if((i&7)==0&&!allow()){failed=true;out.reason="budget";break;}
-            std::array<int,9> strengths{},spreads{},floors{};int support=0;
+            std::array<int,9> strengths{},spreads{},floors{},highs{};int support=0;
             for(int lane=0;lane<9;++lane){
                 const double dark=Unit((nominalBlack+96.0-matte[lane][i])/96.0);
                 if(contrast[lane][i]>=4&&contrast[lane][i]/(8.0+noise[lane][i])*dark>=1){
-                    strengths[support]=contrast[lane][i];spreads[support]=noise[lane][i];floors[support]=matte[lane][i];++support;
+                    strengths[support]=contrast[lane][i];spreads[support]=noise[lane][i];floors[support]=matte[lane][i];highs[support]=high[lane][i];++support;
                 }
             }
             if(support<3)continue;
             auto& c=options[n++];c.index=i;auto& e=c.edge;e.depth=i*step;
             e.support=support/9.0;e.contrast=Median(strengths,support);e.noise=Median(spreads,support);
-            e.darkness=Unit((nominalBlack+96.0-Median(floors,support))/96.0);
+            e.matte=Median(floors,support);e.matteP90=Median(highs,support);
+            e.darkness=Unit((nominalBlack+96.0-e.matte)/96.0);
             e.score=.35*e.support+.35*Unit(e.contrast/(12+2*e.noise))+.30*e.darkness;
         }
         std::sort(options.begin(),options.begin()+n,[](const Candidate&a,const Candidate&b){return a.edge.score>b.edge.score;});

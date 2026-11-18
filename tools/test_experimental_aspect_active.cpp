@@ -17,6 +17,7 @@ int main(){
  check(evidence.available&&evidence.reason=="experimental joint current-pixel boundary measurement","active route emits independent native measurement");
  check(evidence.proposedBounds.top==91&&evidence.proposedBounds.bottom==629&&evidence.trustedBounds.top==90&&evidence.trustedBounds.bottom==630,"odd boundaries retain chroma pair outward");
  check(!evidence.axisEvidence.verticalCropGlyphExclusions&&!evidence.axisEvidence.verticalCropProfileClean&&!evidence.blackReference.evaluated,"no fabricated subtitle or strict matte certificates");
+ check(evidence.top.lumaFloor==64&&evidence.bottom.lumaP90==64,"adapter preserves measured matte levels for downstream checks");
  auto darkness=EvaluateActivePictureArDarkness(source,evidence);
  auto live=source;live.generation=7;
  ActivePictureMeasurementCache cache;cache.Begin(live,id,1,1);
