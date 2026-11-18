@@ -1,0 +1,7 @@
+PASS uniform raised dark raster kind=2 complete=1 bounds=0,0,3840,2160 reason=distributed-positive-outer-picture samples=7542
+PASS uniform bright raster kind=2 complete=1 bounds=0,0,3840,2160 reason=distributed-positive-outer-picture samples=7542
+PASS asymmetric raised bars kind=2 complete=1 bounds=0,0,3840,2160 reason=distributed-positive-outer-picture samples=10296
+FAIL symmetric raised bars kind=2 complete=1 bounds=0,0,3840,2160 reason=distributed-positive-outer-picture samples=11214
+PASS one raised top bar kind=2 complete=1 bounds=0,0,3840,2160 reason=distributed-positive-outer-picture samples=7542
+PASS one raised left bar kind=2 complete=1 bounds=0,0,3840,2160 reason=distributed-positive-outer-picture samples=7542
+PASS raised bars with center captions kind=2 complete=1 bounds=0,0,3840,2160 reason=distributed-positive-outer-picture samples=10194

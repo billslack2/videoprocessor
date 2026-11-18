@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "c841a9bfe9f69e357fd720d2ea0c388092e8dda5",
+  "sourceDirty": false,
+  "configuration": "Release",
+  "architecture": "x64",
+  "classes": [
+    "MotionRendererTests",
+    "SourceUploadBatchTests",
+    "TemporalCleanPacketGpuTests",
+    "ReconstructionMotionTests",
+    "SubtitleCutPasteTests",
+    "SubtitleCutPasteShaderTests",
+    "RendererDependencyTests"
+  ],
+  "runs": [
+    {
+      "variant": "standard",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\ar-bounded-retry-20261118\\x64\\Release\\VideoProcessor-Test.dll",
+      "sha256": "E59703693D365289EB7442CDF9B1634CF7E6F0829E01F986405E7AF17361E7EC",
+      "dependencySha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572",
+      "passed": 102
+    },
+    {
+      "variant": "beta",
+      "buildExit": 0,
+      "testExit": 0,
+      "binary": "E:\\codex\\videoprocessor\\ar-bounded-retry-20261118\\x64\\Release\\tests-beta\\VideoProcessor-TestBeta.dll",
+      "sha256": "14BE6EA221EFFB23E57B40CA990AB893D33812EA44EDD5C7980B166356275129",
+      "dependencySha256": "93A9292D31ACCF606DC9D5289225138E55942A9B03978401320137AAA9ECBB88",
+      "passed": 102
+    }
+  ],
+  "finished": "2026-11-18T13:44:21.2778286-05:00",
+  "filter": "FullyQualifiedName~CompositionAppliesCropAndRotationOnce|FullyQualifiedName~CompositionBlendsTheCompleteProcessedSourceIncludingSubtitle|FullyQualifiedName~SourceUploadBatchTests|FullyQualifiedName~TemporalCleanPacketGpuTests|FullyQualifiedName~SubtitlePacketReuseRejectsChangedPixelsEpochsAndFailedAttempts|FullyQualifiedName~RoundedNativeLipStaysRepairedAcrossMixedAndRepeatedOutputs|FullyQualifiedName~SubtitleCutPasteTests|FullyQualifiedName~OpaqueHlgPreparationWritesEveryPixelAndPreservesSourceMetadata|FullyQualifiedName~RendererDependencyTests",
+  "scope": "TARGETED initial-trial GPU/cue checks, not exhaustive suite; live playback remains separate."
+}

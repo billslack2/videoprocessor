@@ -1,0 +1,80 @@
+{
+  "source": "c841a9bfe9f69e357fd720d2ea0c388092e8dda5",
+  "base": "c4f2b9beb2607e81692d02711ecbaacd3b11b390",
+  "configuration": "Release",
+  "architecture": "x64",
+  "mode": "opt-in current-picture full-extent qualification",
+  "binaries": [
+    {
+      "file": "VideoProcessor.exe",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "0B5E7D5A1A190C78D4FE2624EC3AF5B8ADDF2AD740D2B7E7CC8B796EE723B11B"
+    },
+    {
+      "file": "config/VideoProcessorConfig.exe",
+      "toolsetVersion": "14.44.35207",
+      "sha256": "61F7091253728EF630EF1951656426E9703F2F927422A88D682E3513642D7A36"
+    },
+    {
+      "file": "config/VideoProcessorConfigDiscovery.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "A030E5028A0265CD237DB35848A6AFF551DD35C38FEDDE6DCBE6A591415D5E7B"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "BEF1F5A4FD213639A4F5160B82E5D65BF685F217C2EADA46FEF291B5A85D5F0B"
+    },
+    {
+      "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "7B1A801D6B0483FF57A57A1D9118A99EC452D6650C54754794F30FE5D0541623"
+    }
+  ],
+  "rebuiltFiles": [
+    "VideoProcessor.exe",
+    "vprenderer/VideoProcessorVPRenderer.dll",
+    "vprenderer-beta/VideoProcessorVPRendererBeta.dll"
+  ],
+  "unchangedCompanionFrom": "E:\\codex\\videoprocessor\\ar-retry-test-c4f2b9be",
+  "settings": [
+    {
+      "file": "VideoProcessor.cfg",
+      "afterGracefulShutdown": true,
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-retry-test-c4f2b9be",
+      "sha256": "5776D89CC7BF98337C1A9EEBD97286250B41326975372DBC5773BC718F78821C"
+    },
+    {
+      "file": "VideoProcessor.state",
+      "afterGracefulShutdown": true,
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-retry-test-c4f2b9be",
+      "sha256": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0"
+    }
+  ],
+  "tests": {
+    "focused": 86,
+    "nativePassed": 421,
+    "motionReceipt": "validation/motion-renderer-tests.json",
+    "motionSourceNote": "Original runner sourceDirty field preserved. Tracked source remained clean c841a9bf; test outputs moved under ignored x64/Release and final git status verified clean.",
+    "pixelReplay": "validation/pixel-replay.json",
+    "planetQualified": 64,
+    "priorFrames": 76,
+    "priorNewQualifiedFull": 4,
+    "priorGeometryChanged": 0,
+    "limitations": "Pre-existing raised noisy code80 bar acquisition miss; broad UI and soft asymmetric boundaries require live coverage. No full HDMI/60fps performance claim."
+  },
+  "livePlayback": {
+    "verified": "2026-11-18T13:45:13.3658505-05:00",
+    "processId": 62244,
+    "mode": "active",
+    "modeSource": "trial-marker",
+    "detectedAspect": 1.777778,
+    "measuredBounds": "0,0,3840,2160",
+    "firstCurrentOsd": "2026-11-18 13:44:46 | VP detected aspect OSD: overlay_requested=1 read_status=available has_reading=1 last_api_read_available=1 last_api_read_ratio=1.777778 last_api_read_ratio_valid=1 detector_source_generation=1 publication_generation=2 frame_identity=not-provided osd_label_ratio=16:9 osd_label_name=HDTV label_status=current label_held=0 hold_reason=none last_api_read_age_ms=0 label_age_ms=0 hold_age_ms=0",
+    "latestCurrentOsd": "2026-11-18 13:45:08 | VP detected aspect OSD: overlay_requested=1 read_status=available has_reading=1 last_api_read_available=1 last_api_read_ratio=1.777778 last_api_read_ratio_valid=1 detector_source_generation=1 publication_generation=4 frame_identity=not-provided osd_label_ratio=16:9 osd_label_name=HDTV label_status=current label_held=0 hold_reason=none last_api_read_age_ms=0 label_age_ms=22188 hold_age_ms=0",
+    "sourceProgress": "Observed advancing exact-source submissions and presentation IDs; sampled telemetry does not certify full-frame pacing",
+    "subtitleStatus": "Automated regressions pass; paused scene has no cue, live subtitle transition check still required",
+    "evidence": "validation/live-paused-scene.log"
+  },
+  "created": "2026-11-18T13:39:40.7857724-05:00"
+}

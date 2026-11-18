@@ -1,0 +1,72 @@
+{
+  "source": "c841a9bfe9f69e357fd720d2ea0c388092e8dda5",
+  "detectorHash": "0D25D0D5A6508FD5E6820ADC0960F9496933B8285EA140C8F912B33AB5BD0327",
+  "planetFrames": 64,
+  "qualifiedPlanet": 64,
+  "trustedPlanet": 64,
+  "planet2msFull": 64,
+  "priorFrames": 76,
+  "priorNewQualifiedFull": 4,
+  "priorDifferences": [
+    {
+      "File": "E:\\codex\\videoprocessor\\evidence\\eternals-starfield-20261102-1430\\analysis-20261102-144827-56380-2\\frame-000001.bin",
+      "Field": "new_kind",
+      "Old": "0",
+      "New": "2"
+    },
+    {
+      "File": "E:\\codex\\videoprocessor\\evidence\\eternals-starfield-20261102-1430\\analysis-20261102-144827-56380-2\\frame-000001.bin",
+      "Field": "new_reason",
+      "Old": "insufficient-spatial-evidence",
+      "New": "structured-current-picture-full-extent"
+    },
+    {
+      "File": "E:\\codex\\videoprocessor\\evidence\\eternals-starfield-20261102-1430\\analysis-20261102-144827-56380-2\\frame-000049.bin",
+      "Field": "new_kind",
+      "Old": "0",
+      "New": "2"
+    },
+    {
+      "File": "E:\\codex\\videoprocessor\\evidence\\eternals-starfield-20261102-1430\\analysis-20261102-144827-56380-2\\frame-000049.bin",
+      "Field": "new_reason",
+      "Old": "insufficient-spatial-evidence",
+      "New": "structured-current-picture-full-extent"
+    },
+    {
+      "File": "E:\\codex\\videoprocessor\\evidence\\eternals-starfield-20261102-1430\\analysis-20261102-144827-56380-2\\frame-000095.bin",
+      "Field": "new_kind",
+      "Old": "0",
+      "New": "2"
+    },
+    {
+      "File": "E:\\codex\\videoprocessor\\evidence\\eternals-starfield-20261102-1430\\analysis-20261102-144827-56380-2\\frame-000095.bin",
+      "Field": "new_reason",
+      "Old": "insufficient-spatial-evidence",
+      "New": "structured-current-picture-full-extent"
+    },
+    {
+      "File": "E:\\codex\\videoprocessor\\evidence\\eternals-paused-20261102-1323\\analysis-20261102-132132-59892-1\\frame-000096.bin",
+      "Field": "new_kind",
+      "Old": "0",
+      "New": "2"
+    },
+    {
+      "File": "E:\\codex\\videoprocessor\\evidence\\eternals-paused-20261102-1323\\analysis-20261102-132132-59892-1\\frame-000096.bin",
+      "Field": "new_reason",
+      "Old": "insufficient-spatial-evidence",
+      "New": "structured-current-picture-full-extent"
+    }
+  ],
+  "published": [
+    {
+      "identity": "identity_v1 2 178 1261 503703722 5354610997421391440 0 2 4521869302915884077 2 6 20 0 417078 0 0 0",
+      "published_bounds": "0 0 3840 2160"
+    },
+    {
+      "identity": "identity_v1 2 181 1264 504954957 5354610997421391440 0 2 4521869302915884077 2 6 20 0 417078 0 0 0",
+      "published_bounds": "0 0 3840 2160"
+    }
+  ],
+  "reviewedChanges": "Four prior Unknown observations now qualify FullRaster: starfield frames1/49/95 and pausedframe96. Production-sampler previews visually show planet/current picture reaching raster boundaries with dark starfield at right, no encoded bars. Four changes are supported. Remaining72 earlier frames retain kinds,bounds,reasons. All earlier trusted-bar geometries unchanged.",
+  "negativeResults": "All7 synthetic fixtures withhold full qualification. Symmetricraised80 fixture fails broader Bars-acquisition assertion identically in c1b baseline; known preexisting limitation, not hidden."
+}
