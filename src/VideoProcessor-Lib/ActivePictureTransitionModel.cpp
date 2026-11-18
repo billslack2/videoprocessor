@@ -682,6 +682,33 @@ bool ActivePictureTransitionModel::SameRememberedCandidateProof(const ActivePict
         ExactSparseBounds(a.establishedBase, b.establishedBase) && ExactSparseBounds(a.rememberedBounds, b.rememberedBounds);
 }
 
+bool ActivePictureTransitionModel::ValidCurrentSpatialExpansion(
+    const ActivePictureObservation& observation) const
+{
+    const auto& proof = observation.currentSpatialExpansion;
+    const auto& candidate = observation.bounds;
+    const int tolerance = std::max(2, std::max(candidate.rasterWidth / 480, candidate.rasterHeight / 270));
+    return proof.available && proof.sourceGeneration != 0 && proof.sourceSequence != 0 &&
+        proof.sourceSequence == observation.frameNumber && m_hasStable &&
+        m_stableOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+        m_stableClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+        observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+        observation.classification == ActivePictureClassification::BAR_CROP_TRUSTED && HasCropAuthority(observation) &&
+        SameBounds(proof.base, m_stable) && proof.base.trustedBarAxes == m_stable.trustedBarAxes &&
+        SameBounds(proof.candidate, candidate) && proof.candidate.trustedBarAxes == candidate.trustedBarAxes &&
+        m_stable.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        candidate.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        m_stable.left == 0 && m_stable.right == m_stable.rasterWidth &&
+        candidate.rasterWidth == m_stable.rasterWidth && candidate.rasterHeight == m_stable.rasterHeight &&
+        candidate.left == 0 && candidate.right == candidate.rasterWidth &&
+        candidate.top > 0 && candidate.bottom < candidate.rasterHeight &&
+        m_stable.top - candidate.top > tolerance && candidate.bottom - m_stable.bottom > tolerance &&
+        ((candidate.top | candidate.bottom | m_stable.top | m_stable.bottom) & 1) == 0 &&
+        observation.axisEvidence.vertical.scanComplete &&
+        observation.axisEvidence.vertical.state == ActivePictureAxisState::TRUSTED_BARS &&
+        !observation.axisEvidence.HasFailedBar();
+}
+
 bool ActivePictureTransitionModel::HasCropAuthority(
 	const ActivePictureObservation& observation)
 {
@@ -1018,6 +1045,13 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		return decision;
 	}
 	m_unavailableCandidates = 0;
+    if (ValidCurrentSpatialExpansion(observation))
+    {
+        // One completed spatial proof is one observation, not fabricated
+        // adjacent history. Ordinary inward/uncertain transitions stay unchanged.
+        StartCandidate(observation);
+        return CommitCandidate(observation, "current strong spatial expansion accepted");
+    }
 
     // Independently native nominal edges verify the same format, but do not
     // discard the retained uncertainty rows or relabel inferred authority.

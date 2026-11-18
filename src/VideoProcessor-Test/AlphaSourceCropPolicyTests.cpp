@@ -477,6 +477,41 @@ namespace Tests
 		}
 	}
 
+    static TransitionAdmissionInput StrongCurrentSpatialExpansionInput()
+    {
+        TransitionAdmissionInput input;
+        const ActivePictureBounds base = {0,276,3840,1884,3840,2160,3840.0/1608,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        const ActivePictureBounds target = {0,68,3840,2092,3840,2160,3840.0/2024,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        input.allowCurrentSpatialExpansion = true;
+        input.trustedGeometryAvailable = input.compatiblePresentation = true;
+        input.trustedGeneration = input.sourceGeneration = input.presentationEvidenceGeneration = 7;
+        input.sourceSequence = 100; input.framesPerSecond = 24;
+        input.trustedGeometry = input.presentationBeforeObservation = base;
+        input.outwardCandidate = target;
+        input.presentation.action = VerticalBarPresentationAction::TRANSLATE;
+        input.presentation.translationPixels = 120; input.translationDriftActive = true;
+        auto& native = input.evidence;
+        native.available = native.strongCurrentBarMeasurement = true;
+        native.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+        native.proposedBounds = native.trustedBounds = target;
+        native.top.trusted = native.bottom.trusted = true;
+        native.top.barPixels = target.top; native.bottom.barPixels = target.rasterHeight - target.bottom;
+        native.top.continuity = native.bottom.continuity = 1;
+        native.axisEvidence.vertical.scanComplete = true;
+        native.axisEvidence.vertical.state = ActivePictureAxisState::TRUSTED_BARS;
+        auto& pixels = input.retention;
+        pixels.analysisValid = pixels.presentationValid = pixels.expansionStripsAvailable = true;
+        pixels.expansionBase = base; pixels.expansionCandidate = target;
+        pixels.activePicture = native;
+        for (auto* edge : {&pixels.expandingTop, &pixels.expandingBottom})
+        {
+            edge->barPixels = 208; edge->blackFraction = 0.04; edge->continuity = 0;
+            edge->lumaP90 = 36; edge->texture = 7;
+            edge->distributedSupportDepthRowsByQuartile.fill(0x3f);
+        }
+        return input;
+    }
+
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
@@ -8692,6 +8727,94 @@ namespace Tests
 				evidence, 7);
 			Assert::AreEqual(1U, decision.state.confirmations);
 		}
+
+        TEST_METHOD(CurrentSpatialExpansionPublishesFirstFrameWithoutInventingTemporalVotes)
+        {
+            const auto input = StrongCurrentSpatialExpansionInput();
+            const auto admission = EvaluateTransitionAdmission(input);
+            Assert::IsTrue(admission.currentSpatialExpansion);
+            Assert::IsFalse(admission.deferPresentation);
+            Assert::IsFalse(admission.deferOutward);
+            Assert::IsFalse(admission.observation.transitionDeferred);
+            Assert::AreEqual(1U, admission.outward.state.confirmations);
+            Assert::IsFalse(admission.outward.authoritative);
+            ActivePictureTransitionModel model;
+            for (uint64_t n=1;n<=4;++n)
+                model.Observe({input.trustedGeometry,n,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+            const auto committed = model.Observe(admission.observation);
+            Assert::IsTrue(committed.publish);
+            Assert::AreEqual(68, committed.bounds.top);
+            Assert::AreEqual(2092, committed.bounds.bottom);
+            Assert::AreEqual(1, static_cast<int>(committed.matchingCandidates));
+            Assert::AreEqual("current strong spatial expansion accepted", committed.reason.c_str());
+            Assert::IsFalse(model.Observe(admission.observation).publish);
+        }
+
+        TEST_METHOD(CurrentSpatialExpansionRejectsWeakStaleAndMixedGeometry)
+        {
+            const auto good = StrongCurrentSpatialExpansionInput();
+            auto rejects = [&](const TransitionAdmissionInput& input) {
+                const auto admission = EvaluateTransitionAdmission(input);
+                Assert::IsFalse(admission.currentSpatialExpansion);
+                Assert::IsFalse(admission.observation.currentSpatialExpansion.available);
+            };
+            auto bad=good;bad.allowCurrentSpatialExpansion=false;rejects(bad);
+            bad=good;bad.evidence.strongCurrentBarMeasurement=false;rejects(bad);
+            bad=good;bad.sourceGeneration=8;rejects(bad);
+            bad=good;bad.sourceSequence=0;rejects(bad);
+            bad=good;bad.compatiblePresentation=false;rejects(bad);
+            bad=good;bad.trustedGeometryAvailable=false;rejects(bad);
+            bad=good;bad.presentationBeforeObservation.top++;rejects(bad);
+            bad=good;bad.evidence.available=false;rejects(bad);
+            bad=good;bad.evidence.classification=ActivePictureClassification::PROVISIONAL;rejects(bad);
+            bad=good;bad.evidence.authorityOrigin=ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT;rejects(bad);
+            bad=good;bad.evidence.top.continuity=6.0/9;rejects(bad);
+            bad=good;bad.evidence.bottom.trusted=false;rejects(bad);
+            bad=good;bad.evidence.top.barPixels++;rejects(bad);
+            bad=good;bad.evidence.bottom.barPixels--;rejects(bad);
+            bad=good;bad.evidence.axisEvidence.vertical.scanComplete=false;rejects(bad);
+            bad=good;bad.evidence.axisEvidence.horizontal.barCandidate=true;rejects(bad);
+            bad=good;bad.evidence.proposedBounds.top++;rejects(bad);
+            bad=good;bad.outwardCandidate.bottom--;rejects(bad);
+            bad=good;bad.evidence.trustedBounds.left=2;rejects(bad);
+            bad=good;bad.evidence.trustedBounds.top=280;rejects(bad);
+            bad=good;bad.evidence.trustedBounds.bottom=1886;rejects(bad);
+            bad=good;bad.retention.analysisValid=false;rejects(bad);
+            bad=good;bad.retention.presentationValid=false;rejects(bad);
+            bad=good;bad.retention.globalNearBlack=true;rejects(bad);
+            bad=good;bad.retention.expansionStripsAvailable=false;rejects(bad);
+            bad=good;bad.retention.expansionBase.top++;rejects(bad);
+            bad=good;bad.retention.expansionCandidate.bottom--;rejects(bad);
+            bad=good;bad.retention.activePicture.trustedBounds.top++;rejects(bad);
+            bad=good;bad.retention.activePicture.axisEvidence.horizontal.barCandidate=true;rejects(bad);
+            bad=good;bad.retention.expandingTop.barPixels--;rejects(bad);
+            bad=good;bad.retention.expandingBottom.blackFraction=0.9;rejects(bad);
+            for (int side=0;side<2;++side) for (int quartile=0;quartile<4;++quartile) {
+                bad=good; auto& edge=side?bad.retention.expandingBottom:bad.retention.expandingTop;
+                edge.distributedSupportDepthRowsByQuartile[quartile]=0x07;rejects(bad);
+            }
+        }
+
+        TEST_METHOD(CurrentSpatialExpansionOptInDoesNotChangeOrdinaryThreeFrameProof)
+        {
+            auto input = StrongCurrentSpatialExpansionInput();
+            input.allowCurrentSpatialExpansion=false;
+            auto admission = EvaluateTransitionAdmission(input);
+            Assert::IsFalse(admission.currentSpatialExpansion);
+            Assert::IsTrue(admission.deferPresentation);
+            Assert::IsTrue(admission.deferOutward);
+            Assert::AreEqual(1U, admission.outward.state.confirmations);
+            input.previousOutward=admission.outward.state; ++input.sourceSequence;
+            admission=EvaluateTransitionAdmission(input);
+            Assert::IsFalse(admission.outward.authoritative);
+            Assert::AreEqual(2U, admission.outward.state.confirmations);
+            input.previousOutward=admission.outward.state; ++input.sourceSequence;
+            admission=EvaluateTransitionAdmission(input);
+            Assert::IsTrue(admission.outward.authoritative);
+            Assert::IsFalse(admission.deferPresentation);
+            Assert::IsFalse(admission.deferOutward);
+            Assert::IsFalse(admission.currentSpatialExpansion);
+        }
 
 		TEST_METHOD(DarkNativeDistributedPictureRequiresThreeFreshExactFrames)
 		{

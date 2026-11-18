@@ -18,6 +18,13 @@ int main(){
  check(evidence.proposedBounds.top==91&&evidence.proposedBounds.bottom==629&&evidence.trustedBounds.top==90&&evidence.trustedBounds.bottom==630,"odd boundaries retain chroma pair outward");
  check(!evidence.axisEvidence.verticalCropGlyphExclusions&&!evidence.axisEvidence.verticalCropProfileClean&&!evidence.blackReference.evaluated,"no fabricated subtitle or strict matte certificates");
  check(evidence.top.lumaFloor==64&&evidence.bottom.lumaP90==64,"adapter preserves measured matte levels for downstream checks");
+ check(evidence.strongCurrentBarMeasurement,"completed strongly paired measurement nominates current expansion");
+ auto weakPair=measured;weakPair.edges[3].support=6.0/9;
+ check(!EvidenceFromMeasurement(source,weakPair).strongCurrentBarMeasurement,"weaker opposite boundary retains ordinary admission");
+ auto incompletePair=measured;incompletePair.complete=false;
+ check(!EvidenceFromMeasurement(source,incompletePair).strongCurrentBarMeasurement,"incomplete boundary measurement cannot nominate immediate expansion");
+ auto missingPair=measured;missingPair.acceptedPairAttempt[1]=0;
+ check(!EvidenceFromMeasurement(source,missingPair).strongCurrentBarMeasurement,"unaccepted pair cannot nominate immediate expansion");
  auto darkness=EvaluateActivePictureArDarkness(source,evidence);
  auto live=source;live.generation=7;
  ActivePictureMeasurementCache cache;cache.Begin(live,id,1,1);

@@ -244,6 +244,15 @@ struct ActivePictureAxisEvidenceSet
 const char* ActivePictureAxisStateName(ActivePictureAxisState state);
 const char* ActivePictureAxisReasonName(ActivePictureAxisReason reason);
 
+// Current-source spatial expansion authority, distinct from temporal votes.
+// The caller binds pixels/context before constructing this geometry-bound proof.
+struct CurrentSpatialExpansionProof
+{
+    bool available = false;
+    ActivePictureBounds base, candidate;
+    uint64_t sourceGeneration = 0, sourceSequence = 0;
+};
+
 struct ActivePictureObservation
 {
 	ActivePictureBounds bounds;
@@ -259,6 +268,7 @@ struct ActivePictureObservation
 	ActivePictureAuthorityOrigin authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
 	SparseBoundaryTransitionProof sparseTransitionProof;
 	RememberedEdgeReturnProof rememberedEdgeReturnProof;
+    CurrentSpatialExpansionProof currentSpatialExpansion;
 
 };
 
@@ -422,6 +432,7 @@ private:
 		ActivePictureClassification classification) const;
 	bool RetainsIncompleteInwardFormat(const ActivePictureBounds& candidate,
 		const ActivePictureAxisEvidenceSet& evidence) const;
+    bool ValidCurrentSpatialExpansion(const ActivePictureObservation& observation) const;
 	static bool HasCropAuthority(
 		const ActivePictureObservation& observation);
 	static bool IsFullRaster(

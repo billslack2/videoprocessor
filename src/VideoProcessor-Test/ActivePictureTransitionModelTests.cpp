@@ -73,6 +73,42 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureTransitionModelTests)
 	{
 	public:
+        TEST_METHOD(CurrentSpatialExpansionProofIsBoundToCurrentSequenceAndEstablishedBase)
+        {
+            ActivePictureObservation proof;
+            proof.available=true;proof.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            proof.bounds=ImaxBounds();proof.frameNumber=100;
+            proof.axisEvidence.vertical.scanComplete=true;
+            proof.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+            proof.currentSpatialExpansion.available=true;
+            proof.currentSpatialExpansion.base=ScopeBounds();proof.currentSpatialExpansion.candidate=proof.bounds;
+            proof.currentSpatialExpansion.sourceGeneration=7;proof.currentSpatialExpansion.sourceSequence=100;
+            auto rejects=[&](const ActivePictureObservation& observation) {
+                ActivePictureTransitionModel model;Establish(model,ScopeBounds());
+                Assert::IsFalse(model.Observe(observation).publish);
+            };
+            auto invalid=proof;invalid.currentSpatialExpansion.sourceSequence--;rejects(invalid);
+            invalid=proof;invalid.currentSpatialExpansion.sourceGeneration=0;rejects(invalid);
+            invalid=proof;invalid.currentSpatialExpansion.base.top++;rejects(invalid);
+            invalid=proof;invalid.currentSpatialExpansion.candidate.bottom--;rejects(invalid);
+            invalid=proof;invalid.axisEvidence.horizontal.barCandidate=true;rejects(invalid);
+            invalid=proof;invalid.axisEvidence.vertical.scanComplete=false;rejects(invalid);
+            invalid=proof;invalid.transitionDeferred=true;rejects(invalid);
+            invalid=proof;invalid.bounds.left=2;invalid.currentSpatialExpansion.candidate=invalid.bounds;rejects(invalid);
+            invalid=proof;invalid.bounds.top=268;invalid.currentSpatialExpansion.candidate=invalid.bounds;rejects(invalid);
+            ActivePictureTransitionModel changed;Establish(changed,LoggedScopeBounds());
+            Assert::IsFalse(changed.Observe(proof).publish);
+            ActivePictureTransitionModel model;Establish(model,ScopeBounds());
+            const auto accepted=model.Observe(proof);
+            Assert::IsTrue(accepted.publish);
+            Assert::AreEqual(48,accepted.bounds.top);
+            Assert::AreEqual(1,static_cast<int>(accepted.matchingCandidates));
+            Assert::IsFalse(model.Observe(proof).publish);
+            auto old=proof;old.frameNumber--;old.currentSpatialExpansion.sourceSequence--;
+            Assert::IsFalse(model.Observe(old).publish);
+            model.Reset();Assert::IsFalse(model.Observe(proof).publish);
+        }
+
 		TEST_METHOD(WomenInBlueFourPixelNoiseDoesNotPublishAnAspectChange)
 		{
 			ActivePictureTransitionModel model;

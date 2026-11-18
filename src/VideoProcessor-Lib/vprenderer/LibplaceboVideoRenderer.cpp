@@ -11937,6 +11937,22 @@ struct LibplaceboVideoRenderer::Impl
             subtitleBase.top = scopeSubtitlePictureTop;
             subtitleBase.right = scopeSubtitlePictureRight;
             subtitleBase.bottom = scopeSubtitlePictureBottom;
+            // Keep the ordinary admission for motion/onset arbitration. Only a
+            // settled native base may consume the independent current spatial
+            // proof; do not let it erase an existing moving-picture veto.
+            if (eligiblePictureChange && !nearBlackAcquisitionBlocked && !movingPictureOnset &&
+                !wasMovingPicture && !wasAwaitingPicturePublication &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication)
+            {
+                auto spatialInput = admissionInput;
+                spatialInput.allowCurrentSpatialExpansion = ExperimentalAspect::ActiveTrialEnabled();
+                auto spatialAdmission = AlphaSourceCrop::EvaluateTransitionAdmission(spatialInput);
+                if (spatialAdmission.currentSpatialExpansion) admission = std::move(spatialAdmission);
+            }
+            const bool currentSpatialReady = admission.currentSpatialExpansion &&
+                !admission.observation.transitionDeferred && eligiblePictureChange &&
+                !nearBlackAcquisitionBlocked && !movingPictureOnset &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication;
             const bool bufferedTranslationHandoff = !movingPictureOnset && bufferedExpansion &&
                 !nearBlackAcquisitionBlocked && !wasMovingPicture && !wasAwaitingPicturePublication &&
                 !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
@@ -11968,7 +11984,7 @@ struct LibplaceboVideoRenderer::Impl
                 !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
                 AlphaSourceCrop::ValidateBufferedFastSnap(*bufferedExpansion,currentIdentity,admissionInput,
                     eligiblePictureChange,activeSettings.subtitleInPictureAspectMax);
-            const bool bufferedExpansionReady = !movingPictureOnset &&
+            const bool bufferedExpansionReady = !currentSpatialReady && !movingPictureOnset &&
                 (bufferedFastSnapReady || bufferedTranslationHandoff || bufferedRelativeReady ||
                  (!movingPictureTransition.active && bufferedExpansion &&
                   AlphaSourceCrop::ValidateBufferedPictureExpansion(*bufferedExpansion,
@@ -12034,7 +12050,7 @@ struct LibplaceboVideoRenderer::Impl
                 (scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
                  !scopeSubtitleDrift.IsActive() && !outwardPictureConfirmation.verticalPresentationSeen &&
                  !movingPictureTransition.active && !movingPictureTransition.awaitingPublication));
-            const bool applyScheduledDecision = scheduledDecision && inwardPresentationCompatible &&
+            const bool applyScheduledDecision = !currentSpatialReady && scheduledDecision && inwardPresentationCompatible &&
 				observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
@@ -12051,7 +12067,7 @@ struct LibplaceboVideoRenderer::Impl
 				scheduledValidation = ActivePictureScheduledDecisionValidation::
 					NON_AUTHORITATIVE;
 			}
-            const bool applyGuardedReturn = guardedCertificateValidated && !applyScheduledDecision &&
+            const bool applyGuardedReturn = !currentSpatialReady && guardedCertificateValidated && !applyScheduledDecision &&
                 !nearBlackAcquisitionBlocked && !deferPresentationOwnedTransition && !deferOutwardLogicalTransition &&
                 !admission.observation.transitionDeferred && !movingPictureTransition.active &&
                 !movingPictureTransition.awaitingPublication &&
@@ -12077,7 +12093,7 @@ struct LibplaceboVideoRenderer::Impl
                 lookaheadPerformance.RecordRejected(LookaheadPerf::ProofKind::GuardedReturn,
                     LookaheadPerf::Rejection::Other);
             auto fallbackObservation = observation;
-            if (guardedCurrent.candidateAvailable && !applyGuardedReturn)
+            if (guardedCurrent.candidateAvailable && !applyGuardedReturn && !currentSpatialReady)
             {
                 // A rejected queued certificate must not become ordinary live
                 // confirmation credit for the same inferred crop.
@@ -12086,6 +12102,10 @@ struct LibplaceboVideoRenderer::Impl
             }
             const ActivePictureTransitionDecision transition = applyScheduledDecision ? scheduledDecision->transition :
                 applyGuardedReturn ? guardedDecision : nlsTransition.Observe(fallbackObservation);
+            if (currentSpatialReady)
+                DebugLog::Log("[AR-CURRENT-EXPANSION] generation=%llu source=%llu measured=%d,%d,%d,%d published=%d reason=%s",
+                    analysisSource.generation, frameNumber, evidence.trustedBounds.left, evidence.trustedBounds.top,
+                    evidence.trustedBounds.right, evidence.trustedBounds.bottom, transition.publish?1:0, transition.reason.c_str());
             if (guardedReturn && guardedReturn->available)
                 DebugLog::Log("Alpha guarded remembered consume: instance=%s generation=%llu sequence=%llu through=%llu history=%llu current_pixels=%d admission_deferred=%d moving=%d applied=%d consume_us=%lld candidate_eligible=%d scene_hold_before=%d scene_hold_compatible=%d scene_hold_retired=%d nominal=%d,%d-%d,%d envelope=%d,%d-%d,%d",
                     diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,

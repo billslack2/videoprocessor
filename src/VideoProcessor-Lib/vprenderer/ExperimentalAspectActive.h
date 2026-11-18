@@ -109,6 +109,12 @@ inline ActivePictureEvidence EvidenceFromMeasurement(const AnalysisLumaSource& s
         return e;
     };
     out.axisEvidence.horizontal=axis(horizontal,true);out.axisEvidence.vertical=axis(vertical,false);
+    // Only completed current measurements with strong support on BOTH edges
+    // may nominate immediate expansion. Admission still independently checks
+    // exact new-picture strips, the established base and source context.
+    out.strongCurrentBarMeasurement=source.IsValid()&&source.range!=AnalysisLumaRange::Unknown&&
+        (!horizontal||(measured.acceptedPairAttempt[0]>0&&measured.edges[0].support>=7.0/9&&measured.edges[2].support>=7.0/9))&&
+        (!vertical||(measured.acceptedPairAttempt[1]>0&&measured.edges[1].support>=7.0/9&&measured.edges[3].support>=7.0/9));
     return out;
 }
 // Called only by the existing bounded lookahead measurement worker. The renderer

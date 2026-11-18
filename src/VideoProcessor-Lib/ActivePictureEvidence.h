@@ -144,6 +144,8 @@ struct ActivePictureEvidence
 	ActivePictureAuthorityOrigin authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
 	SparseBoundaryTransitionProof sparseTransitionProof;
 	RememberedEdgeReturnProof rememberedEdgeReturnProof;
+    // Current completed experimental measurement; copied only with exact-source evidence.
+    bool strongCurrentBarMeasurement = false;
 };
 
 

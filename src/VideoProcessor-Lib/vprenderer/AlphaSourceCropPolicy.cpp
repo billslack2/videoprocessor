@@ -149,6 +149,56 @@ namespace AlphaSourceCrop
 				HasDistributedSupport(evidence.expandingBottom));
 		}
 
+        bool QualifiesCurrentSpatialExpansion(const TransitionAdmissionInput& input)
+        {
+            const auto& native = input.evidence;
+            const auto& base = input.trustedGeometry;
+            const auto& target = native.trustedBounds;
+            const auto& pixels = input.retention;
+            const int tolerance = SamplingTolerance(base);
+            if (!input.allowCurrentSpatialExpansion || !native.strongCurrentBarMeasurement ||
+                !input.sourceGeneration || !input.sourceSequence || !input.trustedGeometryAvailable ||
+                !input.compatiblePresentation || input.trustedGeneration != input.sourceGeneration ||
+                !SameTrustedCropContract(input.presentationBeforeObservation, base) ||
+                !ValidBounds(base, base.rasterWidth, base.rasterHeight) ||
+                !ValidBounds(target, base.rasterWidth, base.rasterHeight) ||
+                !CropEdgesAreChromaAligned(base, base.rasterWidth, base.rasterHeight) ||
+                !CropEdgesAreChromaAligned(target, base.rasterWidth, base.rasterHeight) ||
+                base.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+                target.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+                base.left != 0 || base.right != base.rasterWidth || target.left != 0 || target.right != base.right ||
+                target.top <= 0 || target.bottom >= target.rasterHeight ||
+                base.top - target.top <= tolerance || target.bottom - base.bottom <= tolerance ||
+                !native.available || native.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+                native.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+                !SameTrustedCropContract(native.proposedBounds, target) ||
+                !SameTrustedCropContract(input.outwardCandidate, target) ||
+                !native.axisEvidence.vertical.scanComplete ||
+                native.axisEvidence.vertical.state != ActivePictureAxisState::TRUSTED_BARS ||
+                native.axisEvidence.HasFailedBar() ||
+                !native.top.trusted || !native.bottom.trusted ||
+                native.top.barPixels != target.top || native.bottom.barPixels != target.rasterHeight - target.bottom ||
+                native.top.continuity < 7.0 / 9 || native.bottom.continuity < 7.0 / 9 ||
+                pixels.activePicture.axisEvidence.HasFailedBar() ||
+                !HasStrictNativeDistributedPictureProof(pixels, base, target))
+                return false;
+            auto strongStrip = [](const ActivePictureEdgeEvidence& edge) {
+                if (!HasDistributedSupport(edge)) return false;
+                for (const uint8_t mask : edge.distributedSupportDepthRowsByQuartile)
+                {
+                    unsigned supported = 0;
+                    for (int depth = 0; depth < 6; ++depth) supported += (mask >> depth) & 1u;
+                    if (supported < 4) return false;
+                }
+                return true;
+            };
+            // The same current strips must independently support all along-edge
+            // quartiles at multiple depths, not only a bright caption/overlay.
+            return pixels.expandingTop.barPixels == base.top - target.top &&
+                pixels.expandingBottom.barPixels == target.bottom - base.bottom &&
+                strongStrip(pixels.expandingTop) && strongStrip(pixels.expandingBottom);
+        }
+
 		bool SamePictureWithinDetectorStep(const ActivePictureBounds& left,
 			const ActivePictureBounds& right)
 		{
@@ -1015,6 +1065,20 @@ namespace AlphaSourceCrop
 		// the unresolved horizontal pixels and grants no horizontal crop authority.
 		decision.observation.transitionDeferred = decision.observation.transitionDeferred ||
 			decision.deferPartialComposition;
+        decision.currentSpatialExpansion = !decision.deferPartialComposition && QualifiesCurrentSpatialExpansion(input);
+        if (decision.currentSpatialExpansion)
+        {
+            // Release only the geometry wait. Caption cleanup/composition and
+            // retained-pixel checks still run independently after publication.
+            decision.deferPresentation = decision.deferOutward = false;
+            decision.observation = MakeActivePictureObservation(input.evidence, input.sourceSequence, input.framesPerSecond);
+            auto& proof = decision.observation.currentSpatialExpansion;
+            proof.available = true;
+            proof.base = input.trustedGeometry;
+            proof.candidate = input.evidence.trustedBounds;
+            proof.sourceGeneration = input.sourceGeneration;
+            proof.sourceSequence = input.sourceSequence;
+        }
 		return decision;
 	}
 

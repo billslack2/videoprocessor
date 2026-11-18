@@ -400,6 +400,7 @@ namespace AlphaSourceCrop
 		uint64_t presentationEvidenceGeneration = 0;
 		ActivePicturePresentationRetentionEvidence retention;
 		OutwardPictureConfirmationState previousOutward;
+        bool allowCurrentSpatialExpansion = false;
 	};
 
 	struct TransitionAdmissionDecision
@@ -411,6 +412,7 @@ namespace AlphaSourceCrop
 		// Unresolved margins defer composition changes unless the exact vertical
 		// crop has current strict excluded-band proof and retains full source width.
 		bool deferPartialComposition = false;
+        bool currentSpatialExpansion = false;
 	};
 	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input);
 

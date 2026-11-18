@@ -71,3 +71,20 @@ Control launchers must set off, rather than clear the variable. Ordinary
 installations have no marker and remain off. Startup AR-EXPERIMENT records
 identify mode and provenance, and the file is resolved beside the host EXE,
 never from the working directory. Resolution is startup-only, not per frame.
+
+## Current spatial expansion increment - 2026-11-18
+
+The captured scope-to-IMAX change is measured on its first source, but temporal
+outward confirmation holds the previous crop. An opt-in current spatial route
+combines a completed strong paired boundary measurement with independent,
+exact-base/candidate distributed picture evidence in both newly exposed bands.
+It applies only to material full-width top-and-bottom expansion that contains
+the established picture. Missing, weak, stale or contradictory evidence retains
+the ordinary confirmation path. No temporal votes are invented.
+
+Physical geometry and subtitle composition remain separate: publishing current
+picture bounds still refreshes the current-pixel presentation retention checks.
+Unowned caption pixels outside those bounds must remain visible; qualification
+never supplies glyph, cleanup or caption-absence authority. This increment adds
+no foreground pixel scan, queue depth, waiting, or forced standard aspect ratio.
+Subtitle-profile switching is deferred to VP-0235 and is outside this change.
