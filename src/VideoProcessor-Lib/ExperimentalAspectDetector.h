@@ -44,7 +44,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         for(int k=0;k<3;++k){const int a=(std::max)(0,(std::min)(across-1,center+(k-1)*parallel));v[k]=pixel(horizontal?a:d,horizontal?d:a);}
         return Median(v,3);
     };
-    struct Candidate {Edge edge;int index=0;};
+    struct Candidate {Edge edge;int index=0;unsigned laneMask=0;};
     std::array<std::array<Candidate,12>,4> candidates{};
     std::array<int,4> sizes{},steps{};
     std::array<double,4> fullSupport{};
@@ -71,15 +71,15 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         std::array<Candidate,96> options{};int n=0;
         for(int i=2;i<count-2&&!failed;++i){
             if((i&7)==0&&!allow()){failed=true;out.reason="budget";break;}
-            std::array<int,9> strengths{},spreads{},floors{},highs{};int support=0;
+            std::array<int,9> strengths{},spreads{},floors{},highs{};int support=0;unsigned laneMask=0;
             for(int lane=0;lane<9;++lane){
                 const double dark=Unit((nominalBlack+96.0-matte[lane][i])/96.0);
                 if(contrast[lane][i]>=4&&contrast[lane][i]/(8.0+noise[lane][i])*dark>=1){
-                    strengths[support]=contrast[lane][i];spreads[support]=noise[lane][i];floors[support]=matte[lane][i];highs[support]=high[lane][i];++support;
+                    laneMask|=1u<<lane;strengths[support]=contrast[lane][i];spreads[support]=noise[lane][i];floors[support]=matte[lane][i];highs[support]=high[lane][i];++support;
                 }
             }
             if(support<3)continue;
-            auto& c=options[n++];c.index=i;auto& e=c.edge;e.depth=i*step;
+            auto& c=options[n++];c.index=i;c.laneMask=laneMask;auto& e=c.edge;e.depth=i*step;
             e.support=support/9.0;e.contrast=Median(strengths,support);e.noise=Median(spreads,support);
             e.matte=Median(floors,support);e.matteP90=Median(highs,support);
             e.darkness=Unit((nominalBlack+96.0-e.matte)/96.0);
@@ -119,6 +119,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             auto& e=out.edges[side];e=c.edge;
             std::array<int,9> positions{};int found=0;
             for(int lane=0;lane<9&&!failed;++lane){
+                if(!(c.laneMask&(1u<<lane)))continue;
                 const int begin=(c.index-2)*step,end=(c.index+1)*step;
                 int previous=sample(side,lane,begin),strongest=0,position=0;
                 for(int d=begin+1;d<=end&&!failed;++d){const int current=sample(side,lane,d),delta=current-previous;if(delta>strongest){strongest=delta;position=d;}previous=current;}
@@ -135,8 +136,30 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         pairScores[axis]=scorePair(out.edges[axis],out.edges[axis+2],axis);
         accepted[axis]=pairScores[axis]>=.82;
     }
+    // Challenge matte-like panels with picture still visible at the raster sides.
+    // Central captions may contaminate strips; distributed exterior picture at
+    // the far sides contradicts crop regardless of history or ratio support.
+    bool exteriorConflict=false;
+    for(int axis=0;axis<2&&!failed;++axis)if(accepted[axis]){
+        const int across=axis==1?width:height,extent=axis==1?height:width;
+        const int positions[]={across/200,across/40,across-1-across/40,across-1-across/200};
+        bool conflict=false;
+        for(int k=0;k<2&&!failed;++k){
+            const auto& edge=out.edges[axis+2*k];
+            const double limit=edge.matte+(std::max)(24.0,3*edge.noise+8);
+            for(int a:positions){
+                int visible=0;
+                for(int depth=1;depth<=4&&!failed;++depth){
+                    const int d=edge.depth*depth/5,coordinate=k?extent-1-d:d;
+                    if(pixel(axis==1?a:coordinate,axis==1?coordinate:a)>limit)++visible;
+                }
+                if(visible>=3)conflict=true;
+            }
+        }
+        if(conflict){accepted[axis]=false;exteriorConflict=true;}
+    }
     if(failed||!allow()){if(!failed)out.reason="budget";return out;}
-    out.complete=true;out.reason="insufficient-spatial-evidence";
+    out.complete=true;out.reason=exteriorConflict?"exterior-picture-conflict":"insufficient-spatial-evidence";
     out.fullScore=*std::min_element(fullSupport.begin(),fullSupport.end());
     if(accepted[0]){out.left=out.edges[0].depth;out.right=width-out.edges[2].depth;}
     if(accepted[1]){out.top=out.edges[1].depth;out.bottom=height-out.edges[3].depth;}

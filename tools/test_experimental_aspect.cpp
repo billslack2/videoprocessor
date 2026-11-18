@@ -53,6 +53,8 @@ int main(){
  check(contradicted.kind==Kind::Bars&&contradicted.top==68&&contradicted.bottom==2092,"current expansion overrides incompatible history");
  auto missing=Measure(3840,2160,0,[](int,int y,int&v){v=y<276?12:300;return true;},[]{return true;},24000,&prior);
  check(missing.kind==Kind::Unknown,"one edge plus history cannot invent missing opposite bar");
+ auto sidePicture=Measure(3840,2160,0,[](int x,int y,int&v){v=(y<276||y>=1884)&&x>=40?12:300;return true;},[]{return true;},24000,&prior);
+ check(sidePicture.kind==Kind::Unknown,"visible picture at the side of a matte-like panel vetoes crop");
  double total=0,worst=0;size_t samples=0;
  for(int i=0;i<100;++i){auto start=std::chrono::steady_clock::now();auto result=scene(3840,2160,0,277,0,277,true,true);
  auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();total+=ms;worst=std::max(worst,ms);samples=result.samples;}
