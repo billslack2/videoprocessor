@@ -681,6 +681,41 @@ vec3 subtitleGeneratedRawFill(vec2 p) {
     float edge=min(p.x-cleanup_exclusion_left,cleanup_exclusion_right-p.x);
     return mix(side,filled,smoothstep(0.0,24.0,edge)*(fromTop ? step(cleanup_exclusion_bottom+1.0,picture_bottom) : step(picture_top+1.0,cleanup_exclusion_top)));
 }
+// Backdrop sampling is separate from source erasure. A current glyph in an
+// encoded bar still lies inside the Gaussian halo of the relocated backing.
+// Exclude its bilinear footprint without expanding any cleanup/crop authority.
+bool subtitleBackdropGlyphTouchesRect(vec2 p,vec4 line) {
+    vec2 lo=max(line.xy,vec2(picture_capture_left,picture_capture_top));
+    vec2 hi=min(line.zw,vec2(picture_capture_right,picture_capture_bottom));
+    return hi.x>lo.x && hi.y>lo.y && p.x>lo.x-0.5 && p.x<hi.x+0.5 &&
+        p.y>lo.y-0.5 && p.y<hi.y+0.5;
+}
+bool subtitleBackdropTouchesGlyph(vec2 p) {
+    return source_support_required>0.5 &&
+        (subtitleBackdropGlyphTouchesRect(p,vec4(glyph_0_left,glyph_0_top,glyph_0_right,glyph_0_bottom)) ||
+         subtitleBackdropGlyphTouchesRect(p,vec4(glyph_1_left,glyph_1_top,glyph_1_right,glyph_1_bottom)) ||
+         subtitleBackdropGlyphTouchesRect(p,vec4(glyph_2_left,glyph_2_top,glyph_2_right,glyph_2_bottom)));
+}
+vec3 subtitleGlyphFreeBackdrop(vec2 p) {
+    float left=min(source_left,picture_capture_left),right=max(source_right,picture_capture_right);
+    if(glyph_0_right>glyph_0_left) {left=min(left,glyph_0_left);right=max(right,glyph_0_right);}
+    if(glyph_1_right>glyph_1_left) {left=min(left,glyph_1_left);right=max(right,glyph_1_right);}
+    if(glyph_2_right>glyph_2_left) {left=min(left,glyph_2_left);right=max(right,glyph_2_right);}
+    if(cleanup_exclusion_right>cleanup_exclusion_left && cleanup_exclusion_bottom>cleanup_exclusion_top) {
+        left=min(left,cleanup_exclusion_left);right=max(right,cleanup_exclusion_right);
+    }
+    // Stay outside every known caption footprint, including bilinear support.
+    // Never clamp an unavailable donor back into a captured stroke/fringe.
+    float donorLeft=left-1.5,donorRight=right+1.5;
+    bool hasLeft=donorLeft>=0.5,hasRight=donorRight<=HOOKED_size.x-0.5;
+    if(!hasLeft && !hasRight)return vec3(0.0);
+    vec3 a=vec3(0.0),b=vec3(0.0);
+    if(hasLeft)a=subtitleLinear(HOOKED_tex(vec2(donorLeft,p.y)*HOOKED_pt).rgb);
+    if(hasRight)b=subtitleLinear(HOOKED_tex(vec2(donorRight,p.y)*HOOKED_pt).rgb);
+    if(!hasLeft)a=b;
+    if(!hasRight)b=a;
+    return mix(a,b,clamp((p.x-left)/max(right-left,1.0),0.0,1.0));
+}
 // Reconstruct first, then filter the combined real/generated scene. Testing
 // the footprint as well as the center prevents bilinear samples just outside
 // a card edge from pulling its black backing or glyphs into the overlay.
@@ -688,7 +723,10 @@ vec3 subtitleCleanBackdropSample(vec2 p) {
     if(source_support_required>0.5)
         p=clamp(p,vec2(0.5),HOOKED_size-vec2(0.5));
     else p=clamp(p,vec2(0.5,picture_top+0.5),vec2(HOOKED_size.x-0.5,picture_bottom-0.5));
-    if(subtitleCleanupTouchesSample(p))return subtitleGeneratedRawFill(p);
+    bool cleanup=subtitleCleanupTouchesSample(p);
+    if(subtitleBackdropTouchesGlyph(p) && (!cleanup || p.y<picture_top || p.y>=picture_bottom))
+        return subtitleGlyphFreeBackdrop(p);
+    if(cleanup)return subtitleGeneratedRawFill(p);
     return subtitleLinear(HOOKED_tex(p*HOOKED_pt).rgb);
 }
 vec3 subtitleCappedBacking(vec3 backing) {

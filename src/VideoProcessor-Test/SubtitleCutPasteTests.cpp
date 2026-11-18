@@ -2957,6 +2957,63 @@ struct SubtitleShaderGpuFixture {
                 L"A next source with no lip cannot reuse the old source cleanup or erase its current picture.");
     }
 
+    void VerifyBlurBackdropExcludesCurrentSourceGlyphs(bool top,bool pending,int edge,bool crossing) {
+        const auto mirror=[&](SubtitleBoxRect r) {
+            return top ? SubtitleBoxRect{r.left,64-r.bottom,r.right,64-r.top}:r;
+        };
+        SubtitleCutPasteGeometry g{};g.valid=true;g.sourceSupportRequired=true;
+        g.pendingGlyphsOnly=pending;g.pictureTop=16;g.pictureBottom=48;
+        const auto sourceRect=[&](SubtitleBoxRect r) {
+            if(crossing){r.top-=5;r.bottom-=5;}
+            return mirror(r);
+        };
+        g.source=sourceRect(edge==1?SubtitleBoxRect{0,50,20,62}:edge==2?
+            SubtitleBoxRect{44,50,64,62}:edge==3?SubtitleBoxRect{0,50,64,62}:SubtitleBoxRect{18,50,46,62});
+        const auto glyph=sourceRect(edge==1?SubtitleBoxRect{0,52,14,58}:edge==2?
+            SubtitleBoxRect{50,52,64,58}:edge==3?SubtitleBoxRect{0,52,64,58}:SubtitleBoxRect{24,52,40,58});
+        // Tight capture deliberately puts strokes at the old side-donor positions.
+        g.content=g.pictureCapture=g.glyphLines[0]=glyph;
+        if(crossing)g.generatedCleanup={glyph.left,(std::max)(16,glyph.top),glyph.right,(std::min)(48,glyph.bottom)};
+        g.destination=mirror({16,32,48,48});g.glyphScale=1;
+        g.glyphTranslateX=0.25f;g.glyphTranslateY=top?16.0f:-16.0f;
+        g.centeredGlyphMapping=true;g.fromTopBar=top;g.roundedCorners=true;g.extendToBar=true;
+        SubtitleGeneratedGrayStyle style;style.blurPixels=30;style.opacity=0.65f;
+        style.maxLuminance=0.25f;style.textColor={0.0f,0.0f,0.0f};
+        Assert::AreEqual(2.0f,ComputeSubtitleGaussianRegion(g,5,style.blurPixels).step);
+        const auto render=[&](bool withGlyph) {
+            std::vector<uint8_t> pixels(64*64*4,255);
+            for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+                const bool ink=x>=glyph.left && x<glyph.right && y>=glyph.top && y<glyph.bottom;
+                const uint8_t value=withGlyph && ink?250:y>=16 && y<48?80:0;
+                const size_t i=(y*64+x)*4;pixels[i]=pixels[i+1]=pixels[i+2]=value;
+            }
+            pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
+            Assert::IsTrue(pl_tex_upload(device->gpu,&upload));
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,5,input.color.transfer,style,3,SubtitleCompositionPhase::LayerOnly));
+            pl_frame layer{};
+            Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
+            return ReadPreparedRaster(layer);
+        };
+        const auto withGlyph=render(true),withoutGlyph=render(false);
+        unsigned checked=0;float worst=0;
+        const float glyphTop=float(glyph.top)+g.glyphTranslateY;
+        const float glyphBottom=float(glyph.bottom)+g.glyphTranslateY;
+        for(int y=g.destination.top+2;y<g.destination.bottom-2;++y)
+            for(int x=g.destination.left+2;x<g.destination.right-2;++x) {
+                // Tinting glyphs black does not remove their alpha. Compare only
+                // backdrop pixels, outside the translated glyph/filter footprint.
+                if(y+0.5f>glyphTop-2 && y+0.5f<glyphBottom+2)continue;
+                const auto a=Pixel(withGlyph,x,y),b=Pixel(withoutGlyph,x,y);
+                if(a[3]<0.5f || b[3]<0.5f)continue;
+                for(int c=0;c<3;++c)worst=(std::max)(worst,std::abs(a[c]-b[c]));
+                ++checked;
+            }
+        Assert::IsTrue(checked>0,L"Backdrop control must inspect visible non-glyph pixels");
+        const auto message=std::wstring(L"Source glyph leaked into blur: top=")+std::to_wstring(top)+
+            L" pending="+std::to_wstring(pending)+L" edge="+std::to_wstring(edge)+L" crossing="+std::to_wstring(crossing)+L" difference="+std::to_wstring(worst);
+        Assert::IsTrue(worst<0.0006f,message.c_str());
+    }
+
     std::vector<float> ReadPreparedRaster(pl_frame composed) {
         composed.crop={0,0,64,64};composed.rotation=PL_ROTATION_0;
         pl_frame target{};target.num_planes=1;target.planes[0].texture=allOutput;
@@ -3372,6 +3429,11 @@ public:
         SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
         for(int mode:{3,5})for(bool top:{false,true})
             rgb.VerifyPreparedBarContentErasure(mode,top);
+    }
+    TEST_METHOD(ReconstructionBlurBackdropNeverUsesCurrentSourceGlyphsAtEitherBar) {
+        SubtitleShaderGpuFixture gpu(PL_COLOR_TRC_SRGB);
+        for(bool top:{false,true})for(bool pending:{false,true})for(int edge:{0,1,2,3})for(bool crossing:{false,true})
+            if(!pending || !crossing)gpu.VerifyBlurBackdropExcludesCurrentSourceGlyphs(top,pending,edge,crossing);
     }
     TEST_METHOD(SharedNativeStrictSourceSupportCleansOnlyCurrentPixelsAndCopiesGlyphAtBothBars) {
         SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
