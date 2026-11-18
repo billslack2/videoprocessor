@@ -83,7 +83,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             e.support=support/9.0;e.contrast=Median(strengths,support);e.noise=Median(spreads,support);
             e.matte=Median(floors,support);e.matteP90=Median(highs,support);
             e.darkness=Unit((nominalBlack+96.0-e.matte)/96.0);
-            e.score=.35*e.support+.35*Unit(e.contrast/(12+2*e.noise))+.30*e.darkness;
+            e.score=.35*e.support+.35*Unit(e.contrast/(12+2*e.noise))+.30*e.darkness-.10*Unit(e.uncertainty/double(step));
         }
         std::sort(options.begin(),options.begin()+n,[](const Candidate&a,const Candidate&b){return a.edge.score>b.edge.score;});
         // Keep spatially distinct alternatives; adjacent coarse positions describe one edge.
@@ -130,8 +130,8 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             for(int i=0;i<found;++i){int n=0;for(int j=0;j<found;++j)if(std::abs(positions[i]-positions[j])<=step)++n;if(n>members){members=n;center=positions[i];}}
             std::array<int,9> cluster{};int n=0,lo=((side==1||side==3)?height:width),hi=0;
             for(int i=0;i<found;++i)if(std::abs(positions[i]-center)<=step){cluster[n++]=positions[i];lo=(std::min)(lo,positions[i]);hi=(std::max)(hi,positions[i]);}
-            e.depth=Median(cluster,n);e.uncertainty=hi-lo;e.support=(std::min)(e.support,n/9.0);
-            e.score=.35*e.support+.35*Unit(e.contrast/(12+2*e.noise))+.30*e.darkness;
+            e.depth=lo;e.uncertainty=hi-lo;e.support=(std::min)(e.support,n/9.0);
+            e.score=.35*e.support+.35*Unit(e.contrast/(12+2*e.noise))+.30*e.darkness-.10*Unit(e.uncertainty/double(step));
         }
         pairScores[axis]=scorePair(out.edges[axis],out.edges[axis+2],axis);
         accepted[axis]=pairScores[axis]>=.82;

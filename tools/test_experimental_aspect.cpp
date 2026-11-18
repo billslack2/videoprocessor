@@ -55,6 +55,8 @@ int main(){
  check(missing.kind==Kind::Unknown,"one edge plus history cannot invent missing opposite bar");
  auto sidePicture=Measure(3840,2160,0,[](int x,int y,int&v){v=(y<276||y>=1884)&&x>=40?12:300;return true;},[]{return true;},24000,&prior);
  check(sidePicture.kind==Kind::Unknown,"visible picture at the side of a matte-like panel vetoes crop");
+ auto uneven=Measure(1920,1080,64,[](int x,int y,int&v){int edge=x<400?120:124;v=y<edge||y>=1080-edge?64:300;return true;},[]{return true;});
+ check(uneven.kind==Kind::Bars&&uneven.top==120&&uneven.bottom==960,"rough boundary retains earliest measured picture instead of median crop");
  double total=0,worst=0;size_t samples=0;
  for(int i=0;i<100;++i){auto start=std::chrono::steady_clock::now();auto result=scene(3840,2160,0,277,0,277,true,true);
  auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();total+=ms;worst=std::max(worst,ms);samples=result.samples;}
