@@ -1,0 +1,78 @@
+{
+  "source": "c0d04fc873c828cc79f9f075c08f0c1f59db9052",
+  "base": "c841a9bfe9f69e357fd720d2ea0c388092e8dda5",
+  "configuration": "Release",
+  "architecture": "x64",
+  "mode": "opt-in first-source strong spatial expansion",
+  "binaries": [
+    {
+      "file": "VideoProcessor.exe",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "3FB0731252798A58D662C5ED02062BD56AFA6829E2D5D9CA287F38D43DCFBDD8"
+    },
+    {
+      "file": "config/VideoProcessorConfig.exe",
+      "toolsetVersion": "14.44.35207",
+      "sha256": "61F7091253728EF630EF1951656426E9703F2F927422A88D682E3513642D7A36"
+    },
+    {
+      "file": "config/VideoProcessorConfigDiscovery.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "A030E5028A0265CD237DB35848A6AFF551DD35C38FEDDE6DCBE6A591415D5E7B"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "630E70E8706A735E22F154D2DE7A1FA5ABD761695FAF300A26D7DEB8CB3090E4"
+    },
+    {
+      "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "706B77B14784934D4A5A33292E7348A167CA1128E1BA1901422C67E8829CECEB"
+    }
+  ],
+  "rebuiltFiles": [
+    "VideoProcessor.exe",
+    "vprenderer/VideoProcessorVPRenderer.dll",
+    "vprenderer-beta/VideoProcessorVPRendererBeta.dll"
+  ],
+  "unchangedCompanionFrom": "E:\\codex\\videoprocessor\\ar-extent-test-c841a9bf",
+  "settings": [
+    {
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-extent-test-c841a9bf",
+      "sha256": "5776D89CC7BF98337C1A9EEBD97286250B41326975372DBC5773BC718F78821C",
+      "afterGracefulShutdown": true,
+      "file": "VideoProcessor.cfg"
+    },
+    {
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-extent-test-c841a9bf",
+      "sha256": "99CF94A66291AC295858C9AFD73DC880EE42F9496FD974D9CC44A9A1BF979222",
+      "afterGracefulShutdown": true,
+      "file": "VideoProcessor.state"
+    }
+  ],
+  "tests": {
+    "focused": 90,
+    "nativePassed": 845,
+    "source": "c0d04fc873c828cc79f9f075c08f0c1f59db9052",
+    "motionPassed": 204,
+    "motionReceipt": "validation/motion-renderer-tests.json",
+    "motionProvenance": "Runner started at b01946bc. Standard GPU/cue run passed before final two exact-bound comparisons were tightened; beta built and passed after tightening. GPU/cue paths unchanged. Final c0d04fc8 native 845 and real-pixel replay revalidate exact binding; original runner metadata preserved.",
+    "pixelReplay": "validation/pixel-replay.json",
+    "immediateSource": 18400,
+    "controlPublicationSource": 18403,
+    "firstFrameCaptionPixelRegression": "passed",
+    "liveTransition": "Pending user replay; component replay is not scanout verification"
+  },
+  "livePlayback": {
+    "verified": "2026-11-18T14:42:46.6967508-05:00",
+    "processId": 40544,
+    "source": "c0d04fc873c828cc79f9f075c08f0c1f59db9052",
+    "mode": "active",
+    "modeSource": "trial-marker",
+    "startup": "Matching clean host/renderer; current scope measurement and advancing source submissions observed",
+    "transitionAcceptance": "Pending user replay of captured transition",
+    "evidence": "validation/live-startup.txt"
+  },
+  "created": "2026-11-18T14:39:17.9952083-05:00"
+}

@@ -1,0 +1,17 @@
+{
+  "source": "c0d04fc873c828cc79f9f075c08f0c1f59db9052",
+  "status": [],
+  "librarySha256": "0F0C9EBA691530C6151FE79AFB6F174F37C43FE59F50E04A8C21302D6885FCC0",
+  "frames": 16,
+  "tests": [
+    "PASS first_expansion_mode=0",
+    "PASS first_expansion_mode=1"
+  ],
+  "transition": [
+    "mode=0 seq=18400 strong=1 direct=0 deferred=1 publish=0 bounds=0,276,3840,1884 reason=current presentation evidence defers logical transition",
+    "mode=1 seq=18400 strong=1 direct=1 deferred=0 publish=1 bounds=0,68,3840,2092 reason=current strong spatial expansion accepted",
+    "mode=0 seq=18403 strong=1 direct=0 deferred=0 publish=1 bounds=0,68,3840,2092 reason=trusted transition confirmed",
+    "mode=1 seq=18403 strong=1 direct=0 deferred=0 publish=0 bounds=0,68,3840,2092 reason="
+  ],
+  "limits": "Actual source frames seed native model; optin/optout comparison includes active subtitle release drift. Component replay, not actual renderer presentation."
+}

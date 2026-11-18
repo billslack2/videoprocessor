@@ -1,0 +1,34 @@
+mode=0 seq=18388 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=initial geometry candidate
+mode=1 seq=18388 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=initial geometry candidate
+mode=0 seq=18389 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=1 seq=18389 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=0 seq=18391 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=initial geometry candidate
+mode=1 seq=18391 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=initial geometry candidate
+mode=0 seq=18392 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=1 seq=18392 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=0 seq=18393 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=1 seq=18393 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=0 seq=18394 strong=1 direct=0 deferred=0 publish=1 bounds=0,276,3840,1884 reason=initial geometry confirmed
+mode=1 seq=18394 strong=1 direct=0 deferred=0 publish=1 bounds=0,276,3840,1884 reason=initial geometry confirmed
+mode=0 seq=18395 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=1 seq=18395 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=0 seq=18396 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=1 seq=18396 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=0 seq=18397 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=1 seq=18397 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=0 seq=18398 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=1 seq=18398 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=0 seq=18399 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=1 seq=18399 strong=1 direct=0 deferred=0 publish=0 bounds=0,276,3840,1884 reason=
+mode=0 seq=18400 strong=1 direct=0 deferred=1 publish=0 bounds=0,276,3840,1884 reason=current presentation evidence defers logical transition
+PASS first_expansion_mode=0
+mode=1 seq=18400 strong=1 direct=1 deferred=0 publish=1 bounds=0,68,3840,2092 reason=current strong spatial expansion accepted
+PASS first_expansion_mode=1
+mode=0 seq=18401 strong=1 direct=0 deferred=1 publish=0 bounds=0,276,3840,1884 reason=current presentation evidence defers logical transition
+mode=1 seq=18401 strong=1 direct=0 deferred=0 publish=0 bounds=0,68,3840,2092 reason=
+mode=0 seq=18402 strong=1 direct=0 deferred=0 publish=0 bounds=0,68,3840,2092 reason=materially different geometry candidate
+mode=1 seq=18402 strong=1 direct=0 deferred=0 publish=0 bounds=0,68,3840,2092 reason=
+mode=0 seq=18403 strong=1 direct=0 deferred=0 publish=1 bounds=0,68,3840,2092 reason=trusted transition confirmed
+mode=1 seq=18403 strong=1 direct=0 deferred=0 publish=0 bounds=0,68,3840,2092 reason=
+mode=0 seq=18404 strong=1 direct=0 deferred=0 publish=0 bounds=0,68,3840,2092 reason=
+mode=1 seq=18404 strong=1 direct=0 deferred=0 publish=0 bounds=0,68,3840,2092 reason=
