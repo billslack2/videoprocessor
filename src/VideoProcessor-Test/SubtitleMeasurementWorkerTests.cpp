@@ -53,6 +53,62 @@ TEST_CLASS(SubtitleMeasurementWorkerTests) {
             o.ink=ink;AttachCanonicalSubtitleContinuityInk(o,Source());return o;
         }
     };
+    TEST_METHOD(CurrentSharedGlyphSupportDoesNotRequireACrossingPlane) {
+        CrossingCue f;auto o=f.Observation(1,1898);o.text.anchor=o.text.lineBounds[0];
+        const auto source=f.Source();
+        auto proof=ProveCurrentSubtitleGlyphBacking(source,o.text,o.ink.get());
+        Assert::IsTrue(proof.accepted);
+        Assert::IsTrue(proof.verifiedBounds.Valid());
+        Assert::IsFalse(ProveLocalSubtitleGlyphBacking(source,o.text,o.ink.get(),1800,false).accepted,
+            L"Old crossing-plane proof remains strict.");
+        Assert::IsFalse(ProveCurrentSubtitleGlyphBacking(source,o.text,o.ink.get(),0).accepted);
+        Assert::IsFalse(ProveCurrentSubtitleGlyphBacking(source,o.text,o.ink.get(),1).accepted);
+        auto stale=o;
+        f.pixels[size_t(1864)*3840+1440]=uint16_t(64<<6);
+        Assert::IsFalse(ProveCurrentSubtitleGlyphBacking(f.Source(),o.text,o.ink.get()).accepted,
+            L"Current owned pixels cannot be supplied by a stale cue mask.");
+    }
+    TEST_METHOD(CurrentSharedBackingVerifiesEveryLineAndTheUnionGap) {
+        CrossingCue f;
+        const auto candidate=[&]() {
+            auto o=f.Observation(1,1898);o.text.anchor=o.text.lineBounds[0];o.text.lineCount=2;
+            o.text.lineBounds[0].bottom=1904;o.text.lineBounds[1]={1440,1932,2404,1978};return o;
+        };
+        auto o=candidate();
+        Assert::IsFalse(ProveCurrentSubtitleGlyphBacking(f.Source(),o.text,o.ink.get()).accepted,
+            L"Unowned bright pixels between lines cannot be erased as a black gap.");
+        for(int y=1904;y<1932;++y)for(int x=1400;x<2440;++x)f.pixels[size_t(y)*3840+x]=uint16_t(64<<6);
+        o=candidate();
+        Assert::IsTrue(ProveCurrentSubtitleGlyphBacking(f.Source(),o.text,o.ink.get()).accepted);
+        f.pixels[size_t(1920)*3840+1800]=uint16_t(400<<6);
+        o=candidate();
+        Assert::IsFalse(ProveCurrentSubtitleGlyphBacking(f.Source(),o.text,o.ink.get()).accepted);
+    }
+    TEST_METHOD(SharedGeometryCannotRebindPixelSupportToAnotherSourceOrEpoch) {
+        CrossingCue f;auto o=f.Observation(1,1898);o.text.anchor=o.text.lineBounds[0];
+        const auto proof=ProveCurrentSubtitleGlyphBacking(f.Source(),o.text,o.ink.get());
+        Assert::IsTrue(proof.accepted);
+        o.sharedNativeGeometry=true;o.barAuthority=o.independentBarAnalysis=false;o.barEvidence={};
+        o.glyphLocalBottom=true;o.glyphLocalVerifiedBounds=proof.verifiedBounds;
+        o.glyphSupportIdentity=o.identity;o.glyphSupportPolicy=o.policyGeneration;
+        o.glyphSupportContinuity=o.continuityGeneration;o.glyphSupportTop=o.pictureTop;o.glyphSupportBottom=o.pictureBottom;
+        Assert::IsTrue(SubtitleBoxLookahead::HasSubtitleGeometry(o));
+        Assert::IsFalse(SubtitleBoxLookahead::HasBarEvidence(o));
+        Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(o));
+        auto changed=o;changed.identity=Identity(2);
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(changed));
+        changed=o;++changed.policyGeneration;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(changed));
+        changed=o;++changed.continuityGeneration;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(changed));
+        changed=o;changed.pendingRefresh=true;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(changed));
+        changed=o;++changed.pictureBottom;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(changed));
+        SubtitleBarTrackingReference prior;
+        Assert::IsTrue(SubtitleBoxLookahead::CanReuseMeasurement(o,o.identity,3840,2160,11,21,false,prior));
+        Assert::IsFalse(SubtitleBoxLookahead::AdvanceBarTrackingReference(o).valid);
+    }
     TEST_METHOD(StableCrossingCueSurvivesMultiPixelBoundarySamplingWobble) {
         CrossingCue f;auto a=f.Observation(1,1895),b=f.Observation(2,1896);
         Assert::IsTrue(bool(a.continuityEvidence)&&bool(b.continuityEvidence));

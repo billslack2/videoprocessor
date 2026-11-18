@@ -147,6 +147,11 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!MINIMUM 1.0
 //!MAXIMUM 2.8
 2.4
+//!PARAM source_support_required
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 2.0
+0.0
 //!PARAM picture_top
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
@@ -472,9 +477,9 @@ vec3 subtitleSignal(vec3 v) {return vec3(subtitleEncode(v.r),subtitleEncode(v.g)
 // Approximate current-frame background from clean strips beside the padded
 // source. This smooth fill cannot reconstruct hidden detail. Never reuse it.
 vec3 subtitleSourceFill(vec2 p) {
-    if(p.y<picture_top || p.y>=picture_bottom) return vec3(0.0);
-    float left=max(0.5,source_left-1.5);
-    float right=min(HOOKED_size.x-0.5,source_right+1.5);
+    if(source_support_required<0.5 && (p.y<picture_top || p.y>=picture_bottom)) return vec3(0.0);
+    float left=source_support_required>0.5 ? picture_capture_left+0.5 : max(0.5,source_left-1.5);
+    float right=source_support_required>0.5 ? picture_capture_right-0.5 : min(HOOKED_size.x-0.5,source_right+1.5);
     // If padding reaches both edges, no clean side sample exists.
     if(source_left<1.0 && source_right>HOOKED_size.x-1.0) return vec3(0.0);
     vec3 a=subtitleLinear(HOOKED_tex(vec2(left,p.y)*HOOKED_pt).rgb);
@@ -645,7 +650,8 @@ vec3 subtitleStableSurroundingPicture(vec2 p) {
     return weights>0.0 ? sum/weights : vec3(0.0);
 }
 vec3 subtitleGeneratedRawFill(vec2 p) {
-    if(p.y<picture_top || p.y>=picture_bottom) return vec3(0.0);
+    if(p.y<picture_top || p.y>=picture_bottom)
+        return source_support_required>0.5 ? subtitleSourceFill(p) : vec3(0.0);
     if(cleanup_fill_mode>2.5) return subtitleStableSurroundingPicture(p);
     if(cleanup_fill_mode>1.5) return subtitleSurroundingPicture(p);
     bool fromTop=source_top+source_bottom<picture_top+picture_bottom;
@@ -679,7 +685,9 @@ vec3 subtitleGeneratedRawFill(vec2 p) {
 // the footprint as well as the center prevents bilinear samples just outside
 // a card edge from pulling its black backing or glyphs into the overlay.
 vec3 subtitleCleanBackdropSample(vec2 p) {
-    p=clamp(p,vec2(0.5,picture_top+0.5),vec2(HOOKED_size.x-0.5,picture_bottom-0.5));
+    if(source_support_required>0.5)
+        p=clamp(p,vec2(0.5),HOOKED_size-vec2(0.5));
+    else p=clamp(p,vec2(0.5,picture_top+0.5),vec2(HOOKED_size.x-0.5,picture_bottom-0.5));
     if(subtitleCleanupTouchesSample(p))return subtitleGeneratedRawFill(p);
     return subtitleLinear(HOOKED_tex(p*HOOKED_pt).rgb);
 }
@@ -801,7 +809,7 @@ vec4 subtitleReducedGlyph(vec2 center) {
             p.y>=picture_capture_top && p.y<picture_capture_bottom;
         vec3 rgb=HOOKED_tex(p*HOOKED_pt).rgb;
         float alpha=subtitleGlyphAlpha(rgb);
-        if(inPicture && !onCard && !(alpha>0.01 && subtitleConnectedBoundaryStroke(p)))continue;
+        if(!onCard && (source_support_required>0.5 || (inPicture && !(alpha>0.01 && subtitleConnectedBoundaryStroke(p)))))continue;
         premultiplied+=subtitleLinear(rgb)*(alpha*weight);
         coverage+=alpha*weight;
     }
@@ -844,7 +852,13 @@ vec4 hook() {
                  abs(glyph_translate_y-floor(glyph_translate_y+0.5))>0.0001));
             vec4 source=vec4(0.0);
             if(!filterGlyph || background_mode<0.5)source=HOOKED_tex(sourcePos);
-            if(background_mode<0.5) return source;
+            if(background_mode<0.5) {
+                vec2 q=sourcePos*HOOKED_size;
+                bool proved=q.x>=picture_capture_left && q.x<picture_capture_right &&
+                    q.y>=picture_capture_top && q.y<picture_capture_bottom;
+                return source_support_required<0.5 || proved ? source :
+                    (layerOnly ? vec4(0.0) : HOOKED_tex(HOOKED_pos));
+            }
             vec3 original=subtitleLinear(HOOKED_tex(HOOKED_pos).rgb);
             if(inCleanup && (background_mode>4.5 ||
                 (background_mode>2.5 && background_mode<3.5 && !layerOnly)))
@@ -886,7 +900,7 @@ vec4 hook() {
                     sourcePixel.y>=picture_capture_top && sourcePixel.y<picture_capture_bottom;
                 alpha=(p.y>=destination_top && p.y<destination_bottom && sourcePixel.x>=content_left && sourcePixel.x<content_right &&
                     sourcePixel.y>=content_top && sourcePixel.y<content_bottom &&
-                    (!inPicture || onSourceCard || (subtitleGlyphAlpha(source.rgb)>0.01 && subtitleConnectedBoundaryStroke(sourcePixel))) && subtitleOwnedLine(sourcePixel)) ? subtitleGlyphAlpha(source.rgb) : 0.0;
+                    (onSourceCard || (source_support_required<0.5 && (!inPicture || (subtitleGlyphAlpha(source.rgb)>0.01 && subtitleConnectedBoundaryStroke(sourcePixel))))) && subtitleOwnedLine(sourcePixel)) ? subtitleGlyphAlpha(source.rgb) : 0.0;
                 glyphColor=subtitleLinear(source.rgb);
             }
             // Tint only the extracted glyph, after ownership/alpha and area filtering.
@@ -939,9 +953,20 @@ vec4 hook() {
         if(background_mode>2.5 && background_mode<3.5 && inCleanup)
             return vec4(subtitleSignal(generatedBackdrop),1.0);
         if(p.x>=source_left && p.x<source_right && p.y>=source_top && p.y<source_bottom) {
+            if(source_support_required>0.5 && !(p.x>=picture_capture_left && p.x<picture_capture_right &&
+                p.y>=picture_capture_top && p.y<picture_capture_bottom))return HOOKED_tex(HOOKED_pos);
+            // A retained plane does not erase bar-side source glyphs by itself.
+            // The separate local current support owns those caption pixels;
+            // finite picture-side lip cleanup retains its independent row mask.
+            if(source_support_required>0.5 && (p.y<picture_top || p.y>=picture_bottom)) {
+                if(p.x>=content_left && p.x<content_right && p.y>=content_top && p.y<content_bottom &&
+                    (source_support_required<1.5 || subtitleOwnedLine(p)))
+                    return vec4(subtitleSignal(subtitleSourceFill(p)),1.0);
+                return HOOKED_tex(HOOKED_pos);
+            }
             // Measured-card modes already handled every authorized picture
             // cleanup above. Glyph-envelope fringe must keep its live picture.
-            if(p.y>=picture_top && p.y<picture_bottom &&
+            if((source_support_required>0.5 || (p.y>=picture_top && p.y<picture_bottom)) &&
                 (background_mode>4.5 || (background_mode>2.5 && background_mode<3.5)))
                 return HOOKED_tex(HOOKED_pos);
             if(background_mode>0.5 && !(p.x>=content_left && p.x<content_right &&
@@ -999,7 +1024,7 @@ vec4 hook() {
 //!DESC Subtitle composition with smooth Gaussian background
 )GLSL"+std::string(common)+R"GLSL(
 vec3 subtitleGeneratedFill(vec2 p) {
-    if(p.y<picture_top || p.y>=picture_bottom)return vec3(0.0);
+    if(source_support_required<0.5 && (p.y<picture_top || p.y>=picture_bottom))return vec3(0.0);
     return VP_SUB_GAUSS_tex((p-vec2(blur_roi_left,blur_roi_top))/(vec2(blur_roi_w,blur_roi_h)*blur_step)).rgb;
 }
 )GLSL"+composition;
@@ -1011,7 +1036,7 @@ vec3 subtitleGeneratedFill(vec2 p) {
 //!DESC Subtitle composition without background blur
 )GLSL"+std::string(common)+R"GLSL(
 vec3 subtitleGeneratedFill(vec2 p) {
-    if(p.y<picture_top || p.y>=picture_bottom)return vec3(0.0);
+    if(source_support_required<0.5 && (p.y<picture_top || p.y>=picture_bottom))return vec3(0.0);
     return subtitleCleanBackdropSample(p);
 }
 )GLSL"+composition;
@@ -1061,7 +1086,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
     static const char* names[]={"enabled","composition_phase","source_left","source_top","source_right","source_bottom",
         "destination_left","destination_top","destination_right","destination_bottom","background_mode",
         "glyph_scale","glyph_translate_x","glyph_translate_y","panel_flags",
-        "transfer_mode","picture_top","picture_bottom","display_picture_top","display_picture_bottom","transfer_gamma",
+        "transfer_mode","source_support_required","picture_top","picture_bottom","display_picture_top","display_picture_bottom","transfer_gamma",
         "content_left","content_top","content_right","content_bottom",
         "cleanup_fill_mode","generated_clean_left","generated_clean_top","generated_clean_right","generated_clean_bottom",
         "text_color_r","text_color_g","text_color_b",
@@ -1120,7 +1145,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         float(d.left),float(d.top),float(d.right),float(d.bottom),float(backgroundMode),
         geometry.glyphScale,geometry.glyphTranslateX,geometry.glyphTranslateY,
         float((geometry.roundedCorners?1:0)+(geometry.extendToBar?2:0)+(geometry.centeredGlyphMapping?4:0)),transferMode,
-        float(geometry.pictureTop),float(geometry.pictureBottom),float(displayTop),float(displayBottom),gamma,
+        geometry.pendingGlyphsOnly?2.0f:geometry.sourceSupportRequired?1.0f:0.0f,float(geometry.pictureTop),float(geometry.pictureBottom),float(displayTop),float(displayBottom),gamma,
         float(geometry.content.left),float(geometry.content.top),float(geometry.content.right),float(geometry.content.bottom),
         float((std::max)(0,(std::min)(3,spatialFill))),float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
         float(geometry.generatedCleanup.right),float(geometry.generatedCleanup.bottom),

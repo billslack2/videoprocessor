@@ -9227,6 +9227,7 @@ struct LibplaceboVideoRenderer::Impl
         key.scriptHint=scriptHint;key.discontinuity=discontinuity;
         key.width=static_cast<int>(state.displayMode->FrameWidth());
         key.height=static_cast<int>(state.displayMode->FrameHeight());
+        SubtitleBoxLookahead::BindNativeGeometryHint(key);
         if (!prepared.IsValid()) return key;
         SubtitleBoxObservation ready;
         if(subtitleMeasurementWorker.TryRead(key,ready,backlogRetirementOnly)) {
@@ -14580,7 +14581,7 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleContinuationStateLogTick=continuationStateNow;
                 const auto& observed=currentSubtitlePreview.current;
                 const auto& shared=observed.sharedPicture;
-                DebugLog::Log("SUBTITLE CONTINUATION STATE: gen=%llu seq=%llu format_gen=%llu domain=%llu viewport=%llu renderer=%llu base_available=%d reference=%d last_seed_reason=%s native=%d,%d-%d,%d native_gen=%llu native_origin=%d native_class=%d raw=%d-%d preview=%d analyzed=%d raw_text=%d accepted=%d shared_required=%d shared_current=%d shared=%d,%d-%d,%d mode=%d float=%d opacity=%.3f hold_ms=%d held=%d cue=%llu raw_lines=%d decision=%s",
+                DebugLog::Log("SUBTITLE CONTINUATION STATE: gen=%llu seq=%llu format_gen=%llu domain=%llu viewport=%llu renderer=%llu base_available=%d reference=%d last_seed_reason=%s native=%d,%d-%d,%d native_gen=%llu native_origin=%d native_class=%d subtitle_planes=%d-%d preview=%d analyzed=%d raw_text=%d accepted=%d shared_required=%d shared_current=%d shared=%d,%d-%d,%d mode=%d float=%d opacity=%.3f hold_ms=%d held=%d cue=%llu raw_lines=%d decision=%s",
                     observed.identity.transportGeneration,observed.identity.acceptedSequence,
                     observed.identity.sourceFormatGeneration,observed.identity.analysisDomainKey,
                     observed.identity.viewportGeneration,observed.identity.rendererGeneration,
@@ -14999,7 +15000,7 @@ struct LibplaceboVideoRenderer::Impl
                     glyphProof.diagnosticInkDensityBasisPoints,glyphProof.diagnosticBaselineSupportBasisPoints,
                     glyphProof.diagnosticGlyphTopology);
                 const auto& probe=subtitlePreview->current;
-                DebugLog::Log("SUBTITLE BAR PROBE: frame=%llu shared=%d hint=%d-%d measured=%d-%d nearby=%d/%d delta=%d/%d probes=%u candidate_attempted=%d detected=%d work_limit=%d reason=%s anchor=%d,%d-%d,%d inspection_nominee=%d inspection_used=%d nominee=%d-%d nominee_origin=%llu nominee_revision=%llu",
+                DebugLog::Log("SUBTITLE BAR PROBE: frame=%llu shared=%d hint=%d-%d analysis_planes=%d-%d nearby=%d/%d delta=%d/%d probes=%u candidate_attempted=%d detected=%d work_limit=%d reason=%s anchor=%d,%d-%d,%d inspection_nominee=%d inspection_used=%d nominee=%d-%d nominee_origin=%llu nominee_revision=%llu",
                     sourceSequence,probe.sharedPicture.AvailableFor(probe.identity,probe.width,probe.height)?1:0,
                     probe.sharedPicture.bounds.top,probe.sharedPicture.bounds.bottom,
                     probe.pictureTop,probe.pictureBottom,
@@ -15013,12 +15014,15 @@ struct LibplaceboVideoRenderer::Impl
                     probe.sharedPicture.inspectionCandidate.bounds.top,probe.sharedPicture.inspectionCandidate.bounds.bottom,
                     probe.sharedPicture.inspectionCandidate.originIdentity.acceptedSequence,
                     probe.sharedPicture.inspectionCandidate.nativeGeometryRevision);
-                DebugLog::Log("SUBTITLE LOCAL GLYPH: frame=%llu top=%d bottom=%d reason=%s verified=%d,%d-%d,%d physical=%d-%d placement=%d-%d",
+                DebugLog::Log("SUBTITLE LOCAL GLYPH: frame=%llu top=%d bottom=%d reason=%s verified=%d,%d-%d,%d physical=%d-%d placement=%d-%d shared_geometry=%d current_support=%d physical_available=%d source_physical=%d mismatch=%d,%d Y=%d",
                     sourceSequence,probe.glyphLocalTop?1:0,probe.glyphLocalBottom?1:0,
                     probe.glyphLocalProofReason,probe.glyphLocalVerifiedBounds.left,
                     probe.glyphLocalVerifiedBounds.top,probe.glyphLocalVerifiedBounds.right,
                     probe.glyphLocalVerifiedBounds.bottom,bars.top,bars.bottom,
-                    probe.pictureTop,probe.pictureBottom);
+                    probe.pictureTop,probe.pictureBottom,probe.sharedNativeGeometry?1:0,
+                    SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(probe)?1:0,bars.available?1:0,
+                    probe.sharedNativePhysicalSupport?1:0,probe.glyphLocalMismatchX,probe.glyphLocalMismatchY,
+                    probe.glyphLocalMismatchLuma);
                 if(subtitleCompositionSucceeded) {
                     const auto& geometry=relocatedSubtitle;
                     const auto& card=geometry.pictureCapture;

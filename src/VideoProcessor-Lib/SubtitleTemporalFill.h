@@ -20,6 +20,9 @@ inline unsigned AdvanceCleanRun(unsigned count,bool enabled,bool repeated,bool c
 // modify a render target or fall back to a larger rectangle.
 template<class Callback>
 inline bool ForEachCleanupRect(const SubtitleCutPasteGeometry& geometry,Callback&& callback) {
+ // Shared/retained AR geometry has only exact-current local support. Never
+ // overwrite that footprint with an older temporal donor.
+ if(geometry.sourceSupportRequired)return false;
  const auto& common=geometry.generatedCleanup;
  const auto& exclusion=geometry.generatedCleanupExclusion.Valid()?
   geometry.generatedCleanupExclusion:common;

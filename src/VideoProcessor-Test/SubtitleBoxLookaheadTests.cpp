@@ -204,6 +204,37 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
         return SubtitleBoxLookahead::Measure(scanner,source,ExtractActivePictureEvidence(source),
             Identity(sequence),false,reference,policy,continuity);
     }
+    static SubtitleBoxObservation MeasureShared(std::vector<uint16_t>& pixels,uint64_t sequence,
+        const ActivePictureBounds& bounds,uint64_t policy=7,uint64_t continuity=9) {
+        const auto identity=Identity(sequence);const auto source=Source(pixels);
+        SubtitlePictureAuthority shared;shared.required=true;shared.identity=identity;shared.bounds=bounds;
+        SubtitleBoxDetector scanner;scanner.SetNearBarDistance(20);
+        // A valid shared native rectangle already owns geometry. Supplying no
+        // raw band evidence makes accidental physical-bar probing visible.
+        return SubtitleBoxLookahead::Measure(scanner,source,{},identity,false,{},
+            policy,continuity,shared);
+    }
+    static std::wstring SharedMeasurementDiagnostics(const SubtitleBoxObservation& observation) {
+        const auto widen=[](const char* value) {
+            std::wstring result;
+            if(value)for(;*value;++value)result.push_back(static_cast<wchar_t>(*value));
+            return result;
+        };
+        return L" detected="+std::to_wstring(observation.text.detected)+
+            L" workLimit="+std::to_wstring(observation.text.workLimit)+
+            L" textReason="+widen(observation.text.diagnosticReason)+
+            L" sharedProbeAttempted="+std::to_wstring(observation.sharedProbeAttempted)+
+            L" sharedProbeDetected="+std::to_wstring(observation.sharedProbeDetected)+
+            L" sharedProbeWorkLimit="+std::to_wstring(observation.sharedProbeWorkLimit)+
+            L" sharedProbeReason="+widen(observation.sharedProbeReason)+
+            L" glyphLocalProofReason="+widen(observation.glyphLocalProofReason)+
+            L" localTop="+std::to_wstring(observation.glyphLocalTop)+
+            L" localBottom="+std::to_wstring(observation.glyphLocalBottom)+
+            L" mismatch="+std::to_wstring(observation.glyphLocalMismatchX)+L","+
+            std::to_wstring(observation.glyphLocalMismatchY)+L" Y="+std::to_wstring(observation.glyphLocalMismatchLuma)+
+            L" bounds="+std::to_wstring(observation.pictureTop)+L":"+
+            std::to_wstring(observation.pictureBottom);
+    }
     static AnalysisLumaSource RgbSource(std::vector<uint8_t>& pixels,int width,int height) {
         AnalysisLumaSource source;source.data=pixels.data();source.dataBytes=pixels.size();
         source.width=width;source.height=height;source.rowBytes=width*4;
@@ -356,6 +387,16 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
             const auto source=Native();
             return SubtitleBoxLookahead::Measure(detector,source,ExtractActivePictureEvidence(source),
                 identity,false,{},7,9,shared);
+        }
+        // Explicit physical-scan fixtures preserve coverage of the old
+        // edge-gap continuation guard. Shared-native presentation below has
+        // a separate current-source support path and never fabricates edge0.
+        SubtitleBoxObservation MeasureIndependent(uint64_t sequence) {
+            auto identity=Identity(sequence);identity.transportGeneration=2;
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+            auto measured=SubtitleBoxLookahead::Measure(detector,Native(),{},identity,false,{},7,9);
+            measured.sharedPicture=acquired.current.sharedPicture;measured.sharedPicture.identity=identity;
+            return measured;
         }
         SubtitleBoxPreview OppositeMissing(uint64_t sequence) const {
             auto p=acquired;p.current.identity=Identity(sequence);p.current.identity.transportGeneration=2;
@@ -540,7 +581,7 @@ public:
         Assert::AreEqual(384,next.current.sharedPicture.bounds.top);
         Assert::IsFalse(next.current.subtitleArProof.accepted);
     }
-    TEST_METHOD(CurrentPixelBottomCueDoesNotFlashWhenTopProofDrops) {
+    TEST_METHOD(CurrentPixelBottomCueKeepsSharedNativeBoundsWhenTopProofIsUnknown) {
         NativeBarCueFixture f(AnalysisLumaFormat::DecodedDolbyVision422);
         f.AddRoundedLipAndHollowGlyphs();
         f.base={0,384,3840,1778,3840,2160};
@@ -554,20 +595,24 @@ public:
         Assert::IsTrue(accepted.detected);
         std::array<SubtitleBoxObservation,2> observations{f.Measure(2),f.Measure(3)};
         auto& current=observations[0];
-        Assert::IsTrue(current.text.detected && current.pictureBottom==current.barEvidence.bottom);
-        // Simulate a current measurement that could not verify only the top.
-        // The frame's actual pixels and its current lower-bar proof are intact.
-        current.pictureTop=0;current.barEvidence.top=0;
-        current.barEvidence.topRevalidatedAtReference=false;
-        current.barEvidence.topRevalidatedNearby=false;
-        current.independentBarAnalysis=false;
+        Assert::IsTrue(current.text.detected && SubtitleBoxLookahead::HasSharedNativeGeometry(current));
+        const auto currentSource=f.Native();
+        const auto physical=ExtractSubtitleBarEvidence(currentSource);
+        Assert::AreEqual(physical.available,current.barEvidence.available);
+        Assert::AreEqual(physical.top,current.barEvidence.top);
+        Assert::AreEqual(physical.bottom,current.barEvidence.bottom);
+        Assert::AreEqual(physical.available,current.barAuthority);
+        // Physical top confidence may be absent; the shared native rectangle
+        // and current glyph support still identify the subtitle scan geometry.
+        Assert::AreEqual(current.sharedPicture.bounds.top,current.pictureTop);
+        Assert::AreEqual(current.sharedPicture.bounds.bottom,current.pictureBottom);
         auto preview=SubtitleBoxLookahead::Resolve(observations.data(),observations.size(),7,9);
         Assert::IsTrue(preview.available && preview.futureAvailable);
         tracker.RefreshReferencePixels(preview,f.Native());
         const auto shown=tracker.Consume(preview,250,41.708);
         Assert::IsTrue(shown.detected,L"Current subtitle pixels must not disappear because the opposite edge is unknown.");
         Assert::AreEqual(accepted.cue,shown.cue);
-        Assert::AreEqual(0,preview.current.pictureTop);
+        Assert::AreEqual(384,preview.current.pictureTop);
         Assert::AreEqual(384,preview.current.sharedPicture.bounds.top);
         Assert::IsFalse(preview.current.subtitleArProof.accepted);
     }
@@ -857,7 +902,7 @@ public:
         for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422}) {
             NativeBarCueFixture f(format);f.AddRoundedLipAndHollowGlyphs();
             f.base={0,376,3840,1784,3840,2160};f.acquired.current.sharedPicture.bounds=f.base;
-            const SubtitleBoxObservation observed[2]={f.Measure(1),f.Measure(2)};
+            const SubtitleBoxObservation observed[2]={f.MeasureIndependent(1),f.MeasureIndependent(2)};
             auto firstPreview=SubtitleBoxLookahead::Resolve(observed,2,7,9);
             SubtitleBoxPresentation tracker;SubtitleCueContinuationGuard guard;
             SubtitlePaddingGuard padding;SubtitleCutPastePresentation compositor;SubtitleLayoutAnchor layout;
@@ -879,7 +924,7 @@ public:
             Assert::IsTrue(guard.Remember(firstPreview,initial,f.base,f.Native()));
             const auto first=prepare(compositor,firstPreview,initial,nullptr);
             Assert::IsTrue(first.valid);Assert::AreEqual(384,first.pictureTop);
-            auto jitter=f.Measure(2);jitter.pictureTop=385;jitter.barEvidence.top=385;
+            auto jitter=f.MeasureIndependent(2);jitter.pictureTop=385;jitter.barEvidence.top=385;
             auto jitterPreview=SubtitleBoxLookahead::Resolve(&jitter,1,7,9);
             tracker.RefreshReferencePixels(jitterPreview,f.Native());
             const auto strong=tracker.Consume(jitterPreview,250,41.708);
@@ -888,7 +933,7 @@ public:
             const auto stable=prepare(compositor,jitterPreview,strong,nullptr);
             Assert::IsTrue(stable.valid);Assert::AreEqual(384,stable.pictureTop,
                 L"The strong same cue keeps its already prepared source geometry despite one-row worker jitter.");
-            auto missing=f.Measure(3);missing.pictureTop=0;missing.barEvidence.top=0;
+            auto missing=f.MeasureIndependent(3);missing.pictureTop=0;missing.barEvidence.top=0;
             auto p=SubtitleBoxLookahead::Resolve(&missing,1,7,9);
             auto before=guard;
             const auto proof=guard.Prepare(p,f.Native(),f.base,250,41.708);
@@ -935,7 +980,7 @@ public:
                     f.pixels[size_t(y)*3840+x]=f.Word(x>=1504+72*n && x<1528+72*n && y>=rowTop+12 && y<rowTop+80?64:700);
             if(topCue)for(int y=0;y<1080;++y)for(int x=0;x<3840;++x)
                 std::swap(f.pixels[size_t(y)*3840+x],f.pixels[size_t(2159-y)*3840+x]);
-            const SubtitleBoxObservation measured[2]={f.Measure(1),f.Measure(2)};
+            const SubtitleBoxObservation measured[2]={f.MeasureIndependent(1),f.MeasureIndependent(2)};
             auto acquired=SubtitleBoxLookahead::Resolve(measured,2,7,9);
             Assert::IsTrue(acquired.available && acquired.current.text.detected);
             Assert::AreEqual(2,acquired.current.text.lineCount);
@@ -949,7 +994,7 @@ public:
             const int pictureRow=topCue?384:1772;
             for(int y=pictureRow;y<pictureRow+4;++y)for(int x=1600;x<1632;++x)
                 f.pixels[size_t(y)*3840+x]=f.Word(700);
-            auto current=f.Measure(2);
+            auto current=f.MeasureIndependent(2);
             if(topCue){current.pictureBottom=2160;current.barEvidence.bottom=2160;}
             else {current.pictureTop=0;current.barEvidence.top=0;}
             auto p=SubtitleBoxLookahead::Resolve(&current,1,7,9);
@@ -981,7 +1026,7 @@ public:
     TEST_METHOD(NativeBarCuePipelineReprovesBackingForHeldRawPositiveGlyphContinuity) {
         for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::DecodedDolbyVision422}) {
             NativeBarCueFixture f(format);f.AddRoundedLipAndHollowGlyphs();
-            const SubtitleBoxObservation observed[2]={f.Measure(1),f.Measure(2)};
+            const SubtitleBoxObservation observed[2]={f.MeasureIndependent(1),f.MeasureIndependent(2)};
             auto preview=SubtitleBoxLookahead::Resolve(observed,2,7,9);
             Assert::IsTrue(preview.available && preview.current.text.detected);
             Assert::AreEqual(384,preview.current.pictureTop);Assert::AreEqual(1776,preview.current.pictureBottom);
@@ -1008,7 +1053,7 @@ public:
             const auto firstDestination=move.destination;
             for(uint64_t seq=2;seq<=32;++seq) {
                 if(seq==32) {
-                    auto negativeGuard=guard;auto negative=f.Measure(seq);
+                    auto negativeGuard=guard;auto negative=f.MeasureIndependent(seq);
                     negative.pictureBottom=2160;negative.barEvidence.bottom=2160;
                     negative.text={};negative.ink.reset();
                     auto negativePreview=SubtitleBoxLookahead::Resolve(&negative,1,7,9);
@@ -1018,14 +1063,14 @@ public:
                     auto changedGuard=guard;
                     for(int y=1936;y<2028;++y)for(int x=1316;x<1364;++x)
                         f.pixels[size_t(y)*3840+x]=f.Word(64);
-                    auto changed=f.Measure(seq);changed.pictureTop=0;changed.barEvidence.top=0;
+                    auto changed=f.MeasureIndependent(seq);changed.pictureTop=0;changed.barEvidence.top=0;
                     const auto changedPreview=SubtitleBoxLookahead::Resolve(&changed,1,7,9);
                     const auto stale=changedGuard.Prepare(changedPreview,f.Native(),f.base,250,41.708);
                     Assert::IsFalse(stale.valid,L"A late changed glyph cannot borrow more than one second of prior current positives.");
                     for(int y=1936;y<2028;++y)for(int x=1316;x<1364;++x)
                         f.pixels[size_t(y)*3840+x]=f.Word(x>=1328 && x<1352 && y>=1948 && y<2016?64:700);
                 }
-                auto current=f.Measure(seq);
+                auto current=f.MeasureIndependent(seq);
                 if(seq!=32) {current.pictureTop=0;current.barEvidence.top=0;current.independentBarAnalysis=false;}
                 auto p=SubtitleBoxLookahead::Resolve(&current,1,7,9);
                 SubtitleCueContinuation proof;
@@ -1055,13 +1100,13 @@ public:
     TEST_METHOD(NativeBarCueBackingBridgeRejectsMissingStaleOrUnprovedOwnership) {
         for(int fault=0;fault<9;++fault) {
             NativeBarCueFixture f;f.AddRoundedLipAndHollowGlyphs();
-            const SubtitleBoxObservation observed[2]={f.Measure(1),f.Measure(2)};
+            const SubtitleBoxObservation observed[2]={f.MeasureIndependent(1),f.MeasureIndependent(2)};
             const auto preview=SubtitleBoxLookahead::Resolve(observed,2,7,9);
             SubtitleBoxPresentation tracker;SubtitleCueContinuationGuard guard;
             const auto initial=tracker.Consume(preview);Assert::IsTrue(initial.detected);
             Assert::IsTrue(guard.Remember(preview,initial,f.base,f.Native()));
             if(fault==5)f.pixels[size_t(1772)*3840+1920]=f.Word(300);
-            auto current=f.Measure(2);current.pictureTop=0;current.barEvidence.top=0;current.independentBarAnalysis=false;
+            auto current=f.MeasureIndependent(2);current.pictureTop=0;current.barEvidence.top=0;current.independentBarAnalysis=false;
             auto p=SubtitleBoxLookahead::Resolve(&current,1,7,9);
             auto proof=guard.Prepare(p,f.Native(),f.base,250,41.708);
             Assert::IsTrue(proof.valid && proof.localGlyphsOnly);
@@ -1668,34 +1713,73 @@ public:
         }
     }
     TEST_METHOD(SharedPictureAuthorityKeepsCaptionAcrossAmbiguousBarPixels) {
-        auto pixels=Pixels();
-        // Keep an actual bright picture with a centered dark intrusion, plus real current
-        // black-band boundaries. The text card crosses the actual lower edge.
-        Fill(pixels,260,100,380,200,64);Text(pixels,200,310,16);
-        const auto source=Source(pixels);
-        const auto independent=ExtractSubtitleBarEvidence(source);
-        Assert::IsTrue(independent.available,L"dark picture texture must not erase current edge proof");
-        Assert::AreEqual(45,independent.top);Assert::AreEqual(315,independent.bottom);
-        SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
-        authority.bounds={0,45,640,315,640,360,640.0/270,ActivePictureBounds::BarAxes::TOP_BOTTOM};
-        SubtitleMeasurementSampler sampler;SubtitleBoxPresentation tracker;uint64_t cue=0;
-        for(uint64_t frame=1;frame<=20;++frame) {
-            auto key=Cue(frame);key.sharedPicture=authority;
-            auto observation=sampler.Measure(source,key,{},60);
-            Assert::IsTrue(observation.barAuthority);Assert::AreEqual(315,observation.pictureBottom);
-            Assert::IsTrue(observation.text.detected);
-            auto preview=SubtitleBoxLookahead::Resolve(&observation,1,0,0);
-            const auto result=tracker.Consume(preview,250,1000.0/60);
-            Assert::IsTrue(result.detected);
-            if(frame==1)cue=result.cue;
-            Assert::AreEqual(cue,result.cue);
+        const ActivePictureBounds native{0,45,640,315,640,360,640.0/270,
+            ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        for(bool top:{false,true}) {
+            std::vector<uint16_t> pixels(640*360*3/2,uint16_t(512<<6));
+            Fill(pixels,0,0,640,360,64); // unknown, uniformly dark title and bars
+            Text(pixels,200,top?52:296,16);
+            SubtitleBoxPresentation tracker;uint64_t cue=0;bool acquired=false;
+            for(uint64_t frame=1;frame<=12;++frame) {
+                auto observation=MeasureShared(pixels,frame,native);
+                Assert::IsTrue(observation.analyzed && observation.text.detected,
+                    L"shared native bounds permit a fresh current cue scan in a uniformly dark scene");
+                Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(observation));
+                Assert::IsTrue(SubtitleBoxLookahead::HasSubtitleGeometry(observation));
+                Assert::IsFalse(observation.barAuthority);
+                Assert::IsFalse(observation.barEvidence.available,
+                    L"the shared path must not extract physical bar evidence");
+                Assert::AreEqual(std::string("no-current-flat-bar"),
+                    std::string(observation.barEvidence.reason));
+                Assert::AreEqual(45,observation.pictureTop);
+                Assert::AreEqual(315,observation.pictureBottom);
+                Assert::AreEqual(45,observation.sharedPicture.bounds.top);
+                Assert::AreEqual(315,observation.sharedPicture.bounds.bottom);
+                Assert::AreEqual(top,observation.glyphLocalTop,
+                    L"the source side follows current glyph location, including top captions");
+                Assert::AreEqual(!top,observation.glyphLocalBottom);
+                Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(observation));
+                Assert::IsFalse(observation.subtitleArProof.accepted,
+                    L"local current glyph support does not turn subtitle pixels into crop authority");
+                auto preview=SubtitleBoxLookahead::Resolve(&observation,1,7,9);
+                const auto accepted=tracker.Consume(preview,250,1000.0/60);
+                if(accepted.detected) {
+                    if(!acquired) {cue=accepted.cue;acquired=true;}
+                    Assert::AreEqual(cue,accepted.cue);
+                }
+                if(acquired)
+                    Assert::IsTrue(accepted.detected,
+                        L"after acquisition, each fresh same-cue dark-frame scan keeps the cue present");
+            }
+            Assert::IsTrue(acquired,L"consecutive current shared-geometry scans eventually acquire the cue");
+
+            auto changedPixels=pixels;
+            Fill(changedPixels,190,top?46:290,430,top?82:326,64);
+            Text(changedPixels,200,top?52:296,16,true);
+            auto changed=MeasureShared(changedPixels,13,native);
+            Assert::IsTrue(changed.text.detected &&
+                SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(changed),
+                L"a changed current cue must prove its own present glyph and backing pixels");
+            auto original=MeasureShared(pixels,13,native);
+            Assert::IsFalse(SubtitleBoxLookahead::SameCue(original,changed),
+                L"changed glyphs cannot keep the prior cue's identity");
+
+            auto blankPixels=pixels;
+            Fill(blankPixels,190,top?46:290,430,top?82:326,64);
+            auto blank=MeasureShared(blankPixels,14,native);
+            Assert::IsFalse(blank.text.detected,
+                L"a blank current source cannot reuse the earlier glyph template");
+            Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(blank),
+                L"a failed cue proof leaves the shared native rectangle intact");
+            Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(blank));
+
+            auto staleSupport=changed;
+            ++staleSupport.continuityGeneration;
+            Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(staleSupport),
+                L"a context change invalidates the exact source support certificate");
+            Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(staleSupport),
+                L"support reset does not rewrite the retained native geometry");
         }
-        // Authority can persist; missing glyphs still cannot become retained text.
-        Fill(pixels,190,300,430,340,64);
-        auto key=Cue(21);key.sharedPicture=authority;
-        auto blank=sampler.Measure(Source(pixels),key,{},60);
-        Assert::IsFalse(blank.text.detected);
-        Assert::IsFalse(tracker.Consume(SubtitleBoxLookahead::Resolve(&blank,1,0,0),250,1000.0/60).detected);
     }
     TEST_METHOD(IndependentCurrentBarsAllowAnalysisWithoutSharedPresentationAuthority) {
         auto pixels=Pixels();Text(pixels,200,318,16);SubtitleMeasurementSampler sampler;
@@ -1767,13 +1851,17 @@ public:
         SubtitleMeasurementSampler sampler;
         const auto observation=sampler.Measure(Source(pixels),key,workerPrior,60);
         Assert::IsTrue(observation.analyzed);
-        Assert::IsTrue(observation.barAuthority);
-        Assert::IsTrue(observation.independentBarAnalysis);
+        Assert::IsTrue(observation.barAuthority,
+            L"the physical scan may provide source evidence while shared bounds own geometry");
+        Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(observation));
+        Assert::IsTrue(observation.barEvidence.available);
+        Assert::AreEqual(45,observation.barEvidence.top);
+        Assert::AreEqual(315,observation.barEvidence.bottom);
+        Assert::IsFalse(observation.independentBarAnalysis);
         Assert::IsFalse(observation.text.detected);
         Assert::IsFalse(observation.text.workLimit);
         Assert::IsTrue(observation.text.diagnosticReason &&
             std::strcmp(observation.text.diagnosticReason,"no-bright-ink")==0);
-        Assert::IsTrue(observation.incomingBarTrackingReference.valid);
         Assert::IsFalse(observation.hasBarTrackingReference);
         Assert::IsTrue(SubtitleBoxLookahead::CanReuseMeasurement(observation,
             key.identity,640,360,2,4,false,{},key.scriptHint),
@@ -1786,9 +1874,16 @@ public:
         // Preserve the narrower generic independent-scan contract separately:
         // when this observation is not a shared-picture result, a different
         // newly supplied predecessor still requires a rescan.
-        auto independentOnly=observation;independentOnly.sharedPicture={};
+        auto independentKey=key;independentKey.sharedPicture={};
+        auto measuredPrior=workerPrior;
+        auto independentOnly=sampler.Measure(Source(pixels),independentKey,measuredPrior,60);
+        Assert::IsTrue(independentOnly.barAuthority);
+        Assert::IsTrue(independentOnly.hasBarTrackingReference);
+        Assert::IsTrue(independentOnly.barTrackingAuthority);
+        Assert::IsFalse(independentOnly.independentBarAnalysis,
+            L"this physical scan uses the measured immediate predecessor");
         Assert::IsTrue(SubtitleBoxLookahead::CanReuseMeasurement(independentOnly,
-            key.identity,640,360,2,4,false,{},key.scriptHint));
+            key.identity,640,360,2,4,false,measuredPrior,key.scriptHint));
         Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(independentOnly,
             key.identity,640,360,2,4,false,differentPrior,key.scriptHint),
             L"A generic independent negative scan remains tied to its measured predecessor.");
@@ -1826,15 +1921,17 @@ public:
             if(unsafe==13)changed.discontinuity=true;
             Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(changed,
                 key.identity,640,360,2,4,changed.discontinuity,{},key.scriptHint),
-                L"Only a complete independent current-bar no-ink scan may ignore the predecessor.");
+                L"tracked physical scans remain bound to the exact measured predecessor.");
         }
     }
-    TEST_METHOD(SharedCurrentNegativeAndPartialMeasurementsIgnoreUnusedWorkerPrior) {
+    TEST_METHOD(SharedCurrentNegativeScansIgnoreUnusedWorkerPrior) {
         constexpr uint64_t policy=2,continuity=4;
         for(bool partialBottom:{false,true}) {
             const uint64_t sequence=partialBottom?153:152;
-            auto pixels=Pixels(partialBottom);
-            if(partialBottom)Fill(pixels,0,0,640,45,64); // top bar only; bottom edge remains unavailable
+            // Both iterations use the same complete current picture band.
+            // Shared native bounds decide subtitle scan coverage; worker bars
+            // remain a separate physical observation.
+            auto pixels=Pixels();
             auto key=Cue(sequence);key.identity=Identity(sequence);
             key.policyGeneration=policy;key.continuityGeneration=continuity;
             key.nearBarDistance=20;key.optimizationMode=0;
@@ -1850,25 +1947,24 @@ public:
             SubtitleMeasurementSampler sampler;
             const auto measured=sampler.Measure(Source(pixels),key,workerPrior,60);
             Assert::IsTrue(measured.analyzed);
-            Assert::IsTrue(measured.barAuthority);
-            Assert::IsTrue(measured.barEvidence.available);
+            Assert::IsTrue(measured.barAuthority,
+                L"physical edge evidence is retained for source safety");
+            Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(measured));
+            Assert::IsTrue(measured.barEvidence.available,
+                L"shared native geometry coexists with fresh physical-bar evidence");
+            Assert::AreEqual(45,measured.barEvidence.top);
+            Assert::AreEqual(315,measured.barEvidence.bottom);
             Assert::IsFalse(measured.text.detected);
             Assert::IsFalse(measured.text.workLimit);
             Assert::IsTrue(measured.text.diagnosticReason &&
                 std::strcmp(measured.text.diagnosticReason,"no-bright-ink")==0);
-            Assert::IsTrue(measured.incomingBarTrackingReference.valid);
             Assert::IsFalse(measured.hasBarTrackingReference,
                 L"The valid shared picture path performs its exact current scan without consuming the worker predecessor.");
             Assert::IsFalse(measured.barTrackingAuthority);
             Assert::IsFalse(measured.currentAnchorUsesTrackedEdge);
-            if(partialBottom) {
-                Assert::AreEqual(45,measured.pictureTop);
-                Assert::AreEqual(360,measured.pictureBottom,
-                    L"A partial top-only current scan remains incomplete when reused.");
-            } else {
-                Assert::AreEqual(45,measured.pictureTop);
-                Assert::AreEqual(315,measured.pictureBottom);
-            }
+            Assert::AreEqual(45,measured.pictureTop);
+            Assert::AreEqual(315,measured.pictureBottom,
+                L"both source variants keep the exact native shared rectangle");
 
             SubtitleBarTrackingReference emptyPrior;
             auto differentPrior=workerPrior;
@@ -1882,7 +1978,7 @@ public:
                 L"A different tracking predecessor cannot change an exact shared-picture scan.");
             Assert::IsFalse(measured.text.detected,
                 L"Reusing a negative/partial result must preserve its no-ink outcome.");
-            Assert::AreEqual(partialBottom?360:315,measured.pictureBottom);
+            Assert::AreEqual(315,measured.pictureBottom);
 
             auto other=key.identity;++other.acceptedSequence;
             Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(measured,other,
@@ -1928,9 +2024,9 @@ public:
             Assert::IsFalse(SubtitleMeasurementWorker::SameKey(measured,changedKey));
         }
     }
-    TEST_METHOD(WorkerSharedPartialScanWithHistoryIsReusableButNotAbsenceEvidence) {
+    TEST_METHOD(WorkerSharedBlankScanIsReusableWithPhysicalSourceEvidence) {
         constexpr uint64_t policy=7,continuity=9;
-        auto pixels=Pixels(true);Fill(pixels,0,0,640,45,64); // current top bar only
+        auto pixels=Pixels(); // same complete physical bands for both worker scans
         SubtitleMeasurementWorker worker;
 
         auto firstKey=Cue(160);firstKey.identity=Identity(160);
@@ -1968,15 +2064,21 @@ public:
             L"worker history supplied a prior to the measurement");
         Assert::IsFalse(measured.hasBarTrackingReference,
             L"shared-current measurement did not consume the tracking prior");
-        Assert::IsTrue(measured.barAuthority);
+        Assert::IsTrue(measured.barAuthority,
+            L"current physical bars remain available for source safety");
+        Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(measured));
+        Assert::IsTrue(measured.barEvidence.available);
+        Assert::AreEqual(45,measured.barEvidence.top);
+        Assert::AreEqual(315,measured.barEvidence.bottom);
         Assert::AreEqual(45,measured.pictureTop);
-        Assert::AreEqual(360,measured.pictureBottom,
-            L"the missing bottom edge remains incomplete after worker read");
+        Assert::AreEqual(315,measured.pictureBottom,
+            L"worker history cannot replace the available native shared rectangle");
         Assert::IsFalse(measured.text.detected);
-        Assert::IsTrue(SubtitleAbsenceIsUnknown(measured),
-            L"a scan with no bottom-edge search coverage cannot certify cue absence");
+        Assert::IsFalse(SubtitleAbsenceIsUnknown(measured),
+            L"valid shared native bounds cover the complete current subtitle band");
         SubtitleBoxResult accepted;
-        Assert::IsFalse(ConfirmedSubtitleAbsentForPresentation(measured,accepted,currentKey.identity));
+        Assert::IsTrue(ConfirmedSubtitleAbsentForPresentation(measured,accepted,currentKey.identity),
+            L"the exact shared scan covered the current cue range and both physical bounds were measured");
 
         SubtitleBarTrackingReference otherPrior;
         otherPrior.identity=Identity(158);otherPrior.width=640;otherPrior.height=360;
@@ -1987,8 +2089,8 @@ public:
             640,360,policy,continuity,false,{},currentKey.scriptHint));
         Assert::IsTrue(SubtitleBoxLookahead::CanReuseMeasurement(measured,currentKey.identity,
             640,360,policy,continuity,false,otherPrior,currentKey.scriptHint));
-        Assert::IsTrue(SubtitleAbsenceIsUnknown(measured),
-            L"reusing the same immutable result leaves incomplete coverage unknown");
+        Assert::IsFalse(SubtitleAbsenceIsUnknown(measured),
+            L"reusing the exact shared scan preserves its complete current blank result");
     }
     TEST_METHOD(CurrentNegativeScanCanRebindBetweenUnavailablePictureSnapshots) {
         const auto identity=Identity(37);
@@ -2073,6 +2175,41 @@ public:
             }
         }
     }
+    TEST_METHOD(RetainedNativeGeometryContinuesAfterSharedPlacementAuthorityExpires) {
+        auto pixels=Pixels();Fill(pixels,0,0,640,360,64);Text(pixels,200,296,16);
+        SubtitlePictureAuthority shared;shared.required=true;
+        auto& retained=shared.inspectionCandidate;
+        retained.valid=true;retained.bounds={0,45,640,315,640,360,640.0/270,ActivePictureBounds::BarAxes::NONE};
+        retained.originIdentity=Identity(1);retained.originIdentity.analysisDomainKey=19;retained.policyGeneration=7;retained.continuityGeneration=9;
+        retained.nativeGeometryRevision=13;
+        SubtitleBoxDetector scanner;scanner.SetNearBarDistance(20);
+        std::array<SubtitleBoxObservation,2> frames;
+        for(unsigned i=0;i<2;++i) {
+            auto id=Identity(i+1);id.analysisDomainKey=19;
+            Assert::IsFalse(shared.AvailableFor(id,640,360),L"The old placement lease remains unavailable.");
+            SubtitleBoxObservation pending;pending.sharedPicture=shared;pending.identity=id;
+            pending.width=640;pending.height=360;pending.policyGeneration=7;pending.continuityGeneration=9;
+            Assert::IsTrue(SubtitleBoxLookahead::BindNativeGeometryHint(pending));
+            Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(pending));
+            Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(pending));
+            Assert::AreEqual(45,pending.pictureTop);Assert::AreEqual(315,pending.pictureBottom);
+            frames[i]=SubtitleBoxLookahead::Measure(scanner,Source(pixels),{},id,false,{},7,9,shared);
+            Assert::IsTrue(frames[i].inspectionCandidateUsed && frames[i].sharedNativeGeometry);
+            Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(frames[i]),
+                SharedMeasurementDiagnostics(frames[i]).c_str());
+            Assert::AreEqual(45,frames[i].pictureTop);Assert::AreEqual(315,frames[i].pictureBottom);
+            Assert::IsFalse(frames[i].barAuthority || frames[i].independentBarAnalysis || frames[i].subtitleArProof.accepted);
+            Assert::IsFalse(SubtitleBoxLookahead::AdvanceBarTrackingReference(frames[i]).valid);
+        }
+        auto preview=SubtitleBoxLookahead::Resolve(frames.data(),frames.size(),7,9);
+        SubtitleBoxPresentation presentation;
+        Assert::IsTrue(presentation.Consume(preview).detected,
+            L"Fresh captions use retained native positions without reviving physical/crop authority.");
+        ++shared.inspectionCandidate.policyGeneration;
+        auto wrongId=Identity(3);wrongId.analysisDomainKey=19;
+        const auto wrongContext=SubtitleBoxLookahead::Measure(scanner,Source(pixels),{},wrongId,false,{},7,9,shared);
+        Assert::IsFalse(wrongContext.sharedNativeGeometry);
+    }
     TEST_METHOD(WorkerKeyIncludesSharedAuthorityEvenForSameSourceFrame) {
         auto a=Cue(1);a.sharedPicture.required=true;a.sharedPicture.identity=Identity(1);
         a.sharedPicture.bounds={0,45,640,315,640,360};auto b=a;
@@ -2082,11 +2219,14 @@ public:
         b=a;b.sharedPicture.required=false;Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
     }
     TEST_METHOD(PendingMeasurementUsesSharedAuthorityWhenCurrentBandsRemainValid) {
-        auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,310,16);
-        auto key=Cue(1);key.sharedPicture.required=true;key.sharedPicture.identity=Identity(1);
+        auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,290,16);
+        auto key=Cue(1);key.nearBarDistance=20;
+        key.sharedPicture.required=true;key.sharedPicture.identity=Identity(1);
         key.sharedPicture.bounds={0,45,640,315,640,360};SubtitleMeasurementSampler sampler;
         auto observed=sampler.Measure(Source(pixels),key,{},60);
-        Assert::IsTrue(observed.text.detected);
+        Assert::IsTrue(observed.text.detected,SharedMeasurementDiagnostics(observed).c_str());
+        Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(observed),
+            SharedMeasurementDiagnostics(observed).c_str());
         auto ready=SubtitleBoxLookahead::Resolve(&observed,1,7,8);SubtitlePendingMeasurementGuard guard;
         guard.Resolve(ready,Source(pixels),1000.0/60,250);
         SubtitleBoxPresentation presentation;
@@ -2094,25 +2234,46 @@ public:
         Assert::IsTrue(acquired.detected);
         for(uint64_t sequence=2;sequence<=4;++sequence) {
             SubtitleBoxPreview pending;pending.current=key;pending.current.identity=Identity(sequence);
+            pending.current.sharedPicture.identity=pending.current.identity;
             Assert::IsTrue(guard.Resolve(pending,Source(pixels),1000.0/60,250));
             Assert::IsTrue(pending.current.pendingRefresh);
             Assert::AreEqual(ready.policyGeneration,pending.policyGeneration,
                 L"Ordinary pending pixels preserve the accepted preview policy generation.");
             Assert::AreEqual(ready.continuityGeneration,pending.continuityGeneration,
                 L"Ordinary pending pixels preserve wrapper continuity; default observation metadata cannot replace it.");
-            const auto kept=presentation.Consume(pending,250,1000.0/60);
-            Assert::IsTrue(kept.detected);Assert::AreEqual(acquired.cue,kept.cue,
-                L"fresh current bar proof and unchanged glyph pixels retain the old cue");
+            Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(pending.current));
+            Assert::AreEqual(observed.sharedPicture.bounds.top,pending.current.pictureTop);
+            Assert::AreEqual(observed.sharedPicture.bounds.bottom,pending.current.pictureBottom);
+            Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(pending.current),
+                L"a pending line fingerprint cannot certify complete current glyph ownership");
+            const auto pendingResult=presentation.Consume(pending,250,1000.0/60);
+            Assert::IsFalse(pendingResult.detected,
+                L"pending pixels keep native geometry while composition waits for a complete current scan");
+
+            auto currentKey=key;currentKey.identity=Identity(sequence);
+            currentKey.sharedPicture.identity=currentKey.identity;
+            const auto current=sampler.Measure(Source(pixels),currentKey,{},60);
+            Assert::IsTrue(current.text.detected,SharedMeasurementDiagnostics(current).c_str());
+            Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(current),
+                SharedMeasurementDiagnostics(current).c_str());
+            Assert::AreEqual(observed.sharedPicture.bounds.top,current.pictureTop);
+            Assert::AreEqual(observed.sharedPicture.bounds.bottom,current.pictureBottom);
+            const auto currentPreview=SubtitleBoxLookahead::Resolve(&current,1,
+                ready.policyGeneration,ready.continuityGeneration);
+            const auto resumed=presentation.Consume(currentPreview,250,1000.0/60);
+            Assert::IsTrue(resumed.detected);
+            Assert::AreEqual(acquired.cue,resumed.cue,
+                L"the exact current worker scan resumes the same cue at unchanged native geometry");
         }
         SubtitleBoxPreview stale;stale.current=key;stale.current.identity=Identity(5);
         stale.current.sharedPicture.bounds={};
         Assert::IsFalse(guard.Resolve(stale,Source(pixels),1000.0/60,250));
     }
-    TEST_METHOD(SharedRetainedBoundsUseCurrentBandsAndRejectInteriorCityLights) {
+    TEST_METHOD(SharedRetainedBoundsRemainNativeWhenCurrentPictureHasNoSubtitle) {
         auto pixels=BarredPixels(11,348);
-        // A bright, card-backed pattern crosses retained top=45, but lies
-        // wholly inside this frame's active picture, whose top edge is 11.
-        Text(pixels,200,34,16);
+        // Keep current active-picture texture and localized lights, but no
+        // subtitle glyph/card component inside the retained scan rectangle.
+        Fill(pixels,205,70,214,86,700);Fill(pixels,410,220,416,236,620);
         const auto source=Source(pixels);
         SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
         authority.bounds={0,45,640,315,640,360};
@@ -2120,14 +2281,20 @@ public:
         SubtitleMeasurementSampler sampler;
         const auto observation=sampler.Measure(source,key,{},60);
         Assert::IsTrue(observation.sharedPicture.Matches(authority),L"Classic presentation snapshot stays intact");
+        Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(observation));
         Assert::IsTrue(observation.barAuthority);
-        Assert::AreEqual(11,observation.pictureTop,L"analysis uses the current top edge");
-        Assert::AreEqual(348,observation.pictureBottom,L"analysis uses the current bottom edge");
+        Assert::IsTrue(observation.barEvidence.available);
+        Assert::AreEqual(11,observation.barEvidence.top);
+        Assert::AreEqual(348,observation.barEvidence.bottom);
+        Assert::IsFalse(observation.independentBarAnalysis,
+            L"current physical boundaries remain source evidence and do not replace shared geometry");
+        Assert::AreEqual(45,observation.pictureTop,L"subtitle analysis uses the retained native top");
+        Assert::AreEqual(315,observation.pictureBottom,L"subtitle analysis uses the retained native bottom");
         Assert::IsFalse(observation.text.detected,
-            L"a pattern crossing only the obsolete retained plane is interior picture content");
+            L"unstructured current picture lights cannot acquire a caption template");
     }
-    TEST_METHOD(UniformDarkRasterCannotSubstituteForCurrentSharedBandEvidence) {
-        auto pixels=Pixels(true);Fill(pixels,0,0,640,360,64);Text(pixels,200,310,16);
+    TEST_METHOD(UniformDarkRasterWithoutGlyphsDoesNotCreateSharedSubtitleSupport) {
+        auto pixels=Pixels(true);Fill(pixels,0,0,640,360,64);
         SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
         authority.bounds={0,45,640,315,640,360};
         auto key=Cue(1);key.sharedPicture=authority;
@@ -2135,123 +2302,149 @@ public:
         const auto observation=sampler.Measure(Source(pixels),key,{},60);
         Assert::IsTrue(observation.sharedPicture.Matches(authority));
         Assert::IsFalse(observation.barAuthority,
-            L"uniform darkness and a caption-shaped card do not establish a physical picture edge");
+            L"uniform darkness must not be turned into physical bar evidence");
         Assert::IsFalse(observation.text.detected);
+        Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(observation));
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(observation));
     }
-    TEST_METHOD(SharedCurrentSingleSideBarsPreserveOnlyTheProvedOppositeSide) {
+    TEST_METHOD(SharedCurrentSingleSideBarsDoNotReplaceNativeGeometryForTopOrBottomCue) {
         for(bool topOnly : {true,false}) {
-            auto pixels=Pixels(true);
+            auto pixels=Pixels();
             if(topOnly) {
-                Fill(pixels,0,0,640,11,64);
-                Text(pixels,200,3,7);
+                Fill(pixels,0,315,640,360,300); // keep only the measured top bar
+                Text(pixels,200,52,7);
             } else {
-                Fill(pixels,0,348,640,360,64);
-                Text(pixels,200,336,7);
+                Fill(pixels,0,0,640,45,300); // keep only the measured bottom bar
+                Text(pixels,200,296,7);
             }
             const auto source=Source(pixels);
             SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
             authority.bounds={0,45,640,315,640,360};
-            auto key=Cue(1);key.nearBarDistance=0;key.sharedPicture=authority;
+            auto key=Cue(1);key.nearBarDistance=20;key.sharedPicture=authority;
             SubtitleMeasurementSampler sampler;
             const auto observation=sampler.Measure(source,key,{},60);
-            Assert::IsTrue(observation.barAuthority);
-            Assert::AreEqual(topOnly?11:0,observation.pictureTop);
-            Assert::AreEqual(topOnly?360:348,observation.pictureBottom);
+            Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(observation));
+            const auto physical=ExtractSubtitleBarEvidence(source);
+            Assert::AreEqual(physical.available,observation.barEvidence.available);
+            Assert::AreEqual(physical.top,observation.barEvidence.top);
+            Assert::AreEqual(physical.bottom,observation.barEvidence.bottom);
+            Assert::AreEqual(physical.available,observation.barAuthority);
+            Assert::IsFalse(observation.independentBarAnalysis);
+            Assert::AreEqual(45,observation.pictureTop);
+            Assert::AreEqual(315,observation.pictureBottom);
             Assert::IsTrue(observation.text.detected,
-                L"a real caption crossing the one currently proved band remains eligible");
+                SharedMeasurementDiagnostics(observation).c_str());
+            Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(observation),
+                SharedMeasurementDiagnostics(observation).c_str());
         }
     }
-    TEST_METHOD(SharedCurrentBottomBoundaryRetainsArabicHintMultilineCaption) {
-        auto pixels=BarredPixels(11,348);
-        ArabicTextLine(pixels,220,307,180,14);ArabicTextLine(pixels,260,336,120,14);
+    TEST_METHOD(SharedNativeGeometryRetainsArabicHintMultilineCaption) {
+        auto pixels=BarredPixels(45,315);
+        ArabicTextLine(pixels,220,258,180,14);ArabicTextLine(pixels,260,280,120,14);
         const auto source=Source(pixels);
         SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
         authority.bounds={0,45,640,315,640,360};
-        auto key=Cue(1);key.nearBarDistance=0;key.scriptHint=SubtitleScriptHint::Arabic;
+        auto key=Cue(1);key.nearBarDistance=20;key.scriptHint=SubtitleScriptHint::Arabic;
         key.sharedPicture=authority;
         SubtitleMeasurementSampler sampler;
         const auto observation=sampler.Measure(source,key,{},60);
-        Assert::AreEqual(11,observation.pictureTop);
-        Assert::AreEqual(348,observation.pictureBottom);
-        Assert::IsTrue(observation.text.detected,L"caption crossing the current lower boundary is retained");
+        Assert::AreEqual(45,observation.pictureTop);
+        Assert::AreEqual(315,observation.pictureBottom);
+        Assert::IsTrue(observation.barAuthority);
+        Assert::IsTrue(observation.sharedNativePhysicalSupport);
+        Assert::IsTrue(observation.barEvidence.available);
+        Assert::IsTrue(observation.text.detected,SharedMeasurementDiagnostics(observation).c_str());
         Assert::AreEqual(2,observation.text.lineCount,L"both Arabic-hint lines remain grouped");
     }
     TEST_METHOD(SharedCurrentEdgeThreeLineCaptionsSurviveSupportedScriptHints) {
         for(SubtitleScriptHint script : {SubtitleScriptHint::Latin,SubtitleScriptHint::Cjk,
             SubtitleScriptHint::Thai}) {
-            auto pixels=BarredPixels(11,348);
-            Text(pixels,200,298,15);Text(pixels,215,318,12);Text(pixels,240,338,8);
+            auto pixels=BarredPixels(45,315);
+            Text(pixels,200,250,15);Text(pixels,215,270,12);Text(pixels,240,290,8);
             const auto source=Source(pixels);
             SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
             authority.bounds={0,45,640,315,640,360};
-            auto key=Cue(1);key.nearBarDistance=0;key.scriptHint=script;
+            auto key=Cue(1);key.nearBarDistance=20;key.scriptHint=script;
             key.sharedPicture=authority;
             SubtitleMeasurementSampler sampler;
             const auto observation=sampler.Measure(source,key,{},60);
-            Assert::AreEqual(11,observation.pictureTop);
-            Assert::AreEqual(348,observation.pictureBottom);
-            Assert::IsTrue(observation.text.detected,
-                L"the current bottom-edge anchor remains admissible for each script hint");
+            Assert::AreEqual(45,observation.pictureTop);
+            Assert::AreEqual(315,observation.pictureBottom);
+            Assert::IsTrue(observation.barAuthority);
+            Assert::IsTrue(observation.sharedNativePhysicalSupport);
+            Assert::IsTrue(observation.barEvidence.available);
+            Assert::IsTrue(observation.text.detected,SharedMeasurementDiagnostics(observation).c_str());
             Assert::AreEqual(3,observation.text.lineCount,
                 L"three physically present rows remain grouped around the current edge anchor");
         }
-        auto arabicPixels=BarredPixels(11,348);
-        ArabicTextLine(arabicPixels,220,296,180,14);
-        ArabicTextLine(arabicPixels,235,316,150,14);
-        ArabicTextLine(arabicPixels,260,336,120,14);
+        auto arabicPixels=BarredPixels(45,315);
+        ArabicTextLine(arabicPixels,220,250,180,14);
+        ArabicTextLine(arabicPixels,235,270,150,14);
+        ArabicTextLine(arabicPixels,260,290,120,14);
         const auto arabicSource=Source(arabicPixels);
         SubtitlePictureAuthority arabicAuthority;arabicAuthority.required=true;
         arabicAuthority.identity=Identity(1);arabicAuthority.bounds={0,45,640,315,640,360};
-        auto arabicKey=Cue(1);arabicKey.nearBarDistance=0;
+        auto arabicKey=Cue(1);arabicKey.nearBarDistance=20;
         arabicKey.scriptHint=SubtitleScriptHint::Arabic;arabicKey.sharedPicture=arabicAuthority;
         SubtitleMeasurementSampler arabicSampler;
         const auto arabic=arabicSampler.Measure(arabicSource,arabicKey,{},60);
-        Assert::AreEqual(11,arabic.pictureTop);Assert::AreEqual(348,arabic.pictureBottom);
-        Assert::IsTrue(arabic.text.detected);Assert::AreEqual(3,arabic.text.lineCount,
+        Assert::AreEqual(45,arabic.pictureTop);Assert::AreEqual(315,arabic.pictureBottom);
+        Assert::IsTrue(arabic.sharedNativePhysicalSupport);
+        Assert::IsTrue(arabic.text.detected,SharedMeasurementDiagnostics(arabic).c_str());
+        Assert::AreEqual(3,arabic.text.lineCount,
             L"three joined Arabic rows remain grouped around the current edge anchor");
     }
-    TEST_METHOD(PendingSharedCueRejectsLostPhysicalBarsWhenAcceptedGlyphPixelsAreUnchanged) {
-        auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,310,16);
+    TEST_METHOD(PendingSharedCueUsesCurrentGlyphSupportWithoutPhysicalBarEvidence) {
+        auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,290,16);
         SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
         authority.bounds={0,45,640,315,640,360};
-        auto key=Cue(1);key.sharedPicture=authority;SubtitleMeasurementSampler sampler;
+        auto key=Cue(1);key.nearBarDistance=20;key.sharedPicture=authority;
+        SubtitleMeasurementSampler sampler;
         const auto observed=sampler.Measure(Source(pixels),key,{},60);
-        Assert::IsTrue(observed.text.detected);
+        Assert::IsTrue(observed.text.detected,SharedMeasurementDiagnostics(observed).c_str());
         SubtitlePendingMeasurementGuard guard;
         auto accepted=SubtitleBoxLookahead::Resolve(&observed,1,0,0);
         guard.Resolve(accepted,Source(pixels),1000.0/60,250);
 
-        // Keep every pixel in the guard's expanded line sampling rectangles
-        // identical, but remove the full-width black bands and their edges.
-        // The retained Classic authority and accepted glyph samples therefore
-        // remain unchanged while current physical bar evidence is absent.
+        // Keep the complete current cue support unchanged while replacing the
+        // surrounding raster with bright picture pixels. Shared AR bounds are
+        // still the scan rectangle; bar evidence is intentionally absent.
         auto noBars=Pixels(true);Fill(noBars,0,0,640,360,300);
-        const int step=SubtitleBoxDetector::SamplingStep(640,360);
-        for(int line=0;line<observed.text.lineCount && line<3;++line) {
-            const auto r=observed.text.lineBounds[line];
-            const int top=(std::max)(0,r.top-step),bottom=(std::min)(360,r.bottom+step);
-            const int left=(std::max)(0,r.left-step),right=(std::min)(640,r.right+step);
-            for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)
-                noBars[size_t(y)*640+x]=pixels[size_t(y)*640+x];
-        }
+        Text(noBars,200,290,16);
         SubtitleBoxPreview pending;pending.current=key;pending.current.identity=Identity(2);
-        Assert::IsFalse(guard.Resolve(pending,Source(noBars),1000.0/60,250));
-        Assert::AreEqual(std::string("current-bars-changed"),std::string(guard.DecisionReason()),
-            L"old shared bounds and unchanged accepted glyph pixels cannot stand in for disappeared physical bars");
+        pending.current.sharedPicture.identity=pending.current.identity;
+        Assert::IsFalse(guard.Resolve(pending,Source(noBars),1000.0/60,250),
+            L"a pending fingerprint cannot invent complete current glyph/backing evidence");
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(pending.current));
+        key.identity=Identity(2);key.sharedPicture.identity=key.identity;
+        const auto current=sampler.Measure(Source(noBars),key,{},60);
+        Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(current));
+        Assert::IsTrue(current.text.detected,SharedMeasurementDiagnostics(current).c_str());
+        Assert::IsFalse(current.barAuthority);
+        Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(current));
+        Assert::AreEqual(45,current.pictureTop);Assert::AreEqual(315,current.pictureBottom);
     }
-    TEST_METHOD(PendingSharedCueRejectsCurrentBandGeometryChange) {
-        auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,310,16);
+    TEST_METHOD(PendingSharedCueKeepsFreshPixelsWhenPhysicalBandsMove) {
+        auto pixels=Pixels();Fill(pixels,260,100,380,200,64);Text(pixels,200,290,16);
         SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
         authority.bounds={0,45,640,315,640,360};
-        auto key=Cue(1);key.sharedPicture=authority;SubtitleMeasurementSampler sampler;
+        auto key=Cue(1);key.nearBarDistance=20;key.sharedPicture=authority;
+        SubtitleMeasurementSampler sampler;
         const auto observed=sampler.Measure(Source(pixels),key,{},60);
-        Assert::IsTrue(observed.text.detected);
+        Assert::IsTrue(observed.text.detected,SharedMeasurementDiagnostics(observed).c_str());
         SubtitlePendingMeasurementGuard guard;
         guard.Resolve(SubtitleBoxLookahead::Resolve(&observed,1,0,0),Source(pixels),1000.0/60,250);
-        auto shifted=BarredPixels(60,300);Text(shifted,200,310,16);
+        auto shifted=BarredPixels(60,300);Text(shifted,200,290,16);
         auto pending=SubtitleBoxPreview{};pending.current=key;pending.current.identity=Identity(2);
+        pending.current.sharedPicture.identity=pending.current.identity;
         Assert::IsFalse(guard.Resolve(pending,Source(shifted),1000.0/60,250),
-            L"matching caption pixels and retained Classic identity cannot reuse a cue after both current bars move");
+            L"pending fingerprints do not grant a new current-source cleanup certificate");
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(pending.current));
+        key.identity=Identity(2);key.sharedPicture.identity=key.identity;
+        const auto current=sampler.Measure(Source(shifted),key,{},60);
+        Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(current));
+        Assert::IsTrue(current.text.detected,SharedMeasurementDiagnostics(current).c_str());
+        Assert::AreEqual(45,current.pictureTop);Assert::AreEqual(315,current.pictureBottom);
     }
 
     TEST_METHOD(ActualBacklogDropPendingThenCurrentScanRetainsAcquiredCue) {
@@ -4474,6 +4667,129 @@ public:
             Assert::IsFalse(guard.Resolve(pending,Source(pixels),40,250));
         }
     }
+    TEST_METHOD(PendingSharedBarGlyphsRemainCurrentAcrossStrideTwoAndExpireWithoutRenewal) {
+        constexpr uint64_t policy=7,continuity=9,domain=19;
+        constexpr double frameMs=1000.0/60.0;
+        const ActivePictureBounds native{0,45,640,315,640,360,640.0/270,
+            ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        for(bool unknownEdges:{false,true}) {
+            auto pixels=Pixels(!unknownEdges);
+            if(unknownEdges)Fill(pixels,0,0,640,360,64);
+            Text(pixels,220,324,12);
+            SubtitleMeasurementSampler sampler;
+            auto makeKey=[&](uint64_t logicalSequence) {
+                SubtitleBoxObservation key;
+                key.width=640;key.height=360;
+                key.identity=Identity(logicalSequence*2);
+                key.identity.sourceFrameNumber=logicalSequence*2;
+                key.identity.captureTimestamp=logicalSequence*33334;
+                key.identity.analysisDomainKey=domain;
+                key.analysisStride=2;key.nearBarDistance=20;
+                key.policyGeneration=policy;key.continuityGeneration=continuity;
+                key.sharedPicture.required=true;key.sharedPicture.identity=key.identity;
+                key.sharedPicture.bounds=native;
+                return key;
+            };
+
+            // The two fresh measurements are separated by one 60 Hz source
+            // frame. The pending checks below model later stride-two work.
+            auto firstKey=makeKey(1);
+            auto first=sampler.Measure(Source(pixels),firstKey,{},60);
+            Assert::IsTrue(first.text.detected,SharedMeasurementDiagnostics(first).c_str());
+            Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(first),
+                SharedMeasurementDiagnostics(first).c_str());
+            auto secondKey=makeKey(2);
+            auto second=sampler.Measure(Source(pixels),secondKey,{},60);
+            Assert::IsTrue(second.text.detected,SharedMeasurementDiagnostics(second).c_str());
+            Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(second),
+                SharedMeasurementDiagnostics(second).c_str());
+            Assert::AreEqual(45,second.pictureTop);Assert::AreEqual(315,second.pictureBottom);
+
+            SubtitleBoxObservation acquisitionFrames[]={first,second};
+            auto ready=SubtitleBoxLookahead::Resolve(acquisitionFrames,2,policy,continuity);
+            Assert::IsTrue(ready.available && ready.futureAvailable);
+            SubtitleBoxPresentation tracker;
+            auto accepted=tracker.Consume(ready,250,frameMs);
+            if(!accepted.detected) {
+                ready=SubtitleBoxLookahead::Resolve(&second,1,policy,continuity);
+                accepted=tracker.Consume(ready,250,frameMs);
+            }
+            Assert::IsTrue(accepted.detected,
+                L"two exact current source measurements acquire the cue before analysis is skipped");
+            Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(ready.current));
+            SubtitlePendingMeasurementGuard guard;
+            Assert::IsTrue(guard.RememberAccepted(ready,accepted,Source(pixels),frameMs,250),
+                L"only the complete current measurement seeds pending verification");
+            const auto acquiredCue=accepted.cue;
+            const auto acquiredBounds=accepted.bounds;
+
+            for(uint64_t logicalSequence=3;logicalSequence<=6;++logicalSequence) {
+                auto key=second;key.identity=makeKey(logicalSequence).identity;
+                key.sharedPicture=makeKey(logicalSequence).sharedPicture;
+                key.analyzed=false;key.text={};key.ink.reset();key.barEvidence={};
+                key.barAuthority=false;key.independentBarAnalysis=false;
+                key.sharedNativePhysicalSupport=false;key.sharedNativeGeometry=false;
+                key.glyphLocalTop=key.glyphLocalBottom=false;
+                key.glyphLocalVerifiedBounds={};key.pendingRefresh=false;
+                SubtitleBoxLookahead::BindNativeGeometryHint(key);
+                auto pending=SubtitleBoxLookahead::Resolve(&key,1,policy,continuity);
+                Assert::IsFalse(pending.available);
+                Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(pending.current),
+                    L"an unfinished source keeps the exact native geometry hint");
+                Assert::IsTrue(guard.Resolve(pending,Source(pixels),frameMs,250));
+                Assert::IsTrue(pending.current.pendingRefresh);
+                Assert::IsTrue(SubtitleBoxLookahead::HasPendingSharedBarGlyphSupport(pending.current));
+                Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(pending.current),
+                    L"pending pixels never become a fresh full-measurement certificate");
+                const auto kept=tracker.Consume(pending,250,frameMs);
+                Assert::IsTrue(kept.detected,L"each current glyph fingerprint preserves the acquired cue");
+                Assert::AreEqual(acquiredCue,kept.cue);
+                Assert::AreEqual(acquiredBounds.top,kept.bounds.top);
+                Assert::AreEqual(acquiredBounds.bottom,kept.bounds.bottom);
+                Assert::AreEqual(45,pending.current.pictureTop);
+                Assert::AreEqual(315,pending.current.pictureBottom);
+                SubtitleCutPastePresentation compositor;
+                const auto geometry=compositor.Consume(kept,pending,{},25);
+                Assert::IsTrue(geometry.valid && geometry.pendingGlyphsOnly);
+                Assert::IsFalse(geometry.generatedCleanup.Valid());
+                Assert::IsFalse(geometry.generatedCleanupExclusion.Valid());
+                Assert::AreEqual(0u,geometry.generatedCleanupRowCount);
+                auto reseed=guard;
+                Assert::IsFalse(reseed.RememberAccepted(pending,kept,Source(pixels),frameMs,250),
+                    L"pending output cannot renew the original accepted seed or its hold budget");
+            }
+
+            // One 250 ms lease is spent by source time, including stride-two
+            // gaps. It cannot be refreshed by presenting the held result.
+            auto expiryGuard=guard;
+            auto expiryKey=second;expiryKey.identity=makeKey(10).identity;
+            expiryKey.sharedPicture=makeKey(10).sharedPicture;
+            expiryKey.analyzed=false;expiryKey.text={};expiryKey.ink.reset();
+            expiryKey.barEvidence={};expiryKey.barAuthority=false;
+            expiryKey.independentBarAnalysis=false;expiryKey.sharedNativeGeometry=false;
+            expiryKey.glyphLocalTop=expiryKey.glyphLocalBottom=false;
+            SubtitleBoxLookahead::BindNativeGeometryHint(expiryKey);
+            auto expired=SubtitleBoxLookahead::Resolve(&expiryKey,1,policy,continuity);
+            Assert::IsFalse(expiryGuard.Resolve(expired,Source(pixels),frameMs,250));
+            Assert::AreEqual("pending-budget-expired",expiryGuard.DecisionReason());
+            Assert::IsFalse(tracker.Consume(expired,250,frameMs).detected);
+
+            auto changed=pixels;Text(changed,220,324,12,true);
+            auto changedKey=second;changedKey.identity=makeKey(7).identity;
+            changedKey.sharedPicture=makeKey(7).sharedPicture;
+            changedKey.analyzed=false;changedKey.text={};changedKey.ink.reset();
+            changedKey.barEvidence={};changedKey.barAuthority=false;
+            changedKey.independentBarAnalysis=false;changedKey.sharedNativeGeometry=false;
+            changedKey.glyphLocalTop=changedKey.glyphLocalBottom=false;
+            SubtitleBoxLookahead::BindNativeGeometryHint(changedKey);
+            auto changedPreview=SubtitleBoxLookahead::Resolve(&changedKey,1,policy,continuity);
+            Assert::IsFalse(guard.Resolve(changedPreview,Source(changed),frameMs,250));
+            Assert::AreEqual("current-pixels-changed",guard.DecisionReason());
+            Assert::IsFalse(tracker.Consume(changedPreview,250,frameMs).detected,
+                L"a changed current cue cannot borrow the old glyph template");
+            Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(changedPreview.current));
+        }
+    }
     TEST_METHOD(SubtitleWorkerIsNonblockingDeduplicatesAndBoundsPendingWork) {
         SubtitleMeasurementWorker worker;
         std::promise<void> entered,release;auto released=release.get_future().share();
@@ -5860,7 +6176,7 @@ public:
         Assert::IsFalse(ProveLocalSubtitleGlyphBacking(blankSource,blank,blankInk.get(),315,true).accepted,
             L"disappearance cannot reuse a prior cue or its ink snapshot");
     }
-    TEST_METHOD(LocalGlyphProofRejectsNarrowLightsAndARExpansionWithoutOppositeBar) {
+    TEST_METHOD(LocalGlyphProofRejectsNarrowLightsWithoutPromotingCaptionBackingToAr) {
         auto light=Pixels();Fill(light,300,307,308,322,700);
         const auto lightSource=Source(light);SubtitleBoxDetector lightDetector;
         lightDetector.SetNearBarDistance(20);
@@ -5876,11 +6192,38 @@ public:
         key.sharedPicture.bounds={0,45,640,315,640,360};
         SubtitleMeasurementSampler sampler;
         const auto result=sampler.Measure(expandedSource,key,{},24);
-        Assert::IsFalse(result.glyphLocalTop || result.glyphLocalBottom,
-            L"real picture expansion without the opposite physical bar cannot borrow a stale shared edge");
+        // Text paints a real current dark caption card over an otherwise
+        // expanded picture. That local capture is valid, but cannot prove bars.
+        Assert::IsTrue(result.text.detected && SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(result));
+        Assert::IsTrue(result.glyphLocalBottom && !result.glyphLocalTop);
+        Assert::IsFalse(result.sharedNativePhysicalSupport || result.barAuthority || result.barEvidence.available);
         Assert::IsFalse(result.independentBarAnalysis);
         Assert::IsFalse(result.subtitleArProof.accepted);
+        Assert::IsFalse(SubtitleBoxLookahead::HasPendingSharedBarGlyphSupport(result));
+        Assert::AreEqual(45,result.pictureTop);Assert::AreEqual(315,result.pictureBottom);
         Assert::AreEqual(315,result.sharedPicture.bounds.bottom);
+        const auto raw=ExtractActivePictureEvidence(expandedSource);
+        Assert::IsTrue(raw.classification==ActivePictureClassification::FULL_RASTER_TRUSTED);
+        Assert::IsTrue(CurrentPictureRejectsSubtitleContinuation(raw,key.sharedPicture.bounds));
+        const auto retention=EvaluateActivePicturePresentationRetention(expandedSource,key.sharedPicture.bounds);
+        Assert::IsFalse(retention.excludedBandsPixelSafe);
+        auto preview=SubtitleBoxLookahead::Resolve(&result,1,2,5);
+        auto accepted=result.text;accepted.cue=1;accepted.observations=1;
+        SubtitleCutPastePresentation compositor;
+        const auto move=compositor.Consume(accepted,preview,{},25);
+        Assert::IsTrue(move.valid);
+        QualifiedSubtitlePresentationInput input;
+        input.mode=SubtitlePreviewMode::GeneratedGrayBackground;
+        input.currentIdentity=result.identity;input.observation=&result;input.accepted=&accepted;
+        input.composition=&move;input.physicalBase=key.sharedPicture.bounds;
+        input.currentDisplayPicture=key.sharedPicture;input.policyGeneration=2;input.continuityGeneration=5;
+        input.sourcePrepared=true;
+        const auto semantic=EvaluateSubtitlePresentationEvidence(expandedSource,retention,input,false);
+        const auto prepared=EvaluateSubtitlePresentationEvidence(expandedSource,retention,input,true);
+        Assert::IsFalse(semantic.qualified || semantic.renewsHold);
+        Assert::IsFalse(prepared.qualified || prepared.renewsHold);
+        Assert::IsTrue(prepared.status==QualifiedSubtitlePresentationStatus::Conflict);
+        Assert::AreEqual("independent-picture-expansion",prepared.reason);
     }
     TEST_METHOD(PolicyContinuityAndSourceDiscontinuityResetEstablishedCue) {
         for(int kind=0;kind<3;++kind) {

@@ -1730,8 +1730,15 @@ public:
                 moved.generatedCleanup.left<=text.sourcePanel.left && moved.generatedCleanup.right>=text.sourcePanel.right &&
                 moved.generatedCleanup.top<=text.sourcePanel.top && moved.generatedCleanup.bottom>=text.sourcePanel.bottom,
                 L"fresh physical proof reacquires its current cleanup panel after a real plane change");
-            Assert::IsTrue(moved.destination.top!=jittered.destination.top || moved.destination.bottom!=jittered.destination.bottom,
-                L"a genuine four-row selected-plane move redocks without a context reset");
+            const bool destinationStillFits=moved.destination.top>=moved.pictureTop &&
+                moved.destination.bottom<=moved.pictureBottom;
+            if(destinationStillFits)
+                Assert::IsTrue(sameRect(moved.destination,jittered.destination),
+                    L"a small selected-plane move keeps stable output placement while it still fits");
+            else
+                Assert::IsTrue(moved.destination.top!=jittered.destination.top ||
+                    moved.destination.bottom!=jittered.destination.bottom,
+                    L"a selected-plane move redocks only when stable placement no longer fits");
             text.sourcePanel=text.capturePanel=freshRecovery;
             text.capturePanelMeasured=true;
             ConfigureProofFrame(p,text,top,false,9,{},top?45:315,top?37:323);
@@ -1814,6 +1821,33 @@ public:
             const auto stale=placement.Consume(text,p,SubtitleBoxPadding(5));
             Assert::IsFalse(stale.valid,L"a prior accepted cue cannot project glyphs outside current local proof");
         }
+    }
+    TEST_METHOD(SharedNativeGeometryWithoutCurrentGlyphSupportCannotComposeHeldTemplate) {
+        auto preview=Preview();
+        preview.current.barAuthority=false;preview.current.barTrackingAuthority=false;
+        preview.current.barEvidence={};
+        preview.current.pictureTop=45;preview.current.pictureBottom=315;
+        preview.current.sharedPicture.required=true;
+        preview.current.sharedPicture.identity=preview.current.identity;
+        preview.current.sharedPicture.bounds={0,45,640,315,640,360};
+        preview.current.sharedNativeGeometry=true;
+        preview.current.text.detected=false;
+        preview.current.ink=std::make_shared<SubtitleInkSnapshot>(); // stale raw worker payload
+        preview.current.glyphLocalVerifiedBounds={180,290,420,330};
+        preview.current.glyphLocalBottom=true;
+        preview.current.glyphSupportIdentity=preview.current.identity;
+        preview.current.glyphSupportPolicy=preview.policyGeneration;
+        preview.current.glyphSupportContinuity=preview.continuityGeneration;
+        preview.current.glyphSupportTop=45;preview.current.glyphSupportBottom=315;
+        Assert::IsFalse(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(preview.current));
+
+        auto stale=Text();stale.held=true;
+        SubtitleCutPastePresentation compositor;
+        const auto geometry=compositor.Consume(stale,preview);
+        Assert::IsFalse(geometry.valid,
+            L"a cached template and its old ink cannot satisfy this source's missing current-glyph proof");
+        Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(preview.current),
+            L"the negative glyph result retains the shared AR rectangle");
     }
 };
 namespace {
@@ -2192,6 +2226,182 @@ struct SubtitleShaderGpuFixture {
                 L"source padding outside exact content cannot be treated as erased bar pixels");
             Assert::IsTrue(std::abs(Pixel(before,3,32)[c]-Pixel(after,3,32)[c])<0.005f,
                 L"prepared cleanup must preserve unrelated picture");
+        }
+    }
+    void VerifySharedNativeStrictSourceSupport(bool top,int mode) {
+        auto geometry=Geometry();
+        geometry.source=top?SubtitleBoxRect{16,8,48,24}:SubtitleBoxRect{16,40,48,56};
+        geometry.content=top?SubtitleBoxRect{24,12,40,21}:SubtitleBoxRect{24,43,40,52};
+        const SubtitleBoxRect support=top?SubtitleBoxRect{22,9,42,24}:SubtitleBoxRect{22,40,42,55};
+        geometry.pictureCapture=support;
+        geometry.generatedCleanup={support.left,(std::max)(support.top,geometry.pictureTop),
+            support.right,(std::min)(support.bottom,geometry.pictureBottom)};
+        geometry.generatedCleanupExclusion=geometry.generatedCleanup;
+        geometry.glyphLines[0]=geometry.content;
+        geometry.destination=top?SubtitleBoxRect{24,28,40,37}:SubtitleBoxRect{24,27,40,36};
+        geometry.pictureTop=16;geometry.pictureBottom=48;
+        geometry.fromTopBar=top;geometry.extendToBar=false;
+        geometry.sourceSupportRequired=true;
+        // Keep source padding broad for cleanup checks while mapping the copied
+        // glyph body directly into its destination rectangle.
+        geometry.centeredGlyphMapping=true;geometry.glyphScale=1.0f;
+        geometry.glyphTranslateX=0.0f;geometry.glyphTranslateY=top?16.0f:-16.0f;
+
+        std::vector<uint8_t> pixels(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t i=size_t(y*64+x)*4;
+            const bool outsideRetainedPlane=top?y<16:y>=48;
+            pixels[i]=uint8_t(outsideRetainedPlane?170:55+x);
+            pixels[i+1]=uint8_t(outsideRetainedPlane?115:65+y);
+            pixels[i+2]=uint8_t(outsideRetainedPlane?45:90);
+            pixels[i+3]=255;
+            if(x>=support.left && x<support.right && y>=support.top && y<support.bottom)
+                pixels[i]=pixels[i+1]=pixels[i+2]=24; // fresh black donor margin
+            if(x>=geometry.content.left && x<geometry.content.right &&
+                y>=geometry.content.top && y<geometry.content.bottom)
+                pixels[i]=pixels[i+1]=pixels[i+2]=245;
+        }
+        pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
+        Assert::IsTrue(pl_tex_upload(device->gpu,&upload));
+
+        pl_frame beforeTarget{};beforeTarget.num_planes=1;
+        beforeTarget.planes[0].texture=allOutput;beforeTarget.planes[0].components=4;
+        for(int c=0;c<4;++c)beforeTarget.planes[0].component_mapping[c]=c;
+        beforeTarget.repr=pl_color_repr_rgb;beforeTarget.repr.alpha=PL_ALPHA_NONE;
+        beforeTarget.color=input.color;beforeTarget.color.transfer=PL_COLOR_TRC_LINEAR;
+        beforeTarget.crop={0,0,64,64};
+        auto afterTarget=beforeTarget;afterTarget.planes[0].texture=splitOutput;
+        auto params=pl_render_fast_params;params.dither_params=nullptr;
+        Assert::IsTrue(pl_render_image(renderer,&input,&beforeTarget,&params));
+        SubtitleGeneratedGrayStyle style;style.blurPixels=mode==5?3.0f:0.0f;
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,
+            style,0,SubtitleCompositionPhase::CleanupOnly));
+        pl_frame clean{};
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
+        Assert::IsTrue(pl_render_image(renderer,&clean,&afterTarget,&params));
+        const auto before=ReadLinear(allOutput),after=ReadLinear(splitOutput);
+        unsigned cleanedInside=0,cleanedOutside=0,preservedOutsideCapture=0;
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const bool inGlyph=x>=geometry.content.left && x<geometry.content.right &&
+                y>=geometry.content.top && y<geometry.content.bottom;
+            const bool inSupport=x>=support.left && x<support.right &&
+                y>=support.top && y<support.bottom;
+            if(inGlyph) {
+                Assert::IsTrue(Pixel(before,x,y)[0]>0.9f && Pixel(before,x,y)[1]>0.9f &&
+                    Pixel(before,x,y)[2]>0.9f,L"the source cue is live on both sides of the retained plane");
+                Assert::IsTrue(Pixel(after,x,y)[0]<0.9f || Pixel(after,x,y)[1]<0.9f ||
+                    Pixel(after,x,y)[2]<0.9f,
+                    L"strict-source cleanup must erase the proved original glyph, including its bar-side samples");
+                if(top?(y<geometry.pictureTop):(y>=geometry.pictureBottom))++cleanedOutside;
+                else ++cleanedInside;
+            } else if(!inSupport && x>=geometry.source.left && x<geometry.source.right &&
+                y>=geometry.source.top && y<geometry.source.bottom) {
+                ++preservedOutsideCapture;
+                for(int c=0;c<3;++c)
+                    Assert::IsTrue(std::abs(Pixel(before,x,y)[c]-Pixel(after,x,y)[c])<0.005f,
+                        L"pixels outside the verified capture, including live picture beyond retained AR, stay current");
+            }
+        }
+        Assert::IsTrue(cleanedInside>0 && cleanedOutside>0 && preservedOutsideCapture>0);
+
+        SubtitleGeneratedGrayStyle transparent;
+        transparent.opacity=0.0f;transparent.blurPixels=0.0f;
+        transparent.borderOpacity=0.0f;transparent.maxLuminance=1.0f;
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,1,input.color.transfer,
+            transparent,0,SubtitleCompositionPhase::LayerOnly));
+        pl_frame layer{};
+        Assert::IsTrue(ComposeSubtitleLayerBeforeCrop(preparation,device->gpu,input,hook,&layerTexture,layer));
+        pl_tex_params stagingParams{};stagingParams.w=stagingParams.h=64;
+        stagingParams.format=layerTexture->params.format;stagingParams.blit_dst=true;
+        stagingParams.host_readable=true;
+        pl_tex staging=pl_tex_create(device->gpu,&stagingParams);Assert::IsNotNull(staging);
+        pl_tex_blit_params copy{};copy.src=layerTexture;copy.dst=staging;
+        pl_tex_blit(device->gpu,&copy);
+        const auto layerPixels=ReadLinear(staging);pl_tex_destroy(device->gpu,&staging);
+        for(int y=geometry.destination.top;y<geometry.destination.bottom;++y)
+            for(int x=geometry.destination.left;x<geometry.destination.right;++x)
+                Assert::IsTrue(Pixel(layerPixels,x,y)[3]>0.99f,
+                    L"the same strict-source contract preserves the current glyph in its relocated layer");
+        Assert::IsTrue(Pixel(layerPixels,3,32)[3]<0.001f);
+    }
+    void VerifyPendingSharedGlyphOnlyPreservesUnownedPixels(bool top,int mode) {
+        auto geometry=Geometry();
+        const SubtitleBoxRect line0=top?SubtitleBoxRect{24,3,40,7}:SubtitleBoxRect{24,51,40,55};
+        const SubtitleBoxRect line1=top?SubtitleBoxRect{24,9,40,13}:SubtitleBoxRect{24,57,40,61};
+        geometry.source=top?SubtitleBoxRect{16,1,48,15}:SubtitleBoxRect{16,49,48,63};
+        geometry.content={24,line0.top,40,line1.bottom};
+        geometry.pictureCapture=geometry.content;
+        geometry.glyphLines[0]=line0;geometry.glyphLines[1]=line1;geometry.glyphLines[2]={};
+        geometry.generatedCleanup={};geometry.generatedCleanupExclusion={};
+        geometry.generatedCleanupRowCount=0;
+        geometry.pictureTop=16;geometry.pictureBottom=48;
+        geometry.fromTopBar=top;geometry.extendToBar=false;
+        geometry.destination=top?SubtitleBoxRect{24,24,40,34}:SubtitleBoxRect{24,26,40,36};
+        geometry.centeredGlyphMapping=true;geometry.glyphScale=1.0f;
+        geometry.glyphTranslateX=0.0f;
+        geometry.glyphTranslateY=float(geometry.destination.top-geometry.content.top);
+        geometry.sourceSupportRequired=true;geometry.pendingGlyphsOnly=true;
+
+        std::vector<uint8_t> pixels(64*64*4,255);
+        for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+            const size_t i=size_t(y*64+x)*4;
+            pixels[i]=uint8_t(80+(x*3+y)%130);
+            pixels[i+1]=uint8_t(90+(y*5+x)%120);
+            pixels[i+2]=uint8_t(70+(x+y*2)%140);
+            pixels[i+3]=255;
+        }
+        for(int y=geometry.content.top;y<geometry.content.bottom;++y)
+            for(int x=geometry.content.left;x<geometry.content.right;++x) {
+                const size_t i=size_t(y*64+x)*4;
+                pixels[i]=pixels[i+1]=pixels[i+2]=18; // black current bar backing
+            }
+        for(const auto& line:{line0,line1})
+            for(int y=line.top;y<line.bottom;++y)for(int x=28;x<36;++x) {
+                const size_t i=size_t(y*64+x)*4;
+                pixels[i]=pixels[i+1]=pixels[i+2]=245; // current source glyph
+            }
+        const int gapY=top?8:56;
+        const size_t gap=size_t(gapY*64+32)*4;
+        pixels[gap]=245;pixels[gap+1]=55;pixels[gap+2]=205; // bright but unowned interline pixel
+        const int paddingY=top?4:52;
+        const size_t padding=size_t(paddingY*64+20)*4;
+        pixels[padding]=245;pixels[padding+1]=175;pixels[padding+2]=65; // outside current capture support
+        const size_t live=size_t((top?16:47)*64+32)*4;
+        pixels[live]=238;pixels[live+1]=205;pixels[live+2]=45; // adjacent live picture
+
+        pl_tex_transfer_params upload{};upload.tex=inputTexture;upload.ptr=pixels.data();
+        Assert::IsTrue(pl_tex_upload(device->gpu,&upload));
+        pl_frame beforeTarget{};beforeTarget.num_planes=1;
+        beforeTarget.planes[0].texture=allOutput;beforeTarget.planes[0].components=4;
+        for(int c=0;c<4;++c)beforeTarget.planes[0].component_mapping[c]=c;
+        beforeTarget.repr=pl_color_repr_rgb;beforeTarget.repr.alpha=PL_ALPHA_NONE;
+        beforeTarget.color=input.color;beforeTarget.color.transfer=PL_COLOR_TRC_LINEAR;
+        beforeTarget.crop={0,0,64,64};
+        auto afterTarget=beforeTarget;afterTarget.planes[0].texture=splitOutput;
+        auto params=pl_render_fast_params;params.dither_params=nullptr;
+        Assert::IsTrue(pl_render_image(renderer,&input,&beforeTarget,&params));
+        SubtitleGeneratedGrayStyle style;style.blurPixels=mode==5?3.0f:0.0f;
+        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,input.color.transfer,
+            style,0,SubtitleCompositionPhase::CleanupOnly));
+        pl_frame clean{};
+        Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,device->gpu,input,hook,&cleanTexture,clean));
+        Assert::IsTrue(pl_render_image(renderer,&clean,&afterTarget,&params));
+        const auto before=ReadLinear(allOutput),after=ReadLinear(splitOutput);
+        for(const auto& line:{line0,line1}) {
+            const auto original=Pixel(before,31,line.top+1);
+            const auto cleaned=Pixel(after,31,line.top+1);
+            Assert::IsTrue(original[0]>0.9f && original[1]>0.9f && original[2]>0.9f);
+            Assert::IsTrue(cleaned[0]<original[0]-0.05f || cleaned[1]<original[1]-0.05f ||
+                cleaned[2]<original[2]-0.05f,
+                L"pending cleanup erases each currently supported bar-side glyph line");
+        }
+        for(int c=0;c<3;++c) {
+            Assert::IsTrue(std::abs(Pixel(before,32,gapY)[c]-Pixel(after,32,gapY)[c])<0.005f,
+                L"the bright interline pixel is outside both pending glyph lines and stays current");
+            Assert::IsTrue(std::abs(Pixel(before,20,paddingY)[c]-Pixel(after,20,paddingY)[c])<0.005f,
+                L"source padding outside the exact current capture remains untouched");
+            Assert::IsTrue(std::abs(Pixel(before,32,top?16:47)[c]-Pixel(after,32,top?16:47)[c])<0.005f,
+                L"the adjacent live picture remains untouched");
         }
     }
     void VerifySurroundMovingTextureDoesNotAmplifySmallFrameChanges() {
@@ -3162,6 +3372,16 @@ public:
         SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
         for(int mode:{3,5})for(bool top:{false,true})
             rgb.VerifyPreparedBarContentErasure(mode,top);
+    }
+    TEST_METHOD(SharedNativeStrictSourceSupportCleansOnlyCurrentPixelsAndCopiesGlyphAtBothBars) {
+        SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
+        for(int mode:{3,5})for(bool top:{false,true})
+            rgb.VerifySharedNativeStrictSourceSupport(top,mode);
+    }
+    TEST_METHOD(PendingSharedGlyphOnlyGpuCleanupPreservesBrightInterlineAndPaddingPixels) {
+        SubtitleShaderGpuFixture rgb(PL_COLOR_TRC_SRGB);
+        for(int mode:{3,5})for(bool top:{false,true})
+            rgb.VerifyPendingSharedGlyphOnlyPreservesUnownedPixels(top,mode);
     }
     TEST_METHOD(AttachedBlackPanelHasNoFractionalSamplingSeamAtEitherBar) {
         SubtitleShaderGpuFixture gpu;
