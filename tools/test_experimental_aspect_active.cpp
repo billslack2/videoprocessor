@@ -29,6 +29,57 @@ int main(){
  ActivePictureTransitionModel model;ActivePictureTransitionDecision decision;
  for(uint64_t n=1;n<=30;++n)decision=model.Observe(MakeActivePictureObservation(evidence,n,24));
  check(decision.stable&&decision.stableBounds.top==90,"existing transition model accepts measured native geometry");
+ // Adapter-contract fixture: detector qualification is tested independently on
+ // pixels. Three supported edges must not invent support at the dark left edge.
+ Result qualified;qualified.kind=Kind::FullRaster;qualified.complete=true;
+ qualified.left=qualified.top=0;qualified.right=1280;qualified.bottom=720;
+ qualified.fullExtentQualified=true;qualified.fullExtentScore=0.9;
+ qualified.pictureEdgeSupported[1]=qualified.pictureEdgeSupported[2]=qualified.pictureEdgeSupported[3]=true;
+ auto extent=EvidenceFromMeasurement(source,qualified);
+ check(extent.available&&extent.classification==ActivePictureClassification::FULL_RASTER_TRUSTED&&
+       extent.trustedBounds.left==0&&extent.trustedBounds.top==0&&extent.trustedBounds.right==1280&&extent.trustedBounds.bottom==720,
+       "qualified full extent maps exact raster without a forced standard ratio");
+ check(extent.axisEvidence.horizontal.state==ActivePictureAxisState::UNKNOWN&&
+       extent.axisEvidence.vertical.state==ActivePictureAxisState::FULL_EXTENT_SUPPORTED&&
+       !extent.axisEvidence.horizontal.barCandidate,
+       "three-edge extent preserves uncertain left edge and only supported opposing axis");
+ check(!extent.left.trusted&&!extent.top.trusted&&!extent.right.trusted&&!extent.bottom.trusted&&
+       !extent.blackReference.evaluated&&!extent.axisEvidence.verticalCropProfileEvaluated&&
+       !extent.axisEvidence.verticalCropGlyphExclusions&&extent.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::NONE,
+       "full extent invents no matte, bar, strict profile or subtitle certificate");
+ ActivePictureTransitionModel startup;
+ auto unavailable=MakeActivePictureObservation(ActivePictureEvidence{},1,24);
+ startup.Observe(unavailable);
+ auto startFull=startup.Observe(MakeActivePictureObservation(extent,2,24));
+ check(startFull.publish&&startFull.stable&&startFull.authoritativeClassification==ActivePictureClassification::FULL_RASTER_TRUSTED,
+       "real transition model acquires qualified full raster after startup unknown");
+ auto pendingFull=model.Observe(MakeActivePictureObservation(extent,31,24));
+ check(!pendingFull.publish&&pendingFull.stableBounds.top==90,
+       "scope to full keeps existing adjacent confirmation requirement");
+ auto confirmedFull=model.Observe(MakeActivePictureObservation(extent,32,24));
+ check(confirmedFull.publish&&confirmedFull.bounds.top==0&&confirmedFull.bounds.bottom==720,
+       "real transition model confirms scope to qualified full raster with ambiguous left edge");
+ bool returnedScope=false;
+ for(uint64_t n=33;n<=180;++n){auto returned=model.Observe(MakeActivePictureObservation(evidence,n,24));
+     returnedScope=returnedScope||(returned.publish&&returned.bounds.top==90&&returned.bounds.bottom==630);}
+ check(returnedScope,"real transition model returns from qualified full raster to measured scope");
+ auto incomplete=qualified;incomplete.complete=false;
+ check(!EvidenceFromMeasurement(source,incomplete).available,"budget-interrupted full extent cannot gain authority");
+ auto brightnessOnly=qualified;brightnessOnly.fullExtentQualified=false;
+ check(!EvidenceFromMeasurement(source,brightnessOnly).available,"unqualified bright outer pixels cannot gain full extent authority");
+ auto wrongRaster=qualified;wrongRaster.right=1278;
+ check(!EvidenceFromMeasurement(source,wrongRaster).available,"qualified result must match current full input raster");
+ auto unknownRange=source;unknownRange.range=AnalysisLumaRange::Unknown;
+ check(!EvidenceFromMeasurement(unknownRange,qualified).available,"unknown code range cannot import full extent authority");
+ auto absentSource=source;absentSource.data=nullptr;
+ check(!EvidenceFromMeasurement(absentSource,qualified).available,"missing source cannot import full extent authority");
+ ActivePictureMeasurementCache fullCache;fullCache.Begin(live,id,1,1);
+ check(fullCache.SeedQueued(source,id,extent,EvaluateActivePictureArDarkness(source,extent)),
+       "qualified full extent uses existing exact-source worker cache");
+ auto stale=id;++stale.rendererGeneration;
+ check(!fullCache.SeedQueued(source,stale,extent,darkness),"full extent from stale renderer context cannot import");
+ stale=id;++stale.analysisDomainKey;
+ check(!fullCache.SeedQueued(source,stale,extent,darkness),"full extent from another pixel domain cannot import");
  MeasuredHistory history;history.Hint(id,1280,720,1000);history.Observe(measured,1280,720,1000);
  ++id.acceptedSequence;check(history.Hint(id,1280,720,1100).valid,"current context may nominate established measurement");
  ++id.viewportGeneration;++id.acceptedSequence;check(!history.Hint(id,1280,720,1200).valid,"viewport reset invalidates history");

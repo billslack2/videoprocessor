@@ -4,7 +4,7 @@ This increment follows the Eternals shadow test on `74456bcb`. It is an opt-in a
 
 ## What changes on screen
 
-With child-process environment `VP_AR_EXPERIMENT=active`, successful new bar measurements replace the existing raw native measurement in the bounded lookahead measurement worker. The renderer imports them only for the exact source, interpretation and context already required by its measurement cache. This can affect detected geometry and eventual framing. Existing transition admission, subtitle inspection/composition and current-source presentation remain responsible for their respective decisions. Existing confirmation delays and reset-related presentation fallback have not been removed.
+With active trial mode enabled by the child-process environment or executable-directory marker, successful new bar measurements and qualified full-picture extent observations replace the existing raw native measurement in the bounded lookahead measurement worker. The renderer imports them only for the exact source, interpretation and context already required by its measurement cache. This can affect detected geometry and eventual framing. Existing transition admission, subtitle inspection/composition and current-source presentation remain responsible for their respective decisions. Existing confirmation delays and reset-related presentation fallback have not been removed.
 
 The scorer keeps several spatial boundary candidates, evaluates opposing pairs jointly and refines the selected pair in native pixels. It combines measured matte variation/darkness, boundary contrast, strip agreement, approximate symmetry, familiar-ratio support and a small continuity bonus. It no longer discards a weaker true edge just because a stronger interior edge exists. One strong edge can support a partly contaminated opposite edge; at least three of nine current strips must support each edge, with at least seven on one edge. History and standard ratios never fabricate a missing boundary or snap coordinates. Arbitrary measured ratios remain valid. A bounded exterior probe near the source sides rejects matte-like panels with distributed visible picture beyond the proposed crop; ratio/history support cannot override that contradiction.
 
@@ -18,7 +18,7 @@ New evidence does not borrow the old detector's strict matte, side-profile or su
 
 ## Launch and assess
 
-Close the currently running VP. Use `Start-AR-Active.cmd` in the prepared test folder. `Start-AR-Control.cmd` launches the same binaries with the experiment disabled. The deployed player/configuration are not replaced. The test folder has copies of the first trial's current cfg/state, preserving operator selections.
+Close the currently running VP. Use `Start-AR-Active.cmd` or open `VideoProcessor.exe` in the prepared test folder; its local marker retains active mode across restarts. `Start-AR-Control.cmd` launches the same binaries with the experiment disabled. The deployed player/configuration are not replaced. The test folder has copies of the preceding trial's current cfg/state, preserving operator selections.
 
 Repeat the Eternals scenes, including transitions, dark/dirty bars and visible subtitles. Include seek/rewind/fast-forward, volume UI and subtitle Off mode. Note timestamps for a wrong crop, slow change, caption loss or playback hitch. Logs are in that test folder's `logs\vp.log`.
 
@@ -56,3 +56,18 @@ The old all-sided-inset admission policy is a separate investigation. This
 increment does not change transition admission, subtitle logic, presentation
 fallback or selected user profiles. Use the intended Scope profile when judging
 visible crop behavior; the saved 16:9 profile disables automatic cropping.
+## Positive full-extent trial and restart persistence - 2026-11-18
+
+The paused planet capture is a required regression: actual bright picture
+reaches top, bottom and right while the dark left side has no coherent bar
+boundary. Mere perimeter brightness is not sufficient full-extent authority.
+The qualified path combines structured current picture and competing unpaired
+boundary evidence; uncertainty on an edge remains explicit. No aspect snapping,
+old pixel reuse, subtitle certificates or extra confirmation delay is introduced.
+
+An isolated trial can opt in using vp-ar-trial.mode beside VideoProcessor.exe.
+Its content is active, shadow or off. Explicit VP_AR_EXPERIMENT overrides it;
+Control launchers must set off, rather than clear the variable. Ordinary
+installations have no marker and remain off. Startup AR-EXPERIMENT records
+identify mode and provenance, and the file is resolved beside the host EXE,
+never from the working directory. Resolution is startup-only, not per frame.

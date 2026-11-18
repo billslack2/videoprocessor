@@ -1,5 +1,6 @@
 #pragma once
 #include "../ExperimentalAspectDetector.h"
+#include "ExperimentalAspectMode.h"
 #include <ActivePictureEvidence.h>
 #include <DebugLog.h>
 #include <Windows.h>
@@ -36,15 +37,42 @@ public:
     }
 };
 inline bool ActiveTrialEnabled(){
-    static const bool enabled=[] {char mode[16]{};return GetEnvironmentVariableA("VP_AR_EXPERIMENT",mode,sizeof(mode))==6&&std::strcmp(mode,"active")==0;}();
+    static const bool enabled=[] {
+        const auto mode=ReadTrialMode();
+        DebugLog::Log("[AR-EXPERIMENT] consumer=active mode=%s source=%s",TrialModeName(mode.mode),mode.source);
+        return mode.mode==TrialMode::Active;
+    }();
     return enabled;
 }
 // No legacy certificates are copied to new geometry. Uncropped axes remain
 // explicitly unknown unless current perimeter samples independently support them.
 inline ActivePictureEvidence EvidenceFromMeasurement(const AnalysisLumaSource& source,const Result& measured){
     ActivePictureEvidence out;
-    if(!measured.complete||measured.kind!=Kind::Bars)return out;
+    if(!measured.complete)return out;
     const int w=source.width,h=source.height;
+    if(measured.kind==Kind::FullRaster){
+        // Qualification belongs to the completed current-pixel detector pass.
+        // Mere brightness, a missing bar pair or history never grants extent.
+        if(!source.IsValid()||source.range==AnalysisLumaRange::Unknown||
+           !measured.fullExtentQualified||measured.left!=0||measured.top!=0||
+           measured.right!=w||measured.bottom!=h)return out;
+        out.available=true;out.classification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+        out.proposedBounds={0,0,w,h,w,h,double(w)/h,ActivePictureBounds::BarAxes::NONE};
+        out.trustedBounds=out.proposedBounds;out.lumaSamples=measured.samples;
+        out.reason="experimental qualified current-pixel full extent";
+        auto extentAxis=[&](int first,int opposite){
+            ActivePictureAxisEvidence axis;axis.scanComplete=true;
+            // A dark/ambiguous edge stays unknown. Do not manufacture four-edge
+            // support, matte calibration, glyph ownership or crop certificates.
+            const bool both=measured.pictureEdgeSupported[first]&&measured.pictureEdgeSupported[opposite];
+            axis.state=both?ActivePictureAxisState::FULL_EXTENT_SUPPORTED:ActivePictureAxisState::UNKNOWN;
+            axis.reason=both?ActivePictureAxisReason::FULL_EXTENT_SUPPORTED:ActivePictureAxisReason::NO_FULL_EXTENT_SUPPORT;
+            return axis;
+        };
+        out.axisEvidence.horizontal=extentAxis(0,2);out.axisEvidence.vertical=extentAxis(1,3);
+        return out;
+    }
+    if(measured.kind!=Kind::Bars)return out;
     if(measured.left<0||measured.top<0||measured.right>w||measured.bottom>h||
        measured.right-measured.left<w/3||measured.bottom-measured.top<h/3)return out;
     const bool horizontal=measured.left>0||measured.right<w,vertical=measured.top>0||measured.bottom<h;
@@ -108,10 +136,12 @@ inline ActivePictureEvidence MeasureActiveTrial(const AnalysisLumaSource& source
     static thread_local bool previousApplied=false;
     if(nowMs>=nextLogMs||applied!=previousApplied){
         nextLogMs=nowMs+250;previousApplied=applied;
-        DebugLog::Log("[AR-ACTIVE] generation=%llu source=%llu domain=%llu viewport=%llu renderer=%llu applied=%d prior=%d kind=%u complete=%d measured=%d,%d,%d,%d score=%.3f support=%.2f,%.2f,%.2f,%.2f pair_attempts=%u,%u accepted_pair=%u,%u reason=%s selected_kind=%u selected=%d,%d,%d,%d worker_ms=%.3f",
+        DebugLog::Log("[AR-ACTIVE] generation=%llu source=%llu domain=%llu viewport=%llu renderer=%llu applied=%d prior=%d kind=%u complete=%d measured=%d,%d,%d,%d score=%.3f support=%.2f,%.2f,%.2f,%.2f pair_attempts=%u,%u accepted_pair=%u,%u full_qualified=%d full_score=%.3f picture_edges=%d,%d,%d,%d unpaired_support=%.2f,%.2f,%.2f,%.2f reason=%s selected_kind=%u selected=%d,%d,%d,%d worker_ms=%.3f",
             identity.transportGeneration,identity.acceptedSequence,identity.analysisDomainKey,identity.viewportGeneration,identity.rendererGeneration,
             applied,prior.valid,unsigned(result.kind),result.complete,result.left,result.top,result.right,result.bottom,result.score,
-            result.edges[0].support,result.edges[1].support,result.edges[2].support,result.edges[3].support,result.pairAttempts[0],result.pairAttempts[1],result.acceptedPairAttempt[0],result.acceptedPairAttempt[1],result.reason,
+            result.edges[0].support,result.edges[1].support,result.edges[2].support,result.edges[3].support,result.pairAttempts[0],result.pairAttempts[1],result.acceptedPairAttempt[0],result.acceptedPairAttempt[1],result.fullExtentQualified,result.fullExtentScore,
+            result.pictureEdgeSupported[0],result.pictureEdgeSupported[1],result.pictureEdgeSupported[2],result.pictureEdgeSupported[3],
+            result.unpairedBoundarySupport[0],result.unpairedBoundarySupport[1],result.unpairedBoundarySupport[2],result.unpairedBoundarySupport[3],result.reason,
             unsigned(evidence.classification),evidence.trustedBounds.left,evidence.trustedBounds.top,evidence.trustedBounds.right,evidence.trustedBounds.bottom,
             std::chrono::duration<double,std::milli>(Clock::now()-start).count());
     }

@@ -16,6 +16,10 @@ struct Result {
     size_t samples=0; bool complete=false;
     // Diagnostics only. Acceptance is one-based and cleared on veto/incomplete work.
     unsigned pairAttempts[2]{}, acceptedPairAttempt[2]{};
+    // Structured current-pixel support ranks a full-extent hypothesis; an
+    // unsupported edge remains unknown, never a fabricated picture certificate.
+    bool fullExtentQualified=false, pictureEdgeSupported[4]{};
+    double unpairedBoundarySupport[4]{}, fullExtentScore=0;
     const char* reason="invalid-source";
 };
 inline double Unit(double x){return (std::max)(0.0,(std::min)(1.0,x));}
@@ -50,6 +54,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
     std::array<std::array<Candidate,12>,4> candidates{};
     std::array<int,4> sizes{},steps{};
     std::array<double,4> fullSupport{};
+    std::array<bool,4> competingMatteBoundary{};
     for(int side=0;side<4&&!failed;++side){
         const int extent=(side==1||side==3)?height:width;
         const int step=(std::max)(2,extent/192),count=(std::min)(96,extent/3/step);steps[side]=step;
@@ -74,12 +79,42 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         for(int i=2;i<count-2&&!failed;++i){
             if((i&7)==0&&!allow()){failed=true;out.reason="budget";break;}
             std::array<int,9> strengths{},spreads{},floors{},highs{};int support=0;unsigned laneMask=0;
+            int weakBoundarySupport=0;
             for(int lane=0;lane<9;++lane){
                 const double dark=Unit((nominalBlack+96.0-matte[lane][i])/96.0);
+                // A weak but highly coherent one-sided step competes with full
+                // extent even when it cannot establish an opposing bar pair.
+                if(contrast[lane][i]>=2 && contrast[lane][i]>=.2*noise[lane][i])
+                    ++weakBoundarySupport;
                 if(contrast[lane][i]>=4&&contrast[lane][i]/(8.0+noise[lane][i])*dark>=1){
                     laneMask|=1u<<lane;strengths[support]=contrast[lane][i];spreads[support]=noise[lane][i];floors[support]=matte[lane][i];highs[support]=high[lane][i];++support;
                 }
             }
+            bool localizedWeakBoundary=false;
+            if(weakBoundarySupport>=8 && i>=5 && i<count-5){
+                std::array<int,9> center{},before{},after{},prefixNoise{};
+                for(int lane=0;lane<9;++lane){
+                    center[lane]=contrast[lane][i];
+                    before[lane]=contrast[lane][i-3];
+                    after[lane]=contrast[lane][i+3];
+                    prefixNoise[lane]=noise[lane][i];
+                }
+                // A gradual spatial fade is picture ambiguity, not a coherent
+                // matte boundary. The weak step must rise above nearby slopes.
+                const int neighboring=(std::max)(0,(std::max)(Median(before,9),Median(after,9)));
+                localizedWeakBoundary=Median(center,9)>=neighboring+(Median(prefixNoise,9)>4?2:1);
+            }
+            if(support>=3)competingMatteBoundary[side]=true;
+            if(localizedWeakBoundary){
+                std::array<int,9> prefixFloors{};
+                for(int lane=0;lane<9;++lane)prefixFloors[lane]=matte[lane][i];
+                // Texture across a raised bar does not erase its independently
+                // measured inward boundary. Bright interior structure is not matte.
+                if(Median(prefixFloors,9)<nominalBlack+96)competingMatteBoundary[side]=true;
+            }
+            if(support>=3 || localizedWeakBoundary)
+                out.unpairedBoundarySupport[side]=(std::max)(out.unpairedBoundarySupport[side],
+                    (std::max)(support,localizedWeakBoundary?weakBoundarySupport:0)/9.0);
             if(support<3)continue;
             auto& c=options[n++];c.index=i;c.laneMask=laneMask;auto& e=c.edge;e.depth=i*step;
             e.support=support/9.0;e.contrast=Median(strengths,support);e.noise=Median(spreads,support);
@@ -213,13 +248,59 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         }
         if(conflict){accepted[axis]=false;out.acceptedPairAttempt[axis]=0;exteriorConflict=true;}
     }
+    out.fullScore=*std::min_element(fullSupport.begin(),fullSupport.end());
+    if (!failed && !accepted[0] && !accepted[1]) {
+        int supportedEdges = 0;
+        bool competingBoundary = false;
+        // A sparse positive level alone also describes raised matte. Require
+        // broad variation that persists inward: independent noise, uniform
+        // lifted bars and isolated edge overlays do not supply this evidence.
+        for (int side = 0; side < 4 && !failed; ++side) {
+            const bool alongRow = side == 1 || side == 3;
+            const int across = alongRow ? width : height;
+            const int extent = alongRow ? height : width;
+            std::array<std::array<int,48>,3> strips{};
+            const int depths[] = {0, 4, 16};
+            for (int depth = 0; depth < 3 && !failed; ++depth) {
+                const int coordinate = side >= 2 ? extent - 1 - depths[depth] : depths[depth];
+                for (int lane = 0; lane < 48 && !failed; ++lane) {
+                    const int position = ((lane * 2 + 1) * across) / 96;
+                    strips[depth][lane] = pixel(alongRow ? position : coordinate,
+                        alongRow ? coordinate : position);
+                }
+            }
+            if (failed) break;
+            auto sorted = strips[0];
+            std::sort(sorted.begin(), sorted.end());
+            const int spread = sorted[43] - sorted[4];
+            bool coherent = spread >= 32;
+            for (int depth = 1; depth < 3 && coherent; ++depth) {
+                double sumA = 0, sumB = 0, sumAA = 0, sumBB = 0, sumAB = 0;
+                for (int lane = 0; lane < 48; ++lane) {
+                    const double a = strips[0][lane], b = strips[depth][lane];
+                    sumA += a; sumB += b; sumAA += a*a; sumBB += b*b; sumAB += a*b;
+                }
+                const double covariance = 48*sumAB - sumA*sumB;
+                const double varianceA = 48*sumAA - sumA*sumA;
+                const double varianceB = 48*sumBB - sumB*sumB;
+                coherent = covariance > 0 && varianceA > 0 && varianceB > 0 &&
+                    covariance*covariance >= .49*varianceA*varianceB;
+            }
+            out.pictureEdgeSupported[side] = coherent;
+            if (coherent) ++supportedEdges;
+            if (competingMatteBoundary[side] ||
+                (!coherent && out.unpairedBoundarySupport[side] > 0)) competingBoundary = true;
+        }
+        out.fullExtentScore = supportedEdges / 4.0;
+        out.fullExtentQualified = !failed && supportedEdges >= 3 && !competingBoundary;
+    }
     if(failed||!allow()){
         if(!failed)out.reason="budget";
         out.acceptedPairAttempt[0]=out.acceptedPairAttempt[1]=0;
+        out.fullExtentQualified=false;
         return out;
     }
     out.complete=true;out.reason=exteriorConflict?"exterior-picture-conflict":"insufficient-spatial-evidence";
-    out.fullScore=*std::min_element(fullSupport.begin(),fullSupport.end());
     if(accepted[0]){out.left=out.edges[0].depth;out.right=width-out.edges[2].depth;}
     if(accepted[1]){out.top=out.edges[1].depth;out.bottom=height-out.edges[3].depth;}
     if(accepted[0]||accepted[1]){
@@ -227,7 +308,11 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         out.ratioSupport=RatioSupport(double(out.right-out.left)/(out.bottom-out.top));
         const int a=pairScores[1]>=pairScores[0]?1:0,extent=a?height:width;
         out.symmetry=Unit(1-std::abs(out.edges[a].depth-out.edges[a+2].depth)/double((std::max)(8,extent/40)));
-    }else if(out.fullScore>=.88){out.kind=Kind::FullRaster;out.score=out.fullScore;out.reason="distributed-positive-outer-picture";}
+    }else if(out.fullExtentQualified||out.fullScore>=.88){
+        out.kind=Kind::FullRaster;
+        out.score=out.fullExtentQualified?out.fullExtentScore:out.fullScore;
+        out.reason=out.fullExtentQualified?"structured-current-picture-full-extent":"distributed-positive-outer-picture";
+    }
     return out;
 }
 } // namespace ExperimentalAspect

@@ -8,6 +8,8 @@ std::atomic<unsigned> ownerReleasedOn{0};
 std::mutex recordsMutex;
 std::vector<std::string> records;
 void __cdecl Sink(const char* text){
+ // This blocking sink targets worker measurement delivery, not startup mode logs.
+ if(std::strncmp(text,"[AR-SHADOW]",11)!=0)return;
  {std::lock_guard<std::mutex> lock(recordsMutex);records.emplace_back(text);}
  entered=true;
  while(!releaseLog.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));

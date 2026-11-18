@@ -1,5 +1,6 @@
 #pragma once
 #include "../ExperimentalAspectDetector.h"
+#include "ExperimentalAspectMode.h"
 #include <AnalysisFrame.h>
 #include <ActivePictureDecisionTimeline.h>
 #include <DebugLog.h>
@@ -72,8 +73,9 @@ class ExperimentalAspectShadow {
     }
 public:
     ExperimentalAspectShadow() {
-        char mode[16]{};
-        if(GetEnvironmentVariableA("VP_AR_EXPERIMENT",mode,sizeof(mode))!=6 || std::strcmp(mode,"shadow")!=0)return;
+        const auto mode=ExperimentalAspect::ReadTrialMode();
+        DebugLog::Log("[AR-EXPERIMENT] consumer=shadow mode=%s source=%s",ExperimentalAspect::TrialModeName(mode.mode),mode.source);
+        if(mode.mode!=ExperimentalAspect::TrialMode::Shadow)return;
         try {worker=std::thread([this]{Run();});enabled=true;}
         catch (...) {enabled=false;} // Optional diagnostics cannot prevent playback.
     }

@@ -92,6 +92,66 @@ int main(){
  check(contradictedRetry.complete&&contradictedRetry.kind==Kind::Unknown&&
        contradictedRetry.pairAttempts[1]==2&&contradictedRetry.acceptedPairAttempt[1]==0,
        "retried pair still rejects exterior picture without further retry");
+ // The full-extent hypothesis needs structured picture, not elevated black.
+ auto structured=[](int x,int y){return int(250+90*std::sin(x/470.0)+60*std::cos(y/400.0));};
+ auto noise=[](int x,int y){return (x*73+y*37+x*y*11)%17-8;};
+ auto positiveFull=Measure(3840,2160,0,[&](int x,int y,int&v){v=structured(x,y);return true;},[]{return true;});
+ check(positiveFull.kind==Kind::FullRaster&&positiveFull.fullExtentQualified&&positiveFull.fullExtentScore==1,
+       "structured picture supports full extent on all four edges");
+ auto raisedFull=Measure(3840,2160,0,[&](int x,int y,int&v){v=64+noise(x,y);return true;},[]{return true;});
+ check(raisedFull.kind==Kind::FullRaster&&!raisedFull.fullExtentQualified,
+       "raised noisy level alone does not qualify full extent");
+ auto darkSidePicture=[&](int x,int y,int&v){
+   const double blend=(std::min)(1.0,x/1200.0);
+   v=int((1-blend)*(64+noise(x,y))+blend*structured(x,y));return true;
+ };
+ auto threeEdges=Measure(3840,2160,0,darkSidePicture,[]{return true;});
+ check(threeEdges.kind==Kind::FullRaster&&threeEdges.fullExtentQualified&&
+       !threeEdges.pictureEdgeSupported[0]&&threeEdges.unpairedBoundarySupport[0]==0,
+       "three structured edges can outweigh dark side without coherent bar boundary");
+ auto blackSide=Measure(3840,2160,0,[&](int x,int y,int&v){
+   const double blend=(std::min)(1.0,x/1600.0);
+   v=int(blend*structured(x,y));return true;
+ },[]{return true;});
+ check(blackSide.kind==Kind::FullRaster&&blackSide.fullExtentQualified&&blackSide.fullScore<.88&&
+       !blackSide.pictureEdgeSupported[0],"three structured edges do not require brightness on dark fourth edge");
+ for(int rise:{6,10,100}){
+   auto oneSided=Measure(3840,2160,0,[&](int x,int y,int&v){
+     if(x<490)v=64+noise(x,y);
+     else {const double blend=(std::min)(1.0,(x-490)/1200.0);
+       v=int((1-blend)*(64+rise+noise(x,y))+blend*structured(x,y));}
+     return true;
+   },[]{return true;});
+   check(!oneSided.fullExtentQualified&&oneSided.unpairedBoundarySupport[0]>0,
+         "coherent asymmetric raised bar competes with three-edge full hypothesis");
+ }
+ for(int rise:{6,100}){
+   auto texturedBar=Measure(3840,2160,0,[&](int x,int y,int&v){
+     const int matte=int(64+25*std::sin(y/400.0));
+     if(x<490)v=matte;
+     else {const double blend=(std::min)(1.0,(x-490)/1200.0);
+       v=int((1-blend)*(matte+rise)+blend*structured(x,y));}
+     return true;
+   },[]{return true;});
+   check(!texturedBar.fullExtentQualified&&texturedBar.unpairedBoundarySupport[0]>0,
+       "structured texture on raised one-sided bar cannot erase its inward boundary");
+ }
+ auto raisedScope=Measure(3840,2160,0,[&](int x,int y,int&v){
+   v=(y<276||y>=1884)?64+noise(x,y):structured(x,y);return true;
+ },[]{return true;});
+ check(!raisedScope.fullExtentQualified,"raised noisy scope bars do not qualify full extent");
+ auto cornerOverlay=Measure(3840,2160,0,[&](int x,int y,int&v){
+   v=64+noise(x,y);if((x<160||x>=3680)&&(y<90||y>=2070))v=structured(x,y);return true;
+ },[]{return true;});
+ check(!cornerOverlay.fullExtentQualified,"corner overlays do not establish full picture extent");
+ auto incompleteFull=Measure(3840,2160,0,darkSidePicture,[]{return true;},threeEdges.samples-32);
+ check(!incompleteFull.complete&&!incompleteFull.fullExtentQualified&&incompleteFull.kind==Kind::Unknown,
+       "incomplete positive extent probe has no full-raster authority");
+ size_t extentReads=0;
+ auto expiredExtent=Measure(3840,2160,0,[&](int x,int y,int&v){++extentReads;return darkSidePicture(x,y,v);},
+   [&]{return extentReads<threeEdges.samples-32;});
+ check(!expiredExtent.complete&&!expiredExtent.fullExtentQualified&&expiredExtent.kind==Kind::Unknown,
+       "deadline during structured extent probe publishes no accepted prefix");
  double total=0,worst=0;size_t samples=0;
  for(int i=0;i<100;++i){auto start=std::chrono::steady_clock::now();auto result=scene(3840,2160,0,277,0,277,true,true);
  auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();total+=ms;worst=std::max(worst,ms);samples=result.samples;}
