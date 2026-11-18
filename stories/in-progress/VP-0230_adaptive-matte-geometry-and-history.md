@@ -2,7 +2,9 @@
 
 ## Status
 
-Backlog
+In Progress
+
+2026-11-17 readiness: user authorized a clean detector experiment on the latest local subtitle build 43a443cc. Worktree E:\codex\videoprocessor\ar-confidence-shadow-20261117, branch codex/ar-confidence-shadow-20261117. Initial scope is shadow-only current-source measurement; a separate bounded worker retains immutable source ownership, never changes presentation or subtitles, and discards incomplete work. Validate synthetic geometry/contamination/unknown cases, Release build, then live shadow telemetry. Confidence is an uncalibrated score; temporal learning and production adoption remain out of scope for the first candidate.
 
 Requested 2026-11-11. Continue from the VP-0228 clean Eternals investigation. First implement an offline comparison of measured matte contrast, opposing boundary geometry and recent verified history against the existing detector. Record a candidate's actual decision and presentation behavior before promoting it to live use.
 
