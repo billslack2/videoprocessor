@@ -3,6 +3,7 @@
 #include "../PicturePlacementUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
 #include "ExperimentalAspectShadow.h"
+#include "ExperimentalAspectActive.h"
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
@@ -166,7 +167,7 @@ namespace
         result.domainKey=prepared.domainKey;
         result.source=prepared.source;
         result.identity=identity;
-        result.evidence=ExtractActivePictureEvidence(prepared.source);
+        result.evidence=ExperimentalAspect::MeasureActiveTrial(prepared.source,identity);
         result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
         return result;
     }
@@ -24281,7 +24282,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     result.domainKey=prepared.domainKey;
                     result.source=prepared.source;
                     result.identity=analysisIdentity;
-                    result.evidence=ExtractActivePictureEvidence(prepared.source);
+                    result.evidence=ExperimentalAspect::MeasureActiveTrial(prepared.source,analysisIdentity);
                     result.darkness=EvaluateActivePictureArDarkness(prepared.source,result.evidence);
                     return result;
                 });

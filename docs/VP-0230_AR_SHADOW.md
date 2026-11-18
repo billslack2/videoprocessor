@@ -1,5 +1,7 @@
 # VP-0230: first independent AR shadow experiment
 
+Historical first-stage guide. The next active trial is described in [VP-0230_AR_ACTIVE.md](VP-0230_AR_ACTIVE.md).
+
 Base: local `43a443cc6d4a4892bcffdee989311b1fdb624de8`, as requested, retaining the other agent's subtitle/presentation work. This is diagnostic code, not an enabled replacement detector or a fix for the known presentation-authority incidents.
 
 ## Scope

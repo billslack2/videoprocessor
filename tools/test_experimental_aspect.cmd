@@ -13,6 +13,10 @@ if errorlevel 1 exit /b 1
 cl /nologo /O2 /MD /EHsc /std:c++17 /DNOMINMAX /I src\VideoProcessor-Lib tools\test_experimental_aspect_worker.cpp "x64\Release\VideoProcessor-Lib.lib" /Fo"x64\Release\ar-shadow-tests\worker.obj" /Fe"x64\Release\ar-shadow-tests\worker.exe" /link /LTCG
 if errorlevel 1 exit /b 1
 "x64\Release\ar-shadow-tests\worker.exe"
+if errorlevel 1 exit /b 1
+cl /nologo /O2 /MD /EHsc /std:c++17 /DNOMINMAX /I src\VideoProcessor-Lib tools\test_experimental_aspect_active.cpp "x64\Release\VideoProcessor-Lib.lib" /Fo"x64\Release\ar-shadow-tests\active.obj" /Fe"x64\Release\ar-shadow-tests\active.exe" /link /LTCG
+if errorlevel 1 exit /b 1
+"x64\Release\ar-shadow-tests\active.exe"
 set "VP_RESULT=%ERRORLEVEL%"
 popd
 exit /b %VP_RESULT%
