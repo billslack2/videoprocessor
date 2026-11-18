@@ -6,6 +6,20 @@ In Progress
 
 
 
+
+## Live-tested checkpoint - 2026-11-18 15:28
+
+User reports that everything seemed to work better in live testing and requests a checkpoint. Created and pushed codex/checkpoint-ar-live-tested-20261118 at exact tested source c0d04fc873c828cc79f9f075c08f0c1f59db9052; remote ref verified. Existing working branch and running player remain unchanged. This is a rollback/reference checkpoint, not a beta merge or release.
+
+Preserved local log snapshot through 15:28:18 with SHA-256 in [checkpoint summary](../assets/VP-0230/checkpoint-20261118/checkpoint-summary.json). It contains 26 AR-CURRENT-EXPANSION events, all published=1. Sampled OSD readings include scope, IMAX and 16:9. Of 10,603 logged detector observations, 43 use legacy fallback: 39 budget, two exterior-picture-conflict and two insufficient-spatial-evidence. These are throttled diagnostics, not per-frame rates or proof of full-raster presentation. Four OSD readings at 14:43:38–39 report ratio 2.364532 (labelled 2.35:1); inspect their context before calling them errors. Renderer/input changes later in the session require separate grouping. User supplied logs only for this run, so exact boundary/caption pixel accuracy and scanout continuity are not newly established.
+
+Next AR priorities:
+
+1. Audit the remaining fallbacks and unusual ratio episode by source/context, and correlate measured, published and submitted geometry. Give scope↔16:9 equal attention to scope↔IMAX. Request a small targeted pixel capture only where logs cannot resolve a concrete case.
+2. Validate this checkpoint across other content and dark/asymmetric bars, subtitles, overlays and seeks. Broaden first-source admission only when evidence supports the new case; keep current caption/picture preservation and bounded real-time work.
+3. Once remaining cases are understood, compare against the latest remote beta, integrate verified AR behavior without losing independent fixes, and identify redundant legacy paths that can safely be retired. Keep the checkpoint fixed while further work uses a separate branch.
+
+No new detector tuning or build is needed merely because this checkpoint was created. Performance remains VP-0234; subtitle-profile switching remains deferred VP-0235.
 ## First-source measured expansion live candidate - 2026-11-18 14:42
 
 User explicitly excludes subtitle-profile switching delay from this work. It is now backlog [VP-0235](../backlog/VP-0235_subtitle-profile-switch-presentation-continuity.md). Continue AR responsiveness using the captured scope-to-IMAX evidence; do not fold profile switching or general performance work into this increment.

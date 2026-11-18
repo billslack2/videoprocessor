@@ -1,0 +1,53 @@
+{
+  "checkpointBranch": "codex/checkpoint-ar-live-tested-20261118",
+  "source": "c0d04fc873c828cc79f9f075c08f0c1f59db9052",
+  "userFeedback": "Everything seemed to work better; logs only for this run.",
+  "snapshot": "E:\\codex\\videoprocessor\\ar-current-test-c0d04fc8\\validation\\checkpoint-20261118\\vp-live-20261118-152819.log",
+  "sha256": "2a355ad0e452d3069d9fc53fc36da4c36946a5f221f0ee1ec20b792fd7d95665",
+  "bytes": 77071747,
+  "firstRecord": "2026-11-18 14:42:06",
+  "lastRecord": "2026-11-18 15:28:18",
+  "loggedMeasurements": 10603,
+  "currentExpansionEvents": 26,
+  "publishedCurrentExpansions": 26,
+  "fallbackReasons": {
+    "budget": 39,
+    "exterior-picture-conflict": 2,
+    "insufficient-spatial-evidence": 2
+  },
+  "sampledOsdLabels": {
+    "2.39:1": 2174,
+    "1.90:1": 1158,
+    "2.35:1": 4,
+    "16:9": 274
+  },
+  "expansionEvents": [
+    "2026-11-18 14:42:19 | [AR-CURRENT-EXPANSION] generation=1 source=261 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:42:20 | [AR-CURRENT-EXPANSION] generation=1 source=287 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:42:38 | [AR-CURRENT-EXPANSION] generation=1 source=727 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:42:49 | [AR-CURRENT-EXPANSION] generation=1 source=978 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:42:56 | [AR-CURRENT-EXPANSION] generation=1 source=1157 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:43:40 | [AR-CURRENT-EXPANSION] generation=1 source=2199 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:44:00 | [AR-CURRENT-EXPANSION] generation=1 source=2681 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:46:00 | [AR-CURRENT-EXPANSION] generation=1 source=5551 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:46:58 | [AR-CURRENT-EXPANSION] generation=1 source=6963 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:52:02 | [AR-CURRENT-EXPANSION] generation=1 source=14231 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 14:52:11 | [AR-CURRENT-EXPANSION] generation=1 source=14451 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:00:00 | [AR-CURRENT-EXPANSION] generation=1 source=25700 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:04:10 | [AR-CURRENT-EXPANSION] generation=1 source=31704 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:06:33 | [AR-CURRENT-EXPANSION] generation=1 source=35129 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:12:34 | [AR-CURRENT-EXPANSION] generation=1 source=43771 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:12:49 | [AR-CURRENT-EXPANSION] generation=1 source=44130 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:12:59 | [AR-CURRENT-EXPANSION] generation=1 source=44387 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:13:41 | [AR-CURRENT-EXPANSION] generation=1 source=45377 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:15:23 | [AR-CURRENT-EXPANSION] generation=1 source=47824 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:17:00 | [AR-CURRENT-EXPANSION] generation=1 source=50170 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:17:03 | [AR-CURRENT-EXPANSION] generation=1 source=50238 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:17:11 | [AR-CURRENT-EXPANSION] generation=1 source=50434 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:17:22 | [AR-CURRENT-EXPANSION] generation=1 source=50694 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:17:37 | [AR-CURRENT-EXPANSION] generation=1 source=51038 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:18:05 | [AR-CURRENT-EXPANSION] generation=1 source=51715 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted",
+    "2026-11-18 15:18:13 | [AR-CURRENT-EXPANSION] generation=1 source=51901 measured=0,68,3840,2092 published=1 reason=current strong spatial expansion accepted"
+  ],
+  "limits": "Sampled diagnostics across input/renderer changes. No current-run pixel ground truth or comprehensive scanout/caption proof. Fallback to legacy measurement is not itself full-raster presentation."
+}
