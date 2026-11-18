@@ -29,3 +29,30 @@ Repeat the Eternals scenes, including transitions, dark/dirty bars and visible s
 `tools\test_experimental_aspect.cmd` covers spatial counterexamples, the bounded shadow worker, the active adapter, exact-source cache import, existing retention/transition admission, chroma-safe rounding, context/expiry handling, missing-edge rejection and current-frame fallback. Run native AR/subtitle regressions and both dependency variants of the subtitle GPU/motion suite before staging.
 
 The previous session identified about five seconds of Unknown and two render-dominated submission gaps; it also had full-input presentation during a fullscreen reset. This change addresses measured-edge ambiguity. It does not claim to fix those rendering/reset incidents. Luma-only sparse sampling can still confuse dark scene structure or large overlays with bars; the initial confidence weights are not calibrated probabilities. Full HDMI critical-path cost, cadence, visual caption preservation and accuracy require the live test. No fresh whole-frame wait, replay, enlarged queue or increased confirmation timeout is introduced.
+
+## Bounded alternative refinement increment - 2026-11-18
+
+The next trial continues the observed c1b130a2 experiment. When the best coarse
+pair loses support during native refinement, try at most three ranked pairs per
+axis, reusing refined edges. Fixed-size ranking preserves insertion-order ties
+without heap allocation. The same 2 ms / 24,000-sample limit covers all attempts;
+an incomplete scan remains Unknown and follows current-source legacy fallback.
+The exterior-picture veto is unchanged and does not trigger further retries.
+
+AR-ACTIVE records pair_attempts and accepted_pair for horizontal/vertical axes.
+An accepted pair numbered above one identifies use of an alternative; applied=1
+still means worker measurement, not published or displayed geometry. These
+fields add no extra pixel scan and do not supply subtitle or crop certificates.
+
+A synthetic counterexample demonstrates the fixed failure: staggered interior
+edges defeat the preferred pair while the retained true 68-pixel bars remain
+measurable. The original current trial and scratch retry agreed on 12 older
+captured frames and all 64 frames from the November 18 capture. That seek/UI
+capture showed IMAX-to-scope detection and admission on the first scope source;
+it did not show a delay or a benefit from this correction. Its full-raster
+presentation was intentional because automatic crop was off.
+
+The old all-sided-inset admission policy is a separate investigation. This
+increment does not change transition admission, subtitle logic, presentation
+fallback or selected user profiles. Use the intended Scope profile when judging
+visible crop behavior; the saved 16:9 profile disables automatic cropping.

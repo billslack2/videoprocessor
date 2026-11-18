@@ -14,6 +14,8 @@ struct Result {
     Edge edges[4];
     double score=0,fullScore=0,symmetry=0,ratioSupport=0;
     size_t samples=0; bool complete=false;
+    // Diagnostics only. Acceptance is one-based and cleared on veto/incomplete work.
+    unsigned pairAttempts[2]{}, acceptedPairAttempt[2]{};
     const char* reason="invalid-source";
 };
 inline double Unit(double x){return (std::max)(0.0,(std::min)(1.0,x));}
@@ -106,35 +108,88 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         return Unit(.75*(a.score+b.score)/2+.20*symmetry+.05*history+.05*RatioSupport(ar));
     };
     bool accepted[2]={false,false};double pairScores[2]{};
-    for(int axis=0;axis<2&&!failed;++axis){
-        int first=-1,last=-1;double best=0;
-        for(int i=0;i<sizes[axis];++i)for(int j=0;j<sizes[axis+2];++j){
-            const double score=scorePair(candidates[axis][i].edge,candidates[axis+2][j].edge,axis);
-            if(score>best){best=score;first=i;last=j;}
-        }
-        if(first<0)continue;
-        const int choices[]={first,last};
-        for(int k=0;k<2&&!failed;++k){
-            const int side=axis+2*k,step=steps[side];const auto& c=candidates[side][choices[k]];
-            auto& e=out.edges[side];e=c.edge;
-            std::array<int,9> positions{};int found=0;
-            for(int lane=0;lane<9&&!failed;++lane){
-                if(!(c.laneMask&(1u<<lane)))continue;
-                const int begin=(c.index-2)*step,end=(c.index+1)*step;
-                int previous=sample(side,lane,begin),strongest=0,position=0;
-                for(int d=begin+1;d<=end&&!failed;++d){const int current=sample(side,lane,d),delta=current-previous;if(delta>strongest){strongest=delta;position=d;}previous=current;}
-                if(position>0&&strongest>=4)positions[found++]=position;
+    std::array<std::array<Edge,12>,4> refined{};
+    std::array<std::array<bool,12>,4> refinedReady{};
+    auto refine = [&](int side, int choice) -> const Edge& {
+        auto& edge = refined[side][choice];
+        if (refinedReady[side][choice]) return edge;
+        refinedReady[side][choice] = true;
+        const int step = steps[side];
+        const auto& candidate = candidates[side][choice];
+        edge = candidate.edge;
+        std::array<int,9> positions{};
+        int found = 0;
+        for (int lane = 0; lane < 9 && !failed; ++lane) {
+            if (!(candidate.laneMask & (1u << lane))) continue;
+            const int begin = (candidate.index - 2) * step;
+            const int end = (candidate.index + 1) * step;
+            int previous = sample(side, lane, begin), strongest = 0, position = 0;
+            for (int depth = begin + 1; depth <= end && !failed; ++depth) {
+                const int current = sample(side, lane, depth);
+                const int delta = current - previous;
+                if (delta > strongest) { strongest = delta; position = depth; }
+                previous = current;
             }
-            if(!found){e.support=0;continue;}
-            int members=0,center=0;
-            for(int i=0;i<found;++i){int n=0;for(int j=0;j<found;++j)if(std::abs(positions[i]-positions[j])<=step)++n;if(n>members){members=n;center=positions[i];}}
-            std::array<int,9> cluster{};int n=0,lo=((side==1||side==3)?height:width),hi=0;
-            for(int i=0;i<found;++i)if(std::abs(positions[i]-center)<=step){cluster[n++]=positions[i];lo=(std::min)(lo,positions[i]);hi=(std::max)(hi,positions[i]);}
-            e.depth=lo;e.uncertainty=hi-lo;e.support=(std::min)(e.support,n/9.0);
-            e.score=.35*e.support+.35*Unit(e.contrast/(12+2*e.noise))+.30*e.darkness-.10*Unit(e.uncertainty/double(step));
+            if (position > 0 && strongest >= 4) positions[found++] = position;
         }
-        pairScores[axis]=scorePair(out.edges[axis],out.edges[axis+2],axis);
-        accepted[axis]=pairScores[axis]>=.82;
+        if (!found) { edge.support = 0; return edge; }
+        int members = 0, center = 0;
+        for (int i = 0; i < found; ++i) {
+            int count = 0;
+            for (int j = 0; j < found; ++j)
+                if (std::abs(positions[i] - positions[j]) <= step) ++count;
+            if (count > members) { members = count; center = positions[i]; }
+        }
+        int count = 0, lo = (side == 1 || side == 3) ? height : width, hi = 0;
+        for (int i = 0; i < found; ++i) {
+            if (std::abs(positions[i] - center) > step) continue;
+            ++count;
+            lo = (std::min)(lo, positions[i]);
+            hi = (std::max)(hi, positions[i]);
+        }
+        edge.depth = lo;
+        edge.uncertainty = hi - lo;
+        edge.support = (std::min)(edge.support, count / 9.0);
+        edge.score = .35 * edge.support + .35 * Unit(edge.contrast / (12 + 2 * edge.noise)) +
+            .30 * edge.darkness - .10 * Unit(edge.uncertainty / double(step));
+        return edge;
+    };
+    for (int axis = 0; axis < 2 && !failed; ++axis) {
+        struct Pair { int first = 0, last = 0; double score = 0; };
+        std::array<Pair,3> ranked{};
+        int count = 0;
+        for (int i = 0; i < sizes[axis]; ++i) {
+            for (int j = 0; j < sizes[axis + 2]; ++j) {
+                const double score = scorePair(candidates[axis][i].edge,
+                    candidates[axis + 2][j].edge, axis);
+                if (score <= 0) continue;
+                // Strict comparison preserves the original nested-loop tie order.
+                int position = 0;
+                while (position < count && score <= ranked[position].score) ++position;
+                if (position == int(ranked.size())) continue;
+                count = (std::min)(count + 1, int(ranked.size()));
+                for (int move = count - 1; move > position; --move)
+                    ranked[move] = ranked[move - 1];
+                ranked[position] = {i, j, score};
+            }
+        }
+        // Retry only failed native refinement, bounded by three distinct retained
+        // pairs and the unchanged pixel/deadline budget. Shared edges are read once.
+        for (int attempt = 0; attempt < count && !failed; ++attempt) {
+            if (!allow()) { failed = true; out.reason = "budget"; break; }
+            ++out.pairAttempts[axis];
+            const auto& pair = ranked[attempt];
+            out.edges[axis] = refine(axis, pair.first);
+            if (failed) break;
+            out.edges[axis + 2] = refine(axis + 2, pair.last);
+            if (failed) break;
+            pairScores[axis] = scorePair(out.edges[axis], out.edges[axis + 2], axis);
+            accepted[axis] = pairScores[axis] >= .82;
+            if (accepted[axis]) {
+                out.acceptedPairAttempt[axis] = unsigned(attempt + 1);
+                break;
+            }
+        }
     }
     // Challenge matte-like panels with picture still visible at the raster sides.
     // Central captions may contaminate strips; distributed exterior picture at
@@ -156,9 +211,13 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
                 if(visible>=3)conflict=true;
             }
         }
-        if(conflict){accepted[axis]=false;exteriorConflict=true;}
+        if(conflict){accepted[axis]=false;out.acceptedPairAttempt[axis]=0;exteriorConflict=true;}
     }
-    if(failed||!allow()){if(!failed)out.reason="budget";return out;}
+    if(failed||!allow()){
+        if(!failed)out.reason="budget";
+        out.acceptedPairAttempt[0]=out.acceptedPairAttempt[1]=0;
+        return out;
+    }
     out.complete=true;out.reason=exteriorConflict?"exterior-picture-conflict":"insufficient-spatial-evidence";
     out.fullScore=*std::min_element(fullSupport.begin(),fullSupport.end());
     if(accepted[0]){out.left=out.edges[0].depth;out.right=width-out.edges[2].depth;}

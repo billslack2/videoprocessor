@@ -57,6 +57,41 @@ int main(){
  check(sidePicture.kind==Kind::Unknown,"visible picture at the side of a matte-like panel vetoes crop");
  auto uneven=Measure(1920,1080,64,[](int x,int y,int&v){int edge=x<400?120:124;v=y<edge||y>=1080-edge?64:300;return true;},[]{return true;});
  check(uneven.kind==Kind::Bars&&uneven.top==120&&uneven.bottom==960,"rough boundary retains earliest measured picture instead of median crop");
+ // A stronger staggered interior edge wins coarse ranking, then loses native
+ // support. The weaker straight picture boundary must remain available.
+ auto refinementCompetition=[](int x,int y,int&v){
+   const int lane=x/384;
+   const int top=112+(lane%3)*12,bottom=112+((lane+1)%3)*12;
+   v=(y<68||y>=2092)?12:((y<top||y>=2160-bottom)?22:600);
+   return true;
+ };
+ auto recovered=Measure(3840,2160,0,refinementCompetition,[]{return true;});
+ check(recovered.complete&&recovered.kind==Kind::Bars&&recovered.top==68&&recovered.bottom==2092&&
+       recovered.pairAttempts[1]==2&&recovered.acceptedPairAttempt[1]==2,
+       "failed native refinement retries retained true picture boundary");
+ // Sweep interruption points through this small fixture, proving that retry
+ // cannot publish an accepted prefix when either work bound expires.
+ bool capSafe=true,deadlineSafe=true,capInterruptedRetry=false,deadlineInterruptedRetry=false;
+ for(size_t limit=0;limit<recovered.samples;limit+=128){
+   auto capped=Measure(3840,2160,0,refinementCompetition,[]{return true;},limit);
+   capSafe=capSafe&&!capped.complete&&capped.kind==Kind::Unknown&&capped.samples<=limit&&
+       capped.acceptedPairAttempt[0]==0&&capped.acceptedPairAttempt[1]==0;
+   capInterruptedRetry=capInterruptedRetry||capped.pairAttempts[1]>=2;
+   size_t reads=0;
+   auto expired=Measure(3840,2160,0,[&](int x,int y,int&v){++reads;return refinementCompetition(x,y,v);},
+       [&]{return reads<limit;});
+   deadlineSafe=deadlineSafe&&!expired.complete&&expired.kind==Kind::Unknown&&
+       expired.acceptedPairAttempt[0]==0&&expired.acceptedPairAttempt[1]==0;
+   deadlineInterruptedRetry=deadlineInterruptedRetry||expired.pairAttempts[1]>=2;
+ }
+ check(capSafe&&capInterruptedRetry,"sample budget during retry publishes no incomplete crop");
+ check(deadlineSafe&&deadlineInterruptedRetry,"deadline during retry publishes no incomplete crop");
+ auto contradictedRetry=Measure(3840,2160,0,[&](int x,int y,int&v){
+   refinementCompetition(x,y,v);if(x<40)v=600;return true;
+ },[]{return true;});
+ check(contradictedRetry.complete&&contradictedRetry.kind==Kind::Unknown&&
+       contradictedRetry.pairAttempts[1]==2&&contradictedRetry.acceptedPairAttempt[1]==0,
+       "retried pair still rejects exterior picture without further retry");
  double total=0,worst=0;size_t samples=0;
  for(int i=0;i<100;++i){auto start=std::chrono::steady_clock::now();auto result=scene(3840,2160,0,277,0,277,true,true);
  auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();total+=ms;worst=std::max(worst,ms);samples=result.samples;}
