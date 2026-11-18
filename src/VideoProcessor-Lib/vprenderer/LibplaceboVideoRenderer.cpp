@@ -2,6 +2,7 @@
 #include "../SubtitleProfileUpdatePolicy.h"
 #include "../PicturePlacementUpdatePolicy.h"
 #include "SubtitleBarRecovery.h"
+#include "ExperimentalAspectShadow.h"
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
@@ -5069,6 +5070,7 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePictureBounds latestActivePicturePresentationBounds;
 	uint8_t lastPresentationObservationAxes = 0;
 	uint64_t lastPresentationObservationLogTick = 0;
+	ExperimentalAspectShadow experimentalAspectShadow;
 	uint64_t latestActivePictureEvidenceFrame = 0;
 	bool latestColdStrictWorkerProof = false;
 	ActivePictureBounds latestColdStrictWorkerPicture;
@@ -13332,6 +13334,10 @@ struct LibplaceboVideoRenderer::Impl
 				subtitlePreview, subtitlePreviewMode,
                 !cadenceRepeat && sceneResult.safeBoundary ? &boundaryMotion : nullptr,
                 !cadenceRepeat && sceneResult.safeBoundary ? &sceneResult : nullptr);
+            experimentalAspectShadow.Offer(preparedLive, currentActivePictureIdentity,
+                latestActivePictureEvidenceBounds, latestActivePictureEvidenceClassification,
+                latestActivePictureEvidenceFrame == sourceSequence &&
+                currentActivePictureIdentity.analysisDomainKey == preparedLive.domainKey);
 		}
 		else
 		{
