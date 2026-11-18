@@ -7,6 +7,18 @@ In Progress
 
 
 
+## Checkpoint exception audit - 2026-11-18
+
+Three read-only reviewers audited the frozen 15:28 log. No source, runtime, configuration or checkpoint changes. [Transition evidence](../assets/VP-0230/checkpoint-20261118/transition-audit.txt); [fallback audit](../assets/VP-0230/checkpoint-20261118/audit-summary.txt); [source/context correlations](../assets/VP-0230/checkpoint-20261118/fallback-correlations.csv).
+
+- None of the 43 fallback observations demonstrates a false full-raster return. Selected legacy evidence is 25 trusted bars, 17 provisional, one trusted full. All 42 pre-reset fallbacks are bars/provisional. The one trusted-full fallback follows the input/context reset alongside independent full qualification. Submission geometry is missing within the bounded matching window for 41 records: this is not proof every output was correct.
+- Correct the scope of the preceding checkpoint summary: genuine full-raster qualification and 16:9 OSD start after 15:19:21, in a changed input/domain. All 8,669 earlier experimental observations have full_qualified=0. They do not validate Eternals scope/IMAX-to-full-raster transitions in this run.
+- At 14:52:22-49, measured windowbox bounds 490,276-3350,1884 (1.7786) are rejected as 'all-sided inset retained as inner composition'. Sustained samples 14974-15365 span about 16.31 source seconds; published/applied picture remains IMAX. This is an admission veto, not slow full-raster detection. Native pixels are needed before weakening a safeguard against inner compositions. Targeted capture requested.
+- At 14:43:38/source 2146, detector bounds 0,276-3840,1884 are replaced by subtitle-assisted guarded bounds 0,268-3840,1892. The latter publishes 2.364532; the nominal OSD label is 2.35. Submitted source 2148 further uses 12,268-3828,1892. ActivePictureEvidence.cpp transfers the two-scan-step guard into trusted geometry, and LibplaceboVideoRenderer.cpp unconditionally replaces available evidence when the independent worker proof is current. Investigate separating measured physical AR from the safe presentation envelope; do not simply remove the padding or caption proof.
+- Earlier IMAX measurement at 1944 is submitted at 1971, about 1.126 source seconds later. Ordinary admission reports vertical-not-broad; bottom-strip texture crosses the broad gate at 1968. The exact rejecting predicate of the new first-source route is not logged. This is AR admission, not the separately deferred subtitle-profile switch delay.
+
+Next bounded increment: reproduce the guarded-proof replacement in a native regression, establish when independently measured experimental evidence must retain geometry authority, and preserve caption/current-pixel handoff and safety padding as separate presentation evidence. Add compact rejection diagnostics for first-source spatial admission so the remaining slow case is actionable. Do not broaden admission from these logs alone. Keep the tested checkpoint/runtime intact until a focused fix passes regression and an isolated Release trial is ready. Performance remains VP-0234 and subtitle-profile switching VP-0235.
+
 ## Live-tested checkpoint - 2026-11-18 15:28
 
 User reports that everything seemed to work better in live testing and requests a checkpoint. Created and pushed codex/checkpoint-ar-live-tested-20261118 at exact tested source c0d04fc873c828cc79f9f075c08f0c1f59db9052; remote ref verified. Existing working branch and running player remain unchanged. This is a rollback/reference checkpoint, not a beta merge or release.

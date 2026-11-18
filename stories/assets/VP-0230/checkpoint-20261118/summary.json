@@ -1,0 +1,27 @@
+{
+  "count": 43,
+  "reasons": {
+    "budget": 39,
+    "exterior-picture-conflict": 2,
+    "insufficient-spatial-evidence": 2
+  },
+  "selectedKinds": {
+    "2": 25,
+    "3": 17,
+    "1": 1
+  },
+  "contexts": {
+    "pre-15:19": 42,
+    "post-15:19-reset": 1
+  },
+  "submissionAssociations": {
+    "unknown-no-record-within-3-sources-and-2s": 41,
+    "exact-source": 1,
+    "bounded-nearest": 1
+  },
+  "publicationAssociations": {
+    "unknown-no-record-within-3-sources-and-2s": 34,
+    "exact-source": 3,
+    "bounded-nearest": 6
+  }
+}

@@ -1,0 +1,9 @@
+Audit of frozen vp-live-20261118-152819.log, no code or runtime changes.
+43 experimental fallbacks:39 budget,2 exterior conflict,2 insufficient evidence.
+Selected legacy results:25 BAR_CROP_TRUSTED(2),17 PROVISIONAL(3),1 FULL_RASTER_TRUSTED(1).
+42 pre15:19 fallbacks:25 trusted bars,17 provisional. No trusted-full fallback before resets.
+The sole trusted-full fallback occurs15:27:35 generation2 viewport0 renderer2 domain17712632399396405480 seq14578. Nearby exact-context detector observations14576/14579 already independently qualify full extent. This is not evidence of scope→full regression. Source pixels and same-source submission unavailable, so correctness not independently established.
+Same-source submission evidence exists for1/43(seq50070): rendered_and_submitted0,274..3840,1886, preserving scope; worker fallbackwas provisional. One bounded-nearest submission(seq50078 for50077) also remains scope. Other41 have no submission geometry record within±3sources/±2seconds.
+Seven same-source final-layout records all remain scope. Four bounded-nearest layouts also scope;32unknown withinthatwindow. Three exact-source publication records(1290,50070,52605) explicitly published0/provisional. Bounded-nearest records are context only, never source-specific proof.
+At15:19:41 rendererstop/replacement-handoff andcapture admissionclosed begin;15:20:31 oldrendererretired andnewhost initializes;15:20:32 newwindowed swapchain. Keep generation1viewport2renderer1 beforethis separatefromgeneration2viewport0renderer2 afterward; do notjoin identicalsequence counters acrossreset.
+No demonstrated false-full fallback in examined43records. This is not proof all43 outputs arecorrect: publication/layout/submissionlogs are sparse and no native pixels accompanythischeckpoint. CSV marksunknown associations explicitly. Rendered/submitted evidence doesnotprovephysicalscanout.
