@@ -72,6 +72,37 @@ before/after behavior. The current input remains 23.976 fps; 60 fps is unqualifi
 No queues, timeouts, rendering quality, subtitle behavior or detector policy were
 changed. No beta merge or deployment occurred.
 
+## 2026-11-19 core 60 fps debugging continuation
+
+The capture-side interruption was set aside at the user's request after recovery.
+A healthy-input light-path cohort has ten five-second capture windows with 3,000
+frames, 59.936–59.946 fps and no capture skips. Separately aligned analysis windows
+contain 2,998 submissions: foreground mean 2.174 ms, preparation 1.844 ms, render
+interval 0.199 ms, and separate swap mean 4.161 ms. Foreground maximum 6.053 ms and
+swap maximum 11.991 ms are not same-frame measurements and must not be added.
+Queue depth stays 8 in samples; oldest age is 115.59–118.77 ms. DXGI frame statistics
+are unavailable in that cohort. Subtitle detector Analyze count is zero, so this
+is not qualification of dense/changing subtitle work. The count difference between
+capture/analysis windows is not inferred capture loss.
+[Light-path evidence](../assets/VP-0234/60fps-light-path-baseline-20261119.json).
+
+With user approval, restarted only the isolated c93d7f0e player using the opt-in
+probe environment; saved settings were preserved. Schema2 nested timings now
+appear. The initial visible window averages 0.153 ms render invocation, 0.088 ms
+post-render callbacks, negligible HDR-status collection, and 12.887 ms swap wait.
+Total RenderLocked mean/max is 15.158/32.591 ms. Startup and two skipped source IDs
+remain explicit; this is not a steady acceptance window. Only eight samples had a
+known source budget. Subsequent window occlusion returns no successful presents,
+so those periods are excluded from visible playback qualification.
+
+This identifies presentation waiting on this light 60fps input; it does not
+attribute the earlier 24fps/Dolby-Vision render-wrapper delay or establish a
+subtitle optimization. The probe remains running. Next required live sample is
+visible/uncovered playback with changing captions and volume/UI overlays, followed
+by matched path/caption/reset and late-worker coverage. No code, quality, queue or
+configuration changes were made to improve the reported timing. Full60fps and
+subtitle/pixel-preservation acceptance remain open.
+
 ## User story
 
 As a viewer, I want to know what consumes the live frame budget and obtain measured improvements that sustain incoming HDMI video without disrupting picture, subtitles or aspect detection.

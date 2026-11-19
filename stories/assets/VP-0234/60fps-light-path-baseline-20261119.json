@@ -1,0 +1,43 @@
+{
+  "source": "c93d7f0e493851ba95dc4a4b223b2c5c10d8b38a",
+  "window_records_ending_between": [
+    "2026-11-19 16:28:00",
+    "2026-11-19 16:28:50"
+  ],
+  "capture": {
+    "windows": 10,
+    "frames": 3000.0,
+    "fps_min": 59.93633,
+    "fps_max": 59.94644,
+    "skipped_input_frames": 0.0
+  },
+  "foreground": {
+    "windows": 25,
+    "submissions": 2998.0,
+    "active_avg_ms": 2.174392595063376,
+    "live_prep_avg_ms": 1.8444379586390927,
+    "render_avg_ms": 0.19931787858572375,
+    "swap_avg_ms": 4.161213809206138,
+    "active_max_ms": 6.053,
+    "swap_max_ms": 11.991
+  },
+  "presentation": {
+    "states": [
+      "frame_statistics_unavailable"
+    ],
+    "oldest_queue_ms_min": 115.59,
+    "oldest_queue_ms_max": 118.77,
+    "queue_after_min": 8.0,
+    "queue_after_max": 8.0
+  },
+  "subtitle": {
+    "jobs": 1499.0,
+    "detector_analyze_calls": 0.0
+  },
+  "limits": [
+    "New opt-in detailed probe records absent; no nested-call attribution or complete per-frame tail measurement.",
+    "No subtitle detector calls in this sample; dense/changing cues and full detection load remain untested.",
+    "Capture and aggregate throughput are partial60fps evidence, not complete60fps acceptance.",
+    "Foreground excludes swap; GPU overlaps wall/CPU and is not added. Separate maxima cannot be summed into a measured worst case."
+  ]
+}
