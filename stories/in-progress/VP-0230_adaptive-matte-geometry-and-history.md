@@ -256,3 +256,7 @@ Existing counterexamples defeat depth, width, seam continuity, texture, simple t
 ## Quick live test of 535d7d84, November 18
 
 User reports playback looked good. The trial log through 21:33:57 records two scope-to-IMAX publications using relative picture continuation. Source 883 expanded from rows 268–1892 and source 1643 from 276–1884. Both published rows 68–2092 on the evaluated source. This confirms live worker readiness for both events. The quick run provides no matched before/after latency measurement. Proceed to beta integration validation.
+
+## Integrated and deployed on November 18
+
+Created v2.0.7-beta from acdb89bf and fast-forwarded to tested 535d7d8432f5dcf179483d62c1817ae05bb214ef. Built the x64 Release host and both renderers from the clean beta checkout. Deployed to C:\Videoprocessor\vp and enabled AR through vp-ar-trial.mode. Verified deployed hashes and preserved active cfg/state hashes. Backup and verified file list are in deployment-backups/v207-20261118-214435/deployment-receipt.json. Playback timing on the deployed copy remains open for observation.
