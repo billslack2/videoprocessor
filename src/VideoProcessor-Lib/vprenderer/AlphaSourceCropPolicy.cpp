@@ -150,7 +150,7 @@ namespace AlphaSourceCrop
 		}
 
         // Metadata-only diagnostics: return the first failed existing proof check.
-        const char* CurrentSpatialExpansionRejection(const TransitionAdmissionInput& input)
+        const char* CurrentSpatialExpansionRejection(const TransitionAdmissionInput& input, bool& relativeUsed)
         {
             const auto& native = input.evidence;
             const auto& base = input.trustedGeometry;
@@ -186,40 +186,49 @@ namespace AlphaSourceCrop
                 native.top.barPixels != target.top || native.bottom.barPixels != target.rasterHeight - target.bottom ||
                 native.top.continuity < 7.0 / 9 || native.bottom.continuity < 7.0 / 9) return "edge-support";
             if (pixels.activePicture.axisEvidence.HasFailedBar()) return "retention-failed-axis";
-            if (!HasStrictNativeDistributedPictureProof(pixels, base, target))
-            {
-                // Explain a rejected metadata proof without sampling pixels again.
-                if (!pixels.analysisValid || !pixels.presentationValid) return "retention-invalid";
-                if (pixels.EffectiveArNearBlack()) return "retention-near-black";
-                if (!pixels.expansionStripsAvailable) return "strips-unavailable";
-                if (!SameTrustedCropContract(pixels.expansionBase, base)) return "strip-base-mismatch";
-                if (!SameTrustedCropContract(pixels.expansionCandidate, target)) return "strip-target-mismatch";
-                const auto& retained = pixels.activePicture;
-                if (!retained.available || retained.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
-                    retained.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE)
-                    return "retention-native-authority";
-                if (!SameTrustedCropContract(retained.trustedBounds, target)) return "retention-native-mismatch";
-                if (!retained.axisEvidence.vertical.scanComplete ||
-                    retained.axisEvidence.vertical.state != ActivePictureAxisState::TRUSTED_BARS ||
-                    !retained.top.trusted || !retained.bottom.trusted) return "retention-axis-proof";
-                return "strip-distribution";
-            }
-            auto strongStrip = [](const ActivePictureEdgeEvidence& edge) {
+            // Exact current native context is required for either evidence route.
+            if (!pixels.analysisValid || !pixels.presentationValid) return "retention-invalid";
+            if (pixels.EffectiveArNearBlack()) return "retention-near-black";
+            if (!pixels.expansionStripsAvailable) return "strips-unavailable";
+            if (!SameTrustedCropContract(pixels.expansionBase, base)) return "strip-base-mismatch";
+            if (!SameTrustedCropContract(pixels.expansionCandidate, target)) return "strip-target-mismatch";
+            const auto& retained=pixels.activePicture;
+            if (!retained.available || retained.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+                retained.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE) return "retention-native-authority";
+            if (!SameTrustedCropContract(retained.trustedBounds,target)) return "retention-native-mismatch";
+            if (!retained.axisEvidence.vertical.scanComplete ||
+                retained.axisEvidence.vertical.state!=ActivePictureAxisState::TRUSTED_BARS ||
+                !retained.top.trusted || !retained.bottom.trusted) return "retention-axis-proof";
+            if (pixels.expandingTop.barPixels != base.top - target.top ||
+                pixels.expandingBottom.barPixels != target.bottom - base.bottom) return "strip-depth";
+            auto strongStrip=[](const ActivePictureEdgeEvidence& edge) {
                 if (!HasDistributedSupport(edge)) return false;
-                for (const uint8_t mask : edge.distributedSupportDepthRowsByQuartile)
-                {
-                    unsigned supported = 0;
-                    for (int depth = 0; depth < 6; ++depth) supported += (mask >> depth) & 1u;
-                    if (supported < 4) return false;
+                for (const uint8_t mask:edge.distributedSupportDepthRowsByQuartile) {
+                    unsigned supported=0;
+                    for(int depth=0;depth<6;++depth) supported+=(mask>>depth)&1u;
+                    if(supported<4)return false;
                 }
                 return true;
             };
-            // The same current strips must independently support all along-edge
-            // quartiles at multiple depths, not only a bright caption/overlay.
-            if (pixels.expandingTop.barPixels != base.top - target.top ||
-                pixels.expandingBottom.barPixels != target.bottom - base.bottom) return "strip-depth";
-            if (!strongStrip(pixels.expandingTop)) return "top-distribution";
-            if (!strongStrip(pixels.expandingBottom)) return "bottom-distribution";
+            const char* strictReason=!HasStrictNativeDistributedPictureProof(pixels,base,target)?"strip-distribution":
+                !strongStrip(pixels.expandingTop)?"top-distribution":
+                !strongStrip(pixels.expandingBottom)?"bottom-distribution":nullptr;
+            if (!strictReason) return nullptr;
+            const auto& relative=pixels.relativeContinuation;
+            if (!relative.complete) return strictReason;
+            if (!input.policyGeneration || !input.continuityGeneration ||
+                relative.policyGeneration!=input.policyGeneration ||
+                relative.continuityGeneration!=input.continuityGeneration ||
+                input.sourceIdentity.transportGeneration!=input.sourceGeneration ||
+                input.sourceIdentity.acceptedSequence!=input.sourceSequence ||
+                !SameAnalysisFrameIdentity(relative.identity,input.sourceIdentity)) return "relative-source-context";
+            if (!SameTrustedCropContract(relative.base,base) ||
+                !SameTrustedCropContract(relative.candidate,target)) return "relative-geometry";
+            if (!std::isfinite(relative.newScore) || !std::isfinite(relative.oldScore) ||
+                relative.newScore<0 || relative.newScore>1 || relative.oldScore<0 || relative.oldScore>1 ||
+                relative.newScore<=0.5) return "relative-weak-continuation";
+            if (relative.newScore<=relative.oldScore) return "relative-competing-boundary";
+            relativeUsed=true;
             return nullptr;
         }
 
@@ -1090,7 +1099,7 @@ namespace AlphaSourceCrop
 		decision.observation.transitionDeferred = decision.observation.transitionDeferred ||
 			decision.deferPartialComposition;
         const char* spatialRejection = decision.deferPartialComposition ? "partial-composition" :
-            CurrentSpatialExpansionRejection(input);
+            CurrentSpatialExpansionRejection(input,decision.currentSpatialRelative);
         decision.currentSpatialExpansion = spatialRejection == nullptr;
         decision.currentSpatialReason = spatialRejection ? spatialRejection : "qualified";
         if (decision.currentSpatialExpansion)

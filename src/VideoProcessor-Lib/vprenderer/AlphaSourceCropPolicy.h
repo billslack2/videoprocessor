@@ -401,6 +401,8 @@ namespace AlphaSourceCrop
 		ActivePicturePresentationRetentionEvidence retention;
 		OutwardPictureConfirmationState previousOutward;
         bool allowCurrentSpatialExpansion = false;
+        ActivePictureFrameIdentity sourceIdentity;
+        uint64_t policyGeneration = 0, continuityGeneration = 0;
 	};
 
 	struct TransitionAdmissionDecision
@@ -413,6 +415,7 @@ namespace AlphaSourceCrop
 		// crop has current strict excluded-band proof and retains full source width.
 		bool deferPartialComposition = false;
         bool currentSpatialExpansion = false;
+        bool currentSpatialRelative = false;
         // Static diagnostic text only; does not provide admission authority.
         const char* currentSpatialReason = "not-evaluated";
 	};

@@ -255,8 +255,22 @@ struct ActivePictureVisibleExtentDiagnostic
 // A bright contained logo can also lack credible acquisition geometry. Fresh
 // safe-band evidence may retain the existing rectangle without a global-darkness
 // requirement; this never creates authority for a new crop.
+// Optional current-pixel comparison of the measured expansion with the old
+// boundary. Evidence fractions, not probabilities or matte/caption certificates.
+struct ActivePictureRelativeContinuationEvidence
+{
+    bool complete = false;
+    ActivePictureBounds base, candidate;
+    ActivePictureFrameIdentity identity;
+    uint64_t policyGeneration = 0, continuityGeneration = 0;
+    double newScore = 0.0, oldScore = 0.0;
+    size_t extraSamples = 0;
+    const char* reason = "not-requested";
+};
+
 struct ActivePicturePresentationRetentionEvidence
 {
+    ActivePictureRelativeContinuationEvidence relativeContinuation;
     ActivePictureBlackReference blackReference;
 	bool analysisValid = false;
 	bool presentationValid = false;
@@ -462,7 +476,8 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
     const ActivePictureEvidence& raw,
     const ActivePictureGlobalNearBlackEvidence& global,
     const ActivePictureArDarknessEvidence& arDarkness,
-    const AnalysisEvaluationBudget* budget = nullptr);
+    const AnalysisEvaluationBudget* budget = nullptr,
+    const AnalysisEvaluationBudget* relativeBudget = nullptr);
 
 // Remeasure only the expansion strips for a corrected, exact candidate on the
 // same decoded source that produced currentRetention. This keeps the raw

@@ -8,6 +8,7 @@
 #include <cstring>
 
 namespace ExperimentalAspect {
+constexpr unsigned ActiveMeasurementBudgetMilliseconds=2;
 // Worker-local, bounded nomination history; never a pixel/caption/crop certificate.
 class MeasuredHistory {
     Prior prior;
@@ -136,7 +137,7 @@ inline ActivePictureEvidence MeasureActiveTrial(const AnalysisLumaSource& source
     if(source.IsValid()&&source.range!=AnalysisLumaRange::Unknown){
         result=Measure(source.width,source.height,source.range==AnalysisLumaRange::Full?0:64,
             [&](int x,int y,int& v){AnalysisLumaSample p;if(!source.Sample(x,y,p))return false;v=p.luma;return true;},
-            [&]{return Clock::now()-start<std::chrono::milliseconds(2);},24000,&prior);
+            [&]{return Clock::now()-start<std::chrono::milliseconds(ActiveMeasurementBudgetMilliseconds);},24000,&prior);
     }
     history.Observe(result,source.width,source.height,nowMs);
     auto evidence=EvidenceFromMeasurement(source,result);

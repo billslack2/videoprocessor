@@ -65,6 +65,7 @@ struct SampleContext
 	const AnalysisLumaSource& source;
 	size_t lumaSamples = 0;
 	size_t chromaSamples = 0;
+    bool sampleFailed = false;
 	// Presentation-only ownership: never mask picture pixels or side bars.
 	const ActivePictureBounds* erasedOverlay = nullptr;
 	const ActivePictureBounds* presentation = nullptr;
@@ -99,8 +100,7 @@ struct SampleContext
         Checkpoint();
 		if (IsErasedOverlay(x, y) || IsResidualOverlay(x, y)) return erasedBlackFloor;
 		AnalysisLumaSample sample;
-		if (!source.Sample(x, y, sample))
-			return 0;
+		if (!source.Sample(x, y, sample)) { sampleFailed=true; return 0; }
 		++lumaSamples;
 		return sample.luma;
 	}
@@ -112,6 +112,7 @@ struct SampleContext
 		AnalysisLumaSample sample;
 		if (!source.Sample(x, y, sample))
 		{
+            sampleFailed=true;
 			u = 0;
 			v = 0;
 			return;
@@ -129,8 +130,7 @@ struct SampleContext
 			value = { static_cast<uint16_t>(erasedBlackFloor), 512, 512 };
 			return true;
 		}
-		if (!source.Sample(x, y, value))
-			return false;
+		if (!source.Sample(x, y, value)) { sampleFailed=true; return false; }
 		++lumaSamples;
 		++chromaSamples;
 		return true;
@@ -528,9 +528,17 @@ ActivePictureVerticalBarProfile InspectVerticalCropBarProfile(
 	return result;
 }
 
+struct RelativeContinuationStrip
+{
+    double threshold = 0.0;
+    std::array<unsigned, kEdgeDepthSamples> supported{};
+    unsigned samples = 0;
+};
+
 ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
 	int barPixels, int boundary, int blackFloor, int blackThreshold, int outerOffset = 0,
-	const EdgeMatteReference* matteReference = nullptr)
+    const EdgeMatteReference* matteReference = nullptr,
+    RelativeContinuationStrip* relative = nullptr)
 {
 	ActivePictureEdgeEvidence evidence;
 	evidence.barPixels = barPixels;
@@ -582,6 +590,10 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 				if (value > blackThreshold)
 					++aboveNearBlack[i / (kLineSamples / 4)];
 			}
+            if (relative) {
+                ++relative->samples;
+                if (value > relative->threshold) ++relative->supported[d];
+            }
 			luma.push_back(value);
 			black += isBlack;
 			lineBlack += isBlack;
@@ -2746,7 +2758,8 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
     const ActivePictureEvidence& raw,
     const ActivePictureGlobalNearBlackEvidence& global,
     const ActivePictureArDarknessEvidence& arDarkness,
-    const AnalysisEvaluationBudget* budget)
+    const AnalysisEvaluationBudget* budget,
+    const AnalysisEvaluationBudget* relativeBudget)
 {
     CheckAnalysisEvaluationBudget(budget);
 	ActivePicturePresentationRetentionEvidence result;
@@ -2796,6 +2809,28 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 
 	const auto& candidate = result.activePicture.classification == ActivePictureClassification::PROVISIONAL
 		? result.activePicture.proposedBounds : result.activePicture.trustedBounds;
+    RelativeContinuationStrip relativeTop, relativeBottom;
+    auto& relative=result.relativeContinuation;
+    relative.base=trustedPresentation;relative.candidate=candidate;
+    bool collectRelative=relativeBudget && raw.strongCurrentBarMeasurement &&
+        raw.available && raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+        IsValidBoundsForSource(candidate,source) &&
+        candidate.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        trustedPresentation.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        candidate.left==0 && candidate.right==source.width && trustedPresentation.left==0 &&
+        trustedPresentation.right==source.width && candidate.top>0 && candidate.bottom<source.height &&
+        candidate.top<trustedPresentation.top && candidate.bottom>trustedPresentation.bottom &&
+        std::isfinite(raw.top.lumaFloor) && std::isfinite(raw.bottom.lumaFloor) &&
+        std::isfinite(raw.top.lumaDispersion) && std::isfinite(raw.bottom.lumaDispersion) &&
+        raw.top.lumaFloor>=0 && raw.bottom.lumaFloor>=0 &&
+        raw.top.lumaDispersion>=0 && raw.bottom.lumaDispersion>=0;
+    if (relativeBudget) relative.reason=collectRelative?"pending":"ineligible";
+    if (collectRelative) {
+        try { relativeBudget->Checkpoint(); }
+        catch(const AnalysisEvaluationCancelled&) { collectRelative=false;relative.reason="expired"; }
+    }
+    relativeTop.threshold=raw.top.lumaFloor+std::max(8.0,2*raw.top.lumaDispersion);
+    relativeBottom.threshold=raw.bottom.lumaFloor+std::max(8.0,2*raw.bottom.lumaDispersion);
 	if (result.activePicture.available && IsValidBoundsForSource(candidate, source))
 	{
 		result.expansionStripsAvailable = true;
@@ -2803,10 +2838,10 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		result.expansionCandidate = candidate;
 		result.expandingTop = InspectHorizontalEdge(samples, true,
 			trustedPresentation.top - candidate.top, trustedPresentation.top,
-			blackFloor, blackThreshold, candidate.top);
+            blackFloor, blackThreshold, candidate.top,nullptr,collectRelative?&relativeTop:nullptr);
 		result.expandingBottom = InspectHorizontalEdge(samples, false,
 			candidate.bottom - trustedPresentation.bottom, trustedPresentation.bottom,
-			blackFloor, blackThreshold, source.height - candidate.bottom);
+            blackFloor, blackThreshold, source.height - candidate.bottom,nullptr,collectRelative?&relativeBottom:nullptr);
 		result.expandingLeft = InspectVerticalEdge(samples, true,
 			trustedPresentation.left - candidate.left, trustedPresentation.left,
 			blackFloor, blackThreshold, candidate.left);
@@ -2814,6 +2849,54 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 			candidate.right - trustedPresentation.right, trustedPresentation.right,
 			blackFloor, blackThreshold, source.width - candidate.right);
 	}
+
+    if (collectRelative) {
+        // Reuse the 576 strip reads above. Only this explicitly requested
+        // optional path adds the bounded 960 old-boundary luma reads.
+        bool completed=!samples.sampleFailed && relativeTop.samples==288 && relativeBottom.samples==288;
+        if (!completed) relative.reason="invalid-source";
+        double newScore=1.0,oldScore=0.0;
+        const size_t readStart=samples.lumaSamples;
+        try {
+            relativeBudget->Checkpoint();
+            for (int side=0;side<2 && completed;++side) {
+                const auto& edge=side==0?raw.top:raw.bottom;
+                const auto& strip=side==0?relativeTop:relativeBottom;
+                for (unsigned count:strip.supported)
+                    newScore=std::min(newScore,edge.continuity*count/48.0);
+                const int oldDepth=side==0?trustedPresentation.top:source.height-trustedPresentation.bottom;
+                const int step=std::max(2,source.height/540);
+                for (int offset=-2*step;offset<=2*step && completed;offset+=step) {
+                    relativeBudget->Checkpoint();
+                    unsigned support=0;
+                    for (int lane=0;lane<48;++lane) {
+                        if ((lane&15)==0) relativeBudget->Checkpoint();
+                        const int x=((2*lane+1)*source.width)/96;
+                        const int first=oldDepth+offset-2,last=oldDepth+offset+2;
+                        const int a=side==0?first:source.height-1-first;
+                        const int b=side==0?last:source.height-1-last;
+                        if (a<0 || b<0 || a>=source.height || b>=source.height ||
+                            raw.lumaSamples+raw.chromaSamples+samples.lumaSamples+samples.chromaSamples+2>24000) {
+                            completed=false;relative.reason="sample-budget";break;
+                        }
+                        AnalysisLumaSample before,after;
+                        if (!source.Sample(x,a,before) || !source.Sample(x,b,after)) {
+                            completed=false;relative.reason="invalid-source";break;
+                        }
+                        samples.lumaSamples+=2;
+                        if (int(after.luma)-int(before.luma)>std::max(8.0,2*edge.lumaDispersion)) ++support;
+                    }
+                    oldScore=std::max(oldScore,support/48.0);
+                }
+            }
+            relativeBudget->Checkpoint();
+        } catch(const AnalysisEvaluationCancelled&) {completed=false;relative.reason="expired";}
+        relative.extraSamples=samples.lumaSamples-readStart;
+        if (completed) {
+            relative.complete=true;relative.newScore=newScore;relative.oldScore=oldScore;
+            relative.reason=newScore<=0.5?"weak-continuation":newScore<=oldScore?"competing-boundary":"qualified";
+        }
+    }
 
 	const auto topExtent = FindHorizontalVisibleExtent(samples, true,
 		trustedPresentation.top, blackThreshold);

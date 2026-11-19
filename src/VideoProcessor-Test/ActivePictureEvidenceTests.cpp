@@ -5089,6 +5089,107 @@ namespace VideoProcessorTest
             Assert::AreEqual(276,unchanged.trustedBounds.top);
         }
 
+        TEST_METHOD(RelativeContinuationExpansionPreservesUnownedCaptionAndCurrentSource)
+        {
+            using namespace AlphaSourceCrop;
+            P010Frame oldFrame(3840,2160), currentFrame(3840,2160);
+            oldFrame.BlackOutside(0,276,3840,1884);
+            currentFrame.Fill(64,512,512);
+            currentFrame.FillRectangle(0,68,3840,2092,84);
+            currentFrame.FillRectangle(0,400,3840,1760,300);
+            const int captionBottom=2142;
+            currentFrame.FillRectangle(1600,2110,2240,captionBottom,700);
+            auto oldSource=oldFrame.P010Source(), source=currentFrame.P010Source();
+            oldSource.range=source.range=AnalysisLumaRange::Limited;
+            const auto oldEvidence=ExtractActivePictureEvidence(oldSource);
+            const auto base=oldEvidence.trustedBounds;
+            ActivePictureTransitionModel model;
+            for(uint64_t sequence=1;sequence<=4;++sequence)
+                model.Observe(MakeActivePictureObservation(oldEvidence,sequence,24));
+
+            const auto measured=ExperimentalAspect::Measure(source.width,source.height,64,
+                [&](int x,int y,int& value){
+                    AnalysisLumaSample pixel;
+                    if(!source.Sample(x,y,pixel))return false;
+                    value=pixel.luma;return true;
+                },[]{return true;});
+            const auto evidence=ExperimentalAspect::EvidenceFromMeasurement(source,measured);
+            Assert::IsTrue(evidence.strongCurrentBarMeasurement,
+                L"Current opposing picture edges remain measured despite new caption ink in the outer bar.");
+            Assert::AreEqual(68,evidence.trustedBounds.top);
+            Assert::AreEqual(2092,evidence.trustedBounds.bottom);
+            const auto global=EvaluateActivePictureGlobalNearBlack(source);
+            const auto darkness=EvaluateActivePictureArDarkness(source,evidence,global);
+            AnalysisEvaluationBudget optionalBudget([](void*){return false;},nullptr);
+            auto retention=EvaluateActivePicturePresentationRetention(source,base,evidence,global,darkness,nullptr,&optionalBudget);
+            const auto identity=MakeSubtitleProofIdentity(source,5);
+            retention.relativeContinuation.identity=identity;
+            retention.relativeContinuation.policyGeneration=47;
+            retention.relativeContinuation.continuityGeneration=23;
+            Assert::IsTrue(retention.relativeContinuation.complete);
+            Assert::AreEqual(size_t(960),retention.relativeContinuation.extraSamples);
+            ResampleActivePictureExpansionStrips(source,base,evidence.trustedBounds,retention);
+            TransitionAdmissionInput input;
+            input.evidence=evidence;
+            input.outwardCandidate=evidence.trustedBounds;
+            input.presentationBeforeObservation=input.trustedGeometry=base;
+            input.trustedGeometryAvailable=input.compatiblePresentation=true;
+            input.trustedGeneration=input.sourceGeneration=source.generation;
+            input.sourceSequence=5;input.framesPerSecond=24;
+            input.retention=retention;input.allowCurrentSpatialExpansion=true;
+            input.sourceIdentity=identity;input.policyGeneration=47;input.continuityGeneration=23;
+            auto strictInput=input;strictInput.retention.relativeContinuation={};
+            Assert::IsFalse(EvaluateTransitionAdmission(strictInput).currentSpatialExpansion);
+            const auto admission=EvaluateTransitionAdmission(input);
+            Assert::IsTrue(admission.currentSpatialExpansion&&admission.currentSpatialRelative);
+            const auto transition=model.Observe(admission.observation);
+            Assert::IsTrue(transition.publish);
+            Assert::AreEqual(2092,transition.bounds.bottom);
+
+            // The renderer refreshes retention after publication. No subtitle
+            // preview, accepted ownership, cleanup or absence certificate exists
+            // for this new cue; its current pixels must therefore remain visible.
+            const auto handoff=ResolveActivePictureRetentionHandoff(source,base,retention,transition.bounds);
+            Assert::IsTrue(handoff.refreshed&&handoff.evidence.analysisValid&&handoff.evidence.presentationValid);
+            Assert::IsFalse(handoff.evidence.excludedBandsPixelSafe);
+            Assert::IsTrue(handoff.evidence.outwardVisibleBoundsAvailable);
+            Assert::IsTrue(handoff.evidence.outwardVisibleBounds.bottom>=captionBottom);
+            const auto observation=ResolvePresentationObservation(handoff.bounds,evidence,handoff.evidence);
+            Assert::AreEqual(2092,observation.bounds.bottom,
+                L"Physical picture measurement does not turn caption ink into a different native aspect.");
+
+            Input crop;
+            crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+            crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.geometry=transition.bounds;
+            crop.geometrySourceGeneration=crop.frameSourceGeneration=source.generation;
+            crop.frameSourceSequence=5;crop.rasterWidth=source.width;crop.rasterHeight=source.height;
+            crop.currentVisibleBoundsAvailable=true;
+            crop.currentVisibleBase=handoff.bounds;
+            crop.currentVisibleBounds=handoff.evidence.outwardVisibleBounds;
+            crop.currentVisibleSourceGeneration=source.generation;crop.currentVisibleSourceSequence=5;
+            crop.outwardPresentationActive=crop.outwardExpansionAvailable=true;
+            crop.outwardExpansion=handoff.evidence.outwardVisibleBounds;
+            // Mirror the renderer's outward-only chroma alignment; never round
+            // visible caption pixels inward to fit the physical picture crop.
+            crop.outwardExpansion.left&=~1;crop.outwardExpansion.top&=~1;
+            crop.outwardExpansion.right=(std::min)(source.width,(crop.outwardExpansion.right+1)&~1);
+            crop.outwardExpansion.bottom=(std::min)(source.height,(crop.outwardExpansion.bottom+1)&~1);
+            crop.outwardExpansion.aspectRatio=double(crop.outwardExpansion.right-crop.outwardExpansion.left)/
+                (crop.outwardExpansion.bottom-crop.outwardExpansion.top);
+            crop.outwardExpansionSourceGeneration=source.generation;
+            const auto presentation=Evaluate(crop);
+            Assert::IsTrue(presentation.applyCrop&&presentation.outwardExpanded);
+            Assert::IsTrue(presentation.sourceBounds.top>0,
+                L"Preserving the new caption must not silently expand the bounded output to full raster.");
+            Assert::IsTrue(presentation.sourceBounds.bottom>=captionBottom,
+                L"Unavailable caption analysis must not discard fresh ink outside the newly published picture.");
+            Assert::AreEqual(2092,crop.geometry.bottom);
+            AnalysisLumaSample retainedPixel;
+            Assert::IsTrue(source.Sample(1920,2120,retainedPixel));
+            Assert::AreEqual(700,int(retainedPixel.luma),L"Picture admission must not erase unowned current pixels.");
+        }
+
         TEST_METHOD(CurrentSpatialExpansionPreservesUnownedCaptionOutsideNewBars)
         {
             using namespace AlphaSourceCrop;

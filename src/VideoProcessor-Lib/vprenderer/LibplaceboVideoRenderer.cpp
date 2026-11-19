@@ -10818,7 +10818,8 @@ struct LibplaceboVideoRenderer::Impl
 		const SubtitleBoxPreview* currentSubtitlePreview = nullptr,
         SubtitlePreviewMode pictureSubtitleMode = SubtitlePreviewMode::None,
         const AlphaSourceCrop::MovingPictureTransitionState* boundaryMotion = nullptr,
-        const SceneDetectorResult* motionBoundary = nullptr)
+        const SceneDetectorResult* motionBoundary = nullptr,
+        const ActivePictureRelativeContinuationEvidence* preparedRelative = nullptr)
 	{
 		latestColdStrictWorkerProof = false;
 		ConfigureSparseBoundaryExperiment();
@@ -11791,6 +11792,13 @@ struct LibplaceboVideoRenderer::Impl
                     presentationBeforeObservation, latestActivePictureEvidenceBounds,
                     retentionEvidence);
 			admissionInput.retention = retentionEvidence;
+            admissionInput.sourceIdentity=currentIdentity;
+            admissionInput.policyGeneration=localBoundaryPolicyGeneration;
+            admissionInput.continuityGeneration=localBoundaryContinuityGeneration;
+            if (preparedRelative && SameAnalysisFrameIdentity(preparedRelative->identity,currentIdentity) &&
+                preparedRelative->policyGeneration==localBoundaryPolicyGeneration &&
+                preparedRelative->continuityGeneration==localBoundaryContinuityGeneration)
+                admissionInput.retention.relativeContinuation=*preparedRelative;
 			admissionInput.previousOutward = outwardPictureConfirmation;
 			const bool eligiblePictureChange = nlsTransition.WouldAdmitGeometryChange(
 				MakeActivePictureObservation(evidence, frameNumber, framesPerSecond));
@@ -12262,7 +12270,7 @@ struct LibplaceboVideoRenderer::Impl
                     black.adaptiveCandidate.right,black.adaptiveCandidate.bottom,evidence.proposedBounds.left,
                     evidence.proposedBounds.top,evidence.proposedBounds.right,evidence.proposedBounds.bottom,
                     static_cast<int>(evidence.classification),transition.publish?1:0,evidence.lumaSamples,evidence.chromaSamples);
-                DebugLog::Log("Alpha picture decision: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu pending=%d stage=%s coalesced=%llu measured_class=%d measured_rect=%d,%d-%d,%d class=%d candidate=%d,%d-%d,%d base=%d,%d-%d,%d axis_h=%s axis_v=%s eligible=%d outward=%s broad=%d spatial=%s proof=%u/%u prior_proof=%u prior_sequence=%llu first_sequence=%llu deferred=%d/%d/%d buffered_present=%d buffered_valid=%d buffered_ready=%d scheduled=%d scheduled_validation=%s publication_admission=%s published=%d near_black=%d/%d acquisition_blocked=%d p90=%.1f subtitle_action=%d requested_shift=%.1f drift=%d hold_ms=%llu engage_ms=%llu release_ms=%llu subtitle_measurement=%llu subtitle_generation=%llu model_reason=\"%s\" evidence_reason=\"%s\"",
+                DebugLog::Log("Alpha picture decision: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu pending=%d stage=%s coalesced=%llu measured_class=%d measured_rect=%d,%d-%d,%d class=%d candidate=%d,%d-%d,%d base=%d,%d-%d,%d axis_h=%s axis_v=%s eligible=%d outward=%s broad=%d spatial=%s spatial_route=%s relative=%s relative_scores=%.4f/%.4f relative_reads=%zu proof=%u/%u prior_proof=%u prior_sequence=%llu first_sequence=%llu deferred=%d/%d/%d buffered_present=%d buffered_valid=%d buffered_ready=%d scheduled=%d scheduled_validation=%s publication_admission=%s published=%d near_black=%d/%d acquisition_blocked=%d p90=%.1f subtitle_action=%d requested_shift=%.1f drift=%d hold_ms=%llu engage_ms=%llu release_ms=%llu subtitle_measurement=%llu subtitle_generation=%llu model_reason=\"%s\" evidence_reason=\"%s\"",
                     diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
                     currentIdentity.viewportGeneration, diagnosticPending ? 1 : 0, stage,
                     pictureDecisionDiagnostics.emittedSuppressed,
@@ -12275,7 +12283,11 @@ struct LibplaceboVideoRenderer::Impl
                     ActivePictureAxisReasonName(evidence.axisEvidence.horizontal.reason),
                     ActivePictureAxisReasonName(evidence.axisEvidence.vertical.reason), eligiblePictureChange ? 1 : 0,
                     admission.outward.diagnosticReason, admission.outward.broadOpposingPicture ? 1 : 0,
-                    admission.currentSpatialReason,
+                    admission.currentSpatialReason,admission.currentSpatialRelative?"relative":"strict",
+                    admissionInput.retention.relativeContinuation.reason,
+                    admissionInput.retention.relativeContinuation.newScore,
+                    admissionInput.retention.relativeContinuation.oldScore,
+                    admissionInput.retention.relativeContinuation.extraSamples,
                     admission.outward.state.confirmations, AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED,
                     admissionInput.previousOutward.confirmations, admissionInput.previousOutward.lastObservedSourceSequence,
                     admission.outward.state.firstPictureSourceSequence,
@@ -13323,11 +13335,15 @@ struct LibplaceboVideoRenderer::Impl
 			currentActivePictureIdentity.rendererGeneration = frameGeneration;
             pixelMeasurements.Begin(analysisSource, currentActivePictureIdentity,
                 localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
+            std::shared_ptr<const PreparedPictureEvidence> currentPreparedRetention;
             if (analysisCache) {
                 const auto native = QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
-                if (native && native->domainKey == preparedLive.domainKey)
+                if (native && native->domainKey == preparedLive.domainKey &&
                     pixelMeasurements.SeedQueued(native->source, native->identity,
-                        native->evidence, native->darkness);
+                        native->evidence, native->darkness) && ExperimentalAspect::ActiveTrialEnabled())
+                    currentPreparedRetention=analysisCache->pictureProof.LookupCurrentRetention(
+                        currentActivePictureIdentity,nlsGeometry,localBoundaryPolicyGeneration,
+                        localBoundaryContinuityGeneration,analysisCache->lookahead);
             }
 
             // Consume a completed exact-frame worker job before AR evaluates this
@@ -13365,7 +13381,8 @@ struct LibplaceboVideoRenderer::Impl
 					sceneResult.hardCutConfirmed), cadenceRepeat, !cadenceRepeat && sceneResult.hardCutConfirmed,
 				subtitlePreview, subtitlePreviewMode,
                 !cadenceRepeat && sceneResult.safeBoundary ? &boundaryMotion : nullptr,
-                !cadenceRepeat && sceneResult.safeBoundary ? &sceneResult : nullptr);
+                !cadenceRepeat && sceneResult.safeBoundary ? &sceneResult : nullptr,
+                currentPreparedRetention?&currentPreparedRetention->retention.relativeContinuation:nullptr);
             experimentalAspectShadow.Offer(preparedLive, currentActivePictureIdentity,
                 latestActivePictureEvidenceBounds, latestActivePictureEvidenceClassification,
                 latestActivePictureEvidenceFrame == sourceSequence &&
@@ -23623,7 +23640,17 @@ void LibplaceboVideoRenderer::PrimePictureProofMeasurements(
                     // since admission. Do not repeat an already complete scan.
                     if (const auto ready=PreparedPictureEvidenceWorker::Ready(slot))
                         if (SamePreparedPictureEvidenceKey(ready->key,key)) return *ready;
-                    return EvaluatePreparedPictureEvidence(key,raw->evidence,raw->darkness);
+                    // A separate bounded optional-retention allowance, begun
+                    // before ordinary retention. It never extends the raw
+                    // detector's budget or makes current video wait.
+                    auto featureStart=SteadyClock::now();
+                    const auto featureExpired=[](void* state) {
+                        return SteadyClock::now()-*static_cast<const SteadyClock::time_point*>(state)>=
+                            std::chrono::milliseconds(ExperimentalAspect::ActiveMeasurementBudgetMilliseconds);
+                    };
+                    AnalysisEvaluationBudget relativeBudget(featureExpired,&featureStart);
+                    return EvaluatePreparedPictureEvidence(key,raw->evidence,raw->darkness,nullptr,
+                        ExperimentalAspect::ActiveTrialEnabled()?&relativeBudget:nullptr);
                 });
         };
         // Caption components come first for their source; a missing/changed

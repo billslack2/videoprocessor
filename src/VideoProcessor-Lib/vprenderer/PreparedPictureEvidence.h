@@ -119,7 +119,8 @@ struct PreparedPictureEvidence
 // Do not use this function to import a differently interpreted raw observation.
 inline PreparedPictureEvidence EvaluatePreparedPictureEvidence(const PreparedPictureEvidenceKey& key,
     const ActivePictureEvidence& raw, const ActivePictureArDarknessEvidence& darkness,
-    const AnalysisEvaluationBudget* budget = nullptr)
+    const AnalysisEvaluationBudget* budget = nullptr,
+    const AnalysisEvaluationBudget* relativeBudget = nullptr)
 {
     if (!ValidPreparedPictureEvidenceKey(key)) throw std::invalid_argument("invalid prepared picture evidence key");
     CheckAnalysisEvaluationBudget(budget);
@@ -129,7 +130,10 @@ inline PreparedPictureEvidence EvaluatePreparedPictureEvidence(const PreparedPic
     {
     case PreparedPictureEvidenceKind::Retention:
         result.retention = EvaluateActivePicturePresentationRetention(
-            key.frame.source, key.base, raw, darkness.global, darkness, budget);
+            key.frame.source, key.base, raw, darkness.global, darkness, budget, relativeBudget);
+        result.retention.relativeContinuation.identity=key.identity;
+        result.retention.relativeContinuation.policyGeneration=key.policyGeneration;
+        result.retention.relativeContinuation.continuityGeneration=key.continuityGeneration;
         break;
     case PreparedPictureEvidenceKind::RelativeContrast:
     {
@@ -171,6 +175,22 @@ public:
         if (!entry) return nullptr;
         const auto ready = Worker::Ready(entry->slot);
         return ready && SamePreparedPictureEvidenceKey(ready->key, key) ? ready : nullptr;
+    }
+
+    // Only after the caller has imported this raw slot against the exact live
+    // source storage. No requests, waits or scans; stale base/context is unknown.
+    std::shared_ptr<const Result> LookupCurrentRetention(const ActivePictureFrameIdentity& identity,
+        const ActivePictureBounds& base, uint64_t policy, uint64_t continuity,
+        const std::shared_ptr<const void>& rawOwner) const
+    {
+        for (const auto& entry:m_entries[static_cast<size_t>(PreparedPictureEvidenceKind::Retention)]) {
+            if (!entry.slot || !SameAnalysisFrameIdentity(entry.key.identity,identity) ||
+                !SamePreparedPictureBounds(entry.key.base,base) || entry.key.policyGeneration!=policy ||
+                entry.key.continuityGeneration!=continuity || !SamePreparedPictureOwner(entry.key.rawOwner,rawOwner)) continue;
+            const auto ready=Worker::Ready(entry.slot);
+            if (ready && SamePreparedPictureEvidenceKey(ready->key,entry.key)) return ready;
+        }
+        return nullptr;
     }
 
     // Existing ready/pending requests return the same slot. The caller checks
