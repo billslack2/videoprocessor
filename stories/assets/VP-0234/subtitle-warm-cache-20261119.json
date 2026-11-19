@@ -1,0 +1,47 @@
+{
+  "source": "c93d7f0e493851ba95dc4a4b223b2c5c10d8b38a",
+  "coldPreparationsMs": [
+    77239.64,
+    98253.43
+  ],
+  "coldMeasurement": "whole background preparation wall elapsed, different observed cohorts",
+  "cacheBeforeGracefulCloseBytes": 685124,
+  "cacheAfterGracefulCloseBytes": 1204308,
+  "warmLoadedObjects": 44,
+  "warmLoadedBytes": 1204308,
+  "warmPreparationMs": 307.8,
+  "warmActivation": {
+    "renderInvocationMaxMs": 241.6635,
+    "totalRenderLockedMaxMs": 245.7178,
+    "submitGapMs": 259.0154,
+    "skippedSourceIds": 11,
+    "glslToSpirvMs": 173.107,
+    "spirvToHlslMs": 26.675,
+    "hlslToDxbcMs": 16.181,
+    "classification": "foreground cache miss/compiler work remains a real-time failure despite fast background preparation"
+  },
+  "userControl": "User stopped automated profile cycling, then manually exercised all modes and reported that they load fine",
+  "subsequentWarmCycle": {
+    "window": [
+      "2026-11-19 16:53:10",
+      "2026-11-19 16:54:45"
+    ],
+    "profile_events": [
+      "2026-11-19 16:53:17 | SUBTITLE MODE: mode=3 mode_name=generated gray background box=0 move=1 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=10 source_pixels text_reduction_percent=30 rounded_corners=1 background_edge=extend",
+      "2026-11-19 16:53:18 | SUBTITLE MODE: mode=3 mode_name=generated gray background box=0 move=1 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=10 source_pixels text_reduction_percent=30 rounded_corners=0 background_edge=extend",
+      "2026-11-19 16:53:18 | SUBTITLE MODE: mode=2 mode_name=black background box=0 move=1 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=0 source_pixels text_reduction_percent=25 rounded_corners=1 background_edge=extend",
+      "2026-11-19 16:53:19 | SUBTITLE MODE: mode=0 mode_name=normal configured subtitles box=0 move=0 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=0 source_pixels text_reduction_percent=0 rounded_corners=1 background_edge=extend",
+      "2026-11-19 16:53:20 | SUBTITLE MODE: mode=0 mode_name=normal configured subtitles box=0 move=0 background=rectangle padding_sides=60 padding_top=40 padding_bottom=21 inset=0 source_pixels text_reduction_percent=0 rounded_corners=1 background_edge=extend"
+    ],
+    "compiler_events": [
+      "2026-11-19 16:53:17 | VP subtitle background preparation: ready=1 elapsed_ms=141.34"
+    ],
+    "submission_windows": 20,
+    "submissions": 5988,
+    "skipped_source_ids": 0,
+    "repeats": 0,
+    "max_submit_gap_ms": 21.5589,
+    "limits": "User reports modes loaded fine; actual caption/cleanup pixel coverage is separate."
+  },
+  "fullQualification": false
+}

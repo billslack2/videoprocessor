@@ -103,6 +103,45 @@ by matched path/caption/reset and late-worker coverage. No code, quality, queue 
 configuration changes were made to improve the reported timing. Full60fps and
 subtitle/pixel-preservation acceptance remain open.
 
+## 2026-11-19 subtitle cold/warm preparation and profile control
+
+Current c93d7f0e logged complete background subtitle preparations of 77,239.64 ms
+and later 98,253.43 ms in separate cohorts. These are whole-job elapsed times, not
+pure compiler CPU. Existing VP-0225 shader-startup evidence already identifies the
+all-variant gate and heavy graph complexity; this investigation reuses that work.
+New diagnostic folders omitted previous subtitle cache data, contributing cold
+starts. This is not attributed to24fps-on60Hz cadence or assumed GPU contention.
+
+The user approved a same-folder graceful restart. Saved cache grew from685,124 to
+1,204,308 bytes; the relaunched player loaded44 objects. Configuration hash stayed
+unchanged. Startup selected Classic, so the live shortcut was used to select and
+verify Reconstruction. Warm background preparation completed in307.80 ms.
+
+That warm activation still FAILED the real-time requirement: source4463 spent
+241.664 ms inside the render invocation (242.106 ms wrapper), yielding a259.015 ms
+submission gap and11 skipped source IDs after backlog recovery. Live libplacebo
+logs report173.107 ms GLSL-to-SPIR-V,26.675 ms SPIR-V-to-HLSL and16.181 ms
+HLSL-to-DXBC translation. Thus foreground compiler work is demonstrated; a precise
+missing prewarm graph is not yet identified. The stalled layout was a full-output
+raw presentation with no overlays and unavailable configured screen geometry;
+this correlation does not authorize weakening pixel-preserving fallback or AR.
+
+The user stopped automated Computer Use with Escape; no more UI input followed.
+The user then manually cycled all profiles and reported that they load fine.
+In the observed16:53:10–16:54:45 control window,5,988 submitted source IDs contain
+zero repeats/skips and a21.559 ms maximum gap. Another background preparation
+finished in141.34 ms, with no slow compiler translation events in that window.
+This supports successful warm switching; the remaining targets are cold-start
+availability and the first-use foreground cache miss, not a recurring warm-mode
+stall. Actual subtitle/cleanup pixel and dense-cue qualification remain separate.
+[Warm-cache and manual-cycle evidence](../assets/VP-0234/subtitle-warm-cache-20261119.json).
+
+Keep the user's24fps HDMI input on the60Hz test monitor separate from the real
+display's24Hz operation and from genuine59.94fps input. Existing cache reuse
+improves availability without code/quality changes; neither the259 ms activation
+nor full60fps/subtitle acceptance is declared fixed. Current selected subtitle
+profile after the user's cycle is Classic. Playback was left under user control.
+
 ## User story
 
 As a viewer, I want to know what consumes the live frame budget and obtain measured improvements that sustain incoming HDMI video without disrupting picture, subtitles or aspect detection.
