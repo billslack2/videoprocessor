@@ -36,8 +36,31 @@
   populated on this workstation. Confirm
   `Include\LibMWCapture\MWCapture.h` exists there before treating a build
   failure as a missing SDK. Keep the SDK outside source worktrees.
-- Standard compile command from a Visual Studio Developer PowerShell:
-  `MSBuild.exe VideoProcessor.sln /t:Build /m /p:Configuration=Release /p:Platform=x64 /p:MagewellSdkRoot=E:\codex\tools\MagewellCaptureSDK-3.3.1.1596\SDKv3 /v:minimal`.
+- Use `pwsh -NoProfile -File tools/build_release.ps1` from the source root.
+  Every source-built project uses v143 / MSVC **14.44.35207**, including the
+  player, static libraries, both renderers, MFC, Qt config and diagnostic tools.
+  Install the matching x64 MFC/ATL component alongside the compiler. The wrapper
+  selects one VS 2022-or-newer MSBuild host for the entire build.
+  `-IncludeTests` also builds both test projects; it does not run tests.
+  Use `-Phase runtime` or `-Phase config` to build only the affected group.
+  `-PlanOnly` prints the selected hosts/targets without building.
+- Do not choose a bare `MSBuild.exe` from PATH or override the repository's
+  `VCToolsVersion`/`PlatformToolset`. `Directory.Build.props` pins the compiler;
+  `Directory.Build.targets` rejects mismatched projects before compilation.
+  The wrapper clears inherited compiler/library overrides, selects x64 host
+  tools, disables node reuse, serializes its invocations, and preserves logs
+  and exit-code receipts under `artifacts/release-build`. Do not concurrently
+  run manual builds against the same worktree/intermediate directories.
+- Normal builds are incremental. If LNK1103 recurs, stop and inspect the first
+  failing phase's log and actual compiler/linker/library paths; do not repeatedly
+  retry the entire solution. `-Rebuild -IncludeTests` is required once when
+  migrating old v142 intermediates to the unified compiler. A narrower
+  `-Phase runtime -Rebuild` can recover incompatible runtime intermediates after
+  a toolchain change. Re-run the same incremental command afterward to verify
+  recovery. Do not disable debug information or change rendering code to hide it.
+- LNK1103 was observed during the former mixed v142/v143 build setup. Its exact
+  original corruption mechanism was not established. Do not reinstate the split
+  or treat repeated clean rebuilds as a permanent fix.
 
 ## Testing and diagnostics
 

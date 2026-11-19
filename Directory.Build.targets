@@ -1,4 +1,8 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="ValidateVpToolchain" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(PlatformToolset)' != 'v143' or '$(VCToolsVersion)' != '14.44.35207'"
+           Text="VP requires v143 / MSVC 14.44.35207 for all source-built projects. Use tools/build_release.ps1; do not mix toolsets or override VCToolsVersion." />
+  </Target>
   <!-- Preserve the actual toolset and binary identity for release prerequisite checks. -->
   <Target Name="RecordVpRuntimeRequirement" AfterTargets="Build"
           Condition="'$(Configuration)' == 'Release' and '$(Platform)' == 'x64' and ('$(ConfigurationType)' == 'Application' or '$(ConfigurationType)' == 'DynamicLibrary')">

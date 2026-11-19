@@ -1,0 +1,7 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- One compiler/CRT/header set for every source-built project, including
+       Qt, MFC, probes and static libraries containing /GL objects. -->
+  <PropertyGroup>
+    <VCToolsVersion>14.44.35207</VCToolsVersion>
+  </PropertyGroup>
+</Project>
