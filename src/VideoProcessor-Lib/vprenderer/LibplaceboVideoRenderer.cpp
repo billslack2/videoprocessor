@@ -20493,6 +20493,28 @@ releaseDriftBaseRetention =
 			record.releaseReason = AlphaSourceReleaseReason::Submitted;
 
             const AlphaDxgiPresentationSample sample = ObservePresent(record);
+            if (AnalysisDiagnosticTrace::FramesActive())
+            {
+                // Source identity describes this render input. A temporal mix
+                // may select another packet; keep its sequence separately.
+                auto trace = AnalysisTraceRecord(subtitleIdentity, this, "output-submit", "swap-submitted");
+                trace.counters[0] = record.selectedSourceSequence;
+                trace.counters[1] = record.presentId;
+                trace.counters[2] = record.submitQpc;
+                trace.counters[3] = sample.qpcFrequency;
+                trace.counters[4] = sample.presentCount;
+                trace.counters[5] = sample.syncQpc;
+                trace.metrics[0] = renderImage.crop.x0;
+                trace.metrics[1] = renderImage.crop.y0;
+                trace.metrics[2] = renderImage.crop.x1;
+                trace.metrics[3] = renderImage.crop.y1;
+                trace.metrics[4] = target.crop.x0;
+                trace.metrics[5] = target.crop.y0;
+                trace.metrics[6] = target.crop.x1;
+                trace.metrics[7] = target.crop.y1;
+                trace.flags = record.temporalActive ? 1u : 0u;
+                AnalysisDiagnosticTrace::Emit(trace);
+            }
             if (displayRepeatValid) displayRepeatRecord = record;
 			const AlphaPresentationSnapshot presentationSnapshot =
 				presentationTelemetry.Snapshot();

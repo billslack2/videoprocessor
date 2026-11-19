@@ -23,6 +23,12 @@ struct Result {
     const char* reason="invalid-source";
 };
 inline double Unit(double x){return (std::max)(0.0,(std::min)(1.0,x));}
+// An abrupt inward rise can corroborate a raised matte. Compare it with both
+// the exterior texture and the elevation above the source black level.
+inline double MatteEvidence(double darkness, double rise, double spread, int floor, int black) {
+    const double elevation = (std::max)(0, floor - black);
+    return (std::max)(darkness, Unit((rise - 2 * spread) / (32 + elevation)));
+}
 template<size_t N> inline int Median(std::array<int,N> a,size_t n){std::sort(a.begin(),a.begin()+n);return a[n/2];}
 inline double RatioSupport(double ar){
     constexpr double ratios[]={1.33,1.43,1.66,1.78,1.85,1.90,2,2.20,2.35,2.39,2.40,2.55,2.76};
@@ -86,7 +92,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
                 // extent even when it cannot establish an opposing bar pair.
                 if(contrast[lane][i]>=2 && contrast[lane][i]>=.2*noise[lane][i])
                     ++weakBoundarySupport;
-                if(contrast[lane][i]>=4&&contrast[lane][i]/(8.0+noise[lane][i])*dark>=1){
+                if(contrast[lane][i]>=4&&contrast[lane][i]/(8.0+noise[lane][i])*MatteEvidence(dark,contrast[lane][i],noise[lane][i],matte[lane][i],nominalBlack)>=1){
                     laneMask|=1u<<lane;strengths[support]=contrast[lane][i];spreads[support]=noise[lane][i];floors[support]=matte[lane][i];highs[support]=high[lane][i];++support;
                 }
             }
@@ -120,7 +126,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             e.support=support/9.0;e.contrast=Median(strengths,support);e.noise=Median(spreads,support);
             e.matte=Median(floors,support);e.matteP90=Median(highs,support);
             e.darkness=Unit((nominalBlack+96.0-e.matte)/96.0);
-            e.score=.35*e.support+.35*Unit(e.contrast/(12+2*e.noise))+.30*e.darkness-.10*Unit(e.uncertainty/double(step));
+            e.score=.35*e.support+.35*Unit(e.contrast/(12+2*e.noise))+.30*MatteEvidence(e.darkness,e.contrast,e.noise,e.matte,nominalBlack)-.10*Unit(e.uncertainty/double(step));
         }
         std::sort(options.begin(),options.begin()+n,[](const Candidate&a,const Candidate&b){return a.edge.score>b.edge.score;});
         // Keep spatially distinct alternatives; adjacent coarse positions describe one edge.
@@ -186,7 +192,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         edge.uncertainty = hi - lo;
         edge.support = (std::min)(edge.support, count / 9.0);
         edge.score = .35 * edge.support + .35 * Unit(edge.contrast / (12 + 2 * edge.noise)) +
-            .30 * edge.darkness - .10 * Unit(edge.uncertainty / double(step));
+            .30 * MatteEvidence(edge.darkness,edge.contrast,edge.noise,edge.matte,nominalBlack) - .10 * Unit(edge.uncertainty / double(step));
         return edge;
     };
     for (int axis = 0; axis < 2 && !failed; ++axis) {

@@ -647,6 +647,68 @@ namespace VideoProcessorTest
             Assert::IsTrue(evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
             AssertLowCodePictureRetained(evidence);
         }
+        TEST_METHOD(RaisedScopeEdgeFlecksKeepNativeCropAndProtectConnectedCaption)
+        {
+            P010Frame frame(3840,2160);
+            const auto base=ScopePresentation(3840,2160,262,1898);
+            frame.BlackOutside(0,262,3840,1898,119,511,511);
+            frame.FillRectangle(0,258,3840,262,167);
+            frame.FillRectangle(0,1898,3840,1902,167);
+            for(int x=7;x<3840;x+=240) {
+                frame.FillRectangle(x,253,x+2,257,126);
+                frame.FillRectangle(x,1902,x+2,1918,126);
+            }
+            auto measure=[&]{return EvaluateActivePicturePresentationRetention(frame.P010Source(),base);};
+            const auto bare=measure();
+            Assert::IsTrue(bare.excludedBandsPixelSafe && !bare.outwardVisibleBoundsAvailable);
+            frame.FillRectangle(500,1904,640,1918,129);
+            const auto cue=measure();
+            Assert::IsTrue(cue.outwardVisibleBoundsAvailable && cue.outwardVisibleBounds.bottom>=1918);
+            Assert::AreEqual(base.top,cue.outwardVisibleBounds.top);
+            using namespace AlphaSourceCrop;
+            Input input;
+            input.automaticCropEnabled=input.sharedGeometryAvailable=input.latestObservationSupportsCrop=true;
+            input.geometry=input.verticalTranslationBase=base;
+            input.geometrySourceGeneration=input.frameSourceGeneration=input.verticalTranslationSourceGeneration=1;
+            input.classification=input.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.rasterWidth=3840; input.rasterHeight=2160;
+            input.frameLocalPresentationRetentionEvaluated=true;
+            CropPresentationAdmissionState admission;
+            for (int phase=0;phase<4;++phase) {
+                input.currentVisibleBase=base;
+                input.currentVisibleSourceGeneration=1;
+                input.currentVisibleSourceSequence=input.frameSourceSequence=phase+1;
+                const auto& evidence=phase==0 || phase==3 ? bare : cue;
+                input.currentVisibleBoundsAvailable=evidence.outwardVisibleBoundsAvailable;
+                input.currentVisibleBounds=evidence.outwardVisibleBounds;
+                input.frameLocalPresentationRetentionSafe=evidence.excludedBandsPixelSafe;
+                input.verticalTranslationConfirmationPending=phase==1;
+                input.verticalTranslationActive=phase==2;
+                input.verticalTranslationPixels=phase==2 ? 32 : 0;
+                const auto result=AdmitCropPresentation(admission,input,Evaluate(input),5);
+                Assert::IsTrue(result.presentation.applyCrop && !result.blocked);
+                const auto& bounds=result.presentation.sourceBounds;
+                Assert::AreEqual(3840,bounds.right-bounds.left);
+                Assert::AreEqual(1636,bounds.bottom-bounds.top);
+                Assert::AreEqual(base.top+input.verticalTranslationPixels,bounds.top);
+                admission=result.state;
+            }
+        }
+        TEST_METHOD(RaisedScopeRetentionProtectsDimCaption)
+        {
+            const auto base = ScopePresentation(640,360,46,314);
+            P010Frame frame(640,360);
+            frame.BlackOutside(0,46,640,314,119,511,511);
+            auto measure = [&]{return EvaluateActivePicturePresentationRetention(frame.P010Source(),base);};
+            const auto plain = measure();
+            Assert::IsTrue(plain.excludedBandsPixelSafe && !plain.outwardVisibleBoundsAvailable);
+            for(int level : {129,108,119}) {
+                frame.FillRectangle(230,332,410,342,level,level==119?600:511,511);
+                const auto caption = measure();
+                Assert::IsTrue(!caption.excludedBandsPixelSafe && caption.outwardVisibleBoundsAvailable);
+                Assert::IsTrue(caption.outwardVisibleBounds.top==46 && caption.outwardVisibleBounds.bottom>=342);
+            }
+        }
         TEST_METHOD(CorrectedExpansionStripsMatchDirectCurrentSourceMeasurement)
         {
             P010Frame plain(640, 360);

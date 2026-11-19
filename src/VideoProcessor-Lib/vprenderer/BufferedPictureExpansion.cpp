@@ -48,7 +48,7 @@ namespace AlphaSourceCrop
         // but cannot acquire crop authority, prove moving picture pixels or
         // contribute a quiet endpoint sample.
         bool CurrentNativeEdgePosition(const TransitionAdmissionInput& current,
-            const ActivePictureBounds& candidate)
+            const ActivePictureBounds& candidate, bool established)
         {
             const auto& vertical = current.evidence.axisEvidence.vertical;
             return current.evidence.available &&
@@ -58,12 +58,7 @@ namespace AlphaSourceCrop
                 current.retention.analysisValid && current.retention.presentationValid &&
                 !current.retention.EffectiveArNearBlack() &&
                 ValidVerticalBarPicture(candidate) &&
-                candidate.left == current.evidence.proposedBounds.left &&
-                candidate.top == current.evidence.proposedBounds.top &&
-                candidate.right == current.evidence.proposedBounds.right &&
-                candidate.bottom == current.evidence.proposedBounds.bottom &&
-                candidate.rasterWidth == current.evidence.proposedBounds.rasterWidth &&
-                candidate.rasterHeight == current.evidence.proposedBounds.rasterHeight &&
+                MotionRawBoundsMatch(candidate, current.evidence, established) &&
                 SameBounds(candidate, current.outwardCandidate);
         }
 
@@ -291,7 +286,7 @@ namespace AlphaSourceCrop
         state.base = current.trustedGeometry;
         state.identity = identity;
         state.subtitleAssistedBars = state.subtitleAssistedBars || independentSubtitleBars;
-        const bool nativePosition = independentSubtitleBars || CurrentNativeEdgePosition(current, candidate);
+        const bool nativePosition = independentSubtitleBars || CurrentNativeEdgePosition(current, candidate, previous.active && adjacent);
         const bool priorNativePosition = adjacent &&
             previous.observedNativeSourceSequence != 0 &&
             previous.observedNativeSourceSequence == previous.identity.acceptedSequence &&
@@ -462,8 +457,14 @@ namespace AlphaSourceCrop
             }
             return state;
         }
-        // Anchor the quiet band; repeated sub-step movement cannot walk it.
-        if (std::abs(candidate.top - state.quietAnchor.top) > scanStep ||
+        // Caption-assisted native measurements can advance by one chroma pair
+        // while still inside the quiet band. Count a new outward extreme as
+        // motion; returning to an already observed edge is ordinary jitter.
+        const bool extending = state.subtitleAssistedBars && nativePosition &&
+            candidate.top <= state.quietAnchor.top && candidate.bottom >= state.quietAnchor.bottom &&
+            (candidate.top < state.quietAnchor.top || candidate.bottom > state.quietAnchor.bottom) &&
+            topStep >= 0 && bottomStep >= 0 && (topStep > 0 || bottomStep > 0);
+        if (extending || std::abs(candidate.top - state.quietAnchor.top) > scanStep ||
             std::abs(candidate.bottom - state.quietAnchor.bottom) > scanStep)
         {
             state.quietAnchor = candidate;

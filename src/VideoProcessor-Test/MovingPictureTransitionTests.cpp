@@ -744,6 +744,31 @@ namespace Tests
                 }
             }
         }
+        TEST_METHOD(CaptionAssistedRampStillMovingInsideQuietBand)
+        {
+            MotionSequence s(2160,24);
+            s.Ramp(12,4);
+            Assert::IsTrue(s.motion.active);
+            s.motion.subtitleAssistedBars=true;
+            // Exercise seven observations inside one scan step.
+            // On the last step only the top advances (as on replay frame 1873).
+            int start=s.input.outwardCandidate.top;
+            for(int i=0;i<7;++i) {
+                int travel=i<3?0:(i<6?2:4);
+                s.Target(start-travel);
+                if(i==6) {
+                    auto bounds=s.input.outwardCandidate;
+                    bounds.bottom-=2;
+                    bounds.aspectRatio=double(bounds.rasterWidth)/(bounds.bottom-bounds.top);
+                    s.input.evidence.trustedBounds=s.input.evidence.proposedBounds=
+                        s.input.outwardCandidate=s.input.retention.expansionCandidate=bounds;
+                }
+                s.Step();
+                Assert::IsTrue(s.motion.active);
+            }
+            for(int i=0;i<8 && s.motion.active;++i) s.Step();
+            Assert::IsTrue(s.motion.awaitingPublication);
+        }
         TEST_METHOD(IntermediateEndpointRequiresAdjacentQuietSamplesThenNormalAuthority)
         {
             for (double fps : {23.976,24.0,59.94,60.0})
@@ -1542,7 +1567,7 @@ namespace Tests
             const auto broadTop=s.input.retention.expandingTop, broadBottom=s.input.retention.expandingBottom;
             const auto certified=s.motion.last;
             for(int i=0;i<16;++i) {
-                s.Target(s.input.outwardCandidate.top-2); UnknownStrips(s); s.Step(); AssertHeldOutput(s);
+                s.Target(s.input.outwardCandidate.top-2); UnknownStrips(s); if (i%2) { ++s.input.evidence.proposedBounds.top; --s.input.evidence.proposedBounds.bottom; } s.Step(); AssertHeldOutput(s);
             }
             Assert::AreEqual(certified.top,s.motion.last.top);
             Assert::IsTrue(certified.top-s.motion.observedNative.top>21);
@@ -1559,14 +1584,14 @@ namespace Tests
             const auto boundary=level(96,seq);
             Assert::IsTrue(boundary.safeBoundary && boundary.nearBlackEntry && boundary.differenceEvaluated);
             Assert::IsFalse(boundary.hardCutCandidate || boundary.hardCutConfirmed);
-            s.Target(prior.observedNative.top-2); Native(s);
+            s.Target(prior.observedNative.top-2); Native(s); ++s.input.evidence.proposedBounds.top; --s.input.evidence.proposedBounds.bottom;
             s.input.retention.expandingTop=broadTop; s.input.retention.expandingBottom=broadBottom;
             s.input.sourceSequence=seq;
             s.motion=RetainMovingPictureAtDarknessBoundary(prior,boundary,s.identity,s.input);
             Assert::IsTrue(s.motion.active);
             s.Step(); AssertHeldOutput(s);
             Assert::AreEqual(s.input.outwardCandidate.top,s.motion.last.top);
-            for(int fault=0;fault<4;++fault) {
+            for(int fault=0;fault<6;++fault) {
                 auto bad=prior; auto input=s.input;
                 if(fault==0) bad.observedNativeSourceSequence=0;
                 if(fault==1) --bad.observedNativeSourceSequence;
@@ -1577,6 +1602,8 @@ namespace Tests
                     input.retention.expansionCandidate=input.outwardCandidate;
                     input.retention.activePicture=input.evidence;
                 }
+                if(fault==4) input.evidence.proposedBounds.top-=2;
+                if(fault==5) input.evidence.proposedBounds.bottom-=2;
                 const auto rejected=RetainMovingPictureAtDarknessBoundary(bad,boundary,s.motion.identity,input);
                 Assert::IsFalse(rejected.active,L"A missing predecessor or real jump cannot borrow the old gradual episode.");
             }
