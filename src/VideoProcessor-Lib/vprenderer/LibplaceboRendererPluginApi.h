@@ -26,6 +26,9 @@ static constexpr const char* VP_LIBPLACEBO_CREATE_EXPORT =
 static constexpr const char* VP_LIBPLACEBO_DESTROY_EXPORT =
 	"VideoProcessorLibplaceboDestroyRenderer";
 
+static constexpr const char* VP_LIBPLACEBO_ENHANCED_LOG_EXPORT = "VideoProcessorLibplaceboSetEnhancedLogging";
+using VideoProcessorLibplaceboSetEnhancedLoggingFn = void (__cdecl *)(bool);
+
 using VideoProcessorLibplaceboLogSink = void (__cdecl *)(const char* message);
 using VideoProcessorLibplaceboGetApiVersionFn = uint32_t (__cdecl *)();
 using VideoProcessorLibplaceboCreateRendererFn = IVideoRenderer* (__cdecl *)(

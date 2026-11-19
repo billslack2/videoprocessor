@@ -149,7 +149,7 @@ inline ActivePictureEvidence MeasureActiveTrial(const AnalysisLumaSource& source
     static thread_local bool previousApplied=false;
     if(nowMs>=nextLogMs||applied!=previousApplied){
         nextLogMs=nowMs+250;previousApplied=applied;
-        DebugLog::Log("[AR-ACTIVE] generation=%llu source=%llu domain=%llu viewport=%llu renderer=%llu applied=%d prior=%d kind=%u complete=%d measured=%d,%d,%d,%d score=%.3f support=%.2f,%.2f,%.2f,%.2f pair_attempts=%u,%u accepted_pair=%u,%u full_qualified=%d full_score=%.3f picture_edges=%d,%d,%d,%d unpaired_support=%.2f,%.2f,%.2f,%.2f reason=%s selected_kind=%u selected=%d,%d,%d,%d worker_ms=%.3f",
+        DEBUGLOG_ENHANCED("[AR-ACTIVE] generation=%llu source=%llu domain=%llu viewport=%llu renderer=%llu applied=%d prior=%d kind=%u complete=%d measured=%d,%d,%d,%d score=%.3f support=%.2f,%.2f,%.2f,%.2f pair_attempts=%u,%u accepted_pair=%u,%u full_qualified=%d full_score=%.3f picture_edges=%d,%d,%d,%d unpaired_support=%.2f,%.2f,%.2f,%.2f reason=%s selected_kind=%u selected=%d,%d,%d,%d worker_ms=%.3f",
             identity.transportGeneration,identity.acceptedSequence,identity.analysisDomainKey,identity.viewportGeneration,identity.rendererGeneration,
             applied,prior.valid,unsigned(result.kind),result.complete,result.left,result.top,result.right,result.bottom,result.score,
             result.edges[0].support,result.edges[1].support,result.edges[2].support,result.edges[3].support,result.pairAttempts[0],result.pairAttempts[1],result.acceptedPairAttempt[0],result.acceptedPairAttempt[1],result.fullExtentQualified,result.fullExtentScore,

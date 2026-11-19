@@ -140,6 +140,10 @@ namespace
             DebugLog::Log("VP Renderer missing required analysis diagnostic export");
             FreeLibrary(result.module);return PluginExports{};
         }
+        // The renderer DLL has its own logger and forwards messages to the host.
+        const auto setEnhanced = reinterpret_cast<VideoProcessorLibplaceboSetEnhancedLoggingFn>(
+            GetProcAddress(result.module, VP_LIBPLACEBO_ENHANCED_LOG_EXPORT));
+        if (setEnhanced) setEnhanced(DebugLog::IsEnhancedLoggingEnabled());
         auto& recorder=AnalysisDiagnosticTrace::Instance();
         diagnostics(&recorder,ForwardAnalysisRecord,ForwardAnalysisFrame,AnalysisFramesActive);
 
