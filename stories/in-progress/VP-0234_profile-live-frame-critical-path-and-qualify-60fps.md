@@ -168,6 +168,26 @@ targets, and verify cache misses under matching source/format/processing context
 Preserve current-source fallback, caption/picture pixels and independent AR.
 No source behavior change or complete coverage claim has been made by this audit.
 Dense-cue and sustained frame-budget qualification remain the main acceptance work.
+## 2026-11-19 progressive Smooth Motion preparation coverage
+
+Source 74a58614 is pushed on the VP-0234 diagnostic branch. Progressive Smooth
+Motion with advanced subtitles presents complete RGB packets through
+pl_render_image_mix into the real output. The previous subtitle worker cleared
+the mixer and warmed the float intermediate path. Preparation now carries
+the configured mixer and cadence ratio into the existing bounded off-thread
+warmup with the output format and final render settings for complete packets.
+Other preparation paths retain their previous selection.
+
+The focused x64 Release GPU regression rendered a fractional two-source mix
+into a fitted target without adding cache entries after preparation. Both
+libplacebo 360 and 388 passed the cache and dependency identity checks. The
+incremental pinned x64 Release runtime build passed for the host and both
+renderers. The broader GPU run was stopped after a nine-minute existing
+alpha-composition test to prioritize the focused check. Full suite and live
+HDMI validation remain open. The candidate is undeployed. The earlier 259 ms
+first-use event remains in the low-priority backlog because its missing
+shader variant was not traced to Smooth Motion.
+
 ## User story
 
 As a viewer, I want to know what consumes the live frame budget and obtain measured improvements that sustain incoming HDMI video without disrupting picture, subtitles or aspect detection.
