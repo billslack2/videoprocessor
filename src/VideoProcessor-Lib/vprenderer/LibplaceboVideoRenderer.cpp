@@ -5,6 +5,7 @@
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
+#include "FrameCriticalPathProbe.h"
 #include "ProcessingPerformanceWindow.h"
 #include "LookaheadPerformanceWindow.h"
 #include <vprenderer/QueueNativeContinuity.h>
@@ -4596,6 +4597,7 @@ struct LibplaceboVideoRenderer::Impl
     double subtitlePrimeMs=0, subtitlePrimePeakMs=0;
     PresentationAnalysisBudget analysisWorkBudget;
     uint64_t nextOutputCorrelationLogTick=0;
+    FrameCriticalPathProbe criticalPathProbe;
     AnalysisPerformanceWindow analysisPerformance;
     ProcessingPerformanceWindow processingPerformance;
     QueuedFrame::LookaheadWorker::Metrics previousWorkerMetrics;
@@ -12769,6 +12771,7 @@ struct LibplaceboVideoRenderer::Impl
         SourceUploadBatch& sourceUploadBatch,
         ActivePictureMeasurementCache& pixelMeasurements)
 	{
+        FrameCriticalPathProbe::Scope criticalPath(criticalPathProbe,frameGeneration,sourceSequence,captureRateHz);
         presentationAttempt.Begin();
         lastRenderPresentationPaused=false;
         const auto renderWorkStarted=SteadyClock::now();
@@ -19680,6 +19683,7 @@ releaseDriftBaseRetention =
 			nlsPreparationPending.store(false, std::memory_order_release);
         nlsPreparationFailed.store(false, std::memory_order_release);
 		}
+		criticalPath.Mark();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
         const auto directHdrSource=FrameHdrStatus::Source(renderImage,sourceSequence,frameDvLuminance);
 		const bool targetLutApplied =
@@ -19774,6 +19778,7 @@ releaseDriftBaseRetention =
         LogHdrPeakAnalysisMetrics(hdrPeakAnalysisDecision,sourceSequence,rendered,renderedHdrStatus);
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
+        criticalPath.Mark();
         if (!rendered && targetLutApplied)
             RejectDisplayLutAfterRenderFailure();
         calibrationStatusAvailable = rendered;
@@ -19784,6 +19789,7 @@ releaseDriftBaseRetention =
                 viewportRequestSerial, startupFrameRevision);
         else displayRepeatValid = false;
         displayVsyncClock.SkipMissed(SteadyClockNowNs());
+		criticalPath.Mark();
 		const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
 		if (vpOwnedSwapchain)
@@ -19851,6 +19857,8 @@ releaseDriftBaseRetention =
             submitted = SubmitLibplaceboFrameChecked();
 		}
 		const int64_t swapEndQpc = PerformanceCounterNow();
+        criticalPath.Mark();
+        criticalPath.Submitted(rendered && submitted);
 		LARGE_INTEGER qpcFrequency{};
 		QueryPerformanceFrequency(&qpcFrequency);
 		const double swapBlockMs =
