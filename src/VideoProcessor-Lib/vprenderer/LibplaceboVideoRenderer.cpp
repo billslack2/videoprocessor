@@ -12917,7 +12917,7 @@ struct LibplaceboVideoRenderer::Impl
         SourceUploadBatch& sourceUploadBatch,
         ActivePictureMeasurementCache& pixelMeasurements)
 	{
-        FrameCriticalPathProbe::Scope criticalPath(criticalPathProbe,frameGeneration,sourceSequence,captureRateHz);
+        FrameCriticalPathProbe::Scope criticalPath(criticalPathProbe,frameGeneration,sourceSequence,captureRateHz,callbackQpc);
         presentationAttempt.Begin();
         lastRenderPresentationPaused=false;
         const auto renderWorkStarted=SteadyClock::now();

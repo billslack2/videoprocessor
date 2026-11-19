@@ -3,6 +3,7 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <DebugLog.h>
 
 // Opt-in, renderer-owned diagnostic. No pixel reads, queues, or scheduling changes.
@@ -20,6 +21,9 @@ class FrameCriticalPathProbe {
     };
     struct Pair { Distribution wall,cpu; };
     std::array<Pair,6> cost{};
+    Distribution submitGap,callbackAge;
+    LONGLONG previousSubmit=0; uint64_t previousSource=0;
+    uint64_t repeats=0,skipped=0,backward=0;
     ULONGLONG startTick=0; LONGLONG frequency=0;
     uint64_t attempts=0,submitted=0,partial=0,cpuFailures=0,overBudget=0;
     uint64_t generation=0,firstSource=0,lastSource=0;
@@ -44,7 +48,13 @@ class FrameCriticalPathProbe {
                 c.wall.count?c.wall.sum/c.wall.count:0,c.wall.Percentile(.95),c.wall.Percentile(.99),c.wall.peak,
                 c.cpu.count,c.cpu.count?c.cpu.sum/c.cpu.count:0,c.cpu.Percentile(.95),c.cpu.Percentile(.99),c.cpu.peak,cpuFailures,overBudget);
         }
+        DebugLog::Log("VP critical progression: schema=1 generation=%llu first_source=%llu last_source=%llu submissions=%llu repeats=%llu skipped_source_ids=%llu backward=%llu gap_samples=%zu gap_mean_ms=%.4f gap_p95_ms=%.4f gap_p99_ms=%.4f gap_max_ms=%.4f callback_age_samples=%zu callback_age_mean_ms=%.4f callback_age_p95_ms=%.4f callback_age_p99_ms=%.4f callback_age_max_ms=%.4f gap_overflow=%zu callback_age_overflow=%zu evidence=submit_boundary_not_scanout",
+            generation,firstSource,lastSource,submitted,repeats,skipped,backward,
+            submitGap.count,submitGap.count?submitGap.sum/submitGap.count:0,submitGap.Percentile(.95),submitGap.Percentile(.99),submitGap.peak,
+            callbackAge.count,callbackAge.count?callbackAge.sum/callbackAge.count:0,callbackAge.Percentile(.95),callbackAge.Percentile(.99),callbackAge.peak,
+            submitGap.count-submitGap.stored,callbackAge.count-callbackAge.stored);
         cost={}; attempts=submitted=partial=cpuFailures=overBudget=0;
+        submitGap={};callbackAge={};repeats=skipped=backward=0;
     }
 public:
     FrameCriticalPathProbe() { char value[8]{};
@@ -53,13 +63,15 @@ public:
     class Scope {
         FrameCriticalPathProbe& owner; std::array<Stamp,5> stamps{};
         size_t marked=0; bool success=false; double budget=0;
+        uint64_t source=0; LONGLONG callback=0;
     public:
-        Scope(FrameCriticalPathProbe& p,uint64_t gen,uint64_t source,double hz):owner(p) {
+        Scope(FrameCriticalPathProbe& p,uint64_t gen,uint64_t sourceId,double hz,LONGLONG callbackQpc):owner(p),source(sourceId),callback(callbackQpc) {
             if(!owner.enabled)return;
             auto tick=GetTickCount64();
             // Logging belongs to the next scope's preparation, never omitted from total.
             stamps[0]=Read();
             if(owner.attempts&&(gen!=owner.generation||tick-owner.startTick>=5000))owner.Flush();
+            if(gen!=owner.generation){owner.previousSubmit=0;owner.previousSource=0;}
             if(!owner.attempts){owner.startTick=tick;owner.generation=gen;owner.firstSource=source;}
             owner.lastSource=source; budget=hz>0?1000.0/hz:0;
         }
@@ -67,6 +79,16 @@ public:
         void Submitted(bool value) { success=value; }
         ~Scope() { if(!owner.enabled)return; const auto end=Read(); ++owner.attempts;
             owner.submitted+=success?1:0;
+            if(success&&marked==4){const auto submit=stamps[3].wall;
+                if(owner.previousSubmit&&submit>=owner.previousSubmit){
+                    owner.submitGap.Add(double(submit-owner.previousSubmit)*1000.0/owner.frequency);
+                    if(source==owner.previousSource)++owner.repeats;
+                    else if(source<owner.previousSource)++owner.backward;
+                    else owner.skipped+=source-owner.previousSource-1;
+                }
+                if(callback>0&&submit>=callback)owner.callbackAge.Add(double(submit-callback)*1000.0/owner.frequency);
+                owner.previousSubmit=submit;owner.previousSource=source;
+            }
             owner.Add(5,stamps[0],end);
             owner.overBudget+=budget>0&&double(end.wall-stamps[0].wall)*1000.0/owner.frequency>budget?1:0;
             if(marked==4){for(size_t i=0;i<4;++i)owner.Add(i,stamps[i],stamps[i+1]);owner.Add(4,stamps[4],end);}
