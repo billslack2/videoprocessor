@@ -236,6 +236,48 @@ struct SubtitlePacketHoldFixture {
 };
 }
 TEST_CLASS(MotionRendererTests){public:
+    TEST_METHOD(SubtitlePreparationWarmsCompletePacketMix) {
+        GpuFixture g;
+        struct Cache { pl_cache value=pl_cache_create(nullptr); ~Cache(){pl_cache_destroy(&value);} } cache;
+        auto params=pl_render_high_quality_params;
+        for (auto preset=pl_frame_mixers; preset->name; ++preset) {
+            if (std::string(preset->name)=="linear") {
+                params.frame_mixer=preset->filter;
+                break;
+            }
+        }
+        Assert::IsNotNull(params.frame_mixer);
+        auto destination=g.output;
+        destination.crop={4,8,60,56};
+        SubtitlePipelinePreparationRequest request(g.input,params,true,{},3);
+        CComPtr<IDXGIDevice> dxgi;
+        CComPtr<IDXGIAdapter> adapter;
+        DXGI_ADAPTER_DESC description{};
+        Assert::IsTrue(SUCCEEDED(g.device->device->QueryInterface(IID_PPV_ARGS(&dxgi))));
+        Assert::IsTrue(SUCCEEDED(dxgi->GetAdapter(&adapter))&&SUCCEEDED(adapter->GetDesc(&description)));
+        request.adapter=description.AdapterLuid;
+        request.featureLevel=g.device->device->GetFeatureLevel();
+        request.mixDuration=0.4f;
+        Assert::IsTrue(request.CompilePresentation(cache.value,g.cleanInput,destination));
+
+        const auto before=pl_cache_signature(cache.value);
+        pl_gpu_set_cache(g.device->gpu,cache.value);
+        const pl_frame* frames[]{&g.cleanInput,&g.cleanInput};
+        const uint64_t signatures[]{101,102};
+        using Timestamp=std::remove_const_t<std::remove_pointer_t<decltype(pl_frame_mix{}.timestamps)>>;
+        const Timestamp timestamps[]{-0.75,0.25};
+        pl_frame_mix mix{};
+        mix.num_frames=2; mix.frames=frames; mix.signatures=signatures;
+        mix.timestamps=timestamps; mix.vsync_duration=0.4f;
+        params.deband_params=nullptr;
+        params.deinterlace_params=nullptr;
+        const bool rendered=pl_render_image_mix(g.renderer,&mix,&destination,&params);
+        pl_gpu_finish(g.device->gpu);
+        const auto after=pl_cache_signature(cache.value);
+        pl_gpu_set_cache(g.device->gpu,nullptr);
+        Assert::IsTrue(rendered);
+        Assert::IsTrue(before==after,L"Complete-packet presentation compiled an unprepared shader");
+    }
     TEST_METHOD(SubtitlePreparationReusesCacheAcrossCueGeometryAndAllCompositionPhases) {
         for (int scenario : {0, 1, 2}) {
             GpuFixture g;

@@ -14,6 +14,7 @@ struct SubtitlePipelinePreparationRequest {
     int featureLevel = 0;
     bool noCompute = false;
     bool temporal = false;
+    float mixDuration = 1.0f;
     SubtitleGeneratedGrayStyle style;
     int spatialFill = 0;
 
@@ -35,6 +36,21 @@ struct SubtitlePipelinePreparationRequest {
     ~SubtitlePipelinePreparationRequest() { pl_options_free(&options); }
     SubtitlePipelinePreparationRequest(const SubtitlePipelinePreparationRequest&) = delete;
     SubtitlePipelinePreparationRequest& operator=(const SubtitlePipelinePreparationRequest&) = delete;
+
+    bool CompilePresentation(pl_cache cache, const pl_frame& normalized, const pl_frame& output) const {
+        auto finalParams = options->params;
+        finalParams.deinterlace_params = nullptr;
+        if (temporal) finalParams.deband_params = nullptr;
+        NlsPipelinePreparation::Request final(normalized, output, finalParams, "");
+        final.adapter = adapter; final.featureLevel = featureLevel; final.noCompute = noCompute;
+        // Progressive Smooth Motion mixes complete RGB packets directly
+        // into the output. Its captions are already in the packet pixels.
+        const bool mixesCompletePackets = finalParams.frame_mixer != nullptr;
+        final.processedSource = temporal && !mixesCompletePackets;
+        final.subtitleOverlay = final.processedSource;
+        final.mixDuration = mixDuration;
+        return final.Compile(cache);
+    }
 
     bool Compile(pl_cache cache) {
         struct Resources {
@@ -129,13 +145,7 @@ struct SubtitlePipelinePreparationRequest {
             input.prev = input.next = nullptr;
             if (!RenderSubtitleFullRaster(owned.renderer, gpu, input, nullptr,
                 &owned.surface, normalized, temporal, false, false, nullptr, processingPtr)) return false;
-            auto finalParams = options->params;
-            finalParams.deinterlace_params = nullptr; finalParams.frame_mixer = nullptr;
-            if (temporal) finalParams.deband_params = nullptr;
-            NlsPipelinePreparation::Request final(normalized, target.value, finalParams, "");
-            final.adapter = adapter; final.featureLevel = featureLevel; final.noCompute = noCompute;
-            final.processedSource = temporal; final.subtitleOverlay = temporal;
-            if (!final.Compile(cache)) return false;
+            if (!CompilePresentation(cache, normalized, target.value)) return false;
         }
         return true;
     }
