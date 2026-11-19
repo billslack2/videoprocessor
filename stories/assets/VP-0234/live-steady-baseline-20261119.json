@@ -1,0 +1,145 @@
+{
+  "source_commit": "9e2df1f637ee5766a6ae2b130119ce564053f066",
+  "window_records_ending_between": [
+    "2026-11-19 15:43:05",
+    "2026-11-19 15:44:05"
+  ],
+  "classification": "steady visible playback before fullscreen exit; first cold window excluded and recorded separately",
+  "stages": {
+    "preparation": {
+      "windows": 13,
+      "samples": 1560.0,
+      "wall_mean_ms": 5.211446153846154,
+      "cpu_mean_ms": 5.148230769230769,
+      "maximum_window_p95_ms": 5.7008,
+      "maximum_window_p99_ms": 6.0973,
+      "wall_max_ms": 6.7,
+      "overflow": 0.0
+    },
+    "render_wrapper": {
+      "windows": 13,
+      "samples": 1560.0,
+      "wall_mean_ms": 12.928284615384616,
+      "cpu_mean_ms": 0.46070769230769226,
+      "maximum_window_p95_ms": 22.0668,
+      "maximum_window_p99_ms": 22.8713,
+      "wall_max_ms": 23.147,
+      "overflow": 0.0
+    },
+    "before_swap": {
+      "windows": 13,
+      "samples": 1560.0,
+      "wall_mean_ms": 0.0013538461538461536,
+      "cpu_mean_ms": 0.0,
+      "maximum_window_p95_ms": 0.0025,
+      "maximum_window_p99_ms": 0.0049,
+      "wall_max_ms": 0.0135,
+      "overflow": 0.0
+    },
+    "swap": {
+      "windows": 13,
+      "samples": 1560.0,
+      "wall_mean_ms": 0.05450769230769231,
+      "cpu_mean_ms": 0.08012307692307692,
+      "maximum_window_p95_ms": 0.0909,
+      "maximum_window_p99_ms": 0.1237,
+      "wall_max_ms": 0.1956,
+      "overflow": 0.0
+    },
+    "post_swap": {
+      "windows": 13,
+      "samples": 1560.0,
+      "wall_mean_ms": 0.027600000000000003,
+      "cpu_mean_ms": 0.010015384615384615,
+      "maximum_window_p95_ms": 0.054,
+      "maximum_window_p99_ms": 0.0861,
+      "wall_max_ms": 0.1177,
+      "overflow": 0.0
+    },
+    "total": {
+      "windows": 13,
+      "samples": 1560.0,
+      "wall_mean_ms": 18.223192307692305,
+      "cpu_mean_ms": 5.699130769230769,
+      "maximum_window_p95_ms": 27.4294,
+      "maximum_window_p99_ms": 28.2216,
+      "wall_max_ms": 28.5451,
+      "overflow": 0.0
+    }
+  },
+  "progression": {
+    "submissions": 1560.0,
+    "repeats": 0.0,
+    "skipped_source_ids": 0.0,
+    "gap_mean_ms": 41.70722307692307,
+    "gap_max_ms": 51.8239,
+    "callback_age_mean_ms": 143.68346923076922,
+    "callback_age_max_ms": 154.7643
+  },
+  "presentation": {
+    "samples": 13,
+    "timing_states": [
+      "available"
+    ],
+    "oldest_ms_range": [
+      82.92,
+      84.1
+    ],
+    "present_ids": [
+      241.0,
+      361.0,
+      481.0,
+      601.0,
+      721.0,
+      841.0,
+      961.0,
+      1081.0,
+      1201.0,
+      1321.0,
+      1441.0,
+      1561.0,
+      1681.0
+    ],
+    "observed_source_ids": [
+      254.0,
+      374.0,
+      494.0,
+      614.0,
+      734.0,
+      854.0,
+      974.0,
+      1094.0,
+      1214.0,
+      1334.0,
+      1454.0,
+      1574.0,
+      1694.0
+    ],
+    "gpu_frame_window_average_ms_range": [
+      12.944,
+      13.693
+    ]
+  },
+  "capture": {
+    "expected_fps_range": [
+      23.97633,
+      23.97633
+    ],
+    "skipped_input_frames_sum": 0.0
+  },
+  "subtitle_worker": {
+    "windows": 13,
+    "completed_jobs": 1566.0,
+    "job_wall_mean_ms": 7.582329501915708,
+    "job_wall_max_ms": 24.242,
+    "queue_wait_mean_ms": 0.06727969348659003
+  },
+  "limits": [
+    "Window quantiles cannot be combined into exact whole-run p95/p99.",
+    "Thread CPU accounting is quantized; wall minus CPU includes preemption.",
+    "RenderLocked excludes caller lookahead/lock acquisition, capture and conversion.",
+    "source_budget_exceeded=0 is not evidence of headroom: source_hz was unavailable to that scope.",
+    "Driver presentation feedback is not external HDMI scanout measurement.",
+    "Actual input remains23.976 fps; no60 fps acceptance."
+  ]
+}

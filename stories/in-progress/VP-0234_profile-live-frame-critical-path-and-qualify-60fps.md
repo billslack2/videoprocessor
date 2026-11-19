@@ -33,6 +33,45 @@ an explicit additional difference from the earlier trial and must be controlled
 in future matched timing. The isolated diagnostic playback package and real
 59.94/60 fps capture/presentation qualification remain outstanding.
 
+## 2026-11-19 first live diagnostic
+
+Launched an isolated source `9e2df1f6` x64 Release package. Host/config/renderer
+hashes and signed app-local Microsoft runtimes were verified. Current deployment
+Scope/Classic cfg/state were copied into a new folder; only the isolated copy's
+logging.debug changed to true, with its original retained. No deployment edits.
+
+Thirteen steady visible five-second windows ending 15:43:05–15:44:05 contain
+1,560 successful current-source submissions, zero repeated/skipped source IDs.
+Input is 23.97633 fps. RenderLocked mean is 18.223 ms wall / 5.699 ms thread CPU;
+preparation is 5.211 / 5.148 ms and render wrapper 12.928 / 0.461 ms. Total maximum
+is 28.545 ms. Largest individual-window p95/p99 are 27.429/28.222 ms; they are not
+whole-run percentiles. Submission gap mean/max 41.707/51.824 ms; callback-to-submit
+mean/max 143.683/154.764 ms. Sampled oldest queue age 82.92–84.10 ms. Unlike the old
+log, DXGI frame statistics are available and advance. External scanout is unmeasured.
+[Aggregate evidence](../assets/VP-0234/live-steady-baseline-20261119.json).
+
+Startup separately reached 586.032 ms, mostly CPU. Fullscreen exit at 15:44:10
+recreated the renderer; later DXGI_STATUS_OCCLUDED is visibility evidence and is
+not counted as a subtitle-induced stall. There is no demonstrated hundreds-of-ms
+steady hold in this selected window. Current content was operator-approved as-is;
+it is not a matched replay of the older incident and no improvement is claimed.
+
+The demonstrated render interval has little scheduled CPU, pointing to waiting
+or descheduling; a specific blocking call is not proven. Follow-up `c93d7f0e`
+adds nested render-invocation, post-render-callback and HDR-status timings plus an
+explicit budget-known denominator. A C++14 move compatibility issue was caught
+and corrected before staging. Accounting/move checks and the x64 Release runtime
+build pass; both renderer hashes and host identity verify. This second candidate
+is staged separately, not yet live-tested. Do not add nested detail stages to the
+parent render interval or interpret an unknown budget's zero-exceeded count as
+headroom. Earlier capture/conversion/caller work remains outside RenderLocked.
+
+Next: run the finer diagnostic while output is visible, attribute the render wait,
+then exercise true 59.94/60 fps HDMI, caption/UI/late-worker cases and matched
+before/after behavior. The current input remains 23.976 fps; 60 fps is unqualified.
+No queues, timeouts, rendering quality, subtitle behavior or detector policy were
+changed. No beta merge or deployment occurred.
+
 ## User story
 
 As a viewer, I want to know what consumes the live frame budget and obtain measured improvements that sustain incoming HDMI video without disrupting picture, subtitles or aspect detection.
