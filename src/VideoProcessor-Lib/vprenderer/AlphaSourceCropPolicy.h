@@ -413,6 +413,8 @@ namespace AlphaSourceCrop
 		// crop has current strict excluded-band proof and retains full source width.
 		bool deferPartialComposition = false;
         bool currentSpatialExpansion = false;
+        // Static diagnostic text only; does not provide admission authority.
+        const char* currentSpatialReason = "not-evaluated";
 	};
 	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input);
 
@@ -1823,6 +1825,12 @@ namespace AlphaSourceCrop
     // cannot borrow detector/dense extents beyond this cue's own padded bounds.
     ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
         const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding);
+    // Current independent physical geometry with a separately retained subtitle
+    // uncertainty guard. Caller must bind the evidence to this exact source.
+    ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
+        const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding,
+        const ActivePictureEvidence& currentPhysicalEvidence);
+
 
 	struct PresentationRecoveryInput
 	{

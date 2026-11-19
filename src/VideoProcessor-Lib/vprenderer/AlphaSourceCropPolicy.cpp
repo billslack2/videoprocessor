@@ -149,39 +149,61 @@ namespace AlphaSourceCrop
 				HasDistributedSupport(evidence.expandingBottom));
 		}
 
-        bool QualifiesCurrentSpatialExpansion(const TransitionAdmissionInput& input)
+        // Metadata-only diagnostics: return the first failed existing proof check.
+        const char* CurrentSpatialExpansionRejection(const TransitionAdmissionInput& input)
         {
             const auto& native = input.evidence;
             const auto& base = input.trustedGeometry;
             const auto& target = native.trustedBounds;
             const auto& pixels = input.retention;
             const int tolerance = SamplingTolerance(base);
-            if (!input.allowCurrentSpatialExpansion || !native.strongCurrentBarMeasurement ||
-                !input.sourceGeneration || !input.sourceSequence || !input.trustedGeometryAvailable ||
-                !input.compatiblePresentation || input.trustedGeneration != input.sourceGeneration ||
-                !SameTrustedCropContract(input.presentationBeforeObservation, base) ||
-                !ValidBounds(base, base.rasterWidth, base.rasterHeight) ||
+            if (!input.allowCurrentSpatialExpansion) return "disabled";
+            if (!native.strongCurrentBarMeasurement) return "weak-current";
+            if (!input.sourceGeneration || !input.sourceSequence || !input.trustedGeometryAvailable ||
+                !input.compatiblePresentation || input.trustedGeneration != input.sourceGeneration)
+                return "source-context";
+            if (!SameTrustedCropContract(input.presentationBeforeObservation, base)) return "presentation-base";
+            if (!ValidBounds(base, base.rasterWidth, base.rasterHeight) ||
                 !ValidBounds(target, base.rasterWidth, base.rasterHeight) ||
                 !CropEdgesAreChromaAligned(base, base.rasterWidth, base.rasterHeight) ||
-                !CropEdgesAreChromaAligned(target, base.rasterWidth, base.rasterHeight) ||
-                base.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+                !CropEdgesAreChromaAligned(target, base.rasterWidth, base.rasterHeight))
+                return "geometry";
+            if (base.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
                 target.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
                 base.left != 0 || base.right != base.rasterWidth || target.left != 0 || target.right != base.right ||
                 target.top <= 0 || target.bottom >= target.rasterHeight ||
-                base.top - target.top <= tolerance || target.bottom - base.bottom <= tolerance ||
-                !native.available || native.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
-                native.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
-                !SameTrustedCropContract(native.proposedBounds, target) ||
-                !SameTrustedCropContract(input.outwardCandidate, target) ||
-                !native.axisEvidence.vertical.scanComplete ||
+                base.top - target.top <= tolerance || target.bottom - base.bottom <= tolerance)
+                return "not-both-outward";
+            if (!native.available || native.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+                native.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE)
+                return "native-authority";
+            if (!SameTrustedCropContract(native.proposedBounds, target) ||
+                !SameTrustedCropContract(input.outwardCandidate, target)) return "target-mismatch";
+            if (!native.axisEvidence.vertical.scanComplete ||
                 native.axisEvidence.vertical.state != ActivePictureAxisState::TRUSTED_BARS ||
-                native.axisEvidence.HasFailedBar() ||
-                !native.top.trusted || !native.bottom.trusted ||
+                native.axisEvidence.HasFailedBar()) return "axis-proof";
+            if (!native.top.trusted || !native.bottom.trusted ||
                 native.top.barPixels != target.top || native.bottom.barPixels != target.rasterHeight - target.bottom ||
-                native.top.continuity < 7.0 / 9 || native.bottom.continuity < 7.0 / 9 ||
-                pixels.activePicture.axisEvidence.HasFailedBar() ||
-                !HasStrictNativeDistributedPictureProof(pixels, base, target))
-                return false;
+                native.top.continuity < 7.0 / 9 || native.bottom.continuity < 7.0 / 9) return "edge-support";
+            if (pixels.activePicture.axisEvidence.HasFailedBar()) return "retention-failed-axis";
+            if (!HasStrictNativeDistributedPictureProof(pixels, base, target))
+            {
+                // Explain a rejected metadata proof without sampling pixels again.
+                if (!pixels.analysisValid || !pixels.presentationValid) return "retention-invalid";
+                if (pixels.EffectiveArNearBlack()) return "retention-near-black";
+                if (!pixels.expansionStripsAvailable) return "strips-unavailable";
+                if (!SameTrustedCropContract(pixels.expansionBase, base)) return "strip-base-mismatch";
+                if (!SameTrustedCropContract(pixels.expansionCandidate, target)) return "strip-target-mismatch";
+                const auto& retained = pixels.activePicture;
+                if (!retained.available || retained.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+                    retained.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE)
+                    return "retention-native-authority";
+                if (!SameTrustedCropContract(retained.trustedBounds, target)) return "retention-native-mismatch";
+                if (!retained.axisEvidence.vertical.scanComplete ||
+                    retained.axisEvidence.vertical.state != ActivePictureAxisState::TRUSTED_BARS ||
+                    !retained.top.trusted || !retained.bottom.trusted) return "retention-axis-proof";
+                return "strip-distribution";
+            }
             auto strongStrip = [](const ActivePictureEdgeEvidence& edge) {
                 if (!HasDistributedSupport(edge)) return false;
                 for (const uint8_t mask : edge.distributedSupportDepthRowsByQuartile)
@@ -194,9 +216,11 @@ namespace AlphaSourceCrop
             };
             // The same current strips must independently support all along-edge
             // quartiles at multiple depths, not only a bright caption/overlay.
-            return pixels.expandingTop.barPixels == base.top - target.top &&
-                pixels.expandingBottom.barPixels == target.bottom - base.bottom &&
-                strongStrip(pixels.expandingTop) && strongStrip(pixels.expandingBottom);
+            if (pixels.expandingTop.barPixels != base.top - target.top ||
+                pixels.expandingBottom.barPixels != target.bottom - base.bottom) return "strip-depth";
+            if (!strongStrip(pixels.expandingTop)) return "top-distribution";
+            if (!strongStrip(pixels.expandingBottom)) return "bottom-distribution";
+            return nullptr;
         }
 
 		bool SamePictureWithinDetectorStep(const ActivePictureBounds& left,
@@ -1065,7 +1089,10 @@ namespace AlphaSourceCrop
 		// the unresolved horizontal pixels and grants no horizontal crop authority.
 		decision.observation.transitionDeferred = decision.observation.transitionDeferred ||
 			decision.deferPartialComposition;
-        decision.currentSpatialExpansion = !decision.deferPartialComposition && QualifiesCurrentSpatialExpansion(input);
+        const char* spatialRejection = decision.deferPartialComposition ? "partial-composition" :
+            CurrentSpatialExpansionRejection(input);
+        decision.currentSpatialExpansion = spatialRejection == nullptr;
+        decision.currentSpatialReason = spatialRejection ? spatialRejection : "qualified";
         if (decision.currentSpatialExpansion)
         {
             // Release only the geometry wait. Caption cleanup/composition and
@@ -1196,6 +1223,21 @@ namespace AlphaSourceCrop
 		result.bounds = !evidence.available ? ActivePictureBounds{} :
 			evidence.classification == ActivePictureClassification::PROVISIONAL ?
 			evidence.proposedBounds : evidence.trustedBounds;
+        // The native detector and subtitle worker have independent jobs. Keep
+        // uncertainty rows visible without publishing their padded aspect.
+        const auto& guard=evidence.subtitlePresentationGuard;
+        const auto& physical=evidence.trustedBounds;
+        const int maxGuard=2*std::max(2,physical.rasterHeight/540);
+        if (evidence.subtitlePresentationGuardAvailable && evidence.strongCurrentBarMeasurement &&
+            evidence.available && evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+            ValidBounds(guard,physical.rasterWidth,physical.rasterHeight) &&
+            guard.left==physical.left && guard.right==physical.right &&
+            guard.top<=physical.top && guard.bottom>=physical.bottom &&
+            physical.top-guard.top<=maxGuard && guard.bottom-physical.bottom<=maxGuard)
+        {
+            result.bounds=guard;
+            result.resolvedAxes|=static_cast<uint8_t>(ActivePictureBounds::BarAxes::TOP_BOTTOM);
+        }
 		const int width = base.rasterWidth, height = base.rasterHeight;
 		if (!evidence.available || evidence.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
 			!ValidBounds(base, width, height) || !HasAuthorityForCroppedAxes(base, width, height) ||
@@ -4024,8 +4066,9 @@ namespace AlphaSourceCrop
         return result;
     }
 
-    ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
-        const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding)
+    static ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPaddingImpl(
+        const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding,
+        const ActivePictureEvidence* physicalEvidence)
     {
         if(input.origin!=ConfirmedFitOwnershipOrigin::CURRENT_CAPTION)
             return {};
@@ -4040,11 +4083,45 @@ namespace AlphaSourceCrop
         caption.expandRight=input.evidenceBounds.right>input.nativeBase.right;
         caption.expandBottom=input.evidenceBounds.bottom>input.nativeBase.bottom;
         caption.horizontalPadding=horizontalPadding;caption.verticalPadding=verticalPadding;
-        const auto maximum=BuildPresentationEnvelope(caption);
+        auto maximum=BuildPresentationEnvelope(caption);
+        if (physicalEvidence) {
+            const auto& measured=physicalEvidence->trustedBounds;
+            const auto& guard=physicalEvidence->subtitlePresentationGuard;
+            const auto& native=input.nativeBase;
+            const int maxGuard=2*std::max(2,native.rasterHeight/540);
+            if (!physicalEvidence->available || !physicalEvidence->strongCurrentBarMeasurement ||
+                !physicalEvidence->subtitlePresentationGuardAvailable ||
+                physicalEvidence->classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+                physicalEvidence->authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+                measured.left!=native.left || measured.top!=native.top || measured.right!=native.right ||
+                measured.bottom!=native.bottom || measured.rasterWidth!=native.rasterWidth ||
+                measured.rasterHeight!=native.rasterHeight || measured.trustedBarAxes!=native.trustedBarAxes ||
+                native.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+                !ValidBounds(guard,native.rasterWidth,native.rasterHeight) ||
+                !CropEdgesAreChromaAligned(guard,native.rasterWidth,native.rasterHeight) ||
+                guard.left!=native.left || guard.right!=native.right || guard.top>native.top ||
+                guard.bottom<native.bottom || native.top-guard.top>maxGuard || guard.bottom-native.bottom>maxGuard)
+                return {};
+            // The caption owns only its pixels and padding; the current worker
+            // guard independently retains uncertainty on the opposite edge.
+            maximum.bounds.top=std::min(maximum.bounds.top,guard.top);
+            maximum.bounds.bottom=std::max(maximum.bounds.bottom,guard.bottom);
+        }
         if(!maximum.valid || !maximum.expanded ||
             !ContainedBounds(maximum.bounds,input.approvedBounds))
             return {};
         return qualified;
+    }
+    ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
+        const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding)
+    {
+        return QualifyCaptionFitWithinPaddingImpl(input,horizontalPadding,verticalPadding,nullptr);
+    }
+    ConfirmedFitOwnershipEvidence QualifyCaptionFitWithinPadding(
+        const ConfirmedFitOwnershipInput& input,int horizontalPadding,int verticalPadding,
+        const ActivePictureEvidence& currentPhysicalEvidence)
+    {
+        return QualifyCaptionFitWithinPaddingImpl(input,horizontalPadding,verticalPadding,&currentPhysicalEvidence);
     }
     static bool MatchesConfirmedFitOwnership(const ConfirmedFitOwnershipEvidence& proof,
         const ActivePictureBounds& native, const ActivePictureBounds& actual,

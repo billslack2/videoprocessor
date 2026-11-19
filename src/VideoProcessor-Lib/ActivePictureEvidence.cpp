@@ -2202,6 +2202,63 @@ bool SubtitleAssistedVerticalBarProof::IsCurrentFor(
         scriptHint == currentScriptHint;
 }
 
+bool SubtitlePresentationGuardMatchesPhysicalBounds(
+    const SubtitleAssistedVerticalBarProof& proof, const ActivePictureBounds& physical)
+{
+    const auto& guard=proof.candidate;
+    const auto& axes=proof.evidence.axisEvidence;
+    const auto& trusted=proof.evidence.trustedBounds;
+    return proof.accepted && proof.evidence.available &&
+        proof.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+        proof.evidence.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+        guard.left==trusted.left && guard.top==trusted.top && guard.right==trusted.right &&
+        guard.bottom==trusted.bottom && guard.rasterWidth==trusted.rasterWidth &&
+        guard.rasterHeight==trusted.rasterHeight && guard.trustedBarAxes==trusted.trustedBarAxes &&
+        axes.HasVerifiedVerticalCropProfile(guard) && axes.verticalCropGlyphExclusions &&
+        physical.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        axes.sidePictureTop==physical.top && axes.sidePictureBottom==physical.bottom &&
+        guard.left==physical.left && guard.right==physical.right &&
+        guard.rasterWidth==physical.rasterWidth && guard.rasterHeight==physical.rasterHeight;
+}
+
+ActivePictureEvidence SelectSubtitleAssistedPictureEvidence(
+    const AnalysisLumaSource& source, const ActivePictureEvidence& measured,
+    const ActivePictureFrameIdentity& identity,
+    const SubtitleAssistedVerticalBarProof& proof,
+    uint64_t policyGeneration, uint64_t continuityGeneration,
+    SubtitleScriptHint scriptHint, bool allowIndependentGeometry)
+{
+    if (!proof.IsCurrentFor(source, identity, policyGeneration, continuityGeneration, scriptHint))
+        return measured;
+    const auto& bounds=measured.trustedBounds;
+    const auto& guard=proof.candidate;
+    const auto exact=[](const ActivePictureBounds& a,const ActivePictureBounds& b) {
+        return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+            a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight &&
+            a.trustedBarAxes==b.trustedBarAxes;
+    };
+    const bool independent=allowIndependentGeometry && measured.available &&
+        measured.strongCurrentBarMeasurement &&
+        measured.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
+        measured.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+        exact(measured.proposedBounds,bounds) &&
+        bounds.rasterWidth==source.width && bounds.rasterHeight==source.height &&
+        bounds.left==0 && bounds.right==source.width && bounds.top>0 &&
+        bounds.bottom<source.height && bounds.bottom>bounds.top &&
+        bounds.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        !measured.axisEvidence.HasFailedBar() && measured.axisEvidence.vertical.scanComplete &&
+        measured.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS &&
+        measured.top.trusted && measured.bottom.trusted &&
+        measured.top.barPixels==bounds.top && measured.bottom.barPixels==source.height-bounds.bottom &&
+        measured.top.continuity>=7.0/9.0 && measured.bottom.continuity>=7.0/9.0 &&
+        SubtitlePresentationGuardMatchesPhysicalBounds(proof,bounds);
+    if (!independent) return proof.evidence;
+    auto result=measured;
+    result.subtitlePresentationGuardAvailable=true;
+    result.subtitlePresentationGuard=guard;
+    return result;
+}
+
 SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
     const AnalysisLumaSource& source,
     const ActivePictureEvidence& observedNative,

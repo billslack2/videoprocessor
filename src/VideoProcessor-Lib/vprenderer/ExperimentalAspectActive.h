@@ -48,7 +48,13 @@ inline bool ActiveTrialEnabled(){
 // explicitly unknown unless current perimeter samples independently support them.
 inline ActivePictureEvidence EvidenceFromMeasurement(const AnalysisLumaSource& source,const Result& measured){
     ActivePictureEvidence out;
-    if(!measured.complete)return out;
+    if(!measured.complete||!source.IsValid()||source.range==AnalysisLumaRange::Unknown)return out;
+    // Retention consumes these code thresholds even without a calibrated matte
+    // certificate. Use the declared source range, never the default full-range
+    // zero for limited-range black64. This is nominal metadata, not measured
+    // calibration: evaluated, qualified edges and qualified axes remain false.
+    out.blackReference.floor=source.range==AnalysisLumaRange::Limited?64:0;
+    out.blackReference.threshold=out.blackReference.floor+24;
     const int w=source.width,h=source.height;
     if(measured.kind==Kind::FullRaster){
         // Qualification belongs to the completed current-pixel detector pass.

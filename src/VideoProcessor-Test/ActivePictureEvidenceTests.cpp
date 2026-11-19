@@ -4959,6 +4959,136 @@ namespace VideoProcessorTest
 			}
 		}
 
+        TEST_METHOD(StrongPhysicalPictureKeepsSubtitleGuardSeparateThroughPresentation)
+        {
+            using namespace AlphaSourceCrop;
+            P010Frame frame(3840,2160);
+            frame.BlackOutside(0,276,3840,1884,64);
+            frame.FillRectangle(0,276,600,1884,70);
+            // Localized caption leaves seven independent boundary lanes visible.
+            frame.FillRectangle(1600,1738,2240,1900,64);
+            for (const int y : {1750,1888}) for (int glyph=0;glyph<10;++glyph) {
+                const int x=1620+52*glyph;
+                frame.FillRectangle(x-2,y-2,x+36,y+58,64);
+                frame.FillRectangle(x,y,x+34,y+56,800);
+                frame.FillRectangle(x+8,y+10,x+26,y+46,64);
+            }
+            auto source=frame.P010Source(); source.range=AnalysisLumaRange::Limited;
+            const auto identity=MakeSubtitleProofIdentity(source,5);
+            const auto raw=ExtractActivePictureEvidence(source);
+            const auto current=MeasureSubtitleProofFrame(source,identity,47,23,SubtitleScriptHint::Latin);
+            const auto proof=EvaluateSubtitleAssistedVerticalBarProof(source,raw,current,identity,47,23,SubtitleScriptHint::Latin);
+            Assert::IsTrue(proof.accepted);
+            Assert::AreEqual(268,proof.candidate.top);
+            const auto measurement=ExperimentalAspect::Measure(source.width,source.height,64,
+                [&](int x,int y,int& value){AnalysisLumaSample pixel;if(!source.Sample(x,y,pixel))return false;
+                    value=pixel.luma;return true;},[]{return true;});
+            const auto measured=ExperimentalAspect::EvidenceFromMeasurement(source,measurement);
+            Assert::IsTrue(measured.strongCurrentBarMeasurement);
+            Assert::AreEqual(276,measured.trustedBounds.top);
+            Assert::AreEqual(1884,measured.trustedBounds.bottom);
+            // Unit coverage of the shared selector used by live and queued consumers.
+            {
+                const auto selected=SelectSubtitleAssistedPictureEvidence(source,measured,identity,proof,47,23,SubtitleScriptHint::Latin,true);
+                Assert::IsTrue(selected.subtitlePresentationGuardAvailable&&selected.strongCurrentBarMeasurement);
+                Assert::AreEqual(276,selected.trustedBounds.top);
+                Assert::AreEqual(1884,selected.trustedBounds.bottom);
+                Assert::IsFalse(selected.axisEvidence.verticalCropGlyphExclusions);
+                Assert::AreEqual(268,proof.evidence.trustedBounds.top,L"Independent subtitle certificate remains unchanged.");
+                Assert::IsTrue(proof.IsCurrentFor(source,identity,47,23,SubtitleScriptHint::Latin));
+                Assert::IsTrue(SubtitlePresentationGuardMatchesPhysicalBounds(proof,selected.trustedBounds));
+                auto wrong=selected.trustedBounds;++wrong.top;
+                Assert::IsFalse(SubtitlePresentationGuardMatchesPhysicalBounds(proof,wrong));
+                const auto observation=MakeActivePictureObservation(selected,5,24);
+                Assert::AreEqual(276,observation.bounds.top);
+                const auto global=EvaluateActivePictureGlobalNearBlack(source);
+                const auto dark=EvaluateActivePictureArDarkness(source,selected,global);
+                auto retention=EvaluateActivePicturePresentationRetention(source,selected.trustedBounds,measured,global,dark);
+                ResampleActivePictureExpansionStrips(source,selected.trustedBounds,selected.trustedBounds,retention);
+                const auto presentation=ResolvePresentationObservation(selected.trustedBounds,selected,retention);
+                Assert::AreEqual(268,presentation.bounds.top);
+                Assert::AreEqual(1892,presentation.bounds.bottom);
+                auto visible=presentation.bounds;
+                if(retention.outwardVisibleBoundsAvailable) {
+                    visible.top=(std::min)(visible.top,retention.outwardVisibleBounds.top);
+                    visible.bottom=(std::max)(visible.bottom,retention.outwardVisibleBounds.bottom);
+                }
+                visible.top&=~1;visible.bottom=(std::min)(source.height,(visible.bottom+1)&~1);
+                visible.aspectRatio=double(source.width)/(visible.bottom-visible.top);
+                Input crop;
+                crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+                crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.geometry=selected.trustedBounds;
+                crop.geometrySourceGeneration=crop.frameSourceGeneration=source.generation;
+                crop.frameSourceSequence=5;crop.rasterWidth=source.width;crop.rasterHeight=source.height;
+                crop.currentVisibleBoundsAvailable=true;crop.currentVisibleBase=selected.trustedBounds;
+                crop.currentVisibleBounds=visible;crop.currentVisibleSourceGeneration=source.generation;crop.currentVisibleSourceSequence=5;
+                crop.outwardPresentationActive=crop.outwardExpansionAvailable=true;
+                crop.outwardExpansion=visible;crop.outwardExpansionSourceGeneration=source.generation;
+                const auto result=Evaluate(crop);
+                Assert::IsTrue(result.applyCrop&&result.outwardExpanded);
+                Assert::IsTrue(result.sourceBounds.top<=268&&result.sourceBounds.bottom>=1892);
+                Assert::IsTrue(result.sourceBounds.top>0||result.sourceBounds.bottom<source.height,L"Bounded guard must not force full raster.");
+                Assert::IsTrue(result.sourceBounds.bottom>=current.text.anchor.bottom,L"Unowned current caption stays visible.");
+                Assert::AreEqual(276,crop.geometry.top);
+                ConfirmedFitOwnershipInput owner;
+                owner.origin=ConfirmedFitOwnershipOrigin::CURRENT_CAPTION;
+                owner.current=owner.confirmed=true;
+                owner.nativeBase=selected.trustedBounds;
+                owner.approvedBounds=result.sourceBounds;
+                owner.evidenceBounds={current.text.anchor.left,current.text.anchor.top,current.text.anchor.right,
+                    current.text.anchor.bottom,source.width,source.height,1.0,ActivePictureBounds::BarAxes::NONE};
+                owner.sourceGeneration=source.generation;owner.sourceSequence=5;owner.presentationEpoch=identity.viewportGeneration;
+                Assert::IsFalse(QualifyCaptionFitWithinPadding(owner,24,24).available,
+                    L"Caption-only ownership must not invent permission for the opposite uncertainty guard.");
+                const auto ownership=QualifyCaptionFitWithinPadding(owner,24,24,selected);
+                Assert::IsTrue(ownership.available,L"Exact-current independently retained guard keeps caption FIT ownership usable.");
+                for(int fault=0;fault<4;++fault) {
+                    auto invalid=selected;
+                    if(fault==0)++invalid.trustedBounds.top;
+                    if(fault==1)invalid.subtitlePresentationGuardAvailable=false;
+                    if(fault==2)invalid.subtitlePresentationGuard.top-=2;
+                    if(fault==3)invalid.subtitlePresentationGuard.top=invalid.trustedBounds.top+2;
+                    Assert::IsFalse(QualifyCaptionFitWithinPadding(owner,24,24,invalid).available);
+                }
+                PresentationRecoveryInput recovery;
+                crop.framePresentationEpoch=identity.viewportGeneration;
+                recovery.crop=crop;recovery.candidate=result;
+                recovery.confirmedFitOwnership=ownership;
+                recovery.presentationEpoch=identity.viewportGeneration;
+                recovery.measurementCurrent=recovery.retentionEvaluated=true;
+                recovery.retentionSourceGeneration=source.generation;recovery.retentionSourceSequence=5;
+                recovery.retentionBounds=selected.trustedBounds;
+                recovery.observationAvailable=true;recovery.observation=selected.trustedBounds;
+                recovery.observedTrustedCrop=selected.trustedBounds;
+                recovery.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                const auto finalPresentation=EvaluatePresentationRecovery(recovery);
+                Assert::IsTrue(finalPresentation.presentation.applyCrop);
+                Assert::AreEqual(result.sourceBounds.top,finalPresentation.presentation.sourceBounds.top);
+                Assert::AreEqual(result.sourceBounds.bottom,finalPresentation.presentation.sourceBounds.bottom);
+                Assert::AreEqual(source.width,RecoverSubtitleInspectionBarsFromWorkerProof(source,proof.candidate,
+                    source.generation,ActivePictureClassification::BAR_CROP_TRUSTED,proof,identity,47,23,
+                    SubtitleScriptHint::Latin,true,false).rasterWidth);
+            }
+            for(int fault=0;fault<7;++fault) {
+                auto weak=measured;auto changed=proof;bool enabled=true;
+                if(fault==0)weak.strongCurrentBarMeasurement=false;
+                if(fault==1)weak.axisEvidence.vertical.scanComplete=false;
+                if(fault==2)weak.top.continuity=6.0/9.0;
+                if(fault==3)++weak.top.barPixels;
+                if(fault==4)enabled=false;
+                if(fault==5){changed.candidate.top-=2;changed.evidence.trustedBounds=changed.candidate;changed.evidence.axisEvidence.verticalCropGuardTop+=2;}
+                if(fault==6)++weak.proposedBounds.top;
+                const auto selected=SelectSubtitleAssistedPictureEvidence(source,weak,identity,changed,47,23,SubtitleScriptHint::Latin,enabled);
+                Assert::IsFalse(selected.subtitlePresentationGuardAvailable);
+                Assert::AreEqual(changed.candidate.top,selected.trustedBounds.top);
+            }
+            auto stale=identity;++stale.acceptedSequence;
+            const auto unchanged=SelectSubtitleAssistedPictureEvidence(source,measured,stale,proof,47,23,SubtitleScriptHint::Latin,true);
+            Assert::IsFalse(unchanged.subtitlePresentationGuardAvailable);
+            Assert::AreEqual(276,unchanged.trustedBounds.top);
+        }
+
         TEST_METHOD(CurrentSpatialExpansionPreservesUnownedCaptionOutsideNewBars)
         {
             using namespace AlphaSourceCrop;

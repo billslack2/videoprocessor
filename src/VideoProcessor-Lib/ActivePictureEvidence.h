@@ -146,6 +146,11 @@ struct ActivePictureEvidence
 	RememberedEdgeReturnProof rememberedEdgeReturnProof;
     // Current completed experimental measurement; copied only with exact-source evidence.
     bool strongCurrentBarMeasurement = false;
+    // Presentation-only uncertainty envelope, bound to this unchanged physical
+    // measurement. Never copied into transition observations or crop certificates.
+    bool subtitlePresentationGuardAvailable = false;
+    ActivePictureBounds subtitlePresentationGuard;
+
 };
 
 
@@ -415,6 +420,20 @@ struct SubtitleAssistedVerticalBarProof
         uint64_t currentPolicyGeneration, uint64_t currentContinuityGeneration,
         SubtitleScriptHint currentScriptHint) const;
 };
+
+// Exact relation only; this does not supply source identity or crop authority.
+bool SubtitlePresentationGuardMatchesPhysicalBounds(
+    const SubtitleAssistedVerticalBarProof& proof, const ActivePictureBounds& physical);
+
+// Called only for exact-source measured evidence. The worker proof stays intact;
+// a strong independent measurement may retain physical geometry while its
+// conservative subtitle boundary padding remains a presentation requirement.
+ActivePictureEvidence SelectSubtitleAssistedPictureEvidence(
+    const AnalysisLumaSource& source, const ActivePictureEvidence& measured,
+    const ActivePictureFrameIdentity& identity,
+    const SubtitleAssistedVerticalBarProof& proof,
+    uint64_t policyGeneration, uint64_t continuityGeneration,
+    SubtitleScriptHint scriptHint, bool allowIndependentGeometry);
 
 SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
     const AnalysisLumaSource& source,

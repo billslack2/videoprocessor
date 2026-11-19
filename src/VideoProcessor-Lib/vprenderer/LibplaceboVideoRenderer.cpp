@@ -11022,7 +11022,12 @@ struct LibplaceboVideoRenderer::Impl
         // subtitle must not raise steady-state AR scanning above its cadence.
         const auto* workerCandidate=currentWorkerBarProof ?
             &currentSubtitlePreview->current.subtitleArProof.candidate : nullptr;
-        const bool forceWorkerBarAcquisition=workerCandidate && automaticSourceCrop &&
+        const bool workerGuardMatchesPublishedPhysical=currentWorkerBarProof &&
+            ExperimentalAspect::ActiveTrialEnabled() && nlsGeometryAvailable &&
+            nlsGeometrySourceGeneration==analysisSource.generation &&
+            nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+            SubtitlePresentationGuardMatchesPhysicalBounds(currentSubtitlePreview->current.subtitleArProof,nlsGeometry);
+        const bool forceWorkerBarAcquisition=workerCandidate && !workerGuardMatchesPublishedPhysical && automaticSourceCrop &&
             configuredScreenActive && subtitleMeasurementEnabled &&
             !nlsRequested && !fixedCropAspectConfigured &&
             (!nlsGeometryAvailable ||
@@ -11336,7 +11341,10 @@ struct LibplaceboVideoRenderer::Impl
                 !fixedCropAspectConfigured && currentWorkerBarProof &&
                 currentSubtitlePreview->current.subtitleArDarkness.global.evaluated)
             {
-                evidence=currentSubtitlePreview->current.subtitleArProof.evidence;
+                evidence=SelectSubtitleAssistedPictureEvidence(analysisSource, evidence, currentIdentity,
+                    currentSubtitlePreview->current.subtitleArProof, localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration, activeSettings.subtitleScriptHint,
+                    ExperimentalAspect::ActiveTrialEnabled());
                 arDarkness=currentSubtitlePreview->current.subtitleArDarkness;
                 captionBackedStrictProofCurrent=true;
                 captionProofRoute=4;
@@ -11947,6 +11955,7 @@ struct LibplaceboVideoRenderer::Impl
                 auto spatialInput = admissionInput;
                 spatialInput.allowCurrentSpatialExpansion = ExperimentalAspect::ActiveTrialEnabled();
                 auto spatialAdmission = AlphaSourceCrop::EvaluateTransitionAdmission(spatialInput);
+                admission.currentSpatialReason=spatialAdmission.currentSpatialReason;
                 if (spatialAdmission.currentSpatialExpansion) admission = std::move(spatialAdmission);
             }
             const bool currentSpatialReady = admission.currentSpatialExpansion &&
@@ -12253,7 +12262,7 @@ struct LibplaceboVideoRenderer::Impl
                     black.adaptiveCandidate.right,black.adaptiveCandidate.bottom,evidence.proposedBounds.left,
                     evidence.proposedBounds.top,evidence.proposedBounds.right,evidence.proposedBounds.bottom,
                     static_cast<int>(evidence.classification),transition.publish?1:0,evidence.lumaSamples,evidence.chromaSamples);
-                DebugLog::Log("Alpha picture decision: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu pending=%d stage=%s coalesced=%llu measured_class=%d measured_rect=%d,%d-%d,%d class=%d candidate=%d,%d-%d,%d base=%d,%d-%d,%d axis_h=%s axis_v=%s eligible=%d outward=%s broad=%d proof=%u/%u prior_proof=%u prior_sequence=%llu first_sequence=%llu deferred=%d/%d/%d buffered_present=%d buffered_valid=%d buffered_ready=%d scheduled=%d scheduled_validation=%s publication_admission=%s published=%d near_black=%d/%d acquisition_blocked=%d p90=%.1f subtitle_action=%d requested_shift=%.1f drift=%d hold_ms=%llu engage_ms=%llu release_ms=%llu subtitle_measurement=%llu subtitle_generation=%llu model_reason=\"%s\" evidence_reason=\"%s\"",
+                DebugLog::Log("Alpha picture decision: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu pending=%d stage=%s coalesced=%llu measured_class=%d measured_rect=%d,%d-%d,%d class=%d candidate=%d,%d-%d,%d base=%d,%d-%d,%d axis_h=%s axis_v=%s eligible=%d outward=%s broad=%d spatial=%s proof=%u/%u prior_proof=%u prior_sequence=%llu first_sequence=%llu deferred=%d/%d/%d buffered_present=%d buffered_valid=%d buffered_ready=%d scheduled=%d scheduled_validation=%s publication_admission=%s published=%d near_black=%d/%d acquisition_blocked=%d p90=%.1f subtitle_action=%d requested_shift=%.1f drift=%d hold_ms=%llu engage_ms=%llu release_ms=%llu subtitle_measurement=%llu subtitle_generation=%llu model_reason=\"%s\" evidence_reason=\"%s\"",
                     diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
                     currentIdentity.viewportGeneration, diagnosticPending ? 1 : 0, stage,
                     pictureDecisionDiagnostics.emittedSuppressed,
@@ -12266,6 +12275,7 @@ struct LibplaceboVideoRenderer::Impl
                     ActivePictureAxisReasonName(evidence.axisEvidence.horizontal.reason),
                     ActivePictureAxisReasonName(evidence.axisEvidence.vertical.reason), eligiblePictureChange ? 1 : 0,
                     admission.outward.diagnosticReason, admission.outward.broadOpposingPicture ? 1 : 0,
+                    admission.currentSpatialReason,
                     admission.outward.state.confirmations, AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED,
                     admissionInput.previousOutward.confirmations, admissionInput.previousOutward.lastObservedSourceSequence,
                     admission.outward.state.firstPictureSourceSequence,
@@ -12570,6 +12580,7 @@ struct LibplaceboVideoRenderer::Impl
 					evidence.available && evidence.classification ==
 						ActivePictureClassification::BAR_CROP_TRUSTED &&
 					retentionEvidence.analysisValid && retentionEvidence.presentationValid &&
+                    !evidence.subtitlePresentationGuardAvailable &&
 					!retentionEvidence.outwardVisibleBoundsAvailable &&
 					AlphaSourceCrop::IsPixelSafeSamplingEnvelope(presentationBeforeObservation,
 						evidence.trustedBounds, outward, retentionEvidence.excludedBandsPixelSafe);
@@ -15723,6 +15734,13 @@ struct LibplaceboVideoRenderer::Impl
             localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint);
         const ActivePictureBounds currentCaptionFitWorkerBase=currentCaptionFitWorkerProof
             ? captionFitWorkerProof.candidate : ActivePictureBounds{};
+        const auto captionFitPhysicalEvidence=currentCaptionFitWorkerProof &&
+            latestRawPictureEvidenceSequence==sourceSequence && latestActivePictureEvidenceFrame==sourceSequence
+            ? SelectSubtitleAssistedPictureEvidence(analysisSource,latestRawPictureEvidence,subtitleIdentity,
+                captionFitWorkerProof,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                activeSettings.subtitleScriptHint,ExperimentalAspect::ActiveTrialEnabled()) : ActivePictureEvidence{};
+        const bool currentCaptionFitPhysicalBaseAvailable=captionFitPhysicalEvidence.subtitlePresentationGuardAvailable;
+        const auto currentCaptionFitPhysicalBase=captionFitPhysicalEvidence.trustedBounds;
         // A stronger result for the same source changes its caption fact, not
         // its capture age or the start of any source-owned presentation lease.
         const auto* priorRevisionSnapshot=revisedSubtitlePacket?
@@ -15743,7 +15761,8 @@ struct LibplaceboVideoRenderer::Impl
              currentConfirmedCaptionBounds, currentConfirmedCaptionAvailable,
              currentNoCaptionConfirmed, currentSubtitleScanReason, currentSubtitleBarStripClearance,
              currentMeasuredCaptionAvailable, currentCaptionFitWorkerProof,
-             currentCaptionFitWorkerBase, captionAnchorContextMatches, &state, &videoFrame,
+             currentCaptionFitWorkerBase, currentCaptionFitPhysicalBaseAvailable, currentCaptionFitPhysicalBase, captionFitPhysicalEvidence,
+             captionAnchorContextMatches, &state, &videoFrame,
              &renderedCaptionCandidate, &renderedCaptionHoldCandidate,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
              recoveredSubtitleInspection, recoveredSubtitleBars,
@@ -17187,6 +17206,11 @@ releaseDriftBaseRetention =
                 proof.lowerOverlayLike=scopeCurrentVerticalDecision.lowerOverlayLike;
                 proof.horizontalPadding=std::max(8,width/160)+scopeSubtitlePaddingPixels;
                 proof.verticalPadding=std::max(8,height/90)+scopeSubtitlePaddingPixels;
+                if (captionPaddingBounded && currentCaptionFitPhysicalBaseAvailable &&
+                    sameNative(currentCaptionFitPhysicalBase,cropInput.geometry))
+                    return AlphaSourceCrop::QualifyCaptionFitWithinPadding(proof,
+                        std::max(8,width/160)+scopeSubtitlePaddingPixels,
+                        std::max(8,height/90)+scopeSubtitlePaddingPixels,captionFitPhysicalEvidence);
                 return captionPaddingBounded
                     ? AlphaSourceCrop::QualifyCaptionFitWithinPadding(proof,
                         std::max(8,width/160)+scopeSubtitlePaddingPixels,
@@ -17203,7 +17227,8 @@ releaseDriftBaseRetention =
                     inwardCaptionEvidence.protectedBounds,inwardCaptionEvidence.protectedBounds);
             else if (!suppressCaptionPresentation && currentMeasuredCaptionAvailable &&
                 currentConfirmedCaptionAvailable && currentCaptionFitWorkerProof &&
-                sameNative(currentCaptionFitWorkerBase,cropInput.geometry) &&
+                (sameNative(currentCaptionFitWorkerBase,cropInput.geometry) ||
+                 (currentCaptionFitPhysicalBaseAvailable && sameNative(currentCaptionFitPhysicalBase,cropInput.geometry))) &&
                 confirmedCurrentVerticalFit && outwardExpansionAvailable)
                 recoveryInput.confirmedFitOwnership=qualifyFit(
                     AlphaSourceCrop::ConfirmedFitOwnershipOrigin::CURRENT_CAPTION,
@@ -24400,7 +24425,9 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 subtitleContinuityGeneration,subtitleScriptHint) &&
                 darkness.global.evaluated && !darkness.EffectiveNearBlack())
             {
-                observedEvidence=proof.evidence;
+                observedEvidence=SelectSubtitleAssistedPictureEvidence(proofSource, evidence, analysisIdentity,
+                    proof, lookaheadPolicyGeneration, subtitleContinuityGeneration, subtitleScriptHint,
+                    ExperimentalAspect::ActiveTrialEnabled());
                 subtitleArProofAccepted=true;
             }
         }

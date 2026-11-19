@@ -88,3 +88,13 @@ Unowned caption pixels outside those bounds must remain visible; qualification
 never supplies glyph, cleanup or caption-absence authority. This increment adds
 no foreground pixel scan, queue depth, waiting, or forced standard aspect ratio.
 Subtitle-profile switching is deferred to VP-0235 and is outside this change.
+
+## Physical measurement and subtitle presentation guard - 2026-11-18
+
+The active trial retains independently strong measured top/bottom geometry when an exact-current subtitle worker proof confirms those same inner boundaries but carries a conservative outer guard. Physical observations keep measured coordinates; the separate guard keeps uncertainty rows visible through presentation and caption-fit ownership. Worker caption evidence, pixel cleanup and current-source identity checks remain independent. Both live and queued adoption use the same selection rule.
+
+This is deliberately limited to exact agreement. Weak, incomplete, mismatched or differently measured boundaries keep the existing subtitle-assisted path. Do not infer improvement for those cases from this correction. The guard cannot authorize a different detected aspect, horizontal crop, stale caption or full-raster absence. An exact matching guard does not force repeated AR acquisition merely because its padded coordinates differ from the published physical picture.
+
+Existing Alpha picture decision diagnostics now include spatial=<reason> for immediate-expansion qualification. This reports existing checks without new pixel sampling or changed thresholds. Camcorder/inset retention and transition timing remain unchanged. Live verification is required before beta integration; the c0d04fc8 checkpoint is preserved.
+
+Integration regression also exposed an uninitialized nominal black reference in the experimental adapter: retention consumed floor 0 / threshold 24 for limited-range input and treated code-64 bars as visible picture. The adapter now provides declared-range nominal values (Limited 64/88; Full 0/24), while leaving calibration and edge/axis qualification flags unset. Invalid or unknown-range sources cannot supply active authority. No new scan or adaptive-matte certificate is introduced. Regression coverage must exercise limited-range retention through final bounded presentation, not merely verify that captions remain visible in a full raster.

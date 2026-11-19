@@ -18,6 +18,16 @@ int main(){
  check(evidence.proposedBounds.top==91&&evidence.proposedBounds.bottom==629&&evidence.trustedBounds.top==90&&evidence.trustedBounds.bottom==630,"odd boundaries retain chroma pair outward");
  check(!evidence.axisEvidence.verticalCropGlyphExclusions&&!evidence.axisEvidence.verticalCropProfileClean&&!evidence.blackReference.evaluated,"no fabricated subtitle or strict matte certificates");
  check(evidence.top.lumaFloor==64&&evidence.bottom.lumaP90==64,"adapter preserves measured matte levels for downstream checks");
+ check(evidence.blackReference.floor==64&&evidence.blackReference.threshold==88&&
+       !evidence.blackReference.evaluated&&!evidence.blackReference.qualifiedEdgeMask&&!evidence.blackReference.qualifiedAxes,
+       "limited source provides nominal retention threshold without matte certification");
+ auto fullRange=source;fullRange.range=AnalysisLumaRange::Full;
+ auto fullReference=EvidenceFromMeasurement(fullRange,measured);
+ check(fullReference.blackReference.floor==0&&fullReference.blackReference.threshold==24&&!fullReference.blackReference.evaluated,
+       "full range never borrows limited-range black64 threshold");
+ auto unknownBarRange=source;unknownBarRange.range=AnalysisLumaRange::Unknown;
+ check(!EvidenceFromMeasurement(unknownBarRange,measured).available,
+       "unknown range cannot nominate bars with an invented nominal reference");
  check(evidence.strongCurrentBarMeasurement,"completed strongly paired measurement nominates current expansion");
  auto weakPair=measured;weakPair.edges[3].support=6.0/9;
  check(!EvidenceFromMeasurement(source,weakPair).strongCurrentBarMeasurement,"weaker opposite boundary retains ordinary admission");
@@ -33,6 +43,9 @@ int main(){
  check(!cache.SeedQueued(source,wrong,evidence,darkness),"different source cannot import experiment evidence");
  auto retention=cache.Retention(evidence.trustedBounds);
  check(retention.activePicture.trustedBounds.top==90,"existing retention receives new measured geometry");
+ check(retention.presentationBlackFloor==64&&retention.presentationBlackThreshold==88&&
+       retention.excludedBandsPixelSafe&&!retention.outwardVisibleBoundsAvailable,
+       "production cache retention treats limited black bars as dark rather than full-raster visible pixels");
  ActivePictureTransitionModel model;ActivePictureTransitionDecision decision;
  for(uint64_t n=1;n<=30;++n)decision=model.Observe(MakeActivePictureObservation(evidence,n,24));
  check(decision.stable&&decision.stableBounds.top==90,"existing transition model accepts measured native geometry");
