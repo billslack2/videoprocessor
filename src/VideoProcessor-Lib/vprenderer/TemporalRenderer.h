@@ -327,6 +327,10 @@ public:
         return input;
     }
     bool PreparesComposedSources() const { return composition && Active(); }
+    const pl_filter_config* CompleteSubtitlePreparationMixer() const {
+        // Preparation is requested before the composition policy is active.
+        return mixing && !interlaced ? mixer : nullptr;
+    }
     double ScheduledOutputRateHz() const {
         return Active() && initialized && std::isfinite(displayDuration) && displayDuration>0.0
             ? 1.0/displayDuration : 0.0;

@@ -9761,9 +9761,11 @@ struct LibplaceboVideoRenderer::Impl
             // Preparation occurs while the batch still uses the raw-source
             // contract. This describes the actual field/deinterlace settings.
             const auto input = temporalRenderer.NlsPreparationInput(source, params);
+            params.frame_mixer = temporalRenderer.CompleteSubtitlePreparationMixer();
             auto request = std::make_shared<SubtitlePipelinePreparationRequest>(input, params,
                 temporalRenderer.Active(), activeSettings.subtitleGeneratedGray,
                 activeSettings.subtitleSpatialFill, &target);
+            request->mixDuration = static_cast<float>(temporalRenderer.NlsPreparationMixDuration());
             CComPtr<IDXGIDevice> dxgi;
             CComPtr<IDXGIAdapter> adapter;
             DXGI_ADAPTER_DESC description{};
