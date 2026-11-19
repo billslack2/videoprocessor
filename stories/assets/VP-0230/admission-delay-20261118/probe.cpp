@@ -1,0 +1,4 @@
+#include <cstdio>
+#include "E:/codex/videoprocessor/ar-bounded-retry-20261118/src/VideoProcessor-Lib/ExperimentalAspectDetector.h"
+using namespace ExperimentalAspect;
+int main(){for(int mode=0;mode<7;++mode){auto r=Measure(3840,2160,64,[&](int x,int y,int&v){int d=(std::min)(y,2159-y); v=d<68?64:(d<276?84:300);if(mode==1)v=d<276?64:300;if(mode==1&&d>=68&&d<92)v=300;if(mode==2)v=d<276?64:300;if(mode==2&&d>=68&&d<80)v=300;if(mode==3){v=d<68?64:(d<276?84:300);if(x<300||x>3540)v=d<68?64:300;}if(mode>=4){v=d<276?64:300;int thick=mode==4?52:(mode==5?108:24);if(d>=68&&d<68+thick)v=300;if(mode==6&&d>=276&&d<312&&((x/384)%3)!=0)v=64;}return true;},[]{return true;});printf("mode%d kind%d top%d bottom%d support %.3f %.3f contrast %.1f %.1f noise %.1f %.1f score%.3f complete%d samples%zu\n",mode,int(r.kind),r.top,r.bottom,r.edges[1].support,r.edges[3].support,r.edges[1].contrast,r.edges[3].contrast,r.edges[1].noise,r.edges[3].noise,r.score,r.complete,r.samples);}}

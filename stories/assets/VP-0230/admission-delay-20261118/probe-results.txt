@@ -1,0 +1,7 @@
+mode0 kind1 top68 bottom2092 support 1.000 1.000 contrast 20.0 20.0 noise 0.0 0.0 score0.995 complete1 samples8834
+mode1 kind1 top276 bottom1884 support 1.000 1.000 contrast 118.0 118.0 noise 0.0 0.0 score0.997 complete1 samples8834
+mode2 kind1 top276 bottom1884 support 1.000 1.000 contrast 118.0 118.0 noise 0.0 0.0 score0.997 complete1 samples8834
+mode3 kind1 top68 bottom2092 support 1.000 1.000 contrast 20.0 20.0 noise 0.0 0.0 score0.995 complete1 samples8834
+mode4 kind1 top68 bottom2092 support 1.000 1.000 contrast 118.0 118.0 noise 0.0 0.0 score0.995 complete1 samples8834
+mode5 kind1 top68 bottom2092 support 1.000 1.000 contrast 118.0 118.0 noise 0.0 0.0 score0.995 complete1 samples8834
+mode6 kind1 top68 bottom2092 support 1.000 1.000 contrast 118.0 118.0 noise 0.0 0.0 score0.995 complete1 samples8834

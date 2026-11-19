@@ -7,6 +7,18 @@ In Progress
 
 
 
+## Boundary-led admission investigation - 2026-11-18
+
+User reports subtitles looked fine on 54be4dad, with scope-to-IMAX sometimes slow, and authorizes investigation/improvement. Current trial log ends20:48:38; SHA256 ACB095281657EC02BCD2A4327DAD60DB3B2870EEB6941FE566D3BD98B38FE5BD. Latest beta rechecked/fetched unchanged acdb89bf; no source or runtime changes in this investigation.
+
+Three-worker audit finds eight immediate logical publications and three delayed events. Five immediate events have same-source submission evidence (809/872/1018/1317/1595); three belong to a later renderer in a1x1 window and do not establish visible presentation. Main delay: first recorded strong9/9 paired IMAX measurement961, blocked admission962, publication and submitted IMAX982 (~876ms after measurement;~834ms after blocked decision). Other delayed cases577->580 and429->432, the latter first submitted435 after resize. Topstrip black fraction0 at962, bottom26%; later bottom-distribution reason shows four-depths-in-every-quarter veto after ordinary two-depth evidence qualifies. Full-range0/24 reference is correct in this incident; do not attribute it to the limited-range defect fixed in54be4dad. Logs do not establish boundary pixel truth or scanout.
+
+Bounded scratch probes linked to current detector/retention demonstrate why simply trusting9/9 edges is unsafe: true dim IMAX and symmetric UI ribbons over true scope both nominate68..2092 with strong opposing edges. Nominal absolute threshold rejects dim picture; relative multi-depth continuation distinguishes tested thin ribbons from dim content. A genuine dark quarter still defeats an every-quarter gate despite broad picture support elsewhere. These synthetic cases motivate competing old/new geometry evidence using matte coherence, boundary agreement and relative interior continuation; they do not calibrate production thresholds or establish success on the actual delayed scene.
+
+[Event audit](../assets/VP-0230/admission-delay-20261118/events.csv), [source evidence](../assets/VP-0230/admission-delay-20261118/key-evidence.txt), [boundary counterexamples](../assets/VP-0230/admission-delay-20261118/probe-results.txt), [production retention comparison](../assets/VP-0230/admission-delay-20261118/retention-results.txt). Synthetic probe sources archived; no movie pixels committed.
+
+No input-frame captures exist in the latest runtime logs directory. Requested a short native capture spanning last scope, first measured IMAX, blocked interval and accepted IMAX. Keep playback advancing. Next: replay competing geometry evidence on that actual failure plus retained18400 control and synthetic overlay negatives before implementing/building. No blanket lower threshold, new wait, subtitle certificate or forced standard ratio. Current validated trial/checkpoints remain intact.
+
 ## Physical geometry trial ready - 2026-11-18
 
 Committed and pushed 54be4dadae70baf494e302d95e52bb54d85c53f4 on codex/ar-physical-geometry-20261118, continuing the user-selected experiment. Checkpoint c0d04fc8 remains fixed. Matching x64 Release host and both renderer DLLs are staged at E:\codex\videoprocessor\ar-geometry-test-54be4dad; embedded pin, runtime records, artifact hashes and app-local runtime requirements verified. Settings copied from the previous trial without editing. No player restart or deployed-folder change; live acceptance pending.

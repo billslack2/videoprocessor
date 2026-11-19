@@ -1,0 +1,12 @@
+instance,generation,first_recorded_measurement,published,exact_first_crop_submission,kind,publication_source_delta,approx_delta_ms,reason
+FB3519E2,1,577,580,580,delayed,3,125.12,strip-distribution
+FB3519E2,1,809,809,809,immediate,0,0.0,qualified
+FB3519E2,1,872,872,872,immediate,0,0.0,qualified
+FB3519E2,1,961,982,982,delayed,21,875.87,strip-distribution then bottom-distribution; first admission962
+FB3519E2,1,1018,1018,1018,immediate,0,0.0,qualified
+FB3519E2,1,1317,1317,1317,immediate,0,0.0,qualified
+FB3519E2,1,1595,1595,1595,immediate,0,0.0,qualified
+CA95F712,1,34,34,,immediate,0,0.0,qualified;1x1window no submission
+CA95F712,2,171,171,,immediate,0,0.0,qualified;1x1window no submission
+CA95F712,2,307,307,,immediate,0,0.0,qualified;1x1window no submission
+CA95F712,2,429,432,435,delayed,3,125.12,bottom-distribution;1x1window until435 firstsubmission

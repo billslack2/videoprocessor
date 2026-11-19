@@ -1,0 +1,8 @@
+retention.cpp
+Generating code
+Finished generating code
+mode0 kind1 bounds68..2092 strong1 edges1.000/1.000 contrast20.0/20.0 dark0 strips1 strip{black1.000 p9084.0 tex0.0 masks0/0/0/0} strip{black1.000 p9084.0 tex0.0 masks0/0/0/0} relative_q0[20,20,20,20,20,20] relative_q1[20,20,20,20,20,20] relative_q2[20,20,20,20,20,20] relative_q3[20,20,20,20,20,20]
+mode1 kind1 bounds68..2092 strong1 edges1.000/1.000 contrast118.0/118.0 dark0 strips1 strip{black0.833 p90300.0 tex0.0 masks1/1/1/1} strip{black0.833 p90300.0 tex0.0 masks1/1/1/1} relative_q0[236,0,0,0,0,0] relative_q1[236,0,0,0,0,0] relative_q2[236,0,0,0,0,0] relative_q3[236,0,0,0,0,0]
+mode2 kind1 bounds68..2092 strong1 edges1.000/1.000 contrast118.0/118.0 dark0 strips1 strip{black0.833 p90300.0 tex0.0 masks1/1/1/1} strip{black0.833 p90300.0 tex0.0 masks1/1/1/1} relative_q0[236,0,0,0,0,0] relative_q1[236,0,0,0,0,0] relative_q2[236,0,0,0,0,0] relative_q3[236,0,0,0,0,0]
+mode3 kind1 bounds68..2092 strong1 edges1.000/1.000 contrast118.0/118.0 dark0 strips1 strip{black0.208 p90300.0 tex4.1 masks1/63/63/63} strip{black0.208 p90300.0 tex4.1 masks1/63/63/63} relative_q0[236,6,6,6,6,6] relative_q1[236,236,236,236,236,236] relative_q2[236,236,236,236,236,236] relative_q3[236,236,236,236,236,236]
+mode4 kind0 bounds0..2160 strong0 edges0.000/0.000 contrast0.0/0.0 dark0 strips0 strip{black0.000 p900.0 tex0.0 masks0/0/0/0} strip{black0.000 p900.0 tex0.0 masks0/0/0/0} relative_q0[0,0,0,0,0,0] relative_q1[236,0,0,0,0,0] relative_q2[236,0,0,0,0,0] relative_q3[0,0,0,0,0,0]

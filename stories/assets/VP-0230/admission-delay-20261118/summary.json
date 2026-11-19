@@ -1,0 +1,16 @@
+{
+  "log": "E:\\codex\\videoprocessor\\ar-geometry-test-54be4dad\\logs\\vp.log",
+  "sha256": "acb095281657ec02bcd2a4327dad60db3b2870eeb6941fe566d3bd98b38fe5bd",
+  "observed_scope_imax_events": 11,
+  "immediate": 8,
+  "delayed": 3,
+  "captures_available": false,
+  "notes": [
+    "First recorded measurement is bounded log evidence, not guaranteed first actual changed source; ARworker messages are rate-limited and asynchronous.",
+    "Same generation1 reused across rendererinstances; events separated by instance.",
+    "FB961 strong1.00bothbar support, measured68..2092;962 strips topP9051 bottomP90128, bottomblackfraction0.2604, spatialstrip-distribution.",
+    "CA firstactualsubmission435; preceding34/171/307/432 layout1x1 cannot qualify visiblepresentation.",
+    "No automatic pixel captures under this runtime; prior18400 capture is control only, not pixelgroundtruth for961/962.",
+    "Need exact-source capture around repeat961-like episode to validate weakinterior versus boundaryalternative; logs alone cannot prove pixeltruth."
+  ]
+}
