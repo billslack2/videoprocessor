@@ -142,6 +142,32 @@ improves availability without code/quality changes; neither the259 ms activation
 nor full60fps/subtitle acceptance is declared fixed. Current selected subtitle
 profile after the user's cycle is Classic. Playback was left under user control.
 
+## 2026-11-19 user priority clarification and preparation coverage
+
+The user explicitly deprioritized the one-off 259 ms first-use activation stall.
+It is a low-priority backlog follow-up in VP-0235, not the next blocker for this
+critical-path investigation. The observed event remains recorded, without treating
+its elimination as a prerequisite for continuing steady-playback work.
+
+The user supports checking that background preparation covers shader variants
+actually used by playback. Keep this focused: map live composition/presentation
+paths to prepared graphs and address demonstrated omissions. Do not indiscriminately
+add more warmup combinations or start a compiler/cache redesign. The existing
+preparation already covers Black/Reconstruction, blur on/off, full/cleanup/layer,
+and field/deinterlace alternatives; successful warm switching is established.
+
+Initial source audit at c93d7f0e: SubtitlePipelinePreparationRequest::Compile warms
+normalization and the normalized-source final presentation, including a synthetic
+source subtitle overlay when temporal. It does not explicitly warm raw-source
+final presentation, and Frame::Copy strips source/target UI overlays. These are
+coverage questions, not proof that either caused the observed compiler miss.
+PrepareSubtitlePipeline snapshots the target after assembleOverlays, but that
+snapshot removes the overlays; check the claimed separate UI warm draw passes
+before adding duplicate work. Map the exact live render parameters and raw/fitted
+targets, and verify cache misses under matching source/format/processing context.
+Preserve current-source fallback, caption/picture pixels and independent AR.
+No source behavior change or complete coverage claim has been made by this audit.
+Dense-cue and sustained frame-budget qualification remain the main acceptance work.
 ## User story
 
 As a viewer, I want to know what consumes the live frame budget and obtain measured improvements that sustain incoming HDMI video without disrupting picture, subtitles or aspect detection.

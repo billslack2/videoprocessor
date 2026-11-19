@@ -16,6 +16,19 @@ Trace the exact profile-change branch that temporarily loses eligible presentati
 
 Validate switches between Off, Classic and Reconstruction with active/changing captions and without captions, including viewport/format changes. Compare actual submitted crops, current source identities and presentation gaps. Use successfully completed x64 Release builds and preserve user configuration. Discover the latest remote beta before source implementation; the incident pin is a reproduction reference, not the integration baseline.
 
+## Low-priority first-use compilation follow-up (2026-11-19)
+
+The user explicitly regards the isolated first-use shader compilation hitch as
+minor and defers its elimination. c93d7f0e warm-cache activation logged a 259.015 ms
+submission gap and 11 skipped source IDs, with foreground shader translations;
+background preparation itself completed in 307.80 ms. Subsequent manual cycling
+advanced 5,988 sources with no repeated/skipped IDs and a maximum 21.559 ms gap.
+See VP-0234 and its subtitle-warm-cache-20261119.json evidence.
+
+Retain this as a lower-priority activation follow-up, separate from the geometry
+handoff above. VP-0234 may check preparation coverage of actual playback variants
+now; do not make elimination of every cold/first-use compile stall its next blocker.
+There is no new authorization here to change presentation geometry or AR policy.
 ## Scope separation
 
 VP-0230 owns promptly applying well-supported measured picture boundaries during real AR changes. VP-0234 owns critical-path performance and 60 fps qualification. This backlog story owns subtitle-profile switching only; no implementation is authorized as part of the current AR increment.
