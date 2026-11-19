@@ -67,6 +67,8 @@ public:
             active=owner.enabled; if(active)begin=Read();
         }
         DetailScope(const DetailScope&)=delete;
+        DetailScope(DetailScope&& other) noexcept:
+            owner(other.owner),index(other.index),begin(other.begin),active(other.active){other.active=false;}
         void Complete(){if(active){owner.Add(index,begin,Read());active=false;}}
         ~DetailScope(){Complete();}
     };
