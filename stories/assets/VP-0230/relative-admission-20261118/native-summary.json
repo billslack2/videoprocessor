@@ -1,0 +1,18 @@
+{
+  "inconclusive": "0",
+  "notRunnable": "0",
+  "timeout": "0",
+  "notExecuted": "0",
+  "completed": "0",
+  "executed": "847",
+  "disconnected": "0",
+  "warning": "0",
+  "passed": "847",
+  "passedButRunAborted": "0",
+  "total": "847",
+  "aborted": "0",
+  "pending": "0",
+  "failed": "0",
+  "inProgress": "0",
+  "error": "0"
+}

@@ -1,0 +1,77 @@
+{
+  "source": "535d7d8432f5dcf179483d62c1817ae05bb214ef",
+  "base": "54be4dadae70baf494e302d95e52bb54d85c53f4",
+  "configuration": "Release",
+  "architecture": "x64",
+  "mode": "opt-in relative picture continuation admission",
+  "binaries": [
+    {
+      "file": "VideoProcessor.exe",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "B96DC15F77DC6B3E3E03B3D965EC519CD01A220670F9D27C4969A915BDC1FC5E"
+    },
+    {
+      "file": "config/VideoProcessorConfig.exe",
+      "toolsetVersion": "14.44.35207",
+      "sha256": "61F7091253728EF630EF1951656426E9703F2F927422A88D682E3513642D7A36"
+    },
+    {
+      "file": "config/VideoProcessorConfigDiscovery.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "A030E5028A0265CD237DB35848A6AFF551DD35C38FEDDE6DCBE6A591415D5E7B"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "D221DBB532C64BE853286FBD9C6DA2EAEEDD041A3CC9A8033E1B4D215671EBBC"
+    },
+    {
+      "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "D45198A26931B90927BCA71CE1B15CC7DCB6A5F6CA7FDA88E70D00D1F94970C8"
+    }
+  ],
+  "rebuiltFiles": [
+    "VideoProcessor.exe",
+    "vprenderer/VideoProcessorVPRenderer.dll",
+    "vprenderer-beta/VideoProcessorVPRendererBeta.dll"
+  ],
+  "unchangedCompanionFrom": "E:\\codex\\videoprocessor\\ar-geometry-test-54be4dad",
+  "settings": [
+    {
+      "sha256": "5776D89CC7BF98337C1A9EEBD97286250B41326975372DBC5773BC718F78821C",
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-geometry-test-54be4dad",
+      "file": "VideoProcessor.cfg"
+    },
+    {
+      "sha256": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0",
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-geometry-test-54be4dad",
+      "file": "VideoProcessor.state"
+    }
+  ],
+  "tests": {
+    "focused": 94,
+    "relativeFocused": 50,
+    "nativePassed": 847,
+    "motionPassed": 204,
+    "source": "535d7d8432f5dcf179483d62c1817ae05bb214ef",
+    "provenance": "Native/focused/replay tested final implementation before pin; C++ linkage compatibility declaration corrected with unchanged core library. Matching host/both renderers and GPU tests built clean at pin.",
+    "librarySha256": "2C873B3150366E90FF5AA6EF3667555CDDC9502BC04CB5E0E8B1D7458782168F",
+    "pixelReplay": "validation/pixel-replay.json",
+    "recoveredPhysicalBaseSources": [
+      18432,
+      18433,
+      18434
+    ],
+    "recoveredPaddedBaseSources": [
+      18433,
+      18434
+    ],
+    "firstTransitionSource": 18400,
+    "ordinaryControlSource": 18403,
+    "timing": "40/40 separate optional2ms-budget runs completed; median0.202ms p950.339ms max0.352ms, warm-buffer component test only",
+    "livePlayback": "Pending user test; no restart; live readiness/cadence not established"
+  },
+  "livePlayback": "Not yet tested",
+  "created": "2026-11-18T21:21:45.62735-05:00"
+}

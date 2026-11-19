@@ -7,6 +7,24 @@ In Progress
 
 
 
+## Relative admission trial ready - 2026-11-18
+
+Committed/pushed535d7d8432f5dcf179483d62c1817ae05bb214ef on codex/ar-relative-admission-20261118, continuing user-selected54be4dad. Matching x64 Release host and both renderers staged at E:\codex\videoprocessor\ar-relative-test-535d7d84; embedded source pin, runtime records, hashes and app-local dependencies verified. Prior54be4dad/c0d04fc8 trials remain intact. Settings copied from54be4dad without edits. No player restart or deployment-folder change; user live acceptance pending.
+
+The existing strict immediate-expansion route stays first. A completed exact-current optional relative proof may alternatively admit a strong measured outward top/bottom change when picture continuation relative to the measured matte/noise outweighs coherent evidence for the old boundary. No measured coordinates, black reference, caption ownership/cleanup/absence or transition model are fabricated. Raw-source, context, base/candidate, policy and continuity checks bind the ready result. Renderer import is a nonblocking lookup after verified queued-source import; no new renderer samples, requests or waits. Missing/expired results retain the ordinary path.
+
+Worker feature collection reuses576 existing strip reads and adds at most960 old-edge reads. Its separate two-millisecond optional-retention allowance starts before ordinary retention; it is NOT combined with the raw detector's two milliseconds. Added reads check the remaining sample allowance; later existing retention work is not claimed to fit an overall24000-read cap. Expiry retains completed ordinary retention. A foreground-completed slot may lack the feature, so first-frame readiness is opportunistic and must be checked live.
+
+Validation:847 native,94 existing focused,50 new relative-evidence, and102 GPU/cue checks per dependency (204), all pass. New native pixel test publishes expanded picture while preserving fresh caption pixels outside it and a bounded non-full-raster presentation. Earlier renderer LNK1103 was resolved by preserving/regenerating paired generated link caches; the C++17-only inline constant was changed to compatible namespace constexpr. Core library hash stayed2C873B3150366E90FF5AA6EF3667555CDDC9502BC04CB5E0E8B1D7458782168F, preserving replay provenance. Final host/renderers and GPU tests use the clean pinned source.
+
+Actual128-frame production replay covers768 source/base/mode comparisons: recovers18432/18433/18434 against physicalscope276..1884, and18433/18434 against guarded268..1892; no existing admission revoked. Earlier57IMAXholdout unchanged. Forced feature expiry always matches baseline. Captured chronological transition remains18400 with existing/new spatial modes versus18403 ordinary control. Inward component replay publishes192248 in allmodes; earlier live lookahead192247 is distinct. Counterfactual later-frame gains do not establish a measured speedup for uncaptured live961. Caption-backed18681 remains ordinary.
+
+Separate warm-buffer task-entry2ms replay:40/40 complete, median0.20215ms, p950.3392ms, max0.3517ms. This is not whole-pipeline60fps, live scheduling or scanout qualification. Logs add spatial_route, relative reason, scores and added reads to existing diagnostics. User explicitly does not require AR stability during overlays; next live check focuses movie-boundary accuracy, dark-picture responsiveness, captions and unexpected full raster.
+
+[Build receipt](../assets/VP-0230/relative-admission-20261118/build-receipt.json), [native summary](../assets/VP-0230/relative-admission-20261118/native-summary.json), [GPU results](../assets/VP-0230/relative-admission-20261118/motion-renderer-tests.json), [production replay receipt](../assets/VP-0230/relative-admission-20261118/receipt.json), [independent pixel review](../assets/VP-0230/relative-admission-20261118/prototype-independent-review.json).
+
+Next: normal live scope-to-IMAX playback with subtitles. Inspect whether relative evidence is ready/used and whether remaining delays are geometry rejection or optional-worker availability. Do not request new captures as a prerequisite; user selected retained evidence for this increment. Beta incorporation follows live acceptance; VP-0234 performance and VP-0235 profile-switch delay remain separate.
+
 ## Relative picture continuation trial - in progress 2026-11-18
 
 User chooses to continue with existing captures rather than obtain a new one, and explicitly states that preserving AR stability during overlays is not a concern. Do not block or expand this increment to optimize UI/overlay AR stability. Picture/caption preservation, measured geometry accuracy and uninterrupted bounded current-source video remain required.

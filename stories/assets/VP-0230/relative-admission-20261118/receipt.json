@@ -1,0 +1,110 @@
+{
+  "extent": {
+    "276": {
+      "frames": 64,
+      "newly_admitted": [
+        "18432",
+        "18433",
+        "18434"
+      ],
+      "revoked": [],
+      "expired_differs_from_baseline": [],
+      "feature_reasons": {
+        "ineligible": 11,
+        "qualified": 52,
+        "competing-boundary": 1
+      }
+    },
+    "268": {
+      "frames": 64,
+      "newly_admitted": [
+        "18433",
+        "18434"
+      ],
+      "revoked": [],
+      "expired_differs_from_baseline": [],
+      "feature_reasons": {
+        "ineligible": 11,
+        "qualified": 52,
+        "competing-boundary": 1
+      }
+    }
+  },
+  "inward": {
+    "276": {
+      "frames": 64,
+      "newly_admitted": [],
+      "revoked": [],
+      "expired_differs_from_baseline": [],
+      "feature_reasons": {
+        "qualified": 57,
+        "ineligible": 7
+      }
+    },
+    "268": {
+      "frames": 64,
+      "newly_admitted": [],
+      "revoked": [],
+      "expired_differs_from_baseline": [],
+      "feature_reasons": {
+        "qualified": 57,
+        "ineligible": 7
+      }
+    }
+  },
+  "timed2ms": {
+    "runs": 40,
+    "complete": 40,
+    "expiry": 0,
+    "median_ms": 0.20215,
+    "p95_ms": 0.3392,
+    "max_ms": 0.3517,
+    "clock_scope": "Start immediately before EvaluatePreparedPictureEvidence withrealproduction2ms cancellation; includesfullordinaryretention andoptionalfeature; excludesfileloading,detector,global/darknesscalculation,rendering. 4actualsources x2bases x5repeats aftercorrectnessprocessesfinished.",
+    "caveat": "Local standalone compiledRelease benchmark, warmrepeated nativebuffers; notlive60fpscriticalpathorendtoendcadenceproof."
+  },
+  "chronological": {
+    "outward_first_measured": 18400,
+    "first_published": {
+      "ordinary_optout": 18403,
+      "existing_spatial": 18400,
+      "relative_enabled": 18400
+    },
+    "inward_first_measured": 192247,
+    "inward_published_all_modes": 192248,
+    "note": "Componentmodelreplay excludeslivescheduledlookaheadwhichpreviouslypublishedinwardeffective192247; no regressionbetweenthreecomponentmodes; resetsatgenuinecapturedsourcegaps."
+  },
+  "source_head": "54be4dadae70baf494e302d95e52bb54d85c53f4",
+  "source_status": "M docs/VP-0230_AR_ACTIVE.md\n M src/VideoProcessor-Lib/ActivePictureEvidence.cpp\n M src/VideoProcessor-Lib/ActivePictureEvidence.h\n M src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.cpp\n M src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.h\n M src/VideoProcessor-Lib/vprenderer/ExperimentalAspectActive.h\n M src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp\n M src/VideoProcessor-Lib/vprenderer/PreparedPictureEvidence.h\n M src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp\n?? tools/test_relative_continuation.cmd\n?? tools/test_relative_continuation.cpp",
+  "source_hashes": {
+    "src/VideoProcessor-Lib/ActivePictureEvidence.cpp": "63302F1EBE7D23B9400FF6CAC63BDD5239A7B80EE0DEAC7491FBF07A14CC56B7",
+    "src/VideoProcessor-Lib/ActivePictureEvidence.h": "4F614162FE4D5876449432BBEBCD0FE3F76BF99DB238AB9494E3054C910C1625",
+    "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.cpp": "6E0C569842B4B250AA7A168AB998E25C01CBBDB757E76B4D9B5D8F6361975F00",
+    "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.h": "DB654339729EC01E6024FF7A5EC353C4E9B404FFF9EB15BA60CED8E803CD4269",
+    "src/VideoProcessor-Lib/vprenderer/ExperimentalAspectActive.h": "32EB3CDD32BF150953AA04E521BAE9EA0BFC4EFE13FF332ABE8F71BEEB121DA5",
+    "src/VideoProcessor-Lib/vprenderer/PreparedPictureEvidence.h": "E4E653D27EAAA39DE9EDD949C1F1762F11FDC9BFD7E712CC4E73124F1ADB8E74",
+    "x64/Release/VideoProcessor-Lib.lib": "2C873B3150366E90FF5AA6EF3667555CDDC9502BC04CB5E0E8B1D7458782168F"
+  },
+  "artifact_hashes": {
+    "chronological.cmd": "72F64C1860482E52D46B197A03F4715F4756E80A1C0F5631BD51118BB06847D3",
+    "chronological.cpp": "BE3D030E372D5145CDC586C631042F55B51FBA65BC38A6ADAD151E0EAC149A98",
+    "compile-chronological.cmd": "6ECCDC6FA9DFF6866280901D636A83F0F694629EDAE448DCC2C404600CF7B6DA",
+    "compile-matrix.cmd": "D744996C4AA4CDC2832C26EC5C8750981B5AEA4BFD3E5EA334C4266736C9F120",
+    "extent-admission.txt": "5F19A04EDCF06E88BAF64780949A0F63AAABBD18BEB2BCE6B80C8574055D8BC1",
+    "extent-chronological.csv": "DB98C1FB799DEEC773C7966AD28BEF8F1B728641BA02736AFBFF5EB9B31D152E",
+    "extent-matrix.csv": "5277F0D674B23BBD2A5EC065B80DD2750B749F06E476789DC0E9521DBA8DC649",
+    "inward-admission.txt": "1CE04EEABFFD358C7E384976BC15D141A99F8944930842065C16FC64E4704D0D",
+    "inward-chronological.csv": "0405C092D7740992AF26978ED40809F37EFE57C872402A8EEB410B6F78DE62A8",
+    "inward-matrix.csv": "E9FC428807424D403D0C88CA9FAD04AE9FBFB4F9E23DB80842961717F2F5E751",
+    "matrix.cmd": "462D2C939FCF244106F2F84C8CC1E0EEFF74AA8A126AC57795E48DEA10F88300",
+    "matrix.cpp": "98ACF1CBA027AC02C81BE898709D02638D4A0F605218B273387132C573BE9F1C",
+    "timed.cmd": "59A7329285B51AD59903E3AFAD6C26A3BC11CF1352F78ED14B6D9C318DA959AB",
+    "timed.cpp": "CEE329C5C7040662712BE9D2AE30308B9F44D8D875EB90879CE04D94B9548D48",
+    "timed2ms.csv": "1434FEC45C0119A1A7BA706B08119657D79CBD05F9F805B5D4915CCC710E963F"
+  },
+  "limitations": [
+    "Counterfactualscopebase recoveryoflaterIMAXframes is evidence sensitivity, notobservedliveonset improvement.",
+    "Measuredphysicalboundsremainunchanged; noadjustmentofframepixels/sidecaridentity.",
+    "Controllednever-expirefeaturecorrectness separatefromtimed2msreadiness.",
+    "Featureuses960extraoldedge reads and576reusedstripreads; expirymeansordinaryadmissionfallback, notfullraster authority."
+  ]
+}

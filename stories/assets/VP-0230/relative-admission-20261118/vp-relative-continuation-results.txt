@@ -1,0 +1,53 @@
+test_relative_continuation.cpp
+Generating code
+Finished generating code
+PASS fixture has independently measured strong opposing edges
+PASS mandatory null-budget path does not collect relative proof
+PASS optional proof reuses strip grid and adds exactly 960 boundary reads
+PASS dim or spatially dark picture outranks old boundary
+PASS relative scores retain exact base and measured target
+PASS raw feature cannot invent a prepared source identity
+PASS relative features preserve ordinary excluded-band and visible-pixel evidence
+PASS relative preference supplies neither matte calibration nor subtitle ownership
+PASS prepared fixture is an immutable exact-source request
+PASS prepared wrapper binds relative proof to complete source and policy context
+PASS production admission uses relative preference only for unambiguous current expansion
+PASS fixtures exercise the relative path rather than existing strict strip acceptance
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS stale source/context, mismatched geometry or incomplete proof cannot release admission
+PASS actual feature cancellation after partial reads discards relative proof
+PASS optional feature expiry retains completed ordinary retention
+PASS exhausted shared sample allowance cannot start old-boundary sampling
+PASS weak opposing boundaries cannot request a relative admission proof
+PASS fixture has independently measured strong opposing edges
+PASS mandatory null-budget path does not collect relative proof
+PASS optional proof reuses strip grid and adds exactly 960 boundary reads
+PASS dim or spatially dark picture outranks old boundary
+PASS relative scores retain exact base and measured target
+PASS raw feature cannot invent a prepared source identity
+PASS relative features preserve ordinary excluded-band and visible-pixel evidence
+PASS relative preference supplies neither matte calibration nor subtitle ownership
+PASS prepared fixture is an immutable exact-source request
+PASS prepared wrapper binds relative proof to complete source and policy context
+PASS production admission uses relative preference only for unambiguous current expansion
+PASS fixtures exercise the relative path rather than existing strict strip acceptance
+PASS fixture has independently measured strong opposing edges
+PASS mandatory null-budget path does not collect relative proof
+PASS optional proof reuses strip grid and adds exactly 960 boundary reads
+PASS nested raised matte remains ambiguous
+PASS relative scores retain exact base and measured target
+PASS raw feature cannot invent a prepared source identity
+PASS relative features preserve ordinary excluded-band and visible-pixel evidence
+PASS relative preference supplies neither matte calibration nor subtitle ownership
+PASS prepared fixture is an immutable exact-source request
+PASS prepared wrapper binds relative proof to complete source and policy context
+PASS production admission uses relative preference only for unambiguous current expansion
+PASS fixtures exercise the relative path rather than existing strict strip acceptance
