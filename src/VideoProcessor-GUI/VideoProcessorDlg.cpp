@@ -15687,6 +15687,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 static void LogAspectRatioOsdStateChange(AspectRatioOsd& aspectOsd,
 	uint64_t nowMs)
 {
+	if (!DebugLog::IsEnhancedLoggingEnabled())
+		return;
 	const auto state = aspectOsd.GetDiagnosticState(nowMs);
 	if (!aspectOsd.ShouldLogDiagnostic(state))
 		return;

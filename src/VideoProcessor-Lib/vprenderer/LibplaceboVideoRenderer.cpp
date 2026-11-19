@@ -5235,6 +5235,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::string lastFinalLayoutPolicy;
     std::string lastAutoPictureAlignmentPolicy;
     uint64_t lastAutoPictureAlignmentTick=0;
+	bool framingTransitionPending = false;
 	uint64_t lastFinalLayoutTick = 0;
 	uint64_t lastFinalLayoutSequence = 0;
 	uint64_t lastFinalLayoutGeneration = 0;
@@ -6553,7 +6554,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (signature.str() != lastHdrPeakAnalysisPolicy)
 		{
 			lastHdrPeakAnalysisPolicy = signature.str();
-			DebugLog::Log(
+			DEBUGLOG_ENHANCED(
 				"libplacebo HDR analysis ROI policy: enabled=%d mode=%s fixed_enabled=%d motion_enabled=%d motion_protection_pixels=%.1f peak_detection=%d fork=vp0147-motion-v1 api=%d version=%s analysis_height_percent=%.1f analysis_position=%s source_generation=%llu source_sequence=%llu trusted_available=%d trusted_generation=%llu trusted=%d,%d-%d,%d raster=%dx%d presentation=%.3f,%.3f-%.3f,%.3f analysis_intersection=%.3f,%.3f-%.3f,%.3f normalized=%.6f,%.6f-%.6f,%.6f excluded_pixels=%.0f excluded_percent=%.3f outcome=%s reason=\"%s\"",
 				analysisProtectionEnabled ? 1 : 0,
 				hdrPeakAnalysisPictureOnly ? "fixed" :
@@ -7165,7 +7166,7 @@ struct LibplaceboVideoRenderer::Impl
 					if (policy.str() != lastScopeVerticalOverlayPolicy)
 					{
 						lastScopeVerticalOverlayPolicy = policy.str();
-						DebugLog::Log(
+						DEBUGLOG_ENHANCED(
 							"Alpha vertical bar content: sequence=%llu generation=%llu top=%d overlay_top=%d top_extent=%d..%d top_peak=%d bottom=%d overlay_bottom=%d bottom_extent=%d..%d bottom_peak=%d occupied_rows=%d/%d decision=%s translation_confirm=%u/%u fit_confirm=%u/%u",
 							static_cast<unsigned long long>(sourceSequence),
 							static_cast<unsigned long long>(source->generation),
@@ -8478,7 +8479,7 @@ struct LibplaceboVideoRenderer::Impl
 
 		struct pl_log_params logParams{};
 		logParams.log_cb = LibplaceboLog;
-		logParams.log_level = PL_LOG_INFO;
+		logParams.log_level = DebugLog::IsEnhancedLoggingEnabled() ? PL_LOG_INFO : PL_LOG_WARN;
 		log = pl_log_create(PL_API_VER, &logParams);
 		if (!log)
 			throw std::runtime_error("Failed to create libplacebo log context");
@@ -10422,7 +10423,7 @@ struct LibplaceboVideoRenderer::Impl
             }
         }
         if (!diagnostic.evaluated && !changed) return;
-        DebugLog::Log("Alpha side-probe diagnostic: schema=1 instance=%s generation=%llu sequence=%llu evaluated=%d raw_class=%d horizontal=%s vertical=%s proposed=%d,%d-%d,%d aperture=%d,%d-%d,%d threshold=%d authoritative_min=%d/%d diagnostic_min=%d/%d original_exception=%d spatial_pass=%d samples=%zu elapsed_ms=%.3f policy_effect=none",
+        DEBUGLOG_ENHANCED("Alpha side-probe diagnostic: schema=1 instance=%s generation=%llu sequence=%llu evaluated=%d raw_class=%d horizontal=%s vertical=%s proposed=%d,%d-%d,%d aperture=%d,%d-%d,%d threshold=%d authoritative_min=%d/%d diagnostic_min=%d/%d original_exception=%d spatial_pass=%d samples=%zu elapsed_ms=%.3f policy_effect=none",
             diagnosticInstanceId.c_str(), source.generation, sequence, diagnostic.evaluated ? 1 : 0,
             static_cast<int>(raw.classification), ActivePictureAxisReasonName(axes.horizontal.reason),
             ActivePictureAxisReasonName(axes.vertical.reason), raw.proposedBounds.left, raw.proposedBounds.top,
@@ -11495,7 +11496,7 @@ struct LibplaceboVideoRenderer::Impl
             {
                 captionProofLastRoute = captionProofRoute;
                 captionProofLastLogTick = captionProofTick;
-                DebugLog::Log("Alpha caption picture proof: generation=%llu sequence=%llu route=%u raw=%d,%d-%d,%d picture=%d,%d-%d,%d episode=%d p90=%.1f standalone_ms=%.3f",
+                DEBUGLOG_ENHANCED("Alpha caption picture proof: generation=%llu sequence=%llu route=%u raw=%d,%d-%d,%d picture=%d,%d-%d,%d episode=%d p90=%.1f standalone_ms=%.3f",
                     static_cast<unsigned long long>(analysisSource.generation),
                     static_cast<unsigned long long>(frameNumber), captionProofRoute,
                     latestRawPictureEvidence.proposedBounds.left,
@@ -11856,7 +11857,7 @@ struct LibplaceboVideoRenderer::Impl
                     currentIdentity.rendererGeneration, currentIdentity.sourceFrameNumber, currentIdentity.captureTimestamp,
                     movementInput.sourceGeneration, movementInput.trustedGeneration, movementInput.sourceSequence);
                 const auto traceBoundaryBounds = [&](const char* role, const ActivePictureBounds& bounds) {
-                    DebugLog::Log("Alpha moving boundary bounds: schema=1 sequence=%llu event=%llu role=%s rect=%d,%d-%d,%d raster=%dx%d axes=%d",
+                    DEBUGLOG_ENHANCED("Alpha moving boundary bounds: schema=1 sequence=%llu event=%llu role=%s rect=%d,%d-%d,%d raster=%dx%d axes=%d",
                         frameNumber, motionBoundary->eventId, role, bounds.left, bounds.top, bounds.right,
                         bounds.bottom, bounds.rasterWidth, bounds.rasterHeight, static_cast<int>(bounds.trustedBarAxes));
                 };
@@ -11870,7 +11871,7 @@ struct LibplaceboVideoRenderer::Impl
                 traceBoundaryBounds("strip-base", movementInput.retention.expansionBase);
                 traceBoundaryBounds("strip-candidate", movementInput.retention.expansionCandidate);
                 const auto traceBoundaryEdge = [&](const char* role, const ActivePictureEdgeEvidence& edge) {
-                    DebugLog::Log("Alpha moving boundary strip: schema=1 sequence=%llu event=%llu role=%s pixels=%d black_fraction=%.6f p90=%.3f floor=%.3f dispersion=%.3f texture=%.3f continuity=%.6f neutral_chroma=%.6f contrast=%.3f confidence=%.6f trusted=%d support_rows=%u,%u,%u,%u",
+                    DEBUGLOG_ENHANCED("Alpha moving boundary strip: schema=1 sequence=%llu event=%llu role=%s pixels=%d black_fraction=%.6f p90=%.3f floor=%.3f dispersion=%.3f texture=%.3f continuity=%.6f neutral_chroma=%.6f contrast=%.3f confidence=%.6f trusted=%d support_rows=%u,%u,%u,%u",
                         frameNumber, motionBoundary->eventId, role, edge.barPixels, edge.blackFraction,
                         edge.lumaP90, edge.lumaFloor, edge.lumaDispersion, edge.texture, edge.continuity,
                         edge.neutralChromaFraction, edge.innerBoundaryContrast, edge.confidence, edge.trusted?1:0,
@@ -12039,7 +12040,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (deferPresentationOwnedTransition !=
 				presentationOwnedGeometryTransitionDeferred)
 			{
-				DebugLog::Log(
+				DEBUGLOG_ENHANCED(
 					"Alpha active-picture transition: presentation-owned vertical expansion %s; stable=%d,%d-%d,%d candidate=%d,%d-%d,%d generation=%llu",
 					deferPresentationOwnedTransition ? "deferred" : "released",
 					nlsGeometry.left, nlsGeometry.top,
@@ -12162,7 +12163,7 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				lastCropAdmissionDeferred = admission.observation.transitionDeferred;
 				lastCropAdmissionLogTick = now;
-				DebugLog::Log("Alpha crop admission: sequence=%llu generation=%llu deferred=%d presentation_deferred=%d outward_deferred=%d broad_picture=%d outward_confirm=%u strip_evidence=%d horizontal_bands_safe=%d raw=%d,%d-%d,%d logical=%d,%d-%d,%d published=%d history_reacquired=%d partial_composition_deferred=%d",
+				DEBUGLOG_ENHANCED("Alpha crop admission: sequence=%llu generation=%llu deferred=%d presentation_deferred=%d outward_deferred=%d broad_picture=%d outward_confirm=%u strip_evidence=%d horizontal_bands_safe=%d raw=%d,%d-%d,%d logical=%d,%d-%d,%d published=%d history_reacquired=%d partial_composition_deferred=%d",
 					static_cast<unsigned long long>(frameNumber), static_cast<unsigned long long>(analysisSource.generation),
 					admission.observation.transitionDeferred ? 1 : 0, admission.deferPresentation ? 1 : 0,
 					admission.deferOutward ? 1 : 0, admission.outward.broadOpposingPicture ? 1 : 0,
@@ -12259,7 +12260,7 @@ struct LibplaceboVideoRenderer::Impl
                     (transition.publish ? "live-published" : "live-model"))))))));
                 // Same admission as the existing decision row; no additional pixel work or per-frame formatting.
                 const auto& black=evidence.blackReference;
-                DebugLog::Log("Alpha black reference: schema=1 instance=%s generation=%llu sequence=%llu domain=%llu epoch=%llu policy=%llu continuity=%llu range=%d route=%s evaluated=%d observed_floor=%d observed_cutoff=%d effective_floor=%d effective_cutoff=%d qualified_edges=%u unresolved_edges=%u qualified_axes=%u nominal_extent_axes=%u nominal_reclassified=%d adaptive=%d,%d-%d,%d measured=%d,%d-%d,%d class=%d published=%d luma_samples=%zu chroma_samples=%zu",
+                DEBUGLOG_ENHANCED("Alpha black reference: schema=1 instance=%s generation=%llu sequence=%llu domain=%llu epoch=%llu policy=%llu continuity=%llu range=%d route=%s evaluated=%d observed_floor=%d observed_cutoff=%d effective_floor=%d effective_cutoff=%d qualified_edges=%u unresolved_edges=%u qualified_axes=%u nominal_extent_axes=%u nominal_reclassified=%d adaptive=%d,%d-%d,%d measured=%d,%d-%d,%d class=%d published=%d luma_samples=%zu chroma_samples=%zu",
                     diagnosticInstanceId.c_str(),analysisSource.generation,frameNumber,currentIdentity.analysisDomainKey,
                     currentIdentity.viewportGeneration,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                     static_cast<int>(analysisSource.range),ActivePictureBlackReferenceModeName(black.mode),black.evaluated?1:0,
@@ -12270,7 +12271,7 @@ struct LibplaceboVideoRenderer::Impl
                     black.adaptiveCandidate.right,black.adaptiveCandidate.bottom,evidence.proposedBounds.left,
                     evidence.proposedBounds.top,evidence.proposedBounds.right,evidence.proposedBounds.bottom,
                     static_cast<int>(evidence.classification),transition.publish?1:0,evidence.lumaSamples,evidence.chromaSamples);
-                DebugLog::Log("Alpha picture decision: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu pending=%d stage=%s coalesced=%llu measured_class=%d measured_rect=%d,%d-%d,%d class=%d candidate=%d,%d-%d,%d base=%d,%d-%d,%d axis_h=%s axis_v=%s eligible=%d outward=%s broad=%d spatial=%s spatial_route=%s relative=%s relative_scores=%.4f/%.4f relative_reads=%zu proof=%u/%u prior_proof=%u prior_sequence=%llu first_sequence=%llu deferred=%d/%d/%d buffered_present=%d buffered_valid=%d buffered_ready=%d scheduled=%d scheduled_validation=%s publication_admission=%s published=%d near_black=%d/%d acquisition_blocked=%d p90=%.1f subtitle_action=%d requested_shift=%.1f drift=%d hold_ms=%llu engage_ms=%llu release_ms=%llu subtitle_measurement=%llu subtitle_generation=%llu model_reason=\"%s\" evidence_reason=\"%s\"",
+                DEBUGLOG_ENHANCED("Alpha picture decision: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu pending=%d stage=%s coalesced=%llu measured_class=%d measured_rect=%d,%d-%d,%d class=%d candidate=%d,%d-%d,%d base=%d,%d-%d,%d axis_h=%s axis_v=%s eligible=%d outward=%s broad=%d spatial=%s spatial_route=%s relative=%s relative_scores=%.4f/%.4f relative_reads=%zu proof=%u/%u prior_proof=%u prior_sequence=%llu first_sequence=%llu deferred=%d/%d/%d buffered_present=%d buffered_valid=%d buffered_ready=%d scheduled=%d scheduled_validation=%s publication_admission=%s published=%d near_black=%d/%d acquisition_blocked=%d p90=%.1f subtitle_action=%d requested_shift=%.1f drift=%d hold_ms=%llu engage_ms=%llu release_ms=%llu subtitle_measurement=%llu subtitle_generation=%llu model_reason=\"%s\" evidence_reason=\"%s\"",
                     diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
                     currentIdentity.viewportGeneration, diagnosticPending ? 1 : 0, stage,
                     pictureDecisionDiagnostics.emittedSuppressed,
@@ -12307,7 +12308,7 @@ struct LibplaceboVideoRenderer::Impl
                 const auto& t = r.expansionStripsAvailable ? r.expandingTop : r.excludedTop;
                 const auto& rr = r.expansionStripsAvailable ? r.expandingRight : r.excludedRight;
                 const auto& b = r.expansionStripsAvailable ? r.expandingBottom : r.excludedBottom;
-                DebugLog::Log("Alpha picture decision edges: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu valid=%d/%d region=%s strip_base=%d,%d-%d,%d strip_candidate=%d,%d-%d,%d fields=pixels,black_fraction,p90,texture,continuity,neutral_chroma left=%d,%.4f,%.1f,%.1f,%.4f,%.4f top=%d,%.4f,%.1f,%.1f,%.4f,%.4f right=%d,%.4f,%.1f,%.1f,%.4f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f,%.4f",
+                DEBUGLOG_ENHANCED("Alpha picture decision edges: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu valid=%d/%d region=%s strip_base=%d,%d-%d,%d strip_candidate=%d,%d-%d,%d fields=pixels,black_fraction,p90,texture,continuity,neutral_chroma left=%d,%.4f,%.1f,%.1f,%.4f,%.4f top=%d,%.4f,%.1f,%.1f,%.4f,%.4f right=%d,%.4f,%.1f,%.1f,%.4f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f,%.4f",
                     diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber, currentIdentity.viewportGeneration,
                     r.analysisValid ? 1 : 0, r.presentationValid ? 1 : 0,
                     r.expansionStripsAvailable ? "expansion-strips" : "excluded-bands",
@@ -12600,7 +12601,7 @@ struct LibplaceboVideoRenderer::Impl
 					(now - lastSamplingEnvelopeLogTick >= 2000))
 				{
 					lastSamplingEnvelopeLogTick = now;
-					DebugLog::Log("Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d observed=%d,%d-%d,%d reason=pixel-safe-sampling-reaffirmed",
+					DEBUGLOG_ENHANCED("Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d observed=%d,%d-%d,%d reason=pixel-safe-sampling-reaffirmed",
 						static_cast<unsigned long long>(frameNumber),
 						static_cast<unsigned long long>(analysisSource.generation),
 						presentationBeforeObservation.left, presentationBeforeObservation.top,
@@ -12624,7 +12625,7 @@ struct LibplaceboVideoRenderer::Impl
 					!sameBounds(previousEnvelope.bounds, scopePresentationHistory.bounds))
 				{
 					const auto& stored = scopePresentationHistory.bounds;
-					DebugLog::Log(
+					DEBUGLOG_ENHANCED(
 						"Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d current=%d,%d-%d,%d stored=%d,%d-%d,%d available=%d extent_ticks=%llu,%llu,%llu,%llu hold_ms=%llu reason=bounded-extent-lifetime",
 						static_cast<unsigned long long>(frameNumber),
 						static_cast<unsigned long long>(analysisSource.generation),
@@ -12734,7 +12735,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			if (transition.diagnostic)
 			{
-				DebugLog::Log(
+				DEBUGLOG_ENHANCED(
 					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d retention_safe=%d near_black_evaluated=%d global_near_black=%d global_luma_p90=%.1f near_black_episode=%s candidate_first=%llu candidate_age_frames=%llu reason=\"%s; %s; %s\"",
 					static_cast<int>(transition.state),
 					static_cast<unsigned long long>(frameNumber),
@@ -14953,13 +14954,13 @@ struct LibplaceboVideoRenderer::Impl
                 const auto& box=subtitleBoxResult.bounds;
                 const auto& handoff=subtitleBoxPresentation.HandoffProof();
                 const auto& match=subtitleBoxPresentation.InkDiagnostics();
-                DebugLog::Log("SUBTITLE PROOF: frame=%llu cue=%llu raw_picture=%d-%d raw_text=%d accepted=%d context_mask=0x%x precondition_mask=0x%x pixels_compared=%d result=%s policy=%llu continuity=%llu domain=%llu viewport=%llu",
+                DEBUGLOG_ENHANCED("SUBTITLE PROOF: frame=%llu cue=%llu raw_picture=%d-%d raw_text=%d accepted=%d context_mask=0x%x precondition_mask=0x%x pixels_compared=%d result=%s policy=%llu continuity=%llu domain=%llu viewport=%llu",
                     sourceSequence,subtitleBoxResult.cue,subtitlePreview->current.pictureTop,subtitlePreview->current.pictureBottom,
                     subtitlePreview->current.text.detected?1:0,subtitleBoxResult.detected?1:0,
                     match.contextMismatch,match.preconditionFailure,match.pixelComparisonPerformed?1:0,match.reason,
                     localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                     subtitleIdentity.analysisDomainKey,subtitleIdentity.viewportGeneration);
-                DebugLog::Log("SUBTITLE STABILITY: schema=2 scope=pre_submit frame=%llu cue=%llu raw_text_detected=%d cue_indicator=%d held=%d reason=%s hold_ms=%d weak_ms=%.1f detector_lost=%d detector_regained=%d cue_indicator_lost=%d cue_indicator_regained=%d heuristic_flash=%d indicator_gap_ms=%.1f hold_start=%d hold_end=%d cue_changed=%d indicator_losses=%llu heuristic_flashes=%llu lookahead=%u matching=%u lines_confirmed=%d analysis_work_limit=%d analysis_reason=%s analysis_components=%u near_bar_gap=%d near_bar_gap_inferred=%d move_valid=%d box=%d,%d-%d,%d confirmation_pending=%d handoff_sources=%u handoff_reason=%s handoff_owned=%zu handoff_inspected=%zu handoff_old=%d,%d-%d,%d handoff_current=%d,%d-%d,%d mode=%d layer_bound=%d",
+                DEBUGLOG_ENHANCED("SUBTITLE STABILITY: schema=2 scope=pre_submit frame=%llu cue=%llu raw_text_detected=%d cue_indicator=%d held=%d reason=%s hold_ms=%d weak_ms=%.1f detector_lost=%d detector_regained=%d cue_indicator_lost=%d cue_indicator_regained=%d heuristic_flash=%d indicator_gap_ms=%.1f hold_start=%d hold_end=%d cue_changed=%d indicator_losses=%llu heuristic_flashes=%llu lookahead=%u matching=%u lines_confirmed=%d analysis_work_limit=%d analysis_reason=%s analysis_components=%u near_bar_gap=%d near_bar_gap_inferred=%d move_valid=%d box=%d,%d-%d,%d confirmation_pending=%d handoff_sources=%u handoff_reason=%s handoff_owned=%zu handoff_inspected=%zu handoff_old=%d,%d-%d,%d handoff_current=%d,%d-%d,%d mode=%d layer_bound=%d",
                     sourceSequence,subtitleBoxResult.cue,subtitlePreview->current.text.detected?1:0,
                     subtitleVisible?1:0,subtitleBoxResult.held?1:0,subtitleBoxPresentation.DecisionReason(),
                     activeSettings.subtitleHoldMs,subtitleBoxPresentation.WeakHoldMilliseconds(),
@@ -15049,7 +15050,7 @@ struct LibplaceboVideoRenderer::Impl
                     bars.topReferenceBlackFraction,bars.bottomReferenceBlackFraction,
                     bars.topReferenceMaxIntrusion,bars.bottomReferenceMaxIntrusion,bars.samples);
                 const auto& glyphProof=subtitlePreview->current.text;
-                DebugLog::Log("SUBTITLE GLYPH ACQUISITION: frame=%llu required=%d cores=%u core_height=%d ink_density_bp=%u baseline_support_bp=%u topology=%s",
+                DEBUGLOG_ENHANCED("SUBTITLE GLYPH ACQUISITION: frame=%llu required=%d cores=%u core_height=%d ink_density_bp=%u baseline_support_bp=%u topology=%s",
                     sourceSequence,glyphProof.diagnosticPictureGlyphProofRequired?1:0,
                     glyphProof.diagnosticCoreGlyphCount,glyphProof.diagnosticCoreGlyphHeight,
                     glyphProof.diagnosticInkDensityBasisPoints,glyphProof.diagnosticBaselineSupportBasisPoints,
@@ -16711,7 +16712,7 @@ releaseDriftBaseRetention =
                  episodeInput.currentTick - establishedScopeNlsDiagnosticTick >= 1000);
             if (scopeRetentionChanged || nlsNearBlackDiagnostic) {
                 establishedScopeNlsDiagnosticTick = episodeInput.currentTick;
-                DebugLog::Log("Alpha subtitle scope retention: generation=%llu sequence=%llu epoch=%llu retained=%d near_black=%d pending=%u action=%d shift=%d base=%d,%d-%d,%d outward=%d,%d-%d,%d nls_requested=%d nls_crop_max=%.3f nls_competes=%d drift_engaging=%d drift_interval=%d drift_applied=%.3f routed=%d reason=\"admitted scope and bounded shared subtitle presentation\"",
+                DEBUGLOG_ENHANCED("Alpha subtitle scope retention: generation=%llu sequence=%llu epoch=%llu retained=%d near_black=%d pending=%u action=%d shift=%d base=%d,%d-%d,%d outward=%d,%d-%d,%d nls_requested=%d nls_crop_max=%.3f nls_competes=%d drift_engaging=%d drift_interval=%d drift_applied=%.3f routed=%d reason=\"admitted scope and bounded shared subtitle presentation\"",
                     frameGeneration, sourceSequence, viewportRequestSerial,
                     episodeInput.establishedScopeSubtitleRetained ? 1 : 0,
                     episodeInput.globalNearBlack ? 1 : 0,
@@ -17709,7 +17710,7 @@ releaseDriftBaseRetention =
 				 (admissionDecision.presentation.reason != cropAdmissionPreviousReason ||
 				  admissionLogTick - cropAdmissionLastLogTick >= 2000)))
 			{
-				DebugLog::Log("Alpha crop admission: instance=%s generation=%llu sequence=%llu epoch=%llu blocked=%d reference=%d prior=%d,%d-%d,%d candidate=%d,%d-%d,%d candidate_owner=%s picture_supported=%d retention_evaluated=%d retention_safe=%d visible_available=%d visible_generation=%llu visible_sequence=%llu visible=%d,%d-%d,%d pre_recovery=%d,%d-%d,%d resolved=%d,%d-%d,%d resolved_owner=%s reason=\"%s\"",
+				DEBUGLOG_ENHANCED("Alpha crop admission: instance=%s generation=%llu sequence=%llu epoch=%llu blocked=%d reference=%d prior=%d,%d-%d,%d candidate=%d,%d-%d,%d candidate_owner=%s picture_supported=%d retention_evaluated=%d retention_safe=%d visible_available=%d visible_generation=%llu visible_sequence=%llu visible=%d,%d-%d,%d pre_recovery=%d,%d-%d,%d resolved=%d,%d-%d,%d resolved_owner=%s reason=\"%s\"",
 					diagnosticInstanceId.c_str(), frameGeneration, sourceSequence, viewportRequestSerial,
 					admissionDecision.blocked ? 1 : 0, admissionDecision.state.available ? 1 : 0,
 					cropPresentationAdmission.trustedCrop.left, cropPresentationAdmission.trustedCrop.top,
@@ -18155,7 +18156,7 @@ releaseDriftBaseRetention =
 				const std::string gateNames = AlphaSourceCrop::RecoveryGateNames(gates);
 				const auto& saved = cropPresentationRecovery.active ? cropPresentationRecovery.trustedCrop :
 					recoveryDecision.ended ? recoveryInput.previous.trustedCrop : episodeInput.previous.entryTrustedCrop;
-				DebugLog::Log(
+				DEBUGLOG_ENHANCED(
 					"Alpha crop recovery: schema=1 stage=source-crop event=%llu generation=%llu sequence=%llu measurement=%llu epoch=%llu scene=%llu cadence_repeat=%d phase=%s recovery=%d episode=%s actual_change=%d previous_available=%d prev_applied=%d applied=%d prev_rect=%d,%d-%d,%d rect=%d,%d-%d,%d prev_owner=%s owner=%s candidate_owner=%s candidate_reason=\"%s\" saved=%d,%d-%d,%d trusted=%d,%d-%d,%d observed=%d,%d-%d,%d classification=%d observed_class=%d analysis_valid=%d retention_eval=%d bands_safe=%d bands_safe_scope=sampled_aggregate_not_pixel_certificate proposal_available=%d proposal_contained=%d sampling_retained=%d sampling_strip_conflict=%d sampling_equivalent=%d partial_sampling_checked=%d partial_sampling_reaffirmed=%d contained_inspection_resolved=%d sampling_strip_peak_y=%d sampling_strip_peak_uv_delta=%d sampling_reaffirmed=%d horizontal_bounded=%d bounded_recovery=%d inspection_latched=%d outward_visible=%d outward_visible_scope=witness_not_absence full_authority=%d submitted_scope_continuity=%d near_black=%d p90=%.1f proof=%u/%u dwell_ms=250 episode_proof=%u/%u sticky=%d gates=%u gate_names=%s first_sequence=%llu duration_ms=%llu applied_changes=%u evidence_flips=%u proof_resets=%u reason=\"%s\"",
 					(cropUnresolved || cropEventEnded) ? cropDiagnosticEvent : 0, frameGeneration, sourceSequence, latestActivePictureEvidenceFrame,
 					viewportRequestSerial, sceneResult.eventId, cadenceRepeat ? 1 : 0,
@@ -18215,7 +18216,7 @@ releaseDriftBaseRetention =
 				const auto& t = evidence.excludedTop;
 				const auto& r = evidence.excludedRight;
 				const auto& b = evidence.excludedBottom;
-				DebugLog::Log("Alpha crop axis evidence: schema=1 generation=%llu sequence=%llu horizontal=%s horizontal_reason=%s horizontal_scan_complete=%d horizontal_bar_candidate=%d vertical=%s vertical_reason=%s vertical_scan_complete=%d vertical_bar_candidate=%d proposed=%d,%d-%d,%d trusted=%d,%d-%d,%d accepted=%d,%d-%d,%d applied=%d,%d-%d,%d",
+				DEBUGLOG_ENHANCED("Alpha crop axis evidence: schema=1 generation=%llu sequence=%llu horizontal=%s horizontal_reason=%s horizontal_scan_complete=%d horizontal_bar_candidate=%d vertical=%s vertical_reason=%s vertical_scan_complete=%d vertical_bar_candidate=%d proposed=%d,%d-%d,%d trusted=%d,%d-%d,%d accepted=%d,%d-%d,%d applied=%d,%d-%d,%d",
 					frameGeneration, sourceSequence,
 					ActivePictureAxisStateName(rawCandidate.axisEvidence.horizontal.state),
 					ActivePictureAxisReasonName(rawCandidate.axisEvidence.horizontal.reason),
@@ -18692,6 +18693,43 @@ releaseDriftBaseRetention =
 			auto publishFinalLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
 				const char* mapping)
 			{
+				if (!DebugLog::IsEnhancedLoggingEnabled())
+				{
+					const bool initial = lastFinalLayoutPolicy.empty() ||
+						lastFinalLayoutGeneration != frameGeneration || sourceSequence < lastFinalLayoutSequence;
+					const auto& crop = presentationSourceGeometry;
+					const AlphaSourceCrop::PresentationRect output = {
+						std::round(target.crop.x0), std::round(target.crop.y0),
+						std::round(target.crop.x1), std::round(target.crop.y1) };
+					const bool changed = crop.left != lastFinalLayoutSource.left || crop.top != lastFinalLayoutSource.top ||
+						crop.right != lastFinalLayoutSource.right || crop.bottom != lastFinalLayoutSource.bottom ||
+						output.left != lastFinalLayoutPicture.left || output.top != lastFinalLayoutPicture.top ||
+						output.right != lastFinalLayoutPicture.right || output.bottom != lastFinalLayoutPicture.bottom;
+					const auto now = GetTickCount64();
+					const char* phase = nullptr;
+					if (initial || changed)
+					{
+						if (initial || !framingTransitionPending)
+							phase = initial ? "initial" : "start";
+						framingTransitionPending = !initial;
+						lastFinalLayoutTick = now;
+						lastFinalLayoutPolicy = "regular";
+						lastFinalLayoutGeneration = frameGeneration;
+						lastFinalLayoutSource = crop;
+						lastFinalLayoutPicture = output;
+					}
+					else if (framingTransitionPending && now - lastFinalLayoutTick >= 250)
+					{
+						framingTransitionPending = false;
+						phase = "settled";
+					}
+					lastFinalLayoutSequence = sourceSequence;
+					if (phase)
+						DebugLog::Log("VP framing: phase=%s source=%llu crop=%d,%d-%d,%d output=%.0f,%.0f-%.0f,%.0f",
+							phase, static_cast<unsigned long long>(sourceSequence), crop.left, crop.top, crop.right,
+							crop.bottom, output.left, output.top, output.right, output.bottom);
+					return;
+				}
 				std::ostringstream policy;
 				policy << width << 'x' << height << '|'
 					<< effectiveGeometry.left << ',' << effectiveGeometry.top << '-'
@@ -18752,12 +18790,6 @@ releaseDriftBaseRetention =
 				const auto& edgeBottom = edgeEvidence.expansionStripsAvailable
 					? edgeEvidence.expandingBottom : edgeEvidence.excludedBottom;
 				lastFinalLayoutPolicy = policy.str();
-                if (!DebugLog::IsEnhancedLoggingEnabled() && (!priorLayout || sourceChanged || pictureChanged))
-                    DebugLog::Log("VP framing: source=%llu crop=%d,%d-%d,%d output=%.0f,%.0f-%.0f,%.0f",
-                        static_cast<unsigned long long>(sourceSequence),
-                        presentationSourceGeometry.left,presentationSourceGeometry.top,
-                        presentationSourceGeometry.right,presentationSourceGeometry.bottom,
-                        picture.left,picture.top,picture.right,picture.bottom);
 				DEBUGLOG_ENHANCED(
 					"Alpha final layout: trusted_scope=retained_geometry envelope_scope=pre_fill_crop presentation_scope=final_source_crop picture_scope=output_target sequence=%llu generation=%llu crop_event=%llu epoch=%llu measurement=%llu cadence_repeat=%d raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s screen_edge_padding_requested=%d screen_edge_padding_effective=%d subtitle_shift_source_pixels=%d anamorphic=%.5f crop_reason=\"%s\"",
 					static_cast<unsigned long long>(sourceSequence),
@@ -19900,7 +19932,7 @@ releaseDriftBaseRetention =
             (layoutChanged && layoutNow - lastAnamorphicLayoutTick >= 250) ||
             (anamorphicScale != 1.0 && layoutNow - lastAnamorphicLayoutTick >= 10000))
         {
-            DebugLog::Log("VP anamorphic layout: schema=2 content_aspect_scope=render_source_crop sequence=%llu generation=%llu viewport=%llu configured=%d raster=%dx%d output=%.0fx%.0f source=%.2f,%.2f-%.2f,%.2f content_aspect=%.6f physical_screen=%.6f raster_screen=%.6f lens=%.6f screen=%.2f,%.2f-%.2f,%.2f picture=%.2f,%.2f-%.2f,%.2f output_margins=%.2f,%.2f,%.2f,%.2f screen_margins=%.2f,%.2f,%.2f,%.2f nls=%s hook_active=%d hook_latched=%d retry=%d rendered=%d alignment=%s padding=%d/%d overlays=%d suppressed=%llu reason=\"%s\"",
+            DEBUGLOG_ENHANCED("VP anamorphic layout: schema=2 content_aspect_scope=render_source_crop sequence=%llu generation=%llu viewport=%llu configured=%d raster=%dx%d output=%.0fx%.0f source=%.2f,%.2f-%.2f,%.2f content_aspect=%.6f physical_screen=%.6f raster_screen=%.6f lens=%.6f screen=%.2f,%.2f-%.2f,%.2f picture=%.2f,%.2f-%.2f,%.2f output_margins=%.2f,%.2f,%.2f,%.2f screen_margins=%.2f,%.2f,%.2f,%.2f nls=%s hook_active=%d hook_latched=%d retry=%d rendered=%d alignment=%s padding=%d/%d overlays=%d suppressed=%llu reason=\"%s\"",
                 sourceSequence, frameGeneration, viewportRequestSerial, configuredScreenActive ? 1 : 0,
                 width, height, baseTarget.crop.x1-baseTarget.crop.x0, baseTarget.crop.y1-baseTarget.crop.y0,
                 renderImage.crop.x0, renderImage.crop.y0, renderImage.crop.x1, renderImage.crop.y1,
@@ -24041,7 +24073,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             now-m_impl->lastLookaheadAbortTick>=250) {
             m_impl->lastLookaheadAbortStage=stage;
             m_impl->lastLookaheadAbortTick=now;
-            DebugLog::Log("Alpha look-ahead aborted: generation=%llu sequence=%llu stage=%s deadline=%d ready_head=%d",
+            DEBUGLOG_ENHANCED("Alpha look-ahead aborted: generation=%llu sequence=%llu stage=%s deadline=%d ready_head=%d",
                 previewFrames.empty() ? uint64_t(0) :
                     previewFrames.front().activePictureIdentity.transportGeneration,
                 previewFrames.empty() ? uint64_t(0) :
@@ -24829,7 +24861,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 first.identity.viewportGeneration, first.identity.acceptedSequence, pending, key))
             {
                 const auto& bounds = first.observation.bounds;
-                DebugLog::Log("Alpha picture preview status: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu format_generation=%llu policy_generation=%llu stage=%s coalesced=%llu configured=%u available_future=%llu effective_future=%u selected_frames=%llu analyzed_frames=%llu proof_samples=%llu built=%d valid=%d owner=%llu owner_eligible=%d base=%d,%d-%d,%d candidate_class=%d candidate=%d,%d-%d,%d axis_h=%s axis_v=%s inspection_ms=%.3f shadow_fit=%d shadow_built=%d shadow_pass=%d shadow_reason=%s shadow_failed_sample=%d shadow_first_pass=%llu shadow_windows=%llu shadow_passes=%llu",
+                DEBUGLOG_ENHANCED("Alpha picture preview status: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu format_generation=%llu policy_generation=%llu stage=%s coalesced=%llu configured=%u available_future=%llu effective_future=%u selected_frames=%llu analyzed_frames=%llu proof_samples=%llu built=%d valid=%d owner=%llu owner_eligible=%d base=%d,%d-%d,%d candidate_class=%d candidate=%d,%d-%d,%d axis_h=%s axis_v=%s inspection_ms=%.3f shadow_fit=%d shadow_built=%d shadow_pass=%d shadow_reason=%s shadow_failed_sample=%d shadow_first_pass=%llu shadow_windows=%llu shadow_passes=%llu",
                     m_impl->diagnosticInstanceId.c_str(), first.identity.transportGeneration,
                     first.identity.acceptedSequence, first.identity.viewportGeneration,
                     first.identity.sourceFormatGeneration, lookaheadPolicyGeneration, diagnosticQueueStage,
@@ -24849,7 +24881,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     for (const auto& sample : proofSamples)
                     {
                         const auto& r = sample.retention;
-                        DebugLog::Log("Alpha picture preview sample: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu window_first=%llu source_frame=%llu capture_timestamp=%llu available=%d class=%d deferred=%d axes_failed=%d near_black=%d/%d retention=%d/%d strips=%d candidate=%d,%d-%d,%d fields=pixels,black_fraction,p90,texture,continuity top=%d,%.4f,%.1f,%.1f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f qualified_pair=%d relative_valid=%d relative_samples=%llu relative_reason=%s",
+                        DEBUGLOG_ENHANCED("Alpha picture preview sample: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu window_first=%llu source_frame=%llu capture_timestamp=%llu available=%d class=%d deferred=%d axes_failed=%d near_black=%d/%d retention=%d/%d strips=%d candidate=%d,%d-%d,%d fields=pixels,black_fraction,p90,texture,continuity top=%d,%.4f,%.1f,%.1f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f qualified_pair=%d relative_valid=%d relative_samples=%llu relative_reason=%s",
                             m_impl->diagnosticInstanceId.c_str(), sample.identity.transportGeneration,
                             sample.identity.acceptedSequence,sample.identity.viewportGeneration,first.identity.acceptedSequence,
                             sample.identity.sourceFrameNumber,sample.identity.captureTimestamp,
