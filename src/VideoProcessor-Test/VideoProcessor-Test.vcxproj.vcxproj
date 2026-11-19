@@ -77,12 +77,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <!-- Exercise the same GPU tests against either shipped renderer dependency.
-       Keep beta objects and DLLs separate to prevent mixed-header ABI builds. -->
+  <!-- Keep current renderer objects and DLLs separate from older test outputs. -->
   <PropertyGroup>
-    <VPTestLibplacebo Condition="'$(VPTestLibplacebo)'==''">standard</VPTestLibplacebo>
-    <VPTestLibplaceboDirectory Condition="'$(VPTestLibplacebo)'=='standard'">$(ProjectDir)..\..\3rdparty\libplacebo</VPTestLibplaceboDirectory>
-    <VPTestLibplaceboLibrary Condition="'$(VPTestLibplacebo)'=='standard'">libplacebo-360.lib</VPTestLibplaceboLibrary>
+    <VPTestLibplacebo Condition="'$(VPTestLibplacebo)'==''">beta</VPTestLibplacebo>
     <VPTestLibplaceboDirectory Condition="'$(VPTestLibplacebo)'=='beta'">$(ProjectDir)..\..\3rdparty\libplacebo-beta</VPTestLibplaceboDirectory>
     <VPTestLibplaceboLibrary Condition="'$(VPTestLibplacebo)'=='beta'">libplacebo-388.lib</VPTestLibplaceboLibrary>
   </PropertyGroup>
@@ -92,7 +89,7 @@
     <TargetName>VideoProcessor-TestBeta</TargetName>
   </PropertyGroup>
   <Target Name="ValidateVpTestLibplacebo" BeforeTargets="PrepareForBuild">
-    <Error Condition="'$(VPTestLibplacebo)'!='standard' and '$(VPTestLibplacebo)'!='beta'" Text="VPTestLibplacebo must be standard or beta." />
+    <Error Condition="'$(VPTestLibplacebo)'!='beta'" Text="Only the current beta renderer dependency is supported by these tests." />
     <Error Condition="'$(VPTestLibplacebo)'=='beta' and '$(Platform)'!='x64'" Text="Beta GPU tests require x64." />
   </Target>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

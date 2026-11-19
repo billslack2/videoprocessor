@@ -25,11 +25,10 @@ std::vector<std::wstring> ConfigurationDiscovery::RendererNames(bool hideLegacyR
 		// renderer must remain editable even when COM discovery is unavailable.
 	}
 #if defined(_WIN64)
-	// Alpha is a first-class x64 VP renderer choice. The editor may run from a
+	// VP Renderer is a first-class x64 renderer choice. The editor may run from a
 	// development output directory that does not contain the plugin even though
 	// the deployed VP installation does, so discovery must not hide the choice
 	// merely because this helper process cannot load it from its own directory.
-	ids.push_back(RendererId::Libplacebo());
 	ids.push_back(RendererId::Libplacebo(true));
 #endif
 	std::vector<std::wstring> names;

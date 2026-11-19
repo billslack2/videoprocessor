@@ -20,9 +20,9 @@ claim those broader changes are present in this port.
 
 # Subtitle and Smooth Motion regression checks
 
-Run both shipped libplacebo dependencies after changing temporal packet lifetime,
-subtitle preparation, or source processing. The normal native test target uses
-libplacebo 360; it does not exercise the deployed beta renderer's 377 code.
+Run the current VP Renderer dependency after changing temporal packet lifetime,
+subtitle preparation, or source processing. The native test target uses
+libplacebo 388.
 
 From PowerShell:
 
@@ -33,8 +33,8 @@ From PowerShell:
 ```
 
 The script builds x64 Release tests, runs the motion/subtitle GPU classes serially
-against standard and beta, and writes build logs, TRX and binary/dependency hashes.
-Beta uses distinct objects and output files under `x64/Release/tests-beta`.
+against the current renderer and writes build logs, TRX and binary/dependency hashes.
+The tests use distinct objects and output files under `x64/Release/tests-beta`.
 `RendererDependencyTests` verifies the loaded library matches the chosen headers.
 Native CPU/fixture and host-stack qualification are additional checks; this script
 is not a deployment or playback-acceptance command.

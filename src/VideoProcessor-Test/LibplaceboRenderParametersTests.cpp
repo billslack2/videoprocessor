@@ -27,9 +27,9 @@ namespace
 	template<typename T>
 	const T* NativeData(const char* exportName)
 	{
-		HMODULE module = GetModuleHandleW(L"libplacebo-360.dll");
+		HMODULE module = GetModuleHandleW(L"libplacebo-388.dll");
 		if (!module)
-			module = LoadLibraryW(L"libplacebo-360.dll");
+			module = LoadLibraryW(L"libplacebo-388.dll");
 		Assert::IsTrue(module != nullptr,
 			L"The test project must load the libplacebo runtime.");
 		const T* data = reinterpret_cast<const T*>(
@@ -166,19 +166,6 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboRenderParametersTests)
 	{
 	public:
-        TEST_METHOD(StableIgnoresBetaOnlySettings)
-        {
-            Settings settings;
-            Projection baseline, changed;
-            BuildOrFail(settings, false, baseline);
-            settings.dynamicTarget = false;
-            settings.customToneMapping = true;
-            settings.toneTuning[ToneMappingTuning::FilmStrength] = 2.;
-            settings.toneTuning[ToneMappingTuning::MasteringClip] = 0.;
-            BuildOrFail(settings, false, changed);
-            AssertSameData(&baseline.colorMapParams, &changed.colorMapParams,
-                sizeof(baseline.colorMapParams), L"Stable must ignore Beta fields");
-        }
         TEST_METHOD(ToneTuningMapsEveryNativeParameterAndPreservesPresetDefaults)
         {
             Settings settings;

@@ -3323,6 +3323,7 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
             key.compare(QStringLiteral("renderer"), Qt::CaseInsensitive) == 0 &&
             (normalized.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0 ||
              normalized.compare(QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0 ||
+             normalized.compare(QStringLiteral("VP Renderer (Legacy)"), Qt::CaseInsensitive) == 0 ||
              normalized.compare(QStringLiteral("libplacebo"), Qt::CaseInsensitive) == 0))
             normalized = QStringLiteral("VP Renderer");
         const std::string sectionText = section.toStdString();
@@ -3538,13 +3539,14 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
         QStringLiteral("renderer")).trimmed();
     if (renderer.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0 ||
         renderer.compare(QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0 ||
+        renderer.compare(QStringLiteral("VP Renderer (Legacy)"), Qt::CaseInsensitive) == 0 ||
         renderer.compare(QStringLiteral("libplacebo"), Qt::CaseInsensitive) == 0)
         renderer = QStringLiteral("VP Renderer");
     // Discovery is advisory for validation. A transient or unavailable helper
     // must not make every unrelated profile edit unsavable. When it returns a
     // real list we remain strict; otherwise accept VP's built-in choices.
     const QStringList acceptedRenderers = allRenderers_.isEmpty() ?
-        QStringList{ QStringLiteral("VP Renderer"), QStringLiteral("VP Renderer (Legacy)"),
+        QStringList{ QStringLiteral("VP Renderer"),
             QStringLiteral("DirectShow - madVR") } : allRenderers_;
 	if (!renderer.isEmpty() &&
 		!discoveredContains(acceptedRenderers, renderer))
@@ -4653,6 +4655,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
     if (configurationLoaded_ && document_ &&
         (configuredRenderer.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0 ||
          configuredRenderer.compare(QStringLiteral("VP Renderer (Beta)"), Qt::CaseInsensitive) == 0 ||
+         configuredRenderer.compare(QStringLiteral("VP Renderer (Legacy)"), Qt::CaseInsensitive) == 0 ||
          configuredRenderer.compare(QStringLiteral("libplacebo"), Qt::CaseInsensitive) == 0))
     {
         document_->SetKnown("general", "renderer", "VP Renderer");
@@ -9162,10 +9165,8 @@ void ConfigEditorWindow::refreshShaderCacheStatus()
 			QStringLiteral("Remote cache status is unavailable."));
 		return;
 	}
-    const bool beta = value(QStringLiteral("general"), QStringLiteral("renderer")).compare(
-        QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
     const QDir rendererDirectory(QFileInfo(configPath_).absoluteDir().filePath(
-        beta ? QStringLiteral("vprenderer-beta") : QStringLiteral("vprenderer")));
+        QStringLiteral("vprenderer-beta")));
     const QFileInfo cache(rendererDirectory.filePath(
         QStringLiteral("VideoProcessorShaderCache.bin")));
     if (shaderCacheStatus_)
@@ -9784,10 +9785,8 @@ QWidget* ConfigEditorWindow::createShadersSetupPage()
     connect(clearCache, &QPushButton::clicked, this, [this]
     {
         const QDir configurationDirectory = QFileInfo(configPath_).absoluteDir();
-        const bool beta = value(QStringLiteral("general"), QStringLiteral("renderer")).compare(
-            QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0;
         const QString rendererDirectory = configurationDirectory.filePath(
-            beta ? QStringLiteral("vprenderer-beta") : QStringLiteral("vprenderer"));
+            QStringLiteral("vprenderer-beta"));
         if (!QDir().mkpath(rendererDirectory))
         {
             setStatus(QStringLiteral("Could not access the VP Renderer cache folder."), true);

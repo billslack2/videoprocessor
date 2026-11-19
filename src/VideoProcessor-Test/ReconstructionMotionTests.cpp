@@ -138,10 +138,8 @@ struct ReconstructionMotionGpu {
         options=pl_options_alloc(nullptr);Assert::IsTrue(options!=nullptr);
         Assert::IsTrue(pl_options_load(options,"upscaler=ewa_lanczossharp,downscaler=mitchell,plane_upscaler=ewa_lanczos,deband=yes,sigmoid=yes,peak_detect=yes,peak_percentile=99.99500274658203,contrast_recovery=0.10000000149011612,error_diffusion=sierra-3,dynamic_constants=yes"),
             L"The production reconstruction/motion settings must load on this dependency");
-#ifdef VP_LIBPLACEBO_BETA
-        // These three shipped beta extensions do not exist in the stable API.
+        // Exercise the current renderer extensions.
         Assert::IsTrue(pl_options_load(options,"mastering_clip=0.6000000238418579,vp_gamut_compression=yes,film_strength=1.2300000190734863"));
-#endif
         Assert::IsTrue(renderer&&hook);
         pl_tex_params t{};t.w=NativeWidth;t.h=NativeHeight;t.format=pl_find_named_fmt(device->gpu,"rgba8");
         t.sampleable=true;t.blit_src=true;t.blit_dst=true;t.host_writable=true;
