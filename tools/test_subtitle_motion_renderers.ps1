@@ -1,10 +1,15 @@
 param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [Parameter(Mandatory=$true)][string]$MagewellSdkRoot,
-    [string]$VsInstallPath='C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional',
+    [string]$VsInstallPath,
     [ValidateSet('beta')][string[]]$Variants=@('beta')
 )
 $ErrorActionPreference='Stop'
+if(!$VsInstallPath) {
+    $vpVswhere=Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $VsInstallPath=& $vpVswhere -latest -products '*' -version '[17.0,19.0)' -requires Microsoft.Component.MSBuild -property installationPath
+    if($LASTEXITCODE -ne 0 -or !$VsInstallPath){throw 'Visual Studio 2022 or newer with the pinned v143 compiler and MFC is required.'}
+}
 $vpRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $vpOutput=[IO.Path]::GetFullPath($OutputDirectory)
 $vpMsbuild=Join-Path $VsInstallPath 'MSBuild\Current\Bin\MSBuild.exe'

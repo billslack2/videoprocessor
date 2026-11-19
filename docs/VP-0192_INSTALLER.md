@@ -111,8 +111,8 @@ It retains operator data and the small install manifest. Private runtime DLLs ar
 
 ## Repeatable release build
 
-Use Windows 10/11 x64, Visual Studio with the repository's v142/v143 C++ and MFC
-toolsets and Windows SDK, Qt 6.8.3 (scripts/bootstrap-config-editor-qt.ps1), and
+Use Windows 10/11 x64, Visual Studio with v143 / MSVC 14.44.35207 and matching
+x64 MFC/ATL and Windows SDK, Qt 6.8.3 (scripts/bootstrap-config-editor-qt.ps1), and
 Inno Setup **6.7.3**. Obtain the compiler from the official
 [download page](https://jrsoftware.org/isdl.php) and verify its publisher signature
 (Pyrsys B.V.) and official checksum. The compiler installer SHA-256 used here is
