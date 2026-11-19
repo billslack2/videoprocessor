@@ -5830,6 +5830,39 @@ namespace AlphaSourceCrop
         anchor.submittedOptionalFillScreenAspect = input.selectedAdmission.optionalFillScreenAspect;
     }
 
+    static bool HasSelectedVerticalFillWitness(const SubmittedNativeScopeAnchorUpdateInput& input)
+    {
+        const auto& selected = input.selectedAdmission;
+        const auto& native = input.nativeCrop;
+        const auto& actual = input.submittedBounds;
+        if (input.selectedOwner != DecisionOwner::TRUSTED_CROP ||
+            !selected.available || !selected.optionalFillApplied || selected.optionalFillRetained ||
+            selected.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            selected.sourceGeneration != input.sourceGeneration ||
+            selected.presentationEpoch != input.presentationEpoch ||
+            selected.optionalFillSourceSequence != input.sourceSequence ||
+            !SameTrustedCropContract(selected.trustedCrop, native) ||
+            !SameBounds(selected.optionalFillSourceBounds, actual) ||
+            !ValidBounds(actual, native.rasterWidth, native.rasterHeight) ||
+            !CropEdgesAreChromaAligned(actual, native.rasterWidth, native.rasterHeight) ||
+            native.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+            actual.left != native.left || actual.right != native.right ||
+            actual.top < native.top || actual.bottom > native.bottom)
+            return false;
+
+        // The selected source already applied the user's narrower-content fill.
+        // Recompute its exact centered/chroma-aligned result before recording
+        // the native picture as presented. A shifted or arbitrary crop cannot
+        // acquire this continuity anchor.
+        AspectLimitFillInput fill;
+        fill.trustedContentAuthorityAccepted = true;
+        fill.cropNarrowerContentToFillScreen = true;
+        fill.screenAspect = selected.optionalFillScreenAspect;
+        fill.sourceBounds = native;
+        const auto expected = EvaluateAspectLimitFill(fill);
+        return expected.applied && SameBounds(expected.sourceBounds, actual);
+    }
+
 	SubmittedNativeScopeAnchor CommitSubmittedNativeScopeAnchor(
 		const SubmittedNativeScopeAnchorUpdateInput& input, const char** outcomeReason)
 	{
@@ -5966,11 +5999,12 @@ namespace AlphaSourceCrop
         }
         // Similar aspect ratios do not prove that the physical picture was
         // displayed: a shifted crop can have exactly the same aspect. Retain
-        // only the exact base, or its selected, explicitly approved side fill.
+        // only the exact base, or its selected, explicitly approved configured fill.
         if (!SameBounds(input.submittedBounds, input.nativeCrop) &&
             !HasSelectedHorizontalFillWitness(input.selectedAdmission,
                 input.nativeCrop, input.submittedBounds, input.sourceGeneration,
-                input.sourceSequence, input.presentationEpoch))
+                input.sourceSequence, input.presentationEpoch) &&
+            !HasSelectedVerticalFillWitness(input))
             return finish("actual-geometry-not-qualified");
 		if (result.available && result.sourceGeneration == input.sourceGeneration &&
 			result.presentationEpoch == input.presentationEpoch &&

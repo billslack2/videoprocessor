@@ -3,10 +3,22 @@
 #include <SubtitleOpaqueCardRefinement.h>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <limits>
 
 namespace
 {
+    // One scope per detector entry, never per pixel. Records all exits/throws.
+    struct SubtitleDiagnosticElapsedScope {
+        double& total;
+        double& peak;
+        std::chrono::steady_clock::time_point started=std::chrono::steady_clock::now();
+        ~SubtitleDiagnosticElapsedScope() {
+            const double ms=std::chrono::duration<double,std::milli>(
+                std::chrono::steady_clock::now()-started).count();
+            total+=ms;peak=(std::max)(peak,ms);
+        }
+    };
     int Width(const SubtitleBoxRect& r) { return r.right - r.left; }
     int Height(const SubtitleBoxRect& r) { return r.bottom - r.top; }
     SubtitleBoxRect Union(const SubtitleBoxRect& a, const SubtitleBoxRect& b)
@@ -118,6 +130,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     int pictureBottom, SubtitleBoxRect& box, int& lineCount,
     std::array<uint64_t,16>& signature, int nearBarDistance)
 {
+    ++m_diagnostics.detectPasses;
+    SubtitleDiagnosticElapsedScope diagnosticElapsed{m_diagnostics.detectElapsedMs,m_diagnostics.detectPeakMs};
     // Inspect every source frame. Spatial sampling bounds cost without an idle
     // frame cadence that could postpone subtitle onset. Full line search remains
     // active throughout a cue, so an initially missed companion can be recovered.
@@ -2594,9 +2608,11 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
 SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
     int top,int bottom,uint64_t sequence,uint64_t viewportGeneration)
 {
+    ++m_diagnostics.analyzeCalls;
+    SubtitleDiagnosticElapsedScope diagnosticElapsed{m_diagnostics.analyzeElapsedMs,m_diagnostics.analyzePeakMs};
     if(!source.IsValid() || source.width>8192 || source.height>4320 || top<0 ||
         bottom<=top || bottom>source.height || (top==0 && bottom==source.height))
-        { Reset(); return {}; }
+        { ++m_diagnostics.rejectedInputs;Reset(); return {}; }
     if(source.generation!=m_generation || viewportGeneration!=m_viewport ||
         source.width!=m_width || source.height!=m_height || top!=m_top || bottom!=m_bottom ||
         sequence<m_sequence)
@@ -2604,7 +2620,7 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
         Reset(); m_generation=source.generation; m_viewport=viewportGeneration;
         m_width=source.width; m_height=source.height; m_top=top; m_bottom=bottom;
     }
-    if(m_hasSequence && sequence==m_sequence) return m_result;
+    if(m_hasSequence && sequence==m_sequence) {++m_diagnostics.sameFrameReuses;return m_result;}
     m_sequence=sequence; m_hasSequence=true;
     m_sharedSampleCount=0;
     if(m_optimizationMode==2)m_sampledRows.assign((source.height+SamplingStep(source.width,source.height)-1)/SamplingStep(source.width,source.height),0);

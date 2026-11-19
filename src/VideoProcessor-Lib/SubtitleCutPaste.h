@@ -327,6 +327,8 @@ struct SubtitleCutPasteGeometry
     SubtitleBoxRect cleanupLimit; // Fresh local proof, when backing edges are hidden.
     bool centeredGlyphMapping=false, roundedCorners=true, extendToBar=true, pictureIntrusion=false;
     bool backgroundGuarded=false;
+    bool pendingGlyphsOnly=false;
+    bool sourceSupportRequired=false; // Retained AR supplies geometry, never black-pixel ownership.
     int pictureTop = 0, pictureBottom = 0;
     // Display-only attachment edges. They grant no source glyph or cleanup ownership.
     int displayPictureLeft = 0, displayPictureTop = 0, displayPictureRight = 0, displayPictureBottom = 0;
@@ -604,7 +606,17 @@ public:
         SubtitleBoxPadding padding,int offset,bool floatBackground=false)
     {
         if(!g.valid || !text.detected || !preview.available || preview.current.discontinuity) {
-            Reset();return g;
+            const auto& a=m_reference.identity;const auto& b=preview.current.identity;
+            const bool retainMetadata=m_valid && !preview.current.discontinuity &&
+                SubtitleBoxLookahead::HasSharedNativeGeometry(preview.current) &&
+                (m_reference.sharedPicture.Matches(preview.current.sharedPicture) ||
+                    SubtitleBoxLookahead::SameContext(m_reference,preview.current)) &&
+                m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+                a.transportGeneration==b.transportGeneration && a.sourceFormatGeneration==b.sourceFormatGeneration &&
+                a.analysisDomainKey==b.analysisDomainKey && a.viewportGeneration==b.viewportGeneration &&
+                a.rendererGeneration==b.rendererGeneration && m_padding==padding && m_offset==offset && m_float==floatBackground;
+            if(!retainMetadata)Reset();
+            return g;
         }
         const auto& a=m_reference.identity;const auto& b=preview.current.identity;
         const auto& priorLimits=m_geometry.placementLimits;
@@ -623,10 +635,10 @@ public:
             a.viewportGeneration==b.viewportGeneration && a.rendererGeneration==b.rendererGeneration &&
             m_reference.width==preview.current.width && m_reference.height==preview.current.height &&
             m_geometry.fromTopBar==g.fromTopBar && nearLimits &&
-            m_geometry.displayPictureLeft==g.displayPictureLeft &&
-            m_geometry.displayPictureTop==g.displayPictureTop &&
-            m_geometry.displayPictureRight==g.displayPictureRight &&
-            m_geometry.displayPictureBottom==g.displayPictureBottom &&
+            std::abs(m_geometry.displayPictureLeft-g.displayPictureLeft)<=edgeTolerance &&
+            std::abs(m_geometry.displayPictureTop-g.displayPictureTop)<=edgeTolerance &&
+            std::abs(m_geometry.displayPictureRight-g.displayPictureRight)<=edgeTolerance &&
+            std::abs(m_geometry.displayPictureBottom-g.displayPictureBottom)<=edgeTolerance &&
             m_geometry.glyphScale==g.glyphScale && m_padding==padding && m_offset==offset &&
             m_geometry.roundedCorners==g.roundedCorners && m_float==floatBackground &&
             m_geometry.backgroundGuarded==g.backgroundGuarded;
@@ -715,11 +727,34 @@ public:
         const SubtitleCueContinuation* cueContinuation=nullptr)
     {
         if (!text.detected || !text.bounds.Valid() || !preview.available ||
-            !preview.current.analyzed || !SubtitleBoxLookahead::HasBarEvidence(preview.current) || text.workLimit ||
+            !preview.current.analyzed || !SubtitleBoxLookahead::HasSubtitleGeometry(preview.current) || text.workLimit ||
             (text.nearBarEligibilityMeasured && !text.nearBarEligible)) {
             Reset();return {};
         }
         const auto& current=preview.current;
+        // A held cue can nominate coordinates; it cannot bypass this frame's
+        // support proof when the AR owner is supplying retained geometry.
+        if(SubtitleBoxLookahead::HasPendingSharedBarGlyphSupport(current)) {
+            // The non-renewing current fingerprint owns bar glyphs only.
+            // Build coordinates without reading any cached picture cleanup.
+            const SubtitleBoxRect empty;
+            const auto& display=displayBounds && displayBounds->Valid()?*displayBounds:text.bounds;
+            auto next=ComputeSubtitleCutPaste(display,current.width,current.height,
+                current.pictureTop,current.pictureBottom,padding,gap,&empty,current.nearBarDistance,&empty,
+                text.nearBarEligibilityMeasured && text.nearBarEligible);
+            next.content=SubtitleGlyphCaptureBounds(text,current.width,current.height);
+            next.glyphLines=SubtitleGlyphCaptureLines(text,current.width,current.height);
+            next.layoutContent=next.content;next.pictureCapture=next.content;
+            next.generatedCleanup={};next.generatedCleanupExclusion={};next.generatedCleanupRowCount=0;
+            next.sourceSupportRequired=next.pendingGlyphsOnly=true;
+            if(!next.content.Valid() || next.source.left>next.content.left || next.source.top>next.content.top ||
+                next.source.right<next.content.right || next.source.bottom<next.content.bottom)next.valid=false;
+            m_backingReason="pending-current-bar-glyphs-only";
+            return next;
+        }
+        if(current.sharedNativeGeometry && !SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(current)) {
+            Reset();return {};
+        }
         if(cueContinuation && cueContinuation->valid && cueContinuation->localGlyphsOnly &&
             current.sharedPicture.required && current.pictureAuthorityUnavailableForMeasurement &&
             !current.sharedPicture.AvailableFor(current.identity,current.width,current.height)) {
@@ -818,18 +853,19 @@ public:
             m_relativeDisplay==(displayBounds!=nullptr) &&
             SubtitleCueContinuation::SameRect(displayBounds?*displayBounds:text.bounds,m_cachedDisplay) &&
             (cueContinuation->MatchesCachedGlyphPicture(m_geometry.pictureTop,m_geometry.pictureBottom) ||
-                LocalCueSideSamplingJitter(m_geometry,*cueContinuation,m_sourcePanel,m_stablePanel)) &&
+                LocalCueSideSamplingJitter(m_geometry,*cueContinuation,current,m_sourcePanel,m_stablePanel)) &&
             // Source padding is a display envelope; current glyph extraction
             // and erasure are limited to content and the measured cleanup card.
             SubtitleCueContinuation::Contains(cueContinuation->sampledBounds,m_geometry.content) &&
             SubtitleCueContinuation::Contains(cueContinuation->backingVerifiedBounds,m_sourcePanel) &&
             SubtitleCueContinuation::Contains(cueContinuation->backingVerifiedBounds,m_geometry.generatedCleanup)) {
-            m_backingReason="current-cue-missing-edge";
+            m_backingReason=cueContinuation->MatchesCachedGlyphPicture(m_geometry.pictureTop,m_geometry.pictureBottom)
+                ? "current-cue-missing-edge" : "current-cue-edge-sampling-jitter";
             return m_geometry;
         }
         if(cueContinuation && cueContinuation->valid) {
             // A certificate cannot authorize new padding, backing or placement.
-            Reset();return {};
+            Reset();m_backingReason="current-cue-geometry-rejected";return {};
         }
         bool sameDisplayCue=!glyphLocal && !m_reference.glyphLocalTop && !m_reference.glyphLocalBottom && m_relativeDisplay==(displayBounds!=nullptr) && m_geometry.valid && !current.discontinuity && m_cue==text.cue &&
             m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
@@ -1046,9 +1082,47 @@ public:
         if(glyphLocal && next.valid) {
             // Local glyph support owns only this freshly sampled rectangle.
             // Never erase the gap to a retained edge or an older cue's card.
+            next.sourceSupportRequired=SubtitleBoxLookahead::HasSharedNativeGeometry(current);
             next.cleanupLimit=current.glyphLocalVerifiedBounds;
+            if(next.sourceSupportRequired) {
+                // The current proof covers the local union, including bar-side
+                // glyphs. Never extend cleanup to an assumed retained bar.
+                next.generatedCleanup=current.glyphLocalVerifiedBounds;
+                next.generatedCleanup.top=(std::max)(next.generatedCleanup.top,current.pictureTop);
+                next.generatedCleanup.bottom=(std::min)(next.generatedCleanup.bottom,current.pictureBottom);
+                if(!next.generatedCleanup.Valid())next.generatedCleanup={};
+                next.generatedCleanupExclusion=next.generatedCleanup;
+                next.generatedCleanupRowCount=0;
+                next.pictureCapture=current.glyphLocalVerifiedBounds;
+                const auto& complete=current.text.provenSourcePanel;
+                if(complete.Valid()) {
+                    // This exact source's complete finite-card proof owns the
+                    // cleanup fringe; it never enlarges glyph capture.
+                    next.cleanupLimit={(std::min)(next.cleanupLimit.left,complete.left),
+                        (std::min)(next.cleanupLimit.top,complete.top),
+                        (std::max)(next.cleanupLimit.right,complete.right),
+                        (std::max)(next.cleanupLimit.bottom,complete.bottom)};
+                    next.generatedCleanup={(std::max)(0,complete.left),(std::max)(current.pictureTop,complete.top),
+                        (std::min)(current.width,complete.right),(std::min)(current.pictureBottom,complete.bottom)};
+                    if(!next.generatedCleanup.Valid())next.generatedCleanup={};
+                    next.generatedCleanupExclusion=next.generatedCleanup;
+                }
+            }
             LimitSubtitleCleanupToLocalProof(next);
             m_backingReason="current-local-glyph-support";
+        }
+        next.sourceSupportRequired=SubtitleBoxLookahead::HasSharedNativeGeometry(current);
+        if(next.valid && next.sourceSupportRequired && current.sharedNativePhysicalSupport) {
+            // Current physical bars prove the bar-side part of a line; measured
+            // capture panels retain ownership of its picture-side part.
+            auto support=next.pictureCapture;
+            for(const auto& line:glyphLines)if(line.Valid() &&
+                (line.top<current.barEvidence.top || line.bottom>current.barEvidence.bottom)) {
+                if(!support.Valid())support=line;
+                else support={(std::min)(support.left,line.left),(std::min)(support.top,line.top),
+                    (std::max)(support.right,line.right),(std::max)(support.bottom,line.bottom)};
+            }
+            next.pictureCapture=support;
         }
         next.backgroundGuarded=guarded;
         m_cachedText=text;m_cachedDisplay=display;
@@ -1083,18 +1157,24 @@ private:
             !g.cleanupLimit.Valid() && !g.layoutCoverage.Valid();
     }
     static bool LocalCueSideSamplingJitter(const SubtitleCutPasteGeometry& g,
-        const SubtitleCueContinuation& proof,const SubtitleBoxRect& sourcePanel,
-        const SubtitleBoxRect& stablePanel) {
+        const SubtitleCueContinuation& proof,const SubtitleBoxObservation& current,
+        const SubtitleBoxRect& sourcePanel,const SubtitleBoxRect& stablePanel) {
         if(!proof.localGlyphsOnly || proof.backingVerifiedBounds.Valid() ||
             sourcePanel.Valid() || stablePanel.Valid() || !CoordinateOnlyGeometry(g) ||
             !SubtitleCueContinuation::Contains(proof.sampledBounds,g.source) ||
             !LocalContentAndGlyphsStayInProvenBar(g,proof)) return false;
         const int tolerance=SubtitleBoxDetector::SamplingStep(
             proof.physicalBase.rasterWidth,proof.physicalBase.rasterHeight);
+        // The cached geometry can predate small changes on BOTH sampled
+        // planes. Keep the existing opposite-plane freedom while reconciling
+        // only one sampling step on the independently current cue side.
+        // This retains coordinates, never picture/capture/cleanup authority.
         if(g.fromTopBar)
-            return g.pictureBottom==proof.pictureBottom &&
+            return current.pictureTop==proof.pictureTop &&
+                proof.MatchesCachedGlyphPicture(proof.pictureTop,g.pictureBottom) &&
                 std::abs(g.pictureTop-proof.pictureTop)<=tolerance;
-        return g.pictureTop==proof.pictureTop &&
+        return current.pictureBottom==proof.pictureBottom &&
+            proof.MatchesCachedGlyphPicture(g.pictureTop,proof.pictureBottom) &&
             std::abs(g.pictureBottom-proof.pictureBottom)<=tolerance;
     }
     static bool LocalContentAndGlyphsStayInProvenBar(const SubtitleCutPasteGeometry& g,

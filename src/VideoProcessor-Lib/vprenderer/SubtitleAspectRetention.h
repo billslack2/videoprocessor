@@ -3,6 +3,7 @@
 #include <SubtitleCutPaste.h>
 #include <SubtitleBoxLookahead.h>
 #include <cstring>
+#include <AnalysisDiagnosticHooks.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 
 // Crop evidence, admission and recovery always run through the shared policy.
@@ -187,7 +188,11 @@ inline bool ConfirmedSubtitleAbsentForPresentation(
     const ActivePictureFrameIdentity& selectedIdentity)
 {
     return SameAnalysisFrameIdentity(current.identity,selectedIdentity) &&
-        !current.inspectionCandidateUsed && current.barAuthority && !SubtitleAbsenceIsUnknown(current) &&
+        !current.inspectionCandidateUsed && current.barAuthority &&
+        (!current.sharedNativeGeometry ||
+            (std::abs(current.barEvidence.top-current.pictureTop)<=(std::min)((std::max)(1,current.height/180),current.nearBarDistance) &&
+             std::abs(current.barEvidence.bottom-current.pictureBottom)<=(std::min)((std::max)(1,current.height/180),current.nearBarDistance))) &&
+        !SubtitleAbsenceIsUnknown(current) &&
         !current.text.detected &&
         current.text.diagnosticReason &&
         std::strcmp(current.text.diagnosticReason,"no-bright-ink")==0 &&
@@ -288,9 +293,13 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(!input.sourcePrepared || !input.observation || !input.accepted || !input.composition)
         return reject("source-not-prepared");
     const auto& observation=*input.observation;
-    // Retained coordinates can nominate a fresh subtitle scan after the
-    // presentation lease expires. That scan cannot certify crop or retention.
-    if(observation.inspectionCandidateUsed)
+    // Retained coordinates never originate physical AR or a semantic lease.
+    // Exact prepared erasure may describe current output for the renderer's
+    // already-selected matching native base, without renewing that authority.
+    if(observation.inspectionCandidateUsed && !(preparedErasureOnly &&
+        (SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(observation) ||
+            (input.pendingCurrentPixelsVerified && SubtitleBoxLookahead::HasPendingSharedBarGlyphSupport(observation))) &&
+        SameSubtitlePresentationBounds(observation.sharedPicture.inspectionCandidate.bounds,input.physicalBase)))
         return reject("inspection-candidate-is-not-picture-proof");
     const bool glyphLocal=observation.glyphLocalTop || observation.glyphLocalBottom;
     if(glyphLocal && !preparedErasureOnly)
@@ -321,7 +330,10 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         return reject("independent-full-raster-picture",QualifiedSubtitlePresentationStatus::Conflict);
     if(!SameAnalysisFrameIdentity(observation.identity,input.currentIdentity) ||
         observation.policyGeneration!=input.policyGeneration || observation.continuityGeneration!=input.continuityGeneration ||
-        observation.discontinuity || !observation.analyzed || !observation.barAuthority ||
+        observation.discontinuity || !observation.analyzed ||
+        (!observation.barAuthority && !(preparedErasureOnly && move.sourceSupportRequired &&
+            (SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(observation) ||
+             (input.pendingCurrentPixelsVerified && SubtitleBoxLookahead::HasPendingSharedBarGlyphSupport(observation))))) ||
         (observation.pendingRefresh && !input.pendingCurrentPixelsVerified) || text.workLimit ||
         !text.detected || !text.nearBarEligibilityMeasured || !text.nearBarEligible ||
         !accepted.detected || (accepted.held && !continuation) || !accepted.bounds.Valid() || !text.bounds.Valid() ||
@@ -388,9 +400,9 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     const SubtitleBoxRect baseRect{base.left,base.top,base.right,base.bottom};
     if(!contains(baseRect,move.destination))return reject("destination-outside-picture");
     if(preparedErasureOnly) {
-        // A temporal donor may overwrite generatedCleanup after the shader.
-        // Keep that region and attached output strictly inside the physical
-        // picture, so neither can overwrite the certified black source bars.
+        // Temporal cleanup stays inside the physical picture. Shared-support
+        // cleanup can cross its retained edge only within fresh local proof;
+        // SubtitleTemporalFill rejects donor writes for that provenance.
         if(move.generatedCleanup.Valid() && !contains(baseRect,move.generatedCleanup))
             return reject("prepared-cleanup-outside-picture");
         // Row masks are the actual erase spans for rounded backing lips. The
@@ -417,9 +429,20 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         return reject("invalid-erasure-footprint");
     if(box.top>=base.top && box.bottom<=base.bottom)
         return reject("no-erased-bar-overlap",QualifiedSubtitlePresentationStatus::NotApplicable);
-    if(glyphLocal && (observation.glyphLocalTop==observation.glyphLocalBottom ||
+    auto localCleanupSupport=observation.glyphLocalVerifiedBounds;
+    if(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(observation) && text.provenSourcePanel.Valid()) {
+        const auto& complete=text.provenSourcePanel;
+        localCleanupSupport={(std::min)(localCleanupSupport.left,complete.left),
+            (std::min)(localCleanupSupport.top,complete.top),(std::max)(localCleanupSupport.right,complete.right),
+            (std::max)(localCleanupSupport.bottom,complete.bottom)};
+    }
+    const bool pendingBarOnly=move.pendingGlyphsOnly && input.pendingCurrentPixelsVerified &&
+        SubtitleBoxLookahead::HasPendingSharedBarGlyphSupport(observation) &&
+        !move.generatedCleanup.Valid() && !move.generatedCleanupExclusion.Valid() && !move.generatedCleanupRowCount;
+    if(glyphLocal && !pendingBarOnly && (observation.glyphLocalTop==observation.glyphLocalBottom ||
         observation.pendingRefresh || observation.analysisRefresh || text.held ||
-        !contains(observation.glyphLocalVerifiedBounds,move.cleanupLimit) ||
+        !contains(localCleanupSupport,move.cleanupLimit) ||
+        (move.sourceSupportRequired && !contains(observation.glyphLocalVerifiedBounds,move.pictureCapture)) ||
         !contains(move.cleanupLimit,box)))
         return reject("prepared-local-erasure-unverified");
     // Continuation grids cover a bounded region, not the detector's full search
@@ -445,7 +468,28 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
         reconciliationSamples(base.bottom,reconciledBottom);
     // Prepared erasure does not inspect inside the cleared rectangle. Charge
     // only native rows actually read; its size cannot consume an unused budget.
-    const size_t nativeSamples=extraSamples+(preparedErasureOnly?0:outsideRows*size_t(bw));
+    const auto inPreparedLine=[&](int x,int y) {
+        for(const auto& line:move.glyphLines)
+            if(line.Valid() && x>=line.left && x<line.right && y>=line.top && y<line.bottom)return true;
+        return false;
+    };
+    size_t pendingGapSamples=0;
+    if(preparedErasureOnly && move.pendingGlyphsOnly)for(int y=box.top;y<box.bottom;++y) {
+        if(y>=base.top && y<base.bottom)continue;
+        std::array<std::pair<int,int>,3> spans{};unsigned count=0;
+        for(const auto& line:move.glyphLines)if(line.Valid() && y>=line.top && y<line.bottom) {
+            const int left=(std::max)(box.left,line.left),right=(std::min)(box.right,line.right);
+            if(left<right)spans[count++]={left,right};
+        }
+        std::sort(spans.begin(),spans.begin()+count);
+        int covered=0,right=box.left;
+        for(unsigned i=0;i<count;++i) {
+            covered+=(std::max)(0,spans[i].second-(std::max)(right,spans[i].first));
+            right=(std::max)(right,spans[i].second);
+        }
+        pendingGapSamples+=size_t(bw-covered);
+    }
+    const size_t nativeSamples=extraSamples+(preparedErasureOnly?pendingGapSamples:outsideRows*size_t(bw));
     if(nativeSamples>input.maxOwnershipSamples)
         return reject("ownership-budget");
     // Native validation is limited to the actual erased bar rectangle. A sample
@@ -529,6 +573,23 @@ inline QualifiedSubtitlePresentationEvidence EvaluateSubtitlePresentationEvidenc
     if(reconciliationFailure)return reject(reconciliationFailure,
         std::strcmp(reconciliationFailure,"ownership-sample-unavailable")==0 ?
         QualifiedSubtitlePresentationStatus::Unknown : QualifiedSubtitlePresentationStatus::Conflict);
+    if(preparedErasureOnly && move.pendingGlyphsOnly)for(int y=box.top;y<box.bottom;++y) {
+        if(y>=base.top && y<base.bottom)continue;
+        for(int x=box.left;x<box.right;++x)if(!inPreparedLine(x,y)) {
+            AnalysisLumaSample pixel;
+            if(!source.Sample(x,y,pixel))return reject("ownership-sample-unavailable");
+            ++result.ownershipSamples;
+            if(pixel.luma>raw.presentationBlackThreshold || std::abs(int(pixel.chromaU)-512)>32 ||
+                std::abs(int(pixel.chromaV)-512)>32) {
+                auto trace=AnalysisTraceRecord(input.currentIdentity,input.observation,
+                    "subtitle-pending-gap-proof","unerased-interline-content");
+                trace.metrics[0]=x;trace.metrics[1]=y;trace.metrics[2]=pixel.luma;
+                trace.metrics[3]=pixel.chromaU;trace.metrics[4]=pixel.chromaV;
+                AnalysisTraceRect(trace.candidate,box);AnalysisDiagnosticTrace::Emit(trace);
+                return reject("pending-unerased-interline-content",QualifiedSubtitlePresentationStatus::Conflict);
+            }
+        }
+    }
     if(!preparedErasureOnly) {
         if(const char* reason=inspect(box.top,(std::min)(box.bottom,base.top)))
             return reject(reason,std::strcmp(reason,"ownership-sample-unavailable")==0 ?

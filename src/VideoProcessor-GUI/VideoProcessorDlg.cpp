@@ -15684,6 +15684,35 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	CDialog::OnTimer(nIDEvent);
 }
 
+static void LogAspectRatioOsdStateChange(AspectRatioOsd& aspectOsd,
+	uint64_t nowMs)
+{
+	const auto state = aspectOsd.GetDiagnosticState(nowMs);
+	if (!aspectOsd.ShouldLogDiagnostic(state))
+		return;
+	const CStringA labelRatio(state.displayedLabel.ratio.c_str());
+	const CStringA labelName(state.displayedLabel.name.c_str());
+	const bool labelHeld =
+		state.labelStatus == AspectRatioOsd::LabelStatus::HELD_BUSY ||
+		state.labelStatus == AspectRatioOsd::LabelStatus::HELD_UNAVAILABLE ||
+		state.labelStatus == AspectRatioOsd::LabelStatus::HELD_AMBIGUOUS;
+	DebugLog::Log(
+		"VP detected aspect OSD: overlay_requested=1 read_status=%s has_reading=%d last_api_read_available=%d last_api_read_ratio=%.6f last_api_read_ratio_valid=%d detector_source_generation=%llu publication_generation=%llu frame_identity=not-provided osd_label_ratio=%s osd_label_name=%s label_status=%s label_held=%d hold_reason=%s last_api_read_age_ms=%llu label_age_ms=%llu hold_age_ms=%llu",
+		AspectRatioOsd::ReadStatusName(state.readStatus),
+		state.hasReading ? 1 : 0,
+		state.hasReading && state.lastReading.available ? 1 : 0,
+		state.hasReading ? state.lastReading.ratio : 0.0,
+		state.rawRatioValid ? 1 : 0,
+		static_cast<unsigned long long>(state.lastReading.sourceGeneration),
+		static_cast<unsigned long long>(state.lastReading.publicationGeneration),
+		labelRatio.GetString(), labelName.GetString(),
+		AspectRatioOsd::LabelStatusName(state.labelStatus), labelHeld ? 1 : 0,
+		AspectRatioOsd::HoldReasonName(state.labelStatus),
+		static_cast<unsigned long long>(state.lastReadAgeMs),
+		static_cast<unsigned long long>(state.labelAgeMs),
+		static_cast<unsigned long long>(state.holdAgeMs));
+}
+
 void CVideoProcessorDlg::PollAspectRatioOsd()
 {
 	if (!m_statsOverlayRequestedVisible || !m_statsOverlay || !m_lastStatsData ||
@@ -15696,8 +15725,15 @@ void CVideoProcessorDlg::PollAspectRatioOsd()
 
 	DetectedPictureAspect detected;
 	if (!m_videoRenderer->GetDetectedPictureAspect(detected))
+	{
+		const uint64_t nowMs = GetTickCount64();
+		m_aspectRatioOsd.MarkReadBusy(nowMs);
+		LogAspectRatioOsdStateChange(m_aspectRatioOsd, nowMs);
 		return;
-	const auto& label = m_aspectRatioOsd.Update(detected, GetTickCount64());
+	}
+	const uint64_t nowMs = GetTickCount64();
+	const auto& label = m_aspectRatioOsd.Update(detected, nowMs);
+	LogAspectRatioOsdStateChange(m_aspectRatioOsd, nowMs);
 	if (m_lastStatsData->aspectRatio == label.ratio.c_str() &&
 		m_lastStatsData->aspectName == label.name.c_str())
 		return;

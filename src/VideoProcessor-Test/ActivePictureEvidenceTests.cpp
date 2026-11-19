@@ -3,6 +3,7 @@
 
 #include <ActivePictureEvidence.h>
 #include <SubtitleBoxLookahead.h>
+#include <SubtitleMeasurementWorker.h>
 #include <SubtitleCueContinuation.h>
 #include <SubtitleCutPaste.h>
 #include <vprenderer/SubtitleAspectRetention.h>
@@ -388,6 +389,18 @@ namespace VideoProcessorTest
 				ExtractActivePictureEvidence(source), identity, false, {},
 				policyGeneration, continuityGeneration, shared);
 		}
+
+        SubtitleBoxObservation MeasureSharedSubtitleWorker(const AnalysisLumaSource& source,
+            const ActivePictureFrameIdentity& identity,uint64_t policy,uint64_t continuity,
+            SubtitleScriptHint script,const ActivePictureBounds& bounds,
+            const ActivePictureFrameIdentity& origin) {
+            SubtitleMeasurementSampler sampler;SubtitleBoxObservation key;
+            key.identity=identity;key.width=source.width;key.height=source.height;
+            key.policyGeneration=policy;key.continuityGeneration=continuity;
+            key.scriptHint=script;key.nearBarDistance=20;
+            key.sharedPicture.required=true;key.sharedPicture.identity=origin;key.sharedPicture.bounds=bounds;
+            return sampler.Measure(source,key,{},24,ExtractActivePictureEvidence(source));
+        }
 
 		P010Frame MakeSubtitleProofFrame(int pictureTop, int pictureBottom,
 			bool crossingGlyph, int panelLeft = 1190, int panelRight = 2650)
@@ -1192,9 +1205,12 @@ namespace VideoProcessorTest
             const auto nextIdentity = MakeSubtitleProofIdentity(backingSource, 2);
             auto nextCurrent = MeasureSubtitleProofFrame(backingSource, nextIdentity,
                 policy, continuity, script, &backingProof.candidate, &backingIdentity);
-            const auto nextProof = EvaluateSubtitleAssistedVerticalBarProof(
-                backingSource, backingRaw, nextCurrent, nextIdentity,
-                policy, continuity, script);
+            Assert::IsTrue(SubtitleBoxLookahead::HasSharedNativeGeometry(nextCurrent));
+            Assert::IsFalse(nextCurrent.independentBarAnalysis,
+                L"Presentation consumes shared geometry and does not manufacture independent bar authority.");
+            const auto nextWorker=MeasureSharedSubtitleWorker(backingSource,nextIdentity,policy,continuity,
+                script,backingProof.candidate,backingIdentity);
+            const auto nextProof=nextWorker.subtitleArProof;
             Assert::IsTrue(nextProof.accepted);
             Assert::IsTrue(nextProof.IsCurrentFor(backingSource, nextIdentity,
                 policy, continuity, script));
@@ -1272,9 +1288,11 @@ namespace VideoProcessorTest
                 changedIdentity, policy, continuity, script,
                 &backingProof.candidate, &backingIdentity);
             const auto changedRaw = ExtractActivePictureEvidence(changedSource);
-            const auto changedProof = EvaluateSubtitleAssistedVerticalBarProof(
-                changedSource, changedRaw, changedCurrent, changedIdentity,
-                policy, continuity, script);
+            const auto changedWorker=MeasureSharedSubtitleWorker(changedSource,changedIdentity,policy,continuity,
+                script,backingProof.candidate,backingIdentity);
+            Assert::AreEqual(backingProof.candidate.top,changedWorker.pictureTop);
+            Assert::AreEqual(backingProof.candidate.bottom,changedWorker.pictureBottom);
+            const auto changedProof=changedWorker.subtitleArProof;
             Assert::IsTrue(changedProof.accepted,
                 L"Fresh current physical bars and cue pixels can update changed geometry.");
             Assert::AreEqual(188, changedProof.candidate.top);
@@ -1346,13 +1364,14 @@ namespace VideoProcessorTest
                 shared.identity = sharedIdentity.acceptedSequence
                     ? sharedIdentity : identity;
                 shared.bounds = sharedBounds;
-                const auto current = SubtitleBoxLookahead::Measure(scanner,
-                    source, raw, identity, false, {}, policy, continuity, shared);
-                Assert::IsTrue(current.text.detected && !current.text.held &&
-                    !current.text.workLimit,
-                    L"A current subtitle is present on every frame through the geometry transition.");
-                const auto proof = EvaluateSubtitleAssistedVerticalBarProof(
-                    source, raw, current, identity, policy, continuity, script);
+                const auto current=MeasureSharedSubtitleWorker(source,identity,policy,continuity,
+                    script,shared.bounds,shared.identity);
+                if(current.sharedNativeGeometry) {
+                    Assert::AreEqual(shared.bounds.top,current.pictureTop);
+                    Assert::AreEqual(shared.bounds.bottom,current.pictureBottom);
+                    Assert::IsFalse(current.independentBarAnalysis);
+                }
+                const auto proof=current.subtitleArProof;
                 Assert::IsTrue(proof.accepted,
                     L"Current subtitle pixels and fresh native bars must prove each frame without a clean interval.");
                 transition = model.Observe(MakeActivePictureObservation(
@@ -2151,6 +2170,84 @@ namespace VideoProcessorTest
                     const auto hold=CommitQualifiedSubtitlePresentationHold({},prepared,f.observation.identity,f.base,
                         mode,0,0,1000,true,false,10000000);
                     Assert::IsFalse(hold.available,L"Fresh local cleanup cannot create a semantic continuity lease.");
+                }
+            }
+        }
+        TEST_METHOD(PreparedSharedNativeErasureCrossesRetainedPlaneOnlyWithExactCurrentSupport)
+        {
+            for(bool p210:{false,true})
+            for(auto mode:{SubtitlePreviewMode::BlackBackground,SubtitlePreviewMode::GeneratedGrayBackground}) {
+                LoggedRelocatedCaptionFixture f(p210,true);
+                f.observation.sharedNativeGeometry=true;
+                f.observation.sharedPicture.required=true;
+                f.observation.sharedPicture.identity=f.observation.identity;
+                f.observation.sharedPicture.bounds=f.base;
+                f.observation.barAuthority=f.observation.barTrackingAuthority=false;
+                f.observation.independentBarAnalysis=false;
+                f.observation.barEvidence={};f.observation.barEvidence.bottom=f.observation.height;
+                f.observation.glyphLocalBottom=true;
+                f.observation.glyphSupportIdentity=f.observation.identity;
+                f.observation.glyphSupportPolicy=f.observation.policyGeneration;
+                f.observation.glyphSupportContinuity=f.observation.continuityGeneration;
+                f.observation.glyphSupportTop=f.observation.pictureTop;
+                f.observation.glyphSupportBottom=f.observation.pictureBottom;
+                const auto& glyphs=f.composition.content;
+                const auto& panel=f.observation.text.provenSourcePanel;
+                const SubtitleBoxRect support{(std::min)(glyphs.left,panel.left),
+                    (std::min)(glyphs.top,panel.top),(std::max)(glyphs.right,panel.right),
+                    (std::max)(glyphs.bottom,panel.bottom)};
+                f.observation.glyphLocalVerifiedBounds=support;
+                f.composition.sourceSupportRequired=true;
+                f.composition.cleanupLimit=f.composition.pictureCapture=support;
+                f.composition.generatedCleanup={support.left,(std::max)(support.top,f.base.top),
+                    support.right,(std::min)(support.bottom,f.base.bottom)};
+                f.composition.generatedCleanupExclusion=f.composition.generatedCleanup;
+                f.composition.generatedCleanupRowCount=0;
+                Assert::IsTrue(support.top<f.base.bottom && support.bottom>f.base.bottom,
+                    L"Current glyph support must cross the retained lower AR plane.");
+                Assert::IsTrue(f.composition.generatedCleanup.top>=f.base.top &&
+                    f.composition.generatedCleanup.bottom<=f.base.bottom,
+                    L"Generated picture cleanup stays inside AR; bar glyph cleanup uses current local support.");
+                Assert::IsTrue(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(f.observation));
+                const auto raw=EvaluateActivePicturePresentationRetention(f.Source(),f.base);
+                const auto originalObservation=f.observation;
+                const auto originalComposition=f.composition;
+                for(int scenario=-1;scenario<9;++scenario) {
+                    f.observation=originalObservation;f.composition=originalComposition;
+                    auto input=f.Input();input.mode=mode;
+                    if(scenario==0)++f.observation.glyphSupportIdentity.acceptedSequence;
+                    if(scenario==1)++f.observation.glyphSupportPolicy;
+                    if(scenario==2)++f.observation.glyphSupportContinuity;
+                    if(scenario==3)--f.observation.glyphSupportBottom;
+                    if(scenario==4)--f.observation.glyphLocalVerifiedBounds.right;
+                    if(scenario==5)f.composition.generatedCleanup.bottom=f.base.bottom+1;
+                    if(scenario==6)++f.composition.cleanupLimit.right;
+                    if(scenario==7) {
+                        f.observation.pendingRefresh=true;input.pendingCurrentPixelsVerified=true;
+                    }
+                    if(scenario==8)f.composition.sourceSupportRequired=false;
+                    const auto semantic=EvaluateQualifiedSubtitlePresentationEvidence(f.Source(),raw,input);
+                    Assert::IsFalse(semantic.qualified,L"Shared geometry and local cleanup never establish semantic AR proof.");
+                    Assert::IsFalse(semantic.renewsHold);
+                    const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(f.Source(),raw,input);
+                    std::ostringstream detail;detail<<"Shared crossing cleanup scenario="<<scenario
+                        <<" P210="<<p210<<" mode="<<int(mode)<<" reason="<<prepared.reason;
+                    Logger::WriteMessage(detail.str().c_str());
+                    const auto message=detail.str();const std::wstring wide(message.begin(),message.end());
+                    Assert::AreEqual(scenario<0,prepared.qualified,wide.c_str());
+                    Assert::IsFalse(prepared.renewsHold);
+                    Assert::IsFalse(f.observation.barAuthority);
+                    Assert::IsFalse(f.observation.barEvidence.available);
+                    Assert::IsFalse(f.observation.independentBarAnalysis);
+                    Assert::AreEqual(int(raw.activePicture.classification),int(prepared.retention.activePicture.classification));
+                    if(scenario<0) {
+                        Assert::IsTrue(prepared.preparedErasureOnly);
+                        Assert::IsTrue(prepared.retention.excludedBandsPixelSafe);
+                        Assert::IsFalse(raw.excludedBandsPixelSafe);
+                        const auto hold=CommitQualifiedSubtitlePresentationHold({},prepared,f.observation.identity,f.base,
+                            mode,0,0,1000,true,false,10000000);
+                        Assert::IsFalse(hold.available,L"Current prepared erasure cannot create a semantic AR lease.");
+                    }
                 }
             }
         }

@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include <SubtitleContinuitySampling.h>
 #include <AnalysisDiagnosticHooks.h>
 #include <DebugLog.h>
 #include <algorithm>
@@ -56,6 +57,7 @@ inline std::atomic_bool& SubtitleDiagnosticCaptureClaimed()
 // sampled-pixel/buffer reuse remains controlled by the detector's existing mode.
 class SubtitleMeasurementSampler {
 public:
+    SubtitleBoxDetector::Diagnostics TakeDetectorDiagnostics() {return m_scanner.TakeDiagnostics();}
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/,
         const ActivePictureEvidence& nativeEvidence = {}) {
@@ -69,13 +71,37 @@ public:
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
         result.analysisStride=key.analysisStride;
-        if (!result.inspectionCandidateUsed && result.independentBarAnalysis && result.text.detected && !result.text.held &&
-            !result.text.workLimit) {
+        // Presentation consumes the AR owner's planes. Keep the existing
+        // independent subtitle-assisted AR measurement separate: it may report
+        // a real source aperture change but never replaces subtitle geometry.
+        auto physical=result;
+        if(result.sharedNativeGeometry) {
+            const auto& bars=result.barEvidence;
+            physical.barEvidence=bars;physical.barAuthority=bars.available;
+            physical.independentBarAnalysis=bars.available && bars.top>0 && bars.bottom<source.height;
+            physical.pictureTop=bars.top;physical.pictureBottom=bars.bottom;
+            physical.sharedNativeGeometry=false;physical.sharedNativePhysicalSupport=false;
+            physical.inspectionCandidateUsed=false;
+            physical.glyphLocalTop=physical.glyphLocalBottom=false;
+            physical.glyphLocalVerifiedBounds={};physical.glyphLocalProofReason="independent-ar-measurement";
+            physical.text.detected=result.sharedProbeDetected && !result.sharedProbeWorkLimit;
+            const int tolerance=(std::max)(1,source.height/180);
+            if(physical.independentBarAnalysis &&
+                (std::abs(bars.top-result.pictureTop)>=tolerance ||
+                 std::abs(bars.bottom-result.pictureBottom)>=tolerance)) {
+                // Only changed native geometry needs another grouping pass.
+                // Stable cues reuse this exact source's already measured ink.
+                m_scanner.Reset();
+                physical.text=m_scanner.Analyze(source,bars.top,bars.bottom,
+                    key.identity.acceptedSequence,key.identity.viewportGeneration);
+                physical.ink=m_scanner.InkSnapshot();
+            }
+        }
+        if (!physical.inspectionCandidateUsed && physical.independentBarAnalysis && physical.text.detected && !physical.text.held &&
+            !physical.text.workLimit) {
             const auto raw=nativeEvidence.available ? nativeEvidence : ExtractActivePictureEvidence(source);
-            // Prepared queued pixels use a format generation for cache ownership;
-            // the proof contract is bound to the immutable transport identity.
             auto proofSource=source;proofSource.generation=result.identity.transportGeneration;
-            result.subtitleArProof=EvaluateSubtitleAssistedVerticalBarProof(proofSource,raw,result,
+            result.subtitleArProof=EvaluateSubtitleAssistedVerticalBarProof(proofSource,raw,physical,
                 result.identity,result.policyGeneration,result.continuityGeneration,result.scriptHint);
             if (result.subtitleArProof.accepted)
                 result.subtitleArDarkness=EvaluateActivePictureArDarkness(proofSource,result.subtitleArProof.evidence);
@@ -182,6 +208,7 @@ public:
                     static_cast<unsigned long long>(key.identity.analysisDomainKey));
             }
         }
+        AttachCanonicalSubtitleContinuityInk(result,source);
         result.analysisMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         return result;
     }
@@ -196,6 +223,13 @@ private:
 class SubtitleMeasurementWorker {
 public:
     struct Diagnostics {
+        // Completed-job cohort totals, not CPU time or exact wall-window utilization.
+        // Detect duration is nested in Analyze, which is nested in job elapsed.
+        uint64_t completedJobs=0,successfulJobs=0,jobsWithoutAnalyze=0;
+        uint64_t analyzeCalls=0,detectPasses=0,rejectedInputs=0,sameFrameReuses=0;
+        double analyzeElapsedMs=0,analyzePeakMs=0,detectElapsedMs=0,detectPeakMs=0;
+        double jobElapsedMs=0,jobPeakMs=0,failedJobElapsedMs=0;
+        // Legacy completion classifications retained for older callers only.
         uint64_t fullScans=0,refreshes=0,failed=0,dropped=0,requestMisses=0;
         uint64_t submitted=0,exactReads=0,deduplicated=0,expired=0;
         double fullMs=0,fullPeakMs=0,refreshMs=0,refreshPeakMs=0,queueWaitMs=0,queueWaitPeakMs=0;
@@ -214,13 +248,16 @@ public:
         r.flags=(key.analyzed?1u:0u)|(key.text.detected?2u:0u)|(key.sharedPicture.required?4u:0u)|
             (key.sharedPicture.AvailableFor(key.identity,key.width,key.height)?8u:0u)|(key.pictureAuthorityUnavailableForMeasurement?16u:0u)|
             (key.sharedPicture.inspectionCandidate.AvailableFor(key.identity,key.width,key.height,key.policyGeneration,key.continuityGeneration)?32u:0u)|
-            (key.inspectionCandidateUsed?64u:0u);
+            (key.inspectionCandidateUsed?64u:0u)|(key.sharedNativeGeometry?128u:0u)|
+            (key.sharedNativePhysicalSupport?256u:0u)|(SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(key)?512u:0u)|
+            (key.pendingBarGlyphsVerified?1024u:0u)|(key.pendingBarGlyphsLocal?2048u:0u);
         r.counters[0]=mismatch;r.counters[1]=key.sharedPicture.identity.acceptedSequence;
         r.counters[2]=key.sharedPicture.inspectionCandidate.originIdentity.acceptedSequence;
         r.counters[3]=key.sharedPicture.inspectionCandidate.nativeGeometryRevision;
         AnalysisTraceRect(r.candidate,key.sharedPicture.inspectionCandidate.bounds);
         r.resultCode=key.text.lineCount;AnalysisTraceRect(r.subtitle,key.text.bounds);
         r.metrics[0]=key.analysisMs;r.metrics[1]=key.pictureTop;r.metrics[2]=key.pictureBottom;
+        r.metrics[3]=key.glyphLocalMismatchX;r.metrics[4]=key.glyphLocalMismatchY;r.metrics[5]=key.glyphLocalMismatchLuma;
         AnalysisDiagnosticTrace::Emit(r);
     }
     using Work=std::function<SubtitleBoxObservation(SubtitleMeasurementSampler&,const SubtitleBarTrackingReference&)>;
@@ -416,9 +453,24 @@ private:
             const double waited=std::chrono::duration<double,std::milli>(workStart-job.queued).count();
             SubtitleBoxObservation result=job.key;
             try {result=job.work(scanner,previous);previous=SubtitleBoxLookahead::AdvanceBarTrackingReference(result);} catch(...) {result.analyzed=false;}
+            const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
+            const auto detector=scanner.TakeDetectorDiagnostics();
             Trace(result,"worker-complete",result.analyzed?result.text.diagnosticReason:"analysis-failed");
             {std::lock_guard<std::mutex> lock(m_mutex);
-                const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
+                ++m_diagnostics.completedJobs;
+                if(result.analyzed)++m_diagnostics.successfulJobs;
+                else m_diagnostics.failedJobElapsedMs+=ms;
+                if(!detector.analyzeCalls)++m_diagnostics.jobsWithoutAnalyze;
+                m_diagnostics.analyzeCalls+=detector.analyzeCalls;
+                m_diagnostics.detectPasses+=detector.detectPasses;
+                m_diagnostics.rejectedInputs+=detector.rejectedInputs;
+                m_diagnostics.sameFrameReuses+=detector.sameFrameReuses;
+                m_diagnostics.analyzeElapsedMs+=detector.analyzeElapsedMs;
+                m_diagnostics.analyzePeakMs=(std::max)(m_diagnostics.analyzePeakMs,detector.analyzePeakMs);
+                m_diagnostics.detectElapsedMs+=detector.detectElapsedMs;
+                m_diagnostics.detectPeakMs=(std::max)(m_diagnostics.detectPeakMs,detector.detectPeakMs);
+                m_diagnostics.jobElapsedMs+=ms;
+                m_diagnostics.jobPeakMs=(std::max)(m_diagnostics.jobPeakMs,ms);
                 m_diagnostics.queueWaitMs+=waited;m_diagnostics.queueWaitPeakMs=(std::max)(m_diagnostics.queueWaitPeakMs,waited);
                 if(!result.analyzed)++m_diagnostics.failed;
                 else if(result.analysisRefresh){++m_diagnostics.refreshes;m_diagnostics.refreshMs+=ms;m_diagnostics.refreshPeakMs=(std::max)(m_diagnostics.refreshPeakMs,ms);}
@@ -510,9 +562,10 @@ public:
             existingCueCertificate->Matches(preview,accepted);
         const bool consumedCertificate=independentCurrentCue && m_consumedCertificate.Matches(preview,accepted);
         const bool resolvedCovers=covers(preview.text);
+        const bool localBarSeed=SubtitleBoxLookahead::CanSeedSharedLocalBarGlyphs(current);
         if(!preview.available || !preview.current.analyzed || preview.current.pendingRefresh ||
-            preview.current.discontinuity || preview.current.glyphLocalTop || preview.current.glyphLocalBottom ||
-            !preview.current.barAuthority ||
+            preview.current.discontinuity ||
+            (!localBarSeed && (preview.current.glyphLocalTop || preview.current.glyphLocalBottom || !preview.current.barAuthority)) ||
             !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
             !accepted.detected || accepted.confirmationPending || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
             !covers(preview.current.text) || (!resolvedCovers && !certifiedExistingCue && !consumedCertificate)) {
@@ -547,14 +600,32 @@ public:
         const ActivePictureFrameIdentity* backlogTemplateIdentity=nullptr,
         bool backlogRetirementOnly=false) {
         m_diagnostics={};
-        const auto key=preview.current;
+        auto key=preview.current;
+        if(!key.analyzed)SubtitleBoxLookahead::BindNativeGeometryHint(key);
         if(preview.available) {
             if(key.pendingRefresh)return false; // A repeated presentation cannot renew the budget.
-            if(key.analyzed && !key.glyphLocalTop && !key.glyphLocalBottom &&
-                key.text.detected && key.barAuthority && !key.text.workLimit) {
+            const bool localSeed=SubtitleBoxLookahead::CanSeedSharedLocalBarGlyphs(key);
+            if(key.analyzed && (localSeed || (!key.glyphLocalTop && !key.glyphLocalBottom && key.barAuthority)) &&
+                key.text.detected && !key.text.workLimit) {
                 m_reference=preview;m_samples.clear();m_elapsed=0;m_last=key.identity;
                 const int step=SubtitleBoxDetector::SamplingStep(source.width,source.height);
-                for(int line=0;line<key.text.lineCount && line<3;++line) {
+                if(localSeed) {
+                    const auto& roi=key.glyphLocalVerifiedBounds;
+                    if(!key.ink || key.ink->step!=step || key.ink->sourceRows.size()!=size_t(key.ink->height))
+                        return Reject("seed-local-grid-unavailable");
+                    int priorY=-1;
+                    for(int y:key.ink->sourceRows) {
+                        if(y<=priorY || y<0 || y>=source.height)return Reject("seed-local-grid-unavailable");
+                        priorY=y;
+                        if(y<roi.top || y>=roi.bottom)continue;
+                        for(int x=((roi.left+step-1)/step)*step;x<roi.right;x+=step) {
+                            AnalysisLumaSample value;
+                            if(m_samples.size()>=32768 || !source.Sample(x,y,value))return Reject("seed-sample-unavailable");
+                            m_samples.push_back({x,y,value});
+                        }
+                    }
+                    if(m_samples.empty())return Reject("seed-local-grid-unavailable");
+                } else for(int line=0;line<key.text.lineCount && line<3;++line) {
                     const auto r=key.text.lineBounds[line];
                     for(int y=(std::max)(0,r.top-step);y<(std::min)(source.height,r.bottom+step);y+=step)
                         for(int x=(std::max)(0,r.left-step);x<(std::min)(source.width,r.right+step);x+=step) {
@@ -610,6 +681,8 @@ public:
                 (a.sourceFrameNumber && b.sourceFrameNumber>a.sourceFrameNumber &&
                  b.sourceFrameNumber-a.sourceFrameNumber==sourceGap));
         if(context && !backlogReassociation)return Reject("pending-context-changed");
+        const bool localReference=SubtitleBoxLookahead::CanSeedSharedLocalBarGlyphs(old);
+        int currentLocalBlackFloor=1023;
         for(const auto& sample:m_samples) {
             AnalysisLumaSample now;
             ++m_diagnostics.glyphSamplesChecked;
@@ -621,37 +694,66 @@ public:
                 m_diagnostics.glyphMismatchY=sample.y;
                 return Reject("current-pixels-changed");
             }
+            if(localReference && now.luma<=96 && std::abs(int(now.chromaU)-512)<=48 &&
+                std::abs(int(now.chromaV)-512)<=48)
+                currentLocalBlackFloor=(std::min)(currentLocalBlackFloor,int(now.luma));
         }
+        if(localReference && currentLocalBlackFloor>96)return Reject("current-local-backing-unavailable");
         SubtitleBarEvidence bars;
+        bool pendingSharedBar=false;
         m_diagnostics.expectedTop=old.pictureTop;
         m_diagnostics.expectedBottom=old.pictureBottom;
         if(key.sharedPicture.required) {
             m_diagnostics.sharedPictureMatches=key.sharedPicture.Matches(old.sharedPicture);
-            m_diagnostics.sharedPictureCurrent=
-                key.sharedPicture.AvailableFor(key.identity,source.width,source.height);
-            if(!m_diagnostics.sharedPictureMatches || !m_diagnostics.sharedPictureCurrent)
+            m_diagnostics.sharedPictureCurrent=SubtitleBoxLookahead::HasSharedNativeGeometry(key);
+            const int tolerance=(std::max)(1,source.height/180);
+            const auto& oldBounds=old.inspectionCandidateUsed?old.sharedPicture.inspectionCandidate.bounds:old.sharedPicture.bounds;
+            const auto& nextBounds=key.inspectionCandidateUsed?key.sharedPicture.inspectionCandidate.bounds:key.sharedPicture.bounds;
+            const bool stableHint=oldBounds.left==nextBounds.left && oldBounds.right==nextBounds.right &&
+                oldBounds.rasterWidth==nextBounds.rasterWidth && oldBounds.rasterHeight==nextBounds.rasterHeight &&
+                SubtitleBoxLookahead::HasSharedNativeGeometry(old) &&
+                m_diagnostics.sharedPictureCurrent &&
+                std::abs(old.pictureTop-key.pictureTop)<tolerance &&
+                std::abs(old.pictureBottom-key.pictureBottom)<tolerance;
+            if(!stableHint && (!m_diagnostics.sharedPictureMatches ||
+                !key.sharedPicture.AvailableFor(key.identity,source.width,source.height)))
                 return Reject("shared-picture-changed");
-            // Matching retained Classic geometry does not prove that its bar
-            // planes still exist on this frame. Pending reuse needs the same
-            // current-pixel proof as a complete shared measurement, and the
-            // effective analysis planes must equal the accepted cue's planes.
-            // Pending render-thread reuse cannot admit nearby/reference proof;
-            // leave the extra search to the asynchronous full measurement.
-            bars=ResolveCurrentSubtitleAnalysisBars(source,ExtractSubtitleBarEvidence(source),
-                key.sharedPicture.bounds.top,key.sharedPicture.bounds.bottom,nullptr,nullptr,false);
+            const auto physical=localReference?SubtitleBarEvidence{}:ExtractSubtitleBarEvidence(source);
+            if(stableHint) {
+                auto pending=old;
+                pending.identity=b;pending.sharedPicture=key.sharedPicture;
+                pending.sharedNativeGeometry=true;pending.inspectionCandidateUsed=key.inspectionCandidateUsed;
+                pending.pictureTop=key.pictureTop;pending.pictureBottom=key.pictureBottom;
+                pending.policyGeneration=key.policyGeneration;pending.continuityGeneration=key.continuityGeneration;
+                pending.pendingRefresh=true;pending.pendingBarGlyphsVerified=true;
+                pending.pendingBarGlyphsLocal=localReference;
+                if(localReference) {pending.independentBarAnalysis=false;pending.sharedNativePhysicalSupport=false;
+                    pending.glyphLocalBlackFloor=currentLocalBlackFloor;}
+                pending.discontinuity=false;pending.analysisRefresh=false;
+                pending.barEvidence=physical;pending.barAuthority=physical.available;
+                pending.barTrackingAuthority=false;pending.currentAnchorUsesTrackedEdge=false;
+                pending.glyphSupportIdentity=b;pending.glyphSupportPolicy=key.policyGeneration;
+                pending.glyphSupportContinuity=key.continuityGeneration;
+                pending.glyphSupportTop=key.pictureTop;pending.glyphSupportBottom=key.pictureBottom;
+                pendingSharedBar=SubtitleBoxLookahead::HasPendingSharedBarGlyphSupport(pending);
+            }
+            if(localReference && !pendingSharedBar)return Reject("pending-local-geometry-changed");
+            if(pendingSharedBar)bars=physical;
+            else {
+                if(!m_diagnostics.sharedPictureMatches ||
+                    !key.sharedPicture.AvailableFor(key.identity,source.width,source.height))
+                    return Reject("shared-picture-changed");
+                bars=ResolveCurrentSubtitleAnalysisBars(source,physical,
+                    key.sharedPicture.bounds.top,key.sharedPicture.bounds.bottom,nullptr,nullptr,false);
+                if(!bars.available || bars.topRevalidatedAtReference || bars.topRevalidatedNearby ||
+                    bars.bottomRevalidatedAtReference || bars.bottomRevalidatedNearby ||
+                    bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom)
+                    return Reject("current-bars-changed");
+            }
             m_diagnostics.barsAvailable=bars.available;
             m_diagnostics.topRevalidated=bars.topRevalidatedAtReference;
             m_diagnostics.bottomRevalidated=bars.bottomRevalidatedAtReference;
-            m_diagnostics.measuredTop=bars.top;
-            m_diagnostics.measuredBottom=bars.bottom;
-            // No fresh detector ink exists on a pending frame. A fixed-plane
-            // revalidation could otherwise mistake the old glyphs themselves
-            // for an encoded edge after the physical bar disappears.
-            if(!bars.available || bars.topRevalidatedAtReference || bars.topRevalidatedNearby ||
-                bars.bottomRevalidatedAtReference ||
-                bars.bottomRevalidatedNearby ||
-                bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom)
-                return Reject("current-bars-changed");
+            m_diagnostics.measuredTop=bars.top;m_diagnostics.measuredBottom=bars.bottom;
         } else {
             bars=ExtractSubtitleBarEvidence(source);
             m_diagnostics.barsAvailable=bars.available;
@@ -675,6 +777,23 @@ public:
         preview.current.currentAnchorUsesTrackedEdge=false;preview.current.hasBarTrackingReference=false;
         preview.current.analysisMs=0;preview.current.analysisRefresh=false;
         preview.current.pendingRefresh=true;
+        preview.current.pendingBarGlyphsVerified=pendingSharedBar;
+        preview.current.pendingBarGlyphsLocal=pendingSharedBar && localReference;
+        if(pendingSharedBar) {
+            preview.current.sharedNativeGeometry=true;
+            preview.current.sharedNativePhysicalSupport=false;
+            preview.current.inspectionCandidateUsed=key.inspectionCandidateUsed;
+            preview.current.pictureTop=key.pictureTop;preview.current.pictureBottom=key.pictureBottom;
+            preview.current.barAuthority=bars.available;preview.current.independentBarAnalysis=false;
+            preview.current.glyphLocalTop=preview.current.glyphLocalBottom=false;
+            if(!localReference)preview.current.glyphLocalVerifiedBounds={};
+            else preview.current.glyphLocalBlackFloor=currentLocalBlackFloor;
+            preview.current.glyphSupportIdentity=b;
+            preview.current.glyphSupportPolicy=key.policyGeneration;
+            preview.current.glyphSupportContinuity=key.continuityGeneration;
+            preview.current.glyphSupportTop=key.pictureTop;preview.current.glyphSupportBottom=key.pictureBottom;
+            preview.current.text.topSearchComplete=preview.current.text.bottomSearchComplete=false;
+        }
         preview.current.incomingBarTrackingReference={};
         preview.current.subtitleArProof={};preview.current.subtitleArDarkness={};
         preview.current.barStripClearance={};

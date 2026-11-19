@@ -83,7 +83,6 @@ namespace VideoProcessorTest
 				{ 1.90, L"1.90:1", L"Digital IMAX" },
 				{ 2.00, L"2.00:1", L"Univisium" },
 				{ 2.20, L"2.20:1", L"70mm / Todd-AO" },
-				{ 21.0 / 9.0, L"21:9", L"Consumer ultrawide" },
 				{ 2.35, L"2.35:1", L"CinemaScope" },
 				{ 2.39, L"2.39:1", L"Scope" },
 				{ 2.40, L"2.40:1", L"Scope" },
@@ -127,6 +126,8 @@ namespace VideoProcessorTest
 			Assert::IsTrue(AspectRatioOsd::Classify(
 				2.0 * 2.39 * 2.40 / (2.39 + 2.40)).ratio == L"2.39:1");
 			Assert::IsTrue(AspectRatioOsd::Classify(2.345).ratio == L"2.35:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(21.0 / 9.0).ratio == L"2.35:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(2.324455).ratio == L"2.35:1");
 			AspectRatioOsd osd;
 			DetectedPictureAspect reading{1, 1, 2.39, true};
 			Assert::IsTrue(osd.Update(reading, 1000).ratio == L"2.39:1");
@@ -155,6 +156,52 @@ namespace VideoProcessorTest
 			reading.ratio = 1.90;
 			Assert::IsTrue(osd.Update(reading, 16600).ratio == L"1.90:1");
 			Assert::IsTrue(osd.Update(reading, 16600).name == L"Digital IMAX");
+		}
+
+		TEST_METHOD(AspectOsdDiagnosticsSeparateRawLabelAndReportHeldReads)
+		{
+			AspectRatioOsd osd;
+			DetectedPictureAspect reading{ 7, 3, 2.345, true };
+			Assert::IsTrue(osd.Update(reading, 1000).ratio == L"2.35:1");
+			auto state = osd.GetDiagnosticState(1100);
+			Assert::IsTrue(state.readStatus == AspectRatioOsd::ReadStatus::AVAILABLE);
+			Assert::AreEqual(2.345, state.lastReading.ratio, 1e-12);
+			Assert::IsTrue(state.displayedLabel.ratio == L"2.35:1");
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::CURRENT);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
+			Assert::IsFalse(osd.ShouldLogDiagnostic(osd.GetDiagnosticState(1200)));
+
+			reading.publicationGeneration = 4;
+			reading.ratio = 2.40;
+			osd.Update(reading, 1300);
+			state = osd.GetDiagnosticState(1600);
+			Assert::AreEqual(2.40, state.lastReading.ratio, 1e-12);
+			Assert::IsTrue(state.displayedLabel.ratio == L"2.35:1");
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::HELD_AMBIGUOUS);
+			Assert::AreEqual(uint64_t(300), state.holdAgeMs);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
+
+			osd.MarkReadBusy(1700);
+			state = osd.GetDiagnosticState(1800);
+			Assert::IsTrue(state.readStatus == AspectRatioOsd::ReadStatus::BUSY);
+			Assert::AreEqual(uint64_t(500), state.lastReadAgeMs);
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::HELD_BUSY);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
+			Assert::IsFalse(osd.ShouldLogDiagnostic(osd.GetDiagnosticState(1900)));
+
+			reading.available = false;
+			reading.ratio = 0.0;
+			osd.Update(reading, 2000);
+			state = osd.GetDiagnosticState(2500);
+			Assert::IsTrue(state.readStatus == AspectRatioOsd::ReadStatus::UNAVAILABLE);
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::HELD_UNAVAILABLE);
+			Assert::AreEqual(uint64_t(500), state.holdAgeMs);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
+			osd.Update(reading, 12000);
+			state = osd.GetDiagnosticState(12000);
+			Assert::IsTrue(state.displayedLabel.ratio == L"---");
+			Assert::IsTrue(state.labelStatus == AspectRatioOsd::LabelStatus::UNKNOWN);
+			Assert::IsTrue(osd.ShouldLogDiagnostic(state));
 		}
 
 		TEST_METHOD(RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads)

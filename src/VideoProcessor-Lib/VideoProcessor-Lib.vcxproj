@@ -269,6 +269,9 @@
     <ClInclude Include="ActivePictureTransitionModel.h" />
 	<ClInclude Include="AnalysisLumaSource.h" />
     <ClInclude Include="AnalysisFrame.h" />
+    <ClInclude Include="ExperimentalAspectDetector.h" />
+    <ClInclude Include="vprenderer\ExperimentalAspectShadow.h" />
+    <ClInclude Include="vprenderer\ExperimentalAspectActive.h" />
     <ClInclude Include="AnalysisDiagnosticTrace.h" />
     <ClInclude Include="AnalysisDiagnosticHooks.h" />
     <ClInclude Include="SubtitleBoxDetector.h" />

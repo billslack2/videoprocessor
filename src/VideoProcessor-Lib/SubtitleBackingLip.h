@@ -175,6 +175,11 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const auto reject=[&](const char* why){result.reason=why;return result;};
     const auto& current=preview.current;
     result.pictureTop=current.pictureTop;result.pictureBottom=current.pictureBottom;
+    // Shared native bounds nominate this contour search only. Fresh local
+    // glyph support replaces no body/outline samples and grants no AR proof.
+    const bool pendingBarSupport=SubtitleBoxLookahead::HasPendingSharedBarGlyphSupport(current);
+    const bool sharedCurrentSupport=SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(current) || pendingBarSupport;
+    const bool sharedLocalSupport=sharedCurrentSupport && !current.sharedNativePhysicalSupport && (!pendingBarSupport || current.pendingBarGlyphsLocal);
     const bool localGlyphContinuation=HasExactCurrentLocalGlyphContinuationForLip(
         glyphContinuity,preview,accepted,expectedIdentity,policy,continuity);
     auto acceptedForProof=accepted;
@@ -232,8 +237,10 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         result.contextMismatchMask|=LipContextLocalContinuationUnavailable;
     if(current.glyphLocalTop)result.contextMismatchMask|=LipContextGlyphLocalTop;
     if(current.glyphLocalBottom)result.contextMismatchMask|=LipContextGlyphLocalBottom;
-    if(!current.barAuthority)result.contextMismatchMask|=LipContextBarAuthorityUnavailable;
-    if(!current.barEvidence.available)result.contextMismatchMask|=LipContextBarEvidenceUnavailable;
+    if(!current.barAuthority && !sharedLocalSupport)result.contextMismatchMask|=LipContextBarAuthorityUnavailable;
+    if(!current.barEvidence.available && !sharedLocalSupport)result.contextMismatchMask|=LipContextBarEvidenceUnavailable;
+    if(current.sharedNativeGeometry && !sharedCurrentSupport)
+        result.contextMismatchMask|=LipContextLocalContinuationUnavailable;
     if(!SameAnalysisFrameIdentity(current.identity,expectedIdentity))result.contextMismatchMask|=LipContextIdentityMismatch;
     if(preview.policyGeneration!=policy)result.contextMismatchMask|=LipContextPreviewPolicyMismatch;
     if(current.policyGeneration!=policy)result.contextMismatchMask|=LipContextCurrentPolicyMismatch;
@@ -309,7 +316,9 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     // Cleanup only needs the physical edge on the subtitle's own side.
     // Missing or tracked evidence on the opposite edge cannot veto a fresh
     // local contour, but it cannot enlarge the returned cleanup rectangle.
-    const bool cueSideGlyphLocal=allTop?current.glyphLocalTop:current.glyphLocalBottom;
+    const bool cueSideGlyphLocal=(allTop?current.glyphLocalTop:current.glyphLocalBottom) ||
+        (pendingBarSupport && current.pendingBarGlyphsLocal);
+    const bool sharedCueSide=sharedLocalSupport && cueSideGlyphLocal;
     const int edgeStep=(std::max)(1,source.height/540);
     const bool cueSideRawEdge=allTop?
         current.barEvidence.topDepth>=2*edgeStep+1 && current.barEvidence.topSupport>=26 &&
@@ -318,13 +327,28 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         current.barEvidence.bottomDepth>=2*edgeStep+1 && current.barEvidence.bottomSupport>=26 &&
             current.barEvidence.bottomBoundarySupport>=8 && current.barEvidence.bottomBlackFraction>=0.85 &&
             current.barEvidence.bottomMaxIntrusion<25;
+    // The AR owner's plane may jitter within the existing native tolerance.
+    // Only a current physical certificate plus actual cue-side edge metrics
+    // nominates that nearby contour; the finite current-pixel proof is unchanged.
+    const bool sharedPhysicalNear=sharedCurrentSupport && (current.sharedNativePhysicalSupport || (pendingBarSupport && !current.pendingBarGlyphsLocal)) &&
+        !cueSideGlyphLocal && (allTop?
+            current.barEvidence.top>0 &&
+                std::abs(int64_t(current.barEvidence.top)-current.pictureTop)<=(std::max)(1,source.height/180):
+            current.barEvidence.bottom<source.height &&
+                std::abs(int64_t(current.barEvidence.bottom)-current.pictureBottom)<=(std::max)(1,source.height/180));
     const bool cueSideCurrent=current.barAuthority && current.barEvidence.available && cueSideRawEdge && (allTop?
-        current.pictureTop>0 && current.barEvidence.top==current.pictureTop &&
+        current.pictureTop>0 && (current.barEvidence.top==current.pictureTop || sharedPhysicalNear) &&
             !cueSideGlyphLocal && !current.barEvidence.captionBackedTop && !current.barEvidence.topRevalidatedAtReference &&
             !current.barEvidence.topRevalidatedNearby:
-        current.pictureBottom<source.height && current.barEvidence.bottom==current.pictureBottom &&
+        current.pictureBottom<source.height && (current.barEvidence.bottom==current.pictureBottom || sharedPhysicalNear) &&
             !cueSideGlyphLocal && !current.barEvidence.captionBackedBottom && !current.barEvidence.bottomRevalidatedAtReference &&
             !current.barEvidence.bottomRevalidatedNearby);
+    if(sharedPhysicalNear && cueSideCurrent) {
+        // Current physical pixels own the contour attachment. The AR hint may
+        // only clip its visible interval, never extend search into black matte.
+        if(allTop)result.pictureTop=(std::max)(result.pictureTop,current.barEvidence.top);
+        else result.pictureBottom=(std::min)(result.pictureBottom,current.barEvidence.bottom);
+    }
     const bool currentCueSideBoundary=HasCurrentSubtitleLipBoundaryRevalidation(
         current,allTop,source,policy,continuity);
     // A current independently measured edge can vary by one native analysis
@@ -332,15 +356,15 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     // revalidating that finite outline instead of cold-acquiring it each frame.
     // Caption metadata without current boundary proof retains the three-row limit.
     const int64_t candidateEdgeDelta=boundedOutline?(allTop?
-        std::abs(int64_t(current.pictureTop)-candidate->pictureTop):
-        std::abs(int64_t(current.pictureBottom)-candidate->pictureBottom)):0;
-    const bool stableCompositionEdge=boundedOutline && (cueSideCurrent || currentCueSideBoundary) && composition &&
+        std::abs(int64_t(result.pictureTop)-candidate->pictureTop):
+        std::abs(int64_t(result.pictureBottom)-candidate->pictureBottom)):0;
+    const bool stableCompositionEdge=boundedOutline && (cueSideCurrent || currentCueSideBoundary || sharedCueSide) && composition &&
         composition->valid && composition->fromTopBar==allTop &&
         composition->pictureTop>=0 && composition->pictureBottom<=source.height &&
         composition->pictureTop<composition->pictureBottom &&
         candidateEdgeDelta<=(std::max)(3,edgeStep) && (allTop?
-            (std::max)(current.pictureTop,composition->pictureTop)==candidate->pictureTop:
-            (std::min)(current.pictureBottom,composition->pictureBottom)==candidate->pictureBottom);
+            (std::max)(result.pictureTop,composition->pictureTop)==candidate->pictureTop:
+            (std::min)(result.pictureBottom,composition->pictureBottom)==candidate->pictureBottom);
     const bool candidateCueSideWithinTolerance=boundedOutline && candidate->fromTopBar==allTop &&
         (candidateEdgeDelta<=3 || stableCompositionEdge);
     // A caption-backed cue-side edge can revalidate an existing contour only
@@ -359,11 +383,11 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
         current.text.nearBarEligibilityMeasured && current.text.nearBarEligible;
     const bool candidateCueSideRevalidated=currentCueSideBoundary &&
         (candidateCueSideWithinTolerance || freshInitialCue);
-    if(!cueSideCurrent && !captionEdgeOutward && !candidateCueSideRevalidated) {
+    if(!cueSideCurrent && !captionEdgeOutward && !candidateCueSideRevalidated && !sharedCueSide) {
         result.contextMismatchMask|=allTop?LipContextCueSideTopUnavailable:LipContextCueSideBottomUnavailable;
         return reject("lip-current-context-unavailable");
     }
-    if(candidateCueSideWithinTolerance && (cueSideCurrent || captionEdgeOutward || candidateCueSideRevalidated)) {
+    if(candidateCueSideWithinTolerance && (cueSideCurrent || captionEdgeOutward || candidateCueSideRevalidated || sharedCueSide)) {
         if(allTop)result.pictureTop=(std::max)(result.pictureTop,candidate->pictureTop);
         else result.pictureBottom=(std::min)(result.pictureBottom,candidate->pictureBottom);
         result.outlineBaseAnchored=(allTop?result.pictureTop!=current.pictureTop:
@@ -387,7 +411,8 @@ inline CurrentSubtitleBackingLipProof ProveCurrentSubtitleBackingLip(
     const int glyphHeight=SubtitleTypicalLineHeight(acceptedForProof);
     if(glyphHeight<4 || glyphHeight>source.height/4)
         return reject("lip-glyph-height-unavailable");
-    const int floor=allTop?current.barEvidence.topFloor:current.barEvidence.bottomFloor;
+    const int floor=sharedCueSide?current.glyphLocalBlackFloor:
+        (allTop?current.barEvidence.topFloor:current.barEvidence.bottomFloor);
     if(floor<0 || floor>96)return reject("lip-physical-black-floor-unavailable");
     const int darkLimit=floor+4;
     const int depthLimit=(std::min)(128,glyphHeight);
@@ -783,8 +808,22 @@ inline SubtitleCutPasteGeometry ApplyCurrentSubtitleBackingLip(
     const auto contains=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b){return a.Valid() && b.Valid() &&
         b.left>=a.left && b.top>=a.top && b.right<=a.right && b.bottom<=a.bottom;};
     if(!geometry.valid || !proof.valid)return reject("lip-application-unavailable");
-    if(geometry.generatedCleanup.Valid() || geometry.generatedCleanupRowCount || geometry.cleanupLimit.Valid())
+    // Current shared glyph support is a separate source-capture footprint.
+    // Its padded glyph fringe may already erase a rectangle wholly inside the
+    // fresh lip's common black interior. The verified finite rows cover every
+    // such pixel; any other existing cleanup retains its independent owner.
+    const bool containedSharedCleanup=geometry.sourceSupportRequired &&
+        !geometry.generatedCleanupRowCount &&
+        (!geometry.generatedCleanup.Valid() || contains(proof.cleanup,geometry.generatedCleanup)) &&
+        (!geometry.generatedCleanupExclusion.Valid() || contains(proof.cleanup,geometry.generatedCleanupExclusion));
+    if((!containedSharedCleanup && (geometry.generatedCleanup.Valid() ||
+            geometry.generatedCleanupRowCount || geometry.generatedCleanupExclusion.Valid())) ||
+        (geometry.cleanupLimit.Valid() && !geometry.sourceSupportRequired))
         return reject("lip-application-existing-cleanup");
+    if(geometry.cleanupLimit.Valid() &&
+        (!contains(geometry.cleanupLimit,geometry.content) ||
+         !contains(geometry.cleanupLimit,geometry.pictureCapture)))
+        return reject("lip-application-invalid-glyph-support");
     if(!SameAnalysisFrameIdentity(proof.identity,expectedIdentity) ||
         proof.policyGeneration!=policy || proof.continuityGeneration!=continuity)
         return reject("lip-application-context-mismatch");
@@ -874,6 +913,20 @@ public:
         const bool matches=m_outline.valid && candidateMismatch==0;
         auto proof=ProveCurrentSubtitleBackingLip(source,preview,text,identity,policy,continuity,
             maxSamples,matches?&m_outline:nullptr,composition,glyphContinuity);
+        // A clipped prior outline can fail the outward-edge test even when
+        // the unchanged current card has a fully provable finite boundary.
+        // Reacquire from this source, not the remembered body, using only the
+        // unspent portion of the existing budget. Real expansion, changed ink
+        // and ambiguous black objects still face every cold-acquisition check.
+        if(matches && !proof.valid && proof.reason &&
+            std::strcmp(proof.reason,"lip-outline-edge-expansion-not-bar")==0 &&
+            proof.samples<maxSamples) {
+            const auto spent=proof.samples;
+            proof=ProveCurrentSubtitleBackingLip(source,preview,text,identity,policy,continuity,
+                maxSamples-spent,nullptr,composition,glyphContinuity);
+            proof.samples+=spent;
+            if(proof.valid)proof.reason="current-reacquired-backing-after-edge-wobble";
+        }
         proof.candidatePresent=m_outline.valid;
         proof.candidateMatched=matches && proof.candidateMatched;
         proof.candidateMismatchMask|=candidateMismatch;

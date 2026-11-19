@@ -8,6 +8,8 @@
 struct SubtitleLocalGlyphProof
 {
     bool accepted = false;
+    int mismatchX=-1,mismatchY=-1,mismatchLuma=-1;
+    int blackFloor = 0; // Minimum freshly sampled neutral-dark support code.
     SubtitleBoxRect verifiedBounds;
     const char* reason = "invalid-candidate";
 };
@@ -140,5 +142,165 @@ inline SubtitleLocalGlyphProof ProveLocalSubtitleGlyphBacking(
     result.accepted=true;
     result.reason="current-glyph-local-backing";
     result.verifiedBounds=verified; // The full returned rectangle was just sampled.
+    return result;
+}
+
+
+// Geometry-neutral worker proof for a caption found using established native
+// geometry. Only CURRENT detector-owned glyphs and the surrounding sampled
+// backing are checked; no physical edge, absence outside this rectangle, or
+// AR authority is inferred. The caller binds the result to its exact source
+// identity and geometry revision. verifiedBounds is sampled support, not an
+// exhaustive native-pixel ownership mask for arbitrary shader extraction.
+inline SubtitleLocalGlyphProof ProveCurrentSubtitleGlyphBacking(
+    const AnalysisLumaSource& source, const SubtitleBoxResult& text,
+    const SubtitleInkSnapshot* ink, size_t maxSamples=64000)
+{
+    SubtitleLocalGlyphProof result;
+    if(!source.IsValid() || !text.detected || text.held || text.confirmationPending ||
+        text.workLimit || !text.bounds.Valid() || !text.anchor.Valid() || !ink ||
+        !ink->rawEvidenceComplete || !ink->paletteValid ||
+        !text.nearBarEligibilityMeasured || !text.nearBarEligible ||
+        text.lineCount<1 || text.lineCount>3)return result;
+    const int step=ink->step;
+    const auto& box=text.bounds;
+    const auto& anchor=text.anchor;
+    if(step<1 || step>8 || step!=SubtitleBoxDetector::SamplingStep(source.width,source.height) ||
+        ink->width<1 || ink->width>960 || ink->height<1 || ink->height>540 ||
+        ink->width!=(source.width+step-1)/step || ink->height!=(source.height+step-1)/step ||
+        ink->sourceRows.size()!=size_t(ink->height) ||
+        ink->inkFloor<0 || ink->inkFloor>1023 || ink->blackLimit<0 || ink->blackLimit>=ink->inkFloor ||
+        ink->inkU<0 || ink->inkU>1023 || ink->inkV<0 || ink->inkV>1023) {
+        result.reason="invalid-grid-or-palette";return result;
+    }
+    const size_t words=(size_t(ink->width)*ink->height+63)/64;
+    if(ink->rawInk.size()!=words || ink->ownedInk.size()!=words) {
+        result.reason="invalid-ink-mask";return result;
+    }
+    for(size_t i=0;i<words;++i)if(ink->ownedInk[i]&~ink->rawInk[i]) {
+        result.reason="invalid-ink-ownership";return result;
+    }
+    if(box.left<0 || box.top<0 || box.right>source.width || box.bottom>source.height ||
+        box.right-box.left>source.width*4/5 || box.bottom-box.top>source.height/3 ||
+        anchor.left<box.left || anchor.top<box.top || anchor.right>box.right || anchor.bottom>box.bottom) {
+        result.reason="unbounded-current-cue";return result;
+    }
+    for(int line=0;line<text.lineCount;++line) {
+        const auto& r=text.lineBounds[line];
+        if(!r.Valid() || r.left<box.left || r.top<box.top || r.right>box.right || r.bottom>box.bottom) {
+            result.reason="invalid-current-line";return result;
+        }
+    }
+    // Keep the complete native glyph capture fringe and every nominated
+    // current backing margin. Panels nominate the verification footprint;
+    // only the fresh samples below grant local support, never their metadata.
+    // text.bounds includes detector/display padding. Verify the actual
+    // native capture fringe (the same one used by SubtitleGlyphCaptureLines),
+    // without padding that may legitimately contain live picture pixels.
+    SubtitleBoxRect verified;
+    for(int line=0;line<text.lineCount;++line) {
+        const auto& r=text.lineBounds[line];
+        const SubtitleBoxRect capture{(std::max)(0,r.left-(step-1)-2),
+            (std::max)(0,r.top-(step-1)),(std::min)(source.width,r.right+2),r.bottom};
+        if(!verified.Valid())verified=capture;
+        else verified={(std::min)(verified.left,capture.left),(std::min)(verified.top,capture.top),
+            (std::max)(verified.right,capture.right),(std::max)(verified.bottom,capture.bottom)};
+    }
+    // The detector's capture/card envelopes can include an inferred bridge
+    // to the AR plane. This proof certifies current glyph capture only; a
+    // broader current finite-card proof owns cleanup independently.
+    const int firstX=(verified.left+step-1)/step,lastX=(verified.right-1)/step;
+    const int columns=lastX-firstX+1;
+    int firstRow=source.height,lastRow=-1,rowCount=0;
+    for(int iy=0;iy<ink->height;++iy) {
+        const int y=ink->sourceRows[size_t(iy)];
+        if(y<0 || y>=source.height || (iy &&
+            (y<=ink->sourceRows[size_t(iy-1)] || y-ink->sourceRows[size_t(iy-1)]>2*step))) {
+            result.reason="invalid-source-rows";return result;
+        }
+        if(y>=verified.top && y<verified.bottom) {
+            firstRow=(std::min)(firstRow,y);lastRow=y;++rowCount;
+        }
+    }
+    const size_t budget=(std::min)(maxSamples,size_t(64000));
+    if(columns<3 || rowCount<2 || !budget || size_t(columns)*size_t(rowCount)>budget) {
+        result.reason="local-work-limit";return result;
+    }
+    if(firstRow>verified.top+step || lastRow<verified.bottom-step-1) {
+        result.reason="unread-local-row";return result;
+    }
+    const auto inLine=[&](int x,int y,int line) {
+        const auto& r=text.lineBounds[line];
+        return x>=r.left && x<r.right && y>=r.top && y<r.bottom;
+    };
+    const auto ownedAt=[&](int ix,int iy) {
+        if(ix<0 || iy<0 || ix>=ink->width || iy>=ink->height || !ink->Get(ix,iy,true))return false;
+        for(int line=0;line<text.lineCount;++line)
+            if(inLine(ix*step,ink->sourceRows[size_t(iy)],line))return true;
+        return false;
+    };
+    unsigned lineOwned[3]{},lineBacking[3]{},lineRows[3]{};
+    unsigned tiles[3]{},tested=0,backing=0,nonblack=0;
+    size_t samples=0;
+    int currentBlackFloor=1023;
+    const int blackLimit=(std::min)(96,(std::max)(32,ink->blackLimit+12));
+    for(int iy=0;iy<ink->height;++iy) {
+        const int y=ink->sourceRows[size_t(iy)];
+        if(y<verified.top || y>=verified.bottom)continue;
+        bool lineHasOwned[3]{};
+        for(int ix=firstX;ix<=lastX;++ix) {
+            AnalysisLumaSample pixel;
+            if(samples>=budget) {result.reason="local-work-limit";return result;}
+            ++samples;
+            if(!source.Sample(ix*step,y,pixel)) {result.reason="sample-failed";return result;}
+            ++tested;
+            const bool palette=std::abs(int(pixel.chromaU)-ink->inkU)<=80 &&
+                std::abs(int(pixel.chromaV)-ink->inkV)<=80;
+            const bool owned=ownedAt(ix,iy);
+            if(owned) {
+                // A stale mask may not explain even a small missing component.
+                if(!palette || pixel.luma<ink->inkFloor) {
+                    result.reason="current-owned-glyph-unproved";return result;
+                }
+                ++nonblack;
+                for(int line=0;line<text.lineCount;++line)if(inLine(ix*step,y,line)) {
+                    ++lineOwned[line];lineHasOwned[line]=true;
+                }
+                continue;
+            }
+            const bool dark=pixel.luma<=blackLimit &&
+                std::abs(int(pixel.chromaU)-512)<=48 && std::abs(int(pixel.chromaV)-512)<=48;
+            if(dark) {
+                currentBlackFloor=(std::min)(currentBlackFloor,int(pixel.luma));
+                ++backing;++tiles[(std::min)(2,(ix-firstX)*3/columns)];
+                for(int line=0;line<text.lineCount;++line)
+                    if(inLine(ix*step,y,line))++lineBacking[line];
+                continue;
+            }
+            // Allow current palette-compatible antialias fringe immediately
+            // beside an owned sample, never unrelated brightness/colored scene.
+            bool adjacent=false;
+            for(int dy=-1;dy<=1 && !adjacent;++dy)for(int dx=-1;dx<=1;++dx)
+                adjacent |= ownedAt(ix+dx,iy+dy);
+            if(!palette || !adjacent) {
+                result.reason="unowned-local-pixel-not-dark";
+                result.mismatchX=ix*step;result.mismatchY=y;result.mismatchLuma=pixel.luma;return result;
+            }
+            ++nonblack;
+        }
+        for(int line=0;line<text.lineCount;++line)lineRows[line]+=lineHasOwned[line];
+    }
+    for(int line=0;line<text.lineCount;++line)
+        if(lineOwned[line]<6 || lineRows[line]<2 || lineBacking[line]<24) {
+            result.reason="current-line-support-incomplete";return result;
+        }
+    int supportedTiles=0;
+    for(int tile=0;tile<3;++tile)supportedTiles+=tiles[tile]>=8;
+    if(backing<48 || supportedTiles<2 || nonblack*2>tested) {
+        result.reason="insufficient-unowned-backing";return result;
+    }
+    result.accepted=true;result.blackFloor=currentBlackFloor;
+    result.reason="current-glyph-union-backing";
+    result.verifiedBounds=verified;
     return result;
 }
