@@ -260,3 +260,7 @@ User reports playback looked good. The trial log through 21:33:57 records two sc
 ## Integrated and deployed on November 18
 
 Created v2.0.7-beta from acdb89bf and fast-forwarded to tested 535d7d8432f5dcf179483d62c1817ae05bb214ef. Built the x64 Release host and both renderers from the clean beta checkout. Deployed to C:\Videoprocessor\vp and enabled AR through vp-ar-trial.mode. Verified deployed hashes and preserved active cfg/state hashes. Backup and verified file list are in deployment-backups/v207-20261118-214435/deployment-receipt.json. Playback timing on the deployed copy remains open for observation.
+
+## November 19 raised-bar and transition integration
+
+Merged PR [267](https://github.com/billslack2/videoprocessor/pull/267) into v2.0.7-beta at 36a49feb4687. The x64 Release host and both renderers built from b18772140856. The standalone spatial detector suite and 621 targeted native regressions passed. The offline pixel-transition check reported the Eternals scope-to-IMAX cut and renderer layout at source 18838, with zero frames of relative lag. The capture with missing cut frames returned inconclusive. Input-frame diagnostic sessions now record selected sequence, source/destination crop, and submission/presentation timing when available. The logging addition has build and regression verification; a new live capture is still needed to verify its output on the viewing system.
