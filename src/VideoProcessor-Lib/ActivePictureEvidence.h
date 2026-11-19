@@ -121,6 +121,9 @@ struct ActivePictureVerticalBarProfile
 	const char* reason = "not-required";
 };
 
+ActivePictureVerticalBarProfile InspectNativeVerticalBars(const AnalysisLumaSource& source,
+    const ActivePictureBounds& candidate, const AnalysisEvaluationBudget* budget);
+
 struct ActivePictureEvidence
 {
     ActivePictureBlackReference blackReference;

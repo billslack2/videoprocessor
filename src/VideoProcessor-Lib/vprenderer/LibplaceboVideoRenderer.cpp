@@ -10887,7 +10887,8 @@ struct LibplaceboVideoRenderer::Impl
         SubtitlePreviewMode pictureSubtitleMode = SubtitlePreviewMode::None,
         const AlphaSourceCrop::MovingPictureTransitionState* boundaryMotion = nullptr,
         const SceneDetectorResult* motionBoundary = nullptr,
-        const ActivePictureRelativeContinuationEvidence* preparedRelative = nullptr)
+        const ActivePictureRelativeContinuationEvidence* preparedRelative = nullptr,
+        const ActivePictureVerticalBarProfile* preparedInwardBars = nullptr)
 	{
 		latestColdStrictWorkerProof = false;
 		ConfigureSparseBoundaryExperiment();
@@ -11769,8 +11770,25 @@ struct LibplaceboVideoRenderer::Impl
                 AlphaSourceCrop::NearBlackBlocksCaptionBackedLogicalAcquisition(
                     globalNearBlack.evaluated && arDarkness.EffectiveNearBlack(),
                     nearBlackPresentationEpisode.mode, captionBackedStrictProofCurrent);
-			evidence = ConstrainNearBlackCropAcquisition(
-				evidence, captionLogicalAcquisitionBlocked);
+            const auto& native = retentionEvidence.activePicture;
+            const auto& inwardBars = preparedInwardBars ? *preparedInwardBars : native.verticalBarProfile;
+            const auto& candidate = native.trustedBounds;
+            const auto captionOutside = [&](const SubtitleBoxRect& rect) {
+                return rect.bottom > rect.top && (rect.top < candidate.top || rect.bottom > candidate.bottom);
+            };
+            const bool inwardRecovery = !sourceDiscontinuity && !cadenceRepeat &&
+                !fixedCropAspectConfigured && automaticSourceCrop && hadCurrentTrustedCropGeometry &&
+                globalNearBlack.evaluated && !arDarkness.EffectiveNearBlack() &&
+                AlphaSourceCrop::HasRetainedNativeInwardProof(nearBlackPresentationEpisode,
+                    currentIdentity, nlsGeometry, retentionEvidence, evidence, inwardBars) &&
+                !cropPresentationRecovery.active && !inwardCaptionEvidence.valid &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+                scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
+                !scopeSubtitleDrift.IsActive() && !outwardPictureConfirmation.verticalPresentationSeen &&
+                (!currentSubtitlePreview || (!captionOutside(currentSubtitlePreview->current.text.bounds) &&
+                    !captionOutside(currentSubtitlePreview->current.text.sourcePanel)));
+            evidence = ConstrainNearBlackCropAcquisition(evidence,
+                captionLogicalAcquisitionBlocked && !inwardRecovery);
 			latestActivePictureObservationSupportsCrop = false;
 			latestCropSamplingReaffirmed = false;
 			latestActivePictureEvidenceAvailable = evidence.available;
@@ -12411,7 +12429,11 @@ struct LibplaceboVideoRenderer::Impl
 					? currentIdentity.viewportGeneration : 0;
 			latestKnownTrustedReacquisitionCurrentAssociation =
 				localStableTrustedContract;
-			const bool suppressEpisodeBarGeometryMutation =
+            // Only the ordinarily admitted native result can retire the retained crop.
+            // A ready inspection alone cannot replace presentation or publish an AR.
+            const bool releaseInward = inwardRecovery && !admission.observation.transitionDeferred &&
+                !movingPictureOnset && AlphaSourceCrop::CanPublishRetainedNativeInward(candidate, transition);
+			const bool suppressEpisodeBarGeometryMutation = !releaseInward &&
 				AlphaSourceCrop::ShouldSuppressNearBlackBarGeometryMutation(
 					captionLogicalAcquisitionBlocked, transition.stable,
 					transition.authoritativeClassification);
@@ -12459,7 +12481,7 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePictureObservationSupportsCrop = false;
 				nlsGeometrySourceGeneration = 0;
 			}
-			else if (transition.publish && transition.stable &&
+			else if ((transition.publish || releaseInward) && transition.stable &&
 				!suppressEpisodeBarGeometryMutation)
 			{
 				fullRasterPresentationAuthorityAvailable = AlphaSourceCrop::CommitSparseTransitionPresentationAuthority(
@@ -12487,7 +12509,13 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometrySourceGeneration = analysisSource.generation;
 				nlsGeometrySourceFormatKey =
 					currentIdentity.sourceFormatGeneration;
+                if (releaseInward)
+                    nearBlackPresentationEpisode = {};
                 ++nlsGeometryGeneration;
+                DebugLog::Log("VP physical AR publication: generation=%llu source=%llu publication_generation=%llu rect=%d,%d-%d,%d retained_inward_released=%d",
+                    analysisSource.generation, frameNumber, nlsGeometryGeneration,
+                    nlsGeometry.left, nlsGeometry.top, nlsGeometry.right, nlsGeometry.bottom,
+                    releaseInward ? 1 : 0);
                 if (CurrentInwardCaptionProtection(analysisSource.generation,
                     frameNumber, currentIdentity.viewportGeneration, nlsGeometry))
                 {
@@ -13405,15 +13433,22 @@ struct LibplaceboVideoRenderer::Impl
 			currentActivePictureIdentity.rendererGeneration = frameGeneration;
             pixelMeasurements.Begin(analysisSource, currentActivePictureIdentity,
                 localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
-            std::shared_ptr<const PreparedPictureEvidence> currentPreparedRetention;
+            std::shared_ptr<const PreparedPictureEvidence> currentPreparedRetention, currentInwardBars;
             if (analysisCache) {
                 const auto native = QueuedFrame::LookaheadWorker::Ready(analysisCache->lookahead);
                 if (native && native->domainKey == preparedLive.domainKey &&
                     pixelMeasurements.SeedQueued(native->source, native->identity,
-                        native->evidence, native->darkness) && ExperimentalAspect::ActiveTrialEnabled())
-                    currentPreparedRetention=analysisCache->pictureProof.LookupCurrentRetention(
-                        currentActivePictureIdentity,nlsGeometry,localBoundaryPolicyGeneration,
-                        localBoundaryContinuityGeneration,analysisCache->lookahead);
+                        native->evidence, native->darkness)) {
+                    if (ExperimentalAspect::ActiveTrialEnabled())
+                        currentPreparedRetention=analysisCache->pictureProof.LookupCurrentRetention(
+                            currentActivePictureIdentity,nlsGeometry,localBoundaryPolicyGeneration,
+                            localBoundaryContinuityGeneration,analysisCache->lookahead);
+                    if (AlphaSourceCrop::IsRetainedNativeInwardCandidate(nearBlackPresentationEpisode, native->evidence))
+                        currentInwardBars = analysisCache->pictureProof.Lookup(MakePreparedPictureEvidenceKey(
+                            PictureKind::InwardBars, preparedQueued, currentActivePictureIdentity,
+                            native->evidence.trustedBounds, localBoundaryPolicyGeneration,
+                            localBoundaryContinuityGeneration, analysisCache->lookahead));
+                }
             }
 
             // Consume a completed exact-frame worker job before AR evaluates this
@@ -13454,7 +13489,8 @@ struct LibplaceboVideoRenderer::Impl
 				subtitlePreview, subtitlePreviewMode,
                 !cadenceRepeat && sceneResult.safeBoundary ? &boundaryMotion : nullptr,
                 !cadenceRepeat && sceneResult.safeBoundary ? &sceneResult : nullptr,
-                currentPreparedRetention?&currentPreparedRetention->retention.relativeContinuation:nullptr);
+                currentPreparedRetention?&currentPreparedRetention->retention.relativeContinuation:nullptr,
+                currentInwardBars ? &currentInwardBars->inwardBars : nullptr);
             experimentalAspectShadow.Offer(preparedLive, currentActivePictureIdentity,
                 latestActivePictureEvidenceBounds, latestActivePictureEvidenceClassification,
                 latestActivePictureEvidenceFrame == sourceSequence &&
@@ -23963,23 +23999,27 @@ void LibplaceboVideoRenderer::PrimePictureProofMeasurements(
     ActivePictureBounds base;
     ActivePictureTransitionModel model;
     bool captionEligible=false, relativeEligible=false;
+    AlphaSourceCrop::NearBlackPresentationEpisodeState episode;
     uint64_t scene=0, tick=0;
     {
         std::unique_lock<std::mutex> guard(m_impl->renderMutex,std::try_to_lock);
         if (!guard.owns_lock() || policy!=m_impl->localBoundaryPolicyGeneration ||
             continuity!=m_impl->localBoundaryContinuityGeneration ||
             !m_impl->automaticSourceCrop || !m_impl->renderConfiguredScreenActive ||
-            m_impl->nlsRequested || m_impl->fixedCropAspectConfigured ||
-            !m_impl->nlsGeometryAvailable ||
+            m_impl->fixedCropAspectConfigured || !m_impl->nlsGeometryAvailable ||
             m_impl->nlsGeometryOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
             // Prepared pixel components only serve established bar-crop bases.
             // Full-raster inward acquisition uses raw observations, not retention.
             m_impl->nlsGeometryClassification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
             m_impl->movingPictureTransition.active || m_impl->movingPictureTransition.awaitingPublication ||
-            m_impl->nearBlackPresentationEpisode.mode!=AlphaSourceCrop::NearBlackPresentationMode::INACTIVE)
+            m_impl->nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER)
+            return;
+        episode = m_impl->nearBlackPresentationEpisode;
+        if (episode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE && m_impl->nlsRequested)
             return;
         base=m_impl->nlsGeometry;
-        model=m_impl->nlsTransition;
+        if (episode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE)
+            model=m_impl->nlsTransition;
         const bool unowned=m_impl->scopeVerticalBarPresentation.action==
             AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
             !m_impl->scopeSubtitleDrift.IsActive() &&
@@ -24024,10 +24064,20 @@ void LibplaceboVideoRenderer::PrimePictureProofMeasurements(
                             std::chrono::milliseconds(ExperimentalAspect::ActiveMeasurementBudgetMilliseconds);
                     };
                     AnalysisEvaluationBudget relativeBudget(featureExpired,&featureStart);
-                    return EvaluatePreparedPictureEvidence(key,raw->evidence,raw->darkness,nullptr,
+                    return EvaluatePreparedPictureEvidence(key,raw->evidence,raw->darkness,
+                        key.kind == PictureKind::InwardBars ? &relativeBudget : nullptr,
                         ExperimentalAspect::ActiveTrialEnabled()?&relativeBudget:nullptr);
                 });
         };
+        if (episode.mode == AlphaSourceCrop::NearBlackPresentationMode::RETAIN_CROP) {
+            if (episode.sourceGeneration == identity.transportGeneration &&
+                episode.presentationEpoch == identity.viewportGeneration &&
+                raw->darkness.global.evaluated && !raw->darkness.EffectiveNearBlack() &&
+                AlphaSourceCrop::IsRetainedNativeInwardCandidate(episode, raw->evidence))
+                request(MakePreparedPictureEvidenceKey(PictureKind::InwardBars, frame,
+                    identity, raw->evidence.trustedBounds, policy, continuity, queued.analysis->lookahead));
+            continue;
+        }
         // Caption components come first for their source; a missing/changed
         // history nomination cannot make an old negative permanently reusable.
         if (captionEligible) {

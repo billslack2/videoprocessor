@@ -2784,6 +2784,57 @@ namespace AlphaSourceCrop
 			ownerSourceGeneration == sourceGeneration;
 	}
 
+    bool IsRetainedNativeInwardCandidate(const NearBlackPresentationEpisodeState& episode,
+        const ActivePictureEvidence& native)
+    {
+        const auto& entry = episode.entryTrustedCrop;
+        const auto& crop = native.trustedBounds;
+        return episode.mode == NearBlackPresentationMode::RETAIN_CROP &&
+            episode.entryTrustedCropAvailable &&
+            episode.entryTrustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            native.available && native.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            native.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            native.top.trusted && native.bottom.trusted && native.axisEvidence.vertical.scanComplete &&
+            native.axisEvidence.vertical.state == ActivePictureAxisState::TRUSTED_BARS &&
+            !native.axisEvidence.HasFailedBar() &&
+            entry.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+            crop.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+            ChromaAlignedTrustedContract(entry) && ChromaAlignedTrustedContract(crop) &&
+            entry.rasterWidth == crop.rasterWidth && entry.rasterHeight == crop.rasterHeight &&
+            entry.left == 0 && crop.left == 0 && entry.right == entry.rasterWidth &&
+            crop.right == crop.rasterWidth &&
+            crop.top - entry.top > SamplingTolerance(entry) &&
+            entry.bottom - crop.bottom > SamplingTolerance(entry);
+    }
+
+    bool HasRetainedNativeInwardProof(const NearBlackPresentationEpisodeState& episode,
+        const ActivePictureFrameIdentity& identity, const ActivePictureBounds& published,
+        const ActivePicturePresentationRetentionEvidence& retention, const ActivePictureEvidence& observation,
+        const ActivePictureVerticalBarProfile& bars)
+    {
+        const auto& candidate = retention.activePicture.trustedBounds;
+        return IsRetainedNativeInwardCandidate(episode, retention.activePicture) &&
+            episode.sourceGeneration == identity.transportGeneration &&
+            episode.presentationEpoch == identity.viewportGeneration &&
+            SameTrustedCropContract(episode.entryTrustedCrop, published) &&
+            retention.analysisValid && retention.presentationValid && !retention.EffectiveArNearBlack() &&
+            observation.available && observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            observation.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            SameTrustedCropContract(candidate, observation.trustedBounds) &&
+            bars.completed && bars.clean && bars.apertureTop == candidate.top && bars.apertureBottom == candidate.bottom;
+    }
+
+    bool CanPublishRetainedNativeInward(const ActivePictureBounds& candidate,
+        const ActivePictureTransitionDecision& decision)
+    {
+        // A previous publication may have been suppressed while the episode owned the display.
+        // A stable model can reassert that rectangle on fresh proof without a second publish pulse.
+        return !decision.clearTransition && decision.stable && decision.state == ActivePictureTransitionState::STABLE &&
+            decision.authoritativeClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            decision.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            SameTrustedCropContract(candidate, decision.bounds);
+    }
+
 	bool IsNearBlackNativeSamplingExpansion(const ActivePictureBounds& entry,
 		const ActivePictureBounds& candidate)
 	{

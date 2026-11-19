@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "CppUnitTest.h"
+#include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/PreparedPictureEvidence.h>
 
 #include <functional>
@@ -100,6 +101,76 @@ namespace VideoProcessorTest
                 Assert::IsFalse(complete->caption.valid);
                 Assert::IsTrue(cache.Request(key) == slot);
             }
+        }
+
+        TEST_METHOD(RetainedInwardCropInspectsBothProspectiveBars)
+        {
+            OwnedProofFrame frame;
+            auto key = frame.Key(PreparedPictureEvidenceKind::InwardBars);
+            key.base.top = 22;
+            key.base.bottom = 158;
+            key.base.aspectRatio = 320.0 / 136.0;
+            const auto clean = EvaluatePreparedPictureEvidence(key, {}, {}).inwardBars;
+            Assert::IsTrue(clean.completed && clean.clean);
+            for (const int row : { 15, 170 }) {
+                auto ink = std::make_shared<std::vector<uint16_t>>(*frame.pixels);
+                std::fill_n(ink->begin() + row * 320 + 80, 160, uint16_t(350 << 6));
+                key.frame.source.data = reinterpret_cast<const uint8_t*>(ink->data());
+                key.frame.source.backingOwner = key.frame.sourceOwner = ink;
+                const auto occupied = EvaluatePreparedPictureEvidence(key, {}, {}).inwardBars;
+                Assert::IsTrue(occupied.completed);
+                Assert::IsFalse(occupied.clean);
+            }
+        }
+
+        TEST_METHOD(RetainedCropPublishesCurrentNativeInwardReturnAfterSuppressedHistory)
+        {
+            using namespace AlphaSourceCrop;
+            OwnedProofFrame frame;
+            auto key = frame.Key(PreparedPictureEvidenceKind::InwardBars);
+            const auto& source = key.frame.source;
+            const auto raw = ExtractActivePictureEvidence(source);
+            key.base = raw.trustedBounds;
+            const auto bars = EvaluatePreparedPictureEvidence(key, raw, {}).inwardBars;
+            const auto retention = EvaluateActivePicturePresentationRetention(source, frame.base);
+            NearBlackPresentationEpisodeState episode;
+            episode.mode = NearBlackPresentationMode::RETAIN_CROP;
+            episode.entryTrustedCropAvailable = true;
+            episode.entryTrustedCrop = frame.base;
+            episode.sourceGeneration = frame.identity.transportGeneration;
+            episode.presentationEpoch = frame.identity.viewportGeneration;
+            Assert::IsTrue(HasRetainedNativeInwardProof(episode, frame.identity, frame.base,
+                retention, raw, bars), L"New picture requires matching native edges and clean bands");
+            auto stale = frame.identity;
+            ++stale.viewportGeneration;
+            Assert::IsFalse(HasRetainedNativeInwardProof(episode, stale, frame.base, retention, raw, bars));
+            Assert::IsFalse(HasRetainedNativeInwardProof(episode, frame.identity, frame.base, retention, raw, {}));
+            auto dark = retention;
+            dark.globalNearBlack = true;
+            dark.distributedDarkPicture = false;
+            Assert::IsFalse(HasRetainedNativeInwardProof(episode, frame.identity, frame.base, dark, raw, bars));
+
+            ActivePictureTransitionModel model;
+            auto observation = MakeActivePictureObservation(raw, 1, 23.976);
+            ActivePictureTransitionDecision decision;
+            for (unsigned i = 0; i < 20; ++i) {
+                observation.bounds = frame.base;
+                observation.frameNumber = i + 1;
+                decision = model.Observe(observation);
+            }
+            Assert::IsTrue(decision.stable);
+            Assert::IsFalse(CanPublishRetainedNativeInward(key.base, decision));
+            observation.bounds = key.base;
+            for (unsigned i = 0; i < 20; ++i) {
+                ++observation.frameNumber;
+                decision = model.Observe(observation);
+                if (decision.publish) break;
+            }
+            Assert::IsTrue(decision.publish && CanPublishRetainedNativeInward(key.base, decision));
+            ++observation.frameNumber;
+            decision = model.Observe(observation);
+            Assert::IsFalse(decision.publish);
+            Assert::IsTrue(CanPublishRetainedNativeInward(key.base, decision));
         }
 
         TEST_METHOD(LateEvictedPublicationCannotReplaceNewContextAndKindsDoNotEvictEachOther)

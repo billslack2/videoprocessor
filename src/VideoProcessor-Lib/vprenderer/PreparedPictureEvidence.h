@@ -18,6 +18,7 @@ enum class PreparedPictureEvidenceKind : uint8_t
     Retention,
     RelativeContrast,
     InwardCaption,
+    InwardBars,
     Count,
 };
 
@@ -111,6 +112,7 @@ struct PreparedPictureEvidence
 {
     PreparedPictureEvidenceKey key;
     ActivePicturePresentationRetentionEvidence retention;
+    ActivePictureVerticalBarProfile inwardBars;
     RelativeBarContrastEvidence relativeContrast;
     AlphaSourceCrop::InwardCaptionEvidence caption;
 };
@@ -143,6 +145,9 @@ inline PreparedPictureEvidence EvaluatePreparedPictureEvidence(const PreparedPic
         result.relativeContrast = InspectRelativeBarContrast(source, raw, key.base, budget);
         break;
     }
+    case PreparedPictureEvidenceKind::InwardBars:
+        result.inwardBars = InspectNativeVerticalBars(key.frame.source, key.base, budget);
+        break;
     case PreparedPictureEvidenceKind::InwardCaption:
         result.caption = AlphaSourceCrop::InspectInwardCaptionEvidence(
             key.frame.source, raw, key.caption, budget);

@@ -1202,6 +1202,16 @@ namespace AlphaSourceCrop
 	// startup or unrelated recent geometry. An independently safe sampling-sized
 	// outward correction may instead withdraw the undersized trusted contract
 	// and reopen ordinary acquisition; it never restores that unsafe old crop.
+    bool IsRetainedNativeInwardCandidate(const NearBlackPresentationEpisodeState& episode,
+        const ActivePictureEvidence& native);
+
+    bool HasRetainedNativeInwardProof(const NearBlackPresentationEpisodeState& episode,
+        const ActivePictureFrameIdentity& identity, const ActivePictureBounds& published,
+        const ActivePicturePresentationRetentionEvidence& retention, const ActivePictureEvidence& observation,
+        const ActivePictureVerticalBarProfile& bars);
+    bool CanPublishRetainedNativeInward(const ActivePictureBounds& candidate,
+        const ActivePictureTransitionDecision& decision);
+
 	bool IsNearBlackNativeSamplingExpansion(const ActivePictureBounds& entry,
 		const ActivePictureBounds& candidate);
 	// Qualifies one current bright native sample for an obsolete-entry handoff.

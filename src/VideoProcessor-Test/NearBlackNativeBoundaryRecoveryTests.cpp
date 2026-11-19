@@ -75,6 +75,34 @@ NearBlackPresentationEpisodeDecision Feed(NearBlackPresentationEpisodeInput& inp
 TEST_CLASS(NearBlackNativeBoundaryRecoveryTests)
 {
 public:
+    TEST_METHOD(RetainedInwardRecoveryRequiresTwoNativeEdgesInsideSameRaster)
+    {
+        NearBlackPresentationEpisodeState episode;
+        episode.mode = NearBlackPresentationMode::RETAIN_CROP;
+        episode.entryTrustedCropAvailable = true;
+        episode.entryTrustedCrop = {0,68,3840,2092,3840,2160,3840.0/2024,
+            ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        ActivePictureEvidence native;
+        native.available = native.top.trusted = native.bottom.trusted = true;
+        native.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+        native.axisEvidence.vertical.scanComplete = true;
+        native.axisEvidence.vertical.state = ActivePictureAxisState::TRUSTED_BARS;
+        native.trustedBounds = {0,276,3840,1884,3840,2160,3840.0/1608,
+            ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        Assert::IsTrue(IsRetainedNativeInwardCandidate(episode, native));
+        auto changed = native;
+        changed.bottom.trusted = false;
+        Assert::IsFalse(IsRetainedNativeInwardCandidate(episode, changed));
+        changed = native;
+        changed.trustedBounds.top = 68;
+        Assert::IsFalse(IsRetainedNativeInwardCandidate(episode, changed));
+        changed = native;
+        changed.trustedBounds.rasterHeight = 2162;
+        Assert::IsFalse(IsRetainedNativeInwardCandidate(episode, changed));
+        episode.mode = NearBlackPresentationMode::FULL_RASTER;
+        Assert::IsFalse(IsRetainedNativeInwardCandidate(episode, native));
+    }
+
     TEST_METHOD(FoxEightVisibleRowsRecoverOnlyThroughFreshOwnBoundaryProof)
     {
         auto input=FoxEpisode();

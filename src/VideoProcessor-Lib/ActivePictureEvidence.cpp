@@ -1296,6 +1296,20 @@ static bool RecoverLowContrastOpposingBoundary(const AnalysisLumaSource& source,
 }
 
 
+ActivePictureVerticalBarProfile InspectNativeVerticalBars(const AnalysisLumaSource& source,
+    const ActivePictureBounds& candidate, const AnalysisEvaluationBudget* budget)
+{
+    if (!source.IsValid() || candidate.rasterWidth != source.width ||
+        candidate.rasterHeight != source.height || candidate.left != 0 ||
+        candidate.right != source.width || candidate.top <= 0 ||
+        candidate.bottom >= source.height || candidate.top >= candidate.bottom ||
+        candidate.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM)
+        return {};
+    SampleContext samples{source};
+    samples.budget = budget;
+    return InspectVerticalCropBarProfile(samples, candidate.top, candidate.bottom);
+}
+
 ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source,
     const AnalysisEvaluationBudget* budget)
