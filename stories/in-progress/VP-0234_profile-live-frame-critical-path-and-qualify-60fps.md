@@ -2,9 +2,9 @@
 
 ## Status
 
-Backlog
+In Progress
 
-Requested 2026-11-18 after Eternals playback with the VP-0230 active detector trial. This story separates the performance investigation from ongoing AR accuracy and integration. No new implementation, performance improvement, or 60 fps acceptance is claimed.
+Requested 2026-11-18 after Eternals playback with the VP-0230 active detector trial. This story separates the performance investigation from ongoing AR accuracy and integration. Diagnostic-only implementation began 2026-11-18 in E:/codex/videoprocessor/vp0234-critical-path-20261118 at freshly fetched v2.0.6-beta acdb89bfb5e1796cda6359aa2f89632b78204a5b. Scope is opt-in CPU/wall/tail attribution; subtitle offload/reuse remains VP-0232/VP-0233 and detector behavior remains VP-0230. No performance improvement or 60 fps acceptance is claimed.
 
 ## User story
 
