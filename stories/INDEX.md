@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0234`
-- Next root story number: `VP-0235`
-- Total indexed items: 252
+- Last assigned root story: `VP-0236`
+- Next root story number: `VP-0237`
+- Total indexed items: 253
 
 ## Story locations
 
@@ -298,6 +298,7 @@ they must not contain requirements that are absent from this file.
 | VP-0232 | Backlog | Move subtitle verification off the renderer thread |
 | VP-0233 | Backlog | Research and improve subtitle cue reuse performance |
 | VP-0234 | In Progress | Profile the live frame critical path and qualify sustained 60 fps HDMI |
+| VP-0236 | Backlog | Review NLS across aspect-ratio changes with subtitles enabled |
 
 ## Codex story workflow
 
