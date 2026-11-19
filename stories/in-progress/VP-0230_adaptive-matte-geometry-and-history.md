@@ -252,3 +252,7 @@ Existing counterexamples defeat depth, width, seam continuity, texture, simple t
 ## Related work
 
 [VP-0228](../in-progress/VP-0228-diagnose-outward-picture-lookahead.md) owns the incident diagnostics and detailed replay evidence. [VP-0218](../in-progress/VP-0218_adaptive-aspect-boundary-evidence.md) contains prior adaptive boundary work and its unresolved dark/gradient cases. Reuse accepted implementations and reconcile overlapping scope before changing shared rules.
+
+## Quick live test of 535d7d84, November 18
+
+User reports playback looked good. The trial log through 21:33:57 records two scope-to-IMAX publications using relative picture continuation. Source 883 expanded from rows 268–1892 and source 1643 from 276–1884. Both published rows 68–2092 on the evaluated source. This confirms live worker readiness for both events. The quick run provides no matched before/after latency measurement. Proceed to beta integration validation.
