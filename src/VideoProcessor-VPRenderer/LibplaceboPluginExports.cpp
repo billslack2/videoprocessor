@@ -7,6 +7,11 @@
 #include <vprenderer/LibplaceboVideoRenderer.h>
 
 
+extern "C" __declspec(dllexport) void __cdecl VideoProcessorLibplaceboSetEnhancedLogging(bool enabled)
+{
+    DebugLog::SetEnhancedLoggingEnabled(enabled);
+}
+
 extern "C" __declspec(dllexport) uint32_t __cdecl
 VideoProcessorLibplaceboGetApiVersion()
 {

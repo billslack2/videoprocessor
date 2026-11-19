@@ -508,6 +508,28 @@ namespace VideoProcessorTest
             Assert::AreEqual(std::string(4095, 'a'), forwardedLog);
         }
 
+        TEST_METHOD(EnhancedGateSkipsArgumentsAndKeepsNormalForwarding)
+        {
+            struct Restore {
+                bool enhanced = DebugLog::IsEnhancedLoggingEnabled();
+                ~Restore() {
+                    DebugLog::SetExternalSink(nullptr);
+                    DebugLog::SetEnhancedLoggingEnabled(enhanced);
+                }
+            } restore;
+            DebugLog::SetExternalSink(CaptureForwardedLog);
+            DebugLog::SetEnhancedLoggingEnabled(false);
+            int evaluations = 0;
+            DebugLog::Log("regular");
+            DEBUGLOG_ENHANCED("detail %d", ++evaluations);
+            Assert::AreEqual(0, evaluations);
+            Assert::AreEqual(std::string("regular"), forwardedLog);
+            DebugLog::SetEnhancedLoggingEnabled(true);
+            DEBUGLOG_ENHANCED("detail %d", ++evaluations);
+            Assert::AreEqual(1, evaluations);
+            Assert::AreEqual(std::string("detail 1"), forwardedLog);
+        }
+
         TEST_METHOD(ProductionFileSinkWritesOneCompleteMaximumSizedBatch)
         {
             TemporaryLogDirectory directory;

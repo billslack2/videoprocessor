@@ -201,7 +201,12 @@ public:
 
 	// Extra telemetry artifacts are intentionally opt-in. Normal logging writes
 	// only vp.log and its bounded archives.
-	static bool IsEnhancedLoggingEnabled()
+	static void SetEnhancedLoggingEnabled(bool enabled)
+    {
+        GetEnhancedLoggingEnabled().store(enabled, std::memory_order_release);
+    }
+
+    static bool IsEnhancedLoggingEnabled()
 	{
 		return GetEnhancedLoggingEnabled().load(std::memory_order_acquire);
 	}
@@ -340,6 +345,9 @@ private:
 	}
 };
 
+
+// Test the level before evaluating telemetry arguments or formatting plugin messages.
+#define DEBUGLOG_ENHANCED(...) do { if (DebugLog::IsEnhancedLoggingEnabled()) DebugLog::Log(__VA_ARGS__); } while (false)
 
 // Convenient macros for logging
 #define DEBUGLOG(format, ...) DebugLog::Log(format, __VA_ARGS__)
