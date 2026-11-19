@@ -7,6 +7,12 @@ In Progress
 
 
 
+## Physical geometry and subtitle guard separation - in progress 2026-11-18
+
+User authorized the next implementation increment. Preserve checkpoint c0d04fc8 and its running trial. Continue the explicitly selected experiment; GitHub beta rechecked/fetched at acdb89bf, default v2.0.5-beta-aspect-ratio. Scope is separating independently measured physical geometry from subtitle safety padding in both live and queued adoption, with regression coverage of presentation protection. Add diagnostic-only reasons for rejected immediate spatial expansion; do not change thresholds or transition timing.
+
+User clarified that the windowbox was likely a camcorder composition and looked correct on screen. Leave the inner-composition safeguard intact; this is not a confirmed detection failure and no recapture is required now. 14:52 was log wall-clock time, not movie timecode. User also found the IMAX transition visually acceptable. Its logged delay alone does not justify speeding admission. Performance attribution and profile switching stay separate.
+
 ## Checkpoint exception audit - 2026-11-18
 
 Three read-only reviewers audited the frozen 15:28 log. No source, runtime, configuration or checkpoint changes. [Transition evidence](../assets/VP-0230/checkpoint-20261118/transition-audit.txt); [fallback audit](../assets/VP-0230/checkpoint-20261118/audit-summary.txt); [source/context correlations](../assets/VP-0230/checkpoint-20261118/fallback-correlations.csv).
