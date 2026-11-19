@@ -184,6 +184,11 @@ public:
 	AnalysisDiagnosticTrace& operator=(const AnalysisDiagnosticTrace&) = delete;
 
 	static AnalysisDiagnosticTrace& Instance();
+	using DolbyBodySink = void (__cdecl*)(uint64_t, const uint8_t*, size_t);
+	static void SetDolbyBodySink(DolbyBodySink sink) noexcept;
+	// The formatter never creates a recorder on the capture thread.
+	static void SampleDolbyBody(uint64_t sourceFrame, const uint8_t* body, size_t length) noexcept;
+	void TrySampleDolbyBody(uint64_t sourceFrame, const uint8_t* body, size_t length) noexcept;
 
 	// Plugin-local forwarding hooks. The host loader installs/removes these via
 	// the additive plugin export; they do not instantiate a recorder in the DLL.
@@ -203,7 +208,7 @@ public:
 	bool IsFrameCaptureActive() const noexcept;
 	bool IsRecording() const noexcept;
 
-	AnalysisDiagnosticCaptureResult StartCapture(bool includeFrames = false);
+	AnalysisDiagnosticCaptureResult StartCapture(bool includeFrames = false, bool sampleDolbyBody = false);
 	void StopCapture() noexcept;
 	AnalysisDiagnosticTraceStatus Status() const;
 
@@ -265,6 +270,10 @@ private:
 	bool m_autoRasterPending = false;
 	uint64_t m_autoRasterLastMs = 0;
 	unsigned m_autoRasterCount = 0;
+	std::array<uint8_t, 0x2F00> m_dolbyBody{};
+	std::atomic<bool> m_dolbySamplePending{ false };
+	size_t m_dolbyBodyLength = 0;
+	uint64_t m_dolbySourceFrame = 0;
 	std::atomic<bool> m_recording{ false };
 	std::atomic<bool> m_includeFrames{ false };
 	bool m_captureRequested = false;

@@ -145,6 +145,12 @@ namespace
             GetProcAddress(result.module, VP_LIBPLACEBO_ENHANCED_LOG_EXPORT));
         if (setEnhanced) setEnhanced(DebugLog::IsEnhancedLoggingEnabled());
         auto& recorder=AnalysisDiagnosticTrace::Instance();
+        const auto configureDolby = reinterpret_cast<ConfigureDolbyBodySinkFn>(
+            GetProcAddress(result.module, VP_DOLBY_BODY_EXPORT));
+        if (configureDolby)
+            configureDolby([](uint64_t frame, const uint8_t* body, size_t size) {
+                AnalysisDiagnosticTrace::Instance().TrySampleDolbyBody(frame, body, size);
+            });
         diagnostics(&recorder,ForwardAnalysisRecord,ForwardAnalysisFrame,AnalysisFramesActive);
 
 		DebugLog::Log(

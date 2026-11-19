@@ -44,6 +44,8 @@ using VideoProcessorLibplaceboCreateRendererFn = IVideoRenderer* (__cdecl *)(
 using VideoProcessorLibplaceboDestroyRendererFn = void (__cdecl *)(
 	IVideoRenderer* renderer);
 
+using ConfigureDolbyBodySinkFn = void (__cdecl*)(AnalysisDiagnosticTrace::DolbyBodySink);
+static constexpr const char* VP_DOLBY_BODY_EXPORT = "VideoProcessorLibplaceboConfigureDolbyBodySink";
 static constexpr const char* VP_LIBPLACEBO_DIAGNOSTIC_EXPORT = "VideoProcessorLibplaceboConfigureAnalysisDiagnosticSink";
 using VideoProcessorLibplaceboConfigureDiagnosticFn = void (__cdecl *)(void*,
     AnalysisDiagnosticTrace::RecordSink, AnalysisDiagnosticTrace::FrameSink,

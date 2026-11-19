@@ -6,6 +6,7 @@
 #include <VideoFrame.h>
 #include <VideoState.h>
 #include <CpuFeatures.h>
+#include <AnalysisDiagnosticTrace.h>
 #include <DolbyVisionTunnelInput.h>
 #include "CRGBDolbyVisionTunnelFormatter.h"
 
@@ -518,6 +519,7 @@ bool CRGBDolbyVisionTunnelFormatter::FormatVideoFrame(
 			}
 			if (!complete || copied != length)
 				break;
+			AnalysisDiagnosticTrace::SampleDolbyBody(frame.GetCounter(), body.data(), length);
 			if (!ParseMetadata(body.data(), length, parsed, extensionLevels))
 			{
 				failureReason = "unsupported/malformed metadata body";

@@ -18,6 +18,7 @@ namespace
 	std::atomic<AnalysisDiagnosticTrace::FrameSink> g_frameSink{ nullptr };
 	std::atomic<AnalysisDiagnosticTrace::FrameCaptureActiveCallback> g_activeCallback{ nullptr };
 	std::atomic<void*> g_sinkContext{ nullptr };
+	std::atomic<AnalysisDiagnosticTrace::DolbyBodySink> g_dolbyBodySink{ nullptr };
 	std::atomic<uint64_t> g_directorySequence{ 0 };
 
 	void WriteJsonString(std::ostream& output, const char* value)
@@ -176,6 +177,30 @@ AnalysisDiagnosticTrace& AnalysisDiagnosticTrace::Instance()
 	return trace;
 }
 
+void AnalysisDiagnosticTrace::SetDolbyBodySink(DolbyBodySink sink) noexcept
+{
+	g_dolbyBodySink.store(sink, std::memory_order_release);
+}
+
+void AnalysisDiagnosticTrace::SampleDolbyBody(uint64_t sourceFrame, const uint8_t* body, size_t length) noexcept
+{
+	if (auto sink = g_dolbyBodySink.load(std::memory_order_acquire))
+		sink(sourceFrame, body, length);
+}
+
+void AnalysisDiagnosticTrace::TrySampleDolbyBody(uint64_t sourceFrame, const uint8_t* body, size_t length) noexcept
+{
+	if (!m_dolbySamplePending.load(std::memory_order_acquire) || !body || !length || length > m_dolbyBody.size())
+		return;
+	std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
+	if (!lock || !m_dolbySamplePending.load(std::memory_order_relaxed) || !IsRecording())
+		return;
+	std::copy_n(body, length, m_dolbyBody.begin());
+	m_dolbyBodyLength = length;
+	m_dolbySourceFrame = sourceFrame;
+	m_dolbySamplePending.store(false, std::memory_order_release);
+}
+
 void AnalysisDiagnosticTrace::SetExternalSinks(
 	void* context,
 	RecordSink recordSink,
@@ -190,6 +215,7 @@ void AnalysisDiagnosticTrace::SetExternalSinks(
 
 void AnalysisDiagnosticTrace::ClearExternalSinks() noexcept
 {
+	g_dolbyBodySink.store(nullptr, std::memory_order_release);
 	g_recordSink.store(nullptr, std::memory_order_release);
 	g_frameSink.store(nullptr, std::memory_order_release);
 	g_activeCallback.store(nullptr, std::memory_order_release);
@@ -426,7 +452,7 @@ bool AnalysisDiagnosticTrace::IsRecording() const noexcept
 }
 
 AnalysisDiagnosticCaptureResult AnalysisDiagnosticTrace::StartCapture(
-	bool includeFrames)
+	bool includeFrames, bool sampleDolbyBody)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	const uint64_t now = NowMs();
@@ -470,6 +496,8 @@ AnalysisDiagnosticCaptureResult AnalysisDiagnosticTrace::StartCapture(
 		m_droppedRecords.fetch_add(removeCount, std::memory_order_relaxed);
 	}
 
+	m_dolbyBodyLength = 0;
+	m_dolbySamplePending.store(sampleDolbyBody, std::memory_order_release);
 	m_captureDirectory = MakeCaptureDirectory();
 	m_captureStartSequence = m_nextSequence + 1;
 	m_captureStopSequence = 0;
@@ -778,6 +806,7 @@ void AnalysisDiagnosticTrace::WriteCaptureSummary(
 	uint64_t lifetimeWriteFailures = 0;
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
+		m_dolbySamplePending.store(false, std::memory_order_release);
 		sessionAcceptedRecords = m_captureAcceptedRecords;
 		sessionRecordsWritten = m_recordsWritten;
 		sessionFramesWritten = m_framesWritten;
@@ -809,7 +838,17 @@ void AnalysisDiagnosticTrace::WriteCaptureSummary(
 			++m_writeFailures;
 			return;
 		}
-		summary << "{\"schemaVersion\":1,\"includeFrames\":"
+		summary << "{";
+		if (m_dolbyBodyLength)
+		{
+			summary << "\"dolbyVisionDm\":{\"sourceFrameCounter\":" << m_dolbySourceFrame
+				<< ",\"declaredBytes\":" << m_dolbyBodyLength << ",\"bodyHex\":\"";
+			const char digits[] = "0123456789abcdef";
+			for (size_t i = 0; i < m_dolbyBodyLength; ++i)
+				summary << digits[m_dolbyBody[i] >> 4] << digits[m_dolbyBody[i] & 15];
+			summary << "\"},";
+		}
+		summary << "\"schemaVersion\":1,\"includeFrames\":"
 			<< (includeFrames ? "true" : "false")
 			<< ",\"session\":{\"acceptedRecords\":"
 			<< sessionAcceptedRecords

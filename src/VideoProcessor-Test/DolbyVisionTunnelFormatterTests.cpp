@@ -11,6 +11,7 @@
 #include <CaptureVideoStatePolicy.h>
 #include <vprenderer/SourceMasteringPrimariesPolicy.h>
 #include <AnalysisFrame.h>
+#include <AnalysisDiagnosticTrace.h>
 #include <ActivePictureEvidence.h>
 #include <SubtitleBoxDetector.h>
 #include <SubtitleBarEvidence.h>
@@ -79,6 +80,26 @@ namespace Tests
     {
     public:
 
+
+        TEST_METHOD(CrcValidatedContinuationRetainsOpaqueLevelFive)
+        {
+            auto body = DmBody(3072, true, 60);
+            AppendExtension(body, 5, { 0, 0, 0, 0, 4, 64, 68 });
+            SenderPicture picture(true);
+            picture.Embed(Packetize(body));
+            Formatter formatter;
+            formatter.OnVideoState(picture.state);
+            static thread_local std::vector<uint8_t> sample;
+            static thread_local uint64_t counter;
+            sample.clear();
+            struct ResetSink { ~ResetSink() { AnalysisDiagnosticTrace::SetDolbyBodySink(nullptr); } } reset;
+            AnalysisDiagnosticTrace::SetDolbyBodySink([](uint64_t frame, const uint8_t* bytes, size_t length) {
+                counter = frame;
+                sample.assign(bytes, bytes + length);
+            });
+            Deliver(formatter, picture, 42);
+            Assert::IsTrue(sample == body && counter == 42);
+        }
 
         TEST_METHOD(EncodedRgbTunnelFeedsActualPictureAndSubtitleAnalysis)
         {

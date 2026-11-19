@@ -92,6 +92,12 @@ extern "C" __declspec(dllexport) bool __cdecl VideoProcessorLibplaceboIsBeta()
 }
 
 extern "C" __declspec(dllexport) void __cdecl
+VideoProcessorLibplaceboConfigureDolbyBodySink(AnalysisDiagnosticTrace::DolbyBodySink sink)
+{
+    AnalysisDiagnosticTrace::SetDolbyBodySink(sink);
+}
+
+extern "C" __declspec(dllexport) void __cdecl
 VideoProcessorLibplaceboConfigureAnalysisDiagnosticSink(void* context,
     AnalysisDiagnosticTrace::RecordSink records, AnalysisDiagnosticTrace::FrameSink frames,
     AnalysisDiagnosticTrace::FrameCaptureActiveCallback active)

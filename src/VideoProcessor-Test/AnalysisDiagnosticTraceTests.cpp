@@ -167,7 +167,22 @@ namespace Tests
 	TEST_CLASS(AnalysisDiagnosticTraceTests)
 	{
 	public:
-        TEST_METHOD(AutomaticRasterCaptureIsOptInAndMetadataOnly)
+        TEST_METHOD(ManualDolbySampleKeepsFirstCompleteBody)
+		{
+			TraceFixture fixture(false, 1000);
+			const uint8_t bytes[] = { 0, 5, 255 };
+			Assert::IsTrue(fixture.trace->StartCapture(false, true) == AnalysisDiagnosticCaptureResult::Started);
+			for (int i = 0; i < 10; ++i)
+				fixture.trace->TrySampleDolbyBody(42, bytes, sizeof(bytes));
+			fixture.trace->TrySampleDolbyBody(43, bytes, 1);
+			fixture.trace->StopCapture();
+			Assert::IsTrue(WaitForWriter(*fixture.trace));
+			std::ifstream input(CapturePath(*fixture.trace) + "\\capture-summary.json");
+			std::string json((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+			Assert::IsTrue(json.find("\"sourceFrameCounter\":42,\"declaredBytes\":3,\"bodyHex\":\"0005ff\"") != std::string::npos);
+		}
+
+		TEST_METHOD(AutomaticRasterCaptureIsOptInAndMetadataOnly)
         {
             TraceFixture fixture(false, 200);
             auto incident=Event("trusted-picture-full-raster-submitted");

@@ -8127,7 +8127,7 @@ void CVideoProcessorDlg::OnCommandCaptureAnalysisDiagnostics(bool includeFrames)
 	else if (includeFrames && !before.frameCaptureSupported)
 		result = AnalysisDiagnosticCaptureResult::FrameCaptureUnavailable;
 	else
-		result = trace.StartCapture(includeFrames);
+		result = trace.StartCapture(includeFrames, true);
 
 	const AnalysisDiagnosticTraceStatus status = trace.Status();
 	CString message;
