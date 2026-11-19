@@ -1,0 +1,47 @@
+{
+  "date": "2026-11-19",
+  "codeCommit": "9e2df1f637ee5766a6ae2b130119ce564053f066",
+  "directArLauncherCommit": "ab03d3c0",
+  "toolset": "v143",
+  "vcToolsVersion": "14.44.35207",
+  "compilerVersion": "19.44.35228.0",
+  "linkerVersion": "14.44.35228.0",
+  "configuration": "Release",
+  "architecture": "x64",
+  "rebuildExit": 0,
+  "incrementalExit": 0,
+  "focusedTests": 107,
+  "focusedFailures": 0,
+  "directArPassingChecks": 42,
+  "wrongToolchainRejected": true,
+  "oldHostRejected": true,
+  "deployed": false,
+  "live60fpsQualified": false,
+  "binaries": [
+    {
+      "file": "VideoProcessor-GUI.exe",
+      "sha256": "2EDEA7CA89B4FC5C66D233DBB1E26D538CFCB88165CBFD2F2D2847F42D9851DE",
+      "toolset": "14.44.35207"
+    },
+    {
+      "file": "VideoProcessorConfig.exe",
+      "sha256": "DDC1FD6CDD3EFC6134C25A0A4B240A6A351BA70C61873367066204E0F41CF1D9",
+      "toolset": "14.44.35207"
+    },
+    {
+      "file": "VideoProcessorConfigDiscovery.dll",
+      "sha256": "29CC7EBF69F6899336275920D12167EE9C1C516AD77C7CC8B7B96AF258FEA50C",
+      "toolset": "14.44.35207"
+    },
+    {
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "EE86480E7F8FC33F81FC94E3791DFC4D7ABDEEF7A349C6FAF9F11B22B57B7834",
+      "toolset": "14.44.35207"
+    },
+    {
+      "file": "vprenderer-beta\\VideoProcessorVPRendererBeta.dll",
+      "sha256": "D80093261B536E157004E690CF2FE5DCBA815934624B9B740731318B3DF183DA",
+      "toolset": "14.44.35207"
+    }
+  ]
+}

@@ -6,6 +6,33 @@ In Progress
 
 Requested 2026-11-18 after Eternals playback with the VP-0230 active detector trial. This story separates the performance investigation from ongoing AR accuracy and integration. Diagnostic-only implementation began 2026-11-18 in E:/codex/videoprocessor/vp0234-critical-path-20261118 at freshly fetched v2.0.6-beta acdb89bfb5e1796cda6359aa2f89632b78204a5b. Scope is opt-in CPU/wall/tail attribution; subtitle offload/reuse remains VP-0232/VP-0233 and detector behavior remains VP-0230. No performance improvement or 60 fps acceptance is claimed.
 
+## 2026-11-19 diagnostic and build consistency update
+
+Source branch `codex/vp0234-critical-path-20261118` starts at freshly fetched
+`v2.0.6-beta` `acdb89bf`, explicitly retains tested `c1b130a2`, and adds opt-in
+renderer CPU/wall/tail and source-submission diagnostics. The detector/subtitle
+behavior is retained; no performance optimization or live 60 fps acceptance is
+claimed. The first baseline's 24 aggregate windows cover 1,156 submissions:
+foreground elapsed mean 14.650 ms, preparation 6.406 ms, render interval 7.356 ms,
+separate swap 0.079 ms; foreground maximum 66.457 ms. These are partial window
+aggregates, not per-frame p95/p99 or whole-pipeline CPU measurements.
+
+At the user's request, `9e2df1f6` unifies every source-built project on v143 /
+MSVC 14.44.35207 with matching MFC/ATL. Repository and personal AGENTS guidance,
+a compiler-version guard, and a single-host build wrapper replace the former
+v142/v143 split. `ab03d3c0` updates the direct AR test launcher too. Both are
+committed and pushed. A full x64 Release migration rebuild and an ordinary
+incremental build pass; 107 focused native/dependency tests and the direct AR
+checks pass. Wrong-toolchain and obsolete-host checks reject conflicting builds.
+See [build evidence](../assets/VP-0234/build-consistency-20261119.json).
+
+The original LNK1103 corruption mechanism remains unproven; repeated rebuilds
+are not the normal workflow. No beta merge, deployment, active-configuration
+replacement or full GPU/live HDMI qualification occurred. Compiler migration is
+an explicit additional difference from the earlier trial and must be controlled
+in future matched timing. The isolated diagnostic playback package and real
+59.94/60 fps capture/presentation qualification remain outstanding.
+
 ## User story
 
 As a viewer, I want to know what consumes the live frame budget and obtain measured improvements that sustain incoming HDMI video without disrupting picture, subtitles or aspect detection.
