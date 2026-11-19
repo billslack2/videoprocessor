@@ -7,6 +7,14 @@ In Progress
 
 
 
+## Relative picture continuation trial - in progress 2026-11-18
+
+User chooses to continue with existing captures rather than obtain a new one, and explicitly states that preserving AR stability during overlays is not a concern. Do not block or expand this increment to optimize UI/overlay AR stability. Picture/caption preservation, measured geometry accuracy and uninterrupted bounded current-source video remain required.
+
+Existing128 retained frames provide sufficient targeted evidence: three later IMAX frames18432/18433/18434 contain a dark character crossing the oldscopeedge; measured68..2092 is visually supported and unchanged. Current strict admission rejects3 against physicalscope276..1884 (2 against guarded268..1892). A fixed offline relative-continuation vs old-edge comparison recovers them; all57 IMAX frames in the earlier64-frame holdout still qualify. Caption-backed18681 remains ordinary. These are counterfactual scope-base sensitivity tests, not proof the uncaptured961 delay is fixed. Actual18400 transition remains the chronological control.
+
+Authorize narrow implementation continuing54be4dad: compare continuous relative picture support across depth with strongest coherent oldboundary evidence over existing uncertainty neighborhood. Preserve current measuredstrongopposingedges, exactsource/base/target, outward-only geometry and allsubtitle/presentationchecks. Relative features must not become blackReference/matte calibration or captionabsence/cleanup evidence. Reuse the existing optional expansion-strip sample grid where possible and fit old-edge inspection into existing bounded optional work; no new renderer-path scan, timeout, queue or framehold. Existing strict path remains available. Prototype fixed rule and retained evidence reviewed by threeworkers; no additional overlay research required before implementation.
+
 ## Boundary-led admission investigation - 2026-11-18
 
 User reports subtitles looked fine on 54be4dad, with scope-to-IMAX sometimes slow, and authorizes investigation/improvement. Current trial log ends20:48:38; SHA256 ACB095281657EC02BCD2A4327DAD60DB3B2870EEB6941FE566D3BD98B38FE5BD. Latest beta rechecked/fetched unchanged acdb89bf; no source or runtime changes in this investigation.
