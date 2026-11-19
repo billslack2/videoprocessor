@@ -83,8 +83,6 @@ compiled with `VP_LIBPLACEBO_BETA`. The standalone parameter smoke test is:
 ```powershell
 MSBuild src/VideoProcessor-BetaTests/VideoProcessor-BetaTests.vcxproj /p:Configuration=Release /p:Platform=x64
 ./x64/Release/vprenderer-beta/VideoProcessorBetaTests.exe
-python tools/test_libplacebo_variants.py
-python tools/test_libplacebo_variants.py --beta-first
 ```
 
 Full fork source, dependency pins, build instructions, DLL/source hashes and

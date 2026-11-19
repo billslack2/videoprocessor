@@ -42,9 +42,9 @@
 ## Testing and diagnostics
 
 - After changing temporal packet lifetime, source processing, or subtitle GPU
-  preparation, run `tools/test_subtitle_motion_renderers.ps1` against both shipped
-  libplacebo dependencies in addition to the relevant native/stack regressions.
-  The default test target covers only the standard dependency. See
+  preparation, run `tools/test_subtitle_motion_renderers.ps1` against the current renderer
+  dependency in addition to the relevant native/stack regressions.
+  The default test target uses the current dependency. See
   `docs/VP-0207_SUBTITLE_MOTION_REGRESSIONS.md` for the command and playback limits.
 
 - For VideoProcessor testing and troubleshooting, inspect the active runtime log at

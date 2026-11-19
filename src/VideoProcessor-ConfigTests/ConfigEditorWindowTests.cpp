@@ -937,14 +937,15 @@ void testRendererPromotionMigrationAndCacheSelection()
         require(file.open(QIODevice::WriteOnly) && file.write(initial) == initial.size(),
             "Cannot create renderer migration fixture");
         file.close();
-        const QString expected = rendererName == "VP Renderer (Legacy)" || rendererName == "DirectShow - madVR" ?
+        const QString expected = rendererName == "DirectShow - madVR" ?
             QString::fromLatin1(original) : QStringLiteral("VP Renderer");
         ConfigEditorWindow window(path, 0, true);
-        const QStringList choices{ "VP Renderer", "VP Renderer (Legacy)", "DirectShow - madVR" };
+        const QStringList choices{ "VP Renderer", "DirectShow - madVR" };
         window.setRendererDiscoveryForTesting(choices, choices);
         auto* renderer = requireControl<QComboBox>(window, "config.general.renderer");
         require(renderer->currentData().toString() == expected,
             "Existing or omitted renderer did not select the expected upgraded renderer");
+        require(renderer->findData("VP Renderer (Legacy)") < 0, "Legacy renderer is still offered");
         require(renderer->findData("VP Renderer (Beta)") < 0,
             "Beta name is still offered as a selectable renderer");
         require(readBytes(path) == initial, "Opening Config rewrote the existing file before save");
@@ -987,10 +988,10 @@ void testBetaToneMappingControls()
     const QString path = directory.filePath("VideoProcessor.cfg");
     QFile file(path);
     require(file.open(QIODevice::WriteOnly), "Cannot create Beta fixture");
-    file.write("[general]\nrenderer: VP Renderer (Legacy)\n[vprenderer.First]\nquality: high\n[vprenderer.Second]\nquality: balanced\n");
+    file.write("[general]\nrenderer: DirectShow - madVR\n[vprenderer.First]\nquality: high\n[vprenderer.Second]\nquality: balanced\n");
     file.close();
     ConfigEditorWindow window(path, 0, true);
-    window.setRendererDiscoveryForTesting({"VP Renderer", "VP Renderer (Legacy)"}, {"VP Renderer", "VP Renderer (Legacy)"});
+    window.setRendererDiscoveryForTesting({"VP Renderer", "DirectShow - madVR"}, {"VP Renderer", "DirectShow - madVR"});
     auto* renderer = requireControl<QComboBox>(window, "config.general.renderer");
     auto* dynamic = requireControl<QCheckBox>(window, "config.vprenderer.dynamic_target");
     auto* custom = requireControl<QCheckBox>(window, "config.vprenderer.custom_tone_mapping");
@@ -1010,7 +1011,7 @@ void testBetaToneMappingControls()
     dynamic->setChecked(false); film->setText("0.75"); clip->setText("0.5");
     requireControl<QListWidget>(window, "config.vprenderer.profiles")->setCurrentRow(1);
     require(custom->isChecked() && !dynamic->isChecked() && film->text() == "0.75" && gamut->property("effectiveValue").toString() == "relative", "Beta settings and selected gamut did not inherit");
-    renderer->setCurrentIndex(renderer->findData("VP Renderer (Legacy)"));
+    renderer->setCurrentIndex(renderer->findData("DirectShow - madVR"));
     require(!custom->isEnabled() && custom->isChecked() && !film->isEnabled() && film->text() == "0.75", "Stable selection changed saved Beta values");
     require(requireControl<QComboBox>(window, "config.vprenderer.gamut_mapping")->isEnabled(), "Stable shared gamut control must remain available");
     save(window);
@@ -1018,7 +1019,7 @@ void testBetaToneMappingControls()
     require(saved.contains("gamut_mapping: relative"), "Upstream gamut selection was not saved with correction enabled");
     require(saved.contains("custom_tone_mapping: true") && saved.contains("dynamic_target: false") && saved.contains("film_strength: 0.75") && saved.contains("mastering_clip: 0.5"), "Beta fields were not saved");
     ConfigEditorWindow enabledReload(path, 0, true);
-    enabledReload.setRendererDiscoveryForTesting({"VP Renderer", "VP Renderer (Legacy)"}, {"VP Renderer", "VP Renderer (Legacy)"});
+    enabledReload.setRendererDiscoveryForTesting({"VP Renderer", "DirectShow - madVR"}, {"VP Renderer", "DirectShow - madVR"});
     requireControl<QListWidget>(enabledReload, "config.vprenderer.profiles")->setCurrentRow(1);
     require(requireControl<QCheckBox>(enabledReload, "config.vprenderer.custom_tone_mapping")->isChecked(), "Existing persisted custom_tone_mapping key must reload correction On");
     requireControl<QComboBox>(enabledReload, "config.general.renderer")->setCurrentIndex(
@@ -1043,7 +1044,7 @@ void testBetaToneMappingControls()
         requireControl<QToolButton>(window, "rendererSection.toneMapping")->setChecked(true);
         QCoreApplication::processEvents();
         require(window.grab().save(QDir(captures).filePath("beta-highlight.png")), "Cannot capture Beta controls");
-        renderer->setCurrentIndex(renderer->findData("VP Renderer (Legacy)"));
+        renderer->setCurrentIndex(renderer->findData("DirectShow - madVR"));
         QCoreApplication::processEvents();
         require(window.grab().save(QDir(captures).filePath("stable-highlight.png")), "Cannot capture stable controls");
     }

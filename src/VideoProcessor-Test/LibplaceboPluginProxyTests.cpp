@@ -62,13 +62,11 @@ namespace VideoProcessorTest
             Assert::IsFalse(IsCompatibleLibplaceboPluginApiVersion(0));
         }
 
-        TEST_METHOD(BetaUsesSeparatePluginAndRuntimeNames)
+        TEST_METHOD(CurrentRendererUsesItsPrivatePluginAndRuntime)
         {
             using namespace OptionalRendererLayout;
             Assert::IsTrue(PluginPath(L"C:\\VP", true) == L"C:\\VP\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll");
-            Assert::IsTrue(PluginPath(L"C:\\VP") == L"C:\\VP\\vprenderer\\VideoProcessorVPRenderer.dll");
             Assert::AreEqual(L"libplacebo-388.dll", PrivateDependencies(true)[3]);
-            Assert::AreEqual(L"libplacebo-360.dll", PrivateDependencies()[3]);
         }
 		TEST_METHOD(AspectOsdMapsEveryNamedFormat)
 		{
@@ -215,11 +213,7 @@ namespace VideoProcessorTest
 			GetModuleFileNameW(testModule, modulePath, MAX_PATH);
 			const std::wstring fullPath(modulePath);
 			const std::wstring root = fullPath.substr(0, fullPath.find_last_of(L"\\/"));
-#ifdef VP_LIBPLACEBO_BETA
             const std::wstring pluginPath = root + L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
-#else
-			const std::wstring pluginPath = root + L"\\vprenderer\\VideoProcessorVPRenderer.dll";
-#endif
 			HMODULE plugin = LoadLibraryExW(pluginPath.c_str(), nullptr,
 				LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
 			Assert::IsNotNull(plugin, L"Build the Release renderer DLL before this integration test");
@@ -326,11 +320,7 @@ namespace VideoProcessorTest
             wchar_t modulePath[MAX_PATH] = {};
             GetModuleFileNameW(module, modulePath, MAX_PATH);
             std::wstring path(modulePath); path.resize(path.find_last_of(L"\\/"));
-#ifdef VP_LIBPLACEBO_BETA
             path += L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
-#else
-            path += L"\\vprenderer\\VideoProcessorVPRenderer.dll";
-#endif
             HMODULE plugin = LoadLibraryExW(path.c_str(), nullptr,
                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
             Assert::IsNotNull(plugin);
@@ -440,11 +430,11 @@ namespace VideoProcessorTest
 				L"VideoProcessor-vp0107-" +
 				std::to_wstring(GetCurrentProcessId());
 			const std::wstring pluginDirectory =
-				OptionalRendererLayout::Directory(root);
+				OptionalRendererLayout::Directory(root, true);
 			std::wstring missing;
 			Assert::IsTrue(OptionalRendererLayout::FindMissingRuntimeFile(
-				root, missing));
-			Assert::AreEqual(OptionalRendererLayout::PluginPath(root).c_str(),
+				root, missing, true));
+			Assert::AreEqual(OptionalRendererLayout::PluginPath(root, true).c_str(),
 				missing.c_str());
 			CreateDirectoryW(root.c_str(), nullptr);
 			Assert::IsTrue(CreateDirectoryW(pluginDirectory.c_str(), nullptr) != FALSE);
@@ -456,22 +446,22 @@ namespace VideoProcessorTest
 				Assert::IsTrue(file != INVALID_HANDLE_VALUE);
 				CloseHandle(file);
 			};
-			touch(OptionalRendererLayout::PluginPath(root));
+			touch(OptionalRendererLayout::PluginPath(root, true));
 			for (size_t index = 0;
-				index + 1 < OptionalRendererLayout::PrivateDependencies().size();
+				index + 1 < OptionalRendererLayout::PrivateDependencies(true).size();
 				++index)
 			{
 				touch(OptionalRendererLayout::Join(pluginDirectory,
-					OptionalRendererLayout::PrivateDependencies()[index]));
+					OptionalRendererLayout::PrivateDependencies(true)[index]));
 			}
 
 			const wchar_t* finalDependency =
-				OptionalRendererLayout::PrivateDependencies().back();
+				OptionalRendererLayout::PrivateDependencies(true).back();
 			// A same-named root/PATH-style decoy must not satisfy the private
 			// plugin contract.
 			touch(OptionalRendererLayout::Join(root, finalDependency));
 			Assert::IsTrue(OptionalRendererLayout::FindMissingRuntimeFile(
-				root, missing));
+				root, missing, true));
 			Assert::AreEqual(OptionalRendererLayout::Join(
 				pluginDirectory, finalDependency).c_str(),
 				missing.c_str());
@@ -479,11 +469,11 @@ namespace VideoProcessorTest
 			touch(OptionalRendererLayout::Join(
 				pluginDirectory, finalDependency));
 			Assert::IsFalse(OptionalRendererLayout::FindMissingRuntimeFile(
-				root, missing));
+				root, missing, true));
 			DeleteFileW(OptionalRendererLayout::Join(root, finalDependency).c_str());
-			DeleteFileW(OptionalRendererLayout::PluginPath(root).c_str());
+			DeleteFileW(OptionalRendererLayout::PluginPath(root, true).c_str());
 			for (const wchar_t* dependency :
-				OptionalRendererLayout::PrivateDependencies())
+				OptionalRendererLayout::PrivateDependencies(true))
 			{
 				DeleteFileW(OptionalRendererLayout::Join(
 					pluginDirectory, dependency).c_str());

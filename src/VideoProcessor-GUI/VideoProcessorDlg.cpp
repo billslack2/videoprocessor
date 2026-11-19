@@ -11527,13 +11527,11 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 
 	DirectShowVideoRendererIds(rendererIds);
 #if defined(_WIN64)
-	if (RendererId::IsLibplaceboAvailable())
-		rendererIds.push_back(RendererId::Libplacebo());
 	if (RendererId::IsLibplaceboAvailable(true))
 		rendererIds.push_back(RendererId::Libplacebo(true));
 #endif
 
-	// Alpha is always first; remaining eligible renderers are shown in the
+	// VP Renderer is always first; remaining eligible renderers are shown in the
 	// reverse of the previous alphabetical order.
 	for (const auto& rendererEntry : RendererId::OrderForDisplay(rendererIds))
 	{

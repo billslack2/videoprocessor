@@ -267,14 +267,10 @@ namespace Tests
             GetModuleFileNameW(module, modulePath, MAX_PATH);
             std::wstring path(modulePath);
             path.resize(path.find_last_of(L"\\/"));
-#ifdef VP_LIBPLACEBO_BETA
             path += L"\\..\\vprenderer-beta\\VideoProcessorVPRendererBeta.dll";
-#else
-            path += L"\\vprenderer\\VideoProcessorVPRenderer.dll";
-#endif
             HMODULE plugin = LoadLibraryExW(path.c_str(), nullptr,
                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
-            Assert::IsNotNull(plugin, L"Build both Release renderer DLLs before running the tunnel integration test");
+            Assert::IsNotNull(plugin, L"Build the current Release renderer DLL before running the tunnel integration test");
             struct PluginCleanup { HMODULE plugin; ~PluginCleanup(){ FreeLibrary(plugin); } } pluginCleanup{plugin};
             const auto version = reinterpret_cast<VideoProcessorLibplaceboGetApiVersionFn>(
                 GetProcAddress(plugin, VP_LIBPLACEBO_VERSION_EXPORT));

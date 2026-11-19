@@ -125,7 +125,7 @@ override setup/readback with restoration. The tunnel class
 includes an integration test that loads the built renderer DLL and confirms
 actual RGB8 decoded upload and recovered DM/L1 status with native RGB upload
 otherwise enabled. Run this class for both standard and beta test binaries;
-then run `tools/test_subtitle_motion_renderers.ps1` for both dependencies.
+then run `tools/test_subtitle_motion_renderers.ps1` for the current renderer dependency.
 The renderer plugin API is incremented because the shared capture state now
 includes the RGB-byte-preservation contract; mismatched host/DLL pairs fail closed.
 

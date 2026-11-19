@@ -58,7 +58,8 @@ bool RendererId::MatchesConfiguredName(const CString& configuredName) const
 {
 	return name.CompareNoCase(configuredName) == 0 ||
 		(backend == RendererBackend::LIBPLACEBO && libplaceboBeta &&
-		 (configuredName.CompareNoCase(TEXT("VP Renderer (Beta)")) == 0 ||
+		 (configuredName.CompareNoCase(TEXT("VP Renderer (Legacy)")) == 0 ||
+		  configuredName.CompareNoCase(TEXT("VP Renderer (Beta)")) == 0 ||
 		  configuredName.CompareNoCase(TEXT("libplacebo")) == 0 ||
 		  configuredName.CompareNoCase(TEXT("VideoProcessor Renderer (Alpha)")) == 0));
 }

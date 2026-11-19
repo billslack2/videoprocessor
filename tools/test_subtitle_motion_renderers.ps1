@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [Parameter(Mandatory=$true)][string]$MagewellSdkRoot,
     [string]$VsInstallPath='C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional',
-    [ValidateSet('standard','beta')][string[]]$Variants=@('standard','beta')
+    [ValidateSet('beta')][string[]]$Variants=@('beta')
 )
 $ErrorActionPreference='Stop'
 $vpRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -34,12 +34,11 @@ try {
         $vpRuns+=,$vpRun
         if($vpBuildExit -ne 0){throw "$vpVariant build failed: $vpBuildExit"}
         $vpBin=Join-Path $vpRoot 'x64\Release'
-        $vpName='VideoProcessor-Test.dll';$vpDependency='libplacebo-360.dll'
-        if($vpVariant -eq 'beta'){$vpBin=Join-Path $vpBin 'tests-beta';$vpName='VideoProcessor-TestBeta.dll';$vpDependency='libplacebo-388.dll'}
+        $vpBin=Join-Path $vpBin 'tests-beta';$vpName='VideoProcessor-TestBeta.dll';$vpDependency='libplacebo-388.dll'
         $vpRun.binary=Join-Path $vpBin $vpName
         $vpRun.sha256=(Get-FileHash -LiteralPath $vpRun.binary).Hash
         $vpRun.dependencySha256=(Get-FileHash -LiteralPath (Join-Path $vpBin $vpDependency)).Hash
-        $vpDependencyFolder=if($vpVariant -eq 'beta'){'libplacebo-beta'}else{'libplacebo'}
+        $vpDependencyFolder='libplacebo-beta'
         $vpExpectedDependency=Join-Path $vpRoot "3rdparty\$vpDependencyFolder\bin\$vpDependency"
         if($vpRun.dependencySha256 -ne (Get-FileHash -LiteralPath $vpExpectedDependency).Hash) {
             throw "$vpVariant output dependency differs from the selected bundled binary"
