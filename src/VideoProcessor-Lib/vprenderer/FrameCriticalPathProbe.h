@@ -20,12 +20,12 @@ class FrameCriticalPathProbe {
             return values[static_cast<size_t>(std::ceil(p*stored))-1]; }
     };
     struct Pair { Distribution wall,cpu; };
-    std::array<Pair,6> cost{};
+    std::array<Pair,9> cost{};
     Distribution submitGap,callbackAge;
     LONGLONG previousSubmit=0; uint64_t previousSource=0;
     uint64_t repeats=0,skipped=0,backward=0;
     ULONGLONG startTick=0; LONGLONG frequency=0;
-    uint64_t attempts=0,submitted=0,partial=0,cpuFailures=0,overBudget=0;
+    uint64_t attempts=0,submitted=0,partial=0,cpuFailures=0,overBudget=0,budgetKnown=0;
     uint64_t generation=0,firstSource=0,lastSource=0;
     bool enabled=false;
     static Stamp Read() { Stamp s; LARGE_INTEGER q{}; QueryPerformanceCounter(&q); s.wall=q.QuadPart;
@@ -40,23 +40,36 @@ class FrameCriticalPathProbe {
     }
     void Flush() {
         if(!attempts)return;
-        const char* names[]={"preparation","render_wrapper","before_swap","swap","post_swap","total"};
+        const char* names[]={"preparation","render_wrapper","before_swap","swap","post_swap","total",
+            "render_invocation","post_render_callbacks","hdr_status"};
         for(size_t i=0;i<cost.size();++i){auto& c=cost[i];
-            DebugLog::Log("VP critical path: schema=1 scope=RenderLocked stage=%s generation=%llu first_source=%llu last_source=%llu attempts=%llu submitted=%llu partial=%llu samples=%zu percentile_samples=%zu overflow=%zu wall_mean_ms=%.4f wall_p95_ms=%.4f wall_p99_ms=%.4f wall_max_ms=%.4f cpu_samples=%zu cpu_mean_ms=%.4f cpu_p95_ms=%.4f cpu_p99_ms=%.4f cpu_max_ms=%.4f cpu_read_failures=%llu source_budget_exceeded=%llu coverage=renderer_only cpu_basis=thread_kernel_plus_user gpu_overlap=not_added",
+            DebugLog::Log("VP critical path: schema=2 scope=RenderLocked stage=%s generation=%llu first_source=%llu last_source=%llu attempts=%llu submitted=%llu partial=%llu samples=%zu percentile_samples=%zu overflow=%zu wall_mean_ms=%.4f wall_p95_ms=%.4f wall_p99_ms=%.4f wall_max_ms=%.4f cpu_samples=%zu cpu_mean_ms=%.4f cpu_p95_ms=%.4f cpu_p99_ms=%.4f cpu_max_ms=%.4f cpu_read_failures=%llu source_budget_exceeded=%llu source_budget_known_samples=%llu relation=%s coverage=renderer_only cpu_basis=thread_kernel_plus_user gpu_overlap=not_added",
                 names[i],generation,firstSource,lastSource,attempts,submitted,partial,
                 c.wall.count,c.wall.stored,c.wall.count-c.wall.stored,
                 c.wall.count?c.wall.sum/c.wall.count:0,c.wall.Percentile(.95),c.wall.Percentile(.99),c.wall.peak,
-                c.cpu.count,c.cpu.count?c.cpu.sum/c.cpu.count:0,c.cpu.Percentile(.95),c.cpu.Percentile(.99),c.cpu.peak,cpuFailures,overBudget);
+                c.cpu.count,c.cpu.count?c.cpu.sum/c.cpu.count:0,c.cpu.Percentile(.95),c.cpu.Percentile(.99),c.cpu.peak,cpuFailures,overBudget,budgetKnown,
+                i>=6?"nested_in_render_wrapper":i==5?"total":"exclusive_partition");
         }
         DebugLog::Log("VP critical progression: schema=1 generation=%llu first_source=%llu last_source=%llu submissions=%llu repeats=%llu skipped_source_ids=%llu backward=%llu gap_samples=%zu gap_mean_ms=%.4f gap_p95_ms=%.4f gap_p99_ms=%.4f gap_max_ms=%.4f callback_age_samples=%zu callback_age_mean_ms=%.4f callback_age_p95_ms=%.4f callback_age_p99_ms=%.4f callback_age_max_ms=%.4f gap_overflow=%zu callback_age_overflow=%zu evidence=submit_boundary_not_scanout",
             generation,firstSource,lastSource,submitted,repeats,skipped,backward,
             submitGap.count,submitGap.count?submitGap.sum/submitGap.count:0,submitGap.Percentile(.95),submitGap.Percentile(.99),submitGap.peak,
             callbackAge.count,callbackAge.count?callbackAge.sum/callbackAge.count:0,callbackAge.Percentile(.95),callbackAge.Percentile(.99),callbackAge.peak,
             submitGap.count-submitGap.stored,callbackAge.count-callbackAge.stored);
-        cost={}; attempts=submitted=partial=cpuFailures=overBudget=0;
+        cost={}; attempts=submitted=partial=cpuFailures=overBudget=budgetKnown=0;
         submitGap={};callbackAge={};repeats=skipped=backward=0;
     }
 public:
+    enum class DetailStage { RenderInvocation=6, PostRenderCallbacks=7, HdrStatus=8 };
+    class DetailScope {
+        FrameCriticalPathProbe& owner; size_t index; Stamp begin{}; bool active=false;
+    public:
+        DetailScope(FrameCriticalPathProbe& p,DetailStage stage):owner(p),index(static_cast<size_t>(stage)) {
+            active=owner.enabled; if(active)begin=Read();
+        }
+        DetailScope(const DetailScope&)=delete;
+        void Complete(){if(active){owner.Add(index,begin,Read());active=false;}}
+        ~DetailScope(){Complete();}
+    };
     FrameCriticalPathProbe() { char value[8]{};
         enabled=GetEnvironmentVariableA("VP_CRITICAL_PATH",value,sizeof(value))==1&&value[0]=='1';
         LARGE_INTEGER q{}; QueryPerformanceFrequency(&q); frequency=q.QuadPart; }
@@ -77,6 +90,7 @@ public:
         }
         void Mark() { if(owner.enabled&&marked<4)stamps[++marked]=Read(); }
         void Submitted(bool value) { success=value; }
+        DetailScope Detail(DetailStage stage) {return DetailScope(owner,stage);}
         ~Scope() { if(!owner.enabled)return; const auto end=Read(); ++owner.attempts;
             owner.submitted+=success?1:0;
             if(success&&marked==4){const auto submit=stamps[3].wall;
@@ -90,6 +104,7 @@ public:
                 owner.previousSubmit=submit;owner.previousSource=source;
             }
             owner.Add(5,stamps[0],end);
+            owner.budgetKnown+=budget>0?1:0;
             owner.overBudget+=budget>0&&double(end.wall-stamps[0].wall)*1000.0/owner.frequency>budget?1:0;
             if(marked==4){for(size_t i=0;i<4;++i)owner.Add(i,stamps[i],stamps[i+1]);owner.Add(4,stamps[4],end);}
             else ++owner.partial;

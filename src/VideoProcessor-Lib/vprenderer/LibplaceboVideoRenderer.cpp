@@ -19796,6 +19796,7 @@ releaseDriftBaseRetention =
         const pl_hook* submittedNls = nullptr;
         for(int i=0;i<renderParams.num_hooks;++i)
             if(renderParams.hooks[i]==nlsHook)submittedNls=nlsHook;
+        auto renderCallTiming=criticalPath.Detail(FrameCriticalPathProbe::DetailStage::RenderInvocation);
         const auto hookRender = NlsHookRecovery::Render(temporalRenderer.ProcessingRenderer(renderer), d3d11->gpu,
             renderImage, target, baseTarget, renderParams, submittedNls, [&]()
             {
@@ -19813,6 +19814,8 @@ releaseDriftBaseRetention =
             }, [&](const pl_frame& source, const pl_frame& destination, pl_render_params& parameters) {
                 return temporalRenderer.Render(renderer,source,destination,parameters,pictureProcessingEpoch);
             });
+        renderCallTiming.Complete();
+        auto callbackTiming=criticalPath.Detail(FrameCriticalPathProbe::DetailStage::PostRenderCallbacks);
         bool rendered = hookRender.rendered;
         if (hookRender.retried)
             DebugLog::Log("VP anamorphic hook recovery: schema=1 sequence=%llu generation=%llu hook=%llu errors=0x%x retry=1 rendered=%d lens=%.6f latch=until_shader_selection_change",
@@ -19869,10 +19872,13 @@ releaseDriftBaseRetention =
 			originalPrLastPasses.store(originalPrPasses,
 				std::memory_order_relaxed);
 		preparing.Complete();
+        callbackTiming.Complete();
+        auto hdrStatusTiming=criticalPath.Detail(FrameCriticalPathProbe::DetailStage::HdrStatus);
         RendererHdrStatus renderedHdrStatus;
         if(rendered && !temporalRenderer.HdrStatusSnapshot(renderedHdrStatus))
             renderedHdrStatus=FrameHdrStatus::Capture(directHdrSource,renderer,renderParams.peak_detect_params!=nullptr);
         LogHdrPeakAnalysisMetrics(hdrPeakAnalysisDecision,sourceSequence,rendered,renderedHdrStatus);
+        hdrStatusTiming.Complete();
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
         criticalPath.Mark();
