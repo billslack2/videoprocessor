@@ -36,6 +36,17 @@ int main(){
  check(!cap.complete&&cap.kind==Kind::Unknown&&cap.samples==70,"hard sample cap");
  auto fullRange=Measure(1920,1080,0,[](int,int y,int&v){v=y<140||y>=940?12:240;return true;},[]{return true;});
  check(fullRange.kind==Kind::Bars&&fullRange.top==140&&fullRange.bottom==940,"full-range lifted matte");
+ for(int black : {0,64}){
+   auto raised=Measure(1920,1080,black,[=](int x,int y,int&v){
+     v=black+((y<137||y>=943)?108+(x+3*y)%7:270+(x+y)%32);
+     return true;
+   },[]{return true;});
+   check(raised.kind==Kind::Bars&&raised.top==137&&raised.bottom==943,"raised textured matte with straight relative edge");
+   auto panel=Measure(1920,1080,black,[=](int,int y,int&v){
+     v=black+((y<137||y>=943)?340:370);return true;
+   },[]{return true;});
+   check(panel.kind!=Kind::Bars,"small inward step on bright exterior cannot authorize crop");
+ }
  auto tiny=scene(64,64,0,10,0,10);
  check(tiny.complete&&tiny.kind==Kind::Bars&&tiny.top==10&&tiny.bottom==54,"minimum supported raster");
  auto large=scene(8192,4320,0,600,0,600,true);

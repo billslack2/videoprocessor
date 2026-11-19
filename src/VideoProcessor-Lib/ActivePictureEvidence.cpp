@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <bitset>
 #include <numeric>
 #include <vector>
 
@@ -898,7 +899,7 @@ bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
 }
 
 bool IsCrediblyVisible(SampleContext& samples, int x, int y,
-	int blackThreshold, AnalysisLumaSample* diagnosticSample = nullptr)
+	int blackThreshold, AnalysisLumaSample* diagnosticSample = nullptr, int matte = -1)
 {
 	if (samples.IsErasedOverlay(x, y) || samples.IsResidualOverlay(x, y)) return false;
 	AnalysisLumaSample sample;
@@ -911,7 +912,10 @@ bool IsCrediblyVisible(SampleContext& samples, int x, int y,
 	// Match the denser renderer-local bar pass: blackThreshold already carries
 	// 24 codes above the measured floor, so this is floor + 32. The denser grid
 	// and 2x2 support rule retain noise rejection while covering small controls.
-	const bool elevatedLuma = sample.luma > blackThreshold + 8;
+	if (matte >= 0)
+        return std::abs(int(sample.luma)-matte) > 4 ||
+            std::abs(int(sample.chromaU)-512) > 32 || std::abs(int(sample.chromaV)-512) > 32;
+    const bool elevatedLuma = sample.luma > blackThreshold + 8;
 	const bool colored = (std::abs(static_cast<int>(sample.chromaU) - 512) >= 64 ||
 		std::abs(static_cast<int>(sample.chromaV) - 512) >= 64) &&
 		sample.luma >= blackThreshold + 8;
@@ -948,35 +952,44 @@ bool HasHorizontalPictureContinuation(SampleContext& samples, bool top,
 }
 
 ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
-	bool top, int barPixels, int blackThreshold)
+	bool top, int barPixels, int blackThreshold, int matte = -1)
 {
 	ExcludedBandVisibleExtent result;
 	if (barPixels <= 0)
 		return result;
 	const int depthSamples = std::min(kVisibleExtentDepthSamples, barPixels);
-	result.lumaCutoff = blackThreshold + 8;
+	result.lumaCutoff = matte >= 0 ? matte + 4 : blackThreshold + 8;
 	result.depthSamples = depthSamples;
 	int previousOccupied = -2;
+    std::bitset<kVisibleExtentLineSamples> previousColumns, previousStrong;
 	ActivePictureVisibleExtentDiagnostic previousLine;
 	for (int d = 0; d < depthSamples; ++d)
 	{
 		const int depth = ((d * 2 + 1) * barPixels) / (depthSamples * 2);
 		const int y = top ? depth : samples.source.height - 1 - depth;
 		int visible = 0;
+        const bool nearRaisedEdge = matte >= 0 &&
+            barPixels - depth <= std::max(2, samples.source.height / 96);
+        std::bitset<kVisibleExtentLineSamples> columns, strong;
 		ActivePictureVisibleExtentDiagnostic line;
 		for (int i = 0; i < kVisibleExtentLineSamples; ++i)
 		{
 			const int x = ((i * 2 + 1) * samples.source.width) /
 				(kVisibleExtentLineSamples * 2);
 			AnalysisLumaSample pixel;
-			if (IsCrediblyVisible(samples, x, y, blackThreshold, &pixel))
+			if (IsCrediblyVisible(samples, x, y, blackThreshold, &pixel, matte))
 			{
 				const int chromaDelta = std::max(std::abs(int(pixel.chromaU)-512), std::abs(int(pixel.chromaV)-512));
-				if (visible == 0)
+				if (nearRaisedEdge) {
+                    columns.set(i);
+                    if (std::abs(int(pixel.luma)-matte) >= 16 || chromaDelta > 32)
+                        strong.set(i);
+                }
+                if (visible == 0)
 				{
 					line.firstX=x; line.firstY=y; line.firstLuma=pixel.luma;
 					line.firstU=pixel.chromaU; line.firstV=pixel.chromaV;
-					line.firstReason=(pixel.luma > blackThreshold+8 ? 1 : 0) |
+					line.firstReason=matte >= 0 ? (std::abs(int(pixel.luma)-matte)>4 ? 1 : 2) : (pixel.luma > blackThreshold+8 ? 1 : 0) |
 						(chromaDelta >= 64 && pixel.luma >= blackThreshold+8 ? 2 : 0);
 				}
 				++visible;
@@ -988,7 +1001,16 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 		// signal on adjacent depth rows below to reject isolated hot pixels.
 		if (visible < 2)
 			continue;
-		if (d != previousOccupied + 1)
+		// A picture transition can light up the whole innermost row. Weak
+        // flecks scattered through a raised bar on the preceding row do
+        // not establish a glyph. Require a connected patch on both rows,
+        // or strong same-column contrast for thin strokes.
+        const auto common = columns & previousColumns;
+        const bool disconnected = nearRaisedEdge && previousColumns.any() &&
+            !(common & (common >> 1)).any() && !(strong & previousStrong).any();
+        previousColumns = columns;
+        previousStrong = strong;
+        if (d != previousOccupied + 1 || disconnected)
 		{
 			previousLine = line;
 			previousLine.firstLine = y;
@@ -1007,7 +1029,7 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 		result.peakChromaDelta = std::max(result.peakChromaDelta,line.peakChromaDelta);
 		result.sampleStep = sampleStep;
 		result.depthSamples = depthSamples;
-		result.lumaCutoff = blackThreshold + 8;
+		result.lumaCutoff = matte >= 0 ? matte + 4 : blackThreshold + 8;
 		result.available = true;
 		result.coordinate = top ? std::max(0, extentDepth - sampleStep) :
 			std::min(samples.source.height,
@@ -2898,10 +2920,23 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         }
     }
 
-	const auto topExtent = FindHorizontalVisibleExtent(samples, true,
-		trustedPresentation.top, blackThreshold);
+	// For an existing scope candidate, verify both excluded bands against this frame.
+    // Only a flat neutral pair with a distinct inward rise can use a relative scan.
+    auto raisedBand = [&](const ActivePictureEdgeEvidence& edge) {
+        return edge.barPixels > 0 && edge.lumaP90 > blackThreshold + 8 &&
+            edge.lumaP90 <= blackFloor + 128 && edge.lumaDispersion <= 2 &&
+            edge.texture <= 4 && edge.neutralChromaFraction >= .90 &&
+            edge.innerBoundaryContrast >= 24;
+    };
+    const bool relativeBands = trustedPresentation.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        std::abs(result.excludedTop.barPixels-result.excludedBottom.barPixels) <= std::max(4, source.height/100) &&
+        std::abs(result.excludedTop.lumaP90-result.excludedBottom.lumaP90) <= 4 &&
+        raisedBand(result.excludedTop) && raisedBand(result.excludedBottom);
+
+    const auto topExtent = FindHorizontalVisibleExtent(samples, true,
+		trustedPresentation.top, blackThreshold, relativeBands ? int(result.excludedTop.lumaP90) : -1);
 	const auto bottomExtent = FindHorizontalVisibleExtent(samples, false,
-		source.height - trustedPresentation.bottom, blackThreshold);
+		source.height - trustedPresentation.bottom, blackThreshold, relativeBands ? int(result.excludedBottom.lumaP90) : -1);
 	const auto leftExtent = FindVerticalVisibleExtent(samples, true,
 		trustedPresentation.left, blackThreshold);
 	const auto rightExtent = FindVerticalVisibleExtent(samples, false,
@@ -2910,9 +2945,9 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	result.visibleLeft = leftExtent; result.visibleRight = rightExtent;
 	result.visibleTop.presentationMargin = result.visibleBottom.presentationMargin = std::max(2, source.height / 180);
 	result.visibleLeft.presentationMargin = result.visibleRight.presentationMargin = std::max(2, source.width / 180);
-	const bool unsafeTop = !ExcludedBandPixelsAreSafe(result.excludedTop) ||
+	const bool unsafeTop = (!relativeBands && !ExcludedBandPixelsAreSafe(result.excludedTop)) ||
 		topExtent.available;
-	const bool unsafeBottom = !ExcludedBandPixelsAreSafe(result.excludedBottom) ||
+	const bool unsafeBottom = (!relativeBands && !ExcludedBandPixelsAreSafe(result.excludedBottom)) ||
 		bottomExtent.available;
 	const bool unsafeLeft = !ExcludedBandPixelsAreSafe(result.excludedLeft) ||
 		leftExtent.available;

@@ -93,12 +93,7 @@ inline MovingPictureTransitionState RetainMovingPictureAtDarknessBoundary(
     if (!same(measured,current.outwardCandidate)) return reject("outward-candidate-mismatch");
     // Raw proposals intentionally carry no trusted-axis authority. Compare
     // their geometry only; authority is checked on measured/vertical below.
-    if (measured.left!=current.evidence.proposedBounds.left ||
-        measured.top!=current.evidence.proposedBounds.top ||
-        measured.right!=current.evidence.proposedBounds.right ||
-        measured.bottom!=current.evidence.proposedBounds.bottom ||
-        measured.rasterWidth!=current.evidence.proposedBounds.rasterWidth ||
-        measured.rasterHeight!=current.evidence.proposedBounds.rasterHeight) return reject("raw-proposal-mismatch");
+    if (!MotionRawBoundsMatch(measured,current.evidence,true)) return reject("raw-proposal-mismatch");
     if (!vertical.scanComplete || vertical.state!=ActivePictureAxisState::TRUSTED_BARS)
         return reject("native-axis-authority");
     if (measured.rasterWidth!=base.rasterWidth || measured.rasterHeight!=base.rasterHeight ||
@@ -132,12 +127,10 @@ inline MovingPictureTransitionState RetainMovingPictureAtDarknessBoundary(
         // certify an endpoint, or alter the global outward-picture proof.
         const auto& native=current.retention.activePicture;
         const auto& nativeVertical=native.axisEvidence.vertical;
-        auto nativeProposal=native.proposedBounds;
-        nativeProposal.trustedBarAxes=measured.trustedBarAxes; // Proposals carry geometry, not authority.
         if (!current.evidence.top.trusted || !current.evidence.bottom.trusted ||
             !native.available || native.authorityOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
             native.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
-            !same(native.trustedBounds,measured) || !same(nativeProposal,measured) ||
+            !same(native.trustedBounds,measured) || !MotionRawBoundsMatch(measured,native,true) ||
             !nativeVertical.scanComplete || nativeVertical.state!=ActivePictureAxisState::TRUSTED_BARS ||
             native.axisEvidence.HasFailedBar() || !native.top.trusted || !native.bottom.trusted)
             return reject("pixel-proof");

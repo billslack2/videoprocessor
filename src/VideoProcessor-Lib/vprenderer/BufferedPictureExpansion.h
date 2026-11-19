@@ -5,6 +5,20 @@
 
 namespace AlphaSourceCrop
 {
+    // Only a running ramp may compare a raw native edge with its outward
+    // chroma-aligned presentation coordinate. No tolerance for inward crops.
+    inline bool MotionRawBoundsMatch(const ActivePictureBounds& trusted,
+        const ActivePictureEvidence& evidence, bool established)
+    {
+        const auto& raw = evidence.proposedBounds;
+        if (raw.left != trusted.left || raw.right != trusted.right ||
+            raw.rasterWidth != trusted.rasterWidth || raw.rasterHeight != trusted.rasterHeight)
+            return false;
+        if (raw.top == trusted.top && raw.bottom == trusted.bottom) return true;
+        return established && evidence.top.trusted && evidence.bottom.trusted &&
+            raw.top > 0 && raw.top < raw.bottom && raw.bottom < raw.rasterHeight &&
+            trusted.top == (raw.top & ~1) && trusted.bottom == ((raw.bottom + 1) & ~1);
+    }
     struct BufferedPictureExpansionSample
     {
         ActivePictureFrameIdentity identity;
