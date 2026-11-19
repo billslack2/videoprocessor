@@ -1,0 +1,19 @@
+variant,strong,top,bottom,kind,reason,worker_detected,proof,guardtop,guardbottom,innertop,innerbottom,selectedguard
+variant=0 retention=0,0,0 contained=1 excluded=1 visible=268,1892 crop=1,1,268,1892 owner=13 reason=bounded outward presentation expansion accepted caption=1752,1808
+variant=0 ownership=0 final=1,268,1892 finalreason=bounded outward presentation expansion accepted
+0,1,276,1884,1,joint-measured-boundaries,1,1,268,1892,276,1884,1
+variant=1 retention=1,276,1959 contained=1 excluded=0 visible=268,1960 crop=1,1,268,1960 owner=13 reason=bounded outward presentation expansion accepted caption=1888,1944
+variant=1 ownership=1 final=1,268,1960 finalreason=bounded outward presentation expansion accepted
+1,1,276,1884,1,joint-measured-boundaries,1,1,268,1892,276,1884,1
+variant=2 retention=0,0,0 contained=1 excluded=1 visible=268,1892 crop=1,1,268,1892 owner=13 reason=bounded outward presentation expansion accepted caption=1832,1888
+variant=2 ownership=1 final=1,268,1892 finalreason=bounded outward presentation expansion accepted
+2,1,276,1884,1,joint-measured-boundaries,1,1,268,1892,276,1884,1
+variant=3 retention=0,0,0 contained=1 excluded=1 visible=268,1892 crop=0,0,0,2160 owner=0 reason=presentation bounds do not expand outward from crop authority caption=1752,1808
+variant=3 ownership=0 final=0,0,2160 finalreason=presentation bounds do not expand outward from crop authority
+3,0,276,1884,1,joint-measured-boundaries,1,1,268,1892,276,1884,0
+variant=4 retention=1,268,1957 contained=1 excluded=0 visible=268,1958 crop=1,1,268,1958 owner=13 reason=bounded outward presentation expansion accepted caption=1888,1944
+variant=4 ownership=0 final=1,268,1958 finalreason=bounded outward presentation expansion accepted
+4,0,276,1884,1,joint-measured-boundaries,1,1,268,1892,276,1884,0
+variant=5 retention=0,0,0 contained=1 excluded=1 visible=268,1892 crop=0,0,0,2160 owner=0 reason=presentation bounds do not expand outward from crop authority caption=1832,1888
+variant=5 ownership=0 final=0,0,2160 finalreason=presentation bounds do not expand outward from crop authority
+5,1,276,1888,1,joint-measured-boundaries,1,1,268,1892,276,1884,0

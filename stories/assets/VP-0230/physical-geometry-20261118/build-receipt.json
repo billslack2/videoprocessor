@@ -1,0 +1,67 @@
+{
+  "source": "54be4dadae70baf494e302d95e52bb54d85c53f4",
+  "base": "c0d04fc873c828cc79f9f075c08f0c1f59db9052",
+  "configuration": "Release",
+  "architecture": "x64",
+  "mode": "opt-in physical AR and subtitle guard separation",
+  "binaries": [
+    {
+      "file": "VideoProcessor.exe",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "7E7098E0667262138D3BFEF1ED90CAA5B6A43D971DF7E652EBCAAA84C38CFAF3"
+    },
+    {
+      "file": "config/VideoProcessorConfig.exe",
+      "toolsetVersion": "14.44.35207",
+      "sha256": "61F7091253728EF630EF1951656426E9703F2F927422A88D682E3513642D7A36"
+    },
+    {
+      "file": "config/VideoProcessorConfigDiscovery.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "A030E5028A0265CD237DB35848A6AFF551DD35C38FEDDE6DCBE6A591415D5E7B"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "FEB0F9DE8B3945F0E7ADF83B4C615C8892559CD361DE7CD8F87FD05BAADCBCCA"
+    },
+    {
+      "file": "vprenderer-beta/VideoProcessorVPRendererBeta.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "1A5644027C2C056CCEA768BDAFAD7959A2FA2D35B8E9DBAD1D90899E30E8D28B"
+    }
+  ],
+  "rebuiltFiles": [
+    "VideoProcessor.exe",
+    "vprenderer/VideoProcessorVPRenderer.dll",
+    "vprenderer-beta/VideoProcessorVPRendererBeta.dll"
+  ],
+  "unchangedCompanionFrom": "E:\\codex\\videoprocessor\\ar-current-test-c0d04fc8",
+  "settings": [
+    {
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-current-test-c0d04fc8",
+      "file": "VideoProcessor.cfg",
+      "sha256": "5776D89CC7BF98337C1A9EEBD97286250B41326975372DBC5773BC718F78821C"
+    },
+    {
+      "copiedFrom": "E:\\codex\\videoprocessor\\ar-current-test-c0d04fc8",
+      "file": "VideoProcessor.state",
+      "sha256": "2CD6A80974E0ABA4551C8403623F39E965DFF227C825380AAF5FCBDFD9B264C0"
+    }
+  ],
+  "tests": {
+    "focused": 94,
+    "nativePassed": 846,
+    "motionPassed": 204,
+    "source": "54be4dadae70baf494e302d95e52bb54d85c53f4",
+    "nativeProvenance": "Precommit final source; unchanged code pinned at 54be4dad. GPU runs built from clean pin.",
+    "pixelReplay": "validation/pixel-replay.json",
+    "immediateSource": 18400,
+    "controlSource": 18403,
+    "captionRegression": "Physical276..1884; guard268..1892; caption1888..1944; final bounded268..1960",
+    "retainedCaptionFrames": "12 exact-mismatch cases unchanged; no real-capture separation claim",
+    "livePlayback": "Pending user test; no restart"
+  },
+  "livePlayback": "Not yet tested",
+  "created": "2026-11-18T20:38:51.6750259-05:00"
+}

@@ -1,0 +1,41 @@
+{
+  "head": "c0d04fc873c828cc79f9f075c08f0c1f59db9052",
+  "status": "M docs/VP-0230_AR_ACTIVE.md\n M src/VideoProcessor-Lib/ActivePictureEvidence.cpp\n M src/VideoProcessor-Lib/ActivePictureEvidence.h\n M src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.cpp\n M src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.h\n M src/VideoProcessor-Lib/vprenderer/ExperimentalAspectActive.h\n M src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp\n M src/VideoProcessor-Test/ActivePictureEvidenceTests.cpp\n M tools/test_experimental_aspect_active.cpp",
+  "hashes": {
+    "src/VideoProcessor-Lib/vprenderer/ExperimentalAspectActive.h": "D35F2792B5DCEA925016FDD92F4247A663ED50A45BC2CB56622E7936ED1E57D2",
+    "src/VideoProcessor-Lib/ActivePictureEvidence.cpp": "8A473F1BB2D83BFFE835F2F21044656303746394538086C66D54BB590322E3A6",
+    "src/VideoProcessor-Lib/ActivePictureEvidence.h": "E85F1C865BF7527296307E3722FA30E38F0BB0DA03B8D2D98E21F75427F220FC",
+    "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.cpp": "7701C57AE12F22ACB52B85664CB4BDC98ECE1B7292CFBABF960EB12C617E5E08",
+    "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.h": "98B0A4219C2360FC13340A8563D7A163401A842EE6D0ED42DD7A56FCF7F01729",
+    "x64/Release/VideoProcessor-Lib.lib": "910E2CA3E7B96D6AAD8CC87FF901810942B7682C2247E574413CC1C4DEBCBC87"
+  },
+  "harnesses": {
+    "paired.cpp": "32F0110F7044CEE324CD9E8E42ACDACCE87DAE2F338A85589A240491E54ECAE3",
+    "caption.cpp": "850B208F2A3704D2B50BF5550DD235016D9DBAC45AF65F2D16B0D4AA57309966"
+  },
+  "artifacts": {
+    "transition16.csv": "3081CA9578FB0F66836F699D0DFCAFBFBCD90DC3D3D3CAA9E45596FB2411FA36",
+    "admission16.txt": "07B583B11783DA7735F547E85419EC14E4C46E8344818961F5CA4C9A570E466A",
+    "caption12.csv": "E6FE9D90B22BAD622A9A60432665C27E81C9C6F53B3A6FB7678FEF0EB9CD8E5E"
+  },
+  "transition_frames": 16,
+  "transition_checks": [
+    "PASS first_expansion_mode=0",
+    "PASS first_expansion_mode=1"
+  ],
+  "first_imax_publication": {
+    "enabled": 18400,
+    "control": 18403
+  },
+  "caption_frames": 12,
+  "caption_current_proof": 12,
+  "caption_separation_qualified": 0,
+  "caption_stale_rejected": 12,
+  "caption_selection_unchanged": 12,
+  "limits": [
+    "Native retained decoded pixels run through component detector/admission/transition; no renderer or liveperformanceclaim.",
+    "Caption fixture independent inneredges disagree, so all12 deliberately remainlegacyproofgeometry; no capturedseparationimprovementclaim.",
+    "No output coordinates or proof flags adjusted. No repository changes.",
+    "Experimental sample budget fixed24000; unlimitedwall-clockmeasurement and separate2msmeasurement distinguished in transitionCSV."
+  ]
+}

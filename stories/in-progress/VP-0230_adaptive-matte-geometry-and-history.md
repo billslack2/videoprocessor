@@ -7,6 +7,22 @@ In Progress
 
 
 
+## Physical geometry trial ready - 2026-11-18
+
+Committed and pushed 54be4dadae70baf494e302d95e52bb54d85c53f4 on codex/ar-physical-geometry-20261118, continuing the user-selected experiment. Checkpoint c0d04fc8 remains fixed. Matching x64 Release host and both renderer DLLs are staged at E:\codex\videoprocessor\ar-geometry-test-54be4dad; embedded pin, runtime records, artifact hashes and app-local runtime requirements verified. Settings copied from the previous trial without editing. No player restart or deployed-folder change; live acceptance pending.
+
+Physical AR now retains independently strong measured bounds when an exact-current subtitle worker proof confirms those same inner edges but carries an outer safety guard. Both live and queued adoption use the selector. Presentation retains the guard separately, including opposite-edge guard allowance in current caption FIT ownership and final recovery. Exact guard equivalence avoids unnecessary repeated acquisition. Different/weak/incomplete measurements keep existing behavior. Existing transition thresholds and camcorder/inset policy remain unchanged. Alpha picture decision records spatial rejection reasons using existing cadence, without new scans.
+
+The end-to-end regression exposed a pre-existing adapter/retention integration defect: experimental evidence left the nominal black reference at 0/24, so retention interpreted limited-range code64 black bars as visible picture and expanded to full raster. The adapter now supplies nominal declared-range Limited64/88 or Full0/24; calibration/qualified flags remain unset. Invalid/unknown-range sources cannot supply active authority. This is not raised-black calibration or a new pixel certificate.
+
+Validation: 94 focused checks, 846 native checks, 102 GPU/cue checks on each renderer dependency (204 total), all passed. Native/focused final source was tested before commit; clean pinned runtime and GPU builds followed with unchanged code. New genuine synthetic pixel regression keeps measured276..1884, guard268..1892 and caption1888..1944, with final bounded presentation/recovery268..1960. Failed preliminary fixture and compile attempts were corrected before acceptance; no failing build was staged as ready.
+
+Retained16-frame Eternals replay still publishes IMAX68..2092 at source18400, versus control18403 (~125ms later). Twelve real caption frames naturally disagree at inner boundaries and do not qualify this narrow separation; their selections remain unchanged and stale proofs are rejected. Do not claim real-capture separation improvement from those frames. Actual live subtitle preservation, boundary accuracy and cadence remain to be verified; no scanout/60fps claim.
+
+[Build receipt](../assets/VP-0230/physical-geometry-20261118/build-receipt.json), [native counts](../assets/VP-0230/physical-geometry-20261118/native-test-summary.json), [GPU variants](../assets/VP-0230/physical-geometry-20261118/motion-renderer-tests.json), [retained replay](../assets/VP-0230/physical-geometry-20261118/final-replay-receipt.json), [synthetic pixel replay](../assets/VP-0230/physical-geometry-20261118/synthetic-final-receipt.json).
+
+Next: user live test with subtitles through scope/IMAX/full-picture changes. Look specifically for stable measured AR, no caption loss and no unexpected full-raster expansion; report wall-clock time for problems. After acceptance, compare/integrate into freshly discovered remote beta and retire only verified redundant paths. Performance remains VP-0234; subtitle-profile switching remains VP-0235.
+
 ## Physical geometry and subtitle guard separation - in progress 2026-11-18
 
 User authorized the next implementation increment. Preserve checkpoint c0d04fc8 and its running trial. Continue the explicitly selected experiment; GitHub beta rechecked/fetched at acdb89bf, default v2.0.5-beta-aspect-ratio. Scope is separating independently measured physical geometry from subtitle safety padding in both live and queued adoption, with regression coverage of presentation protection. Add diagnostic-only reasons for rejected immediate spatial expansion; do not change thresholds or transition timing.

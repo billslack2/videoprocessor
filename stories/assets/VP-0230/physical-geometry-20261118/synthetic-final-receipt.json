@@ -1,0 +1,51 @@
+{
+  "head": "c0d04fc873c828cc79f9f075c08f0c1f59db9052",
+  "status": "production source modified; header-only adapter nominal calibration newer than library build, inline compiled into harness; library already includes selector and caption-fit overload",
+  "hashes": {
+    "src/VideoProcessor-Lib/vprenderer/ExperimentalAspectActive.h": "D35F2792B5DCEA925016FDD92F4247A663ED50A45BC2CB56622E7936ED1E57D2",
+    "src/VideoProcessor-Lib/ActivePictureEvidence.h": "E85F1C865BF7527296307E3722FA30E38F0BB0DA03B8D2D98E21F75427F220FC",
+    "src/VideoProcessor-Lib/ActivePictureEvidence.cpp": "8A473F1BB2D83BFFE835F2F21044656303746394538086C66D54BB590322E3A6",
+    "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.h": "98B0A4219C2360FC13340A8563D7A163401A842EE6D0ED42DD7A56FCF7F01729",
+    "src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.cpp": "7701C57AE12F22ACB52B85664CB4BDC98ECE1B7292CFBABF960EB12C617E5E08",
+    "x64/Release/VideoProcessor-Lib.lib": "910E2CA3E7B96D6AAD8CC87FF901810942B7682C2247E574413CC1C4DEBCBC87"
+  },
+  "harness_sha256": "48012B272C12CFCB154F86D93D2092594AD4C9011AC2F422BDDC1066E0B26CB0",
+  "output_sha256": "36044B2457FEBAA577743CE27F145FEA85DC36228D052AB36C95D57B5064576C",
+  "positive_variant": 1,
+  "measured_picture": [
+    276,
+    1884
+  ],
+  "worker_guard": [
+    268,
+    1892
+  ],
+  "worker_inner": [
+    276,
+    1884
+  ],
+  "native_caption": [
+    1888,
+    1944
+  ],
+  "current_visible_extent": [
+    276,
+    1959
+  ],
+  "selected_presentation": [
+    268,
+    1960
+  ],
+  "caption_ownership": true,
+  "recovery_presentation": [
+    268,
+    1960
+  ],
+  "notes": [
+    "All source geometry and worker proof measured from constructed P010 pixels; no authority/geometry mutations.",
+    "Native synthetic fixture has centered 10glyph caption perline, secondline entirely inbar; independent dimleft600px.",
+    "Production fixed adapter nominal limited black64/88; no diagnostic calibrationcopy.",
+    "No live playback, renderer pixels, timing, or decoded-media accuracy claim.",
+    "Other variants are exploratory nonqualified controls; native positiveintegration isvariant1."
+  ]
+}
