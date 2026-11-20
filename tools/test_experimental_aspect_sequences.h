@@ -4,7 +4,7 @@
 // The grayscale moving skyline, lighthouse and waves extend to the true edges.
 static bool RunNarrowAspectSequences(double fps, uint64_t generation) {
     constexpr int width = 896, height = 504;
-    enum class Sides { Black, Raised, Colored, LeftColored, RightColored, Alternating, Pulse132 };
+    enum class Sides { Black, Raised, Colored, LeftColored, RightColored, Alternating, Pulse132, InteriorLinesBlack, InteriorLinesRaised };
     struct Shot { const char* name; int left, right; Sides sides; };
     const Shot shots[] = {
         {"lighthouse-black-1.1905", 148, 748, Sides::Black},
@@ -18,7 +18,10 @@ static bool RunNarrowAspectSequences(double fps, uint64_t generation) {
         {"neutral-matte-4x3", 112, 784, Sides::Raised},
         {"colored-panels-4x3", 112, 784, Sides::Colored},
         {"alternating-one-frame-crops", 0, width, Sides::Alternating},
-        {"sustained-1.1905-after-cuts", 148, 748, Sides::Raised}
+        {"sustained-1.1905-after-cuts", 148, 748, Sides::Raised},
+        // The former 1.19 picture edges now lie inside a wider colored picture.
+        {"black-bars-interior-lines", 88, 808, Sides::InteriorLinesBlack},
+        {"raised-bars-interior-lines", 88, 808, Sides::InteriorLinesRaised}
     };
 
     auto pixels = std::make_shared<std::vector<uint16_t>>(width * height * 3 / 2);
@@ -46,6 +49,7 @@ static bool RunNarrowAspectSequences(double fps, uint64_t generation) {
 
     bool passed = true;
     for (const auto& shot : shots) {
+        const bool interiorLines = shot.sides == Sides::InteriorLinesBlack || shot.sides == Sides::InteriorLinesRaised;
         const bool alternate = shot.sides == Sides::Alternating;
         const bool pulse = shot.sides == Sides::Pulse132;
         const bool oneSided = shot.sides == Sides::LeftColored || shot.sides == Sides::RightColored;
@@ -73,7 +77,7 @@ static bool RunNarrowAspectSequences(double fps, uint64_t generation) {
                     const int grain = (3*x + 5*y + 7*frame) % 9 - 4;
                     int luma = 0;
                     if (side) {
-                        luma = shot.sides == Sides::Black ? 64 : 144 + grain;
+                        luma = shot.sides == Sides::Black || shot.sides == Sides::InteriorLinesBlack ? 64 : 144 + grain;
                     } else {
                         const int horizon = 255 + std::abs((x + frame) % 128 - 64) / 8;
                         const bool tower = y > 100 && y < horizon && std::abs(x - 448) < 10 + y / 14;
@@ -85,11 +89,27 @@ static bool RunNarrowAspectSequences(double fps, uint64_t generation) {
                             luma = 240 + std::abs((x / 3 + y + frame * 2) % 72 - 36) * 3;
                         luma += grain;
                     }
+                    if (interiorLines && !side) {
+                        // Textured, colored picture starts at the true boundary.
+                        // The stronger pair sits still, vanishes, then moves.
+                        const int depth = std::min(x, width-1-x);
+                        const int inner = frame < 16 ? 148 : 140 + 2*(frame % 9);
+                        const int detail = (x/6 + y/5 + frame*3) % 71;
+                        luma = 196 + (y/4)%79 + detail;
+                        if (frame < 12 || frame >= 16) {
+                            if (depth >= inner) luma += 290;
+                            if (depth >= inner && depth < inner+3) luma = 860;
+                        }
+                    }
                     (*pixels)[y*width + x] = static_cast<uint16_t>(luma << 6);
                     if ((x % 2 == 0) && (y % 2 == 0)) {
                         int u = 512, v = 512;
                         const bool artwork = colored || (shot.sides == Sides::LeftColored && x < left) ||
                             (shot.sides == Sides::RightColored && x >= right);
+                        if (interiorLines && !side) {
+                            u = 580 + (x/6 + y/3 + frame)%106;
+                            v = 420 - (y/7 + frame)%81;
+                        }
                         if (artwork && side) {
                             // Broad blue/red blocks travel across the side artwork.
                             const bool blue = (x / 48 + (y + 2*frame) / 64) % 2 == 0;
