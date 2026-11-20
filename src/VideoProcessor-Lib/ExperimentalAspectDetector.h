@@ -127,6 +127,20 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             e.matte=Median(floors,support);e.matteP90=Median(highs,support);
             e.darkness=Unit((nominalBlack+96.0-e.matte)/96.0);
             e.score=.35*e.support+.35*Unit(e.contrast/(12+2*e.noise))+.30*MatteEvidence(e.darkness,e.contrast,e.noise,e.matte,nominalBlack)-.10*Unit(e.uncertainty/double(step));
+            // Stop this inward search once the clean outer strip has given
+            // way to distributed picture. Leave isolated overlays and flat
+            // stepped mattes to opposing-edge ranking and native refinement.
+            if(support>=7 && e.matteP90<=nominalBlack+48 && e.noise<=12 && i+3<count){
+                int pictureColumns=0;
+                for(int depth=i+1;depth<=i+3;++depth){
+                    std::array<int,9> inside{};
+                    for(int lane=0;lane<9;++lane)inside[lane]=lines[lane][depth];
+                    std::sort(inside.begin(),inside.end());
+                    if(inside[2]>=e.matteP90+32 && inside[6]-inside[2]>=24)
+                        ++pictureColumns;
+                }
+                if(pictureColumns==3)break;
+            }
         }
         std::sort(options.begin(),options.begin()+n,[](const Candidate&a,const Candidate&b){return a.edge.score>b.edge.score;});
         // Keep spatially distinct alternatives; adjacent coarse positions describe one edge.
