@@ -4,11 +4,23 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <type_traits>
+#include <utility>
 namespace ExperimentalAspect {
 enum class Kind { Unknown, Bars, FullRaster };
 struct Edge { int depth=0, uncertainty=0, matte=0, matteP90=0; double support=0,contrast=0,noise=0,darkness=0,score=0; };
 struct Pixel { int luma=0, u=512, v=512; };
+// Preserve the luminance-only reader used by shadow diagnostics and spatial
+// fixtures. A native reader supplies all three channels in the same fetch.
+template<class Read,class = void>
+struct PixelReader {
+    static constexpr bool hasChroma=false;
+    static bool Sample(Read& read,int x,int y,Pixel& p){return read(x,y,p.luma);}
+};
+template<class Read>
+struct PixelReader<Read,decltype(void(std::declval<Read&>()(0,0,std::declval<Pixel&>())))> {
+    static constexpr bool hasChroma=true;
+    static bool Sample(Read& read,int x,int y,Pixel& p){return read(x,y,p);}
+};
 // Ten-bit source-code bounds. Retain legitimate lifted bars through black+108
 // and compression noise; a stable middle gray is insufficient proof of matte.
 constexpr int MaxMatteElevation=144;
@@ -56,19 +68,13 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         if(failed)return v;
         if(out.samples>=maxSamples||((out.samples&63)==0&&!allow())){exhaustBudget();return v;}
         ++out.samples;
-        bool ok;
-        if constexpr (std::is_invocable_r_v<bool,Read&,int,int,Pixel&>)
-            ok=read(x,y,v);
-        else
-            ok=read(x,y,v.luma);
-        if(!ok){failed=true;out.reason="read-failed";}
+        if(!PixelReader<Read>::Sample(read,x,y,v)){failed=true;out.reason="read-failed";}
         return v;
     };
     auto pixel=[&](int x,int y){return samplePixel(x,y).luma;};
     auto evidencePixel=[&](int x,int y){
         const auto p=samplePixel(x,y);
-        if constexpr (std::is_invocable_r_v<bool,Read&,int,int,Pixel&>)
-            if(!failed)++out.chromaSamples;
+        if(PixelReader<Read>::hasChroma && !failed)++out.chromaSamples;
         return p;
     };
     auto sample=[&](int side,int lane,int depth){
@@ -364,7 +370,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         }else if(matteSides[0] && matteSides[1]){
             // Only native YUV reads can supply this independent matte proof.
             out.opposingMatteQualified[axis]=agreeing>=3 &&
-                std::is_invocable_r_v<bool,Read&,int,int,Pixel&>;
+                PixelReader<Read>::hasChroma;
         }
     }
     out.fullScore=*std::min_element(fullSupport.begin(),fullSupport.end());
@@ -411,7 +417,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
                 return true;
             };
             bool coherent=structuredChannel(&Pixel::luma);
-            if constexpr (std::is_invocable_r_v<bool,Read&,int,int,Pixel&>)
+            if(PixelReader<Read>::hasChroma)
                 coherent=coherent || structuredChannel(&Pixel::u) || structuredChannel(&Pixel::v);
             out.pictureEdgeSupported[side] = coherent;
             if (coherent) ++supportedEdges;
