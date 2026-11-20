@@ -251,6 +251,21 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
                 }
                 if(visible>=3)conflict=true;
             }
+            // Compare depths on the same lane so brightness changes along
+            // a raised matte do not count as picture. Require variation on
+            // several lanes to tolerate isolated overlays in genuine bars.
+            int texturedLanes=0;
+            for(int lane=1;lane<=9&&!failed&&!conflict;++lane){
+                const int a=lane*across/10;
+                std::array<int,4> levels{};
+                for(int depth=1;depth<=4;++depth){
+                    const int d=edge.depth*depth/5,coordinate=k?extent-1-d:d;
+                    levels[depth-1]=pixel(axis==1?a:coordinate,axis==1?coordinate:a);
+                }
+                std::sort(levels.begin(),levels.end());
+                if(levels[2]-levels[0]>=48||levels[3]-levels[1]>=48)
+                    conflict=++texturedLanes>=3;
+            }
         }
         if(conflict){accepted[axis]=false;out.acceptedPairAttempt[axis]=0;exteriorConflict=true;}
     }

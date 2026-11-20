@@ -20,6 +20,20 @@ int main(){
  dump(a);check(a.kind==Kind::Bars&&a.top==277&&a.bottom==1883&&a.left==0&&a.right==3840,"dirty scope with bottom captions and unsnapped ratio");
  auto b=scene(1920,1080,240,0,240,0);
  check(b.kind==Kind::Bars&&b.left==240&&b.right==1680&&b.top==0,"pillarbox");
+ auto texturedSides=[](int x,int y,int&v){
+   const int depth=std::min(x,3839-x);
+   v=depth>=1120?460:136;
+   if(depth<1000 && y>=160 && y<1200)
+     v+=int(110*std::pow(std::sin(depth/210.0),2));
+   return true;
+ };
+ const Prior falsePanel{3840,2160,1120,0,2720,2160,true};
+ auto panel=Measure(3840,2160,64,texturedSides,[]{return true;},24000,&falsePanel);
+ check(panel.complete&&panel.kind!=Kind::Bars&&panel.acceptedPairAttempt[0]==0,
+       "distributed picture detail inside both proposed side bars vetoes the crop");
+ auto narrow=scene(3840,2160,1120,0,1120,0);
+ check(narrow.kind==Kind::Bars&&narrow.left==1120&&narrow.right==2720,
+       "genuine black pillarbox can have the same narrow geometry");
  auto c=scene(1920,1080,100,120,100,120);
  dump(c);check(c.kind==Kind::Bars&&c.left==100&&c.top==120&&c.right==1820&&c.bottom==960,"windowbox");
  auto full=scene(1920,1080,0,0,0,0);
