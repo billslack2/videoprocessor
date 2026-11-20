@@ -11900,7 +11900,7 @@ struct LibplaceboVideoRenderer::Impl
                 // Record the exact gate and source-owned inputs only at scene boundaries.
                 // Diagnostics never participate in retention or presentation admission.
                 const auto& priorIdentity = boundaryMotion->identity;
-                DebugLog::Log("Alpha moving boundary proof: schema=1 generation=%llu sequence=%llu event=%llu reason=%s pixel_reason=%s steps_evaluated=%d steps=%d,%d limit=%d prior_sequence=%llu prior_native_sequence=%llu pixel_proof=%d broad=%d distributed=%d continuation=%d compatible=%d trusted_available=%d analysis_valid=%d presentation_valid=%d expansion_available=%d native_class=%d vertical_state=%d vertical_complete=%d failed_bar=%d",
+                DEBUGLOG_ENHANCED("Alpha moving boundary proof: schema=1 generation=%llu sequence=%llu event=%llu reason=%s pixel_reason=%s steps_evaluated=%d steps=%d,%d limit=%d prior_sequence=%llu prior_native_sequence=%llu pixel_proof=%d broad=%d distributed=%d continuation=%d compatible=%d trusted_available=%d analysis_valid=%d presentation_valid=%d expansion_available=%d native_class=%d vertical_state=%d vertical_complete=%d failed_bar=%d",
                     analysisSource.generation, frameNumber, motionBoundary->eventId,
                     boundaryDiagnostic.reason, boundaryDiagnostic.pixelReason,
                     boundaryDiagnostic.stepsEvaluated?1:0, boundaryDiagnostic.topStep,
@@ -11915,7 +11915,7 @@ struct LibplaceboVideoRenderer::Impl
                     static_cast<int>(movementInput.evidence.axisEvidence.vertical.state),
                     movementInput.evidence.axisEvidence.vertical.scanComplete?1:0,
                     movementInput.evidence.axisEvidence.HasFailedBar()?1:0);
-                DebugLog::Log("Alpha moving boundary identity: schema=1 sequence=%llu event=%llu prior_current_fields=transport,format,domain,viewport,renderer,frame,timestamp prior=%llu,%llu,%llu,%llu,%llu,%llu,%llu current=%llu,%llu,%llu,%llu,%llu,%llu,%llu input_source=%llu input_trusted=%llu input_sequence=%llu",
+                DEBUGLOG_ENHANCED("Alpha moving boundary identity: schema=1 sequence=%llu event=%llu prior_current_fields=transport,format,domain,viewport,renderer,frame,timestamp prior=%llu,%llu,%llu,%llu,%llu,%llu,%llu current=%llu,%llu,%llu,%llu,%llu,%llu,%llu input_source=%llu input_trusted=%llu input_sequence=%llu",
                     frameNumber, motionBoundary->eventId,
                     priorIdentity.transportGeneration, priorIdentity.sourceFormatGeneration,
                     priorIdentity.analysisDomainKey, priorIdentity.viewportGeneration,
@@ -14909,7 +14909,7 @@ struct LibplaceboVideoRenderer::Impl
             if(subtitleBoxResult.detected && (subtitleBoxResult.observations==1 ||
                 previousGlyphHeight!=subtitlePaddingGuard.GlyphHeight() ||
                 !SubtitleBoxLookahead::SameLine(previousDisplayBounds,displayBoundsNow,0)))
-                DebugLog::Log("SUBTITLE PADDING: cue=%llu mode=%s glyph_height=%d padding=%d,%d,%d display=%d,%d-%d,%d revised=%d",
+                DEBUGLOG_ENHANCED("SUBTITLE PADDING: cue=%llu mode=%s glyph_height=%d padding=%d,%d,%d display=%d,%d-%d,%d revised=%d",
                     subtitleBoxResult.cue,activeSettings.subtitlePaddingPolicy.glyphRelative?"glyph":"fixed",
                     subtitlePaddingGuard.GlyphHeight(),safeSubtitlePadding.sides,safeSubtitlePadding.top,safeSubtitlePadding.bottom,
                     displayBoundsNow.left,displayBoundsNow.top,displayBoundsNow.right,displayBoundsNow.bottom,
@@ -15037,7 +15037,7 @@ struct LibplaceboVideoRenderer::Impl
                         (move.pictureTop!=priorLayout.pictureTop || move.pictureBottom!=priorLayout.pictureBottom)?
                             "picture-boundary-change":
                         !equalRect(move.generatedCleanup,priorLayout.generatedCleanup)?"accepted-cleanup-change":"placement-or-settings-change";
-                    DebugLog::Log("SUBTITLE LAYOUT: frame=%llu cue=%llu previous_cue=%llu reason=%s tracker=%s match=%s backing=%d min_coverage_pct=%u max_difference_pct=%u match_line=%d component_owned=%u component_covered=%u tiny_fringe=%u reference_refresh=%s reference_samples=%u old=%d,%d-%d,%d new=%d,%d-%d,%d scale=%.4f->%.4f translation=%.2f,%.2f->%.2f,%.2f backing_decision=%s measured_cleanup=%d,%d-%d,%d accepted_cleanup=%d,%d-%d,%d display_edges=%d,%d-%d,%d source_edges=%d,%d",
+                    DEBUGLOG_ENHANCED("SUBTITLE LAYOUT: frame=%llu cue=%llu previous_cue=%llu reason=%s tracker=%s match=%s backing=%d min_coverage_pct=%u max_difference_pct=%u match_line=%d component_owned=%u component_covered=%u tiny_fringe=%u reference_refresh=%s reference_samples=%u old=%d,%d-%d,%d new=%d,%d-%d,%d scale=%.4f->%.4f translation=%.2f,%.2f->%.2f,%.2f backing_decision=%s measured_cleanup=%d,%d-%d,%d accepted_cleanup=%d,%d-%d,%d display_edges=%d,%d-%d,%d source_edges=%d,%d",
                         sourceSequence,subtitleBoxResult.cue,subtitleLayoutCue,reason,
                         subtitleBoxPresentation.DecisionReason(),match.reason,match.backingConfirmed?1:0,
                         match.minimumCoverage,match.maximumDifference,match.line,match.componentOwned,match.componentCovered,match.tinyFringeAllowances,subtitleBoxPresentation.ReferenceRefreshReason(),subtitleBoxPresentation.ReferenceSampleCount(),
@@ -15273,7 +15273,7 @@ struct LibplaceboVideoRenderer::Impl
                     SubtitleBoxLookahead::HasCurrentSharedGlyphSupport(probe)?1:0,bars.available?1:0,
                     probe.sharedNativePhysicalSupport?1:0,probe.glyphLocalMismatchX,probe.glyphLocalMismatchY,
                     probe.glyphLocalMismatchLuma);
-                if(subtitleCompositionSucceeded) {
+                if(subtitleCompositionSucceeded && DebugLog::IsEnhancedLoggingEnabled()) {
                     const auto& geometry=relocatedSubtitle;
                     const auto& card=geometry.pictureCapture;
                     const auto& cleanup=geometry.generatedCleanup;
@@ -16158,7 +16158,7 @@ struct LibplaceboVideoRenderer::Impl
                 scopePresentationHistory,scopePresentationCurrentBounds,effectiveGeometry,subtitleIdentity,
                 latestCropRetentionEvidence);
             const bool relocatedCaptionQualified=presentationView.qualified;
-            if(SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
+            if(DebugLog::IsEnhancedLoggingEnabled() && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 subtitleSourcePreparation.ownershipAccepted.detected) {
                 const auto proofLogNow=GetTickCount64();
                 if(subtitleOwnershipLogReason!=ownershipProof.reason || proofLogNow-subtitleOwnershipLogTick>=2000) {
@@ -20967,92 +20967,110 @@ releaseDriftBaseRetention =
 				pacingTraceTick >= nextFramePacingTraceTick)
 			{
 				nextFramePacingTraceTick = pacingTraceTick + 2000;
-				DebugLog::Log(
-					"Alpha frame pacing trace: generation=%llu source=%llu source_frame=%llu reason=%s cadence_repeat=%d submit_gap_ms=%.3f threshold_ms=%.3f callback_gap_ms=%.3f enqueue_gap_ms=%.3f callback_to_enqueue_ms=%.3f preview_wait_ms=%.3f dequeue_wait_ms=%.3f lookahead_ms=%.3f pre_render_active_ms=%.3f render_lock_wait_ms=%.3f native_rgb=%d conversion_ms=%.3f conversion_ready_age_ms=%.3f source_upload_cpu_ms=%.3f render_ms=%.3f swap_ms=%.3f queue_after=%zu oldest_ms=%.3f callback_qpc=%lld enqueue_qpc=%lld conversion_end_qpc=%lld dequeue_qpc=%lld swap_start_qpc=%lld swap_end_qpc=%lld qpc_hz=%lld present_id=%u stats_available=%d stats_disjoint=%d stats_hr=0x%08lX stats_present=%u stats_present_refresh=%u stats_sync_refresh=%u stats_sync_qpc=%lld stats_present_delta=%u stats_refresh_delta=%u expected_max_refreshes=%u",
-					static_cast<unsigned long long>(frameGeneration),
-					static_cast<unsigned long long>(sourceSequence),
-					static_cast<unsigned long long>(videoFrame.GetCounter()),
-					submitGap && displayRefreshGap ? "submit_and_display" :
-						(submitGap ? "submit_gap" : "display_refresh_gap"),
-					cadenceRepeat ? 1 : 0,
-					submitGapMs, submitGapThresholdMs,
-					callbackGapMs, enqueueGapMs, callbackToEnqueueMs,
-					preRenderTimings.previewWaitMs,
-					preRenderTimings.dequeueWaitMs,
-					preRenderTimings.lookaheadMs,
-					preRenderTimings.activeMs,
-					preRenderTimings.renderLockWaitMs,
-					nativeRgbUpload ? 1 : 0,
-					conversionCpuMs,
-					convertedPayload && qpcFrequency.QuadPart > 0 &&
-						dequeueQpc >= convertedPayload->completedQpc ?
-						static_cast<double>(dequeueQpc - convertedPayload->completedQpc) *
-						1000.0 / qpcFrequency.QuadPart : -1.0,
-					sourceUploadCpuLastMs,
-					renderMs, swapBlockMs, queueDepthAfterDequeue,
-					oldestQueuedAgeMs,
-					static_cast<long long>(callbackQpc),
-					static_cast<long long>(enqueueQpc),
-					static_cast<long long>(convertedPayload ?
-						convertedPayload->completedQpc : 0),
-					static_cast<long long>(dequeueQpc),
-					static_cast<long long>(swapStartQpc),
-					static_cast<long long>(swapEndQpc),
-					static_cast<long long>(qpcFrequency.QuadPart),
-					record.presentId, sample.available ? 1 : 0,
-					sample.disjoint ? 1 : 0,
-					static_cast<unsigned long>(sample.frameStatisticsResult),
-					sample.presentCount, sample.presentRefreshCount,
-					sample.syncRefreshCount,
-					static_cast<long long>(sample.syncQpc),
-					statsPresentDelta, statsRefreshDelta,
-					expectedMaximumRefreshes);
-				const auto& recent = presentationTelemetry.RecentRecords();
-				const size_t first = recent.size() > 8 ? recent.size() - 8 : 0;
-				const int64_t baseQpc = recent[first].callbackQpc > 0 ?
-					recent[first].callbackQpc : recent[first].enqueueQpc;
-				auto relativeMs = [&](int64_t qpc)
+				const char* reason = submitGap && displayRefreshGap ? "submit_and_display" :
+					(submitGap ? "submit_gap" : "display_refresh_gap");
+				if (!DebugLog::IsEnhancedLoggingEnabled())
 				{
-					return qpcFrequency.QuadPart > 0 && qpc > 0 &&
-						baseQpc > 0 ?
-						static_cast<double>(qpc - baseQpc) * 1000.0 /
-						static_cast<double>(qpcFrequency.QuadPart) : -1.0;
-				};
-				std::string history;
-				for (size_t index = first; index < recent.size(); ++index)
-				{
-					const AlphaPresentationRecord& prior = recent[index];
-					char entry[448];
-					std::snprintf(entry, sizeof(entry),
-						" [%llu,%llu,%lld,%d,%.2f,%.2f,%.2f,%.2f,%zu,%.2f,%.2f,%.2f,%.2f,%.2f,%u,%d,%d,%X,%u,%u,%u,%.2f,selected=%llu,pts=%.6f,out=%.6f,cue=%llu]",
-						static_cast<unsigned long long>(prior.sourceSequence),
-						static_cast<unsigned long long>(prior.sourceFrameNumber),
-						static_cast<long long>(prior.captureTimestamp),
-						prior.cadenceRepeat ? 1 : 0,
-						relativeMs(prior.callbackQpc),
-						relativeMs(prior.enqueueQpc),
-						relativeMs(prior.dequeueQpc),
-						relativeMs(prior.submitQpc),
-						prior.queueDepthAfterDequeue,
-						prior.preRender.lookaheadMs,
-						prior.conversionCpuMs,
-						prior.sourceUploadCpuMs,
-						prior.renderMs, prior.swapBlockMs,
-						prior.presentId,
-						prior.frameStatsAvailable ? 1 : 0,
-						prior.frameStatsDisjoint ? 1 : 0,
-						static_cast<unsigned int>(prior.frameStatsResult),
-						prior.observedPresentCount,
-						prior.observedPresentRefreshCount,
-						prior.observedSyncRefreshCount,
-						relativeMs(prior.observedSyncQpc),prior.selectedSourceSequence,prior.selectedSourcePts,prior.outputPts,prior.subtitleSourceSequence);
-					history += entry;
+					DebugLog::Log("Alpha frame pacing trace: generation=%llu source=%llu reason=%s submit_gap_ms=%.3f callback_gap_ms=%.3f preview_wait_ms=%.3f preview_source=%llu preview_lock_ms=%.3f preview_eligibility_ms=%.3f preview_resume_ms=%.3f render_ms=%.3f stats_available=%d stats_refresh_delta=%u expected_max_refreshes=%u",
+						static_cast<unsigned long long>(frameGeneration),
+						static_cast<unsigned long long>(sourceSequence),
+						reason,
+						submitGapMs, callbackGapMs, preRenderTimings.previewWaitMs,
+						static_cast<unsigned long long>(preRenderTimings.previewSource),
+						preRenderTimings.previewLockMs, preRenderTimings.previewEligibilityMs,
+						preRenderTimings.previewResumeMs, renderMs, sample.available ? 1 : 0,
+						statsRefreshDelta, expectedMaximumRefreshes);
 				}
-				DEBUGLOG_ENHANCED(
-					"Alpha frame pacing history: generation=%llu trigger_source=%llu fields=source,source_frame,capture_timestamp,cadence_repeat,callback_ms,enqueue_ms,dequeue_ms,swap_start_ms,queue_after,lookahead_ms,conversion_ms,upload_cpu_ms,render_ms,swap_ms,present_id,stats_available,stats_disjoint,stats_hr,stats_present,stats_present_refresh,stats_sync_refresh,stats_sync_ms base_qpc=%lld records=%s",
-					static_cast<unsigned long long>(frameGeneration),
-					static_cast<unsigned long long>(sourceSequence),
-					static_cast<long long>(baseQpc), history.c_str());
+				else
+				{
+					DebugLog::Log(
+						"Alpha frame pacing trace: generation=%llu source=%llu source_frame=%llu reason=%s cadence_repeat=%d submit_gap_ms=%.3f threshold_ms=%.3f callback_gap_ms=%.3f enqueue_gap_ms=%.3f callback_to_enqueue_ms=%.3f preview_wait_ms=%.3f preview_source=%llu preview_lock_ms=%.3f preview_eligibility_ms=%.3f preview_resume_ms=%.3f dequeue_wait_ms=%.3f lookahead_ms=%.3f pre_render_active_ms=%.3f render_lock_wait_ms=%.3f native_rgb=%d conversion_ms=%.3f conversion_ready_age_ms=%.3f source_upload_cpu_ms=%.3f render_ms=%.3f swap_ms=%.3f queue_after=%zu oldest_ms=%.3f callback_qpc=%lld enqueue_qpc=%lld conversion_end_qpc=%lld dequeue_qpc=%lld swap_start_qpc=%lld swap_end_qpc=%lld qpc_hz=%lld present_id=%u stats_available=%d stats_disjoint=%d stats_hr=0x%08lX stats_present=%u stats_present_refresh=%u stats_sync_refresh=%u stats_sync_qpc=%lld stats_present_delta=%u stats_refresh_delta=%u expected_max_refreshes=%u",
+						static_cast<unsigned long long>(frameGeneration),
+						static_cast<unsigned long long>(sourceSequence),
+						static_cast<unsigned long long>(videoFrame.GetCounter()),
+						reason,
+						cadenceRepeat ? 1 : 0,
+						submitGapMs, submitGapThresholdMs,
+						callbackGapMs, enqueueGapMs, callbackToEnqueueMs,
+						preRenderTimings.previewWaitMs,
+						static_cast<unsigned long long>(preRenderTimings.previewSource),
+						preRenderTimings.previewLockMs, preRenderTimings.previewEligibilityMs, preRenderTimings.previewResumeMs,
+						preRenderTimings.dequeueWaitMs,
+						preRenderTimings.lookaheadMs,
+						preRenderTimings.activeMs,
+						preRenderTimings.renderLockWaitMs,
+						nativeRgbUpload ? 1 : 0,
+						conversionCpuMs,
+						convertedPayload && qpcFrequency.QuadPart > 0 &&
+							dequeueQpc >= convertedPayload->completedQpc ?
+							static_cast<double>(dequeueQpc - convertedPayload->completedQpc) *
+							1000.0 / qpcFrequency.QuadPart : -1.0,
+						sourceUploadCpuLastMs,
+						renderMs, swapBlockMs, queueDepthAfterDequeue,
+						oldestQueuedAgeMs,
+						static_cast<long long>(callbackQpc),
+						static_cast<long long>(enqueueQpc),
+						static_cast<long long>(convertedPayload ?
+							convertedPayload->completedQpc : 0),
+						static_cast<long long>(dequeueQpc),
+						static_cast<long long>(swapStartQpc),
+						static_cast<long long>(swapEndQpc),
+						static_cast<long long>(qpcFrequency.QuadPart),
+						record.presentId, sample.available ? 1 : 0,
+						sample.disjoint ? 1 : 0,
+						static_cast<unsigned long>(sample.frameStatisticsResult),
+						sample.presentCount, sample.presentRefreshCount,
+						sample.syncRefreshCount,
+						static_cast<long long>(sample.syncQpc),
+						statsPresentDelta, statsRefreshDelta,
+						expectedMaximumRefreshes);
+					const auto& recent = presentationTelemetry.RecentRecords();
+					const size_t first = recent.size() > 8 ? recent.size() - 8 : 0;
+					const int64_t baseQpc = recent[first].callbackQpc > 0 ?
+						recent[first].callbackQpc : recent[first].enqueueQpc;
+					auto relativeMs = [&](int64_t qpc)
+					{
+						return qpcFrequency.QuadPart > 0 && qpc > 0 &&
+							baseQpc > 0 ?
+							static_cast<double>(qpc - baseQpc) * 1000.0 /
+							static_cast<double>(qpcFrequency.QuadPart) : -1.0;
+					};
+					std::string history;
+					for (size_t index = first; index < recent.size(); ++index)
+					{
+						const AlphaPresentationRecord& prior = recent[index];
+						char entry[448];
+						std::snprintf(entry, sizeof(entry),
+							" [%llu,%llu,%lld,%d,%.2f,%.2f,%.2f,%.2f,%zu,%.2f,%.2f,%.2f,%.2f,%.2f,%u,%d,%d,%X,%u,%u,%u,%.2f,selected=%llu,pts=%.6f,out=%.6f,cue=%llu]",
+							static_cast<unsigned long long>(prior.sourceSequence),
+							static_cast<unsigned long long>(prior.sourceFrameNumber),
+							static_cast<long long>(prior.captureTimestamp),
+							prior.cadenceRepeat ? 1 : 0,
+							relativeMs(prior.callbackQpc),
+							relativeMs(prior.enqueueQpc),
+							relativeMs(prior.dequeueQpc),
+							relativeMs(prior.submitQpc),
+							prior.queueDepthAfterDequeue,
+							prior.preRender.lookaheadMs,
+							prior.conversionCpuMs,
+							prior.sourceUploadCpuMs,
+							prior.renderMs, prior.swapBlockMs,
+							prior.presentId,
+							prior.frameStatsAvailable ? 1 : 0,
+							prior.frameStatsDisjoint ? 1 : 0,
+							static_cast<unsigned int>(prior.frameStatsResult),
+							prior.observedPresentCount,
+							prior.observedPresentRefreshCount,
+							prior.observedSyncRefreshCount,
+							relativeMs(prior.observedSyncQpc),prior.selectedSourceSequence,prior.selectedSourcePts,prior.outputPts,prior.subtitleSourceSequence);
+						history += entry;
+					}
+					DebugLog::Log(
+						"Alpha frame pacing history: generation=%llu trigger_source=%llu fields=source,source_frame,capture_timestamp,cadence_repeat,callback_ms,enqueue_ms,dequeue_ms,swap_start_ms,queue_after,lookahead_ms,conversion_ms,upload_cpu_ms,render_ms,swap_ms,present_id,stats_available,stats_disjoint,stats_hr,stats_present,stats_present_refresh,stats_sync_refresh,stats_sync_ms base_qpc=%lld records=%s",
+						static_cast<unsigned long long>(frameGeneration),
+						static_cast<unsigned long long>(sourceSequence),
+						static_cast<long long>(baseQpc), history.c_str());
+				}
 			}
 			const double osdPresentationHz = OsdTimingPolicy::WarmingEnabled ?
 				presentationSnapshot.measuredDisplayHz : presentationSnapshot.observedDisplayHz;
@@ -21283,7 +21301,7 @@ releaseDriftBaseRetention =
                     signaling.coalesced,signaling.duplicates,signaling.obsoleteCompletions,
                     signaling.pending?1:0,signaling.requestAgeUs,signaling.requestToServicePeakUs,
                     signaling.driverCalls,signaling.driverTotalUs,signaling.driverPeakUs,signaling.driverActiveAgeUs);
-                DebugLog::Log("VP render load budget: source_hz=%.6f scheduled_output_hz=%.6f budget_hz=%.6f budget_ms=%.3f origin=%s",
+                DEBUGLOG_ENHANCED("VP render load budget: source_hz=%.6f scheduled_output_hz=%.6f budget_hz=%.6f budget_ms=%.3f origin=%s",
                     budgetRateHz,scheduledOutputHz,renderBudgetHz,renderLoadFramePeriodMs,
                     scheduledOutputHz>0.0?"temporal-output":"source");
 				const double sourceUploadCpuIntervalAverageMs =
@@ -22047,6 +22065,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
                 ActivePictureDiscardReason::QueueCapacityOverflow);
 			dropCandidate->frame.SourceBufferRelease();
 			m_frameQueue.erase(dropCandidate);
+			ObservePreviewEligibilityLocked();
 		}
 		videoFrame.SourceBufferAddRef();
 		try
@@ -22087,6 +22106,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			queuedFrame.callbackQpc = callbackQpc;
 			queuedFrame.enqueueQpc = PerformanceCounterNow();
 			m_frameQueue.push_back(std::move(queuedFrame));
+			ObservePreviewEligibilityLocked();
 		}
 		catch (const std::exception& e)
 		{
@@ -23226,6 +23246,7 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 		m_queueDepthWindowStartNs = SteadyClockNowNs();
 		m_queueDepthWindowDequeues = 0;
 		m_queueDepthWindowHasSamples = false;
+		ObservePreviewEligibilityLocked();
 	}
 	// A target reduction can satisfy an already pending startup prefill.
 	// A target increase after release deliberately does not re-arm it.
@@ -23245,6 +23266,7 @@ void LibplaceboVideoRenderer::SetQueueFramePolicy(
 		// hard capacity used for bursts and overflow protection.
 		m_frameQueueDesiredDepth = AlphaQueuePolicy::ClampDesiredDepthToCapacity(
 			steadyReserveFrames, m_frameQueueMaxSize);
+		ObservePreviewEligibilityLocked();
 		DebugLog::Log(
 			"Alpha queue policy: target_frames=%zu target=%zu hard_capacity=%zu",
 			steadyReserveFrames, m_frameQueueDesiredDepth, m_frameQueueMaxSize);
@@ -25609,6 +25631,7 @@ void LibplaceboVideoRenderer::ConversionLoop()
 					queued->conversionInProgress = false;
 					queued->conversionFailed = !error.empty();
 					queued->converted = std::move(converted);
+					ObservePreviewEligibilityLocked();
                     if (dvLookaheadHandoff && error.empty() && queued != m_frameQueue.begin() &&
                         !queued->cadenceRepeat && !queued->frame.IsSourceDiscontinuity() &&
                         queued->analysis && state->dolbyVisionTunnel &&
@@ -25986,6 +26009,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		size_t depthSummaryPreparedHead = 0;
 		bool depthSummaryConversionInFlight = false;
 		uint64_t depthSummaryDequeues = 0;
+		AlphaPreRenderTimings preRenderTimings;
 		double previewWaitMs = 0.0;
 		double dequeueWaitMs = 0.0;
 		double lookaheadMs = 0.0;
@@ -25997,12 +26021,26 @@ void LibplaceboVideoRenderer::RenderLoop()
 		// Inspect current + future buffered frames before consuming current. Never
 		// wait for extra proof frames: a short window keeps the normal live fallback.
 		{
-			const auto waitStarted = SteadyClock::now();
+			const auto waitStarted = SteadyClockNowNs();
 			std::unique_lock<std::mutex> previewLock(m_queueMutex);
-			m_queueChanged.wait(previewLock, [this]() { return m_stopRequested || CanDequeueLocked(); });
+			const auto acquired = SteadyClockNowNs();
+			const bool alreadyReady = CanDequeueLocked();
+			m_previewEligibleNs = 0;
+			m_previewWaiting = !alreadyReady;
+			if (!alreadyReady)
+				m_queueChanged.wait(previewLock, [this]() { return m_stopRequested || CanDequeueLocked(); });
+			const auto resumed = SteadyClockNowNs();
+			m_previewWaiting = false;
 			if (m_stopRequested) break;
-			previewWaitMs = std::chrono::duration<double, std::milli>(
-				SteadyClock::now() - waitStarted).count();
+			previewWaitMs = (resumed - waitStarted) / 1.0e6;
+			preRenderTimings.previewSource = m_frameQueue.front().sourceSequence;
+			preRenderTimings.previewLockMs = (acquired - waitStarted) / 1.0e6;
+			if (alreadyReady || (m_previewEligibleNs && m_previewEligibleSource == preRenderTimings.previewSource))
+			{
+				const auto ready = alreadyReady ? acquired : m_previewEligibleNs;
+				preRenderTimings.previewEligibilityMs = (ready - acquired) / 1.0e6;
+				preRenderTimings.previewResumeMs = (resumed - ready) / 1.0e6;
+			}
             const auto window = AlphaQueuePolicy::SelectActivePicturePreview(
                 m_frameQueue, m_activePictureLookaheadFrames.load(std::memory_order_acquire),
                 ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES);
@@ -26473,7 +26511,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 		const double preRenderActiveMs = std::max(0.0,
 			std::chrono::duration<double, std::milli>(
 				renderCycleStart - preRenderActiveStart).count() - dequeueWaitMs);
-		AlphaPreRenderTimings preRenderTimings;
 		preRenderTimings.previewWaitMs = previewWaitMs;
 		preRenderTimings.dequeueWaitMs = dequeueWaitMs;
 		preRenderTimings.lookaheadMs = lookaheadMs;
@@ -27450,6 +27487,7 @@ void LibplaceboVideoRenderer::ClearQueueLocked(const char* reason)
 		queuedFrame.frame.SourceBufferRelease();
 	}
 	m_frameQueue.clear();
+	ObservePreviewEligibilityLocked();
 }
 
 
@@ -27460,6 +27498,23 @@ size_t LibplaceboVideoRenderer::PrefillTargetLocked() const
 			m_frameQueueDesiredDepth, m_frameQueueMaxSize) : 1;
 }
 
+
+void LibplaceboVideoRenderer::ObservePreviewEligibilityLocked()
+{
+	if (!m_previewWaiting)
+		return;
+	if (!CanDequeueLocked())
+	{
+		m_previewEligibleNs = 0;
+		return;
+	}
+	const uint64_t source = m_frameQueue.front().sourceSequence;
+	if (!m_previewEligibleNs || source != m_previewEligibleSource)
+	{
+		m_previewEligibleSource = source;
+		m_previewEligibleNs = SteadyClockNowNs();
+	}
+}
 
 bool LibplaceboVideoRenderer::CanDequeueLocked() const
 {

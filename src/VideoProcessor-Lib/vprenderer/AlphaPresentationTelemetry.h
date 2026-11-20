@@ -36,6 +36,10 @@ enum class AlphaSourceReleaseReason
 struct AlphaPreRenderTimings
 {
 	double previewWaitMs = 0.0;
+	uint64_t previewSource = 0;
+	double previewLockMs = 0.0;
+	double previewEligibilityMs = -1.0;
+	double previewResumeMs = -1.0;
 	double dequeueWaitMs = 0.0;
 	double lookaheadMs = 0.0;
     double lookaheadBudgetMs = 0.0;
