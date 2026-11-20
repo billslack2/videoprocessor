@@ -668,7 +668,8 @@ namespace
 			int sceneGray=-1, bool diagonalStair=false, int cardGray=0,
             const SubtitleBoxRect* independentCard=nullptr, bool originalCornerInk=false, bool fringeSceneryInk=false,
             const pl_rect2df* sourceCrop=nullptr,const pl_hook* additionalHook=nullptr, bool brightBottomFringe=false, int brightFringeY=-1, bool auxiliarySamples=true, bool reconstructionPattern=false,
-            const std::vector<RgbaPixel>* recordedPixels=nullptr, int width=64, int height=64)
+            const std::vector<RgbaPixel>* recordedPixels=nullptr, int width=64, int height=64,
+            SubtitlePreparationRenderer* sequencePreparation=nullptr)
 		{
 
 			const auto gpu=Gpu();
@@ -808,7 +809,8 @@ namespace
             pl_tex compositionTexture=nullptr;
             if(sourceCrop && hook) {
                 pl_frame composed{};
-                Assert::IsTrue(ComposeSubtitleBeforeCrop(preparation,gpu,image,hook,&compositionTexture,composed));
+                Assert::IsTrue(ComposeSubtitleBeforeCrop(sequencePreparation ? *sequencePreparation : preparation,
+                    gpu,image,hook,&compositionTexture,composed));
                 image=composed;
             }
             const pl_hook* hooks[2]={sourceCrop ? additionalHook : hook,additionalHook};
@@ -2660,6 +2662,55 @@ namespace VideoProcessorTest
                         L"source restoration stops at the picture boundary despite display overlap");
             }
             pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(SubtitleCuesRemainVisibleAcrossMovingFramesWithBundledNls) {
+            TargetLutGpuFixture fixture;
+            Assert::IsTrue(fixture.Create());
+            SubtitlePreparationRenderer sequencePreparation;
+            const auto* subtitle = CreateSubtitleCutPasteHook(fixture.Gpu());
+            Assert::IsNotNull(subtitle);
+            for (const char* shader : {"NLS.glsl", "NLSPlus.glsl"}) {
+                const auto* nls = ParseBundledNlsShader(fixture.Gpu(), shader, 0.25, 0.8);
+                BindNlsShader(nls, 1.32f, 0.0f);
+                for (int frame = 0; frame < 16; ++frame) {
+                    const int bar = frame >= 6 && frame < 12 ? 12 : 8;
+                    const pl_rect2df crop{0,float(bar),64,float(64-bar)};
+                    const int left = frame < 9 ? 12 : 34;
+                    const bool cue = frame >= 2 && frame < 14;
+                    const auto g = FitSubtitleToVisiblePicture(
+                        ComputeSubtitleCutPaste({left,48,left+20,61},64,64,bar,64-bar,4),
+                        {0,bar,64,64-bar});
+                    Assert::IsTrue(g.valid);
+                    Assert::IsTrue(BindSubtitleCutPasteHook(subtitle,g,3,PL_COLOR_TRC_SRGB));
+                    std::vector<RgbaPixel> pixels(64*64,{0,0,0,255});
+                    for(int y=bar;y<64-bar;++y) for(int x=0;x<64;++x)
+                        pixels[y*64+x]={uint8_t(20+(x*7+frame*13)%118),uint8_t(30+y),80,255};
+                    if (cue) for(int y=54;y<60;++y) for(int x=left+7;x<left+12;++x)
+                        pixels[y*64+x]={245,245,245,255};
+                    const auto render = [&](const pl_hook* warp) {
+                        return fixture.RenderSubtitlePattern(cue?subtitle:nullptr,false,frame,g,
+                            PL_COLOR_TRC_SRGB,false,false,-1,false,0,nullptr,false,false,&crop,
+                            warp,false,-1,false,false,&pixels,64,64,&sequencePreparation);
+                    };
+                    const auto plain=render(nullptr), warped=render(nls);
+                    int shiftedPicturePixels=0, glyphPixels=0;
+                    for(int y=0;y<64;++y) for(int x=0;x<64;++x) {
+                        const int i=y*64+x;
+                        if(y<24 && std::abs(int(plain[i].r)-int(warped[i].r))>8)
+                            ++shiftedPicturePixels;
+                        if(warped[i].r>215 && warped[i].g>215 && warped[i].b>215) {
+                            ++glyphPixels;
+                            Assert::IsTrue(y>25 && ((x<32)==(left<32)),
+                                L"Unexpected subtitle ink outside current cue region");
+                        }
+                    }
+                    Assert::IsTrue(shiftedPicturePixels>20,L"NLS must visibly warp the moving picture");
+                    Assert::IsTrue(cue?glyphPixels>=10:glyphPixels==0,L"Current cue missing or stale ink after release");
+                }
+                pl_mpv_user_shader_destroy(&nls);
+            }
+            pl_mpv_user_shader_destroy(&subtitle);
         }
 
         TEST_METHOD(SubtitleGpuComposesBeforeCropAcrossAspectChangesAndNlsRecovery) {
