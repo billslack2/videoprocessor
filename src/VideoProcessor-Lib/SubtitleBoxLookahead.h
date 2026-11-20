@@ -131,6 +131,9 @@ struct SubtitleBoxObservation
     // Current physical bars, independently measured without retained presentation.
     // This permits analysis; only subtitleArProof can supply crop evidence.
     bool independentBarAnalysis = false;
+    // A second, complete grouping on independently measured planes from this
+    // source. Only a later exact native publication can select it for display.
+    std::shared_ptr<const SubtitleBoxObservation> publishedPictureCaption;
     SubtitleAssistedVerticalBarProof subtitleArProof;
     ActivePictureArDarknessEvidence subtitleArDarkness;
     // Geometry from the native AR owner, including its retained bounds. Never physical bar/crop proof.
@@ -350,6 +353,89 @@ namespace SubtitleBoxLookahead
                 (observation.sharedNativePhysicalSupport && observation.barAuthority && observation.barEvidence.available &&
                  observation.barEvidence.top>0 && observation.barEvidence.bottom<observation.height));
     }
+    inline bool UsePublishedPictureCaption(SubtitleBoxObservation& observation,
+        const SubtitlePictureAuthority& published, const AnalysisLumaSource& source,
+        const ActivePictureFrameIdentity& identity, uint64_t policy,
+        uint64_t continuity, SubtitleScriptHint script)
+    {
+        const auto caption = observation.publishedPictureCaption;
+        if (!caption || !observation.analyzed || observation.discontinuity ||
+            observation.pendingRefresh || observation.analysisRefresh || observation.inspectionCandidateUsed ||
+            !SameAnalysisFrameIdentity(observation.identity, identity) ||
+            observation.policyGeneration != policy || observation.continuityGeneration != continuity ||
+            observation.scriptHint != script || observation.sharedPicture.Matches(published) ||
+            published.inspectionCandidate.valid || !SameAnalysisFrameIdentity(published.identity, identity) ||
+            !published.AvailableFor(identity, source.width, source.height))
+            return false;
+
+        const auto& proof = observation.subtitleArProof;
+        const auto& bounds = published.bounds;
+        if (!proof.IsCurrentFor(source, identity, policy, continuity, script) ||
+            !SameAnalysisFrameIdentity(caption->identity, identity) ||
+            caption->policyGeneration != policy || caption->continuityGeneration != continuity ||
+            caption->scriptHint != script || caption->width != source.width || caption->height != source.height ||
+            bounds.left != 0 || bounds.right != source.width ||
+            bounds.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM)
+            return false;
+        const auto& text = caption->text;
+        if (!caption->analyzed || caption->discontinuity || caption->pendingRefresh || caption->analysisRefresh ||
+            !caption->barAuthority || !caption->barEvidence.available ||
+            caption->barEvidence.top != caption->pictureTop || caption->barEvidence.bottom != caption->pictureBottom ||
+            !text.detected || text.held || text.workLimit || text.confirmationPending || !text.bounds.Valid() ||
+            !text.topSearchComplete || !text.bottomSearchComplete ||
+            text.lineCount < 1 || text.lineCount > static_cast<int>(text.lineBounds.size()) ||
+            !caption->ink || !caption->ink->rawEvidenceComplete || !caption->ink->paletteValid)
+            return false;
+        auto physical = bounds;
+        physical.top = caption->pictureTop & ~1;
+        physical.bottom = (std::min)(source.height, (caption->pictureBottom + 1) & ~1);
+        const auto matchesPlanes = [](const ActivePictureBounds& a, const ActivePictureBounds& b) {
+            return a.left == b.left && a.right == b.right && a.top == b.top && a.bottom == b.bottom &&
+                a.rasterWidth == b.rasterWidth && a.rasterHeight == b.rasterHeight &&
+                a.trustedBarAxes == b.trustedBarAxes;
+        };
+        if ((!matchesPlanes(physical, proof.candidate) &&
+             !SubtitlePresentationGuardMatchesPhysicalBounds(proof, physical)) ||
+            (!matchesPlanes(bounds, physical) && !matchesPlanes(bounds, proof.candidate)))
+            return false;
+
+        // If the published guard changes the search planes, accept only a cue
+        // wholly in the common exterior band. A picture-crossing cue or backing
+        // needs the normal measurement against the published planes.
+        if (caption->pictureTop != bounds.top || caption->pictureBottom != bounds.bottom) {
+            const int top = (std::min)(caption->pictureTop, bounds.top);
+            const int bottom = (std::max)(caption->pictureBottom, bounds.bottom);
+            if ((text.bounds.bottom > top && text.bounds.top < bottom) ||
+                text.sourcePanel.Valid() || text.provenSourcePanel.Valid() || text.capturePanel.Valid())
+                return false;
+            for (int i = 0; i < text.lineCount; ++i) {
+                if (text.linePanels[i].Valid() || text.lineCapturePanels[i].Valid())
+                    return false;
+            }
+        }
+
+        // The alternate observation was built from the new grouping alone.
+        // Attach its own source proof and the published placement. Following
+        // observations from the superseded shared picture are resolved separately.
+        auto current = *caption;
+        current.sharedPicture = published;
+        current.pictureTop = bounds.top;
+        current.pictureBottom = bounds.bottom;
+        current.sharedNativeGeometry = true;
+        current.sharedNativePhysicalSupport = true;
+        current.glyphSupportIdentity = identity;
+        current.glyphSupportPolicy = policy;
+        current.glyphSupportContinuity = continuity;
+        current.glyphSupportTop = bounds.top;
+        current.glyphSupportBottom = bounds.bottom;
+        current.glyphLocalVerifiedBounds = text.bounds;
+        current.glyphLocalProofReason = "current-independent-caption-on-published-picture";
+        current.subtitleArProof = proof;
+        current.subtitleArDarkness = observation.subtitleArDarkness;
+        observation = std::move(current);
+        return true;
+    }
+
     inline bool HasPendingSharedBarGlyphSupport(const SubtitleBoxObservation& o)
     {
         if(!o.pendingBarGlyphsVerified || !o.pendingRefresh || !o.analyzed || o.analysisRefresh ||

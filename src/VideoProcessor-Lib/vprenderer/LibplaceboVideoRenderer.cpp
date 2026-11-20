@@ -9288,7 +9288,8 @@ struct LibplaceboVideoRenderer::Impl
         subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
-            return scanner.Measure(prepared.source,key,reference,fps,nativeEvidence);
+            return scanner.Measure(prepared.source,key,reference,fps,nativeEvidence,
+                ExperimentalAspect::ActiveTrialEnabled());
         });
         return key;
     }
@@ -14442,6 +14443,28 @@ struct LibplaceboVideoRenderer::Impl
         else if (subtitleMeasurementEnabled)
         {
             auto& reboundPreview=subtitlePreviews->rebound;
+            if (subtitlePreview && subtitlePreview->current.publishedPictureCaption &&
+                ExperimentalAspect::ActiveTrialEnabled() && automaticSourceCrop && configuredScreenActive &&
+                !nlsRequested && !fixedCropAspectConfigured && currentBarAuthority &&
+                nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                latestActivePictureEvidenceFrame == sourceSequence &&
+                latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                SameSubtitlePresentationBounds(nlsGeometry, subtitleSharedPicture.bounds) &&
+                SubtitleBoxLookahead::IsCurrent(*subtitlePreview, subtitleIdentity,
+                    localBoundaryPolicyGeneration, localBoundaryContinuityGeneration)) {
+                auto& observed = subtitlePreviews->live.current;
+                observed = subtitlePreview->current;
+                if (SubtitleBoxLookahead::UsePublishedPictureCaption(observed, subtitleSharedPicture,
+                    analysisSource, subtitleIdentity, localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration, activeSettings.subtitleScriptHint)) {
+                    reboundPreview = SubtitleBoxLookahead::Resolve(&observed, 1,
+                        localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
+                    subtitlePreview = &reboundPreview;
+                    DEBUGLOG_ENHANCED("Alpha published picture caption: sequence=%llu physical=%d-%d placement=%d-%d",
+                        sourceSequence, observed.barEvidence.top, observed.barEvidence.bottom,
+                        observed.pictureTop, observed.pictureBottom);
+                }
+            }
             if (subtitlePreview && subtitlePreview->available &&
                 subtitlePreview->current.independentBarAnalysis &&
                 !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)) {

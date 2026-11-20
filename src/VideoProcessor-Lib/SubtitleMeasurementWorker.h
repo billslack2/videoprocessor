@@ -60,7 +60,7 @@ public:
     SubtitleBoxDetector::Diagnostics TakeDetectorDiagnostics() {return m_scanner.TakeDiagnostics();}
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/,
-        const ActivePictureEvidence& nativeEvidence = {}) {
+        const ActivePictureEvidence& nativeEvidence = {}, bool preparePublishedCaption = false) {
         const auto started=std::chrono::steady_clock::now();
         if(m_analysisDomainKey!=key.identity.analysisDomainKey) {
             m_scanner.Reset();m_analysisDomainKey=key.identity.analysisDomainKey;
@@ -75,6 +75,7 @@ public:
         // independent subtitle-assisted AR measurement separate: it may report
         // a real source aperture change but never replaces subtitle geometry.
         auto physical=result;
+        bool regroupedOnPhysicalPlanes = false;
         if(result.sharedNativeGeometry) {
             const auto& bars=result.barEvidence;
             physical.barEvidence=bars;physical.barAuthority=bars.available;
@@ -95,6 +96,7 @@ public:
                 physical.text=m_scanner.Analyze(source,bars.top,bars.bottom,
                     key.identity.acceptedSequence,key.identity.viewportGeneration);
                 physical.ink=m_scanner.InkSnapshot();
+                regroupedOnPhysicalPlanes = true;
             }
         }
         if (!physical.inspectionCandidateUsed && physical.independentBarAnalysis && physical.text.detected && !physical.text.held &&
@@ -103,8 +105,36 @@ public:
             auto proofSource=source;proofSource.generation=result.identity.transportGeneration;
             result.subtitleArProof=EvaluateSubtitleAssistedVerticalBarProof(proofSource,raw,physical,
                 result.identity,result.policyGeneration,result.continuityGeneration,result.scriptHint);
-            if (result.subtitleArProof.accepted)
+            if (result.subtitleArProof.accepted) {
                 result.subtitleArDarkness=EvaluateActivePictureArDarkness(proofSource,result.subtitleArProof.evidence);
+                // Keep only the grouping actually performed on the new planes.
+                // The original result still belongs to the old shared picture.
+                const auto& text = physical.text;
+                if (preparePublishedCaption && regroupedOnPhysicalPlanes && !result.inspectionCandidateUsed &&
+                    text.bounds.Valid() && text.lineCount > 0 && text.lineCount <= 3 &&
+                    text.topSearchComplete && text.bottomSearchComplete && !text.confirmationPending &&
+                    physical.ink && physical.ink->paletteValid) {
+                    auto caption = std::make_shared<SubtitleBoxObservation>();
+                    caption->identity = physical.identity;
+                    caption->width = physical.width;
+                    caption->height = physical.height;
+                    caption->policyGeneration = physical.policyGeneration;
+                    caption->continuityGeneration = physical.continuityGeneration;
+                    caption->scriptHint = physical.scriptHint;
+                    caption->nearBarDistance = physical.nearBarDistance;
+                    caption->optimizationMode = physical.optimizationMode;
+                    caption->analysisStride = result.analysisStride;
+                    caption->analyzed = true;
+                    caption->barAuthority = true;
+                    caption->barEvidence = physical.barEvidence;
+                    caption->pictureTop = physical.pictureTop;
+                    caption->pictureBottom = physical.pictureBottom;
+                    caption->text = text;
+                    caption->ink = physical.ink;
+                    AttachCanonicalSubtitleContinuityInk(*caption, source);
+                    result.publishedPictureCaption = std::move(caption);
+                }
+            }
         }
         // Explicit per-process diagnostic opt-in: save one native
         // input without changing capture, subtitle settings or presentation.
