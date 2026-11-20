@@ -1321,6 +1321,105 @@ namespace VideoProcessorTest
 			Assert::IsTrue(Observe(model, shifted, frame++).publish);
 		}
 
+		TEST_METHOD(ContainedWindowboxRequiresCurrentMatteOnBothAxesForLiveAndQueuedPublication)
+		{
+			const auto base = LoggedScopeBounds();
+			const auto window = LoggedWindowboxBounds();
+			ActivePictureTransitionModel live, queued;
+			uint64_t frame = Establish(live, base);
+			Establish(queued, base);
+			ActivePictureObservation measured{window, frame, true,
+				ActivePictureClassification::BAR_CROP_TRUSTED, 24.0};
+			auto& axes = measured.axisEvidence;
+			axes.measuredMatteBounds = window;
+			axes.horizontal = axes.vertical = {ActivePictureAxisState::TRUSTED_BARS,
+				ActivePictureAxisReason::BAR_CONFIRMED, true, true};
+
+			Assert::IsTrue(live.WouldAdmitGeometryChange(measured));
+			Assert::IsFalse(live.Observe(measured).publish);
+			Assert::IsFalse(live.Observe(measured).publish);
+			auto weak = measured;
+			weak.axisEvidence.measuredMatteBounds.trustedBarAxes = ActivePictureBounds::BarAxes::LEFT_RIGHT;
+			weak.frameNumber = ++frame;
+			Assert::IsFalse(live.WouldAdmitGeometryChange(weak));
+			Assert::IsFalse(live.Observe(weak).publish);
+			measured.frameNumber = ++frame;
+			Assert::IsFalse(live.Observe(measured).publish);
+			measured.frameNumber = ++frame;
+			const auto publication = live.Observe(measured);
+			Assert::IsTrue(publication.publish && publication.bounds.SameRectangleAndAxes(window));
+
+			auto shifted = axes;
+			shifted.measuredMatteBounds.left += 2;
+			auto incomplete = axes;
+			incomplete.vertical.scanComplete = false;
+			for (const auto* invalid : {&weak.axisEvidence, &shifted, &incomplete})
+				Assert::IsFalse(queued.AdoptPublishedDecision(publication, measured.classification,
+					false, nullptr, invalid));
+			Assert::IsTrue(queued.AdoptPublishedDecision(publication, measured.classification,
+				false, nullptr, &axes));
+
+			// A return near the remembered window must publish today's exact edges.
+			Observe(live, base, ++frame);
+			Assert::IsTrue(Observe(live, base, ++frame).publish);
+			measured.bounds.left -= 2;
+			measured.bounds.right += 2;
+			measured.bounds.aspectRatio = double(measured.bounds.right - measured.bounds.left) /
+				(measured.bounds.bottom - measured.bounds.top);
+			axes.measuredMatteBounds = measured.bounds;
+			measured.frameNumber = ++frame;
+			Assert::IsFalse(live.Observe(measured).publish);
+			measured.frameNumber = ++frame;
+			const auto returned = live.Observe(measured);
+			Assert::IsTrue(returned.publish && returned.bounds.SameRectangleAndAxes(measured.bounds));
+			Assert::IsFalse(returned.knownTrustedGeometryReacquired);
+		}
+
+		TEST_METHOD(RecentNarrowPillarsNeedCurrentAuthorityToRemovePictureAtTheSides)
+		{
+			const ActivePictureBounds full{0, 0, 896, 504, 896, 504, 896.0 / 504,
+				ActivePictureBounds::BarAxes::NONE};
+			const ActivePictureBounds narrow{148, 0, 748, 504, 896, 504, 600.0 / 504,
+				ActivePictureBounds::BarAxes::LEFT_RIGHT};
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, narrow);
+			Observe(model, full, frame++, ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsTrue(Observe(model, full, frame++, ActivePictureClassification::FULL_RASTER_TRUSTED).publish);
+
+			ActivePictureObservation current{narrow, frame, true, ActivePictureClassification::PROVISIONAL};
+			current.bounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			for (int i = 0; i < 8; ++i)
+			{
+				current.frameNumber = frame++;
+				const auto decision = model.Observe(current);
+				Assert::IsFalse(decision.publish);
+				Assert::IsTrue(decision.stableBounds.SameRectangleAndAxes(full));
+			}
+
+			current.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			current.bounds = narrow;
+			current.axisEvidence.horizontal = {ActivePictureAxisState::UNKNOWN,
+				ActivePictureAxisReason::BAR_PICTURE_CONTINUATION, true, true};
+			Assert::IsFalse(model.WouldAdmitGeometryChange(current));
+			current.frameNumber = frame++;
+			Assert::IsFalse(model.Observe(current).publish);
+			ActivePictureTransitionDecision queued;
+			queued.publish = queued.stable = true;
+			queued.stableBounds = full;
+			queued.bounds = narrow;
+			Assert::IsFalse(model.AdoptPublishedDecision(queued, current.classification,
+				false, nullptr, &current.axisEvidence));
+
+			current.axisEvidence.horizontal = {ActivePictureAxisState::TRUSTED_BARS,
+				ActivePictureAxisReason::BAR_CONFIRMED, true, true};
+			Assert::IsTrue(model.WouldAdmitGeometryChange(current));
+			current.frameNumber = frame++;
+			Assert::IsFalse(model.Observe(current).publish);
+			current.frameNumber = frame++;
+			const auto returned = model.Observe(current);
+			Assert::IsTrue(returned.publish && returned.bounds.SameRectangleAndAxes(narrow));
+		}
+
 		TEST_METHOD(RememberedWindowboxCannotBypassCompositionHold)
 		{
 			const auto inset = LoggedWindowboxBounds();

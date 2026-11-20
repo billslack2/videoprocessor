@@ -60,6 +60,18 @@ int main(){
      v=black+((y<137||y>=943)?340:370);return true;
    },[]{return true;});
    check(panel.kind!=Kind::Bars,"small inward step on bright exterior cannot authorize crop");
+   for(const int leftMatte:{80,240}){
+     auto middleGray=Measure(1920,1080,black,[=](int x,int,int& v){
+       v=black+(x<240?leftMatte:x>=1680?240:580);return true;
+     },[]{return true;});
+     check(middleGray.complete && middleGray.kind!=Kind::Bars,
+           "middle-gray side artwork is retained at a 4:3 boundary despite high contrast");
+   }
+   auto mismatch=Measure(1920,1080,black,[=](int x,int,int& v){
+     v=black+(x<240?12:x>=1680?108:580);return true;
+   },[]{return true;});
+   check(mismatch.complete && mismatch.kind!=Kind::Bars && mismatch.exteriorPictureConflict[0],
+         "incompatible opposing gray plateaus do not establish matching mattes");
  }
  auto tiny=scene(64,64,0,10,0,10);
  check(tiny.complete&&tiny.kind==Kind::Bars&&tiny.top==10&&tiny.bottom==54,"minimum supported raster");

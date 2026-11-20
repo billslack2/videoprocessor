@@ -60,11 +60,16 @@ bool CanCorrectRememberedFamily(const ActivePictureBounds& measured, const Activ
         std::abs(centerDeltaTwice) <= int64_t(2) * tolerance;
 }
 
+bool RemovesPictureAtSides(const ActivePictureBounds& base, const ActivePictureBounds& candidate)
+{
+	return candidate.rasterWidth == base.rasterWidth && candidate.rasterHeight == base.rasterHeight &&
+		candidate.left > 0 && candidate.right < candidate.rasterWidth && candidate.left < candidate.right &&
+		(candidate.left > base.left || candidate.right < base.right);
+}
+
 bool ExactSparseBounds(const ActivePictureBounds& a, const ActivePictureBounds& b)
 {
-    return a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom &&
-        a.rasterWidth == b.rasterWidth && a.rasterHeight == b.rasterHeight &&
-        a.trustedBarAxes == b.trustedBarAxes;
+    return a.SameRectangleAndAxes(b);
 }
 
 }
@@ -255,7 +260,8 @@ bool ActivePictureTransitionModel::WithinStableGeometryDeadband(
 
 ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionAdmission(
 	const ActivePictureBounds& bounds,
-	ActivePictureClassification classification) const
+	ActivePictureClassification classification,
+	const ActivePictureAxisEvidenceSet* currentEvidence) const
 {
 	if (!m_hasStable) return ActivePicturePublicationAdmission::ACCEPTED;
 	if (WithinStableGeometryDeadband(m_stable, bounds))
@@ -278,16 +284,16 @@ ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionA
 	const int stableHeight = m_stable.bottom - m_stable.top;
 	if (width <= 0 || height <= 0 || stableWidth <= 0 || stableHeight <= 0)
 		return ActivePicturePublicationAdmission::ACCEPTED;
-	// A rectangle separated from all four source edges is an inset composition,
-	// not an unambiguous aspect-format boundary. Once a crop is established,
-	// keep that presentation instead of zooming into picture-in-picture,
-	// split-screen, credits, or an authored windowbox. Fresh source acquisition
-	// remains free to establish its initial geometry.
+	// A fully contained inset may be an inner composition. Replacing an
+	// established crop requires current opposing matte on both measured axes.
+	// The candidate still goes through ordinary temporal confirmation.
 	if (bounds.left > 0 && bounds.top > 0 &&
 		bounds.right < bounds.rasterWidth &&
 		bounds.bottom < bounds.rasterHeight)
 	{
-		return ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED;
+		return currentEvidence && currentEvidence->HasMeasuredWindowbox(bounds)
+			? ActivePicturePublicationAdmission::ACCEPTED
+			: ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED;
 	}
 	// Derive aspect from pixels: cached aspectRatio can be temporally smoothed.
 	const double relativeAspect = static_cast<double>(width) * stableHeight /
@@ -300,7 +306,12 @@ ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionA
 bool ActivePictureTransitionModel::RetainsIncompleteInwardFormat(
 	const ActivePictureBounds& candidate, const ActivePictureAxisEvidenceSet& evidence) const
 {
-	// Preserve initial acquisition (including a preceding full-raster/menu frame).
+	// An explicitly failed horizontal scan cannot remove visible source columns,
+	// including when the established reference is full raster.
+	if (m_hasStable && evidence.horizontal.FailedBar() && RemovesPictureAtSides(m_stable, candidate))
+		return true;
+
+	// Preserve ordinary top/bottom acquisition after a full-raster/menu frame.
 	// A failed axis cannot authorize removing pixels on that axis. Current
 	// strict vertical profiles or the existing broad-side path can still admit
 	// an independently verified top/bottom crop which preserves every column.
@@ -818,6 +829,15 @@ bool ActivePictureTransitionModel::FindRecentTrustedGeometry(
 		const TrustedGeometry& known = m_recentTrusted[index];
 		if (!SameBounds(known.bounds, observation.bounds))
 			continue;
+		// A previous side matte can recur as scene composition or broadcast art.
+		// Coordinates alone cannot remove columns from the current stable picture.
+		if (RemovesPictureAtSides(m_stable, known.bounds) &&
+			(!HasCropAuthority(observation) || !RemovesPictureAtSides(m_stable, observation.bounds)))
+			continue;
+		// History cannot substitute a nearby old inset for current four-edge proof.
+		if (observation.axisEvidence.HasMeasuredWindowbox(observation.bounds) &&
+			!known.bounds.SameRectangleAndAxes(observation.bounds))
+			continue;
 		// Vertical crop permission belongs to its exact current aperture. History
 		// must not replace that aperture with a nearby, more tightly cropped one.
 		if (observation.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observation.bounds) &&
@@ -906,7 +926,7 @@ ActivePictureTransitionModel::CommitCandidate(
 		observation.classification == m_candidateClassification &&
 		observation.bounds.trustedBarAxes == m_candidate.trustedBarAxes &&
 		SameBounds(m_candidate, observation.bounds) &&
-		StableRetentionAdmission(observation.bounds, observation.classification) ==
+		StableRetentionAdmission(observation.bounds, observation.classification, &observation.axisEvidence) ==
 			ActivePicturePublicationAdmission::ACCEPTED &&
 		(!RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence) ||
 		 ValidSparseTransitionObservation(observation) || ValidRememberedEdgeReturnObservation(observation)))
@@ -1110,9 +1130,10 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	// History and look-ahead must obey the same retention policy as live
 	// evidence. Test the remembered contract, not its noisy raw recurrence.
 	const auto retention = matchesRecentTrusted
-		? StableRetentionAdmission(recentTrustedBounds, recentTrustedClassification)
+		? StableRetentionAdmission(recentTrustedBounds, recentTrustedClassification,
+			HasCropAuthority(observation) ? &observation.axisEvidence : nullptr)
 		: (HasCropAuthority(observation)
-			? StableRetentionAdmission(observation.bounds, observation.classification)
+			? StableRetentionAdmission(observation.bounds, observation.classification, &observation.axisEvidence)
 			: ActivePicturePublicationAdmission::ACCEPTED);
 	if (retention != ActivePicturePublicationAdmission::ACCEPTED)
 	{
@@ -1380,7 +1401,7 @@ bool ActivePictureTransitionModel::WouldAdmitGeometryChange(
     const bool rememberedReturn = ValidRememberedEdgeReturnObservation(observation);
 	return m_hasStable && (observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE || sparseTransition || rememberedReturn) &&
 		HasCropAuthority(observation) && !SameBounds(m_stable, observation.bounds) &&
-		StableRetentionAdmission(observation.bounds, observation.classification) ==
+		StableRetentionAdmission(observation.bounds, observation.classification, &observation.axisEvidence) ==
 			ActivePicturePublicationAdmission::ACCEPTED &&
 		(sparseTransition || rememberedReturn || !RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence));
 }
@@ -1471,7 +1492,7 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 		return reject(ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
 	if (currentAxisEvidence && RetainsIncompleteInwardFormat(decision.bounds, *currentAxisEvidence))
 		return reject(ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED);
-	const auto retention = StableRetentionAdmission(decision.bounds, classification);
+	const auto retention = StableRetentionAdmission(decision.bounds, classification, currentAxisEvidence);
 	if (retention != ActivePicturePublicationAdmission::ACCEPTED)
 		return reject(retention);
 	if (m_hasStable && !SameBounds(m_stable, decision.bounds))

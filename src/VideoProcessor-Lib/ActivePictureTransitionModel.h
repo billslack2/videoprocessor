@@ -70,6 +70,13 @@ struct ActivePictureBounds
 		BOTH = 3
 	};
 	BarAxes trustedBarAxes = BarAxes::NONE;
+
+	bool SameRectangleAndAxes(const ActivePictureBounds& other) const
+	{
+		return left == other.left && top == other.top && right == other.right &&
+			bottom == other.bottom && rasterWidth == other.rasterWidth &&
+			rasterHeight == other.rasterHeight && trustedBarAxes == other.trustedBarAxes;
+	}
 };
 
 enum class ActivePictureClassification
@@ -192,6 +199,18 @@ struct ActivePictureAxisEvidenceSet
 		return verticalCropGuardTop != 0 || verticalCropGuardBottom != 0;
 	}
 
+	// Completed current native measurements of opposing matte strips, bound to
+	// the rectangle measured on that source. The axes indicate verified pairs.
+	ActivePictureBounds measuredMatteBounds;
+
+	bool HasMeasuredWindowbox(const ActivePictureBounds& bounds) const
+	{
+		return bounds.trustedBarAxes == ActivePictureBounds::BarAxes::BOTH &&
+			horizontal.scanComplete && horizontal.state == ActivePictureAxisState::TRUSTED_BARS &&
+			vertical.scanComplete && vertical.state == ActivePictureAxisState::TRUSTED_BARS &&
+			measuredMatteBounds.SameRectangleAndAxes(bounds);
+	}
+
 	bool HasFailedBar() const { return horizontal.FailedBar() || vertical.FailedBar(); }
 	bool SupportsVerticalCropDespiteSideAmbiguity(const ActivePictureBounds& bounds) const
 	{
@@ -227,6 +246,7 @@ struct ActivePictureAxisEvidenceSet
 	bool operator==(const ActivePictureAxisEvidenceSet& other) const
 	{
 		return horizontal == other.horizontal && vertical == other.vertical &&
+			measuredMatteBounds.SameRectangleAndAxes(other.measuredMatteBounds) &&
 			sidePictureWidth == other.sidePictureWidth && sidePictureHeight == other.sidePictureHeight &&
 			sidePictureTop == other.sidePictureTop && sidePictureBottom == other.sidePictureBottom &&
 			sidePictureThreshold == other.sidePictureThreshold &&
@@ -429,7 +449,8 @@ private:
 		const ActivePictureBounds& observation) const;
 	ActivePicturePublicationAdmission StableRetentionAdmission(
 		const ActivePictureBounds& bounds,
-		ActivePictureClassification classification) const;
+		ActivePictureClassification classification,
+		const ActivePictureAxisEvidenceSet* currentEvidence) const;
 	bool RetainsIncompleteInwardFormat(const ActivePictureBounds& candidate,
 		const ActivePictureAxisEvidenceSet& evidence) const;
     bool ValidCurrentSpatialExpansion(const ActivePictureObservation& observation) const;

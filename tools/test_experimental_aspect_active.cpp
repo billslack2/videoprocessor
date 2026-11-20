@@ -108,6 +108,19 @@ int main(){
  history.Observe(measured,1280,720,3301);check(!history.Hint(id,1280,720,3302).valid,"repeated or out-of-order sources cannot borrow history");
  Result unknown;check(!EvidenceFromMeasurement(source,unknown).available,"unknown cannot become native authority");
  Result full;full.kind=Kind::FullRaster;full.complete=true;check(!EvidenceFromMeasurement(source,full).available,"sparse full-raster hypothesis cannot override production detection");
+ // An interrupted active worker must not substitute the legacy detector's
+ // full-raster classification on a current frame with raised matte.
+ for(int y=0;y<720;++y)for(int x=0;x<1280;++x)
+     (*pixels)[y*1280+x]=static_cast<uint16_t>((x<210||x>=1070?144+(3*x+5*y)%9:450+x/12)<<6);
+ const auto expired=Measure(1280,720,64,[&](int x,int y,Pixel& v){
+     AnalysisLumaSample p;if(!source.Sample(x,y,p))return false;
+     v={p.luma,p.chromaU,p.chromaV};return true;
+ },[]{return false;});
+ const auto expiredFallback=CurrentFallback(source,expired);
+ check(expired.budgetExhausted && !expired.complete && !expiredFallback.available &&
+       expiredFallback.classification==ActivePictureClassification::UNAVAILABLE &&
+       ExtractActivePictureEvidence(source).classification==ActivePictureClassification::FULL_RASTER_TRUSTED,
+       "expired measurement on raised matte cannot publish legacy full-raster authority");
  for(int y=0;y<720;++y)for(int x=0;x<1280;++x)(*pixels)[y*1280+x]=64<<6;
  ++id.acceptedSequence;const auto fallback=MeasureActiveTrial(source,id);const auto legacy=ExtractActivePictureEvidence(source);
  check(fallback.classification==legacy.classification&&fallback.reason==legacy.reason,"uncertain active trial uses current-frame legacy evidence");

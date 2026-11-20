@@ -57,6 +57,7 @@ inline ActivePictureEvidence EvidenceFromMeasurement(const AnalysisLumaSource& s
     out.blackReference.floor=source.range==AnalysisLumaRange::Limited?64:0;
     out.blackReference.threshold=out.blackReference.floor+24;
     const int w=source.width,h=source.height;
+    out.chromaSamples=measured.chromaSamples;
     if(measured.kind==Kind::FullRaster){
         // Qualification belongs to the completed current-pixel detector pass.
         // Mere brightness, a missing bar pair or history never grants extent.
@@ -116,6 +117,13 @@ inline ActivePictureEvidence EvidenceFromMeasurement(const AnalysisLumaSource& s
         return e;
     };
     out.axisEvidence.horizontal=axis(horizontal,true);out.axisEvidence.vertical=axis(vertical,false);
+    const unsigned matteAxes=(horizontal && measured.opposingMatteQualified[0]?2u:0u) |
+        (vertical && measured.opposingMatteQualified[1]?1u:0u);
+    if(matteAxes){
+        out.axisEvidence.measuredMatteBounds=b;
+        out.axisEvidence.measuredMatteBounds.trustedBarAxes=
+            static_cast<ActivePictureBounds::BarAxes>(matteAxes);
+    }
     // Only completed current measurements with strong support on BOTH edges
     // may nominate immediate expansion. Admission still independently checks
     // exact new-picture strips, the established base and source context.
@@ -123,6 +131,46 @@ inline ActivePictureEvidence EvidenceFromMeasurement(const AnalysisLumaSource& s
         (!horizontal||(measured.acceptedPairAttempt[0]>0&&measured.edges[0].support>=7.0/9&&measured.edges[2].support>=7.0/9))&&
         (!vertical||(measured.acceptedPairAttempt[1]>0&&measured.edges[1].support>=7.0/9&&measured.edges[3].support>=7.0/9));
     return out;
+}
+// An interrupted nomination leaves geometry unavailable for this source. The
+// legacy scan can misclassify lifted bars as full raster when it follows a
+// timeout. Completed ambiguity can still use its independent current pixels.
+inline ActivePictureEvidence CurrentFallback(const AnalysisLumaSource& source,const Result& result){
+    if(result.budgetExhausted){
+        ActivePictureEvidence unavailable;
+        unavailable.reason="experimental measurement budget exhausted";
+        return unavailable;
+    }
+    auto evidence=ExtractActivePictureEvidence(source);
+    const auto& b=evidence.trustedBounds;
+    if(evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED){
+        const int black=source.range==AnalysisLumaRange::Limited?64:0;
+        auto contradictsMatte=[&](const ActivePictureEdgeEvidence& first,
+            const ActivePictureEdgeEvidence& last){
+            // The legacy scan already measured both distributions. Use its
+            // P10/P90 interval to tolerate isolated captions and noise.
+            const double lowFirst=first.lumaP90-first.lumaDispersion;
+            const double lowLast=last.lumaP90-last.lumaDispersion;
+            auto nonMatte=[&](const ActivePictureEdgeEvidence& edge,double low){
+                return edge.barPixels>0 && (low>black+MaxMatteElevation ||
+                    edge.neutralChromaFraction<.5);
+            };
+            return nonMatte(first,lowFirst) || nonMatte(last,lowLast) ||
+                (first.barPixels>0 && last.barPixels>0 &&
+                 (lowFirst-last.lumaP90>MaxOpposingMatteDifference ||
+                  lowLast-first.lumaP90>MaxOpposingMatteDifference));
+        };
+        const bool horizontal=b.left>0 || b.right<source.width;
+        const bool vertical=b.top>0 || b.bottom<source.height;
+        if((horizontal && ((result.complete && result.exteriorPictureConflict[0]) ||
+                          contradictsMatte(evidence.left,evidence.right))) ||
+           (vertical && ((result.complete && result.exteriorPictureConflict[1]) ||
+                        contradictsMatte(evidence.top,evidence.bottom)))){
+            evidence={};
+            evidence.reason="current exterior evidence contradicts fallback crop";
+        }
+    }
+    return evidence;
 }
 // Called only by the existing bounded lookahead measurement worker. The renderer
 // imports its result only when immutable source identity/domain match exactly.
@@ -136,7 +184,11 @@ inline ActivePictureEvidence MeasureActiveTrial(const AnalysisLumaSource& source
     Result result;result.reason="unknown-code-range";
     if(source.IsValid()&&source.range!=AnalysisLumaRange::Unknown){
         result=Measure(source.width,source.height,source.range==AnalysisLumaRange::Full?0:64,
-            [&](int x,int y,int& v){AnalysisLumaSample p;if(!source.Sample(x,y,p))return false;v=p.luma;return true;},
+            [&](int x,int y,Pixel& v){
+                AnalysisLumaSample p;
+                if(!source.Sample(x,y,p))return false;
+                v={p.luma,p.chromaU,p.chromaV};return true;
+            },
             [&]{return Clock::now()-start<std::chrono::milliseconds(ActiveMeasurementBudgetMilliseconds);},24000,&prior);
     }
     history.Observe(result,source.width,source.height,nowMs);
@@ -144,7 +196,7 @@ inline ActivePictureEvidence MeasureActiveTrial(const AnalysisLumaSource& source
     const bool applied=evidence.available;
     // Unknown, missing work and sparse full-extent guesses gain no new authority.
     // Use the existing CURRENT-frame detector, not old crop/picture pixels.
-    if(!applied)evidence=ExtractActivePictureEvidence(source);
+    if(!applied)evidence=CurrentFallback(source,result);
     static thread_local uint64_t nextLogMs=0;
     static thread_local bool previousApplied=false;
     if(nowMs>=nextLogMs||applied!=previousApplied){

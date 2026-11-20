@@ -4,22 +4,30 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <type_traits>
 namespace ExperimentalAspect {
 enum class Kind { Unknown, Bars, FullRaster };
 struct Edge { int depth=0, uncertainty=0, matte=0, matteP90=0; double support=0,contrast=0,noise=0,darkness=0,score=0; };
+struct Pixel { int luma=0, u=512, v=512; };
+// Ten-bit source-code bounds. Retain legitimate lifted bars through black+108
+// and compression noise; a stable middle gray is insufficient proof of matte.
+constexpr int MaxMatteElevation=144;
+constexpr int MaxOpposingMatteDifference=64;
 struct Prior { int width=0,height=0,left=0,top=0,right=0,bottom=0; bool valid=false; };
 struct Result {
     Kind kind=Kind::Unknown;
     int left=0,top=0,right=0,bottom=0;
     Edge edges[4];
     double score=0,fullScore=0,symmetry=0,ratioSupport=0;
-    size_t samples=0; bool complete=false;
+    size_t samples=0, chromaSamples=0; bool complete=false, budgetExhausted=false;
     // Diagnostics only. Acceptance is one-based and cleared on veto/incomplete work.
     unsigned pairAttempts[2]{}, acceptedPairAttempt[2]{};
     // Structured current-pixel support ranks a full-extent hypothesis; an
     // unsupported edge remains unknown, never a fabricated picture certificate.
     bool fullExtentQualified=false, pictureEdgeSupported[4]{};
     double unpairedBoundarySupport[4]{}, fullExtentScore=0;
+    // Axis indices follow the directional scans (horizontal X, vertical Y).
+    bool opposingMatteQualified[2]{}, exteriorPictureConflict[2]{};
     const char* reason="invalid-source";
 };
 inline double Unit(double x){return (std::max)(0.0,(std::min)(1.0,x));}
@@ -42,10 +50,26 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
     Result out;out.right=width;out.bottom=height;
     if(width<64||height<64||width>8192||height>8192||nominalBlack<0)return out;
     bool failed=false;
-    auto pixel=[&](int x,int y){
-        int v=0;if(failed)return v;
-        if(out.samples>=maxSamples||((out.samples&63)==0&&!allow())){failed=true;out.reason="budget";return v;}
-        ++out.samples;if(!read(x,y,v)){failed=true;out.reason="read-failed";}return v;
+    auto exhaustBudget=[&]{failed=true;out.budgetExhausted=true;out.reason="budget";};
+    auto samplePixel=[&](int x,int y){
+        Pixel v;
+        if(failed)return v;
+        if(out.samples>=maxSamples||((out.samples&63)==0&&!allow())){exhaustBudget();return v;}
+        ++out.samples;
+        bool ok;
+        if constexpr (std::is_invocable_r_v<bool,Read&,int,int,Pixel&>)
+            ok=read(x,y,v);
+        else
+            ok=read(x,y,v.luma);
+        if(!ok){failed=true;out.reason="read-failed";}
+        return v;
+    };
+    auto pixel=[&](int x,int y){return samplePixel(x,y).luma;};
+    auto evidencePixel=[&](int x,int y){
+        const auto p=samplePixel(x,y);
+        if constexpr (std::is_invocable_r_v<bool,Read&,int,int,Pixel&>)
+            if(!failed)++out.chromaSamples;
+        return p;
     };
     auto sample=[&](int side,int lane,int depth){
         const bool horizontal=side==1||side==3;
@@ -56,7 +80,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         for(int k=0;k<3;++k){const int a=(std::max)(0,(std::min)(across-1,center+(k-1)*parallel));v[k]=pixel(horizontal?a:d,horizontal?d:a);}
         return Median(v,3);
     };
-    struct Candidate {Edge edge;int index=0;unsigned laneMask=0;};
+    struct Candidate {Edge edge;int index=0;unsigned laneMask=0;bool matteStep=false;};
     std::array<std::array<Candidate,12>,4> candidates{};
     std::array<int,4> sizes{},steps{};
     std::array<double,4> fullSupport{};
@@ -83,7 +107,7 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         fullSupport[side]=full/9.0;
         std::array<Candidate,96> options{};int n=0;
         for(int i=2;i<count-2&&!failed;++i){
-            if((i&7)==0&&!allow()){failed=true;out.reason="budget";break;}
+            if((i&7)==0&&!allow()){exhaustBudget();break;}
             std::array<int,9> strengths{},spreads{},floors{},highs{};int support=0;unsigned laneMask=0;
             int weakBoundarySupport=0;
             for(int lane=0;lane<9;++lane){
@@ -130,16 +154,22 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             // Stop this inward search once the clean outer strip has given
             // way to distributed picture. Leave isolated overlays and flat
             // stepped mattes to opposing-edge ranking and native refinement.
-            if(support>=7 && e.matteP90<=nominalBlack+48 && e.noise<=12 && i+3<count){
-                int pictureColumns=0;
+            if(support>=7 && i+3<count){
+                int pictureColumns=0, matteColumns=0;
                 for(int depth=i+1;depth<=i+3;++depth){
                     std::array<int,9> inside{};
                     for(int lane=0;lane<9;++lane)inside[lane]=lines[lane][depth];
                     std::sort(inside.begin(),inside.end());
                     if(inside[2]>=e.matteP90+32 && inside[6]-inside[2]>=24)
                         ++pictureColumns;
+                    if(inside[7]<=nominalBlack+48 && inside[7]-inside[1]<=12)
+                        ++matteColumns;
                 }
-                if(pictureColumns==3)break;
+                // A near-black plateau just inside *both* candidate edges
+                // can be a layer of the same matte. Keep it as a fallback
+                // if no deeper paired boundary survives native refinement.
+                c.matteStep=matteColumns==3;
+                if(e.matteP90<=nominalBlack+48 && e.noise<=40 && pictureColumns==3)break;
             }
         }
         std::sort(options.begin(),options.begin()+n,[](const Candidate&a,const Candidate&b){return a.edge.score>b.edge.score;});
@@ -149,20 +179,30 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             if(!duplicate)candidates[side][sizes[side]++]=options[i];
         }
     }
-    auto scorePair=[&](const Edge& a,const Edge& b,int side){
+    auto physicalPairScore=[&](const Edge& a,const Edge& b,int side){
         const int extent=side==0?width:height;
         if(a.support<3.0/9||b.support<3.0/9||(std::max)(a.support,b.support)<7.0/9)return 0.0;
         // Agreement is soft, but a wholly inconsistent pair cannot pass on contrast alone.
         const double symmetry=Unit(1-std::abs(a.depth-b.depth)/double((std::max)(8,extent/40)));
+        return .78*(a.score+b.score)/2+.22*symmetry;
+    };
+    bool accepted[2]={false,false};double pairScores[2]{};
+    auto rankPair=[&](const Edge& a,const Edge& b,int side,double physical){
+        const int extent=side==0?width:height;
         double history=0;
         if(prior&&prior->valid&&prior->width==width&&prior->height==height){
             const int first=side==0?prior->left:prior->top,last=side==0?width-prior->right:height-prior->bottom;
             history=Unit(1-(std::abs(a.depth-first)+std::abs(b.depth-last))/double((std::max)(8,extent/40)));
         }
-        const double ar=side==0?double(width-a.depth-b.depth)/height:double(width)/(height-a.depth-b.depth);
-        return Unit(.75*(a.score+b.score)/2+.20*symmetry+.05*history+.05*RatioSupport(ar));
+        // The first axis has no measured picture height while a vertical
+        // pair is still in contention. Defer its ratio bonus. The second axis
+        // can rank using the native width already measured for this raster.
+        const bool knownHeight=side!=0 || sizes[1]==0 || sizes[3]==0;
+        const int pictureWidth=accepted[0]?width-out.edges[0].depth-out.edges[2].depth:width;
+        const double ar=side==0?double(width-a.depth-b.depth)/height:double(pictureWidth)/(height-a.depth-b.depth);
+        const double boundaryAgreement=Unit((std::min(a.support,b.support)*9-6)/3);
+        return .82*physical+.06*history+.12*boundaryAgreement*(knownHeight?RatioSupport(ar):0.0);
     };
-    bool accepted[2]={false,false};double pairScores[2]{};
     std::array<std::array<Edge,12>,4> refined{};
     std::array<std::array<bool,12>,4> refinedReady{};
     auto refine = [&](int side, int choice) -> const Edge& {
@@ -215,9 +255,12 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         int count = 0;
         for (int i = 0; i < sizes[axis]; ++i) {
             for (int j = 0; j < sizes[axis + 2]; ++j) {
-                const double score = scorePair(candidates[axis][i].edge,
-                    candidates[axis + 2][j].edge, axis);
-                if (score <= 0) continue;
+                const auto& first=candidates[axis][i];
+                const auto& last=candidates[axis+2][j];
+                const double physical=physicalPairScore(first.edge,last.edge,axis);
+                if(physical<.82)continue;
+                const double score=rankPair(first.edge,last.edge,axis,physical)-
+                    (first.matteStep&&last.matteStep?.20:0);
                 // Strict comparison preserves the original nested-loop tie order.
                 int position = 0;
                 while (position < count && score <= ranked[position].score) ++position;
@@ -231,15 +274,16 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
         // Retry only failed native refinement, bounded by three distinct retained
         // pairs and the unchanged pixel/deadline budget. Shared edges are read once.
         for (int attempt = 0; attempt < count && !failed; ++attempt) {
-            if (!allow()) { failed = true; out.reason = "budget"; break; }
+            if (!allow()) { exhaustBudget(); break; }
             ++out.pairAttempts[axis];
             const auto& pair = ranked[attempt];
             out.edges[axis] = refine(axis, pair.first);
             if (failed) break;
             out.edges[axis + 2] = refine(axis + 2, pair.last);
             if (failed) break;
-            pairScores[axis] = scorePair(out.edges[axis], out.edges[axis + 2], axis);
-            accepted[axis] = pairScores[axis] >= .82;
+            const double physical=physicalPairScore(out.edges[axis],out.edges[axis+2],axis);
+            accepted[axis]=physical>=.82;
+            pairScores[axis]=rankPair(out.edges[axis],out.edges[axis+2],axis,physical);
             if (accepted[axis]) {
                 out.acceptedPairAttempt[axis] = unsigned(attempt + 1);
                 break;
@@ -250,10 +294,13 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
     // Central captions may contaminate strips; distributed exterior picture at
     // the far sides contradicts crop regardless of history or ratio support.
     bool exteriorConflict=false;
+    bool distributedPicture[4]{};
     for(int axis=0;axis<2&&!failed;++axis)if(accepted[axis]){
         const int across=axis==1?width:height,extent=axis==1?height:width;
         const int positions[]={across/200,across/40,across-1-across/40,across-1-across/200};
         bool conflict=false;
+        bool matteSides[2]{};
+        std::array<std::array<int,4>,2> matteLevels{};
         for(int k=0;k<2&&!failed;++k){
             const auto& edge=out.edges[axis+2*k];
             const double limit=edge.matte+(std::max)(24.0,3*edge.noise+8);
@@ -268,20 +315,57 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             // Compare depths on the same lane so brightness changes along
             // a raised matte do not count as picture. Require variation on
             // several lanes to tolerate isolated overlays in genuine bars.
-            int texturedLanes=0;
-            for(int lane=1;lane<=9&&!failed&&!conflict;++lane){
-                const int a=lane*across/10;
+            int texturedLanes=0, slopingLanes=0;
+            std::array<std::array<int,9>,4> depthLevels{}, depthChroma{};
+            for(int lane=0;lane<9&&!failed;++lane){
+                const int a=(lane+1)*across/10;
                 std::array<int,4> levels{};
-                for(int depth=1;depth<=4;++depth){
-                    const int d=edge.depth*depth/5,coordinate=k?extent-1-d:d;
-                    levels[depth-1]=pixel(axis==1?a:coordinate,axis==1?coordinate:a);
+                for(int depth=0;depth<4;++depth){
+                    const int d=edge.depth*(2*depth+1)/8, coordinate=k?extent-1-d:d;
+                    const auto p=evidencePixel(axis==1?a:coordinate,axis==1?coordinate:a);
+                    levels[depth]=depthLevels[depth][lane]=p.luma;
+                    depthChroma[depth][lane]=(std::max)(std::abs(p.u-512),std::abs(p.v-512));
                 }
+                if(std::abs(levels[3]-levels[0])>=6)++slopingLanes;
                 std::sort(levels.begin(),levels.end());
-                if(levels[2]-levels[0]>=48||levels[3]-levels[1]>=48)
-                    conflict=++texturedLanes>=3;
+                if(levels[2]-levels[0]>=48||levels[3]-levels[1]>=48)++texturedLanes;
             }
+            int raisedDetail=0, colored=0, bright=0, quiet=0;
+            for(int depth=0;depth<4;++depth){
+                auto& y=depthLevels[depth]; auto& uv=depthChroma[depth];
+                std::sort(y.begin(),y.end()); std::sort(uv.begin(),uv.end());
+                // A partly occluded boundary can have only three or four
+                // surviving lanes. Compare the visible matte plateau across
+                // those edges without interpreting a central caption as gray.
+                const int level=edge.support>=7.0/9?y[4]:y[2];
+                matteLevels[k][depth]=level;
+                // Longitudinal change corroborates broad, coherent variation
+                // across a raised side panel. A uniform lifted gray still
+                // qualifies; isolated graphics need not spoil a whole band.
+                if(y[4]>nominalBlack+48 && y[7]-y[1]>=40)++raisedDetail;
+                if(uv[4]>40)++colored;
+                if(level>nominalBlack+MaxMatteElevation)++bright;
+                if(uv[6]<=32 && y[6]-y[2]<=24)++quiet;
+            }
+            const bool structuredRaised=raisedDetail>=3 && slopingLanes>=6;
+            distributedPicture[axis+2*k]=structuredRaised || colored>=3 || texturedLanes>=3;
+            conflict=conflict || bright>=3 || distributedPicture[axis+2*k];
+            matteSides[k]=quiet>=3 && edge.support>=7.0/9;
         }
-        if(conflict){accepted[axis]=false;out.acceptedPairAttempt[axis]=0;exteriorConflict=true;}
+        int agreeing=0, mismatched=0;
+        for(int depth=0;depth<4;++depth){
+            const int difference=std::abs(matteLevels[0][depth]-matteLevels[1][depth]);
+            if(difference<=32)++agreeing;
+            if(difference>MaxOpposingMatteDifference)++mismatched;
+        }
+        if(conflict || mismatched>=3){
+            accepted[axis]=false;out.acceptedPairAttempt[axis]=0;
+            out.exteriorPictureConflict[axis]=true;exteriorConflict=true;
+        }else if(matteSides[0] && matteSides[1]){
+            // Only native YUV reads can supply this independent matte proof.
+            out.opposingMatteQualified[axis]=agreeing>=3 &&
+                std::is_invocable_r_v<bool,Read&,int,int,Pixel&>;
+        }
     }
     out.fullScore=*std::min_element(fullSupport.begin(),fullSupport.end());
     if (!failed && !accepted[0] && !accepted[1]) {
@@ -294,44 +378,59 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
             const bool alongRow = side == 1 || side == 3;
             const int across = alongRow ? width : height;
             const int extent = alongRow ? height : width;
-            std::array<std::array<int,48>,3> strips{};
+            std::array<std::array<Pixel,48>,3> strips{};
             const int depths[] = {0, 4, 16};
             for (int depth = 0; depth < 3 && !failed; ++depth) {
                 const int coordinate = side >= 2 ? extent - 1 - depths[depth] : depths[depth];
                 for (int lane = 0; lane < 48 && !failed; ++lane) {
                     const int position = ((lane * 2 + 1) * across) / 96;
-                    strips[depth][lane] = pixel(alongRow ? position : coordinate,
+                    strips[depth][lane] = evidencePixel(alongRow ? position : coordinate,
                         alongRow ? coordinate : position);
                 }
             }
             if (failed) break;
-            auto sorted = strips[0];
-            std::sort(sorted.begin(), sorted.end());
-            const int spread = sorted[43] - sorted[4];
-            bool coherent = spread >= 32;
-            for (int depth = 1; depth < 3 && coherent; ++depth) {
-                double sumA = 0, sumB = 0, sumAA = 0, sumBB = 0, sumAB = 0;
-                for (int lane = 0; lane < 48; ++lane) {
-                    const double a = strips[0][lane], b = strips[depth][lane];
-                    sumA += a; sumB += b; sumAA += a*a; sumBB += b*b; sumAB += a*b;
+            // An isoluminant broadcast graphic can carry its entire edge
+            // structure in chroma. Each channel independently needs broad
+            // variation and positive correlation at two current inward depths.
+            auto structuredChannel=[&](int Pixel::*channel){
+                std::array<int,48> sorted{};
+                for(int lane=0;lane<48;++lane)sorted[lane]=strips[0][lane].*channel;
+                std::sort(sorted.begin(),sorted.end());
+                if(sorted[43]-sorted[4]<32)return false;
+                for(int depth=1;depth<3;++depth){
+                    double sumA=0,sumB=0,sumAA=0,sumBB=0,sumAB=0;
+                    for(int lane=0;lane<48;++lane){
+                        const double a=strips[0][lane].*channel,b=strips[depth][lane].*channel;
+                        sumA+=a;sumB+=b;sumAA+=a*a;sumBB+=b*b;sumAB+=a*b;
+                    }
+                    const double covariance=48*sumAB-sumA*sumB;
+                    const double varianceA=48*sumAA-sumA*sumA,varianceB=48*sumBB-sumB*sumB;
+                    if(covariance<=0 || varianceA<=0 || varianceB<=0 ||
+                       covariance*covariance<.49*varianceA*varianceB)return false;
                 }
-                const double covariance = 48*sumAB - sumA*sumB;
-                const double varianceA = 48*sumAA - sumA*sumA;
-                const double varianceB = 48*sumBB - sumB*sumB;
-                coherent = covariance > 0 && varianceA > 0 && varianceB > 0 &&
-                    covariance*covariance >= .49*varianceA*varianceB;
-            }
+                return true;
+            };
+            bool coherent=structuredChannel(&Pixel::luma);
+            if constexpr (std::is_invocable_r_v<bool,Read&,int,int,Pixel&>)
+                coherent=coherent || structuredChannel(&Pixel::u) || structuredChannel(&Pixel::v);
             out.pictureEdgeSupported[side] = coherent;
             if (coherent) ++supportedEdges;
-            if (competingMatteBoundary[side] ||
-                (!coherent && out.unpairedBoundarySupport[side] > 0)) competingBoundary = true;
+            // A rejected graphic panel can have an abrupt inner edge. Its
+            // exterior must independently carry structured picture to both
+            // raster sides before that step ceases to compete with full extent.
+            const int axis=side%2;
+            const bool exteriorPicture=coherent && distributedPicture[axis] &&
+                distributedPicture[axis+2];
+            if (!exteriorPicture && (competingMatteBoundary[side] ||
+                (!coherent && out.unpairedBoundarySupport[side] > 0))) competingBoundary = true;
         }
         out.fullExtentScore = supportedEdges / 4.0;
         out.fullExtentQualified = !failed && supportedEdges >= 3 && !competingBoundary;
     }
     if(failed||!allow()){
-        if(!failed)out.reason="budget";
+        if(!failed)exhaustBudget();
         out.acceptedPairAttempt[0]=out.acceptedPairAttempt[1]=0;
+        out.opposingMatteQualified[0]=out.opposingMatteQualified[1]=false;
         out.fullExtentQualified=false;
         return out;
     }

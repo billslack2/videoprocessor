@@ -1,5 +1,144 @@
 #pragma once
 
+// Return the same luminance for colored side panels and neutral raised mattes.
+// The grayscale moving skyline, lighthouse and waves extend to the true edges.
+static bool RunNarrowAspectSequences(double fps, uint64_t generation) {
+    constexpr int width = 896, height = 504;
+    enum class Sides { Black, Raised, Colored, LeftColored, RightColored, Alternating, Pulse132 };
+    struct Shot { const char* name; int left, right; Sides sides; };
+    const Shot shots[] = {
+        {"lighthouse-black-1.1905", 148, 748, Sides::Black},
+        {"lighthouse-raised-1.1905", 148, 748, Sides::Raised},
+        {"colored-panels-1.1905", 148, 748, Sides::Colored},
+        {"artwork-left-matte-right", 148, 748, Sides::LeftColored},
+        {"neutral-matte-1.3214", 114, 780, Sides::Raised},
+        {"colored-panels-1.3214", 114, 780, Sides::Colored},
+        {"isolated-1.3214-in-full", 114, 780, Sides::Pulse132},
+        {"matte-left-artwork-right", 114, 780, Sides::RightColored},
+        {"neutral-matte-4x3", 112, 784, Sides::Raised},
+        {"colored-panels-4x3", 112, 784, Sides::Colored},
+        {"alternating-one-frame-crops", 0, width, Sides::Alternating},
+        {"sustained-1.1905-after-cuts", 148, 748, Sides::Raised}
+    };
+
+    auto pixels = std::make_shared<std::vector<uint16_t>>(width * height * 3 / 2);
+    AnalysisLumaSource source;
+    source.width = width;
+    source.height = height;
+    source.rowBytes = source.chromaRowBytes = width * 2;
+    source.range = AnalysisLumaRange::Limited;
+    source.generation = generation;
+    source.data = reinterpret_cast<const uint8_t*>(pixels->data());
+    source.dataBytes = pixels->size() * sizeof(uint16_t);
+    source.backingOwner = pixels;
+
+    ActivePictureFrameIdentity id{};
+    id.transportGeneration = generation;
+    id.sourceFormatGeneration = 1;
+    id.analysisDomainKey = 42;
+    id.rendererGeneration = 1;
+    ActivePictureTransitionModel model;
+    const auto matches = [&](const ActivePictureBounds& bounds, int left, int right) {
+        return bounds.left == left && bounds.right == right && bounds.top == 0 &&
+            bounds.bottom == height && bounds.rasterWidth == width && bounds.rasterHeight == height &&
+            std::abs(bounds.aspectRatio - double(right - left) / height) < 1e-9;
+    };
+
+    bool passed = true;
+    for (const auto& shot : shots) {
+        const bool alternate = shot.sides == Sides::Alternating;
+        const bool pulse = shot.sides == Sides::Pulse132;
+        const bool oneSided = shot.sides == Sides::LeftColored || shot.sides == Sides::RightColored;
+        const bool keepFull = shot.sides == Sides::Colored || alternate || pulse;
+        const auto preservesOneSidedPicture = [&](const ActivePictureBounds& bounds) {
+            const int pictureLeft = shot.sides == Sides::LeftColored ? 0 : shot.left;
+            const int pictureRight = shot.sides == Sides::RightColored ? width : shot.right;
+            return bounds.rasterWidth == width && bounds.rasterHeight == height &&
+                bounds.top == 0 && bounds.bottom == height &&
+                bounds.left >= 0 && bounds.left <= pictureLeft &&
+                bounds.right >= pictureRight && bounds.right <= width;
+        };
+        int firstStable = -1, lostStable = 0, wrongMeasured = 0, unavailable = 0;
+        constexpr int frames = 32;
+        for (int frame = 0; frame < frames; ++frame) {
+            ++id.acceptedSequence;
+            // Both transient rectangles differ from the established full picture
+            // and from each other, so consecutive source frames never corroborate one.
+            const int left = alternate ? (frame % 2 ? 112 : 148) : shot.left;
+            const int right = alternate ? width - left : shot.right;
+            const bool colored = shot.sides == Sides::Colored || (pulse && frame % 8 != 4);
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    const bool side = x < left || x >= right;
+                    const int grain = (3*x + 5*y + 7*frame) % 9 - 4;
+                    int luma = 0;
+                    if (side) {
+                        luma = shot.sides == Sides::Black ? 64 : 144 + grain;
+                    } else {
+                        const int horizon = 255 + std::abs((x + frame) % 128 - 64) / 8;
+                        const bool tower = y > 100 && y < horizon && std::abs(x - 448) < 10 + y / 14;
+                        if (tower)
+                            luma = y < 123 ? 800 : 115 + y / 5;
+                        else if (y < horizon)
+                            luma = 500 - y / 2 + std::abs((x + frame * 3) % 192 - 96);
+                        else
+                            luma = 240 + std::abs((x / 3 + y + frame * 2) % 72 - 36) * 3;
+                        luma += grain;
+                    }
+                    (*pixels)[y*width + x] = static_cast<uint16_t>(luma << 6);
+                    if ((x % 2 == 0) && (y % 2 == 0)) {
+                        int u = 512, v = 512;
+                        const bool artwork = colored || (shot.sides == Sides::LeftColored && x < left) ||
+                            (shot.sides == Sides::RightColored && x >= right);
+                        if (artwork && side) {
+                            // Broad blue/red blocks travel across the side artwork.
+                            const bool blue = (x / 48 + (y + 2*frame) / 64) % 2 == 0;
+                            u = blue ? 810 : 484;
+                            v = blue ? 490 : 680;
+                        }
+                        const int uv = width*height + (y/2)*width + x;
+                        (*pixels)[uv] = static_cast<uint16_t>(u << 6);
+                        (*pixels)[uv + 1] = static_cast<uint16_t>(v << 6);
+                    }
+                }
+            }
+            const auto evidence = MeasureActiveTrial(source, id);
+            const int rawLeft = colored || shot.sides == Sides::LeftColored ? 0 : left;
+            const int rawRight = colored || shot.sides == Sides::RightColored ? width : right;
+            const auto rawClass = colored ? ActivePictureClassification::FULL_RASTER_TRUSTED :
+                ActivePictureClassification::BAR_CROP_TRUSTED;
+            // An unpaired side may remain unknown or retain neutral pixels.
+            // Once a rectangle gains authority it must retain every picture column.
+            const bool rawCorrect = oneSided ? preservesOneSidedPicture(evidence.trustedBounds) :
+                evidence.classification == rawClass && matches(evidence.proposedBounds, rawLeft, rawRight) &&
+                    matches(evidence.trustedBounds, rawLeft, rawRight);
+            if (!evidence.available || evidence.classification == ActivePictureClassification::PROVISIONAL) {
+                ++unavailable;
+            } else if (!rawCorrect) {
+                if (wrongMeasured++ == 0)
+                    std::printf("  %s frame=%d measured=(%d,%d,%d,%d) expected=(%d,0,%d,%d) reason=%s\n",
+                        shot.name, frame, evidence.trustedBounds.left, evidence.trustedBounds.top,
+                        evidence.trustedBounds.right, evidence.trustedBounds.bottom, rawLeft, rawRight, height,
+                        evidence.reason.c_str());
+            }
+            const auto decision = model.Observe(MakeActivePictureObservation(evidence, id.acceptedSequence, fps));
+            const bool stableCorrect = oneSided ? preservesOneSidedPicture(decision.stableBounds) :
+                matches(decision.stableBounds, keepFull ? 0 : shot.left, keepFull ? width : shot.right);
+            if (decision.stable && stableCorrect) {
+                if (firstStable < 0) firstStable = frame;
+            } else if (firstStable >= 0 || alternate || pulse || oneSided) {
+                ++lostStable;
+            }
+        }
+        const bool ok = firstStable >= 0 && firstStable < 8 && lostStable == 0 &&
+            wrongMeasured == 0 && (oneSided || unavailable < frames / 4);
+        std::printf("%s %.3fHz %-28s stable_frame=%d wrong_after_lock=%d wrong_measured=%d unavailable=%d\n",
+            ok ? "PASS" : "FAIL", fps, shot.name, firstStable, lostStable, wrongMeasured, unavailable);
+        passed = passed && ok;
+    }
+    return passed;
+}
+
 // Each step supplies a fresh 10-bit image to the production worker entry point.
 // Keep the transition model alive across cuts, including cuts back to old bounds.
 static bool RunTemporalAspectSequences(double fps, uint64_t generation) {
@@ -66,5 +205,6 @@ static bool RunTemporalAspectSequences(double fps, uint64_t generation) {
             ok?"PASS":"FAIL",fps,seg.name,first,wrongAfterLock,wrongRaw,unknown);
         passed=passed && ok;
     }
-    return passed;
+    const bool narrowPassed = RunNarrowAspectSequences(fps, generation);
+    return passed && narrowPassed;
 }
