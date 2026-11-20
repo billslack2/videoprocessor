@@ -4,6 +4,7 @@
 #include "SubtitleBarRecovery.h"
 #include "ExperimentalAspectShadow.h"
 #include "ExperimentalAspectActive.h"
+#include "OutputFrameStamp.h"
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
@@ -19981,7 +19982,13 @@ releaseDriftBaseRetention =
                 viewportRequestSerial, startupFrameRevision);
         else displayRepeatValid = false;
         displayVsyncClock.SkipMissed(SteadyClockNowNs());
-		const int64_t swapStartQpc = PerformanceCounterNow();
+		Stamp stamp{};
+        if(rendered && DebugLog::IsEnhancedLoggingEnabled()){
+            stamp.generation=frameGeneration;
+            stamp.selected=temporalRenderer.Active()?temporalRenderer.SelectedPacketSequence():sourceSequence;
+            stamp.output=renderLoadSubmissionSerial+1;
+        }
+        const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
 		if (vpOwnedSwapchain)
 		{
@@ -20006,7 +20013,8 @@ releaseDriftBaseRetention =
 			vpOwnedBackbuffer.Release();
 			if (rendered)
 			{
-				const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
+				DrawFrameStamp(vpOwnedSwapchain,stamp);
+                const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
 				submitted = presentResult == S_OK;
 				if (!submitted && vpOwnedPresentFailureLoggedGeneration !=
 					vpOwnedSwapchainGeneration)
@@ -20045,7 +20053,7 @@ releaseDriftBaseRetention =
                 DebugLog::Log("VP anamorphic render failure: schema=1 sequence=%llu generation=%llu recovery=%d present_policy=black_clear consume_acquired_frame=1",
                     sourceSequence, frameGeneration, hookRender.retried ? 1 : 0);
             }
-            submitted = SubmitLibplaceboFrameChecked();
+            submitted = SubmitLibplaceboFrameChecked(stamp);
 		}
 		const int64_t swapEndQpc = PerformanceCounterNow();
 		LARGE_INTEGER qpcFrequency{};
@@ -20531,6 +20539,7 @@ releaseDriftBaseRetention =
 			record.releaseReason = AlphaSourceReleaseReason::Submitted;
 
             const AlphaDxgiPresentationSample sample = ObservePresent(record);
+            LogFrameStamp(stamp,record);
             if (AnalysisDiagnosticTrace::FramesActive())
             {
                 // Source identity describes this render input. A temporal mix
@@ -21248,13 +21257,36 @@ releaseDriftBaseRetention =
         }
         return false;
     }
-    bool SubmitLibplaceboFrameChecked()
+    OutputFrameStamp::Bitmap stampBitmap;
+    struct Stamp {
+        uint64_t generation=0, selected=0, output=0;
+        int64_t drawTicks=0;
+        bool drawn=false;
+    };
+    void DrawFrameStamp(IDXGISwapChain* chain,Stamp& stamp) {
+        if(!stamp.output || !chain)return;
+        const auto start=PerformanceCounterNow();
+        CComPtr<ID3D11Texture2D> buffer;
+        CComPtr<ID3D11DeviceContext> context;
+        if(SUCCEEDED(chain->GetBuffer(0,IID_PPV_ARGS(&buffer)))){
+            d3d11->device->GetImmediateContext(&context);
+            if(context)stamp.drawn=stampBitmap.Draw(context,buffer,stamp.generation,stamp.selected,stamp.output);
+        }
+        stamp.drawTicks=PerformanceCounterNow()-start;
+    }
+    void LogFrameStamp(const Stamp& stamp,const AlphaPresentationRecord& record) {
+        if(stamp.output)DebugLog::Log("VP frame stamp: G%llu S%llu O%llu present_id=%u source=%llu repeat=%d drawn=%d cpu_ticks=%lld",
+            stamp.generation,stamp.selected,stamp.output,record.presentId,record.sourceSequence,
+            record.cadenceRepeat?1:0,stamp.drawn?1:0,stamp.drawTicks);
+    }
+    bool SubmitLibplaceboFrameChecked(Stamp& stamp)
     {
         // submit consumes start_frame's lock/backbuffer even on failure.
         if (!pl_swapchain_submit_frame(swapchain)) return false;
         CComPtr<IDXGISwapChain> native;
         native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
         // Do not also call pl_swapchain_swap_buffers: D3D11 would Present twice.
+        DrawFrameStamp(native,stamp);
         return PresentNativeChecked(native);
     }
 
@@ -21320,6 +21352,12 @@ releaseDriftBaseRetention =
             const float black[] = {0.0f, 0.0f, 0.0f};
             pl_frame_clear(d3d11->gpu, &target, black);
         }
+        Stamp stamp{};
+        if(compatible && DebugLog::IsEnhancedLoggingEnabled()){
+            stamp.generation=displayRepeatRecord.generation;
+            stamp.selected=displayRepeatRecord.selectedSourceSequence;
+            stamp.output=renderLoadSubmissionSerial+1;
+        }
         const int64_t started = PerformanceCounterNow();
         bool submitted = false;
         if (vpOwnedSwapchain)
@@ -21327,11 +21365,12 @@ releaseDriftBaseRetention =
             pl_gpu_flush(d3d11->gpu);
             pl_tex_destroy(d3d11->gpu, &wrapped);
             backbuffer.Release();
+            DrawFrameStamp(vpOwnedSwapchain,stamp);
             submitted = compatible && PresentNativeChecked(vpOwnedSwapchain);
         }
         else
         {
-            submitted = SubmitLibplaceboFrameChecked();
+            submitted = SubmitLibplaceboFrameChecked(stamp);
         }
         if (!compatible || !submitted)
         {
@@ -21354,6 +21393,7 @@ releaseDriftBaseRetention =
             (PerformanceCounterNow() - started) * 1000.0 / frequency.QuadPart : 0.0;
         displayVsyncClock.Submitted();
         ObservePresent(record);
+        LogFrameStamp(stamp,record);
         ++successfulPresentCount;
         ++renderLoadSubmissionSerial;
         ++displayRefreshRepeats;
