@@ -16,6 +16,7 @@
 #include <array>
 #include <vector>
 #include <chrono>
+#include <thread>
 #include <sstream>
 #include <cstdlib>
 #include <fstream>
@@ -441,15 +442,20 @@ namespace VideoProcessorTest
                 return source;
             }
 
-            SubtitleBoxObservation Scan(SubtitleMeasurementSampler& sampler,
-                const SubtitlePictureAuthority& snapshot) const {
+            SubtitleBoxObservation Key(const SubtitlePictureAuthority& snapshot) const {
                 const auto source=Source();
                 SubtitleBoxObservation key;
                 key.identity=identity;
                 key.width=source.width;key.height=source.height;
                 key.policyGeneration=Policy;key.continuityGeneration=Continuity;
                 key.sharedPicture=snapshot;
-                return sampler.Measure(source,key,{},Fps,ExtractActivePictureEvidence(source),true);
+                return key;
+            }
+
+            SubtitleBoxObservation Scan(SubtitleMeasurementSampler& sampler,
+                const SubtitlePictureAuthority& snapshot) const {
+                const auto source=Source();
+                return sampler.Measure(source,Key(snapshot),{},Fps,ExtractActivePictureEvidence(source),true);
             }
 
             bool Adopt(SubtitleBoxObservation& scan) const {
@@ -1321,6 +1327,68 @@ namespace VideoProcessorTest
             rejects(noPayload,frame.published,frame.identity,Frame::Policy,Frame::Continuity,SubtitleScriptHint::Latin);
             auto changedEpoch=frame.published;++changedEpoch.identity.viewportGeneration;
             rejects(current,changedEpoch,frame.identity,Frame::Policy,Frame::Continuity,SubtitleScriptHint::Latin);
+        }
+
+        TEST_METHOD(PublishedPictureCaptionReadsCompletedWorkerWithoutCarriedPreview)
+        {
+            using Frame=PublishedPictureCaptionFrame;
+            Frame frame(17791,false,false,true);
+            const auto source=frame.Source();
+            const auto oldKey=frame.Key(frame.oldPicture);
+            const auto newKey=frame.Key(frame.published);
+            SubtitleMeasurementWorker worker;
+            const auto submit=[&](const SubtitleBoxObservation& key) {
+                worker.Submit(key,[&frame,key](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference&) {
+                    return frame.Scan(sampler,key.sharedPicture);
+                });
+            };
+            const auto waitForExact=[&](const SubtitleBoxObservation& key) {
+                SubtitleBoxObservation ready;
+                const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+                while(!worker.TryRead(key,ready)) {
+                    if(std::chrono::steady_clock::now()>=deadline) {
+                        Assert::Fail(L"The worker did not complete the submitted picture key.");
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                return ready;
+            };
+
+            submit(oldKey);
+            const auto original=waitForExact(oldKey);
+            Assert::IsTrue(bool(original.publishedPictureCaption));
+            Assert::AreEqual(68,original.pictureTop);
+            // A fresh renderer lookup starts empty. Publication is the only
+            // change since the worker finished scanning these exact pixels.
+            SubtitleBoxObservation selected;
+            Assert::IsFalse(worker.TryRead(newKey,selected));
+            auto staleSource=source;++staleSource.generation;
+            Assert::IsFalse(worker.TryRead(newKey,selected,false,&staleSource));
+            auto otherSource=newKey;++otherSource.identity.acceptedSequence;
+            otherSource.sharedPicture.identity=otherSource.identity;
+            Assert::IsFalse(worker.TryRead(otherSource,selected,false,&source));
+            Assert::IsTrue(worker.TryRead(newKey,selected,false,&source));
+            Assert::IsTrue(SameAnalysisFrameIdentity(selected.identity,frame.identity));
+            Assert::IsTrue(selected.sharedPicture.Matches(frame.published));
+            Assert::AreEqual(276,selected.pictureTop);
+            Assert::AreEqual(1884,selected.pictureBottom);
+            Assert::IsTrue(selected.ink==original.publishedPictureCaption->ink);
+            const auto preview=SubtitleBoxLookahead::Resolve(&selected,1,Frame::Policy,Frame::Continuity);
+            SubtitleBoxPresentation tracker;
+            Assert::IsTrue(tracker.Consume(preview,250,1000.0/Frame::Fps).detected);
+            const auto previous=waitForExact(oldKey);
+            Assert::AreEqual(68,previous.pictureTop);
+            Assert::IsTrue(previous.ink==original.ink && previous.publishedPictureCaption==original.publishedPictureCaption);
+            Assert::AreEqual<uint64_t>(1,worker.TakeDiagnostics().completedJobs);
+
+            // If both keys have completed, prefer the ordinary scan on the
+            // published planes even though the older key was inserted first.
+            submit(newKey);
+            const auto direct=waitForExact(newKey);
+            Assert::IsTrue(direct.ink && direct.ink!=selected.ink);
+            Assert::IsTrue(worker.TryRead(newKey,selected,false,&source));
+            Assert::IsTrue(selected.ink==direct.ink);
         }
 
         TEST_METHOD(PublishedPictureCaptionGuardCannotReinterpretCrossingGlyphs)

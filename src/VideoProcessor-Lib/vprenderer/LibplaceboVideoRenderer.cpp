@@ -9221,7 +9221,8 @@ struct LibplaceboVideoRenderer::Impl
         const SubtitleBarTrackingReference& prior,uint64_t policy,uint64_t continuity,int nearBar,int optimizationMode,
         SubtitleScriptHint scriptHint,const SubtitlePictureAuthority& sharedPicture,
         const PreparedAnalysisFrame& prepared, const ActivePictureEvidence& nativeEvidence = {},
-        bool backlogRetirementOnly = false, bool allowSubmit = true)
+        bool backlogRetirementOnly = false, bool allowSubmit = true,
+        const AnalysisLumaSource* publishedSource = nullptr)
     {
         const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
@@ -9235,7 +9236,7 @@ struct LibplaceboVideoRenderer::Impl
         SubtitleBoxLookahead::BindNativeGeometryHint(key);
         if (!prepared.IsValid()) return key;
         SubtitleBoxObservation ready;
-        if(subtitleMeasurementWorker.TryRead(key,ready,backlogRetirementOnly)) {
+        if(subtitleMeasurementWorker.TryRead(key,ready,backlogRetirementOnly,publishedSource)) {
             if(SubtitleBoxLookahead::CanReuseMeasurement(ready,key.identity,key.width,key.height,
                 policy,continuity,discontinuity,prior,scriptHint))return ready;
             const auto now=GetTickCount64();
@@ -14443,13 +14444,14 @@ struct LibplaceboVideoRenderer::Impl
         else if (subtitleMeasurementEnabled)
         {
             auto& reboundPreview=subtitlePreviews->rebound;
-            if (subtitlePreview && subtitlePreview->current.publishedPictureCaption &&
+            const bool publishedCaptionEligible =
                 ExperimentalAspect::ActiveTrialEnabled() && automaticSourceCrop && configuredScreenActive &&
                 !nlsRequested && !fixedCropAspectConfigured && currentBarAuthority &&
                 nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
                 latestActivePictureEvidenceFrame == sourceSequence &&
                 latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
-                SameSubtitlePresentationBounds(nlsGeometry, subtitleSharedPicture.bounds) &&
+                SameSubtitlePresentationBounds(nlsGeometry, subtitleSharedPicture.bounds);
+            if (publishedCaptionEligible && subtitlePreview && subtitlePreview->current.publishedPictureCaption &&
                 SubtitleBoxLookahead::IsCurrent(*subtitlePreview, subtitleIdentity,
                     localBoundaryPolicyGeneration, localBoundaryContinuityGeneration)) {
                 auto& observed = subtitlePreviews->live.current;
@@ -14505,7 +14507,8 @@ struct LibplaceboVideoRenderer::Impl
                         videoFrame.IsSourceDiscontinuity(),priorBar,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                         activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,subtitleSharedPicture,
-                        preparedQueued,{},subtitleBacklogRetirementOnly,!repeatedTemporalOutput);
+                        preparedQueued,{},subtitleBacklogRetirementOnly,!repeatedTemporalOutput,
+                        publishedCaptionEligible ? &analysisSource : nullptr);
                     livePreview = SubtitleBoxLookahead::Resolve(&observed, 1,
                         localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
                     livePreview.newScanMs = 0;

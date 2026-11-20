@@ -343,11 +343,11 @@ public:
     // Lookahead and presentation can inspect the same exact-frame result.
     // Rebinding modifies only this copy; the cached observation is immutable.
     bool TryRead(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,
-        bool backlogRetirementOnly=false) {
-        return ReadReady(key,out,false,backlogRetirementOnly);
+        bool backlogRetirementOnly=false, const AnalysisLumaSource* publishedSource=nullptr) {
+        return ReadReady(key,out,false,backlogRetirementOnly,publishedSource);
     }
     bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
-        return ReadReady(key,out,true,false);
+        return ReadReady(key,out,true,false,nullptr);
     }
     void Submit(const SubtitleBoxObservation& key,Work work) {
         auto requestKey=key;
@@ -417,12 +417,24 @@ public:
         if(m_thread.joinable())m_thread.join();
     }
 private:
-    bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,bool backlogRetirementOnly) {
+    bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,
+        bool backlogRetirementOnly,const AnalysisLumaSource* publishedSource) {
         std::lock_guard<std::mutex> lock(m_mutex);
         uint64_t mismatches=0;
+        bool foundPublishedCaption=false;
         for(auto i=m_ready.begin();i!=m_ready.end();++i) {
             auto candidate=*i;
             if (!SubtitleBoxLookahead::RebindIndependentPicture(candidate,key.sharedPicture)) {
+                // The post-publication read can select a completed alternate
+                // even when the caller never received the old shared preview.
+                // Prefer a ready scan requested on the published planes.
+                if (publishedSource && !foundPublishedCaption && candidate.publishedPictureCaption &&
+                    SubtitleBoxLookahead::UsePublishedPictureCaption(candidate,key.sharedPicture,
+                        *publishedSource,key.identity,key.policyGeneration,key.continuityGeneration,key.scriptHint) &&
+                    SameKey(candidate,key)) {
+                    out=std::move(candidate);
+                    foundPublishedCaption=true;
+                }
                 mismatches|=16ull;continue;
             }
             bool reboundFromBacklog=false;
@@ -461,6 +473,11 @@ private:
             out=std::move(candidate);
             if(consume)m_ready.erase(i);
             else ++m_diagnostics.exactReads;
+            return true;
+        }
+        if (foundPublishedCaption) {
+            Trace(out,"worker-read","published-picture-caption");
+            ++m_diagnostics.exactReads;
             return true;
         }
         Trace(key,"worker-miss",m_ready.empty()?"no-ready-results":"no-compatible-result",mismatches);
