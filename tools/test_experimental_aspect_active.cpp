@@ -3,6 +3,7 @@
 #include <vector>
 #include <cstdio>
 using namespace ExperimentalAspect;
+#include "test_experimental_aspect_sequences.h"
 int main(){
  int failures=0;auto check=[&](bool b,const char*s){std::printf("%s %s\n",b?"PASS":"FAIL",s);if(!b)++failures;};
  SetEnvironmentVariableA("VP_AR_EXPERIMENT","active");
@@ -110,5 +111,7 @@ int main(){
  for(int y=0;y<720;++y)for(int x=0;x<1280;++x)(*pixels)[y*1280+x]=64<<6;
  ++id.acceptedSequence;const auto fallback=MeasureActiveTrial(source,id);const auto legacy=ExtractActivePictureEvidence(source);
  check(fallback.classification==legacy.classification&&fallback.reason==legacy.reason,"uncertain active trial uses current-frame legacy evidence");
+ check(RunTemporalAspectSequences(24000.0/1001,30),"23.976 fps temporal sequences");
+ check(RunTemporalAspectSequences(60000.0/1001,31),"59.94 fps temporal sequences");
  return failures?1:0;
 }
