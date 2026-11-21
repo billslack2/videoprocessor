@@ -136,7 +136,7 @@ public:
                     auto physicalBounds=proof.candidate;
                     physicalBounds.top=caption->pictureTop & ~1;
                     physicalBounds.bottom=(std::min)(source.height,(caption->pictureBottom+1) & ~1);
-                    const bool currentGuard=SubtitlePresentationGuardMatchesPhysicalBounds(proof,physicalBounds);
+                    const bool currentGuard=SubtitleCaptionScanGuardMatchesPhysicalBounds(proof,physicalBounds);
                     const bool nominalProof=proof.candidate.top==physicalBounds.top &&
                         proof.candidate.bottom==physicalBounds.bottom;
                     const bool precedingGuard=!currentGuard && nominalProof && m_lastGuardHint &&
@@ -146,7 +146,7 @@ public:
                     const bool needGuardScan=precedingGuard || (currentGuard &&
                         (!SubtitleBoxLookahead::CompletePublishedCaption(*caption) ||
                          SubtitleBoxLookahead::CaptionNeedsPublishedPlaneGrouping(*caption,guard.top,guard.bottom)));
-                    const char* guardOutcome="physical-grouping-transferable";
+                    const char* guardOutcome=currentGuard || nominalProof ? "physical-grouping-transferable" : "physical-planes-outside-proof";
                     if(needGuardScan) {
                         // One bounded worker pass on the candidate planes. An immediate predecessor
                         // may nominate coordinates only after this source proves the same physical bars.
@@ -169,14 +169,14 @@ public:
                     }
                     DEBUGLOG_ENHANCED("VP subtitle alternate: stage=prepare reason=%s mono_us=%lld generation=%llu "
                         "source=%llu domain=%llu policy=%llu continuity=%llu physical=%d,%d proof=%d,%d candidate=%d,%d "
-                        "guard_origin=%llu guard_required=%d guard_ready=%d physical_box=%d,%d-%d,%d",
+                        "guard_origin=%llu guard_certified=%d guard_required=%d guard_ready=%d physical_box=%d,%d-%d,%d",
                         guardOutcome,std::chrono::duration_cast<std::chrono::microseconds>(
                             std::chrono::steady_clock::now().time_since_epoch()).count(),
                         key.identity.transportGeneration,key.identity.acceptedSequence,key.identity.analysisDomainKey,
                         key.policyGeneration,key.continuityGeneration,caption->pictureTop,caption->pictureBottom,
                         proof.candidate.top,proof.candidate.bottom,guard.top,guard.bottom,
                         precedingGuard?m_lastGuardHint->physical.identity.acceptedSequence:key.identity.acceptedSequence,
-                        needGuardScan?1:0,result.publishedGuardCaption?1:0,
+                        currentGuard?1:0,needGuardScan?1:0,result.publishedGuardCaption?1:0,
                         text.bounds.left,text.bounds.top,text.bounds.right,text.bounds.bottom);
                     if(currentGuard) {
                         auto hint=std::make_shared<SubtitleGuardScanHint>();

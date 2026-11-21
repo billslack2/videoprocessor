@@ -454,7 +454,7 @@ namespace SubtitleBoxLookahead
                 a.trustedBarAxes == b.trustedBarAxes;
         };
         const bool nominalProof=matchesPlanes(physical,proof.candidate);
-        if (!nominalProof && !SubtitlePresentationGuardMatchesPhysicalBounds(proof,physical))
+        if (!nominalProof && !SubtitleCaptionScanGuardMatchesPhysicalBounds(proof,physical))
             return reject("physical-planes-outside-proof");
         const auto& guarded=observation.publishedGuardCaption;
         const bool precedingGuard=nominalProof && guarded && guarded->guardScanHint &&

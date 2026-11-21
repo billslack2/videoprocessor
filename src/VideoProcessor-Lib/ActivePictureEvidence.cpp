@@ -2236,23 +2236,66 @@ bool SubtitleAssistedVerticalBarProof::IsCurrentFor(
         scriptHint == currentScriptHint;
 }
 
-bool SubtitlePresentationGuardMatchesPhysicalBounds(
+static bool SubtitleGuardHasMeasuredPhysicalPlanes(
     const SubtitleAssistedVerticalBarProof& proof, const ActivePictureBounds& physical)
 {
     const auto& guard=proof.candidate;
     const auto& axes=proof.evidence.axisEvidence;
-    const auto& trusted=proof.evidence.trustedBounds;
     return proof.accepted && proof.evidence.available &&
         proof.evidence.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
         proof.evidence.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
-        guard.left==trusted.left && guard.top==trusted.top && guard.right==trusted.right &&
-        guard.bottom==trusted.bottom && guard.rasterWidth==trusted.rasterWidth &&
-        guard.rasterHeight==trusted.rasterHeight && guard.trustedBarAxes==trusted.trustedBarAxes &&
-        axes.HasVerifiedVerticalCropProfile(guard) && axes.verticalCropGlyphExclusions &&
+        guard.SameRectangleAndAxes(proof.evidence.trustedBounds) && axes.verticalCropGlyphExclusions &&
         physical.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
         axes.sidePictureTop==physical.top && axes.sidePictureBottom==physical.bottom &&
         guard.left==physical.left && guard.right==physical.right &&
         guard.rasterWidth==physical.rasterWidth && guard.rasterHeight==physical.rasterHeight;
+}
+
+bool SubtitlePresentationGuardMatchesPhysicalBounds(
+    const SubtitleAssistedVerticalBarProof& proof, const ActivePictureBounds& physical)
+{
+    return SubtitleGuardHasMeasuredPhysicalPlanes(proof,physical) &&
+        proof.evidence.axisEvidence.HasVerifiedVerticalCropProfile(proof.candidate);
+}
+
+static bool SubtitleGuardSideScanIsUnresolved(const ActivePictureEvidence& observed,int width)
+{
+    const auto& horizontal=observed.axisEvidence.horizontal;
+    return horizontal.scanComplete &&
+        ((horizontal.FailedBar() && horizontal.reason==ActivePictureAxisReason::BAR_EDGE_REJECTED) ||
+         (horizontal.reason==ActivePictureAxisReason::NO_FULL_EXTENT_SUPPORT && !horizontal.barCandidate &&
+          observed.proposedBounds.left==0 && observed.proposedBounds.right==width));
+}
+
+bool SubtitleCaptionScanGuardMatchesPhysicalBounds(
+    const SubtitleAssistedVerticalBarProof& proof, const ActivePictureBounds& physical)
+{
+    if (!SubtitleGuardHasMeasuredPhysicalPlanes(proof,physical)) return false;
+    const auto& guard=proof.candidate;
+    const auto& evidence=proof.evidence;
+    const auto& axes=evidence.axisEvidence;
+    const auto& profile=evidence.verticalBarGuardProfile;
+    // The producer aligns the physical edges to even rows and retains precisely
+    // two sample steps on each side. Bind the completed masked scan to those rows.
+    const int guardRows=2*(std::max)(2,physical.rasterHeight/540);
+    return axes.horizontal.state==ActivePictureAxisState::UNKNOWN &&
+        SubtitleGuardSideScanIsUnresolved(evidence,physical.rasterWidth) &&
+        axes.vertical.scanComplete && axes.vertical.barCandidate &&
+        axes.vertical.state==ActivePictureAxisState::TRUSTED_BARS &&
+        axes.vertical.reason==ActivePictureAxisReason::BAR_CONFIRMED &&
+        evidence.top.trusted && evidence.bottom.trusted &&
+        evidence.top.barPixels==guard.top && evidence.bottom.barPixels==guard.rasterHeight-guard.bottom &&
+        guard.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+        guard.left==0 && guard.right==guard.rasterWidth && guard.top>0 &&
+        guard.bottom<guard.rasterHeight && physical.top<physical.bottom &&
+        physical.rasterWidth==proof.width && physical.rasterHeight==proof.height &&
+        axes.sidePictureWidth==proof.width && axes.sidePictureHeight==proof.height &&
+        !(physical.top&1) && !(physical.bottom&1) &&
+        axes.verticalCropGuardTop==guardRows && axes.verticalCropGuardBottom==guardRows &&
+        physical.top-guard.top==guardRows && guard.bottom-physical.bottom==guardRows &&
+        axes.verticalCropProfileEvaluated && axes.verticalCropProfileClean &&
+        profile.evaluated && profile.completed && profile.clean && profile.samples>0 &&
+        profile.apertureTop==guard.top && profile.apertureBottom==guard.bottom;
 }
 
 ActivePictureEvidence SelectSubtitleAssistedPictureEvidence(
@@ -2309,11 +2352,7 @@ SubtitleAssistedVerticalBarProof EvaluateSubtitleAssistedVerticalBarProof(
         horizontal.reason==ActivePictureAxisReason::FULL_EXTENT_SUPPORTED &&
         horizontal.scanComplete && !horizontal.barCandidate &&
         observedNative.proposedBounds.left==0 && observedNative.proposedBounds.right==source.width;
-    const bool uncertainSides=horizontal.scanComplete &&
-        ((horizontal.FailedBar() && horizontal.reason==ActivePictureAxisReason::BAR_EDGE_REJECTED) ||
-         (horizontal.reason==ActivePictureAxisReason::NO_FULL_EXTENT_SUPPORT &&
-          !horizontal.barCandidate && observedNative.proposedBounds.left==0 &&
-          observedNative.proposedBounds.right==source.width));
+    const bool uncertainSides=SubtitleGuardSideScanIsUnresolved(observedNative,source.width);
 
     if (!source.IsValid() || !source.generation ||
         source.generation != currentIdentity.transportGeneration ||
