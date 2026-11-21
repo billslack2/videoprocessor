@@ -341,7 +341,8 @@ enum class ActivePicturePublicationAdmission
 	STABLE_GEOMETRY_RETAINED,
 	CONTAINED_COMPOSITION_RETAINED,
 	STABLE_ASPECT_RETAINED,
-	INCOMPLETE_AXIS_RETAINED
+	INCOMPLETE_AXIS_RETAINED,
+    OSCILLATING_FORMAT_RETAINED
 };
 
 const char* ActivePicturePublicationAdmissionName(
@@ -379,6 +380,8 @@ public:
 	// A bounded presentation hysteresis. This never grants crop authority; it
 	// only retains an already trusted rectangle through a small measured shift.
 	void SetStableGeometryDeadbandPercent(double percent);
+    void SetOscillationHoldMilliseconds(unsigned milliseconds);
+    bool OscillationRequiresFullRasterPresentation() const { return m_oscillation.mixed; }
 	static void SetRuntimeStableGeometryDeadbandPercent(double percent);
 	static double GetRuntimeStableGeometryDeadbandPercent();
 	bool ShouldAnalyze(uint64_t frameNumber, double framesPerSecond);
@@ -423,7 +426,8 @@ public:
 		const ActivePictureAxisEvidenceSet* currentAxisEvidence = nullptr,
 		// Opt in only after independent current-frame outward-picture proof.
 		// This relaxes the old reference by one detector step, never the target.
-		bool currentOutwardPictureConfirmed = false);
+		bool currentOutwardPictureConfirmed = false,
+        const ActivePictureObservation* currentObservation = nullptr);
 
 	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
 	static bool IsSparseBoundaryInwardTransitionGeometry(const ActivePictureBounds& base,
@@ -505,6 +509,21 @@ private:
     bool m_guardedWindowAdmission = false;
     bool m_hasGuardedRememberedEnvelope = false;
     ActivePictureBounds m_guardedRememberedNominal;
+
+    // A publication remembers only its immediately preceding rectangle. Rapid
+    // returns may need a continuous run of current trusted measurements.
+    struct OscillationState {
+        ActivePictureBounds previous, published, supporting;
+        uint64_t changeFrame = 0, lastFrame = 0, supportStart = 0;
+        double rate = 0.0;
+        bool armed = false, mixed = false;
+    };
+    OscillationState m_oscillation;
+    unsigned m_oscillationHoldMs = 0;
+    void TrackOscillationObservation(const ActivePictureObservation& observation);
+    void RecordOscillationPublication(const ActivePictureBounds& target, uint64_t sourceFrame);
+    bool OscillationBlocks(const ActivePictureBounds& target) const;
+    bool HasSustainedOscillationSupport(const ActivePictureBounds& target) const;
 
 	void StartCandidate(const ActivePictureObservation& observation);
 	void ClearCandidate();

@@ -1070,6 +1070,7 @@ namespace
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
 		bool automaticSourceCropRequested = false;
+		unsigned arOscillationProtectionMs = RendererProfileConfig::DEFAULT_AR_OSCILLATION_PROTECTION_MS;
 		bool cropNarrowerContentToFillScreen = false;
 		bool cropNarrowerContentAspectLimitConfigured = false;
 		double cropNarrowerContentAspectLimit = 0.0;
@@ -1225,6 +1226,7 @@ namespace
 				<< settings.fixedCropAspectConfigured << '|'
 				<< settings.fixedCropAspect << '|'
 				<< settings.scopeSubtitleFit << '|'
+                << settings.arOscillationProtectionMs << '|'
                 << settings.subtitleInPictureAspectMax << '|'
 				<< settings.hdrPeakAnalysisPictureOnly << '|'
 				<< settings.hdrPeakAnalysisMotionCompensation << '|'
@@ -1493,6 +1495,9 @@ namespace
 				const DisplayRule rule = { group.name + "/" + profileName,
 					section, profile->second.priority, 0 };
 				ApplyDisplayRuleOverrides(config, rule, settings);
+				if (group.name == "viewport" || group.name == "zoom")
+					RendererProfileConfig::ReadArOscillationProtection(profile->second.settings,
+						settings.arOscillationProtectionMs);
 				if (!activeProfiles.empty()) activeProfiles += ", ";
 				activeProfiles += rule.name;
 				if (manual) activeProfiles += " (manual)";
@@ -2191,6 +2196,8 @@ namespace
 		{
 			return config.TryGetBool(rule.section, genericKey, value);
 		};
+		if (readViewportString("ar_oscillation_protection_seconds", raw))
+			RendererProfileConfig::ParseArOscillationProtection(raw, settings.arOscillationProtectionMs);
 		if (!readViewportBool("automatic_crop",
 			settings.automaticSourceCropRequested) &&
 			readViewportString("automatic_crop", raw))
@@ -2675,6 +2682,8 @@ namespace
 					rawValue.c_str(),
 					RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_POSITION);
 		}
+		if (TryGetDisplayString(config, "ar_oscillation_protection_seconds", rawValue))
+			RendererProfileConfig::ParseArOscillationProtection(rawValue, settings.arOscillationProtectionMs);
 		if (TryGetDisplayString(config, "automatic_crop", rawValue) &&
 			!TryGetDisplayBool(config, "automatic_crop",
 				settings.automaticSourceCropRequested))
@@ -8820,6 +8829,7 @@ struct LibplaceboVideoRenderer::Impl
 			fixedCropAspect != settings.fixedCropAspect ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
             activeSettings.subtitleInPictureAspectMax != settings.subtitleInPictureAspectMax ||
+            activeSettings.arOscillationProtectionMs != settings.arOscillationProtectionMs ||
 			hdrPeakAnalysisPictureOnly !=
 				settings.hdrPeakAnalysisPictureOnly ||
 			hdrPeakAnalysisMotionCompensation !=
@@ -8895,6 +8905,7 @@ struct LibplaceboVideoRenderer::Impl
 		activeSettings.fixedCropAspect = settings.fixedCropAspect;
 		activeSettings.scopeSubtitleFit = settings.scopeSubtitleFit;
         activeSettings.subtitleInPictureAspectMax = settings.subtitleInPictureAspectMax;
+        activeSettings.arOscillationProtectionMs = settings.arOscillationProtectionMs;
 		activeSettings.hdrPeakAnalysisPictureOnly =
 			settings.hdrPeakAnalysisPictureOnly;
 		activeSettings.hdrPeakAnalysisMotionCompensation =
@@ -9091,6 +9102,7 @@ struct LibplaceboVideoRenderer::Impl
 			current.configuredScreenTarget != next.configuredScreenTarget ||
 			current.verticalAlignment != next.verticalAlignment ||
 			current.anamorphicScale != next.anamorphicScale ||
+			current.arOscillationProtectionMs != next.arOscillationProtectionMs ||
 			current.automaticSourceCropRequested != next.automaticSourceCropRequested ||
 			current.automaticSourceCrop != next.automaticSourceCrop ||
 			current.cropNarrowerContentToFillScreen !=
@@ -10805,6 +10817,12 @@ struct LibplaceboVideoRenderer::Impl
 		}
 	}
 
+	unsigned EffectiveOscillationHoldMs(bool screenActive) const
+	{
+		return !fixedCropAspectConfigured && (nlsRequested || (automaticSourceCrop && screenActive)) ?
+			activeSettings.arOscillationProtectionMs : 0;
+	}
+
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
 		const ActivePictureFrameIdentity& currentIdentity,
@@ -10920,6 +10938,7 @@ struct LibplaceboVideoRenderer::Impl
                 continuity.retained ? 1 : 0, pending.bounds.left, pending.bounds.top,
                 pending.bounds.right, pending.bounds.bottom, continuity.reason);
         }
+		nlsTransition.SetOscillationHoldMilliseconds(EffectiveOscillationHoldMs(configuredScreenActive));
 		if (sparseBoundaryEnabled && sparseSceneCut) ++sparseBoundarySceneGeneration;
         RememberedEdgeReturnContext rememberedContext;
         if (rememberedEdgeEnabled || rememberedEdgeShadow)
@@ -12079,7 +12098,8 @@ struct LibplaceboVideoRenderer::Impl
 					scheduledDecision->transition, evidence.classification,
 				admission.observation.transitionDeferred, &publicationAdmission,
 					&admission.observation.axisEvidence, (admission.outward.authoritative || bufferedExpansionReady) &&
-					retentionEvidence.expansionStripsAvailable && !retentionEvidence.EffectiveArNearBlack());
+					retentionEvidence.expansionStripsAvailable && !retentionEvidence.EffectiveArNearBlack(),
+                    &admission.observation);
 			if (scheduledDecision &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
@@ -15852,6 +15872,39 @@ struct LibplaceboVideoRenderer::Impl
             temporalPolicyNearBlackEnvelopeSourceSequence = 0;
             temporalPolicyNearBlackEnvelopeEpisodeStart = 0;
 			alignmentPicture = {};
+            // A rapid reversal between crossing apertures has visible pixels
+            // outside either crop. Freeze the mapping on this source packet
+            // before optional fill, retained poses, or NLS can select a crop.
+            if (nlsTransition.OscillationRequiresFullRasterPresentation() && EffectiveOscillationHoldMs(configuredScreenActive)) {
+                cropPresentationAdmission = {};
+                cropPresentationRecovery = {};
+                fullRasterPresentationAuthorityAvailable = false;
+                fullRasterPresentationAuthoritySourceGeneration = 0;
+                source.crop = {0.0f, 0.0f, float(width), float(height)};
+                const AlphaSourceCrop::PresentationRect available = {
+                    target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1};
+                const auto alignment = ResolveVerticalPictureAlignment(verticalAlignment);
+                frameScreen = AutoPictureAlignment::FitScreen(autoPictureAlignment, configuredScreenActive,
+                    configuredScreenAspect, anamorphicScale, available, alignment, screenEdgePadding);
+                const auto fit = AnamorphicPresentation::FitPicture(double(width) / height,
+                    anamorphicScale, frameScreen, alignment);
+                if (fit.valid)
+                    target.crop = {float(fit.picture.left), float(fit.picture.top),
+                        float(fit.picture.right), float(fit.picture.bottom)};
+                linearFallbackCrop = target.crop;
+                renderParams.hooks = nullptr;
+                renderParams.num_hooks = 0;
+                if (nlsRequested) {
+                    nlsDecision = {};
+                    nlsDecision.mode = NlsMappingMode::SAFE_FIT;
+                    nlsDecision.reason = "oscillating crop axes; showing current raster";
+                    MadVRShaderLoader::SetRuntimeNlsDecision(nlsDecision);
+                    SetShaderStatus("NLS: Safe fit");
+                }
+                if (trustedActivePicture) *trustedActivePicture = false;
+                if (hdrTrustedPicture) *hdrTrustedPicture = {};
+                return;
+            }
 			if (SubtitlePreviewRequiresFullRaster(subtitlePreviewMode) || subtitlePreparationFallback)
             {
                 source.crop = {0.0f,0.0f,static_cast<float>(width),static_cast<float>(height)};
@@ -24162,6 +24215,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     ActivePictureBounds proofBase;
     ActivePictureTransitionModel liveProofModel;
     bool inwardProofEligible = false;
+    unsigned oscillationHoldMs = 0;
     bool inwardCaptionInspectionEligible = false;
     uint64_t inwardCaptionSourceGeneration = 0, inwardCaptionViewport = 0;
     bool shadowFit = false;
@@ -24218,6 +24272,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		std::unique_lock<std::mutex> renderGuard(m_impl->renderMutex,std::try_to_lock);
         if(!renderGuard.owns_lock() || expired()) return abort(renderGuard.owns_lock()?"setup-deadline":"render-lock");
         rememberedWindowTick = GetTickCount64();
+        oscillationHoldMs = m_impl->EffectiveOscillationHoldMs(m_impl->renderConfiguredScreenActive);
         subtitleSharedPictureSnapshot=m_impl->subtitleSharedPicture;
         subtitleSharedPictureSnapshot.required=true;
         subtitleNearBarDistance=m_impl->activeSettings.subtitleNearBarDistance;
@@ -24760,6 +24815,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 					m_activePictureTimeline.LookaheadPolicyGeneration()));
             return abort("policy-changed");
 		}
+		m_activePictureTimeline.SetOscillationHoldMilliseconds(oscillationHoldMs);
 		if (m_activePictureLookaheadLoggedGeneration != m_queueGeneration ||
 			m_activePictureLookaheadLoggedAvailable != queuedFutureFrames)
 		{

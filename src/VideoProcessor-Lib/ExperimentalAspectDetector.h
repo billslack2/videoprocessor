@@ -171,11 +171,38 @@ Result Measure(int width,int height,int nominalBlack,Read read,Allow allow,
                     if(inside[7]<=nominalBlack+48 && inside[7]-inside[1]<=12)
                         ++matteColumns;
                 }
+                // A dim picture can start with a lateral gradient well below
+                // the bright-picture threshold. On these same coarse samples
+                // require a new, distributed signal relative to each lane's
+                // matte, present from the candidate through three inner rows.
+                // Bounds on each lane across all rows exclude unstable noise;
+                // the quartiles discard a localized caption or volume panel.
+                bool dimPicture=false;
+                if(e.matteP90<=nominalBlack+48 && e.noise<=8 && pictureColumns<3) {
+                    std::array<int,9> lower{},upper{},outside{};
+                    for(int lane=0;lane<9;++lane) {
+                        const int floor=matte[lane][i];
+                        outside[lane]=floor;
+                        lower[lane]=upper[lane]=lines[lane][i]-floor;
+                        for(int j=i+1;j<=i+3;++j) {
+                            const int rise=lines[lane][j]-floor;
+                            lower[lane]=(std::min)(lower[lane],rise);
+                            upper[lane]=(std::max)(upper[lane],rise);
+                        }
+                    }
+                    std::sort(lower.begin(),lower.end());
+                    std::sort(upper.begin(),upper.end());
+                    std::sort(outside.begin(),outside.end());
+                    const int exteriorSpread=outside[6]-outside[2];
+                    dimPicture=lower[2]>=8+e.noise &&
+                        lower[4]-upper[2]>=2 && lower[6]-upper[4]>=2 &&
+                        lower[6]-upper[2]>=6+2*e.noise+exteriorSpread;
+                }
                 // A near-black plateau just inside *both* candidate edges
                 // can be a layer of the same matte. Keep it as a fallback
                 // if no deeper paired boundary survives native refinement.
-                c.matteStep=matteColumns==3;
-                if(e.matteP90<=nominalBlack+48 && e.noise<=40 && pictureColumns==3)break;
+                c.matteStep=matteColumns==3 && !dimPicture;
+                if(e.matteP90<=nominalBlack+48 && e.noise<=40 && (pictureColumns==3 || dimPicture))break;
             }
         }
         std::sort(options.begin(),options.begin()+n,[](const Candidate&a,const Candidate&b){return a.edge.score>b.edge.score;});

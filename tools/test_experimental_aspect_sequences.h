@@ -159,6 +159,56 @@ static bool RunNarrowAspectSequences(double fps, uint64_t generation) {
     return passed;
 }
 
+
+static bool RunDimPictureReacquisition(double fps, uint64_t generation) {
+    constexpr int width=3840, height=2160;
+    std::vector<uint16_t> pixels(size_t(width)*height*2,uint16_t(512<<6));
+    std::vector<uint16_t> row(width);
+    AnalysisLumaSource source;
+    source.width=width;source.height=height;
+    source.rowBytes=source.chromaRowBytes=width*2;
+    source.generation=generation;source.range=AnalysisLumaRange::Limited;
+    source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+    ActivePictureFrameIdentity id{};
+    id.transportGeneration=generation;id.rendererGeneration=1;
+    id.sourceFormatGeneration=1;id.analysisDomainKey=43;
+    bool passed=true;
+    for(int shot=0;shot<3;++shot) {
+        // Warm a conflicting 400-row picture, cut to the dim picture without
+        // a reset, then reacquire the same dim pixels on a new format/domain.
+        const bool changedFormat=shot==2;
+        if(changedFormat) {++id.sourceFormatGeneration;++id.analysisDomainKey;}
+        source.format=changedFormat?AnalysisLumaFormat::P210:AnalysisLumaFormat::P010;
+        source.dataBytes=size_t(width)*height*(changedFormat?4:3);
+        const int outer=shot==0?400:68;
+        for(int x=0;x<width;++x) row[x]=uint16_t((68+32*x/(width-1))<<6);
+        for(int y=0;y<height;++y) {
+            auto dst=pixels.begin()+size_t(y)*width;
+            const int depth=(std::min)(y,height-1-y);
+            if(depth<outer) std::fill_n(dst,width,uint16_t(64<<6));
+            else if(depth<400) std::copy(row.begin(),row.end(),dst);
+            else std::fill_n(dst,width,uint16_t(300<<6));
+            if(shot>0 && y>=2110 && y<2142) std::fill(dst+1600,dst+2240,uint16_t(700<<6));
+        }
+        int available=0,wrong=0;
+        for(int frame=0;frame<6;++frame) {
+            ++id.acceptedSequence;++id.sourceFrameNumber;
+            id.captureTimestamp=uint64_t(id.acceptedSequence*10000000.0/fps);
+            const auto evidence=MeasureActiveTrial(source,id);
+            if(!evidence.available) continue; // The bounded worker can miss an offered deadline.
+            ++available;
+            const auto& b=evidence.trustedBounds;
+            if(evidence.classification!=ActivePictureClassification::BAR_CROP_TRUSTED ||
+                b.left!=0 || b.right!=width || b.top!=outer || b.bottom!=height-outer) ++wrong;
+        }
+        const bool ok=available>0 && wrong==0;
+        std::printf("%s %.3fHz dim picture shot=%d correct=%d unavailable=%d wrong=%d\n",
+            ok?"PASS":"FAIL",fps,shot,available-wrong,6-available,wrong);
+        passed=passed && ok;
+    }
+    return passed;
+}
+
 // Each step supplies a fresh 10-bit image to the production worker entry point.
 // Keep the transition model alive across cuts, including cuts back to old bounds.
 static bool RunTemporalAspectSequences(double fps, uint64_t generation) {
@@ -226,5 +276,6 @@ static bool RunTemporalAspectSequences(double fps, uint64_t generation) {
         passed=passed && ok;
     }
     const bool narrowPassed = RunNarrowAspectSequences(fps, generation);
-    return passed && narrowPassed;
+    const bool dimPassed = RunDimPictureReacquisition(fps, generation + 100);
+    return passed && narrowPassed && dimPassed;
 }

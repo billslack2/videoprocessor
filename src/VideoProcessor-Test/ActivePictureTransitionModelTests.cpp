@@ -73,6 +73,159 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureTransitionModelTests)
 	{
 	public:
+        TEST_METHOD(OscillationKeepsFirstCutAndOutwardReturnFastAtBothRates)
+        {
+            for (const double rate : {24000.0/1001.0, 60000.0/1001.0}) {
+                ActivePictureTransitionModel model;
+                model.SetOscillationHoldMilliseconds(2000);
+                const auto inner=ScopeBounds(), outer=ImaxBounds();
+                auto frame=Establish(model,outer);
+                const auto bars=ActivePictureClassification::BAR_CROP_TRUSTED;
+                Assert::IsFalse(Observe(model,inner,frame++,bars,rate).publish);
+                Assert::IsTrue(Observe(model,inner,frame++,bars,rate).publish);
+
+                ActivePictureObservation expansion{outer,frame++,true,bars,rate};
+                expansion.axisEvidence.vertical.scanComplete=true;
+                expansion.axisEvidence.vertical.state=ActivePictureAxisState::TRUSTED_BARS;
+                expansion.currentSpatialExpansion={};
+                expansion.currentSpatialExpansion.available=true;
+                expansion.currentSpatialExpansion.base=inner;
+                expansion.currentSpatialExpansion.candidate=outer;
+                expansion.currentSpatialExpansion.sourceGeneration=1;
+                expansion.currentSpatialExpansion.sourceSequence=expansion.frameNumber;
+                Assert::IsTrue(model.Observe(expansion).publish);
+
+                for (int i=0; i<100; ++i) {
+                    const auto d=Observe(model,(i%4<2)?inner:outer,frame++,bars,rate);
+                    Assert::IsFalse(d.publish || d.clearTransition);
+                    Assert::IsTrue(d.stable && d.stableBounds.SameRectangleAndAxes(outer));
+                }
+                const auto first=frame;
+                const auto framesRequired=static_cast<uint64_t>(std::ceil(2.0*rate));
+                for (;frame<first+framesRequired;++frame) {
+                    Assert::IsFalse(Observe(model,inner,frame,bars,rate).publish);
+                    Assert::IsFalse(Observe(model,inner,frame,bars,rate).publish);
+                }
+                const auto settled=Observe(model,inner,frame,bars,rate);
+                Assert::IsTrue(settled.publish && settled.bounds.SameRectangleAndAxes(inner));
+            }
+        }
+
+        TEST_METHOD(OscillationSupportBreaksOnUnknownGapsAndSceneEdits)
+        {
+            constexpr double rate=24.0;
+            const auto bars=ActivePictureClassification::BAR_CROP_TRUSTED;
+            for (int interruption=0; interruption<4; ++interruption) {
+                ActivePictureTransitionModel model;
+                model.SetOscillationHoldMilliseconds(2000);
+                auto frame=Establish(model,ScopeBounds());
+                Observe(model,ImaxBounds(),frame++,bars,rate);
+                Assert::IsTrue(Observe(model,ImaxBounds(),frame++,bars,rate).publish);
+                for (int i=0;i<40;++i)
+                    Assert::IsFalse(Observe(model,ScopeBounds(),frame++,bars,rate).publish);
+                if (interruption==0) model.Observe({{},frame++,false});
+                if (interruption==1) frame+=24;
+                if (interruption==2) model.ResetCandidateEvidence();
+                if (interruption==3) {
+                    Observe(model,ScopeBounds(),frame++,ActivePictureClassification::PROVISIONAL,rate);
+                }
+                const auto first=frame;
+                for (;frame<first+48;++frame)
+                    Assert::IsFalse(Observe(model,ScopeBounds(),frame,bars,rate).publish);
+                Assert::IsTrue(Observe(model,ScopeBounds(),frame,bars,rate).publish);
+            }
+        }
+
+        TEST_METHOD(MixedAxisOscillationWithdrawsAuthorityUntilCurrentEvidenceSettles)
+        {
+            const auto bars=ActivePictureClassification::BAR_CROP_TRUSTED;
+            const auto pillars=FourByThreeBounds(), scope=ScopeBounds();
+            for (int exitPath=0;exitPath<3;++exitPath) {
+                ActivePictureTransitionModel model;
+                model.SetOscillationHoldMilliseconds(1000);
+                auto frame=Establish(model,pillars);
+                Observe(model,scope,frame++,bars,24);
+                Assert::IsTrue(Observe(model,scope,frame++,bars,24).publish);
+                const auto repeat=Observe(model,pillars,frame-1,bars,24);
+                Assert::IsFalse(repeat.publish || repeat.clearTransition || model.OscillationRequiresFullRasterPresentation());
+                for (int i=0;i<40;++i) {
+                    const auto d=Observe(model,i%4<2 ? pillars : scope,frame++,bars,24);
+                    Assert::IsTrue(d.clearTransition && !d.publish && !d.stable);
+                    Assert::IsTrue(d.authoritativeClassification==ActivePictureClassification::UNAVAILABLE);
+                    Assert::IsTrue(model.OscillationRequiresFullRasterPresentation());
+                }
+                if (exitPath==2) {
+                    const ActivePictureBounds raster{0,0,3840,2160,3840,2160,3840.0/2160};
+                    const auto d=Observe(model,raster,frame++,ActivePictureClassification::FULL_RASTER_TRUSTED,24);
+                    Assert::IsTrue(d.publish && d.bounds.SameRectangleAndAxes(raster));
+                    Assert::IsFalse(model.OscillationRequiresFullRasterPresentation());
+                    continue;
+                }
+                model.Observe({{},frame++,false});
+                const auto target=exitPath==0 ? pillars : scope;
+                for (int i=0;i<24;++i) {
+                    const auto d=Observe(model,target,frame++,bars,24);
+                    Assert::IsTrue(d.clearTransition && !d.publish);
+                }
+                const auto d=Observe(model,target,frame++,bars,24);
+                Assert::IsTrue(d.publish && d.bounds.SameRectangleAndAxes(target));
+                Assert::IsFalse(d.clearTransition || model.OscillationRequiresFullRasterPresentation());
+            }
+        }
+
+        TEST_METHOD(ScheduledInwardReturnCannotBorrowFutureDwellOrDuplicateSourceCredit)
+        {
+            ActivePictureTransitionModel model;
+            model.SetOscillationHoldMilliseconds(1000);
+            const auto bars=ActivePictureClassification::BAR_CROP_TRUSTED;
+            auto frame=Establish(model,ScopeBounds());
+            ActivePictureTransitionDecision queued;
+            queued.publish=queued.stable=true;
+            queued.stableBounds=ScopeBounds();queued.bounds=ImaxBounds();
+            ActivePictureObservation current{queued.bounds,frame++,true,bars,24};
+            ActivePicturePublicationAdmission why{};
+            Assert::IsTrue(model.AdoptPublishedDecision(queued,bars,false,&why,nullptr,false,&current));
+            std::swap(queued.bounds,queued.stableBounds);
+            Assert::IsFalse(model.AdoptPublishedDecision(queued,bars,false,&why));
+            const auto first=frame;
+            for (;frame<first+24;++frame) {
+                current={queued.bounds,frame,true,bars,24};
+                Assert::IsFalse(model.AdoptPublishedDecision(queued,bars,false,&why,nullptr,false,&current));
+                Assert::IsTrue(why==ActivePicturePublicationAdmission::OSCILLATING_FORMAT_RETAINED);
+                Assert::IsFalse(model.Observe(current).publish);
+            }
+            current.frameNumber=frame;
+            Assert::IsTrue(model.AdoptPublishedDecision(queued,bars,false,&why,nullptr,false,&current));
+        }
+
+        TEST_METHOD(DisablingAndResettingOscillationRemovePreviousCycle)
+        {
+            const auto bars=ActivePictureClassification::BAR_CROP_TRUSTED;
+            for (int reset=0; reset<3; ++reset) {
+                ActivePictureTransitionModel model;
+                model.SetOscillationHoldMilliseconds(2000);
+                auto frame=Establish(model,ScopeBounds());
+                Observe(model,ImaxBounds(),frame++,bars,24);
+                Assert::IsTrue(Observe(model,ImaxBounds(),frame++,bars,24).publish);
+                Assert::IsFalse(Observe(model,ScopeBounds(),frame++,bars,24).publish);
+                Assert::IsFalse(Observe(model,ScopeBounds(),frame++,bars,24).publish);
+                if (reset==0) model.SetOscillationHoldMilliseconds(0);
+                else if (reset==1) {
+                    model.Reset();
+                    frame=Establish(model,ImaxBounds());
+                } else {
+                    // A sustained stable wide picture ends this episode. Its
+                    // next isolated cut receives ordinary confirmation.
+                    for (int i=0;i<=48;++i)
+                        Assert::IsFalse(Observe(model,ImaxBounds(),frame++,bars,24).publish);
+                }
+                bool published=false;
+                for (int i=0;i<2;++i)
+                    published |= Observe(model,ScopeBounds(),frame++,bars,24).publish;
+                Assert::IsTrue(published);
+            }
+        }
+
         TEST_METHOD(CurrentSpatialExpansionProofIsBoundToCurrentSequenceAndEstablishedBase)
         {
             ActivePictureObservation proof;

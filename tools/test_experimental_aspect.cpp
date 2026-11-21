@@ -15,7 +15,62 @@ Result scene(int w,int h,int l,int t,int r,int b,bool dirty=false,bool captions=
    return true;
  },[]{return true;});
 }
+// A measurable lateral gradient begins at the matte edge, before the much
+// brighter interior structure. The lower caption is present on either side
+// of the cut. A uniform intermediate layer is the distinct matte control.
+static void CheckDarkPictureEntry() {
+    constexpr int width=3840,height=2160;
+    const Prior interior{width,height,0,400,width,height-400,true};
+    for (bool fullRange : {false,true}) {
+        const int black=fullRange?0:64;
+        for (int outer : {68,92}) {
+            const Prior actual{width,height,0,outer,width,height-outer,true};
+            for (const Prior& initial : {Prior{},actual,interior}) {
+                Prior history=initial;
+                bool keepsPicture=true;
+                for (int frame=0;frame<12;++frame) {
+                    const int spans[]={32,28,24,16};
+                    const int span=spans[frame%4];
+                    const int inner=400+(frame%3)*8;
+                    const auto measured=Measure(width,height,black,[&](int x,int y,Pixel& p) {
+                        const int depth=(std::min)(y,height-1-y);
+                        int luma=black;
+                        if(depth>=outer) luma+=20-span/2+span*x/(width-1);
+                        if(depth>=inner) luma=black+236;
+                        if(frame%3==1 && depth>=inner && depth<inner+3) luma=black+720;
+                        if(frame%4!=2 && x>=1600 && x<2240 && y>=2110 && y<2142) luma=black+636;
+                        p={luma,512,512};return true;
+                    },[]{return true;},24000,&history);
+                    if(!measured.complete || measured.kind!=Kind::Bars || measured.left!=0 ||
+                        measured.right!=width || measured.top!=outer || measured.bottom!=height-outer) {
+                        if(keepsPicture) dump(measured);
+                        keepsPicture=false;
+                    }
+                    // A scene/format reset drops history; a wrong old picture can
+                    // also be current at startup before the new cut is seen.
+                    history=frame==4 ? Prior{} : Prior{width,height,measured.left,measured.top,
+                        measured.right,measured.bottom,measured.kind==Kind::Bars};
+                }
+                check(keepsPicture,"dim structured picture survives cold, reacquired and competing interior edges");
+            }
+        }
+        for(int hits:{0,1,2}) for(bool noisy:{false,true}) {
+            const auto layered=Measure(width,height,black,[&](int x,int y,Pixel& p) {
+                const int depth=(std::min)(y,height-1-y);
+                int luma=depth<68?black:depth<400?black+20:black+236;
+                if(noisy && depth>=68 && depth<400) luma+=(x/256+7*(y/5))%11-5;
+                // Local static marks in a neutral layer cannot establish distributed picture.
+                if(depth>=68 && depth<400 && x>=1120 && x<1120+hits*80) luma+=40;
+                p={luma,512,512};return true;
+            },[]{return true;});
+            check(layered.kind==Kind::Bars && layered.top==400 && layered.bottom==height-400,
+                  "flat layered matte and sparse marks retain the measured inner picture boundary");
+        }
+    }
+}
+
 int main(){
+ CheckDarkPictureEntry();
  auto a=scene(3840,2160,0,277,0,277,true,true);
  dump(a);check(a.kind==Kind::Bars&&a.top==277&&a.bottom==1883&&a.left==0&&a.right==3840,"dirty scope with bottom captions and unsnapped ratio");
  auto b=scene(1920,1080,240,0,240,0);

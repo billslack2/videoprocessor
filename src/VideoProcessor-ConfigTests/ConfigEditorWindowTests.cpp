@@ -3964,6 +3964,42 @@ void testOutputDiagnosticPresetCanInherit()
         "Selecting inherited diagnostics persisted an invalid empty output-path profile");
 }
 
+void testArOscillationProtectionRoundTrips()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("VideoProcessor.cfg"));
+    QFile fixture(path);
+    require(fixture.open(QIODevice::WriteOnly), "Cannot write the Zoom profile fixture");
+    fixture.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
+        "[vprenderer.zoom.Film]\nautomatic_crop: true\n# keep Zoom comment\n");
+    fixture.close();
+    const QString control = QStringLiteral("config.vprenderer.zoom.ar_oscillation_protection_seconds");
+    {
+        ConfigEditorWindow window(path, 0, true);
+        window.selectPage(18);
+        auto* duration = requireControl<QLineEdit>(window, control);
+        require(duration->isEnabled() && duration->text() == "2", "Zoom did not default to two seconds");
+        for (const QString& invalid : {QStringLiteral("-0.001"), QStringLiteral("20.001")})
+        {
+            duration->setText(invalid);
+            require(!duration->hasAcceptableInput(), "Zoom accepted a duration outside 0 to 20 seconds");
+        }
+        for (const QString& valid : {QStringLiteral("0"), QStringLiteral("20"), QStringLiteral("1.25")})
+        {
+            duration->setText(valid);
+            require(duration->hasAcceptableInput(), "Zoom rejected a supported duration");
+        }
+        save(window);
+    }
+    const auto saved = readBytes(path);
+    require(saved.contains("ar_oscillation_protection_seconds: 1.25") && saved.contains("# keep Zoom comment"),
+        "Zoom did not save the duration and preserve its profile comment");
+    ConfigEditorWindow reopened(path, 0, true);
+    reopened.selectPage(18);
+    require(requireControl<QLineEdit>(reopened, control)->text() == "1.25",
+        "Zoom did not restore the saved duration");
+}
+
 void testAutoPictureAlignmentRoundTrips()
 {
     QTemporaryDir directory; const QString path=copyFixture(directory);
@@ -8898,6 +8934,7 @@ int main(int argc, char** argv)
         testOutputExperimentsPersistAndRestoreDefaults);
     failures += run("output diagnostic preset can inherit",
         testOutputDiagnosticPresetCanInherit);
+    failures += run("AR oscillation protection round trip", testArOscillationProtectionRoundTrips);
     failures += run("Auto picture alignment round trips", testAutoPictureAlignmentRoundTrips);
     failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
     failures += run("queue units and LUT controls use consistent rows",

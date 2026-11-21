@@ -2777,6 +2777,44 @@ namespace VideoProcessorTest
                 Assert::IsTrue(ConfigurationApplyPolicy::ClassifyChange({"vprenderer.subtitles.Shape",key})==ConfigurationApplyPolicy::Action::ApplyProfiles);
         }
 
+        TEST_METHOD(ArOscillationProtectionResolvesSelectedZoomInSeconds)
+        {
+            CachedConfigTestFile fixture;
+            { std::ofstream file(fixture.path); file <<
+                "[vprenderer.viewport.Scope]\nscreen_aspect: 2.35:1\nar_oscillation_protection_seconds: 3.25\n"
+                "[vprenderer.zoom.First]\nlabel: Inherit screen\n"
+                "[vprenderer.zoom.Off]\nar_oscillation_protection_seconds: 0\n"
+                "[vprenderer.zoom.Long]\nar_oscillation_protection_seconds: 20\n"; }
+            ConfigFile config;
+            Assert::IsTrue(config.Load(fixture.path));
+            RendererProfileConfig::Model model;
+            RendererProfileConfig::ResolvedViewport viewport;
+            std::string error;
+            Assert::IsTrue(RendererProfileConfig::Read(config,model,error));
+            Assert::IsTrue(RendererProfileConfig::ResolveViewport(model,"default",1,viewport,error));
+            Assert::AreEqual(2000u,viewport.arOscillationProtectionMs);
+            Assert::IsTrue(RendererProfileConfig::ResolveViewport(model,"scope",2,viewport,error));
+            Assert::IsTrue(RendererProfileConfig::ResolveZoom(model,"first",viewport,error));
+            Assert::AreEqual(3250u,viewport.arOscillationProtectionMs);
+            Assert::IsTrue(RendererProfileConfig::ResolveZoom(model,"off",viewport,error));
+            Assert::AreEqual(0u,viewport.arOscillationProtectionMs);
+            Assert::IsTrue(RendererProfileConfig::ResolveZoom(model,"long",viewport,error));
+            Assert::AreEqual(20000u,viewport.arOscillationProtectionMs);
+            CachedConfigTestFile rootFixture;
+            { std::ofstream file(rootFixture.path); file <<
+                "[vprenderer.zoom]\nar_oscillation_protection_seconds: 0.75\n"
+                "[vprenderer.zoom.Inherited]\nlabel: Inherited\n"; }
+            ConfigFile rootConfig;
+            Assert::IsTrue(rootConfig.Load(rootFixture.path));
+            RendererProfileConfig::Model rootModel;
+            Assert::IsTrue(RendererProfileConfig::Read(rootConfig,rootModel,error));
+            Assert::IsTrue(RendererProfileConfig::ResolveZoom(rootModel,"inherited",viewport,error));
+            Assert::AreEqual(750u,viewport.arOscillationProtectionMs);
+            for (const char* invalid : {"-0.1", "20.001", "NaN", "inf", "seconds"})
+                Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("zoom",
+                    "ar_oscillation_protection_seconds",invalid,error));
+        }
+
         TEST_METHOD(OffZoomHoldIsIndependentBoundedAndDefaultsToTwoSeconds)
         {
             std::string expected;

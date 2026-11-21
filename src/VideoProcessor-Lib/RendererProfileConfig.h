@@ -35,6 +35,26 @@
 // validation and selection can be tested before a renderer is created.
 namespace RendererProfileConfig
 {
+	constexpr unsigned DEFAULT_AR_OSCILLATION_PROTECTION_MS = 2000;
+	constexpr unsigned MAX_AR_OSCILLATION_PROTECTION_SECONDS = 20;
+
+	inline bool ParseArOscillationProtection(const std::string& text, unsigned& milliseconds)
+	{
+		double seconds = 0.0;
+		if (!DisplayRuleExpression::ParseNumber(ConfigFile::Trim(text), seconds) ||
+			!std::isfinite(seconds) || seconds < 0.0 || seconds > MAX_AR_OSCILLATION_PROTECTION_SECONDS)
+			return false;
+		milliseconds = static_cast<unsigned>(std::llround(seconds * 1000.0));
+		return true;
+	}
+
+	inline bool ReadArOscillationProtection(const std::map<std::string, std::string>& settings,
+		unsigned& milliseconds)
+	{
+		const auto value = settings.find("ar_oscillation_protection_seconds");
+		return value == settings.end() || ParseArOscillationProtection(value->second, milliseconds);
+	}
+
 	// Subtitle analysis is intentionally sampled every third rendered frame and
 	// may take up to roughly 125 ms to reaffirm a cue. A shorter hold is retained
 	// safely by the renderer for compatibility, but is too easy to misconfigure
@@ -228,6 +248,7 @@ namespace RendererProfileConfig
 		// automatic_crop is retained for compatibility with existing profiles.
 		// The two fill settings independently enable trusted automatic crop.
 		bool automaticCrop = false;
+		unsigned arOscillationProtectionMs = DEFAULT_AR_OSCILLATION_PROTECTION_MS;
 		bool cropNarrowerContentToFillScreen = false;
 		AspectRatio cropNarrowerContentAspectLimit{ 1, 1, 1.0 };
 		bool hasCropNarrowerContentAspectLimit = false;
@@ -781,6 +802,12 @@ namespace RendererProfileConfig
 				return IsAspectInRange(value, 0.5, 2.0);
 			if (screenGroup && key == "subtitle_in_picture_aspect_max")
 				return ConfigFile::NormalizeName(value) == "none" || IsAspectInRange(value, 1.0, 4.0);
+			if (key == "ar_oscillation_protection_seconds")
+			{
+				unsigned milliseconds = 0;
+				expected = "seconds from 0 to 20";
+				return ParseArOscillationProtection(value, milliseconds);
+			}
 			if (key == "automatic_crop" || key == "subtitle_fit" ||
 				key == "hdr_peak_analysis_picture_only" ||
 				key == "hdr_peak_analysis_motion_compensation" ||
@@ -1011,7 +1038,7 @@ namespace RendererProfileConfig
         if (CalibrationProfileMigration::IsKey(key)) return false;
 		// automatic_crop is viewport-owned. Reject it from renderer/display
 		// variants so the same setting cannot acquire two owners.
-		if (key == "automatic_crop" || key == "subtitle_in_picture_aspect_max" ||
+		if (key == "automatic_crop" || key == "ar_oscillation_protection_seconds" || key == "subtitle_in_picture_aspect_max" ||
 			key == "crop_narrower_content_to_fill_screen" ||
 			key == "crop_narrower_content_aspect_limit" ||
 			key == "crop_wider_content_to_fill_screen" ||
@@ -1979,7 +2006,7 @@ namespace RendererProfileConfig
 				"diagnostic_allow_full_g22",
 				"diagnostic_vp_owned_dxgi_presenter", "screen_aspect",
 				"vertical_alignment", "screen_edge_padding", "picture_alignment_mode",
-				"automatic_crop", "crop_narrower_content_to_fill_screen",
+				"automatic_crop", "ar_oscillation_protection_seconds", "crop_narrower_content_to_fill_screen",
 				"crop_narrower_content_aspect_limit",
 				"crop_wider_content_to_fill_screen",
 				"crop_wider_content_aspect_limit", "fixed_crop_aspect", "subtitle_fit",
@@ -2507,6 +2534,11 @@ namespace RendererProfileConfig
 				"] automatic_crop is invalid";
 			return false;
 		}
+		if (!ReadArOscillationProtection(settings, viewport.arOscillationProtectionMs))
+		{
+			error = "ar_oscillation_protection_seconds must be between 0 and 20";
+			return false;
+		}
 		value = settings.find("crop_narrower_content_to_fill_screen");
 		if (value != settings.end() &&
 			!ParseBoolean(value->second,
@@ -2712,6 +2744,11 @@ namespace RendererProfileConfig
 		{
 			error = "[profiles.zoom." + viewport.zoomProfile +
 				"] automatic_crop is invalid";
+			return false;
+		}
+		if (!ReadArOscillationProtection(settings, viewport.arOscillationProtectionMs))
+		{
+			error = "ar_oscillation_protection_seconds must be between 0 and 20";
 			return false;
 		}
 		value = settings.find("crop_narrower_content_to_fill_screen");
