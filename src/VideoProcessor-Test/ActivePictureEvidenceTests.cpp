@@ -5424,13 +5424,32 @@ namespace VideoProcessorTest
             for(uint64_t sequence=1;sequence<=4;++sequence)
                 model.Observe(MakeActivePictureObservation(oldEvidence,sequence,24));
 
-            const auto measured=ExperimentalAspect::Measure(source.width,source.height,64,
-                [&](int x,int y,int& value){
-                    AnalysisLumaSample pixel;
-                    if(!source.Sample(x,y,pixel))return false;
-                    value=pixel.luma;return true;
-                },[]{return true;});
-            const auto evidence=ExperimentalAspect::EvidenceFromMeasurement(source,measured);
+            auto measureCurrent = [&] {
+                return ExperimentalAspect::Measure(source.width, source.height, 64,
+                    [&](int x, int y, ExperimentalAspect::Pixel& pixel) {
+                        AnalysisLumaSample sample;
+                        if (!source.Sample(x, y, sample)) return false;
+                        pixel = {sample.luma, sample.chromaU, sample.chromaV};
+                        return true;
+                    }, [] { return true; });
+            };
+
+            // The original pixels also describe a two-level matte: black to row
+            // 68, then a flat neutral plateau to row 400. Caption ink is unchanged.
+            const auto layeredMatte = measureCurrent();
+            Assert::IsTrue(layeredMatte.complete && layeredMatte.kind == ExperimentalAspect::Kind::Bars);
+            Assert::AreEqual(400, layeredMatte.top);
+            Assert::AreEqual(1760, layeredMatte.bottom);
+
+            // Put dim scene detail in both newly exposed strips. Keep most of each
+            // strip at 84 so the relative-continuation route still has work to do.
+            for (const int top : {68, 1760}) {
+                const int bottom = top + 332;
+                currentFrame.FillRectangle(192, top, 1152, bottom, 104);
+                currentFrame.FillRectangle(2304, top, 3040, bottom, 104);
+            }
+            const auto measured = measureCurrent();
+            const auto evidence = ExperimentalAspect::EvidenceFromMeasurement(source, measured);
             Assert::IsTrue(evidence.strongCurrentBarMeasurement,
                 L"Current opposing picture edges remain measured despite new caption ink in the outer bar.");
             Assert::AreEqual(68,evidence.trustedBounds.top);
