@@ -243,6 +243,8 @@ struct ActivePictureVisibleExtentDiagnostic
 	int sampleStep = 0, depthSamples = 0;
 	int lumaCutoff = 0;
 	int presentationMargin = 0;
+    bool nativePixelDetail = false; // Exact native pixel found by the paired raised-matte check.
+    int nativePixelY = -1;
 };
 
 // Per-frame pixel evidence for retaining an already trusted presentation

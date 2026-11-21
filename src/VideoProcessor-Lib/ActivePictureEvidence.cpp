@@ -1098,7 +1098,7 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 // existing veto after also inspecting native pixels in BOTH excluded bands.
 // Inspect outside-in so that one protected pixel yields an outward bound.
 void ProtectNativeRaisedMatteDetail(SampleContext& samples, bool top, int depth,
-    int matte, ExcludedBandVisibleExtent& extent) {
+    int matte, ExcludedBandVisibleExtent& extent, const ActivePictureBounds* erased = nullptr) {
     const auto& source = samples.source;
     const int boundary = top ? depth : source.height - depth - 1;
     const int inward = top ? 1 : -1;
@@ -1107,7 +1107,6 @@ void ProtectNativeRaisedMatteDetail(SampleContext& samples, bool top, int depth,
     const int blend = std::max(2, source.height / 270);
     for (int row = 0; row < depth; ++row) {
         const int y = top ? row : source.height - 1 - row;
-        if (extent.available && (top ? y >= extent.coordinate : y < extent.coordinate)) break;
         if (samples.budget) samples.budget->Checkpoint();
         const int distance = depth - row;
         const int tolerance = distance <= edgeBand ? 15 : 4;
@@ -1115,12 +1114,23 @@ void ProtectNativeRaisedMatteDetail(SampleContext& samples, bool top, int depth,
         // current picture at the same column for antialiasing / color bleed.
         const int referenceRow = distance <= blend ? reference : -1;
         int x = 0;
-        const bool read = source.FindPlanarMatteRowDetail(y, referenceRow, std::min(5,distance),
+        bool read = source.FindPlanarMatteRowDetail(y, referenceRow, std::min(5,distance),
             matte, tolerance, x);
-        const int inspected = read ? std::min(x + 1, source.width) : 0;
+        int inspected = read ? std::min(x + 1, source.width) : 0;
+        if (read && erased && y >= erased->top && y < erased->bottom &&
+            x >= erased->left && x < erased->right) {
+            read = source.FindPlanarMatteRowDetail(y, referenceRow, std::min(5,distance),
+                matte, tolerance, x, erased->right);
+            if (read) inspected += std::min(x + 1,source.width) - erased->right;
+        }
         samples.lumaSamples += inspected;
         samples.chromaSamples += inspected;
         if (read && x == source.width) continue;
+        extent.nativePixelDetail = read;
+        extent.nativePixelY = read ? y : -1;
+        // Keep the farther sparse protection if the exact native pixel is
+        // inside its margin. Native evidence still records the actual row.
+        if (extent.available && (top ? y >= extent.coordinate : y < extent.coordinate)) return;
         extent.available = true;
         extent.coordinate = top ? y : y + 1;
         extent.firstX = x; extent.firstY = y;
@@ -3101,7 +3111,14 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
     auto bottomExtent = FindHorizontalVisibleExtent(samples, false,
         source.height - trustedPresentation.bottom, blackThreshold, relativeBands ? int(result.excludedBottom.lumaP90) : -1,
         verifyShelf ? &suppressedShelf : nullptr);
-    if (suppressedShelf) {
+    // Strong text/chroma can register before the scan reaches a weak shelf.
+    // Confirm it from native pixels too, so an existing scope pose cannot
+    // hide the mark just because the regular grid happened to find it first.
+    const auto strongWitness = [](const ExcludedBandVisibleExtent& extent, int matte) {
+        return extent.available && (extent.peakChromaDelta > 32 || extent.peakLuma > matte + 15);
+    };
+    if (verifyShelf && (suppressedShelf || strongWitness(topExtent,int(result.excludedTop.lumaP90)) ||
+        strongWitness(bottomExtent,int(result.excludedBottom.lumaP90)))) {
         ProtectNativeRaisedMatteDetail(samples,true,trustedPresentation.top,int(result.excludedTop.lumaP90),topExtent);
         ProtectNativeRaisedMatteDetail(samples,false,source.height-trustedPresentation.bottom,
             int(result.excludedBottom.lumaP90),bottomExtent);
@@ -3390,13 +3407,18 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 			}
 		}
 	}
+    // A proven raised pair was already measured in these same raw pixels.
+    // Reinspect its unowned pixels at that level after exact current erasure.
+    const bool nativeShelf = raw.visibleTop.nativePixelDetail || raw.visibleBottom.nativePixelDetail;
+    bool suppressedShelf = false;
 	if (touchesTop)
 	{
 		result.excludedTop = InspectHorizontalEdge(samples, true,
 			trustedPresentation.top, trustedPresentation.top,
 			raw.presentationBlackFloor, blackThreshold);
 		result.visibleTop = FindHorizontalVisibleExtent(samples, true,
-			trustedPresentation.top, blackThreshold);
+			trustedPresentation.top, blackThreshold, nativeShelf ? int(raw.excludedTop.lumaP90) : -1,
+            nativeShelf ? &suppressedShelf : nullptr);
 		result.visibleTop.presentationMargin = std::max(2, source.height / 180);
 	}
 	if (touchesBottom)
@@ -3405,14 +3427,21 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 			source.height - trustedPresentation.bottom, trustedPresentation.bottom,
 			raw.presentationBlackFloor, blackThreshold);
 		result.visibleBottom = FindHorizontalVisibleExtent(samples, false,
-			source.height - trustedPresentation.bottom, blackThreshold);
+			source.height - trustedPresentation.bottom, blackThreshold, nativeShelf ? int(raw.excludedBottom.lumaP90) : -1,
+            nativeShelf ? &suppressedShelf : nullptr);
 		result.visibleBottom.presentationMargin = std::max(2, source.height / 180);
 	}
+    if (nativeShelf && touchesTop)
+        ProtectNativeRaisedMatteDetail(samples,true,trustedPresentation.top,
+            int(raw.excludedTop.lumaP90),result.visibleTop,&erasedSourceBounds);
+    if (nativeShelf && touchesBottom)
+        ProtectNativeRaisedMatteDetail(samples,false,source.height-trustedPresentation.bottom,
+            int(raw.excludedBottom.lumaP90),result.visibleBottom,&erasedSourceBounds);
 	result.outwardVisibleBoundsAvailable = false;
 	result.outwardVisibleBounds = {};
-	const bool unsafeTop = !ExcludedBandPixelsAreSafe(result.excludedTop) ||
+	const bool unsafeTop = (!nativeShelf && !ExcludedBandPixelsAreSafe(result.excludedTop)) ||
 		result.visibleTop.available;
-	const bool unsafeBottom = !ExcludedBandPixelsAreSafe(result.excludedBottom) ||
+	const bool unsafeBottom = (!nativeShelf && !ExcludedBandPixelsAreSafe(result.excludedBottom)) ||
 		result.visibleBottom.available;
 	const bool unsafeLeft = !ExcludedBandPixelsAreSafe(result.excludedLeft) ||
 		result.visibleLeft.available;
@@ -3461,7 +3490,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
 		(result.proposedBoundsContained || result.samplingReaffirmed || result.partialSamplingReaffirmed ||
 		 result.EffectiveArNearBlack() || geometryUnavailable);
-	result.relocatedOverlayExclusionEvaluated = true;
+    result.relocatedOverlayExclusionEvaluated = true;
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
 	result.reason = result.excludedBandsPixelSafe

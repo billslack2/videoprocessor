@@ -70,7 +70,7 @@ struct AnalysisLumaSource
     // permits a bounded fraction of in-picture brightness at the same column
     // for immediate edge blending. x == width means the entire row passed.
     bool FindPlanarMatteRowDetail(int y, int referenceY, int shift, int matte,
-        int tolerance, int& x) const;
+        int tolerance, int& x, int startX = 0) const;
 
     // Checks every native pixel in a row using Sample's exact code domain.
     // False means invalid input/read failure; a valid foreground hit returns

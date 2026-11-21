@@ -17973,6 +17973,11 @@ releaseDriftBaseRetention =
                 admissionDecision.presentation.reason=unknownCaptionHold.reason;
                 cropDecision=admissionDecision.presentation;
             }
+            const bool protectNativeMatteDetail = AlphaSourceCrop::ProtectCurrentNativeMatteDetail(
+                admissionDecision,cropInput,relocatedCaptionQualified ? presentationRetention : latestCropRetentionEvidence,
+                episodeInput.retentionBounds,episodeInput.retentionSourceGeneration,episodeInput.retentionSourceSequence);
+            if (protectNativeMatteDetail && admissionDecision.blocked)
+                temporalPolicySubmittedScopeContinuityRetention = false;
 			const auto admissionLogTick = GetTickCount64();
 			if (admissionDecision.blocked != cropAdmissionPreviouslyBlocked ||
                 (uncertainPicture.retained &&
@@ -18211,6 +18216,7 @@ releaseDriftBaseRetention =
                 movingPictureTransition.active || movingPictureTransition.awaitingPublication ||
                 pictureTransitionHandoff.active;
             AlphaSourceCrop::AspectLimitFillDecision aspectLimitFill =
+                protectNativeMatteDetail ? AlphaSourceCrop::AspectLimitFillDecision{} :
                 AlphaSourceCrop::EvaluateFinalAspectLimitFill(finalFillInput);
             AlphaSourceCrop::CaptionConfirmationPresentationHoldInput captionHoldInput;
             captionHoldInput.previous = captionConfirmationHold;
@@ -18258,7 +18264,7 @@ releaseDriftBaseRetention =
             captionHoldInput.targetTranslationPixels = verticalTranslationConfirmationPending
                 ? (pendingCaptionTarget < 0 ? -pendingCaptionMagnitude : pendingCaptionMagnitude)
                 : establishedTranslation.engageTargetTranslationPixels;
-            captionHoldInput.eligible = captionAnchorContextMatches &&
+            captionHoldInput.eligible = !protectNativeMatteDetail && captionAnchorContextMatches &&
                 !cropDecision.applyCrop && !aspectLimitFill.applied &&
                 cropInput.automaticCropEnabled && configuredScreenActive &&
                 episodeInput.measurementCurrent && episodeInput.retentionEvaluated &&

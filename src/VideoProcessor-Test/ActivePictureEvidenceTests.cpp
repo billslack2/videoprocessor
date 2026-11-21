@@ -833,9 +833,8 @@ namespace VideoProcessorTest
             return frame;
         }
 
-        static AlphaSourceCrop::CropPresentationAdmissionDecision PresentRaisedBroadcastFrame(
-            const ActivePictureBounds& measured, const ActivePicturePresentationRetentionEvidence& retention,
-            uint64_t sequence, const AlphaSourceCrop::CropPresentationAdmissionState& previous)
+        static AlphaSourceCrop::Input RaisedBroadcastCropInput(const ActivePictureBounds& measured,
+            const ActivePicturePresentationRetentionEvidence& retention,uint64_t sequence)
         {
             using namespace AlphaSourceCrop;
             Input input;
@@ -850,6 +849,15 @@ namespace VideoProcessorTest
             input.frameLocalPresentationRetentionSafe=retention.excludedBandsPixelSafe;
             input.currentVisibleBoundsAvailable=retention.outwardVisibleBoundsAvailable;
             input.currentVisibleBounds=retention.outwardVisibleBounds;
+            return input;
+        }
+
+        static AlphaSourceCrop::CropPresentationAdmissionDecision PresentRaisedBroadcastFrame(
+            const ActivePictureBounds& measured, const ActivePicturePresentationRetentionEvidence& retention,
+            uint64_t sequence, const AlphaSourceCrop::CropPresentationAdmissionState& previous)
+        {
+            using namespace AlphaSourceCrop;
+            const auto input=RaisedBroadcastCropInput(measured,retention,sequence);
             return AdmitCropPresentation(previous,input,Evaluate(input),5);
         }
 
@@ -924,6 +932,106 @@ namespace VideoProcessorTest
 
                 const auto fresh=PresentRaisedBroadcastFrame(base,retention,1,{});
                 Assert::IsTrue(fresh.presentation.sourceBounds.top<=(scenario<2 ? 244 : 243));
+            }
+        }
+
+        TEST_METHOD(SubmittedRaisedBroadcastScopeProtectsNewCueAndReturnsOnClear)
+        {
+            using namespace AlphaSourceCrop;
+            const auto base=ScopePresentation(3840,2160,262,1900);
+            const auto bare=RaisedBroadcastMatteFrame(true);
+            auto cue=bare;
+            // A detached dot outside the cropped picture lies between the
+            // regular sampled columns x=1822 and x=1837. Its stem crosses
+            // the physical boundary and cannot prove that the dot is owned.
+            cue.FillRectangle(1825,205,1834,214,460);
+            cue.FillRectangle(1827,207,1832,212,800);
+            cue.FillRectangle(1825,223,1834,274,460);
+            cue.FillRectangle(1827,225,1832,272,800);
+            SubmittedNativeScopeAnchor anchor;
+            CropPresentationAdmissionState admission;
+            PresentationRecoveryState recovery;
+            for (uint64_t sequence=1;sequence<=3;++sequence)
+            {
+                const bool visible=sequence==2;
+                const auto& frame=visible ? cue : bare;
+                const auto pixels=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+                Assert::IsTrue(visible==pixels.outwardVisibleBoundsAvailable);
+                PresentationRecoveryInput r;
+                r.previous=recovery;
+                r.previousAdmission=admission;
+                r.submittedScopeAnchor=anchor;
+                r.crop=RaisedBroadcastCropInput(base,pixels,sequence);
+                r.measurementCurrent=r.retentionEvaluated=true;
+                r.excludedBandsPixelSafe=pixels.excludedBandsPixelSafe;
+                r.observationAvailable=pixels.proposedBoundsAvailable;
+                r.observation=pixels.activePicture.proposedBounds;
+                r.observedTrustedCrop=pixels.activePicture.trustedBounds;
+                r.observationClassification=pixels.activePicture.classification;
+                r.retentionBounds=base;
+                r.retentionSourceGeneration=1;
+                r.retentionSourceSequence=sequence;
+                r.nearBlackEvaluated=true;
+                r.globalNearBlack=pixels.EffectiveArNearBlack();
+                r.presentationEpoch=5;
+                r.currentTick=1000+17*sequence;
+                r.candidate=Evaluate(r.crop);
+                const auto recovered=EvaluatePresentationRecovery(r);
+                recovery=recovered.state;
+                auto admitted=AdmitCropPresentation(admission,r.crop,recovered.presentation,5);
+                const auto uncertainty=ResolveUncertainPicturePresentation(r,admitted.presentation);
+                admitted.presentation=uncertainty.presentation;
+                if (visible)
+                {
+                    // Another frame's detail cannot widen this source's presentation.
+                    auto stale=admitted;
+                    ProtectCurrentNativeMatteDetail(stale,r.crop,pixels,base,1,sequence-1);
+                    Assert::AreEqual(admitted.presentation.sourceBounds.top,stale.presentation.sourceBounds.top);
+
+                    // The projection represents a separately qualified current
+                    // relocation. Excluding only the stem cannot cover the dot.
+                    for (bool includesDot : {false,true})
+                    {
+                        const ActivePictureBounds erased={1825,includesDot ? 205 : 223,1834,274,3840,2160};
+                        const auto projected=EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(
+                            frame.P010Source(),base,pixels,erased);
+                        Assert::IsTrue(projected.relocatedOverlayExclusionEvaluated);
+                        auto relocated=admitted;
+                        const auto& selectedRetention=projected.excludedBandsPixelSafe ? projected : pixels;
+                        const bool unowned=ProtectCurrentNativeMatteDetail(relocated,r.crop,selectedRetention,base,1,sequence);
+                        Assert::IsTrue(unowned!=includesDot);
+                        if (includesDot)
+                            Assert::AreEqual(admitted.presentation.sourceBounds.top,relocated.presentation.sourceBounds.top);
+                        else
+                            Assert::IsTrue(relocated.presentation.sourceBounds.top<=205);
+                    }
+                }
+                ProtectCurrentNativeMatteDetail(admitted,r.crop,pixels,base,1,sequence);
+                admission=admitted.state;
+                const auto& selected=admitted.presentation;
+                if (visible)
+                {
+                    Assert::IsTrue(anchor.available);
+                    Assert::IsTrue(selected.sourceBounds.top<=205,L"Live submitted scope clipped an unowned subtitle dot");
+                }
+                else
+                {
+                    Assert::IsTrue(selected.applyCrop);
+                    Assert::AreEqual(base.top,selected.sourceBounds.top);
+                    Assert::AreEqual(base.bottom,selected.sourceBounds.bottom);
+                }
+                SubmittedNativeScopeAnchorUpdateInput submit;
+                submit.previous=anchor;
+                submit.selectedAdmission=admission;
+                submit.frameSubmitted=true;
+                submit.nativeCropAvailable=admission.available;
+                submit.nativeCrop=admission.trustedCrop;
+                submit.submittedBounds=selected.sourceBounds;
+                submit.selectedOwner=selected.owner;
+                submit.sourceGeneration=1;
+                submit.sourceSequence=sequence;
+                submit.presentationEpoch=5;
+                anchor=CommitSubmittedNativeScopeAnchor(submit);
             }
         }
 

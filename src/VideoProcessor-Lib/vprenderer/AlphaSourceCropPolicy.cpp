@@ -5890,6 +5890,30 @@ namespace AlphaSourceCrop
 		return result;
 	}
 
+    bool ProtectCurrentNativeMatteDetail(CropPresentationAdmissionDecision& selected,
+        const Input& input, const ActivePicturePresentationRetentionEvidence& retention,
+        const ActivePictureBounds& retentionBase, uint64_t retentionGeneration, uint64_t retentionSequence)
+    {
+        if (!input.automaticCropEnabled || !retention.analysisValid || !retention.presentationValid ||
+            !input.frameSourceGeneration || !input.frameSourceSequence ||
+            retentionGeneration != input.frameSourceGeneration || retentionSequence != input.frameSourceSequence ||
+            !SameTrustedCropContract(retentionBase,input.geometry)) return false;
+        const auto& top = retention.visibleTop;
+        const auto& bottom = retention.visibleBottom;
+        const bool protectTop = top.available && top.nativePixelDetail;
+        const bool protectBottom = bottom.available && bottom.nativePixelDetail;
+        if (!protectTop && !protectBottom) return false;
+        const auto& crop = selected.presentation.sourceBounds;
+        if (selected.presentation.applyCrop && (crop.left > retentionBase.left || crop.right < retentionBase.right ||
+            (protectTop && crop.top > top.nativePixelY) || (protectBottom && crop.bottom <= bottom.nativePixelY))) {
+            selected = {};
+            selected.blocked = true;
+            selected.presentation.sourceBounds = FullRaster(input.rasterWidth,input.rasterHeight);
+            selected.presentation.reason = "current native matte detail outside final crop";
+        }
+        return true;
+    }
+
 	bool IsCurrentSubmittedNativeScopeAnchor(const SubmittedNativeScopeAnchor& anchor,
 		uint64_t sourceGeneration, uint64_t sourceSequence,
 		uint64_t presentationEpoch, int rasterWidth, int rasterHeight)

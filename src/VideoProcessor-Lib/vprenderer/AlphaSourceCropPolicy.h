@@ -1780,6 +1780,12 @@ namespace AlphaSourceCrop
 		uint64_t presentationEpoch);
 
 
+    // Final selected source must include current unowned native matte pixels,
+    // including after a prior crop or an UNKNOWN subtitle presentation hold.
+    bool ProtectCurrentNativeMatteDetail(CropPresentationAdmissionDecision& selected,
+        const Input& input, const ActivePicturePresentationRetentionEvidence& retention,
+        const ActivePictureBounds& retentionBase, uint64_t retentionGeneration, uint64_t retentionSequence);
+
 	// A temporary presentation withdrawal is not full-raster aspect authority.
 	// Once armed, every ordinary inward owner must prove the current saved crop
 	// safe on distinct adjacent source frames for 250 ms. This does not delay

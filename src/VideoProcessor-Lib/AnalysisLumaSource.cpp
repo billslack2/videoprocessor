@@ -361,10 +361,10 @@ bool AnalysisLumaSource::MeasureLumaRowContent(int y, int x0, int x1, int step,
 }
 
 bool AnalysisLumaSource::FindPlanarMatteRowDetail(int y, int referenceY, int shift,
-    int matte, int tolerance, int& x) const
+    int matte, int tolerance, int& x, int startX) const
 {
-    x = 0;
-    if (!IsValid() || y < 0 || y >= height || referenceY < -1 || referenceY >= height ||
+    x = startX;
+    if (!IsValid() || startX < 0 || startX > width || y < 0 || y >= height || referenceY < -1 || referenceY >= height ||
         shift < 0 || shift > 10 || matte < 0 || matte > 1023 || tolerance < 0 || tolerance > 1023 ||
         (format != AnalysisLumaFormat::P010 && format != AnalysisLumaFormat::P210 &&
          format != AnalysisLumaFormat::DecodedDolbyVision422)) return false;
@@ -383,6 +383,17 @@ bool AnalysisLumaSource::FindPlanarMatteRowDetail(int y, int referenceY, int shi
     const auto codes = [](const uint8_t* src) {
         return _mm_srli_epi16(_mm_loadu_si128(reinterpret_cast<const __m128i*>(src)), 6);
     };
+    // Interleaved UV pairs are aligned to even luma columns. Check a lone
+    // odd prefix before beginning SIMD at an even column.
+    if ((x & 1) && x < width) {
+        AnalysisLumaSample pixel;
+        if (!Sample(x,y,pixel)) return false;
+        const int limit = reference ? std::min(matte + 128, matte + tolerance +
+            (std::max(0,int(P010Code(reference + 2*x))-matte) >> shift)) : matte + tolerance;
+        if (pixel.luma < matte-4 || pixel.luma > limit || std::abs(int(pixel.chromaU)-512)>32 ||
+            std::abs(int(pixel.chromaV)-512)>32) return true;
+        ++x;
+    }
     for (; x + 8 <= width; x += 8) {
         const auto ys = codes(luma + 2 * x);
         auto upper = base;
