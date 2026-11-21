@@ -1343,6 +1343,38 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(FirstMovingBroadcastShotAcquiresAcrossMixedDepthEvidence)
+        {
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            auto frame=MovingBroadcastEdge(0,true);
+            // The old trace reports paired 126-code samples below a 119
+            // matte. Model two adjacent encoding offsets in alternating width
+            // sectors. Farther in, the coarse rows at 1904 and 1900 straddle
+            // the shelf and the taper. Both depths need their own evidence.
+            frame.FillRectangle(0,1903,3840,1920,119);
+            for (int x=0;x<3840;x+=120)
+            {
+                const int shelf=122+(x/960)%2;
+                frame.FillRectangle(x,1904,x+80,1905,shelf);
+                frame.FillRectangle(x,1911,x+80,1919,shelf);
+            }
+            frame.FillRectangle(2320,1904,2450,1905,126);
+            frame.FillRectangle(2320,1911,2450,1919,126);
+            auto pixels=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+            Assert::IsTrue(pixels.pairedRaisedEdgeContrast);
+            const auto displayed=PresentRaisedBroadcastFrame(base,pixels,1,{});
+            Assert::IsTrue(displayed.presentation.applyCrop && !displayed.blocked);
+            Assert::AreEqual(base.top,displayed.presentation.sourceBounds.top);
+            Assert::AreEqual(base.bottom,displayed.presentation.sourceBounds.bottom);
+
+            // Same frame with a stronger local stroke on the shelf: distributed
+            // offsets at other columns cannot explain away this component.
+            frame.FillRectangle(2320,1911,2450,1919,129);
+            pixels=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+            Assert::IsTrue(pixels.outwardVisibleBoundsAvailable);
+            Assert::IsTrue(pixels.outwardVisibleBounds.bottom>=1919);
+        }
+
         TEST_METHOD(RaisedScopeRetentionProtectsDimCaption)
         {
             const auto base = ScopePresentation(640,360,46,314);
