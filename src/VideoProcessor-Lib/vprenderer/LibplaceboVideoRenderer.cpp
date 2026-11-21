@@ -14835,7 +14835,7 @@ struct LibplaceboVideoRenderer::Impl
                     DebugLog::Log("VP subtitle confirmation: generation=%llu source=%llu source_frame=%llu domain=%llu policy=%llu continuity=%llu "
                         "preview_site=%s preview_start_us=%lld consume_start_us=%lld owned=%zu ready_future=%u first_future=%llu prefix_stop=%s stop_source=%llu "
                         "matching_frames=%u last_matched_future=%llu current_lines_confirmed=%d unsupported_row=%d row_support=%u row_required=%u "
-                        "independent_previous=%llu independent_stride=%u pair_base=%llu pair_future=%llu pair_base_frame=%llu pair_future_frame=%llu pair_reason=%s context_mask=%u base_lines=%d future_lines=%d matched_rows=%d "
+                        "independent_previous=%llu independent_stride=%u pair_base=%llu pair_future=%llu pair_base_frame=%llu pair_future_frame=%llu pair_reason=%s fixed_row=%s context_mask=%u base_lines=%d future_lines=%d matched_rows=%d "
                         "row=%d future_row=%d base_rect=%d,%d-%d,%d future_rect=%d,%d-%d,%d tolerance_px=%d signature_delta=%d signature_total=%d signature_limit_pct=%u "
                         "previous_generation=%llu previous_source=%llu previous_policy=%llu previous_continuity=%llu previous_cue=%llu discontinuity=%d "
                         "prior_ink=%s prior_pixels_compared=%d raw_reason=%s decision=%s accepted=%d cue=%llu",
@@ -14846,7 +14846,7 @@ struct LibplaceboVideoRenderer::Impl
                         trace.stopReason,trace.stopSource,preview.matchingFrames,lastMatched,preview.currentLinesConfirmed ? 1 : 0,
                         trace.unsupportedLine,trace.support,trace.required,trace.independentPrevious,trace.analysisStride,
                         pair.base,pair.candidate,pair.baseFrame,pair.candidateFrame,
-                        pair.reason,pair.contextMask,pair.baseLines,pair.candidateLines,pair.matched,pair.row,pair.other,
+                        pair.reason,pair.fixedRowReason,pair.contextMask,pair.baseLines,pair.candidateLines,pair.matched,pair.row,pair.other,
                         pair.baseRect.left,pair.baseRect.top,pair.baseRect.right,pair.baseRect.bottom,
                         pair.candidateRect.left,pair.candidateRect.top,pair.candidateRect.right,pair.candidateRect.bottom,
                         pair.tolerance,pair.signatureDelta,pair.signatureTotal,SubtitleBoxLookahead::MaxLineSignatureDifferencePercent,

@@ -195,6 +195,7 @@ struct SubtitleCuePairTrace
 {
     uint64_t base = 0, candidate = 0, baseFrame = 0, candidateFrame = 0;
     const char* reason = "not-compared";
+    const char* fixedRowReason = "not-attempted";
     unsigned contextMask = 0;
     int row = -1, other = -1, tolerance = 0, matched = 0;
     int baseLines = 0, candidateLines = 0, signatureDelta = -1, signatureTotal = -1;
@@ -2039,6 +2040,128 @@ namespace SubtitleBoxLookahead
 
 
 
+    // A one-row change in height rescales every cell of a normalized line signature.
+    // Compare the two independently sampled cues at identical source coordinates.
+    // This only confirms the current grouping. The future's pixels and card never
+    // supply extraction or cleanup, and an existing cue cannot be renewed by this test.
+    inline bool ConfirmTwoLineCardHeightJitter(const SubtitleBoxObservation& a,
+        const SubtitleBoxObservation& b,SubtitleCuePairTrace* trace)
+    {
+        const auto reject=[&](const char* reason) {
+            if(trace)trace->fixedRowReason=reason;
+            return false;
+        };
+        if(a.text.lineCount!=2 || b.text.lineCount!=2 || !NextIndependentAnalysis(a,b) ||
+            !IsCompletePictureGlyphAcquisitionSource(a) || !IsCompletePictureGlyphAcquisitionSource(b) ||
+            !SameContext(a,b) || a.policyGeneration!=b.policyGeneration ||
+            a.continuityGeneration!=b.continuityGeneration || a.optimizationMode!=b.optimizationMode ||
+            a.barTrackingAuthority || b.barTrackingAuthority || a.text.diagnosticPictureGlyphProofRequired ||
+            b.text.diagnosticPictureGlyphProofRequired || !a.text.topSearchComplete || !a.text.bottomSearchComplete ||
+            !b.text.topSearchComplete || !b.text.bottomSearchComplete ||
+            a.pictureTop!=b.pictureTop || a.pictureBottom!=b.pictureBottom || !a.sharedPicture.Matches(b.sharedPicture) ||
+            a.identity.sourceFrameNumber>=b.identity.sourceFrameNumber ||
+            b.identity.sourceFrameNumber-a.identity.sourceFrameNumber!=a.analysisStride ||
+            a.identity.captureTimestamp>=b.identity.captureTimestamp || a.ink==b.ink)
+            return reject("incomplete-or-nonconsecutive");
+
+        const int anchor=BarAnchorLine(a);
+        if(anchor<0 || anchor!=BarAnchorLine(b))return reject("bar-anchor");
+        const int row=1-anchor;
+        const auto& lower=a.text.lineBounds[anchor];
+        const auto& ar=a.text.lineBounds[row];const auto& br=b.text.lineBounds[row];
+        const auto& box=a.text.bounds;
+        const auto& old=*a.ink;const auto& now=*b.ink;
+        const int step=old.step;
+        if(step<=0 || step!=now.step || ar.left!=br.left || ar.right!=br.right || ar.top!=br.top ||
+            std::abs(ar.bottom-br.bottom)!=step || !ar.Valid() || !br.Valid() ||
+            (std::max)(ar.bottom,br.bottom)>a.pictureBottom || ar.top<a.pictureTop ||
+            lower.bottom<=a.pictureBottom || lower.top<(std::max)(ar.bottom,br.bottom) ||
+            !SameLine(lower,b.text.lineBounds[anchor],0) || !SameLine(box,b.text.bounds,0) ||
+            !SimilarSignature(a.text.lineSignatures[anchor],b.text.lineSignatures[anchor]))
+            return reject("row-geometry-or-anchor");
+        const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
+            return outer.Valid() && inner.Valid() && outer.left<=inner.left && outer.top<=inner.top &&
+                outer.right>=inner.right && outer.bottom>=inner.bottom;
+        };
+        const SubtitleBoxRect upper{ar.left,ar.top,ar.right,(std::max)(ar.bottom,br.bottom)};
+        if(!contains(box,upper) || !contains(box,lower) || !a.text.capturePanelMeasured || !b.text.capturePanelMeasured ||
+            !contains(a.text.provenSourcePanel,upper) || !contains(b.text.provenSourcePanel,upper) ||
+            !contains(a.text.lineCapturePanels[row],ar) || !contains(b.text.lineCapturePanels[row],br))
+            return reject("finite-card");
+        if(!old.paletteValid || !now.paletteValid || old.inkFloor!=now.inkFloor ||
+            old.inkU!=now.inkU || old.inkV!=now.inkV || old.blackLimit!=now.blackLimit)
+            return reject("palette");
+        if(old.width<=0 || old.height<=0 || old.width>960 || old.height>540 ||
+            old.width!=(a.width+step-1)/step || old.height!=(a.height+step-1)/step ||
+            old.width!=now.width || old.height!=now.height || old.sourceRows.size()!=size_t(old.height) ||
+            old.sourceRows!=now.sourceRows || box.left<0 || box.top<0 || box.right>a.width || box.bottom>a.height)
+            return reject("sampling-grid");
+        const size_t words=(size_t(old.width)*old.height+63)/64;
+        if(old.rawInk.size()!=words || now.rawInk.size()!=words || old.ownedInk.size()!=words ||
+            now.ownedInk.size()!=words || old.blackBacking.size()!=words || now.blackBacking.size()!=words)
+            return reject("missing-planes");
+
+        const int smallBottom=(std::min)(ar.bottom,br.bottom);
+        const auto& taller=ar.bottom>br.bottom ? old : now;
+        const auto& shorter=ar.bottom>br.bottom ? now : old;
+        const int left=(box.left+step-1)/step, right=(box.right+step-1)/step;
+        const auto first=std::lower_bound(old.sourceRows.begin(),old.sourceRows.end(),box.top);
+        int fringeRow=-1,firstX=-1,lastX=-1;
+        unsigned changed=0,wordsCompared=0;
+        bool upperInk=false,lowerInk=false;
+        for(auto it=first;it!=old.sourceRows.end() && *it<box.bottom;++it) {
+            const int y=static_cast<int>(it-old.sourceRows.begin());
+            const int sourceY=*it;
+            const size_t rowBit=size_t(y)*old.width, end=rowBit+right;
+            for(size_t bit=rowBit+left;bit<end;) {
+                if(++wordsCompared>512)return reject("comparison-budget");
+                const size_t word=bit/64;
+                const size_t stop=(std::min)(end,(word+1)*64);
+                const uint64_t mask=(~uint64_t{0}<<(bit%64)) &
+                    (stop%64 ? (uint64_t{1}<<(stop%64))-1 : ~uint64_t{0});
+                const uint64_t stable=old.ownedInk[word]&now.ownedInk[word]&mask;
+                if(stable && sourceY>=upper.top && sourceY<upper.bottom)upperInk=true;
+                if(stable && sourceY>=lower.top && sourceY<lower.bottom)lowerInk=true;
+                const uint64_t different=(old.ownedInk[word]^now.ownedInk[word])&mask;
+                if(((old.rawInk[word]^now.rawInk[word])&mask)!=different ||
+                    (different & ~(taller.rawInk[word]&taller.ownedInk[word])) ||
+                    (different & (shorter.rawInk[word]|shorter.ownedInk[word])))
+                    return reject("raw-or-ownership-change");
+                if(different) {
+                    if(y==0 || y+1>=old.height || sourceY<smallBottom-step || sourceY>=upper.bottom ||
+                        (fringeRow>=0 && fringeRow!=y) || sourceY-old.sourceRows[y-1]!=step ||
+                        old.sourceRows[y+1]-sourceY!=step)
+                        return reject("interior-or-extra-row");
+                    for(size_t sample=bit;sample<stop;++sample) {
+                        if(!(different & (uint64_t{1}<<(sample%64))))continue;
+                        const int x=static_cast<int>(sample-rowBit);
+                        if(++changed>2 || x*step<upper.left || x*step>=upper.right ||
+                            (lastX>=0 && x!=lastX+1) ||
+                            !old.Get(x,y-1,true) || !now.Get(x,y-1,true) ||
+                            !old.Black(x,y+1) || !now.Black(x,y+1))
+                            return reject("detached-or-extended-stroke");
+                        if(firstX<0)firstX=x;
+                        lastX=x;fringeRow=y;
+                    }
+                }
+                bit=stop;
+            }
+        }
+        if(!upperInk || !lowerInk)return reject("missing-row-ink");
+        if(changed) {
+            // A terminal quantization cell may extend an existing broad stroke.
+            // A new isolated mark or narrow tail is an unresolved glyph change.
+            int stableWidth=lastX-firstX+1;
+            for(int x=firstX-1;x>=left && stableWidth<4 && old.Get(x,fringeRow-1,true) &&
+                now.Get(x,fringeRow-1,true);--x)++stableWidth;
+            for(int x=lastX+1;x<right && stableWidth<4 && old.Get(x,fringeRow-1,true) &&
+                now.Get(x,fringeRow-1,true);++x)++stableWidth;
+            if(stableWidth<4)return reject("narrow-stroke");
+        }
+        if(trace)trace->fixedRowReason=changed?"attached-bottom-fringe":"identical-fixed-ink";
+        return true;
+    }
+
     inline SubtitleBoxPreview Resolve(const SubtitleBoxObservation* frames, size_t count,
         uint64_t policy, uint64_t continuity, const char* traceSite = nullptr)
     {
@@ -2096,10 +2219,19 @@ namespace SubtitleBoxLookahead
                 trace->analysisStride = frames[i-1].analysisStride;
             }
             bool cueMatches=SameCue(frames[0],next,pair) && SameCue(frames[i-1],next,pair);
-            // The only relaxed path is a crowded grouping (three or more
-            // candidate rows). Require two independently matching rows and
-            // the bar anchor; ordinary one/two-row cue changes keep the
-            // original all-lines SameCue rule.
+            if(!cueMatches && i==1 && frames[0].text.lineCount==2 && next.text.lineCount==2 &&
+                ConfirmTwoLineCardHeightJitter(frames[0],next,pair)) {
+                result.matchingFrames=2;
+                result.currentLinesConfirmed=true;
+                if(trace) {
+                    pair->reason="fixed-two-line-card";
+                    pair->matched=2;
+                    trace->support=trace->required=2;
+                }
+                return result;
+            }
+            // Crowded grouping (three or more
+            // candidate rows) requires two independently matching rows and the bar anchor.
             if(!cueMatches && frames[0].text.lineCount>=3 && next.text.lineCount>=2 &&
                 next.analyzed && !next.discontinuity &&
                 NextIndependentAnalysis(frames[i-1],next) &&
