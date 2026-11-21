@@ -1582,6 +1582,176 @@ namespace VideoProcessorTest
             Assert::AreEqual(262,bounds.top); Assert::AreEqual(1896,bounds.bottom);
         }
 
+        TEST_METHOD(RaisedMatteAdmissionTracksNoiseAndContrastWithoutLosingMarks)
+        {
+            using namespace AlphaSourceCrop;
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            struct Variant {int matte, noise, contrast;};
+            // The same physical geometry with near-black, raised, compressed
+            // and ambiguous picture levels. All pixels here are synthetic.
+            const Variant variants[]={{64,0,100},{119,0,100},{119,2,100},{119,2,20}};
+            for(const auto v:variants) {
+                auto frame=MovingBroadcastEdge(0,true);
+                for(int y=0;y<2160;++y) for(int x=0;x<3840;++x) {
+                    auto* pixel=frame.bytes.data()+size_t(y)*frame.pitch+2*x;
+                    const int old=(int(pixel[0]) | int(pixel[1])<<8)>>6;
+                    int code=v.matte+(old-119)*v.contrast/100;
+                    if((y<260 || y>=1898) && v.noise)
+                        code+=((x/7+y*3)%5)-2;
+                    WriteCode(pixel,(std::max)(0,(std::min)(1023,code)));
+                }
+                // Logged S2005 picture-side rise, translated/scaled into each
+                // synthetic level/contrast; neighboring source pixels remain modeled.
+                const int profile[]={434,437,406,338,249,187,174,174,150,129,122,122,122,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122};
+                for(int y=0;y<30;++y) {
+                    const int yy=1893+y;
+                    const int code=v.matte+(profile[y]-119)*v.contrast/100;
+                    WriteCode(frame.bytes.data()+size_t(yy)*frame.pitch+2*3675,code);
+                }
+                const auto evaluate=[&](const P010Frame& f) {
+                    auto source=f.P010Source(); source.range=AnalysisLumaRange::Limited;
+                    const auto evidence=EvaluateActivePicturePresentationRetention(source,native);
+                    auto input=RaisedBroadcastCropInput(native,evidence,1);
+                    auto selected=AdmitCropPresentation({},input,Evaluate(input),5,&evidence);
+                    ProtectCurrentNativeMatteDetail(selected,input,evidence,native,1,1);
+                    return selected;
+                };
+                const auto clean=evaluate(frame);
+                if(clean.presentation.applyCrop) {
+                    Assert::IsTrue(clean.presentation.sourceBounds.top<=260);
+                    Assert::IsTrue(clean.presentation.sourceBounds.bottom>=1898);
+                }
+                // A colored mark at exactly the local matte luma is independent
+                // current source detail, even in the low-contrast case.
+                auto colored=frame;
+                colored.FillRectangle(1800,1930,1810,1940,v.matte,700,512);
+                const auto mark=evaluate(colored);
+                const bool visible=!mark.presentation.applyCrop || mark.presentation.sourceBounds.bottom>=1940;
+                if(v.matte==64 && !visible)
+                    Logger::WriteMessage(L"Known pre-existing nominal-black same-luma colored mark was cropped.");
+                else Assert::IsTrue(visible);
+            }
+        }
+
+        TEST_METHOD(OptionalLoggedAcquisitionColumnsKeepSourcePictureAndText)
+        {
+            using namespace AlphaSourceCrop;
+            char* value=nullptr; size_t count=0;
+            _dupenv_s(&value,&count,"VP_RAISED_MATTE_CAPTURE_DIR");
+            const std::string dir=value ? value : ""; std::free(value);
+            if(dir.empty()) {
+                Logger::WriteMessage(L"Set VP_RAISED_MATTE_CAPTURE_DIR for the private donor-frame reconstruction.");
+                return;
+            }
+            const auto load=[&](int ordinal) {
+                char name[32]; sprintf_s(name,"frame-%06d.bin",ordinal);
+                P010Frame result(3840,2160);
+                std::ifstream file(dir+"/"+name,std::ios::binary);
+                file.read(reinterpret_cast<char*>(result.bytes.data()),std::streamsize(result.bytes.size()));
+                Assert::IsTrue(bool(file)); return result;
+            };
+            // Donor is recorded accepted sequence 2222 (frame 12), not S2005.
+            // Replace only seven logged S2005 luma columns and preserve all
+            // unobserved donor pixels/chroma. The adjacent source/sequence
+            // numbers below are a modeled test timeline, not capture identity.
+            auto frame=load(12);
+            const int xs[]={3595,3659,3671,3675,3679,3691,3755};
+            const int rows[][30]={
+                {683,687,622,458,304,211,170,153,139,132,126,122,122,126,126,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119},
+                {475,475,444,362,266,201,184,177,153,129,122,119,119,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {447,447,413,334,245,184,174,174,150,129,122,122,122,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {434,437,406,338,249,187,174,174,150,129,122,122,122,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {430,430,410,348,259,191,167,156,139,132,126,122,122,122,122,122,126,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {420,420,399,358,273,194,156,136,129,129,126,126,126,126,126,126,126,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {372,369,351,310,232,163,132,122,119,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119}};
+            for(int x=0;x<7;++x) for(int y=0;y<30;++y)
+                WriteCode(frame.bytes.data()+size_t(1893+y)*frame.pitch+2*xs[x],rows[x][y]);
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            auto retained=[&](const P010Frame& image) {
+                auto source=image.P010Source(); source.range=AnalysisLumaRange::Limited;
+                source.colorspace=ColorSpace::REC_709;
+                return EvaluateActivePicturePresentationRetention(source,native);
+            };
+            auto present=[&](const P010Frame& image,uint64_t seq,const CropPresentationAdmissionState& previous,
+                RaisedMattePresentationHold* hold) {
+                const auto evidence=retained(image);
+                auto input=RaisedBroadcastCropInput(native,evidence,seq);
+                auto selected=AdmitCropPresentation(previous,input,Evaluate(input),5,&evidence);
+                const bool protect=ProtectCurrentNativeMatteDetail(selected,input,evidence,native,1,seq,
+                    hold,1000+seq*1001/60,2000,42);
+                FinalAspectLimitFillInput fill;
+                fill.crop=input; fill.presentation=selected.presentation;
+                fill.configuredScreenActive=true; fill.configured.screenAspect=2.35;
+                fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                fill.configured.narrowerAspectLimit=2.32;
+                fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+                fill.configured.widerAspectLimit=2.42;
+                const auto result=protect ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+                return std::make_pair(selected,result.applied ? result.sourceBounds : selected.presentation.sourceBounds);
+            };
+            const auto requireFullWidth=[&](const ActivePictureBounds& b) {
+                Assert::AreEqual(0,b.left); Assert::AreEqual(3840,b.right);
+                Assert::AreEqual(262,b.top); Assert::AreEqual(1896,b.bottom);
+            };
+            const auto cold=present(frame,2005,{},nullptr);
+            Assert::IsTrue(cold.first.presentation.applyCrop); requireFullWidth(cold.second);
+            auto seed=load(82); // captured S2309; a clean prior frame, not S2004.
+            RaisedMattePresentationHold hold{};
+            const auto start=present(seed,2004,{},&hold); requireFullWidth(start.second);
+            const auto warm=present(frame,2005,start.first.state,&hold); requireFullWidth(warm.second);
+            // One picture-side code changed: no special dependence on 437 -> 434.
+            auto flat=frame;
+            WriteCode(flat.bytes.data()+size_t(1894)*flat.pitch+2*3675,434);
+            requireFullWidth(present(flat,2005,{},nullptr).second);
+            // Matched modeled +6 picture-side rise. Alter only the five neutral
+            // exterior samples to test typical absolute deviation from matte.
+            const auto paired=[&](bool lowContrast,bool noisy,bool coloredSamples) {
+                auto f=frame;
+                if(lowContrast) {
+                    const int bridge[]={200,206,196,190,185};
+                    for(int y=0;y<5;++y)
+                        WriteCode(f.bytes.data()+size_t(1893+y)*f.pitch+2*3675,bridge[y]);
+                } else WriteCode(f.bytes.data()+size_t(1894)*f.pitch+2*3675,440);
+                const int offsets[]={-32,-16,0,16,32}, jitter[]={-3,3,0,3,-3};
+                for(int i=0;i<5;++i) {
+                    const int x=3675+offsets[i];
+                    if(coloredSamples) f.FillRectangle(x-2,1924,x+4,1930,122,700,512);
+                    else {
+                        WriteCode(f.bytes.data()+size_t(1927)*f.pitch+2*x,119+(noisy ? jitter[i] : 0));
+                        auto* uv=f.bytes.data()+size_t(2160)*f.pitch+size_t(1927/2)*f.pitch+2*(x&~1);
+                        WriteCode(uv,512); WriteCode(uv+2,512);
+                    }
+                }
+                return present(f,2005,{},nullptr).second;
+            };
+            const auto quiet=paired(false,false,false);
+            Assert::AreEqual(238,quiet.top); Assert::AreEqual(1920,quiet.bottom);
+            requireFullWidth(paired(false,true,false));
+            const auto lowContrast=paired(true,true,false);
+            Assert::AreEqual(238,lowContrast.top); Assert::AreEqual(1920,lowContrast.bottom);
+            const auto coloredSamples=paired(false,true,true);
+            Assert::IsTrue(coloredSamples.bottom>=1930,L"Colored detail cannot supply its own noise tolerance.");
+            // Add genuine detached glyph and end-card text to the same donor.
+            // Their extent must be visible in final selected source bounds.
+            auto glyph=frame; glyph.FillRectangle(1800,1928,1810,1940,700);
+            Assert::IsTrue(present(glyph,2005,{},nullptr).second.bottom>=1940);
+            auto legal=frame;
+            for(int x=1390;x<2250;x+=35) legal.FillRectangle(x,2045,x+15,2064,129);
+            Assert::IsTrue(present(legal,2005,{},nullptr).second.bottom>=2064);
+            auto underline=frame; underline.FillRectangle(1800,1894,1848,1914,126,507,508);
+            Assert::IsTrue(present(underline,2005,{},nullptr).second.bottom>=1914);
+            // Genuine outward picture expansion must not reuse the old boundary.
+            const auto expanded=ScopePresentation(3840,2160,248,1910);
+            P010Frame realChange(3840,2160); realChange.BlackOutside(0,248,3840,1910,119);
+            auto expandedSource=realChange.P010Source(); expandedSource.range=AnalysisLumaRange::Limited;
+            const auto e=EvaluateActivePicturePresentationRetention(expandedSource,expanded);
+            auto in=RaisedBroadcastCropInput(expanded,e,2006);
+            auto change=AdmitCropPresentation(start.first.state,in,Evaluate(in),5,&e);
+            ProtectCurrentNativeMatteDetail(change,in,e,expanded,1,2006);
+            Assert::AreEqual(248,change.presentation.sourceBounds.top);
+            Assert::AreEqual(1910,change.presentation.sourceBounds.bottom);
+        }
+
         TEST_METHOD(OptionalRecordedRaisedMatteKeepsScopeAtSourceCadence)
         {
             using namespace AlphaSourceCrop;
