@@ -1026,17 +1026,48 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
     if (contrast < 24 || pixel.luma > matte+4+(contrast >> (distance<=2 ? 1 : distance<=4 ? 2 : 3)))
         return false;
     int previous = ref.luma, drops = 0, reboundLobes = 0, reboundRise = 0, equal = 0;
+    int pictureRise = 0, pictureRiseLimit = 0;
     bool rising = false;
     for (int row=reference-inward; row!=y-inward; row-=inward) {
         AnalysisLumaSample next;
         if (!samples.Sample(x,row,next) || next.luma <= matte+1) return false;
         const int delta = int(next.luma)-previous;
-        if (delta > 0) {
+        if (delta > 0 && (boundary-row)*inward <= 0) {
+            // Picture-side texture is not a matte-side ringing lobe. Use
+            // current, neutral exterior samples to estimate local quantization
+            // and matte variation; cap their influence by the measured picture
+            // contrast. Contaminated or insufficient samples keep the veto.
+            if (!pictureRiseLimit) {
+                const int outerDistance = std::min(depth-1,
+                    std::min(32,std::max(2,samples.source.height/96))+8);
+                if (outerDistance <= distance) return false;
+                const int outerRow = boundary-inward*outerDistance;
+                int deviations[5], count=0;
+                for (int offset : {-32,-16,0,16,32}) {
+                    const int column=x+offset;
+                    if (column<0 || column>=samples.source.width) continue;
+                    AnalysisLumaSample v;
+                    if (!samples.Sample(column,outerRow,v)) return false;
+                    const int deviation=std::abs(int(v.luma)-matte);
+                    if (std::abs(int(v.chromaU)-512)>16 ||
+                        std::abs(int(v.chromaV)-512)>16 || deviation>16) continue;
+                    deviations[count++]=deviation;
+                }
+                if (count<3) return false;
+                std::sort(deviations,deviations+count);
+                const int noise = deviations[count/2];
+                const int contrastLimit = std::max(4,std::min(16,contrast/16));
+                pictureRiseLimit = std::min(contrastLimit,4+2*noise);
+            }
+            pictureRise += delta;
+            if (pictureRise > pictureRiseLimit) return false;
+            rising = false;
+        } else if (delta > 0) {
             if (!rising) { ++reboundLobes; reboundRise=0; }
             rising=true;
             reboundRise+=delta;
             if (reboundLobes>1 || reboundRise>contrast/8 ||
-                (boundary-row)*inward <= 0 || (boundary-row)*inward>8) return false;
+                (boundary-row)*inward>8) return false;
         } else if (delta < 0) rising=false;
         if (delta < -4) ++drops;
         if (delta == 0 && (equal++ >= 1) && (boundary-row)*inward>0) return false;
