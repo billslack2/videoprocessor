@@ -1403,19 +1403,13 @@ namespace VideoProcessorTest
             const auto clean=measure(MovingBroadcastEdge(0,true));
             const auto plateau=measure(BroadcastEdgeWithLoggedWitness(true));
             const auto rebound=measure(BroadcastEdgeWithLoggedWitness(false));
-            auto local=BroadcastEdgeWithLoggedWitness(false,1);
-            // Deliberately add an unowned off-grid mark within the proposed
-            // safety margin. Suppressing the artifact must never erase it.
-            local.FillRectangle(1825,1901,1829,1905,715);
-            const auto closePrint=measure(local);
+            const auto secondRebound=measure(BroadcastEdgeWithLoggedWitness(false,1));
             auto endCard=MovingBroadcastEdge(1,true);
             for (int x=1390;x<2250;x+=35)
                 endCard.FillRectangle(x,2045,x+15,2064,129);
             const auto legal=measure(endCard);
             endCard.FillRectangle(308,206,314,214,630);
             const auto both=measure(endCard);
-            Assert::IsTrue(closePrint.visibleBottom.nativePixelDetail);
-            Assert::IsTrue(closePrint.raisedMatteExteriorVerified);
             Assert::IsFalse(legal.raisedMatteExteriorVerified);
 
             // Run the eight observed full-raster excursions at source cadence.
@@ -1427,7 +1421,8 @@ namespace VideoProcessorTest
             {
                 RaisedMattePresentationHold hold{};
                 CropPresentationAdmissionState previous;
-                for (int seq=1583;seq<=2204;++seq)
+
+                for (int seq=1353;seq<=2204;++seq)
                 {
                     int run=-1;
                     for(int i=0;i<8;++i)
@@ -1435,8 +1430,8 @@ namespace VideoProcessorTest
                     const bool translating=seq>=2071 && seq!=2203;
                     const auto& pixels=run==7 ? both :
                         run==6 || translating ? legal :
-                        run==0 || run==5 ? closePrint :
-                        run==1 ? plateau : run>=2 ? rebound : clean;
+                        seq==1353 || run==1 ? plateau :
+                        run==0 || run==5 ? secondRebound : run>=2 ? rebound : clean;
                     auto input=RaisedBroadcastCropInput(base,pixels,seq);
                     if(translating)
                     {
@@ -1445,9 +1440,9 @@ namespace VideoProcessorTest
                         input.verticalTranslationSourceGeneration=1;
                         input.verticalTranslationPixels=216;
                     }
-                    auto selected=AdmitCropPresentation(previous,input,Evaluate(input),5);
-                    ProtectCurrentNativeMatteDetail(selected,input,pixels,base,1,seq,
-                        &hold,1000+uint64_t(seq-1583)*1000/60,holdMs,42);
+                    auto selected=AdmitCropPresentation(previous,input,Evaluate(input),5,&pixels);
+                    const bool protect=ProtectCurrentNativeMatteDetail(selected,input,pixels,base,1,seq,
+                        &hold,1000+uint64_t(seq-1353)*1000/60,holdMs,42);
                     const auto& bounds=selected.presentation.sourceBounds;
                     if(run==7)
                     {
@@ -1465,25 +1460,77 @@ namespace VideoProcessorTest
                     else if(seq<2044)
                     {
                         Assert::IsTrue(selected.presentation.applyCrop);
-                        Assert::IsTrue(bounds.top<=base.top && bounds.bottom>=base.bottom);
-                        Assert::IsTrue(bounds.top>=base.top-32 && bounds.bottom<=base.bottom+32);
-                        if(run==0 || run==5)
-                            Assert::IsTrue(bounds.bottom>=1905);
-                        // The first short burst is followed by 277 clean frames.
-                        // Check hold time at 60Hz, including the disabled setting.
-                        if((seq>=1586 && seq<=1703 && holdMs) || run==0)
-                            Assert::IsTrue(bounds.bottom>base.bottom);
-                        if((seq==1586 && !holdMs) || seq==1710)
-                        {
-                            Assert::AreEqual(base.top,bounds.top);
-                            Assert::AreEqual(base.bottom,bounds.bottom);
-                        }
+                        Assert::AreEqual(base.top,bounds.top);
+                        Assert::AreEqual(base.bottom,bounds.bottom);
+                        FinalAspectLimitFillInput fill;
+                        fill.crop=input;
+                        fill.presentation=selected.presentation;
+                        fill.configuredScreenActive=true;
+                        fill.configured.screenAspect=2.35;
+                        fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                        fill.configured.narrowerAspectLimit=2.32;
+                        fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+                        fill.configured.widerAspectLimit=2.42;
+                        // Renderer skips fill while current unowned native detail is protected.
+                        const auto finalFill=protect ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+                        Assert::IsTrue(finalFill.applied);
+                        Assert::AreEqual(0,finalFill.sourceBounds.left);
+                        Assert::AreEqual(262,finalFill.sourceBounds.top);
+                        Assert::AreEqual(3840,finalFill.sourceBounds.right);
+                        Assert::AreEqual(1896,finalFill.sourceBounds.bottom);
                     }
                     previous=selected.state;
                 }
             }
         }
 
+        TEST_METHOD(ShallowPhysicalChangeAndDetachedGrayDetailsRemainVisible)
+        {
+            using namespace AlphaSourceCrop;
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            const auto initial=MovingBroadcastEdge(0,true);
+            const auto clean=EvaluateActivePicturePresentationRetention(initial.P010Source(),base);
+            const auto established=PresentRaisedBroadcastFrame(base,clean,1,{});
+            // Each change starts from the same admitted ad crop. The gray component
+            // has the same 143 code as the incidental lower edge in the log.
+            for(bool distributed:{false,true})
+            {
+                auto cue=initial;
+                const int left=distributed ? 0 : 1805;
+                const int right=distributed ? 3840 : 1845;
+                cue.FillRectangle(left,1898,right,1912,119);
+                if(distributed)
+                    cue.FillRectangle(0,1902,3840,1906,143);
+                else
+                    cue.FillRectangle(1825,1902,1829,1906,143);
+                const auto current=EvaluateActivePicturePresentationRetention(cue.P010Source(),base);
+                Assert::IsTrue(current.outwardVisibleBoundsAvailable);
+                auto input=RaisedBroadcastCropInput(base,current,2);
+                auto selected=AdmitCropPresentation(established.state,input,Evaluate(input),5,&current);
+                const bool protect=ProtectCurrentNativeMatteDetail(selected,input,current,base,1,2);
+                Assert::IsTrue(selected.presentation.sourceBounds.bottom>=1906);
+                FinalAspectLimitFillInput fill;
+                fill.crop=input;
+                fill.presentation=selected.presentation;
+                fill.configuredScreenActive=true;
+                fill.configured.screenAspect=2.35;
+                fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                fill.configured.narrowerAspectLimit=2.32;
+                const auto finalFill=protect ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+                Assert::IsTrue(!finalFill.applied || finalFill.sourceBounds.bottom>=1906);
+            }
+            // This is a shallow real AR change, rather than a different analysis
+            // of the old boundary: active source pixels occupy 12 more rows per side.
+            const auto expanded=ScopePresentation(3840,2160,248,1910);
+            P010Frame next(3840,2160);
+            next.BlackOutside(0,expanded.top,3840,expanded.bottom,119);
+            const auto evidence=EvaluateActivePicturePresentationRetention(next.P010Source(),expanded);
+            auto input=RaisedBroadcastCropInput(expanded,evidence,2);
+            auto selected=AdmitCropPresentation(established.state,input,Evaluate(input),5,&evidence);
+            ProtectCurrentNativeMatteDetail(selected,input,evidence,expanded,1,2);
+            Assert::AreEqual(expanded.top,selected.presentation.sourceBounds.top);
+            Assert::AreEqual(expanded.bottom,selected.presentation.sourceBounds.bottom);
+        }
         TEST_METHOD(RaisedMattePresentationHoldClearsForRealCutAndContextReset)
         {
             using namespace AlphaSourceCrop;
