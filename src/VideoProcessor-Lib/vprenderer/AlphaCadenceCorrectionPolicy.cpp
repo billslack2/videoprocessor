@@ -177,9 +177,22 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	}
 
 	const size_t desired = std::max<size_t>(1, input.desiredQueueDepth);
+	// A whole surplus source is in the chain when the depth shows it, or when
+	// the newest presented source reached the screen two display periods or
+	// more after the queue's rest of desired - 1 sources. That time holds the
+	// display's queue, the loop's wait, the head's age and the depth alike.
+	const double displayPeriodMs = 1000.0 / input.displayRateHz;
+	const double queueRestMs =
+		static_cast<double>(desired - 1) * 1000.0 / input.captureRateHz;
+	const double surplusMarginMs =
+		std::min(SURPLUS_MARGIN_MS, displayPeriodMs / 2.0);
+	const bool surplusSource = input.queueDepth >= desired ||
+		(input.lastPresentedArrivalToScreenMs >= 0.0 &&
+			input.lastPresentedArrivalToScreenMs - queueRestMs >=
+				2.0 * displayPeriodMs + surplusMarginMs);
 	if (m_rateFilterSamples >= MINIMUM_PREDICTION_SAMPLES &&
 		m_predictionDirection != AlphaCadenceAction::Repeat &&
-		input.queueDepth >= desired)
+		surplusSource)
 	{
 		if (m_surplusFrames < SURPLUS_CONFIRM_FRAMES)
 			++m_surplusFrames;
@@ -340,6 +353,9 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	m_lastSceneEventId = input.sceneEventId;
 	m_phaseFrames += requested == AlphaCadenceAction::Drop ? -1.0 : 1.0;
 	m_plannedFrames = 0;
+	// The newest presented source still shows the spare frame for a few
+	// evaluations after the drop; a second ask needs a full new confirm.
+	m_surplusFrames = 0;
 	m_verificationPending = true;
 	m_verificationAction = requested;
 	m_verificationDebt = input.presentationDebt;
