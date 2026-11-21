@@ -4,6 +4,9 @@
 #include <ActivePictureEvidence.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleMeasurementWorker.h>
+#include <DebugLog.h>
+#include <vprenderer/InputAnalysisCadence.h>
+#include <future>
 #include <SubtitleCueContinuation.h>
 #include <SubtitleCutPaste.h>
 #include <vprenderer/SubtitleAspectRetention.h>
@@ -461,6 +464,55 @@ namespace VideoProcessorTest
             bool Adopt(SubtitleBoxObservation& scan) const {
                 return SubtitleBoxLookahead::UsePublishedPictureCaption(scan,published,Source(),
                     identity,Policy,Continuity,SubtitleScriptHint::Latin);
+            }
+        };
+
+        struct WorkerLifecycleLog {
+            inline static std::mutex mutex;
+            inline static std::vector<std::string> lines;
+            const bool previousEnhanced=DebugLog::IsEnhancedLoggingEnabled();
+
+            explicit WorkerLifecycleLog(bool enhanced) {
+                lines.clear();
+                DebugLog::SetExternalSink(Record);
+                DebugLog::SetEnhancedLoggingEnabled(enhanced);
+            }
+            ~WorkerLifecycleLog() {
+                DebugLog::SetExternalSink(nullptr);
+                DebugLog::SetEnhancedLoggingEnabled(previousEnhanced);
+            }
+            static void __cdecl Record(const char* text) {
+                if(!text || std::strncmp(text,"VP subtitle worker: ",20)!=0)return;
+                std::lock_guard<std::mutex> lock(mutex);
+                lines.emplace_back(text);
+            }
+            static std::string Field(const std::string& line,const std::string& name) {
+                const auto token=" "+name+"=";
+                const auto begin=line.find(token);
+                if(begin==std::string::npos)return {};
+                const auto first=begin+token.size();
+                return line.substr(first,line.find(' ',first)-first);
+            }
+            // Called after the worker has joined. A transition is recorded once,
+            // even if the head and worker write their messages in different orders.
+            static std::string Event(const ActivePictureFrameIdentity& id,const char* stage,const char* reason) {
+                std::string found;
+                for(const auto& line:lines) {
+                    if(Field(line,"source")!=std::to_string(id.acceptedSequence) ||
+                        Field(line,"stage")!=stage || Field(line,"reason")!=reason)continue;
+                    Assert::IsTrue(found.empty(),L"Duplicate lifecycle event for one exact source.");
+                    found=line;
+                }
+                Logger::WriteMessage(found.c_str());
+                Assert::IsFalse(found.empty(),L"The expected source-specific worker event is missing.");
+                Assert::AreEqual(std::to_string(id.transportGeneration),Field(found,"generation"));
+                Assert::AreEqual(std::to_string(id.sourceFrameNumber),Field(found,"source_frame"));
+                Assert::AreEqual(std::to_string(id.captureTimestamp),Field(found,"capture_timestamp"));
+                Assert::AreEqual(std::to_string(id.analysisDomainKey),Field(found,"domain"));
+                Assert::AreEqual(std::to_string(PublishedPictureCaptionFrame::Policy),Field(found,"policy"));
+                Assert::AreEqual(std::to_string(PublishedPictureCaptionFrame::Continuity),Field(found,"continuity"));
+                Assert::IsFalse(Field(found,"mono_us").empty());
+                return found;
             }
         };
 
@@ -1389,6 +1441,125 @@ namespace VideoProcessorTest
             Assert::IsTrue(direct.ink && direct.ink!=selected.ink);
             Assert::IsTrue(worker.TryRead(newKey,selected,false,&source));
             Assert::IsTrue(selected.ink==direct.ink);
+        }
+
+        TEST_METHOD(PublishedPictureCaptionWorkerTraceDistinguishesLateExpiredAndReadyAtCut)
+        {
+            using Frame=PublishedPictureCaptionFrame;
+            using namespace AlphaSourceCrop;
+            Frame late(17791,false,false,true), expired(17792,false,false,true), ready(17793,false,false,true);
+            for(bool enhanced:{false,true}) {
+                WorkerLifecycleLog log(enhanced);
+                std::mutex lateGate,readyGate;
+                std::promise<void> lateStarted,readyStarted;
+                SubtitleMeasurementWorker worker;
+                // These guards are destroyed before the worker, including on a failed assertion.
+                std::unique_lock<std::mutex> holdLate(lateGate),holdReady(readyGate);
+                const auto submitGated=[&](const Frame& frame,std::mutex& gate,std::promise<void>& started) {
+                    worker.Submit(frame.Key(frame.oldPicture),[&frame,&gate,&started](
+                        SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference&) {
+                        started.set_value();
+                        {std::lock_guard<std::mutex> wait(gate);}
+                        return frame.Scan(sampler,frame.oldPicture);
+                    });
+                };
+                worker.BeginSourceWindow(late.identity);
+                submitGated(late,lateGate,lateStarted);
+                Assert::IsTrue(lateStarted.get_future().wait_for(std::chrono::seconds(5))==std::future_status::ready);
+                worker.Submit(late.Key(late.oldPicture),{}); // Same active job.
+                worker.Submit(expired.Key(expired.oldPicture),{}); // Never starts.
+                CropPresentationAdmissionState prior;
+                for(const auto* frame:{&late,&expired}) {
+                    worker.BeginSourceWindow(frame->identity);
+                    auto key=frame->Key(frame->published);
+                    const auto source=frame->Source();
+                    Assert::IsTrue(InputFrameAnalysisDue(Frame::Fps,key.identity.acceptedSequence),
+                        L"At 23.976 Hz neither missing measurement is a cadence skip.");
+                    SubtitleBoxObservation selected;
+                    Assert::IsFalse(worker.TryRead(key,selected,false,&source));
+                    const auto unresolved=SubtitleBoxLookahead::Resolve(&key,1,Frame::Policy,Frame::Continuity);
+                    Assert::IsFalse(unresolved.available);
+                    Assert::IsTrue(SubtitleAbsenceIsUnknown(unresolved.current));
+                    Assert::IsTrue(SameAnalysisFrameIdentity(unresolved.current.identity,frame->identity));
+
+                    // Resolve the native crop with current raw visibility and no
+                    // successful replacement. A lower-band glyph must remain inside
+                    // the selected source rectangle on each of the two pending frames.
+                    Input crop;
+                    crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+                    crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                    crop.geometry=crop.currentVisibleBase=frame->published.bounds;
+                    crop.rasterWidth=source.width;crop.rasterHeight=source.height;
+                    crop.frameSourceGeneration=crop.geometrySourceGeneration=crop.currentVisibleSourceGeneration=source.generation;
+                    crop.frameSourceSequence=crop.currentVisibleSourceSequence=frame->identity.acceptedSequence;
+                    const auto evidence=EvaluateActivePicturePresentationRetention(source,crop.geometry);
+                    Assert::IsTrue(evidence.outwardVisibleBoundsAvailable && !evidence.excludedBandsPixelSafe);
+                    crop.currentVisibleBoundsAvailable=true;crop.currentVisibleBounds=evidence.outwardVisibleBounds;
+                    const auto shown=AdmitCropPresentation(prior,crop,Evaluate(crop),frame->identity.viewportGeneration);
+                    const auto& bounds=shown.presentation.sourceBounds;
+                    Assert::IsTrue(bounds.left<=1548 && bounds.right>=2260 && bounds.top<=1936 && bounds.bottom>=2032);
+                    AnalysisLumaSample glyph,marker;
+                    const int markerX=1200+int(frame->identity.acceptedSequence%13)*16;
+                    Assert::IsTrue(source.Sample(1552,1940,glyph) && source.Sample(markerX,520,marker));
+                    Assert::AreEqual(800,int(glyph.luma));
+                    Assert::AreEqual(400+int(frame->identity.acceptedSequence%17),int(marker.luma));
+                    prior=shown.state;
+                }
+                worker.BeginSourceWindow(ready.identity);
+                submitGated(ready,readyGate,readyStarted);
+                holdLate.unlock();
+                Assert::IsTrue(readyStarted.get_future().wait_for(std::chrono::seconds(5))==std::future_status::ready);
+                const auto source=ready.Source();
+                const auto key=ready.Key(ready.published);
+                SubtitleBoxObservation scan;
+                Assert::IsTrue(worker.TryRead(late.Key(late.oldPicture),scan));
+                Assert::IsFalse(worker.TryRead(key,scan,false,&source),
+                    L"The completed late scan cannot be reused for the newer movie frame.");
+                holdReady.unlock();
+                const auto timeout=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+                while(!worker.TryRead(key,scan,false,&source)) {
+                    Assert::IsTrue(std::chrono::steady_clock::now()<timeout,L"Current caption never became ready.");
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                worker.Stop();
+                const auto stats=worker.TakeDiagnostics();
+                Assert::AreEqual<uint64_t>(3,stats.submitted);
+                Assert::AreEqual<uint64_t>(2,stats.completedJobs);
+                Assert::AreEqual<uint64_t>(1,stats.expired);
+                Assert::AreEqual<uint64_t>(1,stats.deduplicated);
+                Assert::IsTrue(SameAnalysisFrameIdentity(ready.identity,scan.identity));
+                const auto preview=SubtitleBoxLookahead::Resolve(&scan,1,Frame::Policy,Frame::Continuity);
+                SubtitleBoxPresentation tracker;
+                const auto accepted=tracker.Consume(preview,250,1000./Frame::Fps);
+                Assert::IsTrue(accepted.detected && !accepted.held);
+                Assert::IsTrue(accepted.lineBounds[0].top<=1936 && accepted.lineBounds[0].bottom>=2032);
+
+                if(!enhanced) {
+                    Assert::IsTrue(log.lines.empty());
+                    continue;
+                }
+                const auto time=[](const std::string& line){return std::stoll(WorkerLifecycleLog::Field(line,"mono_us"));};
+                const auto lateSubmit=log.Event(late.identity,"submit","accepted");
+                const auto lateStart=log.Event(late.identity,"start","dequeued");
+                const auto duplicate=log.Event(late.identity,"skip","active");
+                const auto queued=log.Event(expired.identity,"submit","accepted");
+                const auto dropped=log.Event(expired.identity,"drop","source-window-expired");
+                const auto lateDone=log.Event(late.identity,"complete","cached-after-window");
+                const auto readySubmit=log.Event(ready.identity,"submit","accepted");
+                const auto readyStart=log.Event(ready.identity,"start","dequeued");
+                const auto readyDone=log.Event(ready.identity,"complete","cached");
+                Assert::AreEqual<size_t>(9,log.lines.size(),L"An expired job must have no start or completion event.");
+                Assert::IsTrue(time(lateSubmit)>0 && time(lateSubmit)<=time(lateStart) && time(lateStart)<=time(duplicate));
+                Assert::IsTrue(time(duplicate)<=time(queued) && time(queued)<=time(dropped) && time(dropped)<=time(readySubmit));
+                Assert::IsTrue(time(readySubmit)<=time(lateDone) && time(lateDone)<=time(readyStart) && time(readyStart)<=time(readyDone));
+                for(const auto& completion:{lateDone,readyDone}) {
+                    Assert::AreEqual(std::string("1"),log.Field(completion,"analyzed"));
+                    Assert::AreEqual(std::string("1"),log.Field(completion,"alternate"));
+                    Assert::AreEqual(std::string("68,2092"),log.Field(completion,"result_planes"));
+                    Assert::IsTrue(std::stod(log.Field(completion,"work_ms"))>0);
+                    Assert::IsTrue(std::stod(log.Field(completion,"queue_wait_ms"))>=0);
+                }
+            }
         }
 
         TEST_METHOD(PublishedPictureCaptionGuardCannotReinterpretCrossingGlyphs)

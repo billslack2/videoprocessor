@@ -9231,13 +9231,14 @@ struct LibplaceboVideoRenderer::Impl
     enum class SubtitleTraceVisit : unsigned {
         SourceUnavailable, NoExactResult, IncompatibleResult, ExactResult,
         CadenceSkip, ReadOnly, LookaheadCache, CurrentPreview, RepeatedPreview, PreparedPacket,
-        ConsumePending, ConsumeVerified, ConsumeCue, ConsumeAbsent, ConsumeOther,
+        ConsumePending, ConsumeVerified, ConsumeCue, ConsumeAbsent, ConsumeOther, MeasurementDisabled,
         PacketNotReady, TemporalSkip, SnapshotMissing, NoSubmission
     };
 
     static bool FirstSubtitleTrace(QueuedFrame::AnalysisPayload* cache, SubtitleTraceVisit visit)
     {
         if (!DebugLog::IsEnhancedLoggingEnabled() || !cache) return false;
+        // Prime, lookahead, live reads and output retries share this source's cache.
         const uint32_t bit = uint32_t{1} << static_cast<unsigned>(visit);
         return !(cache->subtitleTraceVisits.fetch_or(bit, std::memory_order_relaxed) & bit);
     }
@@ -14772,16 +14773,20 @@ struct LibplaceboVideoRenderer::Impl
                     currentNoCaptionConfirmed ? SubtitleTraceVisit::ConsumeAbsent :
                     exact ? SubtitleTraceVisit::ConsumeOther : SubtitleTraceVisit::ConsumePending;
                 if (FirstSubtitleTrace(analysisCache.get(),visit))
-                    DebugLog::Log("VP subtitle renderer: stage=consume mono_us=%lld generation=%llu source=%llu source_frame=%llu capture_timestamp=%llu format_generation=%llu renderer_generation=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu mode=%d exact=%d analyzed=%d cadence_skipped=%d raw_cue=%d raw_reason=%s accepted=%d held=%d confirmation_pending=%d absent_confirmed=%d pending_pixels_verified=%d continuation_verified=%d worker_refresh=%d pending_refresh=%d decision=%s cue=%llu",
+                    DebugLog::Log("VP subtitle renderer: stage=consume mono_us=%lld generation=%llu source=%llu source_frame=%llu capture_timestamp=%llu format_generation=%llu renderer_generation=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu mode=%d exact=%d analyzed=%d cadence_skipped=%d raw_cue=%d raw_reason=%s accepted=%d held=%d confirmation_pending=%d absent_confirmed=%d pending_pixels_verified=%d continuation_verified=%d worker_refresh=%d pending_refresh=%d decision=%s cue=%llu raw_lines=%d raw_box=%d,%d-%d,%d accepted_box=%d,%d-%d,%d picture_y=%d-%d",
                         SubtitleMeasurementWorker::TraceMonotonicUs(),subtitleIdentity.transportGeneration,
                         subtitleIdentity.acceptedSequence,subtitleIdentity.sourceFrameNumber,subtitleIdentity.captureTimestamp,
                         subtitleIdentity.sourceFormatGeneration,subtitleIdentity.rendererGeneration,subtitleIdentity.viewportGeneration,
                         subtitleIdentity.analysisDomainKey,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
                         int(subtitlePreviewMode),exact?1:0,observed.analyzed?1:0,observed.cadenceSkipped?1:0,
-                        observed.text.detected?1:0,observed.text.diagnosticReason,subtitleBoxResult.detected?1:0,
+                        observed.text.detected?1:0,observed.text.diagnosticReason?observed.text.diagnosticReason:"unknown",subtitleBoxResult.detected?1:0,
                         subtitleBoxResult.held?1:0,subtitleBoxResult.confirmationPending?1:0,currentNoCaptionConfirmed?1:0,
                         pendingCurrentPixelsVerified?1:0,currentCueContinuation.valid?1:0,observed.analysisRefresh?1:0,
-                        observed.pendingRefresh?1:0,subtitleBoxPresentation.DecisionReason(),subtitleBoxResult.cue);
+                        observed.pendingRefresh?1:0,subtitleBoxPresentation.DecisionReason(),subtitleBoxResult.cue,
+                        observed.text.lineCount,observed.text.bounds.left,observed.text.bounds.top,
+                        observed.text.bounds.right,observed.text.bounds.bottom,subtitleBoxResult.bounds.left,
+                        subtitleBoxResult.bounds.top,subtitleBoxResult.bounds.right,subtitleBoxResult.bounds.bottom,
+                        observed.pictureTop,observed.pictureBottom);
             }
             currentSubtitleBarStripClearance=currentSubtitlePreview.current.barStripClearance;
             currentConfirmedCaptionBounds=MeasureCurrentCaptionForPresentation(
@@ -15230,7 +15235,11 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleAnalysisLogTick=analysisLogNow;
             }
         }
-        else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
+        else {
+            TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::MeasurementDisabled,subtitleIdentity,
+                localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"live-presentation","consume","measurement-disabled");
+            subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset();
+        }
 
         if(!reuseSubtitlePreparation) {
             subtitleSourcePreparation.nativePrepare={};
@@ -20229,12 +20238,12 @@ releaseDriftBaseRetention =
             const auto selected = temporal ? temporalRenderer.SelectedPacketSequence() : sourceSequence;
             const auto cueSource = temporal ? temporalRenderer.LastSubtitleSequence() :
                 (subtitleCompositionSucceeded ? sourceSequence : 0);
-            DebugLog::Log("VP subtitle renderer: stage=submit result=rendered-and-submitted mono_us=%lld generation=%llu source=%llu source_frame=%llu capture_timestamp=%llu format_generation=%llu renderer_generation=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu selected=%llu cue_source=%llu output=%llu temporal=%d cadence_repeat=%d composed=%d source_pts=%.6f output_pts=%.6f source_crop=%.1f,%.1f-%.1f,%.1f target_crop=%.1f,%.1f-%.1f,%.1f present_start_qpc=%lld present_end_qpc=%lld",
+            DebugLog::Log("VP subtitle renderer: stage=submit result=rendered-and-submitted mono_us=%lld generation=%llu source=%llu source_frame=%llu capture_timestamp=%llu format_generation=%llu renderer_generation=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu selected=%llu cue_source=%llu output=%llu mode=%d temporal=%d cadence_repeat=%d composed=%d source_pts=%.6f output_pts=%.6f source_crop=%.1f,%.1f-%.1f,%.1f target_crop=%.1f,%.1f-%.1f,%.1f present_start_qpc=%lld present_end_qpc=%lld",
                 SubtitleMeasurementWorker::TraceMonotonicUs(),subtitleIdentity.transportGeneration,sourceSequence,
                 subtitleIdentity.sourceFrameNumber,subtitleIdentity.captureTimestamp,subtitleIdentity.sourceFormatGeneration,
                 subtitleIdentity.rendererGeneration,subtitleIdentity.viewportGeneration,subtitleIdentity.analysisDomainKey,
                 localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,selected,cueSource,renderLoadSubmissionSerial+1,
-                temporal?1:0,cadenceRepeat?1:0,subtitleCompositionSucceeded?1:0,
+                int(subtitlePreviewMode),temporal?1:0,cadenceRepeat?1:0,subtitleCompositionSucceeded?1:0,
                 temporal ? temporalRenderer.SelectedPacketPts() : temporalRenderer.currentPts,
                 temporal ? temporalRenderer.outputPts : temporalRenderer.currentPts,
                 renderImage.crop.x0,renderImage.crop.y0,renderImage.crop.x1,renderImage.crop.y1,
