@@ -1025,12 +1025,19 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
     const int contrast = int(ref.luma)-matte;
     if (contrast < 24 || pixel.luma > matte+4+(contrast >> (distance<=2 ? 1 : distance<=4 ? 2 : 3)))
         return false;
-    int previous = ref.luma, drops = 0, rebounds = 0, equal = 0;
+    int previous = ref.luma, drops = 0, reboundLobes = 0, reboundRise = 0, equal = 0;
+    bool rising = false;
     for (int row=reference-inward; row!=y-inward; row-=inward) {
         AnalysisLumaSample next;
         if (!samples.Sample(x,row,next) || next.luma <= matte+1) return false;
         const int delta = int(next.luma)-previous;
-        if (delta > 0 && (++rebounds>1 || delta>contrast/8)) return false;
+        if (delta > 0) {
+            if (!rising) { ++reboundLobes; reboundRise=0; }
+            rising=true;
+            reboundRise+=delta;
+            if (reboundLobes>1 || reboundRise>contrast/8 ||
+                (boundary-row)*inward <= 0 || (boundary-row)*inward>8) return false;
+        } else if (delta < 0) rising=false;
         if (delta < -4) ++drops;
         if (delta == 0 && (equal++ >= 1) && (boundary-row)*inward>0) return false;
         if (delta != 0) equal=0;
@@ -1075,6 +1082,65 @@ bool MatchesAdjacentRaisedShoulders(SampleContext& samples, bool top, int depth,
             !FollowsRaisedEdge(samples,top,depth,neighbour,y,adjacent,matte)) return false;
     }
     return true;
+}
+
+// Explain a weak extended codec shoulder only when the current pixel is
+// continuously connected to a high-contrast picture edge and neighboring
+// columns share the same neutral plateau. Detached marks retain their veto.
+bool FollowsBroadRaisedPlateau(SampleContext& samples, bool top, int depth, int x, int y,
+    const AnalysisLumaSample& pixel, int matte) {
+    const int inward = top ? 1 : -1;
+    const int boundary = top ? depth : samples.source.height-depth-1;
+    const int distance = (boundary-y)*inward;
+    const int margin = std::min(32,std::max(2,samples.source.height/96));
+    if (distance <= 0 || distance > margin ||
+        pixel.luma <= matte+4 || pixel.luma > matte+20 ||
+        std::abs(int(pixel.chromaU)-512)>16 || std::abs(int(pixel.chromaV)-512)>16) return false;
+    const int reference = boundary+inward*std::max(1,samples.source.height/540);
+    AnalysisLumaSample inside;
+    if (!samples.Sample(x,reference,inside) || inside.luma < matte+24) return false;
+    // A glyph painted over the edge may reach the reference row without
+    // actually following its filtered transition. Require a gradual current
+    // descent across the entire picture-to-matte bridge, not a single cliff.
+    int edgePrevious = inside.luma, edgeDrops = 0;
+    for (int row=reference-inward; (row-boundary)*inward>=0; row-=inward) {
+        AnalysisLumaSample v;
+        if (!samples.Sample(x,row,v)) return false;
+        const int drop=edgePrevious-int(v.luma);
+        if (drop > std::max(16,(int(inside.luma)-matte)*2/3) || drop < -8) return false;
+        if (drop > 4) ++edgeDrops;
+        edgePrevious=v.luma;
+    }
+    if (edgeDrops < 2) return false;
+    int previous = pixel.luma;
+    for (int k=1; k<=distance; ++k) {
+        AnalysisLumaSample v;
+        if (!samples.Sample(x,y+inward*k,v) || int(v.luma)+8 < previous ||
+            v.luma <= matte+1) return false;
+        previous=v.luma;
+    }
+    bool returned=false;
+    for (int k=1; k<=margin+12 && y-inward*k>=0 && y-inward*k<samples.source.height; ++k) {
+        AnalysisLumaSample v;
+        if (!samples.Sample(x,y-inward*k,v) || int(v.luma)>int(pixel.luma)+8 ||
+            std::abs(int(v.chromaU)-512)>16 || std::abs(int(v.chromaV)-512)>16) return false;
+        if (v.luma<=matte+4) { returned=true; break; }
+    }
+    if (!returned) return false;
+    int neighbors=0;
+    for (int nx : {x-8,x+8}) {
+        if (nx<0 || nx>=samples.source.width) continue;
+        bool matches=true;
+        for (int offset : {-8,-4,0}) {
+            const int row=y+inward*offset;
+            AnalysisLumaSample a,b;
+            if (row<0 || row>=samples.source.height || !samples.Sample(x,row,a) || !samples.Sample(nx,row,b) ||
+                std::abs(int(a.luma)-int(b.luma))>4 ||
+                std::abs(int(b.chromaU)-512)>16 || std::abs(int(b.chromaV)-512)>16) { matches=false; break; }
+        }
+        if (matches) ++neighbors;
+    }
+    return neighbors != 0;
 }
 
 // A compressed edge can raise a band of the matte by a few 10-bit codes.
@@ -1175,7 +1241,8 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
                     columns.set(i);
                     if (pairedEdge && (FollowsRaisedEdge(samples,top,barPixels,x,y,pixel,matte) ||
                         MatchesAdjacentRaisedShoulders(samples,top,barPixels,x,y,pixel,matte) ||
-                        FollowsRingingProfile(samples,top,barPixels,x,y,pixel,matte)))
+                        FollowsRingingProfile(samples,top,barPixels,x,y,pixel,matte) ||
+                        FollowsBroadRaisedPlateau(samples,top,barPixels,x,y,pixel,matte)))
                         shoulder.set(i);
                     if (std::abs(int(pixel.luma)-matte) >= 16 || chromaDelta > 32)
                         strong.set(i);
