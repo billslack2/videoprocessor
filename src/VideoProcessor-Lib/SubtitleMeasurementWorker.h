@@ -5,6 +5,8 @@
 #include <DebugLog.h>
 #include <algorithm>
 #include <atomic>
+#include <array>
+#include <chrono>
 #include <cstdint>
 #include <condition_variable>
 #include <deque>
@@ -270,6 +272,11 @@ public:
         auto out=m_diagnostics;out.pending=m_pending.size();out.ready=m_ready.size();out.active=m_active;
         m_diagnostics={};return out;
     }
+    // Join worker and renderer records across threads on one monotonic clock.
+    static int64_t TraceMonotonicUs() noexcept {
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
     void Trace(const SubtitleBoxObservation& key,const char* stage,const char* reason="",uint64_t mismatch=0) const noexcept {
         auto r=AnalysisTraceRecord(key.identity,this,stage,reason);r.kind=AnalysisDiagnosticRecordKindV1::Worker;
         r.policyGeneration=key.policyGeneration;r.continuityGeneration=key.continuityGeneration;
@@ -324,6 +331,7 @@ public:
     // The head has advanced; queued scans for older transport frames cannot
     // become current. The active worker is left alone and remains nonblocking.
     void BeginSourceWindow(const ActivePictureFrameIdentity& head) {
+        LifecycleEvents<PendingCapacity> events;
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_windowHead.transportGeneration>head.transportGeneration ||
             (m_windowHead.transportGeneration==head.transportGeneration &&
@@ -331,9 +339,8 @@ public:
         m_windowHead=head;
         for(auto i=m_pending.begin();i!=m_pending.end();) {
             const auto& identity=i->key.identity;
-            if(identity.transportGeneration<head.transportGeneration ||
-                (identity.transportGeneration==head.transportGeneration &&
-                    identity.acceptedSequence<head.acceptedSequence)) {
+            if(BeforeWindow(identity,head)) {
+                events.Add(i->key,"drop","source-window-expired");
                 Trace(i->key,"worker-drop","source-window-expired");
                 i=m_pending.erase(i);
                 ++m_diagnostics.expired;
@@ -350,6 +357,7 @@ public:
         return ReadReady(key,out,true,false,nullptr);
     }
     void Submit(const SubtitleBoxObservation& key,Work work) {
+        LifecycleEvents<2> events;
         auto requestKey=key;
         // QueueSubtitleMeasurement submits only valid prepared sources. Mark
         // the request's scan path here so active and pending jobs can coalesce
@@ -359,17 +367,24 @@ public:
             !requestKey.sharedPicture.AvailableFor(
                 requestKey.identity,requestKey.width,requestKey.height);
         std::lock_guard<std::mutex> lock(m_mutex);
-        if(m_stopping)return;
-        if(requestKey.identity.transportGeneration<m_windowHead.transportGeneration ||
-            (requestKey.identity.transportGeneration==m_windowHead.transportGeneration &&
-                requestKey.identity.acceptedSequence<m_windowHead.acceptedSequence)) {
+        if(m_stopping) {
+            events.Add(requestKey,"reject","stopping");
+            return;
+        }
+        if(BeforeWindow(requestKey.identity,m_windowHead)) {
+            events.Add(requestKey,"reject","source-window-expired");
             Trace(requestKey,"worker-drop","source-window-expired");
             ++m_diagnostics.expired;return;
         }
-        if(m_active && SameKey(m_activeKey,requestKey)){Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return;}
-        for(const auto& job:m_pending)if(SameKey(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return;}
-        for(const auto& ready:m_ready)if(SameKey(ready,requestKey)){Trace(requestKey,"worker-dedup","ready");++m_diagnostics.deduplicated;return;}
-        if(m_pending.size()>=8) {
+        auto duplicate=[&](const char* reason) {
+            events.Add(requestKey,"skip",reason);
+            Trace(requestKey,"worker-dedup",reason);
+            ++m_diagnostics.deduplicated;
+        };
+        if(m_active && SameKey(m_activeKey,requestKey))return duplicate("active");
+        for(const auto& job:m_pending)if(SameKey(job.key,requestKey))return duplicate("queued");
+        for(const auto& ready:m_ready)if(SameKey(ready,requestKey))return duplicate("ready");
+        if(m_pending.size()>=PendingCapacity) {
             // Keep the nearest accepted source. A new current-frame request may
             // replace the farthest future; a later future cannot evict the head.
             auto leastUseful=m_pending.begin();
@@ -386,9 +401,11 @@ public:
             if(incoming.transportGeneration>worst.transportGeneration ||
                 (incoming.transportGeneration==worst.transportGeneration &&
                     incoming.acceptedSequence<worst.acceptedSequence)) {
+                events.Add(leastUseful->key,"drop","lower-priority-replaced");
                 Trace(leastUseful->key,"worker-drop","lower-priority-replaced");
                 m_pending.erase(leastUseful);
             } else {
+                events.Add(requestKey,"reject","future-capacity");
                 Trace(requestKey,"worker-drop","future-capacity");
                 ++m_diagnostics.dropped;
                 return;
@@ -408,15 +425,95 @@ public:
             });
         m_pending.insert(place,{requestKey,std::move(work)});
         ++m_diagnostics.submitted;
+        events.Add(requestKey,"submit","accepted");
         if(!m_thread.joinable())m_thread=std::thread([this]{ Run(); });
         m_changed.notify_one();
     }
     void Stop() {
-        {std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;m_pending.clear();}
+        {
+            LifecycleEvents<PendingCapacity> events;
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_stopping=true;
+            if(DebugLog::IsEnhancedLoggingEnabled())
+                for(const auto& job:m_pending)events.Add(job.key,"drop","stopping");
+            m_pending.clear();
+        }
         m_changed.notify_all();
         if(m_thread.joinable())m_thread.join();
     }
 private:
+    static constexpr size_t PendingCapacity=8;
+
+    static bool BeforeWindow(const ActivePictureFrameIdentity& source,const ActivePictureFrameIdentity& head) {
+        return source.transportGeneration<head.transportGeneration ||
+            (source.transportGeneration==head.transportGeneration && source.acceptedSequence<head.acceptedSequence);
+    }
+
+    // Capture the event at the queue transition. Format and enqueue its text after
+    // releasing the worker mutex. When disabled, leave all record storage untouched.
+    template<size_t Capacity>
+    class LifecycleEvents {
+        struct Event {
+            const char* stage;
+            const char* reason;
+            int64_t monoUs;
+            uint64_t generation,source,frame,capture,format,renderer,viewport,domain,policy,continuity;
+            uint64_t pictureSource,candidateSource,candidateRevision;
+            int left,top,right,bottom;
+            int width,height,nearBar,optimization,script;
+            unsigned stride;
+            bool discontinuity,pictureRequired,pictureUnavailable,candidate;
+            int candidateTop,candidateBottom;
+            bool haveResult,analyzed,detected,workLimit,alternate;
+            int pictureTop,pictureBottom,lines;
+            double waitMs,workMs;
+            char analysisReason[48];
+        };
+        std::array<Event,Capacity> m_events;
+        size_t m_count=0;
+    public:
+        void Add(const SubtitleBoxObservation& key,const char* stage,const char* reason,
+            const SubtitleBoxObservation* result=nullptr,double waitMs=0,double workMs=0) {
+            if(!DebugLog::IsEnhancedLoggingEnabled())return;
+            const auto& id=key.identity;
+            const auto& shared=key.sharedPicture;
+            const auto& hint=shared.inspectionCandidate;
+            auto& event=m_events[m_count++];
+            event={
+                stage,reason,TraceMonotonicUs(),id.transportGeneration,id.acceptedSequence,id.sourceFrameNumber,
+                id.captureTimestamp,id.sourceFormatGeneration,id.rendererGeneration,id.viewportGeneration,
+                id.analysisDomainKey,key.policyGeneration,key.continuityGeneration,shared.identity.acceptedSequence,
+                hint.originIdentity.acceptedSequence,hint.nativeGeometryRevision,
+                shared.bounds.left,shared.bounds.top,shared.bounds.right,shared.bounds.bottom,
+                key.width,key.height,key.nearBarDistance,key.optimizationMode,static_cast<int>(key.scriptHint),
+                key.analysisStride,key.discontinuity,shared.required,key.pictureAuthorityUnavailableForMeasurement,
+                hint.valid,hint.bounds.top,hint.bounds.bottom,result!=nullptr,result && result->analyzed,result && result->text.detected,
+                result && result->text.workLimit,result && result->publishedPictureCaption,
+                result?result->pictureTop:0,result?result->pictureBottom:0,result?result->text.lineCount:0,waitMs,workMs,{}
+            };
+            if(result)AnalysisTraceText(event.analysisReason,result->analyzed?result->text.diagnosticReason:"analysis-failed");
+        }
+        ~LifecycleEvents() {
+            for(size_t i=0;i<m_count;++i) {
+                const auto& e=m_events[i];
+                DebugLog::Log("VP subtitle worker: stage=%s reason=%s mono_us=%lld generation=%llu "
+                    "source=%llu source_frame=%llu capture_timestamp=%llu format_generation=%llu "
+                    "renderer_generation=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu "
+                    "width=%d height=%d stride=%u near_bar=%d optimization=%d script=%d discontinuity=%d "
+                    "shared_source=%llu shared_bounds=%d,%d,%d,%d shared_required=%d shared_unavailable=%d "
+                    "candidate=%d candidate_source=%llu candidate_revision=%llu candidate_planes=%d,%d "
+                    "result_present=%d analyzed=%d detected=%d work_limit=%d alternate=%d result_planes=%d,%d lines=%d analysis_reason=%s "
+                    "queue_wait_ms=%.3f work_ms=%.3f",
+                    e.stage,e.reason,e.monoUs,e.generation,e.source,e.frame,e.capture,e.format,e.renderer,
+                    e.viewport,e.domain,e.policy,e.continuity,e.width,e.height,e.stride,e.nearBar,e.optimization,
+                    e.script,e.discontinuity,e.pictureSource,e.left,e.top,e.right,e.bottom,e.pictureRequired,
+                    e.pictureUnavailable,e.candidate,e.candidateSource,e.candidateRevision,e.candidateTop,
+                    e.candidateBottom,e.haveResult,e.analyzed,e.detected,e.workLimit,e.alternate,e.pictureTop,
+                    e.pictureBottom,e.lines,e.haveResult?e.analysisReason:"none",e.waitMs,e.workMs);
+            }
+        }
+    };
+
     bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,
         bool backlogRetirementOnly,const AnalysisLumaSource* publishedSource) {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -489,11 +586,14 @@ private:
         SubtitleBarTrackingReference previous;
         for(;;) {
             Job job;
-            {std::unique_lock<std::mutex> lock(m_mutex);
+            {
+                LifecycleEvents<1> events;
+                std::unique_lock<std::mutex> lock(m_mutex);
                 m_changed.wait(lock,[this]{return m_stopping || !m_pending.empty();});
                 if(m_stopping)return;
                 job=std::move(m_pending.front());m_pending.pop_front();
                 m_active=true;m_activeKey=job.key;
+                events.Add(job.key,"start","dequeued");
             }
             Trace(job.key,"worker-start");
             const auto workStart=std::chrono::steady_clock::now();
@@ -503,7 +603,9 @@ private:
             const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
             const auto detector=scanner.TakeDetectorDiagnostics();
             Trace(result,"worker-complete",result.analyzed?result.text.diagnosticReason:"analysis-failed");
-            {std::lock_guard<std::mutex> lock(m_mutex);
+            {
+                LifecycleEvents<2> events;
+                std::lock_guard<std::mutex> lock(m_mutex);
                 ++m_diagnostics.completedJobs;
                 if(result.analyzed)++m_diagnostics.successfulJobs;
                 else m_diagnostics.failedJobElapsedMs+=ms;
@@ -524,8 +626,17 @@ private:
                 else {++m_diagnostics.fullScans;m_diagnostics.fullMs+=ms;m_diagnostics.fullPeakMs=(std::max)(m_diagnostics.fullPeakMs,ms);}
                 m_active=false;
                 if(!m_stopping) {
-                    if(m_ready.size()>=16)m_ready.pop_front();
+                    if(m_ready.size()>=16) {
+                        events.Add(m_ready.front(),"evict","ready-capacity");
+                        m_ready.pop_front();
+                    }
                     m_ready.push_back(std::move(result));
+                    if(DebugLog::IsEnhancedLoggingEnabled()) {
+                        const char* reason=BeforeWindow(job.key.identity,m_windowHead)?"cached-after-window":"cached";
+                        events.Add(job.key,"complete",reason,&m_ready.back(),waited,ms);
+                    }
+                } else {
+                    events.Add(job.key,"complete","discarded-stopping",&result,waited,ms);
                 }
             }
         }

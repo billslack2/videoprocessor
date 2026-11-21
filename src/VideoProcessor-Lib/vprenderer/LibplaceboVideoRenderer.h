@@ -175,6 +175,7 @@ private:
             AlphaSourceCrop::AsyncOutwardWindowContext outwardContext;
             bool outwardRequested=false;
             PreparedPictureEvidenceCache pictureProof;
+            std::atomic<uint32_t> subtitleTraceVisits{0};
             std::mutex mutex;
             std::shared_ptr<const void> nativeOwner;
             PreparedAnalysisFrame live;
