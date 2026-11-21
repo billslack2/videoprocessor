@@ -510,19 +510,21 @@ private:
     bool m_hasGuardedRememberedEnvelope = false;
     ActivePictureBounds m_guardedRememberedNominal;
 
-    // A publication remembers only its immediately preceding rectangle. Rapid
-    // returns may need a continuous run of current trusted measurements.
+    // Count an A/B round trip only when both geometry changes actually publish.
+    // A further rapid reversal can then require sustained current-source evidence.
     struct OscillationState {
         ActivePictureBounds previous, published, supporting;
         uint64_t changeFrame = 0, lastFrame = 0, supportStart = 0;
         double rate = 0.0;
-        bool armed = false, mixed = false;
+        bool rapidReturnPublished = false, armed = false, mixed = false;
     };
     OscillationState m_oscillation;
     unsigned m_oscillationHoldMs = 0;
     void TrackOscillationObservation(const ActivePictureObservation& observation);
-    void RecordOscillationPublication(const ActivePictureBounds& target, uint64_t sourceFrame);
-    bool OscillationBlocks(const ActivePictureBounds& target) const;
+    void RecordOscillationPublication(const ActivePictureBounds& target, const ActivePictureObservation& current);
+    static bool CurrentNativeOscillationSupport(const ActivePictureObservation& current,
+        const ActivePictureBounds& target);
+    bool OscillationBlocks(const ActivePictureBounds& target, const ActivePictureObservation& current) const;
     bool HasSustainedOscillationSupport(const ActivePictureBounds& target) const;
 
 	void StartCandidate(const ActivePictureObservation& observation);

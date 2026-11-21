@@ -56,6 +56,17 @@ namespace VideoProcessorTest
 				bounds, frameNumber, true, classification, framesPerSecond });
 		}
 
+        void ExpectOrdinaryTrustedCut(ActivePictureTransitionModel& model,
+            const ActivePictureBounds& target, uint64_t& frame, double rate)
+        {
+            const auto trusted = ActivePictureClassification::BAR_CROP_TRUSTED;
+            const auto first = Observe(model, target, frame++, trusted, rate);
+            Assert::IsFalse(first.publish || model.OscillationRequiresFullRasterPresentation());
+            const auto confirmed = Observe(model, target, frame++, trusted, rate);
+            Assert::IsTrue(confirmed.publish && confirmed.bounds.SameRectangleAndAxes(target));
+            Assert::IsFalse(model.OscillationRequiresFullRasterPresentation());
+        }
+
 		uint64_t Establish(
 			ActivePictureTransitionModel& model,
 			const ActivePictureBounds& bounds,
@@ -111,6 +122,60 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(IsolatedReturnsRemainOrdinaryAcrossAQuietInterval)
+        {
+            const auto bars = ActivePictureClassification::BAR_CROP_TRUSTED;
+            for (const double rate : {24000.0/1001.0, 60000.0/1001.0}) {
+                ActivePictureTransitionModel model;
+                model.SetOscillationHoldMilliseconds(2000);
+                const auto inner = ScopeBounds(), outer = ImaxBounds();
+                auto frame = Establish(model, inner);
+                ExpectOrdinaryTrustedCut(model, outer, frame, rate);
+                ExpectOrdinaryTrustedCut(model, inner, frame, rate);
+                const auto quietFrames = static_cast<unsigned>(std::ceil(2.0 * rate));
+                for (unsigned i = 0; i < quietFrames; ++i)
+                    Assert::IsFalse(Observe(model, inner, frame++, bars, rate).publish);
+                ExpectOrdinaryTrustedCut(model, outer, frame, rate);
+                ExpectOrdinaryTrustedCut(model, inner, frame, rate);
+            }
+        }
+
+        TEST_METHOD(AnUnconfirmedCandidateDoesNotCountAsAnOscillation)
+        {
+            const auto bars = ActivePictureClassification::BAR_CROP_TRUSTED;
+            const auto inner = ScopeBounds(), outer = ImaxBounds();
+            ActivePictureTransitionModel model;
+            model.SetOscillationHoldMilliseconds(2000);
+            auto frame = Establish(model, inner);
+            ExpectOrdinaryTrustedCut(model, outer, frame, 24);
+            Assert::IsFalse(Observe(model, inner, frame++, bars, 24).publish);
+            Assert::IsFalse(Observe(model, outer, frame++, bars, 24).publish);
+            ExpectOrdinaryTrustedCut(model, inner, frame, 24);
+        }
+
+        TEST_METHOD(AnIsolatedInwardReturnRequiresCurrentNativePixels)
+        {
+            const auto bars = ActivePictureClassification::BAR_CROP_TRUSTED;
+            const auto inner = ScopeBounds(), outer = ImaxBounds();
+            ActivePictureTransitionModel model;
+            model.SetOscillationHoldMilliseconds(2000);
+            auto frame = Establish(model, inner);
+            ExpectOrdinaryTrustedCut(model, outer, frame, 24);
+            for (int i = 0; i < 3; ++i) {
+                const auto d = Observe(model, inner, frame++, ActivePictureClassification::PROVISIONAL, 24);
+                Assert::IsFalse(d.publish || d.clearTransition);
+                Assert::IsTrue(d.stable && d.stableBounds.SameRectangleAndAxes(outer));
+            }
+            for (int i = 0; i < ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS; ++i) {
+                const auto d = Observe(model, inner, frame++, bars, 24);
+                if (d.publish) {
+                    Assert::IsTrue(d.bounds.SameRectangleAndAxes(inner));
+                    return;
+                }
+            }
+            Assert::Fail(L"Trusted pixels did not confirm the isolated inward return");
+        }
+
         TEST_METHOD(OscillationSupportBreaksOnUnknownGapsAndSceneEdits)
         {
             constexpr double rate=24.0;
@@ -119,8 +184,11 @@ namespace VideoProcessorTest
                 ActivePictureTransitionModel model;
                 model.SetOscillationHoldMilliseconds(2000);
                 auto frame=Establish(model,ScopeBounds());
-                Observe(model,ImaxBounds(),frame++,bars,rate);
-                Assert::IsTrue(Observe(model,ImaxBounds(),frame++,bars,rate).publish);
+                ExpectOrdinaryTrustedCut(model, ImaxBounds(), frame, rate);
+                ExpectOrdinaryTrustedCut(model, ScopeBounds(), frame, rate);
+                // The next outing exposes more picture immediately. A subsequent
+                // tighter return must accumulate fresh uninterrupted support.
+                ExpectOrdinaryTrustedCut(model, ImaxBounds(), frame, rate);
                 for (int i=0;i<40;++i)
                     Assert::IsFalse(Observe(model,ScopeBounds(),frame++,bars,rate).publish);
                 if (interruption==0) model.Observe({{},frame++,false});
@@ -144,12 +212,12 @@ namespace VideoProcessorTest
                 ActivePictureTransitionModel model;
                 model.SetOscillationHoldMilliseconds(1000);
                 auto frame=Establish(model,pillars);
-                Observe(model,scope,frame++,bars,24);
-                Assert::IsTrue(Observe(model,scope,frame++,bars,24).publish);
-                const auto repeat=Observe(model,pillars,frame-1,bars,24);
+                ExpectOrdinaryTrustedCut(model, scope, frame, 24);
+                ExpectOrdinaryTrustedCut(model, pillars, frame, 24);
+                const auto repeat=Observe(model,scope,frame-1,bars,24);
                 Assert::IsFalse(repeat.publish || repeat.clearTransition || model.OscillationRequiresFullRasterPresentation());
                 for (int i=0;i<40;++i) {
-                    const auto d=Observe(model,i%4<2 ? pillars : scope,frame++,bars,24);
+                    const auto d=Observe(model,i%4<2 ? scope : pillars,frame++,bars,24);
                     Assert::IsTrue(d.clearTransition && !d.publish && !d.stable);
                     Assert::IsTrue(d.authoritativeClassification==ActivePictureClassification::UNAVAILABLE);
                     Assert::IsTrue(model.OscillationRequiresFullRasterPresentation());
@@ -187,6 +255,12 @@ namespace VideoProcessorTest
             Assert::IsTrue(model.AdoptPublishedDecision(queued,bars,false,&why,nullptr,false,&current));
             std::swap(queued.bounds,queued.stableBounds);
             Assert::IsFalse(model.AdoptPublishedDecision(queued,bars,false,&why));
+            current={queued.bounds,frame++,true,bars,24};
+            Assert::IsTrue(model.AdoptPublishedDecision(queued,bars,false,&why,nullptr,false,&current));
+            std::swap(queued.bounds,queued.stableBounds);
+            current={queued.bounds,frame++,true,bars,24};
+            Assert::IsTrue(model.AdoptPublishedDecision(queued,bars,false,&why,nullptr,false,&current));
+            std::swap(queued.bounds,queued.stableBounds);
             const auto first=frame;
             for (;frame<first+24;++frame) {
                 current={queued.bounds,frame,true,bars,24};
@@ -204,9 +278,9 @@ namespace VideoProcessorTest
             for (int reset=0; reset<3; ++reset) {
                 ActivePictureTransitionModel model;
                 model.SetOscillationHoldMilliseconds(2000);
-                auto frame=Establish(model,ScopeBounds());
-                Observe(model,ImaxBounds(),frame++,bars,24);
-                Assert::IsTrue(Observe(model,ImaxBounds(),frame++,bars,24).publish);
+                auto frame=Establish(model,ImaxBounds());
+                ExpectOrdinaryTrustedCut(model, ScopeBounds(), frame, 24);
+                ExpectOrdinaryTrustedCut(model, ImaxBounds(), frame, 24);
                 Assert::IsFalse(Observe(model,ScopeBounds(),frame++,bars,24).publish);
                 Assert::IsFalse(Observe(model,ScopeBounds(),frame++,bars,24).publish);
                 if (reset==0) model.SetOscillationHoldMilliseconds(0);

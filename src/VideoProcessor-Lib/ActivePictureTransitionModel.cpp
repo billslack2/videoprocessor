@@ -158,15 +158,26 @@ void ActivePictureTransitionModel::SetOscillationHoldMilliseconds(unsigned milli
 }
 
 void ActivePictureTransitionModel::RecordOscillationPublication(
-    const ActivePictureBounds& target, uint64_t sourceFrame)
+    const ActivePictureBounds& target, const ActivePictureObservation& current)
 {
     if (!m_oscillationHoldMs) return;
     if (m_hasStable && !MateriallyDifferent(m_stable,target)) return;
+    const uint64_t sourceFrame = current.frameNumber;
+    const auto& cycle = m_oscillation;
+    // This publication closes A -> B -> A. Candidate votes, lookahead through
+    // later frames, and isolated returns outside the interval do not count.
+    const bool rapidReturn = cycle.changeFrame && sourceFrame > cycle.changeFrame &&
+        std::isfinite(current.framesPerSecond) && current.framesPerSecond > 0.0 &&
+        1000.0*(sourceFrame-cycle.changeFrame) < current.framesPerSecond*m_oscillationHoldMs &&
+        m_hasStable && m_stable.trustedBarAxes == cycle.published.trustedBarAxes &&
+        SameBounds(m_stable,cycle.published) && target.trustedBarAxes == cycle.previous.trustedBarAxes &&
+        SameBounds(target,cycle.previous) && CurrentNativeOscillationSupport(current,target);
     m_oscillation = {};
     if (m_hasStable && sourceFrame && m_stable.rasterWidth == target.rasterWidth &&
         m_stable.rasterHeight == target.rasterHeight) {
         m_oscillation.previous = m_stable;
         m_oscillation.published = target;
+        m_oscillation.rapidReturnPublished = rapidReturn;
         m_oscillation.changeFrame = sourceFrame;
         m_oscillation.lastFrame = sourceFrame;
     }
@@ -178,6 +189,15 @@ bool ActivePictureTransitionModel::HasSustainedOscillationSupport(const ActivePi
     return cycle.supportStart && cycle.lastFrame >= cycle.supportStart &&
         SameBounds(cycle.supporting,target) && cycle.supporting.trustedBarAxes == target.trustedBarAxes &&
         1000.0 * (cycle.lastFrame-cycle.supportStart) >= cycle.rate * m_oscillationHoldMs;
+}
+
+bool ActivePictureTransitionModel::CurrentNativeOscillationSupport(
+    const ActivePictureObservation& current, const ActivePictureBounds& target)
+{
+    return current.frameNumber && !current.transitionDeferred &&
+        current.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE && HasCropAuthority(current) &&
+        !current.axisEvidence.HasBlockingFailedBar(current.bounds) &&
+        current.bounds.trustedBarAxes == target.trustedBarAxes && SameBounds(current.bounds,target);
 }
 
 void ActivePictureTransitionModel::TrackOscillationObservation(const ActivePictureObservation& observation)
@@ -200,14 +220,11 @@ void ActivePictureTransitionModel::TrackOscillationObservation(const ActivePictu
         frame-cycle.lastFrame <= AnalysisIntervalFrames(rate);
     cycle.lastFrame = frame;
     cycle.rate = rate;
-    const bool trusted = !observation.transitionDeferred &&
-        observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
-        HasCropAuthority(observation) && !observation.axisEvidence.HasBlockingFailedBar(observation.bounds);
-    if (!trusted) {
+    if (!CurrentNativeOscillationSupport(observation,observation.bounds)) {
         cycle.supportStart = 0;
         return;
     }
-    if (!cycle.armed && SameBounds(cycle.previous,observation.bounds) &&
+    if (cycle.rapidReturnPublished && !cycle.armed && SameBounds(cycle.previous,observation.bounds) &&
         cycle.previous.trustedBarAxes == observation.bounds.trustedBarAxes &&
         !ContainsPicture(observation.bounds,cycle.published)) {
         cycle.armed = true;
@@ -234,7 +251,8 @@ void ActivePictureTransitionModel::TrackOscillationObservation(const ActivePictu
         cycle = {};
 }
 
-bool ActivePictureTransitionModel::OscillationBlocks(const ActivePictureBounds& target) const
+bool ActivePictureTransitionModel::OscillationBlocks(const ActivePictureBounds& target,
+    const ActivePictureObservation& current) const
 {
     const auto& cycle = m_oscillation;
     if (!cycle.changeFrame) return false;
@@ -243,9 +261,12 @@ bool ActivePictureTransitionModel::OscillationBlocks(const ActivePictureBounds& 
             return false;
         return !HasSustainedOscillationSupport(target);
     }
-    return !ContainsPicture(target,cycle.published) &&
-        cycle.previous.trustedBarAxes == target.trustedBarAxes && SameBounds(cycle.previous,target) &&
-        !HasSustainedOscillationSupport(target);
+    if (ContainsPicture(target,cycle.published) || cycle.previous.trustedBarAxes != target.trustedBarAxes ||
+        !SameBounds(cycle.previous,target)) return false;
+    // A single well-supported return is a normal cut. A remembered rectangle
+    // or a provisional match cannot remove pixels on its own.
+    if (!cycle.rapidReturnPublished) return !CurrentNativeOscillationSupport(current,target);
+    return !HasSustainedOscillationSupport(target);
 }
 
 void ActivePictureTransitionModel::SetStableGeometryDeadbandPercent(
@@ -1042,7 +1063,7 @@ ActivePictureTransitionModel::CommitCandidate(
 	{
 		committedBounds = observation.bounds;
 	}
-    if (OscillationBlocks(committedBounds)) {
+    if (OscillationBlocks(committedBounds,observation)) {
         ActivePictureTransitionDecision hold;
         hold.stable = m_hasStable;
         hold.state = m_hasStable ? ActivePictureTransitionState::STABLE : ActivePictureTransitionState::UNAVAILABLE;
@@ -1078,7 +1099,7 @@ ActivePictureTransitionModel::CommitCandidate(
 	{
 		RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);
 	}
-    RecordOscillationPublication(committedBounds, observation.frameNumber);
+    RecordOscillationPublication(committedBounds, observation);
 	m_stable = committedBounds;
 	m_stableClassification = m_candidateClassification;
 	m_stableOrigin = m_candidateOrigin;
@@ -1154,7 +1175,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
     }
 
 
-    if (m_oscillation.mixed && (!observation.available || OscillationBlocks(observation.bounds))) {
+    if (m_oscillation.mixed && (!observation.available || OscillationBlocks(observation.bounds,observation))) {
         decision.reason = "alternating intersecting formats require uncropped current-source presentation";
         return decision;
     }
@@ -1635,9 +1656,9 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
             (m_lastObservedFrame && currentObservation->frameNumber <= m_lastObservedFrame))
             return reject(ActivePicturePublicationAdmission::OSCILLATING_FORMAT_RETAINED);
         TrackOscillationObservation(*currentObservation);
-        if (OscillationBlocks(decision.bounds))
+        if (OscillationBlocks(decision.bounds,*currentObservation))
             return reject(ActivePicturePublicationAdmission::OSCILLATING_FORMAT_RETAINED);
-        RecordOscillationPublication(decision.bounds,currentObservation->frameNumber);
+        RecordOscillationPublication(decision.bounds,*currentObservation);
         m_lastObservedFrame = currentObservation->frameNumber;
     }
 	if (m_hasStable && !SameBounds(m_stable, decision.bounds))
@@ -1754,8 +1775,8 @@ bool ActivePictureTransitionModel::AdoptGuardedRememberedReturn(
         decision.authorityOrigin != ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN ||
         !trial.m_hasGuardedRememberedEnvelope) return false;
     // Future-window verification cannot shorten an active oscillation dwell.
-    if (OscillationBlocks(decision.bounds)) return false;
-    RecordOscillationPublication(decision.bounds,observations[0].frameNumber);
+    if (OscillationBlocks(decision.bounds,observations[0])) return false;
+    RecordOscillationPublication(decision.bounds,observations[0]);
     // Commit only presentation authority. Never copy future observation clocks,
     // source context or newly accumulated qualification into the live model.
     RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);
