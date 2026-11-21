@@ -1484,6 +1484,186 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(LoggedRaisedEdgeShelfDoesNotNarrowTheDisplay)
+        {
+            using namespace AlphaSourceCrop;
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            auto frame=MovingBroadcastEdge(0,true);
+            // Recorded accepted sequence 2222 (source frame 4048): sample columns x=862..922 and
+            // 1192..1207, rows 1893..1909. Intervening columns and the rest
+            // of this artificial frame are modeled, not captured pixels.
+            const int profiles[][17]={
+                {297,293,283,262,201,146,129,126,129,132,129,132,129,126,122,126,122},
+                {286,283,280,262,201,146,129,126,126,129,129,129,129,126,122,122,122},
+                {293,297,286,262,201,146,129,129,126,129,129,129,129,129,122,122,122},
+                {293,293,286,262,201,146,129,126,126,129,129,129,129,126,122,122,122},
+                {300,304,290,262,201,146,129,126,126,126,126,129,129,126,122,122,122},
+                {365,369,355,327,235,160,136,129,129,129,129,129,126,122,119,119,119}};
+            const int left[]={855,870,885,900,915,1185};
+            const int right[]={870,885,900,915,930,1215};
+            for(int x=0;x<6;++x) for(int y=0;y<17;++y)
+                frame.FillRectangle(left[x],1893+y,right[x],1894+y,profiles[x][y],507,508);
+            auto source=frame.P010Source(); source.range=AnalysisLumaRange::Limited;
+            const auto evidence=EvaluateActivePicturePresentationRetention(source,native);
+            const auto input=RaisedBroadcastCropInput(native,evidence,1957);
+            auto selected=AdmitCropPresentation({},input,Evaluate(input),5,&evidence);
+            const bool protect=ProtectCurrentNativeMatteDetail(selected,input,evidence,native,1,1957);
+            FinalAspectLimitFillInput fill;
+            fill.crop=input; fill.presentation=selected.presentation;
+            fill.configuredScreenActive=true; fill.configured.screenAspect=2.35;
+            fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+            fill.configured.narrowerAspectLimit=2.32;
+            fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+            fill.configured.widerAspectLimit=2.42;
+            const auto result=protect ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+            const auto bounds=result.applied ? result.sourceBounds : selected.presentation.sourceBounds;
+            Assert::IsTrue(selected.presentation.applyCrop);
+            Assert::AreEqual(0,bounds.left); Assert::AreEqual(3840,bounds.right);
+            Assert::AreEqual(262,bounds.top); Assert::AreEqual(1896,bounds.bottom);
+            // A detached faint dot in the same matte is actual source detail.
+            // It must survive even when the separate connected shelf is ignored.
+            frame.FillRectangle(1800,1930,1806,1936,126,507,508);
+            auto withDot=frame.P010Source(); withDot.range=AnalysisLumaRange::Limited;
+            const auto dotEvidence=EvaluateActivePicturePresentationRetention(withDot,native);
+            auto dotInput=RaisedBroadcastCropInput(native,dotEvidence,1958);
+            auto dot=AdmitCropPresentation({},dotInput,Evaluate(dotInput),5,&dotEvidence);
+            ProtectCurrentNativeMatteDetail(dot,dotInput,dotEvidence,native,1,1958);
+            Assert::IsTrue(dot.presentation.sourceBounds.bottom>=1936,
+                L"A detached faint mark remains visible.");
+            // A narrow connected underline can cross the physical picture edge.
+            // Its luma matches the weak shelf; geometry alone must not erase it.
+            auto underline=MovingBroadcastEdge(0,true);
+            underline.FillRectangle(1800,1894,1848,1914,126,507,508);
+            auto withUnderline=underline.P010Source(); withUnderline.range=AnalysisLumaRange::Limited;
+            const auto lineEvidence=EvaluateActivePicturePresentationRetention(withUnderline,native);
+            auto lineInput=RaisedBroadcastCropInput(native,lineEvidence,1959);
+            auto line=AdmitCropPresentation({},lineInput,Evaluate(lineInput),5,&lineEvidence);
+            ProtectCurrentNativeMatteDetail(line,lineInput,lineEvidence,native,1,1959);
+            Assert::IsTrue(line.presentation.sourceBounds.bottom>=1914,
+                L"A faint connected underline remains visible.");
+        }
+
+        TEST_METHOD(LoggedRenewalRingingDoesNotNarrowTheDisplay)
+        {
+            using namespace AlphaSourceCrop;
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            auto frame=MovingBroadcastEdge(1,true);
+            // Accepted sequence 2471: rows 1893..1922 at the logged columns.
+            // Each column is modeled as a 12-pixel strip; surrounding picture
+            // and matte are synthetic, so this is not a replay of the frame.
+            const int profiles[][30]={
+                {358,358,338,297,239,180,146,126,122,126,126,126,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122},
+                {386,386,355,300,235,177,143,122,122,126,126,126,122,122,122,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119},
+                {389,386,365,314,242,180,143,122,122,129,129,126,122,122,122,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119},
+                {393,393,375,338,256,180,139,122,129,143,136,129,126,126,122,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119},
+                {393,393,375,334,256,184,143,122,122,132,132,132,129,126,122,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119},
+                {393,393,375,334,256,184,143,122,126,139,136,129,126,126,122,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119},
+                {393,393,369,324,256,194,153,126,126,126,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122}};
+            const int left[]={2812,2876,2888,2896,2900,2908,2972};
+            const int right[]={2824,2888,2896,2900,2908,2920,2984};
+            for(int x=0;x<7;++x) for(int y=0;y<30;++y)
+                frame.FillRectangle(left[x],1893+y,right[x],1894+y,profiles[x][y],507,508);
+            auto source=frame.P010Source(); source.range=AnalysisLumaRange::Limited;
+            const auto evidence=EvaluateActivePicturePresentationRetention(source,native);
+            auto input=RaisedBroadcastCropInput(native,evidence,2471);
+            auto selected=AdmitCropPresentation({},input,Evaluate(input),5,&evidence);
+            const bool protect=ProtectCurrentNativeMatteDetail(selected,input,evidence,native,1,2471);
+            FinalAspectLimitFillInput fill;
+            fill.crop=input; fill.presentation=selected.presentation;
+            fill.configuredScreenActive=true; fill.configured.screenAspect=2.35;
+            fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+            fill.configured.narrowerAspectLimit=2.32;
+            fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+            fill.configured.widerAspectLimit=2.42;
+            const auto result=protect ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+            const auto bounds=result.applied ? result.sourceBounds : selected.presentation.sourceBounds;
+            Assert::IsTrue(selected.presentation.applyCrop);
+            Assert::AreEqual(0,bounds.left); Assert::AreEqual(3840,bounds.right);
+            Assert::AreEqual(262,bounds.top); Assert::AreEqual(1896,bounds.bottom);
+        }
+
+        TEST_METHOD(OptionalRecordedRaisedMatteKeepsScopeAtSourceCadence)
+        {
+            using namespace AlphaSourceCrop;
+            // Private 2026-11-21 P010 capture: accepted 2198..2313, native
+            // measured crop 0,260-3840,1898. The saved files have gaps; use
+            // their sidecar identities rather than treating them as consecutive.
+            // No video pixels are checked into the repository.
+            char* path=nullptr; size_t pathLength=0;
+            _dupenv_s(&path,&pathLength,"VP_RAISED_MATTE_CAPTURE_DIR");
+            const std::string dir=path ? path : ""; std::free(path);
+            if(dir.empty()) {
+                Logger::WriteMessage(L"Set VP_RAISED_MATTE_CAPTURE_DIR to run the private recorded replay.");
+                return;
+            }
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            CropPresentationAdmissionState previous;
+            RaisedMattePresentationHold hold{};
+            int examined=0, incorrect=0, coldIncorrect=0;
+            std::ostringstream coldFailures;
+            for(int ordinal=1;ordinal<=86;++ordinal) {
+                char name[32]; sprintf_s(name,"frame-%06d.bin",ordinal);
+                const std::string file=dir+"/"+name;
+                std::ifstream metadata(file.substr(0,file.size()-4)+".txt");
+                int w,h,format,encoding,colorspace,top,bottom,hint,range;
+                size_t pitch,chromaPitch;
+                std::string tag; uint64_t transport,sequence,source,timestamp,formatGeneration,viewport,renderer,domain;
+                metadata>>w>>h>>pitch>>chromaPitch>>format>>encoding>>colorspace>>top>>bottom>>hint>>range
+                    >>tag>>transport>>sequence>>source>>timestamp>>formatGeneration>>viewport>>renderer>>domain;
+                Assert::IsTrue(bool(metadata) && tag=="identity_v1");
+                Assert::AreEqual(3840,w); Assert::AreEqual(2160,h);
+                Assert::AreEqual(260,top); Assert::AreEqual(1898,bottom);
+                Assert::IsTrue(format==int(AnalysisLumaFormat::P010));
+                Assert::IsTrue(colorspace>=int(ColorSpace::UNKNOWN) && colorspace<=int(ColorSpace::BT_2020));
+                P010Frame frame(w,h);
+                Assert::AreEqual(frame.pitch,pitch); Assert::AreEqual(frame.pitch,chromaPitch);
+                std::ifstream raw(file,std::ios::binary);
+                raw.read(reinterpret_cast<char*>(frame.bytes.data()),std::streamsize(frame.bytes.size()));
+                Assert::IsTrue(bool(raw));
+                auto luma=frame.P010Source();
+                luma.encoding=static_cast<VideoFrameEncoding>(encoding);
+                luma.colorspace=static_cast<ColorSpace>(colorspace);
+                luma.range=static_cast<AnalysisLumaRange>(range); luma.generation=transport;
+                const auto evidence=EvaluateActivePicturePresentationRetention(luma,native);
+                auto input=RaisedBroadcastCropInput(native,evidence,sequence);
+                input.geometrySourceGeneration=input.frameSourceGeneration=input.currentVisibleSourceGeneration=transport;
+                auto cold=AdmitCropPresentation({},input,Evaluate(input),5,&evidence);
+                const bool coldProtected=ProtectCurrentNativeMatteDetail(cold,input,evidence,native,transport,sequence);
+                FinalAspectLimitFillInput coldFill;
+                coldFill.crop=input; coldFill.presentation=cold.presentation;
+                coldFill.configuredScreenActive=true; coldFill.configured.screenAspect=2.35;
+                coldFill.configured.cropNarrowerContentToFillScreen=coldFill.configured.narrowerLimitConfigured=true;
+                coldFill.configured.narrowerAspectLimit=2.32;
+                coldFill.configured.cropWiderContentToFillScreen=coldFill.configured.widerLimitConfigured=true;
+                coldFill.configured.widerAspectLimit=2.42;
+                const auto coldResult=coldProtected ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(coldFill);
+                const auto coldBounds=coldResult.applied ? coldResult.sourceBounds : cold.presentation.sourceBounds;
+                if(!cold.presentation.applyCrop || coldBounds.left!=0 || coldBounds.right!=3840 ||
+                    coldBounds.top!=262 || coldBounds.bottom!=1896) { ++coldIncorrect; coldFailures << sequence << " "; }
+                auto selected=AdmitCropPresentation(previous,input,Evaluate(input),5,&evidence);
+                const bool protectedDetail=ProtectCurrentNativeMatteDetail(selected,input,evidence,native,transport,sequence,
+                    &hold,timestamp/10000,2000,domain);
+                FinalAspectLimitFillInput fill;
+                fill.crop=input; fill.presentation=selected.presentation;
+                fill.configuredScreenActive=true; fill.configured.screenAspect=2.35;
+                fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                fill.configured.narrowerAspectLimit=2.32;
+                fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+                fill.configured.widerAspectLimit=2.42;
+                const auto finalFill=protectedDetail ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+                const auto finalBounds=finalFill.applied ? finalFill.sourceBounds : selected.presentation.sourceBounds;
+                if(!selected.presentation.applyCrop || finalBounds.left!=0 || finalBounds.right!=3840 ||
+                    finalBounds.top!=262 || finalBounds.bottom!=1896) ++incorrect;
+                previous=selected.state; ++examined;
+            }
+            Assert::AreEqual(86,examined);
+            if(coldIncorrect) {
+                const auto message=std::string("Independent cold selections retain a conservative margin at sequences: ")+coldFailures.str();
+                Logger::WriteMessage(message.c_str());
+            }
+            Assert::AreEqual(0,incorrect,L"The no-text recording must keep the measured scope and full display width on every current source.");
+        }
+
         TEST_METHOD(ShallowPhysicalChangeAndDetachedGrayDetailsRemainVisible)
         {
             using namespace AlphaSourceCrop;
