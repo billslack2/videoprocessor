@@ -15,11 +15,80 @@ Result scene(int w,int h,int l,int t,int r,int b,bool dirty=false,bool captions=
    return true;
  },[]{return true;});
 }
+// A measurable lateral gradient begins at the matte edge, before the much
+// brighter interior structure. The lower caption is present on either side
+// of the cut. A uniform intermediate layer is the distinct matte control.
+static void CheckDarkPictureEntry() {
+    constexpr int width=3840,height=2160;
+    const Prior interior{width,height,0,400,width,height-400,true};
+    for (bool fullRange : {false,true}) {
+        const int black=fullRange?0:64;
+        for (int outer : {68,92}) {
+            const Prior actual{width,height,0,outer,width,height-outer,true};
+            for (const Prior& initial : {Prior{},actual,interior}) {
+                Prior history=initial;
+                bool keepsPicture=true;
+                for (int frame=0;frame<12;++frame) {
+                    const int spans[]={32,28,24,16};
+                    const int span=spans[frame%4];
+                    const int inner=400+(frame%3)*8;
+                    const auto measured=Measure(width,height,black,[&](int x,int y,Pixel& p) {
+                        const int depth=(std::min)(y,height-1-y);
+                        int luma=black;
+                        if(depth>=outer) luma+=20-span/2+span*x/(width-1);
+                        if(depth>=inner) luma=black+236;
+                        if(frame%3==1 && depth>=inner && depth<inner+3) luma=black+720;
+                        if(frame%4!=2 && x>=1600 && x<2240 && y>=2110 && y<2142) luma=black+636;
+                        p={luma,512,512};return true;
+                    },[]{return true;},24000,&history);
+                    if(!measured.complete || measured.kind!=Kind::Bars || measured.left!=0 ||
+                        measured.right!=width || measured.top!=outer || measured.bottom!=height-outer) {
+                        if(keepsPicture) dump(measured);
+                        keepsPicture=false;
+                    }
+                    // A scene/format reset drops history; a wrong old picture can
+                    // also be current at startup before the new cut is seen.
+                    history=frame==4 ? Prior{} : Prior{width,height,measured.left,measured.top,
+                        measured.right,measured.bottom,measured.kind==Kind::Bars};
+                }
+                check(keepsPicture,"dim structured picture survives cold, reacquired and competing interior edges");
+            }
+        }
+        for(int hits:{0,1,2}) for(bool noisy:{false,true}) {
+            const auto layered=Measure(width,height,black,[&](int x,int y,Pixel& p) {
+                const int depth=(std::min)(y,height-1-y);
+                int luma=depth<68?black:depth<400?black+20:black+236;
+                if(noisy && depth>=68 && depth<400) luma+=(x/256+7*(y/5))%11-5;
+                // Local static marks in a neutral layer cannot establish distributed picture.
+                if(depth>=68 && depth<400 && x>=1120 && x<1120+hits*80) luma+=40;
+                p={luma,512,512};return true;
+            },[]{return true;});
+            check(layered.kind==Kind::Bars && layered.top==400 && layered.bottom==height-400,
+                  "flat layered matte and sparse marks retain the measured inner picture boundary");
+        }
+    }
+}
+
 int main(){
+ CheckDarkPictureEntry();
  auto a=scene(3840,2160,0,277,0,277,true,true);
  dump(a);check(a.kind==Kind::Bars&&a.top==277&&a.bottom==1883&&a.left==0&&a.right==3840,"dirty scope with bottom captions and unsnapped ratio");
  auto b=scene(1920,1080,240,0,240,0);
  check(b.kind==Kind::Bars&&b.left==240&&b.right==1680&&b.top==0,"pillarbox");
+ auto texturedSides=[](int x,int y,int&v){
+   const int depth=std::min(x,3839-x);
+   v=depth>=1120?460:136;
+   if(depth<1000 && y>=160 && y<1200)
+     v+=int(110*std::pow(std::sin(depth/210.0),2));
+   return true;
+ };
+ const Prior falsePanel{3840,2160,1120,0,2720,2160,true};
+ auto panel=Measure(3840,2160,64,texturedSides,[]{return true;},24000,&falsePanel);
+ check(panel.complete&&panel.kind!=Kind::Bars&&panel.acceptedPairAttempt[0]==0,
+       "distributed picture detail inside both proposed side bars vetoes the crop");
+ auto narrow=scene(3840,2160,1120,0,1120,0);
+ check(narrow.kind==Kind::Bars&&narrow.left==1120&&narrow.right==2720,
+       "genuine black pillarbox can have the same narrow geometry");
  auto c=scene(1920,1080,100,120,100,120);
  dump(c);check(c.kind==Kind::Bars&&c.left==100&&c.top==120&&c.right==1820&&c.bottom==960,"windowbox");
  auto full=scene(1920,1080,0,0,0,0);
@@ -46,11 +115,35 @@ int main(){
      v=black+((y<137||y>=943)?340:370);return true;
    },[]{return true;});
    check(panel.kind!=Kind::Bars,"small inward step on bright exterior cannot authorize crop");
+   for(const int leftMatte:{80,240}){
+     auto middleGray=Measure(1920,1080,black,[=](int x,int,int& v){
+       v=black+(x<240?leftMatte:x>=1680?240:580);return true;
+     },[]{return true;});
+     check(middleGray.complete && middleGray.kind!=Kind::Bars,
+           "middle-gray side artwork is retained at a 4:3 boundary despite high contrast");
+   }
+   auto mismatch=Measure(1920,1080,black,[=](int x,int,int& v){
+     v=black+(x<240?12:x>=1680?108:580);return true;
+   },[]{return true;});
+   check(mismatch.complete && mismatch.kind!=Kind::Bars && mismatch.exteriorPictureConflict[0],
+         "incompatible opposing gray plateaus do not establish matching mattes");
  }
  auto tiny=scene(64,64,0,10,0,10);
  check(tiny.complete&&tiny.kind==Kind::Bars&&tiny.top==10&&tiny.bottom==54,"minimum supported raster");
  auto large=scene(8192,4320,0,600,0,600,true);
  dump(large);check(large.complete&&large.kind==Kind::Bars&&large.top==600&&large.bottom==3720&&large.samples<=24000,"large raster stays sample bounded");
+ // Center graphics add an even stronger edge after an established pillarbox.
+ // The shallow matte and first picture pixels determine the source boundary.
+ for(int matte : {64,96}){
+   Prior deepHint{3840,2160,320,0,3520,2160,true};
+   auto nested=Measure(3840,2160,64,[=](int x,int y,int&v){
+     const int depth=std::min(x,3839-x);
+     v=depth<220?matte:(depth<320?matte+48+(y/18)%113:720);
+     return true;
+   },[]{return true;},24000,&deepHint);
+   check(nested.kind==Kind::Bars&&nested.left==220&&nested.right==3620,
+         "picture beyond clean exterior matte defeats stronger interior pair and history");
+ }
  auto competing=[](int,int y,int&v){v=y<68||y>=2092?12:(y>=1838?40:600);return true;};
  auto paired=Measure(3840,2160,0,competing,[]{return true;});
  check(paired.kind==Kind::Bars&&paired.top==68&&paired.bottom==2092,"pair weaker real bottom edge against stronger interior edge");

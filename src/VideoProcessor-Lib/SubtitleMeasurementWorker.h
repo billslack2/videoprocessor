@@ -5,6 +5,8 @@
 #include <DebugLog.h>
 #include <algorithm>
 #include <atomic>
+#include <array>
+#include <chrono>
 #include <cstdint>
 #include <condition_variable>
 #include <deque>
@@ -60,7 +62,7 @@ public:
     SubtitleBoxDetector::Diagnostics TakeDetectorDiagnostics() {return m_scanner.TakeDiagnostics();}
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/,
-        const ActivePictureEvidence& nativeEvidence = {}) {
+        const ActivePictureEvidence& nativeEvidence = {}, bool preparePublishedCaption = false) {
         const auto started=std::chrono::steady_clock::now();
         if(m_analysisDomainKey!=key.identity.analysisDomainKey) {
             m_scanner.Reset();m_analysisDomainKey=key.identity.analysisDomainKey;
@@ -75,6 +77,7 @@ public:
         // independent subtitle-assisted AR measurement separate: it may report
         // a real source aperture change but never replaces subtitle geometry.
         auto physical=result;
+        bool regroupedOnPhysicalPlanes = false;
         if(result.sharedNativeGeometry) {
             const auto& bars=result.barEvidence;
             physical.barEvidence=bars;physical.barAuthority=bars.available;
@@ -95,6 +98,7 @@ public:
                 physical.text=m_scanner.Analyze(source,bars.top,bars.bottom,
                     key.identity.acceptedSequence,key.identity.viewportGeneration);
                 physical.ink=m_scanner.InkSnapshot();
+                regroupedOnPhysicalPlanes = true;
             }
         }
         if (!physical.inspectionCandidateUsed && physical.independentBarAnalysis && physical.text.detected && !physical.text.held &&
@@ -103,8 +107,89 @@ public:
             auto proofSource=source;proofSource.generation=result.identity.transportGeneration;
             result.subtitleArProof=EvaluateSubtitleAssistedVerticalBarProof(proofSource,raw,physical,
                 result.identity,result.policyGeneration,result.continuityGeneration,result.scriptHint);
-            if (result.subtitleArProof.accepted)
+            if (result.subtitleArProof.accepted) {
                 result.subtitleArDarkness=EvaluateActivePictureArDarkness(proofSource,result.subtitleArProof.evidence);
+                // Keep only the grouping actually performed on the new planes.
+                // The original result still belongs to the old shared picture.
+                const auto& text = physical.text;
+                if (preparePublishedCaption && regroupedOnPhysicalPlanes && !result.inspectionCandidateUsed) {
+                    auto caption = std::make_shared<SubtitleBoxObservation>();
+                    caption->identity = physical.identity;
+                    caption->width = physical.width;
+                    caption->height = physical.height;
+                    caption->policyGeneration = physical.policyGeneration;
+                    caption->continuityGeneration = physical.continuityGeneration;
+                    caption->scriptHint = physical.scriptHint;
+                    caption->nearBarDistance = physical.nearBarDistance;
+                    caption->optimizationMode = physical.optimizationMode;
+                    caption->analysisStride = result.analysisStride;
+                    caption->analyzed = true;
+                    caption->barAuthority = true;
+                    caption->barEvidence = physical.barEvidence;
+                    caption->pictureTop = physical.pictureTop;
+                    caption->pictureBottom = physical.pictureBottom;
+                    caption->text = text;
+                    caption->ink = physical.ink;
+                    AttachCanonicalSubtitleContinuityInk(*caption, source);
+                    result.publishedPictureCaption = caption;
+                    const auto& proof=result.subtitleArProof;
+                    auto physicalBounds=proof.candidate;
+                    physicalBounds.top=caption->pictureTop & ~1;
+                    physicalBounds.bottom=(std::min)(source.height,(caption->pictureBottom+1) & ~1);
+                    const bool currentGuard=SubtitleCaptionScanGuardMatchesPhysicalBounds(proof,physicalBounds);
+                    const bool nominalProof=proof.candidate.top==physicalBounds.top &&
+                        proof.candidate.bottom==physicalBounds.bottom;
+                    const bool precedingGuard=!currentGuard && nominalProof && m_lastGuardHint &&
+                        SubtitleBoxLookahead::GuardHintMatchesCurrentPhysical(*m_lastGuardHint,result,
+                            physicalBounds.top,physicalBounds.bottom);
+                    const auto& guard=precedingGuard?m_lastGuardHint->guard:proof.candidate;
+                    const bool needGuardScan=precedingGuard || (currentGuard &&
+                        (!SubtitleBoxLookahead::CompletePublishedCaption(*caption) ||
+                         SubtitleBoxLookahead::CaptionNeedsPublishedPlaneGrouping(*caption,guard.top,guard.bottom)));
+                    const char* guardOutcome=currentGuard || nominalProof ? "physical-grouping-transferable" : "physical-planes-outside-proof";
+                    if(needGuardScan) {
+                        // One bounded worker pass on the candidate planes. An immediate predecessor
+                        // may nominate coordinates only after this source proves the same physical bars.
+                        auto guarded=std::make_shared<SubtitleBoxObservation>(*caption);
+                        m_scanner.Reset();
+                        guarded->pictureTop=guard.top;
+                        guarded->pictureBottom=guard.bottom;
+                        guarded->text=m_scanner.Analyze(source,guard.top,guard.bottom,
+                            key.identity.acceptedSequence,key.identity.viewportGeneration);
+                        guarded->ink=m_scanner.InkSnapshot();
+                        guarded->continuityEvidence.reset();
+                        if(SubtitleBoxLookahead::CompletePublishedCaption(*guarded)) {
+                            AttachCanonicalSubtitleContinuityInk(*guarded,source);
+                            if(precedingGuard)guarded->guardScanHint=m_lastGuardHint;
+                            result.publishedGuardCaption=std::move(guarded);
+                            guardOutcome="exact-guard-ready";
+                        } else {
+                            guardOutcome=guarded->text.diagnosticReason?guarded->text.diagnosticReason:"incomplete";
+                        }
+                    }
+                    DEBUGLOG_ENHANCED("VP subtitle alternate: stage=prepare reason=%s mono_us=%lld generation=%llu "
+                        "source=%llu domain=%llu policy=%llu continuity=%llu physical=%d,%d proof=%d,%d candidate=%d,%d "
+                        "guard_origin=%llu guard_certified=%d guard_required=%d guard_ready=%d physical_box=%d,%d-%d,%d",
+                        guardOutcome,std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count(),
+                        key.identity.transportGeneration,key.identity.acceptedSequence,key.identity.analysisDomainKey,
+                        key.policyGeneration,key.continuityGeneration,caption->pictureTop,caption->pictureBottom,
+                        proof.candidate.top,proof.candidate.bottom,guard.top,guard.bottom,
+                        precedingGuard?m_lastGuardHint->physical.identity.acceptedSequence:key.identity.acceptedSequence,
+                        currentGuard?1:0,needGuardScan?1:0,result.publishedGuardCaption?1:0,
+                        text.bounds.left,text.bounds.top,text.bounds.right,text.bounds.bottom);
+                    if(currentGuard) {
+                        auto hint=std::make_shared<SubtitleGuardScanHint>();
+                        hint->physical={key.identity,key.width,key.height,physicalBounds.top,physicalBounds.bottom,
+                            key.policyGeneration,key.continuityGeneration,key.scriptHint,true};
+                        hint->guard=guard;
+                        hint->nearBarDistance=key.nearBarDistance;
+                        hint->optimizationMode=key.optimizationMode;
+                        hint->analysisStride=key.analysisStride;
+                        m_lastGuardHint=std::move(hint);
+                    }
+                }
+            }
         }
         // Explicit per-process diagnostic opt-in: save one native
         // input without changing capture, subtitle settings or presentation.
@@ -214,6 +299,7 @@ public:
     }
 private:
     SubtitleBoxDetector m_scanner;
+    std::shared_ptr<const SubtitleGuardScanHint> m_lastGuardHint;
     uint64_t m_analysisDomainKey=0;
     bool m_capturedDiagnostic=false;
 };
@@ -239,6 +325,11 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         auto out=m_diagnostics;out.pending=m_pending.size();out.ready=m_ready.size();out.active=m_active;
         m_diagnostics={};return out;
+    }
+    // Join worker and renderer records across threads on one monotonic clock.
+    static int64_t TraceMonotonicUs() noexcept {
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
     }
     void Trace(const SubtitleBoxObservation& key,const char* stage,const char* reason="",uint64_t mismatch=0) const noexcept {
         auto r=AnalysisTraceRecord(key.identity,this,stage,reason);r.kind=AnalysisDiagnosticRecordKindV1::Worker;
@@ -294,6 +385,7 @@ public:
     // The head has advanced; queued scans for older transport frames cannot
     // become current. The active worker is left alone and remains nonblocking.
     void BeginSourceWindow(const ActivePictureFrameIdentity& head) {
+        LifecycleEvents<PendingCapacity> events;
         std::lock_guard<std::mutex> lock(m_mutex);
         if(m_windowHead.transportGeneration>head.transportGeneration ||
             (m_windowHead.transportGeneration==head.transportGeneration &&
@@ -301,9 +393,8 @@ public:
         m_windowHead=head;
         for(auto i=m_pending.begin();i!=m_pending.end();) {
             const auto& identity=i->key.identity;
-            if(identity.transportGeneration<head.transportGeneration ||
-                (identity.transportGeneration==head.transportGeneration &&
-                    identity.acceptedSequence<head.acceptedSequence)) {
+            if(BeforeWindow(identity,head)) {
+                events.Add(i->key,"drop","source-window-expired");
                 Trace(i->key,"worker-drop","source-window-expired");
                 i=m_pending.erase(i);
                 ++m_diagnostics.expired;
@@ -313,13 +404,15 @@ public:
     // Lookahead and presentation can inspect the same exact-frame result.
     // Rebinding modifies only this copy; the cached observation is immutable.
     bool TryRead(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,
-        bool backlogRetirementOnly=false) {
-        return ReadReady(key,out,false,backlogRetirementOnly);
+        bool backlogRetirementOnly=false, const AnalysisLumaSource* publishedSource=nullptr,
+        const char** alternateOutcome=nullptr) {
+        return ReadReady(key,out,false,backlogRetirementOnly,publishedSource,alternateOutcome);
     }
     bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
-        return ReadReady(key,out,true,false);
+        return ReadReady(key,out,true,false,nullptr,nullptr);
     }
     void Submit(const SubtitleBoxObservation& key,Work work) {
+        LifecycleEvents<2> events;
         auto requestKey=key;
         // QueueSubtitleMeasurement submits only valid prepared sources. Mark
         // the request's scan path here so active and pending jobs can coalesce
@@ -329,17 +422,24 @@ public:
             !requestKey.sharedPicture.AvailableFor(
                 requestKey.identity,requestKey.width,requestKey.height);
         std::lock_guard<std::mutex> lock(m_mutex);
-        if(m_stopping)return;
-        if(requestKey.identity.transportGeneration<m_windowHead.transportGeneration ||
-            (requestKey.identity.transportGeneration==m_windowHead.transportGeneration &&
-                requestKey.identity.acceptedSequence<m_windowHead.acceptedSequence)) {
+        if(m_stopping) {
+            events.Add(requestKey,"reject","stopping");
+            return;
+        }
+        if(BeforeWindow(requestKey.identity,m_windowHead)) {
+            events.Add(requestKey,"reject","source-window-expired");
             Trace(requestKey,"worker-drop","source-window-expired");
             ++m_diagnostics.expired;return;
         }
-        if(m_active && SameKey(m_activeKey,requestKey)){Trace(requestKey,"worker-dedup","active");++m_diagnostics.deduplicated;return;}
-        for(const auto& job:m_pending)if(SameKey(job.key,requestKey)){Trace(requestKey,"worker-dedup","queued");++m_diagnostics.deduplicated;return;}
-        for(const auto& ready:m_ready)if(SameKey(ready,requestKey)){Trace(requestKey,"worker-dedup","ready");++m_diagnostics.deduplicated;return;}
-        if(m_pending.size()>=8) {
+        auto duplicate=[&](const char* reason) {
+            events.Add(requestKey,"skip",reason);
+            Trace(requestKey,"worker-dedup",reason);
+            ++m_diagnostics.deduplicated;
+        };
+        if(m_active && SameKey(m_activeKey,requestKey))return duplicate("active");
+        for(const auto& job:m_pending)if(SameKey(job.key,requestKey))return duplicate("queued");
+        for(const auto& ready:m_ready)if(SameKey(ready,requestKey))return duplicate("ready");
+        if(m_pending.size()>=PendingCapacity) {
             // Keep the nearest accepted source. A new current-frame request may
             // replace the farthest future; a later future cannot evict the head.
             auto leastUseful=m_pending.begin();
@@ -356,9 +456,11 @@ public:
             if(incoming.transportGeneration>worst.transportGeneration ||
                 (incoming.transportGeneration==worst.transportGeneration &&
                     incoming.acceptedSequence<worst.acceptedSequence)) {
+                events.Add(leastUseful->key,"drop","lower-priority-replaced");
                 Trace(leastUseful->key,"worker-drop","lower-priority-replaced");
                 m_pending.erase(leastUseful);
             } else {
+                events.Add(requestKey,"reject","future-capacity");
                 Trace(requestKey,"worker-drop","future-capacity");
                 ++m_diagnostics.dropped;
                 return;
@@ -378,21 +480,120 @@ public:
             });
         m_pending.insert(place,{requestKey,std::move(work)});
         ++m_diagnostics.submitted;
+        events.Add(requestKey,"submit","accepted");
         if(!m_thread.joinable())m_thread=std::thread([this]{ Run(); });
         m_changed.notify_one();
     }
     void Stop() {
-        {std::lock_guard<std::mutex> lock(m_mutex);m_stopping=true;m_pending.clear();}
+        {
+            LifecycleEvents<PendingCapacity> events;
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_stopping=true;
+            if(DebugLog::IsEnhancedLoggingEnabled())
+                for(const auto& job:m_pending)events.Add(job.key,"drop","stopping");
+            m_pending.clear();
+        }
         m_changed.notify_all();
         if(m_thread.joinable())m_thread.join();
     }
 private:
-    bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,bool backlogRetirementOnly) {
+    static constexpr size_t PendingCapacity=8;
+
+    static bool BeforeWindow(const ActivePictureFrameIdentity& source,const ActivePictureFrameIdentity& head) {
+        return source.transportGeneration<head.transportGeneration ||
+            (source.transportGeneration==head.transportGeneration && source.acceptedSequence<head.acceptedSequence);
+    }
+
+    // Capture the event at the queue transition. Format and enqueue its text after
+    // releasing the worker mutex. When disabled, leave all record storage untouched.
+    template<size_t Capacity>
+    class LifecycleEvents {
+        struct Event {
+            const char* stage;
+            const char* reason;
+            int64_t monoUs;
+            uint64_t generation,source,frame,capture,format,renderer,viewport,domain,policy,continuity;
+            uint64_t pictureSource,candidateSource,candidateRevision;
+            int left,top,right,bottom;
+            int width,height,nearBar,optimization,script;
+            unsigned stride;
+            bool discontinuity,pictureRequired,pictureUnavailable,candidate;
+            int candidateTop,candidateBottom;
+            bool haveResult,analyzed,detected,workLimit,alternate;
+            int pictureTop,pictureBottom,lines;
+            double waitMs,workMs;
+            char analysisReason[48];
+        };
+        std::array<Event,Capacity> m_events;
+        size_t m_count=0;
+    public:
+        void Add(const SubtitleBoxObservation& key,const char* stage,const char* reason,
+            const SubtitleBoxObservation* result=nullptr,double waitMs=0,double workMs=0) {
+            if(!DebugLog::IsEnhancedLoggingEnabled())return;
+            const auto& id=key.identity;
+            const auto& shared=key.sharedPicture;
+            const auto& hint=shared.inspectionCandidate;
+            auto& event=m_events[m_count++];
+            event={
+                stage,reason,TraceMonotonicUs(),id.transportGeneration,id.acceptedSequence,id.sourceFrameNumber,
+                id.captureTimestamp,id.sourceFormatGeneration,id.rendererGeneration,id.viewportGeneration,
+                id.analysisDomainKey,key.policyGeneration,key.continuityGeneration,shared.identity.acceptedSequence,
+                hint.originIdentity.acceptedSequence,hint.nativeGeometryRevision,
+                shared.bounds.left,shared.bounds.top,shared.bounds.right,shared.bounds.bottom,
+                key.width,key.height,key.nearBarDistance,key.optimizationMode,static_cast<int>(key.scriptHint),
+                key.analysisStride,key.discontinuity,shared.required,key.pictureAuthorityUnavailableForMeasurement,
+                hint.valid,hint.bounds.top,hint.bounds.bottom,result!=nullptr,result && result->analyzed,result && result->text.detected,
+                result && result->text.workLimit,result && result->publishedPictureCaption,
+                result?result->pictureTop:0,result?result->pictureBottom:0,result?result->text.lineCount:0,waitMs,workMs,{}
+            };
+            if(result)AnalysisTraceText(event.analysisReason,result->analyzed?result->text.diagnosticReason:"analysis-failed");
+        }
+        ~LifecycleEvents() {
+            for(size_t i=0;i<m_count;++i) {
+                const auto& e=m_events[i];
+                DebugLog::Log("VP subtitle worker: stage=%s reason=%s mono_us=%lld generation=%llu "
+                    "source=%llu source_frame=%llu capture_timestamp=%llu format_generation=%llu "
+                    "renderer_generation=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu "
+                    "width=%d height=%d stride=%u near_bar=%d optimization=%d script=%d discontinuity=%d "
+                    "shared_source=%llu shared_bounds=%d,%d,%d,%d shared_required=%d shared_unavailable=%d "
+                    "candidate=%d candidate_source=%llu candidate_revision=%llu candidate_planes=%d,%d "
+                    "result_present=%d analyzed=%d detected=%d work_limit=%d alternate=%d result_planes=%d,%d lines=%d analysis_reason=%s "
+                    "queue_wait_ms=%.3f work_ms=%.3f",
+                    e.stage,e.reason,e.monoUs,e.generation,e.source,e.frame,e.capture,e.format,e.renderer,
+                    e.viewport,e.domain,e.policy,e.continuity,e.width,e.height,e.stride,e.nearBar,e.optimization,
+                    e.script,e.discontinuity,e.pictureSource,e.left,e.top,e.right,e.bottom,e.pictureRequired,
+                    e.pictureUnavailable,e.candidate,e.candidateSource,e.candidateRevision,e.candidateTop,
+                    e.candidateBottom,e.haveResult,e.analyzed,e.detected,e.workLimit,e.alternate,e.pictureTop,
+                    e.pictureBottom,e.lines,e.haveResult?e.analysisReason:"none",e.waitMs,e.workMs);
+            }
+        }
+    };
+
+    bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,
+        bool backlogRetirementOnly,const AnalysisLumaSource* publishedSource,const char** alternateOutcome) {
         std::lock_guard<std::mutex> lock(m_mutex);
+        if(alternateOutcome)*alternateOutcome=nullptr;
         uint64_t mismatches=0;
+        bool foundPublishedCaption=false;
         for(auto i=m_ready.begin();i!=m_ready.end();++i) {
             auto candidate=*i;
             if (!SubtitleBoxLookahead::RebindIndependentPicture(candidate,key.sharedPicture)) {
+                // The post-publication read can select a completed alternate
+                // even when the caller never received the old shared preview.
+                // Prefer a ready scan requested on the published planes.
+                if (publishedSource && !foundPublishedCaption && candidate.publishedPictureCaption &&
+                    candidate.identity.transportGeneration==key.identity.transportGeneration &&
+                    candidate.identity.acceptedSequence==key.identity.acceptedSequence &&
+                    SubtitleBoxLookahead::UsePublishedPictureCaption(candidate,key.sharedPicture,
+                        *publishedSource,key.identity,key.policyGeneration,key.continuityGeneration,key.scriptHint,
+                        alternateOutcome)) {
+                    if(SameKey(candidate,key)) {
+                        out=std::move(candidate);
+                        foundPublishedCaption=true;
+                    } else if(alternateOutcome) {
+                        *alternateOutcome="worker-request-key-mismatch";
+                    }
+                }
                 mismatches|=16ull;continue;
             }
             bool reboundFromBacklog=false;
@@ -428,9 +629,15 @@ private:
                 !SubtitleBoxLookahead::RebindIndependentMeasurement(candidate,key.continuityGeneration)){mismatches|=512ull;continue;}
             Trace(candidate,consume?"worker-consumed":"worker-read",
                 reboundFromBacklog?"backlog-current-scan-rebound":"exact-key-accepted");
+            if(alternateOutcome && *alternateOutcome)*alternateOutcome="direct-scan-preferred";
             out=std::move(candidate);
             if(consume)m_ready.erase(i);
             else ++m_diagnostics.exactReads;
+            return true;
+        }
+        if (foundPublishedCaption) {
+            Trace(out,"worker-read","published-picture-caption");
+            ++m_diagnostics.exactReads;
             return true;
         }
         Trace(key,"worker-miss",m_ready.empty()?"no-ready-results":"no-compatible-result",mismatches);
@@ -442,11 +649,14 @@ private:
         SubtitleBarTrackingReference previous;
         for(;;) {
             Job job;
-            {std::unique_lock<std::mutex> lock(m_mutex);
+            {
+                LifecycleEvents<1> events;
+                std::unique_lock<std::mutex> lock(m_mutex);
                 m_changed.wait(lock,[this]{return m_stopping || !m_pending.empty();});
                 if(m_stopping)return;
                 job=std::move(m_pending.front());m_pending.pop_front();
                 m_active=true;m_activeKey=job.key;
+                events.Add(job.key,"start","dequeued");
             }
             Trace(job.key,"worker-start");
             const auto workStart=std::chrono::steady_clock::now();
@@ -456,7 +666,9 @@ private:
             const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-workStart).count();
             const auto detector=scanner.TakeDetectorDiagnostics();
             Trace(result,"worker-complete",result.analyzed?result.text.diagnosticReason:"analysis-failed");
-            {std::lock_guard<std::mutex> lock(m_mutex);
+            {
+                LifecycleEvents<2> events;
+                std::lock_guard<std::mutex> lock(m_mutex);
                 ++m_diagnostics.completedJobs;
                 if(result.analyzed)++m_diagnostics.successfulJobs;
                 else m_diagnostics.failedJobElapsedMs+=ms;
@@ -477,8 +689,17 @@ private:
                 else {++m_diagnostics.fullScans;m_diagnostics.fullMs+=ms;m_diagnostics.fullPeakMs=(std::max)(m_diagnostics.fullPeakMs,ms);}
                 m_active=false;
                 if(!m_stopping) {
-                    if(m_ready.size()>=16)m_ready.pop_front();
+                    if(m_ready.size()>=16) {
+                        events.Add(m_ready.front(),"evict","ready-capacity");
+                        m_ready.pop_front();
+                    }
                     m_ready.push_back(std::move(result));
+                    if(DebugLog::IsEnhancedLoggingEnabled()) {
+                        const char* reason=BeforeWindow(job.key.identity,m_windowHead)?"cached-after-window":"cached";
+                        events.Add(job.key,"complete",reason,&m_ready.back(),waited,ms);
+                    }
+                } else {
+                    events.Add(job.key,"complete","discarded-stopping",&result,waited,ms);
                 }
             }
         }

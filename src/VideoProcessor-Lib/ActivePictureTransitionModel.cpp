@@ -60,11 +60,23 @@ bool CanCorrectRememberedFamily(const ActivePictureBounds& measured, const Activ
         std::abs(centerDeltaTwice) <= int64_t(2) * tolerance;
 }
 
+bool RemovesPictureAtSides(const ActivePictureBounds& base, const ActivePictureBounds& candidate)
+{
+	return candidate.rasterWidth == base.rasterWidth && candidate.rasterHeight == base.rasterHeight &&
+		candidate.left > 0 && candidate.right < candidate.rasterWidth && candidate.left < candidate.right &&
+		(candidate.left > base.left || candidate.right < base.right);
+}
+
+bool ContainsPicture(const ActivePictureBounds& outer, const ActivePictureBounds& inner)
+{
+    return outer.rasterWidth == inner.rasterWidth && outer.rasterHeight == inner.rasterHeight &&
+        outer.left <= inner.left && outer.right >= inner.right &&
+        outer.top <= inner.top && outer.bottom >= inner.bottom;
+}
+
 bool ExactSparseBounds(const ActivePictureBounds& a, const ActivePictureBounds& b)
 {
-    return a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom &&
-        a.rasterWidth == b.rasterWidth && a.rasterHeight == b.rasterHeight &&
-        a.trustedBarAxes == b.trustedBarAxes;
+    return a.SameRectangleAndAxes(b);
 }
 
 }
@@ -72,6 +84,7 @@ bool ExactSparseBounds(const ActivePictureBounds& a, const ActivePictureBounds& 
 
 void ActivePictureTransitionModel::Reset()
 {
+    m_oscillation = {};
 	m_hasStable = false;
     m_guardedWindowAdmission = false;
     m_hasGuardedRememberedEnvelope = false;
@@ -129,11 +142,132 @@ bool ActivePictureTransitionModel::ResetForNativeQueueContinuity(
 
 void ActivePictureTransitionModel::ResetCandidateEvidence()
 {
+    // Scene edits interrupt corroboration, but must not erase a rapid cycle.
+    m_oscillation.supportStart = 0;
 	ClearCandidate();
 	m_unavailableCandidates = 0;
 	m_lastAnalyzedFrame = 0;
 }
 
+
+void ActivePictureTransitionModel::SetOscillationHoldMilliseconds(unsigned milliseconds)
+{
+    if (milliseconds == m_oscillationHoldMs) return;
+    m_oscillationHoldMs = milliseconds;
+    m_oscillation = {};
+}
+
+void ActivePictureTransitionModel::RecordOscillationPublication(
+    const ActivePictureBounds& target, const ActivePictureObservation& current)
+{
+    if (!m_oscillationHoldMs) return;
+    if (m_hasStable && !MateriallyDifferent(m_stable,target)) return;
+    const uint64_t sourceFrame = current.frameNumber;
+    const auto& cycle = m_oscillation;
+    // This publication closes A -> B -> A. Candidate votes, lookahead through
+    // later frames, and isolated returns outside the interval do not count.
+    const bool rapidReturn = cycle.changeFrame && sourceFrame > cycle.changeFrame &&
+        std::isfinite(current.framesPerSecond) && current.framesPerSecond > 0.0 &&
+        1000.0*(sourceFrame-cycle.changeFrame) < current.framesPerSecond*m_oscillationHoldMs &&
+        m_hasStable && m_stable.trustedBarAxes == cycle.published.trustedBarAxes &&
+        SameBounds(m_stable,cycle.published) && target.trustedBarAxes == cycle.previous.trustedBarAxes &&
+        SameBounds(target,cycle.previous) && CurrentNativeOscillationSupport(current,target);
+    m_oscillation = {};
+    if (m_hasStable && sourceFrame && m_stable.rasterWidth == target.rasterWidth &&
+        m_stable.rasterHeight == target.rasterHeight) {
+        m_oscillation.previous = m_stable;
+        m_oscillation.published = target;
+        m_oscillation.rapidReturnPublished = rapidReturn;
+        m_oscillation.changeFrame = sourceFrame;
+        m_oscillation.lastFrame = sourceFrame;
+    }
+}
+
+bool ActivePictureTransitionModel::HasSustainedOscillationSupport(const ActivePictureBounds& target) const
+{
+    const auto& cycle = m_oscillation;
+    return cycle.supportStart && cycle.lastFrame >= cycle.supportStart &&
+        SameBounds(cycle.supporting,target) && cycle.supporting.trustedBarAxes == target.trustedBarAxes &&
+        1000.0 * (cycle.lastFrame-cycle.supportStart) >= cycle.rate * m_oscillationHoldMs;
+}
+
+bool ActivePictureTransitionModel::CurrentNativeOscillationSupport(
+    const ActivePictureObservation& current, const ActivePictureBounds& target)
+{
+    return current.frameNumber && !current.transitionDeferred &&
+        current.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE && HasCropAuthority(current) &&
+        !current.axisEvidence.HasBlockingFailedBar(current.bounds) &&
+        current.bounds.trustedBarAxes == target.trustedBarAxes && SameBounds(current.bounds,target);
+}
+
+void ActivePictureTransitionModel::TrackOscillationObservation(const ActivePictureObservation& observation)
+{
+    auto& cycle = m_oscillation;
+    if (!cycle.changeFrame) return;
+    const auto frame = observation.frameNumber;
+    const double rate = observation.framesPerSecond;
+    if (!frame || !std::isfinite(rate) || rate <= 0.0) {
+        cycle.supportStart = 0;
+        return;
+    }
+    // Scheduled adoption and live fallback may inspect the same current source.
+    if (frame <= cycle.lastFrame || frame < cycle.changeFrame) return;
+    if (!cycle.armed && 1000.0*(frame-cycle.changeFrame) >= rate*m_oscillationHoldMs) {
+        cycle = {};
+        return;
+    }
+    const bool adjacent = cycle.lastFrame && rate == cycle.rate &&
+        frame-cycle.lastFrame <= AnalysisIntervalFrames(rate);
+    cycle.lastFrame = frame;
+    cycle.rate = rate;
+    if (!CurrentNativeOscillationSupport(observation,observation.bounds)) {
+        cycle.supportStart = 0;
+        return;
+    }
+    if (cycle.rapidReturnPublished && !cycle.armed && SameBounds(cycle.previous,observation.bounds) &&
+        cycle.previous.trustedBarAxes == observation.bounds.trustedBarAxes &&
+        !ContainsPicture(observation.bounds,cycle.published)) {
+        cycle.armed = true;
+        cycle.mixed = !ContainsPicture(cycle.published,observation.bounds);
+        if (cycle.mixed) {
+            // Neither rectangle covers both pictures. Withdraw crop authority
+            // until a current source independently establishes the next format.
+            m_hasStable = false;
+            m_stable = {};
+            m_stableClassification = ActivePictureClassification::UNAVAILABLE;
+            m_hasGuardedRememberedEnvelope = false;
+            m_guardedRememberedNominal = {};
+            ClearCandidate();
+        }
+    }
+    if (!cycle.armed) return;
+    if (!adjacent || !cycle.supportStart ||
+        cycle.supporting.trustedBarAxes != observation.bounds.trustedBarAxes ||
+        !SameBounds(cycle.supporting,observation.bounds)) {
+        cycle.supporting = observation.bounds;
+        cycle.supportStart = frame;
+    }
+    if (!cycle.mixed && HasSustainedOscillationSupport(cycle.published))
+        cycle = {};
+}
+
+bool ActivePictureTransitionModel::OscillationBlocks(const ActivePictureBounds& target,
+    const ActivePictureObservation& current) const
+{
+    const auto& cycle = m_oscillation;
+    if (!cycle.changeFrame) return false;
+    if (cycle.mixed) {
+        if (ContainsPicture(target,cycle.previous) && ContainsPicture(target,cycle.published))
+            return false;
+        return !HasSustainedOscillationSupport(target);
+    }
+    if (ContainsPicture(target,cycle.published) || cycle.previous.trustedBarAxes != target.trustedBarAxes ||
+        !SameBounds(cycle.previous,target)) return false;
+    // A single well-supported return is a normal cut. A remembered rectangle
+    // or a provisional match cannot remove pixels on its own.
+    if (!cycle.rapidReturnPublished) return !CurrentNativeOscillationSupport(current,target);
+    return !HasSustainedOscillationSupport(target);
+}
 
 void ActivePictureTransitionModel::SetStableGeometryDeadbandPercent(
 	double percent)
@@ -255,7 +389,8 @@ bool ActivePictureTransitionModel::WithinStableGeometryDeadband(
 
 ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionAdmission(
 	const ActivePictureBounds& bounds,
-	ActivePictureClassification classification) const
+	ActivePictureClassification classification,
+	const ActivePictureAxisEvidenceSet* currentEvidence) const
 {
 	if (!m_hasStable) return ActivePicturePublicationAdmission::ACCEPTED;
 	if (WithinStableGeometryDeadband(m_stable, bounds))
@@ -278,16 +413,16 @@ ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionA
 	const int stableHeight = m_stable.bottom - m_stable.top;
 	if (width <= 0 || height <= 0 || stableWidth <= 0 || stableHeight <= 0)
 		return ActivePicturePublicationAdmission::ACCEPTED;
-	// A rectangle separated from all four source edges is an inset composition,
-	// not an unambiguous aspect-format boundary. Once a crop is established,
-	// keep that presentation instead of zooming into picture-in-picture,
-	// split-screen, credits, or an authored windowbox. Fresh source acquisition
-	// remains free to establish its initial geometry.
+	// A fully contained inset may be an inner composition. Replacing an
+	// established crop requires current opposing matte on both measured axes.
+	// The candidate still goes through ordinary temporal confirmation.
 	if (bounds.left > 0 && bounds.top > 0 &&
 		bounds.right < bounds.rasterWidth &&
 		bounds.bottom < bounds.rasterHeight)
 	{
-		return ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED;
+		return currentEvidence && currentEvidence->HasMeasuredWindowbox(bounds)
+			? ActivePicturePublicationAdmission::ACCEPTED
+			: ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED;
 	}
 	// Derive aspect from pixels: cached aspectRatio can be temporally smoothed.
 	const double relativeAspect = static_cast<double>(width) * stableHeight /
@@ -300,7 +435,12 @@ ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionA
 bool ActivePictureTransitionModel::RetainsIncompleteInwardFormat(
 	const ActivePictureBounds& candidate, const ActivePictureAxisEvidenceSet& evidence) const
 {
-	// Preserve initial acquisition (including a preceding full-raster/menu frame).
+	// An explicitly failed horizontal scan cannot remove visible source columns,
+	// including when the established reference is full raster.
+	if (m_hasStable && evidence.horizontal.FailedBar() && RemovesPictureAtSides(m_stable, candidate))
+		return true;
+
+	// Preserve ordinary top/bottom acquisition after a full-raster/menu frame.
 	// A failed axis cannot authorize removing pixels on that axis. Current
 	// strict vertical profiles or the existing broad-side path can still admit
 	// an independently verified top/bottom crop which preserves every column.
@@ -318,6 +458,7 @@ const char* ActivePicturePublicationAdmissionName(ActivePicturePublicationAdmiss
 {
 	switch (admission)
 	{
+    case ActivePicturePublicationAdmission::OSCILLATING_FORMAT_RETAINED: return "oscillating-format-retained";
 	case ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED: return "incomplete-axis-retained";
 	case ActivePicturePublicationAdmission::NOT_EVALUATED: return "not-evaluated";
 	case ActivePicturePublicationAdmission::ACCEPTED: return "accepted";
@@ -818,6 +959,15 @@ bool ActivePictureTransitionModel::FindRecentTrustedGeometry(
 		const TrustedGeometry& known = m_recentTrusted[index];
 		if (!SameBounds(known.bounds, observation.bounds))
 			continue;
+		// A previous side matte can recur as scene composition or broadcast art.
+		// Coordinates alone cannot remove columns from the current stable picture.
+		if (RemovesPictureAtSides(m_stable, known.bounds) &&
+			(!HasCropAuthority(observation) || !RemovesPictureAtSides(m_stable, observation.bounds)))
+			continue;
+		// History cannot substitute a nearby old inset for current four-edge proof.
+		if (observation.axisEvidence.HasMeasuredWindowbox(observation.bounds) &&
+			!known.bounds.SameRectangleAndAxes(observation.bounds))
+			continue;
 		// Vertical crop permission belongs to its exact current aperture. History
 		// must not replace that aperture with a nearby, more tightly cropped one.
 		if (observation.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observation.bounds) &&
@@ -906,13 +1056,24 @@ ActivePictureTransitionModel::CommitCandidate(
 		observation.classification == m_candidateClassification &&
 		observation.bounds.trustedBarAxes == m_candidate.trustedBarAxes &&
 		SameBounds(m_candidate, observation.bounds) &&
-		StableRetentionAdmission(observation.bounds, observation.classification) ==
+		StableRetentionAdmission(observation.bounds, observation.classification, &observation.axisEvidence) ==
 			ActivePicturePublicationAdmission::ACCEPTED &&
 		(!RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence) ||
 		 ValidSparseTransitionObservation(observation) || ValidRememberedEdgeReturnObservation(observation)))
 	{
 		committedBounds = observation.bounds;
 	}
+    if (OscillationBlocks(committedBounds,observation)) {
+        ActivePictureTransitionDecision hold;
+        hold.stable = m_hasStable;
+        hold.state = m_hasStable ? ActivePictureTransitionState::STABLE : ActivePictureTransitionState::UNAVAILABLE;
+        hold.bounds = hold.stableBounds = m_stable;
+        hold.authoritativeClassification = m_stableClassification;
+        hold.authorityOrigin = hold.stableAuthorityOrigin = m_stableOrigin;
+        hold.clearTransition = m_oscillation.mixed;
+        hold.reason = "rapid format return awaits continuous current-source evidence";
+        return hold;
+    }
 	ActivePictureTransitionDecision decision;
 	decision.state = ActivePictureTransitionState::STABLE;
 	decision.bounds = committedBounds;
@@ -938,6 +1099,7 @@ ActivePictureTransitionModel::CommitCandidate(
 	{
 		RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);
 	}
+    RecordOscillationPublication(committedBounds, observation);
 	m_stable = committedBounds;
 	m_stableClassification = m_candidateClassification;
 	m_stableOrigin = m_candidateOrigin;
@@ -954,7 +1116,10 @@ ActivePictureTransitionModel::CommitCandidate(
 ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	const ActivePictureObservation& observation)
 {
+    if (!observation.frameNumber || observation.frameNumber > m_lastObservedFrame)
+        TrackOscillationObservation(observation);
 	ActivePictureTransitionDecision decision;
+    decision.clearTransition = m_oscillation.mixed;
 	decision.state = m_hasStable ?
 		ActivePictureTransitionState::STABLE :
 		ActivePictureTransitionState::UNAVAILABLE;
@@ -1009,6 +1174,17 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
         else m_candidateRememberedLastSequence = observation.frameNumber;
     }
 
+
+    if (m_oscillation.mixed && (!observation.available || OscillationBlocks(observation.bounds,observation))) {
+        decision.reason = "alternating intersecting formats require uncropped current-source presentation";
+        return decision;
+    }
+    if (m_oscillation.mixed && HasSustainedOscillationSupport(observation.bounds) &&
+        observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE && HasCropAuthority(observation) &&
+        !observation.transitionDeferred) {
+        StartCandidate(observation);
+        return CommitCandidate(observation,"continuous native evidence resolves alternating formats");
+    }
 
 	if (observation.authorityOrigin == ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT && m_hasStable)
 	{
@@ -1110,9 +1286,10 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	// History and look-ahead must obey the same retention policy as live
 	// evidence. Test the remembered contract, not its noisy raw recurrence.
 	const auto retention = matchesRecentTrusted
-		? StableRetentionAdmission(recentTrustedBounds, recentTrustedClassification)
+		? StableRetentionAdmission(recentTrustedBounds, recentTrustedClassification,
+			HasCropAuthority(observation) ? &observation.axisEvidence : nullptr)
 		: (HasCropAuthority(observation)
-			? StableRetentionAdmission(observation.bounds, observation.classification)
+			? StableRetentionAdmission(observation.bounds, observation.classification, &observation.axisEvidence)
 			: ActivePicturePublicationAdmission::ACCEPTED);
 	if (retention != ActivePicturePublicationAdmission::ACCEPTED)
 	{
@@ -1380,7 +1557,7 @@ bool ActivePictureTransitionModel::WouldAdmitGeometryChange(
     const bool rememberedReturn = ValidRememberedEdgeReturnObservation(observation);
 	return m_hasStable && (observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE || sparseTransition || rememberedReturn) &&
 		HasCropAuthority(observation) && !SameBounds(m_stable, observation.bounds) &&
-		StableRetentionAdmission(observation.bounds, observation.classification) ==
+		StableRetentionAdmission(observation.bounds, observation.classification, &observation.axisEvidence) ==
 			ActivePicturePublicationAdmission::ACCEPTED &&
 		(sparseTransition || rememberedReturn || !RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence));
 }
@@ -1391,7 +1568,7 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 	ActivePictureClassification classification, bool transitionDeferred,
 	ActivePicturePublicationAdmission* admission,
 	const ActivePictureAxisEvidenceSet* currentAxisEvidence,
-	bool currentOutwardPictureConfirmed)
+	bool currentOutwardPictureConfirmed, const ActivePictureObservation* currentObservation)
 {
 	if (admission) *admission = ActivePicturePublicationAdmission::ACCEPTED;
 	const auto reject = [admission](ActivePicturePublicationAdmission reason) {
@@ -1471,9 +1648,19 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 		return reject(ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
 	if (currentAxisEvidence && RetainsIncompleteInwardFormat(decision.bounds, *currentAxisEvidence))
 		return reject(ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED);
-	const auto retention = StableRetentionAdmission(decision.bounds, classification);
+	const auto retention = StableRetentionAdmission(decision.bounds, classification, currentAxisEvidence);
 	if (retention != ActivePicturePublicationAdmission::ACCEPTED)
 		return reject(retention);
+    if (m_oscillationHoldMs) {
+        if (!currentObservation || !currentObservation->frameNumber ||
+            (m_lastObservedFrame && currentObservation->frameNumber <= m_lastObservedFrame))
+            return reject(ActivePicturePublicationAdmission::OSCILLATING_FORMAT_RETAINED);
+        TrackOscillationObservation(*currentObservation);
+        if (OscillationBlocks(decision.bounds,*currentObservation))
+            return reject(ActivePicturePublicationAdmission::OSCILLATING_FORMAT_RETAINED);
+        RecordOscillationPublication(decision.bounds,*currentObservation);
+        m_lastObservedFrame = currentObservation->frameNumber;
+    }
 	if (m_hasStable && !SameBounds(m_stable, decision.bounds))
 	{
 		RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);
@@ -1587,6 +1774,9 @@ bool ActivePictureTransitionModel::AdoptGuardedRememberedReturn(
     if (!decision.publish || !decision.stable ||
         decision.authorityOrigin != ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN ||
         !trial.m_hasGuardedRememberedEnvelope) return false;
+    // Future-window verification cannot shorten an active oscillation dwell.
+    if (OscillationBlocks(decision.bounds,observations[0])) return false;
+    RecordOscillationPublication(decision.bounds,observations[0]);
     // Commit only presentation authority. Never copy future observation clocks,
     // source context or newly accumulated qualification into the live model.
     RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);

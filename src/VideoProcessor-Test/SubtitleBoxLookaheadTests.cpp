@@ -3334,6 +3334,302 @@ public:
         SubtitleBoxPresentation fresh;auto miss=b;miss.text={};
         Assert::IsFalse(fresh.Consume(Resolve({miss,returned})).detected,L"rescue cannot start a cue");
     }
+    enum class ReplacementGlyphs { Previous, Current, BarFringe, ChangedCompanion };
+    enum class UpperEdgeDetail {
+        OriginalTrial, Normal, BottomFringe, EditedCharacter, AddedCharacter, MissingCharacter,
+        InteriorStroke, DetachedDot, LowerStroke, Overlay
+    };
+
+    static SubtitleBoxObservation MeasureRecordedReplacement(uint64_t sequence, ReplacementGlyphs glyphs,
+        UpperEdgeDetail detail=UpperEdgeDetail::OriginalTrial)
+    {
+        const int width=3840, height=2160;
+        std::vector<uint16_t> pixels(size_t(width)*height*3/2, uint16_t(512<<6));
+        const auto fill=[&](int left,int top,int right,int bottom,int level) {
+            for(int y=top;y<bottom;++y)
+                std::fill_n(pixels.begin()+size_t(y)*width+left,right-left,uint16_t(level<<6));
+        };
+        const bool previous=glyphs==ReplacementGlyphs::Previous;
+        const bool upperEdgeTrial=detail!=UpperEdgeDetail::OriginalTrial;
+        const int frameOffset=int(sequence-(upperEdgeTrial?500:1901));
+        fill(0,0,width,height,64);
+        fill(0,263,width,1897,300+20*frameOffset);
+        const int movingLeft=500+250*frameOffset;
+        fill(movingLeft,1200,movingLeft+254,1897,350);
+        const int upperLeft=previous?1152:1468;
+        fill(upperLeft-42,1719,width-upperLeft+42,1897,64);
+        for(int row=0;row<2;++row) {
+            const bool upper=row==0;
+            const int left=upper?upperLeft:(previous?1432:1648);
+            const int count=upper?(previous?29:17):(previous?19:10);
+            const int top=upper?(upperEdgeTrial?1754:1756):1904;
+            const int bottom=upper && upperEdgeTrial && !previous?1825:top+(!upper && previous?76:92);
+            for(int i=0;i<count;++i) {
+                if(upper && i==5 && detail==UpperEdgeDetail::MissingCharacter)continue;
+                const int x=left+i*54;
+                const int right=x+32+(upper && !previous && i==count-1?4:0);
+                if(upper && (glyphs==ReplacementGlyphs::ChangedCompanion ||
+                    (i==5 && detail==UpperEdgeDetail::EditedCharacter))) {
+                    fill(x,top,x+8,bottom,700);
+                    fill(x,top,right,top+8,700);
+                    fill(x,top+40,x+28,top+52,700);
+                    fill(x,bottom-8,right,bottom,700);
+                } else {
+                    fill(x,top,right,bottom,700);
+                    if(previous) {
+                        fill(x+8,top,x+24,top+40,64);
+                        fill(x+8,top+50,x+24,bottom,64);
+                    } else {
+                        fill(x+8,top+8,x+24,bottom-8,64);
+                    }
+                }
+            }
+        }
+        // Three step-four sample cells at the edge of a single lower glyph.
+        // Upper and lower rows keep the same overall two-line cue rectangle.
+        if(glyphs==ReplacementGlyphs::BarFringe)fill(1644,1912,1648,1924,700);
+
+        if(upperEdgeTrial && !previous) {
+            // A fixed two-pixel native descender supplies the exact narrow row
+            // bound without adding any ink to the detector's step-four grid.
+            fill(1577,1825,1579,1832,700);
+            if(detail==UpperEdgeDetail::BottomFringe)fill(1522,1825,1526,1829,700);
+            const int x=1468+5*54;
+            if(detail==UpperEdgeDetail::AddedCharacter)fill(x+36,1770,x+44,1816,700);
+            if(detail==UpperEdgeDetail::InteriorStroke)fill(x+8,1788,x+12,1792,700);
+            if(detail==UpperEdgeDetail::DetachedDot)fill(x+44,1796,x+48,1800,700);
+            if(detail==UpperEdgeDetail::LowerStroke)fill(1656,1936,1660,1940,700);
+            if(detail==UpperEdgeDetail::Overlay)fill(x+32,1768,x+52,1824,700);
+        }
+
+        auto source=Source(pixels);
+        source.width=width;source.height=height;source.rowBytes=source.chromaRowBytes=width*2;
+        source.range=AnalysisLumaRange::Limited;
+        const ActivePictureFrameIdentity id{2,sequence,sequence+(upperEdgeTrial?44:15718),sequence*417083,5,1,1,12123};
+        SubtitlePictureAuthority shared;
+        shared.required=true;shared.identity=id;
+        const int sharedTop=upperEdgeTrial?254:262;
+        shared.bounds={0,sharedTop,width,height-sharedTop,width,height,double(width)/(height-2*sharedTop),
+            ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+        return SubtitleBoxLookahead::Measure(detector,source,ExtractActivePictureEvidence(source),
+            id,false,{},7,9,shared);
+    }
+
+    __declspec(noinline) static std::unique_ptr<SubtitleBoxPreview> RecordedReplacementWindow(
+        const SubtitleBoxObservation& first,const SubtitleBoxObservation& second,bool trace=true)
+    {
+        const std::vector<SubtitleBoxObservation> frames={first,second};
+        const ActivePictureFrameIdentity owned[]={first.identity,second.identity};
+        return std::make_unique<SubtitleBoxPreview>(SubtitleBoxLookahead::ResolveOwnedWindow(
+            frames.data(),owned,2,7,9,trace?"test-owned":nullptr));
+    }
+
+    TEST_METHOD(RecordedUpperEdgeJitterAcquiresTheReplacementOnSource502)
+    {
+        using namespace SubtitleBoxLookahead;
+        const auto measure=[](uint64_t seq,ReplacementGlyphs glyphs,UpperEdgeDetail detail) {
+            return MeasureRecordedReplacement(seq,glyphs,detail);
+        };
+        const std::vector<SubtitleBoxObservation> frames={
+            measure(500,ReplacementGlyphs::Previous,UpperEdgeDetail::Normal),
+            measure(501,ReplacementGlyphs::Previous,UpperEdgeDetail::Normal),
+            measure(502,ReplacementGlyphs::Current,UpperEdgeDetail::BottomFringe),
+            measure(503,ReplacementGlyphs::Current,UpperEdgeDetail::Normal),
+            measure(504,ReplacementGlyphs::Current,UpperEdgeDetail::BottomFringe),
+            measure(505,ReplacementGlyphs::Current,UpperEdgeDetail::BottomFringe)};
+        auto tracker=std::make_unique<SubtitleBoxPresentation>();
+        auto placement=std::make_unique<SubtitleCutPastePresentation>();
+        uint64_t previousCue=0,replacementCue=0;
+        for(size_t i=0;i+1<frames.size();++i) {
+            const auto& current=frames[i];const auto& next=frames[i+1];
+            const auto preview=RecordedReplacementWindow(current,next);
+            const auto text=tracker->Consume(*preview);
+            const auto move=placement->Consume(text,*preview);
+            if(i<2) {
+                Assert::IsTrue(text.detected && move.valid);
+                if(i==0)previousCue=text.cue;
+                Assert::AreEqual(previousCue,text.cue);
+                continue;
+            }
+            const int bottom=i==3?1832:1836;
+            const SubtitleBoxRect upper{1468,1754,2368,bottom};
+            Assert::IsTrue(current.ink && next.ink && current.ink!=next.ink);
+            Assert::IsTrue(SameLine(current.text.lineBounds[1],upper,0));
+            Assert::IsTrue(SameLine(current.text.lineBounds[0],next.text.lineBounds[0],0));
+            Assert::IsTrue(SimilarSignature(current.text.lineSignatures[0],next.text.lineSignatures[0]));
+            if(i==2 || i==3) {
+                SubtitleCuePairTrace normalized;
+                Assert::IsFalse(SimilarSignature(current.text.lineSignatures[1],next.text.lineSignatures[1],&normalized));
+                Assert::IsTrue(normalized.signatureDelta*100>normalized.signatureTotal*MaxLineSignatureDifferencePercent);
+            }
+            Assert::IsTrue(preview->futureAvailable && preview->currentLinesConfirmed);
+            Assert::AreEqual(2u,preview->matchingFrames);
+            Assert::IsTrue(preview->current.ink==current.ink && SameLine(preview->text.lineBounds[1],upper,0));
+            Assert::AreEqual(uint64_t(544+i),preview->current.identity.sourceFrameNumber);
+            Assert::IsTrue(text.detected && move.valid && move.pictureCapture.Valid());
+            if(i==2) {
+                Assert::IsFalse(text.held || text.confirmationPending);
+                Assert::IsTrue(text.cue!=previousCue && SameLine(text.lineBounds[1],upper,0));
+                replacementCue=text.cue;
+            }
+            Assert::AreEqual(replacementCue,text.cue);
+        }
+    }
+
+    TEST_METHOD(RecordedUpperEdgeJitterCannotConfirmChangedCharactersOrOverlayPixels)
+    {
+        using namespace SubtitleBoxLookahead;
+        const auto tall=MeasureRecordedReplacement(502,ReplacementGlyphs::Current,UpperEdgeDetail::BottomFringe);
+        const auto tallNext=MeasureRecordedReplacement(503,ReplacementGlyphs::Current,UpperEdgeDetail::BottomFringe);
+        const auto old=MeasureRecordedReplacement(500,ReplacementGlyphs::Previous,UpperEdgeDetail::Normal);
+        const auto lock=MeasureRecordedReplacement(501,ReplacementGlyphs::Previous,UpperEdgeDetail::Normal);
+        auto established=std::make_unique<SubtitleBoxPresentation>();
+        Assert::IsTrue(established->Consume(*RecordedReplacementWindow(old,lock)).detected);
+        Assert::IsTrue(established->Consume(*RecordedReplacementWindow(lock,tall)).detected);
+        for(const auto detail:{UpperEdgeDetail::EditedCharacter,UpperEdgeDetail::AddedCharacter,
+            UpperEdgeDetail::MissingCharacter,UpperEdgeDetail::InteriorStroke,UpperEdgeDetail::DetachedDot,
+            UpperEdgeDetail::LowerStroke,UpperEdgeDetail::Overlay}) {
+            for(bool reverse:{false,true}) {
+                const auto changed=MeasureRecordedReplacement(reverse?502:503,ReplacementGlyphs::Current,detail);
+                const auto& first=reverse?changed:tall;
+                const auto& next=reverse?tallNext:changed;
+                Assert::AreEqual(2,first.text.lineCount);Assert::AreEqual(2,next.text.lineCount);
+                Assert::IsTrue(SameLine(changed.text.lineBounds[1],{1468,1754,2368,1832},0));
+                Assert::IsTrue(SameLine(first.text.bounds,next.text.bounds,0));
+                Assert::IsFalse(SimilarSignature(first.text.lineSignatures[1],next.text.lineSignatures[1]));
+                const auto preview=RecordedReplacementWindow(first,next);
+                Assert::IsTrue(preview->futureAvailable && !preview->currentLinesConfirmed);
+                Assert::AreEqual(1u,preview->matchingFrames);
+                auto tracker=std::make_unique<SubtitleBoxPresentation>(*established);
+                Assert::IsFalse(tracker->Consume(*preview).detected);
+            }
+        }
+    }
+
+    TEST_METHOD(RecordedUpperEdgeJitterRequiresTwoIndependentReadySourcesInOneContext)
+    {
+        const auto first=MeasureRecordedReplacement(502,ReplacementGlyphs::Current,UpperEdgeDetail::BottomFringe);
+        const auto shortRow=MeasureRecordedReplacement(503,ReplacementGlyphs::Current,UpperEdgeDetail::Normal);
+        for(const std::string reason:{"not-analyzed","not-independent","source-context","not-owned-or-wrong-epoch"}) {
+            auto next=shortRow;
+            if(reason=="not-analyzed")next.analyzed=false;
+            if(reason=="not-independent")next.identity=first.identity;
+            if(reason=="source-context")++next.identity.sourceFormatGeneration;
+            if(reason=="not-owned-or-wrong-epoch")++next.continuityGeneration;
+            const auto preview=RecordedReplacementWindow(first,next);
+            Assert::IsTrue(preview->available && !preview->futureAvailable);
+            Assert::AreEqual(1u,preview->matchingFrames);
+            Assert::IsTrue(reason==preview->confirmationTrace.stopReason);
+            Assert::AreEqual(uint64_t(502),preview->current.identity.acceptedSequence);
+            Assert::IsTrue(preview->current.ink==first.ink);
+            auto tracker=std::make_unique<SubtitleBoxPresentation>();
+            const auto currentOnly=tracker->Consume(*preview);
+            Assert::IsTrue(currentOnly.detected && !currentOnly.held);
+        }
+    }
+
+    TEST_METHOD(RecordedTwoLineReplacementReportsTheExactRejectedRowOnTheFirstSource)
+    {
+        using namespace SubtitleBoxLookahead;
+        const auto old=MeasureRecordedReplacement(1901,ReplacementGlyphs::Previous);
+        const auto lock=MeasureRecordedReplacement(1902,ReplacementGlyphs::Previous);
+        const auto current=MeasureRecordedReplacement(1903,ReplacementGlyphs::Current);
+        Assert::IsTrue(SameLine(old.text.bounds,{1142,1746,2706,1990},0));
+        Assert::IsTrue(SameLine(current.text.bounds,{1458,1746,2378,2006},0));
+        Assert::IsTrue(current.text.capturePanelMeasured && current.text.capturePanel.Valid());
+        Assert::IsFalse(current.text.diagnosticPictureGlyphProofRequired);
+        const auto warm=RecordedReplacementWindow(old,lock);
+        auto established=std::make_unique<SubtitleBoxPresentation>();
+        const auto previous=established->Consume(*warm);
+        const auto lockPreview=RecordedReplacementWindow(lock,current);
+        const auto locked=established->Consume(*lockPreview);
+        Assert::IsTrue(previous.detected && locked.detected && previous.cue==locked.cue);
+
+        for(const auto glyphs:{ReplacementGlyphs::Current,ReplacementGlyphs::BarFringe,
+                               ReplacementGlyphs::ChangedCompanion}) {
+            const auto next=MeasureRecordedReplacement(1904,glyphs);
+            Assert::AreEqual(2,next.text.lineCount);
+            Assert::IsTrue(SameLine(current.text.bounds,next.text.bounds,0));
+            Assert::IsTrue(current.ink && next.ink && current.ink!=next.ink);
+            const auto preview=RecordedReplacementWindow(current,next);
+            const auto quiet=RecordedReplacementWindow(current,next,false);
+            const auto& trace=preview->confirmationTrace;
+            const auto& pair=trace.pair;
+            Assert::IsTrue(preview->available && preview->futureAvailable && trace.previewStartUs>0);
+            Assert::IsTrue(std::strcmp(trace.site,"test-owned")==0 && quiet->confirmationTrace.site==nullptr);
+            Assert::AreEqual(uint64_t(1903),pair.base);Assert::AreEqual(uint64_t(1904),pair.candidate);
+            Assert::AreEqual(uint64_t(17621),pair.baseFrame);Assert::AreEqual(uint64_t(17622),pair.candidateFrame);
+            Assert::AreEqual(2,pair.baseLines);Assert::AreEqual(2,pair.candidateLines);
+            Assert::AreEqual(0u,pair.contextMask);
+            Assert::AreEqual(preview->matchingFrames,quiet->matchingFrames);
+            auto tracker=std::make_unique<SubtitleBoxPresentation>(*established);
+            const auto text=tracker->Consume(*preview);
+            auto quietTracker=std::make_unique<SubtitleBoxPresentation>(*established);
+            const auto quietText=quietTracker->Consume(*quiet);
+            Assert::AreEqual(text.detected,quietText.detected);
+            Assert::AreEqual(text.cue,quietText.cue);
+
+            if(glyphs==ReplacementGlyphs::Current) {
+                Assert::IsTrue(std::strcmp(pair.reason,"all-lines-match")==0);
+                Assert::AreEqual(2,pair.matched);Assert::AreEqual(2u,preview->matchingFrames);
+                Assert::IsTrue(preview->currentLinesConfirmed && text.detected && !text.held);
+                Assert::IsTrue(text.cue!=previous.cue && SameLine(text.bounds,current.text.bounds,0));
+                continue;
+            }
+            Assert::IsTrue(std::strcmp(pair.reason,"line-signature")==0);
+            Assert::AreEqual(1u,preview->matchingFrames);
+            Assert::IsTrue(pair.signatureTotal>0 &&
+                pair.signatureDelta*100>pair.signatureTotal*MaxLineSignatureDifferencePercent);
+            Assert::IsTrue(SameLine(pair.baseRect,pair.candidateRect,pair.tolerance));
+            const bool fringe=glyphs==ReplacementGlyphs::BarFringe;
+            const int anchor=BarAnchorLine(current);
+            const int expectRow=fringe?anchor:1-anchor;
+            Assert::AreEqual(expectRow,pair.row);Assert::AreEqual(expectRow,pair.other);
+            Assert::IsTrue(SameLine(pair.baseRect,current.text.lineBounds[expectRow],0));
+            Assert::IsTrue(SameLine(pair.candidateRect,next.text.lineBounds[expectRow],0));
+            Assert::AreEqual(fringe,SameLinePixels(current,expectRow,next,expectRow));
+            Assert::AreEqual(fringe,SameInkAtReference(current,next));
+            Assert::AreEqual(fringe,SameInkAtReference(next,current));
+            Assert::IsFalse(text.detected);
+            Assert::IsTrue(std::strcmp(tracker->DecisionReason(),"current-cue-await-lookahead-confirmation")==0);
+        }
+    }
+
+    TEST_METHOD(RecordedTwoLineReplacementExcludesUnreadyAndResetFutureMeasurements)
+    {
+        using namespace SubtitleBoxLookahead;
+        const auto old=MeasureRecordedReplacement(1901,ReplacementGlyphs::Previous);
+        const auto lock=MeasureRecordedReplacement(1902,ReplacementGlyphs::Previous);
+        const auto current=MeasureRecordedReplacement(1903,ReplacementGlyphs::Current);
+        const auto measuredNext=MeasureRecordedReplacement(1904,ReplacementGlyphs::Current);
+        auto established=std::make_unique<SubtitleBoxPresentation>();
+        const auto warm=RecordedReplacementWindow(old,lock);
+        const auto previous=established->Consume(*warm);
+        const auto lockPreview=RecordedReplacementWindow(lock,current);
+        const auto locked=established->Consume(*lockPreview);
+        Assert::IsTrue(previous.detected && locked.detected && previous.cue==locked.cue);
+
+        for(const std::string stop:{"not-analyzed","work-limit","source-context","not-owned-or-wrong-epoch"}) {
+            auto next=measuredNext;
+            if(stop=="not-analyzed")next.analyzed=false;
+            if(stop=="work-limit")next.text.workLimit=true;
+            if(stop=="source-context")++next.identity.viewportGeneration;
+            if(stop=="not-owned-or-wrong-epoch")++next.policyGeneration;
+            const auto preview=RecordedReplacementWindow(current,next);
+            const auto& trace=preview->confirmationTrace;
+            Assert::IsTrue(preview->available && !preview->futureAvailable);
+            Assert::AreEqual(1u,preview->matchingFrames);Assert::AreEqual(0u,preview->followingCount);
+            Assert::IsTrue(stop==trace.stopReason);Assert::AreEqual(uint64_t(1904),trace.stopSource);
+            Assert::IsTrue(std::strcmp(trace.pair.reason,"not-compared")==0);
+            Assert::AreEqual(uint64_t(1903),preview->current.identity.acceptedSequence);
+            Assert::IsTrue(preview->current.ink==current.ink);
+            auto tracker=std::make_unique<SubtitleBoxPresentation>(*established);
+            const auto text=tracker->Consume(*preview);
+            Assert::IsTrue(text.detected && !text.held && text.cue!=previous.cue);
+            Assert::IsTrue(SameLine(text.bounds,current.text.bounds,0));
+        }
+    }
     TEST_METHOD(EstablishedTwoLineGlyphTemplateSurvivesScenePixelsAndOneLineRegrouping) {
         auto first=Cue(1,true),lock=Cue(2,true);
         SubtitleBoxPresentation tracker;

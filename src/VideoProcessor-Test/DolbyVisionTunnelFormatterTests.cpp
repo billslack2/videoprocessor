@@ -13,6 +13,7 @@
 #include <AnalysisFrame.h>
 #include <ActivePictureEvidence.h>
 #include <SubtitleBoxDetector.h>
+#include <SubtitleBarEvidence.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <video_frame_formatter/CRGBDolbyVisionTunnelFormatter.h>
 #include <algorithm>
@@ -163,6 +164,118 @@ namespace Tests
                         Assert::AreEqual(referenceCue.bounds.left, cue.bounds.left);
                         Assert::AreEqual(referenceCue.bounds.bottom, cue.bounds.bottom);
                     }
+                }
+            }
+        }
+
+        TEST_METHOD(RecordedCaptionCutsKeepCurrentDecodedPictureAndCueAcrossRgbCarriers)
+        {
+            // Reconstruct the two 23.976 Hz cut windows at one quarter of each
+            // UHD dimension. The recorded 268..1892 fit is a guarded envelope.
+            // The source changes from 68..2092 to 276..1884 in both windows.
+            constexpr int width = 960, height = 540;
+            constexpr int cueTop = 1934 / 4, cueBottom = (2022 + 3) / 4;
+            struct Layout { VideoFrameEncoding encoding; bool high; };
+            for (const auto layout : { Layout{VideoFrameEncoding::R210, false},
+                Layout{VideoFrameEncoding::R210, true}, Layout{VideoFrameEncoding::ARGB_8BIT, false},
+                Layout{VideoFrameEncoding::BGRA_8BIT, false} })
+            for (bool full : {false, true})
+            for (const int cut : {17791, 18406})
+            {
+                auto picture = std::make_shared<SenderPicture>(layout.high, width, height, layout.encoding);
+                Formatter formatter;
+                formatter.OnVideoState(picture->state);
+                SubtitleBoxDetector detector;
+                const int black = full ? 0 : 64;
+                const int glyphs = cut == 17791 ? 12 : 16;
+                const int left = (width - glyphs * 15) / 2;
+                const int right = left + (glyphs - 1) * 15 + 9;
+                const auto freshDm = Packetize(DmBody(3072, full));
+                const auto sameDm = Packetize({}, 3, 3, true);
+                for (int offset = -3; offset <= 4; ++offset)
+                {
+                    const int sequence = cut + offset;
+                    const int top = offset < 0 ? 68 / 4 : 276 / 4;
+                    const int bottom = height - top;
+                    const bool caption = sequence < (cut == 17791 ? 17795 : 18408);
+                    // Vary the picture on every submission, including the frames
+                    // on which unchanged glyphs move from the picture into the bar.
+                    const int sceneLevel = black + (offset < 0 ? 144 : 84) + offset + 3;
+                    for (int y = 0; y < height; ++y)
+                        for (int x = 0; x < width; ++x)
+                        {
+                            const bool inPicture = y >= top && y < bottom;
+                            int value = inPicture ? sceneLevel + (x / 64 + y / 48) % 5 : black;
+                            if (caption && x >= left - 4 && x < right + 4 &&
+                                y >= cueTop - 2 && y < cueBottom + 2)
+                            {
+                                value = black;
+                                if (x >= left && x < right && y >= cueTop && y < cueBottom)
+                                {
+                                    const int stroke = (x - left) % 15;
+                                    if (stroke < 9 && (stroke < 2 || stroke >= 7 ||
+                                        y < cueTop + 2 || y >= cueBottom - 2))
+                                        value = 510;
+                                }
+                            }
+                            const size_t pixel = static_cast<size_t>(y) * width + x;
+                            picture->intensity[pixel] = static_cast<uint16_t>(4 * value + (inPicture ? sequence % 4 : 0));
+                            picture->chroma[pixel] = 2048;
+                            picture->Pack(pixel);
+                        }
+
+                    picture->Embed(offset == -3 ? freshDm : sameDm);
+                    auto decoded = std::make_shared<std::vector<BYTE>>();
+                    const auto dm = Deliver(formatter, *picture, sequence, decoded.get());
+                    const std::wstring detail = L"source=" + std::to_wstring(sequence) +
+                        L" encoding=" + std::to_wstring(int(layout.encoding)) +
+                        L" high=" + std::to_wstring(layout.high) + L" full=" + std::to_wstring(full);
+                    Assert::IsTrue(dm.valid && dm.fullRange == full &&
+                        dm.rgbBitAlignment == (layout.high ? 1 : 2), detail.c_str());
+                    AssertExactSamples(*picture, *decoded);
+                    AnalysisFrameInput input;
+                    input.nativeData = picture->input.data(); input.nativeBytes = picture->input.size();
+                    input.nativeRowBytes = picture->state->BytesPerRow(); input.nativeOwner = picture;
+                    input.convertedData = decoded->data(); input.convertedBytes = decoded->size();
+                    input.convertedOwner = decoded; input.convertedContract = formatter.GetOutputContract();
+                    input.dolby = dm; input.dolbyVisionTunnel = true; input.converted422 = true;
+                    input.width = width; input.height = height; input.encoding = layout.encoding;
+                    input.colorspace = ColorSpace::BT_2020; input.transferKey = static_cast<uint32_t>(EOTF::PQ);
+                    input.sourceGeneration = 1;
+                    input.profile = AnalysisSourceProfile::QueuedCapture;
+                    const auto queued = PrepareAnalysisFrame(input);
+                    input.profile = AnalysisSourceProfile::LiveRenderer;
+                    const auto live = PrepareAnalysisFrame(input);
+                    Assert::IsTrue(queued.IsValid() && live.IsValid() &&
+                        queued.domain == AnalysisFrameDomain::DecodedDolbyVision422 &&
+                        live.domainKey == queued.domainKey && live.source.data == queued.source.data, detail.c_str());
+
+                    const auto bars = ExtractSubtitleBarEvidence(queued.source);
+                    Assert::AreEqual(top, bars.top, detail.c_str());
+                    Assert::AreEqual(bottom, bars.bottom, detail.c_str());
+                    const auto cue = detector.Analyze(queued.source, bars.top, bars.bottom, sequence, 1);
+                    if (offset >= 0)
+                    {
+                        Assert::AreEqual(caption, cue.detected, detail.c_str());
+                        if (caption)
+                            Assert::IsTrue(cue.bounds.left <= left && cue.bounds.right >= right &&
+                                cue.bounds.top <= cueTop && cue.bounds.bottom >= cueBottom, detail.c_str());
+                    }
+                    const auto raw = ExtractActivePictureEvidence(live.source);
+                    Assert::IsTrue(raw.available, detail.c_str());
+                    if (!caption || raw.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
+                    {
+                        Assert::IsTrue(raw.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                            raw.trustedBounds.left == 0 && raw.trustedBounds.right == width &&
+                            std::abs(raw.trustedBounds.top - top) <= 4 &&
+                            std::abs(raw.trustedBounds.bottom - bottom) <= 4, detail.c_str());
+                    }
+                    AnalysisLumaSample center, glyph;
+                    Assert::IsTrue(live.source.Sample(width / 2, height / 2, center) &&
+                        live.source.Sample(left, cueTop, glyph), detail.c_str());
+                    Assert::AreEqual(sceneLevel + ((width / 2) / 64 + (height / 2) / 48) % 5,
+                        int(center.luma), detail.c_str());
+                    Assert::AreEqual(caption ? 510 : black, int(glyph.luma), detail.c_str());
                 }
             }
         }

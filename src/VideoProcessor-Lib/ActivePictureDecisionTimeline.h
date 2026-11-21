@@ -169,6 +169,10 @@ public:
 	{
 		return m_lookaheadPolicyGeneration;
 	}
+	void SetOscillationHoldMilliseconds(unsigned milliseconds)
+	{
+		m_transition.SetOscillationHoldMilliseconds(milliseconds);
+	}
 	bool ShouldAnalyze(uint64_t frameNumber, double framesPerSecond)
 	{
 		return m_transition.ShouldAnalyze(frameNumber, framesPerSecond);

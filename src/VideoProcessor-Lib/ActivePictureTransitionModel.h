@@ -70,6 +70,13 @@ struct ActivePictureBounds
 		BOTH = 3
 	};
 	BarAxes trustedBarAxes = BarAxes::NONE;
+
+	bool SameRectangleAndAxes(const ActivePictureBounds& other) const
+	{
+		return left == other.left && top == other.top && right == other.right &&
+			bottom == other.bottom && rasterWidth == other.rasterWidth &&
+			rasterHeight == other.rasterHeight && trustedBarAxes == other.trustedBarAxes;
+	}
 };
 
 enum class ActivePictureClassification
@@ -192,6 +199,18 @@ struct ActivePictureAxisEvidenceSet
 		return verticalCropGuardTop != 0 || verticalCropGuardBottom != 0;
 	}
 
+	// Completed current native measurements of opposing matte strips, bound to
+	// the rectangle measured on that source. The axes indicate verified pairs.
+	ActivePictureBounds measuredMatteBounds;
+
+	bool HasMeasuredWindowbox(const ActivePictureBounds& bounds) const
+	{
+		return bounds.trustedBarAxes == ActivePictureBounds::BarAxes::BOTH &&
+			horizontal.scanComplete && horizontal.state == ActivePictureAxisState::TRUSTED_BARS &&
+			vertical.scanComplete && vertical.state == ActivePictureAxisState::TRUSTED_BARS &&
+			measuredMatteBounds.SameRectangleAndAxes(bounds);
+	}
+
 	bool HasFailedBar() const { return horizontal.FailedBar() || vertical.FailedBar(); }
 	bool SupportsVerticalCropDespiteSideAmbiguity(const ActivePictureBounds& bounds) const
 	{
@@ -227,6 +246,7 @@ struct ActivePictureAxisEvidenceSet
 	bool operator==(const ActivePictureAxisEvidenceSet& other) const
 	{
 		return horizontal == other.horizontal && vertical == other.vertical &&
+			measuredMatteBounds.SameRectangleAndAxes(other.measuredMatteBounds) &&
 			sidePictureWidth == other.sidePictureWidth && sidePictureHeight == other.sidePictureHeight &&
 			sidePictureTop == other.sidePictureTop && sidePictureBottom == other.sidePictureBottom &&
 			sidePictureThreshold == other.sidePictureThreshold &&
@@ -321,7 +341,8 @@ enum class ActivePicturePublicationAdmission
 	STABLE_GEOMETRY_RETAINED,
 	CONTAINED_COMPOSITION_RETAINED,
 	STABLE_ASPECT_RETAINED,
-	INCOMPLETE_AXIS_RETAINED
+	INCOMPLETE_AXIS_RETAINED,
+    OSCILLATING_FORMAT_RETAINED
 };
 
 const char* ActivePicturePublicationAdmissionName(
@@ -359,6 +380,8 @@ public:
 	// A bounded presentation hysteresis. This never grants crop authority; it
 	// only retains an already trusted rectangle through a small measured shift.
 	void SetStableGeometryDeadbandPercent(double percent);
+    void SetOscillationHoldMilliseconds(unsigned milliseconds);
+    bool OscillationRequiresFullRasterPresentation() const { return m_oscillation.mixed; }
 	static void SetRuntimeStableGeometryDeadbandPercent(double percent);
 	static double GetRuntimeStableGeometryDeadbandPercent();
 	bool ShouldAnalyze(uint64_t frameNumber, double framesPerSecond);
@@ -403,7 +426,8 @@ public:
 		const ActivePictureAxisEvidenceSet* currentAxisEvidence = nullptr,
 		// Opt in only after independent current-frame outward-picture proof.
 		// This relaxes the old reference by one detector step, never the target.
-		bool currentOutwardPictureConfirmed = false);
+		bool currentOutwardPictureConfirmed = false,
+        const ActivePictureObservation* currentObservation = nullptr);
 
 	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
 	static bool IsSparseBoundaryInwardTransitionGeometry(const ActivePictureBounds& base,
@@ -429,7 +453,8 @@ private:
 		const ActivePictureBounds& observation) const;
 	ActivePicturePublicationAdmission StableRetentionAdmission(
 		const ActivePictureBounds& bounds,
-		ActivePictureClassification classification) const;
+		ActivePictureClassification classification,
+		const ActivePictureAxisEvidenceSet* currentEvidence) const;
 	bool RetainsIncompleteInwardFormat(const ActivePictureBounds& candidate,
 		const ActivePictureAxisEvidenceSet& evidence) const;
     bool ValidCurrentSpatialExpansion(const ActivePictureObservation& observation) const;
@@ -484,6 +509,23 @@ private:
     bool m_guardedWindowAdmission = false;
     bool m_hasGuardedRememberedEnvelope = false;
     ActivePictureBounds m_guardedRememberedNominal;
+
+    // Count an A/B round trip only when both geometry changes actually publish.
+    // A further rapid reversal can then require sustained current-source evidence.
+    struct OscillationState {
+        ActivePictureBounds previous, published, supporting;
+        uint64_t changeFrame = 0, lastFrame = 0, supportStart = 0;
+        double rate = 0.0;
+        bool rapidReturnPublished = false, armed = false, mixed = false;
+    };
+    OscillationState m_oscillation;
+    unsigned m_oscillationHoldMs = 0;
+    void TrackOscillationObservation(const ActivePictureObservation& observation);
+    void RecordOscillationPublication(const ActivePictureBounds& target, const ActivePictureObservation& current);
+    static bool CurrentNativeOscillationSupport(const ActivePictureObservation& current,
+        const ActivePictureBounds& target);
+    bool OscillationBlocks(const ActivePictureBounds& target, const ActivePictureObservation& current) const;
+    bool HasSustainedOscillationSupport(const ActivePictureBounds& target) const;
 
 	void StartCandidate(const ActivePictureObservation& observation);
 	void ClearCandidate();

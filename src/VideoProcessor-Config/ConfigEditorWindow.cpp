@@ -37,6 +37,7 @@
 #include <QAccessible>
 #include <QApplication>
 #include <QDoubleValidator>
+#include <QLocale>
 #include <vprenderer/StatsOsdSettings.h>
 #include <QRegularExpressionValidator>
 #include <QStandardItemModel>
@@ -2053,6 +2054,7 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
 
     const QStringList zoomKeys = {
         QStringLiteral("automatic_crop"),
+        QStringLiteral("ar_oscillation_protection_seconds"),
         QStringLiteral("crop_narrower_content_to_fill_screen"),
         QStringLiteral("crop_narrower_content_aspect_limit"),
         QStringLiteral("crop_wider_content_to_fill_screen"),
@@ -7756,6 +7758,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		{
 		addBoolean(QStringLiteral("Automatically crop black bars"),
 			QStringLiteral("automatic_crop"));
+        auto* protection = addText(QStringLiteral("AR oscillation protection"),
+            QStringLiteral("ar_oscillation_protection_seconds"), QStringLiteral("seconds"));
+        auto* duration = new QDoubleValidator(0, RendererProfileConfig::MAX_AR_OSCILLATION_PROTECTION_SECONDS, 3, protection);
+        duration->setLocale(QLocale::c());
+        duration->setNotation(QDoubleValidator::StandardNotation);
+        protection->setValidator(duration);
+        protection->setToolTip(QStringLiteral(
+            "VP Renderer waits for a stable aspect after rapid reversals during automatic cropping or nonlinear stretch. "
+            "Set to 0 to disable protection. The default is 2 seconds."));
 		auto* cropNarrower = addBoolean(
 			QStringLiteral("Crop narrower content to fill screen"),
 			QStringLiteral("crop_narrower_content_to_fill_screen"));
@@ -8033,6 +8044,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         const bool preservePresetDefaults = legacyPresetCompatibility();
         auto fallback = [this, sectionPrefix, section, preservePresetDefaults](const QString& key) -> QString
         {
+            if (sectionPrefix == QStringLiteral("vprenderer.zoom") && key == QStringLiteral("ar_oscillation_protection_seconds"))
+                return QString::number(RendererProfileConfig::DEFAULT_AR_OSCILLATION_PROTECTION_MS / 1000.0);
             if (sectionPrefix == QStringLiteral("vprenderer.color"))
             {
                 if (key == QStringLiteral("target_primaries")) return QStringLiteral("rec709");

@@ -4,6 +4,9 @@
 #include <ActivePictureEvidence.h>
 #include <SubtitleBoxLookahead.h>
 #include <SubtitleMeasurementWorker.h>
+#include <DebugLog.h>
+#include <vprenderer/InputAnalysisCadence.h>
+#include <future>
 #include <SubtitleCueContinuation.h>
 #include <SubtitleCutPaste.h>
 #include <vprenderer/SubtitleAspectRetention.h>
@@ -16,6 +19,7 @@
 #include <array>
 #include <vector>
 #include <chrono>
+#include <thread>
 #include <sstream>
 #include <cstdlib>
 #include <fstream>
@@ -402,6 +406,117 @@ namespace VideoProcessorTest
             key.sharedPicture.required=true;key.sharedPicture.identity=origin;key.sharedPicture.bounds=bounds;
             return sampler.Measure(source,key,{},24,ExtractActivePictureEvidence(source));
         }
+
+        // Both recorded cuts kept a lower caption at the same source coordinates as
+        // it moved from the 1.90 picture into the new scope matte.
+        struct PublishedPictureCaptionFrame {
+            P010Frame pixels{3840,2160};
+            ActivePictureFrameIdentity identity;
+            SubtitlePictureAuthority oldPicture, published;
+            static constexpr uint64_t Policy=47, Continuity=23;
+            static constexpr double Fps=24000.0/1001.0;
+
+            PublishedPictureCaptionFrame(uint64_t sequence, bool beforeCut, bool guarded, bool hasCaption) {
+                oldPicture.bounds=ScopePresentation(3840,2160,68,2092);
+                published.bounds=beforeCut ? oldPicture.bounds :
+                    ScopePresentation(3840,2160,guarded ? 268 : 276,guarded ? 1892 : 1884);
+                const auto physical=beforeCut ? oldPicture.bounds : ScopePresentation(3840,2160,276,1884);
+                pixels.BlackOutside(0,physical.top,3840,physical.bottom);
+                if(guarded) pixels.FillRectangle(0,physical.top,1100,physical.bottom,70);
+                const int x=1200+int(sequence%13)*16;
+                pixels.FillRectangle(x,500,x+64,570,400+int(sequence%17));
+                if(hasCaption) {
+                    pixels.FillRectangle(1512,1924,2328,2040,64);
+                    for(int glyph=0;glyph<14;++glyph) {
+                        const int left=1548+52*glyph;
+                        pixels.FillRectangle(left,1936,left+36,2032,800);
+                        pixels.FillRectangle(left+8,1948,left+28,2020,64);
+                    }
+                }
+                identity=MakeSubtitleProofIdentity(Source(),sequence);
+                identity.captureTimestamp=(sequence*10010000ULL*1000)/24000;
+                oldPicture.required=published.required=true;
+                oldPicture.identity=published.identity=identity;
+            }
+
+            AnalysisLumaSource Source() const {
+                auto source=pixels.P010Source();
+                source.range=AnalysisLumaRange::Limited;
+                return source;
+            }
+
+            SubtitleBoxObservation Key(const SubtitlePictureAuthority& snapshot) const {
+                const auto source=Source();
+                SubtitleBoxObservation key;
+                key.identity=identity;
+                key.width=source.width;key.height=source.height;
+                key.policyGeneration=Policy;key.continuityGeneration=Continuity;
+                key.sharedPicture=snapshot;
+                return key;
+            }
+
+            SubtitleBoxObservation Scan(SubtitleMeasurementSampler& sampler,
+                const SubtitlePictureAuthority& snapshot) const {
+                const auto source=Source();
+                return sampler.Measure(source,Key(snapshot),{},Fps,ExtractActivePictureEvidence(source),true);
+            }
+
+            bool Adopt(SubtitleBoxObservation& scan) const {
+                return SubtitleBoxLookahead::UsePublishedPictureCaption(scan,published,Source(),
+                    identity,Policy,Continuity,SubtitleScriptHint::Latin);
+            }
+        };
+
+        struct WorkerLifecycleLog {
+            static std::mutex mutex;
+            static std::vector<std::string> lines;
+            const bool previousEnhanced=DebugLog::IsEnhancedLoggingEnabled();
+
+            explicit WorkerLifecycleLog(bool enhanced) {
+                lines.clear();
+                DebugLog::SetExternalSink(Record);
+                DebugLog::SetEnhancedLoggingEnabled(enhanced);
+            }
+            ~WorkerLifecycleLog() {
+                DebugLog::SetExternalSink(nullptr);
+                DebugLog::SetEnhancedLoggingEnabled(previousEnhanced);
+            }
+            static void __cdecl Record(const char* text) {
+                if(!text || std::strncmp(text,"VP subtitle worker: ",20)!=0)return;
+                std::lock_guard<std::mutex> lock(mutex);
+                lines.emplace_back(text);
+            }
+            static std::string Field(const std::string& line,const std::string& name) {
+                const auto token=" "+name+"=";
+                const auto begin=line.find(token);
+                if(begin==std::string::npos)return {};
+                const auto first=begin+token.size();
+                return line.substr(first,line.find(' ',first)-first);
+            }
+            // Called after the worker has joined. A transition is recorded once,
+            // even if the head and worker write their messages in different orders.
+            static std::string Event(const ActivePictureFrameIdentity& id,const char* stage,const char* reason) {
+                std::string found;
+                for(const auto& line:lines) {
+                    if(Field(line,"source")!=std::to_string(id.acceptedSequence) ||
+                        Field(line,"stage")!=stage || Field(line,"reason")!=reason)continue;
+                    Assert::IsTrue(found.empty(),L"Duplicate lifecycle event for one exact source.");
+                    found=line;
+                }
+                Logger::WriteMessage(found.c_str());
+                Assert::IsFalse(found.empty(),L"The expected source-specific worker event is missing.");
+                Assert::AreEqual(std::to_string(id.transportGeneration),Field(found,"generation"));
+                Assert::AreEqual(std::to_string(id.sourceFrameNumber),Field(found,"source_frame"));
+                Assert::AreEqual(std::to_string(id.captureTimestamp),Field(found,"capture_timestamp"));
+                Assert::AreEqual(std::to_string(id.analysisDomainKey),Field(found,"domain"));
+                Assert::AreEqual(std::to_string(PublishedPictureCaptionFrame::Policy),Field(found,"policy"));
+                Assert::AreEqual(std::to_string(PublishedPictureCaptionFrame::Continuity),Field(found,"continuity"));
+                Assert::IsFalse(Field(found,"mono_us").empty());
+                return found;
+            }
+        };
+        std::mutex WorkerLifecycleLog::mutex;
+        std::vector<std::string> WorkerLifecycleLog::lines;
 
 		P010Frame MakeSubtitleProofFrame(int pictureTop, int pictureBottom,
 			bool crossingGlyph, int panelLeft = 1190, int panelRight = 2650)
@@ -1151,6 +1266,641 @@ namespace VideoProcessorTest
             Assert::IsFalse(identityMismatch.classification ==
                 ActivePictureClassification::BAR_CROP_TRUSTED);
         }
+        TEST_METHOD(PublishedPictureCaptionReachesCropOnBothTransitionFrames)
+        {
+            using Frame=PublishedPictureCaptionFrame;
+            using namespace AlphaSourceCrop;
+            for(bool guarded:{false,true}) {
+                const uint64_t cut=guarded ? 18406 : 17791;
+                SubtitleMeasurementSampler sampler;
+                SubtitleBoxPresentation tracker;
+                SubtitleCutPastePresentation placement;
+                CropPresentationAdmissionState prior;
+                for(int offset=-1;offset<=2;++offset) {
+                    const bool before=offset<0;
+                    const bool hasCaption=!guarded || offset<2;
+                    Frame frame(cut+offset,before,guarded,hasCaption);
+                    const auto source=frame.Source();
+                    const auto& base=frame.published.bounds;
+                    const bool needsHandoff=!before && offset<2;
+                    auto scan=frame.Scan(sampler,needsHandoff ? frame.oldPicture : frame.published);
+                    AnalysisLumaSample sample;
+                    Assert::IsTrue(source.Sample(1552,1940,sample));
+                    Assert::AreEqual(hasCaption ? 800 : 64,int(sample.luma));
+                    if(needsHandoff) {
+                        Assert::AreEqual(68,scan.pictureTop);
+                        Assert::AreEqual(2092,scan.pictureBottom);
+                        Assert::IsTrue(scan.subtitleArProof.accepted);
+                        Assert::AreEqual(base.top,scan.subtitleArProof.candidate.top);
+                        Assert::AreEqual(base.bottom,scan.subtitleArProof.candidate.bottom);
+                        Assert::IsTrue(frame.Adopt(scan));
+                        Assert::IsTrue(SameAnalysisFrameIdentity(scan.identity,frame.identity));
+                        Assert::AreEqual(276,scan.barEvidence.top);
+                        Assert::AreEqual(1884,scan.barEvidence.bottom);
+                        Assert::AreEqual(base.top,scan.pictureTop);
+                        Assert::AreEqual(base.bottom,scan.pictureBottom);
+                    }
+                    const auto preview=SubtitleBoxLookahead::Resolve(&scan,1,Frame::Policy,Frame::Continuity);
+                    const auto accepted=tracker.Consume(preview,250,1000.0/Frame::Fps);
+                    auto composition=placement.Consume(accepted,preview,{60,40,21},20);
+                    composition=FitSubtitleToVisiblePicture(composition,
+                        {base.left,base.top,base.right,base.bottom},20);
+                    Input crop;
+                    crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+                    crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                    crop.geometry=base;crop.rasterWidth=source.width;crop.rasterHeight=source.height;
+                    crop.frameSourceSequence=frame.identity.acceptedSequence;
+                    crop.frameSourceGeneration=crop.geometrySourceGeneration=source.generation;
+                    crop.framePresentationEpoch=frame.identity.viewportGeneration;
+                    if(!before && hasCaption) {
+                        Assert::IsTrue(accepted.detected && !accepted.held && composition.valid);
+                        Assert::AreEqual(1,accepted.lineCount);
+                        Assert::IsTrue(composition.glyphLines[0].top<=1936 &&
+                            composition.glyphLines[0].bottom>=2032);
+                        Assert::IsTrue(composition.destination.top>=base.top &&
+                            composition.destination.bottom<=base.bottom);
+                        QualifiedSubtitlePresentationInput move;
+                        move.mode=SubtitlePreviewMode::GeneratedGrayBackground;
+                        move.observation=&scan;move.accepted=&accepted;move.composition=&composition;
+                        move.sourcePrepared=true;move.currentIdentity=frame.identity;
+                        move.currentDisplayPicture=frame.published;move.physicalBase=base;
+                        move.policyGeneration=Frame::Policy;move.continuityGeneration=Frame::Continuity;
+                        const auto raw=EvaluateActivePicturePresentationRetention(source,base,
+                            scan.subtitleArProof.evidence,EvaluateActivePictureGlobalNearBlack(source),
+                            scan.subtitleArDarkness);
+                        const auto prepared=EvaluatePreparedSubtitlePresentationEvidence(source,raw,move);
+                        Logger::WriteMessage(prepared.reason);
+                        Assert::IsTrue(prepared.qualified && prepared.preparedErasureOnly && !prepared.renewsHold);
+                        crop.preparedSubtitle=QualifyPreparedSubtitleCropPresentation(prepared,frame.identity,base);
+                        crop.frameLocalPresentationRetentionEvaluated=prepared.retention.analysisValid;
+                        crop.frameLocalPresentationRetentionSafe=prepared.retention.excludedBandsPixelSafe;
+                        crop.currentVisibleBoundsAvailable=prepared.retention.outwardVisibleBoundsAvailable;
+                        crop.verticalTranslationConfirmationPending=needsHandoff;
+                        Assert::IsTrue(HasCurrentPreparedSubtitlePresentation(crop));
+                    }
+                    if(!hasCaption) {
+                        Assert::IsFalse(frame.Adopt(scan));
+                        Assert::IsFalse(accepted.detected || composition.valid);
+                    }
+                    const auto selected=AdmitCropPresentation(prior,crop,Evaluate(crop),crop.framePresentationEpoch);
+                    Assert::IsFalse(selected.blocked);
+                    Assert::IsTrue(selected.presentation.applyCrop);
+                    Assert::IsTrue(SameSubtitlePresentationBounds(base,selected.presentation.sourceBounds));
+                    Assert::IsTrue(SameSubtitlePresentationBounds(base,selected.state.trustedCrop));
+                    prior=selected.state;
+                }
+            }
+        }
+
+        TEST_METHOD(PublishedPictureCaptionRejectsStaleAndUncertifiedRequests)
+        {
+            using Frame=PublishedPictureCaptionFrame;
+            Frame frame(18406,false,true,true);
+            SubtitleMeasurementSampler sampler;
+            const auto current=frame.Scan(sampler,frame.oldPicture);
+            Assert::IsTrue(current.subtitleArProof.accepted);
+            auto control=current;
+            Assert::IsTrue(frame.Adopt(control));
+            const auto rejects=[&](SubtitleBoxObservation scan,const SubtitlePictureAuthority& published,
+                const ActivePictureFrameIdentity& id,uint64_t policy,uint64_t continuity,SubtitleScriptHint script) {
+                const auto ink=scan.ink;
+                Assert::IsFalse(SubtitleBoxLookahead::UsePublishedPictureCaption(scan,published,frame.Source(),
+                    id,policy,continuity,script));
+                Assert::AreEqual(68,scan.pictureTop);Assert::AreEqual(2092,scan.pictureBottom);
+                Assert::IsTrue(scan.ink==ink && scan.sharedPicture.Matches(frame.oldPicture));
+            };
+            auto stale=frame.identity;++stale.acceptedSequence;
+            rejects(current,frame.published,stale,Frame::Policy,Frame::Continuity,SubtitleScriptHint::Latin);
+            rejects(current,frame.published,frame.identity,Frame::Policy+1,Frame::Continuity,SubtitleScriptHint::Latin);
+            rejects(current,frame.published,frame.identity,Frame::Policy,Frame::Continuity+1,SubtitleScriptHint::Latin);
+            rejects(current,frame.published,frame.identity,Frame::Policy,Frame::Continuity,SubtitleScriptHint::Thai);
+            auto nearGuard=frame.published;
+            nearGuard.bounds=ScopePresentation(3840,2160,270,1890);
+            rejects(current,nearGuard,frame.identity,Frame::Policy,Frame::Continuity,SubtitleScriptHint::Latin);
+            auto noPayload=current;noPayload.publishedPictureCaption.reset();
+            rejects(noPayload,frame.published,frame.identity,Frame::Policy,Frame::Continuity,SubtitleScriptHint::Latin);
+            auto changedEpoch=frame.published;++changedEpoch.identity.viewportGeneration;
+            rejects(current,changedEpoch,frame.identity,Frame::Policy,Frame::Continuity,SubtitleScriptHint::Latin);
+        }
+
+        TEST_METHOD(PublishedPictureCaptionReadsCompletedWorkerWithoutCarriedPreview)
+        {
+            using Frame=PublishedPictureCaptionFrame;
+            Frame frame(17791,false,false,true);
+            const auto source=frame.Source();
+            const auto oldKey=frame.Key(frame.oldPicture);
+            const auto newKey=frame.Key(frame.published);
+            SubtitleMeasurementWorker worker;
+            const auto submit=[&](const SubtitleBoxObservation& key) {
+                worker.Submit(key,[&frame,key](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference&) {
+                    return frame.Scan(sampler,key.sharedPicture);
+                });
+            };
+            const auto waitForExact=[&](const SubtitleBoxObservation& key) {
+                SubtitleBoxObservation ready;
+                const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+                while(!worker.TryRead(key,ready)) {
+                    if(std::chrono::steady_clock::now()>=deadline) {
+                        Assert::Fail(L"The worker did not complete the submitted picture key.");
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                return ready;
+            };
+
+            submit(oldKey);
+            const auto original=waitForExact(oldKey);
+            Assert::IsTrue(bool(original.publishedPictureCaption));
+            Assert::AreEqual(68,original.pictureTop);
+            // A fresh renderer lookup starts empty. Publication is the only
+            // change since the worker finished scanning these exact pixels.
+            SubtitleBoxObservation selected;
+            Assert::IsFalse(worker.TryRead(newKey,selected));
+            auto staleSource=source;++staleSource.generation;
+            Assert::IsFalse(worker.TryRead(newKey,selected,false,&staleSource));
+            auto otherSource=newKey;++otherSource.identity.acceptedSequence;
+            otherSource.sharedPicture.identity=otherSource.identity;
+            Assert::IsFalse(worker.TryRead(otherSource,selected,false,&source));
+            Assert::IsTrue(worker.TryRead(newKey,selected,false,&source));
+            Assert::IsTrue(SameAnalysisFrameIdentity(selected.identity,frame.identity));
+            Assert::IsTrue(selected.sharedPicture.Matches(frame.published));
+            Assert::AreEqual(276,selected.pictureTop);
+            Assert::AreEqual(1884,selected.pictureBottom);
+            Assert::IsTrue(selected.ink==original.publishedPictureCaption->ink);
+            const auto preview=SubtitleBoxLookahead::Resolve(&selected,1,Frame::Policy,Frame::Continuity);
+            SubtitleBoxPresentation tracker;
+            Assert::IsTrue(tracker.Consume(preview,250,1000.0/Frame::Fps).detected);
+            const auto previous=waitForExact(oldKey);
+            Assert::AreEqual(68,previous.pictureTop);
+            Assert::IsTrue(previous.ink==original.ink && previous.publishedPictureCaption==original.publishedPictureCaption);
+            Assert::AreEqual<uint64_t>(1,worker.TakeDiagnostics().completedJobs);
+
+            // If both keys have completed, prefer the ordinary scan on the
+            // published planes even though the older key was inserted first.
+            submit(newKey);
+            const auto direct=waitForExact(newKey);
+            Assert::IsTrue(direct.ink && direct.ink!=selected.ink);
+            Assert::IsTrue(worker.TryRead(newKey,selected,false,&source));
+            Assert::IsTrue(selected.ink==direct.ink);
+        }
+
+        TEST_METHOD(PublishedPictureCaptionWorkerTraceDistinguishesLateExpiredAndReadyAtCut)
+        {
+            using Frame=PublishedPictureCaptionFrame;
+            using namespace AlphaSourceCrop;
+            Frame late(17791,false,false,true), expired(17792,false,false,true), ready(17793,false,false,true);
+            for(bool enhanced:{false,true}) {
+                WorkerLifecycleLog log(enhanced);
+                std::mutex lateGate,readyGate;
+                std::promise<void> lateStarted,readyStarted;
+                SubtitleMeasurementWorker worker;
+                // These guards are destroyed before the worker, including on a failed assertion.
+                std::unique_lock<std::mutex> holdLate(lateGate),holdReady(readyGate);
+                const auto submitGated=[&](const Frame& frame,std::mutex& gate,std::promise<void>& started) {
+                    worker.Submit(frame.Key(frame.oldPicture),[&frame,&gate,&started](
+                        SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference&) {
+                        started.set_value();
+                        {std::lock_guard<std::mutex> wait(gate);}
+                        return frame.Scan(sampler,frame.oldPicture);
+                    });
+                };
+                worker.BeginSourceWindow(late.identity);
+                submitGated(late,lateGate,lateStarted);
+                Assert::IsTrue(lateStarted.get_future().wait_for(std::chrono::seconds(5))==std::future_status::ready);
+                worker.Submit(late.Key(late.oldPicture),{}); // Same active job.
+                worker.Submit(expired.Key(expired.oldPicture),{}); // Never starts.
+                CropPresentationAdmissionState prior;
+                for(const auto* frame:{&late,&expired}) {
+                    worker.BeginSourceWindow(frame->identity);
+                    auto key=frame->Key(frame->published);
+                    const auto source=frame->Source();
+                    Assert::IsTrue(InputFrameAnalysisDue(Frame::Fps,key.identity.acceptedSequence),
+                        L"At 23.976 Hz neither missing measurement is a cadence skip.");
+                    SubtitleBoxObservation selected;
+                    Assert::IsFalse(worker.TryRead(key,selected,false,&source));
+                    const auto unresolved=SubtitleBoxLookahead::Resolve(&key,1,Frame::Policy,Frame::Continuity);
+                    Assert::IsFalse(unresolved.available);
+                    Assert::IsTrue(SubtitleAbsenceIsUnknown(unresolved.current));
+                    Assert::IsTrue(SameAnalysisFrameIdentity(unresolved.current.identity,frame->identity));
+
+                    // Resolve the native crop with current raw visibility and no
+                    // successful replacement. A lower-band glyph must remain inside
+                    // the selected source rectangle on each of the two pending frames.
+                    Input crop;
+                    crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+                    crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                    crop.geometry=crop.currentVisibleBase=frame->published.bounds;
+                    crop.rasterWidth=source.width;crop.rasterHeight=source.height;
+                    crop.frameSourceGeneration=crop.geometrySourceGeneration=crop.currentVisibleSourceGeneration=source.generation;
+                    crop.frameSourceSequence=crop.currentVisibleSourceSequence=frame->identity.acceptedSequence;
+                    const auto evidence=EvaluateActivePicturePresentationRetention(source,crop.geometry);
+                    Assert::IsTrue(evidence.outwardVisibleBoundsAvailable && !evidence.excludedBandsPixelSafe);
+                    crop.currentVisibleBoundsAvailable=true;crop.currentVisibleBounds=evidence.outwardVisibleBounds;
+                    const auto shown=AdmitCropPresentation(prior,crop,Evaluate(crop),frame->identity.viewportGeneration);
+                    const auto& bounds=shown.presentation.sourceBounds;
+                    Assert::IsTrue(bounds.left<=1548 && bounds.right>=2260 && bounds.top<=1936 && bounds.bottom>=2032);
+                    AnalysisLumaSample glyph,marker;
+                    const int markerX=1200+int(frame->identity.acceptedSequence%13)*16;
+                    Assert::IsTrue(source.Sample(1552,1940,glyph) && source.Sample(markerX,520,marker));
+                    Assert::AreEqual(800,int(glyph.luma));
+                    Assert::AreEqual(400+int(frame->identity.acceptedSequence%17),int(marker.luma));
+                    prior=shown.state;
+                }
+                worker.BeginSourceWindow(ready.identity);
+                submitGated(ready,readyGate,readyStarted);
+                holdLate.unlock();
+                Assert::IsTrue(readyStarted.get_future().wait_for(std::chrono::seconds(5))==std::future_status::ready);
+                const auto source=ready.Source();
+                const auto key=ready.Key(ready.published);
+                SubtitleBoxObservation scan;
+                Assert::IsTrue(worker.TryRead(late.Key(late.oldPicture),scan));
+                Assert::IsFalse(worker.TryRead(key,scan,false,&source),
+                    L"The completed late scan cannot be reused for the newer movie frame.");
+                holdReady.unlock();
+                const auto timeout=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+                while(!worker.TryRead(key,scan,false,&source)) {
+                    Assert::IsTrue(std::chrono::steady_clock::now()<timeout,L"Current caption never became ready.");
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                worker.Stop();
+                const auto stats=worker.TakeDiagnostics();
+                Assert::AreEqual<uint64_t>(3,stats.submitted);
+                Assert::AreEqual<uint64_t>(2,stats.completedJobs);
+                Assert::AreEqual<uint64_t>(1,stats.expired);
+                Assert::AreEqual<uint64_t>(1,stats.deduplicated);
+                Assert::IsTrue(SameAnalysisFrameIdentity(ready.identity,scan.identity));
+                const auto preview=SubtitleBoxLookahead::Resolve(&scan,1,Frame::Policy,Frame::Continuity);
+                SubtitleBoxPresentation tracker;
+                const auto accepted=tracker.Consume(preview,250,1000./Frame::Fps);
+                Assert::IsTrue(accepted.detected && !accepted.held);
+                Assert::IsTrue(accepted.lineBounds[0].top<=1936 && accepted.lineBounds[0].bottom>=2032);
+
+                if(!enhanced) {
+                    Assert::IsTrue(log.lines.empty());
+                    continue;
+                }
+                const auto time=[](const std::string& line){return std::stoll(WorkerLifecycleLog::Field(line,"mono_us"));};
+                const auto lateSubmit=log.Event(late.identity,"submit","accepted");
+                const auto lateStart=log.Event(late.identity,"start","dequeued");
+                const auto duplicate=log.Event(late.identity,"skip","active");
+                const auto queued=log.Event(expired.identity,"submit","accepted");
+                const auto dropped=log.Event(expired.identity,"drop","source-window-expired");
+                const auto lateDone=log.Event(late.identity,"complete","cached-after-window");
+                const auto readySubmit=log.Event(ready.identity,"submit","accepted");
+                const auto readyStart=log.Event(ready.identity,"start","dequeued");
+                const auto readyDone=log.Event(ready.identity,"complete","cached");
+                Assert::AreEqual<size_t>(9,log.lines.size(),L"An expired job must have no start or completion event.");
+                Assert::IsTrue(time(lateSubmit)>0 && time(lateSubmit)<=time(lateStart) && time(lateStart)<=time(duplicate));
+                Assert::IsTrue(time(duplicate)<=time(queued) && time(queued)<=time(dropped) && time(dropped)<=time(readySubmit));
+                Assert::IsTrue(time(readySubmit)<=time(lateDone) && time(lateDone)<=time(readyStart) && time(readyStart)<=time(readyDone));
+                for(const auto& completion:{lateDone,readyDone}) {
+                    Assert::AreEqual(std::string("1"),log.Field(completion,"analyzed"));
+                    Assert::AreEqual(std::string("1"),log.Field(completion,"alternate"));
+                    Assert::AreEqual(std::string("68,2092"),log.Field(completion,"result_planes"));
+                    Assert::IsTrue(std::stod(log.Field(completion,"work_ms"))>0);
+                    Assert::IsTrue(std::stod(log.Field(completion,"queue_wait_ms"))>=0);
+                }
+            }
+        }
+
+        TEST_METHOD(PublishedPictureCaptionFirstGuardedFrameMatchesDirectMeasurementAtCut1206)
+        {
+            // Logged timing and planes, with synthetic crossing glyphs/card to make
+            // the physical and guarded measurements demonstrably different.
+            using Frame=PublishedPictureCaptionFrame;
+            Frame frame(1206,false,true,false);
+            AddMeasuredProofCard(frame.pixels,1884,true);
+            auto source=frame.Source();
+            source.generation=2;
+            const ActivePictureFrameIdentity id{2,1206,1721,718778996,5354610997421391440ULL,
+                0,2,4521869302915884077ULL};
+            auto key=frame.Key(frame.oldPicture);
+            key.identity=key.sharedPicture.identity=id;
+            key.sharedPicture.identity.acceptedSequence=1203;
+            key.sharedPicture.identity.sourceFrameNumber=1718;
+            key.sharedPicture.identity.captureTimestamp=717527760;
+            key.nearBarDistance=20;key.policyGeneration=2;key.continuityGeneration=9;
+            auto published=key;
+            published.sharedPicture.bounds=frame.published.bounds;published.sharedPicture.identity=id;
+            const auto native=ExtractActivePictureEvidence(source);
+            SubtitleMeasurementWorker worker;
+            SubtitleBoxObservation fromWorker;
+            Assert::IsFalse(worker.TryRead(published,fromWorker,false,&source),
+                L"A pending or unsubmitted current source has no caption replacement.");
+            worker.Submit(key,[&](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference&) {
+                return sampler.Measure(source,key,{},Frame::Fps,native,true);
+            });
+            SubtitleBoxObservation original;
+            const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+            while(!worker.TryRead(key,original)) {
+                Assert::IsTrue(std::chrono::steady_clock::now()<deadline,L"Old-picture scan did not complete.");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            Assert::IsTrue(original.analyzed && !original.text.detected);
+            Assert::AreEqual(68,original.pictureTop);Assert::AreEqual(2092,original.pictureBottom);
+            Assert::IsTrue(original.subtitleArProof.accepted && bool(original.publishedPictureCaption));
+            Assert::AreEqual(268,original.subtitleArProof.candidate.top);
+            Assert::AreEqual(1892,original.subtitleArProof.candidate.bottom);
+            const auto& physical=*original.publishedPictureCaption;
+            Assert::AreEqual(276,physical.pictureTop);Assert::AreEqual(1884,physical.pictureBottom);
+            Assert::IsTrue(physical.text.capturePanel.Valid());
+            Assert::IsTrue(bool(original.publishedGuardCaption));
+            Assert::IsTrue(original.publishedGuardCaption->ink!=physical.ink);
+
+            const auto adopt=[&](SubtitleBoxObservation& current,const SubtitleBoxObservation& request) {
+                return SubtitleBoxLookahead::UsePublishedPictureCaption(current,request.sharedPicture,source,
+                    request.identity,request.policyGeneration,request.continuityGeneration,request.scriptHint);
+            };
+            auto physicalOnly=original;physicalOnly.publishedGuardCaption.reset();
+            Assert::IsFalse(adopt(physicalOnly,published));
+            Assert::AreEqual(2092,physicalOnly.pictureBottom);
+            Assert::IsFalse(physicalOnly.text.detected);
+            auto physicalRequest=published;
+            physicalRequest.sharedPicture.bounds=ScopePresentation(3840,2160,276,1884);
+            Assert::IsTrue(adopt(physicalOnly,physicalRequest));
+            Assert::IsTrue(physicalOnly.ink==physical.ink);
+            auto wrongPlanes=published;wrongPlanes.sharedPicture.bounds=ScopePresentation(3840,2160,270,1890);
+            auto stale=published;++stale.identity.acceptedSequence;stale.sharedPicture.identity=stale.identity;
+            auto wrongPolicy=published;++wrongPolicy.policyGeneration;
+            for(const auto& mismatch:{wrongPlanes,stale,wrongPolicy}) {
+                auto unchanged=original;
+                Assert::IsFalse(adopt(unchanged,mismatch));
+                Assert::IsFalse(worker.TryRead(mismatch,fromWorker,false,&source));
+                Assert::IsTrue(unchanged.ink==original.ink && unchanged.pictureBottom==2092);
+            }
+            Assert::IsFalse(worker.TryRead(published,fromWorker));
+            Assert::IsTrue(worker.TryRead(published,fromWorker,false,&source));
+            Assert::AreEqual<uint64_t>(1,worker.TakeDiagnostics().submitted);
+            auto carried=original;
+            Assert::IsTrue(adopt(carried,published));
+            SubtitleMeasurementSampler directSampler;
+            const auto direct=directSampler.Measure(source,published,{},Frame::Fps,native,false);
+            Assert::IsTrue(direct.text.detected && direct.text.lineCount==2 && direct.text.provenSourcePanel.Valid());
+            Assert::IsTrue(direct.text.capturePanel.bottom>physical.text.capturePanel.bottom,
+                L"Relabeling the physical grouping would lose the measured lower card pixels.");
+
+            const auto sameRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+                return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+            };
+            for(const auto* result:{&carried,&fromWorker}) {
+                Assert::IsTrue(SameAnalysisFrameIdentity(result->identity,id));
+                Assert::IsTrue(result->ink==original.publishedGuardCaption->ink && result->ink!=physical.ink);
+                Assert::AreEqual(268,result->pictureTop);Assert::AreEqual(1892,result->pictureBottom);
+                Assert::AreEqual(276,result->barEvidence.top);Assert::AreEqual(1884,result->barEvidence.bottom);
+                Assert::IsTrue(sameRect(result->text.bounds,direct.text.bounds));
+                Assert::IsTrue(sameRect(result->text.capturePanel,direct.text.capturePanel));
+                Assert::IsTrue(sameRect(result->text.sourcePanel,direct.text.sourcePanel));
+                Assert::IsTrue(sameRect(result->text.provenSourcePanel,direct.text.provenSourcePanel));
+                Assert::AreEqual(direct.text.lineCount,result->text.lineCount);
+                for(int line=0;line<direct.text.lineCount;++line) {
+                    Assert::IsTrue(sameRect(result->text.lineBounds[line],direct.text.lineBounds[line]));
+                    Assert::IsTrue(sameRect(result->text.linePanels[line],direct.text.linePanels[line]));
+                    Assert::IsTrue(sameRect(result->text.lineCapturePanels[line],direct.text.lineCapturePanels[line]));
+                }
+                const auto preview=SubtitleBoxLookahead::Resolve(result,1,2,9);
+                SubtitleBoxPresentation tracker;
+                const auto accepted=tracker.Consume(preview,250,1000./Frame::Fps);
+                Assert::IsTrue(accepted.detected && !accepted.held && accepted.lineCount==2);
+                SubtitleCutPastePresentation placement;
+                const auto move=FitSubtitleToVisiblePicture(placement.Consume(accepted,preview,{75,35,25},20),
+                    {0,268,3840,1892},20);
+                Assert::IsTrue(move.valid && move.destination.top>=268 && move.destination.bottom<=1892);
+                Assert::IsTrue(move.glyphLines[0].Valid() && move.glyphLines[1].Valid());
+            }
+        }
+
+        TEST_METHOD(PublishedPictureCaptionSecondFrameRequiresOwnGlyphsAndCurrentPhysicalProof)
+        {
+            using Frame=PublishedPictureCaptionFrame;
+            Frame first(1206,false,true,false),next(1207,false,false,true);
+            AddMeasuredProofCard(first.pixels,1884,true);
+            next.published.bounds=first.published.bounds;
+            const auto nextSource=next.Source();
+            const auto firstRaw=ExtractActivePictureEvidence(first.Source());
+            const auto nextRaw=ExtractActivePictureEvidence(nextSource);
+            const auto measure=[&](SubtitleMeasurementSampler& sampler,const Frame& frame,
+                SubtitleBoxObservation key,const ActivePictureEvidence& native,bool enabled=true) {
+                key.nearBarDistance=20;
+                return sampler.Measure(frame.Source(),key,{},Frame::Fps,native,enabled);
+            };
+            const auto firstKey=first.Key(first.oldPicture),nextKey=next.Key(next.oldPicture);
+            SubtitleMeasurementSampler sampler;
+            const auto previous=measure(sampler,first,firstKey,firstRaw);
+            Assert::IsTrue(previous.subtitleArProof.accepted && bool(previous.publishedGuardCaption));
+            const auto original=measure(sampler,next,nextKey,nextRaw);
+            Assert::IsTrue(original.subtitleArProof.accepted && bool(original.publishedPictureCaption));
+            Assert::AreEqual(276,original.subtitleArProof.candidate.top);
+            Assert::AreEqual(1884,original.subtitleArProof.candidate.bottom);
+            Assert::IsTrue(bool(original.publishedGuardCaption) && bool(original.publishedGuardCaption->guardScanHint));
+            auto guarded=original;
+            Assert::IsTrue(next.Adopt(guarded));
+            Assert::IsTrue(SameAnalysisFrameIdentity(next.identity,guarded.subtitleArProof.identity));
+            Assert::AreEqual(276,guarded.subtitleArProof.candidate.top);
+            Assert::AreEqual(1884,guarded.subtitleArProof.candidate.bottom);
+            Assert::AreEqual(268,guarded.pictureTop);Assert::AreEqual(1892,guarded.pictureBottom);
+            Assert::IsTrue(guarded.ink!=previous.publishedGuardCaption->ink);
+            Assert::AreEqual(2,previous.publishedGuardCaption->text.lineCount);
+            Assert::AreEqual(1,guarded.text.lineCount);
+            SubtitleMeasurementSampler directSampler;
+            const auto direct=measure(directSampler,next,next.Key(next.published),nextRaw,false);
+            Assert::IsTrue(guarded.text.lineSignatures==direct.text.lineSignatures);
+            Assert::AreEqual(direct.text.lineBounds[0].left,guarded.text.lineBounds[0].left);
+            Assert::AreEqual(direct.text.lineBounds[0].bottom,guarded.text.lineBounds[0].bottom);
+            const auto preview=SubtitleBoxLookahead::Resolve(&guarded,1,Frame::Policy,Frame::Continuity);
+            SubtitleBoxPresentation tracker;
+            const auto accepted=tracker.Consume(preview,250,1000./Frame::Fps);
+            Assert::IsTrue(accepted.detected && !accepted.held && accepted.lineCount==1);
+            SubtitleCutPastePresentation placement;
+            const auto move=FitSubtitleToVisiblePicture(placement.Consume(accepted,preview,{75,35,25},20),
+                {0,268,3840,1892},20);
+            Assert::IsTrue(move.valid && move.destination.bottom<=1892);
+            Assert::IsTrue(move.glyphLines[0].top<=1936 && move.glyphLines[0].bottom>=2032);
+
+            auto wrongSibling=original;
+            auto sibling=std::make_shared<SubtitleBoxObservation>(*original.publishedPictureCaption);
+            sibling->identity=first.identity;wrongSibling.publishedPictureCaption=sibling;
+            Assert::IsFalse(next.Adopt(wrongSibling));
+            auto noCurrentProof=original;noCurrentProof.subtitleArProof={};
+            Assert::IsFalse(next.Adopt(noCurrentProof));
+            auto noGuard=original;noGuard.publishedGuardCaption.reset();
+            Assert::IsFalse(next.Adopt(noGuard));
+            auto differentGuard=next.published;
+            differentGuard.bounds=ScopePresentation(3840,2160,270,1890);
+            auto offByTwo=original;
+            Assert::IsFalse(SubtitleBoxLookahead::UsePublishedPictureCaption(offByTwo,differentGuard,nextSource,
+                next.identity,Frame::Policy,Frame::Continuity,SubtitleScriptHint::Latin));
+
+            // One changed condition at a time. A prior scan can nominate planes
+            // only for its exact next worker source, and never supplies S1207 ink.
+            for(int control=0;control<4;++control) {
+                SubtitleMeasurementSampler separated;
+                if(control!=0)measure(separated,first,firstKey,firstRaw,control!=1);
+                auto changedKey=nextKey;
+                if(control==2)++changedKey.policyGeneration;
+                if(control==3)++changedKey.identity.acceptedSequence;
+                auto independent=measure(separated,next,changedKey,nextRaw);
+                Assert::IsTrue(independent.subtitleArProof.accepted && bool(independent.publishedPictureCaption));
+                Assert::IsFalse(bool(independent.publishedGuardCaption));
+            }
+
+            // Without the exact replacement, keep S1207's native lower glyphs
+            // visible as the usual current-source crop policy resolves the cut.
+            using namespace AlphaSourceCrop;
+            Input crop;
+            crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+            crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.geometry=crop.currentVisibleBase=next.published.bounds;
+            crop.rasterWidth=nextSource.width;crop.rasterHeight=nextSource.height;
+            crop.frameSourceGeneration=crop.geometrySourceGeneration=crop.currentVisibleSourceGeneration=nextSource.generation;
+            crop.frameSourceSequence=crop.currentVisibleSourceSequence=next.identity.acceptedSequence;
+            const auto retained=EvaluateActivePicturePresentationRetention(nextSource,crop.geometry);
+            Assert::IsTrue(retained.outwardVisibleBoundsAvailable && !retained.excludedBandsPixelSafe);
+            crop.currentVisibleBoundsAvailable=true;crop.currentVisibleBounds=retained.outwardVisibleBounds;
+            const auto fallback=AdmitCropPresentation({},crop,Evaluate(crop),next.identity.viewportGeneration);
+            const auto& shown=fallback.presentation.sourceBounds;
+            Assert::IsTrue(shown.left<=1548 && shown.top<=1936 && shown.right>=2260 && shown.bottom>=2032);
+            AnalysisLumaSample glyph;
+            Assert::IsTrue(nextSource.Sample(1552,1940,glyph));Assert::AreEqual(800,int(glyph.luma));
+        }
+
+        TEST_METHOD(PublishedPictureCaptionTransfersExteriorCueWithNoHorizontalExtentAtThreeScopeReturns)
+        {
+            using namespace AlphaSourceCrop;
+            const int width=3840,height=2160;
+            const auto oldBounds=ScopePresentation(width,height,68,2092);
+            const auto physical=ScopePresentation(width,height,276,1884);
+            const auto guard=ScopePresentation(width,height,268,1892);
+            P010Frame frame(width,height);
+            frame.BlackOutside(0,276,width,1884,0);
+            // Native pixels stop the left-edge scan immediately, but support on
+            // the middle rows alone cannot establish distributed full width.
+            frame.FillRectangle(0,276,1100,1884,6);
+            frame.FillRectangle(0,810,1100,1350,180);
+            for(int glyph=0;glyph<14;++glyph) {
+                const int x=1528+56*glyph;
+                frame.FillRectangle(x,1936,x+36,2016,800);
+                frame.FillRectangle(x+8,1944,x+28,2008,0);
+            }
+            auto source=frame.P010Source();
+            source.range=AnalysisLumaRange::Full;
+            const auto native=ExtractActivePictureEvidence(source);
+            const auto& side=native.axisEvidence.horizontal;
+            Assert::IsTrue(side.scanComplete && !side.barCandidate && side.state==ActivePictureAxisState::UNKNOWN);
+            Assert::IsTrue(side.reason==ActivePictureAxisReason::NO_FULL_EXTENT_SUPPORT);
+            Assert::AreEqual(0,native.proposedBounds.left);Assert::AreEqual(width,native.proposedBounds.right);
+
+            struct Cut { uint64_t first,firstTime,nextTime; };
+            const Cut cuts[]={{289,126276024,126693102},{541,231379736,231796813},{1050,443672561,444089639}};
+            SubtitleMeasurementWorker worker;
+            for(const auto& cut:cuts) {
+                SubtitleBoxPresentation tracker;
+                SubtitleCutPastePresentation placement;
+                CropPresentationAdmissionState prior;
+                for(unsigned offset=0;offset<2;++offset) {
+                    const uint64_t sequence=cut.first+offset;
+                    const ActivePictureFrameIdentity id{1,sequence,sequence+11,offset?cut.nextTime:cut.firstTime,
+                        5354610997421391440ULL,2,1,4521869302915884077ULL};
+                    SubtitleBoxObservation key;
+                    key.identity=key.sharedPicture.identity=id;
+                    key.width=width;key.height=height;key.policyGeneration=2;key.continuityGeneration=8;
+                    key.nearBarDistance=20;key.sharedPicture.required=true;key.sharedPicture.bounds=oldBounds;
+                    key.sharedPicture.identity.acceptedSequence-=3;key.sharedPicture.identity.sourceFrameNumber-=3;
+                    key.sharedPicture.identity.captureTimestamp-=1251234;
+                    auto published=key;published.sharedPicture.bounds=guard;published.sharedPicture.identity=id;
+                    worker.BeginSourceWindow(id);
+                    worker.Submit(key,[&,key](SubtitleMeasurementSampler& sampler,const SubtitleBarTrackingReference&) {
+                        return sampler.Measure(source,key,{},PublishedPictureCaptionFrame::Fps,native,true);
+                    });
+                    SubtitleBoxObservation scan;
+                    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+                    while(!worker.TryRead(key,scan)) {
+                        Assert::IsTrue(std::chrono::steady_clock::now()<deadline,L"Exact source scan did not finish.");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    }
+                    Assert::IsFalse(scan.text.detected);
+                    Assert::AreEqual("outside-nearbar",scan.text.diagnosticReason);
+                    const auto& proof=scan.subtitleArProof;
+                    Assert::IsTrue(proof.IsCurrentFor(source,id,2,8,SubtitleScriptHint::Latin));
+                    Assert::IsTrue(SameSubtitlePresentationBounds(proof.candidate,guard));
+                    const auto& masked=proof.evidence.verticalBarGuardProfile;
+                    Assert::IsTrue(masked.completed && masked.clean && masked.apertureTop==268 && masked.apertureBottom==1892);
+                    Assert::IsTrue(proof.evidence.axisEvidence.verticalCropGlyphExclusions);
+                    Assert::IsFalse(SubtitlePresentationGuardMatchesPhysicalBounds(proof,physical),
+                        L"Caption placement does not grant the native detector distributed side evidence.");
+                    Assert::IsTrue(bool(scan.publishedPictureCaption) && !scan.publishedGuardCaption);
+                    const auto& measured=*scan.publishedPictureCaption;
+                    Assert::AreEqual(276,measured.pictureTop);Assert::AreEqual(1884,measured.pictureBottom);
+                    Assert::IsTrue(measured.text.lineCount==1 && measured.text.bounds.top>=guard.bottom);
+                    Assert::IsFalse(measured.text.capturePanel.Valid() || measured.text.provenSourcePanel.Valid() ||
+                        measured.text.lineCapturePanels[0].Valid());
+                    Assert::IsFalse(SubtitleBoxLookahead::CaptionNeedsPublishedPlaneGrouping(measured,guard.top,guard.bottom));
+                    if(sequence==cuts[0].first) {
+                        for(int fault=0;fault<10;++fault) {
+                            auto bad=scan;
+                            auto& e=bad.subtitleArProof.evidence;
+                            switch(fault) {
+                            case 0: e.axisEvidence.horizontal.reason=ActivePictureAxisReason::SCAN_INCOMPLETE;break;
+                            case 1: e.axisEvidence.horizontal.state=ActivePictureAxisState::FULL_EXTENT_SUPPORTED;break;
+                            case 2: e.axisEvidence.horizontal.barCandidate=true;break;
+                            case 3: e.axisEvidence.horizontal.scanComplete=false;break;
+                            case 4: e.proposedBounds.left=4;break;
+                            case 5: e.verticalBarGuardProfile.clean=false;break;
+                            case 6: e.verticalBarGuardProfile.apertureBottom-=2;break;
+                            case 7: e.axisEvidence.sidePictureTop+=2;break;
+                            case 8: e.axisEvidence.verticalCropGlyphExclusions=false;break;
+                            case 9: ++bad.subtitleArProof.identity.acceptedSequence;break;
+                            }
+                            Assert::IsFalse(SubtitleBoxLookahead::UsePublishedPictureCaption(bad,published.sharedPicture,
+                                source,id,2,8,SubtitleScriptHint::Latin));
+                            Assert::IsTrue(bad.ink==scan.ink && !bad.text.detected && bad.pictureBottom==2092);
+                        }
+                    }
+                    const char* reason=nullptr;
+                    auto carried=scan;
+                    Assert::IsTrue(SubtitleBoxLookahead::UsePublishedPictureCaption(carried,published.sharedPicture,
+                        source,id,2,8,SubtitleScriptHint::Latin,&reason));
+                    Assert::AreEqual("physical-caption-adopted",reason);
+                    SubtitleBoxObservation cached;
+                    Assert::IsFalse(worker.TryRead(published,cached));
+                    Assert::IsTrue(worker.TryRead(published,cached,false,&source));
+                    Assert::IsTrue(SameAnalysisFrameIdentity(cached.identity,id) && cached.ink==measured.ink &&
+                        carried.ink==measured.ink && cached.pictureTop==268 && cached.pictureBottom==1892);
+                    Assert::AreEqual(276,cached.barEvidence.top);Assert::AreEqual(1884,cached.barEvidence.bottom);
+                    const auto preview=SubtitleBoxLookahead::Resolve(&cached,1,2,8);
+                    const auto accepted=tracker.Consume(preview,250,1000./PublishedPictureCaptionFrame::Fps);
+                    Assert::IsTrue(accepted.detected && !accepted.held && accepted.lineCount==1);
+                    const auto move=FitSubtitleToVisiblePicture(placement.Consume(accepted,preview,{75,35,25},20),
+                        {0,268,width,1892},20);
+                    Assert::IsTrue(move.valid && move.glyphLines[0].top<=1936 && move.glyphLines[0].bottom>=2016 &&
+                        move.destination.top>=guard.top && move.destination.bottom<=guard.bottom);
+
+                    QualifiedSubtitlePresentationInput request;
+                    request.mode=SubtitlePreviewMode::GeneratedGrayBackground;
+                    request.observation=&cached;request.accepted=&accepted;request.composition=&move;
+                    request.sourcePrepared=true;request.currentIdentity=id;request.currentDisplayPicture=published.sharedPicture;
+                    request.physicalBase=guard;request.policyGeneration=2;request.continuityGeneration=8;
+                    const auto retention=EvaluateActivePicturePresentationRetention(source,guard,
+                        proof.evidence,EvaluateActivePictureGlobalNearBlack(source),scan.subtitleArDarkness);
+                    const auto qualified=EvaluatePreparedSubtitlePresentationEvidence(source,retention,request);
+                    Assert::IsTrue(qualified.qualified && qualified.preparedErasureOnly);
+                    Input crop;
+                    crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+                    crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                    crop.geometry=guard;crop.rasterWidth=width;crop.rasterHeight=height;
+                    crop.frameSourceGeneration=crop.geometrySourceGeneration=source.generation;
+                    crop.frameSourceSequence=sequence;crop.framePresentationEpoch=id.viewportGeneration;
+                    crop.verticalTranslationConfirmationPending=true;
+                    crop.preparedSubtitle=QualifyPreparedSubtitleCropPresentation(qualified,id,guard);
+                    const auto shown=AdmitCropPresentation(prior,crop,Evaluate(crop),id.viewportGeneration);
+                    Assert::IsTrue(!shown.blocked && shown.presentation.applyCrop &&
+                        SameSubtitlePresentationBounds(guard,shown.presentation.sourceBounds));
+                    prior=shown.state;
+                }
+            }
+            Assert::AreEqual<uint64_t>(6,worker.TakeDiagnostics().submitted);
+        }
+
         TEST_METHOD(DistributedBarsAcquireCurrentSubtitleAndArAcrossAnalysisFormats)
         {
             for(int format=0;format<3;++format)
@@ -5169,13 +5919,32 @@ namespace VideoProcessorTest
             for(uint64_t sequence=1;sequence<=4;++sequence)
                 model.Observe(MakeActivePictureObservation(oldEvidence,sequence,24));
 
-            const auto measured=ExperimentalAspect::Measure(source.width,source.height,64,
-                [&](int x,int y,int& value){
-                    AnalysisLumaSample pixel;
-                    if(!source.Sample(x,y,pixel))return false;
-                    value=pixel.luma;return true;
-                },[]{return true;});
-            const auto evidence=ExperimentalAspect::EvidenceFromMeasurement(source,measured);
+            auto measureCurrent = [&] {
+                return ExperimentalAspect::Measure(source.width, source.height, 64,
+                    [&](int x, int y, ExperimentalAspect::Pixel& pixel) {
+                        AnalysisLumaSample sample;
+                        if (!source.Sample(x, y, sample)) return false;
+                        pixel = {sample.luma, sample.chromaU, sample.chromaV};
+                        return true;
+                    }, [] { return true; });
+            };
+
+            // The original pixels also describe a two-level matte: black to row
+            // 68, then a flat neutral plateau to row 400. Caption ink is unchanged.
+            const auto layeredMatte = measureCurrent();
+            Assert::IsTrue(layeredMatte.complete && layeredMatte.kind == ExperimentalAspect::Kind::Bars);
+            Assert::AreEqual(400, layeredMatte.top);
+            Assert::AreEqual(1760, layeredMatte.bottom);
+
+            // Put dim scene detail in both newly exposed strips. Keep most of each
+            // strip at 84 so the relative-continuation route still has work to do.
+            for (const int top : {68, 1760}) {
+                const int bottom = top + 332;
+                currentFrame.FillRectangle(192, top, 1152, bottom, 104);
+                currentFrame.FillRectangle(2304, top, 3040, bottom, 104);
+            }
+            const auto measured = measureCurrent();
+            const auto evidence = ExperimentalAspect::EvidenceFromMeasurement(source, measured);
             Assert::IsTrue(evidence.strongCurrentBarMeasurement,
                 L"Current opposing picture edges remain measured despite new caption ink in the outer bar.");
             Assert::AreEqual(68,evidence.trustedBounds.top);

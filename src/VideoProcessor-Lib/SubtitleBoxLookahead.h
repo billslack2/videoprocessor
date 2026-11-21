@@ -100,6 +100,15 @@ struct SubtitlePictureAuthority {
     }
 };
 
+// Coordinates from a worker-certified guard can nominate a fresh grouping on the
+// immediately following source. The hint contains no cue, image, or crop authority.
+struct SubtitleGuardScanHint {
+    SubtitleBarTrackingReference physical;
+    ActivePictureBounds guard;
+    int nearBarDistance=0,optimizationMode=0;
+    unsigned analysisStride=1;
+};
+
 // A measurement belongs to source pixels, never retained presentation geometry.
 struct SubtitleContinuityEvidence {
     ActivePictureFrameIdentity identity;
@@ -131,6 +140,12 @@ struct SubtitleBoxObservation
     // Current physical bars, independently measured without retained presentation.
     // This permits analysis; only subtitleArProof can supply crop evidence.
     bool independentBarAnalysis = false;
+    // A second, complete grouping on independently measured planes from this
+    // source. Only a later exact native publication can select it for display.
+    std::shared_ptr<const SubtitleBoxObservation> publishedPictureCaption;
+    // A panel or picture-crossing cue must be grouped again on the guard's own planes.
+    std::shared_ptr<const SubtitleBoxObservation> publishedGuardCaption;
+    std::shared_ptr<const SubtitleGuardScanHint> guardScanHint;
     SubtitleAssistedVerticalBarProof subtitleArProof;
     ActivePictureArDarknessEvidence subtitleArDarkness;
     // Geometry from the native AR owner, including its retained bounds. Never physical bar/crop proof.
@@ -174,8 +189,35 @@ struct SubtitleBoxObservation
     std::shared_ptr<const SubtitleContinuityEvidence> continuityEvidence;
 };
 
+// Enhanced diagnostics for the two-line acquisition rule. Values come from the
+// actual comparisons; an unvisited gate has no evidence.
+struct SubtitleCuePairTrace
+{
+    uint64_t base = 0, candidate = 0, baseFrame = 0, candidateFrame = 0;
+    const char* reason = "not-compared";
+    const char* fixedRowReason = "not-attempted";
+    unsigned contextMask = 0;
+    int row = -1, other = -1, tolerance = 0, matched = 0;
+    int baseLines = 0, candidateLines = 0, signatureDelta = -1, signatureTotal = -1;
+    SubtitleBoxRect baseRect, candidateRect;
+};
+
+struct SubtitleConfirmationTrace
+{
+    const char* site = nullptr;
+    int64_t previewStartUs = 0;
+    size_t ownedCount = 0;
+    uint64_t stopSource = 0, independentPrevious = 0;
+    unsigned analysisStride = 0;
+    const char* stopReason = "window-end";
+    int unsupportedLine = -1;
+    unsigned support = 0, required = 0;
+    SubtitleCuePairTrace pair;
+};
+
 struct SubtitleBoxPreview
 {
+    SubtitleConfirmationTrace confirmationTrace;
     SubtitleBoxObservation current;
     SubtitleBoxResult text;
     uint64_t policyGeneration = 0, continuityGeneration = 0;
@@ -350,6 +392,144 @@ namespace SubtitleBoxLookahead
                 (observation.sharedNativePhysicalSupport && observation.barAuthority && observation.barEvidence.available &&
                  observation.barEvidence.top>0 && observation.barEvidence.bottom<observation.height));
     }
+    inline bool GuardHintMatchesCurrentPhysical(const SubtitleGuardScanHint& hint,
+        const SubtitleBoxObservation& current,int top,int bottom)
+    {
+        const auto& prior=hint.physical;
+        const auto& now=current.identity;
+        return !current.discontinuity && prior.IsImmediatePredecessor(now,current.width,current.height,
+            current.policyGeneration,current.continuityGeneration,current.scriptHint) &&
+            (!now.sourceFrameNumber || !prior.identity.sourceFrameNumber ||
+                now.sourceFrameNumber-prior.identity.sourceFrameNumber==1) &&
+            (!now.captureTimestamp || !prior.identity.captureTimestamp || now.captureTimestamp>prior.identity.captureTimestamp) &&
+            hint.nearBarDistance==current.nearBarDistance && hint.optimizationMode==current.optimizationMode &&
+            hint.analysisStride==current.analysisStride && prior.pictureTop==top && prior.pictureBottom==bottom;
+    }
+
+    inline bool CaptionNeedsPublishedPlaneGrouping(const SubtitleBoxObservation& caption,
+        int publishedTop, int publishedBottom)
+    {
+        if (caption.pictureTop == publishedTop && caption.pictureBottom == publishedBottom) return false;
+        const auto& text = caption.text;
+        if ((text.bounds.bottom > (std::min)(caption.pictureTop, publishedTop) &&
+             text.bounds.top < (std::max)(caption.pictureBottom, publishedBottom)) ||
+            text.sourcePanel.Valid() || text.provenSourcePanel.Valid() || text.capturePanel.Valid())
+            return true;
+        for (int i = 0; i < text.lineCount && i < static_cast<int>(text.linePanels.size()); ++i)
+            if (text.linePanels[i].Valid() || text.lineCapturePanels[i].Valid()) return true;
+        return false;
+    }
+
+    inline bool CompletePublishedCaption(const SubtitleBoxObservation& caption)
+    {
+        const auto& text=caption.text;
+        return caption.analyzed && !caption.discontinuity && !caption.pendingRefresh && !caption.analysisRefresh &&
+            caption.barAuthority && caption.barEvidence.available &&
+            text.detected && !text.held && !text.workLimit && !text.confirmationPending && text.bounds.Valid() &&
+            text.topSearchComplete && text.bottomSearchComplete &&
+            text.lineCount>=1 && text.lineCount<=static_cast<int>(text.lineBounds.size()) &&
+            caption.ink && caption.ink->rawEvidenceComplete && caption.ink->paletteValid;
+    }
+
+    inline bool UsePublishedPictureCaption(SubtitleBoxObservation& observation,
+        const SubtitlePictureAuthority& published, const AnalysisLumaSource& source,
+        const ActivePictureFrameIdentity& identity, uint64_t policy,
+        uint64_t continuity, SubtitleScriptHint script, const char** outcome=nullptr)
+    {
+        const auto reject=[&](const char* reason) { if(outcome)*outcome=reason; return false; };
+        const auto& physicalCaption = observation.publishedPictureCaption;
+        if (!physicalCaption) return reject("no-physical-alternate");
+        if (!observation.analyzed || observation.discontinuity ||
+            observation.pendingRefresh || observation.analysisRefresh || observation.inspectionCandidateUsed)
+            return reject("original-scan-ineligible");
+        if (!SameAnalysisFrameIdentity(observation.identity, identity) ||
+            observation.policyGeneration != policy || observation.continuityGeneration != continuity ||
+            observation.scriptHint != script)
+            return reject("worker-context-mismatch");
+        if (observation.sharedPicture.Matches(published) || published.inspectionCandidate.valid ||
+            !SameAnalysisFrameIdentity(published.identity, identity) ||
+            !published.AvailableFor(identity, source.width, source.height))
+            return reject("published-picture-unavailable-or-unchanged");
+
+        const auto& proof = observation.subtitleArProof;
+        const auto& bounds = published.bounds;
+        if (!proof.IsCurrentFor(source, identity, policy, continuity, script))
+            return reject("current-source-proof-mismatch");
+        if (bounds.left != 0 || bounds.right != source.width ||
+            bounds.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM)
+            return reject("published-axes-mismatch");
+        const auto sameContext=[&](const SubtitleBoxObservation& caption) {
+            return SameAnalysisFrameIdentity(caption.identity,identity) &&
+                caption.policyGeneration==policy && caption.continuityGeneration==continuity &&
+                caption.scriptHint==script && caption.width==source.width && caption.height==source.height &&
+                caption.optimizationMode==observation.optimizationMode && caption.nearBarDistance==observation.nearBarDistance &&
+                caption.analysisStride==observation.analysisStride;
+        };
+        if (!sameContext(*physicalCaption) || !physicalCaption->analyzed || physicalCaption->discontinuity ||
+            physicalCaption->pendingRefresh || physicalCaption->analysisRefresh || !physicalCaption->barAuthority ||
+            !physicalCaption->barEvidence.available)
+            return reject("physical-scan-context-mismatch");
+        if (physicalCaption->barEvidence.top != physicalCaption->pictureTop ||
+            physicalCaption->barEvidence.bottom != physicalCaption->pictureBottom)
+            return reject("physical-planes-mismatch");
+        auto physical = bounds;
+        physical.top = physicalCaption->pictureTop & ~1;
+        physical.bottom = (std::min)(source.height, (physicalCaption->pictureBottom + 1) & ~1);
+        const auto matchesPlanes = [](const ActivePictureBounds& a, const ActivePictureBounds& b) {
+            return a.left == b.left && a.right == b.right && a.top == b.top && a.bottom == b.bottom &&
+                a.rasterWidth == b.rasterWidth && a.rasterHeight == b.rasterHeight &&
+                a.trustedBarAxes == b.trustedBarAxes;
+        };
+        const bool nominalProof=matchesPlanes(physical,proof.candidate);
+        if (!nominalProof && !SubtitleCaptionScanGuardMatchesPhysicalBounds(proof,physical))
+            return reject("physical-planes-outside-proof");
+        const auto& guarded=observation.publishedGuardCaption;
+        const bool precedingGuard=nominalProof && guarded && guarded->guardScanHint &&
+            matchesPlanes(bounds,guarded->guardScanHint->guard) &&
+            GuardHintMatchesCurrentPhysical(*guarded->guardScanHint,observation,physical.top,physical.bottom);
+        if (!matchesPlanes(bounds,physical) && !matchesPlanes(bounds,proof.candidate) && !precedingGuard)
+            return reject("published-planes-outside-proof");
+
+        const bool needGuardScan=precedingGuard ||
+            CaptionNeedsPublishedPlaneGrouping(*physicalCaption,bounds.top,bounds.bottom) ||
+            (!matchesPlanes(bounds,physical) && !CompletePublishedCaption(*physicalCaption));
+        const auto& caption=needGuardScan ? guarded : physicalCaption;
+        if(!caption) return reject("exact-guard-scan-unavailable");
+        if (needGuardScan && ((!matchesPlanes(bounds,proof.candidate) && !precedingGuard) ||
+            caption->pictureTop!=bounds.top || caption->pictureBottom!=bounds.bottom ||
+            caption->barEvidence.top!=physicalCaption->pictureTop ||
+            caption->barEvidence.bottom!=physicalCaption->pictureBottom))
+            return reject("guard-scan-planes-mismatch");
+        if (!sameContext(*caption)) return reject("caption-scan-context-mismatch");
+        if (!CompletePublishedCaption(*caption)) return reject("caption-scan-incomplete");
+        const auto& text = caption->text;
+
+        // The alternate observation was built from the new grouping alone.
+        // Attach its own source proof and the published placement. Following
+        // observations from the superseded shared picture are resolved separately.
+        auto current = *caption;
+        current.guardScanHint.reset();
+        current.sharedPicture = published;
+        current.pictureTop = bounds.top;
+        current.pictureBottom = bounds.bottom;
+        current.sharedNativeGeometry = true;
+        current.sharedNativePhysicalSupport = true;
+        current.glyphSupportIdentity = identity;
+        current.glyphSupportPolicy = policy;
+        current.glyphSupportContinuity = continuity;
+        current.glyphSupportTop = bounds.top;
+        current.glyphSupportBottom = bounds.bottom;
+        current.glyphLocalVerifiedBounds = text.bounds;
+        current.glyphLocalProofReason = needGuardScan ? "current-caption-grouped-on-published-guard" :
+            "current-independent-caption-on-published-picture";
+        current.subtitleArProof = proof;
+        current.subtitleArDarkness = observation.subtitleArDarkness;
+        observation = std::move(current);
+        if(outcome)*outcome=precedingGuard?"next-source-exact-guard-caption-adopted":
+            (needGuardScan?"exact-guard-caption-adopted":"physical-caption-adopted");
+        return true;
+    }
+
     inline bool HasPendingSharedBarGlyphSupport(const SubtitleBoxObservation& o)
     {
         if(!o.pendingBarGlyphsVerified || !o.pendingRefresh || !o.analyzed || o.analysisRefresh ||
@@ -888,8 +1068,9 @@ namespace SubtitleBoxLookahead
         return total > 0 && difference * 100 <= total * 25;
     }
 
+    constexpr unsigned MaxLineSignatureDifferencePercent = 25;
     inline bool SimilarSignature(const std::array<uint8_t, 1024>& a,
-        const std::array<uint8_t, 1024>& b)
+        const std::array<uint8_t, 1024>& b, SubtitleCuePairTrace* trace = nullptr)
     {
         unsigned difference = 0, total = 0;
         for (size_t i = 0; i < a.size(); ++i)
@@ -897,7 +1078,11 @@ namespace SubtitleBoxLookahead
             difference += static_cast<unsigned>(std::abs(int(a[i])-int(b[i])));
             total += (std::max)(a[i],b[i]);
         }
-        return total > 0 && difference * 100 <= total * 25;
+        if (trace) {
+            trace->signatureDelta = static_cast<int>(difference);
+            trace->signatureTotal = static_cast<int>(total);
+        }
+        return total > 0 && difference * 100 <= total * MaxLineSignatureDifferencePercent;
     }
 
     inline bool SameLine(const SubtitleBoxRect& a, const SubtitleBoxRect& b, int tolerance)
@@ -934,23 +1119,72 @@ namespace SubtitleBoxLookahead
         return true;
     }
 
-    inline bool SameCue(const SubtitleBoxObservation& a, const SubtitleBoxObservation& b)
+    inline bool SameCue(const SubtitleBoxObservation& a, const SubtitleBoxObservation& b,
+        SubtitleCuePairTrace* trace = nullptr)
     {
-        if (!SameContext(a,b) || !a.text.detected || !b.text.detected) return false;
+        const unsigned mismatch = ContextMismatchMask(a,b);
         const int tolerance = (std::max)(4, a.height / 180);
+        if (trace) {
+            *trace = {};
+            trace->base = a.identity.acceptedSequence;
+            trace->candidate = b.identity.acceptedSequence;
+            trace->baseFrame = a.identity.sourceFrameNumber;
+            trace->candidateFrame = b.identity.sourceFrameNumber;
+            trace->baseLines = a.text.lineCount;
+            trace->candidateLines = b.text.lineCount;
+            trace->contextMask = mismatch;
+            trace->tolerance = tolerance;
+            trace->reason = mismatch ? "context" : "no-detection";
+        }
+        if (mismatch || !a.text.detected || !b.text.detected) return false;
         // Every common-height line must agree. An unchanged bottom line cannot
         // lend confirmation to a changed upper line. Missing lines may be added.
         int matches = 0;
+        unsigned matchedBaseRows = 0, matchedFutureRows = 0;
         for (int i = 0; i < a.text.lineCount; ++i)
             for (int j = 0; j < b.text.lineCount; ++j)
             {
                 const auto& x = a.text.lineBounds[i]; const auto& y = b.text.lineBounds[j];
                 if (std::abs(x.top-y.top) > tolerance || std::abs(x.bottom-y.bottom) > tolerance) continue;
-                if (!SameLine(x,y,tolerance) ||
-                    !SimilarSignature(a.text.lineSignatures[i], b.text.lineSignatures[j])) return false;
+                if (trace) {
+                    trace->row = i; trace->other = j;
+                    trace->baseRect = x; trace->candidateRect = y;
+                    trace->signatureDelta = trace->signatureTotal = -1;
+                }
+                if (!SameLine(x,y,tolerance)) {
+                    if (trace) trace->reason = "line-geometry";
+                    return false;
+                }
+                if (!SimilarSignature(a.text.lineSignatures[i],b.text.lineSignatures[j],trace)) {
+                    if (trace) trace->reason = "line-signature";
+                    return false;
+                }
                 ++matches;
+                if (trace) {
+                    trace->matched = matches;
+                    matchedBaseRows |= 1u << i;
+                    matchedFutureRows |= 1u << j;
+                }
             }
-        return matches > 0 && matches == (std::min)(a.text.lineCount,b.text.lineCount);
+        const int required = (std::min)(a.text.lineCount,b.text.lineCount);
+        const bool same = matches > 0 && matches == required;
+        if (trace) {
+            trace->reason = same ? "all-lines-match" : "common-height-line-count";
+            if (matches < required) {
+                // No common-height counterpart was compared for these rows.
+                // Show the unmatched rectangles without comparing new row pairs.
+                int base = 0, future = 0;
+                while (base < a.text.lineCount && (matchedBaseRows & (1u << base))) ++base;
+                while (future < b.text.lineCount && (matchedFutureRows & (1u << future))) ++future;
+                if (base < a.text.lineCount && future < b.text.lineCount) {
+                    trace->row = base; trace->other = future;
+                    trace->baseRect = a.text.lineBounds[base];
+                    trace->candidateRect = b.text.lineBounds[future];
+                    trace->signatureDelta = trace->signatureTotal = -1;
+                }
+            }
+        }
+        return same;
     }
 
     inline int BarAnchorLine(const SubtitleBoxObservation& observation)
@@ -1806,11 +2040,140 @@ namespace SubtitleBoxLookahead
 
 
 
+    // A one-row change in height rescales every cell of a normalized line signature.
+    // Compare the two independently sampled cues at identical source coordinates.
+    // This only confirms the current grouping. The future's pixels and card never
+    // supply extraction or cleanup, and an existing cue cannot be renewed by this test.
+    inline bool ConfirmTwoLineCardHeightJitter(const SubtitleBoxObservation& a,
+        const SubtitleBoxObservation& b,SubtitleCuePairTrace* trace)
+    {
+        const auto reject=[&](const char* reason) {
+            if(trace)trace->fixedRowReason=reason;
+            return false;
+        };
+        if(a.text.lineCount!=2 || b.text.lineCount!=2 || !NextIndependentAnalysis(a,b) ||
+            !IsCompletePictureGlyphAcquisitionSource(a) || !IsCompletePictureGlyphAcquisitionSource(b) ||
+            !SameContext(a,b) || a.policyGeneration!=b.policyGeneration ||
+            a.continuityGeneration!=b.continuityGeneration || a.optimizationMode!=b.optimizationMode ||
+            a.barTrackingAuthority || b.barTrackingAuthority || a.text.diagnosticPictureGlyphProofRequired ||
+            b.text.diagnosticPictureGlyphProofRequired || !a.text.topSearchComplete || !a.text.bottomSearchComplete ||
+            !b.text.topSearchComplete || !b.text.bottomSearchComplete ||
+            a.pictureTop!=b.pictureTop || a.pictureBottom!=b.pictureBottom || !a.sharedPicture.Matches(b.sharedPicture) ||
+            a.identity.sourceFrameNumber>=b.identity.sourceFrameNumber ||
+            b.identity.sourceFrameNumber-a.identity.sourceFrameNumber!=a.analysisStride ||
+            a.identity.captureTimestamp>=b.identity.captureTimestamp || a.ink==b.ink)
+            return reject("incomplete-or-nonconsecutive");
+
+        const int anchor=BarAnchorLine(a);
+        if(anchor<0 || anchor!=BarAnchorLine(b))return reject("bar-anchor");
+        const int row=1-anchor;
+        const auto& lower=a.text.lineBounds[anchor];
+        const auto& ar=a.text.lineBounds[row];const auto& br=b.text.lineBounds[row];
+        const auto& box=a.text.bounds;
+        const auto& old=*a.ink;const auto& now=*b.ink;
+        const int step=old.step;
+        if(step<=0 || step!=now.step || ar.left!=br.left || ar.right!=br.right || ar.top!=br.top ||
+            std::abs(ar.bottom-br.bottom)!=step || !ar.Valid() || !br.Valid() ||
+            (std::max)(ar.bottom,br.bottom)>a.pictureBottom || ar.top<a.pictureTop ||
+            lower.bottom<=a.pictureBottom || lower.top<(std::max)(ar.bottom,br.bottom) ||
+            !SameLine(lower,b.text.lineBounds[anchor],0) || !SameLine(box,b.text.bounds,0) ||
+            !SimilarSignature(a.text.lineSignatures[anchor],b.text.lineSignatures[anchor]))
+            return reject("row-geometry-or-anchor");
+        const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
+            return outer.Valid() && inner.Valid() && outer.left<=inner.left && outer.top<=inner.top &&
+                outer.right>=inner.right && outer.bottom>=inner.bottom;
+        };
+        const SubtitleBoxRect upper{ar.left,ar.top,ar.right,(std::max)(ar.bottom,br.bottom)};
+        if(!contains(box,upper) || !contains(box,lower) || !a.text.capturePanelMeasured || !b.text.capturePanelMeasured ||
+            !contains(a.text.provenSourcePanel,upper) || !contains(b.text.provenSourcePanel,upper) ||
+            !contains(a.text.lineCapturePanels[row],ar) || !contains(b.text.lineCapturePanels[row],br))
+            return reject("finite-card");
+        if(!old.paletteValid || !now.paletteValid || old.inkFloor!=now.inkFloor ||
+            old.inkU!=now.inkU || old.inkV!=now.inkV || old.blackLimit!=now.blackLimit)
+            return reject("palette");
+        if(old.width<=0 || old.height<=0 || old.width>960 || old.height>540 ||
+            old.width!=(a.width+step-1)/step || old.height!=(a.height+step-1)/step ||
+            old.width!=now.width || old.height!=now.height || old.sourceRows.size()!=size_t(old.height) ||
+            old.sourceRows!=now.sourceRows || box.left<0 || box.top<0 || box.right>a.width || box.bottom>a.height)
+            return reject("sampling-grid");
+        const size_t words=(size_t(old.width)*old.height+63)/64;
+        if(old.rawInk.size()!=words || now.rawInk.size()!=words || old.ownedInk.size()!=words ||
+            now.ownedInk.size()!=words || old.blackBacking.size()!=words || now.blackBacking.size()!=words)
+            return reject("missing-planes");
+
+        const int smallBottom=(std::min)(ar.bottom,br.bottom);
+        const auto& taller=ar.bottom>br.bottom ? old : now;
+        const auto& shorter=ar.bottom>br.bottom ? now : old;
+        const int left=(box.left+step-1)/step, right=(box.right+step-1)/step;
+        const auto first=std::lower_bound(old.sourceRows.begin(),old.sourceRows.end(),box.top);
+        int fringeRow=-1,firstX=-1,lastX=-1;
+        unsigned changed=0,wordsCompared=0;
+        bool upperInk=false,lowerInk=false;
+        for(auto it=first;it!=old.sourceRows.end() && *it<box.bottom;++it) {
+            const int y=static_cast<int>(it-old.sourceRows.begin());
+            const int sourceY=*it;
+            const size_t rowBit=size_t(y)*old.width, end=rowBit+right;
+            for(size_t bit=rowBit+left;bit<end;) {
+                if(++wordsCompared>512)return reject("comparison-budget");
+                const size_t word=bit/64;
+                const size_t stop=(std::min)(end,(word+1)*64);
+                const uint64_t mask=(~uint64_t{0}<<(bit%64)) &
+                    (stop%64 ? (uint64_t{1}<<(stop%64))-1 : ~uint64_t{0});
+                const uint64_t stable=old.ownedInk[word]&now.ownedInk[word]&mask;
+                if(stable && sourceY>=upper.top && sourceY<upper.bottom)upperInk=true;
+                if(stable && sourceY>=lower.top && sourceY<lower.bottom)lowerInk=true;
+                const uint64_t different=(old.ownedInk[word]^now.ownedInk[word])&mask;
+                if(((old.rawInk[word]^now.rawInk[word])&mask)!=different ||
+                    (different & ~(taller.rawInk[word]&taller.ownedInk[word])) ||
+                    (different & (shorter.rawInk[word]|shorter.ownedInk[word])))
+                    return reject("raw-or-ownership-change");
+                if(different) {
+                    if(y==0 || y+1>=old.height || sourceY<smallBottom-step || sourceY>=upper.bottom ||
+                        (fringeRow>=0 && fringeRow!=y) || sourceY-old.sourceRows[y-1]!=step ||
+                        old.sourceRows[y+1]-sourceY!=step)
+                        return reject("interior-or-extra-row");
+                    for(size_t sample=bit;sample<stop;++sample) {
+                        if(!(different & (uint64_t{1}<<(sample%64))))continue;
+                        const int x=static_cast<int>(sample-rowBit);
+                        if(++changed>2 || x*step<upper.left || x*step>=upper.right ||
+                            (lastX>=0 && x!=lastX+1) ||
+                            !old.Get(x,y-1,true) || !now.Get(x,y-1,true) ||
+                            !old.Black(x,y+1) || !now.Black(x,y+1))
+                            return reject("detached-or-extended-stroke");
+                        if(firstX<0)firstX=x;
+                        lastX=x;fringeRow=y;
+                    }
+                }
+                bit=stop;
+            }
+        }
+        if(!upperInk || !lowerInk)return reject("missing-row-ink");
+        if(changed) {
+            // A terminal quantization cell may extend an existing broad stroke.
+            // A new isolated mark or narrow tail is an unresolved glyph change.
+            int stableWidth=lastX-firstX+1;
+            for(int x=firstX-1;x>=left && stableWidth<4 && old.Get(x,fringeRow-1,true) &&
+                now.Get(x,fringeRow-1,true);--x)++stableWidth;
+            for(int x=lastX+1;x<right && stableWidth<4 && old.Get(x,fringeRow-1,true) &&
+                now.Get(x,fringeRow-1,true);++x)++stableWidth;
+            if(stableWidth<4)return reject("narrow-stroke");
+        }
+        if(trace)trace->fixedRowReason=changed?"attached-bottom-fringe":"identical-fixed-ink";
+        return true;
+    }
+
     inline SubtitleBoxPreview Resolve(const SubtitleBoxObservation* frames, size_t count,
-        uint64_t policy, uint64_t continuity)
+        uint64_t policy, uint64_t continuity, const char* traceSite = nullptr)
     {
         SubtitleBoxPreview result;
         if (!frames || !count) return result;
+        auto* trace = traceSite && frames[0].text.lineCount == 2 ? &result.confirmationTrace : nullptr;
+        if (trace) {
+            trace->site = traceSite;
+            trace->previewStartUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            trace->ownedCount = count;
+        }
         result.current=frames[0];result.policyGeneration=policy;result.continuityGeneration=continuity;
         if (!frames[0].analyzed) return result;
         result.available = true; result.current = frames[0]; result.text = frames[0].text;
@@ -1821,15 +2184,23 @@ namespace SubtitleBoxLookahead
         for(;readyCount<(std::min)(count,MaxFrames);++readyCount) {
             const auto& previous=frames[readyCount-1];const auto& next=frames[readyCount];
             const auto& a=previous.identity;const auto& b=next.identity;
-            if(!next.analyzed || next.pendingRefresh || next.analysisRefresh || next.text.workLimit || next.discontinuity ||
-                !NextIndependentAnalysis(previous,next) ||
-                a.transportGeneration!=b.transportGeneration || a.sourceFormatGeneration!=b.sourceFormatGeneration ||
+            const char* stop = nullptr;
+            if (!next.analyzed) stop = "not-analyzed";
+            else if (next.pendingRefresh || next.analysisRefresh) stop = "refresh";
+            else if (next.text.workLimit) stop = "work-limit";
+            else if (next.discontinuity) stop = "discontinuity";
+            else if (!NextIndependentAnalysis(previous,next)) stop = "not-independent";
+            else if (a.transportGeneration!=b.transportGeneration || a.sourceFormatGeneration!=b.sourceFormatGeneration ||
                 a.analysisDomainKey!=b.analysisDomainKey ||
                 a.viewportGeneration!=b.viewportGeneration || a.rendererGeneration!=b.rendererGeneration ||
                 previous.width!=next.width || previous.height!=next.height ||
                 previous.nearBarDistance!=next.nearBarDistance || previous.scriptHint!=next.scriptHint ||
                 previous.policyGeneration!=next.policyGeneration ||
-                previous.continuityGeneration!=next.continuityGeneration)break;
+                previous.continuityGeneration!=next.continuityGeneration) stop = "source-context";
+            if (stop) {
+                if (trace) { trace->stopReason = stop; trace->stopSource = b.acceptedSequence; }
+                break;
+            }
         }
         count=readyCount;
         result.futureAvailable = count > 1;
@@ -1840,11 +2211,27 @@ namespace SubtitleBoxLookahead
         for (size_t i = 1; i < (std::min)(count,MaxFrames); ++i)
         {
             const auto& next = frames[i];
-            bool cueMatches=SameCue(frames[0],next) && SameCue(frames[i-1],next);
-            // The only relaxed path is a crowded grouping (three or more
-            // candidate rows). Require two independently matching rows and
-            // the bar anchor; ordinary one/two-row cue changes keep the
-            // original all-lines SameCue rule.
+            // The final comparison describes the first rejected candidate or
+            // the final accepted one when the whole ready window agrees.
+            auto* pair = trace ? &trace->pair : nullptr;
+            if (trace) {
+                trace->independentPrevious = frames[i-1].identity.acceptedSequence;
+                trace->analysisStride = frames[i-1].analysisStride;
+            }
+            bool cueMatches=SameCue(frames[0],next,pair) && SameCue(frames[i-1],next,pair);
+            if(!cueMatches && i==1 && frames[0].text.lineCount==2 && next.text.lineCount==2 &&
+                ConfirmTwoLineCardHeightJitter(frames[0],next,pair)) {
+                result.matchingFrames=2;
+                result.currentLinesConfirmed=true;
+                if(trace) {
+                    pair->reason="fixed-two-line-card";
+                    pair->matched=2;
+                    trace->support=trace->required=2;
+                }
+                return result;
+            }
+            // Crowded grouping (three or more
+            // candidate rows) requires two independently matching rows and the bar anchor.
             if(!cueMatches && frames[0].text.lineCount>=3 && next.text.lineCount>=2 &&
                 next.analyzed && !next.discontinuity &&
                 NextIndependentAnalysis(frames[i-1],next) &&
@@ -1952,7 +2339,14 @@ namespace SubtitleBoxLookahead
                     (fullHorizon?farthestCoverage>=minimumCoverage:
                         (nearestInShortWindow || ShortWindowCardLine(frames,supportEnd,line,tolerance))));
             if(support>=required && farthestPixels) acceptedLines[acceptedCount++]=line;
-            else result.currentLinesConfirmed=false;
+            else {
+                result.currentLinesConfirmed=false;
+                if (trace && trace->unsupportedLine < 0) {
+                    trace->unsupportedLine = line;
+                    trace->support = support;
+                    trace->required = required;
+                }
+            }
         }
         if(frames[0].text.lineCount>=3 && acceptedCount==0) {
             result.text={};
@@ -2085,15 +2479,19 @@ namespace SubtitleBoxLookahead
     // each prepared source domain. Missing/stale future work ends this prefix.
     inline SubtitleBoxPreview ResolveOwnedWindow(const SubtitleBoxObservation* frames,
         const ActivePictureFrameIdentity* ownedIdentities,size_t count,
-        uint64_t policy,uint64_t continuity)
+        uint64_t policy,uint64_t continuity,const char* traceSite = nullptr)
     {
         if(!frames || !ownedIdentities || !count)return {};
         std::array<SubtitleBoxObservation,MaxFrames> independent;
-        size_t ready=0;
-        for(size_t i=0;i<(std::min)(count,MaxFrames);++i) {
+        size_t ready=0, i=0;
+        const char* stopReason = nullptr;
+        for(;i<(std::min)(count,MaxFrames);++i) {
             const auto& current=frames[i];
             if(!SameAnalysisFrameIdentity(current.identity,ownedIdentities[i]) ||
-                current.policyGeneration!=policy || current.continuityGeneration!=continuity)break;
+                current.policyGeneration!=policy || current.continuityGeneration!=continuity) {
+                stopReason = "not-owned-or-wrong-epoch";
+                break;
+            }
             if(current.cadenceSkipped && current.analysisStride==2 && ready &&
                 !current.analyzed && !current.discontinuity &&
                 independent[ready-1].analysisStride==2 &&
@@ -2106,10 +2504,21 @@ namespace SubtitleBoxLookahead
                 current.nearBarDistance==independent[ready-1].nearBarDistance &&
                 current.scriptHint==independent[ready-1].scriptHint &&
                 current.identity.acceptedSequence==independent[ready-1].identity.acceptedSequence+1)continue;
-            if(!current.analyzed || current.pendingRefresh || current.analysisRefresh)break;
+            if(!current.analyzed || current.pendingRefresh || current.analysisRefresh) {
+                stopReason = current.analyzed ? "refresh" : "not-analyzed";
+                break;
+            }
             independent[ready++]=current;
         }
-        return ready?Resolve(independent.data(),ready,policy,continuity):SubtitleBoxPreview{};
+        auto result = Resolve(independent.data(),ready,policy,continuity,traceSite);
+        if (result.confirmationTrace.site) {
+            result.confirmationTrace.ownedCount = count;
+            if (stopReason && !result.confirmationTrace.stopSource) {
+                result.confirmationTrace.stopReason = stopReason;
+                result.confirmationTrace.stopSource = ownedIdentities[i].acceptedSequence;
+            }
+        }
+        return result;
     }
 
     // Before conversion completes, the render queue has only immutable
@@ -2161,6 +2570,16 @@ public:
         return HasAcceptedSourceTemplate()?m_previous.continuityGeneration:0;
     }
     const SubtitleAcceptedCueSeedCertificate& AcceptedCueSeedCertificate() const { return m_acceptedCueSeedCertificate; }
+    struct ConsumedCueHistory {
+        uint64_t generation = 0, source = 0, policy = 0, continuity = 0, cue = 0;
+    };
+    ConsumedCueHistory HistoryForTrace() const {
+        if (!m_hasPrevious) return {};
+        const auto& id = m_previous.current.identity;
+        const auto& visible = m_handoffActive ? m_handoffResult : m_result;
+        return {id.transportGeneration,id.acceptedSequence,m_previous.policyGeneration,
+            m_previous.continuityGeneration,visible.detected ? visible.cue : 0};
+    }
     const char* DecisionReason() const { return m_decisionReason; }
     const SubtitleBoxLookahead::InkMatchDiagnostics& InkDiagnostics() const { return m_inkDiagnostic; }
     double WeakHoldMilliseconds() const { return m_diagnosticWeakMs; }

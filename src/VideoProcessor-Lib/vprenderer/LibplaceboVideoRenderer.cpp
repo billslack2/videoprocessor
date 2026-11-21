@@ -4,6 +4,7 @@
 #include "SubtitleBarRecovery.h"
 #include "ExperimentalAspectShadow.h"
 #include "ExperimentalAspectActive.h"
+#include "OutputFrameStamp.h"
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
@@ -1069,6 +1070,7 @@ namespace
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
 		bool automaticSourceCropRequested = false;
+		unsigned arOscillationProtectionMs = RendererProfileConfig::DEFAULT_AR_OSCILLATION_PROTECTION_MS;
 		bool cropNarrowerContentToFillScreen = false;
 		bool cropNarrowerContentAspectLimitConfigured = false;
 		double cropNarrowerContentAspectLimit = 0.0;
@@ -1224,6 +1226,7 @@ namespace
 				<< settings.fixedCropAspectConfigured << '|'
 				<< settings.fixedCropAspect << '|'
 				<< settings.scopeSubtitleFit << '|'
+                << settings.arOscillationProtectionMs << '|'
                 << settings.subtitleInPictureAspectMax << '|'
 				<< settings.hdrPeakAnalysisPictureOnly << '|'
 				<< settings.hdrPeakAnalysisMotionCompensation << '|'
@@ -1492,6 +1495,9 @@ namespace
 				const DisplayRule rule = { group.name + "/" + profileName,
 					section, profile->second.priority, 0 };
 				ApplyDisplayRuleOverrides(config, rule, settings);
+				if (group.name == "viewport" || group.name == "zoom")
+					RendererProfileConfig::ReadArOscillationProtection(profile->second.settings,
+						settings.arOscillationProtectionMs);
 				if (!activeProfiles.empty()) activeProfiles += ", ";
 				activeProfiles += rule.name;
 				if (manual) activeProfiles += " (manual)";
@@ -2190,6 +2196,8 @@ namespace
 		{
 			return config.TryGetBool(rule.section, genericKey, value);
 		};
+		if (readViewportString("ar_oscillation_protection_seconds", raw))
+			RendererProfileConfig::ParseArOscillationProtection(raw, settings.arOscillationProtectionMs);
 		if (!readViewportBool("automatic_crop",
 			settings.automaticSourceCropRequested) &&
 			readViewportString("automatic_crop", raw))
@@ -2674,6 +2682,8 @@ namespace
 					rawValue.c_str(),
 					RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_POSITION);
 		}
+		if (TryGetDisplayString(config, "ar_oscillation_protection_seconds", rawValue))
+			RendererProfileConfig::ParseArOscillationProtection(rawValue, settings.arOscillationProtectionMs);
 		if (TryGetDisplayString(config, "automatic_crop", rawValue) &&
 			!TryGetDisplayBool(config, "automatic_crop",
 				settings.automaticSourceCropRequested))
@@ -8819,6 +8829,7 @@ struct LibplaceboVideoRenderer::Impl
 			fixedCropAspect != settings.fixedCropAspect ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
             activeSettings.subtitleInPictureAspectMax != settings.subtitleInPictureAspectMax ||
+            activeSettings.arOscillationProtectionMs != settings.arOscillationProtectionMs ||
 			hdrPeakAnalysisPictureOnly !=
 				settings.hdrPeakAnalysisPictureOnly ||
 			hdrPeakAnalysisMotionCompensation !=
@@ -8894,6 +8905,7 @@ struct LibplaceboVideoRenderer::Impl
 		activeSettings.fixedCropAspect = settings.fixedCropAspect;
 		activeSettings.scopeSubtitleFit = settings.scopeSubtitleFit;
         activeSettings.subtitleInPictureAspectMax = settings.subtitleInPictureAspectMax;
+        activeSettings.arOscillationProtectionMs = settings.arOscillationProtectionMs;
 		activeSettings.hdrPeakAnalysisPictureOnly =
 			settings.hdrPeakAnalysisPictureOnly;
 		activeSettings.hdrPeakAnalysisMotionCompensation =
@@ -9090,6 +9102,7 @@ struct LibplaceboVideoRenderer::Impl
 			current.configuredScreenTarget != next.configuredScreenTarget ||
 			current.verticalAlignment != next.verticalAlignment ||
 			current.anamorphicScale != next.anamorphicScale ||
+			current.arOscillationProtectionMs != next.arOscillationProtectionMs ||
 			current.automaticSourceCropRequested != next.automaticSourceCropRequested ||
 			current.automaticSourceCrop != next.automaticSourceCrop ||
 			current.cropNarrowerContentToFillScreen !=
@@ -9215,12 +9228,41 @@ struct LibplaceboVideoRenderer::Impl
         return prepared;
     }
 
+    enum class SubtitleTraceVisit : unsigned {
+        SourceUnavailable, NoExactResult, IncompatibleResult, ExactResult,
+        CadenceSkip, ReadOnly, LookaheadCache, CurrentPreview, RepeatedPreview, PreparedPacket,
+        ConsumePending, ConsumeVerified, ConsumeCue, ConsumeAbsent, ConsumeOther, MeasurementDisabled,
+        PacketNotReady, TemporalSkip, SnapshotMissing, NoSubmission,
+        AlternatePreview, AlternateWorker, ConfirmationRejected, ConfirmationAccepted
+    };
+
+    static bool FirstSubtitleTrace(QueuedFrame::AnalysisPayload* cache, SubtitleTraceVisit visit)
+    {
+        if (!DebugLog::IsEnhancedLoggingEnabled() || !cache) return false;
+        // Prime, lookahead, live reads and output retries share this source's cache.
+        const uint32_t bit = uint32_t{1} << static_cast<unsigned>(visit);
+        return !(cache->subtitleTraceVisits.fetch_or(bit, std::memory_order_relaxed) & bit);
+    }
+
+    static void TraceSubtitleVisit(QueuedFrame::AnalysisPayload* cache, SubtitleTraceVisit visit,
+        const ActivePictureFrameIdentity& id, uint64_t policy, uint64_t continuity,
+        const char* site, const char* stage, const char* reason)
+    {
+        if (!FirstSubtitleTrace(cache, visit)) return;
+        DebugLog::Log("VP subtitle renderer: stage=%s reason=%s site=%s mono_us=%lld generation=%llu source=%llu source_frame=%llu capture_timestamp=%llu format_generation=%llu renderer_generation=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu",
+            stage, reason, site, SubtitleMeasurementWorker::TraceMonotonicUs(), id.transportGeneration,
+            id.acceptedSequence, id.sourceFrameNumber, id.captureTimestamp, id.sourceFormatGeneration,
+            id.rendererGeneration, id.viewportGeneration, id.analysisDomainKey, policy, continuity);
+    }
+
     SubtitleBoxObservation QueueSubtitleMeasurement(const VideoFrame& frame,const VideoState& state,
+        QueuedFrame::AnalysisPayload* cache, const char* site,
         const ActivePictureFrameIdentity& identity,bool discontinuity,
         const SubtitleBarTrackingReference& prior,uint64_t policy,uint64_t continuity,int nearBar,int optimizationMode,
         SubtitleScriptHint scriptHint,const SubtitlePictureAuthority& sharedPicture,
         const PreparedAnalysisFrame& prepared, const ActivePictureEvidence& nativeEvidence = {},
-        bool backlogRetirementOnly = false, bool allowSubmit = true)
+        bool backlogRetirementOnly = false, bool allowSubmit = true,
+        const AnalysisLumaSource* publishedSource = nullptr)
     {
         const double fps=state.displayMode->FrameDuration()>0?double(state.displayMode->TimeScale())/state.displayMode->FrameDuration():60.0;
         SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
@@ -9232,11 +9274,25 @@ struct LibplaceboVideoRenderer::Impl
         key.width=static_cast<int>(state.displayMode->FrameWidth());
         key.height=static_cast<int>(state.displayMode->FrameHeight());
         SubtitleBoxLookahead::BindNativeGeometryHint(key);
-        if (!prepared.IsValid()) return key;
+        const auto trace = [&](SubtitleTraceVisit visit, const char* stage, const char* reason) {
+            TraceSubtitleVisit(cache, visit, key.identity, policy, continuity, site, stage, reason);
+        };
+        if (!prepared.IsValid()) {
+            trace(SubtitleTraceVisit::SourceUnavailable, "schedule", "analysis-source-unavailable");
+            return key;
+        }
         SubtitleBoxObservation ready;
-        if(subtitleMeasurementWorker.TryRead(key,ready,backlogRetirementOnly)) {
+        const char* alternateOutcome=nullptr;
+        const bool haveReady=subtitleMeasurementWorker.TryRead(key,ready,backlogRetirementOnly,publishedSource,
+            publishedSource && DebugLog::IsEnhancedLoggingEnabled()?&alternateOutcome:nullptr);
+        if(alternateOutcome)trace(SubtitleTraceVisit::AlternateWorker,"alternate-worker",alternateOutcome);
+        if(haveReady) {
             if(SubtitleBoxLookahead::CanReuseMeasurement(ready,key.identity,key.width,key.height,
-                policy,continuity,discontinuity,prior,scriptHint))return ready;
+                policy,continuity,discontinuity,prior,scriptHint)) {
+                trace(SubtitleTraceVisit::ExactResult, "read", "compatible-current-result");
+                return ready;
+            }
+            trace(SubtitleTraceVisit::IncompatibleResult, "read", "context-rejected");
             const auto now=GetTickCount64();
             if(now>=subtitleReuseRejectNextTick) {
                 subtitleReuseRejectNextTick=now+1000;
@@ -9274,6 +9330,8 @@ struct LibplaceboVideoRenderer::Impl
                     ready.sharedProbeAnchor.left,ready.sharedProbeAnchor.top,
                     ready.sharedProbeAnchor.right,ready.sharedProbeAnchor.bottom);
             }
+        } else {
+            trace(SubtitleTraceVisit::NoExactResult, "read", "no-exact-result");
         }
         const int stride = fps > 30.0 ? 2 : 1;
         if (subtitleAnalysisStride != stride) {
@@ -9281,13 +9339,16 @@ struct LibplaceboVideoRenderer::Impl
             DebugLog::Log("VP subtitle analysis cadence: input_hz=%.6f input_stride=%d output_repeats=read_only skipped=unknown", fps, stride);
         }
         if (!allowSubmit || key.cadenceSkipped) {
+            if (key.cadenceSkipped) trace(SubtitleTraceVisit::CadenceSkip, "schedule", "cadence-skip");
+            else trace(SubtitleTraceVisit::ReadOnly, "schedule", "read-only-repeat");
             key.text.diagnosticReason = "input-cadence-not-analyzed";
             return key;
         }
         subtitleMeasurementWorker.Submit(key,[prepared,key,prior,fps,nativeEvidence](SubtitleMeasurementSampler& scanner,const SubtitleBarTrackingReference& previous) {
             const auto& reference=previous.IsImmediatePredecessor(key.identity,key.width,key.height,
                 key.policyGeneration,key.continuityGeneration,key.scriptHint)?previous:prior;
-            return scanner.Measure(prepared.source,key,reference,fps,nativeEvidence);
+            return scanner.Measure(prepared.source,key,reference,fps,nativeEvidence,
+                ExperimentalAspect::ActiveTrialEnabled());
         });
         return key;
     }
@@ -10802,6 +10863,12 @@ struct LibplaceboVideoRenderer::Impl
 		}
 	}
 
+	unsigned EffectiveOscillationHoldMs(bool screenActive) const
+	{
+		return !fixedCropAspectConfigured && (nlsRequested || (automaticSourceCrop && screenActive)) ?
+			activeSettings.arOscillationProtectionMs : 0;
+	}
+
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
 		const ActivePictureFrameIdentity& currentIdentity,
@@ -10917,6 +10984,7 @@ struct LibplaceboVideoRenderer::Impl
                 continuity.retained ? 1 : 0, pending.bounds.left, pending.bounds.top,
                 pending.bounds.right, pending.bounds.bottom, continuity.reason);
         }
+		nlsTransition.SetOscillationHoldMilliseconds(EffectiveOscillationHoldMs(configuredScreenActive));
 		if (sparseBoundaryEnabled && sparseSceneCut) ++sparseBoundarySceneGeneration;
         RememberedEdgeReturnContext rememberedContext;
         if (rememberedEdgeEnabled || rememberedEdgeShadow)
@@ -12076,7 +12144,8 @@ struct LibplaceboVideoRenderer::Impl
 					scheduledDecision->transition, evidence.classification,
 				admission.observation.transitionDeferred, &publicationAdmission,
 					&admission.observation.axisEvidence, (admission.outward.authoritative || bufferedExpansionReady) &&
-					retentionEvidence.expansionStripsAvailable && !retentionEvidence.EffectiveArNearBlack());
+					retentionEvidence.expansionStripsAvailable && !retentionEvidence.EffectiveArNearBlack(),
+                    &admission.observation);
 			if (scheduledDecision &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
@@ -13354,13 +13423,15 @@ struct LibplaceboVideoRenderer::Impl
                     currentActivePictureIdentity,localBoundaryPolicyGeneration,
                     localBoundaryContinuityGeneration))) {
                 auto shared=subtitleSharedPicture;shared.required=true;
-                const auto observed=QueueSubtitleMeasurement(videoFrame,state,currentActivePictureIdentity,
+                const auto observed=QueueSubtitleMeasurement(videoFrame,state,
+                    analysisCache.get(),"live-ar",currentActivePictureIdentity,
                     videoFrame.IsSourceDiscontinuity(),{},localBoundaryPolicyGeneration,
                     localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                     activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,
                     shared,preparedQueued,{},false,!repeatedTemporalOutput);
                 earlySubtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
-                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                    DebugLog::IsEnhancedLoggingEnabled() ? "early-current" : nullptr);
                 if (earlySubtitlePreview.available) subtitlePreview=&earlySubtitlePreview;
             }
 			// Scene detection resets temporal candidates above, but it is not crop
@@ -14422,6 +14493,9 @@ struct LibplaceboVideoRenderer::Impl
             !repeatedTemporalOutput && subtitleSourceCacheMatches &&
             !subtitleSourcePreparation.completeForRepeat;
         if(reuseSubtitlePreparation) {
+            TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::PreparedPacket,subtitleIdentity,
+                localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"live-presentation","reuse",
+                "same-source-prepared-packet");
             ++subtitlePacketReuses;
             subtitleComposedImage=subtitleSourcePreparation.image;
             relocatedSubtitle=subtitleSourcePreparation.geometry;
@@ -14441,6 +14515,51 @@ struct LibplaceboVideoRenderer::Impl
         else if (subtitleMeasurementEnabled)
         {
             auto& reboundPreview=subtitlePreviews->rebound;
+            const bool publishedCaptionEligible =
+                ExperimentalAspect::ActiveTrialEnabled() && automaticSourceCrop && configuredScreenActive &&
+                !nlsRequested && !fixedCropAspectConfigured && currentBarAuthority &&
+                nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                latestActivePictureEvidenceFrame == sourceSequence &&
+                latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                SameSubtitlePresentationBounds(nlsGeometry, subtitleSharedPicture.bounds);
+            if (publishedCaptionEligible && subtitlePreview && subtitlePreview->current.publishedPictureCaption &&
+                SubtitleBoxLookahead::IsCurrent(*subtitlePreview, subtitleIdentity,
+                    localBoundaryPolicyGeneration, localBoundaryContinuityGeneration)) {
+                auto& observed = subtitlePreviews->live.current;
+                observed = subtitlePreview->current;
+                const char* alternateOutcome=nullptr;
+                if (SubtitleBoxLookahead::UsePublishedPictureCaption(observed, subtitleSharedPicture,
+                    analysisSource, subtitleIdentity, localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration, activeSettings.subtitleScriptHint,&alternateOutcome)) {
+                    reboundPreview = SubtitleBoxLookahead::Resolve(&observed, 1,
+                        localBoundaryPolicyGeneration, localBoundaryContinuityGeneration,
+                        DebugLog::IsEnhancedLoggingEnabled() ? "published-picture" : nullptr);
+                    subtitlePreview = &reboundPreview;
+                    DEBUGLOG_ENHANCED("Alpha published picture caption: sequence=%llu physical=%d-%d placement=%d-%d",
+                        sourceSequence, observed.barEvidence.top, observed.barEvidence.bottom,
+                        observed.pictureTop, observed.pictureBottom);
+                }
+                TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::AlternatePreview,subtitleIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"live-presentation",
+                    "alternate-preview",alternateOutcome);
+            } else if(DebugLog::IsEnhancedLoggingEnabled() && subtitlePreview &&
+                subtitlePreview->current.publishedPictureCaption &&
+                !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)) {
+                const char* reason="preview-context-mismatch";
+                if(!publishedCaptionEligible) {
+                    if(!currentBarAuthority)reason="current-native-bar-authority-unavailable";
+                    else if(nlsGeometryOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+                        latestActivePictureEvidenceFrame!=sourceSequence ||
+                        latestActivePictureEvidenceClassification!=ActivePictureClassification::BAR_CROP_TRUSTED)
+                        reason="current-native-publication-unavailable";
+                    else if(!SameSubtitlePresentationBounds(nlsGeometry,subtitleSharedPicture.bounds))
+                        reason="published-shared-bounds-mismatch";
+                    else reason="presentation-mode-ineligible";
+                }
+                TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::AlternatePreview,subtitleIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"live-presentation",
+                    "alternate-preview",reason);
+            }
             if (subtitlePreview && subtitlePreview->available &&
                 subtitlePreview->current.independentBarAnalysis &&
                 !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)) {
@@ -14457,7 +14576,8 @@ struct LibplaceboVideoRenderer::Impl
                     // Resolve only CURRENT evidence; discarded-epoch future
                     // votes must never survive with the independent pixels.
                     reboundPreview=SubtitleBoxLookahead::Resolve(&observed,1,
-                        subtitlePreview->policyGeneration,localBoundaryContinuityGeneration);
+                        subtitlePreview->policyGeneration,localBoundaryContinuityGeneration,
+                        DebugLog::IsEnhancedLoggingEnabled() ? "continuity-rebind" : nullptr);
                     subtitlePreview=&reboundPreview;
                 }
             }
@@ -14466,8 +14586,11 @@ struct LibplaceboVideoRenderer::Impl
                 (subtitlePreview && !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)))
                 subtitlePreview = nullptr;
             auto& livePreview=subtitlePreviews->live;
-            if (!subtitlePreview)
-            {
+            if (subtitlePreview) {
+                TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::CurrentPreview,subtitleIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"live-presentation","reuse",
+                    "validated-current-preview");
+            } else {
                 if (!subtitleBoxPresentation.ReusePreviewForRepeatedSourceFrame(
                     subtitleIdentity,analysisSource.width,analysisSource.height,
                     videoFrame.IsSourceDiscontinuity(),localBoundaryPolicyGeneration,
@@ -14477,15 +14600,22 @@ struct LibplaceboVideoRenderer::Impl
                     const auto priorBar = subtitleBoxPresentation.BarTrackingReferenceFor(
                         subtitleIdentity,analysisSource.width,analysisSource.height,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,activeSettings.subtitleScriptHint);
-                    const auto observed = QueueSubtitleMeasurement(videoFrame,state,subtitleIdentity,
+                    const auto observed = QueueSubtitleMeasurement(videoFrame,state,
+                        analysisCache.get(),"live-presentation",subtitleIdentity,
                         videoFrame.IsSourceDiscontinuity(),priorBar,localBoundaryPolicyGeneration,
                         localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,
                         activeSettings.subtitleDetectionOptimization,activeSettings.subtitleScriptHint,subtitleSharedPicture,
-                        preparedQueued,{},subtitleBacklogRetirementOnly,!repeatedTemporalOutput);
+                        preparedQueued,{},subtitleBacklogRetirementOnly,!repeatedTemporalOutput,
+                        publishedCaptionEligible ? &analysisSource : nullptr);
                     livePreview = SubtitleBoxLookahead::Resolve(&observed, 1,
-                        localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
+                        localBoundaryPolicyGeneration, localBoundaryContinuityGeneration,
+                        DebugLog::IsEnhancedLoggingEnabled() ? "live-current" : nullptr);
                     livePreview.newScanMs = 0;
                     livePreview.newScanFrames = 0;
+                } else {
+                    TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::RepeatedPreview,subtitleIdentity,
+                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"live-presentation","reuse",
+                        "same-source-repeated-preview");
                 }
                 subtitlePreview = &livePreview;
             }
@@ -14498,7 +14628,8 @@ struct LibplaceboVideoRenderer::Impl
                 if(!currentSubtitlePreview.following[i].sharedPicture.Matches(subtitleSharedPicture)) {
                     const auto current=currentSubtitlePreview.current;
                     currentSubtitlePreview=SubtitleBoxLookahead::Resolve(&current,1,
-                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                        DebugLog::IsEnhancedLoggingEnabled() ? "shared-picture-trim" : nullptr);
                     break;
                 }
 
@@ -14604,6 +14735,11 @@ struct LibplaceboVideoRenderer::Impl
             const auto* cueContinuation=currentCueContinuation.valid?&currentCueContinuation:nullptr;
             subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,analysisSource);
             subtitlePreview=&currentSubtitlePreview;
+            const bool traceTwoLines = DebugLog::IsEnhancedLoggingEnabled() &&
+                currentSubtitlePreview.current.text.detected && currentSubtitlePreview.current.text.lineCount == 2;
+            const auto previousCue = traceTwoLines ? subtitleBoxPresentation.HistoryForTrace() :
+                SubtitleBoxPresentation::ConsumedCueHistory{};
+            const auto consumeStartUs = traceTwoLines ? SubtitleMeasurementWorker::TraceMonotonicUs() : 0;
             subtitleBoxResult = subtitleBoxPresentation.Consume(*subtitlePreview,
                 activeSettings.subtitleHoldMs,subtitleFrameMs,
                 subtitleBacklogRetirementOnly?&backlogTemplateIdentity:nullptr,
@@ -14662,6 +14798,64 @@ struct LibplaceboVideoRenderer::Impl
             currentSubtitleScanReason=currentSubtitlePreview.available ? currentText.diagnosticReason : "unavailable";
             currentNoCaptionConfirmed=ConfirmedSubtitleAbsentForPresentation(
                 currentSubtitlePreview.current,subtitleBoxResult,subtitleIdentity);
+            if (DebugLog::IsEnhancedLoggingEnabled()) {
+                const auto& observed = currentSubtitlePreview.current;
+                const bool exact = currentSubtitlePreview.available && observed.analyzed &&
+                    SameAnalysisFrameIdentity(observed.identity,subtitleIdentity);
+                const bool verified = pendingCurrentPixelsVerified || currentCueContinuation.valid ||
+                    observed.analysisRefresh || observed.pendingRefresh;
+                const auto visit = verified ? SubtitleTraceVisit::ConsumeVerified :
+                    subtitleBoxResult.detected ? SubtitleTraceVisit::ConsumeCue :
+                    currentNoCaptionConfirmed ? SubtitleTraceVisit::ConsumeAbsent :
+                    exact ? SubtitleTraceVisit::ConsumeOther : SubtitleTraceVisit::ConsumePending;
+                if (FirstSubtitleTrace(analysisCache.get(),visit))
+                    DebugLog::Log("VP subtitle renderer: stage=consume mono_us=%lld generation=%llu source=%llu source_frame=%llu capture_timestamp=%llu format_generation=%llu renderer_generation=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu mode=%d exact=%d analyzed=%d cadence_skipped=%d raw_cue=%d raw_reason=%s accepted=%d held=%d confirmation_pending=%d absent_confirmed=%d pending_pixels_verified=%d continuation_verified=%d worker_refresh=%d pending_refresh=%d decision=%s cue=%llu raw_lines=%d raw_box=%d,%d-%d,%d accepted_box=%d,%d-%d,%d picture_y=%d-%d",
+                        SubtitleMeasurementWorker::TraceMonotonicUs(),subtitleIdentity.transportGeneration,
+                        subtitleIdentity.acceptedSequence,subtitleIdentity.sourceFrameNumber,subtitleIdentity.captureTimestamp,
+                        subtitleIdentity.sourceFormatGeneration,subtitleIdentity.rendererGeneration,subtitleIdentity.viewportGeneration,
+                        subtitleIdentity.analysisDomainKey,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                        int(subtitlePreviewMode),exact?1:0,observed.analyzed?1:0,observed.cadenceSkipped?1:0,
+                        observed.text.detected?1:0,observed.text.diagnosticReason?observed.text.diagnosticReason:"unknown",subtitleBoxResult.detected?1:0,
+                        subtitleBoxResult.held?1:0,subtitleBoxResult.confirmationPending?1:0,currentNoCaptionConfirmed?1:0,
+                        pendingCurrentPixelsVerified?1:0,currentCueContinuation.valid?1:0,observed.analysisRefresh?1:0,
+                        observed.pendingRefresh?1:0,subtitleBoxPresentation.DecisionReason(),subtitleBoxResult.cue,
+                        observed.text.lineCount,observed.text.bounds.left,observed.text.bounds.top,
+                        observed.text.bounds.right,observed.text.bounds.bottom,subtitleBoxResult.bounds.left,
+                        subtitleBoxResult.bounds.top,subtitleBoxResult.bounds.right,subtitleBoxResult.bounds.bottom,
+                        observed.pictureTop,observed.pictureBottom);
+                if (exact && traceTwoLines && (!subtitleBoxResult.detected || subtitleBoxResult.cue != previousCue.cue) &&
+                    FirstSubtitleTrace(analysisCache.get(),subtitleBoxResult.detected ?
+                        SubtitleTraceVisit::ConfirmationAccepted : SubtitleTraceVisit::ConfirmationRejected)) {
+                    const auto& preview = currentSubtitlePreview;
+                    const auto& trace = preview.confirmationTrace;
+                    const auto& pair = trace.pair;
+                    const auto& priorInk = subtitleBoxPresentation.InkDiagnostics();
+                    const auto lastMatched = preview.matchingFrames > 1 ?
+                        preview.following[preview.matchingFrames-2].identity.acceptedSequence : uint64_t{0};
+                    DebugLog::Log("VP subtitle confirmation: generation=%llu source=%llu source_frame=%llu domain=%llu policy=%llu continuity=%llu "
+                        "preview_site=%s preview_start_us=%lld consume_start_us=%lld owned=%zu ready_future=%u first_future=%llu prefix_stop=%s stop_source=%llu "
+                        "matching_frames=%u last_matched_future=%llu current_lines_confirmed=%d unsupported_row=%d row_support=%u row_required=%u "
+                        "independent_previous=%llu independent_stride=%u pair_base=%llu pair_future=%llu pair_base_frame=%llu pair_future_frame=%llu pair_reason=%s fixed_row=%s context_mask=%u base_lines=%d future_lines=%d matched_rows=%d "
+                        "row=%d future_row=%d base_rect=%d,%d-%d,%d future_rect=%d,%d-%d,%d tolerance_px=%d signature_delta=%d signature_total=%d signature_limit_pct=%u "
+                        "previous_generation=%llu previous_source=%llu previous_policy=%llu previous_continuity=%llu previous_cue=%llu discontinuity=%d "
+                        "prior_ink=%s prior_pixels_compared=%d raw_reason=%s decision=%s accepted=%d cue=%llu",
+                        subtitleIdentity.transportGeneration,subtitleIdentity.acceptedSequence,subtitleIdentity.sourceFrameNumber,
+                        subtitleIdentity.analysisDomainKey,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,
+                        trace.site ? trace.site : "untraced",trace.previewStartUs,consumeStartUs,trace.ownedCount,
+                        preview.followingCount,preview.followingCount ? preview.following[0].identity.acceptedSequence : uint64_t{0},
+                        trace.stopReason,trace.stopSource,preview.matchingFrames,lastMatched,preview.currentLinesConfirmed ? 1 : 0,
+                        trace.unsupportedLine,trace.support,trace.required,trace.independentPrevious,trace.analysisStride,
+                        pair.base,pair.candidate,pair.baseFrame,pair.candidateFrame,
+                        pair.reason,pair.fixedRowReason,pair.contextMask,pair.baseLines,pair.candidateLines,pair.matched,pair.row,pair.other,
+                        pair.baseRect.left,pair.baseRect.top,pair.baseRect.right,pair.baseRect.bottom,
+                        pair.candidateRect.left,pair.candidateRect.top,pair.candidateRect.right,pair.candidateRect.bottom,
+                        pair.tolerance,pair.signatureDelta,pair.signatureTotal,SubtitleBoxLookahead::MaxLineSignatureDifferencePercent,
+                        previousCue.generation,previousCue.source,previousCue.policy,previousCue.continuity,previousCue.cue,
+                        observed.discontinuity ? 1 : 0,priorInk.reason,priorInk.pixelComparisonPerformed ? 1 : 0,
+                        observed.text.diagnosticReason ? observed.text.diagnosticReason : "unknown",
+                        subtitleBoxPresentation.DecisionReason(),subtitleBoxResult.detected ? 1 : 0,subtitleBoxResult.cue);
+                }
+            }
             currentSubtitleBarStripClearance=currentSubtitlePreview.current.barStripClearance;
             currentConfirmedCaptionBounds=MeasureCurrentCaptionForPresentation(
                 currentSubtitlePreview.current,subtitleBoxResult,subtitleIdentity,barAuthority,width,height);
@@ -15109,7 +15303,11 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleAnalysisLogTick=analysisLogNow;
             }
         }
-        else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset(); }
+        else {
+            TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::MeasurementDisabled,subtitleIdentity,
+                localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"live-presentation","consume","measurement-disabled");
+            subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleCueContinuation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); subtitleBackingLipContinuity.Reset();
+        }
 
         if(!reuseSubtitlePreparation) {
             subtitleSourcePreparation.nativePrepare={};
@@ -15825,6 +16023,39 @@ struct LibplaceboVideoRenderer::Impl
             temporalPolicyNearBlackEnvelopeSourceSequence = 0;
             temporalPolicyNearBlackEnvelopeEpisodeStart = 0;
 			alignmentPicture = {};
+            // A rapid reversal between crossing apertures has visible pixels
+            // outside either crop. Freeze the mapping on this source packet
+            // before optional fill, retained poses, or NLS can select a crop.
+            if (nlsTransition.OscillationRequiresFullRasterPresentation() && EffectiveOscillationHoldMs(configuredScreenActive)) {
+                cropPresentationAdmission = {};
+                cropPresentationRecovery = {};
+                fullRasterPresentationAuthorityAvailable = false;
+                fullRasterPresentationAuthoritySourceGeneration = 0;
+                source.crop = {0.0f, 0.0f, float(width), float(height)};
+                const AlphaSourceCrop::PresentationRect available = {
+                    target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1};
+                const auto alignment = ResolveVerticalPictureAlignment(verticalAlignment);
+                frameScreen = AutoPictureAlignment::FitScreen(autoPictureAlignment, configuredScreenActive,
+                    configuredScreenAspect, anamorphicScale, available, alignment, screenEdgePadding);
+                const auto fit = AnamorphicPresentation::FitPicture(double(width) / height,
+                    anamorphicScale, frameScreen, alignment);
+                if (fit.valid)
+                    target.crop = {float(fit.picture.left), float(fit.picture.top),
+                        float(fit.picture.right), float(fit.picture.bottom)};
+                linearFallbackCrop = target.crop;
+                renderParams.hooks = nullptr;
+                renderParams.num_hooks = 0;
+                if (nlsRequested) {
+                    nlsDecision = {};
+                    nlsDecision.mode = NlsMappingMode::SAFE_FIT;
+                    nlsDecision.reason = "oscillating crop axes; showing current raster";
+                    MadVRShaderLoader::SetRuntimeNlsDecision(nlsDecision);
+                    SetShaderStatus("NLS: Safe fit");
+                }
+                if (trustedActivePicture) *trustedActivePicture = false;
+                if (hdrTrustedPicture) *hdrTrustedPicture = {};
+                return;
+            }
 			if (SubtitlePreviewRequiresFullRaster(subtitlePreviewMode) || subtitlePreparationFallback)
             {
                 source.crop = {0.0f,0.0f,static_cast<float>(width),static_cast<float>(height)};
@@ -19248,11 +19479,16 @@ releaseDriftBaseRetention =
                         subtitleRevisionRollback.Commit();
                     }
                 }
-            }            if (!sourceReady) {
+            }
+            if (!sourceReady) {
+                TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::PacketNotReady,subtitleIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"temporal","render","source-packet-not-ready");
                 frameGpuTiming.EndRender();
                 return true;
             }
             if (temporalSkipPresentation) {
+                TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::TemporalSkip,subtitleIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"temporal","render","temporal-output-deferred");
                 frameGpuTiming.EndRender();
                 return true;
             }
@@ -19267,6 +19503,8 @@ releaseDriftBaseRetention =
                 temporalPresentations.Find({frameGeneration,selected,
                     viewportRequestSerial,temporalOutputContract});
             if (!selectedSnapshot) {
+                TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::SnapshotMissing,subtitleIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"temporal","render","selected-snapshot-missing");
                 frameGpuTiming.EndRender();
                 return true;
             }
@@ -19981,7 +20219,13 @@ releaseDriftBaseRetention =
                 viewportRequestSerial, startupFrameRevision);
         else displayRepeatValid = false;
         displayVsyncClock.SkipMissed(SteadyClockNowNs());
-		const int64_t swapStartQpc = PerformanceCounterNow();
+		Stamp stamp{};
+        if(rendered && DebugLog::IsEnhancedLoggingEnabled()){
+            stamp.generation=frameGeneration;
+            stamp.selected=temporalRenderer.Active()?temporalRenderer.SelectedPacketSequence():sourceSequence;
+            stamp.output=renderLoadSubmissionSerial+1;
+        }
+        const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
 		if (vpOwnedSwapchain)
 		{
@@ -20006,7 +20250,8 @@ releaseDriftBaseRetention =
 			vpOwnedBackbuffer.Release();
 			if (rendered)
 			{
-				const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
+				DrawFrameStamp(vpOwnedSwapchain,stamp);
+                const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
 				submitted = presentResult == S_OK;
 				if (!submitted && vpOwnedPresentFailureLoggedGeneration !=
 					vpOwnedSwapchainGeneration)
@@ -20045,7 +20290,7 @@ releaseDriftBaseRetention =
                 DebugLog::Log("VP anamorphic render failure: schema=1 sequence=%llu generation=%llu recovery=%d present_policy=black_clear consume_acquired_frame=1",
                     sourceSequence, frameGeneration, hookRender.retried ? 1 : 0);
             }
-            submitted = SubmitLibplaceboFrameChecked();
+            submitted = SubmitLibplaceboFrameChecked(stamp);
 		}
 		const int64_t swapEndQpc = PerformanceCounterNow();
 		LARGE_INTEGER qpcFrequency{};
@@ -20056,6 +20301,22 @@ releaseDriftBaseRetention =
 				? static_cast<double>(swapEndQpc - swapStartQpc) * 1000.0 /
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
+        if (rendered && submitted && DebugLog::IsEnhancedLoggingEnabled()) {
+            const bool temporal = temporalRenderer.Active();
+            const auto selected = temporal ? temporalRenderer.SelectedPacketSequence() : sourceSequence;
+            const auto cueSource = temporal ? temporalRenderer.LastSubtitleSequence() :
+                (subtitleCompositionSucceeded ? sourceSequence : 0);
+            DebugLog::Log("VP subtitle renderer: stage=submit result=rendered-and-submitted mono_us=%lld generation=%llu source=%llu source_frame=%llu capture_timestamp=%llu format_generation=%llu renderer_generation=%llu viewport=%llu domain=%llu policy=%llu continuity=%llu selected=%llu cue_source=%llu output=%llu mode=%d temporal=%d cadence_repeat=%d composed=%d source_pts=%.6f output_pts=%.6f source_crop=%.1f,%.1f-%.1f,%.1f target_crop=%.1f,%.1f-%.1f,%.1f present_start_qpc=%lld present_end_qpc=%lld",
+                SubtitleMeasurementWorker::TraceMonotonicUs(),subtitleIdentity.transportGeneration,sourceSequence,
+                subtitleIdentity.sourceFrameNumber,subtitleIdentity.captureTimestamp,subtitleIdentity.sourceFormatGeneration,
+                subtitleIdentity.rendererGeneration,subtitleIdentity.viewportGeneration,subtitleIdentity.analysisDomainKey,
+                localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,selected,cueSource,renderLoadSubmissionSerial+1,
+                int(subtitlePreviewMode),temporal?1:0,cadenceRepeat?1:0,subtitleCompositionSucceeded?1:0,
+                temporal ? temporalRenderer.SelectedPacketPts() : temporalRenderer.currentPts,
+                temporal ? temporalRenderer.outputPts : temporalRenderer.currentPts,
+                renderImage.crop.x0,renderImage.crop.y0,renderImage.crop.x1,renderImage.crop.y1,
+                target.crop.x0,target.crop.y0,target.crop.x1,target.crop.y1,swapStartQpc,swapEndQpc);
+        }
         PublishHdrStatus(renderedHdrStatus,hdrPublicationToken,rendered,submitted);
         const bool restartCadence=displayCadenceTransition.Presented(rendered&&submitted,displayVsyncClock.Active());
         if (rendered && submitted) {
@@ -20531,6 +20792,7 @@ releaseDriftBaseRetention =
 			record.releaseReason = AlphaSourceReleaseReason::Submitted;
 
             const AlphaDxgiPresentationSample sample = ObservePresent(record);
+            LogFrameStamp(stamp,record);
             if (AnalysisDiagnosticTrace::FramesActive())
             {
                 // Source identity describes this render input. A temporal mix
@@ -21248,13 +21510,36 @@ releaseDriftBaseRetention =
         }
         return false;
     }
-    bool SubmitLibplaceboFrameChecked()
+    OutputFrameStamp::Bitmap stampBitmap;
+    struct Stamp {
+        uint64_t generation=0, selected=0, output=0;
+        int64_t drawTicks=0;
+        bool drawn=false;
+    };
+    void DrawFrameStamp(IDXGISwapChain* chain,Stamp& stamp) {
+        if(!stamp.output || !chain)return;
+        const auto start=PerformanceCounterNow();
+        CComPtr<ID3D11Texture2D> buffer;
+        CComPtr<ID3D11DeviceContext> context;
+        if(SUCCEEDED(chain->GetBuffer(0,IID_PPV_ARGS(&buffer)))){
+            d3d11->device->GetImmediateContext(&context);
+            if(context)stamp.drawn=stampBitmap.Draw(context,buffer,stamp.generation,stamp.selected,stamp.output);
+        }
+        stamp.drawTicks=PerformanceCounterNow()-start;
+    }
+    void LogFrameStamp(const Stamp& stamp,const AlphaPresentationRecord& record) {
+        if(stamp.output)DebugLog::Log("VP frame stamp: G%llu S%llu O%llu present_id=%u source=%llu repeat=%d drawn=%d cpu_ticks=%lld",
+            stamp.generation,stamp.selected,stamp.output,record.presentId,record.sourceSequence,
+            record.cadenceRepeat?1:0,stamp.drawn?1:0,stamp.drawTicks);
+    }
+    bool SubmitLibplaceboFrameChecked(Stamp& stamp)
     {
         // submit consumes start_frame's lock/backbuffer even on failure.
         if (!pl_swapchain_submit_frame(swapchain)) return false;
         CComPtr<IDXGISwapChain> native;
         native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
         // Do not also call pl_swapchain_swap_buffers: D3D11 would Present twice.
+        DrawFrameStamp(native,stamp);
         return PresentNativeChecked(native);
     }
 
@@ -21320,6 +21605,12 @@ releaseDriftBaseRetention =
             const float black[] = {0.0f, 0.0f, 0.0f};
             pl_frame_clear(d3d11->gpu, &target, black);
         }
+        Stamp stamp{};
+        if(compatible && DebugLog::IsEnhancedLoggingEnabled()){
+            stamp.generation=displayRepeatRecord.generation;
+            stamp.selected=displayRepeatRecord.selectedSourceSequence;
+            stamp.output=renderLoadSubmissionSerial+1;
+        }
         const int64_t started = PerformanceCounterNow();
         bool submitted = false;
         if (vpOwnedSwapchain)
@@ -21327,11 +21618,12 @@ releaseDriftBaseRetention =
             pl_gpu_flush(d3d11->gpu);
             pl_tex_destroy(d3d11->gpu, &wrapped);
             backbuffer.Release();
+            DrawFrameStamp(vpOwnedSwapchain,stamp);
             submitted = compatible && PresentNativeChecked(vpOwnedSwapchain);
         }
         else
         {
-            submitted = SubmitLibplaceboFrameChecked();
+            submitted = SubmitLibplaceboFrameChecked(stamp);
         }
         if (!compatible || !submitted)
         {
@@ -21354,6 +21646,7 @@ releaseDriftBaseRetention =
             (PerformanceCounterNow() - started) * 1000.0 / frequency.QuadPart : 0.0;
         displayVsyncClock.Submitted();
         ObservePresent(record);
+        LogFrameStamp(stamp,record);
         ++successfulPresentCount;
         ++renderLoadSubmissionSerial;
         ++displayRefreshRepeats;
@@ -23964,7 +24257,12 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         const auto prepared=Impl::PrepareFrameAnalysis(queued.frame,*queued.state,
             queued.converted,queued.analysis,AnalysisSourceProfile::QueuedCapture,
             queued.activePictureIdentity.sourceFormatGeneration,false,queued.state->dolbyVisionTunnel);
-        if(!prepared.IsValid()) {tracking={};continue;} // Pending DV conversion is never raw RGB evidence.
+        if(!prepared.IsValid()) {
+            Impl::TraceSubtitleVisit(queued.analysis.get(),Impl::SubtitleTraceVisit::SourceUnavailable,
+                queued.activePictureIdentity,policy,continuity,"prime","schedule","analysis-source-unavailable");
+            tracking={};
+            continue;
+        }
         auto identity=queued.activePictureIdentity;identity.analysisDomainKey=prepared.domainKey;
         preparedDomains[i]=prepared.domainKey;observations[i].identity=identity;
         if(i==0) {
@@ -23977,7 +24275,8 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
         }
         auto picture=shared;
         if(picture.identity.analysisDomainKey!=prepared.domainKey) picture.bounds={};
-        observations[i]=m_impl->QueueSubtitleMeasurement(queued.frame,*queued.state,identity,
+        observations[i]=m_impl->QueueSubtitleMeasurement(queued.frame,*queued.state,
+            queued.analysis.get(),"prime",identity,
             queued.frame.IsSourceDiscontinuity(),tracking,policy,continuity,nearBar,optimization,
             script,picture,prepared);
         tracking=SubtitleBoxLookahead::AdvanceBarTrackingReference(observations[i]);
@@ -24013,7 +24312,8 @@ void LibplaceboVideoRenderer::PrimeSubtitleMeasurements(
             }
             if(ownedCount) {
                 auto preview=SubtitleBoxLookahead::ResolveOwnedWindow(
-                    observations.data(),owned.data(),ownedCount,policy,continuity);
+                    observations.data(),owned.data(),ownedCount,policy,continuity,
+                    DebugLog::IsEnhancedLoggingEnabled() ? "prime-owned-window" : nullptr);
                 if(preview.available) {
                     m_impl->subtitlePrimePublishedFuture+=preview.followingCount;
                     m_frameQueue.front().subtitleBoxPreview=std::move(preview);
@@ -24096,6 +24396,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     ActivePictureBounds proofBase;
     ActivePictureTransitionModel liveProofModel;
     bool inwardProofEligible = false;
+    unsigned oscillationHoldMs = 0;
     bool inwardCaptionInspectionEligible = false;
     uint64_t inwardCaptionSourceGeneration = 0, inwardCaptionViewport = 0;
     bool shadowFit = false;
@@ -24152,6 +24453,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		std::unique_lock<std::mutex> renderGuard(m_impl->renderMutex,std::try_to_lock);
         if(!renderGuard.owns_lock() || expired()) return abort(renderGuard.owns_lock()?"setup-deadline":"render-lock");
         rememberedWindowTick = GetTickCount64();
+        oscillationHoldMs = m_impl->EffectiveOscillationHoldMs(m_impl->renderConfiguredScreenActive);
         subtitleSharedPictureSnapshot=m_impl->subtitleSharedPicture;
         subtitleSharedPictureSnapshot.required=true;
         subtitleNearBarDistance=m_impl->activeSettings.subtitleNearBarDistance;
@@ -24419,7 +24721,8 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     return result;
                 });
             if(subtitlePreviewEnabled)
-                m_impl->QueueSubtitleMeasurement(queued.frame,state,analysisIdentity,
+                m_impl->QueueSubtitleMeasurement(queued.frame,state,
+                    queued.analysis.get(),"lookahead",analysisIdentity,
                     queued.frame.IsSourceDiscontinuity(),subtitleBarTrackingReference,
                     lookaheadPolicyGeneration,subtitleContinuityGeneration,subtitleNearBarDistance,
                     subtitleDetectionOptimization,subtitleScriptHint,sharedPicture,prepared);
@@ -24443,14 +24746,17 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 SubtitleBoxLookahead::CanReuseMeasurement(cachedSubtitleObservation,
                 analysisIdentity,source.width,source.height,lookaheadPolicyGeneration,
                 subtitleContinuityGeneration,queued.frame.IsSourceDiscontinuity(),
-                subtitleBarTrackingReference,subtitleScriptHint))
+                subtitleBarTrackingReference,subtitleScriptHint)) {
+                Impl::TraceSubtitleVisit(queued.analysis.get(),Impl::SubtitleTraceVisit::LookaheadCache,
+                    analysisIdentity,lookaheadPolicyGeneration,subtitleContinuityGeneration,
+                    "lookahead","reuse","queued-current-measurement");
                 subtitleObservations[rememberedIndex] = cachedSubtitleObservation;
-            else
+            } else
             {
                 // Return immediately if a worker result is not ready. The queue
                 // supplies future frames without putting their scans on playback.
                 subtitleObservations[rememberedIndex]=m_impl->QueueSubtitleMeasurement(
-                    queued.frame,state,analysisIdentity,queued.frame.IsSourceDiscontinuity(),
+                    queued.frame,state,queued.analysis.get(),"lookahead",analysisIdentity,queued.frame.IsSourceDiscontinuity(),
                     subtitleBarTrackingReference,lookaheadPolicyGeneration,subtitleContinuityGeneration,
                     subtitleNearBarDistance,subtitleDetectionOptimization,subtitleScriptHint,
                     sharedPicture,prepared,evidence);
@@ -24694,6 +25000,7 @@ bool LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 					m_activePictureTimeline.LookaheadPolicyGeneration()));
             return abort("policy-changed");
 		}
+		m_activePictureTimeline.SetOscillationHoldMilliseconds(oscillationHoldMs);
 		if (m_activePictureLookaheadLoggedGeneration != m_queueGeneration ||
 			m_activePictureLookaheadLoggedAvailable != queuedFutureFrames)
 		{
@@ -26148,6 +26455,9 @@ void LibplaceboVideoRenderer::RenderLoop()
         }
 		if (conversionFailed)
 		{
+            Impl::TraceSubtitleVisit(analysisCache.get(),Impl::SubtitleTraceVisit::NoSubmission,activePictureIdentity,
+                activePictureLookaheadPolicyGeneration,activePictureContinuityGeneration,
+                "source","source-not-submitted","conversion-failed");
 			frame.SourceBufferRelease();
 			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
 			if (++consecutiveFailures >= 300)
@@ -26299,7 +26609,8 @@ void LibplaceboVideoRenderer::RenderLoop()
                             observed,m_impl->localBoundaryContinuityGeneration,
                             subtitleBacklogRetirementOnly))
                         subtitlePreview=SubtitleBoxLookahead::Resolve(&observed,1,
-                            subtitlePreview.policyGeneration,m_impl->localBoundaryContinuityGeneration);
+                            subtitlePreview.policyGeneration,m_impl->localBoundaryContinuityGeneration,
+                            DebugLog::IsEnhancedLoggingEnabled() ? "backlog-rebind" : nullptr);
                 }
                 subtitlePreviewCurrent = SubtitleBoxLookahead::IsCurrentTransport(subtitlePreview,
                     activePictureIdentity,activePictureCurrentPolicyGeneration,
@@ -26621,6 +26932,13 @@ void LibplaceboVideoRenderer::RenderLoop()
 		{
 			DebugLog::Log("libplacebo render failure: unknown exception");
 		}
+        if (!actuallySubmitted) {
+            const char* reason = staleGeneration ? "stale-generation" :
+                presentationPaused ? "presentation-paused" :
+                rendered ? "render-returned-without-submission" : "render-unavailable-or-failed";
+            Impl::TraceSubtitleVisit(analysisCache.get(),Impl::SubtitleTraceVisit::NoSubmission,activePictureIdentity,
+                activePictureCurrentPolicyGeneration,activePictureContinuityGeneration,"source","source-not-submitted",reason);
+        }
 		++preRenderTimingSamples;
 		preRenderPreviewWaitMaxMs = std::max(preRenderPreviewWaitMaxMs,
 			previewWaitMs);

@@ -439,6 +439,12 @@ struct SubtitleAssistedVerticalBarProof
 bool SubtitlePresentationGuardMatchesPhysicalBounds(
     const SubtitleAssistedVerticalBarProof& proof, const ActivePictureBounds& physical);
 
+// Exact physical-to-guard relation for subtitle placement on a separately published
+// native picture. The masked worker can also prove the vertical bands when a
+// completed horizontal scan finds neither a side bar nor positive side content.
+bool SubtitleCaptionScanGuardMatchesPhysicalBounds(
+    const SubtitleAssistedVerticalBarProof& proof, const ActivePictureBounds& physical);
+
 // Called only for exact-source measured evidence. The worker proof stays intact;
 // a strong independent measurement may retain physical geometry while its
 // conservative subtitle boundary padding remains a presentation requirement.

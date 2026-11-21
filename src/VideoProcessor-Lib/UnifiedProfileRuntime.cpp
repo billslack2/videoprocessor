@@ -60,6 +60,7 @@ namespace
 			left.viewport.anamorphicScale.denominator ==
 				right.viewport.anamorphicScale.denominator &&
 			left.viewport.automaticCrop == right.viewport.automaticCrop &&
+			left.viewport.arOscillationProtectionMs == right.viewport.arOscillationProtectionMs &&
 			left.viewport.cropNarrowerContentToFillScreen ==
 				right.viewport.cropNarrowerContentToFillScreen &&
 			left.viewport.hasCropNarrowerContentAspectLimit ==
@@ -1122,6 +1123,8 @@ namespace UnifiedProfileRuntime
 			StateVariables::Value::Aspect(viewport.anamorphicScale);
 		variables["automatic_crop"] =
 			StateVariables::Value::Boolean(viewport.automaticCrop);
+		variables["ar_oscillation_protection_seconds"] =
+			StateVariables::Value::Number(viewport.arOscillationProtectionMs / 1000.0);
 		variables["crop_narrower_content_to_fill_screen"] =
 			StateVariables::Value::Boolean(
 				viewport.cropNarrowerContentToFillScreen);
