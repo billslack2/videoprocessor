@@ -1582,6 +1582,21 @@ namespace VideoProcessorTest
             Assert::AreEqual(262,bounds.top); Assert::AreEqual(1896,bounds.bottom);
         }
 
+        static void AddLoggedS2005Columns(P010Frame& frame)
+        {
+            const int xs[]={3595,3659,3671,3675,3679,3691,3755};
+            const int rows[][30]={
+                {683,687,622,458,304,211,170,153,139,132,126,122,122,126,126,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119},
+                {475,475,444,362,266,201,184,177,153,129,122,119,119,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {447,447,413,334,245,184,174,174,150,129,122,122,122,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {434,437,406,338,249,187,174,174,150,129,122,122,122,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {430,430,410,348,259,191,167,156,139,132,126,122,122,122,122,122,126,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {420,420,399,358,273,194,156,136,129,129,126,126,126,126,126,126,126,126,126,126,126,126,126,126,122,122,122,122,122,122},
+                {372,369,351,310,232,163,132,122,119,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119}};
+            for(int x=0;x<7;++x) for(int y=0;y<30;++y)
+                WriteCode(frame.bytes.data()+size_t(1893+y)*frame.pitch+2*xs[x],rows[x][y]);
+        }
+
         TEST_METHOD(RaisedMatteAdmissionTracksNoiseAndContrastWithoutLosingMarks)
         {
             using namespace AlphaSourceCrop;
@@ -1633,6 +1648,49 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(LoggedAcquisitionColumnsKeepFullWidthOnProceduralPicture)
+        {
+            using namespace AlphaSourceCrop;
+            const auto native=ScopePresentation(3840,2160,260,1898);
+            const auto present=[&](const P010Frame& frame,uint64_t sequence,
+                const CropPresentationAdmissionState& previous,RaisedMattePresentationHold* hold) {
+                auto source=frame.P010Source(); source.range=AnalysisLumaRange::Limited;
+                const auto evidence=EvaluateActivePicturePresentationRetention(source,native);
+                auto input=RaisedBroadcastCropInput(native,evidence,sequence);
+                auto selected=AdmitCropPresentation(previous,input,Evaluate(input),5,&evidence);
+                const bool protect=ProtectCurrentNativeMatteDetail(selected,input,evidence,native,1,sequence,
+                    hold,1000+sequence*1001/60,2000,42);
+                FinalAspectLimitFillInput fill;
+                fill.crop=input; fill.presentation=selected.presentation;
+                fill.configuredScreenActive=true; fill.configured.screenAspect=2.35;
+                fill.configured.cropNarrowerContentToFillScreen=fill.configured.narrowerLimitConfigured=true;
+                fill.configured.narrowerAspectLimit=2.32;
+                fill.configured.cropWiderContentToFillScreen=fill.configured.widerLimitConfigured=true;
+                fill.configured.widerAspectLimit=2.42;
+                const auto result=protect ? AspectLimitFillDecision{} : EvaluateFinalAspectLimitFill(fill);
+                return std::make_pair(selected,result.applied ? result.sourceBounds : selected.presentation.sourceBounds);
+            };
+            const auto fullWidth=[](const ActivePictureBounds& b) {
+                Assert::AreEqual(0,b.left); Assert::AreEqual(262,b.top);
+                Assert::AreEqual(3840,b.right); Assert::AreEqual(1896,b.bottom);
+            };
+            // Seven logged S2005 luma columns in a procedural picture. The
+            // surrounding pixels, chroma and initial state are synthetic.
+            for(bool flatPictureSide:{false,true}) {
+                auto frame=MovingBroadcastEdge(0,true);
+                AddLoggedS2005Columns(frame);
+                if(flatPictureSide)
+                    WriteCode(frame.bytes.data()+size_t(1894)*frame.pitch+2*3675,434);
+                const auto cold=present(frame,2005,{},nullptr);
+                Assert::IsTrue(cold.first.presentation.applyCrop); fullWidth(cold.second);
+                RaisedMattePresentationHold hold{};
+                const auto seed=present(MovingBroadcastEdge(0,true),2004,{},&hold);
+                fullWidth(seed.second);
+                const auto warm=present(frame,2005,seed.first.state,&hold);
+                fullWidth(warm.second);
+            }
+        }
+
         TEST_METHOD(OptionalLoggedAcquisitionColumnsKeepSourcePictureAndText)
         {
             using namespace AlphaSourceCrop;
@@ -1655,17 +1713,7 @@ namespace VideoProcessorTest
             // unobserved donor pixels/chroma. The adjacent source/sequence
             // numbers below are a modeled test timeline, not capture identity.
             auto frame=load(12);
-            const int xs[]={3595,3659,3671,3675,3679,3691,3755};
-            const int rows[][30]={
-                {683,687,622,458,304,211,170,153,139,132,126,122,122,126,126,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119},
-                {475,475,444,362,266,201,184,177,153,129,122,119,119,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122},
-                {447,447,413,334,245,184,174,174,150,129,122,122,122,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122},
-                {434,437,406,338,249,187,174,174,150,129,122,122,122,122,122,122,122,126,126,126,126,126,126,126,122,122,122,122,122,122},
-                {430,430,410,348,259,191,167,156,139,132,126,122,122,122,122,122,126,126,126,126,126,126,126,126,122,122,122,122,122,122},
-                {420,420,399,358,273,194,156,136,129,129,126,126,126,126,126,126,126,126,126,126,126,126,126,126,122,122,122,122,122,122},
-                {372,369,351,310,232,163,132,122,119,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,122,119,119,119,119}};
-            for(int x=0;x<7;++x) for(int y=0;y<30;++y)
-                WriteCode(frame.bytes.data()+size_t(1893+y)*frame.pitch+2*xs[x],rows[x][y]);
+            AddLoggedS2005Columns(frame);
             const auto native=ScopePresentation(3840,2160,260,1898);
             auto retained=[&](const P010Frame& image) {
                 auto source=image.P010Source(); source.range=AnalysisLumaRange::Limited;
