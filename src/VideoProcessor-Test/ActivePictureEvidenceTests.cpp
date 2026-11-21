@@ -1579,7 +1579,7 @@ namespace VideoProcessorTest
             key.identity=key.sharedPicture.identity=id;
             key.sharedPicture.identity.acceptedSequence=1203;
             key.sharedPicture.identity.sourceFrameNumber=1718;
-            key.sharedPicture.identity.captureTimestamp=717527761;
+            key.sharedPicture.identity.captureTimestamp=717527760;
             key.nearBarDistance=20;key.policyGeneration=2;key.continuityGeneration=9;
             auto published=key;
             published.sharedPicture.bounds=frame.published.bounds;published.sharedPicture.identity=id;
@@ -1668,6 +1668,100 @@ namespace VideoProcessorTest
                 Assert::IsTrue(move.valid && move.destination.top>=268 && move.destination.bottom<=1892);
                 Assert::IsTrue(move.glyphLines[0].Valid() && move.glyphLines[1].Valid());
             }
+        }
+
+        TEST_METHOD(PublishedPictureCaptionSecondFrameRequiresOwnGlyphsAndCurrentPhysicalProof)
+        {
+            using Frame=PublishedPictureCaptionFrame;
+            Frame first(1206,false,true,false),next(1207,false,false,true);
+            AddMeasuredProofCard(first.pixels,1884,true);
+            next.published.bounds=first.published.bounds;
+            const auto nextSource=next.Source();
+            const auto firstRaw=ExtractActivePictureEvidence(first.Source());
+            const auto nextRaw=ExtractActivePictureEvidence(nextSource);
+            const auto measure=[&](SubtitleMeasurementSampler& sampler,const Frame& frame,
+                SubtitleBoxObservation key,const ActivePictureEvidence& native,bool enabled=true) {
+                key.nearBarDistance=20;
+                return sampler.Measure(frame.Source(),key,{},Frame::Fps,native,enabled);
+            };
+            const auto firstKey=first.Key(first.oldPicture),nextKey=next.Key(next.oldPicture);
+            SubtitleMeasurementSampler sampler;
+            const auto previous=measure(sampler,first,firstKey,firstRaw);
+            Assert::IsTrue(previous.subtitleArProof.accepted && bool(previous.publishedGuardCaption));
+            const auto original=measure(sampler,next,nextKey,nextRaw);
+            Assert::IsTrue(original.subtitleArProof.accepted && bool(original.publishedPictureCaption));
+            Assert::AreEqual(276,original.subtitleArProof.candidate.top);
+            Assert::AreEqual(1884,original.subtitleArProof.candidate.bottom);
+            Assert::IsTrue(bool(original.publishedGuardCaption) && bool(original.publishedGuardCaption->guardScanHint));
+            auto guarded=original;
+            Assert::IsTrue(next.Adopt(guarded));
+            Assert::IsTrue(SameAnalysisFrameIdentity(next.identity,guarded.subtitleArProof.identity));
+            Assert::AreEqual(276,guarded.subtitleArProof.candidate.top);
+            Assert::AreEqual(1884,guarded.subtitleArProof.candidate.bottom);
+            Assert::AreEqual(268,guarded.pictureTop);Assert::AreEqual(1892,guarded.pictureBottom);
+            Assert::IsTrue(guarded.ink!=previous.publishedGuardCaption->ink);
+            Assert::AreEqual(2,previous.publishedGuardCaption->text.lineCount);
+            Assert::AreEqual(1,guarded.text.lineCount);
+            SubtitleMeasurementSampler directSampler;
+            const auto direct=measure(directSampler,next,next.Key(next.published),nextRaw,false);
+            Assert::IsTrue(guarded.text.lineSignatures==direct.text.lineSignatures);
+            Assert::AreEqual(direct.text.lineBounds[0].left,guarded.text.lineBounds[0].left);
+            Assert::AreEqual(direct.text.lineBounds[0].bottom,guarded.text.lineBounds[0].bottom);
+            const auto preview=SubtitleBoxLookahead::Resolve(&guarded,1,Frame::Policy,Frame::Continuity);
+            SubtitleBoxPresentation tracker;
+            const auto accepted=tracker.Consume(preview,250,1000./Frame::Fps);
+            Assert::IsTrue(accepted.detected && !accepted.held && accepted.lineCount==1);
+            SubtitleCutPastePresentation placement;
+            const auto move=FitSubtitleToVisiblePicture(placement.Consume(accepted,preview,{75,35,25},20),
+                {0,268,3840,1892},20);
+            Assert::IsTrue(move.valid && move.destination.bottom<=1892);
+            Assert::IsTrue(move.glyphLines[0].top<=1936 && move.glyphLines[0].bottom>=2032);
+
+            auto wrongSibling=original;
+            auto sibling=std::make_shared<SubtitleBoxObservation>(*original.publishedPictureCaption);
+            sibling->identity=first.identity;wrongSibling.publishedPictureCaption=sibling;
+            Assert::IsFalse(next.Adopt(wrongSibling));
+            auto noCurrentProof=original;noCurrentProof.subtitleArProof={};
+            Assert::IsFalse(next.Adopt(noCurrentProof));
+            auto noGuard=original;noGuard.publishedGuardCaption.reset();
+            Assert::IsFalse(next.Adopt(noGuard));
+            auto differentGuard=next.published;
+            differentGuard.bounds=ScopePresentation(3840,2160,270,1890);
+            auto offByTwo=original;
+            Assert::IsFalse(SubtitleBoxLookahead::UsePublishedPictureCaption(offByTwo,differentGuard,nextSource,
+                next.identity,Frame::Policy,Frame::Continuity,SubtitleScriptHint::Latin));
+
+            // One changed condition at a time. A prior scan can nominate planes
+            // only for its exact next worker source, and never supplies S1207 ink.
+            for(int control=0;control<4;++control) {
+                SubtitleMeasurementSampler separated;
+                if(control!=0)measure(separated,first,firstKey,firstRaw,control!=1);
+                auto changedKey=nextKey;
+                if(control==2)++changedKey.policyGeneration;
+                if(control==3)++changedKey.identity.acceptedSequence;
+                auto independent=measure(separated,next,changedKey,nextRaw);
+                Assert::IsTrue(independent.subtitleArProof.accepted && bool(independent.publishedPictureCaption));
+                Assert::IsFalse(bool(independent.publishedGuardCaption));
+            }
+
+            // Without the exact replacement, keep S1207's native lower glyphs
+            // visible as the usual current-source crop policy resolves the cut.
+            using namespace AlphaSourceCrop;
+            Input crop;
+            crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+            crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.geometry=crop.currentVisibleBase=next.published.bounds;
+            crop.rasterWidth=nextSource.width;crop.rasterHeight=nextSource.height;
+            crop.frameSourceGeneration=crop.geometrySourceGeneration=crop.currentVisibleSourceGeneration=nextSource.generation;
+            crop.frameSourceSequence=crop.currentVisibleSourceSequence=next.identity.acceptedSequence;
+            const auto retained=EvaluateActivePicturePresentationRetention(nextSource,crop.geometry);
+            Assert::IsTrue(retained.outwardVisibleBoundsAvailable && !retained.excludedBandsPixelSafe);
+            crop.currentVisibleBoundsAvailable=true;crop.currentVisibleBounds=retained.outwardVisibleBounds;
+            const auto fallback=AdmitCropPresentation({},crop,Evaluate(crop),next.identity.viewportGeneration);
+            const auto& shown=fallback.presentation.sourceBounds;
+            Assert::IsTrue(shown.left<=1548 && shown.top<=1936 && shown.right>=2260 && shown.bottom>=2032);
+            AnalysisLumaSample glyph;
+            Assert::IsTrue(nextSource.Sample(1552,1940,glyph));Assert::AreEqual(800,int(glyph.luma));
         }
 
         TEST_METHOD(DistributedBarsAcquireCurrentSubtitleAndArAcrossAnalysisFormats)
