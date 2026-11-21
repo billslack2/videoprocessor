@@ -66,6 +66,12 @@ struct AnalysisLumaSource
     bool MeasureLumaRowContent(int y, int x0, int x1, int step,
         uint16_t threshold, AnalysisLumaRowContent& result) const;
 
+    // Exact first luma/chroma excursion on a planar row. A reference row
+    // permits a bounded fraction of in-picture brightness at the same column
+    // for immediate edge blending. x == width means the entire row passed.
+    bool FindPlanarMatteRowDetail(int y, int referenceY, int shift, int matte,
+        int tolerance, int& x) const;
+
     // Checks every native pixel in a row using Sample's exact code domain.
     // False means invalid input/read failure; a valid foreground hit returns
     // true with withinLimits=false and counts the first rejected pixel.

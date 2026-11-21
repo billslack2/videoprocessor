@@ -5,6 +5,7 @@
 #include "SubtitleBoxLookahead.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <bitset>
 #include <numeric>
@@ -951,8 +952,50 @@ bool HasHorizontalPictureContinuation(SampleContext& samples, bool top,
     return false;
 }
 
+// A compressed edge can raise a band of the matte by a few 10-bit codes.
+// Look for the same small offset mixed with unchanged matte across the entire
+// width. A glyph in an otherwise flat matte cannot establish that reference.
+struct RaisedMatteRow {
+    static constexpr int sectors = 4;
+    static constexpr int maxOffset = 4;
+    int counts[sectors][maxOffset + 1]{};
+    std::array<uint8_t, kVisibleExtentLineSamples> weak{};
+
+    void Observe(int column, const AnalysisLumaSample& pixel, int matte) {
+        if (std::abs(int(pixel.chromaU) - 512) > 32 ||
+            std::abs(int(pixel.chromaV) - 512) > 32) return;
+        const int delta = int(pixel.luma) - matte;
+        if (delta >= 0 && delta <= maxOffset)
+            ++counts[column * sectors / kVisibleExtentLineSamples][delta];
+        else if (delta > maxOffset && delta <= 2 * maxOffset)
+            weak[column] = static_cast<uint8_t>(delta);
+    }
+
+    int DistributedOffset() const {
+        constexpr int minimum = kVisibleExtentLineSamples / sectors / 16;
+        for (int level = 1; level <= maxOffset; ++level) {
+            int unchanged = 0;
+            bool distributed = true;
+            for (const auto& sector : counts) {
+                unchanged += sector[0];
+                distributed &= sector[0] != 0 && sector[level] >= minimum;
+            }
+            if (distributed && unchanged >= kVisibleExtentLineSamples / 8) return level;
+        }
+        return 0;
+    }
+
+    std::bitset<kVisibleExtentLineSamples> Residual(
+        std::bitset<kVisibleExtentLineSamples> columns, int offset) const {
+        if (offset)
+            for (size_t i = 0; i < weak.size(); ++i)
+                if (weak[i] && weak[i] <= offset + maxOffset) columns.reset(i);
+        return columns;
+    }
+};
+
 ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
-	bool top, int barPixels, int blackThreshold, int matte = -1)
+	bool top, int barPixels, int blackThreshold, int matte = -1, bool* suppressedShelf = nullptr)
 {
 	ExcludedBandVisibleExtent result;
 	if (barPixels <= 0)
@@ -961,7 +1004,8 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 	result.lumaCutoff = matte >= 0 ? matte + 4 : blackThreshold + 8;
 	result.depthSamples = depthSamples;
 	int previousOccupied = -2;
-    std::bitset<kVisibleExtentLineSamples> previousColumns, previousStrong;
+    std::bitset<kVisibleExtentLineSamples> previousColumns, previousStrong, previousResidual;
+    int previousOffset = 0;
 	ActivePictureVisibleExtentDiagnostic previousLine;
 	for (int d = 0; d < depthSamples; ++d)
 	{
@@ -970,6 +1014,7 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 		int visible = 0;
         const bool nearRaisedEdge = matte >= 0 &&
             barPixels - depth <= std::max(2, samples.source.height / 96);
+        RaisedMatteRow shelf;
         std::bitset<kVisibleExtentLineSamples> columns, strong;
 		ActivePictureVisibleExtentDiagnostic line;
 		for (int i = 0; i < kVisibleExtentLineSamples; ++i)
@@ -977,7 +1022,9 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 			const int x = ((i * 2 + 1) * samples.source.width) /
 				(kVisibleExtentLineSamples * 2);
 			AnalysisLumaSample pixel;
-			if (IsCrediblyVisible(samples, x, y, blackThreshold, &pixel, matte))
+			const bool occupied = IsCrediblyVisible(samples, x, y, blackThreshold, &pixel, matte);
+            if (suppressedShelf && nearRaisedEdge) shelf.Observe(i, pixel, matte);
+			if (occupied)
 			{
 				const int chromaDelta = std::max(std::abs(int(pixel.chromaU)-512), std::abs(int(pixel.chromaV)-512));
 				if (nearRaisedEdge) {
@@ -1008,9 +1055,17 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
         const auto common = columns & previousColumns;
         const bool disconnected = nearRaisedEdge && previousColumns.any() &&
             !(common & (common >> 1)).any() && !(strong & previousStrong).any();
+        const int offset = suppressedShelf && nearRaisedEdge ? shelf.DistributedOffset() : 0;
+        const auto residual = shelf.Residual(columns, offset);
+        const auto agreement = residual & previousResidual;
+        const bool onlyShelf = d == previousOccupied + 1 && !disconnected && offset && previousOffset &&
+            !(agreement & (agreement >> 1)).any() && !(strong & previousStrong).any();
+        if (onlyShelf) *suppressedShelf = true;
         previousColumns = columns;
         previousStrong = strong;
-        if (d != previousOccupied + 1 || disconnected)
+        previousOffset = offset;
+        previousResidual = residual;
+        if (d != previousOccupied + 1 || disconnected || onlyShelf)
 		{
 			previousLine = line;
 			previousLine.firstLine = y;
@@ -1037,6 +1092,52 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 		return result;
 	}
 	return result;
+}
+
+// The regular grid can miss a detached dot between columns. Only release an
+// existing veto after also inspecting native pixels in BOTH excluded bands.
+// Inspect outside-in so that one protected pixel yields an outward bound.
+void ProtectNativeRaisedMatteDetail(SampleContext& samples, bool top, int depth,
+    int matte, ExcludedBandVisibleExtent& extent) {
+    const auto& source = samples.source;
+    const int boundary = top ? depth : source.height - depth - 1;
+    const int inward = top ? 1 : -1;
+    const int reference = boundary + inward * std::max(1, source.height / 540);
+    const int edgeBand = std::max(2, source.height / 96);
+    const int blend = std::max(2, source.height / 270);
+    for (int row = 0; row < depth; ++row) {
+        const int y = top ? row : source.height - 1 - row;
+        if (extent.available && (top ? y >= extent.coordinate : y < extent.coordinate)) break;
+        if (samples.budget) samples.budget->Checkpoint();
+        const int distance = depth - row;
+        const int tolerance = distance <= edgeBand ? 15 : 4;
+        // At the very edge, allow a rapidly diminishing fraction of the
+        // current picture at the same column for antialiasing / color bleed.
+        const int referenceRow = distance <= blend ? reference : -1;
+        int x = 0;
+        const bool read = source.FindPlanarMatteRowDetail(y, referenceRow, std::min(5,distance),
+            matte, tolerance, x);
+        const int inspected = read ? std::min(x + 1, source.width) : 0;
+        samples.lumaSamples += inspected;
+        samples.chromaSamples += inspected;
+        if (read && x == source.width) continue;
+        extent.available = true;
+        extent.coordinate = top ? y : y + 1;
+        extent.firstX = x; extent.firstY = y;
+        extent.firstLine = y; extent.firstLineSupport = 1;
+        extent.secondLine = -1; extent.secondLineSupport = 0;
+        extent.depthSamples = depth; extent.sampleStep = 1;
+        extent.lumaCutoff = matte + tolerance;
+        AnalysisLumaSample pixel;
+        if (read && source.Sample(x,y,pixel)) {
+            extent.firstLuma = extent.peakLuma = pixel.luma;
+            extent.firstU = pixel.chromaU; extent.firstV = pixel.chromaV;
+            extent.peakChromaDelta = std::max(std::abs(int(pixel.chromaU)-512),
+                std::abs(int(pixel.chromaV)-512));
+            extent.firstReason = extent.peakChromaDelta > 32 ? 2 : 1;
+        }
+        return;
+    }
 }
 
 ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
@@ -2986,10 +3087,25 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         std::abs(result.excludedTop.lumaP90-result.excludedBottom.lumaP90) <= 4 &&
         raisedBand(result.excludedTop) && raisedBand(result.excludedBottom);
 
-    const auto topExtent = FindHorizontalVisibleExtent(samples, true,
-		trustedPresentation.top, blackThreshold, relativeBands ? int(result.excludedTop.lumaP90) : -1);
-	const auto bottomExtent = FindHorizontalVisibleExtent(samples, false,
-		source.height - trustedPresentation.bottom, blackThreshold, relativeBands ? int(result.excludedBottom.lumaP90) : -1);
+    const bool planar = source.format == AnalysisLumaFormat::P010 ||
+        source.format == AnalysisLumaFormat::P210 || source.format == AnalysisLumaFormat::DecodedDolbyVision422;
+    // Budget the full verification before relaxing any sparse witness. Larger
+    // bands and formats without a fast exact native-row reader keep the veto.
+    const int barDepth = trustedPresentation.top + (source.height - trustedPresentation.bottom);
+    const bool verifyShelf = relativeBands && planar && source.width <= 4096 &&
+        barDepth <= (2 * 1024 * 1024) / source.width && source.IsValid();
+    bool suppressedShelf = false;
+    auto topExtent = FindHorizontalVisibleExtent(samples, true,
+        trustedPresentation.top, blackThreshold, relativeBands ? int(result.excludedTop.lumaP90) : -1,
+        verifyShelf ? &suppressedShelf : nullptr);
+    auto bottomExtent = FindHorizontalVisibleExtent(samples, false,
+        source.height - trustedPresentation.bottom, blackThreshold, relativeBands ? int(result.excludedBottom.lumaP90) : -1,
+        verifyShelf ? &suppressedShelf : nullptr);
+    if (suppressedShelf) {
+        ProtectNativeRaisedMatteDetail(samples,true,trustedPresentation.top,int(result.excludedTop.lumaP90),topExtent);
+        ProtectNativeRaisedMatteDetail(samples,false,source.height-trustedPresentation.bottom,
+            int(result.excludedBottom.lumaP90),bottomExtent);
+    }
 	const auto leftExtent = FindVerticalVisibleExtent(samples, true,
 		trustedPresentation.left, blackThreshold);
 	const auto rightExtent = FindVerticalVisibleExtent(samples, false,

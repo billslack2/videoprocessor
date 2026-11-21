@@ -809,6 +809,207 @@ namespace VideoProcessorTest
                 admission=result.state;
             }
         }
+        static P010Frame RaisedBroadcastMatteFrame(bool mirror)
+        {
+            P010Frame frame(3840,2160);
+            const auto base=ScopePresentation(3840,2160,mirror ? 262 : 260,mirror ? 1900 : 1898);
+            frame.BlackOutside(0,base.top,3840,base.bottom,119,511,511);
+            auto paint=[&](int left,int top,int right,int bottom,int luma) {
+                frame.FillRectangle(left,mirror ? 2160-bottom : top,
+                    right,mirror ? 2160-top : bottom,luma,514,513);
+            };
+            paint(0,1898,3840,1900,153);
+            for (int x=0;x<3840;x+=120)
+                paint(x,1900,x+80,1919,122);
+            for (int x=75;x<3840;x+=240)
+            {
+                // Stronger inner flecks move between depth rows; an aligned
+                // stroke at both depths is independently protected below.
+                paint(x,1900,x+35,1903,129);
+                paint(x+75,1903,x+105,1906,129);
+            }
+            paint(2320,1911,2456,1919,126);
+            paint(2622,1911,2652,1919,126);
+            return frame;
+        }
+
+        static AlphaSourceCrop::CropPresentationAdmissionDecision PresentRaisedBroadcastFrame(
+            const ActivePictureBounds& measured, const ActivePicturePresentationRetentionEvidence& retention,
+            uint64_t sequence, const AlphaSourceCrop::CropPresentationAdmissionState& previous)
+        {
+            using namespace AlphaSourceCrop;
+            Input input;
+            input.automaticCropEnabled=input.sharedGeometryAvailable=input.latestObservationSupportsCrop=true;
+            input.geometry=input.currentVisibleBase=measured;
+            input.geometrySourceGeneration=input.frameSourceGeneration=input.currentVisibleSourceGeneration=1;
+            input.frameSourceSequence=input.currentVisibleSourceSequence=sequence;
+            input.classification=input.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.rasterWidth=measured.rasterWidth;
+            input.rasterHeight=measured.rasterHeight;
+            input.frameLocalPresentationRetentionEvaluated=true;
+            input.frameLocalPresentationRetentionSafe=retention.excludedBandsPixelSafe;
+            input.currentVisibleBoundsAvailable=retention.outwardVisibleBoundsAvailable;
+            input.currentVisibleBounds=retention.outwardVisibleBounds;
+            return AdmitCropPresentation(previous,input,Evaluate(input),5);
+        }
+
+        TEST_METHOD(RaisedBroadcastEdgeRingingAdmitsMeasuredScopeOnFirstFrame)
+        {
+            using namespace AlphaSourceCrop;
+            // A diffuse, weakly lifted shelf below the picture, with adjacent
+            // columns peaking at 126 on the sampled rows 1912 and 1916. The
+            // older isolated-fleck fixture never produced that connected pair.
+            for (bool mirror : {false, true})
+            {
+                auto frame=RaisedBroadcastMatteFrame(mirror);
+                const auto base=ScopePresentation(3840,2160,mirror ? 262 : 260,mirror ? 1900 : 1898);
+
+                CropPresentationAdmissionState admission;
+                for (int sequence=1;sequence<=5;++sequence)
+                {
+                    if (sequence==3)
+                    {
+                        // Navigation adds a UI strip outside the normal picture.
+                        // Its framing may change. The first clean frame afterward
+                        // must recover the measured crop without restarting VP.
+                        auto navigation=frame;
+                        navigation.FillRectangle(30,120,3150,182,425);
+                        navigation.FillRectangle(90,132,315,167,780);
+                        const auto withMenu=EvaluateActivePicturePresentationRetention(
+                            navigation.P010Source(),base);
+                        Assert::IsFalse(withMenu.excludedBandsPixelSafe);
+                        admission=PresentRaisedBroadcastFrame(base,withMenu,sequence,admission).state;
+                        continue;
+                    }
+                    // Changing current picture with the same encoded bars.
+                    frame.FillRectangle(124,700,365,815,230+sequence*45);
+                    const auto retention=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+                    const auto result=PresentRaisedBroadcastFrame(base,retention,sequence,admission);
+                    Assert::IsTrue(result.presentation.applyCrop && !result.blocked);
+                    const auto& bounds=result.presentation.sourceBounds;
+                    Assert::AreEqual(0,bounds.left);
+                    Assert::AreEqual(3840,bounds.right);
+                    Assert::AreEqual(base.top,bounds.top);
+                    Assert::AreEqual(base.bottom,bounds.bottom);
+                    admission=result.state;
+                }
+            }
+        }
+
+        TEST_METHOD(RaisedBroadcastMatteProtectsDetachedCaptionDots)
+        {
+            const auto base=ScopePresentation(3840,2160,262,1900);
+            for (int scenario=0;scenario<4;++scenario)
+            {
+                auto frame=RaisedBroadcastMatteFrame(true);
+                // Both dots sit beyond the active picture. The first x-position
+                // crosses the regular 15px column spacing; the second falls
+                // between columns. The stem and baseline never enter the bar.
+                const int left=scenario%2 ? 2400 : 2391;
+                frame.FillRectangle(left,262,left+4,285,720);
+                frame.FillRectangle(left+9,262,left+13,285,720);
+                frame.FillRectangle(left-6,283,left+20,286,720);
+                if (scenario<2)
+                    frame.FillRectangle(left,244,left+4,248,720); // Player caption.
+                else
+                {
+                    // Grayscale antialiasing around a small burned-in component.
+                    frame.FillRectangle(left-1,243,left+5,249,145);
+                    frame.FillRectangle(left,244,left+4,248,246);
+                }
+                const auto retention=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+                Assert::IsFalse(retention.excludedBandsPixelSafe);
+                if (retention.outwardVisibleBoundsAvailable)
+                    Assert::IsTrue(retention.outwardVisibleBounds.top<=(scenario<2 ? 244 : 243));
+
+                const auto fresh=PresentRaisedBroadcastFrame(base,retention,1,{});
+                Assert::IsTrue(fresh.presentation.sourceBounds.top<=(scenario<2 ? 244 : 243));
+            }
+        }
+
+        TEST_METHOD(RaisedBroadcastMatteKeepsFaintStrokesAndPictureExtensions)
+        {
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            for (int scenario=0;scenario<5;++scenario)
+            {
+                P010Frame frame(3840,2160);
+                frame.BlackOutside(0,260,3840,1898,119,511,511);
+                int protectThrough=1918;
+                if (scenario==0)
+                    frame.FillRectangle(2320,1910,2460,1918,126); // Same peak on flat matte.
+                if (scenario==1)
+                {
+                    frame.FillRectangle(0,1900,3840,1919,122);
+                    frame.FillRectangle(2320,1904,2460,1918,129); // Dim cue on lifted background.
+                }
+                if (scenario==2)
+                    frame.FillRectangle(2320,1908,2460,1918,119,590,514); // Chroma-only glyph.
+                if (scenario==3)
+                {
+                    protectThrough=1970;
+                    frame.FillRectangle(2320,1956,2460,protectThrough,126); // Farther into the bar.
+                }
+                if (scenario==4)
+                {
+                    protectThrough=1940;
+                    frame.FillRectangle(2300,1840,2460,protectThrough,212); // Picture across the edge.
+                }
+                const auto retained=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+                Assert::IsTrue(retained.outwardVisibleBoundsAvailable);
+                Assert::IsTrue(retained.outwardVisibleBounds.bottom>=protectThrough);
+                const auto fresh=PresentRaisedBroadcastFrame(base,retained,1,{});
+                Assert::IsTrue(fresh.presentation.sourceBounds.bottom>=protectThrough);
+            }
+        }
+
+        TEST_METHOD(PlanarMatteRowDetailMatchesNativeSamplesOnPaddedRows)
+        {
+            // Width 18 exercises two vector blocks and a two-pixel scalar tail.
+            constexpr int width=18, height=8, row=3, ref=7, matte=119, tolerance=15;
+            for (int format=0;format<3;++format)
+            {
+                P010Frame frame(width,height,6,format!=0);
+                const auto source=format==0 ? frame.P010Source() :
+                    format==1 ? frame.P210Source() : AsDecodedDolbyVisionSource(frame);
+                auto compare=[&](int refRow,int shift)
+                {
+                    int expected=0;
+                    for (;expected<width;++expected)
+                    {
+                        AnalysisLumaSample sample,reference;
+                        Assert::IsTrue(source.Sample(expected,row,sample));
+                        int upper=matte+tolerance;
+                        if (refRow>=0)
+                        {
+                            Assert::IsTrue(source.Sample(expected,refRow,reference));
+                            upper=(std::min)(matte+128,upper+((std::max)(0,int(reference.luma)-matte)>>shift));
+                        }
+                        if (sample.luma<matte-4 || sample.luma>upper ||
+                            std::abs(int(sample.chromaU)-512)>32 || std::abs(int(sample.chromaV)-512)>32)
+                            break;
+                    }
+                    int actual=-1;
+                    Assert::IsTrue(source.FindPlanarMatteRowDetail(row,refRow,shift,matte,tolerance,actual));
+                    Assert::AreEqual(expected,actual);
+                };
+                // Exercise each lane and the first pixel sharing a failing U/V pair.
+                for (int x=0;x<width;++x)
+                {
+                    const int codes[][3]={{115,480,544},{114,512,512},{134,512,512},
+                        {247,512,512},{248,512,512},{119,479,512},{119,512,545}};
+                    for (const auto& mark:codes)
+                    {
+                        frame.Fill(119,512,512);
+                        frame.FillRectangle(0,ref,width,ref+1,1023);
+                        frame.FillRectangle(x,row,x+1,row+1,mark[0],mark[1],mark[2]);
+                        compare(-1,1);
+                        compare(ref,1);
+                        compare(ref,5);
+                    }
+                }
+            }
+        }
+
         TEST_METHOD(RaisedScopeRetentionProtectsDimCaption)
         {
             const auto base = ScopePresentation(640,360,46,314);

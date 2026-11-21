@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <emmintrin.h>
 
 namespace
 {
@@ -355,6 +356,56 @@ bool AnalysisLumaSource::MeasureLumaRowContent(int y, int x0, int x1, int step,
             if (step >= x1 - x) break;
             x += step;
         }
+    }
+    return true;
+}
+
+bool AnalysisLumaSource::FindPlanarMatteRowDetail(int y, int referenceY, int shift,
+    int matte, int tolerance, int& x) const
+{
+    x = 0;
+    if (!IsValid() || y < 0 || y >= height || referenceY < -1 || referenceY >= height ||
+        shift < 0 || shift > 10 || matte < 0 || matte > 1023 || tolerance < 0 || tolerance > 1023 ||
+        (format != AnalysisLumaFormat::P010 && format != AnalysisLumaFormat::P210 &&
+         format != AnalysisLumaFormat::DecodedDolbyVision422)) return false;
+    // All three planar formats store canonical 10-bit codes in the top bits
+    // of a 16-bit lane. U/V pairs span two neighbouring luma pixels.
+    const auto* luma = data + size_t(y) * rowBytes;
+    const auto* chroma = data + size_t(height) * rowBytes +
+        size_t(format == AnalysisLumaFormat::P010 ? y / 2 : y) * chromaRowBytes;
+    const auto* reference = referenceY < 0 ? nullptr : data + size_t(referenceY) * rowBytes;
+    const auto lower = _mm_set1_epi16(static_cast<short>(matte - 4));
+    const auto base = _mm_set1_epi16(static_cast<short>(matte + tolerance));
+    const auto floor = _mm_set1_epi16(static_cast<short>(matte));
+    const auto cap = _mm_set1_epi16(static_cast<short>(matte + 128));
+    const auto shiftCount = _mm_cvtsi32_si128(shift);
+    const auto loUV = _mm_set1_epi16(480), hiUV = _mm_set1_epi16(544);
+    const auto codes = [](const uint8_t* src) {
+        return _mm_srli_epi16(_mm_loadu_si128(reinterpret_cast<const __m128i*>(src)), 6);
+    };
+    for (; x + 8 <= width; x += 8) {
+        const auto ys = codes(luma + 2 * x);
+        auto upper = base;
+        if (reference) {
+            const auto delta = _mm_subs_epu16(codes(reference + 2 * x), floor);
+            upper = _mm_min_epi16(cap, _mm_add_epi16(base, _mm_srl_epi16(delta, shiftCount)));
+        }
+        const auto uv = codes(chroma + 2 * x);
+        const auto badY = _mm_or_si128(_mm_cmpgt_epi16(ys,upper),_mm_cmpgt_epi16(lower,ys));
+        const auto badUV = _mm_or_si128(_mm_cmpgt_epi16(uv,hiUV),_mm_cmpgt_epi16(loUV,uv));
+        if (_mm_movemask_epi8(_mm_or_si128(badY,badUV))) break;
+    }
+    for (; x < width; ++x) {
+        int upper = matte + tolerance;
+        if (reference)
+            upper = std::min(matte + 128, upper +
+                (std::max(0, int(P010Code(reference + 2 * x)) - matte) >> shift));
+        const int value = P010Code(luma + 2 * x);
+        const auto* pair = chroma + size_t(x / 2) * 4;
+        if (value < matte - 4 || value > upper ||
+            std::abs(int(P010Code(pair)) - 512) > 32 ||
+            std::abs(int(P010Code(pair + 2)) - 512) > 32)
+            break;
     }
     return true;
 }
