@@ -1143,8 +1143,16 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
         // needs an independent current-pixel explanation on both rows.
         const auto explained = (columns & ~residual) | shoulder;
         const auto previousExplained = (previousColumns & ~previousResidual) | previousShoulder;
+        const auto unresolved = witnesses & ~(explained & previousExplained);
+        // One weak sample on only one of the two immediate edge rows
+        // cannot establish a connected exterior stroke by itself. Keep
+        // every strong residual and require the native scan on both bars.
+        const bool isolatedWeak = barPixels-depth <= std::max(2,samples.source.height/270) &&
+            unresolved.count() == 1 &&
+            (unresolved & ~explained & ~previousExplained).none() &&
+            (unresolved & ((strong & ~explained) | (previousStrong & ~previousExplained))).none();
         const bool onlyShoulder = pairedEdge && d == previousOccupied+1 && !disconnected &&
-            witnesses.any() && (witnesses & ~(explained & previousExplained)).none();
+            witnesses.any() && (unresolved.none() || isolatedWeak);
         if (onlyShelf || onlyShoulder) *suppressedShelf = true;
         previousColumns = columns;
         previousShoulder = shoulder;
@@ -1183,13 +1191,14 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 // The regular grid can miss a detached dot between columns. Only release an
 // existing veto after also inspecting native pixels in BOTH excluded bands.
 // Inspect outside-in so that one protected pixel yields an outward bound.
-void ProtectNativeRaisedMatteDetail(SampleContext& samples, bool top, int depth,
+bool ProtectNativeRaisedMatteDetail(SampleContext& samples, bool top, int depth,
     int matte, ExcludedBandVisibleExtent& extent, const ActivePictureBounds* erased = nullptr, bool pairedEdge = false) {
     const auto& source = samples.source;
     const int boundary = top ? depth : source.height - depth - 1;
     const int inward = top ? 1 : -1;
     const int reference = boundary + inward * std::max(1, source.height / 540);
     const int edgeBand = std::max(2, source.height / 96);
+    const int evenMargin = (edgeBand + 1) & ~1;
     const int blend = std::max(2, source.height / 270);
     for (int row = 0; row < depth; ++row) {
         const int y = top ? row : source.height - 1 - row;
@@ -1237,7 +1246,8 @@ void ProtectNativeRaisedMatteDetail(SampleContext& samples, bool top, int depth,
         }
         // Keep the farther sparse protection if the exact native pixel is
         // inside its margin. Native evidence still records the actual row.
-        if (extent.available && (top ? y >= extent.coordinate : y < extent.coordinate)) return;
+        if (extent.available && (top ? y >= extent.coordinate : y < extent.coordinate))
+            return read && !erased && distance <= evenMargin;
         extent.available = true;
         extent.coordinate = top ? y : y + 1;
         extent.firstX = x; extent.firstY = y;
@@ -1252,8 +1262,9 @@ void ProtectNativeRaisedMatteDetail(SampleContext& samples, bool top, int depth,
                 std::abs(int(pixel.chromaV)-512));
             extent.firstReason = extent.peakChromaDelta > 32 ? 2 : 1;
         }
-        return;
+        return read && !erased && distance <= evenMargin;
     }
+    return !erased;
 }
 
 ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
@@ -3227,11 +3238,13 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
     const auto strongWitness = [](const ExcludedBandVisibleExtent& extent, int matte) {
         return extent.available && (extent.peakChromaDelta > 32 || extent.peakLuma > matte + 15);
     };
-    if (verifyShelf && (suppressedShelf || strongWitness(topExtent,int(result.excludedTop.lumaP90)) ||
+    if (verifyShelf && ((pairedEdge && (topExtent.available || bottomExtent.available)) ||
+        suppressedShelf || strongWitness(topExtent,int(result.excludedTop.lumaP90)) ||
         strongWitness(bottomExtent,int(result.excludedBottom.lumaP90)))) {
-        ProtectNativeRaisedMatteDetail(samples,true,trustedPresentation.top,int(result.excludedTop.lumaP90),topExtent,nullptr,pairedEdge);
-        ProtectNativeRaisedMatteDetail(samples,false,source.height-trustedPresentation.bottom,
+        const bool topVerified = ProtectNativeRaisedMatteDetail(samples,true,trustedPresentation.top,int(result.excludedTop.lumaP90),topExtent,nullptr,pairedEdge);
+        const bool bottomVerified = ProtectNativeRaisedMatteDetail(samples,false,source.height-trustedPresentation.bottom,
             int(result.excludedBottom.lumaP90),bottomExtent,nullptr,pairedEdge);
+        result.raisedMatteExteriorVerified = pairedEdge && topVerified && bottomVerified;
     }
 	const auto leftExtent = FindVerticalVisibleExtent(samples, true,
 		trustedPresentation.left, blackThreshold);
@@ -3424,6 +3437,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 			return strict;
 	}
 	auto result = raw;
+	result.raisedMatteExteriorVerified = false;
 	result.relocatedOverlayExclusionEvaluated = false;
 	result.relocatedOverlayResidualsExcluded = false;
 	if (!raw.analysisValid || !raw.presentationValid || !source.IsValid() ||

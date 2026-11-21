@@ -5804,10 +5804,28 @@ namespace AlphaSourceCrop
             !input.currentVisibleBoundsAvailable;
     }
 
+    static Decision RaisedMatteMargin(const Input& input, const char* reason)
+    {
+        const int margin = (std::max(2,input.rasterHeight / 96) + 1) & ~1;
+        auto envelope = input.geometry;
+        envelope.top = std::max(0,envelope.top-margin);
+        envelope.bottom = std::min(input.rasterHeight,envelope.bottom+margin);
+        envelope.aspectRatio = double(envelope.right-envelope.left) / (envelope.bottom-envelope.top);
+        Decision result;
+        result.sourceBounds = envelope;
+        result.applyCrop = true;
+        result.owner = DecisionOwner::OUTWARD_FIT;
+        result.outwardExpanded = true;
+        result.raisedMatteMargin = true;
+        result.reason = reason;
+        return result;
+    }
+
 	CropPresentationAdmissionDecision AdmitCropPresentation(
 		const CropPresentationAdmissionState& previous,
 		const Input& input, const Decision& candidate,
-		uint64_t presentationEpoch)
+		uint64_t presentationEpoch,
+        const ActivePicturePresentationRetentionEvidence* exactCurrentRetention)
 	{
 		CropPresentationAdmissionDecision result;
 		result.state = previous;
@@ -5865,11 +5883,26 @@ namespace AlphaSourceCrop
 		if (!previouslyPresented && currentVisibleWitness &&
 			!ContainedBounds(candidate.sourceBounds, input.currentVisibleBounds))
 		{
-			result.blocked = true;
-			result.presentation = {};
-			result.presentation.sourceBounds = FullRaster(input.rasterWidth, input.rasterHeight);
-			result.presentation.reason = "unpresented crop excludes current visible pixels";
-			return result;
+            // Picture acquisition already passed above. Only the original measured
+            // pose is eligible. The exact raw scan certifies everything beyond the
+            // margin, including padding added by the coarser visible-extent estimate.
+            if (candidate.owner == DecisionOwner::TRUSTED_CROP &&
+                SameBounds(candidate.sourceBounds,input.geometry) && input.geometry.left == 0 &&
+                input.geometry.right == input.rasterWidth &&
+                input.geometry.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+                input.geometry.top > 0 && input.geometry.bottom < input.rasterHeight &&
+                exactCurrentRetention && exactCurrentRetention->analysisValid &&
+                exactCurrentRetention->presentationValid && exactCurrentRetention->pairedRaisedEdgeContrast &&
+                exactCurrentRetention->raisedMatteExteriorVerified && exactCurrentRetention->outwardVisibleBoundsAvailable &&
+                SameBounds(exactCurrentRetention->outwardVisibleBounds,input.currentVisibleBounds)) {
+                result.presentation = RaisedMatteMargin(input,"acquired scope with verified raised matte margin");
+            } else {
+                result.blocked = true;
+                result.presentation = {};
+                result.presentation.sourceBounds = FullRaster(input.rasterWidth, input.rasterHeight);
+                result.presentation.reason = "unpresented crop excludes current visible pixels";
+                return result;
+            }
 		}
 		result.state.available = true;
 		result.state.trustedCrop = input.geometry;
@@ -5892,26 +5925,70 @@ namespace AlphaSourceCrop
 
     bool ProtectCurrentNativeMatteDetail(CropPresentationAdmissionDecision& selected,
         const Input& input, const ActivePicturePresentationRetentionEvidence& retention,
-        const ActivePictureBounds& retentionBase, uint64_t retentionGeneration, uint64_t retentionSequence)
+        const ActivePictureBounds& retentionBase, uint64_t retentionGeneration, uint64_t retentionSequence,
+        RaisedMattePresentationHold* hold, uint64_t nowMs, unsigned holdMs, uint64_t domain)
     {
-        if (!input.automaticCropEnabled || !retention.analysisValid || !retention.presentationValid ||
-            !input.frameSourceGeneration || !input.frameSourceSequence ||
-            retentionGeneration != input.frameSourceGeneration || retentionSequence != input.frameSourceSequence ||
-            !SameTrustedCropContract(retentionBase,input.geometry)) return false;
+        const auto& base = input.geometry;
+        const auto& crop = selected.presentation.sourceBounds;
+        const bool acquiredMargin = selected.presentation.raisedMatteMargin;
+        const bool nativePose = input.automaticCropEnabled && input.frameSourceGeneration &&
+            input.frameSourceSequence && !input.fullRasterPresentationAuthoritative &&
+            !input.presentationFailOpen && !selected.blocked && selected.presentation.applyCrop &&
+            !selected.presentation.verticallyTranslated && !selected.presentation.confirmedFitOwnership.available &&
+            (acquiredMargin || (!selected.presentation.outwardExpanded && SameBounds(crop,base))) &&
+            ValidBounds(base,input.rasterWidth,input.rasterHeight) && base.left == 0 &&
+            base.right == input.rasterWidth && base.top > 0 && base.bottom < input.rasterHeight;
+        if (hold && hold->generation && (!nativePose || !holdMs ||
+            hold->generation != input.frameSourceGeneration || hold->epoch != input.framePresentationEpoch ||
+            hold->domain != domain || input.frameSourceSequence < hold->lastSequence ||
+            !SameTrustedCropContract(hold->picture,base) || nowMs < hold->lastDetailMs ||
+            nowMs - hold->lastDetailMs >= holdMs)) *hold = {};
+
+        const bool current = input.automaticCropEnabled && retention.analysisValid && retention.presentationValid &&
+            input.frameSourceGeneration && input.frameSourceSequence &&
+            retentionGeneration == input.frameSourceGeneration && retentionSequence == input.frameSourceSequence &&
+            SameTrustedCropContract(retentionBase,base);
         const auto& top = retention.visibleTop;
         const auto& bottom = retention.visibleBottom;
-        const bool protectTop = top.available && top.nativePixelDetail;
-        const bool protectBottom = bottom.available && bottom.nativePixelDetail;
-        if (!protectTop && !protectBottom) return false;
-        const auto& crop = selected.presentation.sourceBounds;
-        if (selected.presentation.applyCrop && (crop.left > retentionBase.left || crop.right < retentionBase.right ||
-            (protectTop && crop.top > top.nativePixelY) || (protectBottom && crop.bottom <= bottom.nativePixelY))) {
+        const bool protectTop = current && top.available && top.nativePixelDetail;
+        const bool protectBottom = current && bottom.available && bottom.nativePixelDetail;
+        const bool clipped = (protectTop || protectBottom) && selected.presentation.applyCrop &&
+            (crop.left > base.left || crop.right < base.right ||
+             (protectTop && crop.top > top.nativePixelY) || (protectBottom && crop.bottom <= bottom.nativePixelY));
+
+        // This is the same even-aligned strip inspected outside-in by the native verifier.
+        // Keep the entire strip, including all ambiguous pixels. Its edges are fixed for the crop.
+        const int margin = (std::max(2,input.rasterHeight / 96) + 1) & ~1;
+        const bool bounded = clipped && hold && nativePose && retention.pairedRaisedEdgeContrast &&
+            retention.raisedMatteExteriorVerified &&
+            (!protectTop || top.nativePixelY >= base.top - margin) &&
+            (!protectBottom || bottom.nativePixelY < base.bottom + margin);
+        if (clipped && !bounded) {
+            if (hold) *hold = {};
             selected = {};
             selected.blocked = true;
             selected.presentation.sourceBounds = FullRaster(input.rasterWidth,input.rasterHeight);
             selected.presentation.reason = "current native matte detail outside final crop";
+            return true;
         }
-        return true;
+        if (acquiredMargin && !hold) return true;
+        if (bounded || acquiredMargin || (hold && hold->generation)) {
+            if (bounded || acquiredMargin) {
+                hold->picture = base;
+                hold->generation = input.frameSourceGeneration;
+                hold->epoch = input.framePresentationEpoch;
+                hold->domain = domain;
+                hold->lastDetailMs = nowMs;
+            }
+            hold->lastSequence = input.frameSourceSequence;
+            if (!acquiredMargin)
+                selected.presentation = RaisedMatteMargin(input, bounded ?
+                    "current detail inside verified raised matte margin" :
+                    "retaining raised matte margin around current crop");
+            // The measured picture, logical admission, and caption ownership remain independent.
+            return true;
+        }
+        return protectTop || protectBottom;
     }
 
 	bool IsCurrentSubmittedNativeScopeAnchor(const SubmittedNativeScopeAnchor& anchor,

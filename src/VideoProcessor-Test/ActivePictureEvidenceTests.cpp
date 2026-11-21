@@ -1375,6 +1375,223 @@ namespace VideoProcessorTest
             Assert::IsTrue(pixels.outwardVisibleBounds.bottom>=1919);
         }
 
+        // A synthetic neighborhood reconstructed from the logged centre,
+        // inward/outward neighbour and interior reference. Outside this
+        // patch the existing moving-broadcast fixture supplies both mattes.
+        static P010Frame BroadcastEdgeWithLoggedWitness(bool cold,int repetition=0)
+        {
+            constexpr int bottom=1898;
+            auto frame=MovingBroadcastEdge(repetition%2,true);
+            const int x=cold ? 3675 : (repetition%2 ? 438 : 2882);
+            const int width=6;
+            const int y=cold ? 1900 : 1902;
+            const int inside=cold ? 434 : (repetition%2 ? 341 : 396);
+            frame.FillRectangle(x,1888,x+width,bottom,inside);
+            frame.FillRectangle(x,y-1,x+width,y,cold ? 174 : (repetition%2 ? 122 : 129));
+            frame.FillRectangle(x,y,x+width,y+1,cold ? 174 : 143);
+            frame.FillRectangle(x,y+1,x+width,y+2,cold ? 150 : 136);
+            return frame;
+        }
+
+        TEST_METHOD(StableMeasuredScopeAvoidsFullFlashesAndKeepsTheLegalCard)
+        {
+            using namespace AlphaSourceCrop;
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            auto measure=[&](const P010Frame& frame) {
+                return EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+            };
+            const auto clean=measure(MovingBroadcastEdge(0,true));
+            const auto plateau=measure(BroadcastEdgeWithLoggedWitness(true));
+            const auto rebound=measure(BroadcastEdgeWithLoggedWitness(false));
+            auto local=BroadcastEdgeWithLoggedWitness(false,1);
+            // Deliberately add an unowned off-grid mark within the proposed
+            // safety margin. Suppressing the artifact must never erase it.
+            local.FillRectangle(1825,1901,1829,1905,715);
+            const auto closePrint=measure(local);
+            auto endCard=MovingBroadcastEdge(1,true);
+            for (int x=1390;x<2250;x+=35)
+                endCard.FillRectangle(x,2045,x+15,2064,129);
+            const auto legal=measure(endCard);
+            endCard.FillRectangle(308,206,314,214,630);
+            const auto both=measure(endCard);
+            Assert::IsTrue(closePrint.visibleBottom.nativePixelDetail);
+            Assert::IsTrue(closePrint.raisedMatteExteriorVerified);
+            Assert::IsFalse(legal.raisedMatteExteriorVerified);
+
+            // Run the eight observed full-raster excursions at source cadence.
+            // Six were early near-boundary incidents. The last two had actual
+            // outlying Y=2056 legal and Y=206 top content, respectively.
+            const int runs[][2]={{1584,1585},{1863,1871},{1882,1888},{1890,1892},
+                {1896,1921},{1923,1931},{2044,2048},{2197,2202}};
+            for (unsigned holdMs:{0u,2000u})
+            {
+                RaisedMattePresentationHold hold{};
+                CropPresentationAdmissionState previous;
+                for (int seq=1583;seq<=2204;++seq)
+                {
+                    int run=-1;
+                    for(int i=0;i<8;++i)
+                        if(seq>=runs[i][0] && seq<=runs[i][1]) run=i;
+                    const bool translating=seq>=2071 && seq!=2203;
+                    const auto& pixels=run==7 ? both :
+                        run==6 || translating ? legal :
+                        run==0 || run==5 ? closePrint :
+                        run==1 ? plateau : run>=2 ? rebound : clean;
+                    auto input=RaisedBroadcastCropInput(base,pixels,seq);
+                    if(translating)
+                    {
+                        input.verticalTranslationBase=base;
+                        input.verticalTranslationActive=true;
+                        input.verticalTranslationSourceGeneration=1;
+                        input.verticalTranslationPixels=216;
+                    }
+                    auto selected=AdmitCropPresentation(previous,input,Evaluate(input),5);
+                    ProtectCurrentNativeMatteDetail(selected,input,pixels,base,1,seq,
+                        &hold,1000+uint64_t(seq-1583)*1000/60,holdMs,42);
+                    const auto& bounds=selected.presentation.sourceBounds;
+                    if(run==7)
+                    {
+                        Assert::IsTrue(bounds.top<=206 && bounds.bottom>=2064);
+                    }
+                    else if(translating)
+                    {
+                        Assert::AreEqual(base.top+216,bounds.top);
+                        Assert::AreEqual(base.bottom+216,bounds.bottom);
+                    }
+                    else if(run==6)
+                    {
+                        Assert::IsTrue(bounds.bottom>=2064);
+                    }
+                    else if(seq<2044)
+                    {
+                        Assert::IsTrue(selected.presentation.applyCrop);
+                        Assert::IsTrue(bounds.top<=base.top && bounds.bottom>=base.bottom);
+                        Assert::IsTrue(bounds.top>=base.top-32 && bounds.bottom<=base.bottom+32);
+                        if(run==0 || run==5)
+                            Assert::IsTrue(bounds.bottom>=1905);
+                        // The first short burst is followed by 277 clean frames.
+                        // Check hold time at 60Hz, including the disabled setting.
+                        if((seq>=1586 && seq<=1703 && holdMs) || run==0)
+                            Assert::IsTrue(bounds.bottom>base.bottom);
+                        if((seq==1586 && !holdMs) || seq==1710)
+                        {
+                            Assert::AreEqual(base.top,bounds.top);
+                            Assert::AreEqual(base.bottom,bounds.bottom);
+                        }
+                    }
+                    previous=selected.state;
+                }
+            }
+        }
+
+        TEST_METHOD(RaisedMattePresentationHoldClearsForRealCutAndContextReset)
+        {
+            using namespace AlphaSourceCrop;
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            auto plain=MovingBroadcastEdge(0,true);
+            const auto clean=EvaluateActivePicturePresentationRetention(plain.P010Source(),base);
+            plain.FillRectangle(1825,1901,1829,1905,715);
+            const auto local=EvaluateActivePicturePresentationRetention(plain.P010Source(),base);
+            Assert::IsTrue(local.visibleBottom.nativePixelDetail && local.raisedMatteExteriorVerified);
+            for(int scenario=0;scenario<3;++scenario)
+            {
+                RaisedMattePresentationHold hold{};
+                CropPresentationAdmissionState previous;
+                for(uint64_t seq=1;seq<=4;++seq)
+                {
+                    auto measured=base;
+                    auto pixels=seq==2 ? local : clean;
+                    if(seq==3 && scenario==0)
+                        measured={0,0,3840,2160,3840,2160,16.0/9.0,ActivePictureBounds::BarAxes::NONE};
+                    if(seq==3 && scenario==1)
+                    {
+                        pixels=local;
+                        pixels.raisedMatteExteriorVerified=false;
+                    }
+                    auto input=RaisedBroadcastCropInput(measured,pixels,seq);
+                    if(seq==3 && scenario==0)
+                        input.classification=input.latestObservationClassification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+                    auto selected=AdmitCropPresentation(previous,input,Evaluate(input),5);
+                    const uint64_t domain=seq>=3 && scenario==2 ? 43 : 42;
+                    ProtectCurrentNativeMatteDetail(selected,input,pixels,measured,1,seq,
+                        &hold,1000+seq*17,2000,domain);
+                    const auto& bounds=selected.presentation.sourceBounds;
+                    if(seq==2)
+                        Assert::IsTrue(bounds.bottom>=1905 && bounds.bottom<=base.bottom+32);
+                    else if(seq==3 && scenario!=2)
+                    {
+                        // Current full-raster pixels or an unverified exterior
+                        // have priority over a recently used padded scope pose.
+                        Assert::AreEqual(0,bounds.top);
+                        Assert::AreEqual(2160,bounds.bottom);
+                    }
+                    else
+                    {
+                        Assert::AreEqual(base.top,bounds.top);
+                        Assert::AreEqual(base.bottom,bounds.bottom);
+                    }
+                    previous=selected.state;
+                }
+            }
+        }
+
+        TEST_METHOD(FirstRaisedAdScopeRequiresCurrentTrustedAuthorityAndVerifiedExterior)
+        {
+            using namespace AlphaSourceCrop;
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            auto frame=BroadcastEdgeWithLoggedWitness(true);
+            // In addition to the S1353 ledge, add a small off-grid bright
+            // detail so this test must retain pixels outside the native crop.
+            frame.FillRectangle(1825,1901,1829,1905,715);
+            const auto local=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+            Assert::IsTrue(local.outwardVisibleBoundsAvailable && local.raisedMatteExteriorVerified);
+            auto input=RaisedBroadcastCropInput(base,local,1353);
+            const auto candidate=Evaluate(input);
+            auto admitted=AdmitCropPresentation({},input,candidate,5,&local);
+            Assert::IsTrue(admitted.presentation.applyCrop && !admitted.blocked && admitted.presentation.raisedMatteMargin);
+            Assert::AreEqual(base.top,admitted.state.trustedCrop.top);
+            Assert::AreEqual(base.bottom,admitted.state.trustedCrop.bottom);
+            Assert::IsTrue(admitted.presentation.sourceBounds.bottom>=1905);
+            RaisedMattePresentationHold hold{};
+            ProtectCurrentNativeMatteDetail(admitted,input,local,base,1,1353,&hold,1000,2000,42);
+            const auto padded=admitted.presentation.sourceBounds;
+            const auto clean=EvaluateActivePicturePresentationRetention(MovingBroadcastEdge(1,true).P010Source(),base);
+            const auto coming=RaisedBroadcastCropInput(base,clean,1354);
+            auto next=AdmitCropPresentation(admitted.state,coming,Evaluate(coming),5,&clean);
+            ProtectCurrentNativeMatteDetail(next,coming,clean,base,1,1354,&hold,1017,2000,42);
+            Assert::AreEqual(padded.top,next.presentation.sourceBounds.top);
+            Assert::AreEqual(padded.bottom,next.presentation.sourceBounds.bottom);
+
+            auto refinement=candidate;
+            refinement.owner=DecisionOwner::BAR_REFINEMENT;
+            Assert::IsTrue(AdmitCropPresentation({},input,refinement,5,&local).blocked);
+            auto noProof=local;
+            noProof.raisedMatteExteriorVerified=false;
+            Assert::IsTrue(AdmitCropPresentation({},input,candidate,5,&noProof).blocked);
+            input.currentVisibleSourceSequence=1352;
+            Assert::IsFalse(AdmitCropPresentation({},input,candidate,5,&local).presentation.raisedMatteMargin);
+        }
+
+        TEST_METHOD(RaisedMarginChecksBothNativeExteriorsToTheFirstExcludedPixel)
+        {
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            const int margin=((std::max)(2,base.rasterHeight/96)+1)&~1;
+            for(bool top:{false,true}) for (bool beyond:{false,true})
+            {
+                auto frame=MovingBroadcastEdge(0,true);
+                // A closer witness in the opposite matte must never mask
+                // the first outside pixel in this matte's half-open extent.
+                const int other=top ? base.bottom+4 : base.top-5;
+                frame.FillRectangle(1825,other,1830,other+3,720);
+                const int y=top ? base.top-margin-int(beyond) :
+                    base.bottom+margin-1+int(beyond);
+                frame.FillRectangle(800,y,801,y+1,720);
+                const auto r=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+                Assert::IsTrue(r.visibleTop.nativePixelDetail && r.visibleBottom.nativePixelDetail);
+                Assert::IsTrue(r.raisedMatteExteriorVerified!=beyond);
+            }
+        }
+
         TEST_METHOD(RaisedScopeRetentionProtectsDimCaption)
         {
             const auto base = ScopePresentation(640,360,46,314);

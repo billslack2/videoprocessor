@@ -232,7 +232,7 @@ namespace
 		const ActivePicturePresentationRetentionEvidence& evidence)
 	{
 		auto logExtent = [&](const char* edge, const ActivePictureVisibleExtentDiagnostic& w, const ActivePictureEdgeEvidence& band) {
-			DEBUGLOG_ENHANCED("Alpha crop extent witness: schema=3 context=%s generation=%llu sequence=%llu edge=%s available=%d floor=%.1f luma_cutoff=%d nominal_chroma_cutoff=64 raised_chroma_cutoff=32 first_xy=%d,%d first_yuv=%d,%d,%d first_reason=%d support_lines=%d,%d support_counts=%d,%d peak_y=%d peak_uv_delta=%d depth_samples=%d step=%d extent=%d presentation_margin=%d outward_available=%d outward=%d,%d-%d,%d matte_p90=%.1f inner_contrast=%.1f paired_edge_contrast=%d native_detail=%d native_xy=%d,%d native_luma=%d native_uv_delta=%d inward_luma=%d outward_luma=%d picture_reference_luma=%d",
+			DEBUGLOG_ENHANCED("Alpha crop extent witness: schema=3 context=%s generation=%llu sequence=%llu edge=%s available=%d floor=%.1f luma_cutoff=%d nominal_chroma_cutoff=64 raised_chroma_cutoff=32 first_xy=%d,%d first_yuv=%d,%d,%d first_reason=%d support_lines=%d,%d support_counts=%d,%d peak_y=%d peak_uv_delta=%d depth_samples=%d step=%d extent=%d presentation_margin=%d outward_available=%d outward=%d,%d-%d,%d matte_p90=%.1f inner_contrast=%.1f paired_edge_contrast=%d native_detail=%d native_xy=%d,%d native_luma=%d native_uv_delta=%d inward_luma=%d outward_luma=%d picture_reference_luma=%d raised_exterior_verified=%d",
 				context, frameGeneration, sourceSequence, edge, w.available ? 1 : 0, band.lumaFloor, w.lumaCutoff,
 				w.firstX,w.firstY,w.firstLuma,w.firstU,w.firstV,w.firstReason,
 				w.firstLine,w.secondLine,w.firstLineSupport,w.secondLineSupport,w.peakLuma,w.peakChromaDelta,
@@ -240,7 +240,7 @@ namespace
 				evidence.outwardVisibleBounds.left,evidence.outwardVisibleBounds.top,evidence.outwardVisibleBounds.right,evidence.outwardVisibleBounds.bottom,
 				band.lumaP90,band.innerBoundaryContrast,evidence.pairedRaisedEdgeContrast ? 1 : 0,w.nativePixelDetail ? 1 : 0,
                 w.nativePixelX,w.nativePixelY,w.nativeLuma,w.nativeChromaDelta,
-                w.nativeInwardLuma,w.nativeOutwardLuma,w.nativePictureLuma);
+                w.nativeInwardLuma,w.nativeOutwardLuma,w.nativePictureLuma,evidence.raisedMatteExteriorVerified ? 1 : 0);
 		};
 		logExtent("top", evidence.visibleTop,evidence.excludedTop);
 		logExtent("bottom", evidence.visibleBottom,evidence.excludedBottom);
@@ -5109,6 +5109,7 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
 	AlphaSourceCrop::CropPresentationAdmissionState cropPresentationAdmission;
+    AlphaSourceCrop::RaisedMattePresentationHold raisedMattePresentationHold;
 	AlphaSourceCrop::SubmittedNativeScopeAnchor submittedNativeScopeAnchor;
     uint64_t lastScopeAnchorDiagnosticTick = 0;
     std::string lastScopeAnchorCommitReason;
@@ -17786,8 +17787,12 @@ releaseDriftBaseRetention =
                 temporalPolicyColdMaskedBase = cropInput.geometry;
                 temporalPolicyColdMaskedPresentedSequence = sourceSequence;
             }
-			auto admissionDecision = AlphaSourceCrop::AdmitCropPresentation(
-                cropPresentationAdmission, cropInput, cropDecision, viewportRequestSerial);
+			const bool rawMatteCurrent = episodeInput.retentionSourceGeneration == frameGeneration &&
+                episodeInput.retentionSourceSequence == sourceSequence &&
+                SameSubtitlePresentationBounds(episodeInput.retentionBounds,cropInput.geometry);
+            auto admissionDecision = AlphaSourceCrop::AdmitCropPresentation(
+                cropPresentationAdmission, cropInput, cropDecision, viewportRequestSerial,
+                rawMatteCurrent ? &presentationRetention : nullptr);
             if (coldCaptionDecision.held && !admissionDecision.blocked &&
                 admissionDecision.presentation.owner ==
                     AlphaSourceCrop::DecisionOwner::VERTICAL_TRANSLATION)
@@ -17978,7 +17983,9 @@ releaseDriftBaseRetention =
             }
             const bool protectNativeMatteDetail = AlphaSourceCrop::ProtectCurrentNativeMatteDetail(
                 admissionDecision,cropInput,relocatedCaptionQualified ? presentationRetention : latestCropRetentionEvidence,
-                episodeInput.retentionBounds,episodeInput.retentionSourceGeneration,episodeInput.retentionSourceSequence);
+                episodeInput.retentionBounds,episodeInput.retentionSourceGeneration,episodeInput.retentionSourceSequence,
+                &raisedMattePresentationHold,GetTickCount64(),EffectiveOscillationHoldMs(configuredScreenActive),
+                queuedAnalysisDomainKey);
             if (protectNativeMatteDetail && admissionDecision.blocked)
                 temporalPolicySubmittedScopeContinuityRetention = false;
 			const auto admissionLogTick = GetTickCount64();

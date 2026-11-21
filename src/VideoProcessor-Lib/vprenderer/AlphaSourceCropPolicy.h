@@ -1440,6 +1440,7 @@ namespace AlphaSourceCrop
 		ActivePictureBounds sourceBounds;
 		bool applyCrop = false;
 		bool outwardExpanded = false;
+        bool raisedMatteMargin = false;
 		bool verticallyTranslated = false;
 		int verticalTranslationPixels = 0;
 		bool horizontalExpansionPixelBounded = false;
@@ -1777,14 +1778,24 @@ namespace AlphaSourceCrop
 	CropPresentationAdmissionDecision AdmitCropPresentation(
 		const CropPresentationAdmissionState& previous,
 		const Input& input, const Decision& candidate,
-		uint64_t presentationEpoch);
+		uint64_t presentationEpoch,
+        const ActivePicturePresentationRetentionEvidence* exactCurrentRetention = nullptr);
 
 
     // Final selected source must include current unowned native matte pixels,
     // including after a prior crop or an UNKNOWN subtitle presentation hold.
+    // Only controls presentation of extra verified matte around an already admitted crop.
+    struct RaisedMattePresentationHold {
+        ActivePictureBounds picture;
+        uint64_t generation = 0, epoch = 0, domain = 0;
+        uint64_t lastSequence = 0, lastDetailMs = 0;
+    };
+
     bool ProtectCurrentNativeMatteDetail(CropPresentationAdmissionDecision& selected,
         const Input& input, const ActivePicturePresentationRetentionEvidence& retention,
-        const ActivePictureBounds& retentionBase, uint64_t retentionGeneration, uint64_t retentionSequence);
+        const ActivePictureBounds& retentionBase, uint64_t retentionGeneration, uint64_t retentionSequence,
+        RaisedMattePresentationHold* hold = nullptr, uint64_t nowMs = 0, unsigned holdMs = 0,
+        uint64_t domain = 0);
 
 	// A temporary presentation withdrawal is not full-raster aspect authority.
 	// Once armed, every ordinary inward owner must prove the current saved crop

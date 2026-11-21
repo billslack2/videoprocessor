@@ -327,6 +327,8 @@ struct ActivePicturePresentationRetentionEvidence
 	// never grants inward crop authority; callers may only merge it with an
 	// already trusted presentation rectangle.
 	bool pairedRaisedEdgeContrast = false;
+	// Both raw exterior bands were verified pixel by pixel beyond the even edge margin.
+	bool raisedMatteExteriorVerified = false;
 	bool outwardVisibleBoundsAvailable = false;
 	ActivePictureBounds outwardVisibleBounds;
 	ActivePictureVisibleExtentDiagnostic visibleLeft, visibleTop, visibleRight, visibleBottom;
