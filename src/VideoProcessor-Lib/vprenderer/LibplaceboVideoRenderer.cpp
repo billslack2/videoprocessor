@@ -9232,7 +9232,8 @@ struct LibplaceboVideoRenderer::Impl
         SourceUnavailable, NoExactResult, IncompatibleResult, ExactResult,
         CadenceSkip, ReadOnly, LookaheadCache, CurrentPreview, RepeatedPreview, PreparedPacket,
         ConsumePending, ConsumeVerified, ConsumeCue, ConsumeAbsent, ConsumeOther, MeasurementDisabled,
-        PacketNotReady, TemporalSkip, SnapshotMissing, NoSubmission
+        PacketNotReady, TemporalSkip, SnapshotMissing, NoSubmission,
+        AlternatePreview, AlternateWorker
     };
 
     static bool FirstSubtitleTrace(QueuedFrame::AnalysisPayload* cache, SubtitleTraceVisit visit)
@@ -9281,7 +9282,11 @@ struct LibplaceboVideoRenderer::Impl
             return key;
         }
         SubtitleBoxObservation ready;
-        if(subtitleMeasurementWorker.TryRead(key,ready,backlogRetirementOnly,publishedSource)) {
+        const char* alternateOutcome=nullptr;
+        const bool haveReady=subtitleMeasurementWorker.TryRead(key,ready,backlogRetirementOnly,publishedSource,
+            publishedSource && DebugLog::IsEnhancedLoggingEnabled()?&alternateOutcome:nullptr);
+        if(alternateOutcome)trace(SubtitleTraceVisit::AlternateWorker,"alternate-worker",alternateOutcome);
+        if(haveReady) {
             if(SubtitleBoxLookahead::CanReuseMeasurement(ready,key.identity,key.width,key.height,
                 policy,continuity,discontinuity,prior,scriptHint)) {
                 trace(SubtitleTraceVisit::ExactResult, "read", "compatible-current-result");
@@ -14521,9 +14526,10 @@ struct LibplaceboVideoRenderer::Impl
                     localBoundaryPolicyGeneration, localBoundaryContinuityGeneration)) {
                 auto& observed = subtitlePreviews->live.current;
                 observed = subtitlePreview->current;
+                const char* alternateOutcome=nullptr;
                 if (SubtitleBoxLookahead::UsePublishedPictureCaption(observed, subtitleSharedPicture,
                     analysisSource, subtitleIdentity, localBoundaryPolicyGeneration,
-                    localBoundaryContinuityGeneration, activeSettings.subtitleScriptHint)) {
+                    localBoundaryContinuityGeneration, activeSettings.subtitleScriptHint,&alternateOutcome)) {
                     reboundPreview = SubtitleBoxLookahead::Resolve(&observed, 1,
                         localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
                     subtitlePreview = &reboundPreview;
@@ -14531,6 +14537,26 @@ struct LibplaceboVideoRenderer::Impl
                         sourceSequence, observed.barEvidence.top, observed.barEvidence.bottom,
                         observed.pictureTop, observed.pictureBottom);
                 }
+                TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::AlternatePreview,subtitleIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"live-presentation",
+                    "alternate-preview",alternateOutcome);
+            } else if(DebugLog::IsEnhancedLoggingEnabled() && subtitlePreview &&
+                subtitlePreview->current.publishedPictureCaption &&
+                !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)) {
+                const char* reason="preview-context-mismatch";
+                if(!publishedCaptionEligible) {
+                    if(!currentBarAuthority)reason="current-native-bar-authority-unavailable";
+                    else if(nlsGeometryOrigin!=ActivePictureAuthorityOrigin::NATIVE ||
+                        latestActivePictureEvidenceFrame!=sourceSequence ||
+                        latestActivePictureEvidenceClassification!=ActivePictureClassification::BAR_CROP_TRUSTED)
+                        reason="current-native-publication-unavailable";
+                    else if(!SameSubtitlePresentationBounds(nlsGeometry,subtitleSharedPicture.bounds))
+                        reason="published-shared-bounds-mismatch";
+                    else reason="presentation-mode-ineligible";
+                }
+                TraceSubtitleVisit(analysisCache.get(),SubtitleTraceVisit::AlternatePreview,subtitleIdentity,
+                    localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,"live-presentation",
+                    "alternate-preview",reason);
             }
             if (subtitlePreview && subtitlePreview->available &&
                 subtitlePreview->current.independentBarAnalysis &&

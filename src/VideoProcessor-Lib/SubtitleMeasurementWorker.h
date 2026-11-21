@@ -112,10 +112,7 @@ public:
                 // Keep only the grouping actually performed on the new planes.
                 // The original result still belongs to the old shared picture.
                 const auto& text = physical.text;
-                if (preparePublishedCaption && regroupedOnPhysicalPlanes && !result.inspectionCandidateUsed &&
-                    text.bounds.Valid() && text.lineCount > 0 && text.lineCount <= 3 &&
-                    text.topSearchComplete && text.bottomSearchComplete && !text.confirmationPending &&
-                    physical.ink && physical.ink->paletteValid) {
+                if (preparePublishedCaption && regroupedOnPhysicalPlanes && !result.inspectionCandidateUsed) {
                     auto caption = std::make_shared<SubtitleBoxObservation>();
                     caption->identity = physical.identity;
                     caption->width = physical.width;
@@ -134,7 +131,63 @@ public:
                     caption->text = text;
                     caption->ink = physical.ink;
                     AttachCanonicalSubtitleContinuityInk(*caption, source);
-                    result.publishedPictureCaption = std::move(caption);
+                    result.publishedPictureCaption = caption;
+                    const auto& proof=result.subtitleArProof;
+                    auto physicalBounds=proof.candidate;
+                    physicalBounds.top=caption->pictureTop & ~1;
+                    physicalBounds.bottom=(std::min)(source.height,(caption->pictureBottom+1) & ~1);
+                    const bool currentGuard=SubtitlePresentationGuardMatchesPhysicalBounds(proof,physicalBounds);
+                    const bool nominalProof=proof.candidate.top==physicalBounds.top &&
+                        proof.candidate.bottom==physicalBounds.bottom;
+                    const bool precedingGuard=!currentGuard && nominalProof && m_lastGuardHint &&
+                        SubtitleBoxLookahead::GuardHintMatchesCurrentPhysical(*m_lastGuardHint,result,
+                            physicalBounds.top,physicalBounds.bottom);
+                    const auto& guard=precedingGuard?m_lastGuardHint->guard:proof.candidate;
+                    const bool needGuardScan=precedingGuard || (currentGuard &&
+                        (!SubtitleBoxLookahead::CompletePublishedCaption(*caption) ||
+                         SubtitleBoxLookahead::CaptionNeedsPublishedPlaneGrouping(*caption,guard.top,guard.bottom)));
+                    const char* guardOutcome="physical-grouping-transferable";
+                    if(needGuardScan) {
+                        // One bounded worker pass on the candidate planes. An immediate predecessor
+                        // may nominate coordinates only after this source proves the same physical bars.
+                        auto guarded=std::make_shared<SubtitleBoxObservation>(*caption);
+                        m_scanner.Reset();
+                        guarded->pictureTop=guard.top;
+                        guarded->pictureBottom=guard.bottom;
+                        guarded->text=m_scanner.Analyze(source,guard.top,guard.bottom,
+                            key.identity.acceptedSequence,key.identity.viewportGeneration);
+                        guarded->ink=m_scanner.InkSnapshot();
+                        guarded->continuityEvidence.reset();
+                        if(SubtitleBoxLookahead::CompletePublishedCaption(*guarded)) {
+                            AttachCanonicalSubtitleContinuityInk(*guarded,source);
+                            if(precedingGuard)guarded->guardScanHint=m_lastGuardHint;
+                            result.publishedGuardCaption=std::move(guarded);
+                            guardOutcome="exact-guard-ready";
+                        } else {
+                            guardOutcome=guarded->text.diagnosticReason?guarded->text.diagnosticReason:"incomplete";
+                        }
+                    }
+                    DEBUGLOG_ENHANCED("VP subtitle alternate: stage=prepare reason=%s mono_us=%lld generation=%llu "
+                        "source=%llu domain=%llu policy=%llu continuity=%llu physical=%d,%d proof=%d,%d candidate=%d,%d "
+                        "guard_origin=%llu guard_required=%d guard_ready=%d physical_box=%d,%d-%d,%d",
+                        guardOutcome,std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count(),
+                        key.identity.transportGeneration,key.identity.acceptedSequence,key.identity.analysisDomainKey,
+                        key.policyGeneration,key.continuityGeneration,caption->pictureTop,caption->pictureBottom,
+                        proof.candidate.top,proof.candidate.bottom,guard.top,guard.bottom,
+                        precedingGuard?m_lastGuardHint->physical.identity.acceptedSequence:key.identity.acceptedSequence,
+                        needGuardScan?1:0,result.publishedGuardCaption?1:0,
+                        text.bounds.left,text.bounds.top,text.bounds.right,text.bounds.bottom);
+                    if(currentGuard) {
+                        auto hint=std::make_shared<SubtitleGuardScanHint>();
+                        hint->physical={key.identity,key.width,key.height,physicalBounds.top,physicalBounds.bottom,
+                            key.policyGeneration,key.continuityGeneration,key.scriptHint,true};
+                        hint->guard=guard;
+                        hint->nearBarDistance=key.nearBarDistance;
+                        hint->optimizationMode=key.optimizationMode;
+                        hint->analysisStride=key.analysisStride;
+                        m_lastGuardHint=std::move(hint);
+                    }
                 }
             }
         }
@@ -246,6 +299,7 @@ public:
     }
 private:
     SubtitleBoxDetector m_scanner;
+    std::shared_ptr<const SubtitleGuardScanHint> m_lastGuardHint;
     uint64_t m_analysisDomainKey=0;
     bool m_capturedDiagnostic=false;
 };
@@ -350,11 +404,12 @@ public:
     // Lookahead and presentation can inspect the same exact-frame result.
     // Rebinding modifies only this copy; the cached observation is immutable.
     bool TryRead(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,
-        bool backlogRetirementOnly=false, const AnalysisLumaSource* publishedSource=nullptr) {
-        return ReadReady(key,out,false,backlogRetirementOnly,publishedSource);
+        bool backlogRetirementOnly=false, const AnalysisLumaSource* publishedSource=nullptr,
+        const char** alternateOutcome=nullptr) {
+        return ReadReady(key,out,false,backlogRetirementOnly,publishedSource,alternateOutcome);
     }
     bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
-        return ReadReady(key,out,true,false,nullptr);
+        return ReadReady(key,out,true,false,nullptr,nullptr);
     }
     void Submit(const SubtitleBoxObservation& key,Work work) {
         LifecycleEvents<2> events;
@@ -515,8 +570,9 @@ private:
     };
 
     bool ReadReady(const SubtitleBoxObservation& key,SubtitleBoxObservation& out,bool consume,
-        bool backlogRetirementOnly,const AnalysisLumaSource* publishedSource) {
+        bool backlogRetirementOnly,const AnalysisLumaSource* publishedSource,const char** alternateOutcome) {
         std::lock_guard<std::mutex> lock(m_mutex);
+        if(alternateOutcome)*alternateOutcome=nullptr;
         uint64_t mismatches=0;
         bool foundPublishedCaption=false;
         for(auto i=m_ready.begin();i!=m_ready.end();++i) {
@@ -526,11 +582,17 @@ private:
                 // even when the caller never received the old shared preview.
                 // Prefer a ready scan requested on the published planes.
                 if (publishedSource && !foundPublishedCaption && candidate.publishedPictureCaption &&
+                    candidate.identity.transportGeneration==key.identity.transportGeneration &&
+                    candidate.identity.acceptedSequence==key.identity.acceptedSequence &&
                     SubtitleBoxLookahead::UsePublishedPictureCaption(candidate,key.sharedPicture,
-                        *publishedSource,key.identity,key.policyGeneration,key.continuityGeneration,key.scriptHint) &&
-                    SameKey(candidate,key)) {
-                    out=std::move(candidate);
-                    foundPublishedCaption=true;
+                        *publishedSource,key.identity,key.policyGeneration,key.continuityGeneration,key.scriptHint,
+                        alternateOutcome)) {
+                    if(SameKey(candidate,key)) {
+                        out=std::move(candidate);
+                        foundPublishedCaption=true;
+                    } else if(alternateOutcome) {
+                        *alternateOutcome="worker-request-key-mismatch";
+                    }
                 }
                 mismatches|=16ull;continue;
             }
@@ -567,6 +629,7 @@ private:
                 !SubtitleBoxLookahead::RebindIndependentMeasurement(candidate,key.continuityGeneration)){mismatches|=512ull;continue;}
             Trace(candidate,consume?"worker-consumed":"worker-read",
                 reboundFromBacklog?"backlog-current-scan-rebound":"exact-key-accepted");
+            if(alternateOutcome && *alternateOutcome)*alternateOutcome="direct-scan-preferred";
             out=std::move(candidate);
             if(consume)m_ready.erase(i);
             else ++m_diagnostics.exactReads;

@@ -100,6 +100,15 @@ struct SubtitlePictureAuthority {
     }
 };
 
+// Coordinates from a worker-certified guard can nominate a fresh grouping on the
+// immediately following source. The hint contains no cue, image, or crop authority.
+struct SubtitleGuardScanHint {
+    SubtitleBarTrackingReference physical;
+    ActivePictureBounds guard;
+    int nearBarDistance=0,optimizationMode=0;
+    unsigned analysisStride=1;
+};
+
 // A measurement belongs to source pixels, never retained presentation geometry.
 struct SubtitleContinuityEvidence {
     ActivePictureFrameIdentity identity;
@@ -134,6 +143,9 @@ struct SubtitleBoxObservation
     // A second, complete grouping on independently measured planes from this
     // source. Only a later exact native publication can select it for display.
     std::shared_ptr<const SubtitleBoxObservation> publishedPictureCaption;
+    // A panel or picture-crossing cue must be grouped again on the guard's own planes.
+    std::shared_ptr<const SubtitleBoxObservation> publishedGuardCaption;
+    std::shared_ptr<const SubtitleGuardScanHint> guardScanHint;
     SubtitleAssistedVerticalBarProof subtitleArProof;
     ActivePictureArDarknessEvidence subtitleArDarkness;
     // Geometry from the native AR owner, including its retained bounds. Never physical bar/crop proof.
@@ -353,71 +365,123 @@ namespace SubtitleBoxLookahead
                 (observation.sharedNativePhysicalSupport && observation.barAuthority && observation.barEvidence.available &&
                  observation.barEvidence.top>0 && observation.barEvidence.bottom<observation.height));
     }
+    inline bool GuardHintMatchesCurrentPhysical(const SubtitleGuardScanHint& hint,
+        const SubtitleBoxObservation& current,int top,int bottom)
+    {
+        const auto& prior=hint.physical;
+        const auto& now=current.identity;
+        return !current.discontinuity && prior.IsImmediatePredecessor(now,current.width,current.height,
+            current.policyGeneration,current.continuityGeneration,current.scriptHint) &&
+            (!now.sourceFrameNumber || !prior.identity.sourceFrameNumber ||
+                now.sourceFrameNumber-prior.identity.sourceFrameNumber==1) &&
+            (!now.captureTimestamp || !prior.identity.captureTimestamp || now.captureTimestamp>prior.identity.captureTimestamp) &&
+            hint.nearBarDistance==current.nearBarDistance && hint.optimizationMode==current.optimizationMode &&
+            hint.analysisStride==current.analysisStride && prior.pictureTop==top && prior.pictureBottom==bottom;
+    }
+
+    inline bool CaptionNeedsPublishedPlaneGrouping(const SubtitleBoxObservation& caption,
+        int publishedTop, int publishedBottom)
+    {
+        if (caption.pictureTop == publishedTop && caption.pictureBottom == publishedBottom) return false;
+        const auto& text = caption.text;
+        if ((text.bounds.bottom > (std::min)(caption.pictureTop, publishedTop) &&
+             text.bounds.top < (std::max)(caption.pictureBottom, publishedBottom)) ||
+            text.sourcePanel.Valid() || text.provenSourcePanel.Valid() || text.capturePanel.Valid())
+            return true;
+        for (int i = 0; i < text.lineCount && i < static_cast<int>(text.linePanels.size()); ++i)
+            if (text.linePanels[i].Valid() || text.lineCapturePanels[i].Valid()) return true;
+        return false;
+    }
+
+    inline bool CompletePublishedCaption(const SubtitleBoxObservation& caption)
+    {
+        const auto& text=caption.text;
+        return caption.analyzed && !caption.discontinuity && !caption.pendingRefresh && !caption.analysisRefresh &&
+            caption.barAuthority && caption.barEvidence.available &&
+            text.detected && !text.held && !text.workLimit && !text.confirmationPending && text.bounds.Valid() &&
+            text.topSearchComplete && text.bottomSearchComplete &&
+            text.lineCount>=1 && text.lineCount<=static_cast<int>(text.lineBounds.size()) &&
+            caption.ink && caption.ink->rawEvidenceComplete && caption.ink->paletteValid;
+    }
+
     inline bool UsePublishedPictureCaption(SubtitleBoxObservation& observation,
         const SubtitlePictureAuthority& published, const AnalysisLumaSource& source,
         const ActivePictureFrameIdentity& identity, uint64_t policy,
-        uint64_t continuity, SubtitleScriptHint script)
+        uint64_t continuity, SubtitleScriptHint script, const char** outcome=nullptr)
     {
-        const auto caption = observation.publishedPictureCaption;
-        if (!caption || !observation.analyzed || observation.discontinuity ||
-            observation.pendingRefresh || observation.analysisRefresh || observation.inspectionCandidateUsed ||
-            !SameAnalysisFrameIdentity(observation.identity, identity) ||
+        const auto reject=[&](const char* reason) { if(outcome)*outcome=reason; return false; };
+        const auto& physicalCaption = observation.publishedPictureCaption;
+        if (!physicalCaption) return reject("no-physical-alternate");
+        if (!observation.analyzed || observation.discontinuity ||
+            observation.pendingRefresh || observation.analysisRefresh || observation.inspectionCandidateUsed)
+            return reject("original-scan-ineligible");
+        if (!SameAnalysisFrameIdentity(observation.identity, identity) ||
             observation.policyGeneration != policy || observation.continuityGeneration != continuity ||
-            observation.scriptHint != script || observation.sharedPicture.Matches(published) ||
-            published.inspectionCandidate.valid || !SameAnalysisFrameIdentity(published.identity, identity) ||
+            observation.scriptHint != script)
+            return reject("worker-context-mismatch");
+        if (observation.sharedPicture.Matches(published) || published.inspectionCandidate.valid ||
+            !SameAnalysisFrameIdentity(published.identity, identity) ||
             !published.AvailableFor(identity, source.width, source.height))
-            return false;
+            return reject("published-picture-unavailable-or-unchanged");
 
         const auto& proof = observation.subtitleArProof;
         const auto& bounds = published.bounds;
-        if (!proof.IsCurrentFor(source, identity, policy, continuity, script) ||
-            !SameAnalysisFrameIdentity(caption->identity, identity) ||
-            caption->policyGeneration != policy || caption->continuityGeneration != continuity ||
-            caption->scriptHint != script || caption->width != source.width || caption->height != source.height ||
-            bounds.left != 0 || bounds.right != source.width ||
+        if (!proof.IsCurrentFor(source, identity, policy, continuity, script))
+            return reject("current-source-proof-mismatch");
+        if (bounds.left != 0 || bounds.right != source.width ||
             bounds.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM)
-            return false;
-        const auto& text = caption->text;
-        if (!caption->analyzed || caption->discontinuity || caption->pendingRefresh || caption->analysisRefresh ||
-            !caption->barAuthority || !caption->barEvidence.available ||
-            caption->barEvidence.top != caption->pictureTop || caption->barEvidence.bottom != caption->pictureBottom ||
-            !text.detected || text.held || text.workLimit || text.confirmationPending || !text.bounds.Valid() ||
-            !text.topSearchComplete || !text.bottomSearchComplete ||
-            text.lineCount < 1 || text.lineCount > static_cast<int>(text.lineBounds.size()) ||
-            !caption->ink || !caption->ink->rawEvidenceComplete || !caption->ink->paletteValid)
-            return false;
+            return reject("published-axes-mismatch");
+        const auto sameContext=[&](const SubtitleBoxObservation& caption) {
+            return SameAnalysisFrameIdentity(caption.identity,identity) &&
+                caption.policyGeneration==policy && caption.continuityGeneration==continuity &&
+                caption.scriptHint==script && caption.width==source.width && caption.height==source.height &&
+                caption.optimizationMode==observation.optimizationMode && caption.nearBarDistance==observation.nearBarDistance &&
+                caption.analysisStride==observation.analysisStride;
+        };
+        if (!sameContext(*physicalCaption) || !physicalCaption->analyzed || physicalCaption->discontinuity ||
+            physicalCaption->pendingRefresh || physicalCaption->analysisRefresh || !physicalCaption->barAuthority ||
+            !physicalCaption->barEvidence.available)
+            return reject("physical-scan-context-mismatch");
+        if (physicalCaption->barEvidence.top != physicalCaption->pictureTop ||
+            physicalCaption->barEvidence.bottom != physicalCaption->pictureBottom)
+            return reject("physical-planes-mismatch");
         auto physical = bounds;
-        physical.top = caption->pictureTop & ~1;
-        physical.bottom = (std::min)(source.height, (caption->pictureBottom + 1) & ~1);
+        physical.top = physicalCaption->pictureTop & ~1;
+        physical.bottom = (std::min)(source.height, (physicalCaption->pictureBottom + 1) & ~1);
         const auto matchesPlanes = [](const ActivePictureBounds& a, const ActivePictureBounds& b) {
             return a.left == b.left && a.right == b.right && a.top == b.top && a.bottom == b.bottom &&
                 a.rasterWidth == b.rasterWidth && a.rasterHeight == b.rasterHeight &&
                 a.trustedBarAxes == b.trustedBarAxes;
         };
-        if ((!matchesPlanes(physical, proof.candidate) &&
-             !SubtitlePresentationGuardMatchesPhysicalBounds(proof, physical)) ||
-            (!matchesPlanes(bounds, physical) && !matchesPlanes(bounds, proof.candidate)))
-            return false;
+        const bool nominalProof=matchesPlanes(physical,proof.candidate);
+        if (!nominalProof && !SubtitlePresentationGuardMatchesPhysicalBounds(proof,physical))
+            return reject("physical-planes-outside-proof");
+        const auto& guarded=observation.publishedGuardCaption;
+        const bool precedingGuard=nominalProof && guarded && guarded->guardScanHint &&
+            matchesPlanes(bounds,guarded->guardScanHint->guard) &&
+            GuardHintMatchesCurrentPhysical(*guarded->guardScanHint,observation,physical.top,physical.bottom);
+        if (!matchesPlanes(bounds,physical) && !matchesPlanes(bounds,proof.candidate) && !precedingGuard)
+            return reject("published-planes-outside-proof");
 
-        // If the published guard changes the search planes, accept only a cue
-        // wholly in the common exterior band. A picture-crossing cue or backing
-        // needs the normal measurement against the published planes.
-        if (caption->pictureTop != bounds.top || caption->pictureBottom != bounds.bottom) {
-            const int top = (std::min)(caption->pictureTop, bounds.top);
-            const int bottom = (std::max)(caption->pictureBottom, bounds.bottom);
-            if ((text.bounds.bottom > top && text.bounds.top < bottom) ||
-                text.sourcePanel.Valid() || text.provenSourcePanel.Valid() || text.capturePanel.Valid())
-                return false;
-            for (int i = 0; i < text.lineCount; ++i) {
-                if (text.linePanels[i].Valid() || text.lineCapturePanels[i].Valid())
-                    return false;
-            }
-        }
+        const bool needGuardScan=precedingGuard ||
+            CaptionNeedsPublishedPlaneGrouping(*physicalCaption,bounds.top,bounds.bottom) ||
+            (!matchesPlanes(bounds,physical) && !CompletePublishedCaption(*physicalCaption));
+        const auto& caption=needGuardScan ? guarded : physicalCaption;
+        if(!caption) return reject("exact-guard-scan-unavailable");
+        if (needGuardScan && ((!matchesPlanes(bounds,proof.candidate) && !precedingGuard) ||
+            caption->pictureTop!=bounds.top || caption->pictureBottom!=bounds.bottom ||
+            caption->barEvidence.top!=physicalCaption->pictureTop ||
+            caption->barEvidence.bottom!=physicalCaption->pictureBottom))
+            return reject("guard-scan-planes-mismatch");
+        if (!sameContext(*caption)) return reject("caption-scan-context-mismatch");
+        if (!CompletePublishedCaption(*caption)) return reject("caption-scan-incomplete");
+        const auto& text = caption->text;
 
         // The alternate observation was built from the new grouping alone.
         // Attach its own source proof and the published placement. Following
         // observations from the superseded shared picture are resolved separately.
         auto current = *caption;
+        current.guardScanHint.reset();
         current.sharedPicture = published;
         current.pictureTop = bounds.top;
         current.pictureBottom = bounds.bottom;
@@ -429,10 +493,13 @@ namespace SubtitleBoxLookahead
         current.glyphSupportTop = bounds.top;
         current.glyphSupportBottom = bounds.bottom;
         current.glyphLocalVerifiedBounds = text.bounds;
-        current.glyphLocalProofReason = "current-independent-caption-on-published-picture";
+        current.glyphLocalProofReason = needGuardScan ? "current-caption-grouped-on-published-guard" :
+            "current-independent-caption-on-published-picture";
         current.subtitleArProof = proof;
         current.subtitleArDarkness = observation.subtitleArDarkness;
         observation = std::move(current);
+        if(outcome)*outcome=precedingGuard?"next-source-exact-guard-caption-adopted":
+            (needGuardScan?"exact-guard-caption-adopted":"physical-caption-adopted");
         return true;
     }
 
