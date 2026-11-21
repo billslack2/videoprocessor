@@ -565,5 +565,82 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
 				static_cast<int>(freshScene.action));
 		}
+
+		TEST_METHOD(SurplusSeenAtTheScreenLetsADueDropPassBelowDesiredDepth)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(60.012);
+			input.queueDepth = input.desiredQueueDepth - 1;
+			// The queue's rest of desired - 1 sources, two display periods
+			// and the 8 ms margin, then 0.5 ms over that line.
+			input.lastPresentedArrivalToScreenMs =
+				3.0 * 1000.0 / 60.012 + 2.0 * 1000.0 / 60.0 + 8.0 + 0.5;
+			const auto due = AdvanceUntilDue(policy, input);
+			Assert::AreNotEqual(
+				Reason(AlphaCadenceBlockReason::DropQueueNotAboveDesired),
+				Reason(due.blockReason));
+
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 5;
+			const auto decision = policy.Evaluate(input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(decision.action));
+		}
+
+		TEST_METHOD(ArrivalToScreenUnderTheSurplusLineNeverRefusesADueDrop)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(60.012);
+			input.queueDepth = input.desiredQueueDepth - 1;
+			input.lastPresentedArrivalToScreenMs =
+				3.0 * 1000.0 / 60.012 + 2.0 * 1000.0 / 60.0 + 8.0 - 0.5;
+			// Under the line the time asks for nothing: over it, the surplus
+			// confirmation would have brought the drop due by now.
+			Assert::IsFalse(Advance(policy, input, 720).due);
+
+			// The forecast brings the drop due later; nothing refuses it.
+			const auto due = AdvanceUntilDue(policy, input);
+			Assert::AreNotEqual(
+				Reason(AlphaCadenceBlockReason::DropQueueNotAboveDesired),
+				Reason(due.blockReason));
+
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 5;
+			const auto decision = policy.Evaluate(input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(decision.action));
+		}
+
+		TEST_METHOD(ArrivalToScreenStillOverTheLineAfterADropBringsNoSecondDrop)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			const double captureRate = 60.0 * (1.0 + 14.6e-6);
+			AlphaCadenceCorrectionInput input = Input(captureRate);
+			input.queueDepth = input.desiredQueueDepth - 1;
+			input.lastPresentedArrivalToScreenMs =
+				3.0 * 1000.0 / captureRate + 2.0 * 1000.0 / 60.0 + 8.0 + 0.5;
+			// So slow a forecast is brought due this soon only by the time's
+			// surplus confirmation.
+			AdvanceUntilDue(policy, input, 720);
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 1;
+			input.lastPresentId = 10;
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(policy.Evaluate(input).action));
+
+			// The newest present on screen lags the drop, so the time stays over
+			// the line for the next presents. None may bring a second drop due.
+			input.presentationDebt = 0;
+			for (uint32_t present = 11; present <= 13; ++present)
+			{
+				input.lastPresentId = present;
+				input.sceneEventId = present;
+				const auto after = policy.Evaluate(input);
+				Assert::IsFalse(after.due);
+				Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+					static_cast<int>(after.action));
+				Assert::IsTrue(after.phaseFrames < 1.0);
+			}
+		}
 	};
 }
