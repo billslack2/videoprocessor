@@ -468,8 +468,8 @@ namespace VideoProcessorTest
         };
 
         struct WorkerLifecycleLog {
-            inline static std::mutex mutex;
-            inline static std::vector<std::string> lines;
+            static std::mutex mutex;
+            static std::vector<std::string> lines;
             const bool previousEnhanced=DebugLog::IsEnhancedLoggingEnabled();
 
             explicit WorkerLifecycleLog(bool enhanced) {
@@ -515,6 +515,8 @@ namespace VideoProcessorTest
                 return found;
             }
         };
+        std::mutex WorkerLifecycleLog::mutex;
+        std::vector<std::string> WorkerLifecycleLog::lines;
 
 		P010Frame MakeSubtitleProofFrame(int pictureTop, int pictureBottom,
 			bool crossingGlyph, int panelLeft = 1190, int panelRight = 2650)
