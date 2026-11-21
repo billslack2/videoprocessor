@@ -244,7 +244,9 @@ struct ActivePictureVisibleExtentDiagnostic
 	int lumaCutoff = 0;
 	int presentationMargin = 0;
     bool nativePixelDetail = false; // Exact native pixel found by the paired raised-matte check.
-    int nativePixelY = -1;
+    int nativePixelX = -1, nativePixelY = -1;
+    int nativeLuma = -1, nativeChromaDelta = -1;
+    int nativeInwardLuma = -1, nativeOutwardLuma = -1, nativePictureLuma = -1;
 };
 
 // Per-frame pixel evidence for retaining an already trusted presentation
@@ -324,6 +326,7 @@ struct ActivePicturePresentationRetentionEvidence
 	// this is the smallest measured outward-only presentation envelope. It
 	// never grants inward crop authority; callers may only merge it with an
 	// already trusted presentation rectangle.
+	bool pairedRaisedEdgeContrast = false;
 	bool outwardVisibleBoundsAvailable = false;
 	ActivePictureBounds outwardVisibleBounds;
 	ActivePictureVisibleExtentDiagnostic visibleLeft, visibleTop, visibleRight, visibleBottom;

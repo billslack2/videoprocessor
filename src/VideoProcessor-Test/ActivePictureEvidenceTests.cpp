@@ -1118,6 +1118,231 @@ namespace VideoProcessorTest
             }
         }
 
+        static P010Frame MovingBroadcastEdge(int phase,bool highContrast)
+        {
+            constexpr int matte=119;
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            P010Frame frame(3840,2160);
+            frame.BlackOutside(0,base.top,3840,base.bottom,matte);
+            // Diagnostic-only run: the downsampled edge reports supplied the
+            // matte and example codes, not complete rows. Model a neutral,
+            // full-width filter transition whose amplitude follows the current
+            // picture independently at different columns and at either edge.
+            const int edgeWeight[]={128,75,49,35,22,16,11,8,5,3,2,1};
+            for (int left=0;left<3840;left+=96)
+            {
+                const int section=left/96;
+                const int upper=highContrast ? 224+16*((section+3*phase)%7) : 44+4*((section+phase)%4);
+                const int lower=highContrast ? 260+24*((section+phase)%5) : 56+4*((section+phase)%5);
+                frame.FillRectangle(left,base.top,left+96,base.top+64,matte+upper);
+                frame.FillRectangle(left,base.bottom-64,left+96,base.bottom,matte+lower);
+                for (int i=0;i<12;++i)
+                {
+                    frame.FillRectangle(left,base.top-i-1,left+96,base.top-i,
+                        matte+(upper*edgeWeight[i]+128)/256);
+                    frame.FillRectangle(left,base.bottom+i,left+96,base.bottom+i+1,
+                        matte+(lower*edgeWeight[i]+128)/256);
+                }
+            }
+            frame.FillRectangle(100+128*phase,600,500+128*phase,1200,highContrast?610:184);
+            return frame;
+        }
+
+        TEST_METHOD(MovingBroadcastEdgeRetainsMeasuredScopeAcrossShotsAndClassicLegal)
+        {
+            using namespace AlphaSourceCrop;
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            // Both orderings exercise fresh acquisition and an already submitted crop.
+            for(bool brightFirst : {false,true})
+            {
+                CropPresentationAdmissionState state;
+                for(int phase=0;phase<6;++phase)
+                {
+                    const bool high=(phase%2==0)==brightFirst;
+                    auto frame=MovingBroadcastEdge(phase,high);
+                    const bool legal=phase==4;
+                    if (legal)
+                        for (int x=1390;x<2250;x+=35)
+                            frame.FillRectangle(x,2045,x+15,2064,129);
+                    const auto pixels=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+                    if (high && !legal)
+                        Assert::IsTrue(pixels.pairedRaisedEdgeContrast);
+                    auto input=RaisedBroadcastCropInput(base,pixels,phase+1);
+                    if (legal)
+                    {
+                        // Classic independently identified the legal copy on the
+                        // recorded end card and moved the full scope window.
+                        input.verticalTranslationActive=true;
+                        input.verticalTranslationBase=base;
+                        input.verticalTranslationSourceGeneration=1;
+                        input.verticalTranslationPixels=216;
+                    }
+                    auto selected=AdmitCropPresentation(state,input,Evaluate(input),5);
+                    ProtectCurrentNativeMatteDetail(selected,input,pixels,base,1,phase+1);
+                    Assert::IsTrue(selected.presentation.applyCrop && !selected.blocked);
+                    const int shift=legal?216:0;
+                    Assert::AreEqual(base.top+shift,selected.presentation.sourceBounds.top);
+                    Assert::AreEqual(base.bottom+shift,selected.presentation.sourceBounds.bottom);
+                    state=selected.state;
+                }
+            }
+        }
+
+        TEST_METHOD(MovingBroadcastEdgePreservesDetachedDetailsInRaisedBars)
+        {
+            using namespace AlphaSourceCrop;
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            for (int scenario=0;scenario<4;++scenario)
+            {
+                auto frame=MovingBroadcastEdge(1,true);
+                auto clean=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+                auto first=PresentRaisedBroadcastFrame(base,clean,1,{});
+                int protectedEnd=0;
+                if (scenario==0)
+                {
+                    // Identical peak to the reported Y=143 edge sample,
+                    // but separated from the picture by a true matte gap.
+                    frame.FillRectangle(2879,1915,2891,1921,143);
+                    protectedEnd=1921;
+                }
+                else if (scenario==1)
+                {
+                    // A 4x4 detached character detail between 15px grid columns.
+                    frame.FillRectangle(1825,1982,1829,1986,685);
+                    frame.FillRectangle(1825,1970,1829,1978,685);
+                    protectedEnd=1986;
+                }
+                else if (scenario==2)
+                {
+                    // A logo or picture continuation, local in width, with a
+                    // plateau extending past the modeled edge-filter response.
+                    frame.FillRectangle(2520,1880,2650,1929,249);
+                    protectedEnd=1929;
+                }
+                else
+                {
+                    // Full-width support alone is insufficient: an independently
+                    // authored rule after a clear gap must survive, too.
+                    frame.FillRectangle(0,1898,3840,1903,119);
+                    frame.FillRectangle(0,1903,3840,1907,155);
+                    protectedEnd=1907;
+                }
+                const auto pixels=EvaluateActivePicturePresentationRetention(frame.P010Source(),base);
+                auto input=RaisedBroadcastCropInput(base,pixels,2);
+                auto selected=AdmitCropPresentation(first.state,input,Evaluate(input),5);
+                ProtectCurrentNativeMatteDetail(selected,input,pixels,base,1,2);
+                Assert::IsTrue(selected.presentation.sourceBounds.bottom>=protectedEnd);
+            }
+        }
+
+        TEST_METHOD(NearScopeInteriorLinesDoNotSupplyOpposingMatteEvidence)
+        {
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            P010Frame frame(3840,2160);
+            // Straight horizontal borders sit exactly at the familiar ratio,
+            // but a colored, textured scene continues to both raster edges.
+            for (int left=0;left<3840;left+=96)
+            {
+                const int delta=(left/96)%6;
+                frame.FillRectangle(left,0,left+96,base.top,135+delta*16,477,550+delta*4);
+                frame.FillRectangle(left,base.bottom,left+96,2160,142+delta*19,555,480-delta*3);
+            }
+            frame.FillRectangle(0,base.top,3840,base.top+3,119);
+            frame.FillRectangle(0,base.bottom-3,3840,base.bottom,119);
+            const auto source=frame.P010Source();
+            const auto native=ExtractActivePictureEvidence(source);
+            Assert::IsFalse(native.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                native.trustedBounds.top>=base.top-8 && native.trustedBounds.bottom<=base.bottom+8);
+            const auto retention=EvaluateActivePicturePresentationRetention(source,base);
+            Assert::IsFalse(retention.pairedRaisedEdgeContrast);
+            Assert::IsFalse(retention.excludedBandsPixelSafe);
+        }
+
+        TEST_METHOD(NearScopeLinesOnNeutralLowContrastRasterCannotRelaxMatteSafety)
+        {
+            P010Frame frame(3840,2160);
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            frame.Fill(122,512,512);
+            frame.BlackOutside(0,base.top,3840,base.bottom,119,512,512);
+            frame.FillRectangle(0,base.top+10,3840,base.top+12,128);
+            frame.FillRectangle(0,base.bottom-12,3840,base.bottom-10,128);
+            const auto source=frame.P010Source();
+            const auto measured=ExtractActivePictureEvidence(source);
+            Assert::IsFalse(measured.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            // Even an externally proposed 2.34 rectangle must not use weak
+            // interior lines as evidence of a broad picture-to-matte taper.
+            const auto undecided=EvaluateActivePicturePresentationRetention(source,base);
+            Assert::IsTrue(undecided.excludedTop.innerBoundaryContrast<24);
+            Assert::IsTrue(undecided.excludedBottom.innerBoundaryContrast<24);
+            Assert::IsFalse(undecided.pairedRaisedEdgeContrast);
+            Assert::IsFalse(undecided.excludedBandsPixelSafe);
+            const auto cold=PresentRaisedBroadcastFrame(base,undecided,1,{});
+            Assert::IsFalse(cold.presentation.applyCrop);
+        }
+
+        TEST_METHOD(PlanarTaperReaderAgreesWithScalarPixelsAtOddOffsets)
+        {
+            constexpr int width=18,height=2160,matte=119,tolerance=15;
+            const int shoulder[]={180,130,100,60,42,28,20,16,8};
+            for(int format=0;format<3;++format) for(int inward : {-1,1})
+            {
+                const int boundary=inward>0 ? 260 : 1897;
+                const int reference=boundary+4*inward;
+                P010Frame background(width,height,6,format!=0);
+                background.Fill(matte,512,512);
+                background.FillRectangle(0,reference,width,reference+1,matte+260);
+                for(int d=0;d<=8;++d)
+                {
+                    const int y=boundary-d*inward;
+                    background.FillRectangle(0,y,width,y+1,matte+shoulder[d]);
+                }
+                for(int distance : {1,2,4,6}) for(int defect=0;defect<width;++defect)
+                {
+                    const int y=boundary-inward*distance;
+                    const int neighbourY=y+inward;
+                    const int shift=(std::min)(5,distance);
+                    for(int kind=0;kind<4;++kind)
+                    {
+                        auto frame=background;
+                        if (kind==1) frame.FillRectangle(defect,y,defect+1,y+1,850);
+                        if (kind==2) frame.FillRectangle(defect,neighbourY,defect+1,neighbourY+1,matte);
+                        if (kind==3) frame.FillRectangle(defect,y,defect+1,y+1,matte+shoulder[distance],512,545);
+                        const auto source=format==0 ? frame.P010Source() :
+                            format==1 ? frame.P210Source() : AsDecodedDolbyVisionSource(frame);
+                        auto sample=[&](int x,int row) {
+                            AnalysisLumaSample pixel;
+                            Assert::IsTrue(source.Sample(x,row,pixel));
+                            return pixel;
+                        };
+                        for(int start : {0,1,7,8,9,16,17,18})
+                        {
+                            int expected=start;
+                            for(;expected<width;++expected)
+                            {
+                                const auto pixel=sample(expected,y);
+                                if(std::abs(int(pixel.chromaU)-512)>32 || std::abs(int(pixel.chromaV)-512)>32)
+                                    break;
+                                const int value=pixel.luma;
+                                const int rise=int(sample(expected,reference).luma)-matte;
+                                if(value>=matte-4 && value<=matte+(std::min)(128,tolerance+(rise>>shift))) continue;
+                                const int nearRise=int(sample(expected,neighbourY).luma)-matte;
+                                const int bandShift=distance<=2 ? 1 : distance<=4 ? 2 : 3;
+                                bool taper=rise>=24 && value>matte && value<=matte+4+(rise>>bandShift) &&
+                                    value<=matte+nearRise-(std::max)(1,nearRise/16);
+                                for(int k=2;k<=distance && taper;++k)
+                                    taper=sample(expected,y+k*inward).luma>=value;
+                                if(!taper) break;
+                            }
+                            int actual=-1;
+                            Assert::IsTrue(source.FindPlanarMatteRowDetail(y,reference,shift,matte,tolerance,
+                                actual,start,boundary));
+                            Assert::AreEqual(expected,actual);
+                        }
+                    }
+                }
+            }
+        }
+
         TEST_METHOD(RaisedScopeRetentionProtectsDimCaption)
         {
             const auto base = ScopePresentation(640,360,46,314);

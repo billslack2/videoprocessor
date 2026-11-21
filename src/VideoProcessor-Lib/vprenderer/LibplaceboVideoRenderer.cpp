@@ -231,18 +231,21 @@ namespace
 	void LogCropExtentWitness(const char* context, uint64_t frameGeneration, uint64_t sourceSequence,
 		const ActivePicturePresentationRetentionEvidence& evidence)
 	{
-		auto logExtent = [&](const char* edge, const ActivePictureVisibleExtentDiagnostic& w, double floor) {
-			DEBUGLOG_ENHANCED("Alpha crop extent witness: schema=2 context=%s generation=%llu sequence=%llu edge=%s available=%d floor=%.1f luma_cutoff=%d chroma_cutoff=64 first_xy=%d,%d first_yuv=%d,%d,%d first_reason=%d support_lines=%d,%d support_counts=%d,%d peak_y=%d peak_uv_delta=%d depth_samples=%d step=%d extent=%d presentation_margin=%d outward_available=%d outward=%d,%d-%d,%d",
-				context, frameGeneration, sourceSequence, edge, w.available ? 1 : 0, floor, w.lumaCutoff,
+		auto logExtent = [&](const char* edge, const ActivePictureVisibleExtentDiagnostic& w, const ActivePictureEdgeEvidence& band) {
+			DEBUGLOG_ENHANCED("Alpha crop extent witness: schema=3 context=%s generation=%llu sequence=%llu edge=%s available=%d floor=%.1f luma_cutoff=%d nominal_chroma_cutoff=64 raised_chroma_cutoff=32 first_xy=%d,%d first_yuv=%d,%d,%d first_reason=%d support_lines=%d,%d support_counts=%d,%d peak_y=%d peak_uv_delta=%d depth_samples=%d step=%d extent=%d presentation_margin=%d outward_available=%d outward=%d,%d-%d,%d matte_p90=%.1f inner_contrast=%.1f paired_edge_contrast=%d native_detail=%d native_xy=%d,%d native_luma=%d native_uv_delta=%d inward_luma=%d outward_luma=%d picture_reference_luma=%d",
+				context, frameGeneration, sourceSequence, edge, w.available ? 1 : 0, band.lumaFloor, w.lumaCutoff,
 				w.firstX,w.firstY,w.firstLuma,w.firstU,w.firstV,w.firstReason,
 				w.firstLine,w.secondLine,w.firstLineSupport,w.secondLineSupport,w.peakLuma,w.peakChromaDelta,
 				w.depthSamples,w.sampleStep,w.coordinate,w.presentationMargin,evidence.outwardVisibleBoundsAvailable ? 1 : 0,
-				evidence.outwardVisibleBounds.left,evidence.outwardVisibleBounds.top,evidence.outwardVisibleBounds.right,evidence.outwardVisibleBounds.bottom);
+				evidence.outwardVisibleBounds.left,evidence.outwardVisibleBounds.top,evidence.outwardVisibleBounds.right,evidence.outwardVisibleBounds.bottom,
+				band.lumaP90,band.innerBoundaryContrast,evidence.pairedRaisedEdgeContrast ? 1 : 0,w.nativePixelDetail ? 1 : 0,
+                w.nativePixelX,w.nativePixelY,w.nativeLuma,w.nativeChromaDelta,
+                w.nativeInwardLuma,w.nativeOutwardLuma,w.nativePictureLuma);
 		};
-		logExtent("top", evidence.visibleTop,evidence.excludedTop.lumaFloor);
-		logExtent("bottom", evidence.visibleBottom,evidence.excludedBottom.lumaFloor);
-		logExtent("left", evidence.visibleLeft,evidence.excludedLeft.lumaFloor);
-		logExtent("right", evidence.visibleRight,evidence.excludedRight.lumaFloor);
+		logExtent("top", evidence.visibleTop,evidence.excludedTop);
+		logExtent("bottom", evidence.visibleBottom,evidence.excludedBottom);
+		logExtent("left", evidence.visibleLeft,evidence.excludedLeft);
+		logExtent("right", evidence.visibleRight,evidence.excludedRight);
 	}
 
 	using SteadyClock = std::chrono::steady_clock;

@@ -361,7 +361,7 @@ bool AnalysisLumaSource::MeasureLumaRowContent(int y, int x0, int x1, int step,
 }
 
 bool AnalysisLumaSource::FindPlanarMatteRowDetail(int y, int referenceY, int shift,
-    int matte, int tolerance, int& x, int startX) const
+    int matte, int tolerance, int& x, int startX, int taperBoundaryY) const
 {
     x = startX;
     if (!IsValid() || startX < 0 || startX > width || y < 0 || y >= height || referenceY < -1 || referenceY >= height ||
@@ -374,6 +374,27 @@ bool AnalysisLumaSource::FindPlanarMatteRowDetail(int y, int referenceY, int shi
     const auto* chroma = data + size_t(height) * rowBytes +
         size_t(format == AnalysisLumaFormat::P010 ? y / 2 : y) * chromaRowBytes;
     const auto* reference = referenceY < 0 ? nullptr : data + size_t(referenceY) * rowBytes;
+    if (taperBoundaryY < -1 || taperBoundaryY >= height) return false;
+    const int distance = taperBoundaryY < 0 ? 0 : std::abs(y-taperBoundaryY);
+    const int inward = taperBoundaryY > y ? 1 : -1;
+    const bool taper = taperBoundaryY >= 0;
+    if (taper && (!reference || distance < 1 || distance > 8 ||
+        (referenceY-taperBoundaryY)*inward <= 0)) return false;
+    const int shoulderShift = distance <= 2 ? 1 : distance <= 4 ? 2 : 3;
+    const auto inwardRow = [&](int k) { return data + size_t(y+k*inward)*rowBytes; };
+    const auto scalarUpper = [&](int column) {
+        int upper = matte + tolerance;
+        if (!reference) return upper;
+        const int inner = int(P010Code(reference+2*column)) - matte;
+        upper = std::min(matte+128,upper+(std::max(0,inner)>>shift));
+        if (!taper || inner < 24) return upper;
+        const int neighbour = P010Code(inwardRow(1)+2*column);
+        int shoulder = std::min(matte+4+(inner>>shoulderShift),
+            neighbour-std::max(1,(neighbour-matte)/16));
+        for (int k=2; k<=distance; ++k)
+            shoulder = std::min(shoulder,int(P010Code(inwardRow(k)+2*column)));
+        return std::max(upper,shoulder);
+    };
     const auto lower = _mm_set1_epi16(static_cast<short>(matte - 4));
     const auto base = _mm_set1_epi16(static_cast<short>(matte + tolerance));
     const auto floor = _mm_set1_epi16(static_cast<short>(matte));
@@ -388,8 +409,7 @@ bool AnalysisLumaSource::FindPlanarMatteRowDetail(int y, int referenceY, int shi
     if ((x & 1) && x < width) {
         AnalysisLumaSample pixel;
         if (!Sample(x,y,pixel)) return false;
-        const int limit = reference ? std::min(matte + 128, matte + tolerance +
-            (std::max(0,int(P010Code(reference + 2*x))-matte) >> shift)) : matte + tolerance;
+        const int limit = scalarUpper(x);
         if (pixel.luma < matte-4 || pixel.luma > limit || std::abs(int(pixel.chromaU)-512)>32 ||
             std::abs(int(pixel.chromaV)-512)>32) return true;
         ++x;
@@ -400,6 +420,19 @@ bool AnalysisLumaSource::FindPlanarMatteRowDetail(int y, int referenceY, int shi
         if (reference) {
             const auto delta = _mm_subs_epu16(codes(reference + 2 * x), floor);
             upper = _mm_min_epi16(cap, _mm_add_epi16(base, _mm_srl_epi16(delta, shiftCount)));
+            // Most sections already pass the regular matte envelope. Only
+            // evaluate the qualified same-column taper for exceptional lanes.
+            if (taper && _mm_movemask_epi8(_mm_cmpgt_epi16(ys,upper))) {
+                const auto next = codes(inwardRow(1)+2*x);
+                const auto fall = _mm_max_epi16(_mm_set1_epi16(1),_mm_srli_epi16(_mm_subs_epu16(next,floor),4));
+                auto shoulder = _mm_add_epi16(_mm_set1_epi16(static_cast<short>(matte+4)),
+                    _mm_srl_epi16(delta,_mm_cvtsi32_si128(shoulderShift)));
+                shoulder = _mm_min_epi16(shoulder,_mm_sub_epi16(next,fall));
+                for (int k=2; k<=distance; ++k)
+                    shoulder = _mm_min_epi16(shoulder,codes(inwardRow(k)+2*x));
+                shoulder = _mm_and_si128(shoulder,_mm_cmpgt_epi16(delta,_mm_set1_epi16(23)));
+                upper = _mm_max_epi16(upper,shoulder);
+            }
         }
         const auto uv = codes(chroma + 2 * x);
         const auto badY = _mm_or_si128(_mm_cmpgt_epi16(ys,upper),_mm_cmpgt_epi16(lower,ys));
@@ -407,10 +440,7 @@ bool AnalysisLumaSource::FindPlanarMatteRowDetail(int y, int referenceY, int shi
         if (_mm_movemask_epi8(_mm_or_si128(badY,badUV))) break;
     }
     for (; x < width; ++x) {
-        int upper = matte + tolerance;
-        if (reference)
-            upper = std::min(matte + 128, upper +
-                (std::max(0, int(P010Code(reference + 2 * x)) - matte) >> shift));
+        const int upper = scalarUpper(x);
         const int value = P010Code(luma + 2 * x);
         const auto* pair = chroma + size_t(x / 2) * 4;
         if (value < matte - 4 || value > upper ||
