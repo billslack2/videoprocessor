@@ -360,6 +360,40 @@ bool AnalysisLumaSource::MeasureLumaRowContent(int y, int x0, int x1, int step,
     return true;
 }
 
+bool AnalysisLumaSource::FindDetachedMatteRowDetail(int y,int boundary,int matte,int& x,int startX) const
+{
+    x=startX;
+    if (!IsValid() || startX<0 || startX>width || y<0 || y>=height || boundary<0 || boundary>=height ||
+        std::abs(y-boundary)<4 || matte<0 || matte>1023 ||
+        (format!=AnalysisLumaFormat::P010 && format!=AnalysisLumaFormat::P210 &&
+         format!=AnalysisLumaFormat::DecodedDolbyVision422)) return false;
+    const int outward=y>boundary ? 1 : -1;
+    const auto row=[&](int index){return data+size_t(index)*rowBytes;};
+    const auto* target=row(y);
+    const auto* a=row(boundary+outward);
+    const auto* b=row(boundary+2*outward);
+    const auto* c=row(boundary+3*outward);
+    const auto levels=[](const uint8_t* p){return _mm_srli_epi16(
+        _mm_loadu_si128(reinterpret_cast<const __m128i*>(p)),6);};
+    const auto bright=_mm_set1_epi16(static_cast<short>(matte+15));
+    const auto lo=_mm_set1_epi16(static_cast<short>(matte-2));
+    const auto hi=_mm_set1_epi16(static_cast<short>(matte+2));
+    for (;x+8<=width;x+=8) {
+        auto mark=_mm_cmpgt_epi16(levels(target+2*x),bright);
+        if (!_mm_movemask_epi8(mark)) continue;
+        for (const auto* gap : {a,b,c}) {
+            const auto v=levels(gap+2*x);
+            mark=_mm_and_si128(mark,_mm_and_si128(_mm_cmpgt_epi16(v,lo),_mm_cmpgt_epi16(hi,v)));
+        }
+        if (_mm_movemask_epi8(mark)) break;
+    }
+    for (;x<width;++x)
+        if (P010Code(target+2*x)>matte+15 && std::abs(int(P010Code(a+2*x))-matte)<=1 &&
+            std::abs(int(P010Code(b+2*x))-matte)<=1 && std::abs(int(P010Code(c+2*x))-matte)<=1)
+            break;
+    return true;
+}
+
 bool AnalysisLumaSource::FindPlanarMatteRowDetail(int y, int referenceY, int shift,
     int matte, int tolerance, int& x, int startX, int taperBoundaryY) const
 {

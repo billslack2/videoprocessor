@@ -72,6 +72,10 @@ struct AnalysisLumaSource
     bool FindPlanarMatteRowDetail(int y, int referenceY, int shift, int matte,
         int tolerance, int& x, int startX = 0, int taperBoundaryY = -1) const;
 
+    // Locate bright native detail beyond three adjacent matte rows at the
+    // measured edge. x == width means no separated mark on this row.
+    bool FindDetachedMatteRowDetail(int y, int boundary, int matte, int& x, int startX=0) const;
+
     // Checks every native pixel in a row using Sample's exact code domain.
     // False means invalid input/read failure; a valid foreground hit returns
     // true with withinLimits=false and counts the first rejected pixel.

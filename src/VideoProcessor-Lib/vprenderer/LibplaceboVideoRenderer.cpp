@@ -228,6 +228,42 @@ namespace
         }
     }
 
+    // Sample only when the existing enhanced witness trace is due. The
+    // caller binds these pixels to the same source identity as the witness.
+    void LogRaisedEdgeProfile(const AnalysisLumaSource& source,
+        const ActivePicturePresentationRetentionEvidence& evidence,uint64_t generation,uint64_t sequence)
+    {
+        if (!DebugLog::IsEnhancedLoggingEnabled() || !evidence.pairedRaisedEdgeContrast ||
+            source.generation!=generation || !source.IsValid()) return;
+        for (bool top : {true,false}) {
+            const auto& witness=top ? evidence.visibleTop : evidence.visibleBottom;
+            if (!witness.available) continue;
+            const int x=witness.nativePixelDetail ? witness.nativePixelX : witness.firstX;
+            const int y=witness.nativePixelDetail ? witness.nativePixelY : witness.firstY;
+            const int boundary=top ? evidence.excludedTop.barPixels : source.height-evidence.excludedBottom.barPixels-1;
+            const int step=top ? -1 : 1;
+            const int distance=(y-boundary)*step;
+            if (x<0 || distance<1 || distance>std::max(2,source.height/96)) continue;
+            const int span=std::min(32,std::max(2,source.height/96)+8);
+            const int start=boundary-step*4;
+            for (int offset : {-80,-16,-4,0,4,16,80}) {
+                const int column=x+offset;
+                if (column<0 || column>=source.width) continue;
+                char values[192]{};
+                size_t used=0;
+                for (int n=0;n<span;++n) {
+                    AnalysisLumaSample point;
+                    if (!source.Sample(column,start+n*step,point)) break;
+                    int wrote=std::snprintf(values+used,sizeof(values)-used,n?",%u":"%u",unsigned(point.luma));
+                    if (wrote<=0 || size_t(wrote)>=sizeof(values)-used) break;
+                    used+=size_t(wrote);
+                }
+                DEBUGLOG_ENHANCED("Alpha raised edge pixels: generation=%llu sequence=%llu edge=%s native=%d witness_xy=%d,%d column=%d first_y=%d step=%d luma=%s",
+                    generation,sequence,top?"top":"bottom",witness.nativePixelDetail?1:0,x,y,column,start,step,values);
+            }
+        }
+    }
+
 	void LogCropExtentWitness(const char* context, uint64_t frameGeneration, uint64_t sourceSequence,
 		const ActivePicturePresentationRetentionEvidence& evidence)
 	{
@@ -18516,8 +18552,12 @@ releaseDriftBaseRetention =
 					rawCandidate.trustedBounds.left, rawCandidate.trustedBounds.top, rawCandidate.trustedBounds.right, rawCandidate.trustedBounds.bottom,
 					effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
 					presentationCropBounds.left, presentationCropBounds.top, presentationCropBounds.right, presentationCropBounds.bottom);
-				if (cropEdgeSummaryDue)
-					LogCropExtentWitness("presentation", frameGeneration, sourceSequence, evidence);
+				if (cropEdgeSummaryDue) {
+                    LogCropExtentWitness("presentation", frameGeneration, sourceSequence, evidence);
+                    if (!relocatedCaptionQualified && episodeInput.retentionSourceGeneration==frameGeneration &&
+                        episodeInput.retentionSourceSequence==sourceSequence)
+                        LogRaisedEdgeProfile(analysisSource,evidence,frameGeneration,sourceSequence);
+                }
 				const auto& sideSupport = rawCandidate.axisEvidence;
 				DEBUGLOG_ENHANCED("Alpha crop side picture: schema=4 generation=%llu sequence=%llu witness_aperture=%dx%d:%d-%d threshold=%d left_min=%d right_min=%d required_min=6 samples_per_zone=12 zones=4 depths=3 left_strong_mask=%u right_strong_mask=%u left_nonblack_min=%d right_nonblack_min=%d vertical_profile_evaluated=%d vertical_profile_clean=%d vertical_profile_support=%d vertical_exception=%d blocking_failed_axis=%d",
 					frameGeneration, sourceSequence, sideSupport.sidePictureWidth, sideSupport.sidePictureHeight,
