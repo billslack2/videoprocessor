@@ -2,6 +2,8 @@
 #include "CppUnitTest.h"
 
 #include <AnalysisDiagnosticTrace.h>
+#include <vprenderer/MatteIncidentCapture.h>
+#include <filesystem>
 
 #include <atomic>
 #include <chrono>
@@ -211,6 +213,126 @@ namespace Tests
             Sleep(30);
             Assert::IsFalse(fixture.trace->Status().recording);
             Assert::IsTrue(CapturePath(*fixture.trace)==path);
+        }
+
+        TEST_METHOD(MatteIncidentsPreserveSubmittedIdentityAndActualBytes)
+        {
+            namespace fs = std::filesystem;
+            using Result = MatteIncidentCapture::Result;
+            const fs::path directory = fs::temp_directory_path() /
+                (L"vp-matte-test-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
+            const auto first = std::make_shared<std::vector<uint8_t>>(64, 0x31);
+            const auto second = std::make_shared<std::vector<uint8_t>>(64, 0x72);
+            MatteIncidentCapture::Job job;
+            job.frame.width = 8; job.frame.height = 4; job.frame.stride0 = 16; job.frame.stride1 = 16;
+            job.frame.transportGeneration = 7; job.frame.acceptedSequence = 11;
+            job.frame.data = first->data(); job.frame.dataBytes = first->size(); job.owner = first;
+            {
+                MatteIncidentCapture disabled;
+                Assert::IsFalse(disabled.Enabled());
+                Assert::AreEqual(static_cast<unsigned>(Result::None),
+                    static_cast<unsigned>(disabled.Observe(job, true, true, false)));
+                Assert::IsFalse(fs::exists(directory));
+            }
+            {
+                MatteIncidentCapture capture(directory.wstring());
+                for (int i = 0; i < 400 && !capture.Enabled(); ++i) Sleep(5);
+                Assert::IsTrue(capture.Enabled());
+                Assert::AreEqual(static_cast<unsigned>(Result::IdentityMismatch),
+                    static_cast<unsigned>(capture.Observe(job, false, true, true)));
+                const auto dropsAfterFirstMiss = capture.Dropped();
+                ++job.frame.acceptedSequence;
+                Assert::AreEqual(static_cast<unsigned>(Result::None),
+                    static_cast<unsigned>(capture.Observe(job, false, true, true)));
+                Assert::AreEqual(dropsAfterFirstMiss, capture.Dropped());
+                Assert::AreEqual(static_cast<unsigned>(Result::None),
+                    static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::AreEqual(static_cast<unsigned>(Result::None),
+                    static_cast<unsigned>(capture.Observe(job, true, false, false)));
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued),
+                    static_cast<unsigned>(capture.Observe(job, true, true, false)));
+                Assert::AreEqual(static_cast<unsigned>(Result::None),
+                    static_cast<unsigned>(capture.Observe(job, true, true, false)));
+                Sleep(100);
+                job.frame.acceptedSequence = 13;
+                job.frame.data = second->data(); job.owner = second;
+                job.evidenceGeneration = 7; job.evidenceSequence = 15; job.evidenceDomain = 19;
+                job.decision = MatteIncidentCapture::Decision::CurrentMargin;
+                job.submitted[1] = 238; job.submitted[2] = 3840; job.submitted[3] = 1920;
+                Assert::AreEqual(static_cast<unsigned>(Result::IdentityMismatch),
+                    static_cast<unsigned>(capture.Observe(job, false, true, true)));
+                ++job.frame.acceptedSequence;
+                Assert::AreEqual(static_cast<unsigned>(Result::None),
+                    static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::AreEqual(static_cast<unsigned>(Result::None),
+                    static_cast<unsigned>(capture.Observe(job, true, true, false)));
+                ++job.frame.acceptedSequence;
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued),
+                    static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::AreEqual(static_cast<unsigned>(Result::None),
+                    static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::IsTrue(capture.PeakOutstanding() <= 2);
+            }
+            unsigned frames = 0, sidecars = 0;
+            bool checkedFirst = false, checkedSecond = false, checkedDecision = false;
+            for (const auto& entry : fs::directory_iterator(directory))
+            {
+                const auto name = entry.path().filename().wstring();
+                if (entry.path().extension() == L".bin")
+                {
+                    std::ifstream input(entry.path(), std::ios::binary);
+                    const std::vector<uint8_t> data((std::istreambuf_iterator<char>(input)), {});
+                    if (name.find(L"-s12-") != std::wstring::npos) checkedFirst = data == *first;
+                    if (name.find(L"-s15-") != std::wstring::npos) checkedSecond = data == *second;
+                    ++frames;
+                }
+                if (entry.path().extension() == L".txt")
+                {
+                    std::ifstream input(entry.path());
+                    const std::string text((std::istreambuf_iterator<char>(input)), {});
+                    if (name.find(L"-s15-") != std::wstring::npos)
+                        checkedDecision = text.find("evidence_sequence 15") != std::string::npos &&
+                            text.find("current detail inside verified raised matte margin") != std::string::npos &&
+                            text.find("submitted 0 238 3840 1920") != std::string::npos;
+                    ++sidecars;
+                }
+            }
+            Assert::AreEqual(2u, frames);
+            Assert::AreEqual(2u, sidecars);
+            Assert::IsTrue(checkedFirst && checkedSecond && checkedDecision);
+            fs::remove_all(directory);
+        }
+
+        TEST_METHOD(MatteIncidentsCanArmAfterStartupAndCaptureFirstMargin)
+        {
+            namespace fs = std::filesystem;
+            using Result = MatteIncidentCapture::Result;
+            const fs::path directory = fs::temp_directory_path() /
+                (L"vp-matte-arm-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
+            fs::create_directories(directory);
+            { std::ofstream disarm(directory / L"DISARM"); disarm << "paused"; }
+            const auto bytes = std::make_shared<std::vector<uint8_t>>(32, 0x42);
+            MatteIncidentCapture::Job job;
+            job.owner = bytes; job.frame.data = bytes->data(); job.frame.dataBytes = bytes->size();
+            job.frame.transportGeneration = 2; job.frame.acceptedSequence = 15;
+            {
+                MatteIncidentCapture capture(directory.wstring());
+                Sleep(300);
+                Assert::IsFalse(capture.Enabled());
+                Assert::AreEqual(static_cast<unsigned>(Result::None),
+                    static_cast<unsigned>(capture.Observe(job, true, false, false)));
+                fs::remove(directory / L"DISARM");
+                for (int i = 0; i < 400 && !capture.Enabled(); ++i) Sleep(5);
+                Assert::IsTrue(capture.Enabled());
+                Assert::AreEqual(static_cast<unsigned>(Result::Queued),
+                    static_cast<unsigned>(capture.Observe(job, true, true, true)));
+                Assert::IsTrue(capture.PeakOutstanding() <= 2);
+            }
+            unsigned frames = 0;
+            for (const auto& entry : fs::directory_iterator(directory))
+                if (entry.path().extension() == L".bin") ++frames;
+            Assert::AreEqual(1u, frames);
+            fs::remove_all(directory);
         }
 
 		TEST_METHOD(CaptureIncludesTenSecondStyleRollingHistoryAndPostTriggerRecords)

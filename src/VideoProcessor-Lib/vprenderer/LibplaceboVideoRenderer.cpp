@@ -5,6 +5,7 @@
 #include "ExperimentalAspectShadow.h"
 #include "ExperimentalAspectActive.h"
 #include "OutputFrameStamp.h"
+#include "MatteIncidentCapture.h"
 
 #include "LibplaceboVideoRenderer.h"
 #include "AnalysisPerformanceWindow.h"
@@ -4546,6 +4547,8 @@ private:
 
 struct LibplaceboVideoRenderer::Impl
 {
+    MatteIncidentCapture matteIncidentCapture{MatteIncidentCapture::EnvironmentPath()};
+    uint64_t matteIncidentNextMissLog = 0;
 	SceneDetector sceneDetector;
 	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
 	AlphaPresentationTelemetry presentationTelemetry;
@@ -4724,6 +4727,10 @@ struct LibplaceboVideoRenderer::Impl
     std::array<SubtitlePresentationPacket,8> subtitlePresentationPackets{};
 
     struct TemporalPresentationSnapshot {
+        bool matteProtectMargin=false;
+        ActivePictureBounds matteProtectBase{};
+        uint64_t matteEvidenceGeneration=0, matteEvidenceSequence=0, matteEvidenceDomain=0;
+        MatteIncidentCapture::Decision matteDecision=MatteIncidentCapture::Decision::None;
         bool startupPoseQualified=false;
         uint64_t startupFormatKey=0, startupOutputContract=0;
         AlphaSourceCrop::CropPresentationAdmissionState cropAdmission{};
@@ -15991,6 +15998,10 @@ struct LibplaceboVideoRenderer::Impl
         bool temporalPolicyTranslationRequested=false;
         bool temporalPolicyTranslationPoseEligible=false;
         TemporalRenderer::PresentationGeometry temporalPolicyPresentation{};
+        bool temporalPolicyMatteMargin=false;
+        ActivePictureBounds temporalPolicyMatteBase{};
+        uint64_t temporalPolicyMatteGeneration=0, temporalPolicyMatteSequence=0, temporalPolicyMatteDomain=0;
+        MatteIncidentCapture::Decision temporalPolicyMatteDecision=MatteIncidentCapture::Decision::None;
         bool temporalPolicySubmittedScopeContinuityRetention=false;
         bool temporalPolicyStartupPoseQualified=false;
         int temporalPolicyOwnerUpdate=0;
@@ -16071,7 +16082,9 @@ struct LibplaceboVideoRenderer::Impl
              &temporalPolicyDrift, &temporalPolicyVerticalInput,
              &temporalPolicyRequestedTranslation, &temporalPolicyDriftDurationMs,
              &temporalPolicyRoutedTranslation, &temporalPolicyTranslationRequested,
-             &temporalPolicyTranslationPoseEligible, &temporalPolicyPresentation, &temporalPolicySubmittedScopeContinuityRetention,
+             &temporalPolicyTranslationPoseEligible, &temporalPolicyPresentation, &temporalPolicyMatteMargin,
+             &temporalPolicyMatteBase, &temporalPolicyMatteGeneration, &temporalPolicyMatteSequence, &temporalPolicyMatteDomain, &temporalPolicyMatteDecision,
+             &temporalPolicySubmittedScopeContinuityRetention,
              &temporalPolicyOwnerUpdate, &temporalPolicyOwnerCandidate,
              &temporalPolicyOwnerBase, &temporalPolicyColdMaskedCandidate,
              &temporalPolicyNearBlackEnvelopeCandidate, &temporalPolicyNearBlackEnvelopeFailOpen,
@@ -18022,6 +18035,19 @@ releaseDriftBaseRetention =
                 episodeInput.retentionBounds,episodeInput.retentionSourceGeneration,episodeInput.retentionSourceSequence,
                 &raisedMattePresentationHold,GetTickCount64(),EffectiveOscillationHoldMs(configuredScreenActive),
                 queuedAnalysisDomainKey);
+            temporalPolicyMatteMargin = protectNativeMatteDetail && admissionDecision.presentation.raisedMatteMargin;
+            if (temporalPolicyMatteMargin) {
+                temporalPolicyMatteBase = cropInput.geometry;
+                temporalPolicyMatteGeneration = episodeInput.retentionSourceGeneration;
+                temporalPolicyMatteSequence = episodeInput.retentionSourceSequence;
+                temporalPolicyMatteDomain = queuedAnalysisDomainKey;
+                const auto& matteReason = admissionDecision.presentation.reason;
+                temporalPolicyMatteDecision = matteReason == "acquired scope with verified raised matte margin"
+                    ? MatteIncidentCapture::Decision::AcquiredMargin
+                    : matteReason == "current detail inside verified raised matte margin"
+                        ? MatteIncidentCapture::Decision::CurrentMargin
+                        : MatteIncidentCapture::Decision::HeldMargin;
+            }
             if (protectNativeMatteDetail && admissionDecision.blocked)
                 temporalPolicySubmittedScopeContinuityRetention = false;
 			const auto admissionLogTick = GetTickCount64();
@@ -19464,6 +19490,12 @@ releaseDriftBaseRetention =
                     sourceSnapshot.translationRequested=temporalPolicyTranslationRequested;
                     sourceSnapshot.translationPoseEligible=temporalPolicyTranslationPoseEligible;
                     sourceSnapshot.presentation=temporalPolicyPresentation;
+                    sourceSnapshot.matteProtectMargin=temporalPolicyMatteMargin;
+                    sourceSnapshot.matteProtectBase=temporalPolicyMatteBase;
+                    sourceSnapshot.matteEvidenceGeneration=temporalPolicyMatteGeneration;
+                    sourceSnapshot.matteEvidenceSequence=temporalPolicyMatteSequence;
+                    sourceSnapshot.matteEvidenceDomain=temporalPolicyMatteDomain;
+                    sourceSnapshot.matteDecision=temporalPolicyMatteDecision;
                     const bool currentNativeAdmission =
                         automaticSourceCrop && !fixedCropAspectConfigured &&
                         cropPresentationAdmission.available &&
@@ -20540,6 +20572,111 @@ releaseDriftBaseRetention =
                 static_cast<int>(std::lround(renderImage.crop.x1)),
                 static_cast<int>(std::lround(renderImage.crop.y1)),
                 width, height, 0.0, ActivePictureBounds::BarAxes::NONE};
+            // Optional incident capture: selected output and prepared source must
+            // describe this exact packet. Disk I/O and frame bytes stay on the
+            // bounded writer; the renderer retains only an immutable owner.
+            if (matteIncidentCapture.Configured()) {
+                const uint64_t selectedSequence = temporalRenderer.Active()
+                    ? temporalRenderer.SelectedPacketSequence() : sourceSequence;
+                const bool current = preparedQueued.IsValid() && preparedQueued.source.format == AnalysisLumaFormat::P010 &&
+                    !temporalRenderer.Mixing() && selectedSequence == sourceSequence &&
+                    activePictureIdentity.acceptedSequence == sourceSequence &&
+                    activePictureIdentity.transportGeneration == frameGeneration &&
+                    scopeAnchorCommit.sourceSequence == sourceSequence &&
+                    scopeAnchorCommit.sourceGeneration == frameGeneration &&
+                    scopeAnchorCommit.presentationEpoch == viewportRequestSerial &&
+                    subtitleIdentity.acceptedSequence == sourceSequence &&
+                    subtitleIdentity.analysisDomainKey == queuedAnalysisDomainKey &&
+                    (!selectedPresentationValid ||
+                        (selectedPresentationForCommit.startupFormatKey == startupContext.sourceFormatKey &&
+                         selectedPresentationForCommit.captionOwnershipIdentity.acceptedSequence == sourceSequence &&
+                         selectedPresentationForCommit.captionOwnershipIdentity.transportGeneration == frameGeneration &&
+                         selectedPresentationForCommit.captionOwnershipIdentity.sourceFrameNumber == activePictureIdentity.sourceFrameNumber &&
+                         selectedPresentationForCommit.captionOwnershipIdentity.captureTimestamp == activePictureIdentity.captureTimestamp &&
+                         selectedPresentationForCommit.captionOwnershipIdentity.sourceFormatGeneration == activePictureIdentity.sourceFormatGeneration &&
+                         selectedPresentationForCommit.captionOwnershipIdentity.viewportGeneration == viewportRequestSerial &&
+                         selectedPresentationForCommit.captionOwnershipIdentity.analysisDomainKey == queuedAnalysisDomainKey &&
+                         selectedPresentationForCommit.captionOwnershipPolicy == localBoundaryPolicyGeneration &&
+                         selectedPresentationForCommit.captionOwnershipContinuity == localBoundaryContinuityGeneration));
+                const bool protectedMargin = selectedPresentationValid
+                    ? selectedPresentationForCommit.matteProtectMargin : temporalPolicyMatteMargin;
+                const auto& protectedBase = selectedPresentationValid
+                    ? selectedPresentationForCommit.matteProtectBase : temporalPolicyMatteBase;
+                const uint64_t evidenceGeneration = selectedPresentationValid
+                    ? selectedPresentationForCommit.matteEvidenceGeneration : temporalPolicyMatteGeneration;
+                const uint64_t evidenceSequence = selectedPresentationValid
+                    ? selectedPresentationForCommit.matteEvidenceSequence : temporalPolicyMatteSequence;
+                const uint64_t evidenceDomain = selectedPresentationValid
+                    ? selectedPresentationForCommit.matteEvidenceDomain : temporalPolicyMatteDomain;
+                const auto decision = selectedPresentationValid
+                    ? selectedPresentationForCommit.matteDecision : temporalPolicyMatteDecision;
+                const auto& native = protectedMargin ? protectedBase : scopeAnchorCommit.nativeCrop;
+                const auto& actual = scopeAnchorCommit.submittedBounds;
+                const bool haveNative = protectedMargin ||
+                    (scopeAnchorCommit.nativeCropAvailable &&
+                     scopeAnchorCommit.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE);
+                const bool scope = haveNative && native.top > 0 && native.bottom < height &&
+                    actual.top > 0 && actual.bottom < height;
+                const bool margin = scope && protectedMargin &&
+                    (actual.top < native.top || actual.bottom > native.bottom);
+                const bool evidenceCurrent = !protectedMargin ||
+                    (evidenceGeneration == frameGeneration && evidenceSequence == sourceSequence &&
+                     evidenceDomain == queuedAnalysisDomainKey);
+                MatteIncidentCapture::Job job;
+                const auto& source = preparedQueued.source;
+                job.owner = preparedQueued.sourceOwner;
+                auto& packet=job.frame;
+                packet.width=source.width;
+                packet.height=source.height;
+                packet.stride0=source.rowBytes;
+                packet.stride1=source.chromaRowBytes;
+                packet.format=static_cast<uint32_t>(source.format);
+                packet.encoding=static_cast<uint32_t>(source.encoding);
+                packet.colorspace=static_cast<uint32_t>(source.colorspace);
+                packet.analysisSampleRange=static_cast<uint32_t>(source.range);
+                packet.rgbBitAlignment=source.rgbBitAlignment;
+                packet.top=native.top;
+                packet.bottom=native.bottom;
+                packet.scriptHint=static_cast<uint32_t>(activeSettings.subtitleScriptHint);
+                packet.transportGeneration=frameGeneration;
+                packet.acceptedSequence=sourceSequence;
+                packet.sourceFrameNumber=activePictureIdentity.sourceFrameNumber;
+                packet.captureTimestamp=activePictureIdentity.captureTimestamp;
+                packet.sourceFormatGeneration=activePictureIdentity.sourceFormatGeneration;
+                packet.viewportGeneration=viewportRequestSerial;
+                packet.rendererGeneration=frameGeneration;
+                packet.analysisDomainKey=queuedAnalysisDomainKey;
+                packet.policyGeneration=localBoundaryPolicyGeneration;
+                packet.continuityGeneration=localBoundaryContinuityGeneration;
+                packet.nearBarDistance=activeSettings.subtitleNearBarDistance;
+                packet.optimizationMode=activeSettings.subtitleDetectionOptimization;
+                packet.frameDuration100ns=state.displayMode->TimeScale()>0 ? static_cast<int64_t>(10000000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale()) : 0;
+                packet.discontinuity=videoFrame.IsSourceDiscontinuity();
+                packet.cadenceRepeat=cadenceRepeat;
+                packet.data=source.data;
+                packet.dataBytes=source.dataBytes;
+                job.submitted[0]=actual.left;
+                job.submitted[1]=actual.top;
+                job.submitted[2]=actual.right;
+                job.submitted[3]=actual.bottom;
+                job.evidenceGeneration=evidenceGeneration;
+                job.evidenceSequence=evidenceSequence;
+                job.evidenceDomain=evidenceDomain;
+                job.decision=decision;
+                const auto captureResult=matteIncidentCapture.Observe(job,current && evidenceCurrent,scope,margin);
+                if (captureResult != MatteIncidentCapture::Result::None) {
+                    const uint64_t now=GetTickCount64();
+                    if (captureResult == MatteIncidentCapture::Result::Queued || now >= matteIncidentNextMissLog) {
+                        if (captureResult != MatteIncidentCapture::Result::Queued)
+                            matteIncidentNextMissLog=now+2000;
+                        DebugLog::Log("Matte incident trigger: generation=%llu sequence=%llu result=%s scope=%d margin=%d decision=\"%s\" evidence_generation=%llu evidence_sequence=%llu evidence_domain=%llu selected=%llu current=%d actual=%d,%d-%d,%d dropped=%llu",
+                            frameGeneration,sourceSequence,MatteIncidentCapture::ResultName(captureResult),scope?1:0,margin?1:0,
+                            MatteIncidentCapture::Reason(decision),evidenceGeneration,evidenceSequence,evidenceDomain,
+                            selectedSequence,(current && evidenceCurrent)?1:0,actual.left,actual.top,actual.right,actual.bottom,
+                            matteIncidentCapture.Dropped());
+                    }
+                }
+            }
             // Successful current output only: preserve the selected packet identity and
             // distinguish measured picture from the full-raster presentation.
             const auto submittedMode = selectedPresentationValid ? selectedPresentationForCommit.subtitleMode : subtitlePreviewMode;
