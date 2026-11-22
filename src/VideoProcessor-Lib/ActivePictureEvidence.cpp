@@ -1009,8 +1009,8 @@ bool FollowsRaisedEdge(SampleContext& samples, bool top, int barPixels, int x, i
 
 // A filtered high-contrast boundary may have a short ledge or one small
 // rebound. Follow this column from the picture into the matte. The image
-// must descend to the disputed pixel without crossing a matte gap, then
-// taper farther through at least two distinct low-contrast exterior rows.
+// must descend to the disputed pixel, allowing one corroborated neutral
+// notch, then taper through two distinct low-contrast exterior rows.
 bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, int y,
     const AnalysisLumaSample& pixel, int matte) {
     const int inward = top ? 1 : -1;
@@ -1026,11 +1026,20 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
     if (contrast < 24 || pixel.luma > matte+4+(contrast >> (distance<=2 ? 1 : distance<=4 ? 2 : 3)))
         return false;
     int previous = ref.luma, drops = 0, reboundLobes = 0, reboundRise = 0, equal = 0;
-    int pictureRise = 0, pictureRiseLimit = 0;
+    int pictureRise = 0, pictureRiseLimit = 0, notchRow = -1;
     bool rising = false;
     for (int row=reference-inward; row!=y-inward; row-=inward) {
         AnalysisLumaSample next;
-        if (!samples.Sample(x,row,next) || next.luma <= matte+1) return false;
+        if (!samples.Sample(x,row,next)) return false;
+        if (next.luma <= matte+1) {
+            const int distanceToEdge = (boundary-row)*inward;
+            // A single neutral matte-level notch in the immediate edge may
+            // be a codec lobe, but needs independent same-frame neighbors.
+            if (notchRow >= 0 || distanceToEdge <= 0 || distanceToEdge > 4 ||
+                next.luma < matte-4 || std::abs(int(next.chromaU)-512)>16 ||
+                std::abs(int(next.chromaV)-512)>16) return false;
+            notchRow=row;
+        }
         const int delta = int(next.luma)-previous;
         if (delta > 0 && (boundary-row)*inward <= 0) {
             // Picture-side texture is not a matte-side ringing lobe. Use
@@ -1075,6 +1084,22 @@ bool FollowsRingingProfile(SampleContext& samples, bool top, int depth, int x, i
         previous=next.luma;
     }
     if (drops < 2) return false;
+    if (notchRow >= 0) {
+        // A detached mark cannot borrow picture contrast from one column.
+        // Both adjacent columns must independently show the same notch and
+        // a neutral lobe of comparable strength at the disputed row.
+        const int neighborTolerance = std::max(4,std::min(16,contrast/24));
+        for (int nx : {x-2,x+2}) {
+            if (nx<0 || nx>=samples.source.width) return false;
+            AnalysisLumaSample low, peak;
+            if (!samples.Sample(nx,notchRow,low) || !samples.Sample(nx,y,peak) ||
+                std::abs(int(low.luma)-matte)>4 ||
+                int(peak.luma)-matte < (int(pixel.luma)-matte)/2 ||
+                std::abs(int(peak.luma)-int(pixel.luma))>neighborTolerance ||
+                std::abs(int(low.chromaU)-512)>16 || std::abs(int(low.chromaV)-512)>16 ||
+                std::abs(int(peak.chromaU)-512)>16 || std::abs(int(peak.chromaV)-512)>16) return false;
+        }
+    }
     for (int k=1;k<=2;++k) {
         AnalysisLumaSample next;
         if (!samples.Sample(x,y-k*inward,next) || next.luma <= matte+2 ||
@@ -1199,6 +1224,21 @@ struct RaisedMatteRow {
         // shelf. Use a common lower bound supported in every width sector
         // only after both independent picture edges passed the contrast test.
         if (pairedEdge) {
+            // A uniformly raised local floor need not leave many samples at
+            // the global bar reference. Require independent majority support
+            // in every sector and a strong whole-row consensus before using
+            // it as the current row's neutral matte reference.
+            for (int level = maxOffset; level >= 1; --level) {
+                int total = 0;
+                bool broad = true;
+                for (const auto& sector : counts) {
+                    int support = 0;
+                    for (int value=level; value<=maxOffset; ++value) support += sector[value];
+                    broad &= support >= kVisibleExtentLineSamples/sectors/2;
+                    total += support;
+                }
+                if (broad && total >= kVisibleExtentLineSamples*3/4) return level;
+            }
             for (int level = maxOffset; level >= 1; --level) {
                 int unchanged = 0, raised = 0;
                 bool distributed = true;
@@ -1227,10 +1267,11 @@ struct RaisedMatteRow {
     }
 
     std::bitset<kVisibleExtentLineSamples> Residual(
-        std::bitset<kVisibleExtentLineSamples> columns, int offset) const {
+        std::bitset<kVisibleExtentLineSamples> columns, int offset,
+        const std::bitset<kVisibleExtentLineSamples>& attachedStroke) const {
         if (offset)
             for (size_t i = 0; i < weak.size(); ++i)
-                if (weak[i] && weak[i] <= offset + maxOffset) columns.reset(i);
+                if (weak[i] && weak[i] <= offset + maxOffset && !attachedStroke.test(i)) columns.reset(i);
         return columns;
     }
 };
@@ -1256,7 +1297,7 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
         const bool nearRaisedEdge = matte >= 0 &&
             barPixels - depth <= std::max(2, samples.source.height / 96);
         RaisedMatteRow shelf;
-        std::bitset<kVisibleExtentLineSamples> columns, strong, shoulder;
+        std::bitset<kVisibleExtentLineSamples> columns, strong, shoulder, attachedStroke;
 		ActivePictureVisibleExtentDiagnostic line;
 		for (int i = 0; i < kVisibleExtentLineSamples; ++i)
 		{
@@ -1270,6 +1311,34 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 				const int chromaDelta = std::max(std::abs(int(pixel.chromaU)-512), std::abs(int(pixel.chromaV)-512));
 				if (nearRaisedEdge) {
                     columns.set(i);
+                    // A dark, coherent mark crossing the measured boundary
+                    // must not be absorbed into a weak raised matte shelf.
+                    // Its picture-side samples remain near the matte while
+                    // nearby picture columns retain independent contrast.
+                    if (pairedEdge && pixel.luma > matte+4 && pixel.luma <= matte+8 &&
+                        chromaDelta <= 32) {
+                        const int inward = top ? 1 : -1;
+                        const int boundary = top ? barPixels : samples.source.height-barPixels-1;
+                        const int reference = boundary;
+                        bool low = true;
+                        for (int k=0;k<3;++k) {
+                            const int row=reference+inward*k;
+                            AnalysisLumaSample v;
+                            if (row<0 || row>=samples.source.height || !samples.Sample(x,row,v) || v.luma>matte+12 ||
+                                std::abs(int(v.chromaU)-512)>32 || std::abs(int(v.chromaV)-512)>32) { low=false; break; }
+                        }
+                        if (low) {
+                            const int spacing=std::max(2,samples.source.width/240);
+                            for (int step=1;step<=4 && !attachedStroke.test(i);++step) {
+                                for (int nx : {x-step*spacing,x+step*spacing}) {
+                                    AnalysisLumaSample v;
+                                    if (nx>=0 && nx<samples.source.width && samples.Sample(nx,reference,v) && v.luma>=matte+24) {
+                                        attachedStroke.set(i); break;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (pairedEdge && (FollowsRaisedEdge(samples,top,barPixels,x,y,pixel,matte) ||
                         MatchesAdjacentRaisedShoulders(samples,top,barPixels,x,y,pixel,matte) ||
                         FollowsRingingProfile(samples,top,barPixels,x,y,pixel,matte) ||
@@ -1302,7 +1371,7 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
         const bool disconnected = nearRaisedEdge && previousColumns.any() &&
             !(common & (common >> 1)).any() && !(strong & previousStrong).any();
         const int offset = suppressedShelf && nearRaisedEdge ? shelf.DistributedOffset(pairedEdge) : 0;
-        const auto residual = shelf.Residual(columns, offset);
+        const auto residual = shelf.Residual(columns, offset, attachedStroke);
         const auto agreement = residual & previousResidual;
         const bool onlyShelf = d == previousOccupied + 1 && !disconnected && offset && previousOffset &&
             !(agreement & (agreement >> 1)).any() && !(strong & previousStrong).any();
@@ -1389,6 +1458,103 @@ std::pair<int,int> FindDetachedMatteEdgePoint(SampleContext& samples,bool top,in
         if (!read || x<samples.source.width) return {x,y};
     }
     return {-1,-1};
+}
+
+// Look for a weak, spatially coherent detached component inside the margin.
+// Native row search is SIMD accelerated; all extra work has a hard cap. A
+// component must stand above its current local background and be separated
+// from the picture by two matte-like rows. Exhaustion retains the margin.
+void ProtectWeakDetachedMatteComponent(SampleContext& samples, bool top, int depth,
+    int matte, ExcludedBandVisibleExtent& extent) {
+    if (extent.nativePixelDetail || depth <= 3) return;
+    const auto& source = samples.source;
+    const int margin = std::min(depth-1,(std::max(2,source.height/96)+1)&~1);
+    const int boundary = top ? depth : source.height-depth-1;
+    const int inward = top ? 1 : -1;
+    int candidates = 0;
+    const auto protect = [&](int x, int y) {
+        const bool hadExtent=extent.available;
+        extent.available=true; extent.nativePixelDetail=true;
+        extent.nativePixelX=x; extent.nativePixelY=y;
+        const int coordinate=top ? y : y+1;
+        if (!hadExtent || (top ? coordinate<extent.coordinate : coordinate>extent.coordinate))
+            extent.coordinate=coordinate;
+    };
+    const int separated = std::max(3,source.height/270);
+    for (int offset=margin;offset>=separated;--offset) {
+        const int y=boundary-inward*offset;
+        int start=0;
+        while (start<source.width) {
+            if (samples.budget) samples.budget->Checkpoint();
+            int x=start;
+            if (!source.FindPlanarMatteRowDetail(y,-1,0,matte,8,x,start)) { protect(start,y); return; }
+            samples.lumaSamples += std::min(x+1,source.width)-start;
+            samples.chromaSamples += std::min(x+1,source.width)-start;
+            if (x>=source.width) break;
+            start=x+1;
+            if (++candidates>512) { protect(x,y); return; }
+            AnalysisLumaSample pixel;
+            if (!samples.Sample(x,y,pixel) || pixel.luma<=matte+8 || pixel.luma>matte+15 ||
+                std::abs(int(pixel.chromaU)-512)>16 || std::abs(int(pixel.chromaV)-512)>16) continue;
+            int backgrounds[4], count=0;
+            for (int nx : {x-16,x-8,x+8,x+16}) {
+                AnalysisLumaSample v;
+                if (nx>=0 && nx<source.width && samples.Sample(nx,y,v) &&
+                    std::abs(int(v.chromaU)-512)<=16 && std::abs(int(v.chromaV)-512)<=16 &&
+                    std::abs(int(v.luma)-matte)<=8) backgrounds[count++]=v.luma;
+            }
+            if (count<3 || x+1>=source.width) continue;
+            std::sort(backgrounds,backgrounds+count);
+            const int background=backgrounds[count/2];
+            if (int(pixel.luma)-background<5) continue;
+            bool coherent=true;
+            for (int dx=0;dx<2 && coherent;++dx) for (int dy=0;dy<2;++dy) {
+                AnalysisLumaSample v;
+                if (!samples.Sample(x+dx,y-inward*dy,v) || int(v.luma)-background<5 ||
+                    std::abs(int(v.chromaU)-512)>16 || std::abs(int(v.chromaV)-512)>16) { coherent=false; break; }
+            }
+            if (!coherent) continue;
+            bool gap=true, reachesLocalFloor=false;
+            for (int k=1;k<=2;++k) {
+                AnalysisLumaSample v;
+                if (!samples.Sample(x,y+inward*k,v) || std::abs(int(v.luma)-background)>4 ||
+                    std::abs(int(v.chromaU)-512)>16 || std::abs(int(v.chromaV)-512)>16) { gap=false; break; }
+                reachesLocalFloor |= std::abs(int(v.luma)-background)<=2;
+            }
+            if (!gap || !reachesLocalFloor) {
+                // An unseparated weak component may instead be a stroke
+                // crossing the measured picture edge. Require the same level
+                // in two picture-side boundary rows and contrasting adjacent
+                // current picture before keeping it.
+                bool attached=true, pictureContrast=false;
+                for (int k=0;k<2;++k) {
+                    AnalysisLumaSample v;
+                    const int row=boundary+inward*k;
+                    if (row<0 || row>=source.height || !samples.Sample(x,row,v) ||
+                        std::abs(int(v.luma)-int(pixel.luma))>4 ||
+                        std::abs(int(v.chromaU)-512)>16 || std::abs(int(v.chromaV)-512)>16) { attached=false; break; }
+                }
+                if (attached) {
+                    for (int nx : {x-16,x+16}) {
+                        AnalysisLumaSample v;
+                        if (nx>=0 && nx<source.width && samples.Sample(nx,boundary,v) && v.luma>=matte+24) {
+                            pictureContrast=true; break;
+                        }
+                    }
+                }
+                if (!attached || !pictureContrast) continue;
+            }
+            int outer=y;
+            for (int k=1;k<margin && offset+k<=margin;++k) {
+                AnalysisLumaSample v;
+                const int row=y-inward*k;
+                if (!samples.Sample(x,row,v) || int(v.luma)-background<5 ||
+                    std::abs(int(v.chromaU)-512)>16 || std::abs(int(v.chromaV)-512)>16) break;
+                outer=row;
+            }
+            protect(x,outer); return;
+        }
+    }
 }
 
 // The regular grid can miss a detached dot between columns. Only release an
@@ -3475,6 +3641,12 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         const bool bottomVerified = ProtectNativeRaisedMatteDetail(samples,false,source.height-trustedPresentation.bottom,
             int(result.excludedBottom.lumaP90),bottomExtent,nullptr,pairedEdge,!inspectDetail,detachedBottom);
         result.raisedMatteExteriorVerified = pairedEdge && topVerified && bottomVerified;
+        if (pairedEdge && result.raisedMatteExteriorVerified) {
+            ProtectWeakDetachedMatteComponent(samples,true,trustedPresentation.top,
+                int(result.excludedTop.lumaP90),topExtent);
+            ProtectWeakDetachedMatteComponent(samples,false,source.height-trustedPresentation.bottom,
+                int(result.excludedBottom.lumaP90),bottomExtent);
+        }
     }
 	const auto leftExtent = FindVerticalVisibleExtent(samples, true,
 		trustedPresentation.left, blackThreshold);
