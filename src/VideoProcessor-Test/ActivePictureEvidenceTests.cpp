@@ -1909,6 +1909,29 @@ namespace VideoProcessorTest
                 detached.pixels.FillRectangle(3000,1910,3004,1914,129,512,512);
                 const auto dot=present(detached,acquired.first.state,nullptr,index==1,false);
                 Assert::IsTrue(!dot.first.presentation.applyCrop || dot.second.bottom>=1914);
+                // Check both sides of the observed lobe, edge-touching and
+                // colored diacritics, including a later separate glyph.
+                for(int x:{1789,2880,2890}) {
+                    auto thin=frames[index]; thin.pixels.FillRectangle(x,1908,x+4,1914,129,512,512);
+                    const auto preserved=present(thin,acquired.first.state,nullptr,index==1,false);
+                    Assert::IsTrue(!preserved.first.presentation.applyCrop || preserved.second.bottom>=1914);
+                }
+                for(int x:{1789,2890,3000}) {
+                    auto touching=frames[index]; touching.pixels.FillRectangle(x,1896,x+4,1906,126,512,512);
+                    const auto touch=present(touching,acquired.first.state,nullptr,index==1,false);
+                    Assert::IsTrue(!touch.first.presentation.applyCrop || touch.second.bottom>=1906);
+                    auto upper=frames[index]; upper.pixels.FillRectangle(x,254,x+4,264,126,512,512);
+                    const auto upperTouch=present(upper,acquired.first.state,nullptr,index==1,false);
+                    Assert::IsTrue(!upperTouch.first.presentation.applyCrop || upperTouch.second.top<=254);
+                }
+                auto color=frames[index]; color.pixels.FillRectangle(3000,1908,3004,1914,119,700,512);
+                const auto chroma=present(color,acquired.first.state,nullptr,index==1,false);
+                Assert::IsTrue(!chroma.first.presentation.applyCrop || chroma.second.bottom>=1914);
+                auto later=frames[index];
+                later.pixels.FillRectangle(1789,1893,1837,1915,126,512,512);
+                later.pixels.FillRectangle(3000,1930,3010,1940,700,512,512);
+                const auto both=present(later,acquired.first.state,nullptr,index==1,false);
+                Assert::IsTrue(!both.first.presentation.applyCrop || both.second.bottom>=1940);
             }
             // S2173 contains actual bottom legal/title pixels and playback UI.
             // The recorded 238..1920 crop omitted the lower content. A safe
@@ -1953,7 +1976,7 @@ namespace VideoProcessorTest
             Decision held; held.applyCrop=true;held.owner=DecisionOwner::OUTWARD_FIT;
             held.outwardExpanded=true;held.sourceBounds=anchor.submittedEnvelope;
             const auto safe=ResolveUncertainPicturePresentation(recovery,held);
-            Assert::IsTrue(safe.retained && safe.currentPixelExtent && safe.expanded);
+            Assert::IsTrue(safe.retained && safe.currentPixelExtent && safe.currentBarContentProtected && safe.expanded);
             Assert::IsTrue(safe.presentation.sourceBounds.top<=content.upperTop &&
                 safe.presentation.sourceBounds.bottom>=content.lowerBottom);
             Assert::IsTrue(safe.presentation.sourceBounds.top<=native.top &&
@@ -1961,9 +1984,91 @@ namespace VideoProcessorTest
             // A confirmed translation which clips the independently current
             // opposite-edge UI likewise cannot outrank the safe current frame.
             const auto translationConflict=ResolveUncertainPicturePresentation(recovery,recovery.candidate);
-            Assert::IsTrue(translationConflict.retained && translationConflict.currentPixelExtent);
+            Assert::IsTrue(translationConflict.retained && translationConflict.currentPixelExtent &&
+                translationConflict.currentBarContentProtected);
             Assert::IsTrue(translationConflict.presentation.sourceBounds.top<=content.upperTop &&
                 translationConflict.presentation.sourceBounds.bottom>=content.lowerBottom);
+        }
+
+        TEST_METHOD(OptionalIndependentDecodedDvSubtitleHoldout)
+        {
+            using namespace AlphaSourceCrop;
+            char* value=nullptr; size_t length=0;
+            _dupenv_s(&value,&length,"VP_INDEPENDENT_HOLDOUT_DIR");
+            const std::string dir=value ? value : ""; std::free(value);
+            if(dir.empty()) {
+                Logger::WriteMessage(L"Set VP_INDEPENDENT_HOLDOUT_DIR to run the independent DV subtitle sequence.");
+                return;
+            }
+            // Different film, full-range decoded DV422, 23.976 Hz. The capture
+            // saved sparse frames; the preceding native anchor is modeled. A
+            // source-pixel boundary scan and the contemporaneous detector log
+            // independently agree on 0,276-3840,1884 in these sampled frames.
+            const auto native=ScopePresentation(3840,2160,276,1884);
+            uint64_t priorSequence=0,priorSource=0,priorTimestamp=0;
+            for(int ordinal:{1,8,16,24,32,40,48,56,64}) {
+                char name[32]; sprintf_s(name,"frame-%06d",ordinal);
+                const std::string file=dir+"\\"+name;
+                std::ifstream meta(file+".txt");
+                int w,h,fmt,encoding,colorspace,top,bottom,hint,range;
+                size_t pitch,uvPitch; std::string tag;
+                ActivePictureFrameIdentity id{};uint64_t policy,continuity;
+                int nearBar,optimization,duration,discontinuity,repeat,alignment;
+                meta>>w>>h>>pitch>>uvPitch>>fmt>>encoding>>colorspace>>top>>bottom>>hint>>range
+                    >>tag>>id.transportGeneration>>id.acceptedSequence>>id.sourceFrameNumber>>id.captureTimestamp
+                    >>id.sourceFormatGeneration>>id.viewportGeneration>>id.rendererGeneration>>id.analysisDomainKey
+                    >>policy>>continuity>>nearBar>>optimization>>duration>>discontinuity>>repeat>>alignment;
+                Assert::IsTrue(bool(meta)&&tag=="identity_v1");
+                Assert::AreEqual(3840,w);Assert::AreEqual(2160,h);
+                Assert::AreEqual(int(AnalysisLumaFormat::DecodedDolbyVision422),fmt);
+                Assert::AreEqual(int(ColorSpace::BT_2020),colorspace);
+                Assert::AreEqual(int(AnalysisLumaRange::Full),range);
+                Assert::AreEqual(size_t(7680),pitch);Assert::AreEqual(pitch,uvPitch);
+                Assert::IsTrue(id.acceptedSequence>priorSequence && id.sourceFrameNumber>priorSource &&
+                    id.captureTimestamp>priorTimestamp);
+                P010Frame frame(3840,2160,0,true);
+                std::ifstream raw(file+".bin",std::ios::binary|std::ios::ate);Assert::IsTrue(bool(raw));
+                Assert::IsTrue(raw.tellg()==std::streamoff(frame.bytes.size()));
+                raw.seekg(0);raw.read(reinterpret_cast<char*>(frame.bytes.data()),std::streamsize(frame.bytes.size()));
+                Assert::IsTrue(bool(raw));
+                auto source=frame.P210Source();source.format=AnalysisLumaFormat::DecodedDolbyVision422;
+                source.encoding=static_cast<VideoFrameEncoding>(encoding);source.colorspace=ColorSpace::BT_2020;
+                source.range=AnalysisLumaRange::Full;source.generation=id.transportGeneration;
+                const auto measured=ExperimentalAspect::Measure(w,h,0,[&](int x,int y,ExperimentalAspect::Pixel& pixel) {
+                    AnalysisLumaSample sample;if(!source.Sample(x,y,sample))return false;
+                    pixel={sample.luma,sample.chromaU,sample.chromaV};return true;
+                },[]{return true;});
+                Assert::IsTrue(measured.complete && measured.kind==ExperimentalAspect::Kind::Bars);
+                Assert::AreEqual(0,measured.left);Assert::AreEqual(276,measured.top);
+                Assert::AreEqual(3840,measured.right);Assert::AreEqual(1884,measured.bottom);
+                ActivePictureMeasurementCache cache(false);cache.Begin(source,id,policy,continuity);
+                const auto content=cache.SubtitleContent(native,0);
+                Assert::IsTrue(content.lower && content.lowerTop>=native.bottom && content.lowerBottom>content.lowerTop);
+                PresentationRecoveryInput recovery;
+                auto& crop=recovery.crop;crop.automaticCropEnabled=crop.sharedGeometryAvailable=true;
+                crop.geometry=native;crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.geometrySourceGeneration=crop.frameSourceGeneration=id.transportGeneration;
+                crop.frameSourceSequence=id.acceptedSequence;crop.framePresentationEpoch=id.viewportGeneration;
+                crop.rasterWidth=w;crop.rasterHeight=h;
+                recovery.presentationEpoch=id.viewportGeneration;
+                auto& anchor=recovery.submittedScopeAnchor;anchor.available=true;anchor.crop=native;
+                anchor.sourceGeneration=id.transportGeneration;anchor.presentationEpoch=id.viewportGeneration;
+                anchor.lastSubmittedSourceSequence=id.acceptedSequence-1;
+                anchor.lastSubmittedPresentationSourceSequence=id.acceptedSequence-1;
+                recovery.currentBarContentAvailable=true;recovery.currentBarContentBase=native;
+                recovery.currentBarContentBounds={0,content.lowerTop,w,content.lowerBottom,w,h,0,
+                    ActivePictureBounds::BarAxes::NONE};
+                recovery.currentBarContentGeneration=id.transportGeneration;
+                recovery.currentBarContentSequence=id.acceptedSequence;
+                recovery.currentBarContentEpoch=id.viewportGeneration;
+                Decision full;full.sourceBounds={0,0,w,h,w,h,0,ActivePictureBounds::BarAxes::NONE};
+                const auto output=ResolveUncertainPicturePresentation(recovery,full);
+                Assert::IsTrue(output.retained && output.currentBarContentProtected);
+                Assert::IsTrue(output.presentation.sourceBounds.top<=native.top &&
+                    output.presentation.sourceBounds.bottom>=content.lowerBottom);
+                Assert::AreEqual(native.top,output.nativeCrop.top);Assert::AreEqual(native.bottom,output.nativeCrop.bottom);
+                priorSequence=id.acceptedSequence;priorSource=id.sourceFrameNumber;priorTimestamp=id.captureTimestamp;
+            }
         }
 
         TEST_METHOD(OptionalExactSubmittedMatteIncidentsPreserveScopeAndText)
