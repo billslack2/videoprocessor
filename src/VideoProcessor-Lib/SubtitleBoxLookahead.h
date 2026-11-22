@@ -128,7 +128,8 @@ struct SubtitleBoxObservation
     bool bandComparisonComplete=false, pendingExactBandGlyphsVerified=false;
     ActivePictureFrameIdentity matchingBandTemplate{};
     int verifiedTopEnd=0, verifiedBottomStart=0;
-    AnalysisLumaSource bandComparedSource{}; // Borrowed descriptor; never retain or dereference its storage.
+    AnalysisLumaSource bandComparedSource{};
+    std::weak_ptr<const void> bandComparedOwner; // Borrowed descriptor; never retain or dereference its storage.
     SubtitleScriptHint scriptHint=SubtitleScriptHint::Latin;
     ActivePictureFrameIdentity identity;
     SubtitleBoxResult text;

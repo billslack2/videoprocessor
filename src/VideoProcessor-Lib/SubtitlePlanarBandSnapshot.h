@@ -15,7 +15,8 @@ public:
     static constexpr size_t MaxBytes=64u*1024u*1024u;
 
     bool Capture(const AnalysisLumaSource& source,int topEnd,int bottomStart) {
-        Reset();
+        // Invalidate the old extent while reusing the allocated buffer.
+        m_width=m_height=m_topEnd=m_bottomStart=0;
         if(!Supported(source) || topEnd<0 || bottomStart<topEnd || bottomStart>source.height ||
             (source.format==AnalysisLumaFormat::P010 && ((topEnd|bottomStart)&1)))return false;
         const size_t row=size_t(source.width)*2;
@@ -41,7 +42,7 @@ public:
     }
 
     bool Matches(const AnalysisLumaSource& source) const {
-        if(m_bytes.empty() || !Supported(source) || source.width!=m_width || source.height!=m_height ||
+        if(m_width<=0 || !Supported(source) || source.width!=m_width || source.height!=m_height ||
             source.format!=m_format || source.encoding!=m_encoding || source.colorspace!=m_colorspace ||
             source.range!=m_range)return false;
         const size_t row=size_t(m_width)*2;
@@ -62,7 +63,7 @@ public:
     }
 
     bool Covers(const SubtitleBoxRect& r) const {
-        return !m_bytes.empty() && r.Valid() && r.left>=0 && r.right<=m_width &&
+        return m_width>0 && r.Valid() && r.left>=0 && r.right<=m_width &&
             r.top>=0 && r.bottom<=m_height && (r.bottom<=m_topEnd || r.top>=m_bottomStart ||
                 (m_topEnd==m_bottomStart));
     }

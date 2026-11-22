@@ -345,7 +345,8 @@ public:
         result.bandComparisonComplete=true;
         if (bandSnapshot.Matches(source)) {
             result.matchingBandTemplate=bandSeed;
-            result.bandComparedSource=source;result.bandComparedSource.backingOwner.reset();
+            result.bandComparedSource=source;result.bandComparedOwner=source.backingOwner;
+            result.bandComparedSource.backingOwner.reset();
             result.verifiedTopEnd=bandTopEnd;result.verifiedBottomStart=bandBottomStart;
         }
         result.text.diagnosticReason=result.matchingBandTemplate.acceptedSequence?
@@ -504,6 +505,11 @@ public:
         for(const auto& job:m_pending)if(SameKey(job.key,requestKey))return duplicate("queued");
         for(const auto& ready:m_ready)if(SameKey(ready,requestKey))return duplicate("ready");
         if(m_pending.size()>=PendingCapacity) {
+            // A speculative comparison must never evict a queued detector scan.
+            if (requestKey.cadenceSkipped) {
+                events.Add(requestKey,"drop","comparison-capacity");
+                ++m_diagnostics.dropped;return;
+            }
             // Keep the nearest accepted source. A new current-frame request may
             // replace the farthest future; a later future cannot evict the head.
             auto leastUseful=m_pending.begin();
@@ -980,12 +986,20 @@ public:
         // a completed comparison disagrees or belongs to another template.
         if(key.bandComparisonComplete) {
             const auto& compared=key.bandComparedSource;
-            const bool sameSource=compared.data && compared.data==source.data &&
+            // Queued analysis uses the format generation and the live view uses
+            // the transport generation of the same immutable frame (SeedQueued).
+            const bool matchingGeneration=compared.generation==source.generation ||
+                (compared.generation==key.identity.sourceFormatGeneration &&
+                 source.generation==key.identity.transportGeneration);
+            const bool sameSource=matchingGeneration &&
+                !key.bandComparedOwner.owner_before(source.backingOwner) &&
+                !source.backingOwner.owner_before(key.bandComparedOwner) &&
+                compared.data && compared.data==source.data &&
                 compared.dataBytes==source.dataBytes && compared.width==source.width &&
                 compared.height==source.height && compared.rowBytes==source.rowBytes &&
                 compared.chromaRowBytes==source.chromaRowBytes && compared.format==source.format &&
                 compared.encoding==source.encoding && compared.colorspace==source.colorspace &&
-                compared.range==source.range && compared.generation==source.generation &&
+                compared.range==source.range &&
                 compared.rgbBitAlignment==source.rgbBitAlignment && !compared.backingOwner;
             if(!sameSource)return Reject("current-band-source-mismatch");
             if(context || !SameAnalysisFrameIdentity(key.matchingBandTemplate,old.identity) ||
@@ -1004,7 +1018,7 @@ public:
             pending.pendingBarGlyphsLocal=false;pending.pendingExactBandGlyphsVerified=true;
             pending.bandComparisonComplete=true;pending.matchingBandTemplate=key.matchingBandTemplate;
             pending.verifiedTopEnd=key.verifiedTopEnd;pending.verifiedBottomStart=key.verifiedBottomStart;
-            pending.bandComparedSource=key.bandComparedSource;
+            pending.bandComparedSource=key.bandComparedSource;pending.bandComparedOwner=key.bandComparedOwner;
             pending.discontinuity=false;pending.analysisRefresh=false;
             pending.barEvidence={};pending.barAuthority=false;pending.independentBarAnalysis=false;
             pending.sharedNativePhysicalSupport=false;pending.barTrackingAuthority=false;
