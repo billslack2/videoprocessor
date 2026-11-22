@@ -2990,6 +2990,53 @@ namespace VideoProcessorTest
                 L"A current native witness on the first excluded row still overrides the guard.");
         }
 
+        TEST_METHOD(RecordedScopeFramingRejectsIndependentWeakShapesPerEdge)
+        {
+            char* path=nullptr; size_t length=0;
+            _dupenv_s(&path,&length,"VP_FIDELITY_SCOPE_PLAYBACK_INCIDENT_DIR");
+            const std::string dir=path ? path : ""; std::free(path);
+            if (dir.empty() || !ExperimentalAspect::ActiveTrialEnabled()) {
+                Logger::WriteMessage(L"Set VP_FIDELITY_SCOPE_PLAYBACK_INCIDENT_DIR and VP_AR_EXPERIMENT=active.");
+                return;
+            }
+            const char* names[]={
+                "matte-21432-134397986415923546-1888025272384-g1-s1111-3.bin"};
+            const auto base=ScopePresentation(3840,2160,260,1898);
+            for (const auto name:names) {
+                P010Frame captured(3840,2160);
+                std::ifstream f(dir+"/"+name,std::ios::binary);
+                f.read(reinterpret_cast<char*>(captured.bytes.data()),std::streamsize(captured.bytes.size()));
+                Assert::IsTrue(bool(f));
+                for (int scenario=0;scenario<4;++scenario) {
+                    auto frame=captured;
+                    if (scenario==1 || scenario==2)
+                        frame.FillRectangle(1800,1912,1804,1918,129);
+                    if (scenario==2)
+                        frame.FillRectangle(800,1902,802,1904,180);
+                    if (scenario==3)
+                        frame.FillRectangle(1000,2050,1128,2060,715);
+                    auto source=frame.P010Source();
+                    source.encoding=static_cast<VideoFrameEncoding>(14);
+                    source.colorspace=static_cast<ColorSpace>(4);
+                    source.range=AnalysisLumaRange::Limited; source.generation=1;
+                    ActivePictureFrameIdentity id{1,uint64_t(scenario+1),uint64_t(scenario+1),
+                        uint64_t(scenario+1),6417685342305713284ull,2,1,17712632399396405480ull};
+                    const auto raw=ExperimentalAspect::MeasureActiveTrial(source,id);
+                    const auto global=EvaluateActivePictureGlobalNearBlack(source);
+                    const auto darkness=EvaluateActivePictureArDarkness(source,raw,global);
+                    const auto evidence=EvaluateActivePicturePresentationRetention(
+                        source,base,raw,global,darkness,nullptr,nullptr,true);
+                    Assert::IsTrue(evidence.nearBlackUpperScopeFramingEligible,
+                        L"Current upper band remains independently qualified.");
+                    if (scenario==0)
+                        Assert::IsTrue(evidence.nearBlackScopeFramingEligible,L"Clean known-scope recording stays eligible.");
+                    else
+                        Assert::IsFalse(evidence.nearBlackScopeFramingEligible,
+                            L"Supported detached detail or a strong footer must veto the whole-picture exception.");
+                }
+            }
+        }
+
         TEST_METHOD(RecordedKnownScopeKeepsMeasuredFramingAcrossNearBlackEdges)
         {
             using namespace AlphaSourceCrop;

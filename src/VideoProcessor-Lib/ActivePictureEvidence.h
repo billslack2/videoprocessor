@@ -332,6 +332,9 @@ struct ActivePicturePresentationRetentionEvidence
     // Opt-in current-source presentation exception for a known native ratio.
     // Faint edge pixels may be omitted: never absence, erasure or AR authority.
     bool nearBlackScopeFramingEligible = false;
+    // Independently verified upper band for a current Classic lower-only shift.
+    // This presentation exception does not prove that the lower band is safe.
+    bool nearBlackUpperScopeFramingEligible = false;
 	bool outwardVisibleBoundsAvailable = false;
 	ActivePictureBounds outwardVisibleBounds;
 	ActivePictureVisibleExtentDiagnostic visibleLeft, visibleTop, visibleRight, visibleBottom;

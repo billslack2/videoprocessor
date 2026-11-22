@@ -1807,7 +1807,7 @@ namespace AlphaSourceCrop
     // including after a prior crop or an UNKNOWN subtitle presentation hold.
     // Only controls presentation of extra verified matte around an already admitted crop.
     bool PreferKnownAspectFraming(const ActivePictureBounds& base,
-        const ActivePicturePresentationRetentionEvidence& exactCurrent);
+        const ActivePicturePresentationRetentionEvidence& exactCurrent, bool upperBarOnly = false);
 
     struct RaisedMattePresentationHold {
         ActivePictureBounds picture;

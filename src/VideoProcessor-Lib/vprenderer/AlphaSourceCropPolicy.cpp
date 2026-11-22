@@ -5816,10 +5816,12 @@ namespace AlphaSourceCrop
     }
 
     bool PreferKnownAspectFraming(const ActivePictureBounds& base,
-        const ActivePicturePresentationRetentionEvidence& exactCurrent)
+        const ActivePicturePresentationRetentionEvidence& exactCurrent, bool upperBarOnly)
     {
+        const bool eligible=upperBarOnly ? exactCurrent.nearBlackUpperScopeFramingEligible :
+            exactCurrent.nearBlackScopeFramingEligible;
         if (!exactCurrent.analysisValid || !exactCurrent.presentationValid ||
-            !exactCurrent.pairedRaisedEdgeContrast || !exactCurrent.nearBlackScopeFramingEligible ||
+            !exactCurrent.pairedRaisedEdgeContrast || !eligible ||
             base.left!=0 || base.right!=base.rasterWidth || base.top<=0 ||
             base.bottom>=base.rasterHeight || base.bottom<=base.top ||
             base.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM)

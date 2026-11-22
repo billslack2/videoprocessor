@@ -1690,7 +1690,8 @@ void ProtectNarrowAttachedMatteStroke(SampleContext& samples, bool top, int dept
 // component must stand above its current local background and be separated
 // from the picture by two matte-like rows. Exhaustion retains the margin.
 void ProtectWeakDetachedMatteComponent(SampleContext& samples, bool top, int depth,
-    int matte, ExcludedBandVisibleExtent& extent) {
+    int matte, ExcludedBandVisibleExtent& extent, bool* exhausted = nullptr) {
+    if (exhausted) *exhausted=false;
     if (extent.nativePixelDetail || depth <= 3) return;
     const auto& source = samples.source;
     const int margin = std::min(depth-1,(std::max(2,source.height/96)+1)&~1);
@@ -1720,7 +1721,10 @@ void ProtectWeakDetachedMatteComponent(SampleContext& samples, bool top, int dep
             samples.chromaSamples += std::min(x+1,source.width)-start;
             if (x>=source.width) break;
             start=x+1;
-            if (++candidates>512) { protect(x,y); return; }
+            if (++candidates>512) {
+                if (exhausted) *exhausted=true;
+                protect(x,y); return;
+            }
             AnalysisLumaSample pixel;
             if (!samples.Sample(x,y,pixel) || pixel.luma<=matte+8 || pixel.luma>matte+15 ||
                 std::abs(int(pixel.chromaU)-512)>16 || std::abs(int(pixel.chromaV)-512)>16) continue;
@@ -3884,8 +3888,10 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         }
     }
     // This trial-only worker result is explicitly not a detector result. The
-    // caller separately enforces its known-ratio presentation policy.
-    if (allowCleanRaisedMatteExterior && pairedEdge && result.raisedMatteExteriorVerified &&
+    // caller separately enforces its known-ratio presentation policy. Check
+    // each band independently: a real footer must not invalidate proof that
+    // the upper band is clear for an existing Classic lower-only shift.
+    if (allowCleanRaisedMatteExterior && pairedEdge &&
         raw.available && raw.strongCurrentBarMeasurement &&
         raw.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE &&
         raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
@@ -3894,12 +3900,32 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
         raw.trustedBounds.left==trustedPresentation.left && raw.trustedBounds.right==trustedPresentation.right &&
         std::abs(raw.trustedBounds.top-trustedPresentation.top)<=2 &&
         std::abs(raw.trustedBounds.bottom-trustedPresentation.bottom)<=2) {
+        const auto independentShapesAbsent=[&](bool top,int depth,int matte) {
+            // Fresh extent objects make shape checks independent of a prior
+            // unrelated native witness. Budget exhaustion is unresolved, not
+            // positive glyph evidence, and conservatively rejects this proof.
+            ExcludedBandVisibleExtent narrow,weak;
+            bool exhausted=false;
+            ProtectNarrowAttachedMatteStroke(samples,top,depth,matte,narrow);
+            if (narrow.nativePixelDetail) return false;
+            ProtectWeakDetachedMatteComponent(samples,top,depth,matte,weak,&exhausted);
+            if (exhausted) return false;
+            return !weak.nativePixelDetail;
+        };
+        const int topDepth=trustedPresentation.top;
+        const int bottomDepth=source.height-trustedPresentation.bottom;
+        const int topMatte=int(result.excludedTop.lumaP90);
+        const int bottomMatte=int(result.excludedBottom.lumaP90);
         int shoulderChecks=0;
-        result.nearBlackScopeFramingEligible=
-            InspectNearBlackScopeFramingBand(samples,true,trustedPresentation.top,
-                int(result.excludedTop.lumaP90),shoulderChecks) &&
-            InspectNearBlackScopeFramingBand(samples,false,source.height-trustedPresentation.bottom,
-                int(result.excludedBottom.lumaP90),shoulderChecks);
+        const bool topSafe=InspectNearBlackScopeFramingBand(samples,true,topDepth,topMatte,shoulderChecks) &&
+            independentShapesAbsent(true,topDepth,topMatte);
+        result.nearBlackUpperScopeFramingEligible=topSafe;
+        // The whole-scope exception still requires the existing independent
+        // exterior certificate on both bars as well as both new band checks.
+        if (topSafe && result.raisedMatteExteriorVerified)
+            result.nearBlackScopeFramingEligible=
+                InspectNearBlackScopeFramingBand(samples,false,bottomDepth,bottomMatte,shoulderChecks) &&
+                independentShapesAbsent(false,bottomDepth,bottomMatte);
     }
 	const auto leftExtent = FindVerticalVisibleExtent(samples, true,
 		trustedPresentation.left, blackThreshold);
@@ -4094,6 +4120,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	auto result = raw;
 	result.raisedMatteExteriorVerified = false;
     result.nearBlackScopeFramingEligible = false;
+    result.nearBlackUpperScopeFramingEligible = false;
 	result.relocatedOverlayExclusionEvaluated = false;
 	result.relocatedOverlayResidualsExcluded = false;
 	if (!raw.analysisValid || !raw.presentationValid || !source.IsValid() ||

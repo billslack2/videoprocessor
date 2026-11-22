@@ -18354,9 +18354,21 @@ releaseDriftBaseRetention =
                             localBoundaryPolicyGeneration,localBoundaryContinuityGeneration,analysisCache->lookahead));
                 }
                 const bool hasCurrentExterior=proof && proof->originalPixelExterior.complete;
+                OriginalPixelExteriorEvidence exterior;
                 bool displacedDetail=false;
                 if (hasCurrentExterior) {
-                    const auto& exterior=proof->originalPixelExterior;
+                    exterior=proof->originalPixelExterior;
+                    const bool knownUpperEdge=exterior.upperDetail && exterior.lowerDetail &&
+                        latestActivePicturePresentationRetentionSourceGeneration==frameGeneration &&
+                        latestActivePicturePresentationRetentionSourceSequence==sourceSequence &&
+                        SameSubtitlePresentationBounds(latestActivePicturePresentationRetentionBounds,cropInput.geometry) &&
+                        (!currentMeasuredCaptionAvailable || currentConfirmedCaptionBounds.top>=cropInput.geometry.top) &&
+                        AlphaSourceCrop::PreferKnownAspectFraming(cropInput.geometry,latestCropRetentionEvidence,true);
+                    if (knownUpperEdge) {
+                        exterior.upperDetail=false;
+                        exterior.bounds.top=cropInput.geometry.top;
+                        exterior.bounds.aspectRatio=double(width)/(exterior.bounds.bottom-exterior.bounds.top);
+                    }
                     const int matteGuard=(std::max(2,height/96)+1)&~1;
                     displacedDetail=(exterior.upperDetail && exterior.upperY<cropInput.geometry.top-matteGuard) ||
                         (exterior.lowerDetail && exterior.lowerY>=cropInput.geometry.bottom+matteGuard);
@@ -18375,7 +18387,7 @@ releaseDriftBaseRetention =
                     classic.policyGeneration=localBoundaryPolicyGeneration;
                     classic.continuityGeneration=localBoundaryContinuityGeneration;
                     if (hasCurrentExterior) {
-                        classic.evidence=&proof->originalPixelExterior;classic.proofBase=proof->key.base;
+                        classic.evidence=&exterior;classic.proofBase=proof->key.base;
                         classic.proofIdentity=proof->key.identity;classic.proofPolicyGeneration=proof->key.policyGeneration;
                         classic.proofContinuityGeneration=proof->key.continuityGeneration;
                     }
